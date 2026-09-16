@@ -1,0 +1,46 @@
+# 文档索引
+
+当前一期只记录班组间物料流转与收发台账，不挂工艺、产品路线、工单或报工。发生表述冲突时，以最新确认的 [一期物料流转口径](phase-1-material-transfer.md) 为准。
+
+## 当前实施与使用
+
+- [提交甲方的两接口确认单](main-system-client-confirmation.md)：服务鉴权、流水号查询、17 项资料字段与待甲方确认事项；建议协议，非已确认接口。
+- [主系统流水号资料接口规范](main-system-integration.md)：主系统需提供的接口、全字段字典、JSON Schema、鉴权、快照与幂等入库；本地实现，待主系统联调和页面接入，未部署。
+- [主系统对接配置](main-system-configuration.md)：管理员配置页、Bearer 认证、加密保存、测试查询及迁移前置项；本地实现，未部署。
+
+- [全站业务表格实时更新](table-realtime.md)：已发布全局列表、管理表及只读详情同步，保留编辑、打印和选料保护。
+- [班组台账与机器人大屏实时推送](workspace-realtime.md)：已上线的工作台和机器人大屏推送范围、筛选与草稿保留、断线恢复及配套部署边界。
+- [界面一致性约定](ui-style-guide.md)：当前浅白紫配色、字体、两级导航、默认 10 条分页，以及首页、业务列表、打印与大屏的样式边界。
+- [首页库存实时推送](inventory-realtime.md)：已发布首页 SSE 的事务通知、断线重连、权限与单 worker 部署限制。
+- [业务页阅读样式统一](reading-page-rollout.md)：列表大字号、10/20/50/100 分页、整页纵向滚动及适配范围。
+- [日期筛选与流水号加急](date-urgency-filters.md)：2026-09-13 第二种日历卡片样式、日期口径、管理员加急权限、数据库变更及本地验收。
+- [全厂分析与大屏阶段记录](factory-overview-screen.md)：2026-09-12 图表与分析大屏的设计及验收快照；当前库存首页已与分析页分离，库存公式以一期口径为准。
+- [班组数据分析与流水号台账](serial-overview-analytics.md)：2026-09-12 图表/流水号/材质三页拆分，六张分析图、统计口径、筛选及明细。
+- [紧凑工作台与测试数据改版](compact-workspace-refresh.md)：2026-09-11 两级菜单和业务数据重建的阶段记录；其中旧分页、布局及发布状态不代表当前版本。
+- [一期物料流转口径](phase-1-material-transfer.md)：业务范围、转料单字段、八班组、上下序权限与库存边界。
+- [一期用户使用说明](phase-1-user-guide.md)：登录、接收、批量出库、丢失登记、条码与流水追踪。
+- [导航与页面职责](navigation.md)：正式班组入口及工作台分页。
+- [前端与系统架构](frontend-architecture.md)：Vue 3、服务层、状态、后端模块及接口边界。
+- [前端样式与交互要求](frontend-redesign.md)：已确认的视觉方向与交互约束；业务范围仍以上述一期口径为准。
+- [服务器部署说明](server-deployment.md)：`/opt` 部署布局、访问锁、备份及配套发布注意事项。
+- [代码清理记录](code-cleanup-report.md)：实际删除内容、保留原因、备份和本次验证。
+
+## 验收证据
+
+以下记录对应各自的实现阶段和测试环境，不表示已部署线上。
+
+- [全项目界面一致性审查](ui-consistency-review-20260914.md)：2026-09-14 浅白紫界面、手机/2K、导航、详情及打印检查；部署状态另见服务器部署说明。
+- [班组物料台账验收记录](team-material-stock-test-report.md)
+- [库房手工入库验收记录](warehouse-receipt-test-report.md)
+- [库房对外出库与检验发货验收记录](external-outbound-test-report.md)
+- [整批条码与汇总打印验收](batch-barcode-test-report.md)
+- [转料单字段验收记录](transfer-document-test-report.md)
+- [查询索引验收记录](transfer-query-index-verification.md)
+
+## 历史资料
+
+- [历史方案目录](history/README.md)：旧工艺/工单需求、旧演示说明及历史部署记录，不作为当前开发要求。
+- [原始大小循环需求整理](material-system-requirements.md)：保留甲方资料与后续阶段讨论依据；文内已标记为历史方案。
+- [旧版导出手册说明](exports/README.md)：旧 Word 手册保留供追溯，当前操作请使用一期用户说明。
+
+`design/` 中的已选视觉参考与历史设计验收资料保留，不因业务代码清理而删除。

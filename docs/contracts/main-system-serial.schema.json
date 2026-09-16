@@ -1,0 +1,287 @@
+{
+  "$defs": {
+    "MainSystemDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "material_type": {
+          "anyOf": [
+            {
+              "pattern": "^(finished|semi_finished|finished_surplus|semi_finished_surplus|defective|waste|sludge|scrap_chips)$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Material Type"
+        },
+        "source_batch_no": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Batch No"
+        },
+        "material_name": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Material Name",
+          "type": "string"
+        },
+        "finished_specification": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished Specification"
+        },
+        "transfer_specification": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transfer Specification"
+        },
+        "finished_quantity": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished Quantity"
+        },
+        "customer_code": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer Code"
+        },
+        "technical_requirements": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Technical Requirements"
+        },
+        "product_code": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Product Code"
+        },
+        "part_no": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Part No"
+        },
+        "material_shape": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Material Shape"
+        },
+        "material_description": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Material Description"
+        },
+        "outsourced_unit": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outsourced Unit"
+        },
+        "purpose_category": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Purpose Category"
+        },
+        "category_level3": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Category Level3"
+        },
+        "order_category": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Order Category"
+        },
+        "special_process": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Special Process"
+        }
+      },
+      "required": [
+        "material_type",
+        "source_batch_no",
+        "material_name",
+        "finished_specification",
+        "transfer_specification",
+        "finished_quantity",
+        "customer_code",
+        "technical_requirements",
+        "product_code",
+        "part_no",
+        "material_shape",
+        "material_description",
+        "outsourced_unit",
+        "purpose_category",
+        "category_level3",
+        "order_category",
+        "special_process"
+      ],
+      "title": "MainSystemDocument",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "serial_no": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Serial No",
+      "type": "string"
+    },
+    "revision": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Revision",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    },
+    "active": {
+      "title": "Active",
+      "type": "boolean"
+    },
+    "document": {
+      "$ref": "#/$defs/MainSystemDocument"
+    }
+  },
+  "required": [
+    "schema_version",
+    "serial_no",
+    "revision",
+    "updated_at",
+    "active",
+    "document"
+  ],
+  "title": "MainSystemSerial",
+  "type": "object"
+}

@@ -1,0 +1,66 @@
+/* Workbench pilot: typography and spacing stay inside the team workspace. */
+.team-workspace {
+  --workspace-body-size: 16px;
+  --workspace-meta-size: 14px;
+  --workspace-number-size: 16px;
+  --workspace-control-height: 40px;
+  --workspace-gutter: 12px;
+  --workspace-ink: var(--text);
+  --workspace-muted: var(--muted);
+  color: var(--workspace-ink);
+  font-size: var(--workspace-body-size);
+  line-height: 1.5;
+}
+
+.team-workspace :is(.serial-toolbar, .list-toolbar, .workspace-actions) .el-button:not(.is-link) {
+  height: var(--workspace-control-height);
+  padding-inline: 12px;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 400;
+}
+.team-workspace :is(.serial-toolbar, .serial-extra-filters, .list-toolbar) :is(.el-input__wrapper, .el-select__wrapper) {
+  min-height: var(--workspace-control-height);
+  font-size: 15px;
+}
+.team-workspace :is(.serial-toolbar, .list-toolbar) .el-checkbox { height: var(--workspace-control-height); margin-right: 0; }
+.team-workspace :is(.serial-toolbar, .list-toolbar) .el-checkbox__label { font-size: 14px; font-weight: 400; color: var(--workspace-muted); }
+.team-workspace .workspace-actions > .el-button:last-child { width: var(--workspace-control-height); padding: 0; }
+
+.team-workspace :is(.serial-table, .team-table, .ledger-table) {
+  font-size: var(--workspace-body-size);
+  font-variant-numeric: tabular-nums;
+  --el-table-text-color: var(--workspace-ink);
+  --el-table-header-bg-color: var(--table-header-bg);
+  --el-table-header-text-color: var(--text);
+  --el-table-border-color: var(--line);
+  --el-table-row-hover-bg-color: var(--table-hover-bg);
+}
+.team-workspace :is(.serial-table, .team-table, .ledger-table) th.el-table__cell {
+  height: 48px;
+  padding-block: 12px;
+  font-size: 15px;
+  font-weight: 500;
+  border-bottom-color: var(--table-header-line);
+}
+.team-workspace :is(.serial-table, .team-table, .ledger-table) .cell { padding-inline: var(--workspace-gutter); line-height: 24px; }
+.team-workspace .team-table .stock-selection-column .cell { display: flex; justify-content: center; padding-inline: 8px; }
+.team-workspace :is(.serial-table, .team-table, .ledger-table) .el-button.is-link { min-height: 24px; height: auto; font-size: 15px; line-height: 24px; }
+.team-workspace :is(.serial-table, .team-table, .ledger-table) .material-amount strong { font-size: var(--workspace-number-size); font-weight: 400; color: var(--workspace-ink); }
+.team-workspace :is(.serial-table, .team-table, .ledger-table) .material-amount small { font-size: var(--workspace-meta-size); color: var(--workspace-muted); }
+.team-workspace .ledger-table .material-amount { flex-direction: column; align-items: flex-start; gap: 2px; }
+.team-workspace :is(.serial-table, .team-table, .ledger-table) .el-table__body .el-table__cell { height: 49px; padding-block: 12px; font-size: var(--workspace-body-size); }
+.team-workspace :is(.serial-table, .team-table, .ledger-table).el-table--striped .el-table__row--striped td.el-table__cell { background: #fff; }
+.team-workspace :is(.serial-table, .team-table, .ledger-table) .el-table__body tr.hover-row > td.el-table__cell { background: var(--table-hover-bg); }
+.team-workspace :is(.serial-table, .team-table, .ledger-table) .el-table__body td.ledger-number .cell { color: var(--workspace-ink); font-size: var(--workspace-number-size); font-weight: 400; }
+.team-workspace .serial-table .el-button.serial-number-link { color: var(--workspace-ink); font-size: var(--workspace-body-size); font-weight: 400; }
+.team-workspace .serial-table .el-button.serial-number-link:hover { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
+.team-workspace :is(.serial-ledger > footer, .table-footer, .material-ledger > footer) {
+  min-height: 56px;
+  padding: 10px var(--workspace-gutter);
+}
+.team-workspace :is(.serial-ledger > footer, .table-footer, .material-ledger > footer) > span { color: var(--workspace-muted); font-size: var(--workspace-meta-size); }
+
+.team-workspace.team-workspace--reading { overflow-y: auto; scrollbar-gutter: stable; }
+.team-workspace.team-workspace--reading :is(.team-workspace__content, .team-material-content) { flex: 0 0 auto; overflow: visible; }
+.team-workspace--reading .serial-table .el-table__body .el-table__cell { height: 61px; padding-block: 18px; }

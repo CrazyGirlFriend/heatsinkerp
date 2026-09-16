@@ -1,0 +1,15 @@
+/* Self-hosted, SIL OFL fonts. See public/assets/fonts and THIRD_PARTY_NOTICES.md. */
+@font-face {
+  font-family: 'HeatSink Han';
+  src: url('/assets/fonts/SourceHanSans-Home.woff2?v=c14d9651f390') format('woff2');
+  font-style: normal;
+  font-weight: 250 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'HeatSink Inter';
+  src: url('/assets/fonts/InterVariable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}

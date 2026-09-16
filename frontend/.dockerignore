@@ -1,0 +1,9 @@
+node_modules
+dist
+.vite
+artifacts
+design-qa.md
+*.log
+.DS_Store
+._*
+**/._*

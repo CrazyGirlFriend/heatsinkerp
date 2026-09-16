@@ -1,0 +1,13 @@
+ARG BASE_IMAGE=heatsinkrep-backend:latest
+FROM ${BASE_IMAGE}
+
+# Application dependencies are unchanged from the selected, already verified
+# backend image.  A release build replaces only source and migrations, keeping
+# deployment independent from an external package download while still
+# producing an immutable image that can be rolled back by tag.
+COPY backend/app/ /app/app/
+COPY backend/alembic.ini /app/alembic.ini
+COPY backend/alembic/ /app/alembic/
+
+# The commit-driven SSE broker is process-local; keep HTTP writes and streams together.
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"]

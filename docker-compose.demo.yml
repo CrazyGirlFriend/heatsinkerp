@@ -1,0 +1,13 @@
+# Local demo only. Keep default development credentials off the LAN and avoid
+# colliding with an existing MySQL service on the standard 3306 port.
+# Requires Docker Compose 2.24.4+ for !override.
+services:
+  db:
+    ports: !override
+      - "127.0.0.1:33306:3306"
+  backend:
+    ports: !override
+      - "127.0.0.1:8000:8000"
+  frontend:
+    ports: !override
+      - "127.0.0.1:8080:80"

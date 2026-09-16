@@ -1,0 +1,8 @@
+ARG BASE_IMAGE=heatsinkrep-frontend:latest
+FROM ${BASE_IMAGE}
+
+# UI-only releases are built and tested before upload. Reusing the current
+# runtime image keeps Nginx and its healthcheck identical and avoids a remote
+# npm install while still producing an immutable, rollback-friendly image.
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/dist/ /usr/share/nginx/html/
