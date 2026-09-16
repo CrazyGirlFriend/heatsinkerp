@@ -12,7 +12,7 @@ def upgrade():
     # Historical initial migration creates current metadata on an empty DB.
     if "main_system_configuration" not in sa.inspect(op.get_bind()).get_table_names():
         op.create_table("main_system_configuration",
-            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("id", sa.Integer(), primary_key=True, autoincrement=False),
             sa.Column("enabled", sa.Boolean(), nullable=False),
             sa.Column("base_url", sa.String(500), nullable=False),
             sa.Column("token_ciphertext", sa.Text()),

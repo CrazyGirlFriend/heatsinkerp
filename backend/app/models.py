@@ -12,7 +12,7 @@ from .model_base import utcnow, TRANSFER_BATCH_NUMBER_TYPE
 
 class MainSystemConfiguration(Base):
     __tablename__ = "main_system_configuration"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
     base_url: Mapped[str] = mapped_column(String(500), nullable=False)
     token_ciphertext: Mapped[str | None] = mapped_column(Text)

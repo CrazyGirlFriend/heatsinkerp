@@ -13,6 +13,8 @@ from alembic.runtime.migration import MigrationContext
 from app import main_system, main_system_configuration as config
 from app.database import SessionLocal
 from app.models import MainSystemConfiguration, MaterialTransfer
+from sqlalchemy.dialects import mysql
+from sqlalchemy.schema import CreateTable
 from test_main_system import record
 from test_material_transfers import _team, _leader
 
@@ -158,6 +160,25 @@ def test_empty_and_stale_tests_do_not_call_upstream(prepared, monkeypatch):
     assert prepared.post(URL+'/test',json={'serial_no':'A','expected_version':0}).status_code == 409
     assert prepared.post(URL+'/test',json={'serial_no':'  ','expected_version':1}).status_code == 422
     assert not fetch.called
+
+
+def test_singleton_primary_key_has_no_mysql_auto_increment(monkeypatch):
+    table = MainSystemConfiguration.__table__
+    assert 'AUTO_INCREMENT' not in str(CreateTable(table).compile(dialect=mysql.dialect()))
+    path = Path(__file__).resolve().parents[1] / 'alembic/versions/20260915_0012_main_system_configuration.py'
+    spec = importlib.util.spec_from_file_location('config_mysql_migration', path)
+    migration = importlib.util.module_from_spec(spec); spec.loader.exec_module(migration)
+    inspector = Mock()
+    inspector.get_table_names.return_value = []
+    inspector.get_columns.return_value = [{'name': column.name} for column in table.columns]
+    monkeypatch.setattr(migration.sa, 'inspect', lambda bind: inspector)
+    monkeypatch.setattr(migration.op, 'get_bind', lambda: None)
+    create = Mock()
+    monkeypatch.setattr(migration.op, 'create_table', create)
+    migration.upgrade()
+    name, *columns = create.call_args.args
+    ddl = str(CreateTable(migration.sa.Table(name, migration.sa.MetaData(), *columns)).compile(dialect=mysql.dialect()))
+    assert 'AUTO_INCREMENT' not in ddl and 'CHECK (id = 1)' in ddl
 
 
 def test_migration_creation_and_retry_preserve_configuration():
