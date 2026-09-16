@@ -166,8 +166,8 @@ describe('first-row-driven material dashboard', () => {
   })
   it('opens actual ledgers and batch details without changing the first-row selection', async () => {
     const router = await render()
-    await click('查看线切割流水号台账')
-    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/5?tab=serials')
+    await click('查看线切割库存明细')
+    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/5?tab=stock')
     await wrapper.get('.current-flow__code').trigger('click'); await flushPromises()
     expect(router.currentRoute.value.fullPath).toBe('/transfer-batches/scan?batch_no=CK-DEMO-0')
     wrapper.getComponent({ name: 'ElTable' }).vm.$emit('row-click', tableRows()[1]); await flushPromises()

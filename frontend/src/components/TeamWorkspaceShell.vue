@@ -10,9 +10,8 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const tabs = computed(() => [
-  { value: 'serials', label: '流水号台账' },
-  { value: 'pending', label: '待接收', count: props.pendingCount },
   { value: 'stock', label: '库存明细' },
+  { value: 'pending', label: '待接收', count: props.pendingCount },
   { value: 'outgoing', label: '出库记录' },
   ...(props.warehouse ? [{ value: 'receipts', label: '入库记录' }] : []),
   { value: 'losses', label: '丢失记录' },

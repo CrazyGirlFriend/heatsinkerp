@@ -73,7 +73,7 @@ function syncVisibility() {
   if (hidden.value) { ++version; unsubscribe?.(); unsubscribe = undefined; clearChanges() }
   else load()
 }
-function teamLink(team: FactoryTeam, tab = 'serials') { return { path: `/team-workspaces/${team.id}`, query: { tab } } }
+function teamLink(team: FactoryTeam, tab = 'stock') { return { path: `/team-workspaces/${team.id}`, query: { tab } } }
 onMounted(() => {
   media = window.matchMedia?.('(prefers-reduced-motion: reduce)'); syncMotion()
   media?.addEventListener('change', syncMotion)

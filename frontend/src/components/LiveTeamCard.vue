@@ -18,7 +18,7 @@ const badge = computed(() => !props.team.id ? '未配置' : !props.team.active ?
       <div class="live-team__stock"><strong>{{ number(team.balance?.on_hand_weight) }}<small> kg</small></strong><span>｜</span><b>{{ number(team.balance?.on_hand_quantity) }}<small> 件</small></b></div>
       <footer><span>待接收 <b>{{ number(team.incoming) }}</b></span><span class="live-team__outgoing">待转出 <b>{{ number(team.outgoing) }}</b></span></footer>
     </div>
-    <ElButton class="live-team__open" link :disabled="!team.id || !team.active" :aria-label="'查看' + team.name + '流水号台账'" @click="$emit('open', team)"><ElIcon><ArrowRight /></ElIcon></ElButton>
+    <ElButton class="live-team__open" link :disabled="!team.id || !team.active" :aria-label="'查看' + team.name + '库存明细'" @click="$emit('open', team)"><ElIcon><ArrowRight /></ElIcon></ElButton>
   </article>
 </template>
 <style scoped>

@@ -29,7 +29,7 @@ describe('standalone team analysis', () => {
   it('clicking a chart navigates to the filtered serial page and browser Back returns to the chart page', async () => {
     const router = await render()
     wrapper.getComponent(TeamAnalyticsCharts).vm.$emit('filter', { stock_age: 'ge7' }, '库存停留：7天及以上'); await flushPromises()
-    expect(router.currentRoute.value.query).toMatchObject({ tab: 'serials', days: '7', metric: 'quantity', stock_age: 'ge7' })
+    expect(router.currentRoute.value.query).toMatchObject({ tab: 'stock', days: '7', metric: 'quantity', stock_age: 'ge7' })
     router.back(); await flushPromises()
     expect(router.currentRoute.value.query).toEqual({ days: '7', metric: 'quantity' })
   })

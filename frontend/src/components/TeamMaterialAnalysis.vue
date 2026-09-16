@@ -19,7 +19,7 @@ let version = 0
 function changeView(values: Record<string, string>) { void router.replace({ path: route.path, query: { tab: 'overview', days: String(days.value), metric: metric.value, ...values } }) }
 function openSerials(params: SerialParams = {}, label = '') {
   moreOpen.value = false
-  void router.push({ path: route.path, query: { tab: 'serials', days: String(days.value), metric: metric.value, ...Object.fromEntries(Object.entries(params).map(([key, value]) => [key, String(value)])), ...(label ? { filter_label: label } : {}) } })
+  void router.push({ path: route.path, query: { tab: 'stock', availability: 'all', days: String(days.value), metric: metric.value, ...Object.fromEntries(Object.entries(params).map(([key, value]) => [key, String(value)])), ...(label ? { filter_label: label } : {}) } })
 }
 async function load(background = false) {
   const current = ++version; loading.value = true; error.value = ''

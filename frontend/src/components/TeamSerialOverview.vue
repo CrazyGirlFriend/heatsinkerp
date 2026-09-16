@@ -13,10 +13,10 @@ import type { CalendarRange } from '@/types/recordFilters'
 import StatePanel from './StatePanel.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialTypeLabel, materialTypeOptions } from '@/types/materialTransfer'
-import type { TeamMaterialOverview } from '@/types/teamMaterials'
+import type { StockBatch, TeamMaterialOverview } from '@/types/teamMaterials'
 import type { AgeBand, SerialParams, SerialSummary } from '@/types/materialAnalytics'
-const props = defineProps<{ teamId: number; overview: TeamMaterialOverview }>()
-const emit = defineEmits<{ changed: [] }>()
+const props = defineProps<{ teamId: number; overview: TeamMaterialOverview; canWrite?: boolean }>()
+const emit = defineEmits<{ changed: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]] }>()
 const route = useRoute(), router = useRouter()
 const auth = useAuthStore()
 const urgencyOpen = ref(false), urgencySerial = ref('')
@@ -27,7 +27,7 @@ const page = computed(() => Math.max(1, Number.parseInt(text('page')) || 1))
 const pageSize = computed(() => [10, 20, 50, 100].includes(Number(text('page_size'))) ? Number(text('page_size')) : 10)
 const filterLabel = computed(() => text('filter_label'))
 const queryDraft = ref(''), analysisFilter = ref('')
-const materialDraft = ref(''), availabilityDraft = ref<'all' | 'available'>('all'), moreFilters = ref(false)
+const materialDraft = ref(''), availabilityDraft = ref<'all' | 'available'>('available'), moreFilters = ref(false)
 const materialNames = computed(() => props.overview.materials.map(item => item.material_name || '未填写材质'))
 const rows = ref<SerialSummary[]>([]), total = ref(0)
 const listError = ref(''), listLoading = ref(false)
@@ -44,13 +44,13 @@ const filters = computed<SerialParams>(() => {
   if (text('date_from')) params.date_from = text('date_from')
   if (text('date_to')) params.date_to = text('date_to')
   if (text('urgent_only') === 'true') params.urgent_only = true
-  if (text('availability') === 'available') params.availability = 'available'
+  params.availability = text('availability') === 'all' ? 'all' : 'available'
   return params as SerialParams
 })
-function viewQuery() { return { tab: 'serials', ...(days.value === 7 ? { days: '7' } : {}), ...(pageSize.value !== 10 ? { page_size: String(pageSize.value) } : {}), ...(text('metric') === 'quantity' ? { metric: 'quantity' } : {}) } }
+function viewQuery() { return { tab: 'stock', ...(days.value === 7 ? { days: '7' } : {}), ...(pageSize.value !== 10 ? { page_size: String(pageSize.value) } : {}), ...(text('metric') === 'quantity' ? { metric: 'quantity' } : {}) } }
 function changeView(values: Record<string, string>) { void router.replace({ path: route.path, query: { ...route.query, ...values } }) }
 function applyFilter(params: SerialParams = {}, label = '') { void router.replace({ path: route.path, query: { ...viewQuery(), ...Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)])), ...(label ? { filter_label: label } : {}) } }) }
-function basicFilters(): SerialParams { return { date_from: text('date_from') || undefined, date_to: text('date_to') || undefined, urgent_only: text('urgent_only') === 'true' || undefined, query: queryDraft.value.trim() || undefined, material_name: materialDraft.value || undefined, availability: availabilityDraft.value === 'available' ? 'available' : undefined } }
+function basicFilters(): SerialParams { return { date_from: text('date_from') || undefined, date_to: text('date_to') || undefined, urgent_only: text('urgent_only') === 'true' || undefined, query: queryDraft.value.trim() || undefined, material_name: materialDraft.value || undefined, availability: availabilityDraft.value } }
 function search() { applyFilter({ ...filters.value, ...basicFilters(), page: 1 }, filterLabel.value) }
 function paginate(next: number, size = pageSize.value) { changeView({ page: String(next), page_size: String(size) }) }
 const ages: [AgeBand, string][] = [['lt1', '不足1天'], ['1_3', '1–3天'], ['3_7', '3–7天'], ['ge7', '7天及以上']]
@@ -72,10 +72,15 @@ async function loadRows(background = false) {
   finally { if (current === listVersion) listLoading.value = false }
 }
 function open(value: unknown) { detailSerial.value = (value as SerialSummary).serial_no; detailOpen.value = true }
-watch([() => props.teamId, filters], () => { queryDraft.value = text('query'); materialDraft.value = text('material_name'); availabilityDraft.value = text('availability') === 'available' ? 'available' : 'all'; analysisFilter.value = ''; void loadRows() }, { immediate: true })
+watch([() => props.teamId, filters], () => { queryDraft.value = text('query'); materialDraft.value = text('material_name'); availabilityDraft.value = text('availability') === 'all' ? 'all' : 'available'; analysisFilter.value = ''; void loadRows() }, { immediate: true })
 watch(() => props.overview, () => { void loadRows(true) })
 watch(() => props.teamId, () => { detailOpen.value = false; rows.value = [] })
 onBeforeUnmount(() => { ++listVersion })
+function action(mode: 'dispatch' | 'loss', sources: StockBatch[]) {
+  if (!props.canWrite) return
+  detailOpen.value = false
+  emit('action', mode, sources)
+}
 function amount(value: number | null | undefined) { return value == null ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value) }
 </script>
 <template>
@@ -83,7 +88,7 @@ function amount(value: number | null | undefined) { return value == null ? '—'
     <ElAlert v-if="refreshError" :title="refreshError" type="warning" :closable="false" />
     <section class="serial-ledger">
       <header class="serial-toolbar">
-        <ElInput v-model="queryDraft" :prefix-icon="Search" aria-label="流水号台账搜索" placeholder="流水号、材质或规格" clearable @keyup.enter="search" @clear="search" />
+        <ElInput v-model="queryDraft" :prefix-icon="Search" aria-label="库存明细搜索" placeholder="流水号、材质或规格" clearable @keyup.enter="search" @clear="search" />
         <RecordDateFilter :model-value="dateRange" label="流转日期" @update:model-value="selectDate" />
         <ElCheckbox :model-value="text('urgent_only') === 'true'" @change="applyFilter({ ...filters, ...basicFilters(), urgent_only: $event === true || undefined, page: 1 }, filterLabel)">仅看加急</ElCheckbox>
         <ElButton @click="search">查询</ElButton><ElButton text @click="applyFilter()">重置</ElButton>
@@ -96,7 +101,7 @@ function amount(value: number | null | undefined) { return value == null ? '—'
         <label class="filter-field"><span>事件周期</span><ElSelect :model-value="days" aria-label="台账事件筛选周期" @update:model-value="changeView({ days: String($event), page: '1' })"><ElOption :value="7" label="近7天" /><ElOption :value="30" label="近30天" /></ElSelect></label>
       </div>
       <div v-if="filterLabel" class="serial-filter-context"><ElTag size="small" closable @close="applyFilter(basicFilters())">{{ filterLabel }}</ElTag><span>显示符合条件流水号的完整余额</span></div>
-      <StatePanel v-if="listError" state="error" :description="listError" @retry="loadRows" /><StatePanel v-else-if="listLoading" state="loading" title="正在读取流水号台账" />
+      <StatePanel v-if="listError" state="error" :description="listError" @retry="loadRows" /><StatePanel v-else-if="listLoading" state="loading" title="正在读取库存明细" />
       <ElTable v-else :data="rows" row-key="serial_no" class="business-table serial-table" empty-text="暂无符合条件的流水号">
         <ElTableColumn label="流水号" min-width="250" fixed show-overflow-tooltip><template #default="{ row }"><ElButton class="serial-number-link" link type="primary" @click="open(row)">{{ row.serial_no }}</ElButton><SerialUrgencyBadge :urgency="row.urgency" /></template></ElTableColumn>
         <ElTableColumn label="材质" min-width="128" show-overflow-tooltip><template #default="{ row }">{{ row.material_name_count > 1 ? '多材质' : row.material_name || '—' }}</template></ElTableColumn>
@@ -107,7 +112,7 @@ function amount(value: number | null | undefined) { return value == null ? '—'
       </ElTable>
       <footer v-if="!listError"><span>共 {{ total }} 个流水号</span><ElPagination background :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="paginate($event)" @size-change="paginate(1, $event)" /></footer>
     </section>
-    <SerialMaterialDrawer v-model="detailOpen" :team-id="teamId" :serial-no="detailSerial" @changed="emit('changed')" />
+    <SerialMaterialDrawer v-model="detailOpen" :team-id="teamId" :serial-no="detailSerial" :can-write="canWrite" @changed="emit('changed')" @action="action" />
     <SerialUrgencyDialog v-model="urgencyOpen" :serial-no="urgencySerial" @changed="loadRows(); emit('changed')" />
   </div>
 </template>

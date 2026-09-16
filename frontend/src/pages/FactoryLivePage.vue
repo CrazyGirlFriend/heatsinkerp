@@ -128,7 +128,7 @@ async function toggleFullscreen() {
   catch { showToast('未能进入全屏，请使用 Chrome 或 Edge 后重试。', 'error') }
 }
 async function navigate(path: string) { playing.value = false; if (fullscreen.value) await document.exitFullscreen(); await router.push(path) }
-function openTeam(team: LiveTeam) { if (team.id && team.active) void navigate('/team-workspaces/' + team.id + '?tab=serials') }
+function openTeam(team: LiveTeam) { if (team.id && team.active) void navigate('/team-workspaces/' + team.id + '?tab=stock') }
 function openBatch(row: LiveBatch) { void navigate('/transfer-batches/scan?batch_no=' + encodeURIComponent(row.batch_no)) }
 function focusOut(event: FocusEvent) { focused.value = Boolean(event.relatedTarget && (event.currentTarget as HTMLElement).contains(event.relatedTarget as Node)) }
 function rowClass({ row, rowIndex }: { row: LiveBatch; rowIndex: number }) { return [rowIndex === 0 ? 'is-current' : '', changed.value.has(row.batch_no) ? 'is-updated' : ''].join(' ') }

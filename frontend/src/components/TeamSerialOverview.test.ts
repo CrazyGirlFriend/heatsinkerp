@@ -10,6 +10,7 @@ import { ElCheckbox } from 'element-plus'
 import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { analyticsFixture, serialFixture } from '@/testFixtures/materialAnalytics'
+import type { StockBatch } from '@/types/teamMaterials'
 let wrapper: VueWrapper
 beforeEach(() => {
   vi.spyOn(teamMaterialApi, 'analytics').mockResolvedValue(analyticsFixture())
@@ -19,7 +20,7 @@ beforeEach(() => {
   })
 })
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
-async function render(path = '/team-workspaces/914?tab=serials') {
+async function render(path = '/team-workspaces/914?tab=stock') {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/team-workspaces/:teamId', component: { template: '<div/>' } }] })
   await router.push(path)
   wrapper = mount(TeamSerialOverview, { props: { teamId: 914, overview: { team_id: 914, totals: serialFixture(), materials: [], pending_incoming: { quantity: 0, weight: 0, count: 0 }, legacy_received_count: 0 } }, global: { plugins: [router, createPinia()], stubs: { TeamAnalyticsCharts: true, SerialMaterialDrawer: true } } })
@@ -27,9 +28,25 @@ async function render(path = '/team-workspaces/914?tab=serials') {
   return router
 }
 describe('standalone serial ledger', () => {
+  it('defaults to available inventory and forwards writable detail actions without duplicating a page', async () => {
+    const router = await render()
+    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ availability: 'available' }))
+    await router.replace({ query: { tab: 'stock', availability: 'all' } }); await flushPromises()
+    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ availability: 'all' }))
+    const drawer = wrapper.getComponent(SerialMaterialDrawer)
+    const sources = [{ transfer: { id: 1 } }] as StockBatch[]
+    drawer.vm.$emit('action', 'loss', sources)
+    expect(wrapper.emitted('action')).toBeUndefined()
+    await wrapper.setProps({ canWrite: true })
+    await wrapper.findAll('button').find(item => item.text() === '详情')!.trigger('click')
+    expect(drawer.props('modelValue')).toBe(true)
+    drawer.vm.$emit('action', 'dispatch', sources); await flushPromises()
+    expect(wrapper.emitted('action')).toEqual([['dispatch', sources]])
+    expect(drawer.props('modelValue')).toBe(false)
+  })
   it('updates current balances without replacing the table, search draft or open detail', async () => {
-    const router = await render('/team-workspaces/914?tab=serials&query=AL&page=2')
-    await wrapper.get('input[aria-label="流水号台账搜索"]').setValue('尚未提交')
+    const router = await render('/team-workspaces/914?tab=stock&query=AL&page=2')
+    await wrapper.get('input[aria-label="库存明细搜索"]').setValue('尚未提交')
     await wrapper.findAll('button').find(button => button.text() === 'SERIAL-10')!.trigger('click')
     const table = wrapper.get('.el-table').element
     let finish!: (value: Awaited<ReturnType<typeof teamMaterialApi.serials>>) => void
@@ -38,7 +55,7 @@ describe('standalone serial ledger', () => {
     await wrapper.setProps({ overview })
     expect(wrapper.get('.el-table').element).toBe(table)
     expect(wrapper.getComponent(SerialMaterialDrawer).props('modelValue')).toBe(true)
-    expect((wrapper.get('input[aria-label="流水号台账搜索"]').element as HTMLInputElement).value).toBe('尚未提交')
+    expect((wrapper.get('input[aria-label="库存明细搜索"]').element as HTMLInputElement).value).toBe('尚未提交')
     expect(router.currentRoute.value.query.page).toBe('2')
     expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ query: 'AL', page: 2 }))
     finish({ items: [serialFixture('SERIAL-UPDATED')], total: 42, page: 2, page_size: 10 }); await flushPromises()
@@ -72,7 +89,7 @@ describe('standalone serial ledger', () => {
   })
 
   it('combines calendar and urgency filters server-side, resets paging and keeps them through pagination', async () => {
-    const router = await render('/team-workspaces/914?tab=serials&page=2&page_size=50&query=铜')
+    const router = await render('/team-workspaces/914?tab=stock&page=2&page_size=50&query=铜')
     wrapper.getComponent(RecordDateFilter).vm.$emit('update:modelValue', { from: '2026-09-11', to: '2026-09-12' })
     await flushPromises()
     wrapper.getComponent(ElCheckbox).vm.$emit('change', true)
@@ -97,17 +114,17 @@ describe('standalone serial ledger', () => {
     expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ page_size: 100, page: 1 }))
   })
   it('accepts chart drill-down filters without loading or rendering charts', async () => {
-    await render('/team-workspaces/914?tab=serials&stock_age=ge7&filter_label=库存停留：7天及以上')
+    await render('/team-workspaces/914?tab=stock&stock_age=ge7&filter_label=库存停留：7天及以上')
     expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ stock_age: 'ge7', page: 1 }))
     expect(teamMaterialApi.analytics).not.toHaveBeenCalled()
     expect(wrapper.find('canvas').exists()).toBe(false)
     expect(wrapper.text()).toContain('完整余额')
   })
   it('keeps searches on the serial page and refreshes the parent balance after detail changes', async () => {
-    const router = await render('/team-workspaces/914?tab=serials&days=7')
-    await wrapper.get('input[aria-label="流水号台账搜索"]').setValue('铜钼')
-    await wrapper.get('input[aria-label="流水号台账搜索"]').trigger('keyup.enter'); await flushPromises()
-    expect(router.currentRoute.value.query).toMatchObject({ tab: 'serials', days: '7', query: '铜钼' })
+    const router = await render('/team-workspaces/914?tab=stock&days=7')
+    await wrapper.get('input[aria-label="库存明细搜索"]').setValue('铜钼')
+    await wrapper.get('input[aria-label="库存明细搜索"]').trigger('keyup.enter'); await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({ tab: 'stock', days: '7', query: '铜钼' })
     wrapper.getComponent(SerialMaterialDrawer).vm.$emit('changed')
     expect(wrapper.emitted('changed')).toHaveLength(1)
   })
@@ -118,7 +135,7 @@ describe('standalone serial ledger', () => {
     expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(0)
   })
   it('combines server-side stock and material filters, preserves page size, and resets conditions', async () => {
-    const router = await render('/team-workspaces/914?tab=serials&page=2&page_size=50&stock_age=ge7&filter_label=库存停留')
+    const router = await render('/team-workspaces/914?tab=stock&page=2&page_size=50&stock_age=ge7&filter_label=库存停留')
     await wrapper.get('.more-filters-button').trigger('click')
     const select = wrapper.findAllComponents(ElSelect).find(item => item.find('input[aria-label="台账库存筛选"]').exists())!
     select.vm.$emit('update:modelValue', 'available'); select.vm.$emit('change', 'available')
@@ -129,6 +146,6 @@ describe('standalone serial ledger', () => {
     await flushPromises()
     expect(router.currentRoute.value.query).toMatchObject({ material_name: '铜钼', availability: 'available', stock_age: 'ge7' })
     await wrapper.findAll('button').find(item => item.text() === '重置')!.trigger('click'); await flushPromises()
-    expect(router.currentRoute.value.query).toEqual({ tab: 'serials', page_size: '50' })
+    expect(router.currentRoute.value.query).toEqual({ tab: 'stock', page_size: '50' })
   })
 })

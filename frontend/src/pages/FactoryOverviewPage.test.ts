@@ -30,7 +30,7 @@ describe('factory dashboard', () => {
     wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 30); await flushPromises()
     expect(router.currentRoute.value.query.days).toBe('30')
     wrapper.getComponent(FactoryOverviewCharts).vm.$emit('team', { ...factoryFixture().teams[1], id: 914 }); await flushPromises()
-    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/914?tab=serials')
+    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/914?tab=stock')
   })
   it('refreshes only while visible, keeps old data explicitly marked on failure, and clears its timer', async () => {
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)

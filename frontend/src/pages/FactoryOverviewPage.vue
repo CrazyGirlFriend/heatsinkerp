@@ -91,7 +91,7 @@ async function navigate(path: string) {
   if (root.value && document.fullscreenElement === root.value) await document.exitFullscreen()
   await router.push(path)
 }
-function openTeam(team: FactoryTeam) { if (team.id && team.active) void navigate(`/team-workspaces/${team.id}?tab=serials`) }
+function openTeam(team: FactoryTeam) { if (team.id && team.active) void navigate(`/team-workspaces/${team.id}?tab=stock`) }
 function openBatch(row: FactoryRecentBatch) { void navigate(`/transfer-batches/scan?batch_no=${encodeURIComponent(row.batch_no)}`) }
 watch(days, load, { immediate: true })
 onMounted(() => {
