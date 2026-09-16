@@ -23,6 +23,7 @@
 - [前端与系统架构](frontend-architecture.md)：Vue 3、服务层、状态、后端模块及接口边界。
 - [前端样式与交互要求](frontend-redesign.md)：已确认的视觉方向与交互约束；业务范围仍以上述一期口径为准。
 - [服务器部署说明](server-deployment.md)：`/opt` 部署布局、访问锁、备份及配套发布注意事项。
+- [新服务器部署与整套系统迁移](server-migration.md)：空系统安装、镜像与数据库搬迁、私密配置、停写切换、验收和回退步骤。
 - [代码清理记录](code-cleanup-report.md)：实际删除内容、保留原因、备份和本次验证。
 
 ## 验收证据
