@@ -20,6 +20,8 @@ export type SerialSummary = MaterialBalance & Record<Exclude<SerialMetaField, 'f
   pending_outgoing_quantity: number; pending_outgoing_weight: number
 }
 export interface SerialParams extends MaterialPageParams {
+  search_field?: 'all' | 'serial_no' | import('./inventoryColumns').InventoryColumnKey
+  search_operator?: 'eq' | 'gte' | 'lte'
   serial_no?: string; material_name?: string; material_type?: string
   availability?: 'all' | 'available'
   stock_age?: AgeBand; waiting_age?: AgeBand; waiting_direction?: 'incoming' | 'outgoing'

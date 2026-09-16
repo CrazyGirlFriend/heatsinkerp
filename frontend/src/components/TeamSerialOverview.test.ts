@@ -3,11 +3,13 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ElPagination, ElSelect } from 'element-plus'
+import { ElDatePicker, ElOption, ElPagination, ElSelect, ElTag } from 'element-plus'
 import TeamSerialOverview from './TeamSerialOverview.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import { ElCheckbox } from 'element-plus'
 import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
+import InventoryColumnSettings from './InventoryColumnSettings.vue'
+import { defaultInventoryColumns, inventorySearchColumns } from '@/types/inventoryColumns'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { analyticsFixture, serialFixture } from '@/testFixtures/materialAnalytics'
 import type { StockBatch } from '@/types/teamMaterials'
@@ -28,6 +30,106 @@ async function render(path = '/team-workspaces/914?tab=stock') {
   return router
 }
 describe('standalone serial ledger', () => {
+  const headers = () => wrapper.findAll('thead th').map(cell => cell.text())
+  const select = (label: string) => wrapper.findAllComponents(ElSelect).find(item => item.find(`input[aria-label="${label}"]`).exists())!
+  async function chooseField(field: string) {
+    select('库存搜索字段').vm.$emit('update:modelValue', field)
+    select('库存搜索字段').vm.$emit('change', field)
+    await flushPromises()
+  }
+  async function submit(term: string) {
+    await wrapper.get('input[aria-label="库存明细搜索"]').setValue(term)
+    await wrapper.get('input[aria-label="库存明细搜索"]').trigger('keyup.enter')
+    await flushPromises()
+  }
+  it('offers all serial-level fields and promotes a hidden searched field only after submission', async () => {
+    const router = await render()
+    expect(select('库存搜索字段').findAllComponents(ElOption).map(option => option.props('value'))).toEqual(['all', ...inventorySearchColumns.map(column => column.key)])
+    const storage = vi.spyOn(Storage.prototype, 'setItem')
+    const original = headers()
+    await chooseField('customer_code')
+    expect(headers()).toEqual(original)
+    await submit('CUSTOMER-1')
+    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ query: 'CUSTOMER-1', search_field: 'customer_code', page: 1 }))
+    expect(headers()).toEqual(['客户编号', ...original])
+    expect(wrapper.findAll('thead .searched-column').map(cell => cell.text())).toEqual(['客户编号'])
+    expect(router.currentRoute.value.query.search_field).toBe('customer_code')
+    expect(storage).not.toHaveBeenCalled()
+    wrapper.getComponent(ElPagination).vm.$emit('current-change', 2); await flushPromises()
+    await wrapper.setProps({ overview: { team_id: 914, totals: serialFixture(), materials: [], pending_incoming: { quantity: 0, weight: 0, count: 0 }, legacy_received_count: 0 } }); await flushPromises()
+    expect(headers()).toEqual(['客户编号', ...original])
+    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ query: 'CUSTOMER-1', search_field: 'customer_code', page: 2 }))
+    await submit('')
+    expect(headers()).toEqual(original)
+    expect(router.currentRoute.value.query.search_field).toBeUndefined()
+  })
+  it('restores saved order after clearing a promoted visible field and retains date filters', async () => {
+    const router = await render('/team-workspaces/914?tab=stock&search_field=available_weight&search_operator=gte&query=10&date_from=2026-09-12')
+    const choices = defaultInventoryColumns().reverse()
+    wrapper.getComponent(InventoryColumnSettings).vm.$emit('change', choices); await flushPromises()
+    expect(headers()).toEqual(['可用重量 (kg)', '流水号', '可用件数', '规格', '材质', '操作'])
+    expect(headers().filter(label => label === '可用重量 (kg)')).toHaveLength(1)
+    const tag = wrapper.findAllComponents(ElTag).find(item => item.text().includes('首列显示'))!
+    tag.vm.$emit('close', new MouseEvent('click')); await flushPromises()
+    expect(headers()).toEqual(['流水号', '可用重量 (kg)', '可用件数', '规格', '材质', '操作'])
+    expect(router.currentRoute.value.query).toMatchObject({ date_from: '2026-09-12', page: '1' })
+    expect(router.currentRoute.value.query.search_operator).toBeUndefined()
+    expect(router.currentRoute.value.query.query).toBeUndefined()
+  })
+  it('validates quantities and weights, supports zero and sends numerical comparisons', async () => {
+    await render()
+    await chooseField('available_quantity')
+    const calls = vi.mocked(teamMaterialApi.serials).mock.calls.length
+    await submit('1.2')
+    expect(wrapper.text()).toContain('请输入非负整数件数')
+    expect(teamMaterialApi.serials).toHaveBeenCalledTimes(calls)
+    await submit('0x10')
+    expect(teamMaterialApi.serials).toHaveBeenCalledTimes(calls)
+    select('数值比较方式').vm.$emit('update:modelValue', 'lte'); await flushPromises()
+    await submit('0')
+    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ query: '0', search_field: 'available_quantity', search_operator: 'lte' }))
+    expect(headers()[0]).toBe('可用件数')
+    await chooseField('available_weight')
+    await submit('1.2345')
+    expect(wrapper.text()).toContain('最多三位小数')
+    select('数值比较方式').vm.$emit('update:modelValue', 'gte'); await flushPromises()
+    await submit('1.234')
+    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ query: '1.234', search_field: 'available_weight', search_operator: 'gte' }))
+  })
+  it('uses status and day controls, with selected fields first and no batch field', async () => {
+    await render()
+    await chooseField('urgency')
+    expect(wrapper.find('input[aria-label="库存明细搜索"]').exists()).toBe(false)
+    select('搜索加急状态').vm.$emit('update:modelValue', 'normal'); await flushPromises()
+    await wrapper.findAll('button').find(item => item.text() === '查询')!.trigger('click'); await flushPromises()
+    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ query: 'normal', search_field: 'urgency' }))
+    expect(headers()[0]).toBe('加急状态')
+    await chooseField('last_activity_at')
+    wrapper.getComponent(ElDatePicker).vm.$emit('update:modelValue', '2026-09-12'); await flushPromises()
+    await wrapper.findAll('button').find(item => item.text() === '查询')!.trigger('click'); await flushPromises()
+    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ query: '2026-09-12', search_field: 'last_activity_at' }))
+    expect(headers()[0]).toBe('最近流转时间')
+    expect(headers()[1]).toBe('流水号')
+  })
+  it('applies chosen serial columns without re-querying, losing filters or changing fixed columns', async () => {
+    const router = await render('/team-workspaces/914?tab=stock&query=AL&page=2')
+    const requests = vi.mocked(teamMaterialApi.serials).mock.calls.length
+    const choices = defaultInventoryColumns().map(column => ({ ...column, visible: column.key === 'product_code' || column.key === 'available_weight' }))
+    choices.unshift(choices.splice(choices.findIndex(column => column.key === 'product_code'), 1)[0]!)
+    wrapper.getComponent(InventoryColumnSettings).vm.$emit('change', choices)
+    await flushPromises()
+    expect(wrapper.findAll('thead th').map(cell => cell.text())).toEqual(['流水号', '产品编号', '可用重量 (kg)', '操作'])
+    expect(teamMaterialApi.serials).toHaveBeenCalledTimes(requests)
+    expect(router.currentRoute.value.query).toMatchObject({ query: 'AL', page: '2' })
+    const reordered = [...choices].reverse()
+    wrapper.getComponent(InventoryColumnSettings).vm.$emit('change', reordered)
+    await flushPromises()
+    expect(wrapper.findAll('thead th').map(cell => cell.text())).toEqual(['流水号', '可用重量 (kg)', '产品编号', '操作'])
+    wrapper.getComponent(InventoryColumnSettings).vm.$emit('change', choices.map(column => ({ ...column, visible: false })))
+    await flushPromises()
+    expect(wrapper.findAll('thead th').map(cell => cell.text())).toEqual(['流水号', '操作'])
+    expect(wrapper.findAll('.serial-number-link')).toHaveLength(10)
+  })
   it('defaults to available inventory and forwards writable detail actions without duplicating a page', async () => {
     const router = await render()
     expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ availability: 'available' }))

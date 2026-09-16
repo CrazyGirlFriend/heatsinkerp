@@ -1,10 +1,11 @@
 """Read-only team dashboards; aggregate before pagination, never infer production output."""
 from datetime import date, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Path, Query
-from pydantic import BeforeValidator, Field
+from pydantic import BeforeValidator, Field, model_validator
 from sqlalchemy import and_, case, cast, func, or_, select, String
 from sqlalchemy.orm import Session
 
@@ -23,10 +24,19 @@ AGE_LABELS = {"lt1": "不足1天", "1_3": "1–3天", "3_7": "3–7天", "ge7": 
 META_FIELDS = ("material_name", "material_type", "transfer_specification", "finished_specification",
                "source_batch_no", "customer_code", "product_code", "finished_quantity")
 mt = MaterialTransfer
+TEXT_SEARCH_FIELDS = ("serial_no", "material_name", "product_code", "customer_code", "transfer_specification", "finished_specification")
+NUMBER_SEARCH_FIELDS = ("available_quantity", "available_weight", "finished_quantity", "pending_incoming_quantity",
+                        "pending_incoming_weight", "pending_outgoing_quantity", "pending_outgoing_weight", "lost_quantity", "lost_weight")
+SearchField = Literal["all", "serial_no", "material_name", "product_code", "customer_code", "transfer_specification",
+                      "finished_specification", "available_quantity", "available_weight", "finished_quantity",
+                      "pending_incoming_quantity", "pending_incoming_weight", "pending_outgoing_quantity",
+                      "pending_outgoing_weight", "lost_quantity", "lost_weight", "urgency", "last_activity_at"]
 
 
 class SerialFilters(RecordFilters):
     query: str | None = Field(default=None, max_length=160)
+    search_field: SearchField = "all"
+    search_operator: Literal["eq", "gte", "lte"] = "eq"
     serial_no: str | None = Field(default=None, max_length=80)
     material_name: str | None = Field(default=None, max_length=160)
     material_type: str | None = Field(default=None, max_length=32)
@@ -42,6 +52,60 @@ class SerialFilters(RecordFilters):
     days: Days = 30
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def validate_search(self):
+        term = (self.query or "").strip()
+        if not term:
+            return self
+        if self.search_field in NUMBER_SEARCH_FIELDS:
+            try:
+                number = Decimal(term)
+            except InvalidOperation:
+                raise ValueError("请输入有效数字")
+            if not number.is_finite() or not 0 <= number <= Decimal("1000000000000000"):
+                raise ValueError("数值须在 0 至 1000000000000000 之间")
+            if self.search_field.endswith("quantity") and number != number.to_integral_value():
+                raise ValueError("件数须为整数")
+            if self.search_field.endswith("weight") and number != number.quantize(Decimal("0.001")):
+                raise ValueError("重量最多保留三位小数")
+        elif self.search_operator != "eq":
+            raise ValueError("只有数值字段支持大小比较")
+        elif self.search_field == "urgency" and term not in ("urgent", "normal"):
+            raise ValueError("请选择加急或普通")
+        elif self.search_field == "last_activity_at":
+            try:
+                day = date.fromisoformat(term)
+                if not date.min < day < date.max:
+                    raise ValueError("date outside supported bounds")
+            except ValueError:
+                raise ValueError("请选择有效日期")
+        return self
+
+
+def serial_search_predicate(team_id, table, filters):
+    term, field = filters.query.strip(), filters.search_field
+    if field == "all" or field in TEXT_SEARCH_FIELDS:
+        fields = TEXT_SEARCH_FIELDS if field == "all" else (field,)
+        # Identify the serial using any matching metadata, but retain its whole
+        # balance and the existing explicit multi-value display.
+        matches = select(mt.serial_no).where(scope(team_id), mt.status != "voided",
+            literal_query(term, [getattr(mt, name) for name in fields]))
+        return table.c.serial_no.in_(matches)
+    if field == "urgency":
+        urgent = table.c.serial_no.in_(urgent_serials())
+        return urgent if term == "urgent" else ~urgent
+    if field == "last_activity_at":
+        start, end = day_bounds(date.fromisoformat(term))
+        return and_(table.c.last_activity_at >= start, table.c.last_activity_at < end)
+    column = mt.finished_quantity if field == "finished_quantity" else table.c[field]
+    if field.endswith("weight"):
+        column = func.round(column, 3)
+    value = Decimal(term)
+    predicate = column >= value if filters.search_operator == "gte" else column <= value if filters.search_operator == "lte" else column == value
+    if field == "finished_quantity":
+        return table.c.serial_no.in_(select(mt.serial_no).where(scope(team_id), mt.status != "voided", predicate))
+    return predicate
 
 
 def period(days, now):
@@ -121,8 +185,7 @@ def serial_predicates(team_id, table, filters, now):
     if filters.serial_no:
         result.append(table.c.serial_no == filters.serial_no.strip())
     if filters.query and filters.query.strip():
-        matches = select(mt.serial_no).where(scope(team_id), mt.status != "voided", literal_query(filters.query, [mt.serial_no, mt.material_name, mt.product_code, mt.transfer_specification]))
-        result.append(table.c.serial_no.in_(matches))
+        result.append(serial_search_predicate(team_id, table, filters))
     stock = stock_table(team_id)
     remaining = or_(stock.c.on_hand_quantity > 0, stock.c.on_hand_weight > 0)
     if filters.material_type or filters.material_name or filters.stock_age:
