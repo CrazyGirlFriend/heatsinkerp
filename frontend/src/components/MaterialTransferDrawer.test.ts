@@ -73,7 +73,7 @@ describe('material transfer receipt review', () => {
     expect(wrapper.text()).toContain('登记人'); expect(wrapper.text()).toContain('手工入库已入账')
     expect(wrapper.findAll('button').some(button => ['确认接收', '编辑', '作废'].includes(button.text()))).toBe(false)
     expect(wrapper.findAll('button').some(button => button.text() === '打印入库单')).toBe(true)
-    expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('库房手工入库')
+    expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('外部来源未登记')
   })
   it('allows receipt of a legacy warehouse transfer with no material classification', async () => {
     vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ material_type: null, next_team: { id: 3, code: 'DEPOT', name: '库房', kind: 'warehouse' } }))

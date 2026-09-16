@@ -29,7 +29,7 @@ import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { InventoryConnection } from '@/services/inventoryStream'
 import { subscribeSharedInventoryChanges as subscribeInventoryChanges } from '@/services/inventoryChanges'
 import { materialTransferApi } from '@/services/materialTransferApi'
-import { isExternalEntryKind, materialEntryLabel, materialTypeOptions, materialTypeLabel, type MaterialTransfer, type MaterialType } from '@/types/materialTransfer'
+import { isExternalEntryKind, materialEntryLabel, materialSourceLabel, receiptSourceLabel, materialTypeOptions, materialTypeLabel, type MaterialTransfer, type MaterialType } from '@/types/materialTransfer'
 import { isDispatchNumber, dispatchStatusLabel, dispatchStatusLabels, type DispatchKind, type DispatchStatus, type TeamMaterialOverview, type StockBatch, type MaterialDispatch, type MaterialLoss } from '@/types/teamMaterials'
 import { formatDateTime } from '@/utils/format'
 
@@ -59,6 +59,7 @@ const pageSize = computed(() => [10, 20, 50, 100].includes(Number(queryText('pag
 const queryDraft = ref('')
 const dateDraft = ref<CalendarRange>({ from: '', to: '' }), urgentDraft = ref(false)
 const materialDraft = ref<MaterialType | ''>('')
+const receiptSourceDraft = ref<'external' | 'internal' | 'return' | ''>('')
 const statusDraft = ref<DispatchStatus | ''>('')
 const nextTeamDraft = ref<string | number>('')
 const kindDraft = ref<DispatchKind | ''>('')
@@ -140,7 +141,7 @@ function asLoss(row: unknown) { return row as MaterialLoss }
 
 function selectTab(value: string) { void router.push({ path: route.path, query: value === 'stock' ? {} : { tab: value } }) }
 function applyFilters(nextPage = 1, size = pageSize.value) {
-  void router.replace({ path: route.path, query: { tab: tab.value, ...(dateDraft.value.from ? { date_from: dateDraft.value.from } : {}), ...(dateDraft.value.to ? { date_to: dateDraft.value.to } : {}), ...(urgentDraft.value ? { urgent_only: 'true' } : {}), ...(queryDraft.value.trim() ? { query: queryDraft.value.trim() } : {}), ...(tab.value === 'receipts' && materialDraft.value ? { material_type: materialDraft.value } : {}), ...(tab.value === 'outgoing' ? { ...(kindDraft.value ? { entry_kind: kindDraft.value } : {}), ...(statusDraft.value ? { status: statusDraft.value } : {}), ...(!isExternalEntryKind(kindDraft.value) && nextTeamDraft.value ? { next_team_id: String(nextTeamDraft.value) } : {}) } : {}), ...(nextPage > 1 ? { page: String(nextPage) } : {}), ...(size !== 10 ? { page_size: String(size) } : {}) } })
+  void router.replace({ path: route.path, query: { tab: tab.value, ...(tab.value === 'receipts' && receiptSourceDraft.value ? { receipt_source: receiptSourceDraft.value } : {}), ...(dateDraft.value.from ? { date_from: dateDraft.value.from } : {}), ...(dateDraft.value.to ? { date_to: dateDraft.value.to } : {}), ...(urgentDraft.value ? { urgent_only: 'true' } : {}), ...(queryDraft.value.trim() ? { query: queryDraft.value.trim() } : {}), ...(tab.value === 'receipts' && materialDraft.value ? { material_type: materialDraft.value } : {}), ...(tab.value === 'outgoing' ? { ...(kindDraft.value ? { entry_kind: kindDraft.value } : {}), ...(statusDraft.value ? { status: statusDraft.value } : {}), ...(!isExternalEntryKind(kindDraft.value) && nextTeamDraft.value ? { next_team_id: String(nextTeamDraft.value) } : {}) } : {}), ...(nextPage > 1 ? { page: String(nextPage) } : {}), ...(size !== 10 ? { page_size: String(size) } : {}) } })
 }
 function closeDetails() { ++actionVersion; pickerOpen.value = false; openingDispatch.value = false; drawerOpen.value = false; groupOpen.value = false; selectedDispatchNo.value = '';  selected.value = null; actionOpen.value = false; receiptOpen.value = false; actionSources.value = []; ++scanVersion; scanning.value = false; scanError.value = '' }
 function openDetail(transfer: MaterialTransfer) { groupOpen.value = false; selected.value = transfer; drawerOpen.value = true }
@@ -209,7 +210,7 @@ async function loadView(refreshWarehouse: unknown = false, background = false) {
     if (currentTab === 'pending') { const result = await materialTransferApi.list({ ...params, team_id: id, direction: 'incoming', status: 'pending' }); if (current === version) { pending.value = result.items; total.value = result.total } }
     else if (currentTab === 'outgoing') { const result = await teamMaterialApi.dispatches(id, { ...params, next_team_id: isExternalEntryKind(queryText('entry_kind')) ? undefined : queryText('next_team_id') || undefined, status: dispatchStatus, entry_kind: dispatchKinds.find(kind => kind === queryText('entry_kind')) }); if (current === version) { outgoing.value = result.items; total.value = result.total } }
     else if (currentTab === 'losses') { const result = await teamMaterialApi.losses(id, params); if (current === version) { losses.value = result.items; total.value = result.total } }
-    else if (currentTab === 'receipts' && isWarehouse.value) { const result = await teamMaterialApi.receipts(id, { ...params, material_type: materialType }); if (current === version) { receipts.value = result.items; total.value = result.total } }
+    else if (currentTab === 'receipts' && isWarehouse.value) { const result = await teamMaterialApi.receipts(id, { ...params, material_type: materialType, receipt_source: receiptSourceDraft.value || undefined }); if (current === version) { receipts.value = result.items; total.value = result.total } }
     if (current === version) loadError.value = ''
   } catch (error) { if (current === version) { if (background) syncError.value = '数据更新失败，保留上次结果，请刷新重试。'; else { pending.value = []; outgoing.value = []; losses.value = []; receipts.value = []; total.value = 0; loadError.value = error instanceof Error ? error.message : '物料记录加载失败' } } }
   await Promise.all([balanceRequest, ...refreshRequests])
@@ -219,6 +220,7 @@ async function loadView(refreshWarehouse: unknown = false, background = false) {
 watch([() => ['overview', 'stock', 'materials'].includes(tab.value) ? `${route.path}:${tab.value}` : route.fullPath, scopeReady], () => {
   closeDetails(); pending.value = []; outgoing.value = []; losses.value = []; receipts.value = []; overview.value = null
   dateDraft.value = { from: queryText('date_from'), to: queryText('date_to') }; urgentDraft.value = queryText('urgent_only') === 'true'
+  receiptSourceDraft.value = ['external', 'internal', 'return'].includes(queryText('receipt_source')) ? queryText('receipt_source') as 'external' | 'internal' | 'return' : ''
   queryDraft.value = queryText('query'); materialDraft.value = materialTypeOptions.find(option => option.value === queryText('material_type'))?.value || ''; statusDraft.value = Object.keys(dispatchStatusLabels).includes(queryText('status')) ? queryText('status') as DispatchStatus : ''; nextTeamDraft.value = queryText('next_team_id'); kindDraft.value = dispatchKinds.find(kind => kind === queryText('entry_kind')) || ''
   void loadView()
 }, { immediate: true })
@@ -286,6 +288,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                 <ElInput v-model="queryDraft" :prefix-icon="Search" :aria-label="`${tab === 'losses' ? '丢失记录' : '物料'}搜索`" clearable :placeholder="tab === 'outgoing' ? '搜索出库号、批次、流水号或材质' : tab === 'pending' ? '批次、流水号或材质' : '搜索批次、流水号或材质'" @keyup.enter="applyFilters()" @clear="applyFilters()" />
                 <template v-if="tab === 'pending'"><ElButton @click="applyFilters()">查询</ElButton><div class="scanner-inline"><ElInput ref="scanner" v-model="scanValue" aria-label="扫描转料批次号" placeholder="扫码或输入批次号" @keyup.enter="scan" /><ElButton :icon="FullScreen" :loading="scanning" @click="scan">查看来料</ElButton></div></template>
                 <ElSelect v-if="tab === 'receipts'" v-model="materialDraft" aria-label="物料类型筛选" placeholder="全部类型" clearable @change="applyFilters()"><ElOption v-for="type in materialTypeOptions" :key="type.value" :value="type.value" :label="type.label" /></ElSelect>
+                <ElSelect v-if="tab === 'receipts'" v-model="receiptSourceDraft" aria-label="入库来源筛选" placeholder="全部来源" clearable @change="applyFilters()"><ElOption value="external" label="外部来料（含退回）" /><ElOption value="internal" label="车间转入" /><ElOption value="return" label="外部退回" /></ElSelect>
                 <ElSelect v-if="tab === 'outgoing'" v-model="kindDraft" aria-label="出库方式筛选" placeholder="全部方式" clearable @change="applyFilters()"><ElOption v-for="kind in dispatchKinds" :key="kind" :value="kind" :label="materialEntryLabel(kind)" /></ElSelect>
                 <ElSelect v-if="tab === 'outgoing'" v-model="statusDraft" aria-label="出库状态筛选" placeholder="全部状态" clearable @change="applyFilters()"><ElOption v-for="(label, value) in dispatchStatusLabels" :key="value" :value="value" :label="label" /></ElSelect>
                 <ElSelect v-if="tab === 'outgoing' && !isExternalEntryKind(kindDraft)" v-model="nextTeamDraft" aria-label="接收班组筛选" placeholder="全部接收班组" clearable filterable @change="applyFilters()"><ElOption v-for="item in directory.items.filter(item => item.active && String(item.id) !== teamKey)" :key="item.id" :value="String(item.id)" :label="teamWorkspaceProfile(item.code)?.name || item.name" /></ElSelect>
@@ -296,7 +299,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
               <p v-if="tab === 'pending' && scanError" class="scanner-error" role="alert">{{ scanError }}</p>
               <StatePanel v-if="loading" state="loading" title="正在读取物料记录" />
               <StatePanel v-else-if="loadError" state="error" :description="loadError" @retry="loadView" />
-              <StatePanel v-else-if="!total" state="empty" :title="tab === 'pending' ? '暂无待接收来料' : tab === 'outgoing' ? '暂无出库记录' : tab === 'receipts' ? '暂无手工入库记录' : '暂无丢失记录'" description="可以调整搜索条件或刷新记录。" />
+              <StatePanel v-else-if="!total" state="empty" :title="tab === 'pending' ? '暂无待接收来料' : tab === 'outgoing' ? '暂无出库记录' : tab === 'receipts' ? '暂无入库记录' : '暂无丢失记录'" description="可以调整搜索条件或刷新记录。" />
               <div v-else class="team-table-scroll">
                 <ElTable v-if="tab === 'pending'" :data="pending" class="business-table team-table" row-key="id">
                   <ElTableColumn label="批次 / 流水号" min-width="220"><template #default="{ row }"><button class="batch-link" @click="openIncoming(asTransfer(row))">{{ row.dispatch_no || row.batch_no }}</button><small class="cell-secondary">{{ row.serial_no }}<SerialUrgencyBadge :urgency="row.urgency" /></small></template></ElTableColumn>
@@ -308,11 +311,12 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                 </ElTable>
                 <ElTable v-else-if="tab === 'receipts'" :data="receipts" class="business-table team-table" row-key="id">
                   <ElTableColumn label="入库单 / 流水号" min-width="240"><template #default="{ row }"><button class="batch-link" @click="openDetail(asTransfer(row))">{{ row.batch_no }}</button><small class="cell-secondary">{{ row.serial_no }}<SerialUrgencyBadge :urgency="row.urgency" /></small></template></ElTableColumn>
+                  <ElTableColumn label="入库来源" min-width="160"><template #default="{ row }">{{ receiptSourceLabel(asTransfer(row)) }}<small class="cell-secondary">{{ materialSourceLabel(asTransfer(row)) }}</small></template></ElTableColumn>
                   <ElTableColumn label="材质 / 类型" min-width="140"><template #default="{ row }">{{ row.material_name }}<small class="cell-secondary">{{ materialTypeLabel(row.material_type) }}</small></template></ElTableColumn>
                   <ElTableColumn label="数量 / 重量" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.quantity" :weight="row.weight" /></template></ElTableColumn>
                   <ElTableColumn label="入库说明" min-width="160" prop="notes" show-overflow-tooltip />
                   <ElTableColumn label="状态" width="120"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" /></template></ElTableColumn>
-                  <ElTableColumn label="登记人 / 时间" min-width="150"><template #default="{ row }">{{ row.transferred_by || '—' }}<small class="cell-secondary">{{ formatDateTime(row.transferred_at) }}</small></template></ElTableColumn>
+                  <ElTableColumn label="接收人 / 时间" min-width="150"><template #default="{ row }">{{ row.received_by || '—' }}<small class="cell-secondary">{{ formatDateTime(row.received_at) }}</small></template></ElTableColumn>
                   <ElTableColumn label="操作" width="100" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="openDetail(asTransfer(row))">查看入库单</ElButton></template></ElTableColumn>
                 </ElTable>
                 <ElTable v-else-if="tab === 'outgoing'" :data="outgoing" class="business-table team-table dispatch-table" row-key="dispatch_no">

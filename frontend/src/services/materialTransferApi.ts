@@ -70,7 +70,7 @@ function normalizeHistory(value: unknown): MaterialTransferHistoryEntry[] {
   return value.flatMap(item => {
     const event = objectValue(item)
     const id = optionalInteger(event.id, 1)
-    if (id === null || !['created', 'updated', 'received', 'voided', 'stocked', 'dispatched'].includes(String(event.action))) return []
+    if (id === null || !['created', 'updated', 'received', 'voided', 'stocked', 'dispatched', 'rejected'].includes(String(event.action))) return []
     const changes: MaterialTransferHistoryEntry['changes'] = {}
     Object.entries(objectValue(event.changes)).forEach(([field, change]) => {
       const values = objectValue(change)
@@ -92,6 +92,10 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
     ...documentText,
     entry_kind: raw.entry_kind === 'warehouse_receipt' || isExternalEntryKind(String(raw.entry_kind)) ? raw.entry_kind as MaterialTransfer['entry_kind'] : 'transfer',
     external_destination: textValue(raw.external_destination) || null,
+    receipt_kind: raw.receipt_kind === 'external' || raw.receipt_kind === 'return' ? raw.receipt_kind : null,
+    external_source: textValue(raw.external_source) || null,
+    return_dispatch_no: textValue(raw.return_dispatch_no) || null,
+    rejection_reason: textValue(raw.rejection_reason) || null,
     dispatched_by: textValue(raw.dispatched_by_name, raw.dispatched_by, objectValue(raw.dispatched_by_user).display_name) || null,
     dispatched_by_user_id: optionalInteger(raw.dispatched_by_user_id, 1),
     dispatched_at: textValue(raw.dispatched_at) || null,
@@ -252,6 +256,12 @@ export const materialTransferApi = {
       `/material-transfers/${encodeURIComponent(batchNo)}/confirm`,
       { method: 'POST', body: JSON.stringify(payload) },
     ))
+  },
+
+  async reject(batchNo: string, reason: string, expectedVersion: number): Promise<MaterialTransfer> {
+    return normalizeMaterialTransfer(await request<unknown>(`/material-transfers/${encodeURIComponent(batchNo)}/reject`, {
+      method: 'POST', body: JSON.stringify({ reason, expected_version: expectedVersion }),
+    }))
   },
   async confirmOutbound(batchNo: string, payload: ConfirmMaterialTransferPayload): Promise<MaterialTransfer> {
     return normalizeMaterialTransfer(await request<unknown>(

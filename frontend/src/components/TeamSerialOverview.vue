@@ -26,6 +26,7 @@ const columnStorageKey = computed(() => auth.currentUser?.id ? `heatsink.invento
 const activeSearchColumn = computed(() => text('query').trim() ? inventorySearchColumns.find(column => column.key === text('search_field')) : undefined)
 const visibleColumns = computed(() => {
   const saved = [serialNumberColumn, ...columnChoices.value.filter(column => column.visible).map(choice => inventoryColumns.find(column => column.key === choice.key)!)]
+  if (text('availability') === 'scrap') for (const column of inventoryColumns.filter(column => column.key.startsWith('scrap_'))) if (!saved.some(item => item.key === column.key)) saved.push(column)
   return activeSearchColumn.value ? [activeSearchColumn.value, ...saved.filter(column => column.key !== activeSearchColumn.value!.key)] : saved
 })
 const urgencyOpen = ref(false), urgencySerial = ref('')
@@ -42,7 +43,7 @@ const searchColumn = computed(() => inventorySearchColumns.find(column => column
 const searchPlaceholder = computed(() => searchKind.value === 'number' ? `输入${searchColumn.value?.label}` : searchFieldDraft.value === 'all' ? '流水号、材质、客户编号等' : `搜索${searchColumn.value?.label}`)
 const searchInputError = ref('')
 function changeSearchField() { queryDraft.value = ''; searchOperatorDraft.value = 'eq'; searchInputError.value = '' }
-const materialDraft = ref(''), availabilityDraft = ref<'all' | 'available'>('available'), moreFilters = ref(false)
+const materialDraft = ref(''), availabilityDraft = ref<'all' | 'available' | 'scrap'>('available'), moreFilters = ref(false)
 const materialNames = computed(() => props.overview.materials.map(item => item.material_name || '未填写材质'))
 const rows = ref<SerialSummary[]>([]), total = ref(0)
 const listError = ref(''), listLoading = ref(false)
@@ -59,7 +60,7 @@ const filters = computed<SerialParams>(() => {
   if (text('date_from')) params.date_from = text('date_from')
   if (text('date_to')) params.date_to = text('date_to')
   if (text('urgent_only') === 'true') params.urgent_only = true
-  params.availability = text('availability') === 'all' ? 'all' : 'available'
+  params.availability = text('availability') === 'scrap' ? 'scrap' : text('availability') === 'all' ? 'all' : 'available'
   return params as SerialParams
 })
 function viewQuery() { return { tab: 'stock', ...(days.value === 7 ? { days: '7' } : {}), ...(pageSize.value !== 10 ? { page_size: String(pageSize.value) } : {}), ...(text('metric') === 'quantity' ? { metric: 'quantity' } : {}) } }
@@ -99,7 +100,7 @@ async function loadRows(background = false) {
   finally { if (current === listVersion) listLoading.value = false }
 }
 function open(value: unknown) { detailSerial.value = (value as SerialSummary).serial_no; detailOpen.value = true }
-watch([() => props.teamId, filters], () => { queryDraft.value = text('query'); searchFieldDraft.value = inventorySearchColumns.some(column => column.key === text('search_field')) ? text('search_field') as InventorySearchField : 'all'; searchOperatorDraft.value = text('search_operator') === 'gte' ? 'gte' : text('search_operator') === 'lte' ? 'lte' : 'eq'; searchInputError.value = ''; materialDraft.value = text('material_name'); availabilityDraft.value = text('availability') === 'all' ? 'all' : 'available'; analysisFilter.value = ''; void loadRows() }, { immediate: true })
+watch([() => props.teamId, filters], () => { queryDraft.value = text('query'); searchFieldDraft.value = inventorySearchColumns.some(column => column.key === text('search_field')) ? text('search_field') as InventorySearchField : 'all'; searchOperatorDraft.value = text('search_operator') === 'gte' ? 'gte' : text('search_operator') === 'lte' ? 'lte' : 'eq'; searchInputError.value = ''; materialDraft.value = text('material_name'); availabilityDraft.value = text('availability') === 'scrap' ? 'scrap' : text('availability') === 'all' ? 'all' : 'available'; analysisFilter.value = ''; void loadRows() }, { immediate: true })
 watch(() => props.overview, () => { void loadRows(true) })
 watch(() => props.teamId, () => { detailOpen.value = false; rows.value = [] })
 onBeforeUnmount(() => { ++listVersion })
@@ -131,7 +132,7 @@ function action(mode: 'dispatch' | 'loss', sources: StockBatch[]) {
       <div v-if="activeSearchColumn" class="serial-search-context"><ElTag closable @close="clearFieldSearch">按{{ activeSearchColumn.label }}查询 · 首列显示</ElTag></div>
       <div v-if="moreFilters" id="serial-extra-filters" class="serial-extra-filters">
         <label class="filter-field"><span>材质</span><ElSelect v-model="materialDraft" aria-label="台账材质筛选" filterable clearable placeholder="全部" @change="search"><ElOption v-for="name in materialNames" :key="name" :value="name" :label="name" /></ElSelect></label>
-        <label class="filter-field"><span>库存</span><ElSelect v-model="availabilityDraft" aria-label="台账库存筛选" @change="search"><ElOption value="all" label="全部" /><ElOption value="available" label="有可用库存" /></ElSelect></label>
+        <label class="filter-field"><span>库存</span><ElSelect v-model="availabilityDraft" aria-label="台账库存筛选" @change="search"><ElOption value="all" label="全部" /><ElOption value="available" label="有正常可用库存" /><ElOption value="scrap" label="有废料库存" /></ElSelect></label>
         <label class="filter-field"><span>条件</span><ElSelect v-model="analysisFilter" aria-label="分析条件筛选" placeholder="库存与流转条件" clearable @change="selectAnalysis"><ElOptionGroup label="库存停留"><ElOption v-for="[key, label] in ages" :key="key" :value="`age:${key}`" :label="`库存停留 ${label}`" /></ElOptionGroup><ElOptionGroup v-for="direction in ['incoming','outgoing']" :key="direction" :label="direction === 'incoming' ? '待接收' : '转出待确认'"><ElOption v-for="[key, label] in ages" :key="key" :value="`${direction}:${key}`" :label="`${direction === 'incoming' ? '待接收' : '转出待确认'} ${label}`" /></ElOptionGroup><ElOptionGroup label="物料类型"><ElOption v-for="item in materialTypeOptions" :key="item.value" :value="`type:${item.value}`" :label="item.label" /></ElOptionGroup><ElOption value="loss" :label="`近${days}天有丢失记录`" /></ElSelect></label>
         <label class="filter-field"><span>事件周期</span><ElSelect :model-value="days" aria-label="台账事件筛选周期" @update:model-value="changeView({ days: String($event), page: '1' })"><ElOption :value="7" label="近7天" /><ElOption :value="30" label="近30天" /></ElSelect></label>
       </div>

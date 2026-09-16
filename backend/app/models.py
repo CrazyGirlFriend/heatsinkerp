@@ -126,6 +126,11 @@ class MaterialTransfer(Base):
     )
     entry_kind: Mapped[str] = mapped_column(String(24), nullable=False, default="transfer", server_default="transfer")
     external_destination: Mapped[str | None] = mapped_column(String(240))
+    # Receipt-specific provenance: do not inherit this as the source of later handoffs.
+    receipt_kind: Mapped[str | None] = mapped_column(String(16))
+    external_source: Mapped[str | None] = mapped_column(String(240))
+    return_dispatch_no: Mapped[str | None] = mapped_column(String(40))
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
     material_type: Mapped[str | None] = mapped_column(String(32))
     source_batch_no: Mapped[str | None] = mapped_column(String(80))
     material_name: Mapped[str | None] = mapped_column(String(160))

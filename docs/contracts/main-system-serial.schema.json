@@ -6,7 +6,7 @@
         "material_type": {
           "anyOf": [
             {
-              "pattern": "^(finished|semi_finished|finished_surplus|semi_finished_surplus|defective|waste|sludge|scrap_chips)$",
+              "pattern": "^(raw_material|finished|semi_finished|finished_surplus|semi_finished_surplus|defective|waste|sludge|scrap_chips)$",
               "type": "string"
             },
             {

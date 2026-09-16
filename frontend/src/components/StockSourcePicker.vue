@@ -9,7 +9,7 @@ import StatePanel from './StatePanel.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { StockBatch } from '@/types/teamMaterials'
 import { materialTypeLabel } from '@/types/materialTransfer'
-import { stockAvailable } from '@/utils/materialStock'
+import { dispatchableAmounts, stockAvailable } from '@/utils/materialStock'
 
 const props = defineProps<{ teamId: number }>()
 const emit = defineEmits<{ close: []; selected: [sources: StockBatch[]] }>()
@@ -34,7 +34,7 @@ async function load() {
   const current = ++version
   loading.value = true; error.value = ''; rows.value = []
   try {
-    const result = await teamMaterialApi.stock(props.teamId, { date_from: dates.value.from || undefined, date_to: dates.value.to || undefined, urgent_only: urgentOnly.value || undefined, query: appliedQuery.value || undefined, availability: 'available', page: page.value, page_size: pageSize.value })
+    const result = await teamMaterialApi.stock(props.teamId, { date_from: dates.value.from || undefined, date_to: dates.value.to || undefined, urgent_only: urgentOnly.value || undefined, query: appliedQuery.value || undefined, availability: 'dispatchable', page: page.value, page_size: pageSize.value })
     if (current !== version) return
     rows.value = result.items; total.value = result.total
     for (const row of result.items) {
@@ -68,7 +68,7 @@ onBeforeUnmount(() => { ++version })
         <ElTableColumn label="流水号" min-width="245" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.serial_no }}<SerialUrgencyBadge :urgency="row.transfer.urgency" /></template></ElTableColumn>
         <ElTableColumn label="来源批次" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.batch_no }}</template></ElTableColumn>
         <ElTableColumn label="材质 / 类型" min-width="150"><template #default="{ row }">{{ row.transfer.material_name || '—' }}<small class="picker-secondary">{{ materialTypeLabel(row.transfer.material_type) }}</small></template></ElTableColumn>
-        <ElTableColumn label="可用库存" min-width="170"><template #default="{ row }"><MaterialAmount :quantity="row.available_quantity" :weight="row.available_weight" /></template></ElTableColumn>
+        <ElTableColumn label="可出库余量" min-width="170"><template #default="{ row }"><MaterialAmount :quantity="dispatchableAmounts(asStock(row)).quantity" :weight="dispatchableAmounts(asStock(row)).weight" /></template></ElTableColumn>
       </ElTable>
     </div>
     <div class="picker-pagination"><span>共 {{ total }} 个来源批次</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[20, 50, 100]" :total="total" layout="sizes, prev, pager, next" @current-change="paginate($event)" @size-change="paginate(1, $event)" /></div>

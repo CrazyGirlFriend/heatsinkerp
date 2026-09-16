@@ -2,12 +2,13 @@
 from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 DIRECT_MATERIAL_TYPE_PATTERN = (
-    "^(finished|semi_finished|finished_surplus|semi_finished_surplus|defective|waste|sludge|scrap_chips)$"
+    "^(raw_material|finished|semi_finished|finished_surplus|semi_finished_surplus|defective|waste|sludge|scrap_chips)$"
 )
+SCRAP_MATERIAL_TYPES = ("defective", "waste", "sludge", "scrap_chips")
 
 
 class APIModel(BaseModel):
@@ -115,6 +116,16 @@ class WarehouseReceiptCreate(MaterialTransferDocumentFields):
     weight: Decimal = Field(ge=0, max_digits=14, decimal_places=3)
     notes: str = Field(min_length=1, max_length=2000)
     idempotency_key: str = Field(min_length=1, max_length=100)
+    receipt_kind: Literal["external", "return"] = "external"
+    external_source: str | None = Field(default=None, min_length=1, max_length=240)
+    return_dispatch_no: str | None = Field(default=None, min_length=1, max_length=40)
+
+    @field_validator("external_source", "return_dispatch_no")
+    @classmethod
+    def normalize_source(cls, value):
+        if value is not None and not value.strip():
+            raise ValueError("来源或关联出库单不能为空白")
+        return value.strip() if value is not None else None
 
     @field_validator("serial_no", "notes", "idempotency_key")
     @classmethod
@@ -125,6 +136,10 @@ class WarehouseReceiptCreate(MaterialTransferDocumentFields):
 
     @model_validator(mode="after")
     def validate_intake(self):
+        if self.receipt_kind == "return" and not self.external_source:
+            raise ValueError("外部返料须填写来源单位")
+        if self.return_dispatch_no and self.receipt_kind != "return":
+            raise ValueError("仅外部返料可关联原出库单")
         if not self.material_name:
             raise ValueError("material_name is required")
         if self.quantity == 0 and self.weight == 0:
@@ -137,6 +152,19 @@ class MaterialTransferConfirm(APIModel):
 
     idempotency_key: str = Field(min_length=1, max_length=100)
     expected_version: int | None = Field(default=None, ge=1)
+
+
+class MaterialTransferReject(APIModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("请填写退回核对原因")
+        return value.strip()
 
 
 class MaterialTransferTeamSnapshot(APIModel):
@@ -164,6 +192,10 @@ class MaterialTransferResponse(MaterialTransferDocumentFields):
     serial_no: str
     entry_kind: str = "transfer"
     external_destination: str | None = None
+    receipt_kind: str | None = None
+    external_source: str | None = None
+    return_dispatch_no: str | None = None
+    rejection_reason: str | None = None
     source_team_id: int | None
     source_team: MaterialTransferTeamSnapshot | None
     next_team_id: int | None

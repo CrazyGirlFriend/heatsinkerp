@@ -26,11 +26,11 @@ META_FIELDS = ("material_name", "material_type", "transfer_specification", "fini
 mt = MaterialTransfer
 TEXT_SEARCH_FIELDS = ("serial_no", "material_name", "product_code", "customer_code", "transfer_specification", "finished_specification")
 NUMBER_SEARCH_FIELDS = ("available_quantity", "available_weight", "finished_quantity", "pending_incoming_quantity",
-                        "pending_incoming_weight", "pending_outgoing_quantity", "pending_outgoing_weight", "lost_quantity", "lost_weight")
+                        "pending_incoming_weight", "pending_outgoing_quantity", "pending_outgoing_weight", "lost_quantity", "lost_weight", "scrap_quantity", "scrap_weight")
 SearchField = Literal["all", "serial_no", "material_name", "product_code", "customer_code", "transfer_specification",
                       "finished_specification", "available_quantity", "available_weight", "finished_quantity",
                       "pending_incoming_quantity", "pending_incoming_weight", "pending_outgoing_quantity",
-                      "pending_outgoing_weight", "lost_quantity", "lost_weight", "urgency", "last_activity_at"]
+                      "pending_outgoing_weight", "lost_quantity", "lost_weight", "scrap_quantity", "scrap_weight", "urgency", "last_activity_at"]
 
 
 class SerialFilters(RecordFilters):
@@ -40,7 +40,7 @@ class SerialFilters(RecordFilters):
     serial_no: str | None = Field(default=None, max_length=80)
     material_name: str | None = Field(default=None, max_length=160)
     material_type: str | None = Field(default=None, max_length=32)
-    availability: Literal["all", "available"] = "all"
+    availability: Literal["all", "available", "scrap"] = "all"
     stock_age: Age | None = None
     waiting_age: Age | None = None
     waiting_direction: Literal["incoming", "outgoing"] | None = None
@@ -182,6 +182,8 @@ def serial_predicates(team_id, table, filters, now):
         result.append(table.c.serial_no.in_(matches.union(loss_matches)))
     if filters.availability == "available":
         result.append(or_(table.c.available_quantity > 0, table.c.available_weight > 0))
+    elif filters.availability == "scrap":
+        result.append(or_(table.c.scrap_quantity > 0, table.c.scrap_weight > 0))
     if filters.serial_no:
         result.append(table.c.serial_no == filters.serial_no.strip())
     if filters.query and filters.query.strip():

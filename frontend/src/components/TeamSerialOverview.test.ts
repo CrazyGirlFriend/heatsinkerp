@@ -30,6 +30,12 @@ async function render(path = '/team-workspaces/914?tab=stock') {
   return router
 }
 describe('standalone serial ledger', () => {
+  it('filters scrap stock and exposes its separate totals without changing saved column choices', async () => {
+    await render('/team-workspaces/914?tab=stock&availability=scrap')
+    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ availability: 'scrap' }))
+    const labels = wrapper.findAll('thead th').map(cell => cell.text())
+    expect(labels).toContain('废料结存件数'); expect(labels).toContain('废料结存 (kg)')
+  })
   const headers = () => wrapper.findAll('thead th').map(cell => cell.text())
   const select = (label: string) => wrapper.findAllComponents(ElSelect).find(item => item.find(`input[aria-label="${label}"]`).exists())!
   async function chooseField(field: string) {

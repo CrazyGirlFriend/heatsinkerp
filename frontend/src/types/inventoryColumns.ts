@@ -23,6 +23,8 @@ export const inventoryColumns = [
   { key: 'lost_weight', label: '累计丢失重量 (kg)', width: 180, numeric: true, format: (row: SerialSummary) => amount(row.lost_weight) },
   { key: 'urgency', label: '加急状态', width: 120, format: (row: SerialSummary) => row.urgency?.urgent ? '加急' : '普通' },
   { key: 'last_activity_at', label: '最近流转时间', width: 200, format: (row: SerialSummary) => formatDateTime(row.last_activity_at) },
+  { key: 'scrap_quantity', label: '废料结存件数', width: 150, numeric: true, format: (row: SerialSummary) => amount(row.scrap_quantity) },
+  { key: 'scrap_weight', label: '废料结存 (kg)', width: 170, numeric: true, format: (row: SerialSummary) => amount(row.scrap_weight) },
 ] as const
 export type InventoryColumnKey = typeof inventoryColumns[number]['key']
 export const serialNumberColumn = { key: 'serial_no', label: '流水号', width: 250, format: (row: SerialSummary) => row.serial_no } as const

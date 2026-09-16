@@ -5,8 +5,9 @@ import { formatDateTime } from '@/utils/format'
 
 const props = defineProps<{ transfer: MaterialTransfer }>()
 const events = computed(() => [...(props.transfer.history ?? [])].sort((left, right) => right.id - left.id))
-const actions = { created: '创建转料单', updated: '修改转料单', received: '确认接收', voided: '作废转料单', stocked: '手工入库已入账', dispatched: '确认出库' }
+const actions = { created: '创建转料单', updated: '修改转料单', received: '确认接收', voided: '作废转料单', stocked: '手工入库已入账', dispatched: '确认出库', rejected: '库房退回核对' }
 const labels: Record<string, string> = {
+  receipt_kind: '入库来源类别', external_source: '外部来源单位', return_dispatch_no: '原出库批次', rejection_reason: '退回核对原因',
   main_system_schema_version: '主系统接口版本', main_system_revision: '主系统资料版本',
   main_system_updated_at: '主系统资料更新时间', main_system_snapshot_hash: '主系统资料校验值',
   ...Object.fromEntries(materialDocumentTextFields.map(field => [field.key, field.label])),
@@ -40,6 +41,7 @@ function valueText(field: string, value: unknown): string {
   if (value == null || value === '') return '—'
   if (field === 'entry_kind') return materialEntryLabel(String(value) as MaterialTransfer['entry_kind'])
   if (field === 'material_type') return materialTypeLabel(String(value))
+  if (field === 'receipt_kind') return value === 'return' ? '外部退回' : '外部来料'
   if (field === 'status') return materialTransferStatusLabel(String(value), props.transfer.entry_kind)
   if (field.endsWith('_at')) return formatDateTime(String(value))
   if (field === 'quantity' || field === 'finished_quantity') return `${value} 件`

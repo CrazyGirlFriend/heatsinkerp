@@ -12,7 +12,7 @@ from .models import MaterialTransfer, Team, User
 from .material_transfer_query import search_predicate, team_scope_predicate
 from . import material_transfer_workflow
 from .schemas import (DIRECT_MATERIAL_TYPE_PATTERN, MaterialTransferCreate, MaterialTransferUpdate,
-                      MaterialTransferConfirm, MaterialTransferList, MaterialTransferResponse)
+                      MaterialTransferConfirm, MaterialTransferReject, MaterialTransferList, MaterialTransferResponse)
 
 router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
 
@@ -173,3 +173,10 @@ def confirm_material_transfer(
 def confirm_outbound(batch_no: str, payload: MaterialTransferConfirm,
                      current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     return material_transfer_workflow.confirm_outbound(db, batch_no, payload, current_user)
+
+
+@router.post("/material-transfers/{batch_no}/reject", response_model=MaterialTransferResponse,
+             tags=["material transfers"])
+def reject_material_transfer(batch_no: str, payload: MaterialTransferReject,
+                             current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    return material_transfer_workflow.reject_material_transfer(db, batch_no, payload, current_user)

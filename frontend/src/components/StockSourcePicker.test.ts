@@ -19,7 +19,7 @@ const nextButton = () => wrapper.findAll('button').find(button => button.text() 
 describe('stock selection for new outbound', () => {
   it('loads only this team’s available stock, supports paging and retains cross-page selections', async () => {
     await render()
-    expect(teamMaterialApi.stock).toHaveBeenCalledWith(914, { availability: 'available', query: undefined, page: 1, page_size: 20 })
+    expect(teamMaterialApi.stock).toHaveBeenCalledWith(914, { availability: 'dispatchable', query: undefined, page: 1, page_size: 20 })
     expect(nextButton().attributes('disabled')).toBeDefined()
     expect(wrapper.getComponent(ElPagination).props('pageSizes')).toEqual([20, 50, 100])
     await wrapper.get('label[aria-label="选择出库 TL1"] input').setValue(true)
@@ -37,7 +37,7 @@ describe('stock selection for new outbound', () => {
     expect(wrapper.get('label[aria-label="选择出库 TL1"] input').attributes('disabled')).toBeDefined()
     await wrapper.get('input[aria-label="出库库存搜索"]').setValue(' 铜 ')
     await wrapper.get('input[aria-label="出库库存搜索"]').trigger('keyup.enter'); await flushPromises()
-    expect(teamMaterialApi.stock).toHaveBeenLastCalledWith(914, expect.objectContaining({ query: '铜', availability: 'available', page: 1 }))
+    expect(teamMaterialApi.stock).toHaveBeenLastCalledWith(914, expect.objectContaining({ query: '铜', availability: 'dispatchable', page: 1 }))
     await wrapper.get('label[aria-label="选择本页出库物料"] input').setValue(true)
     await nextButton().trigger('click')
     expect((wrapper.emitted('selected')![0]![0] as StockBatch[]).map(row => row.transfer.id)).toEqual([2])

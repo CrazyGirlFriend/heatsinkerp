@@ -47,7 +47,7 @@ def allowed_actions(dispatch, items, user):
         except HTTPException:
             return []
         return ["confirm_outbound"]
-    return ["confirm"] if user.team_id == dispatch.next_team_id else []
+    return ["confirm"] if user.team_id == dispatch.next_team_id and not any(item.rejection_reason for item in items if item.status == "pending") else []
 
 
 def get_dispatch(db, dispatch_no, user):
@@ -100,6 +100,11 @@ def confirm_dispatch(db, dispatch_no, payload, user, *, external=False):
                     or item.entry_kind != group.entry_kind or item.external_destination != group.external_destination
                     or item.status not in ("pending", "voided", expected_done)):
                     raise HTTPException(409, "batch line destination or state is inconsistent")
+            for item in pending:
+                if item.rejection_reason:
+                    raise HTTPException(409, "本批包含退回核对的明细，须上序修改后再接收")
+                workflow.validate_material_route(item.stock_source.material_type, item.material_type,
+                    item.next_team, item.entry_kind, item.notes)
             now = utcnow()
             group.confirmation_idempotency_key = payload.idempotency_key
             group.confirmed_revision = payload.expected_revision

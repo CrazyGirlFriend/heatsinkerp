@@ -200,7 +200,7 @@ def test_stock_validation_and_atomic_rollback_on_audit_failure(client, stock_set
     valid = {"source_transfer_id": lot["id"], "quantity": 1, "weight": "0.100"}
     for changes in ({"quantity": -1}, {"weight": "0.0001"}, {"quantity": 0, "weight": 0}, {"quantity": 1.5}, {"source_transfer_id": 0}):
         assert dispatch(client, setup, [{**valid, **changes}]).status_code == 422
-    assert dispatch(client, setup, [valid, valid]).status_code == 422
+    assert dispatch(client, setup, [{**valid, 'quantity': lot['quantity']}, valid]).status_code == 409
     assert dispatch(client, setup, []).status_code == 422
     assert loss(client, setup, lot, reason="   ").status_code == 422
     assert client.get("/api/team-materials/0/overview").status_code == 422
@@ -224,7 +224,7 @@ def test_weight_only_stock_and_explicit_warehouse_classification(client, stock_s
     lot = receive_lot(client, setup, quantity=0, weight="1.235")
     lines = [{"source_transfer_id": lot["id"], "quantity": 0, "weight": "0.235", "material_type": "scrap_chips"}]
     assert dispatch(client, setup, [{**lines[0], "material_type": None}], next_team_id=warehouse["id"]).status_code == 422
-    good = dispatch(client, setup, lines, next_team_id=warehouse["id"])
+    good = dispatch(client, setup, lines, next_team_id=warehouse["id"], notes="加工废屑回库")
     assert good.status_code == 201, good.text
     assert good.json()["items"][0]["material_type"] == "scrap_chips"
     assert loss(client, setup, lot, quantity=0, weight="0.001").status_code == 201

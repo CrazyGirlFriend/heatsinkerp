@@ -49,7 +49,7 @@ def test_numeric_search_uses_whole_serial_totals_before_pagination(client, stock
     expected = dict(available_quantity=138, available_weight=13.8, finished_quantity=500,
                     pending_incoming_quantity=15, pending_incoming_weight=1.5,
                     pending_outgoing_quantity=10, pending_outgoing_weight=1, lost_quantity=2, lost_weight=.2)
-    assert set(expected) == set(NUMBER_SEARCH_FIELDS)
+    assert set(expected) | {'scrap_quantity', 'scrap_weight'} == set(NUMBER_SEARCH_FIELDS)
     for field, value in expected.items():
         result = search(client, s, field, str(value), page_size=1)
         assert result["total"] == 1 and result["items"][0]["serial_no"] == "SUM"

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import MaterialDocumentTable, { type DocumentField } from './MaterialDocumentTable.vue'
-import { externalActionLabel, isExternalTransfer, isWarehouseReceipt, materialDocumentTextFields, materialTransferNotesLabel, materialTransferStatusLabel, materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
+import { externalActionLabel, isExternalTransfer, isWarehouseReceipt, materialSourceLabel, receiptSourceLabel, materialDocumentTextFields, materialTransferNotesLabel, materialTransferStatusLabel, materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
 
 const props = withDefaults(defineProps<{ transfer: MaterialTransfer; group?: 'basic' | 'extra' | 'all' }>(), { group: 'basic' })
@@ -16,13 +16,15 @@ const fields = computed<DocumentField[]>(() => {
   return [
     { label: '批次号', value: t.dispatch_no || t.batch_no },
     { label: '状态', value: materialTransferStatusLabel(t.status, t.entry_kind) },
-    { label: receipt ? '入库来源' : external ? `${verb}班组` : '转出班组', value: t.source_team.name },
+    { label: receipt ? '入库来源' : external ? `${verb}班组` : '转出班组', value: materialSourceLabel(t) },
     { label: receipt ? '入库库房' : external ? `${verb}去向` : '接收班组', value: external ? t.external_destination || '—' : t.next_team.name },
     { label: '流水号', key: 'serial', value: t.serial_no },
     { label: '来源批次', value: t.source_transfer_batch_no || '—' },
     { label: receipt ? '入库件数' : external ? `${verb}件数` : '转料件数', value: `${t.quantity} ${t.quantity_unit}` },
     { label: receipt ? '入库重量' : external ? `${verb}重量` : '转料重量', value: `${t.weight} ${t.weight_unit}` },
     ...material,
+    ...(receipt ? [{ label: '入库来源类别', value: receiptSourceLabel(t) }, { label: '原出库批次', value: t.return_dispatch_no || '未关联' }] : []),
+    ...(t.rejection_reason ? [{ label: '退回核对原因', value: t.rejection_reason, fullWidth: true }] : []),
     { label: receipt || external ? '登记人' : '转料人', value: t.transferred_by || '—' },
     { label: receipt ? '入库时间' : external ? '创建时间' : '转料时间', value: formatDateTime(t.transferred_at) },
     ...(!receipt ? [

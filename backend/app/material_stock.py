@@ -20,7 +20,7 @@ from sqlalchemy.orm import lazyload
 from .auth import actor_name
 from .batch_numbers import next_transfer_batch_number
 from .models import MaterialDispatch, MaterialLoss, MaterialTransfer, Team
-from .schemas import DIRECT_MATERIAL_TYPE_PATTERN
+from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, SCRAP_MATERIAL_TYPES
 from .team_constants import EXTERNAL_ENTRY_KINDS, WAREHOUSE_TEAM_CODE, INSPECTION_TEAM_CODE
 from . import material_transfer_workflow as workflow
 
@@ -64,9 +64,7 @@ class DispatchCreate(BaseModel):
     lines: list[DispatchLine] = Field(min_length=1, max_length=100)
 
     @model_validator(mode="after")
-    def distinct_sources(self):
-        if len({line.source_transfer_id for line in self.lines}) != len(self.lines):
-            raise ValueError("each source_transfer_id may appear only once")
+    def validate_destination(self):
         if not self.idempotency_key.strip():
             raise ValueError("idempotency_key cannot be blank")
         if self.entry_kind == "transfer":
@@ -199,8 +197,8 @@ def create_dispatch(db, team_id, payload, user):
                 _replay(prior, user, request_hash, "source_team_id")
                 return dispatch_dict(db, prior, user)
             # Deterministic lock order also covers a multi-lot submission.
-            lots = {line.source_transfer_id: lock_lot(db, line.source_transfer_id, team_id)
-                    for line in sorted(payload.lines, key=lambda item: item.source_transfer_id)}
+            lots = {source_id: lock_lot(db, source_id, team_id)
+                    for source_id in sorted({line.source_transfer_id for line in payload.lines})}
             prior = db.scalar(select(MaterialDispatch).where(MaterialDispatch.idempotency_key == payload.idempotency_key).with_for_update().execution_options(populate_existing=True))
             if prior is not None:
                 _replay(prior, user, request_hash, "source_team_id")
@@ -208,10 +206,13 @@ def create_dispatch(db, team_id, payload, user):
             target = None if external else workflow._active_target(db, payload.next_team_id)
             if target is not None and target.id == source.id:
                 raise HTTPException(422, "source and target teams must be different")
+            for source_id, lot in lots.items():
+                portions = [line for line in payload.lines if line.source_transfer_id == source_id]
+                validate_available(db, lot, sum(line.quantity for line in portions), sum((line.weight for line in portions), Decimal(0)))
             for line in payload.lines:
                 lot = lots[line.source_transfer_id]
-                validate_available(db, lot, line.quantity, line.weight)
                 kind = line.material_type if "material_type" in line.model_fields_set else lot.material_type
+                workflow.validate_material_route(lot.material_type, kind, target, payload.entry_kind, payload.notes)
                 if target is not None:
                     workflow._validate_warehouse_type(target, kind)
             destination = {"next_team_id": target.id if target else None,
@@ -323,7 +324,13 @@ def stock_table(team_id=None):
             columns[f"{prefix}_{amount}"] = func.coalesce(aggregate.c[f"{prefix}_{amount}"], 0)
         settled = columns[f"received_{amount}"] - columns[f"dispatched_{amount}"] - columns[f"lost_{amount}"]
         columns[f"on_hand_{amount}"] = settled - columns[f"in_transit_{amount}"]
-        columns[f"available_{amount}"] = settled - columns[f"reserved_{amount}"]
+        free = settled - columns[f"reserved_{amount}"]
+        if amount == "weight":
+            free = func.round(free, 3)
+        scrap = MaterialTransfer.material_type.in_(SCRAP_MATERIAL_TYPES)
+        columns[f"available_{amount}"] = case((scrap, 0), else_=free)
+        columns[f"scrap_{amount}"] = case((scrap, columns[f"on_hand_{amount}"]), else_=0)
+        columns[f"scrap_available_{amount}"] = case((scrap, free), else_=0)
     return select(MaterialTransfer.id.label("transfer_id"), MaterialTransfer.next_team_id.label("team_id"),
                   MaterialTransfer.batch_no, MaterialTransfer.serial_no, MaterialTransfer.material_name,
                   MaterialTransfer.material_type, MaterialTransfer.source_batch_no, MaterialTransfer.received_at,
@@ -334,11 +341,11 @@ def stock_table(team_id=None):
     ).subquery()
 
 
-BALANCE_KEYS = tuple(f"{prefix}_{amount}" for prefix in ("received", "dispatched", "reserved", "in_transit", "lost", "on_hand", "available") for amount in ("quantity", "weight"))
+BALANCE_KEYS = tuple(f"{prefix}_{amount}" for prefix in ("received", "dispatched", "reserved", "in_transit", "lost", "on_hand", "available", "scrap", "scrap_available") for amount in ("quantity", "weight"))
 
 
 def balance_dict(row):
-    return {key: float(row[key] or 0) if key.endswith("weight") else int(row[key] or 0) for key in BALANCE_KEYS}
+    return {key: round(float(row[key] or 0), 3) if key.endswith("weight") else int(row[key] or 0) for key in BALANCE_KEYS}
 
 
 def literal_query(query, columns):
@@ -356,6 +363,8 @@ def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=
         filters.append(stock.c.serial_no == serial_no.strip())
     if availability == "available":
         filters.append(or_(stock.c.available_quantity > 0, stock.c.available_weight > 0))
+    elif availability == "dispatchable":
+        filters.append(or_(stock.c.available_quantity > 0, stock.c.available_weight > 0, stock.c.scrap_available_quantity > 0, stock.c.scrap_available_weight > 0))
     if material_type:
         filters.append(stock.c.material_type == material_type)
     if query and query.strip():
@@ -374,12 +383,15 @@ def overview(db, team_id):
     materials = db.execute(select(stock.c.material_name, *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS)).where(
         stock.c.team_id == team_id
     ).group_by(stock.c.material_name).order_by(stock.c.material_name)).mappings().all()
+    types = db.execute(select(stock.c.material_type, *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS))
+        .group_by(stock.c.material_type).order_by(stock.c.material_type)).mappings().all()
     pending = db.execute(select(func.count(MaterialTransfer.id), func.sum(MaterialTransfer.quantity), func.sum(MaterialTransfer.weight)).where(
         MaterialTransfer.next_team_id == team_id, MaterialTransfer.status == "pending"
     )).one()
     legacy = db.scalar(select(func.count(MaterialTransfer.id)).where(MaterialTransfer.next_team_id == team_id,
         MaterialTransfer.status == "received", MaterialTransfer.stock_tracked.is_(False))) or 0
     return {"team_id": team_id, "totals": balance_dict(totals),
+            "material_types": [{"material_type": row["material_type"], **balance_dict(row)} for row in types],
             "materials": [{"material_name": row["material_name"], **balance_dict(row)} for row in materials],
             "pending_incoming": {"count": pending[0], "quantity": int(pending[1] or 0), "weight": float(pending[2] or 0)},
             "legacy_received_count": legacy}

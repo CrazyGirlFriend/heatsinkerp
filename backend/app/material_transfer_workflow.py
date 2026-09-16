@@ -17,7 +17,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 from .auth import actor_name
 from .batch_numbers import next_transfer_batch_number
 from .models import MaterialTransfer, MaterialTransferEvent, Team, User, utcnow
-from .schemas import MaterialTransferDocumentFields
+from .schemas import MaterialTransferDocumentFields, SCRAP_MATERIAL_TYPES
 from .team_constants import EXTERNAL_ENTRY_KINDS
 
 
@@ -29,12 +29,16 @@ AUDITED_FIELDS = DOCUMENT_FIELDS + (
     "voided_by", "voided_at",
     "source_transfer_id", "dispatch_id", "stock_tracked", "entry_kind",
     "external_destination", "dispatched_by", "dispatched_at",
+    "receipt_kind", "external_source", "return_dispatch_no", "rejection_reason",
 )
 
 
 def _creation_fingerprint(payload) -> str:
     # Preserve pre-upgrade idempotency hashes when optional fields are absent.
     value = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    for field in ("receipt_kind", "external_source", "return_dispatch_no"):
+        if field not in payload.model_fields_set:
+            value.pop(field, None)
     for field in DOCUMENT_FIELDS:
         if value.get(field) is None:
             value.pop(field, None)
@@ -106,6 +110,17 @@ def _validate_warehouse_type(target: Team, material_type: str | None) -> None:
         raise HTTPException(422, "material_type is required for transfers into the warehouse")
 
 
+def validate_material_route(source_type, material_type, target, entry_kind, notes):
+    source_scrap, result_scrap = source_type in SCRAP_MATERIAL_TYPES, material_type in SCRAP_MATERIAL_TYPES
+    if source_scrap and not result_scrap:
+        raise HTTPException(422, "废料不能直接改为正常物料出库")
+    if result_scrap:
+        if entry_kind != "warehouse_outbound" and (target is None or target.kind != "warehouse"):
+            raise HTTPException(422, "废料只能转入库房或由库房办理对外处理")
+        if not (notes or "").strip():
+            raise HTTPException(422, "请填写转废或废料处理原因")
+
+
 def _locked_transfer(db, batch_no: str) -> MaterialTransfer:
     source_id = db.scalar(select(MaterialTransfer.source_transfer_id).where(MaterialTransfer.batch_no == batch_no))
     if source_id is not None:
@@ -145,7 +160,7 @@ def material_transfer_allowed_actions(
     if user.team_id == transfer.source_team_id:
         return ["edit", "void", "confirm_outbound"] if transfer.entry_kind in EXTERNAL_ENTRY_KINDS else ["edit", "void"]
     if user.team_id == transfer.next_team_id:
-        return ["confirm"]
+        return (["reject"] if transfer.next_team and transfer.next_team.kind == "warehouse" else []) if transfer.rejection_reason else ["confirm", *(["reject"] if transfer.next_team and transfer.next_team.kind == "warehouse" else [])]
     return []
 
 
@@ -176,6 +191,10 @@ def material_transfer_dict(
         "urgency": urgency_dict(transfer.urgency),
         "entry_kind": transfer.entry_kind,
         "external_destination": transfer.external_destination,
+        "receipt_kind": transfer.receipt_kind,
+        "external_source": transfer.external_source,
+        "return_dispatch_no": transfer.return_dispatch_no,
+        "rejection_reason": transfer.rejection_reason,
         **{field: getattr(transfer, field) for field in DOCUMENT_FIELDS},
         "version": transfer.version,
         "stock_tracked": transfer.stock_tracked,
@@ -249,6 +268,7 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
             if target.id == source.id:
                 raise HTTPException(422, "source and target teams must be different")
             _validate_warehouse_type(target, payload.material_type)
+            validate_material_route(None, payload.material_type, target, "transfer", payload.notes)
             transfer = MaterialTransfer(
                 batch_no=next_transfer_batch_number(db),
                 serial_no=payload.serial_no,
@@ -328,6 +348,9 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
         if target is not None and ("next_team_id" in supplied or "material_type" in supplied):
             material_type = payload.material_type if "material_type" in supplied else transfer.material_type
             _validate_warehouse_type(target, material_type)
+        validate_material_route(transfer.stock_source.material_type if transfer.source_transfer_id else None,
+            payload.material_type if "material_type" in supplied else transfer.material_type, target, transfer.entry_kind,
+            payload.notes if "notes" in supplied else transfer.notes)
         if "next_team_id" in supplied:
             transfer.next_team_id = target.id
             transfer.next_team_code = target.code
@@ -337,6 +360,7 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
             if field in supplied:
                 setattr(transfer, field, getattr(payload, field))
         if _snapshot(transfer) != before:
+            transfer.rejection_reason = None
             transfer.version += 1
             transfer.updated_at = utcnow()
             db.flush()
@@ -383,6 +407,10 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
             if transfer.status != "pending":
                 raise _conflict("only a pending transfer can be confirmed")
             _assert_version(transfer, payload)
+            if transfer.rejection_reason:
+                raise _conflict("该明细已退回核对，须上序修改后再接收")
+            validate_material_route(transfer.stock_source.material_type if transfer.source_transfer_id else None,
+                transfer.material_type, transfer.next_team, transfer.entry_kind, transfer.notes)
             before = _snapshot(transfer)
             now = utcnow()
             transfer.status = "received"
@@ -412,6 +440,25 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
         raise _conflict("duplicate receipt idempotency key") from exc
 
 
+def reject_material_transfer(db, batch_no, payload, user):
+    with db.begin():
+        transfer = _locked_transfer(db, batch_no)
+        _assert_receiver(user, transfer)
+        if user.team.kind != "warehouse" or transfer.status != "pending":
+            raise _conflict("仅库房可退回待接收明细，已接收单据不能修改")
+        if transfer.rejection_reason == payload.reason and transfer.version == payload.expected_version + 1:
+            return material_transfer_dict(transfer, user)
+        _assert_version(transfer, payload)
+        before = _snapshot(transfer)
+        transfer.rejection_reason = payload.reason
+        transfer.version += 1
+        transfer.updated_at = utcnow()
+        db.flush()
+        db.refresh(transfer, attribute_names=["updated_at"])
+        _record_event(db, transfer, user, "rejected", before)
+        return material_transfer_dict(transfer, user)
+
+
 def confirm_outbound(db, batch_no: str, payload, user: User) -> dict[str, Any]:
     """Finalize external stock leaving the loop; never manufacture a receipt lot."""
     from .material_stock import require_outbound_actor, _db_conflict
@@ -431,6 +478,8 @@ def confirm_outbound(db, batch_no: str, payload, user: User) -> dict[str, Any]:
             if transfer.status != "pending":
                 raise _conflict("only a pending external outbound can be confirmed")
             _assert_version(transfer, payload)
+            validate_material_route(transfer.stock_source.material_type if transfer.source_transfer_id else None,
+                                    transfer.material_type, None, transfer.entry_kind, transfer.notes)
             before = _snapshot(transfer)
             now = utcnow()
             transfer.status = "dispatched"

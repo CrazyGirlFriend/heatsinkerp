@@ -114,6 +114,23 @@ async function confirmGroup() {
   } finally { if (active(epoch, code)) busy.value = false }
 }
 function editLine(line: MaterialTransfer) { if (!busy.value && !loading.value && !errorMessage.value && ownsSource.value && canEditMaterialTransfer(line)) { editing.value = line; editOpen.value = true } }
+function canReject(line: MaterialTransfer) {
+  return auth.isTeamAccount && auth.currentUser?.active !== false && !auth.currentUserError && String(auth.currentUser?.team_id) === String(line.next_team.id) && line.status === 'pending' && !!line.version && line.allowed_actions.includes('reject')
+}
+async function rejectLine(line: MaterialTransfer) {
+  if (!canReject(line) || busy.value || loading.value || errorMessage.value) return
+  const epoch = generation, actor = identity()
+  busy.value = true
+  try {
+    const { value } = await ElMessageBox.prompt('填写需上序修正的内容。物料仍在途，修正后才能整批接收；不会恢复上序库存。', '退回核对', { inputType: 'textarea', inputValue: line.rejection_reason || '', inputValidator: value => !!value?.trim() && value.trim().length <= 2000 || '请填写 1 至 2000 字的原因', confirmButtonText: '退回核对', cancelButtonText: '取消' })
+    if (!active(epoch) || actor !== identity()) return
+    await auth.refreshCurrentUser()
+    if (!active(epoch) || actor !== identity() || !canReject(line)) return
+    await materialTransferApi.reject(line.batch_no, value.trim(), line.version!)
+    if (active(epoch)) await lineChanged()
+  } catch (error) { if (active(epoch) && error !== 'cancel' && error !== 'close') { showToast(error instanceof Error ? error.message : '退回核对失败', 'error'); await load() } }
+  finally { if (active(epoch)) busy.value = false }
+}
 async function lineChanged() {
   editOpen.value = false; editing.value = null
   const result = await load()
@@ -175,6 +192,7 @@ onBeforeUnmount(reset)
       <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
       <ElAlert v-if="errorMessage" :title="errorMessage" type="error" :closable="false" /><ElButton v-if="errorMessage" :icon="Refresh" :loading="loading" @click="load()">重新读取整批</ElButton>
       <ElAlert v-if="notice" :title="notice" type="warning" :closable="false" />
+      <ElAlert v-if="pending.some(line => line.rejection_reason)" title="有明细待上序修正，暂不能整批接收。展开详情可查看原因。" type="warning" :closable="false" />
       <div class="dispatch-barcode"><BarcodeCard :value="current.barcode_payload" entity-label="整批出库" compact /></div>
       <MaterialDocumentTable :fields="documentFields" label="批次单据资料" />
       <div class="dispatch-lines-heading"><h3>物料明细</h3><span>{{ current.line_count }} 条<template v-if="pending.length"> · 待确认 {{ pending.length }} 条（{{ pendingQuantity }} 件 / {{ pendingWeight }} kg）</template></span></div>
@@ -183,7 +201,7 @@ onBeforeUnmount(reset)
         <thead><tr><th scope="col">序号</th><th scope="col">流水号</th><th scope="col">材质 / 规格</th><th scope="col" class="number">件数</th><th scope="col" class="number">重量（kg）</th><th scope="col">状态</th><th scope="col">操作</th></tr></thead>
         <tbody><template v-for="(line, index) in current.items" :key="line.batch_no">
           <tr class="dispatch-detail-line"><td>{{ index + 1 }}</td><td><RouterLink :to="{ path: '/material-trace', query: { serial_no: line.serial_no } }">{{ line.serial_no }}</RouterLink><SerialUrgencyBadge :urgency="line.urgency" /></td><td>{{ line.material_name || '—' }}<small>{{ materialTypeLabel(line.material_type) }} · {{ line.transfer_specification || line.finished_specification || '—' }}</small></td><td class="number">{{ line.quantity }}</td><td class="number">{{ line.weight }}</td><td>{{ materialTransferStatusLabel(line.status, line.entry_kind) }}</td><td><div class="dispatch-line-actions"><ElButton link type="primary" :aria-label="'查看明细 ' + (index + 1)" :aria-expanded="expandedBatchNo === line.batch_no" @click="expandedBatchNo = expandedBatchNo === line.batch_no ? '' : line.batch_no">{{ expandedBatchNo === line.batch_no ? '收起' : '详情' }}</ElButton><template v-if="ownsSource && !errorMessage"><ElButton v-if="canEditMaterialTransfer(line)" link type="primary" :disabled="busy || loading" :aria-label="'编辑明细 ' + (index + 1)" @click="editLine(line)">编辑</ElButton><ElButton v-if="canVoidMaterialTransfer(line)" link type="danger" :disabled="busy || loading" :aria-label="'作废明细 ' + (index + 1)" @click="voidLine(line)">作废</ElButton></template></div></td></tr>
-          <tr v-if="expandedBatchNo === line.batch_no" class="dispatch-expanded-line"><td colspan="7" class="table-prose"><p>明细 {{ index + 1 }} · 历史明细号 {{ line.batch_no }}</p><MaterialTransferDocumentFields :transfer="line" group="all" /><h4>流转记录</h4><MaterialTransferHistory :transfer="line" /></td></tr>
+          <tr v-if="expandedBatchNo === line.batch_no" class="dispatch-expanded-line"><td colspan="7" class="table-prose"><p>明细 {{ index + 1 }} · 历史明细号 {{ line.batch_no }} <ElButton v-if="canReject(line)" type="warning" plain :disabled="busy || loading || !!errorMessage" @click="rejectLine(line)">退回核对</ElButton></p><MaterialTransferDocumentFields :transfer="line" group="all" /><h4>流转记录</h4><MaterialTransferHistory :transfer="line" /></td></tr>
         </template></tbody>
         <tfoot><tr><th colspan="3" scope="row">合计<small>不含作废明细</small></th><td class="number">{{ current.total_quantity }}</td><td class="number">{{ current.total_weight }}</td><td colspan="2"></td></tr></tfoot>
       </table></div>

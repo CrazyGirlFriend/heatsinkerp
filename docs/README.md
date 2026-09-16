@@ -4,6 +4,7 @@
 
 ## 当前实施与使用
 
+- [库房来源与物料性质](warehouse-classification.md)：外部/内部入库、批次分类、废料独立库存、拆分转料与库房退回核对；本地实现，未部署。
 - [提交甲方的两接口确认单](main-system-client-confirmation.md)：服务鉴权、流水号查询、17 项资料字段与待甲方确认事项；建议协议，非已确认接口。
 - [主系统流水号资料接口规范](main-system-integration.md)：接口、全字段字典、JSON Schema、鉴权、快照与幂等入库；后端已部署但保持停用，待真实主系统联调及入库表单、打印接入。
 - [主系统对接配置](main-system-configuration.md)：管理员配置页、Bearer 认证、加密保存、测试查询及迁移前置项；已部署，真实主系统地址和认证仍待确认。

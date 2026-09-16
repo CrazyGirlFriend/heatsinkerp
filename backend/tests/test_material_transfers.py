@@ -373,9 +373,10 @@ def test_versions_prevent_unseen_confirmation_and_lost_edits_with_retry_safety(c
 
 def test_all_material_types_and_independent_counts_weight_validation(client):
     setup = _setup_three_teams(client)
-    for material_type in ("finished", "semi_finished", "finished_surplus", "semi_finished_surplus", "defective", "waste", "sludge", "scrap_chips"):
+    warehouse = client.post('/api/teams', json={'code': 'FACTORY-WAREHOUSE', 'name': '库房', 'kind': 'warehouse'}).json()
+    for material_type in ("raw_material", "finished", "semi_finished", "finished_surplus", "semi_finished_surplus", "defective", "waste", "sludge", "scrap_chips"):
         response = _create(client, setup, material_type=material_type,
-                           quantity=0, weight="1.235", idempotency_key=material_type)
+                           quantity=0, weight="1.235", idempotency_key=material_type, next_team_id=warehouse['id'], notes='分类回库')
         assert response.status_code == 201, response.text
         assert response.json()["material_type"] == material_type
         assert response.json()["quantity"] == 0 and response.json()["weight"] == 1.235
@@ -445,9 +446,11 @@ def test_document_history_failure_rolls_back_business_changes(client, monkeypatc
 
 def test_search_modes_fields_types_and_combined_filters(client):
     setup = _setup_three_teams(client)
+    warehouse = client.post('/api/teams', json={'code': 'FACTORY-WAREHOUSE', 'name': '库房', 'kind': 'warehouse'}).json()
     for i, serial in enumerate(("SEARCH-10", "SEARCH-100", "XSEARCH-10")):
         response = _create(client, setup, serial_no=serial, idempotency_key=f"search-mode-{i}",
                            material_type="finished" if i < 2 else "waste",
+                           next_team_id=setup['target']['id'] if i < 2 else warehouse['id'], notes='分类回库',
                            source_batch_no=f"RAW-{i:03d}", customer_code=f"CUSTOMER-{i}",
                            product_code=f"PRODUCT-{i}", material_name=f"铜钼-{i}")
         assert response.status_code == 201, response.text

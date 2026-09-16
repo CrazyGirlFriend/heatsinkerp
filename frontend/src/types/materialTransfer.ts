@@ -7,6 +7,7 @@ export type MaterialEntryKind = 'transfer' | 'warehouse_receipt' | ExternalEntry
 export type MaterialTransferAction = 'edit' | 'void' | 'confirm' | string
 
 export const materialTypeOptions = [
+  { value: 'raw_material', label: '原材料' },
   { value: 'finished', label: '成品' },
   { value: 'semi_finished', label: '半成品' },
   { value: 'finished_surplus', label: '成品余料' },
@@ -17,6 +18,13 @@ export const materialTypeOptions = [
   { value: 'scrap_chips', label: '废屑' },
 ] as const
 export type MaterialType = typeof materialTypeOptions[number]['value']
+export const isScrapType = (type?: string | null) => ['defective', 'waste', 'sludge', 'scrap_chips'].includes(type || '')
+export function receiptSourceLabel(transfer: MaterialTransfer): string {
+  return transfer.entry_kind !== 'warehouse_receipt' ? '车间转入' : transfer.receipt_kind === 'return' ? '外部退回' : '外部入库'
+}
+export function materialSourceLabel(transfer: MaterialTransfer): string {
+  return transfer.entry_kind === 'warehouse_receipt' ? transfer.external_source || '外部来源未登记' : transfer.source_team.name
+}
 
 export const materialSearchModes = [
   { value: 'contains', label: '包含匹配' },
@@ -60,7 +68,7 @@ export type MaterialTransferDocumentFields = Record<MaterialTransferTextField, s
 
 export interface MaterialTransferHistoryEntry {
   id: number
-  action: 'created' | 'updated' | 'received' | 'voided' | 'stocked' | 'dispatched'
+  action: 'created' | 'updated' | 'received' | 'voided' | 'stocked' | 'dispatched' | 'rejected'
   actor: string
   occurred_at: string
   changes: Record<string, { before: unknown; after: unknown }>
@@ -77,6 +85,10 @@ export interface MaterialTransfer extends Partial<MaterialTransferDocumentFields
   urgency?: import('./recordFilters').SerialUrgency
   entry_kind?: MaterialEntryKind
   external_destination?: string | null
+  receipt_kind?: 'external' | 'return' | null
+  external_source?: string | null
+  return_dispatch_no?: string | null
+  rejection_reason?: string | null
   dispatched_by?: string | null
   dispatched_by_user_id?: EntityId | null
   dispatched_at?: string | null

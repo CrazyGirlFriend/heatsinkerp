@@ -50,7 +50,7 @@ describe('material transfer print sheet', () => {
     await flushPromises()
     expect(wrapper.attributes('aria-label')).toBe('A4 双联入库单')
     expect(wrapper.get('[aria-label="库房留存联"]').text()).toContain('入库来源')
-    expect(wrapper.get('[aria-label="入库凭证联"]').text()).toContain('库房手工入库')
+    expect(wrapper.get('[aria-label="入库凭证联"]').text()).toContain('外部来源未登记')
     expect(wrapper.text()).toContain('已入库'); expect(wrapper.text()).toContain('入库说明')
     expect(wrapper.text()).not.toContain('转出班组'); expect(wrapper.text()).not.toContain('接收确认联')
     expect(wrapper.findAll('svg[data-code128-value="TL20260906000007"]')).toHaveLength(2)

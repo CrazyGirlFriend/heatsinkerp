@@ -1,11 +1,12 @@
 import { externalActionLabel, isExternalEntryKind, type ExternalEntryKind, type MaterialEntryKind, type MaterialTransfer, type MaterialTransferDocumentFields, type MaterialTransferTeam, type MaterialType } from './materialTransfer'
 
 export const balanceFields = ['received', 'dispatched', 'reserved', 'in_transit', 'lost', 'on_hand', 'available'] as const
-export type MaterialBalance = Record<`${typeof balanceFields[number]}_${'quantity' | 'weight'}`, number | null>
+export type MaterialBalance = Record<`${typeof balanceFields[number]}_${'quantity' | 'weight'}`, number | null> & Partial<Record<`${'scrap' | 'scrap_available'}_${'quantity' | 'weight'}`, number | null>>
 export interface TeamMaterialOverview {
   team_id: number
   totals: MaterialBalance
   materials: (MaterialBalance & { material_name: string | null })[]
+  material_types?: (MaterialBalance & { material_type: MaterialType | null })[]
   pending_incoming: { quantity: number | null; weight: number | null; count: number | null }
   legacy_received_count: number
 }
@@ -36,8 +37,8 @@ export const dispatchDocumentTitle = (kind?: MaterialEntryKind): string => kind 
 export const dispatchConfirmLabel = (kind?: MaterialEntryKind): string => isExternalEntryKind(kind) ? `确认整批${externalActionLabel(kind)}` : '确认整批接收'
 export interface MaterialPage<T> { items: T[]; total: number; page: number; page_size: number }
 export type MaterialPageParams = import('./recordFilters').RecordFilterParams & { query?: string; serial_no?: string; page?: number; page_size?: number }
-export interface StockParams extends MaterialPageParams { material_type?: MaterialType; availability?: 'available' | 'all' }
-export interface WarehouseReceiptParams extends MaterialPageParams { material_type?: MaterialType }
+export interface StockParams extends MaterialPageParams { material_type?: MaterialType; availability?: 'available' | 'all' | 'dispatchable' }
+export interface WarehouseReceiptParams extends MaterialPageParams { material_type?: MaterialType; receipt_source?: 'external' | 'internal' | 'return' }
 export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocumentFields> {
   serial_no: string
   material_name: string
@@ -46,6 +47,9 @@ export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocument
   weight: number
   notes: string
   idempotency_key: string
+  receipt_kind?: 'external' | 'return'
+  external_source?: string | null
+  return_dispatch_no?: string | null
 }
 export interface DispatchParams extends MaterialPageParams { next_team_id?: string | number; status?: DispatchStatus; entry_kind?: DispatchKind }
 export interface DispatchLine { source_transfer_id: number; quantity: number; weight: number; material_type?: MaterialType | null }

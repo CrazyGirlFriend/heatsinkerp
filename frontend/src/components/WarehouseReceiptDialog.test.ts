@@ -30,23 +30,37 @@ async function amount(label: string, value: number) {
   await flushPromises()
 }
 async function fill() {
+  await wrapper.get('input[aria-label="外部来源单位"]').setValue(' 来料单位 ')
   await wrapper.get('input[aria-label="流水号"]').setValue('  QA-IN  ')
   await wrapper.get('input[aria-label="材质"]').setValue('  铜钼  ')
-  wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 'semi_finished')
+  wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'semi_finished')
   await amount('入库件数', 0); await amount('入库重量', 0.005)
   await wrapper.get('textarea[aria-label="入库说明"]').setValue('  实物到货登记  ')
 }
 async function submit() { await wrapper.get('form').trigger('submit'); await flushPromises() }
 
 describe('warehouse manual receipt', () => {
+  it('records an external return against the existing serial and optional CK', async () => {
+    await render(); await fill()
+    wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'return'); await flushPromises()
+    await wrapper.get('input[aria-label="原出库批次"]').setValue(' CK-ORIGINAL ')
+    await submit()
+    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(901, expect.objectContaining({ receipt_kind: 'return', serial_no: 'QA-IN', external_source: '来料单位', return_dispatch_no: 'CK-ORIGINAL' }))
+  })
+  it('requires the external source unit', async () => {
+    await render(); await fill(); await wrapper.get('input[aria-label="外部来源单位"]').setValue(' '); await submit()
+    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('请填写外部来源单位')
+  })
   it('creates a root receipt for the bound warehouse with no transfer destination or status fields', async () => {
     await render(); await fill()
-    expect(wrapper.findAllComponents(ElSelect)).toHaveLength(1)
+    expect(wrapper.findAllComponents(ElSelect)).toHaveLength(2)
     expect(wrapper.text()).not.toContain('接收班组')
     await wrapper.get('input[aria-label="原单批号"]').setValue('RAW-91')
     await submit()
     const [id, body] = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]!
     expect(id).toBe(901)
+    expect(body).toMatchObject({ receipt_kind: 'external', external_source: '来料单位', return_dispatch_no: null })
     expect(body).toMatchObject({ serial_no: 'QA-IN', material_name: '铜钼', material_type: 'semi_finished', quantity: 0, weight: 0.005, notes: '实物到货登记', source_batch_no: 'RAW-91', idempotency_key: expect.any(String) })
     expect(body).not.toHaveProperty('next_team_id'); expect(body).not.toHaveProperty('source_team_id'); expect(body).not.toHaveProperty('status')
     expect(state.auth.refreshCurrentUser).toHaveBeenCalledOnce(); expect(state.directory.refreshTeamDirectory).toHaveBeenCalledOnce()

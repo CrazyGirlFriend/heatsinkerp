@@ -159,7 +159,9 @@ def test_intake_dispatch_loss_receipt_and_return_keep_source_and_balances(client
                        json={'idempotency_key': 'warehouse-receive-return'}).status_code == 200
     assert client.get(base+'/overview').json()['totals']['available_quantity'] == 78
     assert client.get(base+'/overview').json()['totals']['available_weight'] == 8
-    assert client.get(warehouse['url']).json()['total'] == 1  # Internal return is not a manual intake.
+    assert client.get(warehouse['url']).json()['total'] == 2  # Unified ledger includes received workshop transfers.
+    assert client.get(warehouse['url'], params={'receipt_source': 'external'}).json()['total'] == 1
+    assert client.get(warehouse['url'], params={'receipt_source': 'internal'}).json()['total'] == 1
     trace = client.get('/api/material-transfers', params={'serial_no': receipt['serial_no']}).json()['items']
     assert [row['entry_kind'] for row in trace] == ['warehouse_receipt', 'transfer', 'transfer']
     assert [row['source_transfer_id'] for row in trace] == [None, receipt['id'], line['id']]

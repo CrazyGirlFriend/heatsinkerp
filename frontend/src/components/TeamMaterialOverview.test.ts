@@ -21,7 +21,7 @@ describe('compact material classification', () => {
     expect(wrapper.find('.balance-cards').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('材质库存分布')
     expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(10)
-    expect(wrapper.findAll('th').map(cell => cell.text())).toEqual(['材质', '可用库存', '转出待确认', '当前库存', '累计接收', '确认转出', '累计丢失'])
+    expect(wrapper.findAll('th').map(cell => cell.text())).toEqual(['材质', '正常可用库存', '废料结存', '转出待确认', '当前库存', '累计接收', '确认转出', '累计丢失'])
   })
   it('retains material drill-down and 10/20/50/100 pagination', async () => {
     wrapper = mount(TeamMaterialOverview, { props: { overview: overview() } }); await flushPromises()

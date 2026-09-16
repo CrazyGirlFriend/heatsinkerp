@@ -29,6 +29,31 @@ async function submit() { await wrapper.findAll('button').find(button => /^(确�
 async function destination(id = 3) { wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', id); await flushPromises() }
 
 describe('source batch dispatch and loss drafts', () => {
+  it('splits one source into two typed lines and validates their combined quantity', async () => {
+    await render('dispatch', [source()]); await destination(1)
+    await wrapper.findAll('button').find(button => button.text() === '拆分物料')!.trigger('click')
+    await flushPromises()
+    const inputs = wrapper.findAllComponents(ElInputNumber)
+    inputs[0]!.vm.$emit('update:modelValue', 80); inputs[1]!.vm.$emit('update:modelValue', 8)
+    inputs[2]!.vm.$emit('update:modelValue', 21); inputs[3]!.vm.$emit('update:modelValue', 2)
+    wrapper.findAllComponents(ElSelect)[2]!.vm.$emit('update:modelValue', 'waste')
+    await wrapper.get('textarea').setValue('加工废料回库'); await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('拆分明细合计超过')
+    inputs[2]!.vm.$emit('update:modelValue', 20); await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ next_team_id: 1, lines: [
+      { source_transfer_id: 10, quantity: 80, weight: 8, material_type: 'semi_finished' },
+      { source_transfer_id: 10, quantity: 20, weight: 2, material_type: 'waste' },
+    ] }))
+  })
+  it('requires scrap reasons and excludes production destinations', async () => {
+    await render('dispatch', [source()]); await destination(3)
+    wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'waste')
+    await submit(); expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('请选择一个启用的接收班组')
+    await destination(1); await submit()
+    expect(wrapper.text()).toContain('转废或废料处理原因')
+  })
   it('sends one atomic bulk request with separate source identities and amounts', async () => {
     await render(); await destination()
     const inputs = wrapper.findAllComponents(ElInputNumber)

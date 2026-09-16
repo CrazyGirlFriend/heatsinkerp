@@ -32,6 +32,20 @@ afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
 async function render() { wrapper = mount(MaterialDispatchDrawer, { props: { modelValue: true, dispatchNo: 'CK-GROUP', docked: true }, global: { stubs: { MaterialTransferDetailFrame: { template: '<div><slot name="header"/><slot/><slot name="footer"/></div>' }, MaterialTransferFormDialog: true, MaterialDispatchPrintSheet: true, BarcodeCard: true, MaterialTransferHistory: true, RouterLink: true } } }); await flushPromises() }
 async function click(label = '确认整批接收') { await wrapper.findAll('button').find(button => button.text() === label || button.attributes('aria-label') === label)!.trigger('click'); await flushPromises() }
 describe('group confirmation and isolation', () => {
+  it('returns a warehouse line for correction with its reviewed version and blocks batch receipt', async () => {
+    const group = dispatchFixture()
+    group.items[0]!.allowed_actions = ['confirm', 'reject']
+    vi.mocked(materialDispatchApi.get).mockResolvedValue(group)
+    const reject = vi.spyOn(materialTransferApi, 'reject').mockResolvedValue({ ...group.items[0]!, rejection_reason: '请核对类型' })
+    vi.spyOn(ElMessageBox, 'prompt').mockResolvedValue({ value: '请核对类型', action: 'confirm' } as Awaited<ReturnType<typeof ElMessageBox.prompt>>)
+    await render(); await click('查看明细 1')
+    const reviewedVersion = group.items[0]!.version
+    vi.mocked(materialDispatchApi.get).mockResolvedValue({ ...group, allowed_actions: [], items: [{ ...group.items[0]!, rejection_reason: '请核对类型' }, group.items[1]!] })
+    await click('退回核对')
+    expect(reject).toHaveBeenCalledWith(group.items[0]!.batch_no, '请核对类型', reviewedVersion)
+    expect(wrapper.text()).toContain('有明细待上序修正')
+    expect(wrapper.findAll('button').some(button => button.text() === '确认整批接收')).toBe(false)
+  })
   it('updates the item table without closing expanded rows, and defers a late response while editing', async () => {
     state.auth.currentUser.team_id = 1
     await render()

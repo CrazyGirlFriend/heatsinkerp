@@ -61,6 +61,7 @@ it('keeps the three secondary ledger fields accessible in serial detail', async 
     expect(fields.findAllComponents(MaterialAmount).map((item: VueWrapper) => item.props())).toMatchObject([
       { quantity: summary.pending_incoming_quantity, weight: summary.pending_incoming_weight },
       { quantity: summary.pending_outgoing_quantity, weight: summary.pending_outgoing_weight },
+      { quantity: summary.scrap_quantity, weight: summary.scrap_weight },
     ])
     expect(fields.text()).toContain('最近更新')
     expect(fields.text()).toContain(formatDateTime(summary.last_activity_at))

@@ -21,6 +21,7 @@ const attempt = ref<CreateWarehouseReceipt | null>(null)
 const recoveryBlocked = ref(false)
 const readonly = computed(() => !canWrite.value || saving.value || Boolean(attempt.value) || recoveryBlocked.value)
 const form = reactive({
+  receiptKind: 'external' as 'external' | 'return', externalSource: '', returnDispatchNo: '',
   serialNo: '', materialType: '' as MaterialType | '', quantity: 0 as number | undefined,
   weight: 0 as number | undefined, notes: '', finishedQuantity: undefined as number | undefined,
   document: Object.fromEntries(materialDocumentTextFields.map(field => [field.key, ''])) as Record<MaterialTransferTextField, string>,
@@ -29,6 +30,7 @@ let generation = 0
 const storageKey = (scope: string) => `heatsink-flow.pending-warehouse-receipt.v1:${scope}`
 
 function fill(payload: CreateWarehouseReceipt | null = null) {
+  form.receiptKind = payload?.receipt_kind || 'external'; form.externalSource = payload?.external_source || ''; form.returnDispatchNo = payload?.return_dispatch_no || ''
   form.serialNo = payload?.serial_no || ''; form.materialType = payload?.material_type || ''
   form.quantity = payload?.quantity ?? 0; form.weight = payload?.weight ?? 0; form.notes = payload?.notes || ''
   form.finishedQuantity = payload?.finished_quantity ?? undefined
@@ -49,6 +51,7 @@ function restoreAttempt() {
 function close() { if (!saving.value) emit('update:modelValue', false) }
 function validate(): boolean {
   if (!canWrite.value) error.value = '仅当前正式库房账号可以手工入库'
+  else if (!form.externalSource.trim()) error.value = '请填写外部来源单位'
   else if (!form.serialNo.trim()) error.value = '请输入流水号'
   else if (form.serialNo.trim().length > 80) error.value = '流水号不能超过 80 个字符'
   else if (!form.document.material_name.trim()) error.value = '请输入材质'
@@ -70,6 +73,7 @@ function payload(): CreateWarehouseReceipt {
   return {
     ...Object.fromEntries(materialDocumentTextFields.map(field => [field.key, form.document[field.key].trim() || null])),
     serial_no: form.serialNo.trim(), material_name: form.document.material_name.trim(), material_type: form.materialType as MaterialType,
+    receipt_kind: form.receiptKind, external_source: form.externalSource.trim(), return_dispatch_no: form.receiptKind === 'return' ? form.returnDispatchNo.trim() || null : null,
     quantity: Number(form.quantity), weight: Number(form.weight), notes: form.notes.trim(), finished_quantity: form.finishedQuantity ?? null,
     idempotency_key: globalThis.crypto?.randomUUID?.() || `warehouse-receipt-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   }
@@ -121,6 +125,9 @@ onBeforeUnmount(() => { ++generation })
       <ElTabs v-model="activeTab">
         <ElTabPane label="入库信息" name="receipt">
           <div class="receipt-grid">
+            <ElFormItem label="入库来源" required><ElSelect v-model="form.receiptKind" aria-label="入库来源" :disabled="readonly"><ElOption value="external" label="外部来料" /><ElOption value="return" label="外部退回" /></ElSelect></ElFormItem>
+            <ElFormItem label="外部来源单位" required><ElInput v-model="form.externalSource" aria-label="外部来源单位" maxlength="240" :disabled="readonly" placeholder="供应商、外委单位或退回单位" /></ElFormItem>
+            <ElFormItem v-if="form.receiptKind === 'return'" label="原出库批次" class="receipt-wide"><ElInput v-model="form.returnDispatchNo" aria-label="原出库批次" maxlength="40" :disabled="readonly" placeholder="选填已确认的 CK 出库号；流水号沿用原号" /></ElFormItem>
             <ElFormItem label="流水号" required><ElInput v-model="form.serialNo" aria-label="流水号" maxlength="80" :disabled="readonly" placeholder="填写物料流水号" /></ElFormItem>
             <ElFormItem label="材质" required><ElInput v-model="form.document.material_name" aria-label="材质" maxlength="160" :disabled="readonly" placeholder="填写实际材质" /></ElFormItem>
             <ElFormItem label="物料类型" required class="receipt-wide"><ElSelect v-model="form.materialType" aria-label="物料类型" placeholder="选择物料类型" :disabled="readonly"><ElOption v-for="item in materialTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></ElSelect></ElFormItem>

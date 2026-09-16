@@ -11,7 +11,7 @@ import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialTransferApi } from '@/services/materialTransferApi'
-import { materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
+import { materialSourceLabel, materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import type { MaterialLoss, StockBatch } from '@/types/teamMaterials'
 import type { SerialMetaField, SerialSummary } from '@/types/materialAnalytics'
 import { formatDateTime } from '@/utils/format'
@@ -80,6 +80,7 @@ onBeforeUnmount(() => { ++version })
           <ElDescriptionsItem label="待接收"><MaterialAmount :quantity="summary.pending_incoming_quantity" :weight="summary.pending_incoming_weight" /></ElDescriptionsItem>
           <ElDescriptionsItem label="转出待确认"><MaterialAmount :quantity="summary.pending_outgoing_quantity" :weight="summary.pending_outgoing_weight" /></ElDescriptionsItem>
           <ElDescriptionsItem label="最近更新">{{ formatDateTime(summary.last_activity_at) }}</ElDescriptionsItem>
+          <ElDescriptionsItem label="废料结存"><MaterialAmount :quantity="summary.scrap_quantity" :weight="summary.scrap_weight" /></ElDescriptionsItem>
         </ElDescriptions>
         <div class="serial-balances"><div>当前库存<MaterialAmount :quantity="summary.on_hand_quantity" :weight="summary.on_hand_weight" /></div><div>可用库存<MaterialAmount :quantity="summary.available_quantity" :weight="summary.available_weight" /></div><div>累计丢失<MaterialAmount :quantity="summary.lost_quantity" :weight="summary.lost_weight" /></div></div>
       </template>
@@ -95,8 +96,10 @@ onBeforeUnmount(() => { ++version })
           </ElTableColumn>
           <ElTableColumn label="来源批次" min-width="170"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.dispatch_no || row.transfer.batch_no }}</ElButton></template></ElTableColumn>
           <ElTableColumn label="材质 / 类型" min-width="140"><template #default="{ row }">{{ row.transfer.material_name || '—' }}<small>{{ materialTypeLabel(row.transfer.material_type) }}</small></template></ElTableColumn>
+          <ElTableColumn label="来源" min-width="140"><template #default="{ row }">{{ materialSourceLabel(row.transfer) }}</template></ElTableColumn>
           <ElTableColumn label="结存" min-width="125"><template #default="{ row }"><MaterialAmount :quantity="row.on_hand_quantity" :weight="row.on_hand_weight" /></template></ElTableColumn>
           <ElTableColumn label="可用" min-width="125"><template #default="{ row }"><MaterialAmount :quantity="row.available_quantity" :weight="row.available_weight" /></template></ElTableColumn>
+          <ElTableColumn label="废料可处理" min-width="125"><template #default="{ row }"><MaterialAmount :quantity="row.scrap_available_quantity" :weight="row.scrap_available_weight" /></template></ElTableColumn>
           <ElTableColumn label="转出待确认" min-width="125"><template #default="{ row }"><MaterialAmount :quantity="row.reserved_quantity" :weight="row.reserved_weight" /></template></ElTableColumn>
           <ElTableColumn label="接收时间" min-width="145"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>
           <ElTableColumn v-if="canWrite" label="操作" width="160" fixed="right"><template #default="{ row }"><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('dispatch', [asStock(row)])">出库</ElButton><ElButton link :disabled="!stockAvailable(asStock(row))" @click="action('loss', [asStock(row)])">登记丢失</ElButton></template></ElTableColumn>

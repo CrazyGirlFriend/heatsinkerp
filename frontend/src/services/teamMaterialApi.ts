@@ -10,7 +10,7 @@ const record = (value: unknown): Raw => value && typeof value === 'object' ? val
 const numeric = (value: unknown): number | null => (typeof value === 'string' && value.trim() || typeof value === 'number') && Number.isFinite(Number(value)) ? Number(value) : null
 function balance(value: unknown): MaterialBalance {
   const raw = record(value)
-  return Object.fromEntries(balanceFields.flatMap(key => ['quantity', 'weight'].map(unit => [`${key}_${unit}`, numeric(raw[`${key}_${unit}`])]))) as MaterialBalance
+  return Object.fromEntries([...balanceFields, 'scrap', 'scrap_available'].flatMap(key => ['quantity', 'weight'].map(unit => [`${key}_${unit}`, numeric(raw[`${key}_${unit}`])]))) as MaterialBalance
 }
 function stock(value: unknown): StockBatch { return { ...balance(value), transfer: normalizeMaterialTransfer(record(value).transfer) } }
 function loss(value: unknown): MaterialLoss {
@@ -54,7 +54,7 @@ export const teamMaterialApi = {
   async overview(teamId: number): Promise<TeamMaterialOverview> {
     const raw = record(await request(path(teamId, 'overview')))
     const pending = record(raw.pending_incoming)
-    return { team_id: teamId, totals: balance(raw.totals), materials: Array.isArray(raw.materials) ? raw.materials.map(item => ({ ...balance(item), material_name: typeof record(item).material_name === 'string' ? String(record(item).material_name) : null })) : [], pending_incoming: { quantity: numeric(pending.quantity), weight: numeric(pending.weight), count: numeric(pending.count) }, legacy_received_count: Number(raw.legacy_received_count) || 0 }
+    return { team_id: teamId, totals: balance(raw.totals), materials: Array.isArray(raw.materials) ? raw.materials.map(item => ({ ...balance(item), material_name: typeof record(item).material_name === 'string' ? String(record(item).material_name) : null })) : [], material_types: Array.isArray(raw.material_types) ? raw.material_types.map(item => ({ ...balance(item), material_type: record(item).material_type as import('@/types/materialTransfer').MaterialType | null })) : [], pending_incoming: { quantity: numeric(pending.quantity), weight: numeric(pending.weight), count: numeric(pending.count) }, legacy_received_count: Number(raw.legacy_received_count) || 0 }
   },
   stock(teamId: number, params: StockParams = {}) { return page(path(teamId, 'stock', params), stock) },
   receipts(teamId: number, params: WarehouseReceiptParams = {}) { return page(path(teamId, 'receipts', params), normalizeMaterialTransfer) },

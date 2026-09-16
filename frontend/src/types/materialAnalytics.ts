@@ -23,7 +23,7 @@ export interface SerialParams extends MaterialPageParams {
   search_field?: 'all' | 'serial_no' | import('./inventoryColumns').InventoryColumnKey
   search_operator?: 'eq' | 'gte' | 'lte'
   serial_no?: string; material_name?: string; material_type?: string
-  availability?: 'all' | 'available'
+  availability?: 'all' | 'available' | 'scrap'
   stock_age?: AgeBand; waiting_age?: AgeBand; waiting_direction?: 'incoming' | 'outgoing'
   activity_day?: string; activity_kind?: 'incoming' | 'outgoing' | 'loss'; has_loss?: boolean
   flow_direction?: 'incoming' | 'outgoing'; peer?: string; days?: 7 | 30

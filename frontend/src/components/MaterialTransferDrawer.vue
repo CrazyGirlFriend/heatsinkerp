@@ -79,6 +79,7 @@ const canEdit = computed(() => Boolean(current.value && !loadError.value && !loa
 const canVoid = computed(() => Boolean(current.value && !loadError.value && !loading.value && canVoidMaterialTransfer(current.value)))
 const canConfirm = computed(() => Boolean(!grouped.value && current.value && !loadError.value && !loading.value && canConfirmMaterialTransfer(current.value)))
 const canConfirmExternal = computed(() => Boolean(!grouped.value && current.value && !loadError.value && !loading.value && authStore.isTeamAccount && String(authStore.currentUser?.team_id) === String(current.value.source_team.id) && canConfirmOutbound(current.value)))
+const canReject = computed(() => Boolean(!grouped.value && current.value?.version && current.value.status === 'pending' && current.value.allowed_actions.includes('reject') && !loadError.value && !loading.value && authStore.isTeamAccount && authStore.currentUser?.active !== false && !authStore.currentUserError && String(authStore.currentUser?.team_id) === String(current.value.next_team.id)))
 watch(effectiveBatchNo, () => { reviewNotice.value = '' })
 const tracePath = computed(() => {
   if (!current.value?.serial_no) return ''
@@ -222,6 +223,23 @@ async function confirmExternal() {
   } finally { if (active()) confirming.value = false }
 }
 
+async function rejectTransfer() {
+  const transfer = current.value
+  if (!transfer || !canReject.value || confirming.value || voiding.value) return
+  const epoch = ++actionVersion
+  const active = () => epoch === actionVersion && props.modelValue && effectiveBatchNo.value === transfer.batch_no
+  confirming.value = true
+  try {
+    const { value } = await ElMessageBox.prompt('填写需上序修正的内容。物料仍在途，修正后才能接收；不会恢复上序库存。', '退回核对', { inputType: 'textarea', inputValue: transfer.rejection_reason || '', inputValidator: value => !!value?.trim() && value.trim().length <= 2000 || '请填写 1 至 2000 字的原因', confirmButtonText: '退回核对', cancelButtonText: '取消' })
+    if (!active()) return
+    await authStore.refreshCurrentUser()
+    if (!active() || !canReject.value) return
+    const result = await materialTransferApi.reject(transfer.batch_no, value.trim(), transfer.version!)
+    if (active()) { current.value = result; emit('changed', result) }
+  } catch (error) { if (active() && error !== 'cancel' && error !== 'close') { showToast(error instanceof Error ? error.message : '退回核对失败', 'error'); await load() } }
+  finally { if (active()) confirming.value = false }
+}
+
 async function voidTransfer(): Promise<void> {
   const transfer = current.value
   if (!transfer || !canVoid.value || voiding.value) return
@@ -331,6 +349,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
       <ElAlert v-if="loadError" type="warning" :closable="false" title="最新数据刷新失败，当前显示上次加载结果" show-icon />
       <ElButton v-if="loadError" :loading="loading" @click="load">重新读取</ElButton>
       <ElAlert v-if="reviewNotice" class="review-notice" type="warning" :closable="false" :title="reviewNotice" show-icon />
+      <ElAlert v-if="current.rejection_reason && current.status === 'pending'" type="warning" :closable="false" :title="'待上序修正：' + current.rejection_reason" />
       <div class="document-barcode"><BarcodeCard :value="grouped ? current.dispatch_no! : current.barcode_payload || current.batch_no" :entity-label="grouped ? '整批出库' : receipt ? '入库批次号' : '转料批次号'" compact /><ElButton v-if="grouped" link type="primary" @click="groupOpen = true">打开所属整批 · {{ current.dispatch_no }}</ElButton></div>
       <MaterialTransferDocumentFields :transfer="current" group="all"><template #serial><RouterLink :to="tracePath">{{ current.serial_no }}</RouterLink><SerialUrgencyBadge :urgency="current.urgency" /></template></MaterialTransferDocumentFields>
       <section class="document-records"><h3>{{ receipt ? '入库记录' : '流转记录' }}</h3><MaterialTransferHistory :transfer="current" /></section>
@@ -339,6 +358,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
 
     <template v-if="current" #footer>
       <div class="drawer-footer">
+        <ElButton v-if="canReject" type="warning" plain :disabled="confirming || voiding" @click="rejectTransfer">退回核对</ElButton>
         <ElButton v-if="canConfirm" type="primary" :icon="CircleCheck" :loading="confirming" @click="confirmReceipt">确认接收</ElButton>
         <ElButton v-if="canConfirmExternal" type="primary" :icon="CircleCheck" :loading="confirming" @click="confirmExternal">确认{{ actionLabel }}</ElButton>
         <ElButton v-if="canEdit" type="primary" :icon="EditPen" :disabled="voiding" @click="editOpen = true">编辑</ElButton>
