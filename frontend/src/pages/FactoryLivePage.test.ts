@@ -5,14 +5,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import FactoryLivePage from './FactoryLivePage.vue'
 import LiveTeamCard from '@/components/LiveTeamCard.vue'
 import FactoryRobot from '@/components/FactoryRobot.vue'
+import AnimatedMetric from '@/components/AnimatedMetric.vue'
 import { factoryLiveApi } from '@/services/factoryLiveApi'
 import type { InventorySubscription } from '@/services/inventoryStream'
 import { factoryFixture } from '@/testFixtures/factoryOverview'
-import type { FactoryLive, LiveBatch } from '@/types/factoryLive'
+import type { FactoryLive } from '@/types/factoryLive'
 
 function fixture(): FactoryLive {
-  return { ...factoryFixture(), today: { outgoing_quantity: 180, received_batches: 3 }, teams: factoryFixture().teams.map(t => ({ ...t, incoming: 2, outgoing: 1 })), links: [],
-    recent_batches: Array.from({ length: 20 }, (_, i) => ({ batch_no: 'CK-DEMO-' + i, entry_kind: 'transfer', source_id: 1, target_id: 8, source_name: '库房', target_name: '检验', external_destination: null, status: i === 1 ? 'partial' : 'pending', quantity: 20 + i, weight: 2, line_count: 2, serial_count: 2, material_count: 1, material_name: '6061铝', waiting_since: '2026-09-12T01:00:00Z', updated_at: '2026-09-12T01:00:00Z' })) }
+  const base = factoryFixture()
+  return { ...base, today: { outgoing_quantity: 180, received_batches: 3 }, links: [], recent_batches: [],
+    material_stock: ['铜钼 CuMo70', '钨铜 WCu80', '无氧铜 TU1', '紫铜 T2', '钼片 Mo1', '铝合金 6061', '铜钼 CuMo50'].map((key, i) => ({key,quantity:10+i,weight:1+i/10})),
+    teams: base.teams.map((team, i) => ({ ...team, incoming: 4, outgoing: 1,
+      pending_transfers: Array.from({ length: 5 }, (_, j) => ({
+        batch_no: 'CK-' + i + '-' + j, serial_no: 'SERIAL-' + i + '-' + j,
+        source_id: (i + 7) % 8 + 1, target_id: team.id!, source_name: base.teams[(i + 7) % 8]!.name,
+        quantity: 20 + j, weight: 2 + j / 10, updated_at: '2026-09-12T01:00:00Z',
+      })),
+    })),
+  }
 }
 let wrapper: VueWrapper
 let subscription: InventorySubscription<FactoryLive>, stops: ReturnType<typeof vi.fn>[]
@@ -21,6 +31,9 @@ let viewport = { width: 1672, height: 940 }
 beforeEach(() => {
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-09-12T01:10:00Z'))
+  vi.spyOn(performance, 'now').mockImplementation(() => Date.now())
+  vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => window.setTimeout(() => callback(performance.now()), 20)))
+  vi.stubGlobal('cancelAnimationFrame', vi.fn((id: number) => window.clearTimeout(id)))
   viewport = { width: 1672, height: 940 }
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => viewport.width)
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(() => viewport.height)
@@ -48,166 +61,285 @@ async function click(label: string) {
   await wrapper.findAll('button').find(b => b.text().trim() === label || b.attributes('aria-label') === label)!.trigger('click')
   await flushPromises()
 }
-const tableRows = () => wrapper.getComponent({ name: 'ElTable' }).props('data') as LiveBatch[]
-function assertLinked(code: string) {
-  expect(tableRows()[0]!.batch_no).toBe(code)
-  expect(wrapper.getComponent(FactoryRobot).props('activityKey')).toContain(code + ':')
-  expect(wrapper.get('.current-flow__code').text()).toContain(code)
-  expect(wrapper.get('.broadcast-window').text()).toContain(tableRows()[0]!.quantity + '件')
+function assertLinked(team: number, row: number) {
+  const code = 'CK-' + team + '-' + row
+  expect(wrapper.getComponent(FactoryRobot).props('activityKey')).toContain(code + ':SERIAL-')
+  expect(wrapper.findAllComponents(LiveTeamCard)[team]!.findAll('.live-team__row')[0]!.attributes('data-batch')).toBe(code)
 }
-describe('first-row-driven material dashboard', () => {
-  it('retains 2K density and all eight groups on narrow screens, with no flow-line canvas', async () => {
+function scrollOffset() { return Number.parseFloat((wrapper.element as HTMLElement).style.getPropertyValue('--transfer-offset') || '0') }
+describe('symmetric pending-transfer dashboard', () => {
+  it('shows both quantity and weight for full material grades, factory stock and transit', async () => {
     await render()
-    viewport = { width: 2560, height: 1440 }; window.dispatchEvent(new Event('resize')); await flushPromises()
-    expect(wrapper.getComponent(FactoryRobot).props('displayScale')).toBeCloseTo(2560 / 1672)
-    expect(wrapper.find('.live-connections').exists()).toBe(false)
-    viewport = { width: 390, height: 844 }; window.dispatchEvent(new Event('resize')); await flushPromises()
-    expect(wrapper.classes()).toContain('factory-live--narrow')
-    expect(wrapper.findAllComponents(LiveTeamCard)).toHaveLength(8)
-    viewport = { width: 2560, height: 1440 }; window.dispatchEvent(new Event('resize')); await flushPromises()
-    expect(wrapper.classes()).not.toContain('factory-live--narrow')
+    const summary = wrapper.get('.live-metrics')
+    expect(summary.text()).toContain('全厂在库')
+    expect(summary.findAll('.material-name').map(n => n.text())).toEqual(['铜钼 CuMo70', '钨铜 WCu80', '无氧铜 TU1'])
+    expect(wrapper.findAllComponents(AnimatedMetric).slice(0, 8).map(n => n.props('value'))).toEqual([fixture().totals.on_hand_quantity, fixture().totals.on_hand_weight, 10, 1, 11, 1.1, 12, 1.2])
+    expect(wrapper.get('.transit-hint').text()).toBe(`· 在途 ${fixture().totals.in_transit_quantity} 件 / ${fixture().totals.in_transit_weight} kg`)
+    expect(wrapper.findAll('.metric-quantity')).toHaveLength(4)
+    expect(wrapper.findAll('.metric-weight')).toHaveLength(4)
+    expect(wrapper.findAll('.metric-quantity').every(n => n.text().endsWith('件'))).toBe(true)
+    expect(wrapper.findAll('.metric-weight').every(n => n.text().endsWith('kg'))).toBe(true)
+    expect(summary.text()).not.toMatch(/半成品|今日转出|待交接|今日已接收/)
   })
-  it('shows eight different machines and eight real rows from a larger feed', async () => {
+  it('cycles all materials in groups of three and allows manual paging while paused', async () => {
     await render()
-    expect(wrapper.get('.live-metrics').text()).toContain('当前在库')
-    expect(wrapper.get('.transit-hint').text()).toContain('在途 1 kg')
-    expect(wrapper.findAllComponents(LiveTeamCard)[0]!.props('team').balance?.on_hand_weight).toBe(2.8)
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(wrapper.findAll('.material-name')[0]!.text()).toBe('铜钼 CuMo70')
+    await vi.advanceTimersByTimeAsync(1)
+    expect(wrapper.findAll('.material-name').map(n => n.text())).toEqual(['紫铜 T2', '钼片 Mo1', '铝合金 6061'])
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(wrapper.findAll('.material-name').map(n => n.text())).toEqual(['铜钼 CuMo50'])
+    await click('暂停轮播')
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(wrapper.findAll('.material-name').map(n => n.text())).toEqual(['铜钼 CuMo50'])
+    await click('下一组材质')
+    expect(wrapper.findAll('.material-name')[0]!.text()).toBe('铜钼 CuMo70')
+    await click('上一组材质')
+    expect(wrapper.findAll('.material-name')[0]!.text()).toBe('铜钼 CuMo50')
+  })
+  it('pushes weights without resetting the material page and clamps pages after stocks disappear', async () => {
+    await render()
+    await click('下一组材质')
+    const update = fixture(); update.material_stock[3]!.weight = 123.456; update.material_stock[3]!.quantity = 9876
+    push(update); await flushPromises()
+    expect(wrapper.findAll('.material-name')[0]!.text()).toBe('紫铜 T2')
+    expect(wrapper.get('.live-material .metric-weight').getComponent(AnimatedMetric).props('value')).toBe(123.456)
+    expect(wrapper.get('.live-material .metric-quantity').getComponent(AnimatedMetric).props('value')).toBe(9876)
+    push({ ...update, material_stock: update.material_stock.slice(0, 2) }); await flushPromises()
+    expect(wrapper.findAll('.material-name')).toHaveLength(2)
+    expect(wrapper.find('.material-pager').exists()).toBe(false)
+    push({ ...update, material_stock: [] }); await flushPromises()
+    expect(wrapper.text()).toContain('暂无在库材质')
+  })
+  it('cycles material weights even when there are no pending transfers', async () => {
+    await render()
+    const value = fixture(); value.teams.forEach(team => { team.pending_transfers = [] })
+    push(value); await flushPromises()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(wrapper.findAll('.material-name')[0]!.text()).toBe('紫铜 T2')
+    expect(wrapper.getComponent(FactoryRobot).props('paused')).toBe(true)
+  })
+  it('keeps quantity and precise weight together in every team transfer, including zero quantities', async () => {
+    await render()
+    wrapper.findAllComponents(LiveTeamCard).forEach(card => {
+      const rows = card.props('rows')
+      card.findAll('.live-team__amount').forEach((cell, index) => {
+        expect(cell.text()).toBe(`${rows[index]!.quantity} 件 / ${rows[index]!.weight} kg`)
+      })
+    })
+    const update = fixture()
+    update.teams[0]!.pending_transfers[0]!.quantity = 0
+    update.teams[0]!.pending_transfers[0]!.weight = 0.125
+    update.totals.on_hand_quantity = 0
+    update.totals.on_hand_weight = 0
+    update.material_stock[0] = { key: '铜钼 CuMo70', quantity: 0, weight: 0.125 }
+    push(update); await flushPromises()
+    expect(wrapper.findAllComponents(LiveTeamCard)[0]!.get('.live-team__amount').text()).toBe('0 件 / 0.125 kg')
+    expect(wrapper.get('.live-stock-total .metric-quantity').getComponent(AnimatedMetric).props('value')).toBe(0)
+    expect(wrapper.get('.live-stock-total .metric-weight').getComponent(AnimatedMetric).props('value')).toBe(0)
+    expect(wrapper.get('.live-material .metric-quantity').getComponent(AnimatedMetric).props('value')).toBe(0)
+    expect(wrapper.get('.live-material .metric-weight').getComponent(AnimatedMetric).props('value')).toBe(0.125)
+  })
+  it('shows eight machines and three-row windows with one entering buffer row per team', async () => {
+    await render()
     expect(wrapper.findAllComponents(LiveTeamCard)).toHaveLength(8)
+    expect(wrapper.findAll('[role="columnheader"]')).toHaveLength(24)
+    expect(wrapper.findAll('.live-team__row')).toHaveLength(32)
+    expect(wrapper.findAll('.live-team__track.is-scrolling')).toHaveLength(8)
     const images = wrapper.findAll('.live-team__machine').map(n => n.attributes('src'))
     expect(new Set(images).size).toBe(8)
     expect(images[4]).toContain('wire-cut'); expect(images[5]).toContain('engraving')
-    expect(tableRows()).toHaveLength(8)
-    expect(wrapper.get('.live-footer').text()).toContain('最近20条')
-    assertLinked('CK-DEMO-0')
+    expect(wrapper.findAll('.is-right')).toHaveLength(4)
+    expect(wrapper.find('.transfer-dock, .live-feed, .live-broadcast, .live-footer, .live-connections').exists()).toBe(false)
+    const first = wrapper.findAllComponents(LiveTeamCard)[0]!
+    expect(first.get('.live-team__columns').text()).toContain('来源班组')
+    expect(first.findAll('.live-team__source')[0]!.text()).toBe('检验')
+    expect(first.text()).not.toContain('当前结存')
+    expect(wrapper.get('.flow-layout').text()).not.toMatch(/[→←]/)
+    expect(wrapper.get('.live-connection').text()).toBe('实时同步')
+    assertLinked(0, 0)
   })
-  it('refreshes physical inventory and transit together without changing the batch identity', async () => {
+  it('keeps equal eight-team composition at 2K and all teams on narrow viewports', async () => {
     await render()
-    const accepted = fixture()
-    accepted.totals.on_hand_weight = 3.8
-    accepted.totals.in_transit_weight = 0
-    accepted.recent_batches[0]!.status = 'received'
-    vi.mocked(factoryLiveApi.get).mockResolvedValueOnce(accepted)
-    await click('刷新物料状态')
-    expect(wrapper.get('.transit-hint').text()).toContain('在途 0 kg')
-    expect(wrapper.get('.current-flow').text()).toContain('已接收')
-    assertLinked('CK-DEMO-0')
+    viewport = { width: 2560, height: 1440 }; window.dispatchEvent(new Event('resize')); await flushPromises()
+    expect(wrapper.getComponent(FactoryRobot).props('displayScale')).toBeCloseTo(2560 / 1672)
+    viewport = { width: 390, height: 844 }; window.dispatchEvent(new Event('resize')); await flushPromises()
+    expect(wrapper.classes()).toContain('factory-live--narrow')
+    expect(wrapper.findAllComponents(LiveTeamCard)).toHaveLength(8)
   })
-  it('moves row one every eight seconds and keeps the robot and broadcast synchronized', async () => {
+  it('moves continuously at 32 pixels per three seconds and wraps each list without a gap', async () => {
     await render()
-    await vi.advanceTimersByTimeAsync(24000)
-    assertLinked('CK-DEMO-3')
-    await click('上一条转料')
-    assertLinked('CK-DEMO-2')
+    await vi.advanceTimersByTimeAsync(500)
+    expect(scrollOffset()).toBeCloseTo(-32 / 6)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(scrollOffset()).toBeCloseTo(-32 / 3)
+    await vi.advanceTimersByTimeAsync(1999)
+    assertLinked(0, 0)
+    await vi.advanceTimersByTimeAsync(1)
+    assertLinked(1, 1)
+    expect(wrapper.findAllComponents(LiveTeamCard)[0]!.findAll('.live-team__row')[0]!.attributes('data-batch')).toBe('CK-0-1')
+    expect(scrollOffset()).toBeCloseTo(0)
+    await vi.advanceTimersByTimeAsync(6000)
+    assertLinked(3, 3)
+    await click('暂停轮播')
     await vi.advanceTimersByTimeAsync(12000)
-    assertLinked('CK-DEMO-2')
-    expect(wrapper.getComponent(FactoryRobot).props('paused')).toBe(true)
+    assertLinked(3, 3)
+    // Pausing text rotation leaves the current robot's handoff animation running.
+    expect(wrapper.getComponent(FactoryRobot).props('paused')).toBe(false)
+    await click('播放轮播')
+    await vi.advanceTimersByTimeAsync(3000)
+    assertLinked(4, 4)
+    await vi.advanceTimersByTimeAsync(3000)
+    assertLinked(5, 0)
+    expect(wrapper.findAllComponents(LiveTeamCard)[0]!.findAll('.live-team__row').map(row => row.attributes('data-batch'))).toEqual(['CK-0-0', 'CK-0-1', 'CK-0-2', 'CK-0-3'])
   })
-  it('freezes on hover, keyboard reading, hidden pages and refresh failures; disposes subscriptions', async () => {
+  it('pauses mid-row and resumes from the same pixel instead of snapping back', async () => {
     await render()
-    await wrapper.get('.live-feed').trigger('mouseenter')
-    await vi.advanceTimersByTimeAsync(10000)
-    assertLinked('CK-DEMO-0')
-    expect(wrapper.getComponent(FactoryRobot).props('paused')).toBe(true)
-    await wrapper.get('.live-feed').trigger('focusin')
-    await wrapper.get('.live-feed').trigger('mouseleave')
-    expect(wrapper.getComponent(FactoryRobot).props('paused')).toBe(true)
-    await wrapper.get('.live-feed').trigger('focusout', { relatedTarget: null })
+    await vi.advanceTimersByTimeAsync(1000)
+    const offset = scrollOffset()
+    await click('暂停轮播')
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(scrollOffset()).toBe(offset)
+    assertLinked(0, 0)
+    await click('播放轮播')
+    expect(scrollOffset()).toBe(offset)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(scrollOffset()).toBeCloseTo(-64 / 3)
+    await vi.advanceTimersByTimeAsync(1000)
+    assertLinked(1, 1)
+  })
+  it('selects a team on heading click without pausing rotation or live updates', async () => {
+    const router = await render()
+    await click('展示轧制转料')
+    expect(router.currentRoute.value.path).toBe('/factory-live')
+    assertLinked(1, 0)
+    expect(wrapper.text()).toContain('暂停轮播')
+    await vi.advanceTimersByTimeAsync(3000)
+    assertLinked(2, 1)
+    const updated = fixture()
+    updated.teams[2]!.pending_transfers.shift()
+    push(updated); await flushPromises()
+    assertLinked(2, 1)
+    await click('暂停轮播')
+    await click('展示轧制转料')
+    await vi.advanceTimersByTimeAsync(4000)
+    assertLinked(1, 1)
+    expect(wrapper.text()).toContain('播放轮播')
+  })
+  it('removes confirmed rows on pushes even while hovered, without stopping live totals', async () => {
+    await render()
+    await wrapper.get('.team-rail').trigger('mouseenter')
+    const updated = fixture()
+    updated.teams[0]!.pending_transfers.shift()
+    updated.totals.on_hand_weight = 456
+    push(updated); await flushPromises()
+    assertLinked(0, 1)
+    expect(wrapper.get('.live-stock-total .metric-weight').getComponent(AnimatedMetric).props('value')).toBe(456)
+    expect(wrapper.getComponent(FactoryRobot).props('paused')).toBe(false)
+    await wrapper.get('.team-rail').trigger('focusin')
+    await vi.advanceTimersByTimeAsync(3000)
+    assertLinked(1, 1)
+    expect(wrapper.findAllComponents(LiveTeamCard)[0]!.findAll('.live-team__row')[0]!.attributes('data-batch')).toBe('CK-0-2')
+    await wrapper.get('.team-rail').trigger('mouseleave')
+    expect(wrapper.getComponent(FactoryRobot).props('paused')).toBe(false)
+  })
+  it('does not retrigger unchanged pushes or reset a rolling window on refresh', async () => {
+    await render()
+    await vi.advanceTimersByTimeAsync(3500)
+    const key = wrapper.getComponent(FactoryRobot).props('activityKey')
+    const offset = scrollOffset()
+    push(fixture()); await flushPromises()
+    expect(wrapper.getComponent(FactoryRobot).props('activityKey')).toBe(key)
+    expect(scrollOffset()).toBe(offset)
+    await click('刷新物料状态')
+    expect(wrapper.getComponent(FactoryRobot).props('activityKey')).toBe(key)
+    expect(scrollOffset()).toBe(offset)
+  })
+  it('freezes for hidden pages and refresh errors', async () => {
+    await render()
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(true); document.dispatchEvent(new Event('visibilitychange'))
     await vi.advanceTimersByTimeAsync(30000)
-    expect(factoryLiveApi.get).not.toHaveBeenCalled()
+    assertLinked(0, 0)
     expect(stops[0]).toHaveBeenCalledOnce()
+    expect(factoryLiveApi.get).not.toHaveBeenCalled()
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(false); document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
     vi.mocked(factoryLiveApi.get).mockRejectedValueOnce(new Error('offline'))
     await click('刷新物料状态')
     expect(wrapper.text()).toContain('保留上次成功数据')
     expect(wrapper.getComponent(FactoryRobot).props('paused')).toBe(true)
-    wrapper.unmount(); await vi.advanceTimersByTimeAsync(60000)
-    expect(factoryLiveApi.get).toHaveBeenCalledOnce()
-    expect(factoryLiveApi.subscribe).toHaveBeenCalledTimes(2)
-    expect(stops[1]).toHaveBeenCalledOnce()
   })
-  it('defers incoming records while paused, then triggers the new first row on resume', async () => {
-    await render()
-    await click('暂停轮播')
-    const updated = fixture()
-    updated.recent_batches.unshift({ ...updated.recent_batches[0]!, batch_no: 'CK-NEW', quantity: 88 })
-    updated.totals.on_hand_weight = 456
-    push(updated); await flushPromises()
-    assertLinked('CK-DEMO-0')
-    expect(wrapper.get('.live-metrics').text()).toContain('456')
-    expect(wrapper.get('.live-footer').text()).toContain('播报待恢复')
-    await click('播放轮播')
-    assertLinked('CK-NEW')
-    expect(wrapper.getComponent(FactoryRobot).props('paused')).toBe(false)
-  })
-  it('does not retrigger unchanged refreshes, but propagates changed status to the first-row action', async () => {
-    await render()
-    const key = wrapper.getComponent(FactoryRobot).props('activityKey')
-    await click('刷新物料状态')
-    expect(wrapper.getComponent(FactoryRobot).props('activityKey')).toBe(key)
-    const updated = fixture(); updated.recent_batches[0]!.status = 'received'; updated.recent_batches[0]!.waiting_since = null
-    vi.mocked(factoryLiveApi.get).mockResolvedValue(updated)
-    await click('刷新物料状态')
-    expect(wrapper.getComponent(FactoryRobot).props('activityKey')).toContain(':received:')
-    expect(wrapper.get('.current-flow').text()).toContain('已接收')
-  })
-  it('pauses reduced-motion mode and never fabricates a batch in an empty feed', async () => {
+  it('honestly renders empty or missing teams and does not invent transfer rows', async () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener() {}, removeEventListener() {} }))
     await render()
     await vi.advanceTimersByTimeAsync(16000)
-    assertLinked('CK-DEMO-0')
+    assertLinked(0, 0)
     expect(wrapper.getComponent(FactoryRobot).props('paused')).toBe(true)
-    const empty = fixture(); empty.recent_batches = []
-    vi.mocked(factoryLiveApi.get).mockResolvedValue(empty); await click('刷新物料状态')
-    expect(tableRows()).toHaveLength(0)
+    const empty = fixture(); empty.teams.forEach(team => { team.pending_transfers = [] })
+    empty.teams[0]!.id = null
+    push(empty); await flushPromises()
+    expect(wrapper.findAll('.live-team__row')).toHaveLength(0)
+    expect(wrapper.text()).toContain('班组未配置')
+    expect(wrapper.text()).toContain('暂无待接收转料')
     expect(wrapper.getComponent(FactoryRobot).props('activityKey')).toBe('')
-    expect(wrapper.getComponent(FactoryRobot).props('paused')).toBe(true)
   })
-  it('opens actual ledgers and batch details without changing the first-row selection', async () => {
+  it('keeps one to three rows static without duplicating them to fill a scrolling track', async () => {
+    await render()
+    const value = fixture()
+    value.teams[0]!.pending_transfers = value.teams[0]!.pending_transfers.slice(0, 1)
+    value.teams[1]!.pending_transfers = value.teams[1]!.pending_transfers.slice(0, 2)
+    value.teams[2]!.pending_transfers = value.teams[2]!.pending_transfers.slice(0, 3)
+    push(value); await flushPromises()
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(wrapper.findAllComponents(LiveTeamCard)[0]!.findAll('.live-team__row')).toHaveLength(1)
+    expect(wrapper.findAllComponents(LiveTeamCard)[1]!.findAll('.live-team__row')).toHaveLength(2)
+    expect(wrapper.findAllComponents(LiveTeamCard)[2]!.findAll('.live-team__row')).toHaveLength(3)
+    for (const card of wrapper.findAllComponents(LiveTeamCard).slice(0, 3)) expect(card.find('.is-scrolling').exists()).toBe(false)
+    assertLinked(1, 0)
+  })
+  it('opens the actual CK detail from a serial row', async () => {
     const router = await render()
-    await click('查看线切割库存明细')
-    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/5?tab=stock')
-    await wrapper.get('.current-flow__code').trigger('click'); await flushPromises()
-    expect(router.currentRoute.value.fullPath).toBe('/transfer-batches/scan?batch_no=CK-DEMO-0')
-    wrapper.getComponent({ name: 'ElTable' }).vm.$emit('row-click', tableRows()[1]); await flushPromises()
-    expect(router.currentRoute.value.fullPath).toBe('/transfer-batches/scan?batch_no=CK-DEMO-1')
+    await wrapper.findAll('.live-team__serial')[0]!.trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/transfer-batches/scan?batch_no=CK-0-0')
     await click('返回系统总览')
     expect(router.currentRoute.value.path).toBe('/')
   })
-  it('shows a retryable initial error instead of invented zero inventory', async () => {
+  it('shows an initial stream error without fabricated rows', async () => {
     vi.mocked(factoryLiveApi.subscribe).mockImplementation(callbacks => { subscription = callbacks; callbacks.onState('reconnecting'); return vi.fn() })
     await render()
     expect(wrapper.text()).toContain('物料状态加载失败')
     expect(wrapper.findAllComponents(LiveTeamCard)).toHaveLength(0)
   })
-  it('updates from pushed snapshots without polling and rejects callbacks after unmount', async () => {
+  it('uses SSE without polling and disposes subscriptions on exit', async () => {
     await render()
-    const updated = fixture(); updated.recent_batches.unshift({ ...updated.recent_batches[0]!, batch_no: 'CK-PUSH' })
-    push(updated); await flushPromises()
-    assertLinked('CK-PUSH')
     const current = subscription
     subscription.onState('reconnecting'); await flushPromises()
     expect(wrapper.text()).toContain('连接中断')
-    expect(tableRows()[0]!.batch_no).toBe('CK-PUSH')
     await vi.advanceTimersByTimeAsync(60000)
     expect(factoryLiveApi.get).not.toHaveBeenCalled()
     wrapper.unmount()
     current.onData(fixture()); current.onState('live')
     expect(stops[0]).toHaveBeenCalledOnce()
   })
-  it('does not let an older manual request overwrite a later pushed snapshot', async () => {
+  it('cancels the animation frame loop on exit', async () => {
+    await render()
+    await vi.advanceTimersByTimeAsync(1000)
+    wrapper.unmount()
+    const frames = vi.mocked(requestAnimationFrame).mock.calls.length
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(frames)
+  })
+  it('rejects stale manual reads arriving after a newer pushed receipt', async () => {
     await render()
     let finish!: (value: FactoryLive) => void
     vi.mocked(factoryLiveApi.get).mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
     await click('刷新物料状态')
-    const updated = fixture(); updated.recent_batches[0]!.status = 'received'
+    const updated = fixture(); updated.teams[0]!.pending_transfers.shift()
     push(updated); await flushPromises()
     finish(fixture()); await flushPromises()
-    expect(wrapper.get('.current-flow').text()).toContain('已接收')
-    assertLinked('CK-DEMO-0')
+    assertLinked(0, 1)
   })
-  it('recognizes entry-triggered fullscreen and exits it when returning to the system', async () => {
+  it('exits entry-triggered fullscreen when returning to the system', async () => {
     let fullscreenElement: Element | null = document.documentElement
     Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => fullscreenElement })
     const exitFullscreen = vi.fn(async () => { fullscreenElement = null; document.dispatchEvent(new Event('fullscreenchange')) })
@@ -215,13 +347,11 @@ describe('first-row-driven material dashboard', () => {
     try {
       const router = await render()
       expect(wrapper.classes()).toContain('factory-live--fullscreen')
-      expect(wrapper.find('button[aria-label="退出全屏"]').exists()).toBe(true)
       await click('返回系统总览')
       expect(exitFullscreen).toHaveBeenCalledOnce()
       expect(router.currentRoute.value.path).toBe('/')
     } finally {
-      Reflect.deleteProperty(document, 'fullscreenElement')
-      Reflect.deleteProperty(document, 'exitFullscreen')
+      Reflect.deleteProperty(document, 'fullscreenElement'); Reflect.deleteProperty(document, 'exitFullscreen')
     }
   })
 })

@@ -16,7 +16,7 @@ export function subscribeInventory(subscription: InventorySubscription): () => v
 }
 export function subscribeFactoryLive(subscription: InventorySubscription<FactoryLive>): () => void {
   return subscribeStream('/factory-overview/live/stream', 'factory-live', subscription,
-    data => Boolean(data?.as_of && data?.totals && data?.today && Array.isArray(data?.teams) && Array.isArray(data?.recent_batches)))
+    data => Boolean(data?.as_of && data?.totals && data?.today && Array.isArray(data?.teams) && Array.isArray(data?.recent_batches) && Array.isArray(data?.material_stock)))
 }
 export function subscribeInventoryChanges(subscription: InventorySubscription<{ changed: boolean }>): () => void {
   return subscribeStream('/factory-overview/changes', 'inventory-changed', subscription, data => data?.changed === true)

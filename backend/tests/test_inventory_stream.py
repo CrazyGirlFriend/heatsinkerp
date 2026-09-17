@@ -85,9 +85,13 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
         try:
             first = await snapshot()
             assert first['totals']['on_hand_quantity'] == 0
+            if view == 'factory-live':
+                assert first['material_stock'] == []
             lot = (await asyncio.to_thread(intake, client, warehouse)).json()
             stocked = await snapshot()
             assert stocked['totals']['on_hand_quantity'] == 100
+            if view == 'factory-live':
+                assert stocked['material_stock'] == [{'key': '铜钼', 'quantity': 100, 'weight': 10.125}]
             response = await asyncio.to_thread(client.post, f"/api/team-materials/{warehouse['team']['id']}/dispatches",
                 headers=warehouse['headers'], json={'next_team_id': warehouse['other']['id'], 'idempotency_key': 'stream-out',
                 'lines': [{'source_transfer_id': lot['id'], 'quantity': 30, 'weight': 3}]})
@@ -95,6 +99,8 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
             moved = await snapshot()
             assert moved['totals']['on_hand_quantity'] == 70
             assert moved['totals']['in_transit_quantity'] == 30
+            if view == 'factory-live':
+                assert moved['material_stock'] == [{'key': '铜钼', 'quantity': 70, 'weight': 7.125}]
             assert moved['teams'][1]['pending_incoming']['quantity'] == 30
             line = response.json()['items'][0]
             response = await asyncio.to_thread(client.post, f"/api/material-transfers/{line['batch_no']}/confirm",
@@ -103,6 +109,8 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
             received = await snapshot()
             assert received['totals']['on_hand_quantity'] == 100
             assert received['totals']['in_transit_quantity'] == 0
+            if view == 'factory-live':
+                assert received['material_stock'] == [{'key': '铜钼', 'quantity': 100, 'weight': 10.125}]
             assert received['teams'][1]['balance']['on_hand_quantity'] == 30
             assert received['teams'][1]['pending_incoming']['quantity'] == 0
             response = await asyncio.to_thread(client.post, f"/api/team-materials/{warehouse['team']['id']}/losses",
@@ -112,6 +120,8 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
             lost = await snapshot()
             assert lost['totals']['on_hand_quantity'] == 98
             assert lost['teams'][0]['balance']['on_hand_quantity'] == 68
+            if view == 'factory-live':
+                assert lost['material_stock'] == [{'key': '铜钼', 'quantity': 98, 'weight': 10}]
             response = await asyncio.to_thread(client.put, '/api/serial-urgency',
                 json={'serial_no': lot['serial_no'], 'urgent': True, 'expected_version': 0})
             assert response.status_code == 200

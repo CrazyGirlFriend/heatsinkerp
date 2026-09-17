@@ -37,7 +37,7 @@ describe('authenticated inventory SSE', () => {
     const onData = vi.fn(), onState = vi.fn()
     stop = subscribeFactoryLive({ onData, onState }); await flushPromises()
     expect(fetch).toHaveBeenCalledWith('/api/factory-overview/live/stream', expect.any(Object))
-    const report = { ...factoryFixture(), today: { outgoing_quantity: 10, received_batches: 1 }, recent_batches: [] }
+    const report = { ...factoryFixture(), today: { outgoing_quantity: 10, received_batches: 1 }, recent_batches: [], material_stock: [{key:'铜钼 CuMo70',quantity:10,weight:1}] }
     push(`event: factory-live\ndata: ${JSON.stringify(report)}\n\n`); await flushPromises()
     expect(onData).toHaveBeenCalledWith(report)
     push('event: factory-live\ndata: {}\n\n'); await flushPromises()

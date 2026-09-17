@@ -25,6 +25,18 @@ def stock_rankings(db, stock, in_scope, remaining, column):
             .order_by(table.c[unit].desc(), table.c.key).limit(8)) for unit in ("quantity", "weight")}
 
 
+def material_stock_summary(db, team_ids):
+    # Full material names/grades, not material nature or a truncated top-eight ranking.
+    # Reuse physical balances so transit, losses and confirmed external exits are not counted twice.
+    stock = stock_table()
+    name = func.coalesce(func.nullif(func.trim(stock.c.material_name), ""), "未填写材质")
+    return amounts(db, select(name.label("key"),
+        func.sum(stock.c.on_hand_quantity).label("quantity"),
+        func.sum(stock.c.on_hand_weight).label("weight"))
+        .where(stock.c.team_id.in_(team_ids), or_(stock.c.on_hand_quantity > 0, stock.c.on_hand_weight > 0))
+        .group_by(name).order_by(name))
+
+
 def recent_batches(db, involved, limit=12):
     # Aggregate complete CK groups before LIMIT; never present one child line as
     # an entire batch. This is a latest-state feed, not a fabricated event log.
@@ -159,6 +171,10 @@ def live_endpoint(db: Session = Depends(get_db)):
             .where(pending, column.in_(ids)).group_by(column)).all())
         for team in report["teams"]:
             team[key] = counts.get(team["id"], 0) if team["id"] else None
+    # Group pending internal receipts by receiving team, using each serial's
+    # own amounts and only unaccepted lines in partially received CKs.
+    for team in report["teams"]:
+        team["pending_transfers"] = pending_transfer_rows(db, team["id"]) if team["id"] else []
     # Only actual team-to-team handoffs create edges. External operations remain
     # visible in the batch feed, never as a fictitious receiving team or robot.
     since = datetime.fromisoformat(report["as_of"]).replace(tzinfo=None) - timedelta(hours=24)
@@ -170,4 +186,21 @@ def live_endpoint(db: Session = Depends(get_db)):
             or_(pending, confirmed)).group_by(mt.source_team_id, mt.next_team_id)
       .order_by(mt.source_team_id, mt.next_team_id)).mappings()
     return {**{key: report[key] for key in ("as_of", "teams", "totals", "pending", "recent_batches", "legacy_received_count")},
-            "today": today, "links": [dict(row) for row in links]}
+            "today": today, "links": [dict(row) for row in links],
+            "material_stock": material_stock_summary(db, ids)}
+
+
+def pending_transfer_rows(db, team_id):
+    code = func.coalesce(MaterialDispatch.dispatch_no, mt.batch_no)
+    rows = db.execute(select(code.label("batch_no"), mt.serial_no,
+        mt.source_team_id.label("source_id"), mt.next_team_id.label("target_id"),
+        func.min(mt.source_team_name).label("source_name"),
+        func.sum(mt.quantity).label("quantity"), func.sum(mt.weight).label("weight"),
+        func.max(mt.updated_at).label("updated_at"))
+        .outerjoin(MaterialDispatch, mt.dispatch_id == MaterialDispatch.id)
+        .where(mt.next_team_id == team_id, mt.entry_kind == "transfer", mt.status == "pending")
+        .group_by(code, mt.serial_no, mt.source_team_id, mt.next_team_id)
+        .order_by(func.max(mt.updated_at).desc(), code.desc(), mt.serial_no)
+        .limit(100)).mappings()
+    return [{**dict(row), "quantity": int(row["quantity"] or 0), "weight": float(row["weight"] or 0),
+             "updated_at": row["updated_at"].replace(tzinfo=timezone.utc).isoformat()} for row in rows]
