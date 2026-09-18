@@ -7,12 +7,12 @@ import StatePanel from './StatePanel.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
-import { warehouseSourceLabel, type WarehouseInventoryRow } from '@/types/warehouseInventory'
+import { inventorySourceLabel, type TeamInventoryRow } from '@/types/teamInventory'
 import type { StockBatch } from '@/types/teamMaterials'
 import { stockAvailable } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
 
-const props = defineProps<{ teamId: number; group: WarehouseInventoryRow | null; canWrite?: boolean }>()
+const props = defineProps<{ teamId: number; group: TeamInventoryRow | null; canWrite?: boolean; warehouse?: boolean }>()
 const emit = defineEmits<{ close: []; changed: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]] }>()
 const rows = ref<StockBatch[]>([]), total = ref(0), page = ref(1), pageSize = ref(10)
 const loading = ref(false), error = ref('')
@@ -25,7 +25,7 @@ async function load(background = false) {
   if (!background) { loading.value = true; rows.value = [] }
   error.value = ''
   try {
-    const result = await teamMaterialApi.warehouseSources(props.teamId, props.group.group_id, { page: page.value, page_size: pageSize.value })
+    const result = await teamMaterialApi.inventorySources(props.teamId, props.group.group_id, { page: page.value, page_size: pageSize.value })
     if (current === version) { rows.value = result.items; total.value = result.total }
   } catch (e) { if (current === version) { if (background) throw e; error.value = e instanceof Error ? e.message : '来源明细加载失败' } }
   finally { if (current === version) loading.value = false }
@@ -48,7 +48,7 @@ onBeforeUnmount(() => { ++version })
       <ElDescriptionsItem label="材质">{{ group.material_name || '—' }}</ElDescriptionsItem>
       <ElDescriptionsItem label="规格">{{ group.transfer_specification || '—' }}</ElDescriptionsItem>
       <ElDescriptionsItem label="物料类型">{{ materialTypeLabel(group.material_type || null) }}</ElDescriptionsItem>
-      <ElDescriptionsItem label="来源" :span="2">{{ warehouseSourceLabel(group) }}</ElDescriptionsItem>
+      <ElDescriptionsItem :label="warehouse ? '来源' : '上序班组'" :span="2">{{ inventorySourceLabel(group, warehouse) }}</ElDescriptionsItem>
     </ElDescriptions>
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取来源批次" />

@@ -4,8 +4,7 @@ import { reactive } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TeamWorkspacePage from './TeamWorkspacePage.vue'
-import TeamSerialOverview from '@/components/TeamSerialOverview.vue'
-import WarehouseInventory from '@/components/WarehouseInventory.vue'
+import TeamInventory from '@/components/TeamInventory.vue'
 import TeamMaterialAnalysis from '@/components/TeamMaterialAnalysis.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
 import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
@@ -13,7 +12,8 @@ import MaterialBatchPrintDialog from '@/components/MaterialBatchPrintDialog.vue'
 import { materialDispatchApi } from '@/services/materialDispatchApi'
 import { dispatchFixture } from '@/testFixtures/materialDispatch'
 import { ElPagination } from 'element-plus'
-import { analyticsFixture, serialFixture } from '@/testFixtures/materialAnalytics'
+import { analyticsFixture } from '@/testFixtures/materialAnalytics'
+import { warehouseFixture } from '@/testFixtures/teamInventory'
 import MaterialStockActionDialog from '@/components/MaterialStockActionDialog.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
 import WarehouseReceiptDialog from '@/components/WarehouseReceiptDialog.vue'
@@ -37,8 +37,7 @@ beforeEach(() => {
   state.directory = reactive({ ...state.directory, loaded: true, loading: false, error: '' })
   vi.spyOn(teamMaterialApi, 'overview').mockImplementation(async () => ({ ...summary }))
   vi.spyOn(teamMaterialApi, 'analytics').mockResolvedValue(analyticsFixture())
-  vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
-  vi.spyOn(teamMaterialApi, 'warehouseInventory').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
+  vi.spyOn(teamMaterialApi, 'teamInventory').mockResolvedValue({ items: [], total: 45, page: 1, page_size: 10 })
   vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({ items: [source(), source(11)], total: 2, page: 1, page_size: 10 })
   vi.spyOn(teamMaterialApi, 'dispatches').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
   vi.spyOn(teamMaterialApi, 'receipts').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
@@ -61,41 +60,41 @@ describe('team workspace material ledger', () => {
     expect(wrapper.findAll('[role=tab]').filter(item => item.text() === '库存明细')).toHaveLength(1)
     expect(wrapper.text()).not.toContain('流水号台账')
     expect(teamMaterialApi.stock).not.toHaveBeenCalled()
-    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ availability: 'available', query: 'AL', date_from: '2026-09-12', urgent_only: true, page: 2, page_size: 20 }))
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, expect.objectContaining({ availability: 'current', query: 'AL', date_from: '2026-09-12', urgent_only: true, page: 2, page_size: 20 }))
   })
   it('coalesces pushed changes, preserves filters and drafts, and closes its stream', async () => {
     vi.useFakeTimers()
     const router = await render('/team-workspaces/914?tab=stock&query=AL&page=2&page_size=20')
     await wrapper.get('input[aria-label="库存明细搜索"]').setValue('还未查询')
     await wrapper.findAll('button').find(button => button.text() === '新建出库')!.trigger('click'); await flushPromises()
-    const before = vi.mocked(teamMaterialApi.serials).mock.calls.length
+    const before = vi.mocked(teamMaterialApi.teamInventory).mock.calls.length
     for (let index = 0; index < 12; index++) subscription.onData({ changed: true })
     await vi.advanceTimersByTimeAsync(110); await flushPromises()
-    expect(teamMaterialApi.serials).toHaveBeenCalledTimes(before + 1)
-    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ query: 'AL', page: 2, page_size: 20 }))
+    expect(teamMaterialApi.teamInventory).toHaveBeenCalledTimes(before + 1)
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, expect.objectContaining({ query: 'AL', page: 2, page_size: 20 }))
     expect(router.currentRoute.value.query.page).toBe('2')
     expect((wrapper.get('input[aria-label="库存明细搜索"]').element as HTMLInputElement).value).toBe('还未查询')
     expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(true)
     subscription.onState('reconnecting'); await flushPromises()
     expect(wrapper.text()).toContain('实时连接中断')
-    const count = vi.mocked(teamMaterialApi.serials).mock.calls.length
+    const count = vi.mocked(teamMaterialApi.teamInventory).mock.calls.length
     wrapper.unmount(); subscription.onData({ changed: true }); await vi.advanceTimersByTimeAsync(1000)
     expect(stopStream).toHaveBeenCalledOnce()
-    expect(teamMaterialApi.serials).toHaveBeenCalledTimes(count)
+    expect(teamMaterialApi.teamInventory).toHaveBeenCalledTimes(count)
   })
   it('keeps the last table on a pushed read failure and reconnects after becoming visible', async () => {
     vi.useFakeTimers()
     await render('/team-workspaces/914?tab=stock')
     const table = wrapper.get('.el-table').element
-    vi.mocked(teamMaterialApi.serials).mockRejectedValueOnce(new Error('offline'))
+    vi.mocked(teamMaterialApi.teamInventory).mockRejectedValueOnce(new Error('offline'))
     subscription.onData({ changed: true }); await vi.advanceTimersByTimeAsync(110); await flushPromises()
     expect(wrapper.get('.el-table').element).toBe(table)
     expect(wrapper.text()).toContain('保留上次结果')
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(true); document.dispatchEvent(new Event('visibilitychange'))
     expect(stopStream).toHaveBeenCalledOnce()
-    const count = vi.mocked(teamMaterialApi.serials).mock.calls.length
+    const count = vi.mocked(teamMaterialApi.teamInventory).mock.calls.length
     subscription.onData({ changed: true }); await vi.advanceTimersByTimeAsync(1000)
-    expect(teamMaterialApi.serials).toHaveBeenCalledTimes(count)
+    expect(teamMaterialApi.teamInventory).toHaveBeenCalledTimes(count)
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(false); document.dispatchEvent(new Event('visibilitychange'))
     expect(inventoryStream.subscribeInventoryChanges).toHaveBeenCalledTimes(2)
   })
@@ -125,24 +124,24 @@ describe('team workspace material ledger', () => {
     expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(false)
   })
   it('defaults to ten records and keeps selectable page sizes without a fixed table height', async () => {
-    vi.mocked(teamMaterialApi.serials).mockResolvedValue({ items: Array.from({ length: 10 }, (_, index) => serialFixture(`SERIAL-${index}`)), total: 45, page: 1, page_size: 10 })
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: Array.from({ length: 10 }, (_, index) => warehouseFixture({ group_id: index + 1, serial_no: `SERIAL-${index}` })), total: 45, page: 1, page_size: 10 })
     await render('/team-workspaces/914?tab=stock')
     expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(10)
     const pagination = wrapper.getComponent(ElPagination)
     expect(pagination.props('pageSizes')).toEqual([10, 20, 50, 100])
     expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBeUndefined()
-    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ page_size: 10 }))
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, expect.objectContaining({ page_size: 10 }))
     pagination.vm.$emit('size-change', 20)
     await flushPromises()
-    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ page: 1, page_size: 20 }))
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, expect.objectContaining({ page: 1, page_size: 20 }))
     expect(wrapper.vm.$route.query.page_size).toBe('20')
     wrapper.getComponent(ElPagination).vm.$emit('size-change', 10)
     await flushPromises()
-    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ page: 1, page_size: 10 }))
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, expect.objectContaining({ page: 1, page_size: 10 }))
     expect(wrapper.vm.$route.query.page_size).toBe('10')
     wrapper.getComponent(ElPagination).vm.$emit('size-change', 100)
     await flushPromises()
-    expect(teamMaterialApi.serials).toHaveBeenLastCalledWith(914, expect.objectContaining({ page: 1, page_size: 100 }))
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, expect.objectContaining({ page: 1, page_size: 100 }))
   })
   it('provides separate analysis, serial and material pages with authoritative balances', async () => {
     await render()
@@ -159,18 +158,18 @@ describe('team workspace material ledger', () => {
     expect(wrapper.find('a[href*="next_team_id=914"]').exists()).toBe(true)
     expect(materialTransferApi.list).not.toHaveBeenCalled()
     expect(wrapper.findComponent(TeamMaterialAnalysis).exists()).toBe(false)
-    expect(wrapper.findComponent(TeamSerialOverview).exists()).toBe(true)
+    expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
     await wrapper.get('#workspace-tab-overview').trigger('click'); await flushPromises()
     expect(wrapper.findComponent(TeamMaterialAnalysis).exists()).toBe(true)
     expect(wrapper.text()).toContain('309')
     expect(wrapper.text()).toContain('30.95')
     expect(wrapper.text()).toContain('内部在途')
-    expect(wrapper.findComponent(TeamSerialOverview).exists()).toBe(false)
+    expect(wrapper.findComponent(TeamInventory).exists()).toBe(false)
     await wrapper.get('#workspace-tab-stock').trigger('click'); await flushPromises()
     expect(wrapper.findComponent(TeamMaterialAnalysis).exists()).toBe(false)
-    expect(wrapper.findComponent(TeamSerialOverview).exists()).toBe(true)
+    expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
     vi.mocked(teamMaterialApi.overview).mockClear()
-    wrapper.getComponent(TeamSerialOverview).vm.$emit('changed'); await flushPromises()
+    wrapper.getComponent(TeamInventory).vm.$emit('changed'); await flushPromises()
     expect(teamMaterialApi.overview).toHaveBeenCalledWith(914)
   })
   it.each(['serials', 'stock', 'outgoing', 'pending', 'receipts', 'losses', 'materials', 'overview'])('keeps workspace actions beside navigation for %s without duplicating query controls', async tab => {
@@ -193,8 +192,8 @@ describe('team workspace material ledger', () => {
     await render()
     expect(wrapper.findAll('button').some(button => button.text() === '新建出库')).toBe(false)
     expect(wrapper.text()).toContain('仅查看')
-    expect(wrapper.getComponent(TeamSerialOverview).props('canWrite')).toBe(false)
-    wrapper.getComponent(TeamSerialOverview).vm.$emit('action', 'loss', [source()]); await flushPromises()
+    expect(wrapper.getComponent(TeamInventory).props('canWrite')).toBe(false)
+    wrapper.getComponent(TeamInventory).vm.$emit('action', 'loss', [source()]); await flushPromises()
     expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(false)
   })
   it('places search and scanning in one toolbar without removing date or urgency filters', async () => {
@@ -223,9 +222,9 @@ describe('team workspace material ledger', () => {
   })
   it('accepts batch actions from serial detail and preserves the dialog on an unchanged focus refresh', async () => {
     await render('/team-workspaces/914?tab=stock&query=AL&material_type=sludge&availability=all&page=2')
-    expect(teamMaterialApi.serials).toHaveBeenCalledWith(914, expect.objectContaining({ query: 'AL', material_type: 'sludge', availability: 'all', page: 2, page_size: 10 }))
-    expect(wrapper.getComponent(TeamSerialOverview).props('canWrite')).toBe(true)
-    wrapper.getComponent(TeamSerialOverview).vm.$emit('action', 'dispatch', [source(), source(11)]); await flushPromises()
+    expect(teamMaterialApi.teamInventory).toHaveBeenCalledWith(914, expect.objectContaining({ query: 'AL', material_type: 'sludge', availability: 'all', page: 2, page_size: 10 }))
+    expect(wrapper.getComponent(TeamInventory).props('canWrite')).toBe(true)
+    wrapper.getComponent(TeamInventory).vm.$emit('action', 'dispatch', [source(), source(11)]); await flushPromises()
     expect(wrapper.getComponent(MaterialStockActionDialog).props('sources').map((item: StockBatch) => item.transfer.id)).toEqual([10, 11])
     expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(true)
     state.directory.loading = true; await flushPromises(); state.directory.items = [...state.directory.items]; state.directory.loading = false; await flushPromises()
@@ -235,11 +234,11 @@ describe('team workspace material ledger', () => {
     expect(wrapper.text()).not.toContain('批量出库')
   })
   it('discards stale balances and stock when the route changes to another team', async () => {
-    let resolveOld!: (value: Awaited<ReturnType<typeof teamMaterialApi.serials>>) => void
-    vi.mocked(teamMaterialApi.serials).mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve }))
+    let resolveOld!: (value: Awaited<ReturnType<typeof teamMaterialApi.teamInventory>>) => void
+    vi.mocked(teamMaterialApi.teamInventory).mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve }))
     const router = await render('/team-workspaces/914?tab=stock')
     await router.push('/team-workspaces/900?tab=stock'); await flushPromises()
-    resolveOld({ items: [serialFixture('SERIAL-STALE')], total: 900, page: 1, page_size: 10 }); await flushPromises()
+    resolveOld({ items: [warehouseFixture({ serial_no: 'SERIAL-STALE' })], total: 900, page: 1, page_size: 10 }); await flushPromises()
     expect(wrapper.text()).not.toContain('SERIAL-STALE')
     expect(wrapper.get('h1').text()).toBe('库存明细')
     expect(wrapper.get('.team-workspace').attributes('aria-label')).toBe('检验工作台')
@@ -291,18 +290,17 @@ describe('warehouse intake workspace', () => {
     state.auth.currentUser.team_id = 901
     await render('/team-workspaces/901')
     expect(wrapper.findAll('[role=tab]')).toHaveLength(5)
-    expect(wrapper.findComponent(WarehouseInventory).exists()).toBe(true)
-    expect(wrapper.findComponent(TeamSerialOverview).exists()).toBe(false)
+    expect(wrapper.getComponent(TeamInventory).props('warehouse')).toBe(true)
     expect(wrapper.get('button[aria-label="库房统计"]').text()).toContain('统计')
     const button = wrapper.findAll('button').find(button => button.text() === '新建入库')!
     expect(button.exists()).toBe(true)
     await button.trigger('click'); await flushPromises()
     expect(wrapper.getComponent(WarehouseReceiptDialog).props('modelValue')).toBe(true)
-    vi.mocked(teamMaterialApi.overview).mockClear(); vi.mocked(teamMaterialApi.warehouseInventory).mockClear(); vi.mocked(teamMaterialApi.receipts).mockClear()
+    vi.mocked(teamMaterialApi.overview).mockClear(); vi.mocked(teamMaterialApi.teamInventory).mockClear(); vi.mocked(teamMaterialApi.receipts).mockClear()
     wrapper.getComponent(WarehouseReceiptDialog).vm.$emit('saved', normalizeMaterialTransfer({ entry_kind: 'warehouse_receipt', batch_no: 'TL-NEW', next_team: { id: 901, name: '库房' } }))
     await flushPromises()
     expect(teamMaterialApi.overview).toHaveBeenCalledWith(901)
-    expect(teamMaterialApi.warehouseInventory).toHaveBeenCalledWith(901, expect.any(Object))
+    expect(teamMaterialApi.teamInventory).toHaveBeenCalledWith(901, expect.any(Object))
     expect(teamMaterialApi.receipts).toHaveBeenCalledWith(901, expect.any(Object))
   })
   it('keeps warehouse intake records searchable and read-only for other teams', async () => {

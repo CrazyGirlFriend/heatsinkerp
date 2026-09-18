@@ -1,4 +1,4 @@
-"""Warehouse balances grouped by serial, material nature, specification and origin.
+"""Shared team balances grouped by serial, nature, specification and origin.
 
 Aggregate the shared stock ledger before filtering/pagination. A row's anchor is
 an actual received lot; it also scopes drill-down and outbound source selection.
@@ -21,7 +21,7 @@ from .record_filters import RecordFilters, day_bounds, urgent_serials
 from .serial_urgency import urgency_dict, urgency_map
 from .warehouse_receipts import require_warehouse
 
-router = APIRouter(prefix="/api/team-materials", tags=["warehouse inventory"])
+router = APIRouter(prefix="/api/team-materials", tags=["classified inventory"])
 mt = MaterialTransfer
 WarehouseSearchField = Literal[SearchField, "source", "on_hand_quantity", "on_hand_weight"]
 
@@ -92,7 +92,7 @@ def group_conditions(table, anchor):
 
 
 def list_inventory(db, team_id, filters):
-    require_warehouse(require_team(db, team_id))
+    require_team(db, team_id)
     table = warehouse_groups(team_id, filters)
     conditions = [table.c.matches_date == 1]
     if filters.availability != "all":
@@ -166,12 +166,12 @@ def list_inventory(db, team_id, filters):
 
 
 def list_group_sources(db, team_id, group_id, user, *, page=1, page_size=20, current_only=False, query=None, record_filters=None):
-    require_warehouse(require_team(db, team_id))
+    require_team(db, team_id)
     origins = origin_columns()
     anchor = db.execute(select(*(column.label(name) for name, column in origins.items())).where(
         mt.id == group_id, mt.next_team_id == team_id, mt.status == "received", mt.stock_tracked.is_(True))).mappings().first()
     if anchor is None:
-        raise HTTPException(404, "未找到该库房的库存来源")
+        raise HTTPException(404, "未找到该班组的库存来源")
     stock = stock_table(team_id)
     statement = select(mt, stock).join(stock, stock.c.transfer_id == mt.id).where(*group_conditions(origins, anchor))
     if current_only:
@@ -185,16 +185,34 @@ def list_group_sources(db, team_id, group_id, user, *, page=1, page_size=20, cur
             "total": total, "page": page, "page_size": page_size}
 
 
-@router.get("/{team_id}/warehouse-inventory")
+@router.get("/{team_id}/inventory")
 def inventory_endpoint(filters: Annotated[WarehouseInventoryFilters, Query()], team_id: int = Path(ge=1),
                        _: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return list_inventory(db, team_id, filters)
 
 
-@router.get("/{team_id}/warehouse-inventory/{group_id}/sources")
+@router.get("/{team_id}/inventory/{group_id}/sources")
 def sources_endpoint(record_filters: RecordFilters = Depends(), team_id: int = Path(ge=1), group_id: int = Path(ge=1),
                      page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100),
                      current_only: bool = False, query: str | None = Query(default=None, max_length=160),
                      user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return list_group_sources(db, team_id, group_id, user, page=page, page_size=page_size,
+                              current_only=current_only, query=query, record_filters=record_filters)
+
+
+# Keep published warehouse URLs scoped to the warehouse for existing clients.
+@router.get("/{team_id}/warehouse-inventory", include_in_schema=False)
+def legacy_inventory_endpoint(filters: Annotated[WarehouseInventoryFilters, Query()], team_id: int = Path(ge=1),
+                              _: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    require_warehouse(require_team(db, team_id))
+    return list_inventory(db, team_id, filters)
+
+
+@router.get("/{team_id}/warehouse-inventory/{group_id}/sources", include_in_schema=False)
+def legacy_sources_endpoint(record_filters: RecordFilters = Depends(), team_id: int = Path(ge=1), group_id: int = Path(ge=1),
+                            page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100),
+                            current_only: bool = False, query: str | None = Query(default=None, max_length=160),
+                            user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    require_warehouse(require_team(db, team_id))
     return list_group_sources(db, team_id, group_id, user, page=page, page_size=page_size,
                               current_only=current_only, query=query, record_filters=record_filters)

@@ -10,8 +10,7 @@ import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
 import TeamWorkspaceActions from '@/components/TeamWorkspaceActions.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
 import TeamMaterialOverviewPanel from '@/components/TeamMaterialOverview.vue'
-import TeamSerialOverview from '@/components/TeamSerialOverview.vue'
-import WarehouseInventory from '@/components/WarehouseInventory.vue'
+import TeamInventory from '@/components/TeamInventory.vue'
 import TeamMaterialAnalysis from '@/components/TeamMaterialAnalysis.vue'
 import MaterialAmount from '@/components/MaterialAmount.vue'
 import MaterialStockActionDialog from '@/components/MaterialStockActionDialog.vue'
@@ -285,8 +284,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
           <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料结存" />
           <StatePanel v-else-if="overviewError" state="error" :description="overviewError" @retry="loadView" />
           <TeamMaterialAnalysis v-else-if="overview && tab === 'overview'" :key="teamId" :team-id="teamId" :overview="overview" />
-          <WarehouseInventory v-else-if="overview && tab === 'stock' && isWarehouse" :key="teamId" :team-id="teamId" :overview="overview" :can-write="canWrite" @changed="loadView" @action="openAction" />
-          <TeamSerialOverview v-else-if="overview && tab === 'stock'" :key="teamId" :team-id="teamId" :overview="overview" :can-write="canWrite" @changed="loadView" @action="openAction" />
+          <TeamInventory v-else-if="overview && tab === 'stock'" :key="teamId" :team-id="teamId" :warehouse="isWarehouse" :overview="overview" :can-write="canWrite" @changed="loadView" @action="openAction" />
           <TeamMaterialOverviewPanel v-else-if="overview" :overview="overview" @filter="router.push({ path: route.path, query: { tab: 'stock', material_name: $event, filter_label: `库存材质：${$event}` } })" />
         </template>
         <template v-else>

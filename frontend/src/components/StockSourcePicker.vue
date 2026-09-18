@@ -35,7 +35,7 @@ async function load() {
   loading.value = true; error.value = ''; rows.value = []
   try {
     const params = { date_from: dates.value.from || undefined, date_to: dates.value.to || undefined, urgent_only: urgentOnly.value || undefined, query: appliedQuery.value || undefined, page: page.value, page_size: pageSize.value }
-    const result = props.groupId ? await teamMaterialApi.warehouseSources(props.teamId, props.groupId, { ...params, current_only: true }) : await teamMaterialApi.stock(props.teamId, { ...params, availability: 'dispatchable' })
+    const result = props.groupId ? await teamMaterialApi.inventorySources(props.teamId, props.groupId, { ...params, current_only: true }) : await teamMaterialApi.stock(props.teamId, { ...params, availability: 'dispatchable' })
     if (current !== version) return
     rows.value = result.items; total.value = result.total
     for (const row of result.items) {

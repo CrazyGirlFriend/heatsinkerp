@@ -3,7 +3,7 @@ import { normalizeMaterialTransfer } from './materialTransferApi'
 import type { CreateWarehouseReceipt, WarehouseReceiptParams, CreatedMaterialBatches } from '@/types/teamMaterials'
 import { isExternalEntryKind } from '@/types/materialTransfer'
 import type { MaterialAnalytics, Metric, SerialParams, SerialSummary } from '@/types/materialAnalytics'
-import type { WarehouseGroupParams, WarehouseInventoryParams, WarehouseInventoryRow } from '@/types/warehouseInventory'
+import type { WarehouseGroupParams, TeamInventoryParams, TeamInventoryRow } from '@/types/teamInventory'
 import { balanceFields, type MaterialBalance, type TeamMaterialOverview, type StockBatch, type StockParams, type MaterialPage, type MaterialPageParams, type MaterialLoss, type MaterialDispatch, type DispatchParams, type CreateDispatch, type CreateLoss } from '@/types/teamMaterials'
 
 type Raw = Record<string, unknown>
@@ -50,8 +50,8 @@ async function page<T>(url: string, normalize: (raw: unknown) => T): Promise<Mat
   return { items: raw.items.map(normalize), total: Number(raw.total), page: Number(raw.page), page_size: Number(raw.page_size) }
 }
 export const teamMaterialApi = {
-  warehouseInventory(teamId: number, params: WarehouseInventoryParams = {}) { return request<MaterialPage<WarehouseInventoryRow>>(path(teamId, 'warehouse-inventory', params)) },
-  warehouseSources(teamId: number, groupId: number, params: WarehouseGroupParams = {}) { return page(path(teamId, `warehouse-inventory/${groupId}/sources`, params), stock) },
+  teamInventory(teamId: number, params: TeamInventoryParams = {}) { return page(path(teamId, 'inventory', params), value => ({ ...record(value), ...balance(value) } as unknown as TeamInventoryRow)) },
+  inventorySources(teamId: number, groupId: number, params: WarehouseGroupParams = {}) { return page(path(teamId, `inventory/${groupId}/sources`, params), stock) },
   analytics(teamId: number, params: { days?: 7 | 30; metric?: Metric } = {}) { return request<MaterialAnalytics>(path(teamId, 'analytics', params)) },
   serials(teamId: number, params: SerialParams = {}) { return request<MaterialPage<SerialSummary>>(path(teamId, 'serials', params)) },
   async overview(teamId: number): Promise<TeamMaterialOverview> {

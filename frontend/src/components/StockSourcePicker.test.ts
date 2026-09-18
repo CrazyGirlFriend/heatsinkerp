@@ -18,17 +18,17 @@ async function render() {
 const nextButton = () => wrapper.findAll('button').find(button => button.text() === '下一步：填写出库')!
 describe('stock selection for new outbound', () => {
   it('restricts a warehouse row to its group across filters and clears selection if the group changes', async () => {
-    vi.spyOn(teamMaterialApi, 'warehouseSources').mockResolvedValue({ items: [source(31)], total: 1, page: 1, page_size: 20 })
+    vi.spyOn(teamMaterialApi, 'inventorySources').mockResolvedValue({ items: [source(31)], total: 1, page: 1, page_size: 20 })
     wrapper = mount(StockSourcePicker, { props: { teamId: 901, groupId: 11, groupLabel: '000128 · 成品 · 车间转入 · 检验' }, global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } } })
     await flushPromises()
     expect(teamMaterialApi.stock).not.toHaveBeenCalled()
-    expect(teamMaterialApi.warehouseSources).toHaveBeenLastCalledWith(901, 11, expect.objectContaining({ current_only: true }))
+    expect(teamMaterialApi.inventorySources).toHaveBeenLastCalledWith(901, 11, expect.objectContaining({ current_only: true }))
     await wrapper.get('label[aria-label="选择出库 TL31"] input').setValue(true)
     await wrapper.get('input[aria-label="出库库存搜索"]').setValue('000128'); await wrapper.get('input[aria-label="出库库存搜索"]').trigger('keyup.enter'); await flushPromises()
-    expect(teamMaterialApi.warehouseSources).toHaveBeenLastCalledWith(901, 11, expect.objectContaining({ query: '000128', current_only: true }))
+    expect(teamMaterialApi.inventorySources).toHaveBeenLastCalledWith(901, 11, expect.objectContaining({ query: '000128', current_only: true }))
     await wrapper.setProps({ groupId: 12 }); await flushPromises()
     expect(nextButton().attributes('disabled')).toBeDefined()
-    expect(teamMaterialApi.warehouseSources).toHaveBeenLastCalledWith(901, 12, expect.objectContaining({ page: 1 }))
+    expect(teamMaterialApi.inventorySources).toHaveBeenLastCalledWith(901, 12, expect.objectContaining({ page: 1 }))
   })
   it('loads only this team’s available stock, supports paging and retains cross-page selections', async () => {
     await render()

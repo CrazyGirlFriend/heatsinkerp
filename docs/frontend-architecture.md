@@ -39,7 +39,7 @@ Nginx :80
 - `/access` 和 `/login` 是公开入口。
 - `/` 是独立全厂总览，使用 `FactoryOverviewPage`、`FactoryOverviewCharts` 和只读 `/api/factory-overview` 接口。浏览器 Fullscreen API 提供隐藏导航的深色大屏，保留现有登录保护。普通首页手动切页，大屏每 20 秒轮播三主题，4 秒轮显有效图表点、8 秒切换近期批次；支持暂停、锁屏及减少动态效果。`FactoryRecentBatches` 展示整批最新状态，`AnimatedMetric` 仅对真实数值变化做过渡。只在页面可见且开启自动刷新时每 60 秒取数，离开页面清理刷新/轮播计时器、动画帧、图表实例及监听。
 - `/transfer-batches`、`/transfer-batches/scan` 和 `/material-trace` 是一期业务入口。
-- `/team-workspaces/:teamId` 使用独立 `TeamWorkspacePage` 和共用工作台组件。数据分析、流水号台账、材质归类分别由 `TeamMaterialAnalysis`、`TeamSerialOverview`、`TeamMaterialOverview` 渲染，使用 `tab` 查询参数形成独立地址；不在同一页面叠加图表和流水号列表。另有待接收、已接收物料、出库、丢失，库房额外有入库记录。`config/teamWorkspaces.ts` 定义八个正式班组配置，通过稳定编码匹配数据库记录，不硬编码 ID，也不改管理员管理权限。
+- `/team-workspaces/:teamId` 使用独立 `TeamWorkspacePage` 和共用工作台组件。分类库存、数据分析、材质归类分别由 `TeamInventory`、`TeamMaterialAnalysis`、`TeamMaterialOverview` 渲染，使用 `tab` 查询参数形成独立地址；原流水号台账已合并到库存明细，不在同一页面叠加图表和库存列表。另有待接收、出库、丢失，库房额外有入库记录。`config/teamWorkspaces.ts` 定义八个正式班组配置，通过稳定编码匹配数据库记录，不硬编码 ID，也不改管理员管理权限。分类库存的全班组统一为本地待发布修改，见 [实施说明](team-classified-inventory.md)。
 - 班组和班组长设置通过 `adminOnly` 路由元数据限制管理员访问。
 - 旧工艺、工单、报工和产量 URL 统一重定向到 `/transfer-batches`，不删除历史数据。
 - 全局前置守卫依次校验站点访问锁、账号会话和管理员权限，并使用安全的站内重定向。
