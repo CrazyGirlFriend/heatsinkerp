@@ -44,7 +44,8 @@ const props = withDefaults(defineProps<{
   transfer?: MaterialTransfer | null
   traceScope?: Pick<MaterialTransferFilterParams, 'team_id' | 'direction'>
   docked?: boolean
-}>(), { batchNo: '', transfer: null, docked: false })
+  showHistoryGroup?: boolean
+}>(), { batchNo: '', transfer: null, docked: false, showHistoryGroup: true })
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -56,7 +57,7 @@ const emit = defineEmits<{
 
 const authStore = useAuthStore()
 const current = ref<MaterialTransfer | null>(null)
-const grouped = computed(() => Boolean(current.value?.dispatch_no && isDispatchNumber(current.value.dispatch_no)))
+const grouped = computed(() => Boolean(props.showHistoryGroup && current.value?.dispatch_no && isDispatchNumber(current.value.dispatch_no)))
 const groupOpen = ref(false)
 const receipt = computed(() => Boolean(current.value && isWarehouseReceipt(current.value)))
 const external = computed(() => Boolean(current.value && isExternalTransfer(current.value)))
@@ -77,9 +78,9 @@ watch([confirming, voiding], ([confirmBusy, voidBusy]) => emit('busyChange', con
 const effectiveBatchNo = computed(() => props.batchNo.trim() || props.transfer?.batch_no || '')
 const canEdit = computed(() => Boolean(current.value && !loadError.value && !loading.value && canEditMaterialTransfer(current.value)))
 const canVoid = computed(() => Boolean(current.value && !loadError.value && !loading.value && canVoidMaterialTransfer(current.value)))
-const canConfirm = computed(() => Boolean(!grouped.value && current.value && !loadError.value && !loading.value && canConfirmMaterialTransfer(current.value)))
-const canConfirmExternal = computed(() => Boolean(!grouped.value && current.value && !loadError.value && !loading.value && authStore.isTeamAccount && String(authStore.currentUser?.team_id) === String(current.value.source_team.id) && canConfirmOutbound(current.value)))
-const canReject = computed(() => Boolean(!grouped.value && current.value?.version && current.value.status === 'pending' && current.value.allowed_actions.includes('reject') && !loadError.value && !loading.value && authStore.isTeamAccount && authStore.currentUser?.active !== false && !authStore.currentUserError && String(authStore.currentUser?.team_id) === String(current.value.next_team.id)))
+const canConfirm = computed(() => Boolean(current.value && !loadError.value && !loading.value && canConfirmMaterialTransfer(current.value)))
+const canConfirmExternal = computed(() => Boolean(current.value && !loadError.value && !loading.value && authStore.isTeamAccount && String(authStore.currentUser?.team_id) === String(current.value.source_team.id) && canConfirmOutbound(current.value)))
+const canReject = computed(() => Boolean(current.value?.version && current.value.status === 'pending' && current.value.allowed_actions.includes('reject') && !loadError.value && !loading.value && authStore.isTeamAccount && authStore.currentUser?.active !== false && !authStore.currentUserError && String(authStore.currentUser?.team_id) === String(current.value.next_team.id)))
 watch(effectiveBatchNo, () => { reviewNotice.value = '' })
 const tracePath = computed(() => {
   if (!current.value?.serial_no) return ''
@@ -92,11 +93,11 @@ const tracePath = computed(() => {
 })
 const stateMessage = computed(() => {
   if (!current.value) return ''
-  if (grouped.value) return '这是整批中的一条物料明细，请打开所属批次核对或打印。'
+
   if (receipt.value) return '手工入库已入账，单据已锁定'
   if (authStore.isAdmin) return '管理员仅可查看转料记录'
   if (current.value.status === 'dispatched') return `${actionLabel.value}已确认，单据已锁定`
-  if (external.value && current.value.status === 'pending') return `已预留库存，由${current.value.source_team.name}确认实际${actionLabel.value}`
+  if (external.value && current.value.status === 'pending') return `已扣减库存，待${current.value.source_team.name}确认${actionLabel.value}`
   if (current.value.status === 'received') return '接收已确认，转料内容已锁定'
   if (current.value.status === 'voided') return '该转料单已作废'
   if (canConfirm.value) return '整单确认接收：无需重新录入数量或重量，请核对后确认。'
@@ -201,7 +202,7 @@ async function confirmExternal() {
   confirming.value = true
   try {
     await ElMessageBox.confirm(
-      `批次：${transfer.batch_no}\n材质：${transfer.material_name || '未填写'} · ${materialTypeLabel(transfer.material_type)}\n${verb}去向：${transfer.external_destination || '未填写'}\n数量：${numberText(transfer.quantity, '件')}、${numberText(transfer.weight, 'kg')}\n确认物料已实际${verb}？由${transfer.source_team.name}确认后扣减库存，单据将锁定。`,
+      `批次：${transfer.batch_no}\n材质：${transfer.material_name || '未填写'} · ${materialTypeLabel(transfer.material_type)}\n${verb}去向：${transfer.external_destination || '未填写'}\n数量：${numberText(transfer.quantity, '件')}、${numberText(transfer.weight, 'kg')}\n确认物料已实际${verb}？库存已在提交时扣减，本次确认仅锁定单据，不重复扣减。`,
       `确认${verb}`,
       { type: 'warning', confirmButtonText: `确认${verb}`, cancelButtonText: '取消', customClass: 'outbound-confirmation' },
     )
@@ -273,7 +274,7 @@ async function voidTransfer(): Promise<void> {
 
 async function printTransfer(): Promise<void> {
   if (!current.value) return
-  if (grouped.value) { groupOpen.value = true; return }
+
   printReady.value = true
   await nextTick()
   await nextTick()
@@ -350,7 +351,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
       <ElButton v-if="loadError" :loading="loading" @click="load">重新读取</ElButton>
       <ElAlert v-if="reviewNotice" class="review-notice" type="warning" :closable="false" :title="reviewNotice" show-icon />
       <ElAlert v-if="current.rejection_reason && current.status === 'pending'" type="warning" :closable="false" :title="'待上序修正：' + current.rejection_reason" />
-      <div class="document-barcode"><BarcodeCard :value="grouped ? current.dispatch_no! : current.barcode_payload || current.batch_no" :entity-label="grouped ? '整批出库' : receipt ? '入库批次号' : '转料批次号'" compact /><ElButton v-if="grouped" link type="primary" @click="groupOpen = true">打开所属整批 · {{ current.dispatch_no }}</ElButton></div>
+      <div class="document-barcode"><BarcodeCard :value="current.batch_no" :entity-label="receipt ? '入库批次号' : '转料批次号'" compact /><ElButton v-if="grouped" link type="primary" @click="groupOpen = true">历史合并记录 · {{ current.dispatch_no }}</ElButton></div>
       <MaterialTransferDocumentFields :transfer="current" group="all"><template #serial><RouterLink :to="tracePath">{{ current.serial_no }}</RouterLink><SerialUrgencyBadge :urgency="current.urgency" /></template></MaterialTransferDocumentFields>
       <section class="document-records"><h3>{{ receipt ? '入库记录' : '流转记录' }}</h3><MaterialTransferHistory :transfer="current" /></section>
       <section v-if="current.loss_records?.length" class="document-records"><h3>来源批次丢失记录</h3><div class="document-table-scroll"><table class="loss-record-table business-document-table" aria-label="来源批次丢失记录"><thead><tr><th scope="col">记录号</th><th scope="col">件数</th><th scope="col">重量（kg）</th><th scope="col">原因</th><th scope="col">登记人 / 时间</th></tr></thead><tbody><tr v-for="loss in current.loss_records" :key="loss.id"><td>{{ loss.loss_no }}</td><td>{{ loss.quantity }}</td><td>{{ loss.weight }}</td><td class="table-prose">{{ loss.reason }}</td><td>{{ loss.created_by }}<br />{{ formatDateTime(loss.created_at) }}</td></tr></tbody></table></div></section>
@@ -362,7 +363,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
         <ElButton v-if="canConfirm" type="primary" :icon="CircleCheck" :loading="confirming" @click="confirmReceipt">确认接收</ElButton>
         <ElButton v-if="canConfirmExternal" type="primary" :icon="CircleCheck" :loading="confirming" @click="confirmExternal">确认{{ actionLabel }}</ElButton>
         <ElButton v-if="canEdit" type="primary" :icon="EditPen" :disabled="voiding" @click="editOpen = true">编辑</ElButton>
-        <ElButton :icon="Printer" @click="printTransfer">{{ grouped ? '核对 / 打印整批' : receipt ? '打印入库单' : external ? `打印${actionLabel}单` : '打印转料单' }}</ElButton>
+        <ElButton :icon="Printer" @click="printTransfer">{{ receipt ? '打印入库单' : external ? `打印${actionLabel}单` : '打印转料单' }}</ElButton>
         <ElButton v-if="canVoid" type="danger" plain :icon="Delete" :loading="voiding" @click="voidTransfer">作废</ElButton>
       </div>
       <p class="permission-note" :title="stateMessage" aria-live="polite"><ElIcon><Lock /></ElIcon>{{ canConfirm ? '接收后本单将锁定。' : stateMessage }}</p>

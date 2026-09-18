@@ -338,7 +338,7 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
                 if field in supplied and getattr(payload, field) != getattr(transfer, field):
                     raise HTTPException(422, "stock-linked transfers must retain their source serial number and material")
             if "next_team_id" in supplied and payload.next_team_id != transfer.next_team_id:
-                raise HTTPException(422, "a dispatch group's destination cannot be changed on an individual line; void and recreate")
+                raise HTTPException(422, "a stock-linked batch's destination cannot be changed; void this batch and recreate")
             validate_available(db, transfer.stock_source, quantity, weight, exclude_transfer_id=transfer.id)
         target = transfer.next_team
         if "next_team_id" in supplied:

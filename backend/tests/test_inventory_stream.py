@@ -148,6 +148,44 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
     asyncio.run(run())
 
 
+@pytest.mark.parametrize('view', ['inventory', 'factory-live'])
+def test_external_submission_and_confirmation_push_the_same_remaining_stock(client, outbound, view):
+    async def run():
+        token = client.headers['Authorization'].split(' ', 1)[1]
+        stream = factory_stream.inventory_stream(LiveRequest(), HTTPAuthorizationCredentials(scheme='Bearer', credentials=token), view)
+        async def snapshot():
+            frame = await asyncio.wait_for(anext(stream), 2)
+            assert frame.startswith(f'event: {view}\n')
+            return json.loads(frame.split('data: ', 1)[1])
+        try:
+            assert (await snapshot())['totals']['on_hand_quantity'] == 200
+            response = await asyncio.to_thread(dispatch, client, outbound)
+            assert response.status_code == 201, response.text
+            submitted = await snapshot()
+            assert submitted['totals']['on_hand_quantity'] == submitted['totals']['available_quantity'] == 140
+            assert submitted['totals']['on_hand_weight'] == submitted['totals']['available_weight'] == 14
+            assert submitted['totals']['reserved_quantity'] == 60
+            assert submitted['totals']['in_transit_quantity'] == 0
+            if view == 'factory-live':
+                assert submitted['material_stock'] == [{'key': '铜钼', 'quantity': 140, 'weight': 14}]
+                assert all(not team['pending_transfers'] for team in submitted['teams'])
+            for index, item in enumerate(response.json()['items']):
+                url = '/api/material-transfers/' + item['batch_no']
+                response = await asyncio.to_thread(client.post, url + '/confirm-outbound', headers=outbound['headers'],
+                    json={'idempotency_key': 'stream-external-confirm-' + item['batch_no'], 'expected_version': item['version']})
+                assert response.status_code == 200, response.text
+                confirmed = await snapshot()
+                assert confirmed['totals']['on_hand_quantity'] == 140
+                assert confirmed['totals']['on_hand_weight'] == 14
+                assert confirmed['totals']['reserved_quantity'] == (30 if index == 0 else 0)
+            if view == 'factory-live':
+                assert confirmed['material_stock'] == submitted['material_stock']
+        finally:
+            await stream.aclose()
+        assert not inventory_events._subscribers
+    asyncio.run(run())
+
+
 def test_failed_and_replayed_business_writes_do_not_publish(client, warehouse, monkeypatch):
     publish = Mock()
     monkeypatch.setattr(inventory_events, 'publish', publish)
@@ -292,14 +330,14 @@ def test_live_and_ledger_streams_both_receive_external_confirmation(client, outb
             response = await asyncio.to_thread(dispatch, client, outbound)
             assert response.status_code == 201
             group = response.json()
-            assert (await asyncio.wait_for(snapshot(), 2))['totals']['on_hand_quantity'] == 200
-            detail = client.get(f"/api/material-dispatches/{group['dispatch_no']}").json()
-            response = await asyncio.to_thread(client.post, f"/api/material-dispatches/{group['dispatch_no']}/confirm-outbound",
-                headers=outbound['headers'], json={'expected_revision': detail['revision'], 'idempotency_key': 'pushed-confirm'})
+            assert (await asyncio.wait_for(snapshot(), 2))['totals']['on_hand_quantity'] == 140
+            detail = group['items'][0]
+            response = await asyncio.to_thread(client.post, f"/api/material-transfers/{detail['batch_no']}/confirm-outbound",
+                headers=outbound['headers'], json={'expected_version': detail['version'], 'idempotency_key': 'pushed-confirm'})
             assert response.status_code == 200, response.text
             report = await asyncio.wait_for(snapshot(), 2)
             assert report['totals']['on_hand_quantity'] == 140
-            row = next(row for row in report['recent_batches'] if row['batch_no'] == group['dispatch_no'])
+            row = next(row for row in report['recent_batches'] if row['batch_no'] == detail['batch_no'])
             assert row['status'] == 'dispatched'
             assert row['target_id'] is None
         finally:

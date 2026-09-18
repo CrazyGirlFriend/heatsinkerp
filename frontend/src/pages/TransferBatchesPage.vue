@@ -340,7 +340,7 @@ async function scan(raw?: string): Promise<void> {
       detailTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
       selectedDispatchNo.value = group.dispatch_no; drawerOpen.value = false; groupOpen.value = true
       scanValue.value = ''; scanPanelOpen.value = false
-      showToast(`已读取整批 ${group.dispatch_no}，共 ${group.line_count} 条物料明细`, 'success')
+      showToast(`已读取历史合并记录，共 ${group.line_count} 个批次`, 'success')
       return
     }
     const transfer = await materialTransferApi.get(batchNo)
@@ -443,7 +443,7 @@ onBeforeUnmount(() => {
           <ElPopover v-model:visible="scanPanelOpen" trigger="click" placement="bottom-end" :width="400" popper-class="transfer-scan-popover" @show="focusScanner">
             <template #reference><ElButton class="scan-trigger" :icon="FullScreen" aria-label="扫码查询">扫码查询</ElButton></template>
             <div class="scan-popover-content">
-              <strong>扫描整批条码</strong><p>扫描 CK 打开整批单据，历史 TL 仍可查明细。</p>
+              <strong>扫描批次条码</strong><p>每个批次独立查询、核对与接收。</p>
               <ElInput ref="scanInput" v-model="scanValue" clearable autocomplete="off" aria-label="转料批次号" placeholder="扫描或输入批次号" :disabled="scanning" @keyup.enter="scan()">
                 <template #append><ElButton :icon="Search" :loading="scanning" :disabled="!scanValue.trim()" @click="scan()">查询</ElButton></template>
               </ElInput>

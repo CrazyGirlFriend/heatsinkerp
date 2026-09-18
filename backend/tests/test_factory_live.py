@@ -28,27 +28,29 @@ def test_live_preserves_eight_positions_and_requires_login(client):
         client.headers['Authorization'] = original
 
 
-def test_internal_ck_lines_count_once_and_partial_is_real(client, outbound):
+def test_each_internal_batch_counts_once_and_receives_independently(client, outbound):
     group = dispatch(client, outbound, entry_kind='transfer', external_destination=None, next_team_id=outbound['other']['id']).json()
     data = live(client)
     source = next(t for t in data['teams'] if t['id'] == outbound['team']['id'])
     target = next(t for t in data['teams'] if t['id'] == outbound['other']['id'])
-    assert source['outgoing'] == target['incoming'] == 1
+    assert source['outgoing'] == target['incoming'] == 2
     link = next(l for l in data['links'] if l['target_id'] == target['id'])
-    assert link == dict(source_id=source['id'], target_id=target['id'], pending_batches=1, confirmed_batches=0)
-    row = next(b for b in data['recent_batches'] if b['batch_no'] == group['dispatch_no'])
+    assert link == dict(source_id=source['id'], target_id=target['id'], pending_batches=2, confirmed_batches=0)
+    row = next(b for b in data['recent_batches'] if b['batch_no'] == group['items'][0]['batch_no'])
     assert row['source_id'] == source['id'] and row['target_id'] == target['id']
-    assert row['line_count'] == 2 and row['quantity'] == 60
+    assert row['line_count'] == 1 and row['quantity'] == 30
     assert source['pending_transfers'] == []
     assert data['material_stock'] == [{'key': '铜钼', 'quantity': 140, 'weight': 14}]
     receipts = target['pending_transfers']
     assert sorted(r['serial_no'] for r in receipts) == ['EXTERNAL-0', 'EXTERNAL-1']
-    assert all(r['batch_no'] == group['dispatch_no'] and r['source_id'] == source['id'] for r in receipts)
+    assert {r['batch_no'] for r in receipts} == {item['batch_no'] for item in group['items']}
+    assert all(r['source_id'] == source['id'] for r in receipts)
     assert all(r['quantity'] == 30 and r['weight'] == 3 for r in receipts)
     response = client.post(f"/api/material-transfers/{group['items'][0]['batch_no']}/confirm", headers=outbound['other_headers'], json={'idempotency_key': 'live-partial'})
     assert response.status_code == 200
     data = live(client)
-    assert next(b for b in data['recent_batches'] if b['batch_no'] == group['dispatch_no'])['status'] == 'partial'
+    assert next(b for b in data['recent_batches'] if b['batch_no'] == group['items'][0]['batch_no'])['status'] == 'received'
+    assert next(b for b in data['recent_batches'] if b['batch_no'] == group['items'][1]['batch_no'])['status'] == 'pending'
     link = next(l for l in data['links'] if l['target_id'] == target['id'])
     assert link['pending_batches'] == link['confirmed_batches'] == 1
     assert data['totals']['on_hand_quantity'] == 170
@@ -67,11 +69,11 @@ def test_internal_ck_lines_count_once_and_partial_is_real(client, outbound):
 def test_external_outbound_has_no_fictitious_receiving_node(client, outbound):
     group = dispatch(client, outbound).json()
     data = live(client)
-    row = next(b for b in data['recent_batches'] if b['batch_no'] == group['dispatch_no'])
+    row = next(b for b in data['recent_batches'] if b['batch_no'] == group['items'][0]['batch_no'])
     assert row['target_id'] is None and row['external_destination'] == '客户 A / 外部仓库'
     assert not any(l['source_id'] == outbound['team']['id'] for l in data['links'])
     assert all(t['pending_transfers'] == [] for t in data['teams'])
-    assert next(t for t in data['teams'] if t['id'] == outbound['team']['id'])['outgoing'] == 1
+    assert next(t for t in data['teams'] if t['id'] == outbound['team']['id'])['outgoing'] == 2
     for line in group['items']:
         assert confirm(client, outbound, line).status_code == 200
     assert next(t for t in live(client)['teams'] if t['id'] == outbound['team']['id'])['outgoing'] == 0
@@ -98,7 +100,7 @@ def test_background_edges_use_confirmation_time_and_keep_old_pending(client, out
     assert link['pending_batches'] == 0 and link['confirmed_batches'] == 1
 
 
-def test_live_material_and_serial_summary_uses_entire_batch(client, outbound):
+def test_same_serial_keeps_distinct_material_batches(client, outbound):
     group = dispatch(client, outbound, entry_kind='transfer', external_destination=None, next_team_id=outbound['other']['id']).json()
     with SessionLocal() as db:
         a, b = [db.get(MaterialTransfer, line['id']) for line in group['items']]
@@ -106,14 +108,14 @@ def test_live_material_and_serial_summary_uses_entire_batch(client, outbound):
         a.material_name, b.material_name = '6061铝', '紫铜'
         a.created_at, b.created_at = datetime(2026, 9, 10, 1), datetime(2026, 9, 11, 1)
         db.commit()
-    row = next(b for b in live(client)['recent_batches'] if b['batch_no'] == group['dispatch_no'])
-    assert row['serial_count'] == 1 and row['line_count'] == 2
-    assert row['material_count'] == 2 and row['material_name'] is None
+    row = next(b for b in live(client)['recent_batches'] if b['batch_no'] == group['items'][0]['batch_no'])
+    assert row['serial_count'] == 1 and row['line_count'] == 1
+    assert row['material_count'] == 1 and row['material_name'] == '6061铝'
     assert row['waiting_since'].startswith('2026-09-10T01:00:00')
     with SessionLocal() as db:
         db.get(MaterialTransfer, group['items'][0]['id']).status = 'voided'
         db.commit()
-    row = next(b for b in live(client)['recent_batches'] if b['batch_no'] == group['dispatch_no'])
+    row = next(b for b in live(client)['recent_batches'] if b['batch_no'] == group['items'][1]['batch_no'])
     assert row['material_name'] == '紫铜' and row['material_count'] == 1
     assert row['quantity'] == 30 and row['waiting_since'].startswith('2026-09-11T01:00:00')
 
@@ -132,12 +134,12 @@ def test_today_counts_internal_submission_and_complete_receipt_once(client, outb
         db.get(MaterialTransfer, group['items'][1]['id']).created_at = datetime(2026, 9, 11, 15, 59)
         a.status, a.received_at = 'received', datetime(2026, 9, 11, 16)
         db.commit()
-    assert live(client)['today'] == {'outgoing_quantity': 30, 'received_batches': 0}
+    assert live(client)['today'] == {'outgoing_quantity': 30, 'received_batches': 1}
     with SessionLocal() as db:
         b = db.get(MaterialTransfer, group['items'][1]['id'])
         b.status, b.received_at = 'received', now
         db.commit()
-    assert live(client)['today'] == {'outgoing_quantity': 30, 'received_batches': 1}
+    assert live(client)['today'] == {'outgoing_quantity': 30, 'received_batches': 2}
 
 
 def test_live_feed_is_not_limited_to_three_or_twelve_rows(client, outbound):
@@ -153,7 +155,7 @@ def test_live_feed_is_not_limited_to_three_or_twelve_rows(client, outbound):
     assert source['pending_transfers'] == []
     assert len(client.get('/api/factory-overview').json()['recent_batches']) == 12
 
-def test_pending_rows_aggregate_same_serial_without_repeating_ck_totals(client, outbound):
+def test_pending_rows_never_merge_distinct_batches_even_for_same_serial(client, outbound):
     group = dispatch(client, outbound, entry_kind='transfer', external_destination=None,
         next_team_id=outbound['other']['id']).json()
     with SessionLocal() as db:
@@ -161,7 +163,7 @@ def test_pending_rows_aggregate_same_serial_without_repeating_ck_totals(client, 
         a.serial_no = b.serial_no = 'SAME-SERIAL'
         db.commit()
     rows = next(t for t in live(client)['teams'] if t['id'] == outbound['other']['id'])['pending_transfers']
-    assert len(rows) == 1 and rows[0]['quantity'] == 60 and rows[0]['weight'] == 6
+    assert len(rows) == 2 and all(row['quantity'] == 30 and row['weight'] == 3 for row in rows)
     assert rows[0]['source_name'] == outbound['team']['name']
     with SessionLocal() as db:
         db.get(MaterialTransfer, group['items'][0]['id']).status = 'voided'
@@ -220,7 +222,7 @@ def test_material_stock_retains_unknown_grades_and_excludes_untracked_origins(cl
 
 def test_material_stock_external_exit_and_loss_follow_physical_balances(client, outbound):
     group = dispatch(client, outbound).json()
-    assert live(client)['material_stock'][0]['weight'] == 20
+    assert live(client)['material_stock'] == [{'key': '铜钼', 'quantity': 140, 'weight': 14}]
     for line in group['items']:
         assert confirm(client, outbound, line).status_code == 200
     assert live(client)['material_stock'][0]['weight'] == 14

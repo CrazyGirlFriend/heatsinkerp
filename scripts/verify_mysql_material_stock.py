@@ -24,6 +24,7 @@ from app import warehouse_receipts
 from app import material_dispatch_workflow as batches
 from app.models import MaterialDispatch, MaterialLoss, MaterialTransfer, User, Team
 from app.schemas import MaterialTransferCreate, MaterialTransferConfirm, MaterialTransferUpdate, WarehouseReceiptCreate
+from app.record_filters import RecordFilters
 
 
 def migration(filename):
@@ -121,6 +122,11 @@ def run():
             migration("20260907_0010_dispatch_confirmation.py").upgrade()
         assert any(fk["constrained_columns"] == ["confirmed_by_user_id"] for fk in sa.inspect(conn).get_foreign_keys("material_dispatches"))
         assert any(u["column_names"] == ["confirmation_idempotency_key"] for u in sa.inspect(conn).get_unique_constraints("material_dispatches"))
+        with Operations.context(MigrationContext.configure(conn)):
+            for filename in ("20260916_0013_warehouse_provenance.py", "20260918_0014_independent_batches.py"):
+                migration(filename).upgrade()
+                migration(filename).upgrade()
+        assert next(c for c in sa.inspect(conn).get_columns("material_dispatches") if c['name'] == 'dispatch_no')['nullable']
         conn.execute(sa.update(Team).where(Team.id == 2).values(code="FACTORY-QC"))
         conn.commit()
 
@@ -292,7 +298,35 @@ def run():
             {'source_transfer_id': lot['id'], 'quantity': 20, 'weight': Decimal('2.125')}
             for lot in (list(reversed(lots)) if reverse else lots)])
         with SessionLocal() as db:
-            return stock.create_dispatch(db, 2, payload, users[2])
+            created = stock.create_dispatch(db, 2, payload, users[2])
+            assert set(created) == {'items'}
+            assert len({item['batch_no'] for item in created['items']}) == len(created['items'])
+            # Deliberately construct an OLD CK record for legacy API concurrency checks.
+            header = db.get(MaterialDispatch, db.get(MaterialTransfer, created['items'][0]['id']).dispatch_id)
+            assert header.dispatch_no is None
+            header.dispatch_no = f'CK-LEGACY-{header.id}'
+            db.commit()
+            return stock.dispatch_dict(db, header, users[2])
+
+    independent_lots = [received('independent-1'), received('independent-2')]
+    independent_payload = stock.DispatchCreate(next_team_id=3, idempotency_key='independent-pair', lines=[
+        {'source_transfer_id': lot['id'], 'quantity': 20, 'weight': 2} for lot in independent_lots])
+    with SessionLocal() as db:
+        independent = stock.create_dispatch(db, 2, independent_payload, users[2])
+        assert set(independent) == {'items'} and len(independent['items']) == 2
+        assert all(item['dispatch_no'] is None for item in independent['items'])
+        assert stock.create_dispatch(db, 2, independent_payload, users[2]) == independent
+    first, second = independent['items']
+    with SessionLocal() as db:
+        workflow.confirm_material_transfer(db, first['batch_no'], MaterialTransferConfirm(idempotency_key='independent-receive'), users[3])
+        assert db.get(MaterialTransfer, second['id']).status == 'pending'
+    with SessionLocal() as db:
+        workflow.update_material_transfer(db, second['batch_no'], MaterialTransferUpdate(quantity=25, weight=Decimal('2.500'), expected_version=second['version']), users[2])
+        assert stock.list_outbound_batches(db, 2, users[2], record_filters=RecordFilters(), query='independent-', status='pending')['total'] == 1
+    with SessionLocal.begin() as db:
+        assert stock.available_locked(db, stock.lock_lot(db, independent_lots[0]['id'], 2)) == (80, Decimal('8.000'))
+        assert stock.available_locked(db, stock.lock_lot(db, independent_lots[1]['id'], 2)) == (75, Decimal('7.500'))
+    results['independent_receive_edit_and_retry'] = 'passed'
 
     def batch_confirm(group, key, *, external=False):
         payload = batches.DispatchConfirm(idempotency_key=key, expected_revision=group['revision'])
@@ -357,6 +391,21 @@ def run():
         replay = stock.dispatch_dict(stale_db, stale_header, users[3])
         assert replay['status'] == 'received' and replay['confirmed_at'] == done['confirmed_at']
         assert replay['confirmed_by'] == done['confirmed_by'] and replay['revision'] == done['revision']
+
+    from app.warehouse_inventory import WarehouseInventoryFilters, list_inventory, list_group_sources
+    with SessionLocal() as db:
+        groups = list_inventory(db, 4, WarehouseInventoryFilters(page_size=100))
+        assert groups['total'] == len(groups['items'])
+        summary = stock.overview(db, 4)
+        assert sum(row['on_hand_quantity'] for row in groups['items']) == summary['totals']['on_hand_quantity']
+        for row in groups['items']:
+            sources = list_group_sources(db, 4, row['group_id'], warehouse_user, page_size=100)
+            assert sum(item['on_hand_quantity'] for item in sources['items']) == row['on_hand_quantity']
+        for filters in ({'receipt_source':'external'}, {'material_type':'scrap_chips'}, {'search_field':'source','query':'外部'},
+                        {'search_field':'on_hand_quantity','query':'1','search_operator':'gte'}, {'date_from':'2026-01-01'},
+                        {'search_field':'customer_code','query':'test'}):
+            list_inventory(db, 4, WarehouseInventoryFilters(**filters))
+    results['mysql_warehouse_grouping_filters_and_sources'] = 'passed'
 
     print(json.dumps({"mysql_version": version, "isolation": isolation,
         "legacy_preserved": True, "repeat_migration": True, "indexes_and_foreign_keys": True,

@@ -212,7 +212,7 @@ class MaterialTransfer(Base):
 
 
 class MaterialDispatch(Base):
-    """One outbound batch/barcode; source-linked lines retain historical identifiers."""
+    """Atomic submission/retry ledger; only historical submissions have a CK number."""
 
     __tablename__ = "material_dispatches"
     __table_args__ = (
@@ -226,7 +226,7 @@ class MaterialDispatch(Base):
         ),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    dispatch_no: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    dispatch_no: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
     source_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False)
     entry_kind: Mapped[str] = mapped_column(String(24), nullable=False, default="transfer", server_default="transfer")
     external_destination: Mapped[str | None] = mapped_column(String(240))

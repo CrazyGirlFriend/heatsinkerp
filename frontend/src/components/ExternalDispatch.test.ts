@@ -56,6 +56,8 @@ describe('external dispatch creation', () => {
     expect(id).toBe(teamId); expect(body).toMatchObject({ entry_kind: kind, external_destination: '客户收货仓', lines: [{ source_transfer_id: 3 }, { source_transfer_id: 4 }] })
     expect(body).not.toHaveProperty('next_team_id')
     expect(wrapper.text()).toContain(`创建后需本班组确认${verb}`)
+    expect(wrapper.text()).toContain('提交即扣减库存')
+    expect(wrapper.text()).not.toContain('先预留库存')
     expect(wrapper.find('[aria-label="出库接收班组"]').exists()).toBe(false)
   })
   it('keeps ordinary production teams on internal transfers', async () => {
@@ -85,11 +87,11 @@ describe('external dispatch creation', () => {
 })
 
 describe('external document confirmation', () => {
-  it('routes a linked historical TL to its CK for barcode, confirmation and printing', async () => {
+  it('keeps the actual batch barcode and independent confirmation for historical rows', async () => {
     await drawer('warehouse_outbound', { dispatch_no: 'CK-EXTERNAL' })
-    expect(wrapper.getComponent(BarcodeCard).props('value')).toBe('CK-EXTERNAL')
-    expect(wrapper.findAll('button').some(button => button.text() === '确认出库')).toBe(false)
-    await confirm('核对 / 打印整批')
+    expect(wrapper.getComponent(BarcodeCard).props('value')).toBe('TL-EXTERNAL')
+    expect(wrapper.findAll('button').some(button => button.text() === '确认出库')).toBe(true)
+    await confirm('历史合并记录 · CK-EXTERNAL')
     expect(wrapper.getComponent(MaterialDispatchDrawer).props()).toMatchObject({ modelValue: true, dispatchNo: 'CK-EXTERNAL' })
     expect(materialTransferApi.confirmOutbound).not.toHaveBeenCalled()
   })

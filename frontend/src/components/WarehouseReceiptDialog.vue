@@ -127,7 +127,7 @@ onBeforeUnmount(() => { ++generation })
           <div class="receipt-grid">
             <ElFormItem label="入库来源" required><ElSelect v-model="form.receiptKind" aria-label="入库来源" :disabled="readonly"><ElOption value="external" label="外部来料" /><ElOption value="return" label="外部退回" /></ElSelect></ElFormItem>
             <ElFormItem label="外部来源单位" required><ElInput v-model="form.externalSource" aria-label="外部来源单位" maxlength="240" :disabled="readonly" placeholder="供应商、外委单位或退回单位" /></ElFormItem>
-            <ElFormItem v-if="form.receiptKind === 'return'" label="原出库批次" class="receipt-wide"><ElInput v-model="form.returnDispatchNo" aria-label="原出库批次" maxlength="40" :disabled="readonly" placeholder="选填已确认的 CK 出库号；流水号沿用原号" /></ElFormItem>
+            <ElFormItem v-if="form.receiptKind === 'return'" label="原出库批次" class="receipt-wide"><ElInput v-model="form.returnDispatchNo" aria-label="原出库批次" maxlength="40" :disabled="readonly" placeholder="选填已确认的出库批次号；流水号沿用原号" /></ElFormItem>
             <ElFormItem label="流水号" required><ElInput v-model="form.serialNo" aria-label="流水号" maxlength="80" :disabled="readonly" placeholder="填写物料流水号" /></ElFormItem>
             <ElFormItem label="材质" required><ElInput v-model="form.document.material_name" aria-label="材质" maxlength="160" :disabled="readonly" placeholder="填写实际材质" /></ElFormItem>
             <ElFormItem label="物料类型" required class="receipt-wide"><ElSelect v-model="form.materialType" aria-label="物料类型" placeholder="选择物料类型" :disabled="readonly"><ElOption v-for="item in materialTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></ElSelect></ElFormItem>

@@ -1,4 +1,4 @@
-"""One barcode/full-batch confirmation without losing source-linked history."""
+"""Compatibility for explicitly seeded historical CK documents, never new CK creation."""
 from unittest.mock import patch
 
 import pytest
@@ -8,9 +8,18 @@ from sqlalchemy import create_engine, inspect
 
 from app import material_transfer_workflow as workflow
 from app.schemas import MaterialTransferResponse
-from test_external_outbound import outbound, dispatch as external_dispatch, confirm as legacy_confirm
-from test_material_stock import stock_setup, receive_lot, dispatch as internal_dispatch
+from test_external_outbound import outbound, dispatch as new_external_dispatch, confirm as legacy_confirm
+from test_material_stock import stock_setup, receive_lot, dispatch as new_internal_dispatch
 from test_warehouse_receipts import migration
+from historical_dispatch import historical_response
+
+
+def external_dispatch(client, *args, **kwargs):
+    return historical_response(client, new_external_dispatch(client, *args, **kwargs))
+
+
+def internal_dispatch(client, *args, **kwargs):
+    return historical_response(client, new_internal_dispatch(client, *args, **kwargs))
 
 
 def detail_url(group):

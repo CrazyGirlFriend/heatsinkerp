@@ -7,11 +7,11 @@ import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamWorkspaceProfile } from '@/config/teamWorkspaces'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import { externalActionLabel, isExternalEntryKind, isScrapType, materialTypeLabel, materialTypeOptions, type ExternalEntryKind, type MaterialType } from '@/types/materialTransfer'
-import type { CreateDispatch, DispatchKind, MaterialDispatch, MaterialLoss, StockBatch } from '@/types/teamMaterials'
+import type { CreateDispatch, DispatchKind, CreatedMaterialBatches, MaterialLoss, StockBatch } from '@/types/teamMaterials'
 import { amountError, dispatchableAmounts, materialRequestKey } from '@/utils/materialStock'
 
 const props = defineProps<{ modelValue: boolean; teamId: number; mode: 'dispatch' | 'loss'; sources: StockBatch[] }>()
-const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [MaterialDispatch | MaterialLoss]; balancesChanged: [] }>()
+const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [CreatedMaterialBatches | MaterialLoss]; balancesChanged: [] }>()
 const auth = useAuthStore()
 const directory = useTeamDirectoryStore()
 const lines = ref<{ source: StockBatch; latest: StockBatch | null; quantity: number | undefined; weight: number | undefined; materialType: MaterialType | '' }[]>([])
@@ -128,7 +128,7 @@ async function submit() {
 
 <template>
   <ElDialog :model-value="modelValue" :title="isLoss ? '登记物料丢失' : external ? `${sources.length > 1 ? '批量' : ''}${actionLabel}` : sources.length > 1 ? '批量出库' : '物料出库'" width="min(920px, 94vw)" class="stock-action-dialog" :close-on-click-modal="!busy" :close-on-press-escape="!busy" :show-close="!busy" @close="close">
-    <p class="action-intro">{{ isLoss ? '仅登记本班已接收物料的实际丢失。提交后扣减可用余量，记录保留。' : external ? `整批使用一个条码。创建后先预留库存，实物${actionLabel}后由本班组整批确认。` : '同一来源可按物料性质拆成多行，整批一个条码。提交即扣减本班库存，下序确认后入库。' }}</p>
+    <p class="action-intro">{{ isLoss ? '仅登记本班已接收物料的实际丢失。提交后扣减可用余量，记录保留。' : external ? '每行独立生成批次号和条码，可合并打印。提交即扣减库存，本班组逐批确认。' : '每行独立生成批次号和条码，可合并打印。提交即扣减库存，下序逐批确认接收。' }}</p>
     <ElForm label-position="top" :disabled="busy || !canWrite" @submit.prevent="submit">
       <ElFormItem v-if="!isLoss && externalOption" label="出库方式">
         <ElRadioGroup v-model="form.entryKind" aria-label="出库方式"><ElRadioButton value="transfer">内部转料</ElRadioButton><ElRadioButton :value="externalOption">{{ externalOption === 'warehouse_outbound' ? '对外出库' : '发货' }}</ElRadioButton></ElRadioGroup>

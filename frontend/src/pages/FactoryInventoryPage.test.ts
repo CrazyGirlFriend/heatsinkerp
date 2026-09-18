@@ -66,7 +66,7 @@ describe('factory inventory homepage', () => {
     expect(warehouse.get('.pending-amount').text()).toContain('0.125')
     expect(warehouse.text()).toContain('12 个在库流水号')
     expect(warehouse.text()).toContain('加急 2')
-    expect(wrapper.text()).toContain('当前库存不含在途物料')
+    expect(wrapper.text()).toContain('当前库存含废料，不含已转出待确认物料')
   })
   it('drills into real team ids and the right tabs; retains access to the original analysis page', async () => {
     const router = await render()

@@ -182,7 +182,7 @@ onBeforeUnmount(() => { ++streamVersion; unsubscribe?.(); if (fullscreen.value &
       <StatePanel v-if="!report" class="live-initial" :state="error ? 'error' : 'loading'" :description="error" title="读取八班组物料状态" @retry="load()" />
       <template v-else>
         <section class="live-metrics" aria-label="全厂材质库存件数与重量">
-          <article class="live-stock-total" title="各班组实物库存合计，含废料，不含内部在途物料">
+          <article class="live-stock-total" title="各班组当前库存合计，含废料；内部转料、对外出库及发货均提交即扣减">
             <ElIcon><Goods /></ElIcon>
             <div>
               <span>全厂在库<small class="transit-hint"> · 在途 {{ number(report.totals.in_transit_quantity) }} 件 / {{ number(report.totals.in_transit_weight) }} kg</small></span>

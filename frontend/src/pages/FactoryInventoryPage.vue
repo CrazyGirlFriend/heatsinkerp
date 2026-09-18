@@ -132,7 +132,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </section>
-      <footer class="inventory-footer"><span>当前库存不含在途物料</span><div><span role="status">{{ connectionLabel }}</span><time :datetime="report.as_of">更新于 {{ updatedAt }}</time><RouterLink to="/factory-analysis">数据分析<ElIcon><ArrowRight /></ElIcon></RouterLink></div></footer>
+      <footer class="inventory-footer"><span>当前库存含废料，不含已转出待确认物料</span><div><span role="status">{{ connectionLabel }}</span><time :datetime="report.as_of">更新于 {{ updatedAt }}</time><RouterLink to="/factory-analysis">数据分析<ElIcon><ArrowRight /></ElIcon></RouterLink></div></footer>
     </template>
     </div>
   </section>

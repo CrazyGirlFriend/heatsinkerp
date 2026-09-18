@@ -20,9 +20,13 @@ def dispatch(client, setup, lines, workshop=False, **extra):
 
 
 def confirm(client, setup, group, workshop=False, external=False):
-    return client.post('/api/material-dispatches/' + group['dispatch_no'] + ('/confirm-outbound' if external else '/confirm'),
-        headers=setup['other_headers' if workshop else 'headers'],
-        json={'idempotency_key': 'receipt-' + group['dispatch_no'], 'expected_revision': group['revision']})
+    for item in group['items']:
+        response = client.post('/api/material-transfers/' + item['batch_no'] + ('/confirm-outbound' if external else '/confirm'),
+            headers=setup['other_headers' if workshop else 'headers'],
+            json={'idempotency_key': 'receipt-' + item['batch_no'], 'expected_version': item['version']})
+        if response.status_code != 200:
+            return response
+    return response
 
 
 def test_external_sources_and_return_original_document_validation(client, warehouse):
@@ -31,14 +35,14 @@ def test_external_sources_and_return_original_document_validation(client, wareho
     assert origin['receipt_kind'] == 'external' and origin['external_source'] == '供料单位'
     sent = dispatch(client, s, [{'source_transfer_id': origin['id'], 'quantity': 10, 'weight': 1}],
                     next_team_id=None, entry_kind='warehouse_outbound', external_destination='外委单位').json()
-    params = dict(receipt_kind='return', external_source='外委单位', return_dispatch_no=sent['dispatch_no'], idempotency_key='return', quantity=5, weight=.5)
+    params = dict(receipt_kind='return', external_source='外委单位', return_dispatch_no=sent['items'][0]['batch_no'], idempotency_key='return', quantity=5, weight=.5)
     assert intake(client, s, **params).status_code == 422  # Still unconfirmed outbound.
     assert confirm(client, s, sent, external=True).status_code == 200
     assert intake(client, s, **{**params, 'serial_no': 'OTHER'}).status_code == 422
     assert intake(client, s, **{**params, 'external_source': None}).status_code == 422
     returned = intake(client, s, **params)
     assert returned.status_code == 201, returned.text
-    assert returned.json()['return_dispatch_no'] == sent['dispatch_no']
+    assert returned.json()['return_dispatch_no'] == sent['items'][0]['batch_no']
     assert intake(client, s, **params).json() == returned.json()
     rows = client.get(s['url'], params={'receipt_source': 'return', 'query': '外委单位'}).json()
     assert rows['total'] == 1 and rows['items'][0]['id'] == returned.json()['id']
@@ -60,7 +64,7 @@ def test_split_one_source_into_good_and_scrap_without_double_deduction(client, w
     response = dispatch(client, s, lines, workshop=True, notes='废屑回收')
     assert response.status_code == 201, response.text
     group = response.json()
-    assert group['line_count'] == 2 and group['total_quantity'] == 50
+    assert len(group['items']) == 2 and sum(item['quantity'] for item in group['items']) == 50
     assert dispatch(client, s, lines, workshop=True, notes='废屑回收').json() == group
     assert client.get(base(s, True) + '/overview').json()['totals']['on_hand_quantity'] == 0
     # Editing one split cannot consume its sibling's reserved stock.
@@ -91,7 +95,8 @@ def test_scrap_is_not_production_stock_and_can_only_be_disposed_externally(clien
     group = response.json()
     assert client.patch('/api/material-transfers/' + group['items'][0]['batch_no'], headers=s['headers'], json={'material_type': 'finished'}).status_code == 422
     totals = client.get(base(s) + '/overview').json()['totals']
-    assert totals['scrap_quantity'] == 10 and totals['scrap_available_quantity'] == 6 and totals['available_quantity'] == 0
+    assert totals['scrap_quantity'] == totals['scrap_available_quantity'] == 6 and totals['available_quantity'] == 0
+    assert totals['on_hand_quantity'] == 6 and totals['on_hand_weight'] == .6
     assert confirm(client, s, group, external=True).status_code == 200
     assert client.get(base(s) + '/overview').json()['totals']['scrap_quantity'] == 6
 
@@ -113,17 +118,17 @@ def test_warehouse_review_requires_source_correction_before_receipt(client, ware
     assert rejected.json()['history'][-1]['action'] == 'rejected'
     assert client.get(base(s, True) + '/overview').json()['totals']['available_quantity'] == 10
     assert client.post(url + '/confirm', headers=s['headers'], json={'idempotency_key': 'blocked'}).status_code == 409
-    current = client.get('/api/material-dispatches/' + group['dispatch_no'], headers=s['headers']).json()
+    current = client.get(url, headers=s['headers']).json()
     assert 'confirm' not in current['allowed_actions']
-    assert confirm(client, s, current).status_code == 409
+    assert confirm(client, s, {'items': [current]}).status_code == 409
     assert client.patch(url, headers=s['headers'], json={'notes': '库房修改'}).status_code == 403
     # A no-op cannot clear the review flag.
     unchanged = client.patch(url, headers=s['other_headers'], json={'quantity': 10}).json()
     assert unchanged['rejection_reason'] == review['reason']
     corrected = client.patch(url, headers=s['other_headers'], json={'notes': '半成品回库，规格已核对', 'expected_version': rejected.json()['version']})
     assert corrected.status_code == 200 and corrected.json()['rejection_reason'] is None
-    current = client.get('/api/material-dispatches/' + group['dispatch_no'], headers=s['headers']).json()
-    assert confirm(client, s, current).status_code == 200
+    current = client.get(url, headers=s['headers']).json()
+    assert confirm(client, s, {'items': [current]}).status_code == 200
     assert client.post(url + '/reject', headers=s['headers'], json={**review, 'expected_version': 4}).status_code == 409
 
 

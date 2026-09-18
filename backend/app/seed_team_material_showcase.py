@@ -13,10 +13,10 @@ from sqlalchemy import func, select
 from .auth import hash_password
 from .configure_material_teams import MATERIAL_TEAMS, configure_material_teams
 from .database import SessionLocal
-from .material_dispatch_workflow import DispatchConfirm, confirm_dispatch
+from .material_transfer_workflow import confirm_material_transfer, confirm_outbound
 from .material_stock import DispatchCreate, LossCreate, create_dispatch, create_loss
 from .models import MaterialDispatch, MaterialLoss, MaterialTransfer, Team, User
-from .schemas import WarehouseReceiptCreate
+from .schemas import WarehouseReceiptCreate, MaterialTransferConfirm
 from .warehouse_receipts import create_receipt
 
 
@@ -69,10 +69,13 @@ def seed_team_material_showcase(db, password):
                     "material_type": "finished" if actor is leaders[-1] else "semi_finished"} for lot in lots],
         )
         result = run(create_dispatch, actor.team_id, payload, actor)
-        if confirm and result["pending_line_count"]:
-            result = run(confirm_dispatch, result["dispatch_no"], DispatchConfirm(
-                idempotency_key=f"{PREFIX}:{key}:confirm", expected_revision=result["revision"]
-            ), actor if external else target, external=bool(external))
+        if confirm:
+            for index, item in enumerate(result['items']):
+                if item['status'] == 'pending':
+                    result['items'][index] = run(confirm_outbound if external else confirm_material_transfer,
+                        item['batch_no'], MaterialTransferConfirm(
+                            idempotency_key=f"{PREFIX}:{key}:confirm:{index}", expected_version=item['version']),
+                        actor if external else target)
         return result
 
     warehouse = leaders[0]

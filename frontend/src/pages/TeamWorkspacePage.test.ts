@@ -5,9 +5,11 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TeamWorkspacePage from './TeamWorkspacePage.vue'
 import TeamSerialOverview from '@/components/TeamSerialOverview.vue'
+import WarehouseInventory from '@/components/WarehouseInventory.vue'
 import TeamMaterialAnalysis from '@/components/TeamMaterialAnalysis.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
 import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
+import MaterialBatchPrintDialog from '@/components/MaterialBatchPrintDialog.vue'
 import { materialDispatchApi } from '@/services/materialDispatchApi'
 import { dispatchFixture } from '@/testFixtures/materialDispatch'
 import { ElPagination } from 'element-plus'
@@ -36,6 +38,7 @@ beforeEach(() => {
   vi.spyOn(teamMaterialApi, 'overview').mockImplementation(async () => ({ ...summary }))
   vi.spyOn(teamMaterialApi, 'analytics').mockResolvedValue(analyticsFixture())
   vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
+  vi.spyOn(teamMaterialApi, 'warehouseInventory').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
   vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({ items: [source(), source(11)], total: 2, page: 1, page_size: 10 })
   vi.spyOn(teamMaterialApi, 'dispatches').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
   vi.spyOn(teamMaterialApi, 'receipts').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
@@ -106,7 +109,7 @@ describe('team workspace material ledger', () => {
     expect(wrapper.getComponent(MaterialStockActionDialog).props()).toMatchObject({ modelValue: true, teamId: 914, mode: 'dispatch', sources: [source(), source(11)] })
     expect(router.currentRoute.value.fullPath).toBe(path)
     wrapper.getComponent(MaterialStockActionDialog).vm.$emit('saved', dispatchFixture()); await flushPromises()
-    expect(wrapper.getComponent(MaterialDispatchDrawer).props()).toMatchObject({ modelValue: true, dispatchNo: 'CK-GROUP' })
+    expect(wrapper.getComponent(MaterialBatchPrintDialog).props()).toMatchObject({ modelValue: true, items: dispatchFixture().items })
   })
   it('closes the picker on navigation and ignores a late permission refresh after cancellation', async () => {
     const router = await render()
@@ -174,12 +177,12 @@ describe('team workspace material ledger', () => {
     state.auth.currentUser.team_id = 901
     await render(`/team-workspaces/901?tab=${tab}`)
     const actions = wrapper.get('.team-workspace__navigation .workspace-actions')
-    expect(actions.text()).toContain('手工入库')
+    expect(actions.text()).toContain('新建入库')
     expect(actions.text()).toContain('新建出库')
     if (tab === 'pending') {
       expect(actions.text()).not.toContain('扫码查询')
       expect(wrapper.get('.list-toolbar .scanner-inline').text()).toContain('查看来料')
-    } else expect(actions.text()).toContain('扫码查询')
+    } else expect(actions.text()).not.toContain('扫码查询')
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(1)
     expect(wrapper.find('.team-workspace__heading').exists()).toBe(false)
   })
@@ -242,11 +245,11 @@ describe('team workspace material ledger', () => {
     expect(wrapper.get('.team-workspace').attributes('aria-label')).toBe('检验工作台')
     expect(wrapper.find('.team-table input[type=checkbox]').exists()).toBe(false)
   })
-  it('opens the complete dispatch after creation and from an incoming CK scan', async () => {
+  it('opens a combined print after creation and keeps historical CK lookup compatible', async () => {
     await render('/team-workspaces/914?tab=stock')
     wrapper.getComponent(MaterialStockActionDialog).vm.$emit('saved', dispatchFixture())
     await flushPromises()
-    expect(wrapper.getComponent(MaterialDispatchDrawer).props()).toMatchObject({ modelValue: true, dispatchNo: 'CK-GROUP' })
+    expect(wrapper.getComponent(MaterialBatchPrintDialog).props()).toMatchObject({ modelValue: true, items: dispatchFixture().items })
     wrapper.unmount()
     await render('/team-workspaces/914?tab=pending')
     vi.spyOn(materialDispatchApi, 'get').mockResolvedValue(dispatchFixture(25, 'transfer', { next_team: { id: 914, code: 'FACTORY-ROLL', name: '轧制' } }))
@@ -255,12 +258,12 @@ describe('team workspace material ledger', () => {
     expect(materialDispatchApi.get).toHaveBeenCalledWith('CK-GROUP')
     expect(wrapper.getComponent(MaterialDispatchDrawer).props('modelValue')).toBe(true)
   })
-  it('opens the group from a linked pending line without confirming that line alone', async () => {
+  it('opens each pending batch independently even when historically printed together', async () => {
     vi.mocked(materialTransferApi.list).mockResolvedValue({ items: [{ ...source().transfer, status: 'pending', dispatch_no: 'CK-PENDING' }], total: 1, page: 1, page_size: 10 })
     await render('/team-workspaces/914?tab=pending')
-    await wrapper.findAll('button').find(button => button.text() === '查看整批')!.trigger('click'); await flushPromises()
-    expect(wrapper.getComponent(MaterialDispatchDrawer).props()).toMatchObject({ modelValue: true, dispatchNo: 'CK-PENDING' })
-    expect(wrapper.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
+    await wrapper.findAll('button').find(button => button.text() === '核对接收')!.trigger('click'); await flushPromises()
+    expect(wrapper.getComponent(MaterialDispatchDrawer).props('modelValue')).toBe(false)
+    expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: source().transfer.batch_no })
   })
   it('does not issue global requests for invalid or absent team ids', async () => {
     await render('/team-workspaces/nope?tab=pending')
@@ -272,31 +275,34 @@ describe('team workspace material ledger', () => {
 
 
 describe('warehouse intake workspace', () => {
-  it('filters external groups and opens one batch for confirmation instead of individual lines', async () => {
+  it('filters external batches and opens only the selected batch', async () => {
     state.auth.currentUser.team_id = 901
     const line = normalizeMaterialTransfer({ id: 77, batch_no: 'TL-EXTERNAL', entry_kind: 'warehouse_outbound', external_destination: '外部客户', source_team: { id: 901, name: '库房' }, next_team: null, status: 'pending', allowed_actions: ['confirm_outbound'] })
-    vi.mocked(teamMaterialApi.dispatches).mockResolvedValue({ items: [{ dispatch_no: 'CK-EXTERNAL', entry_kind: 'warehouse_outbound', external_destination: '外部客户', source_team_id: 901, next_team: { id: '', code: '', name: '外部客户' }, created_by: '库管', created_at: '', notes: null, status: 'partial', total_quantity: 2, total_weight: 0, line_count: 2, items: [line, { ...line, id: 78, batch_no: 'TL-DONE', status: 'dispatched', locked: true, allowed_actions: [] }] }], total: 1, page: 1, page_size: 10 })
-    await render('/team-workspaces/901?tab=outgoing&entry_kind=warehouse_outbound&status=partial&query=客户&next_team_id=900')
-    expect(teamMaterialApi.dispatches).toHaveBeenCalledWith(901, expect.objectContaining({ entry_kind: 'warehouse_outbound', status: 'partial', query: '客户', next_team_id: undefined }))
-    expect(wrapper.text()).toContain('部分出库'); expect(wrapper.text()).toContain('外部客户')
+    vi.mocked(teamMaterialApi.dispatches).mockResolvedValue({ items: [line], total: 1, page: 1, page_size: 10 })
+    await render('/team-workspaces/901?tab=outgoing&entry_kind=warehouse_outbound&status=pending&query=客户&next_team_id=900&material_type=scrap_chips')
+    expect(teamMaterialApi.dispatches).toHaveBeenCalledWith(901, expect.objectContaining({ entry_kind: 'warehouse_outbound', status: 'pending', query: '客户', material_type: 'scrap_chips', next_team_id: undefined }))
+    expect(wrapper.text()).toContain('待出库确认'); expect(wrapper.text()).toContain('外部客户')
     expect(wrapper.findAll('button').filter(button => button.text() === '核对出库')).toHaveLength(0)
-    await wrapper.findAll('button').find(button => button.text() === '查看整批')!.trigger('click'); await flushPromises()
-    expect(wrapper.getComponent(MaterialDispatchDrawer).props()).toMatchObject({ modelValue: true, dispatchNo: 'CK-EXTERNAL' })
+    await wrapper.findAll('button').find(button => button.text() === '查看详情')!.trigger('click'); await flushPromises()
+    expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: 'TL-EXTERNAL' })
     expect(wrapper.find('[aria-label="接收班组筛选"]').exists()).toBe(false)
   })
   it('provides an intake entry only on the official warehouse and refreshes overview, stock and receipts after saving', async () => {
     state.auth.currentUser.team_id = 901
     await render('/team-workspaces/901')
-    expect(wrapper.findAll('[role=tab]')).toHaveLength(7)
-    const button = wrapper.findAll('button').find(button => button.text() === '手工入库')!
+    expect(wrapper.findAll('[role=tab]')).toHaveLength(5)
+    expect(wrapper.findComponent(WarehouseInventory).exists()).toBe(true)
+    expect(wrapper.findComponent(TeamSerialOverview).exists()).toBe(false)
+    expect(wrapper.get('button[aria-label="库房统计"]').text()).toContain('统计')
+    const button = wrapper.findAll('button').find(button => button.text() === '新建入库')!
     expect(button.exists()).toBe(true)
     await button.trigger('click'); await flushPromises()
     expect(wrapper.getComponent(WarehouseReceiptDialog).props('modelValue')).toBe(true)
-    vi.mocked(teamMaterialApi.overview).mockClear(); vi.mocked(teamMaterialApi.serials).mockClear(); vi.mocked(teamMaterialApi.receipts).mockClear()
+    vi.mocked(teamMaterialApi.overview).mockClear(); vi.mocked(teamMaterialApi.warehouseInventory).mockClear(); vi.mocked(teamMaterialApi.receipts).mockClear()
     wrapper.getComponent(WarehouseReceiptDialog).vm.$emit('saved', normalizeMaterialTransfer({ entry_kind: 'warehouse_receipt', batch_no: 'TL-NEW', next_team: { id: 901, name: '库房' } }))
     await flushPromises()
     expect(teamMaterialApi.overview).toHaveBeenCalledWith(901)
-    expect(teamMaterialApi.serials).toHaveBeenCalledWith(901, expect.any(Object))
+    expect(teamMaterialApi.warehouseInventory).toHaveBeenCalledWith(901, expect.any(Object))
     expect(teamMaterialApi.receipts).toHaveBeenCalledWith(901, expect.any(Object))
   })
   it('keeps warehouse intake records searchable and read-only for other teams', async () => {

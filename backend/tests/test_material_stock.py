@@ -79,12 +79,12 @@ def test_bulk_reservation_loss_confirmation_and_void_conserve_both_amounts(clien
     response = dispatch(client, setup, lines)
     assert response.status_code == 201, response.text
     group = response.json()
-    assert group["line_count"] == 2 and group["total_quantity"] == 40
-    assert group["total_weight"] == 5 and group["status"] == "pending"
+    assert len(group["items"]) == 2 and sum(item['quantity'] for item in group['items']) == 40
+    assert sum(item['weight'] for item in group['items']) == 5 and all(item['status'] == 'pending' for item in group['items'])
     assert {row["serial_no"] for row in group["items"]} == {first["serial_no"], second["serial_no"]}
     assert {row["source_transfer_id"] for row in group["items"]} == {first["id"], second["id"]}
     assert all(row["source_transfer_batch_no"] in (first["batch_no"], second["batch_no"]) for row in group["items"])
-    assert all(row["dispatch_no"] == group["dispatch_no"] for row in group["items"])
+    assert 'dispatch_no' not in group and all(row["dispatch_no"] is None for row in group["items"])
     assert len({row["barcode_payload"] for row in group["items"]}) == 2
     assert totals(client, setup)["reserved_quantity"] == 40
     assert totals(client, setup)["available_quantity"] == 80
@@ -104,14 +104,14 @@ def test_bulk_reservation_loss_confirmation_and_void_conserve_both_amounts(clien
     assert totals(client, setup)["available_quantity"] == 78
     downstream = client.get(f"/api/team-materials/{setup['third']['id']}/overview").json()["totals"]
     assert downstream["available_quantity"] == 30 and downstream["available_weight"] == 3
-    assert client.get(endpoint(setup, "dispatches")).json()["items"][0]["status"] == "partial"
+    assert {item['status'] for item in client.get(endpoint(setup, "outbound-batches")).json()['items']} == {'pending', 'received'}
     remaining = group["items"][1]
     assert client.delete(f"/api/material-transfers/{remaining['batch_no']}", headers=setup["stock_headers"]).status_code == 204
     assert totals(client, setup)["available_quantity"] == 88
     assert totals(client, setup)["available_weight"] == 11.8
     assert totals(client, setup)["reserved_quantity"] == 0
-    closed = client.get(endpoint(setup, "dispatches")).json()["items"][0]
-    assert closed["status"] == "received" and closed["total_quantity"] == 30
+    closed = client.get(endpoint(setup, "outbound-batches"), params={'status': 'received'}).json()["items"][0]
+    assert closed["status"] == "received" and closed["quantity"] == 30
 
 
 def test_stock_idempotency_atomic_failure_and_permission_checks(client, stock_setup):

@@ -11,7 +11,7 @@ import type { StockBatch } from '@/types/teamMaterials'
 import { materialTypeLabel } from '@/types/materialTransfer'
 import { dispatchableAmounts, stockAvailable } from '@/utils/materialStock'
 
-const props = defineProps<{ teamId: number }>()
+const props = defineProps<{ teamId: number; groupId?: number; groupLabel?: string }>()
 const emit = defineEmits<{ close: []; selected: [sources: StockBatch[]] }>()
 const query = ref(''), appliedQuery = ref(''), page = ref(1), pageSize = ref(20)
 const rows = ref<StockBatch[]>([]), total = ref(0), loading = ref(false), error = ref('')
@@ -34,7 +34,8 @@ async function load() {
   const current = ++version
   loading.value = true; error.value = ''; rows.value = []
   try {
-    const result = await teamMaterialApi.stock(props.teamId, { date_from: dates.value.from || undefined, date_to: dates.value.to || undefined, urgent_only: urgentOnly.value || undefined, query: appliedQuery.value || undefined, availability: 'dispatchable', page: page.value, page_size: pageSize.value })
+    const params = { date_from: dates.value.from || undefined, date_to: dates.value.to || undefined, urgent_only: urgentOnly.value || undefined, query: appliedQuery.value || undefined, page: page.value, page_size: pageSize.value }
+    const result = props.groupId ? await teamMaterialApi.warehouseSources(props.teamId, props.groupId, { ...params, current_only: true }) : await teamMaterialApi.stock(props.teamId, { ...params, availability: 'dispatchable' })
     if (current !== version) return
     rows.value = result.items; total.value = result.total
     for (const row of result.items) {
@@ -45,12 +46,13 @@ async function load() {
   finally { if (current === version) loading.value = false }
 }
 function proceed() { if (!loading.value && !error.value && selected.value.size) emit('selected', [...selected.value.values()]) }
-watch(() => props.teamId, () => { selected.value.clear(); dates.value = { from: '', to: '' }; urgentOnly.value = false; page.value = 1; query.value = ''; appliedQuery.value = ''; void load() }, { immediate: true })
+watch(() => [props.teamId, props.groupId], () => { selected.value.clear(); dates.value = { from: '', to: '' }; urgentOnly.value = false; page.value = 1; query.value = ''; appliedQuery.value = ''; void load() }, { immediate: true })
 onBeforeUnmount(() => { ++version })
 </script>
 
 <template>
   <ElDialog :model-value="true" title="新建出库 · 选择库存物料" width="min(1040px, 94vw)" top="6vh" class="stock-source-picker" @close="emit('close')">
+    <p v-if="groupLabel" class="picker-scope">{{ groupLabel }}</p>
     <div class="picker-toolbar">
       <ElInput v-model="query" :prefix-icon="Search" aria-label="出库库存搜索" placeholder="搜索流水号、来源批次或材质" clearable @keyup.enter="search" @clear="search" />
       <RecordDateFilter v-model="dates" label="接收日期" @update:model-value="search" /><ElCheckbox v-model="urgentOnly" @change="search">仅看加急</ElCheckbox>
@@ -78,6 +80,7 @@ onBeforeUnmount(() => { ++version })
 
 <style scoped>
 .picker-toolbar, .picker-pagination { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.picker-scope { margin: 0 0 16px; font-size: 16px; color: var(--text); }
 .picker-toolbar { margin-bottom: 12px; }.picker-toolbar > .el-input { flex: 1 1 180px; max-width: 390px; }
 .picker-toolbar > span { margin-left: auto; }.picker-toolbar :deep(.el-button + .el-button) { margin-left: 0; }
 .picker-toolbar > span, .picker-pagination > span, .picker-secondary { color: var(--muted); font-size: 12px; }

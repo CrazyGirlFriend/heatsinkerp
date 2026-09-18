@@ -44,13 +44,14 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
             if prior is not None:
                 return replay(prior, user, request_hash)
             if payload.return_dispatch_no:
-                original = db.scalar(select(MaterialDispatch).where(MaterialDispatch.dispatch_no == payload.return_dispatch_no))
-                if original is None or original.entry_kind not in ("warehouse_outbound", "inspection_shipment"):
-                    raise HTTPException(422, "关联单号须为已对外出库或发货的 CK 单号")
-                matching = db.scalar(select(MaterialTransfer.id).where(MaterialTransfer.dispatch_id == original.id,
+                # New returns reference the actual batch; old CK references remain readable.
+                historical = select(MaterialDispatch.id).where(MaterialDispatch.dispatch_no == payload.return_dispatch_no)
+                matching = db.scalar(select(MaterialTransfer.id).where(
+                    (MaterialTransfer.batch_no == payload.return_dispatch_no) | MaterialTransfer.dispatch_id.in_(historical),
+                    MaterialTransfer.entry_kind.in_(("warehouse_outbound", "inspection_shipment")),
                     MaterialTransfer.serial_no == payload.serial_no, MaterialTransfer.status == "dispatched"))
                 if matching is None:
-                    raise HTTPException(422, "原出库单没有该流水号的已确认出库记录")
+                    raise HTTPException(422, "关联批次没有该流水号的已确认出库记录")
             now = utcnow()
             receipt = MaterialTransfer(
                 batch_no=next_transfer_batch_number(db), entry_kind="warehouse_receipt",

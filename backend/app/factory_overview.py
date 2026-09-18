@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import and_, case, cast, func, or_, select, String
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from .auth import get_current_user
@@ -27,7 +27,7 @@ def stock_rankings(db, stock, in_scope, remaining, column):
 
 def material_stock_summary(db, team_ids):
     # Full material names/grades, not material nature or a truncated top-eight ranking.
-    # Reuse physical balances so transit, losses and confirmed external exits are not counted twice.
+    # Reuse balances that exclude all submitted outbound and losses, including pending exits.
     stock = stock_table()
     name = func.coalesce(func.nullif(func.trim(stock.c.material_name), ""), "未填写材质")
     return amounts(db, select(name.label("key"),
@@ -38,9 +38,8 @@ def material_stock_summary(db, team_ids):
 
 
 def recent_batches(db, involved, limit=12):
-    # Aggregate complete CK groups before LIMIT; never present one child line as
-    # an entire batch. This is a latest-state feed, not a fabricated event log.
-    code = func.coalesce(MaterialDispatch.dispatch_no, mt.batch_no)
+    # Every transfer is an independent batch, including historically co-printed rows.
+    code = mt.batch_no
     count = lambda predicate: func.sum(case((predicate, 1), else_=0))
     status = case((count(mt.status != "voided") == 0, "voided"),
         (and_(count(mt.status == "pending") == 0, count(mt.status == "dispatched") > 0), "dispatched"),
@@ -81,7 +80,7 @@ def factory_overview(db, days=30, recent_limit=12):
         *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS)).where(in_scope).group_by(stock.c.team_id)).mappings())
     balances = {row["team_id"]: balance_dict(row) for row in stock_rows}
     serial_counts = {row["team_id"]: row for row in stock_rows}
-    batch_key = case((mt.dispatch_id.is_not(None), "CK" + cast(mt.dispatch_id, String)), else_=mt.batch_no)
+    batch_key = mt.batch_no
     incoming = {row["team_id"]: {"batches": row["batches"], "quantity": int(row["quantity"] or 0), "weight": float(row["weight"] or 0)}
         for row in db.execute(select(mt.next_team_id.label("team_id"), func.count(func.distinct(batch_key)).label("batches"),
             func.sum(mt.quantity).label("quantity"), func.sum(mt.weight).label("weight"))
@@ -110,12 +109,12 @@ def factory_overview(db, days=30, recent_limit=12):
         waiting[key] = {row["key"]: row for row in amounts(db, select(bucket.label("key"),
             func.sum(mt.quantity).label("quantity"), func.sum(mt.weight).label("weight")).where(pending, condition).group_by(bucket))}
 
-    # Internal submission moves stock into transit, never factory inbound/outbound.
-    # Receipts and external exits retain their confirmation timestamps.
+    # All outbound counts at submission. Only receipts count at confirmation;
+    # internal handoffs never become factory inbound/outbound.
     flows = {
         "inbound": (mt.received_at, and_(mt.next_team_id.in_(ids), mt.entry_kind == "warehouse_receipt", mt.status == "received")),
-        "outbound": (mt.dispatched_at, and_(mt.source_team_id.in_(ids), mt.entry_kind == "warehouse_outbound", mt.status == "dispatched")),
-        "shipment": (mt.dispatched_at, and_(mt.source_team_id.in_(ids), mt.entry_kind == "inspection_shipment", mt.status == "dispatched")),
+        "outbound": (mt.created_at, and_(mt.source_team_id.in_(ids), mt.entry_kind == "warehouse_outbound", mt.status.in_(["pending", "dispatched"]))),
+        "shipment": (mt.created_at, and_(mt.source_team_id.in_(ids), mt.entry_kind == "inspection_shipment", mt.status.in_(["pending", "dispatched"]))),
         "internal": (mt.created_at, and_(mt.source_team_id.in_(ids), mt.next_team_id.in_(ids), mt.entry_kind == "transfer", mt.status.in_(["pending", "received"]))),
     }
     movement = {key: daily(db, dates, column, mt.quantity, mt.weight, predicate, start, end) for key, (column, predicate) in flows.items()}
@@ -147,15 +146,15 @@ def overview_endpoint(days: Days = 30, db: Session = Depends(get_db)):
 
 @router.get("/live")
 def live_endpoint(db: Session = Depends(get_db)):
-    """Visual status board: pending counts are whole batches, not child lines."""
+    """Visual status board using the same independent batch identities as the ledger."""
     report = factory_overview(db, recent_limit=100)
     ids = [team["id"] for team in report["teams"] if team["id"]]
-    batch_key = case((mt.dispatch_id.is_not(None), "CK" + cast(mt.dispatch_id, String)), else_=mt.batch_no)
+    batch_key = mt.batch_no
     pending = mt.status == "pending"
     now = datetime.fromisoformat(report["as_of"]).replace(tzinfo=None)
     _, start, end = period(1, now)
-    # Internal outgoing pieces count at submission; acceptance must not count
-    # them again. External exits count at confirmation. Completed CKs count once.
+    # All outgoing pieces count at submission, never again at confirmation.
+    # Each received batch counts once.
     outgoing_at, outgoing = outgoing_flow()
     outgoing_quantity = db.scalar(select(func.sum(mt.quantity)).where(mt.source_team_id.in_(ids),
         outgoing, outgoing_at >= start, outgoing_at <= end)) or 0
@@ -171,8 +170,7 @@ def live_endpoint(db: Session = Depends(get_db)):
             .where(pending, column.in_(ids)).group_by(column)).all())
         for team in report["teams"]:
             team[key] = counts.get(team["id"], 0) if team["id"] else None
-    # Group pending internal receipts by receiving team, using each serial's
-    # own amounts and only unaccepted lines in partially received CKs.
+    # Group pending internal receipts by receiving team, preserving each batch.
     for team in report["teams"]:
         team["pending_transfers"] = pending_transfer_rows(db, team["id"]) if team["id"] else []
     # Only actual team-to-team handoffs create edges. External operations remain
@@ -191,7 +189,7 @@ def live_endpoint(db: Session = Depends(get_db)):
 
 
 def pending_transfer_rows(db, team_id):
-    code = func.coalesce(MaterialDispatch.dispatch_no, mt.batch_no)
+    code = mt.batch_no
     rows = db.execute(select(code.label("batch_no"), mt.serial_no,
         mt.source_team_id.label("source_id"), mt.next_team_id.label("target_id"),
         func.min(mt.source_team_name).label("source_name"),

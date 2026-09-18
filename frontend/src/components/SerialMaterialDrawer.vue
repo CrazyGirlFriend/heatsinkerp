@@ -4,7 +4,6 @@ import { ElButton, ElCheckbox, ElDescriptions, ElDescriptionsItem, ElDrawer, ElP
 import MaterialAmount from './MaterialAmount.vue'
 import MaterialTransferStatus from './MaterialTransferStatus.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
-import MaterialDispatchDrawer from './MaterialDispatchDrawer.vue'
 import SerialUrgencyBadge from './SerialUrgencyBadge.vue'
 import StatePanel from './StatePanel.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
@@ -35,7 +34,7 @@ function action(mode: 'dispatch' | 'loss', sources: StockBatch[]) {
   if (!props.canWrite || loading.value || error.value || !sources.length || sources.some(row => !stockAvailable(row))) return
   emit('action', mode, sources)
 }
-const selected = ref<MaterialTransfer | null>(null), batchNo = ref(''), batchOpen = ref(false), groupNo = ref(''), groupOpen = ref(false)
+const selected = ref<MaterialTransfer | null>(null), batchNo = ref(''), batchOpen = ref(false)
 const meta = computed(() => ([['material_name', '材质'], ['transfer_specification', '转料规格'], ['finished_specification', '成品规格'], ['finished_quantity', '成品件数'], ['source_batch_no', '原单批号'], ['customer_code', '客户代码'], ['product_code', '编号']] as [SerialMetaField, string][]))
 function field(key: SerialMetaField) { return !summary.value ? '—' : summary.value[`${key}_count`] > 1 ? '多值，见批次明细' : summary.value[key] ?? '—' }
 let version = 0
@@ -61,10 +60,10 @@ async function load(background = false) {
   } catch (e) { if (current === version) { if (background) throw e; error.value = e instanceof Error ? e.message : '流水号详情加载失败' } }
   finally { if (current === version) loading.value = false }
 }
-function open(value: unknown) { const record = value as MaterialTransfer; if (record.dispatch_no) { groupNo.value = record.dispatch_no; groupOpen.value = true } else { selected.value = record; batchNo.value = record.batch_no; batchOpen.value = true } }
+function open(value: unknown) { const record = value as MaterialTransfer; selected.value = record; batchNo.value = record.batch_no; batchOpen.value = true }
 function openLoss(value: unknown) { const record = value as MaterialLoss; selected.value = null; batchNo.value = record.batch_no; batchOpen.value = true }
 function changed() { void load(); emit('changed') }
-watch(() => [props.modelValue, props.teamId, props.serialNo], () => { ++version; summary.value = null; tab.value = 'stock'; page.value = 1; batchOpen.value = false; groupOpen.value = false; void load() }, { immediate: true })
+watch(() => [props.modelValue, props.teamId, props.serialNo], () => { ++version; summary.value = null; tab.value = 'stock'; page.value = 1; batchOpen.value = false; void load() }, { immediate: true })
 watch([tab, page, pageSize, () => props.modelValue, () => props.teamId, () => props.serialNo, () => props.canWrite], () => { checked.value = [] })
 watch(tab, () => { page.value = 1; void load() })
 onBeforeUnmount(() => { ++version })
@@ -94,7 +93,7 @@ onBeforeUnmount(() => { ++version })
             <template #header><ElCheckbox aria-label="选择本页可用批次" :model-value="allChecked" :indeterminate="selectedRows.length > 0 && !allChecked" :disabled="!availableRows.length" @change="toggleAll" /></template>
             <template #default="{ row }"><ElCheckbox :aria-label="'选择 ' + row.transfer.batch_no" :model-value="selectedRows.some(item => item.transfer.id === row.transfer.id)" :disabled="!stockAvailable(asStock(row))" @change="toggle(asStock(row), $event)" /></template>
           </ElTableColumn>
-          <ElTableColumn label="来源批次" min-width="170"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.dispatch_no || row.transfer.batch_no }}</ElButton></template></ElTableColumn>
+          <ElTableColumn label="来源批次" min-width="170"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
           <ElTableColumn label="材质 / 类型" min-width="140"><template #default="{ row }">{{ row.transfer.material_name || '—' }}<small>{{ materialTypeLabel(row.transfer.material_type) }}</small></template></ElTableColumn>
           <ElTableColumn label="来源" min-width="140"><template #default="{ row }">{{ materialSourceLabel(row.transfer) }}</template></ElTableColumn>
           <ElTableColumn label="结存" min-width="125"><template #default="{ row }"><MaterialAmount :quantity="row.on_hand_quantity" :weight="row.on_hand_weight" /></template></ElTableColumn>
@@ -109,7 +108,7 @@ onBeforeUnmount(() => { ++version })
           <ElTableColumn prop="reason" class-name="table-prose" label="原因" min-width="180" show-overflow-tooltip /><ElTableColumn prop="created_by" label="登记人" min-width="110" /><ElTableColumn label="时间" min-width="140"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></ElTableColumn><ElTableColumn label="操作" width="90"><template #default="{ row }"><ElButton link type="primary" @click="openLoss(row)">查看来源</ElButton></template></ElTableColumn>
         </ElTable>
         <ElTable class="business-table" v-else :data="records" height="100%" stripe size="small" empty-text="暂无交接明细">
-          <ElTableColumn label="交接批次" min-width="200"><template #default="{ row }"><ElButton link type="primary" @click="open(row)">{{ row.dispatch_no || row.batch_no }}</ElButton><small>{{ row.dispatch_no ? '整批内的一条物料明细' : '独立交接单' }}</small></template></ElTableColumn>
+          <ElTableColumn label="交接批次" min-width="200"><template #default="{ row }"><ElButton link type="primary" @click="open(row)">{{ row.batch_no }}</ElButton></template></ElTableColumn>
           <ElTableColumn label="材质 / 规格" min-width="135"><template #default="{ row }">{{ row.material_name || '—' }}<small>{{ row.transfer_specification || '—' }}</small></template></ElTableColumn>
           <ElTableColumn label="上下序" min-width="160"><template #default="{ row }">{{ row.source_team.name }} → {{ row.next_team.name }}</template></ElTableColumn>
           <ElTableColumn label="件数 / 重量" min-width="135"><template #default="{ row }"><MaterialAmount :quantity="row.quantity" :weight="row.weight" /></template></ElTableColumn>
@@ -121,7 +120,6 @@ onBeforeUnmount(() => { ++version })
     <template #footer><div class="serial-detail-footer"><span>共 {{ total }} 条{{ tab === 'stock' ? '来源记录' : tab === 'losses' ? '丢失记录' : '交接明细' }}</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></div></template>
   </ElDrawer>
   <MaterialTransferDrawer v-model="batchOpen" :transfer="selected" :batch-no="batchNo" :trace-scope="{ team_id: teamId, direction: 'all' }" @changed="changed" />
-  <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="groupNo" @changed="changed" />
 </template>
 <style scoped>
 .serial-stock-actions { display: flex; flex-shrink: 0; justify-content: space-between; align-items: center; gap: 12px; color: var(--muted); }

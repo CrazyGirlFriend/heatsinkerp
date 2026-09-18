@@ -61,9 +61,23 @@ def list_losses(record_filters: RecordFilters = Depends(), team_id: int = Path(g
 
 
 @router.post("/{team_id}/dispatches", status_code=201)
+@router.post("/{team_id}/outbound-batches", status_code=201)
 def create_dispatch(payload: stock.DispatchCreate, team_id: int = Path(ge=1),
                     user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return stock.create_dispatch(db, team_id, payload, user)
+
+
+@router.get("/{team_id}/outbound-batches", response_model=MaterialTransferList)
+def list_outbound_batches(record_filters: RecordFilters = Depends(), team_id: int = Path(ge=1),
+                         query: str | None = Query(default=None, max_length=160),
+                         material_type: str | None = Query(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN),
+                         next_team_id: int | None = Query(default=None, ge=1),
+                         status: str | None = Query(default=None, pattern="^(pending|received|dispatched|voided)$"),
+                         entry_kind: str | None = Query(default=None, pattern="^(transfer|warehouse_outbound|inspection_shipment)$"),
+                         page: int = Query(default=1, ge=1), page_size: int = Query(default=10, ge=1, le=100),
+                         user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return stock.list_outbound_batches(db, team_id, user, record_filters=record_filters, query=query,
+        material_type=material_type, next_team_id=next_team_id, status=status, entry_kind=entry_kind, page=page, page_size=page_size)
 
 
 @router.get("/{team_id}/dispatches")

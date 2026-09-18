@@ -45,12 +45,11 @@ def test_urgency_global_read_only_stock_and_optimistic_cancel(client, stock_setu
     assert all(row['serial_no'] == lot['serial_no'] for row in records['items'])
     incoming = client.get(f"/api/team-materials/{s['third']['id']}/serials?urgent_only=true").json()
     assert incoming['total'] == 1 and incoming['items'][0]['urgency']['urgent']
-    full_group = client.get(f"/api/material-dispatches/{group['dispatch_no']}").json()
-    assert len(full_group['items']) == 2
-    assert [line['urgency']['urgent'] for line in full_group['items']] == [True, False]
+    batches = [client.get('/api/material-transfers/' + item['batch_no']).json() for item in group['items']]
+    assert [line['urgency']['urgent'] for line in batches] == [True, False]
     with SessionLocal() as db:
         feed = recent_batches(db, True, 100)
-        assert next(row for row in feed if row['batch_no'] == group['dispatch_no'])['urgent_serial_count'] == 1
+        assert next(row for row in feed if row['batch_no'] == batches[0]['batch_no'])['urgent_serial_count'] == 1
     assert mark(client, lot['serial_no'], False, 0).status_code == 409
     assert mark(client, lot['serial_no'], False, 1).status_code == 200
     assert client.get(endpoint(s, 'stock?urgent_only=true')).json()['total'] == 0
@@ -85,9 +84,8 @@ def test_dispatch_and_loss_dates_use_own_registration_time(client, stock_setup):
     lot = receive_lot(client, s)
     outgoing = dispatch(client, s, [{'source_transfer_id': lot['id'], 'quantity': 10, 'weight': 1}]).json()
     lost = loss(client, s, lot).json()
-    from app.models import MaterialDispatch
     with SessionLocal() as db:
-        db.get(MaterialDispatch, outgoing['id']).created_at = datetime(2026, 9, 11, 16)
+        db.get(MaterialTransfer, outgoing['items'][0]['id']).created_at = datetime(2026, 9, 11, 16)
         db.get(MaterialLoss, lost['id']).created_at = datetime(2026, 9, 11, 16)
         db.commit()
     for suffix in ('dispatches', 'losses'):

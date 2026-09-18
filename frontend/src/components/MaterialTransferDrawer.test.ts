@@ -38,6 +38,19 @@ async function confirm() {
 }
 
 describe('material transfer receipt review', () => {
+  it.each(['warehouse_outbound', 'inspection_shipment'] as const)('explains that pending %s already left stock', async (entry_kind) => {
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({
+      entry_kind, source_team: { id: 3, code: 'FACTORY-QC', name: '本班组' }, external_destination: '外部单位', allowed_actions: ['confirm_outbound'],
+    }))
+    await render()
+    expect(wrapper.text()).toContain('已扣减库存')
+    expect(wrapper.text()).not.toContain('已预留库存')
+    vi.mocked(ElMessageBox.confirm).mockRejectedValueOnce('cancel')
+    await wrapper.findAll('button').find(button => /^(确认出库|确认发货)$/.test(button.text()))!.trigger('click')
+    await flushPromises()
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(expect.stringContaining('库存已在提交时扣减'), expect.any(String), expect.any(Object))
+  })
+
   it('updates read-only fields, but keeps the reviewed version during a confirmation', async () => {
     await render()
     const table = wrapper.get('table[aria-label="转料单据资料"]').element

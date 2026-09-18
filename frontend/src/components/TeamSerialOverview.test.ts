@@ -8,7 +8,6 @@ import TeamSerialOverview from './TeamSerialOverview.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import { ElCheckbox } from 'element-plus'
 import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
-import InventoryColumnSettings from './InventoryColumnSettings.vue'
 import { defaultInventoryColumns, inventorySearchColumns } from '@/types/inventoryColumns'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { analyticsFixture, serialFixture } from '@/testFixtures/materialAnalytics'
@@ -72,7 +71,7 @@ describe('standalone serial ledger', () => {
   it('restores saved order after clearing a promoted visible field and retains date filters', async () => {
     const router = await render('/team-workspaces/914?tab=stock&search_field=available_weight&search_operator=gte&query=10&date_from=2026-09-12')
     const choices = defaultInventoryColumns().reverse()
-    wrapper.getComponent(InventoryColumnSettings).vm.$emit('change', choices); await flushPromises()
+    wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', choices); await flushPromises()
     expect(headers()).toEqual(['可用重量 (kg)', '流水号', '可用件数', '规格', '材质', '操作'])
     expect(headers().filter(label => label === '可用重量 (kg)')).toHaveLength(1)
     const tag = wrapper.findAllComponents(ElTag).find(item => item.text().includes('首列显示'))!
@@ -122,16 +121,16 @@ describe('standalone serial ledger', () => {
     const requests = vi.mocked(teamMaterialApi.serials).mock.calls.length
     const choices = defaultInventoryColumns().map(column => ({ ...column, visible: column.key === 'product_code' || column.key === 'available_weight' }))
     choices.unshift(choices.splice(choices.findIndex(column => column.key === 'product_code'), 1)[0]!)
-    wrapper.getComponent(InventoryColumnSettings).vm.$emit('change', choices)
+    wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', choices)
     await flushPromises()
     expect(wrapper.findAll('thead th').map(cell => cell.text())).toEqual(['流水号', '产品编号', '可用重量 (kg)', '操作'])
     expect(teamMaterialApi.serials).toHaveBeenCalledTimes(requests)
     expect(router.currentRoute.value.query).toMatchObject({ query: 'AL', page: '2' })
     const reordered = [...choices].reverse()
-    wrapper.getComponent(InventoryColumnSettings).vm.$emit('change', reordered)
+    wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', reordered)
     await flushPromises()
     expect(wrapper.findAll('thead th').map(cell => cell.text())).toEqual(['流水号', '可用重量 (kg)', '产品编号', '操作'])
-    wrapper.getComponent(InventoryColumnSettings).vm.$emit('change', choices.map(column => ({ ...column, visible: false })))
+    wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', choices.map(column => ({ ...column, visible: false })))
     await flushPromises()
     expect(wrapper.findAll('thead th').map(cell => cell.text())).toEqual(['流水号', '操作'])
     expect(wrapper.findAll('.serial-number-link')).toHaveLength(10)

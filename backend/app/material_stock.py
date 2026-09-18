@@ -220,7 +220,7 @@ def create_dispatch(db, team_id, payload, user):
                            "next_team_name": target.name if target else None,
                            "entry_kind": payload.entry_kind, "external_destination": payload.external_destination}
             dispatch = MaterialDispatch(
-                dispatch_no="CK" + uuid4().hex[:24].upper(), source_team_id=source.id,
+                dispatch_no=None, source_team_id=source.id,
                 **destination,
                 notes=payload.notes, idempotency_key=payload.idempotency_key, request_hash=request_hash,
                 created_by=actor_name(user), created_by_user_id=user.id,
@@ -279,6 +279,9 @@ def dispatch_dict(db, dispatch, user, *, items=None, include_history=False):
         # committed. Refresh its confirmation metadata after the line locks.
         dispatch = db.scalar(select(MaterialDispatch).where(MaterialDispatch.id == dispatch.id)
                              .with_for_update().execution_options(populate_existing=True))
+    if dispatch.dispatch_no is None:
+        # This is a retry ledger, not a business document or a second batch identity.
+        return {"items": [workflow.material_transfer_dict(item, user, include_history=include_history) for item in items]}
     source_record = workflow.material_transfer_dict(items[0], user, include_history=False)["source_team"] if items else None
     return {
         "id": dispatch.id, "barcode_payload": dispatch.dispatch_no, "barcode_type": "CODE128",
@@ -301,10 +304,10 @@ def dispatch_dict(db, dispatch, user, *, items=None, include_history=False):
 
 
 def stock_table(team_id=None):
-    """Internal pending handoffs are in transit, not source or target inventory.
+    """Every pending outbound has already left source inventory.
 
-    reserved retains the total pending deduction for compatibility, including
-    transit. Only pending external exits still reserve physical source stock.
+    reserved retains all pending outbound amounts for compatibility; it is not
+    stock to deduct again. Only internal handoffs count as in_transit.
     """
     allocations = select(MaterialTransfer.source_transfer_id.label("lot_id"), *[
         func.sum(case((predicate, getattr(MaterialTransfer, amount)), else_=0)).label(f"{prefix}_{amount}")
@@ -323,8 +326,8 @@ def stock_table(team_id=None):
         for prefix, aggregate in (("reserved", allocations), ("in_transit", allocations), ("dispatched", allocations), ("lost", losses)):
             columns[f"{prefix}_{amount}"] = func.coalesce(aggregate.c[f"{prefix}_{amount}"], 0)
         settled = columns[f"received_{amount}"] - columns[f"dispatched_{amount}"] - columns[f"lost_{amount}"]
-        columns[f"on_hand_{amount}"] = settled - columns[f"in_transit_{amount}"]
-        free = settled - columns[f"reserved_{amount}"]
+        columns[f"on_hand_{amount}"] = settled - columns[f"reserved_{amount}"]
+        free = columns[f"on_hand_{amount}"]
         if amount == "weight":
             free = func.round(free, 3)
         scrap = MaterialTransfer.material_type.in_(SCRAP_MATERIAL_TYPES)
@@ -377,7 +380,7 @@ def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=
 
 
 def overview(db, team_id):
-    require_team(db, team_id)
+    team = require_team(db, team_id)
     stock = stock_table(team_id)
     totals = db.execute(select(*(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS)).where(stock.c.team_id == team_id)).mappings().one()
     materials = db.execute(select(stock.c.material_name, *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS)).where(
@@ -388,12 +391,17 @@ def overview(db, team_id):
     pending = db.execute(select(func.count(MaterialTransfer.id), func.sum(MaterialTransfer.quantity), func.sum(MaterialTransfer.weight)).where(
         MaterialTransfer.next_team_id == team_id, MaterialTransfer.status == "pending"
     )).one()
+    pending_batches = {}
+    if team.code == WAREHOUSE_TEAM_CODE and team.kind == "warehouse":
+        batch_key = MaterialTransfer.batch_no
+        pending_batches["batch_count"] = db.scalar(select(func.count(func.distinct(batch_key))).where(
+            MaterialTransfer.next_team_id == team_id, MaterialTransfer.status == "pending")) or 0
     legacy = db.scalar(select(func.count(MaterialTransfer.id)).where(MaterialTransfer.next_team_id == team_id,
         MaterialTransfer.status == "received", MaterialTransfer.stock_tracked.is_(False))) or 0
     return {"team_id": team_id, "totals": balance_dict(totals),
             "material_types": [{"material_type": row["material_type"], **balance_dict(row)} for row in types],
             "materials": [{"material_name": row["material_name"], **balance_dict(row)} for row in materials],
-            "pending_incoming": {"count": pending[0], "quantity": int(pending[1] or 0), "weight": float(pending[2] or 0)},
+            "pending_incoming": {"count": pending[0], "quantity": int(pending[1] or 0), "weight": float(pending[2] or 0), **pending_batches},
             "legacy_received_count": legacy}
 
 
@@ -417,6 +425,23 @@ def list_losses(db, team_id, *, record_filters=None, query=None, serial_no=None,
     return {"items": [workflow.material_loss_dict(row) for row in rows], "total": total, "page": page, "page_size": page_size}
 
 
+def list_outbound_batches(db, team_id, user, *, record_filters, query=None, next_team_id=None, status=None, entry_kind=None, material_type=None, page=1, page_size=20):
+    require_team(db, team_id)
+    mt = MaterialTransfer
+    filters = [mt.source_team_id == team_id, mt.entry_kind != "warehouse_receipt",
+               *record_filters.predicates(mt.created_at, mt.serial_no)]
+    for column, value in ((mt.next_team_id, next_team_id), (mt.status, status), (mt.entry_kind, entry_kind), (mt.material_type, material_type)):
+        if value is not None:
+            filters.append(column == value)
+    if query and query.strip():
+        filters.append(literal_query(query, [mt.batch_no, mt.serial_no, mt.material_name, mt.external_destination]))
+    total = db.scalar(select(func.count(mt.id)).where(*filters)) or 0
+    items = db.scalars(select(mt).where(*filters).order_by(mt.created_at.desc(), mt.id.desc())
+                       .offset((page - 1) * page_size).limit(page_size)).all()
+    return {"items": [workflow.material_transfer_dict(item, user, include_history=False) for item in items],
+            "total": total, "page": page, "page_size": page_size}
+
+
 def list_dispatches(db, team_id, user, *, record_filters=None, query=None, next_team_id=None, status=None, entry_kind=None, page=1, page_size=20):
     from .record_filters import RecordFilters, urgent_serials
     record_filters = record_filters or RecordFilters()
@@ -433,11 +458,11 @@ def list_dispatches(db, team_id, user, *, record_filters=None, query=None, next_
     grouped = select(MaterialDispatch.id.label("group_id"), literal(None).label("single_id"),
         MaterialDispatch.dispatch_no.label("dispatch_no"), MaterialDispatch.created_at.label("created_at"),
         MaterialDispatch.next_team_id.label("next_team_id"), statuses.label("status")
-    ).join(mt, mt.dispatch_id == MaterialDispatch.id).where(MaterialDispatch.source_team_id == team_id).group_by(
+    ).join(mt, mt.dispatch_id == MaterialDispatch.id).where(MaterialDispatch.source_team_id == team_id, MaterialDispatch.dispatch_no.is_not(None)).group_by(
         MaterialDispatch.id, MaterialDispatch.dispatch_no, MaterialDispatch.created_at, MaterialDispatch.next_team_id)
     singles = select(literal(None).label("group_id"), mt.id.label("single_id"), mt.batch_no.label("dispatch_no"),
         mt.created_at.label("created_at"), mt.next_team_id.label("next_team_id"), mt.status.label("status")
-    ).where(mt.source_team_id == team_id, mt.dispatch_id.is_(None))
+    ).outerjoin(MaterialDispatch, mt.dispatch_id == MaterialDispatch.id).where(mt.source_team_id == team_id, MaterialDispatch.dispatch_no.is_(None))
     if entry_kind:
         grouped = grouped.where(MaterialDispatch.entry_kind == entry_kind)
         singles = singles.where(mt.entry_kind == entry_kind)

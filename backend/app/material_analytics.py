@@ -135,11 +135,11 @@ def flow(team_id, direction):
 
 
 def outgoing_flow():
-    """Internal transfer leaves at submission; external exits still need confirmation."""
+    """All outbound leaves at submission; confirmation must not count it again."""
     internal = mt.entry_kind == "transfer"
-    return (case((internal, mt.created_at), else_=mt.dispatched_at),
+    return (mt.created_at,
             or_(and_(internal, mt.status.in_(["pending", "received"])),
-                and_(mt.entry_kind.in_(["warehouse_outbound", "inspection_shipment"]), mt.status == "dispatched")))
+                and_(mt.entry_kind.in_(["warehouse_outbound", "inspection_shipment"]), mt.status.in_(["pending", "dispatched"]))))
 
 
 def peer_key(direction):

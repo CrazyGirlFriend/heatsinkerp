@@ -21,11 +21,13 @@ def test_factory_conservation_internal_not_inbound_and_batch_count_once(client, 
     assert before['period_totals']['internal']['quantity'] == (200 if outbound['kind'] == 'inspection_shipment' else 0)
     group = dispatch(client, outbound).json()
     pending = report(client)
-    feed = next(row for row in pending['recent_batches'] if row['batch_no'] == group['dispatch_no'])
-    assert feed['line_count'] == 2 and feed['quantity'] == 60 and feed['weight'] == 6
-    assert feed['status'] == 'pending' and feed['external_destination'] == group['external_destination']
-    assert pending['pending'] == {'batches': 1, 'quantity': 60, 'weight': 6}
-    assert pending['totals']['on_hand_quantity'] == 200
+    feed = next(row for row in pending['recent_batches'] if row['batch_no'] == group['items'][0]['batch_no'])
+    assert feed['line_count'] == 1 and feed['quantity'] == 30 and feed['weight'] == 3
+    assert feed['status'] == 'pending' and feed['external_destination'] == group['items'][0]['external_destination']
+    assert pending['pending'] == {'batches': 2, 'quantity': 60, 'weight': 6}
+    assert pending['totals']['on_hand_quantity'] == 140
+    kind = 'outbound' if outbound['kind'] == 'warehouse_outbound' else 'shipment'
+    assert pending['period_totals'][kind]['quantity'] == 60
     assert pending['totals']['available_quantity'] == 140
     assert sum(row['external']['quantity'] for row in pending['waiting_age']) == 60
     assert sum(row['internal']['quantity'] for row in pending['waiting_age']) == 0
@@ -75,7 +77,7 @@ def test_untracked_legacy_is_not_guessed_into_stock(client, stock_setup):
 def test_internal_bulk_pending_is_counted_once_and_confirmation_keeps_factory_stock(client, outbound):
     group = dispatch(client, outbound, entry_kind='transfer', external_destination=None, next_team_id=outbound['other']['id']).json()
     before = report(client)
-    assert before['pending']['batches'] == 1 and before['pending']['quantity'] == 60
+    assert before['pending']['batches'] == 2 and before['pending']['quantity'] == 60
     assert sum(row['internal']['quantity'] for row in before['waiting_age']) == 60
     item = group['items'][0]
     result = client.post(f"/api/material-transfers/{item['batch_no']}/confirm", headers=outbound['other_headers'], json={'idempotency_key': 'factory-receive'})
@@ -88,8 +90,9 @@ def test_internal_bulk_pending_is_counted_once_and_confirmation_keeps_factory_st
     assert after['totals']['on_hand_quantity'] + after['totals']['in_transit_quantity'] == 200
     assert after['period_totals']['inbound']['quantity'] == 200
     assert after['pending']['batches'] == 1 and after['pending']['quantity'] == 30
-    feed = [row for row in after['recent_batches'] if row['batch_no'] == group['dispatch_no']]
-    assert len(feed) == 1 and feed[0]['status'] == 'partial' and feed[0]['quantity'] == 60
+    feed = [row for row in after['recent_batches'] if row['batch_no'] in {item['batch_no'] for item in group['items']}]
+    assert len(feed) == 2 and {row['status'] for row in feed} == {'pending', 'received'}
+    assert sum(row['quantity'] for row in feed) == 60
 
 
 def test_rankings_group_serials_and_materials_before_limit_and_sort_each_unit(client, warehouse):
@@ -150,7 +153,7 @@ def test_inventory_card_incoming_is_one_ck_not_child_lines_and_never_external(cl
     assert response.status_code == 201, response.text
     def target():
         return next(team for team in report(client)['teams'] if team['id'] == outbound['other']['id'])
-    assert target()['pending_incoming'] == {'batches': 1, 'quantity': 60, 'weight': 6}
+    assert target()['pending_incoming'] == {'batches': 2, 'quantity': 60, 'weight': 6}
     assert target()['serial_count'] == 0
     for index, line in enumerate(response.json()['items']):
         received = client.post(f"/api/material-transfers/{line['batch_no']}/confirm", headers=outbound['other_headers'],

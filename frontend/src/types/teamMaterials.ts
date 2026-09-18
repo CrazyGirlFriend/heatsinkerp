@@ -7,7 +7,7 @@ export interface TeamMaterialOverview {
   totals: MaterialBalance
   materials: (MaterialBalance & { material_name: string | null })[]
   material_types?: (MaterialBalance & { material_type: MaterialType | null })[]
-  pending_incoming: { quantity: number | null; weight: number | null; count: number | null }
+  pending_incoming: { quantity: number | null; weight: number | null; count: number | null; batch_count?: number | null }
   legacy_received_count: number
 }
 export interface StockBatch extends MaterialBalance { transfer: MaterialTransfer }
@@ -32,6 +32,7 @@ export interface MaterialDispatchDocument extends MaterialDispatch {
   id: number; barcode_payload: string; barcode_type: string; source_team: MaterialTransferTeam
   revision: string; allowed_actions: string[]; pending_line_count: number; locked: boolean
 }
+export interface CreatedMaterialBatches { items: MaterialTransfer[] }
 export const isDispatchNumber = (code: string): boolean => /^CK[A-Z0-9-]+$/i.test(code.trim())
 export const dispatchDocumentTitle = (kind?: MaterialEntryKind): string => kind === 'inspection_shipment' ? '批次发货单' : '批次出库单'
 export const dispatchConfirmLabel = (kind?: MaterialEntryKind): string => isExternalEntryKind(kind) ? `确认整批${externalActionLabel(kind)}` : '确认整批接收'
@@ -51,7 +52,7 @@ export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocument
   external_source?: string | null
   return_dispatch_no?: string | null
 }
-export interface DispatchParams extends MaterialPageParams { next_team_id?: string | number; status?: DispatchStatus; entry_kind?: DispatchKind }
+export interface DispatchParams extends MaterialPageParams { next_team_id?: string | number; status?: Exclude<DispatchStatus, 'partial'>; entry_kind?: DispatchKind; material_type?: MaterialType }
 export interface DispatchLine { source_transfer_id: number; quantity: number; weight: number; material_type?: MaterialType | null }
 export type CreateDispatch = { notes?: string | null; idempotency_key: string; lines: DispatchLine[] } & (
   { entry_kind?: 'transfer'; next_team_id: number; external_destination?: never }

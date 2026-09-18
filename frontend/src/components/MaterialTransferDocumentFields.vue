@@ -14,7 +14,7 @@ const fields = computed<DocumentField[]>(() => {
   ]
   if (props.group !== 'all') return props.group === 'extra' ? material.slice(2) : material
   return [
-    { label: '批次号', value: t.dispatch_no || t.batch_no },
+    { label: '批次号', value: t.batch_no },
     { label: '状态', value: materialTransferStatusLabel(t.status, t.entry_kind) },
     { label: receipt ? '入库来源' : external ? `${verb}班组` : '转出班组', value: materialSourceLabel(t) },
     { label: receipt ? '入库库房' : external ? `${verb}去向` : '接收班组', value: external ? t.external_destination || '—' : t.next_team.name },

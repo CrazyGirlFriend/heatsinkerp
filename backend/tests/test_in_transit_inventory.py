@@ -45,13 +45,12 @@ def test_factory_stock_plus_transit_conserves_and_acceptance_never_deducts_twice
         assert report['totals']['in_transit_quantity'] == 60
         assert report['totals']['on_hand_weight'] == 14
         assert report['totals']['in_transit_weight'] == 6
-        assert report['pending']['batches'] == 1
-    document = client.get('/api/material-dispatches/' + group['dispatch_no']).json()
-    payload = {'idempotency_key': 'receive-transit', 'expected_revision': document['revision']}
-    url = '/api/material-dispatches/' + group['dispatch_no'] + '/confirm'
+        assert report['pending']['batches'] == 2
     for _ in range(2):
-        result = client.post(url, headers=outbound['other_headers'], json=payload)
-        assert result.status_code == 200, result.text
+        for item in group['items']:
+            result = client.post('/api/material-transfers/' + item['batch_no'] + '/confirm', headers=outbound['other_headers'],
+                json={'idempotency_key': 'receive-transit-' + item['batch_no'], 'expected_version': item['version']})
+            assert result.status_code == 200, result.text
         source = client.get(outbound['url'] + '/overview').json()['totals']
         target = client.get(f"/api/team-materials/{outbound['other']['id']}/overview").json()['totals']
         assert source['on_hand_quantity'] == 140 and source['on_hand_weight'] == 14
@@ -86,4 +85,4 @@ def test_internal_outgoing_trend_uses_submission_day_not_receipt_day(client, out
             item.status, item.stock_tracked, item.received_at = 'received', True, now
         db.commit()
     check()
-    assert client.get('/api/factory-overview/live').json()['today']['received_batches'] == 1
+    assert client.get('/api/factory-overview/live').json()['today']['received_batches'] == 2

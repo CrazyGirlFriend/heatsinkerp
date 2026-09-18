@@ -24,11 +24,12 @@ describe('team material API contract', () => {
     const payload = { entry_kind: 'inspection_shipment' as const, external_destination: '客户仓库', idempotency_key: 'same-external-group', lines: [{ source_transfer_id: 9, quantity: 4, weight: 0.005 }] }
     const group = await teamMaterialApi.createDispatch(8, payload)
     expect(JSON.parse(requests[0]!.data)).toEqual(payload)
-    expect(group).toMatchObject({ entry_kind: 'inspection_shipment', next_team: { id: '', name: '客户仓库' }, status: 'dispatched', total_weight: 0.005 })
+    expect(Object.keys(group)).toEqual(['items'])
+    expect(requests[0]!.url).toBe('/team-materials/8/outbound-batches')
     expect(group.items[0]).toMatchObject({ status: 'dispatched', next_team: { id: '', name: '客户仓库' }, stock_tracked: false })
-    data = { items: [raw], total: 1, page: 1, page_size: 20 }
+    data = { items: raw.items, total: 1, page: 1, page_size: 20 }
     await teamMaterialApi.dispatches(8, { entry_kind: 'inspection_shipment', status: 'dispatched', query: '客户' })
-    expect(requests[1]!.url).toBe('/team-materials/8/dispatches?entry_kind=inspection_shipment&status=dispatched&query=%E5%AE%A2%E6%88%B7')
+    expect(requests[1]!.url).toBe('/team-materials/8/outbound-batches?entry_kind=inspection_shipment&status=dispatched&query=%E5%AE%A2%E6%88%B7')
   })
   it('posts warehouse receipts without a source or destination and reads a filtered receipt page', async () => {
     const raw = { id: 50, batch_no: 'TL-ROOT', entry_kind: 'warehouse_receipt', source_team: null, source_team_id: null, next_team: { id: 901, name: '库房', kind: 'warehouse' }, status: 'received', stock_tracked: true, locked: true, history: [{ id: 10, action: 'stocked', actor: '库管', occurred_at: '2026-09-07T00:00:00Z', changes: {} }] }
@@ -67,7 +68,7 @@ describe('team material API contract', () => {
     const payload = { next_team_id: 3, idempotency_key: 'unchanged-retry', lines: [{ source_transfer_id: 5, quantity: 0, weight: 1.005 }, { source_transfer_id: 8, quantity: 5, weight: 0 }] }
     status = 409; data = { detail: '余额不足' }
     await expect(teamMaterialApi.createDispatch(2, payload)).rejects.toMatchObject({ status: 409, message: '余额不足' } satisfies Partial<TeamMaterialApiError>)
-    expect(requests[0]!.url).toBe('/team-materials/2/dispatches')
+    expect(requests[0]!.url).toBe('/team-materials/2/outbound-batches')
     expect(JSON.parse(requests[0]!.data)).toEqual(payload)
   })
 })

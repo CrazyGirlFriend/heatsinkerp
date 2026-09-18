@@ -64,7 +64,7 @@ async function scan(raw?: string): Promise<void> {
       selectedDispatchNo.value = group.dispatch_no; drawerOpen.value = false; groupOpen.value = true
       remember({ kind: 'group', value: group }); scanValue.value = ''
       await router.replace({ path: route.path, query: { ...route.query, batch_no: group.dispatch_no } })
-      showToast(`已读取整批 ${group.dispatch_no}，共 ${group.line_count} 条物料明细`, 'success')
+      showToast(`已读取历史合并单 ${group.dispatch_no}，共 ${group.line_count} 条物料明细`, 'success')
       return
     }
     const transfer = await materialTransferApi.get(batchNo)
@@ -178,7 +178,7 @@ onBeforeUnmount(() => {
             spellcheck="false"
             aria-label="转料批次条形码"
             :disabled="scanning"
-            placeholder="扫描 CK 整批条码或输入历史 TL 号"
+            placeholder="扫描条形码或输入批次号"
             @keyup.enter="scan()"
           >
             <template #prefix><ElIcon><FullScreen /></ElIcon></template>
@@ -200,7 +200,7 @@ onBeforeUnmount(() => {
               <span class="recent-item__route"><b>{{ record.value.source_team?.name }}</b><ElIcon><ArrowRight /></ElIcon><b>{{ record.value.next_team.name }}</b></span>
               <span v-if="record.kind === 'group'" class="recent-material">{{ record.value.line_count }} 条物料明细<span>{{ record.value.total_quantity }} 件 · {{ record.value.total_weight }} kg</span></span>
               <span v-else class="recent-material">{{ materialTypeLabel(record.value.material_type) }}<template v-if="record.value.material_name"> · {{ record.value.material_name }}</template><span>{{ record.value.quantity }} 件 · {{ record.value.weight }} kg</span></span>
-              <span class="recent-item__meta"><i>{{ record.kind === 'group' ? '整批单据' : record.value.serial_no }}</i><time>{{ formatDateTime(record.kind === 'group' ? record.value.created_at : record.value.updated_at) }}</time></span>
+              <span class="recent-item__meta"><i>{{ record.kind === 'group' ? '历史合并单' : record.value.serial_no }}</i><time>{{ formatDateTime(record.kind === 'group' ? record.value.created_at : record.value.updated_at) }}</time></span>
             </ElButton>
           </div>
         </ElScrollbar>

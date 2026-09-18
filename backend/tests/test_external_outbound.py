@@ -77,20 +77,21 @@ def confirm(client, setup, line, **overrides):
                        json={'idempotency_key': 'confirm-'+line['batch_no'], 'expected_version': line['version'], **overrides})
 
 
-def test_external_outbound_reservation_self_confirmation_and_no_phantom_receipt(client, outbound):
+def test_external_outbound_submission_self_confirmation_and_no_phantom_receipt(client, outbound):
     response = dispatch(client, outbound)
     assert response.status_code == 201, response.text
     group = response.json()
     assert dispatch(client, outbound).json() == group
-    assert group['entry_kind'] == outbound['kind'] and group['next_team'] is None
-    assert group['external_destination'] == '客户 A / 外部仓库'
+    assert all(item['entry_kind'] == outbound['kind'] and item['next_team'] is None for item in group['items'])
+    assert all(item['external_destination'] == '客户 A / 外部仓库' for item in group['items'])
     first, second = group['items']
     assert first['allowed_actions'] == ['edit', 'void', 'confirm_outbound']
     assert first['next_team_id'] is None and first['next_team'] is None
     assert not first['stock_tracked'] and first['status'] == 'pending'
     before = client.get(outbound['url']+'/overview').json()
     assert before['totals']['available_quantity'] == 140 and before['totals']['reserved_quantity'] == 60
-    assert before['totals']['on_hand_quantity'] == 200 and before['pending_incoming']['count'] == 0
+    assert before['totals']['on_hand_quantity'] == 140 and before['pending_incoming']['count'] == 0
+    assert before['totals']['on_hand_weight'] == before['totals']['available_weight'] == 14
     result = confirm(client, outbound, first)
     assert result.status_code == 200, result.text
     done = result.json()
@@ -100,12 +101,13 @@ def test_external_outbound_reservation_self_confirmation_and_no_phantom_receipt(
     assert done['allowed_actions'] == [] and done['version'] == first['version'] + 1
     assert [event['action'] for event in done['history']] == ['created', 'dispatched']
     assert confirm(client, outbound, first).json() == done
+    assert client.get(outbound['url']+'/overview').json()['totals']['on_hand_quantity'] == 140
     assert client.get(f"/api/material-transfers/{first['batch_no']}", headers=outbound['headers']).json() == done
     assert confirm(client, outbound, first, idempotency_key='different-key').status_code == 409
-    assert client.get(outbound['url']+'/dispatches', params={'status': 'partial'}).json()['total'] == 1
+    assert client.get(outbound['url']+'/outbound-batches', params={'status': 'pending'}).json()['total'] == 1
     assert confirm(client, outbound, second).status_code == 200
-    rows = client.get(outbound['url']+'/dispatches', params={'status': 'dispatched', 'entry_kind': outbound['kind'], 'query': '客户 A'}).json()
-    assert rows['total'] == 1 and rows['items'][0]['status'] == 'dispatched'
+    rows = client.get(outbound['url']+'/outbound-batches', params={'status': 'dispatched', 'entry_kind': outbound['kind'], 'query': '客户 A'}).json()
+    assert rows['total'] == 2 and all(row['status'] == 'dispatched' for row in rows['items'])
     assert client.get(outbound['url']+'/dispatches', params={'entry_kind': 'transfer'}).json()['total'] == 0
     after = client.get(outbound['url']+'/overview').json()
     assert after['totals']['available_quantity'] == after['totals']['on_hand_quantity'] == 140

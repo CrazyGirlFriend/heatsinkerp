@@ -31,7 +31,7 @@ export const serialNumberColumn = { key: 'serial_no', label: '流水号', width:
 export const inventorySearchColumns = [serialNumberColumn, ...inventoryColumns]
 export type InventorySearchField = 'all' | typeof inventorySearchColumns[number]['key']
 export const inventorySearchKind = (field: InventorySearchField) => field === 'urgency' ? 'status' : field === 'last_activity_at' ? 'date' : inventoryColumns.some(column => column.key === field && 'numeric' in column) ? 'number' : 'text'
-export interface InventoryColumnChoice { key: InventoryColumnKey; visible: boolean }
+export interface InventoryColumnChoice<K extends string = InventoryColumnKey> { key: K; visible: boolean }
 export const defaultInventoryColumns = (): InventoryColumnChoice[] => inventoryColumns.map((column, index) => ({ key: column.key, visible: index < 4 }))
 
 export function normalizeInventoryColumns(value: unknown): InventoryColumnChoice[] {

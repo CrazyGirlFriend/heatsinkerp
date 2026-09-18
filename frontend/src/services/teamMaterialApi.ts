@@ -1,8 +1,9 @@
 import { httpRequest, HttpRequestError, type HttpRequestOptions } from './httpClient'
 import { normalizeMaterialTransfer } from './materialTransferApi'
-import type { CreateWarehouseReceipt, WarehouseReceiptParams } from '@/types/teamMaterials'
+import type { CreateWarehouseReceipt, WarehouseReceiptParams, CreatedMaterialBatches } from '@/types/teamMaterials'
 import { isExternalEntryKind } from '@/types/materialTransfer'
 import type { MaterialAnalytics, Metric, SerialParams, SerialSummary } from '@/types/materialAnalytics'
+import type { WarehouseGroupParams, WarehouseInventoryParams, WarehouseInventoryRow } from '@/types/warehouseInventory'
 import { balanceFields, type MaterialBalance, type TeamMaterialOverview, type StockBatch, type StockParams, type MaterialPage, type MaterialPageParams, type MaterialLoss, type MaterialDispatch, type DispatchParams, type CreateDispatch, type CreateLoss } from '@/types/teamMaterials'
 
 type Raw = Record<string, unknown>
@@ -49,20 +50,25 @@ async function page<T>(url: string, normalize: (raw: unknown) => T): Promise<Mat
   return { items: raw.items.map(normalize), total: Number(raw.total), page: Number(raw.page), page_size: Number(raw.page_size) }
 }
 export const teamMaterialApi = {
+  warehouseInventory(teamId: number, params: WarehouseInventoryParams = {}) { return request<MaterialPage<WarehouseInventoryRow>>(path(teamId, 'warehouse-inventory', params)) },
+  warehouseSources(teamId: number, groupId: number, params: WarehouseGroupParams = {}) { return page(path(teamId, `warehouse-inventory/${groupId}/sources`, params), stock) },
   analytics(teamId: number, params: { days?: 7 | 30; metric?: Metric } = {}) { return request<MaterialAnalytics>(path(teamId, 'analytics', params)) },
   serials(teamId: number, params: SerialParams = {}) { return request<MaterialPage<SerialSummary>>(path(teamId, 'serials', params)) },
   async overview(teamId: number): Promise<TeamMaterialOverview> {
     const raw = record(await request(path(teamId, 'overview')))
     const pending = record(raw.pending_incoming)
-    return { team_id: teamId, totals: balance(raw.totals), materials: Array.isArray(raw.materials) ? raw.materials.map(item => ({ ...balance(item), material_name: typeof record(item).material_name === 'string' ? String(record(item).material_name) : null })) : [], material_types: Array.isArray(raw.material_types) ? raw.material_types.map(item => ({ ...balance(item), material_type: record(item).material_type as import('@/types/materialTransfer').MaterialType | null })) : [], pending_incoming: { quantity: numeric(pending.quantity), weight: numeric(pending.weight), count: numeric(pending.count) }, legacy_received_count: Number(raw.legacy_received_count) || 0 }
+    return { team_id: teamId, totals: balance(raw.totals), materials: Array.isArray(raw.materials) ? raw.materials.map(item => ({ ...balance(item), material_name: typeof record(item).material_name === 'string' ? String(record(item).material_name) : null })) : [], material_types: Array.isArray(raw.material_types) ? raw.material_types.map(item => ({ ...balance(item), material_type: record(item).material_type as import('@/types/materialTransfer').MaterialType | null })) : [], pending_incoming: { quantity: numeric(pending.quantity), weight: numeric(pending.weight), count: numeric(pending.count), ...(numeric(pending.batch_count) !== null ? { batch_count: numeric(pending.batch_count) } : {}) }, legacy_received_count: Number(raw.legacy_received_count) || 0 }
   },
   stock(teamId: number, params: StockParams = {}) { return page(path(teamId, 'stock', params), stock) },
   receipts(teamId: number, params: WarehouseReceiptParams = {}) { return page(path(teamId, 'receipts', params), normalizeMaterialTransfer) },
   async createReceipt(teamId: number, payload: CreateWarehouseReceipt) { return normalizeMaterialTransfer(await request(path(teamId, 'receipts'), { method: 'POST', body: payload })) },
   losses(teamId: number, params: MaterialPageParams = {}) { return page(path(teamId, 'losses', params), loss) },
-  dispatches(teamId: number, params: DispatchParams = {}) { return page(path(teamId, 'dispatches', params), normalizeMaterialDispatch) },
+  dispatches(teamId: number, params: DispatchParams = {}) { return page(path(teamId, 'outbound-batches', params), normalizeMaterialTransfer) },
   async createLoss(teamId: number, payload: CreateLoss) { return loss(await request(path(teamId, 'losses'), { method: 'POST', body: payload })) },
-  async createDispatch(teamId: number, payload: CreateDispatch) { return normalizeMaterialDispatch(await request(path(teamId, 'dispatches'), { method: 'POST', body: payload })) },
+  async createDispatch(teamId: number, payload: CreateDispatch): Promise<CreatedMaterialBatches> {
+    const result = await request<CreatedMaterialBatches>(path(teamId, 'outbound-batches'), { method: 'POST', body: payload })
+    return { items: result.items.map(normalizeMaterialTransfer) }
+  },
   async refreshSource(teamId: number, source: StockBatch): Promise<StockBatch> {
     const result = await teamMaterialApi.stock(teamId, { query: source.transfer.batch_no, availability: 'all', page: 1, page_size: 100 })
     const latest = result.items.find(item => String(item.transfer.id) === String(source.transfer.id))

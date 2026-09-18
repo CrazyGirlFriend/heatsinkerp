@@ -1,21 +1,29 @@
-<script setup lang="ts">
-import { ref, watch } from 'vue'
+<script setup lang="ts" generic="K extends string = InventoryColumnKey">
+import { computed, ref, shallowRef, watch } from 'vue'
 import { ArrowDown, ArrowUp, Setting } from '@element-plus/icons-vue'
 import { ElButton, ElCheckbox, ElMessage, ElPopover } from 'element-plus'
-import { defaultInventoryColumns, inventoryColumns, normalizeInventoryColumns, type InventoryColumnChoice } from '@/types/inventoryColumns'
+import { inventoryColumns, type InventoryColumnChoice, type InventoryColumnKey } from '@/types/inventoryColumns'
 
-const props = defineProps<{ storageKey: string | null }>()
-const emit = defineEmits<{ change: [columns: InventoryColumnChoice[]] }>()
+const props = defineProps<{ storageKey: string | null; columns?: readonly { key: K; label: string; defaultVisible?: boolean }[] }>()
+const emit = defineEmits<{ change: [columns: InventoryColumnChoice<K>[]] }>()
+const options = computed(() => props.columns || inventoryColumns.map((column, index) => ({ ...column, key: column.key as K, defaultVisible: index < 4 })))
+const defaults = (): InventoryColumnChoice<K>[] => options.value.map(column => ({ key: column.key, visible: !!column.defaultVisible }))
 const opened = ref(false)
-const saved = ref(defaultInventoryColumns()), draft = ref(defaultInventoryColumns())
-const label = (key: string) => inventoryColumns.find(column => column.key === key)!.label
-const copy = (columns: InventoryColumnChoice[]) => columns.map(column => ({ ...column }))
+const saved = shallowRef(defaults()), draft = shallowRef(defaults())
+const label = (key: string) => options.value.find(column => column.key === key)!.label
+const copy = (columns: InventoryColumnChoice<K>[]) => columns.map(column => ({ ...column }))
+function normalize(value: unknown): InventoryColumnChoice<K>[] {
+  if (!Array.isArray(value)) return defaults()
+  const result: InventoryColumnChoice<K>[] = []
+  for (const item of value) if (item && options.value.some(column => column.key === item.key) && typeof item.visible === 'boolean' && !result.some(column => column.key === item.key)) result.push({ key: item.key, visible: item.visible })
+  return [...result, ...defaults().filter(column => !result.some(item => item.key === column.key))]
+}
 watch(opened, value => { if (value) draft.value = copy(saved.value) }, { flush: 'sync' })
 watch(() => props.storageKey, key => {
   opened.value = false
-  saved.value = defaultInventoryColumns()
+  saved.value = defaults()
   if (key) {
-    try { saved.value = normalizeInventoryColumns(JSON.parse(localStorage.getItem(key) || 'null')) } catch { /* Use defaults if storage is unavailable or invalid. */ }
+    try { saved.value = normalize(JSON.parse(localStorage.getItem(key) || 'null')) } catch { /* Use defaults if storage is unavailable or invalid. */ }
   }
   draft.value = copy(saved.value)
   emit('change', copy(saved.value))
@@ -23,8 +31,10 @@ watch(() => props.storageKey, key => {
 function move(index: number, offset: number) {
   const target = index + offset
   if (target < 0 || target >= draft.value.length) return
-  const item = draft.value.splice(index, 1)[0]!
-  draft.value.splice(target, 0, item)
+  const next = copy(draft.value)
+  const item = next.splice(index, 1)[0]!
+  next.splice(target, 0, item)
+  draft.value = next
 }
 function apply() {
   saved.value = copy(draft.value)
@@ -41,11 +51,11 @@ function apply() {
   <ElPopover v-model:visible="opened" trigger="click" placement="bottom-end" :width="320" popper-class="inventory-columns-popover">
     <template #reference><ElButton class="inventory-columns-trigger" :icon="Setting" :aria-expanded="opened">显示列</ElButton></template>
     <div class="column-settings">
-      <header><strong>显示列</strong><ElButton link type="primary" @click="draft = defaultInventoryColumns()">恢复默认</ElButton></header>
+      <header><strong>显示列</strong><ElButton link type="primary" @click="draft = defaults()">恢复默认</ElButton></header>
       <p>流水号、操作列始终显示。仅保存在当前浏览器。</p>
       <div class="column-choices" aria-label="库存明细可选列">
         <div v-for="(column, index) in draft" :key="column.key" class="column-choice">
-          <ElCheckbox v-model="column.visible">{{ label(column.key) }}</ElCheckbox>
+          <ElCheckbox :model-value="column.visible" @update:model-value="draft = draft.map(item => item.key === column.key ? { ...item, visible: $event === true } : item)">{{ label(column.key) }}</ElCheckbox>
           <ElButton :icon="ArrowUp" text :disabled="index === 0" :aria-label="`上移${label(column.key)}`" @click="move(index, -1)" />
           <ElButton :icon="ArrowDown" text :disabled="index === draft.length - 1" :aria-label="`下移${label(column.key)}`" @click="move(index, 1)" />
         </div>

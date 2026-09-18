@@ -7,6 +7,7 @@ from .material_transfer_api import router as material_router
 from .material_stock_api import router as stock_router
 from .material_dispatch_api import router as dispatch_router
 from .material_analytics import router as analytics_router
+from .warehouse_inventory import router as warehouse_inventory_router
 from .factory_overview import router as factory_router
 from .serial_urgency import router as urgency_router
 from .factory_stream import router as stream_router
@@ -19,6 +20,7 @@ router.include_router(material_router)
 router.include_router(stock_router)
 router.include_router(dispatch_router)
 router.include_router(analytics_router)
+router.include_router(warehouse_inventory_router)
 router.include_router(factory_router)
 router.include_router(urgency_router)
 router.include_router(stream_router)
