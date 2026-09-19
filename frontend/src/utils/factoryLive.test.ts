@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { factoryFixture } from '@/testFixtures/factoryOverview'
 import { liveLook, liveMaterial, liveParties, liveBatchStatus, liveWaiting, liveWindow } from './factoryLive'
 import type { LiveBatch, LiveTeam } from '@/types/factoryLive'
-const teams: LiveTeam[] = factoryFixture().teams.map(t => ({ ...t, incoming: 0, outgoing: 0, pending_transfers: [] }))
+const teams: LiveTeam[] = factoryFixture().teams.map(t => ({ ...t, incoming: 0, outgoing: 0, pending_transfers: [], material_types: [] }))
 describe('material playback semantics', () => {
   it('looks toward actual teams, without inventing an external team', () => {
     expect(teams.map(t => liveLook(t.id, teams))).toEqual(['left', 'left', 'left', 'left', 'right', 'right', 'right', 'right'])

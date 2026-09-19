@@ -37,6 +37,33 @@ def material_stock_summary(db, team_ids):
         .group_by(name).order_by(name))
 
 
+def live_stock_classification(db, report):
+    """Derive team balances and factory/type totals from the same grouped read."""
+    stock = stock_table()
+    ids = [team["id"] for team in report["teams"] if team["id"] is not None]
+    kind = func.coalesce(func.nullif(func.trim(stock.c.material_type), ""), "unknown")
+    rows = list(db.execute(select(stock.c.team_id, kind.label("key"),
+        *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS))
+        .where(stock.c.team_id.in_(ids)).group_by(stock.c.team_id, kind)
+        .order_by(stock.c.team_id, kind)).mappings())
+
+    def total(items):
+        return balance_dict({key: sum(row[key] or 0 for row in items) for key in BALANCE_KEYS})
+
+    def amount(key, items):
+        balance = total(items)
+        return {"key": key, "quantity": balance["on_hand_quantity"], "weight": balance["on_hand_weight"]}
+
+    for team in report["teams"]:
+        team_rows = [row for row in rows if row["team_id"] == team["id"]]
+        team["material_types"] = [amount(row["key"], [row]) for row in team_rows]
+        if team["id"] is not None:
+            team["balance"] = total(team_rows)
+    report["totals"] = total(rows)
+    report["material_types"] = [amount(key, [row for row in rows if row["key"] == key])
+                                for key in sorted({row["key"] for row in rows})]
+
+
 def recent_batches(db, involved, limit=12):
     # Every transfer is an independent batch, including historically co-printed rows.
     code = mt.batch_no
@@ -148,6 +175,7 @@ def overview_endpoint(days: Days = 30, db: Session = Depends(get_db)):
 def live_endpoint(db: Session = Depends(get_db)):
     """Visual status board using the same independent batch identities as the ledger."""
     report = factory_overview(db, recent_limit=100)
+    live_stock_classification(db, report)
     ids = [team["id"] for team in report["teams"] if team["id"]]
     batch_key = mt.batch_no
     pending = mt.status == "pending"
@@ -179,12 +207,19 @@ def live_endpoint(db: Session = Depends(get_db)):
     confirmed = and_(mt.status == "received", mt.received_at >= since)
     links = db.execute(select(mt.source_team_id.label("source_id"), mt.next_team_id.label("target_id"),
         func.count(func.distinct(case((pending, batch_key)))).label("pending_batches"),
-        func.count(func.distinct(case((confirmed, batch_key)))).label("confirmed_batches")
+        func.count(func.distinct(case((confirmed, batch_key)))).label("confirmed_batches"),
+        func.sum(case((pending, mt.quantity), else_=0)).label("pending_quantity"),
+        func.sum(case((pending, mt.weight), else_=0)).label("pending_weight")
     ).where(mt.entry_kind == "transfer", mt.source_team_id.in_(ids), mt.next_team_id.in_(ids),
             or_(pending, confirmed)).group_by(mt.source_team_id, mt.next_team_id)
       .order_by(mt.source_team_id, mt.next_team_id)).mappings()
-    return {**{key: report[key] for key in ("as_of", "teams", "totals", "pending", "recent_batches", "legacy_received_count")},
-            "today": today, "links": [dict(row) for row in links],
+    links = [{**dict(row), "pending_quantity": int(row["pending_quantity"] or 0),
+              "pending_weight": round(float(row["pending_weight"] or 0), 3)} for row in links]
+    internal_pending = {"batches": sum(row["pending_batches"] for row in links),
+                        "quantity": sum(row["pending_quantity"] for row in links),
+                        "weight": round(sum(row["pending_weight"] for row in links), 3)}
+    return {**{key: report[key] for key in ("as_of", "teams", "totals", "pending", "recent_batches", "legacy_received_count", "material_types")},
+            "today": today, "links": links, "internal_pending": internal_pending,
             "material_stock": material_stock_summary(db, ids)}
 
 

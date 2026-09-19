@@ -87,11 +87,15 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
             assert first['totals']['on_hand_quantity'] == 0
             if view == 'factory-live':
                 assert first['material_stock'] == []
+                assert first['material_types'] == []
+                assert first['internal_pending'] == {'batches': 0, 'quantity': 0, 'weight': 0}
             lot = (await asyncio.to_thread(intake, client, warehouse)).json()
             stocked = await snapshot()
             assert stocked['totals']['on_hand_quantity'] == 100
             if view == 'factory-live':
                 assert stocked['material_stock'] == [{'key': '铜钼', 'quantity': 100, 'weight': 10.125}]
+                assert stocked['material_types'] == [{'key': 'semi_finished', 'quantity': 100, 'weight': 10.125}]
+                assert stocked['teams'][0]['material_types'] == stocked['material_types']
             response = await asyncio.to_thread(client.post, f"/api/team-materials/{warehouse['team']['id']}/dispatches",
                 headers=warehouse['headers'], json={'next_team_id': warehouse['other']['id'], 'idempotency_key': 'stream-out',
                 'lines': [{'source_transfer_id': lot['id'], 'quantity': 30, 'weight': 3}]})
@@ -101,6 +105,10 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
             assert moved['totals']['in_transit_quantity'] == 30
             if view == 'factory-live':
                 assert moved['material_stock'] == [{'key': '铜钼', 'quantity': 70, 'weight': 7.125}]
+                assert moved['material_types'] == [{'key': 'semi_finished', 'quantity': 70, 'weight': 7.125}]
+                assert moved['internal_pending'] == {'batches': 1, 'quantity': 30, 'weight': 3}
+                assert moved['links'][0]['pending_quantity'] == 30
+                assert moved['links'][0]['pending_weight'] == 3
             assert moved['teams'][1]['pending_incoming']['quantity'] == 30
             line = response.json()['items'][0]
             response = await asyncio.to_thread(client.post, f"/api/material-transfers/{line['batch_no']}/confirm",
@@ -111,6 +119,13 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
             assert received['totals']['in_transit_quantity'] == 0
             if view == 'factory-live':
                 assert received['material_stock'] == [{'key': '铜钼', 'quantity': 100, 'weight': 10.125}]
+                assert received['material_types'] == stocked['material_types']
+                assert received['teams'][1]['material_types'] == [{'key': 'semi_finished', 'quantity': 30, 'weight': 3}]
+                assert received['internal_pending'] == {'batches': 0, 'quantity': 0, 'weight': 0}
+                assert received['links'][0]['pending_batches'] == 0
+                assert received['links'][0]['pending_quantity'] == 0
+                assert received['links'][0]['pending_weight'] == 0
+                assert received['links'][0]['confirmed_batches'] == 1
             assert received['teams'][1]['balance']['on_hand_quantity'] == 30
             assert received['teams'][1]['pending_incoming']['quantity'] == 0
             response = await asyncio.to_thread(client.post, f"/api/team-materials/{warehouse['team']['id']}/losses",

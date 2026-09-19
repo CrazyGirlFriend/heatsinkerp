@@ -1,0 +1,204 @@
+@font-face {font-family:HeatSinkGlassHan;src:url('/assets/fonts/MiSans-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
+@font-face {font-family:HeatSinkGlassHan;src:url('/assets/fonts/MiSans-Medium.ttf') format('truetype');font-weight:500 900;font-display:swap}
+@font-face {font-family:HeatSinkGlassInter;src:url('/assets/fonts/InterVariable.woff2') format('woff2');font-weight:100 900;font-display:swap}
+.factory-glass * {box-sizing:border-box}
+.factory-glass button {font:inherit;color:inherit;cursor:pointer}
+.factory-glass button:disabled {cursor:default}
+.factory-glass button:focus-visible {outline:3px solid #00776b;outline-offset:4px}
+.factory-glass button {-webkit-tap-highlight-color:transparent}
+.factory-glass button svg {flex-shrink:0}
+.factory-glass h1, .factory-glass h2, .factory-glass p {margin:0}
+.factory-glass b, .factory-glass strong {font-weight:600;font-variant-numeric:tabular-nums}
+.factory-glass small {font-size:inherit;font-weight:400}
+.factory-glass .dashboard {position:absolute;left:50%;top:50%;width:1672px;height:941px;transform-origin:center;overflow:hidden;isolation:isolate}
+.factory-glass .campus-background {position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-3}
+.factory-glass .campus-tint {position:absolute;inset:0;background:rgba(218,241,246,.09);z-index:-2;pointer-events:none}
+.factory-glass .page-header {position:absolute;left:0;right:0;top:0;height:73px;display:flex;align-items:center;gap:24px;padding:0 28px 0 42px;background:linear-gradient(110deg,rgba(220,248,250,.87),rgba(231,248,250,.7));backdrop-filter:blur(18px);border-bottom:1px solid #f4ffffb8;box-shadow:0 3px 20px #366d7f16;z-index:5}
+.factory-glass .brand {display:flex;align-items:center;gap:16px;white-space:nowrap;font-size:27px;font-weight:600;letter-spacing:1px}
+.factory-glass .brand>svg {color:#077a78;filter:drop-shadow(0 1px 1px #fff)}
+.factory-glass .header-divider {height:37px;width:1px;background:#719aa16b;margin:0 2px}
+.factory-glass .page-header h1 {font-size:38px;line-height:1.2;letter-spacing:3px;font-weight:600;white-space:nowrap}
+.factory-glass .header-meta {margin-left:auto;display:flex;align-items:flex-end;flex-direction:column;gap:4px}
+.factory-glass .header-meta time {font-size:17px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.factory-glass .header-meta time b {margin-left:8px;font-weight:500}
+.factory-glass .header-actions {display:flex;gap:3px;padding-left:15px;border-left:1px solid #80a6ac70}
+.factory-glass .header-actions button {display:flex;align-items:center;justify-content:center;width:33px;height:33px;border:1px solid transparent;background:transparent;border-radius:5px;color:#5b7d83}
+.factory-glass .header-actions svg {width:19px;height:19px}
+.factory-glass .header-actions button:hover {background:#fff8;border-color:#fff9}
+.factory-glass .header-actions button.enabled {color:#007b70}
+.factory-glass .header-actions button:disabled {opacity:.4}
+.factory-glass .glass-panel {position:absolute;padding:12px 18px;background:linear-gradient(125deg,rgba(225,251,250,.74),rgba(211,242,246,.64) 62%,rgba(210,242,249,.76));border:1px solid #eafffff0;border-radius:12px 5px 14px 5px;backdrop-filter:blur(12px);box-shadow:inset 0 0 0 1px #efffff50,inset 0 1px 20px #fff3,0 5px 22px #204f6220;z-index:3}
+.factory-glass .panel-title {display:flex;align-items:center;gap:13px;height:34px;margin-bottom:7px;white-space:nowrap}
+.factory-glass .title-icon {display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;color:#eaffff;background:#16b69c96;box-shadow:0 0 12px #09bcae80}
+.factory-glass .panel-title h2 {font-size:22px;font-weight:600;letter-spacing:1px;line-height:1.2}
+.factory-glass .title-detail {margin-left:auto;font-size:12px;color:#3c6c7c;letter-spacing:0}
+.factory-glass .global-stock {left:18px;top:94px;width:334px;height:284px}
+.factory-glass .global-stock .panel-title {margin-bottom:2px}
+.factory-glass .global-numbers {display:flex;align-items:center;padding:4px 0 1px;gap:11px;white-space:nowrap}
+.factory-glass .global-numbers>div {display:flex;align-items:baseline;gap:5px}
+.factory-glass .global-numbers>div+div {border-left:1px solid #5781914f;padding-left:10px}
+.factory-glass .global-numbers strong {font-size:37px;letter-spacing:-1.9px;line-height:1.2;font-weight:650}
+.factory-glass .global-numbers>div+div strong {font-size:34px;letter-spacing:-1.8px}
+.factory-glass .global-numbers span {font-size:17px}
+.factory-glass .chart-caption {font-size:14px;font-weight:500;letter-spacing:1.4px;margin-top:1px;margin-bottom:8px}
+.factory-glass .type-segments {display:flex;height:20px;border:1px solid #f0ffffe0;border-radius:12px;overflow:hidden;box-shadow:0 1px 5px #277c7c16}
+.factory-glass .type-segments>div {border-right:1px solid #efffff70;transition:width .6s ease}
+.factory-glass .segment-percentages {display:flex;margin-top:3px;margin-bottom:6px;font-size:11px;line-height:17px;letter-spacing:-.5px;white-space:nowrap;font-weight:600}
+.factory-glass .segment-percentages span {text-align:center;overflow:visible}
+.factory-glass .segment-percentages span:last-child {transform:translateX(2px)}
+.factory-glass .global-type-list {display:grid;gap:0}
+.factory-glass .type-row {display:grid;grid-template-columns:16px 77px 1fr;gap:8px;align-items:center;font-size:15px;line-height:24px}
+.factory-glass .type-dot {display:inline-block;flex-shrink:0;width:15px;height:15px;border-radius:50%;border:1px solid #efffff;box-shadow:0 1px 3px #37606d18}
+.factory-glass .type-row>div {text-align:right;white-space:nowrap;font-size:13.5px}
+.factory-glass .type-row b {font-size:16px;font-weight:550;letter-spacing:-.5px}
+.factory-glass .text-button {display:inline-flex;align-items:center;gap:3px;background:none;border:0;padding:0;text-align:left}
+.factory-glass .text-button>span {font-size:20px;color:#407789}
+.factory-glass .text-button:hover {color:#008779;text-decoration:underline}
+.factory-glass .team-stock {left:18px;top:389px;width:334px;height:278px;padding-top:10px}
+.factory-glass .team-stock .panel-title {margin-bottom:5px}
+.factory-glass .team-stock .title-detail {font-size:11px}
+.factory-glass .team-stock-row {display:grid;grid-template-columns:44px 1fr 102px;align-items:center;gap:9px;width:100%;padding:2px 0;height:24px;border:0;background:transparent;border-radius:4px;font-size:14px;text-align:left}
+.factory-glass .team-stock-row:hover {background:#f5fffd60}
+.factory-glass .team-stock-row.active {font-weight:600;color:#00695f}
+.factory-glass .team-bar-track {display:block;height:14px;background:#66969d25;border-radius:8px;overflow:hidden;box-shadow:inset 0 1px 2px #28677213}
+.factory-glass .team-bar-track>span {display:block;background:linear-gradient(90deg,#20a99a,#00c4a3);height:100%;border:1px solid #edffff97;border-radius:8px;transition:width .6s ease}
+.factory-glass .team-row-values {text-align:right;font-size:12.5px;letter-spacing:-.4px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.factory-glass .team-sum {display:flex;align-items:center;gap:9px;margin-top:8px;padding-top:7px;border-top:1px solid #729da452;white-space:nowrap;font-size:14px}
+.factory-glass .team-sum strong {margin-left:auto;font-size:16px;letter-spacing:-.5px}
+.factory-glass .team-sum small {font-size:13px}
+.factory-glass .team-sum svg {color:#199d8e}
+.factory-glass .team-types {left:18px;top:678px;width:334px;height:237px;padding:10px 14px 12px;overflow:hidden}
+.factory-glass .team-types .panel-title {gap:10px;margin-bottom:5px}
+.factory-glass .team-types .panel-title h2 {font-size:20px;letter-spacing:.4px}
+.factory-glass .team-types .title-detail {font-size:10px}
+.factory-glass .team-types .title-icon {width:34px;height:34px}
+.factory-glass .type-panel-caption {line-height:14px;display:flex;justify-content:space-between;font-size:12px;color:#43697a}
+.factory-glass .team-types-body {display:grid;grid-template-columns:133px 1fr;gap:9px;align-items:start}
+.factory-glass .stock-ring {position:relative;width:133px;height:133px;margin-left:-1px;margin-top:1px}
+.factory-glass .ring-chart {width:133px;height:133px}
+.factory-glass .ring-number {position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;pointer-events:none}
+.factory-glass .ring-number strong {font-size:22px;letter-spacing:-.9px}
+.factory-glass .ring-number span {font-size:12px;line-height:15px}
+.factory-glass .donut-quantity {text-align:center;font-size:20px;font-weight:600;line-height:24px}
+.factory-glass .donut-quantity small {font-size:13px}
+.factory-glass .team-type-legend {padding-top:5px}
+.factory-glass .detail-type-row {display:grid;grid-template-columns:12px 59px 1fr;gap:5px;align-items:center;font-size:13px;line-height:21px;white-space:nowrap}
+.factory-glass .detail-type-row .type-dot {width:12px;height:12px}
+.factory-glass .detail-type-row b {text-align:right;font-size:12.8px;font-weight:500;letter-spacing:-.4px}
+.factory-glass .zero-types {font-size:11px;color:#507783;line-height:17px;padding-left:17px}
+.factory-glass .rotation-progress {position:absolute;bottom:0;left:0;height:2px;background:#00ab98;animation:factory-glass-rotation 8s linear forwards;opacity:.65;transform-origin:left}
+@keyframes factory-glass-rotation {from{width:0}to{width:100%}}
+.factory-glass .pending-panel {left:1310px;top:94px;width:344px;height:218px;padding:14px 18px}
+.factory-glass .pending-panel .panel-title {margin-bottom:12px}
+.factory-glass .pending-big {display:flex;border:1px solid #f0ffff8a;border-radius:10px;box-shadow:inset 0 0 15px #fff2;padding:12px 0 13px;gap:0}
+.factory-glass .pending-big>div {display:flex;align-items:baseline;gap:9px;justify-content:center;width:50%}
+.factory-glass .pending-big>div+div {border-left:1px solid #668f9940}
+.factory-glass .pending-big strong {font-size:53px;letter-spacing:-2px;line-height:1}
+.factory-glass .pending-big span {font-size:20px}
+.factory-glass .pending-big>div+div span {font-size:18px}
+.factory-glass .transit-numbers {display:flex;align-items:baseline;gap:7px;justify-content:center;padding-top:12px;white-space:nowrap}
+.factory-glass .transit-numbers strong {font-size:33px;letter-spacing:-1px}
+.factory-glass .transit-numbers span {font-size:18px}
+.factory-glass .focus-panel {left:1310px;top:322px;width:344px;height:248px}
+.factory-glass .focus-panel .panel-title {margin-bottom:9px}
+.factory-glass .focus-panel .panel-title h2 {font-size:21px}
+.factory-glass .focus-numbers {display:flex;align-items:baseline;justify-content:space-between;padding:0 12px 6px}
+.factory-glass .focus-numbers>strong {font-size:53px;line-height:1.1;letter-spacing:-1.5px}
+.factory-glass .focus-numbers>strong small {font-size:20px;letter-spacing:0}
+.factory-glass .focus-numbers>div {display:flex;align-items:baseline;gap:10px}
+.factory-glass .focus-numbers b {font-size:44px;line-height:1;letter-spacing:-1px}
+.factory-glass .focus-numbers>div span {font-size:17px}
+.factory-glass .focus-routes {border:1px solid #efffffab;border-radius:9px;overflow:hidden;background:#e9ffff18}
+.factory-glass .focus-routes>button {width:100%;height:35px;padding:0 14px;display:flex;align-items:center;gap:12px;background:none;border:0;border-bottom:1px solid #ebffff77;text-align:left;font-size:17px}
+.factory-glass .focus-routes>button:last-child {border:0}
+.factory-glass .focus-routes>button>span {margin-left:auto;font-variant-numeric:tabular-nums}
+.factory-glass .focus-routes>button svg {color:#3e97bb}
+.factory-glass .focus-routes>button strong {font-weight:500}
+.factory-glass .focus-routes>button.chosen {background:#efffff70;box-shadow:inset 3px 0 #00a996}
+.factory-glass .focus-routes>button:hover {background:#efffff95}
+.factory-glass .received-label {font-size:14px;color:#177c71}
+.factory-glass .line-legend {left:1310px;top:580px;width:344px;height:72px;padding:9px 20px;display:grid;gap:4px;font-size:16px;letter-spacing:.5px}
+.factory-glass .line-legend>div {display:flex;align-items:center;gap:18px}
+.factory-glass .legend-line {width:53px;height:2px;background:#55caff;box-shadow:0 0 7px #4dcaff;flex-shrink:0}
+.factory-glass .legend-line.focused {height:3px;background:#00e7c4;box-shadow:0 0 8px #00e3c6}
+.factory-glass .line-legend small {font-size:10px;margin-left:auto;letter-spacing:0;color:#527985}
+.factory-glass .attention-panel {left:1310px;top:662px;width:344px;height:98px;padding-top:8px}
+.factory-glass .attention-panel .panel-title {margin-bottom:6px}
+.factory-glass .attention-content {height:31px;display:flex;align-items:center;gap:15px;font-size:18px;font-weight:500;padding-left:11px}
+.factory-glass .urgent-dot {width:18px;height:18px;border-radius:50%;background:#ffb034;border:1px solid #fff6cc;box-shadow:0 0 11px #fdcb6c}
+.factory-glass .attention-content>svg {color:#13a68e}
+.factory-glass .recent-panel {left:1310px;top:770px;width:344px;height:145px;padding-top:7px}
+.factory-glass .recent-panel .panel-title {margin-bottom:5px}
+.factory-glass .recent-list {padding:2px 6px}
+.factory-glass .recent-item {display:grid;grid-template-columns:55px 1fr 108px;align-items:center;gap:7px;line-height:27px;font-size:14px;white-space:nowrap}
+.factory-glass .recent-item b {font-size:13px;text-align:right;font-weight:500}
+.factory-glass .recent-item small {font-size:11px;margin-left:3px;color:#416f7e}
+.factory-glass .recent-item time {font-size:13px;color:#285e71}
+.factory-glass .factory-scene {position:absolute;inset:0;z-index:1}
+.factory-glass .factory-scene canvas {width:1672px;height:941px;position:absolute;inset:0;pointer-events:none}
+.factory-glass .team-marker {position:absolute;transform:translate(-50%,-50%);height:33px;min-width:80px;padding:2px 17px;border:1px solid #bcfff7d6;border-radius:8px;background:linear-gradient(100deg,#087e70e8,#235d5be8);color:#e3fffc;text-shadow:0 1px 3px #113c42;box-shadow:0 2px 8px #173c4b36,inset 0 0 8px #a2ffdc60;font-size:20px;font-weight:500;letter-spacing:1px;backdrop-filter:blur(8px);transition:box-shadow .4s,background .4s}
+.factory-glass .team-marker.selected {background:linear-gradient(100deg,#039d92eb,#246d73ef);border-color:#d4fff9;box-shadow:0 0 4px #fff,0 0 17px #00e6e5,inset 0 0 10px #6cffee60}
+.factory-glass .team-marker:hover {box-shadow:0 0 15px #56fbed}
+.factory-glass .route-badge {position:absolute;transform:translate(-50%,-50%);padding:2px 8px;line-height:21px;background:#f0ffffe5;border:1px solid #d9ffff;border-radius:3px;font-size:13px;font-weight:600;color:#08695b;box-shadow:0 2px 5px #1f68772d}
+.factory-glass .route-badge.selected {border-color:#11cbb2}
+.factory-glass .route-badge.complete {color:#5d7076;background:#f0f7f4d9;border-style:dashed}
+.factory-glass .route-console {left:429px;top:819px;width:814px;height:80px;padding:10px 15px;background:linear-gradient(110deg,#e3f9f4ec,#dcf2f2df);display:flex;align-items:flex-start;gap:17px;border-radius:10px;box-shadow:0 5px 24px #214d5b36}
+.factory-glass .current-route {display:flex;align-items:center;gap:15px;height:31px;white-space:nowrap}
+.factory-glass .console-eyebrow {font-size:11px;letter-spacing:1px;color:#537f82}
+.factory-glass .current-route strong {display:flex;align-items:center;gap:10px;font-size:18px;font-weight:500}
+.factory-glass .current-route strong svg {color:#289c91}
+.factory-glass .route-status {font-size:12px;color:#466e78;font-variant-numeric:tabular-nums}
+.factory-glass .route-status.done {color:#087e6f}
+.factory-glass .route-console>p {position:absolute;bottom:9px;left:15px;color:#426771;font-size:11px;letter-spacing:.5px}
+.factory-glass .scene-caption {position:absolute;left:352px;right:362px;bottom:15px;text-align:center;z-index:1;font-size:12px;color:#315a68;text-shadow:0 1px 5px #fff;font-weight:500;letter-spacing:2px}
+.factory-glass .types-backdrop {position:absolute;inset:0;background:#163f4c33;backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:10}
+.factory-glass .types-dialog {position:relative;width:510px;padding:26px 28px;background:linear-gradient(120deg,#e6faf6f5,#dbf1f3f5);border-radius:15px}
+.factory-glass .dialog-heading {display:flex;align-items:center;justify-content:space-between}
+.factory-glass .dialog-heading h2 {font-size:25px;font-weight:500}
+.factory-glass .dialog-heading button {display:grid;place-items:center;border:0;border-radius:5px;background:#ffffff60;width:34px;height:34px}
+.factory-glass .types-dialog>p {font-size:12px;color:#54757e;margin:10px 0 20px}
+.factory-glass .other-type-table>div {display:grid;grid-template-columns:18px 1fr 95px 105px;gap:10px;align-items:center;height:42px;border-bottom:1px solid #80a8ad35;font-size:15px}
+.factory-glass .other-type-table b {text-align:right}
+.factory-glass .other-type-table small {font-size:12px;color:#4e7782}
+.factory-glass .types-dialog footer {display:flex;justify-content:space-between;padding-top:18px;font-size:14px}
+.factory-glass .still .type-segments>div, .factory-glass .still .team-bar-track>span, .factory-glass .still .team-marker {transition:none}
+.factory-glass .still .rotation-progress {animation:none}
+@media(prefers-reduced-motion:reduce) {
+.factory-glass *, .factory-glass *::before, .factory-glass *::after {scroll-behavior:auto!important;transition:none!important}
+.factory-glass .rotation-progress {animation:none!important}
+}
+.factory-glass {position:fixed;inset:0;overflow:hidden;background:#dae8e9;font-family:HeatSinkGlassInter,HeatSinkGlassHan,sans-serif;color:#073447;font-synthesis:none;font-weight:400;line-height:normal;letter-spacing:normal;-webkit-font-smoothing:antialiased}
+.factory-glass .brand {border:0;background:none;padding:0;color:inherit}
+.factory-glass .brand>svg {width:48px;height:48px}
+.factory-glass .title-icon>svg {width:27px;height:27px}
+.factory-glass .team-sum>svg {width:16px;height:16px;flex-shrink:0}
+.factory-glass .focus-routes>button>svg {width:22px;height:22px}
+.factory-glass .attention-content>svg {width:24px;height:24px;flex-shrink:0}
+.factory-glass .current-route strong>svg {width:19px;height:19px}
+.factory-glass .dialog-heading button>svg {width:22px;height:22px}
+.factory-glass .focus-routes {max-height:109px;overflow-y:auto;scrollbar-width:thin}
+.factory-glass .team-type-legend {max-height:155px;overflow-y:auto;scrollbar-width:thin}
+.factory-glass .team-type-legend.many .detail-type-row {line-height:17px;font-size:12px}
+.factory-glass .team-type-legend.many .detail-type-row b {font-size:12px}
+.factory-glass .detail-type-row>span:not(.type-dot) {overflow:hidden;text-overflow:ellipsis}
+.factory-glass .segment-percentages {gap:12px;min-height:17px;justify-content:space-evenly}
+.factory-glass .segment-percentages>span {display:flex;align-items:center;gap:4px}
+.factory-glass .segment-percentages i {display:inline-block;width:6px;height:6px;border-radius:50%}
+.factory-glass .recent-item {background:none;border:0;width:100%;padding:0;text-align:left;grid-template-columns:42px 1fr 104px;font-size:12px}
+.factory-glass .recent-item>span {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.factory-glass .recent-item:hover {background:#f1fffc80;border-radius:4px}
+.factory-glass .connection-label {font-size:12px;color:#1e7e6f}
+.factory-glass .connection-label.stale {color:#925c16}
+.factory-glass .panel-empty {font-size:13px;color:#446c78;padding:16px 0;line-height:1.6;text-align:center}
+.factory-glass .route-detail-button {height:34px;padding:0 12px;display:flex;align-items:center;gap:8px;border:1px solid #078476;background:#098f80;color:#f1ffff;border-radius:5px;font-size:13px;margin-left:auto;white-space:nowrap}
+.factory-glass .route-detail-button svg {height:15px;width:15px}
+.factory-glass .route-detail-button:hover {background:#09786c}
+.factory-glass .route-empty {font-size:15px;line-height:32px}
+.factory-glass .glass-initial {left:475px;top:300px;width:720px;min-height:250px}
+.factory-glass .live-notices {position:absolute;top:85px;left:380px;right:380px;display:flex;align-items:center;gap:9px;padding:9px 15px;border:1px solid #fff6c3;border-radius:7px;background:#fff8e7ed;backdrop-filter:blur(8px);color:#78551d;font-size:12px;line-height:1.6;z-index:8}
+.factory-glass .live-notices>svg {width:18px;height:18px;flex-shrink:0}
+.factory-glass .live-notices button {border:0;background:none;text-decoration:underline;color:#74531c;white-space:nowrap}
+.factory-glass .team-marker.unavailable {opacity:.6;box-shadow:none}
+.factory-glass .team-marker small {display:block;font-size:9px;line-height:10px}
+.factory-glass .team-stock-row:disabled {opacity:.65}
+.factory-glass .other-type-table {max-height:420px;overflow:auto}

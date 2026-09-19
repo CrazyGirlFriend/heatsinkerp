@@ -1,266 +1,211 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElAlert, ElButton, ElIcon } from 'element-plus'
-import { FullScreen, Close, Refresh, VideoPause, VideoPlay, DataAnalysis, ArrowLeft, ArrowRight, Goods } from '@element-plus/icons-vue'
-import FactoryRobot from '@/components/FactoryRobot.vue'
-import LiveTeamCard from '@/components/LiveTeamCard.vue'
-import AnimatedMetric from '@/components/AnimatedMetric.vue'
+import { Box, House, Files, Download, Switch, Right, Warning, Clock, VideoPause, VideoPlay, Refresh, FullScreen, Close, CircleCheck, Sunny } from '@element-plus/icons-vue'
 import StatePanel from '@/components/StatePanel.vue'
+import FactoryGlassScene from '@/components/FactoryGlassScene.vue'
+import FactoryGlassTitle from '@/components/FactoryGlassTitle.vue'
+import FactoryStockRing from '@/components/FactoryStockRing.vue'
 import { factoryLiveApi } from '@/services/factoryLiveApi'
 import type { InventoryConnection } from '@/services/inventoryStream'
-import { liveLook } from '@/utils/factoryLive'
+import type { FactoryLive, LiveBatch } from '@/types/factoryLive'
+import { glassLinks, inventoryReconciles, kg, number, stockTypes, sumAmounts } from '@/utils/factoryGlass'
 import { formatDateTime } from '@/utils/format'
 import { showToast } from '@/stores/toast'
-import { factoryScreenLayout } from '@/utils/factoryScreen'
-import type { FactoryLive, LiveTransfer, LiveTeam } from '@/types/factoryLive'
 
-const router = useRouter(), root = ref<HTMLElement>()
-const layout = ref(factoryScreenLayout(1672, 940)), deviceRatio = ref(window.devicePixelRatio || 1)
-const narrow = computed(() => layout.value.narrow)
-let resize: ResizeObserver | undefined
-const boardStyle = computed(() => narrow.value ? {} : {
-  width: layout.value.width + 'px', height: layout.value.height + 'px', transform: 'scale(' + layout.value.scale + ')',
-})
-function fitBoard() {
-  if (!root.value) return
-  layout.value = factoryScreenLayout(root.value.clientWidth, root.value.clientHeight)
-  deviceRatio.value = window.devicePixelRatio || 1
-}
-const report = ref<FactoryLive | null>(null), loading = ref(false), error = ref(''), fullscreen = ref(false)
+const router = useRouter(), root = ref<HTMLElement>(), closeMore = ref<HTMLButtonElement>(), moreButton = ref<HTMLButtonElement>()
+const report = ref<FactoryLive | null>(null), loading = ref(false), error = ref('')
 const connection = ref<InventoryConnection>('connecting')
-const connectionLabel = computed(() => ({ connecting: '正在连接', live: '实时同步', reconnecting: '连接中断，正在重连', expired: '登录或访问凭证已失效' })[connection.value])
-let unsubscribe: (() => void) | undefined, streamVersion = 0
-const playing = ref(true), hidden = ref(document.hidden), reduced = ref(false)
-const selectedTeamCode = ref('')
-const materialPage = ref(0)
-const materialPages = computed(() => Math.max(1, Math.ceil((report.value?.material_stock?.length || 0) / 3)))
-const visibleMaterials = computed(() => report.value?.material_stock?.slice(materialPage.value * 3, materialPage.value * 3 + 3) || [])
-let version = 0, media: MediaQueryList | undefined
-// Match the 32px rows in LiveTeamCard: three seconds of continuous travel per row.
-const rowHeight = 32, rowDuration = 3000
-let frame = 0, lastFrame = 0, scrollElapsed = 0, materialElapsed = 0
-const displayTeams = ref<LiveTeam[]>([]), offsets = ref<Record<string, number>>({})
-const rotationTeams = computed(() => displayTeams.value.filter(team => team.id && team.pending_transfers.length))
-const selectedTeam = computed(() => displayTeams.value.find(team => team.code === selectedTeamCode.value))
-function visibleTransfers(team: LiveTeam) {
-  const rows = team.pending_transfers
-  const offset = rows.length > 3 ? (offsets.value[team.code] || 0) % rows.length : 0
-  // The fourth row enters from below while the first leaves the three-row viewport.
-  return [...rows.slice(offset), ...rows.slice(0, offset)].slice(0, rows.length > 3 ? 4 : 3)
-}
-// The robot follows the first visible pending serial of the highlighted team.
-const selected = computed(() => selectedTeam.value ? visibleTransfers(selectedTeam.value)[0] : undefined)
-const canRotate = computed(() => playing.value && !hidden.value && !reduced.value && !error.value && (rotationTeams.value.length > 0 || materialPages.value > 1))
-const moving = computed(() => !hidden.value && !reduced.value && !error.value && Boolean(selected.value))
-const activityKey = computed(() => selected.value ? [selected.value.batch_no, selected.value.serial_no, selected.value.updated_at].join(':') : '')
-const look = computed(() => liveLook(selected.value?.target_id ?? null, report.value?.teams || []))
-const groups = computed(() => [displayTeams.value.slice(0, 4), displayTeams.value.slice(4, 8)])
-const number = (value: number | null | undefined) => value == null ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)
+const focus = ref('FACTORY-WAREHOUSE'), selectedRoute = ref('')
+const autoRotate = ref(true), animate = ref(true), hidden = ref(document.hidden), reduced = ref(false), moreTypes = ref(false)
+const scale = ref(1), density = ref(window.devicePixelRatio || 1), fullscreen = ref(false)
+let unsubscribe: (() => void) | undefined, streamVersion = 0, readVersion = 0
+let media: MediaQueryList | undefined, rotateTimer: ReturnType<typeof setTimeout> | undefined
+const connectionLabel = computed(() => error.value ? (connection.value === 'expired' ? '凭证已失效' : '数据更新中断') : ({ connecting: '正在连接', live: '实时同步', reconnecting: '正在重连', expired: '凭证已失效' })[connection.value])
+const teams = computed(() => report.value?.teams || [])
+const team = computed(() => teams.value.find(item => item.code === focus.value))
+const links = computed(() => report.value ? glassLinks(report.value) : [])
+const activeLinks = computed(() => links.value.filter(link => link.pending_batches > 0))
+const focusLinks = computed(() => links.value.filter(link => link.source.code === focus.value))
+const route = computed(() => links.value.find(link => link.key === selectedRoute.value))
+const focusPending = computed(() => focusLinks.value.reduce((total, link) => total + link.pending_batches, 0))
+const focusTargets = computed(() => focusLinks.value.filter(link => link.pending_batches > 0).length)
+const allTypes = computed(() => stockTypes(report.value?.material_types || []))
+const otherTypes = computed(() => allTypes.value.slice(3))
+const mainTypes = computed(() => [...allTypes.value.slice(0, 3), { key: 'others', label: `其余 ${otherTypes.value.length} 类`, color: '#899aa8', ...sumAmounts(otherTypes.value) }])
+const teamTypes = computed(() => stockTypes(team.value?.material_types || []))
+const visibleTypes = computed(() => teamTypes.value.filter(item => item.quantity !== 0 || item.weight !== 0))
+const maxTeamWeight = computed(() => Math.max(0, ...teams.value.map(item => item.balance?.on_hand_weight || 0)))
+const teamSum = computed(() => sumAmounts(teams.value.filter(item => item.id != null).map(item => ({ quantity: item.balance!.on_hand_quantity, weight: item.balance!.on_hand_weight }))))
+const reconciled = computed(() => report.value ? inventoryReconciles(report.value) : true)
+const moving = computed(() => animate.value && !hidden.value && !reduced.value && !error.value && connection.value === 'live')
 const warning = computed(() => {
   if (!report.value) return ''
-  const missing = report.value.teams.filter(team => !team.id).map(team => team.name)
-  const inactive = report.value.teams.filter(team => team.id && !team.active).map(team => team.name)
-  return [missing.length ? '未配置：' + missing.join('、') : '', inactive.length ? '已停用：' + inactive.join('、') + '，既有库存仍计入' : '', report.value.legacy_received_count ? report.value.legacy_received_count + ' 条历史接收未纳入库存' : ''].filter(Boolean).join('；')
+  const missing = teams.value.filter(item => item.id == null).map(item => item.name)
+  const inactive = teams.value.filter(item => item.id != null && !item.active).map(item => item.name)
+  return [!reconciled.value ? '分类库存与汇总不一致，请核对' : '', missing.length ? '未配置：' + missing.join('、') : '',
+    inactive.length ? '已停用：' + inactive.join('、') + '，既有库存仍计入' : '',
+    report.value.legacy_received_count ? report.value.legacy_received_count + ' 条历史接收未纳入库存' : ''].filter(Boolean).join('；')
 })
+const weightShare = (weight: number) => report.value?.totals.on_hand_weight ? weight / report.value.totals.on_hand_weight * 100 : 0
+const metricSize = (text: string, size: number, length: number) => Math.min(size, size * length / Math.max(text.length, 1)) + 'px'
+const batchStatus = (batch: LiveBatch) => ({ pending: '待接收', partial: '部分接收', received: '已接收', dispatched: '已出库', voided: '已作废' })[batch.status]
+function batchLabel(batch: LiveBatch) {
+  if (batch.entry_kind === 'warehouse_receipt' || batch.entry_kind === 'opening_stock') return (batch.target_name || '库房') + '入库'
+  if (batch.entry_kind === 'warehouse_outbound' || batch.entry_kind === 'inspection_shipment') return (batch.source_name || '') + '发出'
+  return (batch.source_name || '未填写') + ' → ' + (batch.target_name || '未填写')
+}
+function selectTeam(code: string, manual = true) {
+  const selected = teams.value.find(item => item.code === code)
+  if (selected?.id == null) return
+  focus.value = code
+  selectedRoute.value = focusLinks.value.find(link => link.pending_batches > 0)?.key || focusLinks.value[0]?.key || ''
+  if (manual) autoRotate.value = false
+}
+function selectRoute(key: string) { selectedRoute.value = key; autoRotate.value = false }
 function applyReport(value: FactoryLive) {
-  for (const team of value.teams) {
-    const previous = displayTeams.value.find(item => item.code === team.code)
-    const keys = (rows: LiveTransfer[]) => JSON.stringify(rows.map(row => [row.batch_no, row.serial_no]))
-    if (!previous || keys(previous.pending_transfers) !== keys(team.pending_transfers)) offsets.value[team.code] = 0
+  if (!Array.isArray(value.material_types) || !value.internal_pending || !Array.isArray(value.links)
+      || value.teams.some(item => !Array.isArray(item.material_types))) {
+    error.value = '接口尚未提供分类库存，请更新大屏服务。'
+    return
   }
-  report.value = value
-  materialPage.value = Math.min(materialPage.value, materialPages.value - 1)
-  displayTeams.value = value.teams
-  if (!rotationTeams.value.some(team => team.code === selectedTeamCode.value)) {
-    selectedTeamCode.value = rotationTeams.value[0]?.code || ''
+  if (report.value && Date.parse(value.as_of) < Date.parse(report.value.as_of)) return
+  report.value = value; error.value = ''
+  if (!teams.value.some(item => item.code === focus.value && item.id != null)) {
+    focus.value = teams.value.find(item => item.id != null)?.code || ''
+  }
+  if (!focusLinks.value.some(link => link.key === selectedRoute.value)) {
+    selectedRoute.value = focusLinks.value.find(link => link.pending_batches > 0)?.key || focusLinks.value[0]?.key || ''
   }
 }
 async function load() {
-  const current = ++version; loading.value = true
-  try {
-    const value = await factoryLiveApi.get()
-    if (current !== version) return
-    error.value = ''
-    applyReport(value)
-  } catch { if (current === version) error.value = report.value ? '更新失败，保留上次成功数据。' : '物料状态加载失败，请重试。' }
-  finally { if (current === version) loading.value = false }
+  const version = ++readVersion; loading.value = true
+  try { const value = await factoryLiveApi.get(); if (version === readVersion) applyReport(value) }
+  catch { if (version === readVersion) error.value = report.value ? '更新失败，保留上次成功数据。' : '物料状态加载失败，请重试。' }
+  finally { if (version === readVersion) loading.value = false }
 }
 function connect() {
   const current = ++streamVersion
   unsubscribe?.()
   unsubscribe = factoryLiveApi.subscribe({
-    onData(value) {
-      if (current !== streamVersion) return
-      ++version // A late manual read must not overwrite a newer pushed snapshot.
-      loading.value = false; error.value = ''
-      applyReport(value)
-    },
+    onData(value) { if (current === streamVersion) { ++readVersion; loading.value = false; applyReport(value) } },
     onState(state) {
       if (current !== streamVersion) return
       connection.value = state
-      if (state === 'reconnecting' || state === 'expired') {
-        error.value = state === 'expired' ? '登录或访问凭证已失效，请重新验证。' : report.value ? '连接中断，保留上次成功数据，正在重连。' : '物料状态加载失败，正在重连。'
-      }
+      if (state === 'expired') error.value = '登录或访问凭证已失效，请重新验证。'
+      else if (state === 'reconnecting') error.value = report.value ? '连接中断，显示上次成功数据，正在重连。' : '物料状态加载失败，正在重连。'
     },
   })
 }
-function next() {
-  for (const team of displayTeams.value) {
-    if (team.pending_transfers.length > 3) offsets.value[team.code] = ((offsets.value[team.code] || 0) + 1) % team.pending_transfers.length
-  }
-  if (!rotationTeams.value.length) return
-  const index = rotationTeams.value.findIndex(team => team.code === selectedTeamCode.value)
-  selectedTeamCode.value = rotationTeams.value[(index + 1) % rotationTeams.value.length]!.code
-}
-function scroll(now: number) {
-  if (!canRotate.value) return
-  const delta = Math.min(now - lastFrame, 100)
-  scrollElapsed += delta
-  materialElapsed += delta
-  lastFrame = now
-  if (scrollElapsed >= rowDuration) {
-    scrollElapsed %= rowDuration
-    next()
-  }
-  if (materialElapsed >= 2000) {
-    materialElapsed %= 2000
-    materialPage.value = (materialPage.value + 1) % materialPages.value
-  }
-  // One shared transform clock keeps all eight lists aligned without rendering Vue each frame.
-  root.value?.style.setProperty('--transfer-offset', `${-rowHeight * scrollElapsed / rowDuration}px`)
-  frame = requestAnimationFrame(scroll)
-}
-function syncScroll() {
-  cancelAnimationFrame(frame)
-  frame = 0
-  lastFrame = performance.now()
-  if (canRotate.value) frame = requestAnimationFrame(scroll)
-}
-watch(canRotate, syncScroll)
-function changeMaterialPage(direction: number) {
-  materialPage.value = (materialPage.value + direction + materialPages.value) % materialPages.value
-  materialElapsed = 0
-}
-function selectTeam(team: LiveTeam) {
-  if (!team.id) return
-  selectedTeamCode.value = team.code
-}
-function toggleMotion() { playing.value = !playing.value }
 function syncVisibility() {
   hidden.value = document.hidden
   if (hidden.value) { ++streamVersion; unsubscribe?.(); unsubscribe = undefined }
   else connect()
 }
-function syncMotion() { reduced.value = Boolean(media?.matches) }
-function syncFullscreen() { fullscreen.value = document.fullscreenElement === root.value || document.fullscreenElement === document.documentElement }
+function syncMotion() { reduced.value = Boolean(media?.matches); if (reduced.value) autoRotate.value = false }
+function fit() { scale.value = Math.min((root.value?.clientWidth || innerWidth) / 1672, (root.value?.clientHeight || innerHeight) / 941); density.value = window.devicePixelRatio || 1 }
+function syncFullscreen() { fullscreen.value = document.fullscreenElement === root.value || document.fullscreenElement === document.documentElement; fit() }
 async function toggleFullscreen() {
   try { if (fullscreen.value) await document.exitFullscreen(); else await root.value?.requestFullscreen() }
-  catch { showToast('未能进入全屏，请使用 Chrome 或 Edge 后重试。', 'error') }
+  catch { showToast('未能进入全屏，请通过浏览器菜单重试。', 'error') }
 }
-async function navigate(path: string) { playing.value = false; if (fullscreen.value) await document.exitFullscreen(); await router.push(path) }
-function openBatch(row: LiveTransfer) { void navigate('/transfer-batches/scan?batch_no=' + encodeURIComponent(row.batch_no)) }
+async function navigate(path: string) {
+  autoRotate.value = false
+  if (fullscreen.value && document.fullscreenElement) await document.exitFullscreen()
+  await router.push(path)
+}
+function openRoute() {
+  if (!route.value) return
+  const params = new URLSearchParams({ source_team_id: String(route.value.source_id), next_team_id: String(route.value.target_id) })
+  if (route.value.pending_batches) params.set('status', 'pending')
+  void navigate('/transfer-batches?' + params.toString())
+}
+function rememberMoreButton(element: unknown) { if (element instanceof HTMLButtonElement) moreButton.value = element }
+async function showTypes() { moreTypes.value = true; autoRotate.value = false; await nextTick(); closeMore.value?.focus() }
+function closeTypes() { moreTypes.value = false; moreButton.value?.focus() }
+watch([autoRotate, focus, hidden, reduced, error, moreTypes, () => teams.value.map(item => item.id).join(',')], () => {
+  clearTimeout(rotateTimer)
+  if (!autoRotate.value || hidden.value || reduced.value || error.value || moreTypes.value) return
+  const available = teams.value.filter(item => item.id != null)
+  if (available.length < 2) return
+  rotateTimer = setTimeout(() => {
+    const index = available.findIndex(item => item.code === focus.value)
+    selectTeam(available[(index + 1) % available.length]!.code, false)
+  }, 8000)
+})
 onMounted(() => {
-  syncFullscreen()
-  fitBoard(); resize = new ResizeObserver(fitBoard); if (root.value) resize.observe(root.value)
-  media = window.matchMedia?.('(prefers-reduced-motion: reduce)'); syncMotion(); media?.addEventListener('change', syncMotion)
-  document.addEventListener('visibilitychange', syncVisibility); document.addEventListener('fullscreenchange', syncFullscreen)
-  window.addEventListener('resize', fitBoard)
-  syncScroll()
+  fit(); syncFullscreen(); media = window.matchMedia?.('(prefers-reduced-motion: reduce)'); syncMotion()
+  media?.addEventListener('change', syncMotion); document.addEventListener('visibilitychange', syncVisibility)
+  document.addEventListener('fullscreenchange', syncFullscreen); window.addEventListener('resize', fit)
   if (!hidden.value) connect()
 })
-onBeforeUnmount(() => { ++streamVersion; unsubscribe?.(); if (fullscreen.value && document.fullscreenElement) void document.exitFullscreen().catch(() => {}); resize?.disconnect(); ++version; cancelAnimationFrame(frame); media?.removeEventListener('change', syncMotion); document.removeEventListener('visibilitychange', syncVisibility); document.removeEventListener('fullscreenchange', syncFullscreen); window.removeEventListener('resize', fitBoard) })
+onBeforeUnmount(() => {
+  ++streamVersion; ++readVersion; unsubscribe?.(); clearTimeout(rotateTimer)
+  media?.removeEventListener('change', syncMotion); document.removeEventListener('visibilitychange', syncVisibility)
+  document.removeEventListener('fullscreenchange', syncFullscreen); window.removeEventListener('resize', fit)
+  if (fullscreen.value && document.fullscreenElement) void document.exitFullscreen().catch(() => {})
+})
 </script>
+
 <template>
-  <section ref="root" class="page factory-live" :class="{ 'factory-live--fullscreen': fullscreen, 'factory-live--paused': !moving, 'factory-live--narrow': narrow }">
-    <div class="live-board" :style="boardStyle">
-      <header class="live-heading">
-        <ElButton class="live-brand" link :icon="DataAnalysis" aria-label="返回系统总览" title="返回系统总览" @click="navigate('/')">热沉物料流转管理</ElButton>
-        <h1>物料流转大屏</h1>
-        <div class="live-tools"><span class="live-connection" role="status">{{ connectionLabel }}</span><time>{{ report ? formatDateTime(report.as_of) : '读取状态' }}</time><ElButton circle :icon="Refresh" :loading="loading" aria-label="刷新物料状态" @click="load()" /><ElButton round :icon="playing ? VideoPause : VideoPlay" :disabled="reduced" @click="toggleMotion">{{ playing ? '暂停轮播' : '播放轮播' }}</ElButton><ElButton circle :icon="fullscreen ? Close : FullScreen" :aria-label="fullscreen ? '退出全屏' : '全屏展示'" @click="toggleFullscreen" /></div>
+  <div ref="root" class="factory-glass">
+    <main class="dashboard" :class="{ still: !moving }" :style="{ transform: `translate(-50%, -50%) scale(${scale})` }" aria-label="全厂物料流转大屏">
+      <img class="campus-background" src="/assets/factory-glass/factory-campus.png" alt="八个班组所在的厂区示意" />
+      <div class="campus-tint" />
+      <header class="page-header">
+        <button class="brand" aria-label="返回系统总览" @click="navigate('/')"><Box /><span>物料运行中心</span></button>
+        <span class="header-divider" /><h1>全厂物料流转总览</h1>
+        <div class="header-meta"><time>{{ report ? formatDateTime(report.as_of) : '读取状态' }}</time><span class="connection-label" :class="{ stale: error }" role="status">{{ connectionLabel }}</span></div>
+        <div class="header-actions">
+          <button :class="{ enabled: autoRotate }" :title="autoRotate ? '暂停班组轮播' : '开始班组轮播'" :aria-label="autoRotate ? '暂停班组轮播' : '开始班组轮播'" :disabled="reduced" @click="autoRotate = !autoRotate"><component :is="autoRotate ? VideoPause : VideoPlay" /></button>
+          <button :class="{ enabled: moving }" :title="animate ? '暂停流转动效' : '开始流转动效'" :aria-label="animate ? '暂停流转动效' : '开始流转动效'" :disabled="reduced" @click="animate = !animate"><Sunny /></button>
+          <button title="刷新物料状态" aria-label="刷新物料状态" :disabled="loading" @click="load"><Refresh /></button>
+          <button :title="fullscreen ? '退出全屏' : '全屏展示'" :aria-label="fullscreen ? '退出全屏' : '全屏展示'" @click="toggleFullscreen"><FullScreen /></button>
+        </div>
       </header>
-      <StatePanel v-if="!report" class="live-initial" :state="error ? 'error' : 'loading'" :description="error" title="读取八班组物料状态" @retry="load()" />
+      <StatePanel v-if="!report" class="glass-initial glass-panel" :state="error ? 'error' : 'loading'" :description="error" title="读取全厂物料状态" @retry="load" />
       <template v-else>
-        <section class="live-metrics" aria-label="全厂材质库存件数与重量">
-          <article class="live-stock-total" title="各班组当前库存合计，含废料；内部转料、对外出库及发货均提交即扣减">
-            <ElIcon><Goods /></ElIcon>
-            <div>
-              <span>全厂在库<small class="transit-hint"> · 在途 {{ number(report.totals.in_transit_quantity) }} 件 / {{ number(report.totals.in_transit_weight) }} kg</small></span>
-              <p><span class="metric-quantity"><strong><AnimatedMetric :value="report.totals.on_hand_quantity" :animate="!hidden && !reduced" :precision="0" /></strong><small>件</small></span><i aria-hidden="true">/</i><span class="metric-weight"><strong><AnimatedMetric :value="report.totals.on_hand_weight" :animate="!hidden && !reduced" :precision="3" /></strong><small>kg</small></span></p>
-            </div>
-          </article>
-          <div class="live-materials">
-            <Transition name="material-page" mode="out-in">
-              <div v-if="visibleMaterials.length" :key="materialPage" class="live-material-items">
-                <article v-for="material in visibleMaterials" :key="material.key" class="live-material" :aria-label="material.key + '在库件数与重量'">
-                  <div>
-                    <span class="material-name" :title="material.key">{{ material.key }}</span>
-                    <p><span class="metric-quantity"><strong><AnimatedMetric :value="material.quantity" :animate="!hidden && !reduced" :precision="0" /></strong><small>件</small></span><i aria-hidden="true">/</i><span class="metric-weight"><strong><AnimatedMetric :value="material.weight" :animate="!hidden && !reduced" :precision="3" /></strong><small>kg</small></span></p>
-                  </div>
-                </article>
-              </div>
-              <p v-else class="material-empty">暂无在库材质</p>
-            </Transition>
-            <nav v-if="materialPages > 1" class="material-pager" aria-label="材质重量翻页">
-              <div><ElButton link :icon="ArrowLeft" aria-label="上一组材质" @click="changeMaterialPage(-1)" /><ElButton link :icon="ArrowRight" aria-label="下一组材质" @click="changeMaterialPage(1)" /></div>
-              <span>{{ materialPage + 1 }} / {{ materialPages }}</span>
-            </nav>
-          </div>
+        <FactoryGlassScene :teams="teams" :links="links" :focus="focus" :selected-route="selectedRoute" :motion="moving" :density="density" @select-team="selectTeam" @select-route="selectRoute" />
+        <section class="glass-panel global-stock" aria-label="全厂库存">
+          <FactoryGlassTitle :icon="Box">全厂库存</FactoryGlassTitle>
+          <div class="global-numbers"><div><strong data-testid="total-quantity" :style="{ fontSize: metricSize(number(report.totals.on_hand_quantity), 37, 6) }">{{ number(report.totals.on_hand_quantity) }}</strong><span>件</span></div><div><strong data-testid="total-weight" :style="{ fontSize: metricSize(kg(report.totals.on_hand_weight), 34, 7) }">{{ kg(report.totals.on_hand_weight) }}</strong><span>kg</span></div></div>
+          <div class="chart-caption">类型构成 · 按重量</div>
+          <div class="type-segments" aria-label="全厂库存重量占比"><div v-for="item in mainTypes" :key="item.key" :style="{ width: weightShare(item.weight) + '%', background: item.color }" :title="`${item.label}：${weightShare(item.weight).toFixed(1)}%`" /></div>
+          <div class="segment-percentages"><span v-for="item in mainTypes.filter(item => item.weight > 0)" :key="item.key"><i :style="{ background: item.color }" />{{ weightShare(item.weight) < 0.1 ? '<0.1' : weightShare(item.weight).toFixed(1) }}%</span></div>
+          <div class="global-type-list"><div v-for="item in mainTypes" :key="item.key" class="type-row"><span class="type-dot" :style="{ background: item.color }" /><button v-if="item.key === 'others'" :ref="rememberMoreButton" class="text-button" :aria-expanded="moreTypes" @click="showTypes">{{ item.label }} <span>›</span></button><span v-else>{{ item.label }}</span><div><b>{{ number(item.quantity) }}</b> 件 / <b>{{ kg(item.weight) }}</b> kg</div></div></div>
         </section>
-        <section class="flow-layout" aria-label="八班组状态与物料流转">
-          <div v-for="(teams, side) in groups" :key="side" class="team-rail" :class="side ? 'team-rail--right' : 'team-rail--left'">
-            <LiveTeamCard v-for="(team, index) in teams" :key="team.code" :team="team" :index="index + side * 4" :rows="visibleTransfers(team)" :selected="team.code === selectedTeamCode" @select="selectTeam" @open="openBatch" />
-          </div>
-          <div class="flow-center">
-            <div class="robot-stage"><FactoryRobot :paused="!moving" :look="look" :activity-key="activityKey" :display-scale="layout.scale" :device-ratio="deviceRatio" /></div>
-          </div>
+        <section class="glass-panel team-stock" aria-label="班组库存">
+          <FactoryGlassTitle :icon="House" detail="单位：件 / kg">班组库存</FactoryGlassTitle>
+          <div class="team-stock-list"><button v-for="item in teams" :key="item.code" class="team-stock-row" :class="{ active: item.code === focus }" :disabled="item.id == null" :aria-pressed="item.code === focus" :aria-label="`切换到${item.name}`" @click="selectTeam(item.code)"><span>{{ item.name }}</span><span class="team-bar-track"><span :style="{ width: (maxTeamWeight ? (item.balance?.on_hand_weight || 0) / maxTeamWeight * 100 : 0) + '%' }" /></span><span class="team-row-values">{{ item.id == null ? '未配置' : `${number(item.balance?.on_hand_quantity)} / ${kg(item.balance?.on_hand_weight)}` }}</span></button></div>
+          <div class="team-sum"><span>合计</span><strong>{{ number(teamSum.quantity) }} <small>件 /</small> {{ kg(teamSum.weight) }} <small>kg</small></strong><CircleCheck v-if="reconciled" title="班组分类库存与全厂合计一致" /><Warning v-else title="分类库存与汇总不一致" /></div>
         </section>
+        <section class="glass-panel team-types" :aria-label="`${team?.name || '班组'}类型构成`">
+          <FactoryGlassTitle :icon="Files" :detail="`${autoRotate ? '班组轮播' : '当前班组'} ${Math.max(0, teams.findIndex(item => item.code === focus) + 1)}/8`">{{ team?.name || '班组' }} · 类型构成</FactoryGlassTitle>
+          <div class="type-panel-caption"><span>按重量</span><span>件 / kg</span></div>
+          <div v-if="team?.id != null" class="team-types-body"><div><FactoryStockRing :items="teamTypes" :motion="moving" /><div class="donut-quantity">{{ number(team.balance?.on_hand_quantity) }}<small> 件</small></div></div><div class="team-type-legend" :class="{ many: visibleTypes.length > 6 }"><div v-for="item in visibleTypes" :key="item.key" class="detail-type-row"><span class="type-dot" :style="{ background: item.color }" /><span :title="item.label">{{ item.label }}</span><b>{{ number(item.quantity) }} / {{ kg(item.weight) }}</b></div><p v-if="!visibleTypes.length" class="zero-types">暂无在库物料</p><p v-else-if="visibleTypes.length < teamTypes.length" class="zero-types">其余 {{ teamTypes.length - visibleTypes.length }} 类为 0</p></div></div>
+          <p v-else class="panel-empty">班组尚未配置</p>
+          <div v-if="autoRotate && !reduced && !hidden && !error" :key="focus" class="rotation-progress" />
+        </section>
+        <section class="glass-panel pending-panel" aria-label="班组间待接收">
+          <FactoryGlassTitle :icon="Download">班组间待接收</FactoryGlassTitle>
+          <div class="pending-big"><div><strong data-testid="pending-count" :style="{ fontSize: metricSize(number(report.internal_pending.batches), 53, 3) }">{{ number(report.internal_pending.batches) }}</strong><span>批</span></div><div><strong data-testid="pending-links">{{ activeLinks.length }}</strong><span>条线路</span></div></div>
+          <div class="transit-numbers"><strong>{{ number(report.internal_pending.quantity) }}</strong><span>件 /</span><strong>{{ kg(report.internal_pending.weight) }}</strong><span>kg</span></div>
+        </section>
+        <section class="glass-panel focus-panel" aria-label="当前班组发出待接收">
+          <FactoryGlassTitle :icon="Switch">{{ team?.name || '班组' }} · 发出待接收</FactoryGlassTitle>
+          <div class="focus-numbers"><strong>{{ number(focusPending) }}<small> 批</small></strong><div><b>{{ focusTargets }}</b><span>个接收班组</span></div></div>
+          <div v-if="focusLinks.length" class="focus-routes"><button v-for="link in focusLinks" :key="link.key" :class="{ chosen: link.key === selectedRoute }" :aria-pressed="link.key === selectedRoute" :aria-label="`选择${link.source.name}到${link.target.name}线路`" @click="selectRoute(link.key)"><Right /><strong>{{ link.target.name }}</strong><span>{{ link.pending_batches ? `${number(link.pending_batches)} 批` : '已接收' }}</span></button></div>
+          <p v-else class="panel-empty">暂无待接收或近 24 小时接收线路</p>
+        </section>
+        <div class="glass-panel line-legend"><div><span class="legend-line focused" />亮线：{{ team?.name || '选中班组' }}发出</div><div><span class="legend-line" />细线：其他流转 <small>虚线已接收</small></div></div>
+        <section class="glass-panel attention-panel"><FactoryGlassTitle :icon="Warning">需要关注</FactoryGlassTitle><div class="attention-content"><template v-if="team?.urgent_serial_count"><span class="urgent-dot" />{{ team.name }} · {{ team.urgent_serial_count }} 个加急流水号</template><template v-else><CircleCheck />{{ team?.id != null ? '当前班组无加急在库' : '班组尚未配置' }}</template></div></section>
+        <section class="glass-panel recent-panel"><FactoryGlassTitle :icon="Clock">最近批次</FactoryGlassTitle><div class="recent-list"><button v-for="batch in report.recent_batches.slice(0, 3)" :key="batch.batch_no" class="recent-item" :title="`${batch.batch_no} · ${number(batch.quantity)} 件 / ${kg(batch.weight)} kg`" @click="navigate('/transfer-batches/scan?batch_no=' + encodeURIComponent(batch.batch_no))"><time>{{ formatDateTime(batch.updated_at).slice(5, 10) }}</time><span :title="batchLabel(batch)">{{ batchLabel(batch) }}</span><b>{{ number(batch.quantity) }} 件 <small>{{ batchStatus(batch) }}</small></b></button><p v-if="!report.recent_batches.length" class="panel-empty">暂无批次记录</p></div></section>
+        <section class="route-console glass-panel" aria-label="选中线路详情"><template v-if="route"><div class="current-route"><span class="console-eyebrow">当前线路</span><strong>{{ route.source.name }}<Right />{{ route.target.name }}</strong><span class="route-status" :class="{ done: !route.pending_batches }">{{ route.pending_batches ? `待接收 ${number(route.pending_batches)} 批 · ${number(route.pending_quantity)} 件 / ${kg(route.pending_weight)} kg` : '全部接收完成 · 光点已停止' }}</span></div><button class="route-detail-button" @click="openRoute">{{ route.pending_batches ? '查看待接收' : '查看流转记录' }}<Right /></button></template><span v-else class="route-empty">{{ team?.name || '当前班组' }}暂无待接收或近 24 小时接收线路</span><p>在库库存与在途物料分开统计 · 接收状态随业务确认实时更新</p></section>
+        <div class="scene-caption">班组多对多流转示意 · 按实际业务记录连线</div>
       </template>
-      <div v-if="error && report || warning" class="live-notices"><ElAlert v-if="error && report" :title="error" type="warning" :closable="false" show-icon /><ElAlert v-if="warning" :title="warning" type="warning" :closable="false" show-icon /></div>
-    </div>
-  </section>
+      <div v-if="report && (error || warning)" class="live-notices" role="status"><Warning /><span>{{ [error, warning].filter(Boolean).join('；') }}</span><button v-if="error" @click="load">重试</button></div>
+      <div v-if="moreTypes" class="types-backdrop" @click="closeTypes"><section class="types-dialog glass-panel" role="dialog" aria-modal="true" aria-label="其他类型库存" @click.stop @keydown.esc="closeTypes" @keydown.tab.prevent="closeMore?.focus()"><div class="dialog-heading"><h2>其他类型库存</h2><button ref="closeMore" aria-label="关闭类型明细" @click="closeTypes"><Close /></button></div><p>与原材料、半成品、成品共同计入全厂在库库存</p><div class="other-type-table"><div v-for="item in otherTypes" :key="item.key"><span class="type-dot" :style="{ background: item.color }" /><span>{{ item.label }}</span><b>{{ number(item.quantity) }} <small>件</small></b><b>{{ kg(item.weight) }} <small>kg</small></b></div></div><footer>合计 <b>{{ number(sumAmounts(otherTypes).quantity) }} 件 / {{ kg(sumAmounts(otherTypes).weight) }} kg</b></footer></section></div>
+    </main>
+  </div>
 </template>
-<style scoped>
-.factory-live { --el-color-primary: #56daee; --el-bg-color: #031b2a; --el-bg-color-overlay: #052439; --el-fill-color-blank: #042338; --el-fill-color-light: #0a3549; --el-text-color-primary: #e6f5ff; --el-text-color-regular: #a6d8ef; --el-border-color: #20546b; position: relative; display: grid; place-items: center; padding: 0; overflow: hidden; width: 100%; height: 100dvh; color: #e6f5ff; background: #00111d; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
-.factory-live--fullscreen { width: 100vw; }
-.live-board { position: absolute; transform-origin: center; box-sizing: border-box; padding: 10px 20px; display: grid; grid-template-rows: 44px 72px minmax(0, 1fr); gap: 10px; overflow: hidden; background: #001521; }
-.live-heading { display: flex; align-items: center; justify-content: space-between; position: relative; border-bottom: 1px solid #164258; padding-bottom: 8px; }
-.live-brand { color: #d9f3ff; font-size: 18px; font-weight: 600; }.live-brand :deep(.el-icon) { font-size: 25px; margin-right: 8px; }
-.live-heading h1 { position: absolute; left: 50%; transform: translateX(-50%); margin: 0; font-size: 30px; line-height: 40px; font-weight: 650; letter-spacing: 4px; white-space: nowrap; }
-.live-tools { display: flex; align-items: center; gap: 12px; }.live-tools time { font-size: 12px; color: #a6cadb; }
-.live-tools .el-button { margin: 0; height: 30px; color: #c3eefa; border-color: #286580; background: transparent; font-size: 12px; }
-.live-connection { font-size: 11px; color: #8eb8ca; white-space: nowrap; }
-.live-metrics { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); border-bottom: 1px solid #164258; padding-bottom: 8px; }
-.live-metrics article { display: flex; align-items: center; justify-content: center; gap: 22px; min-width: 0; }.live-metrics article + article { border-left: 1px solid #205168; }
-.live-metrics .el-icon { font-size: 36px; color: #69d8f1; }.live-metrics article > div > span { font-size: 14px; color: #a6d5e8; }
-.live-metrics p { display: flex; align-items: baseline; gap: 9px; margin: 0; }.live-metrics strong { font-size: 30px; line-height: 40px; font-weight: 650; font-variant-numeric: tabular-nums; }.live-metrics small { font-size: 14px; color: #a6d5e8; }
-.live-metrics p > span { display: inline-flex; align-items: baseline; gap: 5px; white-space: nowrap; }.live-metrics p > i { font-size: 16px; font-style: normal; color: #6796ab; }.live-metrics .metric-weight strong { font-size: 24px; }
-.live-metrics .transit-hint { font-size: 12px; }
-.live-stock-total { padding-right: 18px; }
-.live-materials { display: flex; min-width: 0; border-left: 1px solid #205168; }
-.live-material-items { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; }
-.live-material { padding-inline: 20px; }.live-material > div { min-width: 0; }
-.material-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.live-material strong { color: #76dcef; }
-.material-pager { width: 56px; flex: 0 0 56px; margin-left: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; color: #9bbfce; }
-.material-pager .el-button { width: 24px; height: 24px; margin: 0; color: #a9ecf6; padding: 2px; }
-.material-empty { flex: 1; align-self: center; text-align: center; margin: 0; font-size: 14px; color: #9bbfce; }
-.material-page-enter-active, .material-page-leave-active { transition: opacity .18s ease, transform .18s ease; }.material-page-enter-from { opacity: 0; transform: translateY(10px); }.material-page-leave-to { opacity: 0; transform: translateY(-10px); }
-.live-materials { overflow: hidden; }
-.flow-layout { position: relative; min-height: 0; display: grid; grid-template-columns: minmax(0, 31.2%) minmax(0, 1fr) minmax(0, 31.2%); grid-template-rows: minmax(0, 1fr); column-gap: 0; background: url('/assets/factory-live/factory-background.png') center 58% / cover no-repeat; }
-.team-rail { z-index: 1; display: grid; grid-template-rows: repeat(4, minmax(0, 1fr)); padding: 0 14px; min-width: 0; min-height: 0; background: rgb(0 25 41 / 91%); border: 1px solid #2882a5; border-radius: 7px; box-shadow: inset 0 0 16px rgb(43 168 220 / 13%), 0 0 8px rgb(54 177 223 / 18%); }
-.team-rail--left { grid-column: 1; grid-row: 1; }.team-rail--right { grid-column: 3; grid-row: 1; }
-.flow-center { position: relative; grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; }
-.robot-stage { position: absolute; left: 50%; transform: translateX(-50%); width: 540px; height: 500px; top: 50%; margin-top: -290px; pointer-events: none; }
-.live-initial { grid-row: 2 / -1; align-self: center; }
-.live-notices { position: absolute; z-index: 5; left: 33%; right: 33%; top: 150px; }.live-notices :deep(.el-alert) { background: #493119; color: #ffe0ac; font-size: 12px; }
-.factory-live :deep(button:focus-visible) { outline: 2px solid #a5f5ff; outline-offset: -2px; }
-.factory-live--narrow { display: block; overflow: auto; }.factory-live--narrow .live-board { position: relative; width: 100%; min-height: 100%; padding: 14px; grid-template-rows: auto auto auto; gap: 16px; overflow: visible; }
-.factory-live--narrow .live-heading { flex-wrap: wrap; gap: 12px; }.factory-live--narrow .live-heading h1 { position: static; transform: none; order: -1; width: 100%; font-size: 25px; }.factory-live--narrow .live-brand { font-size: 14px; }.factory-live--narrow .live-tools { flex-wrap: wrap; gap: 8px; }.factory-live--narrow .live-tools time { display: none; }
-.factory-live--narrow .live-metrics { grid-template-columns: 1fr; gap: 18px; padding: 8px 0 16px; }.factory-live--narrow .live-metrics article { justify-content: flex-start; gap: 10px; border: none; }.factory-live--narrow .live-metrics strong { font-size: 25px; }.factory-live--narrow .live-metrics .el-icon { font-size: 24px; }.factory-live--narrow .live-metrics small { font-size: 13px; }
-.factory-live--narrow .live-materials { border-left: 0; min-height: 132px; }.factory-live--narrow .live-material-items { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 60px; gap: 12px; }.factory-live--narrow .live-material { padding: 0; }.factory-live--narrow .material-name { font-size: 13px; }.factory-live--narrow .live-material strong { font-size: 22px; }
-.factory-live--narrow .live-material p { flex-wrap: wrap; gap: 0 6px; line-height: 20px; }.factory-live--narrow .live-material strong { line-height: 20px; }.factory-live--narrow .live-material .metric-weight strong { font-size: 16px; }.factory-live--narrow .live-material p > i { display: none; }
-.factory-live--narrow .flow-layout { display: flex; flex-direction: column; gap: 12px; background: none; }.factory-live--narrow .flow-center { order: -1; height: 440px; overflow: hidden; background: url('/assets/factory-live/factory-background.png') center / cover no-repeat; }.factory-live--narrow .robot-stage { width: 430px; height: 480px; margin-top: -240px; }
-.factory-live--narrow .team-rail { grid-template-rows: repeat(4, 200px); }.factory-live--narrow .live-notices { position: static; }
-@media (prefers-reduced-motion: reduce) { .factory-live :deep(*) { animation: none !important; transition: none !important; } }
-</style>
+<style src="@/styles/factoryGlass.css"></style>

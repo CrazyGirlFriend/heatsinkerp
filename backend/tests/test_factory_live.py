@@ -35,7 +35,9 @@ def test_each_internal_batch_counts_once_and_receives_independently(client, outb
     target = next(t for t in data['teams'] if t['id'] == outbound['other']['id'])
     assert source['outgoing'] == target['incoming'] == 2
     link = next(l for l in data['links'] if l['target_id'] == target['id'])
-    assert link == dict(source_id=source['id'], target_id=target['id'], pending_batches=2, confirmed_batches=0)
+    assert link == dict(source_id=source['id'], target_id=target['id'], pending_batches=2, confirmed_batches=0,
+                       pending_quantity=60, pending_weight=6)
+    assert data['internal_pending'] == dict(batches=2, quantity=60, weight=6)
     row = next(b for b in data['recent_batches'] if b['batch_no'] == group['items'][0]['batch_no'])
     assert row['source_id'] == source['id'] and row['target_id'] == target['id']
     assert row['line_count'] == 1 and row['quantity'] == 30
@@ -53,6 +55,8 @@ def test_each_internal_batch_counts_once_and_receives_independently(client, outb
     assert next(b for b in data['recent_batches'] if b['batch_no'] == group['items'][1]['batch_no'])['status'] == 'pending'
     link = next(l for l in data['links'] if l['target_id'] == target['id'])
     assert link['pending_batches'] == link['confirmed_batches'] == 1
+    assert link['pending_quantity'] == 30 and link['pending_weight'] == 3
+    assert data['internal_pending'] == dict(batches=1, quantity=30, weight=3)
     assert data['totals']['on_hand_quantity'] == 170
     assert data['totals']['in_transit_quantity'] == 30
     assert data['material_stock'] == [{'key': '铜钼', 'quantity': 170, 'weight': 17}]
@@ -64,6 +68,7 @@ def test_each_internal_batch_counts_once_and_receives_independently(client, outb
     assert response.status_code == 200
     assert next(t for t in live(client)['teams'] if t['id'] == target['id'])['pending_transfers'] == []
     assert live(client)['material_stock'] == [{'key': '铜钼', 'quantity': 200, 'weight': 20}]
+    assert live(client)['internal_pending'] == dict(batches=0, quantity=0, weight=0)
 
 
 def test_external_outbound_has_no_fictitious_receiving_node(client, outbound):
@@ -72,6 +77,7 @@ def test_external_outbound_has_no_fictitious_receiving_node(client, outbound):
     row = next(b for b in data['recent_batches'] if b['batch_no'] == group['items'][0]['batch_no'])
     assert row['target_id'] is None and row['external_destination'] == '客户 A / 外部仓库'
     assert not any(l['source_id'] == outbound['team']['id'] for l in data['links'])
+    assert data['internal_pending'] == dict(batches=0, quantity=0, weight=0)
     assert all(t['pending_transfers'] == [] for t in data['teams'])
     assert next(t for t in data['teams'] if t['id'] == outbound['team']['id'])['outgoing'] == 2
     for line in group['items']:
@@ -231,3 +237,55 @@ def test_material_stock_external_exit_and_loss_follow_physical_balances(client, 
         'reason': '清点丢失', 'idempotency_key': 'material-loss'})
     assert response.status_code == 201, response.text
     assert live(client)['material_stock'] == [{'key': '铜钼', 'quantity': 139, 'weight': 13.875}]
+
+
+def assert_classification_balances(data):
+    for team in data['teams']:
+        if team['id'] is None:
+            assert team['balance'] is None and team['material_types'] == []
+            continue
+        assert sum(row['quantity'] for row in team['material_types']) == team['balance']['on_hand_quantity']
+        assert sum(row['weight'] for row in team['material_types']) == pytest.approx(team['balance']['on_hand_weight'])
+    assert sum(row['quantity'] for row in data['material_types']) == data['totals']['on_hand_quantity']
+    assert sum(row['weight'] for row in data['material_types']) == pytest.approx(data['totals']['on_hand_weight'])
+    for row in data['material_types']:
+        peers = [item for team in data['teams'] for item in team['material_types'] if item['key'] == row['key']]
+        assert sum(item['quantity'] for item in peers) == row['quantity']
+        assert sum(item['weight'] for item in peers) == pytest.approx(row['weight'])
+
+
+def test_live_classification_preserves_all_types_unknown_and_weight_only_stock(client, warehouse):
+    kinds = ['raw_material', 'semi_finished', 'finished', 'finished_surplus',
+             'semi_finished_surplus', 'defective', 'waste', 'sludge', 'scrap_chips']
+    for i, kind in enumerate(kinds):
+        response = intake(client, warehouse, serial_no=f'TYPE-{i}', material_type=kind,
+                          quantity=0 if kind == 'sludge' else 3, weight='0.125', idempotency_key=f'type-{i}')
+        assert response.status_code == 201, response.text
+    unknown = intake(client, warehouse, serial_no='UNKNOWN', idempotency_key='unknown-type').json()
+    with SessionLocal() as db:
+        db.get(MaterialTransfer, unknown['id']).material_type = None
+        db.commit()
+    data = live(client)
+    assert_classification_balances(data)
+    types = {row['key']: row for row in data['material_types']}
+    assert set(types) == set(kinds) | {'unknown'}
+    assert types['sludge'] == {'key': 'sludge', 'quantity': 0, 'weight': .125}
+    assert types['unknown']['quantity'] == 100
+    assert any(team['balance'] is None for team in data['teams'])
+
+
+def test_live_classification_follows_partial_receipt_and_no_double_deduction(client, outbound):
+    group = dispatch(client, outbound, entry_kind='transfer', external_destination=None,
+                     next_team_id=outbound['other']['id']).json()
+    before = live(client)
+    assert_classification_balances(before)
+    source_before = next(team for team in before['teams'] if team['id'] == outbound['team']['id'])
+    response = client.post(f"/api/material-transfers/{group['items'][0]['batch_no']}/confirm",
+                           headers=outbound['other_headers'], json={'idempotency_key': 'typed-receipt'})
+    assert response.status_code == 200, response.text
+    after = live(client)
+    assert_classification_balances(after)
+    source_after = next(team for team in after['teams'] if team['id'] == outbound['team']['id'])
+    assert source_after['material_types'] == source_before['material_types']
+    assert after['totals']['on_hand_quantity'] + after['internal_pending']['quantity'] == 200
+    assert after['totals']['on_hand_weight'] + after['internal_pending']['weight'] == 20
