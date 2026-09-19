@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from .auth import get_current_user
+from .auth import get_current_user, require_admin
 from .record_filters import RecordFilters
 from .api_errors import not_found as _not_found
 from .database import get_db
@@ -15,6 +15,18 @@ from .schemas import (DIRECT_MATERIAL_TYPE_PATTERN, MaterialTransferCreate, Mate
                       MaterialTransferConfirm, MaterialTransferReject, MaterialTransferList, MaterialTransferResponse)
 
 router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
+
+
+@router.get("/material-trace", tags=["material transfers"])
+def get_serial_trace(
+    serial_no: str = Query(min_length=1, max_length=80),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    from .material_trace import serial_trace
+    if not serial_no.strip():
+        raise HTTPException(422, "serial_no is required")
+    return serial_trace(db, serial_no, current_user)
 
 
 @router.post(

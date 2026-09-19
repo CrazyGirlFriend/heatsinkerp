@@ -98,11 +98,11 @@ describe('material transfer receipt review', () => {
     expect(vi.mocked(materialTransferApi.confirm).mock.calls[0]![1]).not.toHaveProperty('material_type')
   })
 
-  it('keeps the workbench trace scope in the detail link while global details remain unscoped', async () => {
+  it('keeps team accounts on their own receipt history, including global transfer details', async () => {
     await render()
-    expect(wrapper.get('a').attributes('href')).toBe('/material-trace?serial_no=HS-001')
+    expect(wrapper.get('a').attributes('href')).toBe('/team-workspaces/3?serial_no=HS-001&tab=history&direction=all')
     await wrapper.setProps({ traceScope: { team_id: 3, direction: 'incoming' } })
-    expect(wrapper.get('a').attributes('href')).toBe('/material-trace?serial_no=HS-001&team_id=3&direction=incoming')
+    expect(wrapper.get('a').attributes('href')).toBe('/team-workspaces/3?serial_no=HS-001&tab=history&direction=incoming')
   })
 
   it('displays the complete scanned document and confirms only the reviewed version without amount input', async () => {

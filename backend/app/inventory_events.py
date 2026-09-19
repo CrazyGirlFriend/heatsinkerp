@@ -10,7 +10,7 @@ from threading import Lock
 from sqlalchemy import event
 from sqlalchemy.orm import Session
 
-from .models import AuthSession, MaterialDispatch, MaterialLoss, MaterialTransfer, SerialUrgency, Team, User
+from .models import AuthSession, MaterialDispatch, MaterialLoss, MaterialTransfer, SerialUrgency, Team, User, TeamPurpose, OpeningStockSubmission
 
 
 class InventoryEvents:
@@ -41,7 +41,7 @@ class InventoryEvents:
 
 
 inventory_events = InventoryEvents()
-WATCHED = (MaterialTransfer, MaterialLoss, MaterialDispatch, SerialUrgency, Team, User, AuthSession)
+WATCHED = (MaterialTransfer, MaterialLoss, MaterialDispatch, SerialUrgency, Team, User, AuthSession, TeamPurpose, OpeningStockSubmission)
 PENDING = "inventory_changed_transactions"
 
 

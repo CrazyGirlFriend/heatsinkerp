@@ -18,11 +18,11 @@ watch([() => route.path, () => props.compact], async () => {
   if (!props.compact) menu.value?.open(activeGroup.value)
 })
 const workspaces = computed(() => configuredTeamWorkspaces(teamDirectory.items))
-const materialLinks = [
+const materialLinks = computed(() => [
   { path: '/transfer-batches', label: '转料记录', icon: Tickets },
   { path: '/transfer-batches/scan', label: '扫码查询', icon: Aim },
-  { path: '/material-trace', label: '流水号追踪', icon: Location },
-]
+  ...(isAdmin.value ? [{ path: '/material-trace', label: '全链路追踪', icon: Location }] : []),
+])
 </script>
 
 <template>

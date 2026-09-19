@@ -35,7 +35,7 @@ describe('pure material transfer interface', () => {
     expect(listSource).not.toContain('height="100%"')
     expect(scanSource).toContain('class="page workspace-page material-scan-page reading-workspace"')
     expect(traceSource).toContain('class="page workspace-page material-trace-page reading-workspace"')
-    expect(traceSource).toContain('<ElScrollbar v-if="visibleTransfers.length"')
+    expect(traceSource).toContain('<SerialBatchGraph')
     for (const source of [listSource, scanSource, traceSource, drawerSource, formSource]) {
       expect(source).not.toContain("from '@ant-design/icons-vue'")
     }
@@ -51,14 +51,10 @@ describe('pure material transfer interface', () => {
   })
 
   it('traces only a serial-number handoff chain and reports the current state', () => {
-    expect(traceSource).toContain('serial_no: serialNo')
-    expect(traceSource).toContain('最近一笔在途')
-    expect(traceSource).toContain('最近流转状态')
-    expect(traceSource).toContain('最近确认位置')
-    expect(traceSource).not.toContain('当前位置')
-    expect(traceSource).toContain('流转轨迹')
-    expect(traceSource).toContain('while (collected.length < expectedTotal)')
-    expect(traceSource).toContain('page: nextPage, page_size: 100')
+    expect(traceSource).toContain('materialTransferApi.trace(serialNo)')
+    expect(traceSource).toContain('在库分布')
+    expect(traceSource).toContain('批次流向')
+    expect(traceSource).not.toContain('最近确认位置')
     expect(traceSource).not.toMatch(/WorkOrder|workOrder|工艺主线|工单信息|产品/)
   })
 

@@ -25,6 +25,7 @@ import {
 } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import LiveRefreshNotice from '@/components/LiveRefreshNotice.vue'
+import OpeningAuthorizationDialog from '@/components/OpeningAuthorizationDialog.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { adminApi, type EntityId, type Team, type TeamKind } from '@/services/adminApi'
 import { isAdmin, refreshCurrentUser } from '@/stores/auth'
@@ -49,6 +50,7 @@ const errorMessage = ref('')
 const query = ref('')
 const status = ref<StatusFilter>('all')
 const editorOpen = ref(false)
+const authorizationOpen = ref(false), authorizationTeam = ref<Team | null>(null)
 const editingId = ref<EntityId | null>(null)
 const formError = ref('')
 const codeInput = ref<InputInstance | null>(null)
@@ -309,8 +311,9 @@ onMounted(() => void loadTeams())
           <ElTableColumn label="状态" width="100">
             <template #default="{ row }"><ElTag :type="row.active ? 'success' : 'info'" effect="plain">{{ row.active ? '启用' : '停用' }}</ElTag></template>
           </ElTableColumn>
-          <ElTableColumn label="操作" width="260" align="center">
+          <ElTableColumn label="操作" width="360" align="center">
             <template #default="{ row }">
+              <ElButton link type="primary" @click="authorizationTeam = asTeam(row); authorizationOpen = true">期初授权</ElButton>
               <template v-if="isWarehouse(asTeam(row))"><ElTag type="info" effect="plain">系统项</ElTag></template>
               <template v-else>
                 <ElButton link type="primary" :icon="EditPen" @click="openEdit(asTeam(row))">编辑</ElButton>
@@ -324,6 +327,7 @@ onMounted(() => void loadTeams())
       <footer v-if="!loading && !errorMessage" class="admin-pagination"><ElPagination v-model:current-page="page" v-model:page-size="pageSize" :page-sizes="[10, 20, 50, 100]" :total="filteredTeams.length" layout="total, sizes, prev, pager, next" /></footer>
     </ElCard>
 
+    <OpeningAuthorizationDialog v-model="authorizationOpen" :team="authorizationTeam" @saved="loadTeams(); refreshTeamDirectory()" />
     <ElDialog
       v-model="editorOpen"
       class="editor-modal"

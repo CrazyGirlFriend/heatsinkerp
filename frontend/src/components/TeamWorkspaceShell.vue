@@ -17,10 +17,11 @@ const tabs = computed(() => [
   ...(props.warehouse ? [{ value: 'receipts', label: '入库记录' }] : []),
   { value: 'outgoing', label: '出库记录' },
   { value: 'losses', label: '丢失记录' },
-  ...(!props.warehouse ? [{ value: 'materials', label: '材质归类' }, { value: 'overview', label: '数据分析' }] : []),
+  ...(!props.warehouse ? [{ value: 'materials', label: '材质归类' }] : []),
+  { value: 'history', label: '收发历史' },
 ])
-const statsSelected = computed(() => ['materials', 'overview'].includes(props.modelValue))
-const statsLabel = computed(() => props.modelValue === 'materials' ? '材质归类' : props.modelValue === 'overview' ? '数据分析' : '统计')
+const statsSelected = computed(() => props.modelValue === 'materials')
+const statsLabel = computed(() => props.modelValue === 'materials' ? '材质归类' : '统计')
 
 function changeTab(event: KeyboardEvent, index: number): void {
   let next = index
@@ -46,7 +47,7 @@ function changeTab(event: KeyboardEvent, index: number): void {
       </div>
       <ElDropdown v-if="warehouse" trigger="click" @command="emit('update:modelValue', $event)">
         <button class="workspace-statistics" :class="{ 'is-selected': statsSelected }" type="button" aria-label="库房统计"><span id="workspace-tab-statistics">{{ statsLabel }}</span><ElIcon><ArrowDown /></ElIcon></button>
-        <template #dropdown><ElDropdownMenu><ElDropdownItem command="materials">材质归类</ElDropdownItem><ElDropdownItem command="overview">数据分析</ElDropdownItem></ElDropdownMenu></template>
+        <template #dropdown><ElDropdownMenu><ElDropdownItem command="materials">材质归类</ElDropdownItem></ElDropdownMenu></template>
       </ElDropdown>
       <slot name="actions" />
     </div>

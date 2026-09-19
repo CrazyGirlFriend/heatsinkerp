@@ -36,6 +36,17 @@ const transfer: MaterialTransfer = {
 }
 
 describe('material transfer print sheet', () => {
+  it('prints opening stock as an already-posted origin, with purpose and no fictitious upstream', async () => {
+    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, entry_kind: 'opening_stock', purpose_id: 1, purpose_name: '去毛刺' } } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('期初库存入账单')
+    expect(wrapper.text()).toContain('入账班组')
+    expect(wrapper.text()).toContain('去毛刺')
+    expect(wrapper.text()).not.toContain('转出班组')
+    expect(wrapper.text()).not.toContain('接收确认联')
+    expect(wrapper.classes()).not.toContain('material-transfer-print-sheet--extended')
+    wrapper.unmount()
+  })
   it.each([['warehouse_outbound', '出库'], ['inspection_shipment', '发货']] as const)('prints %s as an external confirmation with no receiving team', async (kind, verb) => {
     const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, entry_kind: kind, external_destination: '客户外部收货仓', next_team: { id: '', code: '', name: '客户外部收货仓' }, status: 'dispatched', dispatched_by: '本班组确认人', dispatched_at: '2026-09-07T01:00:00Z' } } })
     await flushPromises()

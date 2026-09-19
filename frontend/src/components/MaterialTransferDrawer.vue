@@ -59,7 +59,8 @@ const authStore = useAuthStore()
 const current = ref<MaterialTransfer | null>(null)
 const grouped = computed(() => Boolean(props.showHistoryGroup && current.value?.dispatch_no && isDispatchNumber(current.value.dispatch_no)))
 const groupOpen = ref(false)
-const receipt = computed(() => Boolean(current.value && isWarehouseReceipt(current.value)))
+const opening = computed(() => current.value?.entry_kind === 'opening_stock')
+const receipt = computed(() => opening.value || Boolean(current.value && isWarehouseReceipt(current.value)))
 const external = computed(() => Boolean(current.value && isExternalTransfer(current.value)))
 const actionLabel = computed(() => externalActionLabel(current.value?.entry_kind))
 const loading = ref(false)
@@ -85,15 +86,18 @@ watch(effectiveBatchNo, () => { reviewNotice.value = '' })
 const tracePath = computed(() => {
   if (!current.value?.serial_no) return ''
   const query = new URLSearchParams({ serial_no: current.value.serial_no })
-  if (props.traceScope?.team_id !== undefined) {
-    query.set('team_id', String(props.traceScope.team_id))
-    query.set('direction', props.traceScope.direction || 'all')
+  const teamId = props.traceScope?.team_id ?? (authStore.isTeamAccount ? authStore.currentUser?.team_id : undefined)
+  if (teamId !== undefined && teamId !== null) {
+    query.set('tab', 'history')
+    query.set('direction', props.traceScope?.direction || 'all')
+    return `/team-workspaces/${teamId}?${query}`
   }
   return `/material-trace?${query}`
 })
 const stateMessage = computed(() => {
   if (!current.value) return ''
 
+  if (opening.value) return '期初库存已入账，单据已锁定'
   if (receipt.value) return '手工入库已入账，单据已锁定'
   if (authStore.isAdmin) return '管理员仅可查看转料记录'
   if (current.value.status === 'dispatched') return `${actionLabel.value}已确认，单据已锁定`
@@ -337,7 +341,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
   <MaterialTransferDetailFrame :model-value="modelValue && !groupOpen" :docked="docked" :busy="confirming || voiding" @close="close">
     <template #header>
       <header class="drawer-heading">
-        <span>{{ receipt ? '库房手工入库' : external ? `${actionLabel}详情` : '转料详情' }}</span>
+        <span>{{ opening ? '期初库存' : receipt ? '库房手工入库' : external ? `${actionLabel}详情` : '转料详情' }}</span>
         <h2>{{ current?.batch_no || effectiveBatchNo || '正在读取…' }}</h2>
         <MaterialTransferStatus v-if="current" :status="current.status" :entry-kind="current.entry_kind" />
       </header>

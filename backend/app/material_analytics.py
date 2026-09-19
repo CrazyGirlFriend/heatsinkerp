@@ -144,7 +144,7 @@ def outgoing_flow():
 
 def peer_key(direction):
     if direction == "incoming":
-        return case((mt.entry_kind == "warehouse_receipt", "warehouse_receipt"), else_=cast(mt.source_team_id, String))
+        return case((mt.entry_kind == "opening_stock", "opening_stock"), (mt.entry_kind == "warehouse_receipt", "warehouse_receipt"), else_=cast(mt.source_team_id, String))
     return case((mt.entry_kind != "transfer", mt.entry_kind), else_=cast(mt.next_team_id, String))
 
 
@@ -268,7 +268,7 @@ def analytics(db, team_id, days=30, metric="weight"):
         column, predicate = flow(team_id, direction)
         trend[direction] = daily(db, dates, column, mt.quantity, mt.weight, predicate, start, end)
         key = peer_key(direction)
-        label = (case((mt.entry_kind == "warehouse_receipt", "库房手工入库"), else_=mt.source_team_name) if direction == "incoming" else
+        label = (case((mt.entry_kind == "opening_stock", "期初库存"), (mt.entry_kind == "warehouse_receipt", "库房手工入库"), else_=mt.source_team_name) if direction == "incoming" else
                  case((mt.entry_kind == "warehouse_outbound", "对外出库"), (mt.entry_kind == "inspection_shipment", "检验发货"), else_=mt.next_team_name))
         peers[direction] = amounts(db, select(key.label("key"), func.max(label).label("label"), func.sum(mt.quantity).label("quantity"), func.sum(mt.weight).label("weight")).where(
             predicate, column >= start, column <= end).group_by(key).order_by(func.sum(getattr(mt, metric)).desc()))

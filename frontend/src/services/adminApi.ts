@@ -5,6 +5,7 @@ export type EntityId = string | number
 export type TeamKind = 'production' | 'scrap' | 'warehouse'
 
 export interface Team {
+  opening_stock_enabled?: boolean
   id: EntityId
   code: string
   name: string
@@ -134,6 +135,7 @@ export function normalizeTeam(value: unknown): Team {
     code: stringValue(raw.code, raw.team_code, raw.group_code),
     name: stringValue(raw.name, raw.team_name, raw.group_name),
     description: optionalString(raw.description, raw.remark, raw.notes) ?? null,
+    opening_stock_enabled: raw.opening_stock_enabled === true,
     active: booleanValue(raw.active ?? raw.is_active ?? raw.enabled),
     sort_order: Number.isFinite(Number(raw.sort_order)) ? Number(raw.sort_order) : 0,
     kind: raw.kind === 'scrap' ? 'scrap' : raw.kind === 'warehouse' ? 'warehouse' : 'production',

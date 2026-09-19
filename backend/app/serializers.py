@@ -19,6 +19,7 @@ def team_dict(team: Team) -> dict[str, Any]:
         "active": team.active,
         "sort_order": team.sort_order,
         "kind": team.kind,
+        "opening_stock_enabled": team.opening_stock_enabled,
         "created_at": _utc(team.created_at),
         "updated_at": _utc(team.updated_at),
     }

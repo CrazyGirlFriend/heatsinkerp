@@ -54,6 +54,7 @@ onBeforeUnmount(() => { ++version })
     <StatePanel v-else-if="loading" state="loading" title="正在读取来源批次" />
     <ElTable v-else class="business-table warehouse-source-table" :data="rows" row-key="transfer.id" empty-text="暂无来源记录">
       <ElTableColumn label="来源批次" min-width="215" align="center"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
+      <ElTableColumn label="本班组用途" min-width="120" align="center" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.purpose_name || '未分类' }}</template></ElTableColumn>
       <ElTableColumn label="入库件数" min-width="100" align="center" prop="received_quantity" />
       <ElTableColumn label="入库重量 (kg)" min-width="135" align="center" prop="received_weight" />
       <ElTableColumn label="当前件数" min-width="100" align="center" prop="on_hand_quantity" />

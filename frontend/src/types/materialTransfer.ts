@@ -3,7 +3,7 @@ import type { MaterialLoss } from './teamMaterials'
 
 export type MaterialTransferStatus = 'pending' | 'received' | 'voided' | 'dispatched'
 export type ExternalEntryKind = 'warehouse_outbound' | 'inspection_shipment'
-export type MaterialEntryKind = 'transfer' | 'warehouse_receipt' | ExternalEntryKind
+export type MaterialEntryKind = 'transfer' | 'warehouse_receipt' | 'opening_stock' | ExternalEntryKind
 export type MaterialTransferAction = 'edit' | 'void' | 'confirm' | string
 
 export const materialTypeOptions = [
@@ -20,9 +20,11 @@ export const materialTypeOptions = [
 export type MaterialType = typeof materialTypeOptions[number]['value']
 export const isScrapType = (type?: string | null) => ['defective', 'waste', 'sludge', 'scrap_chips'].includes(type || '')
 export function receiptSourceLabel(transfer: MaterialTransfer): string {
+  if (transfer.entry_kind === 'opening_stock') return '期初库存'
   return transfer.entry_kind !== 'warehouse_receipt' ? '车间转入' : transfer.receipt_kind === 'return' ? '外部退回' : '外部入库'
 }
 export function materialSourceLabel(transfer: MaterialTransfer): string {
+  if (transfer.entry_kind === 'opening_stock') return '期初库存'
   return transfer.entry_kind === 'warehouse_receipt' ? transfer.external_source || '外部来源未登记' : transfer.source_team.name
 }
 
@@ -82,6 +84,8 @@ export interface MaterialTransferTeam {
 }
 
 export interface MaterialTransfer extends Partial<MaterialTransferDocumentFields> {
+  purpose_id?: number | null
+  purpose_name?: string | null
   urgency?: import('./recordFilters').SerialUrgency
   entry_kind?: MaterialEntryKind
   external_destination?: string | null
@@ -154,6 +158,7 @@ export interface MaterialTransferListResponse {
 export type MaterialTransferStatusCounts = Record<MaterialTransferStatus | 'all', number>
 
 export interface CreateMaterialTransferPayload extends Partial<MaterialTransferDocumentFields> {
+  purpose_id?: number | null
   serial_no: string
   next_team_id: EntityId
   quantity: number
@@ -192,9 +197,11 @@ export function externalActionLabel(kind?: MaterialEntryKind): string {
   return kind === 'inspection_shipment' ? '发货' : '出库'
 }
 export function materialEntryLabel(kind?: MaterialEntryKind): string {
+  if (kind === 'opening_stock') return '期初库存'
   return kind === 'warehouse_receipt' ? '库房手工入库' : kind === 'warehouse_outbound' ? '对外出库' : kind === 'inspection_shipment' ? '检验发货' : '内部转料'
 }
 export function materialDocumentTitle(transfer: MaterialTransfer): string {
+  if (transfer.entry_kind === 'opening_stock') return '期初库存入账单'
   return isWarehouseReceipt(transfer) ? '库房入库单' : isExternalTransfer(transfer) ? `${externalActionLabel(transfer.entry_kind)}单` : '物料转料单'
 }
 
@@ -203,6 +210,7 @@ export function materialTransferVersion(transfer: MaterialTransfer): { expected_
 }
 
 export function materialTransferStatusLabel(status: MaterialTransferStatus | string, entryKind?: MaterialEntryKind): string {
+  if (entryKind === 'opening_stock') return '已入账'
   if (isExternalEntryKind(entryKind) && status === 'pending') return `待${externalActionLabel(entryKind)}确认`
   if (status === 'dispatched') return `已${externalActionLabel(entryKind)}`
   if (status === 'received' && entryKind === 'warehouse_receipt') return '已入库'

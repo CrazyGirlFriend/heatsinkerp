@@ -18,6 +18,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { MaterialTransferApiError, materialTransferApi } from '@/services/materialTransferApi'
 import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/stores/toast'
+import { useTeamPurposes } from '@/composables/useTeamPurposes'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { canEditMaterialTransfer, externalActionLabel, isExternalTransfer, materialDocumentTextFields, materialTransferVersion, materialTypeOptions, type MaterialTransfer, type MaterialTransferTextField, type MaterialType } from '@/types/materialTransfer'
 
@@ -46,6 +47,7 @@ const openedSourceTeamId = ref<string | number | null>(null)
 const form = reactive({
   serialNo: '',
   nextTeamId: '' as string | number,
+  purposeId: null as number | null,
   quantity: undefined as number | undefined,
   weight: undefined as number | undefined,
   notes: '',
@@ -56,6 +58,8 @@ const form = reactive({
 
 let formGeneration = 0
 const external = computed(() => Boolean(editingSnapshot.value && isExternalTransfer(editingSnapshot.value)))
+const purposes = useTeamPurposes(() => props.modelValue && !external.value && form.nextTeamId ? Number(form.nextTeamId) : null)
+watch(() => form.nextTeamId, value => { if (String(value) !== String(editingSnapshot.value?.next_team.id)) form.purposeId = null })
 const actionLabel = computed(() => externalActionLabel(editingSnapshot.value?.entry_kind))
 const isEditing = computed(() => Boolean(props.transfer))
 const linkedSource = computed(() => Boolean(editingSnapshot.value?.source_transfer_id))
@@ -82,6 +86,7 @@ function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
   editingSnapshot.value = transfer
   form.serialNo = transfer?.serial_no ?? ''
   form.nextTeamId = transfer?.next_team.id ?? ''
+  form.purposeId = transfer?.purpose_id ?? null
   form.quantity = transfer?.quantity
   form.weight = transfer?.weight
   form.notes = transfer?.notes ?? ''
@@ -112,6 +117,8 @@ function validate(): boolean {
   else if (!serialNo) formError.value = '请输入流水号'
   else if (serialNo.length > 80) formError.value = '流水号不能超过 80 个字符'
   else if (!external.value && form.nextTeamId === '') formError.value = '请选择接收班组'
+  else if (!external.value && (purposes.loading.value || purposes.error.value)) formError.value = purposes.error.value || '请等待用途加载完成'
+  else if (!external.value && purposes.items.value.length && form.purposeId !== editingSnapshot.value?.purpose_id && !purposes.items.value.some(item => item.active && item.id === form.purposeId)) formError.value = '请选择下序班组的转料用途'
   else if (!external.value && String(form.nextTeamId) === String(sourceTeam.value.id)) formError.value = '接收班组不能与转出班组相同'
   else if (form.quantity == null || !Number.isInteger(quantity) || quantity < 0 || quantity > 2147483647) formError.value = '转料件数须为 0 至 2147483647 的整数'
   else if (form.weight == null || !Number.isFinite(weight) || weight < 0 || weight > 99999999999.999) formError.value = '请输入有效的非负转料重量'
@@ -158,6 +165,7 @@ async function submit(): Promise<void> {
   const payload = {
     serial_no: form.serialNo.trim(),
     next_team_id: form.nextTeamId,
+    ...(!external.value && (form.purposeId || editingSnapshot.value?.purpose_id) ? { purpose_id: form.purposeId } : {}),
     quantity: Number(form.quantity),
     weight: Number(form.weight),
     notes: form.notes.trim() || null,
@@ -260,6 +268,13 @@ onBeforeUnmount(() => { ++formGeneration })
         >
           <ElOption v-for="team in destinationTeams" :key="team.id" :label="team.name" :value="team.id" />
         </ElSelect>
+      </ElFormItem>
+      <ElFormItem v-if="!external" label="转料用途" :required="purposes.items.value.length > 0">
+        <ElSelect v-model="form.purposeId" aria-label="转料用途" :loading="purposes.loading.value" :disabled="!canSubmit || !form.nextTeamId" :placeholder="form.nextTeamId && !purposes.loading.value && !purposes.items.value.length ? '下序未配置用途' : '请选择转料用途'">
+          <ElOption v-for="purpose in purposes.items.value.filter(item => item.active)" :key="purpose.id" :value="purpose.id" :label="purpose.name" />
+          <ElOption v-if="editingSnapshot?.purpose_id && String(form.nextTeamId) === String(editingSnapshot.next_team.id) && !purposes.items.value.some(item => item.active && item.id === editingSnapshot?.purpose_id)" :value="editingSnapshot.purpose_id" :label="`${editingSnapshot.purpose_name}（原单用途）`" />
+        </ElSelect>
+        <ElButton v-if="purposes.error.value" link type="danger" @click="purposes.refresh">用途加载失败，点击重试</ElButton>
       </ElFormItem>
       </div>
       <ElFormItem label="流水号" required>

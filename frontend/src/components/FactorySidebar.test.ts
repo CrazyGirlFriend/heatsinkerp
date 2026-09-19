@@ -105,7 +105,7 @@ describe('two-level material navigation', () => {
 
   it('routes leaf selections to the existing pages', async () => {
     const { wrapper, router } = await renderSidebar()
-    await wrapper.get('[aria-label="流水号追踪"]').trigger('click')
+    await wrapper.get('[aria-label="全链路追踪"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/material-trace')
   })
@@ -116,5 +116,6 @@ describe('two-level material navigation', () => {
     expect(wrapper.findAllComponents(ElSubMenu).map(group => group.props('index'))).toEqual(['teams', 'materials'])
     expect(wrapper.find('[aria-label="班组管理"]').exists()).toBe(false)
     expect(wrapper.find('[aria-label="班组长管理"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="全链路追踪"]').exists()).toBe(false)
   })
 })

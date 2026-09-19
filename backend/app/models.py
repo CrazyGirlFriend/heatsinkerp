@@ -61,6 +61,37 @@ class SerialUrgencyEvent(Base):
     __table_args__ = (Index("ix_sue_serial_time", "serial_no", "occurred_at", "id"),)
 
 
+class TeamPurpose(Base):
+    __tablename__ = "team_purposes"
+    __table_args__ = (UniqueConstraint("team_id", "name", name="uq_team_purpose_name"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class TeamSettingEvent(Base):
+    __tablename__ = "team_setting_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"), index=True)
+    action: Mapped[str] = mapped_column(String(40))
+    actor: Mapped[str] = mapped_column(String(80))
+    changes: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class OpeningStockSubmission(Base):
+    __tablename__ = "opening_stock_submissions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"), unique=True)
+    idempotency_key: Mapped[str] = mapped_column(String(100), unique=True)
+    request_hash: Mapped[str] = mapped_column(String(64))
+    created_by: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class MaterialTransfer(Base):
     """A material batch: internal handoff, warehouse intake, or external exit.
 
@@ -83,12 +114,12 @@ class MaterialTransfer(Base):
         CheckConstraint("finished_quantity IS NULL OR finished_quantity >= 0", name="ck_material_transfers_finished_quantity"),
         CheckConstraint(
             "(entry_kind IN ('transfer', 'warehouse_outbound', 'inspection_shipment') AND source_team_id IS NOT NULL AND source_team_code IS NOT NULL AND source_team_name IS NOT NULL) OR "
-            "(entry_kind = 'warehouse_receipt' AND source_team_id IS NULL AND source_team_code IS NULL AND source_team_name IS NULL "
+            "(entry_kind IN ('warehouse_receipt', 'opening_stock') AND source_team_id IS NULL AND source_team_code IS NULL AND source_team_name IS NULL "
             "AND source_transfer_id IS NULL AND dispatch_id IS NULL AND status = 'received' AND stock_tracked = 1)",
             name="ck_mt_entry_kind_source",
         ),
         CheckConstraint(
-            "(entry_kind IN ('transfer', 'warehouse_receipt') AND next_team_id IS NOT NULL AND next_team_code IS NOT NULL AND next_team_name IS NOT NULL "
+            "(entry_kind IN ('transfer', 'warehouse_receipt', 'opening_stock') AND next_team_id IS NOT NULL AND next_team_code IS NOT NULL AND next_team_name IS NOT NULL "
             "AND external_destination IS NULL AND status IN ('pending', 'received', 'voided')) OR "
             "(entry_kind IN ('warehouse_outbound', 'inspection_shipment') AND next_team_id IS NULL AND next_team_code IS NULL AND next_team_name IS NULL "
             "AND external_destination IS NOT NULL AND length(trim(external_destination)) > 0 AND source_transfer_id IS NOT NULL AND dispatch_id IS NOT NULL "
@@ -113,6 +144,8 @@ class MaterialTransfer(Base):
         Index("ix_mt_stock_source_status", "source_transfer_id", "status"),
         Index("ix_mt_intake_created", "next_team_id", "entry_kind", "created_at", "id"),
         Index("ix_mt_source_kind_created", "source_team_id", "entry_kind", "created_at", "id"),
+        Index("ix_mt_team_serial_purpose", "next_team_id", "serial_no", "purpose_id", "received_at"),
+        Index("ix_mt_source_serial_created", "source_team_id", "serial_no", "created_at"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -125,6 +158,9 @@ class MaterialTransfer(Base):
         viewonly=True, lazy="selectin", uselist=False,
     )
     entry_kind: Mapped[str] = mapped_column(String(24), nullable=False, default="transfer", server_default="transfer")
+    purpose_id: Mapped[int | None] = mapped_column(ForeignKey("team_purposes.id", ondelete="RESTRICT"))
+    purpose_name: Mapped[str | None] = mapped_column(String(80))
+    opening_stock_id: Mapped[int | None] = mapped_column(ForeignKey("opening_stock_submissions.id", ondelete="RESTRICT"), index=True)
     external_destination: Mapped[str | None] = mapped_column(String(240))
     # Receipt-specific provenance: do not inherit this as the source of later handoffs.
     receipt_kind: Mapped[str | None] = mapped_column(String(16))
@@ -299,6 +335,7 @@ class Team(Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     kind: Mapped[str] = mapped_column(String(16), nullable=False, default="production", server_default="production")
+    opening_stock_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow, onupdate=utcnow

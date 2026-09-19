@@ -13,6 +13,7 @@ const router = createRouter({
     { path: '/', name: 'home', component: () => import('@/pages/FactoryInventoryPage.vue'), meta: { title: '全厂总览' } },
     { path: '/factory-analysis', name: 'factory-analysis', component: () => import('@/pages/FactoryOverviewPage.vue'), meta: { title: '全厂数据分析' } },
     { path: '/factory-live', name: 'factory-live', component: () => import('@/pages/FactoryLivePage.vue'), meta: { title: '动态流转大屏', standalone: true } },
+    { path: '/flow-preview/:view(team|chain)', name: 'flow-preview', component: () => import('@/pages/FlowPreviewPage.vue'), meta: { title: '物料流向预览', standalone: true } },
     {
       path: '/team-workspaces/:teamId',
       name: 'team-workspace',
@@ -34,8 +35,8 @@ const router = createRouter({
     {
       path: '/material-trace',
       name: 'material-trace',
-      component: () => import('@/pages/MaterialTracePage.vue'),
-      meta: { title: '流水号追踪' },
+      component: () => import('@/pages/FlowPreviewPage.vue'),
+      meta: { title: '全链路追踪', adminOnly: true, standalone: true },
     },
     {
       path: '/settings/teams',
@@ -93,6 +94,15 @@ router.beforeEach(async (to) => {
     if (!isAuthenticated.value) {
       return { path: '/login', query: { redirect: to.fullPath } }
     }
+  }
+  if (to.name === 'material-trace' && to.query.team_id !== undefined) {
+    const id = Number(to.query.team_id)
+    if (!Number.isSafeInteger(id) || id < 1) return { path: defaultAuthenticatedPath(currentUser.value) }
+    const { team_id: _team, ...query } = to.query
+    return { path: `/team-workspaces/${id}`, query: { ...query, tab: 'history' } }
+  }
+  if ((to.name === 'material-trace' || to.name === 'flow-preview' && to.params.view === 'chain') && !isAdmin.value) {
+    return { path: defaultAuthenticatedPath(currentUser.value) }
   }
   if (to.meta.adminOnly && !isAdmin.value) return { path: '/transfer-batches' }
   return true

@@ -52,6 +52,7 @@ class LossCreate(StockAmounts):
 
 class DispatchLine(StockAmounts):
     material_type: str | None = Field(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN)
+    purpose_id: int | None = Field(default=None, ge=1)
 
 
 class DispatchCreate(BaseModel):
@@ -185,6 +186,7 @@ def create_loss(db, team_id, payload, user):
 
 
 def create_dispatch(db, team_id, payload, user):
+    from .team_business import purpose_snapshot
     source = require_actor(user, team_id)
     external = payload.entry_kind in EXTERNAL_ENTRY_KINDS
     if external:
@@ -235,6 +237,7 @@ def create_dispatch(db, team_id, payload, user):
                     fields["material_type"] = line.material_type
                 transfer = MaterialTransfer(
                     batch_no=next_transfer_batch_number(db), serial_no=lot.serial_no, **fields,
+                    **purpose_snapshot(db, target.id if target else None, line.purpose_id),
                     source_transfer_id=lot.id, dispatch_id=dispatch.id,
                     source_team_id=source.id, source_team_code=source.code, source_team_name=source.name,
                     **destination,

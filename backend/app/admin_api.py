@@ -9,7 +9,7 @@ from .auth import get_current_user, hash_password, require_admin
 from .api_errors import conflict as _conflict, not_found as _not_found
 from .database import get_db
 from .history_protection import team_has_historical_references
-from .models import MaterialTransfer, Team, User, utcnow
+from .models import MaterialTransfer, Team, User, TeamPurpose, TeamSettingEvent, OpeningStockSubmission, utcnow
 from .schemas import TeamCreate, TeamResponse, TeamUpdate, UserCreate, UserResponse, UserUpdate
 from .serializers import team_dict, user_dict
 from .team_constants import WAREHOUSE_TEAM_CODE, WAREHOUSE_TEAM_NAME
@@ -139,6 +139,9 @@ def delete_team(
             (User, User.team_id),
             (MaterialTransfer, MaterialTransfer.source_team_id),
             (MaterialTransfer, MaterialTransfer.next_team_id),
+            (TeamPurpose, TeamPurpose.team_id),
+            (TeamSettingEvent, TeamSettingEvent.team_id),
+            (OpeningStockSubmission, OpeningStockSubmission.team_id),
         )
     )
     if in_use or team_has_historical_references(db, team_id):

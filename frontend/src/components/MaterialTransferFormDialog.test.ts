@@ -4,6 +4,7 @@ import { ElInputNumber, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialTransferFormDialog from './MaterialTransferFormDialog.vue'
 import { MaterialTransferApiError, materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
+import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialDocumentTextFields, materialTypeOptions, type MaterialTransfer } from '@/types/materialTransfer'
 
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isTeamAccount: true, currentUser: { team_id: 2, team: { id: 2, name: '研磨' } } }) }))
@@ -15,6 +16,7 @@ function fixture(overrides: Partial<MaterialTransfer> = {}): MaterialTransfer {
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([])
   vi.spyOn(materialTransferApi, 'create').mockResolvedValue(fixture())
   vi.spyOn(materialTransferApi, 'update').mockResolvedValue(fixture({ version: 7 }))
   vi.spyOn(materialTransferApi, 'get').mockResolvedValue(fixture({ version: 7 }))
@@ -41,6 +43,18 @@ async function base(type: string | null = 'finished') {
 async function submit() { await wrapper.get('form').trigger('submit'); await flushPromises() }
 
 describe('material transfer document form', () => {
+  it('carries the upstream-selected destination purpose and preserves disabled historical snapshots', async () => {
+    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([{ id: 31, team_id: 3, name: '电镀', active: true, version: 1 }])
+    await render(); await base(); await submit()
+    expect(materialTransferApi.create).not.toHaveBeenCalled()
+    wrapper.findAllComponents(ElSelect).find(select => select.props('ariaLabel') === '转料用途')!.vm.$emit('update:modelValue', 31)
+    await submit()
+    expect(materialTransferApi.create).toHaveBeenCalledWith(expect.objectContaining({ next_team_id: 3, purpose_id: 31 }))
+    wrapper.unmount()
+    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([{ id: 31, team_id: 3, name: '新名称', active: false, version: 2 }])
+    await render(fixture({ purpose_id: 31, purpose_name: '电镀' })); await submit()
+    expect(materialTransferApi.update).toHaveBeenCalledWith('TL20260906000001', expect.objectContaining({ purpose_id: 31 }))
+  })
   it('keeps linked source identity and group destination fixed while allowing amount and notes changes', async () => {
     await render(fixture({ source_transfer_id: 12, source_transfer_batch_no: 'TL-SOURCE', dispatch_no: 'CK-GROUP', material_name: '铜钼' }))
     expect(wrapper.get('input[aria-label="流水号"]').attributes('disabled')).toBeDefined()

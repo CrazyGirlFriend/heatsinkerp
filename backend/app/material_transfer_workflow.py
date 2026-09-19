@@ -30,13 +30,14 @@ AUDITED_FIELDS = DOCUMENT_FIELDS + (
     "source_transfer_id", "dispatch_id", "stock_tracked", "entry_kind",
     "external_destination", "dispatched_by", "dispatched_at",
     "receipt_kind", "external_source", "return_dispatch_no", "rejection_reason",
+    "purpose_id", "purpose_name", "opening_stock_id",
 )
 
 
 def _creation_fingerprint(payload) -> str:
     # Preserve pre-upgrade idempotency hashes when optional fields are absent.
     value = payload.model_dump(mode="json", exclude={"idempotency_key"})
-    for field in ("receipt_kind", "external_source", "return_dispatch_no"):
+    for field in ("receipt_kind", "external_source", "return_dispatch_no", "purpose_id"):
         if field not in payload.model_fields_set:
             value.pop(field, None)
     for field in DOCUMENT_FIELDS:
@@ -190,6 +191,8 @@ def material_transfer_dict(
         "serial_no": transfer.serial_no,
         "urgency": urgency_dict(transfer.urgency),
         "entry_kind": transfer.entry_kind,
+        "purpose_id": transfer.purpose_id,
+        "purpose_name": transfer.purpose_name,
         "external_destination": transfer.external_destination,
         "receipt_kind": transfer.receipt_kind,
         "external_source": transfer.external_source,
@@ -247,6 +250,7 @@ def material_transfer_dict(
 
 
 def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
+    from .team_business import purpose_snapshot
     source = _require_team_actor(user)
     request_hash = _creation_fingerprint(payload)
     try:
@@ -271,6 +275,7 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
             validate_material_route(None, payload.material_type, target, "transfer", payload.notes)
             transfer = MaterialTransfer(
                 batch_no=next_transfer_batch_number(db),
+                **purpose_snapshot(db, target.id, payload.purpose_id),
                 serial_no=payload.serial_no,
                 **{field: getattr(payload, field) for field in DOCUMENT_FIELDS},
                 source_team_id=source.id,
@@ -356,6 +361,14 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
             transfer.next_team_code = target.code
             transfer.next_team_name = target.name
             transfer.next_team = target
+        if "purpose_id" in supplied or ("next_team_id" in supplied and before["next_team_id"] != target.id):
+            from .team_business import purpose_snapshot
+            if target is not None:
+                _active_target(db, target.id)
+            # Keeping a historical/disabled selection preserves its snapshot.
+            if payload.purpose_id != transfer.purpose_id or before["next_team_id"] != transfer.next_team_id:
+                purpose = purpose_snapshot(db, target.id if target else None, payload.purpose_id)
+                transfer.purpose_id, transfer.purpose_name = purpose["purpose_id"], purpose["purpose_name"]
         for field in ("serial_no", "quantity", "weight", "notes", *DOCUMENT_FIELDS):
             if field in supplied:
                 setattr(transfer, field, getattr(payload, field))
@@ -409,6 +422,7 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
             _assert_version(transfer, payload)
             if transfer.rejection_reason:
                 raise _conflict("该明细已退回核对，须上序修改后再接收")
+            _active_target(db, transfer.next_team_id)  # Serialize initial stock and first receipt.
             validate_material_route(transfer.stock_source.material_type if transfer.source_transfer_id else None,
                 transfer.material_type, transfer.next_team, transfer.entry_kind, transfer.notes)
             before = _snapshot(transfer)

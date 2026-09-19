@@ -69,6 +69,7 @@ onBeforeUnmount(() => { ++version })
         </ElTableColumn>
         <ElTableColumn label="流水号" min-width="245" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.serial_no }}<SerialUrgencyBadge :urgency="row.transfer.urgency" /></template></ElTableColumn>
         <ElTableColumn label="来源批次" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.batch_no }}</template></ElTableColumn>
+        <ElTableColumn label="本班组用途" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.purpose_name || '未分类' }}</template></ElTableColumn>
         <ElTableColumn label="材质 / 类型" min-width="150"><template #default="{ row }">{{ row.transfer.material_name || '—' }}<small class="picker-secondary">{{ materialTypeLabel(row.transfer.material_type) }}</small></template></ElTableColumn>
         <ElTableColumn label="可出库余量" min-width="170"><template #default="{ row }"><MaterialAmount :quantity="dispatchableAmounts(asStock(row)).quantity" :weight="dispatchableAmounts(asStock(row)).weight" /></template></ElTableColumn>
       </ElTable>

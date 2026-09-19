@@ -1,4 +1,5 @@
 import { httpRequest, HttpRequestError, type HttpRequestOptions } from './httpClient'
+import type { TeamPurpose, OpeningLine, OpeningState, SerialHistory } from '@/types/teamBusiness'
 import { normalizeMaterialTransfer } from './materialTransferApi'
 import type { CreateWarehouseReceipt, WarehouseReceiptParams, CreatedMaterialBatches } from '@/types/teamMaterials'
 import { isExternalEntryKind } from '@/types/materialTransfer'
@@ -50,6 +51,12 @@ async function page<T>(url: string, normalize: (raw: unknown) => T): Promise<Mat
   return { items: raw.items.map(normalize), total: Number(raw.total), page: Number(raw.page), page_size: Number(raw.page_size) }
 }
 export const teamMaterialApi = {
+  purposes(teamId: number) { return request<TeamPurpose[]>(path(teamId, 'purposes')) },
+  savePurpose(teamId: number, payload: { name: string; active: boolean; expected_version?: number }, id?: number) { return request<TeamPurpose>(path(teamId, id ? `purposes/${id}` : 'purposes'), { method: id ? 'PATCH' : 'POST', body: payload }) },
+  authorizeOpening(teamId: number, enabled: boolean) { return request(path(teamId, 'opening-stock/authorization'), { method: 'PUT', body: { enabled } }) },
+  async openingState(teamId: number) { const result = await request<OpeningState>(path(teamId, 'opening-stock')); return { ...result, items: result.items.map(normalizeMaterialTransfer) } },
+  async createOpening(teamId: number, lines: OpeningLine[], idempotency_key: string) { const result = await request<{ items: unknown[] }>(path(teamId, 'opening-stock'), { method: 'POST', body: { lines, idempotency_key } }); return result.items.map(normalizeMaterialTransfer) },
+  serialHistory(teamId: number, params: { serial_no: string; date_from?: string; date_to?: string }) { return request<SerialHistory>(path(teamId, 'serial-history', params)) },
   teamInventory(teamId: number, params: TeamInventoryParams = {}) { return page(path(teamId, 'inventory', params), value => ({ ...record(value), ...balance(value) } as unknown as TeamInventoryRow)) },
   inventorySources(teamId: number, groupId: number, params: WarehouseGroupParams = {}) { return page(path(teamId, `inventory/${groupId}/sources`, params), stock) },
   analytics(teamId: number, params: { days?: 7 | 30; metric?: Metric } = {}) { return request<MaterialAnalytics>(path(teamId, 'analytics', params)) },

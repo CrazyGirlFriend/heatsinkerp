@@ -14,6 +14,7 @@ import type {
   UpdateMaterialTransferPayload,
 } from '@/types/materialTransfer'
 import { isExternalEntryKind, materialDocumentTextFields, materialTypeOptions } from '@/types/materialTransfer'
+import type { MaterialTrace } from '@/types/materialTrace'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -90,7 +91,9 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
   const documentText = Object.fromEntries(materialDocumentTextFields.map(field => [field.key, textValue(raw[field.key]) || null])) as Pick<MaterialTransferDocumentFields, typeof materialDocumentTextFields[number]['key']>
   return {
     ...documentText,
-    entry_kind: raw.entry_kind === 'warehouse_receipt' || isExternalEntryKind(String(raw.entry_kind)) ? raw.entry_kind as MaterialTransfer['entry_kind'] : 'transfer',
+    entry_kind: raw.entry_kind === 'opening_stock' || raw.entry_kind === 'warehouse_receipt' || isExternalEntryKind(String(raw.entry_kind)) ? raw.entry_kind as MaterialTransfer['entry_kind'] : 'transfer',
+    purpose_id: optionalInteger(raw.purpose_id, 1),
+    purpose_name: textValue(raw.purpose_name) || null,
     external_destination: textValue(raw.external_destination) || null,
     receipt_kind: raw.receipt_kind === 'external' || raw.receipt_kind === 'return' ? raw.receipt_kind : null,
     external_source: textValue(raw.external_source) || null,
@@ -115,7 +118,7 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
     serial_no: textValue(raw.serial_no),
     urgency: raw.urgency as MaterialTransfer['urgency'],
     // An intake has no upstream team. This is a display label, never a directory identity.
-    source_team: raw.entry_kind === 'warehouse_receipt'
+    source_team: raw.entry_kind === 'opening_stock' ? { id: '', code: '', name: '期初库存' } : raw.entry_kind === 'warehouse_receipt'
       ? { id: '', code: '', name: '库房手工入库' }
       : normalizeTeam(raw.source_team, 'source', raw),
     next_team: isExternalEntryKind(String(raw.entry_kind)) ? { id: '', code: '', name: textValue(raw.external_destination) || '未填写外部去向' } : normalizeTeam(raw.next_team ?? raw.destination_team, 'next', {
@@ -199,6 +202,10 @@ function queryString(params: MaterialTransferListParams): string {
 }
 
 export const materialTransferApi = {
+  async trace(serialNo: string): Promise<MaterialTrace> {
+    const result = await request<MaterialTrace>(`/material-trace?${new URLSearchParams({ serial_no: serialNo.trim() })}`)
+    return { ...result, items: result.items.map(item => ({ ...normalizeMaterialTransfer(item), on_hand_quantity: item.on_hand_quantity, on_hand_weight: item.on_hand_weight })) }
+  },
   async counts(params: MaterialTransferFilterParams = {}): Promise<MaterialTransferStatusCounts> {
     const statuses = ['pending', 'received', 'voided', 'dispatched'] as const
     const totals = await Promise.all(statuses.map(async (status) => {

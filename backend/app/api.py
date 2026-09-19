@@ -13,6 +13,9 @@ from .serial_urgency import router as urgency_router
 from .factory_stream import router as stream_router
 from .main_system_api import router as main_system_router
 from .main_system_configuration import router as main_system_configuration_router
+from .team_business import router as team_business_router
+from .opening_stock import router as opening_stock_router
+from .team_serial_history import router as serial_history_router
 
 router = APIRouter()
 router.include_router(admin_router)
@@ -26,3 +29,6 @@ router.include_router(urgency_router)
 router.include_router(stream_router)
 router.include_router(main_system_router)
 router.include_router(main_system_configuration_router)
+router.include_router(team_business_router)
+router.include_router(opening_stock_router)
+router.include_router(serial_history_router)

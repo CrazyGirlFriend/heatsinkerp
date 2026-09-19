@@ -29,7 +29,7 @@ WarehouseSearchField = Literal[SearchField, "source", "on_hand_quantity", "on_ha
 class WarehouseInventoryFilters(SerialFilters):
     search_field: WarehouseSearchField = "all"
     availability: Literal["current", "all", "available", "scrap"] = "current"
-    receipt_source: Literal["external", "return", "internal"] | None = None
+    receipt_source: Literal["external", "return", "internal", "opening"] | None = None
     source_team_id: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
@@ -48,7 +48,7 @@ def origin_columns():
         "material_name": func.coalesce(mt.material_name, ""),
         "transfer_specification": func.coalesce(mt.transfer_specification, ""),
         "material_type": func.coalesce(mt.material_type, ""),
-        "receipt_source": case((~manual, "internal"), (mt.receipt_kind == "return", "return"), else_="external"),
+        "receipt_source": case((mt.entry_kind == "opening_stock", "opening"), (~manual, "internal"), (mt.receipt_kind == "return", "return"), else_="external"),
         "source_team_id": case((~manual, mt.source_team_id), else_=None),
         "external_source": case((manual, func.coalesce(mt.external_source, "")), else_=""),
     }
@@ -131,7 +131,7 @@ def list_inventory(db, team_id, filters):
                 predicate = column >= value if filters.search_operator == "gte" else column <= value if filters.search_operator == "lte" else column == value
                 conditions.append(select(mt.id).where(*matching_sources, predicate).exists() if field == "finished_quantity" else predicate)
         elif field in ("all", "source"):
-            source_kind = case((table.c.receipt_source == "internal", "车间转入"), (table.c.receipt_source == "return", "外部退回"), else_="外部来料")
+            source_kind = case((table.c.receipt_source == "opening", "期初库存"), (table.c.receipt_source == "internal", "车间转入"), (table.c.receipt_source == "return", "外部退回"), else_="外部来料")
             columns = [table.c.source_name, source_kind]
             if field == "all":
                 columns += [table.c[name] for name in ("serial_no", "material_name", "transfer_specification")]

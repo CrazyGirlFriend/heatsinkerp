@@ -55,6 +55,7 @@ class MaterialTransferCreate(MaterialTransferDocumentFields):
 
     serial_no: str = Field(min_length=1, max_length=80)
     next_team_id: int = Field(ge=1)
+    purpose_id: int | None = Field(default=None, ge=1)
     quantity: int = Field(ge=0, le=2_147_483_647)
     weight: Decimal = Field(ge=0, max_digits=14, decimal_places=3)
     notes: str | None = Field(default=None, max_length=2000)
@@ -80,6 +81,7 @@ class MaterialTransferUpdate(MaterialTransferDocumentFields):
 
     serial_no: str | None = Field(default=None, min_length=1, max_length=80)
     next_team_id: int | None = Field(default=None, ge=1)
+    purpose_id: int | None = Field(default=None, ge=1)
     quantity: int | None = Field(default=None, ge=0, le=2_147_483_647)
     weight: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=3)
     notes: str | None = Field(default=None, max_length=2000)
@@ -191,6 +193,8 @@ class MaterialTransferResponse(MaterialTransferDocumentFields):
     barcode_type: str
     serial_no: str
     entry_kind: str = "transfer"
+    purpose_id: int | None = None
+    purpose_name: str | None = None
     external_destination: str | None = None
     receipt_kind: str | None = None
     external_source: str | None = None
@@ -274,6 +278,7 @@ class TeamResponse(APIModel):
     active: bool
     sort_order: int
     kind: str
+    opening_stock_enabled: bool = False
     created_at: datetime
     updated_at: datetime
 

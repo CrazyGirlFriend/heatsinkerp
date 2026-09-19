@@ -69,6 +69,12 @@ beforeEach(() => {
 afterEach(() => { httpClient.defaults.adapter = originalAdapter })
 
 describe('material transfer API', () => {
+  it('loads a complete exact-serial trace and keeps unaccounted balances null', async () => {
+    responder = () => ({ data: { serial_no: '000012', items: [rawTransfer({ serial_no: '000012', source_transfer_id: 5, on_hand_quantity: null, on_hand_weight: null })], positions: [], untracked_count: 0, totals: {} } })
+    const result = await materialTransferApi.trace(' 000012 ')
+    expect(configs[0]).toMatchObject({ method: 'get', url: '/material-trace?serial_no=000012' })
+    expect(result.items[0]).toMatchObject({ serial_no: '000012', source_transfer_id: 5, on_hand_quantity: null, on_hand_weight: null, next_team: { name: '退火' } })
+  })
   it('uses confirm-outbound and preserves null destination, dispatched actor and audit', async () => {
     responder = () => ({ data: rawTransfer({ entry_kind: 'warehouse_outbound', external_destination: '外部去向', next_team: null, next_team_id: null, status: 'dispatched', locked: true, stock_tracked: false, dispatched_by: '库房确认人', dispatched_by_user_id: 12, dispatched_at: '2026-09-07T01:00:00Z', allowed_actions: [], history: [{ id: 17, action: 'dispatched', actor: '库房确认人', occurred_at: '2026-09-07T01:00:00Z', changes: {} }] }) })
     const result = await materialTransferApi.confirmOutbound('TL20260906000007', { idempotency_key: 'outbound-retry', expected_version: 4 })

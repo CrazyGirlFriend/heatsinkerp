@@ -19,6 +19,7 @@ const labels: Record<string, string> = {
   received_at: '接收时间', received_by: '接收人', voided_at: '作废时间', voided_by: '作废人', locked: '锁定', version: '版本',
 }
 function actionLabel(action: keyof typeof actions): string {
+  if (props.transfer.entry_kind === 'opening_stock' && action === 'stocked') return '期初入账'
   if (isExternalTransfer(props.transfer)) {
     const verb = externalActionLabel(props.transfer.entry_kind)
     return action === 'created' ? `创建${verb}单` : action === 'updated' ? `修改${verb}单` : action === 'dispatched' ? `确认${verb}` : action === 'voided' ? `作废${verb}单` : actions[action]
@@ -26,6 +27,12 @@ function actionLabel(action: keyof typeof actions): string {
   return actions[action]
 }
 function fieldLabel(field: string): string {
+  const purposeLabels: Record<string, string> = { purpose_id: '转料用途编号', purpose_name: '转料用途', opening_stock_id: '期初提交编号' }
+  if (purposeLabels[field]) return purposeLabels[field]
+  if (props.transfer.entry_kind === 'opening_stock') {
+    const openingLabels: Record<string, string> = { next_team_id: '入账班组编号', next_team_code: '入账班组编码', next_team_name: '入账班组', received_at: '入账时间', received_by: '登记人' }
+    if (openingLabels[field]) return openingLabels[field]
+  }
   if (isExternalTransfer(props.transfer) && ['quantity', 'weight', 'external_destination', 'dispatched_by', 'dispatched_at'].includes(field)) {
     const suffix: Record<string, string> = { quantity: '件数', weight: '重量', external_destination: '去向', dispatched_by: '确认人', dispatched_at: '确认时间' }
     return externalActionLabel(props.transfer.entry_kind) + suffix[field]

@@ -15,7 +15,7 @@ def test_only_supported_business_routes_are_registered(client):
     paths = set(app.openapi()["paths"])
     supported_prefixes = ("/api/access/", "/api/auth/", "/api/health", "/api/teams",
                           "/api/team-directory", "/api/accounts", "/api/users",
-                          "/api/material-transfers", "/api/material-dispatches", "/api/team-materials/",
+                          "/api/material-transfers", "/api/material-trace", "/api/material-dispatches", "/api/team-materials/",
                           "/api/factory-overview", "/api/serial-urgency", "/api/main-system/")
     assert all(path.startswith(supported_prefixes) for path in paths), paths
     for method, path in (

@@ -1,0 +1,514 @@
+{
+  "history": {
+    "serial_no": "000012",
+    "team_name": "检验",
+    "flows": [
+      {
+        "id": "incoming-2",
+        "group_key": "1:检验",
+        "direction": "incoming",
+        "batch_no": "TL20260918000002",
+        "at": "2026-09-18T08:44:10.025093+00:00",
+        "from_name": "库房",
+        "to_name": "检验",
+        "quantity": 100,
+        "weight": 12.5,
+        "status": "received",
+        "entry_kind": "transfer"
+      },
+      {
+        "id": "incoming-3",
+        "group_key": "2:去毛刺",
+        "direction": "incoming",
+        "batch_no": "TL20260918000003",
+        "at": "2026-09-18T08:44:10.044166+00:00",
+        "from_name": "库房",
+        "to_name": "检验",
+        "quantity": 60,
+        "weight": 7.5,
+        "status": "received",
+        "entry_kind": "transfer"
+      },
+      {
+        "id": "incoming-4",
+        "group_key": "3:发货",
+        "direction": "incoming",
+        "batch_no": "TL20260918000004",
+        "at": "2026-09-18T08:44:10.059963+00:00",
+        "from_name": "库房",
+        "to_name": "检验",
+        "quantity": 40,
+        "weight": 5,
+        "status": "received",
+        "entry_kind": "transfer"
+      },
+      {
+        "id": "outgoing-5",
+        "group_key": "1:检验",
+        "direction": "outgoing",
+        "batch_no": "TL20260918000005",
+        "at": "2026-09-18T08:44:10.079551+00:00",
+        "from_name": "检验",
+        "to_name": "库房",
+        "quantity": 20,
+        "weight": 2.5,
+        "status": "pending",
+        "entry_kind": "transfer"
+      },
+      {
+        "id": "outgoing-6",
+        "group_key": "2:去毛刺",
+        "direction": "outgoing",
+        "batch_no": "TL20260918000006",
+        "at": "2026-09-18T08:44:10.084820+00:00",
+        "from_name": "检验",
+        "to_name": "库房",
+        "quantity": 15,
+        "weight": 1.875,
+        "status": "pending",
+        "entry_kind": "transfer"
+      },
+      {
+        "id": "outgoing-7",
+        "group_key": "3:发货",
+        "direction": "outgoing",
+        "batch_no": "TL20260918000007",
+        "at": "2026-09-18T08:44:10.108323+00:00",
+        "from_name": "检验",
+        "to_name": "演示客户",
+        "quantity": 10,
+        "weight": 1.25,
+        "status": "pending",
+        "entry_kind": "inspection_shipment"
+      }
+    ],
+    "found": true,
+    "date_from": null,
+    "date_to": null,
+    "groups": [
+      {
+        "key": "1:检验",
+        "purpose_id": 1,
+        "name": "检验",
+        "incoming_quantity": 100,
+        "incoming_weight": 12.5,
+        "outgoing_quantity": 20,
+        "outgoing_weight": 2.5,
+        "lost_quantity": 2,
+        "lost_weight": 0.25,
+        "on_hand_quantity": 78,
+        "on_hand_weight": 9.75,
+        "baseline_quantity": 0,
+        "baseline_weight": 0,
+        "events": [
+          {
+            "id": "receipt-2",
+            "at": "2026-09-18T08:44:10.025093+00:00",
+            "kind": "incoming",
+            "batch_no": "TL20260918000002",
+            "source_batch_no": "TL20260918000002",
+            "material_type": "semi_finished",
+            "source_material_type": "semi_finished",
+            "counterpart": "库房",
+            "quantity": 100,
+            "weight": 12.5,
+            "delta_quantity": 100,
+            "delta_weight": 12.5,
+            "status": "received",
+            "balance_quantity": 100,
+            "balance_weight": 12.5
+          },
+          {
+            "id": "event-8",
+            "at": "2026-09-18T08:44:10.079562+00:00",
+            "kind": "outgoing",
+            "batch_no": "TL20260918000005",
+            "source_batch_no": "TL20260918000002",
+            "material_type": "finished",
+            "source_material_type": "semi_finished",
+            "counterpart": "库房",
+            "quantity": 20,
+            "weight": 2.5,
+            "delta_quantity": -20,
+            "delta_weight": -2.5,
+            "status": "pending",
+            "balance_quantity": 80,
+            "balance_weight": 10
+          },
+          {
+            "id": "loss-1",
+            "at": "2026-09-18T08:44:10.144701+00:00",
+            "kind": "loss",
+            "batch_no": "TL20260918000002",
+            "source_batch_no": "TL20260918000002",
+            "material_type": "semi_finished",
+            "source_material_type": "semi_finished",
+            "counterpart": "清点短少",
+            "quantity": 2,
+            "weight": 0.25,
+            "delta_quantity": -2,
+            "delta_weight": -0.25,
+            "status": "received",
+            "balance_quantity": 78,
+            "balance_weight": 9.75
+          }
+        ]
+      },
+      {
+        "key": "2:去毛刺",
+        "purpose_id": 2,
+        "name": "去毛刺",
+        "incoming_quantity": 60,
+        "incoming_weight": 7.5,
+        "outgoing_quantity": 15,
+        "outgoing_weight": 1.875,
+        "lost_quantity": 0,
+        "lost_weight": 0,
+        "on_hand_quantity": 45,
+        "on_hand_weight": 5.625,
+        "baseline_quantity": 0,
+        "baseline_weight": 0,
+        "events": [
+          {
+            "id": "receipt-3",
+            "at": "2026-09-18T08:44:10.044166+00:00",
+            "kind": "incoming",
+            "batch_no": "TL20260918000003",
+            "source_batch_no": "TL20260918000003",
+            "material_type": "semi_finished",
+            "source_material_type": "semi_finished",
+            "counterpart": "库房",
+            "quantity": 60,
+            "weight": 7.5,
+            "delta_quantity": 60,
+            "delta_weight": 7.5,
+            "status": "received",
+            "balance_quantity": 60,
+            "balance_weight": 7.5
+          },
+          {
+            "id": "event-9",
+            "at": "2026-09-18T08:44:10.084833+00:00",
+            "kind": "outgoing",
+            "batch_no": "TL20260918000006",
+            "source_batch_no": "TL20260918000003",
+            "material_type": "semi_finished",
+            "source_material_type": "semi_finished",
+            "counterpart": "库房",
+            "quantity": 15,
+            "weight": 1.875,
+            "delta_quantity": -15,
+            "delta_weight": -1.875,
+            "status": "pending",
+            "balance_quantity": 45,
+            "balance_weight": 5.625
+          }
+        ]
+      },
+      {
+        "key": "3:发货",
+        "purpose_id": 3,
+        "name": "发货",
+        "incoming_quantity": 40,
+        "incoming_weight": 5,
+        "outgoing_quantity": 10,
+        "outgoing_weight": 1.25,
+        "lost_quantity": 0,
+        "lost_weight": 0,
+        "on_hand_quantity": 30,
+        "on_hand_weight": 3.75,
+        "baseline_quantity": 0,
+        "baseline_weight": 0,
+        "events": [
+          {
+            "id": "receipt-4",
+            "at": "2026-09-18T08:44:10.059963+00:00",
+            "kind": "incoming",
+            "batch_no": "TL20260918000004",
+            "source_batch_no": "TL20260918000004",
+            "material_type": "semi_finished",
+            "source_material_type": "semi_finished",
+            "counterpart": "库房",
+            "quantity": 40,
+            "weight": 5,
+            "delta_quantity": 40,
+            "delta_weight": 5,
+            "status": "received",
+            "balance_quantity": 40,
+            "balance_weight": 5
+          },
+          {
+            "id": "event-10",
+            "at": "2026-09-18T08:44:10.108334+00:00",
+            "kind": "outgoing",
+            "batch_no": "TL20260918000007",
+            "source_batch_no": "TL20260918000004",
+            "material_type": "finished",
+            "source_material_type": "semi_finished",
+            "counterpart": "演示客户",
+            "quantity": 10,
+            "weight": 1.25,
+            "delta_quantity": -10,
+            "delta_weight": -1.25,
+            "status": "pending",
+            "balance_quantity": 30,
+            "balance_weight": 3.75
+          }
+        ]
+      }
+    ],
+    "untracked_count": 0,
+    "pending_incoming_count": 0
+  },
+  "trace": {
+    "serial_no": "000012",
+    "items": [
+      {
+        "id": 1,
+        "batch_no": "TL20260918000001",
+        "serial_no": "000012",
+        "entry_kind": "opening_stock",
+        "purpose_id": null,
+        "purpose_name": null,
+        "external_destination": null,
+        "material_type": "semi_finished",
+        "stock_tracked": true,
+        "source_transfer_id": null,
+        "source_team": null,
+        "next_team": {
+          "id": 1,
+          "code": "FACTORY-WAREHOUSE",
+          "name": "库房",
+          "kind": "warehouse"
+        },
+        "quantity": 1000,
+        "weight": 125,
+        "status": "received",
+        "received_at": "2026-09-18T08:44:09.913659+00:00",
+        "on_hand_quantity": 800,
+        "on_hand_weight": 100,
+        "created_at": "2026-09-18T08:44:09.913659Z"
+      },
+      {
+        "id": 2,
+        "batch_no": "TL20260918000002",
+        "serial_no": "000012",
+        "entry_kind": "transfer",
+        "purpose_id": 1,
+        "purpose_name": "检验",
+        "external_destination": null,
+        "material_type": "semi_finished",
+        "stock_tracked": true,
+        "source_transfer_id": 1,
+        "source_team": {
+          "id": 1,
+          "code": "FACTORY-WAREHOUSE",
+          "name": "库房",
+          "kind": "warehouse"
+        },
+        "next_team": {
+          "id": 8,
+          "code": "FACTORY-QC",
+          "name": "检验",
+          "kind": "production"
+        },
+        "quantity": 100,
+        "weight": 12.5,
+        "status": "received",
+        "received_at": "2026-09-18T08:44:10.025093+00:00",
+        "on_hand_quantity": 78,
+        "on_hand_weight": 9.75,
+        "created_at": "2026-09-18T08:44:09.977510Z"
+      },
+      {
+        "id": 3,
+        "batch_no": "TL20260918000003",
+        "serial_no": "000012",
+        "entry_kind": "transfer",
+        "purpose_id": 2,
+        "purpose_name": "去毛刺",
+        "external_destination": null,
+        "material_type": "semi_finished",
+        "stock_tracked": true,
+        "source_transfer_id": 1,
+        "source_team": {
+          "id": 1,
+          "code": "FACTORY-WAREHOUSE",
+          "name": "库房",
+          "kind": "warehouse"
+        },
+        "next_team": {
+          "id": 8,
+          "code": "FACTORY-QC",
+          "name": "检验",
+          "kind": "production"
+        },
+        "quantity": 60,
+        "weight": 7.5,
+        "status": "received",
+        "received_at": "2026-09-18T08:44:10.044166+00:00",
+        "on_hand_quantity": 45,
+        "on_hand_weight": 5.625,
+        "created_at": "2026-09-18T08:44:09.983379Z"
+      },
+      {
+        "id": 4,
+        "batch_no": "TL20260918000004",
+        "serial_no": "000012",
+        "entry_kind": "transfer",
+        "purpose_id": 3,
+        "purpose_name": "发货",
+        "external_destination": null,
+        "material_type": "semi_finished",
+        "stock_tracked": true,
+        "source_transfer_id": 1,
+        "source_team": {
+          "id": 1,
+          "code": "FACTORY-WAREHOUSE",
+          "name": "库房",
+          "kind": "warehouse"
+        },
+        "next_team": {
+          "id": 8,
+          "code": "FACTORY-QC",
+          "name": "检验",
+          "kind": "production"
+        },
+        "quantity": 40,
+        "weight": 5,
+        "status": "received",
+        "received_at": "2026-09-18T08:44:10.059963+00:00",
+        "on_hand_quantity": 30,
+        "on_hand_weight": 3.75,
+        "created_at": "2026-09-18T08:44:09.988623Z"
+      },
+      {
+        "id": 5,
+        "batch_no": "TL20260918000005",
+        "serial_no": "000012",
+        "entry_kind": "transfer",
+        "purpose_id": null,
+        "purpose_name": null,
+        "external_destination": null,
+        "material_type": "finished",
+        "stock_tracked": false,
+        "source_transfer_id": 2,
+        "source_team": {
+          "id": 8,
+          "code": "FACTORY-QC",
+          "name": "检验",
+          "kind": "production"
+        },
+        "next_team": {
+          "id": 1,
+          "code": "FACTORY-WAREHOUSE",
+          "name": "库房",
+          "kind": "warehouse"
+        },
+        "quantity": 20,
+        "weight": 2.5,
+        "status": "pending",
+        "received_at": null,
+        "on_hand_quantity": null,
+        "on_hand_weight": null,
+        "created_at": "2026-09-18T08:44:10.079551Z"
+      },
+      {
+        "id": 6,
+        "batch_no": "TL20260918000006",
+        "serial_no": "000012",
+        "entry_kind": "transfer",
+        "purpose_id": null,
+        "purpose_name": null,
+        "external_destination": null,
+        "material_type": "semi_finished",
+        "stock_tracked": false,
+        "source_transfer_id": 3,
+        "source_team": {
+          "id": 8,
+          "code": "FACTORY-QC",
+          "name": "检验",
+          "kind": "production"
+        },
+        "next_team": {
+          "id": 1,
+          "code": "FACTORY-WAREHOUSE",
+          "name": "库房",
+          "kind": "warehouse"
+        },
+        "quantity": 15,
+        "weight": 1.875,
+        "status": "pending",
+        "received_at": null,
+        "on_hand_quantity": null,
+        "on_hand_weight": null,
+        "created_at": "2026-09-18T08:44:10.084820Z"
+      },
+      {
+        "id": 7,
+        "batch_no": "TL20260918000007",
+        "serial_no": "000012",
+        "entry_kind": "inspection_shipment",
+        "purpose_id": null,
+        "purpose_name": null,
+        "external_destination": "演示客户",
+        "material_type": "finished",
+        "stock_tracked": false,
+        "source_transfer_id": 4,
+        "source_team": {
+          "id": 8,
+          "code": "FACTORY-QC",
+          "name": "检验",
+          "kind": "production"
+        },
+        "next_team": null,
+        "quantity": 10,
+        "weight": 1.25,
+        "status": "pending",
+        "received_at": null,
+        "on_hand_quantity": null,
+        "on_hand_weight": null,
+        "created_at": "2026-09-18T08:44:10.108323Z"
+      }
+    ],
+    "totals": {
+      "on_hand": {
+        "quantity": 953,
+        "weight": 119.125
+      },
+      "in_transit": {
+        "quantity": 35,
+        "weight": 4.375
+      },
+      "external_pending": {
+        "quantity": 10,
+        "weight": 1.25
+      },
+      "dispatched": {
+        "quantity": 0,
+        "weight": 0
+      },
+      "lost": {
+        "quantity": 2,
+        "weight": 0.25
+      }
+    },
+    "positions": [
+      {
+        "team_id": 1,
+        "team_name": "库房",
+        "quantity": 800,
+        "weight": 100,
+        "batch_count": 1
+      },
+      {
+        "team_id": 8,
+        "team_name": "检验",
+        "quantity": 153,
+        "weight": 19.125,
+        "batch_count": 3
+      }
+    ],
+    "untracked_count": 0
+  }
+}

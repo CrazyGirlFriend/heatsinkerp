@@ -25,7 +25,7 @@ describe('workspace tab states', () => {
   })
   it('keeps exactly one selected tab and preserves panel associations after clicking', async () => {
     wrapper = mount(TeamWorkspaceShell, { props: { title: '库房', modelValue: 'stock', warehouse: true, pendingCount: 23 } })
-    expect(wrapper.findAll('[role=tab]')).toHaveLength(5)
+    expect(wrapper.findAll('[role=tab]')).toHaveLength(6)
     expect(wrapper.findAll('[aria-selected=true]')).toHaveLength(1)
     expect(wrapper.get('.is-selected').text()).toBe('库存明细')
     await wrapper.get('#workspace-tab-receipts').trigger('click')
@@ -53,6 +53,6 @@ describe('workspace tab states', () => {
     await wrapper.get('#workspace-tab-pending').trigger('keydown', { key: 'ArrowRight' })
     await wrapper.get('#workspace-tab-pending').trigger('keydown', { key: 'Home' })
     await wrapper.get('#workspace-tab-pending').trigger('keydown', { key: 'End' })
-    expect(wrapper.emitted('update:modelValue')).toEqual([['outgoing'], ['stock'], ['overview']])
+    expect(wrapper.emitted('update:modelValue')).toEqual([['outgoing'], ['stock'], ['history']])
   })
 })

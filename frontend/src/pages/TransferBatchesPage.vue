@@ -162,6 +162,7 @@ function asTransfer(row: unknown): MaterialTransfer {
 }
 
 function traceLink(serialNo: string) {
+  if (authStore.isTeamAccount && authStore.currentUser?.team_id) return { path: `/team-workspaces/${authStore.currentUser.team_id}`, query: { serial_no: serialNo, tab: 'history' } }
   return { path: '/material-trace', query: { serial_no: serialNo } }
 }
 

@@ -95,6 +95,8 @@ def confirm_dispatch(db, dispatch_no, payload, user, *, external=False):
             if not pending:
                 raise HTTPException(409, "batch has no pending lines to confirm")
             expected_done = "dispatched" if external else "received"
+            if not external:
+                workflow._active_target(db, group.next_team_id)
             for item in items:
                 if (item.source_team_id != group.source_team_id or item.next_team_id != group.next_team_id
                     or item.entry_kind != group.entry_kind or item.external_destination != group.external_destination

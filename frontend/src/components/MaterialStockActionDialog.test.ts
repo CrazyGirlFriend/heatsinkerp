@@ -15,6 +15,7 @@ function source(id = 10, type: 'semi_finished' | null = 'semi_finished'): StockB
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([])
   state.auth = reactive({ isTeamAccount: true, currentUser: { team_id: 2 }, currentUserError: '', refreshCurrentUser: vi.fn().mockResolvedValue(undefined) })
   vi.spyOn(teamMaterialApi, 'createDispatch').mockResolvedValue({ dispatch_no: 'CK1', line_count: 2 } as MaterialDispatch)
   vi.spyOn(teamMaterialApi, 'createLoss').mockResolvedValue({ loss_no: 'LS1' } as MaterialLoss)
@@ -29,6 +30,26 @@ async function submit() { await wrapper.findAll('button').find(button => /^(确�
 async function destination(id = 3) { wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', id); await flushPromises() }
 
 describe('source batch dispatch and loss drafts', () => {
+  it('requires a destination purpose per batch and clears choices when the destination changes', async () => {
+    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([{ id: 31, team_id: 3, name: '检验', active: true, version: 1 }, { id: 32, team_id: 3, name: '去毛刺', active: true, version: 1 }])
+    await render(); await destination()
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('请为每行物料选择')
+    const selects = wrapper.findAllComponents(ElSelect).filter(select => select.props('ariaLabel')?.endsWith('转料用途'))
+    selects[0]!.vm.$emit('update:modelValue', 31); selects[1]!.vm.$emit('update:modelValue', 32)
+    await submit()
+    expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].lines.map(line => line.purpose_id)).toEqual([31, 32])
+    await destination(1)
+    expect(selects[0]!.props('modelValue')).toBeUndefined()
+    expect(selects[1]!.props('modelValue')).toBeUndefined()
+  })
+  it('cannot silently bypass a failed purpose lookup', async () => {
+    vi.mocked(teamMaterialApi.purposes).mockRejectedValue(new Error('用途读取失败'))
+    await render(); await destination(); await submit()
+    expect(wrapper.text()).toContain('用途读取失败')
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+  })
   it('splits one source into two typed lines and validates their combined quantity', async () => {
     await render('dispatch', [source()]); await destination(1)
     await wrapper.findAll('button').find(button => button.text() === '拆分物料')!.trigger('click')
@@ -36,7 +57,7 @@ describe('source batch dispatch and loss drafts', () => {
     const inputs = wrapper.findAllComponents(ElInputNumber)
     inputs[0]!.vm.$emit('update:modelValue', 80); inputs[1]!.vm.$emit('update:modelValue', 8)
     inputs[2]!.vm.$emit('update:modelValue', 21); inputs[3]!.vm.$emit('update:modelValue', 2)
-    wrapper.findAllComponents(ElSelect)[2]!.vm.$emit('update:modelValue', 'waste')
+    wrapper.findAllComponents(ElSelect).filter(select => select.props('ariaLabel')?.endsWith('物料类型'))[1]!.vm.$emit('update:modelValue', 'waste')
     await wrapper.get('textarea').setValue('加工废料回库'); await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('拆分明细合计超过')

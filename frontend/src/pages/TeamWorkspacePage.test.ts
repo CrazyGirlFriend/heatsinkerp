@@ -5,7 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TeamWorkspacePage from './TeamWorkspacePage.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
-import TeamMaterialAnalysis from '@/components/TeamMaterialAnalysis.vue'
+import TeamSerialHistory from '@/components/TeamSerialHistory.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
 import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
 import MaterialBatchPrintDialog from '@/components/MaterialBatchPrintDialog.vue'
@@ -157,16 +157,15 @@ describe('team workspace material ledger', () => {
     expect(wrapper.text()).toContain('2 张历史已接收单')
     expect(wrapper.find('a[href*="next_team_id=914"]').exists()).toBe(true)
     expect(materialTransferApi.list).not.toHaveBeenCalled()
-    expect(wrapper.findComponent(TeamMaterialAnalysis).exists()).toBe(false)
+    expect(wrapper.findComponent(TeamSerialHistory).exists()).toBe(false)
     expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
-    await wrapper.get('#workspace-tab-overview').trigger('click'); await flushPromises()
-    expect(wrapper.findComponent(TeamMaterialAnalysis).exists()).toBe(true)
-    expect(wrapper.text()).toContain('309')
-    expect(wrapper.text()).toContain('30.95')
-    expect(wrapper.text()).toContain('内部在途')
+    await wrapper.get('#workspace-tab-history').trigger('click'); await flushPromises()
+    expect(wrapper.findComponent(TeamSerialHistory).exists()).toBe(true)
+    expect(wrapper.text()).toContain('本班组收发')
+    expect(wrapper.text()).not.toContain('内部在途')
     expect(wrapper.findComponent(TeamInventory).exists()).toBe(false)
     await wrapper.get('#workspace-tab-stock').trigger('click'); await flushPromises()
-    expect(wrapper.findComponent(TeamMaterialAnalysis).exists()).toBe(false)
+    expect(wrapper.findComponent(TeamSerialHistory).exists()).toBe(false)
     expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
     vi.mocked(teamMaterialApi.overview).mockClear()
     wrapper.getComponent(TeamInventory).vm.$emit('changed'); await flushPromises()
@@ -289,7 +288,7 @@ describe('warehouse intake workspace', () => {
   it('provides an intake entry only on the official warehouse and refreshes overview, stock and receipts after saving', async () => {
     state.auth.currentUser.team_id = 901
     await render('/team-workspaces/901')
-    expect(wrapper.findAll('[role=tab]')).toHaveLength(5)
+    expect(wrapper.findAll('[role=tab]')).toHaveLength(6)
     expect(wrapper.getComponent(TeamInventory).props('warehouse')).toBe(true)
     expect(wrapper.get('button[aria-label="库房统计"]').text()).toContain('统计')
     const button = wrapper.findAll('button').find(button => button.text() === '新建入库')!

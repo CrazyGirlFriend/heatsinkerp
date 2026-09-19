@@ -4,7 +4,7 @@ import { inventoryColumns } from './inventoryColumns'
 import { materialTypeLabel, type MaterialType } from './materialTransfer'
 import { formatDateTime } from '@/utils/format'
 
-export type WarehouseSource = 'external' | 'return' | 'internal'
+export type WarehouseSource = 'external' | 'return' | 'internal' | 'opening'
 export interface TeamInventoryRow extends MaterialBalance {
   group_id: number
   batch_count: number
@@ -27,9 +27,9 @@ export interface TeamInventoryRow extends MaterialBalance {
   finished_quantity: number | null
   finished_quantity_count: number
 }
-export const warehouseSourceNames: Record<WarehouseSource, string> = { external: '外部来料', return: '外部退回', internal: '车间转入' }
-export const warehouseSourceLabel = (row: TeamInventoryRow) => `${warehouseSourceNames[row.receipt_source]} · ${row.source_name || '未登记'}`
-export const inventorySourceLabel = (row: TeamInventoryRow, warehouse = false) => warehouse ? warehouseSourceLabel(row) : row.source_name || '上序未登记'
+export const warehouseSourceNames: Record<WarehouseSource, string> = { external: '外部来料', return: '外部退回', internal: '车间转入', opening: '期初库存' }
+export const warehouseSourceLabel = (row: TeamInventoryRow) => row.receipt_source === 'opening' ? '期初库存' : `${warehouseSourceNames[row.receipt_source]} · ${row.source_name || '未登记'}`
+export const inventorySourceLabel = (row: TeamInventoryRow, warehouse = false) => row.receipt_source === 'opening' ? '期初库存' : warehouse ? warehouseSourceLabel(row) : row.source_name || '上序未登记'
 const amount = (value: number | null | undefined) => value == null ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)
 const extraKeys = ['customer_code', 'product_code', 'finished_specification', 'finished_quantity', 'lost_quantity', 'lost_weight', 'urgency', 'last_activity_at'] as const
 const balanceKeys = ['available_quantity', 'available_weight', 'pending_outgoing_quantity', 'pending_outgoing_weight', 'scrap_quantity', 'scrap_weight'] as const
