@@ -1,13 +1,17 @@
 """Authentication and public health endpoints."""
+
 from __future__ import annotations
 
 from datetime import timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
+
 from .auth import AuthContext, create_session, get_auth_context, verify_password
 from .database import get_db
 from .models import User, utcnow
+from .observability import record
 from .schemas import HealthResponse, LoginRequest, LoginResponse, UserResponse
 from .serializers import user_dict
 
@@ -19,6 +23,7 @@ def health(db: Session = Depends(get_db)) -> dict:
     try:
         db.execute(text("SELECT 1"))
     except Exception as exc:
+        record("health.database_unavailable", error=exc)
         raise HTTPException(status_code=503, detail="database unavailable") from exc
     return {"status": "ok", "database": "ok"}
 

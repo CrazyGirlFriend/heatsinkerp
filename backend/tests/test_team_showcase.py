@@ -51,7 +51,9 @@ def test_eight_team_showcase_and_reset_preserve_identity_and_counters(client):
         db.connection().exec_driver_sql("PRAGMA foreign_keys=ON")
         db.commit()
         deleted = reset_business_data(db)
-        assert deleted["work_orders"] == deleted["products"] == deleted["operations"] == deleted["product_route_operations"] == 1
+        assert "work_orders" not in deleted
+        for model in (Product, WorkOrder, Operation, ProductRouteOperation):
+            assert len(db.scalars(select(model)).all()) == 1
         assert deleted["material_transfers"] == before["material_transfers"]
         assert all(count == 0 for count in business_counts(db).values())
         assert [(u.id, u.username, u.team_id, u.password_hash) for u in db.scalars(select(User).order_by(User.id))] == users_before

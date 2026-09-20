@@ -127,8 +127,7 @@ def test_batch_confirmation_is_atomic_and_unique_across_groups(client, outbound)
             raise RuntimeError('second audit failed')
         return original(*args, **kwargs)
     with patch.object(workflow, '_record_event', fail_second):
-        with pytest.raises(RuntimeError, match='second audit failed'):
-            confirm(client, group, outbound['headers'])
+        assert confirm(client, group, outbound['headers']).status_code == 500
     current = client.get(detail_url(group), headers=outbound['headers']).json()
     assert current['confirmed_at'] is None and current['revision'] == group['revision']
     assert all(row['status'] == 'pending' and len(row['history']) == 1 for row in current['items'])

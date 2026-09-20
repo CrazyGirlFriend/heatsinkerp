@@ -210,8 +210,7 @@ def test_failed_and_replayed_business_writes_do_not_publish(client, warehouse, m
     assert intake(client, warehouse, quantity=999).status_code == 409
     publish.assert_not_called()
     monkeypatch.setattr('app.warehouse_receipts.workflow._record_event', Mock(side_effect=RuntimeError('audit failed')))
-    with pytest.raises(RuntimeError):
-        intake(client, warehouse, idempotency_key='rollback-event')
+    assert intake(client, warehouse, idempotency_key='rollback-event').status_code == 500
     publish.assert_not_called()
 
 

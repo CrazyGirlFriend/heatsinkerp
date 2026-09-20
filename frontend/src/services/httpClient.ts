@@ -1,5 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type Method } from 'axios'
 import { notifySiteAccessRequired } from '@/stores/access'
+import { reportDiagnostic, safeRequestId } from './diagnostics'
 
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
 export const HTTP_AUTH_SESSION_STORAGE_KEY = 'heatsink-flow.auth-session.v1'
@@ -17,17 +18,19 @@ export interface HttpRequestOptions {
 export class HttpRequestError extends Error {
   readonly status: number
   readonly body?: unknown
+  readonly requestId?: string
 
-  constructor(message: string, status = 0, body?: unknown) {
+  constructor(message: string, status = 0, body?: unknown, requestId?: string) {
     super(message)
     this.name = 'HttpRequestError'
     this.status = status
     this.body = body
+    this.requestId = safeRequestId(requestId)
   }
 }
 
 function objectValue(value: unknown): UnknownRecord {
-  return value && typeof value === 'object' ? value as UnknownRecord : {}
+  return value && typeof value === 'object' ? (value as UnknownRecord) : {}
 }
 
 function safeStorage(): Storage | null {
@@ -84,13 +87,19 @@ export async function httpRequest<T>(path: string, options: HttpRequestOptions =
     const response = await httpClient.request<T>(config)
     return (response.status === 204 ? undefined : response.data) as T
   } catch (error) {
+    if (axios.isCancel(error)) throw error
     if (!axios.isAxiosError(error)) {
+      reportDiagnostic('http.unexpected')
       throw new HttpRequestError(error instanceof Error ? error.message : '无法连接服务器')
     }
     const status = error.response?.status ?? 0
     const body = error.response?.data
+    const requestId = safeRequestId(error.response?.headers['x-request-id'])
+    if (status === 0 || status >= 500) {
+      reportDiagnostic(status === 0 ? 'http.network' : 'http.server', { status, requestId })
+    }
     if (status === 423) notifySiteAccessRequired()
     if (status === 401 && !options.skipAuthExpiry) invalidateAccountSession()
-    throw new HttpRequestError(error.message || '无法连接服务器', status, body)
+    throw new HttpRequestError(error.message || '无法连接服务器', status, body, requestId)
   }
 }

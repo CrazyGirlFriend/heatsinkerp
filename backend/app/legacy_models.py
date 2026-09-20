@@ -6,12 +6,16 @@ history stay intact. Do not remove these as if they were unused UI code.
 from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from sqlalchemy import (Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index,
                         Integer, JSON, Numeric, String, Text, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 from .model_base import utcnow, TRANSFER_BATCH_NUMBER_TYPE, WORK_ORDER_NUMBER_TYPE
+
+
+if TYPE_CHECKING:
+    from .models import Team
 
 
 class WorkOrder(Base):

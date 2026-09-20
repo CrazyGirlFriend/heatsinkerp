@@ -1,13 +1,29 @@
 """Current material ledger and identity models; historical tables register separately."""
+
 from __future__ import annotations
+
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
-from sqlalchemy import (Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index,
-                        Integer, JSON, Numeric, String, Text, UniqueConstraint)
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from .database import Base
-from .model_base import utcnow, TRANSFER_BATCH_NUMBER_TYPE
+from .model_base import TRANSFER_BATCH_NUMBER_TYPE, utcnow
 
 
 class MainSystemConfiguration(Base):
@@ -111,7 +127,10 @@ class MaterialTransfer(Base):
         CheckConstraint("quantity >= 0", name="ck_material_transfers_quantity_nonnegative"),
         CheckConstraint("weight >= 0", name="ck_material_transfers_weight_nonnegative"),
         CheckConstraint("quantity > 0 OR weight > 0", name="ck_material_transfers_nonempty"),
-        CheckConstraint("finished_quantity IS NULL OR finished_quantity >= 0", name="ck_material_transfers_finished_quantity"),
+        CheckConstraint(
+            "finished_quantity IS NULL OR finished_quantity >= 0",
+            name="ck_material_transfers_finished_quantity",
+        ),
         CheckConstraint(
             "(entry_kind IN ('transfer', 'warehouse_outbound', 'inspection_shipment') AND source_team_id IS NOT NULL AND source_team_code IS NOT NULL AND source_team_name IS NOT NULL) OR "
             "(entry_kind IN ('warehouse_receipt', 'opening_stock') AND source_team_id IS NULL AND source_team_code IS NULL AND source_team_name IS NULL "
@@ -144,7 +163,9 @@ class MaterialTransfer(Base):
         Index("ix_mt_stock_source_status", "source_transfer_id", "status"),
         Index("ix_mt_intake_created", "next_team_id", "entry_kind", "created_at", "id"),
         Index("ix_mt_source_kind_created", "source_team_id", "entry_kind", "created_at", "id"),
-        Index("ix_mt_team_serial_purpose", "next_team_id", "serial_no", "purpose_id", "received_at"),
+        Index(
+            "ix_mt_team_serial_purpose", "next_team_id", "serial_no", "purpose_id", "received_at"
+        ),
         Index("ix_mt_source_serial_created", "source_team_id", "serial_no", "created_at"),
     )
 
@@ -155,12 +176,20 @@ class MaterialTransfer(Base):
     serial_no: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     urgency: Mapped[SerialUrgency | None] = relationship(
         primaryjoin="foreign(MaterialTransfer.serial_no) == SerialUrgency.serial_no",
-        viewonly=True, lazy="selectin", uselist=False,
+        viewonly=True,
+        lazy="selectin",
+        uselist=False,
     )
-    entry_kind: Mapped[str] = mapped_column(String(24), nullable=False, default="transfer", server_default="transfer")
-    purpose_id: Mapped[int | None] = mapped_column(ForeignKey("team_purposes.id", ondelete="RESTRICT"))
+    entry_kind: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="transfer", server_default="transfer"
+    )
+    purpose_id: Mapped[int | None] = mapped_column(
+        ForeignKey("team_purposes.id", ondelete="RESTRICT")
+    )
     purpose_name: Mapped[str | None] = mapped_column(String(80))
-    opening_stock_id: Mapped[int | None] = mapped_column(ForeignKey("opening_stock_submissions.id", ondelete="RESTRICT"), index=True)
+    opening_stock_id: Mapped[int | None] = mapped_column(
+        ForeignKey("opening_stock_submissions.id", ondelete="RESTRICT"), index=True
+    )
     external_destination: Mapped[str | None] = mapped_column(String(240))
     # Receipt-specific provenance: do not inherit this as the source of later handoffs.
     receipt_kind: Mapped[str | None] = mapped_column(String(16))
@@ -187,9 +216,15 @@ class MaterialTransfer(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     # A received transfer is a stock lot at its destination. External exits
     # never create stock; historical unlinked receipts remain untracked.
-    stock_tracked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
-    source_transfer_id: Mapped[int | None] = mapped_column(ForeignKey("material_transfers.id", ondelete="RESTRICT"))
-    dispatch_id: Mapped[int | None] = mapped_column(ForeignKey("material_dispatches.id", ondelete="RESTRICT"), index=True)
+    stock_tracked: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    source_transfer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("material_transfers.id", ondelete="RESTRICT")
+    )
+    dispatch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("material_dispatches.id", ondelete="RESTRICT"), index=True
+    )
     source_team_id: Mapped[int | None] = mapped_column(
         ForeignKey("teams.id", ondelete="RESTRICT"), nullable=True, index=True
     )
@@ -220,7 +255,9 @@ class MaterialTransfer(Base):
     receipt_idempotency_key: Mapped[str | None] = mapped_column(String(100))
     received_at: Mapped[datetime | None] = mapped_column(DateTime)
     dispatched_by: Mapped[str | None] = mapped_column(String(80))
-    dispatched_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    dispatched_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime)
     outbound_idempotency_key: Mapped[str | None] = mapped_column(String(100), unique=True)
     voided_by: Mapped[str | None] = mapped_column(String(80))
@@ -238,9 +275,13 @@ class MaterialTransfer(Base):
     stock_source: Mapped[MaterialTransfer | None] = relationship(
         remote_side=[id], foreign_keys=[source_transfer_id], lazy="selectin"
     )
-    dispatch: Mapped[MaterialDispatch | None] = relationship(foreign_keys=[dispatch_id], lazy="selectin")
+    dispatch: Mapped[MaterialDispatch | None] = relationship(
+        foreign_keys=[dispatch_id], lazy="selectin"
+    )
     losses: Mapped[list[MaterialLoss]] = relationship(
-        foreign_keys="MaterialLoss.source_transfer_id", back_populates="source_transfer", order_by="MaterialLoss.id"
+        foreign_keys="MaterialLoss.source_transfer_id",
+        back_populates="source_transfer",
+        order_by="MaterialLoss.id",
     )
     history: Mapped[list[MaterialTransferEvent]] = relationship(
         back_populates="transfer", order_by="MaterialTransferEvent.id", lazy="select"
@@ -263,8 +304,12 @@ class MaterialDispatch(Base):
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     dispatch_no: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
-    source_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False)
-    entry_kind: Mapped[str] = mapped_column(String(24), nullable=False, default="transfer", server_default="transfer")
+    source_team_id: Mapped[int] = mapped_column(
+        ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False
+    )
+    entry_kind: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="transfer", server_default="transfer"
+    )
     external_destination: Mapped[str | None] = mapped_column(String(240))
     next_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
     next_team_code: Mapped[str | None] = mapped_column(String(64))
@@ -273,13 +318,17 @@ class MaterialDispatch(Base):
     idempotency_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     created_by: Mapped[str] = mapped_column(String(80), nullable=False)
-    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     confirmation_idempotency_key: Mapped[str | None] = mapped_column(String(100), unique=True)
     confirmed_revision: Mapped[str | None] = mapped_column(String(64))
     confirmed_by: Mapped[str | None] = mapped_column(String(80))
-    confirmed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    confirmed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
@@ -296,17 +345,25 @@ class MaterialLoss(Base):
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     loss_no: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
-    source_transfer_id: Mapped[int] = mapped_column(ForeignKey("material_transfers.id", ondelete="RESTRICT"), nullable=False)
-    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False)
+    source_transfer_id: Mapped[int] = mapped_column(
+        ForeignKey("material_transfers.id", ondelete="RESTRICT"), nullable=False
+    )
+    team_id: Mapped[int] = mapped_column(
+        ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False
+    )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     created_by: Mapped[str] = mapped_column(String(80), nullable=False)
-    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
-    source_transfer: Mapped[MaterialTransfer] = relationship(foreign_keys=[source_transfer_id], back_populates="losses", lazy="joined")
+    source_transfer: Mapped[MaterialTransfer] = relationship(
+        foreign_keys=[source_transfer_id], back_populates="losses", lazy="joined"
+    )
 
 
 class MaterialTransferEvent(Base):
@@ -325,6 +382,22 @@ class MaterialTransferEvent(Base):
     transfer: Mapped[MaterialTransfer] = relationship(back_populates="history")
 
 
+class AdminAuditEvent(Base):
+    """Immutable IDs are snapshots, not FKs: deleting identities retains history."""
+
+    __tablename__ = "admin_audit_events"
+    __table_args__ = (Index("ix_admin_audit_target", "target_type", "target_id", "id"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    actor_user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor: Mapped[str] = mapped_column(String(80), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    target_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    request_id: Mapped[str | None] = mapped_column(String(32))
+    changes: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
 class Team(Base):
     __tablename__ = "teams"
 
@@ -334,8 +407,12 @@ class Team(Base):
     description: Mapped[str | None] = mapped_column(String(240))
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    kind: Mapped[str] = mapped_column(String(16), nullable=False, default="production", server_default="production")
-    opening_stock_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="production", server_default="production"
+    )
+    opening_stock_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utcnow, onupdate=utcnow
@@ -378,6 +455,7 @@ class AuthSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     user: Mapped[User] = relationship(back_populates="sessions", lazy="joined")
+
 
 # Preserve all historical table metadata for migrations without old workflows.
 from . import legacy_models  # noqa: E402,F401

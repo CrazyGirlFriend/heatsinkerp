@@ -24,7 +24,7 @@ const statsSelected = computed(() => props.modelValue === 'materials')
 const statsLabel = computed(() => props.modelValue === 'materials' ? '材质归类' : '统计')
 
 function changeTab(event: KeyboardEvent, index: number): void {
-  let next = index
+  let next: number
   if (event.key === 'ArrowRight') next = (index + 1) % tabs.value.length
   else if (event.key === 'ArrowLeft') next = (index + tabs.value.length - 1) % tabs.value.length
   else if (event.key === 'Home') next = 0

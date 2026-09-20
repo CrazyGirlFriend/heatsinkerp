@@ -104,8 +104,7 @@ def test_intake_retry_is_idempotent_and_different_payload_conflicts(client, ware
 
 def test_intake_audit_failure_rolls_back_number_and_stock(client, warehouse):
     with patch('app.warehouse_receipts.workflow._record_event', side_effect=RuntimeError('audit failed')):
-        with pytest.raises(RuntimeError, match='audit failed'):
-            intake(client, warehouse)
+        assert intake(client, warehouse).status_code == 500
     with SessionLocal() as db:
         assert db.scalar(select(func.count(MaterialTransfer.id))) == 0
         assert db.scalar(select(func.count(TransferBatchNumberSequence.sequence_date))) == 0

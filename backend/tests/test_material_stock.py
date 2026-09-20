@@ -211,8 +211,7 @@ def test_stock_validation_and_atomic_rollback_on_audit_failure(client, stock_set
     def fail_audit(*args, **kwargs):
         raise RuntimeError("audit failed")
     monkeypatch.setattr(material_transfer_workflow, "_record_event", fail_audit)
-    with pytest.raises(RuntimeError, match="audit failed"):
-        dispatch(client, setup, [valid])
+    assert dispatch(client, setup, [valid]).status_code == 500
     assert totals(client, setup)["reserved_quantity"] == 0
     with SessionLocal() as db:
         assert db.scalar(select(func.count(MaterialDispatch.id))) == 0

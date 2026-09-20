@@ -164,7 +164,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 export DATABASE_URL='sqlite:///./heatsink.db'
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --no-access-log
 ```
 
 OpenAPI is available at `/docs`. For local-only work, tables can be initialized
@@ -197,3 +197,7 @@ root, `PYTHONPATH=backend`) requires an EMPTY disposable MySQL database named
 exactly `heatsink_stock_qa`; never supply business database credentials. It
 validates migrations including interrupted DDL recovery, grouped queries,
 whole-submission rollback and concurrent reservations/losses/idempotent replay.
+
+## Code quality and diagnostics
+
+See [quality checks, request diagnostics, administrative audit and material reset](../docs/code-quality.md).

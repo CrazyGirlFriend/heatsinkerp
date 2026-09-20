@@ -64,7 +64,7 @@ watch(() => props.focusTeam, async team => {
       </div>
     </div>
     <div v-else class="graph-empty">暂无有效批次<span v-if="voidedCount">，可勾选「作废」查看历史单据。</span></div>
-    <footer class="graph-caption"><span>实线：已确认　虚线：待确认 · 点击批次查看单据及丢失记录</span><span>{{ dates.from || dates.to || focusTeam ? '已高亮所选范围，保留完整来源链路' : '每个节点为独立批次，分支表示拆批，重复班组表示回流' }}</span></footer>
+    <footer class="graph-caption"><span>实线：已确认 · 虚线：待确认 · 点击批次查看单据及丢失记录</span><span>{{ dates.from || dates.to || focusTeam ? '已高亮所选范围，保留完整来源链路' : '每个节点为独立批次，分支表示拆批，重复班组表示回流' }}</span></footer>
   </section>
 </template>
 

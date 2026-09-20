@@ -172,13 +172,11 @@ def test_external_validation_and_atomicity(client, outbound):
     assert dispatch(client, outbound, lines=too_much).status_code == 409
     assert client.get(outbound['url']+'/dispatches').json()['total'] == 0
     with patch('app.material_stock.workflow._record_event', side_effect=RuntimeError('audit failed')):
-        with pytest.raises(RuntimeError, match='audit failed'):
-            dispatch(client, outbound)
+        assert dispatch(client, outbound).status_code == 500
     assert client.get(outbound['url']+'/dispatches').json()['total'] == 0
     line = dispatch(client, outbound).json()['items'][0]
     with patch('app.material_transfer_workflow._record_event', side_effect=RuntimeError('audit failed')):
-        with pytest.raises(RuntimeError, match='audit failed'):
-            confirm(client, outbound, line)
+        assert confirm(client, outbound, line).status_code == 500
     assert client.get(f"/api/material-transfers/{line['batch_no']}").json()['status'] == 'pending'
     assert confirm(client, outbound, line).status_code == 200
 

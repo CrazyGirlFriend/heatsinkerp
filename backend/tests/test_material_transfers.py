@@ -420,7 +420,6 @@ def test_document_idempotency_search_and_legacy_empty_fields(client):
 
 
 def test_document_history_failure_rolls_back_business_changes(client, monkeypatch):
-    import pytest
     from app import material_transfer_workflow
 
     setup = _setup_three_teams(client)
@@ -431,16 +430,10 @@ def test_document_history_failure_rolls_back_business_changes(client, monkeypatc
         raise RuntimeError("simulated audit failure")
 
     monkeypatch.setattr(material_transfer_workflow, "_record_event", fail_history)
-    with pytest.raises(RuntimeError, match="simulated audit failure"):
-        client.patch(url, headers=setup["source_headers"], json={
-            "quantity": 500, "material_name": "should not persist", "expected_version": 1,
-        })
+    assert client.patch(url, headers=setup['source_headers'], json={'quantity': 500, 'material_name': 'should not persist', 'expected_version': 1}).status_code == 500
     after = client.get(url, headers=setup["source_headers"]).json()
     assert after == created
-    with pytest.raises(RuntimeError, match="simulated audit failure"):
-        client.post(url + "/confirm", headers=setup["target_headers"], json={
-            "idempotency_key": "audit-failure-confirm", "expected_version": 1,
-        })
+    assert client.post(url + '/confirm', headers=setup['target_headers'], json={'idempotency_key': 'audit-failure-confirm', 'expected_version': 1}).status_code == 500
     assert client.get(url, headers=setup["source_headers"]).json() == created
 
 

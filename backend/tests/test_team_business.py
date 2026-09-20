@@ -148,8 +148,7 @@ def test_opening_atomic_failure_does_not_consume_permission_or_numbers(client, s
         assert db.scalar(select(func.count(MaterialTransfer.id))) == 0
     assert client.get(endpoint).json()['enabled']
     with patch('app.opening_stock.workflow._record_event', side_effect=RuntimeError('audit failed')):
-        with pytest.raises(RuntimeError, match='audit failed'):
-            client.post(endpoint, headers=s['target_headers'], json=open_payload())
+        assert client.post(endpoint, headers=s['target_headers'], json=open_payload()).status_code == 500
     assert client.get(endpoint).json()['enabled']
     assert client.post(endpoint, headers=s['target_headers'], json=open_payload()).status_code == 201
 

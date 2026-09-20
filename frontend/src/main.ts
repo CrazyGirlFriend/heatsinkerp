@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import App from './App.vue'
+import { installDiagnostics } from './services/diagnostics'
 import router from './router'
 import { appPinia } from './stores/access'
 import 'element-plus/dist/index.css'
@@ -10,4 +11,7 @@ import './styles/workspace.css'
 import './styles/reading-workspace.css'
 import './styles/business-tables.css'
 
-createApp(App).use(appPinia).use(router).mount('#app')
+const app = createApp(App)
+const disposeDiagnostics = installDiagnostics(app)
+if (import.meta.hot) import.meta.hot.dispose(disposeDiagnostics)
+app.use(appPinia).use(router).mount('#app')

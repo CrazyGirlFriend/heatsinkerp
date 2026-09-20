@@ -1,0 +1,33 @@
+{
+  "backend": [
+    "app/admin_api.py",
+    "app/admin_audit.py",
+    "app/auth_api.py",
+    "app/main.py",
+    "app/observability.py",
+    "app/reset_business_data.py",
+    "app/factory_overview.py",
+    "app/factory_schemas.py",
+    "app/models.py",
+    "tests/test_admin_audit.py",
+    "tests/test_observability.py",
+    "tests/test_material_reset.py",
+    "tests/test_admin_audit_migration.py",
+    "alembic/versions/20260920_0016_admin_audit.py"
+  ],
+  "frontend": [
+    "src/main.ts",
+    "src/services/diagnostics.ts",
+    "src/services/diagnostics.test.ts",
+    "src/services/httpClient.ts",
+    "src/services/httpClient.test.ts",
+    "src/services/inventoryStream.ts",
+    "src/services/inventoryStream.test.ts",
+    "src/pages/FactoryLivePage.vue",
+    "src/components/FactoryGlassScene.vue",
+    "src/types/factoryLive.ts",
+    "eslint.config.mjs",
+    "scripts/check-format.mjs",
+    "src/utils/factoryGlass.ts"
+  ]
+}
