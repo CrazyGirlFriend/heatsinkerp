@@ -33,6 +33,7 @@ def test_split_pending_receipt_return_void_and_losses_share_the_stock_ledger(cli
     returned = back.json()['items'][0]
     assert loss(client, s, root).status_code == 201
     data = trace(client)
+    assert data['observed_at'].endswith('+00:00')
     assert data['totals']['on_hand'] == {'quantity': 68, 'weight': 6.8}
     assert data['totals']['in_transit'] == {'quantity': 30, 'weight': 3}
     assert data['totals']['lost'] == {'quantity': 2, 'weight': .2}
@@ -43,6 +44,8 @@ def test_split_pending_receipt_return_void_and_losses_share_the_stock_ledger(cli
     assert rows[returned['id']]['on_hand_quantity'] is None
     assert rows[root['id']]['on_hand_quantity'] == 48
     assert rows[root['id']]['loss_records'][0]['reason'] == '清点发现丢失'
+    assert [event['action'] for event in rows[first['id']]['history']] == ['created', 'received']
+    assert rows[first['id']]['history'][0]['changes']['quantity']['after'] == 30
     assert {p['team_id']: p['quantity'] for p in data['positions']} == {s['target']['id']: 48, s['third']['id']: 20}
     assert client.post(f"/api/material-transfers/{returned['batch_no']}/confirm", headers=s['target_headers'],
                        json={'idempotency_key': 'receive-return'}).status_code == 200
@@ -51,6 +54,8 @@ def test_split_pending_receipt_return_void_and_losses_share_the_stock_ledger(cli
     assert data['totals']['on_hand'] == {'quantity': 98, 'weight': 9.8}
     assert data['totals']['in_transit'] == {'quantity': 0, 'weight': 0}
     assert len(data['items']) == 4  # Voided branches remain auditable.
+    voided = next(item for item in data['items'] if item['id'] == second['id'])
+    assert [event['action'] for event in voided['history']] == ['created', 'voided']
     assert {p['team_id']: p['quantity'] for p in data['positions']} == {s['target']['id']: 78, s['third']['id']: 20}
 
 

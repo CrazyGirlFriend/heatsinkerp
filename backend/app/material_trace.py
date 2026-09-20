@@ -1,4 +1,5 @@
 """Exact-serial batch genealogy and current stock, not an inferred process route."""
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -13,7 +14,7 @@ def serial_trace(db, serial_no, user):
     serial_no = serial_no.strip()
     transfers = db.scalars(select(MaterialTransfer).where(
         MaterialTransfer.serial_no == serial_no
-    ).options(selectinload(MaterialTransfer.losses)).order_by(
+    ).options(selectinload(MaterialTransfer.losses), selectinload(MaterialTransfer.history)).order_by(
         MaterialTransfer.created_at, MaterialTransfer.id
     )).all()
     stock = stock_table()
@@ -32,8 +33,9 @@ def serial_trace(db, serial_no, user):
 
     for transfer in transfers:
         balance = balances.get(transfer.id)
-        item = workflow.material_transfer_dict(transfer, user, include_history=False)
-        item['loss_records'] = [workflow.material_loss_dict(loss) for loss in transfer.losses]
+        # Residence intervals need committed quantity changes and void returns,
+        # not just today's balance applied retroactively to the entire period.
+        item = workflow.material_transfer_dict(transfer, user, include_history=True)
         # Null means this document is not an accounted stock lot, not zero stock.
         item['on_hand_quantity'] = int(balance['on_hand_quantity']) if balance else None
         item['on_hand_weight'] = float(balance['on_hand_weight']) if balance else None
@@ -61,6 +63,7 @@ def serial_trace(db, serial_no, user):
 
     return {
         'serial_no': serial_no, 'items': items,
+        'observed_at': datetime.now(timezone.utc).isoformat(),
         'totals': {key: amounts(value) for key, value in buckets.items()},
         'positions': [amounts(value) for value in positions.values()],
         'untracked_count': sum(t.status == 'received' and not t.stock_tracked for t in transfers),

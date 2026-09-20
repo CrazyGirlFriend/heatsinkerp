@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { init, use, type ECharts, type EChartsCoreOption } from 'echarts/core'
 import { SankeyChart, CustomChart } from 'echarts/charts'
 import { AriaComponent, TooltipComponent, GridComponent, DataZoomComponent } from 'echarts/components'
@@ -56,11 +56,31 @@ function zoom(direction: number) {
   }) })
   reportZoom()
 }
+async function showBatch(id: string) {
+  const option = chart?.getOption()
+  const series = (option?.series || []) as Array<{ id?: string; data?: Array<{ id?: string; value?: Array<number | null> }> }>
+  const seriesIndex = series.findIndex(item => item.id === 'batch-paths')
+  const dataIndex = series[seriesIndex]?.data?.findIndex(item => item.id === id) ?? -1
+  if (dataIndex < 0) return
+  const value = series[seriesIndex]?.data?.[dataIndex]?.value
+  const axis = (option?.xAxis as Array<{ min?: number; max?: number }> | undefined)?.[0]
+  if (value?.[0] != null && axis?.min != null && axis.max != null && axis.max > axis.min) {
+    const first = value[0], last = value[4] ?? first, total = axis.max - axis.min
+    const range = Math.min(total, Math.max(60000, (last - first) * 4))
+    const left = Math.max(axis.min, Math.min(axis.max - range, (first + last - range) / 2))
+    chart?.dispatchAction({ type: 'dataZoom', batch: zoomStates().flatMap((item, index) => item.id === 'time'
+      ? [{ dataZoomIndex: index, start: (left - axis.min!) / total * 100, end: (left + range - axis.min!) / total * 100 }]
+      : item.id === 'teams' ? [{ dataZoomIndex: index, start: 0, end: 100 }] : []) })
+    reportZoom()
+    await nextTick()
+  }
+  chart?.dispatchAction({ type: 'showTip', seriesIndex, dataIndex })
+}
 function keyboard(event: KeyboardEvent) {
   if (!['+', '=', '-', '0'].includes(event.key)) return
   event.preventDefault(); zoom(event.key === '0' ? 0 : event.key === '-' ? -1 : 1)
 }
-defineExpose({ zoom })
+defineExpose({ zoom, showBatch })
 watch(() => [props.option, props.replay, props.motion], (value, previous) => render(value[1] !== previous[1]), { flush: 'post' })
 onMounted(() => {
   motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -81,4 +101,8 @@ onBeforeUnmount(() => {
 .flow-canvas:focus-visible { outline: 2px solid #9280d9; outline-offset: -2px; }
 .flow-canvas.panning, .flow-canvas.panning :deep(*) { cursor: grab !important; }
 .flow-canvas.dragging, .flow-canvas.dragging :deep(*) { cursor: grabbing !important; }
+.flow-canvas :deep(.chain-flow-tooltip) { max-width: min(320px, calc(100vw - 72px)); max-height: 50vh; overflow: auto; white-space: normal; overflow-wrap: anywhere; line-height: 1.7; }
+.flow-canvas :deep(.chain-flow-tooltip strong) { display: block; margin-bottom: 2px; font-size: 16px; font-weight: 600; }
+.flow-canvas :deep(.chain-flow-tooltip .tooltip-route) { color: #6850a8; }
+.flow-canvas :deep(.chain-flow-tooltip b) { display: block; margin: 4px 0 8px; font-size: 17px; font-weight: 600; }
 </style>

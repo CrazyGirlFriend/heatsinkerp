@@ -76,6 +76,21 @@ it('keeps the base series when responsive media options only adjust axes and con
   wrapper = mount(FlowPreviewCanvas, { props: { option: { series: [{ type: 'custom', data: [[1, 2]] }], media: [{ query: { maxWidth: 620 }, option: { grid: { bottom: 150 } } }] }, label: '时间画布', replay: 0, motion: true, renderer: 'svg' } })
   expect(chart.setOption).toHaveBeenLastCalledWith(expect.objectContaining({ series: [{ type: 'custom', data: [[1, 2]] }] }), {})
 })
+it('locates a dense batch by its real transfer time and shows hover details without opening a drawer', async () => {
+  chart.getOption.mockReturnValue({
+    xAxis: [{ min: 0, max: 1000000 }],
+    dataZoom: [{ id: 'time', type: 'inside', start: 0, end: 100 }, { id: 'teams', type: 'inside', start: 25, end: 75 }],
+    series: [{ id: 'batch-paths', data: [{ id: '7', value: [100000, 1000000, 0, 1, 120000] }] }],
+  })
+  render()
+  await (wrapper!.vm as unknown as { showBatch: (id: string) => Promise<void> }).showBatch('7')
+  const zoom = chart.dispatchAction.mock.calls[0]![0]
+  expect(zoom.type).toBe('dataZoom')
+  expect(zoom.batch[0].start).toBeCloseTo(7)
+  expect(zoom.batch[0].end).toBeCloseTo(15)
+  expect(zoom.batch[1]).toEqual({ dataZoomIndex: 1, start: 0, end: 100 })
+  expect(chart.dispatchAction).toHaveBeenLastCalledWith({ type: 'showTip', seriesIndex: 0, dataIndex: 0 })
+})
 it('does not select batches in pan mode and returns to selection without replacing the chart', async () => {
   const page = render()
   const click = chart.on.mock.calls.find(call => call[0] === 'click')![1]

@@ -74,7 +74,7 @@ describe('ECharts flow preview data', () => {
     expect(option.dataZoom).toHaveLength(3)
     expect(model.nodes.reduce((sum, node) => sum + node.batch.quantity, 0)).toBe(20)
     expect(model.nodes[0]?.batch.serial_no).toBe('000012')
-    expect(option.tooltip).toMatchObject({ renderMode: 'richText' })
+    expect(option.tooltip).toMatchObject({ renderMode: 'html' })
   })
   it('positions events by their real timestamps, including UTC-offset equivalents, instead of depth', () => {
     const root = { ...batch(1), received_at: '2026-09-17T00:00:00Z' }
@@ -86,7 +86,7 @@ describe('ECharts flow preview data', () => {
     expect(traceTimestamp('2026-09-18T00:00:00')).toBe(traceTimestamp('2026-09-18T08:00:00+08:00'))
     expect(traceTime(model.byId.get('2')!.startedAt)).toBe('2026-09-18 08:00:00')
     const option = traceFlowOption(model, 'quantity')
-    expect(option.xAxis).toMatchObject({ type: 'time' })
+    expect(option.xAxis).toMatchObject([{ type: 'time', position: 'top' }, { type: 'time', position: 'bottom' }])
     expect(option.dataZoom).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'time', zoomOnMouseWheel: true, moveOnMouseMove: false, filterMode: 'none' }), expect.objectContaining({ id: 'time-slider', type: 'slider' })]))
   })
   it('does not invent receipt timestamps for pending batches or silently fix invalid history', () => {
@@ -123,8 +123,9 @@ describe('ECharts flow preview data', () => {
     const model = traceFlowModel([{ ...batch(1), received_at: '2026-09-19T00:00:00.100Z' }, { ...batch(2, 1), transferred_at: '2026-09-19T00:00:00.150Z', received_at: '2026-09-19T00:00:00.300Z' }])
     const option = traceFlowOption(model, 'weight')
     expect(model.span).toBe(200)
-    expect(option.xAxis).toMatchObject({ type: 'value', minInterval: 1 })
-    expect(option.yAxis).toMatchObject({ min: -1, max: model.teams.length, splitNumber: model.teams.length + 1, minInterval: 1 })
+    expect(option.xAxis).toMatchObject([{ type: 'value', minInterval: 1 }, { type: 'value', minInterval: 1 }])
+    expect(option.yAxis).toMatchObject({ min: -.5, max: model.teams.length - .5, interval: 1 })
+    expect((option.series as CustomSeriesOption[]).find(series => series.id === 'team-lanes')?.data).toHaveLength(model.teams.length)
     expect(traceTime(model.first)).toBe('2026-09-19 08:00:00.100')
     expect(option.dataZoom).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'time-slider', handleIcon: 'circle', handleSize: 20 })]))
   })
@@ -132,7 +133,7 @@ describe('ECharts flow preview data', () => {
     const model = traceFlowModel([batch(1)])
     const option = traceFlowOption(model, 'quantity', '', true, 'pan')
     expect(option.dataZoom).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'time', moveOnMouseMove: true, zoomOnMouseWheel: true })]))
-    expect(option.series).toEqual([expect.objectContaining({ id: 'batch-paths', silent: true })])
+    expect(option.series).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'batch-paths', silent: true }), expect.objectContaining({ id: 'team-lanes', silent: true })]))
     expect(option.tooltip).toMatchObject({ show: false })
   })
   it('uses stable batch and child identities for incremental animation and purposeful hover feedback', () => {

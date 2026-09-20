@@ -7,6 +7,7 @@ export interface TraceBatch extends MaterialTransfer {
 export interface TraceAmount { quantity: number; weight: number }
 export interface MaterialTrace {
   serial_no: string
+  observed_at?: string
   items: TraceBatch[]
   totals: Record<'on_hand' | 'in_transit' | 'external_pending' | 'dispatched' | 'lost', TraceAmount>
   positions: Array<TraceAmount & { team_id: number; team_name: string; batch_count: number }>
