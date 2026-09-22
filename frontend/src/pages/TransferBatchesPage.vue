@@ -13,7 +13,6 @@ import {
   ElSkeleton,
   ElTable,
   ElTableColumn,
-  ElTag,
   type InputInstance,
 } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -437,14 +436,22 @@ onBeforeUnmount(() => {
 
 <template>
   <section ref="layoutElement" class="page workspace-page transfers-page reading-workspace" :class="{ 'transfers-page--detail': showDockedDetail }">
-      <header class="page-heading transfers-heading">
-        <div class="heading-copy"><h1>转料记录</h1></div>
+    <h1 class="sr-only">转料记录</h1>
+    <div class="transfers-main">
+      <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
+      <div class="status-toolbar">
+      <div class="status-overview" role="group" aria-label="按转料状态筛选" :aria-busy="countsLoading">
+        <button v-for="option in statusOptions" :key="option.value" type="button" class="status-filter" :class="[`status-filter--${option.value}`, { 'is-selected': statusDraft === option.value }]" :aria-label="option.label === '全部' ? '全部转料' : option.label" :aria-pressed="statusDraft === option.value" @click="selectStatus(option.value)">
+          <ElIcon class="status-filter__icon"><component :is="option.icon" /></ElIcon>
+          <span class="status-filter__copy"><span>{{ option.label }}</span><strong>{{ statusCounts?.[option.value] ?? '—' }}</strong></span>
+        </button>
+        <button v-if="!countsLoading && !statusCounts" class="counts-retry" type="button" aria-label="重试加载状态数量" title="重试加载状态数量" @click="loadCounts()"><ElIcon><Refresh /></ElIcon></button>
+      </div>
         <div class="heading-actions">
-          <ElTag v-if="authStore.isAdmin" type="info" effect="plain" size="small">仅查看</ElTag>
           <ElPopover v-model:visible="scanPanelOpen" trigger="click" placement="bottom-end" :width="400" popper-class="transfer-scan-popover" @show="focusScanner">
             <template #reference><ElButton class="scan-trigger" :icon="FullScreen" aria-label="扫码查询">扫码查询</ElButton></template>
             <div class="scan-popover-content">
-              <strong>扫描批次条码</strong><p>每个批次独立查询、核对与接收。</p>
+              <strong>批次查询</strong>
               <ElInput ref="scanInput" v-model="scanValue" clearable autocomplete="off" aria-label="转料批次号" placeholder="扫描或输入批次号" :disabled="scanning" @keyup.enter="scan()">
                 <template #append><ElButton :icon="Search" :loading="scanning" :disabled="!scanValue.trim()" @click="scan()">查询</ElButton></template>
               </ElInput>
@@ -453,15 +460,6 @@ onBeforeUnmount(() => {
           </ElPopover>
           <ElButton v-if="canCreate" type="primary" :icon="Plus" @click="openCreate">新建转料</ElButton>
         </div>
-      </header>
-    <div class="transfers-main">
-      <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
-      <div class="status-overview" role="group" aria-label="按转料状态筛选" :aria-busy="countsLoading">
-        <button v-for="option in statusOptions" :key="option.value" type="button" class="status-filter" :class="[`status-filter--${option.value}`, { 'is-selected': statusDraft === option.value }]" :aria-label="option.label === '全部' ? '全部转料' : option.label" :aria-pressed="statusDraft === option.value" @click="selectStatus(option.value)">
-          <ElIcon class="status-filter__icon"><component :is="option.icon" /></ElIcon>
-          <span class="status-filter__copy"><span>{{ option.label }}</span><strong>{{ statusCounts?.[option.value] ?? '—' }}</strong></span>
-        </button>
-        <button v-if="!countsLoading && !statusCounts" class="counts-retry" type="button" aria-label="重试加载状态数量" title="重试加载状态数量" @click="loadCounts()"><ElIcon><Refresh /></ElIcon></button>
       </div>
       <ElCard class="transfers-card" shadow="never">
         <form class="filter-bar" @submit.prevent="applyFilters">
@@ -494,7 +492,7 @@ onBeforeUnmount(() => {
           <StatePanel v-else-if="errorMessage" state="error" :description="errorMessage" @retry="loadRows" />
           <StatePanel v-else-if="!hasRows" state="empty" title="暂无转料记录" description="请调整筛选条件。"><ElButton v-if="canCreate" type="primary" plain :icon="Plus" @click="openCreate">新建转料</ElButton></StatePanel>
           <ElTable v-else :data="rows" class="business-table transfer-table" border row-key="batch_no" :current-row-key="drawerOpen ? selected?.batch_no : undefined" highlight-current-row @row-click="openDetail">
-            <ElTableColumn label="转料单 / 流水号" min-width="250" align="center">
+            <ElTableColumn label="批次号 / 流水号" min-width="250" align="center">
               <template #default="{ row }"><ElButton text class="batch-link" :aria-label="'查看转料单 ' + row.batch_no" @click.stop="openDetail(asTransfer(row))">{{ row.batch_no }}</ElButton><div class="transfer-serial"><RouterLink class="serial-number" :to="traceLink(row.serial_no)" @click.stop>{{ row.serial_no }}</RouterLink><SerialUrgencyBadge :urgency="row.urgency" @click.stop /></div></template>
             </ElTableColumn>
             <ElTableColumn label="材质" min-width="150" align="center" show-overflow-tooltip prop="material_name" />
@@ -523,16 +521,15 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .mobile-material-brief { display: block; color: var(--muted); font-size: 12px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-.transfers-page { --detail-width: 900px; display: grid; grid-template-columns: minmax(0, 1fr) 0; grid-template-rows: auto minmax(0, 1fr); padding: 20px 24px; gap: 16px 0; background: var(--workspace-bg); transition: grid-template-columns var(--motion-panel) var(--motion-ease), column-gap var(--motion-panel) var(--motion-ease); }
+.transfers-page { --detail-width: 900px; display: grid; grid-template-columns: minmax(0, 1fr) 0; grid-template-rows: minmax(0, 1fr); padding: 20px 24px; gap: 16px 0; background: var(--workspace-bg); transition: grid-template-columns var(--motion-panel) var(--motion-ease), column-gap var(--motion-panel) var(--motion-ease); }
 .transfers-page--detail { grid-template-columns: minmax(0, 1fr) var(--detail-width); column-gap: 24px; }
-.transfers-heading { grid-column: 1 / -1; margin: 0; min-width: 0; min-height: 38px; }
-.heading-copy { display: flex; align-items: baseline; min-width: 0; gap: 24px; }
-.transfers-heading h1 { flex-shrink: 0; font-size: 22px; font-weight: 600; letter-spacing: -.5px; }
-.transfers-heading p { margin: 0; font-size: 14px; color: var(--subtle); }
+.status-toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+.status-toolbar .status-overview { flex: 1; min-width: 0; padding-bottom: 0; border-bottom: 0; }
+.status-toolbar .heading-actions { padding-bottom: 8px; }
 .heading-actions { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }
 .heading-actions :deep(.el-button) { height: 32px; margin: 0; padding-inline: 12px; font-size: 14px; }
-.transfers-main { container: workspace / inline-size; display: flex; grid-column: 1; grid-row: 2; min-width: 0; min-height: 0; flex-direction: column; gap: 10px; }
-.detail-slot { grid-column: 2; grid-row: 2; min-width: 0; min-height: 0; }
+.transfers-main { container: workspace / inline-size; display: flex; grid-column: 1; grid-row: 1; min-width: 0; min-height: 0; flex-direction: column; gap: 10px; }
+.detail-slot { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; }
 .status-overview { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); flex-shrink: 0; min-height: 44px; padding: 0 18px; border: 1px solid var(--panel-line); border-radius: 8px; background: var(--surface); box-shadow: var(--panel-shadow); }
 .status-filter { position: relative; display: flex; align-items: center; justify-content: center; gap: 16px; min-width: 0; padding: 8px; border: 0; border-radius: 8px; color: var(--text); background: transparent; transition: background-color var(--motion-fast) ease; }
 .status-filter + .status-filter::before { position: absolute; top: 25%; bottom: 25%; left: 0; width: 1px; background: var(--line); content: ''; }
@@ -569,6 +566,7 @@ onBeforeUnmount(() => {
 .scan-trigger { color: var(--text); }
 .scan-popover-content { padding: 4px; }
 .scan-popover-content > strong { color: var(--text); font-size: 15px; }
+.scan-popover-content > .el-input { margin-top: 12px; }
 .scan-popover-content p { color: var(--subtle); font-size: 13px; }
 .scan-popover-content .scan-error { color: var(--danger); }
 .table-pane { flex: 1; min-height: 0; overflow: hidden; }
@@ -598,6 +596,9 @@ onBeforeUnmount(() => {
   .status-filter__icon { display: none; }
 }
 @container workspace (max-width: 760px) {
+  .status-toolbar { flex-wrap: wrap; gap: 8px; }
+  .status-toolbar .status-overview { flex-basis: 100%; }
+  .status-toolbar .heading-actions { margin-left: auto; }
   .transfer-table { display: none; }
   .table-pane { overflow-y: auto; }
   .transfer-mobile-list { display: block; }
@@ -628,17 +629,11 @@ onBeforeUnmount(() => {
 @media (max-width: 1100px) {
   .transfers-page { padding: 14px; gap: 10px 0; }
   .transfers-page--detail { column-gap: 20px; }
-  .heading-copy { flex-direction: column; gap: 4px; }
-  .transfers-heading h1 { font-size: 22px; }
 }
 @media (max-width: 640px) {
   .transfers-page { padding: 12px; row-gap: 10px; }
-  .transfers-heading { flex-wrap: wrap; gap: 16px; }
-  .transfers-heading h1 { font-size: 22px; }
   .heading-actions { width: 100%; gap: 10px; }
   .heading-actions :deep(.el-button) { height: 40px; padding-inline: 14px; font-size: 14px; }
-  .heading-copy { flex-direction: row; align-items: baseline; gap: 14px; }
-  .heading-copy p { font-size: 12px; }
   .transfers-main { gap: 14px; }
   .transfers-card :deep(.el-card__body) { padding-inline: 10px; }
   .pagination-bar { gap: 5px; }

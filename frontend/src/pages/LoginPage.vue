@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Box, Lock, User } from '@element-plus/icons-vue'
+import { Lock, User } from '@element-plus/icons-vue'
 import { ElButton, ElForm, ElFormItem, ElIcon, ElInput } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -43,7 +43,7 @@ onMounted(() => {
 <template>
   <main class="login-page">
     <section class="login-brand" aria-label="系统名称">
-      <span class="login-brand__mark"><ElIcon><Box /></ElIcon></span>
+      <span class="login-brand__mark"><img src="/brand/attl-official-logo.png" alt="中国钢研 安泰科技 · 安泰天龙" width="1017" height="143" /></span>
       <h1>热沉物料流转管理系统</h1>
       <p>物料收发 · 批次查询 · 流水号追踪</p>
     </section>
@@ -52,7 +52,6 @@ onMounted(() => {
       <div class="login-card">
         <header>
           <h2 id="login-title">系统登录</h2>
-          <span>使用系统管理员或班组长账号登录</span>
         </header>
 
         <ElForm label-position="top" @submit.prevent="handleSubmit">

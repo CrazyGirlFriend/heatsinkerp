@@ -67,7 +67,7 @@ async function renderApp(mobile: boolean) {
 describe('application navigation shell', () => {
   it('keeps the same business shell and illustrated navigation across all normal pages', async () => {
     const { wrapper, router } = await renderApp(false)
-    for (const path of ['/', '/team-workspaces/1', '/transfer-batches', '/transfer-batches/scan', '/material-trace', '/settings/teams', '/settings/accounts', '/factory-analysis']) {
+    for (const path of ['/', '/factory-stock', '/team-workspaces/1', '/transfer-batches', '/transfer-batches/scan', '/material-trace', '/settings/teams', '/settings/accounts', '/factory-analysis']) {
       await router.push(path); await flushPromises()
       expect(wrapper.get('.app-shell').classes()).toContain('app-shell--business')
       expect(wrapper.getComponent(FactorySidebar).props('illustrated')).toBe(true)
@@ -120,10 +120,10 @@ describe('application navigation shell', () => {
     expect(wrapper.get('.brand').attributes('inert')).toBeDefined()
     expect(wrapper.get('.topbar__account').attributes('inert')).toBeDefined()
     expect(wrapper.get('#factory-sidebar').attributes('inert')).toBeUndefined()
-    expect(document.activeElement).toBe(wrapper.get('#factory-sidebar [aria-label="全厂总览"]').element)
+    expect(document.activeElement).toBe(wrapper.get('#factory-sidebar [role="menubar"]').element)
     // jsdom has no layout. Model only the first and last visible controls to
     // verify both keyboard boundaries without relying on artificial CSS layout.
-    const first = wrapper.get('#factory-sidebar [aria-label="全厂总览"]').element as HTMLElement
+    const first = wrapper.get('#factory-sidebar [role="menubar"]').element as HTMLElement
     const last = wrapper.get('#factory-sidebar [aria-label="班组长管理"]').element as HTMLElement
     const rects = [new DOMRect(0, 0, 44, 44)] as unknown as DOMRectList
     vi.spyOn(first, 'getClientRects').mockReturnValue(rects)
@@ -163,11 +163,15 @@ describe('application navigation shell', () => {
     const { wrapper } = await renderApp(false)
     expect(wrapper.get('#factory-sidebar').attributes('inert')).toBeUndefined()
     expect(wrapper.get('.app-shell').classes()).not.toContain('app-shell--compact')
+    expect(wrapper.get('.brand-mark img').attributes('src')).toBe('/brand/attl-official-logo.png')
+    expect(wrapper.get('.brand-mark').attributes('aria-label')).toBe('安泰天龙 · 热沉物料')
     await wrapper.get('.sidebar__collapse').trigger('click')
     expect(wrapper.get('.app-shell').classes()).toContain('app-shell--compact')
     expect(wrapper.getComponent(FactorySidebar).props('compact')).toBe(true)
+    expect(wrapper.get('.brand-mark img').attributes('src')).toBe('/brand/attl-official-favicon.ico')
     await wrapper.get('.sidebar__collapse').trigger('click')
     expect(wrapper.getComponent(FactorySidebar).props('compact')).toBe(false)
+    expect(wrapper.get('.brand-mark img').attributes('src')).toBe('/brand/attl-official-logo.png')
     expect(wrapper.get('#factory-sidebar [aria-label="轧制工作台"]').text()).toBe('轧制')
     expect(wrapper.get('#factory-sidebar [aria-label="转料记录"]').text()).toBe('转料记录')
   })

@@ -12,7 +12,7 @@ const teamIcons = { 'FACTORY-WAREHOUSE': Box, 'FACTORY-ROLL': Connection, 'FACTO
   'FACTORY-WIRE': Scissor, 'FACTORY-ENGRAVE': EditPen, 'FACTORY-PLATE': Coin, 'FACTORY-QC': CircleCheck }
 const route = useRoute()
 const menu = ref<MenuInstance>()
-const activeGroup = computed(() => route.path.startsWith('/settings/') ? 'settings' : ['/transfer-batches', '/transfer-batches/scan', '/material-trace'].includes(route.path) ? 'materials' : 'teams')
+const activeGroup = computed(() => route.path.startsWith('/settings/') ? 'settings' : ['/', '/factory-stock', '/factory-analysis'].includes(route.path) ? 'factory' : ['/transfer-batches', '/transfer-batches/scan', '/material-trace'].includes(route.path) ? 'materials' : 'teams')
 watch([() => route.path, () => props.compact], async () => {
   await nextTick()
   if (!props.compact) menu.value?.open(activeGroup.value)
@@ -28,7 +28,11 @@ const materialLinks = computed(() => [
 <template>
   <nav class="factory-nav" :class="{ 'factory-nav--compact': compact, 'factory-nav--illustrated': illustrated }" aria-label="主导航">
     <ElMenu ref="menu" router tabindex="0" :default-active="route.path" :default-openeds="[activeGroup]" :collapse="compact" :collapse-transition="false" popper-class="factory-nav-popup">
-      <ElMenuItem index="/" aria-label="全厂总览" :aria-current="route.path === '/' ? 'page' : undefined"><ElIcon><House /></ElIcon><template #title>全厂总览</template></ElMenuItem>
+      <ElSubMenu index="factory" aria-label="全厂总览">
+        <template #title><ElIcon><House /></ElIcon><span>全厂总览</span></template>
+        <ElMenuItem index="/" aria-label="库存总览" :aria-current="route.path === '/' ? 'page' : undefined">库存总览</ElMenuItem>
+        <ElMenuItem index="/factory-stock" aria-label="库存明细" :aria-current="route.path === '/factory-stock' ? 'page' : undefined">库存明细</ElMenuItem>
+      </ElSubMenu>
       <ElSubMenu index="teams" aria-label="班组工作台">
         <template #title><ElIcon><OfficeBuilding /></ElIcon><span>班组工作台</span></template>
         <ElMenuItem v-if="teamDirectory.loading && !teamDirectory.loaded" index="teams-loading" disabled>加载班组…</ElMenuItem>

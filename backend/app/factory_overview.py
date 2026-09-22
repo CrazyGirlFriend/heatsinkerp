@@ -71,6 +71,57 @@ def material_stock_summary(db: Session, team_ids: list[int]) -> list[dict]:
     )
 
 
+def stock_matrix(db: Session, teams: list[dict]) -> dict:
+    """Use one classified balance read for every cell and both sets of totals."""
+    stock = stock_table()
+    name = func.coalesce(func.nullif(func.trim(stock.c.material_name), ""), "未填写材质")
+    rows = list(
+        db.execute(
+            select(
+                stock.c.team_id,
+                name.label("name"),
+                func.sum(stock.c.on_hand_quantity).label("quantity"),
+                func.sum(stock.c.on_hand_weight).label("weight"),
+            )
+            .where(
+                stock.c.team_id.in_([team["id"] for team in teams if team["id"] is not None]),
+                or_(stock.c.on_hand_quantity > 0, stock.c.on_hand_weight > 0),
+            )
+            .group_by(stock.c.team_id, name)
+            .order_by(name, stock.c.team_id)
+        ).mappings()
+    )
+
+    def total(items):
+        return {
+            "quantity": int(sum(row["quantity"] or 0 for row in items)),
+            "weight": float(sum(row["weight"] or 0 for row in items)),
+        }
+
+    return {
+        "materials": [
+            {"name": material, **total([row for row in rows if row["name"] == material])}
+            for material in sorted({row["name"] for row in rows})
+        ],
+        "rows": [
+            {
+                "team_id": team["id"],
+                "team_code": team["code"],
+                "team_name": team["name"],
+                "active": team["active"],
+                "amounts": {
+                    row["name"]: total([row]) for row in rows if row["team_id"] == team["id"]
+                },
+                "total": total([row for row in rows if row["team_id"] == team["id"]])
+                if team["id"] is not None
+                else None,
+            }
+            for team in teams
+        ],
+        "total": total(rows),
+    }
+
+
 def live_stock_classification(db: Session, report: dict) -> None:
     """Derive team balances and factory/type totals from the same grouped read."""
     stock = stock_table()
@@ -420,6 +471,7 @@ def factory_overview(db: Session, days: int = 30, recent_limit: int = 12) -> dic
         "days": days,
         "teams": teams,
         "totals": totals,
+        "stock_matrix": stock_matrix(db, teams),
         "material_ranking": stock_rankings(db, stock, in_scope, remaining, stock.c.material_name),
         "serial_ranking": stock_rankings(db, stock, in_scope, remaining, stock.c.serial_no),
         "recent_batches": recent_batches(db, involved, recent_limit),

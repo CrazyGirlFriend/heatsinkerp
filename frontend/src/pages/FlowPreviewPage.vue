@@ -21,6 +21,7 @@ import purposeSnapshot from '@/fixtures/flowPurposeSnapshot.json'
 
 const route = useRoute(), router = useRouter()
 const mode = computed(() => route.path === '/material-trace' || route.params.view === 'chain' ? 'chain' : 'team')
+const embedded = computed(() => route.path === '/material-trace')
 const example = computed(() => route.query.sample === 'purposes')
 const serialDraft = ref(''), teamDraft = ref(Number(currentUser.value?.team_id) || 1)
 const serial = ref(''), teamId = ref(1), history = ref<SerialHistory | null>(null), trace = ref<MaterialTrace | null>(null)
@@ -130,9 +131,10 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
 </script>
 
 <template>
-  <div ref="pageRoot" class="flow-preview-page" :class="{ 'chain-page': mode === 'chain' }" @keydown="canvasShortcut">
+  <div ref="pageRoot" class="flow-preview-page" :class="{ 'chain-page': mode === 'chain', 'chain-page--embedded': embedded }" @keydown="canvasShortcut">
     <header v-if="mode === 'chain'" class="chain-header">
-      <div class="chain-title"><RouterLink :to="originalPath" class="back-link" aria-label="返回转料记录" title="返回转料记录"><ElIcon><ArrowLeft /></ElIcon></RouterLink><h1>全链路追踪</h1></div>
+      <div v-if="!embedded || fullscreen" class="chain-title"><RouterLink v-if="!embedded" :to="originalPath" class="back-link" aria-label="返回转料记录" title="返回转料记录"><ElIcon><ArrowLeft /></ElIcon></RouterLink><h1>全链路追踪</h1></div>
+      <h1 v-else class="sr-only">全链路追踪</h1>
       <form class="chain-query" @submit.prevent="search"><ElInput v-model="serialDraft" placeholder="输入完整流水号" aria-label="流水号" clearable maxlength="80" :disabled="example"><template #prepend>流水号</template></ElInput><ElButton type="primary" native-type="submit" :loading="loading" :disabled="example">查询</ElButton></form>
       <div class="chain-actions">
         <span v-if="chainModel.closing !== null" class="chain-asof" :title="`截至 ${traceTime(chainModel.closing)}（北京时间）`">{{ traceTime(chainModel.closing).slice(0, 10) }}</span>
@@ -140,6 +142,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
         <span v-if="example" class="sample-label">演示数据 · 非实时</span>
         <ElButton v-if="route.path !== '/material-trace'" class="sample-toggle" text @click="switchData">{{ example ? '业务数据' : '演示数据' }}</ElButton>
         <ElButton v-if="serial && !example" class="header-icon" :icon="RefreshRight" :loading="loading" aria-label="刷新数据" title="刷新数据" text @click="load()" />
+        <ElButton v-if="embedded" class="chain-fullscreen" :icon="FullScreen" :aria-pressed="fullscreen" @click="toggleFullscreen">{{ fullscreen ? '退出全屏' : '全屏查看' }}</ElButton>
         <ElPopover trigger="click" title="画布说明" :width="320" :append-to="pageRoot">
           <template #reference><ElButton class="header-icon" :icon="InfoFilled" aria-label="画布说明" title="画布说明" text /></template>
           <div class="canvas-help"><p>滚轮缩放 · H 平移 · V 选择 · 双击还原</p><p>浅色横条为在库停留，不代表加工耗时。悬浮查看明细，点击仅高亮关联路径。</p><p>空心点为转出，实心点为接收；虚线为未完成交接。</p><p v-if="chainModel.extent">{{ traceTime(chainModel.first) }}<br>至 {{ traceTime(chainModel.last) }}（北京时间）</p><p v-if="timeIssues">{{ timeIssues }} 个批次时间异常，仅显示有效时间点。</p><p v-if="residenceIssues">{{ residenceIssues }} 个批次历史变动与结存未核平，不推算停留条。</p><p v-if="untracked">{{ untracked }} 个历史批次未纳入库存台账。</p><p v-if="colors.some(entry => entry.name === '未分类')">未登记接收用途的历史批次标为“未分类”。</p><p v-if="example">演示快照，不影响库存。</p></div>
@@ -151,7 +154,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
       <span class="scope-title">{{ mode === 'team' ? '本班组收发' : '全链路追踪 · 管理员' }}</span>
       <ElButton class="sample-toggle" text @click="switchData">{{ example ? '使用业务数据' : '多用途演示' }}</ElButton>
     </header>
-    <main class="preview-main">
+    <div class="preview-main">
       <header v-if="mode === 'team'" class="preview-heading"><div><h1>班组收发流向</h1></div>
         <form @submit.prevent="search"><ElSelect v-if="mode === 'team'" v-model="teamDraft" aria-label="查询班组" :disabled="example || !isAdmin"><ElOption v-for="team in teamDirectory.items" :key="team.id" :value="Number(team.id)" :label="team.name" /></ElSelect><ElInput v-model="serialDraft" placeholder="输入完整流水号" aria-label="流水号" :prefix-icon="Search" clearable maxlength="80" :disabled="example" /><ElButton type="primary" native-type="submit" :loading="loading" :disabled="example">查询</ElButton></form>
       </header>
@@ -181,14 +184,14 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
               <div class="canvas-playback" role="group" aria-label="动画与显示">
                 <ElTooltip :content="motion ? '关闭动画' : '启用动画'" :append-to="pageRoot" :show-after="350"><button type="button" :aria-label="motion ? '关闭图形动画' : '启用图形动画'" :aria-pressed="motion" @click="motion = !motion"><ElIcon><VideoPause v-if="motion" /><VideoPlay v-else /></ElIcon></button></ElTooltip>
                 <ElTooltip content="重新绘制路径" :append-to="pageRoot" :show-after="350"><button type="button" aria-label="重播路径" :disabled="!motion" @click="replay++"><ElIcon><RefreshRight /></ElIcon></button></ElTooltip>
-                <ElTooltip :content="fullscreen ? '退出全屏' : '全屏画布'" :append-to="pageRoot" :show-after="350"><button type="button" :aria-label="fullscreen ? '退出全屏' : '全屏画布'" :aria-pressed="fullscreen" @click="toggleFullscreen"><ElIcon><FullScreen /></ElIcon></button></ElTooltip>
+                <ElTooltip v-if="!embedded" :content="fullscreen ? '退出全屏' : '全屏画布'" :append-to="pageRoot" :show-after="350"><button type="button" :aria-label="fullscreen ? '退出全屏' : '全屏画布'" :aria-pressed="fullscreen" @click="toggleFullscreen"><ElIcon><FullScreen /></ElIcon></button></ElTooltip>
               </div>
             </div>
           </template>
         </div>
       </section>
       <div v-else class="preview-empty"><span class="empty-orbit"><ElIcon><Search /></ElIcon></span><h2>{{ mode === 'chain' ? (loading ? '加载中…' : serial ? '暂无记录' : '输入流水号查询') : (loading ? '正在读取批次记录' : serial ? '未找到可展示的记录' : '从一个流水号开始') }}</h2><p v-if="mode === 'team'">{{ loading ? '按真实收发关系组织图形…' : '输入完整流水号，保留前导零。' }}</p></div>
-    </main>
+    </div>
     <ElDrawer v-if="mode === 'team'" :model-value="Boolean(selected)" title="流向明细" size="380px" :modal="false" :lock-scroll="false" class="flow-selection-drawer" @close="selected = null">
       <div v-if="selected">
         <h2 class="selection-title">{{ selected.title }}</h2><p class="selection-description">{{ selected.description }}</p><strong class="selection-amount">{{ amountLabel(selected) }}</strong>
@@ -257,4 +260,16 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
 @media (max-width: 700px) { .preview-topbar { padding: 0 16px; height: 60px; gap: 12px; }.sample-toggle { font-size: 11px; padding-inline: 0; }.preview-topbar nav { gap: 8px; }.preview-topbar nav button { font-size: 13px; white-space: nowrap; }.back-link { font-size: 12px; white-space: nowrap; }.preview-main { padding: 24px 12px; }.preview-heading h1 { font-size: 24px; }.preview-heading form { flex-wrap: wrap; }.preview-heading .el-input { width: 190px; }.metric-strip { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px 0; }.metric-strip > div:nth-child(3) { border: 0; padding: 0; }.chart-toolbar { flex-wrap: wrap; padding: 16px; }.identity-row { padding: 20px 20px 0; flex-wrap: wrap; }.data-origin { display: none; }.data-origin.example { display: block; }.canvas-area { overflow-x: auto; }.canvas-area :deep(.flow-canvas) { min-width: 720px; }.flow-column-labels { padding-inline: 20px; } }
 @media (max-width: 572px) { .canvas-controls { flex-wrap: wrap; justify-content: center; width: 322px; gap: 4px 8px; }.canvas-controls .canvas-playback { width: 100%; justify-content: center; padding: 2px 0 0; border-left: 0; border-top: 1px solid #eef0f3; }.canvas-controls .canvas-zoom { padding-left: 4px; }.canvas-controls .zoom-level { min-width: 48px; } }
 @media (prefers-reduced-motion: reduce) { .canvas-controls button, .canvas-mode::before, .selection-chip button { transition: none; } }
+.chain-page--embedded { height: calc(100dvh - var(--topbar-height)); padding: 16px 20px 20px; box-sizing: border-box; background: var(--workspace-bg); font-family: inherit; }
+.chain-page--embedded .chain-header { min-height: 64px; padding: 12px 16px; gap: 16px; border: 1px solid var(--line); border-radius: 8px 8px 0 0; background: var(--surface); }
+.chain-page--embedded .chain-query { width: 420px; gap: 8px; }
+.chain-page--embedded .chain-query :deep(.el-input__wrapper), .chain-page--embedded .chain-query .el-button, .chain-fullscreen { min-height: 40px; height: 40px; font-size: 15px; }
+.chain-page--embedded .preview-main { padding: 0 16px 12px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; background: var(--surface); }
+.chain-page--embedded .chain-legends { gap: 12px; padding: 4px 0; }
+.chain-page--embedded .mark-legend { gap: 14px; padding-right: 12px; }
+.chain-page--embedded .purpose-legend { gap: 14px; }
+.chain-page--embedded .chain-title h1 { font-size: 22px; }
+.chain-page--embedded:fullscreen { height: 100dvh; padding: 0; background: #fff; }
+.chain-page--embedded:fullscreen .chain-header, .chain-page--embedded:fullscreen .preview-main { border-radius: 0; border: 0; }
+@media (max-width: 700px) { .chain-page--embedded { padding: 12px; }.chain-page--embedded .chain-header { gap: 8px; }.chain-page--embedded .chain-actions { width: 100%; justify-content: flex-end; }.chain-page--embedded .chain-query { order: 0; min-width: 0; width: 100%; }.chain-page--embedded .preview-main { padding-inline: 8px; min-height: 660px; }.chain-page--embedded .chain-asof { margin-right: auto; }.chain-page--embedded .canvas-area :deep(.flow-canvas) { min-width: 0; } }
 </style>

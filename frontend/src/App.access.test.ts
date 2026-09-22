@@ -49,6 +49,7 @@ describe('access gate rendering', () => {
     const wrapper = mount(App, { global: { plugins: [router] } })
     expect(wrapper.find('input[name="username"]').exists()).toBe(false)
     expect(wrapper.find('.app-shell').exists()).toBe(false)
+    expect(wrapper.find('img[alt*="安泰天龙"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('正在检查访问权限')
 
     accessBody = { enabled: true, unlocked: false }
@@ -72,6 +73,8 @@ describe('access gate rendering', () => {
     await nextTick()
     expect(wrapper.find('input[name="username"]').exists()).toBe(true)
     expect(wrapper.find('input[name="site-access-password"]').exists()).toBe(false)
+    expect(wrapper.get('.login-brand__mark img').attributes('src')).toBe('/brand/attl-official-logo.png')
+    expect(wrapper.get('.login-brand__mark img').attributes('alt')).toContain('安泰天龙')
 
     authState.session = {
       access_token: 'test-only-token', token_type: 'Bearer',

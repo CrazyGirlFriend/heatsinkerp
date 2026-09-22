@@ -33,6 +33,7 @@ async function renderSidebar(path = '/transfer-batches', compact = false) {
     history: createMemoryHistory(),
     routes: [
       { path: '/', component: page },
+      { path: '/factory-stock', component: page },
       { path: '/transfer-batches', component: page },
       { path: '/transfer-batches/scan', component: page },
       { path: '/material-trace', component: page },
@@ -71,7 +72,7 @@ describe('two-level material navigation', () => {
     ]
     const { wrapper, router } = await renderSidebar('/team-workspaces/7')
     const groups = wrapper.findAllComponents(ElSubMenu)
-    expect(groups.map(group => group.props('index'))).toEqual(['teams', 'materials', 'settings'])
+    expect(groups.map(group => group.props('index'))).toEqual(['factory', 'teams', 'materials', 'settings'])
     const teams = groups.find(group => group.props('index') === 'teams')!
     expect(teams.findAllComponents(ElSubMenu)).toHaveLength(0)
     expect(teams.findAllComponents(ElMenuItem).filter(item => !item.props('disabled')).map(item => item.props('index'))).toEqual(['/team-workspaces/8', '/team-workspaces/7'])
@@ -90,17 +91,17 @@ describe('two-level material navigation', () => {
     expect(teamGroup.attributes('aria-expanded')).toBe('false')
     await teamGroup.get('.el-sub-menu__title').trigger('click')
     expect(teamGroup.attributes('aria-expanded')).toBe('true')
-    expect(wrapper.get('.el-menu').findAll(':scope > .el-sub-menu')).toHaveLength(3)
+    expect(wrapper.get('.el-menu').findAll(':scope > .el-sub-menu')).toHaveLength(4)
   })
 
-  it('keeps exactly the same three parent groups when the entire sidebar collapses', async () => {
+  it('keeps exactly the same four parent groups when the entire sidebar collapses', async () => {
     const { wrapper } = await renderSidebar()
     await wrapper.setProps({ compact: true })
     expect(wrapper.getComponent(ElMenu).props('collapse')).toBe(true)
-    expect(wrapper.findAllComponents(ElSubMenu).map(group => group.props('index'))).toEqual(['teams', 'materials', 'settings'])
+    expect(wrapper.findAllComponents(ElSubMenu).map(group => group.props('index'))).toEqual(['factory', 'teams', 'materials', 'settings'])
     await wrapper.setProps({ compact: false })
     expect(wrapper.getComponent(ElMenu).props('collapse')).toBe(false)
-    expect(wrapper.findAllComponents(ElSubMenu).map(group => group.props('index'))).toEqual(['teams', 'materials', 'settings'])
+    expect(wrapper.findAllComponents(ElSubMenu).map(group => group.props('index'))).toEqual(['factory', 'teams', 'materials', 'settings'])
   })
 
   it('routes leaf selections to the existing pages', async () => {
@@ -113,9 +114,20 @@ describe('two-level material navigation', () => {
   it('never exposes system settings to team leaders', async () => {
     signIn('TEAM')
     const { wrapper } = await renderSidebar()
-    expect(wrapper.findAllComponents(ElSubMenu).map(group => group.props('index'))).toEqual(['teams', 'materials'])
+    expect(wrapper.findAllComponents(ElSubMenu).map(group => group.props('index'))).toEqual(['factory', 'teams', 'materials'])
     expect(wrapper.find('[aria-label="班组管理"]').exists()).toBe(false)
     expect(wrapper.find('[aria-label="班组长管理"]').exists()).toBe(false)
     expect(wrapper.find('[aria-label="全链路追踪"]').exists()).toBe(false)
+  })
+
+  it('groups the overview and material matrix under the factory menu and preserves active selection', async () => {
+    const { wrapper, router } = await renderSidebar('/factory-stock')
+    const group = wrapper.findAllComponents(ElSubMenu).find(item => item.props('index') === 'factory')!
+    expect(group.attributes('aria-expanded')).toBe('true')
+    expect(group.findAllComponents(ElMenuItem).map(item => item.props('index'))).toEqual(['/', '/factory-stock'])
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('库存明细')
+    await wrapper.get('[aria-label="库存总览"]').trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/')
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('库存总览')
   })
 })

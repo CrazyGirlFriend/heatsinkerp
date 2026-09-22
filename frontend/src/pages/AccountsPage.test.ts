@@ -99,7 +99,9 @@ describe('team leader management workspace', () => {
     expect(wrapper.find('.el-table').exists()).toBe(true)
     expect(wrapper.text()).toContain('leader01')
     expect(wrapper.text()).toContain('扎板班组长')
-    expect(wrapper.text()).toContain('系统管理员 1 个，由系统保留，不在此页面维护')
+    expect(wrapper.find('.system-admin-notice').exists()).toBe(false)
+    expect(wrapper.get('h1').classes()).toContain('sr-only')
+    expect(wrapper.get('.filter-bar').text()).toContain('新增班组长')
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
 
     await buttonByText(wrapper, '编辑')!.trigger('click')

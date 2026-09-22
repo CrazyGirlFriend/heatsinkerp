@@ -268,12 +268,7 @@ onMounted(() => void loadTeams())
 <template>
   <section class="page admin-workspace teams-page reading-workspace">
     <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
-    <header class="workspace-heading">
-      <div>
-        <h1>班组管理</h1>
-      </div>
-      <ElButton type="primary" :icon="Plus" :disabled="!isAdmin" @click="openCreate">新增班组</ElButton>
-    </header>
+    <h1 class="sr-only">班组管理</h1>
 
     <ElCard shadow="never" class="workspace-card">
       <div class="filter-bar">
@@ -285,6 +280,7 @@ onMounted(() => void loadTeams())
           <ElOption value="active" label="启用" />
           <ElOption value="inactive" label="停用" />
         </ElSelect>
+        <ElButton class="filter-primary-action" type="primary" :icon="Plus" :disabled="!isAdmin" @click="openCreate">新增班组</ElButton>
       </div>
 
       <div v-if="loading" class="state-region" aria-live="polite"><ElSkeleton :rows="6" animated /></div>
@@ -296,9 +292,9 @@ onMounted(() => void loadTeams())
       </ElEmpty>
 
       <div v-else class="table-region">
-        <span class="mobile-table-hint">左右滑动查看完整记录和操作</span>
+        <span class="mobile-table-hint">左右滑动查看</span>
         <ElTable class="business-table" :data="pageRows" row-key="id" :row-class-name="teamRowClass" table-layout="fixed">
-          <ElTableColumn label="班组编码" min-width="150">
+          <ElTableColumn label="班组编码" min-width="220" show-overflow-tooltip>
             <template #default="{ row }"><span class="code-cell">{{ row.code }}</span></template>
           </ElTableColumn>
           <ElTableColumn prop="name" label="班组名称" min-width="180" show-overflow-tooltip />
@@ -342,10 +338,10 @@ onMounted(() => void loadTeams())
       <ElForm :model="form" label-position="top" @submit.prevent="submitForm">
         <div class="form-grid">
           <ElFormItem label="班组编码" required>
-            <ElInput ref="codeInput" v-model="form.code" maxlength="32" autocomplete="off" placeholder="例如 ZB" aria-label="班组编码" />
+            <ElInput ref="codeInput" v-model="form.code" maxlength="32" autocomplete="off" placeholder="请输入班组编码" aria-label="班组编码" />
           </ElFormItem>
           <ElFormItem label="班组名称" required>
-            <ElInput ref="nameInput" v-model="form.name" maxlength="80" autocomplete="off" placeholder="例如 扎板" aria-label="班组名称" />
+            <ElInput ref="nameInput" v-model="form.name" maxlength="80" autocomplete="off" placeholder="请输入班组名称" aria-label="班组名称" />
           </ElFormItem>
           <ElFormItem label="显示顺序">
             <ElInputNumber v-model="form.sort_order" class="full-width" :min="0" :max="1000000" :step="10" controls-position="right" aria-label="显示顺序" />
@@ -353,7 +349,7 @@ onMounted(() => void loadTeams())
           <ElFormItem class="field-wide" label="班组状态">
             <div class="switch-row">
               <ElSwitch v-model="form.active" inline-prompt active-text="启" inactive-text="停" aria-label="启用班组" />
-              <span>{{ form.active ? '可参与转料并绑定班组长' : '停止新业务分配' }}</span>
+              <span>{{ form.active ? '可接收转料、绑定账号' : '不再分配新业务' }}</span>
             </div>
           </ElFormItem>
         </div>

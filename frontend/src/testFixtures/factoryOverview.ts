@@ -13,5 +13,11 @@ export function factoryFixture(): FactoryOverview {
     material_ranking: { quantity: [{ key: '无氧铜', quantity: 100, weight: 10 }], weight: [{ key: '无氧铜', quantity: 100, weight: 10 }] },
     serial_ranking: { quantity: [{ key: 'SERIAL-001', quantity: 100, weight: 10 }], weight: [{ key: 'SERIAL-001', quantity: 100, weight: 10 }] },
     recent_batches: [],
+    stock_matrix: {
+      materials: [{ name: '无氧铜', quantity: 100, weight: 10 }],
+      rows: teamWorkspaceProfiles.map((team, i): FactoryOverview['stock_matrix']['rows'][number] => ({ team_id: i + 1, team_code: team.code, team_name: team.name, active: true,
+        amounts: i === 0 ? { '无氧铜': { quantity: 100, weight: 10 } } : {}, total: { quantity: i === 0 ? 100 : 0, weight: i === 0 ? 10 : 0 } })),
+      total: { quantity: 100, weight: 10 },
+    },
   }
 }

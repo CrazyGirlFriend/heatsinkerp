@@ -81,7 +81,11 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
         async def snapshot():
             frame = await asyncio.wait_for(anext(stream), 2)
             assert frame.startswith(f'event: {view}\n')
-            return json.loads(frame.split('data: ', 1)[1])
+            data = json.loads(frame.split('data: ', 1)[1])
+            if view == 'inventory':
+                from test_factory_stock_matrix import assert_totals
+                assert_totals(data)
+            return data
         try:
             first = await snapshot()
             assert first['totals']['on_hand_quantity'] == 0

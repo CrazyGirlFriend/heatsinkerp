@@ -78,7 +78,6 @@ const form = reactive<LeaderForm>({
 })
 
 const teamLeaders = computed(() => accounts.value.filter((account) => account.role === 'TEAM'))
-const systemAdminCount = computed(() => accounts.value.filter((account) => account.role === 'ADMIN').length)
 const filteredLeaders = computed(() => {
   const needle = query.value.trim().toLowerCase()
   return teamLeaders.value.filter((account) => {
@@ -286,14 +285,7 @@ onMounted(() => void loadData())
 <template>
   <section class="page admin-workspace accounts-page reading-workspace">
     <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
-    <header class="workspace-heading">
-      <div>
-        <h1>班组长管理</h1>
-      </div>
-      <ElButton type="primary" :icon="Plus" :disabled="!isAdmin" @click="openCreate">新增班组长</ElButton>
-    </header>
-
-    <p v-if="systemAdminCount" class="system-admin-notice">系统管理员 {{ systemAdminCount }} 个，由系统保留，不在此页面维护</p>
+    <h1 class="sr-only">班组长管理</h1>
 
     <ElCard shadow="never" class="workspace-card">
       <div class="filter-bar">
@@ -309,6 +301,7 @@ onMounted(() => void loadData())
           <ElOption value="active" label="启用" />
           <ElOption value="inactive" label="停用" />
         </ElSelect>
+        <ElButton class="filter-primary-action" type="primary" :icon="Plus" :disabled="!isAdmin" @click="openCreate">新增班组长</ElButton>
       </div>
 
       <div v-if="loading" class="state-region" aria-live="polite"><ElSkeleton :rows="6" animated /></div>
@@ -320,7 +313,7 @@ onMounted(() => void loadData())
       </ElEmpty>
 
       <div v-else class="table-region">
-        <span class="mobile-table-hint">左右滑动查看完整记录和操作</span>
+        <span class="mobile-table-hint">左右滑动查看</span>
         <ElTable
           class="business-table"
           :data="pageRows"

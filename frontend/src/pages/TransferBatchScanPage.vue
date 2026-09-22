@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { FullScreen, ArrowRight, Clock, Search } from '@element-plus/icons-vue'
+import { FullScreen, Search } from '@element-plus/icons-vue'
 import {
   ElButton,
   ElCard,
   ElEmpty,
   ElIcon,
   ElInput,
-  ElScrollbar,
+  ElTable,
+  ElTableColumn,
   ElTag,
   type InputInstance,
 } from 'element-plus'
@@ -20,7 +21,7 @@ import { MaterialTransferApiError, materialTransferApi } from '@/services/materi
 import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/stores/toast'
 import type { MaterialTransfer } from '@/types/materialTransfer'
-import { externalActionLabel, isExternalTransfer, materialTransferStatusLabel, materialTypeLabel } from '@/types/materialTransfer'
+import { externalActionLabel, isExternalTransfer, materialTransferStatusLabel } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
 
 const route = useRoute()
@@ -38,6 +39,7 @@ type ScanRecord = { kind: 'group'; value: MaterialDispatchDocument } | { kind: '
 const recentRecords = ref<ScanRecord[]>([])
 const anyDetailOpen = computed(() => drawerOpen.value || groupOpen.value)
 const recordCode = (record: ScanRecord) => record.kind === 'group' ? record.value.dispatch_no : record.value.batch_no
+const asScanRecord = (row: unknown) => row as ScanRecord
 function remember(record: ScanRecord) { recentRecords.value = [record, ...recentRecords.value.filter(item => recordCode(item) !== recordCode(record))].slice(0, 8) }
 let scanVersion = 0
 let hidBuffer = ''
@@ -155,18 +157,11 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="page workspace-page material-scan-page reading-workspace">
-    <header class="page-heading scan-heading">
-      <div><h1>扫码查询</h1></div>
-      <ElTag type="success" effect="plain"><span class="scanner-online"><i />扫码监听已启用</span></ElTag>
-    </header>
+    <h1 class="sr-only">扫码查询</h1>
 
     <div class="scan-workspace">
       <ElCard class="scanner-panel" shadow="never">
         <div class="scanner-main">
-          <span class="scanner-icon"><ElIcon><FullScreen /></ElIcon></span>
-          <h2>扫描单据条码</h2>
-          <p v-if="authStore.currentUser?.team">当前班组：<strong>{{ authStore.currentUser.team.name }}</strong></p>
-          <p v-else>管理员扫描后可查看单据详情。</p>
           <ElInput
             ref="scanInput"
             v-model="scanValue"
@@ -184,27 +179,29 @@ onBeforeUnmount(() => {
             <template #prefix><ElIcon><FullScreen /></ElIcon></template>
             <template #append><ElButton type="primary" :icon="Search" :loading="scanning" :disabled="!scanValue.trim()" @click="scan()">查询</ElButton></template>
           </ElInput>
-          <span v-if="errorMessage" class="scanner-error" role="alert">{{ errorMessage }}</span>
-          <div class="scanner-shortcuts"><kbd>F2</kbd><span>聚焦扫码框</span><i /><kbd>Enter</kbd><span>读取单据</span></div>
+          <span class="scanner-shortcuts"><kbd>F2</kbd> 定位输入框</span>
+          <ElTag type="success" effect="plain"><span class="scanner-online"><i />{{ scanning ? '查询中' : '扫码就绪' }}</span></ElTag>
         </div>
+        <p v-if="errorMessage" class="scanner-error" role="alert">{{ errorMessage }}</p>
       </ElCard>
 
       <ElCard class="recent-panel" shadow="never">
         <template #header>
-          <div class="recent-heading"><span><ElIcon><Clock /></ElIcon><strong>本次扫码记录</strong></span><small>{{ recentRecords.length }} / 8</small></div>
+          <div class="recent-heading"><h2>本次查询</h2><span>{{ recentRecords.length }} 条 / 最近 8 条</span></div>
         </template>
-        <ElScrollbar v-if="recentRecords.length" class="recent-scroll">
-          <div class="recent-list">
-            <ElButton v-for="record in recentRecords" :key="recordCode(record)" text class="recent-item" @click="openRecent(record)">
-              <span class="recent-item__head"><strong>{{ recordCode(record) }}</strong><ElTag size="small" effect="plain">{{ record.kind === 'group' ? dispatchStatusLabel(record.value.status, record.value.entry_kind) : materialTransferStatusLabel(record.value.status, record.value.entry_kind) }}</ElTag></span>
-              <span class="recent-item__route"><b>{{ record.value.source_team?.name }}</b><ElIcon><ArrowRight /></ElIcon><b>{{ record.value.next_team.name }}</b></span>
-              <span v-if="record.kind === 'group'" class="recent-material">{{ record.value.line_count }} 条物料明细<span>{{ record.value.total_quantity }} 件 · {{ record.value.total_weight }} kg</span></span>
-              <span v-else class="recent-material">{{ materialTypeLabel(record.value.material_type) }}<template v-if="record.value.material_name"> · {{ record.value.material_name }}</template><span>{{ record.value.quantity }} 件 · {{ record.value.weight }} kg</span></span>
-              <span class="recent-item__meta"><i>{{ record.kind === 'group' ? '历史合并单' : record.value.serial_no }}</i><time>{{ formatDateTime(record.kind === 'group' ? record.value.created_at : record.value.updated_at) }}</time></span>
-            </ElButton>
-          </div>
-        </ElScrollbar>
-        <ElEmpty v-else :image-size="76" description="暂无扫码记录" />
+        <div v-if="recentRecords.length" class="table-region">
+          <ElTable :data="recentRecords" :row-key="recordCode" class="business-table scan-history-table" @row-click="openRecent">
+            <ElTableColumn label="批次号" min-width="240"><template #default="{ row }"><ElButton link type="primary" @click.stop="openRecent(asScanRecord(row))">{{ recordCode(asScanRecord(row)) }}</ElButton></template></ElTableColumn>
+            <ElTableColumn label="流水号" min-width="170"><template #default="{ row }">{{ row.kind === 'group' ? `历史合并单 · ${row.value.line_count} 条物料明细` : row.value.serial_no }}</template></ElTableColumn>
+            <ElTableColumn label="来源" min-width="120"><template #default="{ row }">{{ row.value.source_team?.name || '外部来料' }}</template></ElTableColumn>
+            <ElTableColumn label="去向" min-width="120"><template #default="{ row }">{{ row.value.next_team.name }}</template></ElTableColumn>
+            <ElTableColumn label="件数" min-width="100"><template #default="{ row }">{{ row.kind === 'group' ? row.value.total_quantity : row.value.quantity }}</template></ElTableColumn>
+            <ElTableColumn label="重量（kg）" min-width="120"><template #default="{ row }">{{ row.kind === 'group' ? row.value.total_weight : row.value.weight }}</template></ElTableColumn>
+            <ElTableColumn label="状态" min-width="110"><template #default="{ row }"><ElTag effect="plain">{{ row.kind === 'group' ? dispatchStatusLabel(row.value.status, row.value.entry_kind) : materialTransferStatusLabel(row.value.status, row.value.entry_kind) }}</ElTag></template></ElTableColumn>
+            <ElTableColumn label="最近更新" min-width="180"><template #default="{ row }">{{ formatDateTime(row.kind === 'group' ? row.value.created_at : row.value.updated_at) }}</template></ElTableColumn>
+          </ElTable>
+        </div>
+        <ElEmpty v-else :image-size="48" description="暂无查询记录" />
       </ElCard>
     </div>
 
@@ -214,56 +211,25 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.recent-material { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; color: var(--muted); font-size: 12px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-.scan-heading > div > span { display: block; margin-top: 8px; color: var(--subtle); font-size: 14px; }
 .scanner-online { display: inline-flex; align-items: center; gap: 7px; }
 .scanner-online i { width: 6px; height: 6px; border-radius: 50%; background: var(--el-color-success); }
-.scan-workspace { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(340px, .8fr); flex: 1; min-height: 0; gap: 16px; }
+.scan-workspace { display: flex; flex-direction: column; min-width: 0; gap: 12px; }
 .scanner-panel, .recent-panel { min-height: 0; overflow: hidden; }
-.scanner-panel :deep(.el-card__body) { display: grid; height: 100%; min-height: 0; align-items: start; padding: 32px; }
-.scanner-main { display: flex; align-items: flex-start; width: 100%; padding-block: 20px; flex-direction: column; }
-.scanner-icon { color: var(--navy); font-size: 40px; line-height: 1; }
-.scanner-main h2 { margin: 24px 0 0; color: var(--text); font-size: 24px; font-weight: 600; }
-.scanner-main p { margin: 12px 0 0; color: var(--subtle); font-size: 14px; }
-.scanner-main p strong { color: var(--text); font-weight: 500; }
-.scanner-input { width: 100%; margin-top: 32px; }
-.scanner-input :deep(.el-input__wrapper) { min-height: 52px; font-size: 16px; }
+.material-scan-page .scanner-panel :deep(.el-card__body) { padding: 16px; }
+.scanner-main { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.material-scan-page .scanner-input { flex: 1 1 360px; max-width: 680px; margin-top: 0; }
+.scanner-input :deep(.el-input__wrapper) { min-height: 44px; font-size: 16px; }
 .scanner-input :deep(.el-input-group__append) { padding: 0; }
-.scanner-input :deep(.el-input-group__append .el-button) { min-width: 80px; min-height: 50px; margin: 0; border-radius: 0 4px 4px 0; }
+.scanner-input :deep(.el-input-group__append .el-button) { min-width: 80px; min-height: 42px; margin: 0; border-radius: 0 4px 4px 0; }
 .scanner-error { width: 100%; margin-top: 8px; color: var(--danger); font-size: 14px; }
-.scanner-shortcuts { display: flex; align-items: center; margin-top: 20px; gap: 8px; color: var(--subtle); font-size: 13px; }
+.scanner-shortcuts { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
 .scanner-shortcuts kbd { padding: 2px 6px; border: 1px solid var(--line); border-radius: 3px; background: #fafbfc; font-family: inherit; }
-.scanner-shortcuts i { width: 1px; height: 14px; margin-inline: 4px; background: var(--line); }
-.recent-panel :deep(.el-card__header) { padding: 20px 24px; }
-.recent-panel :deep(.el-card__body) { height: calc(100% - 65px); min-height: 0; padding: 0; }
-.recent-heading, .recent-heading > span { display: flex; align-items: center; justify-content: space-between; }
-.recent-heading > span { gap: 10px; }
-.recent-heading small { color: var(--subtle); font-size: 13px; }
-.recent-scroll { height: 100%; }
-.recent-list { padding-inline: 24px; }
-.recent-item { white-space: normal; line-height: 1.5; width: 100%; height: auto; min-height: 88px; margin: 0; padding: 12px 0; border-bottom: 1px solid var(--line); border-radius: 0; text-align: left; }
-.recent-item :deep(> span) { display: grid; width: 100%; gap: 12px; }
-.recent-item__head, .recent-item__route, .recent-item__meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.recent-item__head strong { color: var(--primary); font-size: 14px; font-weight: 500; }
-.recent-item__route { justify-content: flex-start; color: var(--text); }
-.recent-item__route b { font-size: 14px; font-weight: 500; }
-.recent-item__route .el-icon { color: var(--subtle); }
-.recent-item__meta { flex-wrap: wrap; color: var(--subtle); font-size: 13px; }
-.recent-item__meta i { font-style: normal; overflow-wrap: anywhere; }
-@media (max-width: 1100px) { .scan-workspace { gap: 20px; } .scanner-panel :deep(.el-card__body) { padding: 24px; } }
-@media (max-width: 960px) {
-  .material-scan-page { height: auto; min-height: calc(100dvh - var(--topbar-height)); overflow: auto; }
-  .scan-workspace { grid-template-columns: 1fr; }
-  .scanner-panel :deep(.el-card__body) { min-height: 360px; }
-  .scanner-main { padding-bottom: 0; }
-  .recent-panel { min-height: 300px; }
-}
-@media (max-width: 600px) {
-  .scan-heading { align-items: flex-start; flex-direction: column; gap: 16px; }
-  .scan-heading > div > span { font-size: 13px; }
-  .scanner-panel :deep(.el-card__body) { min-height: 330px; padding: 24px 16px; }
-  .scanner-main h2 { font-size: 22px; }
-  .scanner-shortcuts { gap: 6px; font-size: 12px; }
-  .recent-list { padding-inline: 16px; }
-}
+.scanner-main > .el-tag { margin-left: auto; }
+.recent-panel :deep(.el-card__header) { padding: 14px 16px; }
+.recent-panel :deep(.el-card__body) { padding: 0; }
+.recent-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.recent-heading h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.recent-heading > span { color: var(--muted); font-size: 14px; }
+.scan-history-table :deep(.el-table__row) { cursor: pointer; }
+@media (max-width: 640px) { .scanner-main { gap: 12px; }.material-scan-page .scanner-input { flex-basis: 100%; }.scanner-shortcuts { font-size: 13px; } }
 </style>

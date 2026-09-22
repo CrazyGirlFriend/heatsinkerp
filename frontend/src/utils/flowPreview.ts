@@ -393,7 +393,7 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, _metri
         const x = api.coord([model.closing, 0])[0]!
         if (x >= grid.x && x <= grid.x + grid.width) children.push(
           { type: 'line', z2: 1, shape: { x1: x, x2: x, y1: grid.y, y2: grid.y + grid.height }, style: { stroke: '#b4a2e7', lineWidth: 1, lineDash: [5, 4] } },
-          { type: 'text', style: { x, y: grid.y - 50, text: `截至 ${traceTime(model.closing).slice(5, 16)}`, align: 'right', font: `13px ${font}`, fill: '#8061be' } },
+          { type: 'text', style: { x, y: grid.y - 14, text: `截至 ${traceTime(model.closing).slice(5, 16)}`, align: 'right', font: `12px ${font}`, fill: '#8061be' } },
         )
       }
       return { type: 'group', children }

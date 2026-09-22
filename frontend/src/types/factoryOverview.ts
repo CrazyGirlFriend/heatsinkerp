@@ -3,6 +3,13 @@ import type { Amount, ChartPoint } from './materialAnalytics'
 import type { MaterialEntryKind } from './materialTransfer'
 
 export type FactoryFlow = 'inbound' | 'outbound' | 'shipment' | 'internal' | 'loss'
+export interface FactoryStockRow {
+  team_id: number | null; team_code: string; team_name: string; active: boolean
+  amounts: Record<string, Amount>; total: Amount | null
+}
+export interface FactoryStockMatrix {
+  materials: (Amount & { name: string })[]; rows: FactoryStockRow[]; total: Amount
+}
 export interface FactoryTeam {
   id: number | null; code: string; name: string; active: boolean; balance: MaterialBalance | null
   serial_count?: number | null
@@ -19,6 +26,7 @@ export interface FactoryOverview {
   material_ranking: Record<'quantity' | 'weight', ChartPoint[]>
   serial_ranking: Record<'quantity' | 'weight', ChartPoint[]>
   recent_batches: FactoryRecentBatch[]
+  stock_matrix: FactoryStockMatrix
 }
 
 export interface FactoryRecentBatch extends Amount {

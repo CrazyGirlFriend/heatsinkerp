@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, Box, Calendar, Fold, Menu, Monitor, SwitchButton, User } from '@element-plus/icons-vue'
+import { ArrowDown, Calendar, Fold, Menu, Monitor, SwitchButton, User } from '@element-plus/icons-vue'
 import { ElConfigProvider, ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -26,6 +26,7 @@ const breadcrumb = computed(() => {
     return ['班组工作台', teamWorkspaceProfile(team?.code)?.name || team?.name || '班组']
   }
   const title = String(route.meta.title || '物料流转')
+  if (['/factory-stock', '/factory-analysis'].includes(route.path)) return ['全厂总览', title]
   if (route.path.startsWith('/settings/')) return ['系统设置', title]
   if (['/transfer-batches', '/transfer-batches/scan', '/material-trace'].includes(route.path)) return ['流转查询', title]
   return [title]
@@ -54,7 +55,7 @@ async function toggleMobileMenu(): Promise<void> {
   mobileMenuOpen.value = !mobileMenuOpen.value
   if (mobileMenuOpen.value) {
     await nextTick()
-    sidebarElement.value?.querySelector<HTMLElement>('a, button, [role="menu"][tabindex], [role="menuitem"][tabindex]')?.focus()
+    sidebarElement.value?.querySelector<HTMLElement>('a, button, [role="menubar"][tabindex], [role="menu"][tabindex], [role="menuitem"][tabindex]')?.focus()
   }
 }
 
@@ -76,7 +77,7 @@ function handleSidebarKeydown(event: KeyboardEvent): void {
     closeMobileMenu()
   }
   if (event.key !== 'Tab') return
-  const controls = Array.from(sidebarElement.value?.querySelectorAll<HTMLElement>('a, button, [role="menu"][tabindex], [role="menuitem"][tabindex]') ?? [])
+  const controls = Array.from(sidebarElement.value?.querySelectorAll<HTMLElement>('a, button, [role="menubar"][tabindex], [role="menu"][tabindex], [role="menuitem"][tabindex]') ?? [])
     .filter((element) => element.getClientRects().length > 0 && element.getAttribute('aria-disabled') !== 'true')
   const first = controls[0]
   const last = controls.at(-1)
@@ -149,7 +150,10 @@ function enterBigScreen(event: MouseEvent): void {
     <div v-else class="app-shell app-shell--business" :class="{ 'app-shell--compact': compactSidebar }">
       <a class="skip-link" href="#main-content" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined" @click.prevent="focusMainContent">跳到正文</a>
 
-      <div class="brand-mark" aria-label="热沉物料"><ElIcon><Box /></ElIcon><strong v-if="!compactSidebar">热沉物料</strong></div>
+      <div class="brand-mark" aria-label="安泰天龙 · 热沉物料">
+        <img v-if="compactSidebar" class="brand-mark__icon" src="/brand/attl-official-favicon.ico" alt="安泰天龙" width="32" height="32" />
+        <img v-else class="brand-mark__logo" src="/brand/attl-official-logo.png" alt="中国钢研 安泰科技 · 安泰天龙" width="1017" height="143" />
+      </div>
 
       <header class="topbar">
         <button ref="mobileMenuButton" class="topbar__menu" type="button" :aria-label="mobileMenuOpen ? '关闭导航' : '打开导航'" :aria-expanded="mobileMenuOpen" aria-controls="factory-sidebar" :title="mobileMenuOpen ? '关闭导航' : '打开导航'" @click="toggleMobileMenu">
@@ -205,9 +209,9 @@ function enterBigScreen(event: MouseEvent): void {
 .standalone-screen { position: fixed; inset: 0; width: 100%; height: 100dvh; overflow: hidden; background: #00111d; }
 .app-shell--business { --sidebar-width: 200px; --topbar-height: 52px; color: var(--text); font-family: var(--font-body); }
 .app-shell--business.app-shell--compact { --sidebar-width: 64px; }
-.app-shell--business .brand-mark { gap: 10px; padding-inline: 20px; }
-.app-shell--business .brand-mark > .el-icon { color: var(--primary); }
-.app-shell--business .brand-mark strong { font-weight: 650; }
+.app-shell--business .brand-mark { justify-content: center; padding-inline: 14px; }
+.brand-mark__logo { display: block; width: 100%; height: auto; object-fit: contain; }
+.brand-mark__icon { display: block; flex: none; width: 32px; height: 32px; object-fit: contain; }
 .app-shell--business .topbar { gap: 18px; }
 .app-shell--business .breadcrumb { font-size: 16px; }
 .app-shell--business .topbar-clock, .app-shell--business .topbar__screen, .app-shell--business .topbar__user-label strong { font-size: 14px; }
