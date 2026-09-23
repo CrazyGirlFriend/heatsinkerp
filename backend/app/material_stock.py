@@ -385,10 +385,12 @@ def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=
 def overview(db, team_id):
     team = require_team(db, team_id)
     stock = stock_table(team_id)
-    totals = db.execute(select(*(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS)).where(stock.c.team_id == team_id)).mappings().one()
     materials = db.execute(select(stock.c.material_name, *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS)).where(
         stock.c.team_id == team_id
     ).group_by(stock.c.material_name).order_by(stock.c.material_name)).mappings().all()
+    # Material groups exhaust this team's ledger, including missing names.
+    # Sum raw database amounts before display rounding instead of scanning again.
+    totals = {key: sum(row[key] or 0 for row in materials) for key in BALANCE_KEYS}
     types = db.execute(select(stock.c.material_type, *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS))
         .group_by(stock.c.material_type).order_by(stock.c.material_type)).mappings().all()
     pending = db.execute(select(func.count(MaterialTransfer.id), func.sum(MaterialTransfer.quantity), func.sum(MaterialTransfer.weight)).where(
@@ -396,9 +398,8 @@ def overview(db, team_id):
     )).one()
     pending_batches = {}
     if team.code == WAREHOUSE_TEAM_CODE and team.kind == "warehouse":
-        batch_key = MaterialTransfer.batch_no
-        pending_batches["batch_count"] = db.scalar(select(func.count(func.distinct(batch_key))).where(
-            MaterialTransfer.next_team_id == team_id, MaterialTransfer.status == "pending")) or 0
+        # batch_no is unique and non-null: each pending row is exactly one batch.
+        pending_batches["batch_count"] = pending[0]
     legacy = db.scalar(select(func.count(MaterialTransfer.id)).where(MaterialTransfer.next_team_id == team_id,
         MaterialTransfer.status == "received", MaterialTransfer.stock_tracked.is_(False))) or 0
     return {"team_id": team_id, "totals": balance_dict(totals),
