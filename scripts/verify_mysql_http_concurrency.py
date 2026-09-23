@@ -163,6 +163,17 @@ class Harness:
 
 def run_races(qa):
     results = {}
+    # Distinct lots/keys must not contend on a missing idempotency-key gap.
+    # This specifically regresses InnoDB REPEATABLE READ next-key deadlocks.
+    for name, operation in (("independent_dispatches", qa.dispatch), ("independent_losses", qa.loss)):
+        lots = [qa.receipt(name + str(index)) for index in range(8)]
+        responses = qa.race(*(lambda index=index: operation(
+            qa.warehouse[index % len(qa.warehouse)], lots[index], name + str(index), 10
+        ) for index in range(8)))
+        assert all(status == 201 for status, _ in responses), name
+        for lot in lots:
+            qa.expect_balance(lot, 90)
+        results[name] = [status for status, _ in responses]
     for name, operations in (("dispatch_vs_dispatch", (qa.dispatch, qa.dispatch)),
                              ("loss_vs_dispatch", (qa.loss, qa.dispatch)),
                              ("loss_vs_loss", (qa.loss, qa.loss))):

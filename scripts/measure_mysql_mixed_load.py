@@ -167,7 +167,7 @@ def run(qa, duration):
                 lot = metrics.timed("write_receipt", lambda: qa.receipt(key, 10, actor=source))
                 started = monotonic()
                 status, dispatched = metrics.timed("write_dispatch", lambda: qa.dispatch(source, lot, key + "-out", 8))
-                assert status == 201, "Unexpected write contention on a distinct source"
+                assert status == 201, f"Unexpected write contention on a distinct source: {dispatched.get('detail')}"
                 line = dispatched["items"][0]
                 observers[1].wait_for(line["batch_no"], "pending", started)
                 started = monotonic()

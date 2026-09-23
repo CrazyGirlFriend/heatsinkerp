@@ -148,6 +148,10 @@ def validate_available(db, lot, quantity, weight, exclude_transfer_id=None):
 
 
 def _db_conflict(exc):
+    from .observability import record
+    code = getattr(exc.orig, "args", (None,))[0]
+    record("stock.database_conflict", error=exc,
+           database_code=code if isinstance(code, int) else None)
     if isinstance(exc, OperationalError) and getattr(exc.orig, "args", (None,))[0] not in (1205, 1213):
         raise exc
     raise HTTPException(409, "stock changed concurrently; retry with the same idempotency key") from exc
@@ -162,8 +166,12 @@ def create_loss(db, team_id, payload, user):
             if prior is not None:
                 _replay(prior, user, request_hash, "team_id")
                 return workflow.material_loss_dict(prior)
+        # The business transaction's first consistent read must follow the lot
+        # lock. It then sees a preceding same-key writer without FOR UPDATE on a
+        # missing unique key (which gap-locks unrelated new keys in MySQL).
+        with db.begin():
             lot = lock_lot(db, payload.source_transfer_id, team_id)
-            prior = db.scalar(select(MaterialLoss).where(MaterialLoss.idempotency_key == payload.idempotency_key).with_for_update().execution_options(populate_existing=True))
+            prior = db.scalar(select(MaterialLoss).where(MaterialLoss.idempotency_key == payload.idempotency_key).execution_options(populate_existing=True))
             if prior is not None:
                 _replay(prior, user, request_hash, "team_id")
                 return workflow.material_loss_dict(prior)
@@ -201,10 +209,14 @@ def create_dispatch(db, team_id, payload, user):
             if prior is not None:
                 _replay(prior, user, request_hash, "source_team_id")
                 return dispatch_dict(db, prior, user)
+        # Close the preflight snapshot before waiting for source locks. The
+        # recheck below is a fresh snapshot; a missing key must not gap-lock
+        # independent submissions. The unique constraint remains the arbiter.
+        with db.begin():
             # Deterministic lock order also covers a multi-lot submission.
             lots = {source_id: lock_lot(db, source_id, team_id)
                     for source_id in sorted({line.source_transfer_id for line in payload.lines})}
-            prior = db.scalar(select(MaterialDispatch).where(MaterialDispatch.idempotency_key == payload.idempotency_key).with_for_update().execution_options(populate_existing=True))
+            prior = db.scalar(select(MaterialDispatch).where(MaterialDispatch.idempotency_key == payload.idempotency_key).execution_options(populate_existing=True))
             if prior is not None:
                 _replay(prior, user, request_hash, "source_team_id")
                 return dispatch_dict(db, prior, user)
