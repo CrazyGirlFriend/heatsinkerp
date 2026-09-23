@@ -13,7 +13,13 @@ from app.main import app  # noqa: E402
 
 
 @pytest.fixture()
-def client():
+def client(monkeypatch):
+    # Each fixture replaces the entire database outside the ORM event stream.
+    # It must also replace process-local read caches, just like a new service.
+    from app import factory_stream, team_read_snapshots
+    from app.inventory_snapshots import SnapshotFrames
+    monkeypatch.setattr(factory_stream, "snapshot_frames", SnapshotFrames())
+    monkeypatch.setattr(team_read_snapshots, "team_read_frames", SnapshotFrames(views=None, capacity=64))
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     with TestClient(app) as test_client:

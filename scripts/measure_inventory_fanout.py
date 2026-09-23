@@ -4,6 +4,7 @@ Never connects to a supplied database or production URL. Timings are a local
 SQLite microbenchmark, not HTTP QPS or a production user-capacity guarantee.
 Example: python scripts/measure_inventory_fanout.py --clients 25 --populated
 Use --backend with an older source snapshot to run the same workload before/after.
+Add --team-reads to exercise concurrent authenticated team API reads via ASGI.
 """
 
 import argparse
@@ -20,11 +21,61 @@ from threading import Barrier, Lock
 from time import monotonic
 
 
+def measure_team_reads(args, engine, token, team_id):
+    from fastapi.testclient import TestClient
+    from sqlalchemy import event
+    from app import material_stock, warehouse_inventory
+    from app.main import app
+
+    # One in-process ASGI server, no browser or network listener. Each request
+    # still traverses route validation and authentication with the shared actor.
+    with TestClient(app, headers={'Authorization': f'Bearer {token}'}) as client:
+        for view, module, name in (('overview', material_stock, 'overview'),
+                                   ('inventory', warehouse_inventory, 'list_inventory')):
+            counts, guard, start = {'builds': 0, 'sql': 0}, Lock(), Barrier(args.clients)
+            original = getattr(module, name)
+
+            def build(*positional, **kwargs):
+                with guard:
+                    counts['builds'] += 1
+                return original(*positional, **kwargs)
+
+            def query(*unused):
+                with guard:
+                    counts['sql'] += 1
+
+            def read():
+                start.wait(timeout=15)
+                before = monotonic()
+                response = client.get(f'/api/team-materials/{team_id}/{view}')
+                response.raise_for_status()
+                return (monotonic() - before) * 1000, response.json()
+
+            setattr(module, name, build)
+            event.listen(engine, 'before_cursor_execute', query)
+            before = monotonic()
+            try:
+                with ThreadPoolExecutor(max_workers=args.clients) as pool:
+                    futures = [pool.submit(read) for _ in range(args.clients)]
+                    values = [future.result(timeout=90) for future in futures]
+                assert all(value[1] == values[0][1] for value in values)
+                durations = sorted(value[0] for value in values)
+                print(json.dumps({'view': 'team-' + view, **counts,
+                                  'total_ms': round((monotonic() - before) * 1000, 1),
+                                  'p50_ms': round(durations[math.ceil(len(values) * .5) - 1], 1),
+                                  'p95_ms': round(durations[math.ceil(len(values) * .95) - 1], 1),
+                                  'identical_responses': True, 'errors': 0}), flush=True)
+            finally:
+                event.remove(engine, 'before_cursor_execute', query)
+                setattr(module, name, original)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--backend', type=Path, default=Path(__file__).resolve().parents[1] / 'backend')
     parser.add_argument('--clients', type=int, choices=(10, 25, 50, 100), default=25)
     parser.add_argument('--populated', action='store_true')
+    parser.add_argument('--team-reads', action='store_true')
     args = parser.parse_args()
     if not (args.backend / 'app' / 'factory_stream.py').is_file():
         parser.error('--backend must contain app/factory_stream.py')
@@ -40,9 +91,10 @@ def main():
         from app.auth import create_session, ensure_initial_admin
         from app.configure_material_teams import configure_material_teams
         from app.database import Base, SessionLocal, engine
-        from app.models import MaterialTransfer, User
+        from app.models import MaterialTransfer, Team, User
         from app.observability import logger
         from app.seed_team_material_showcase import seed_team_material_showcase
+        from app.team_constants import WAREHOUSE_TEAM_CODE
 
         logger.setLevel(logging.CRITICAL)
         try:
@@ -57,9 +109,13 @@ def main():
                 token, _ = create_session(db, user)
                 db.commit()
                 record_count = db.scalar(select(func.count()).select_from(MaterialTransfer))
+                warehouse_id = db.scalar(select(Team.id).where(Team.code == WAREHOUSE_TEAM_CODE))
             credentials = HTTPAuthorizationCredentials(scheme='Bearer', credentials=token)
             print(json.dumps({'kind': 'local SQLite fanout microbenchmark', 'material_records': record_count,
                               'clients': args.clients, 'backend': str(args.backend.resolve())}), flush=True)
+            if args.team_reads:
+                measure_team_reads(args, engine, token, warehouse_id)
+                return
             for view, name in (('inventory', 'factory_overview'), ('factory-live', 'live_endpoint')):
                 counts, guard, start = {'builds': 0, 'sql': 0}, Lock(), Barrier(args.clients)
                 original = getattr(factory_stream, name)

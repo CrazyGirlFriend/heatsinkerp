@@ -9,6 +9,7 @@ from .models import User
 from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, WarehouseReceiptCreate, MaterialTransferResponse, MaterialTransferList
 from . import material_stock as stock
 from . import warehouse_receipts
+from .team_read_snapshots import team_read_response
 
 router = APIRouter(prefix="/api/team-materials", tags=["team material stock"])
 
@@ -30,8 +31,8 @@ def list_warehouse_receipts(record_filters: RecordFilters = Depends(), team_id: 
 
 
 @router.get("/{team_id}/overview")
-def overview(team_id: int = Path(ge=1), _: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return stock.overview(db, team_id)
+def overview(team_id: int = Path(ge=1), _: User = Depends(get_current_user)):
+    return team_read_response("team-overview", team_id, lambda db: stock.overview(db, team_id))
 
 
 @router.get("/{team_id}/stock")
