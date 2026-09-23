@@ -319,7 +319,6 @@ def dispatch_dict(db, dispatch, user, *, items=None, include_history=False):
             # Keep the locking query confined to transfer rows. Load scalar
             # response relationships in batches, without locking joined teams
             # or recursively following the source's own history/relationships.
-            selectinload(MaterialTransfer.urgency),
             selectinload(MaterialTransfer.stock_source).load_only(MaterialTransfer.batch_no).raiseload("*"),
             selectinload(MaterialTransfer.source_team),
             selectinload(MaterialTransfer.next_team),
@@ -330,8 +329,15 @@ def dispatch_dict(db, dispatch, user, *, items=None, include_history=False):
         # committed. Refresh its confirmation metadata after the line locks.
         dispatch = db.scalar(select(MaterialDispatch).where(MaterialDispatch.id == dispatch.id)
                              .with_for_update().execution_options(populate_existing=True))
+        # ORM select-in matching can key this relationship by serial strings in
+        # Python. Match in SQL and key by transfer ID to preserve MySQL collation.
+        urgencies = dict(db.execute(select(MaterialTransfer.id, SerialUrgency)
+            .select_from(MaterialTransfer).outerjoin(
+                SerialUrgency, MaterialTransfer.serial_no == SerialUrgency.serial_no
+            ).where(MaterialTransfer.id.in_([item.id for item in items]))).all())
         for item in items:
             set_committed_value(item, "dispatch", dispatch)
+            set_committed_value(item, "urgency", urgencies[item.id])
     if dispatch.dispatch_no is None:
         # This is a retry ledger, not a business document or a second batch identity.
         return {"items": [workflow.material_transfer_dict(item, user, include_history=include_history) for item in items]}

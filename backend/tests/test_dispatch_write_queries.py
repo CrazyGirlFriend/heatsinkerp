@@ -170,6 +170,8 @@ def test_replay_loads_response_relationships_in_batches(client, warehouse, line_
     assert replay.status_code == 201, replay.text
     assert replay.json() == created.json()
     assert len(statements) <= 9, len(statements)
+    assert any('LEFT OUTER JOIN serial_urgencies' in sql and 'material_transfers.id IN' in sql
+               for sql in statements)
     assert not any('material_transfer_events' in sql or 'material_losses' in sql for sql in statements)
 
     first = created.json()['items'][0]
