@@ -16,10 +16,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sqlalchemy import case, func, or_, select, union_all, literal
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import lazyload
+from sqlalchemy.orm.attributes import set_committed_value
 
 from .auth import actor_name
-from .batch_numbers import next_transfer_batch_number
-from .models import MaterialDispatch, MaterialLoss, MaterialStockBalance, MaterialTransfer, Team
+from .batch_numbers import next_transfer_batch_numbers
+from .models import MaterialDispatch, MaterialLoss, MaterialStockBalance, MaterialTransfer, SerialUrgency, Team
 from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, SCRAP_MATERIAL_TYPES
 from .team_constants import EXTERNAL_ENTRY_KINDS, WAREHOUSE_TEAM_CODE, INSPECTION_TEAM_CODE
 from . import material_transfer_workflow as workflow
@@ -236,6 +237,10 @@ def create_dispatch(db, team_id, payload, user):
                            "next_team_code": target.code if target else None,
                            "next_team_name": target.name if target else None,
                            "entry_kind": payload.entry_kind, "external_destination": payload.external_destination}
+            # The target team lock also protects its purpose configuration.
+            purposes = {key: purpose_snapshot(db, target.id if target else None, key)
+                        for key in dict.fromkeys(line.purpose_id for line in payload.lines)}
+            batch_numbers = next_transfer_batch_numbers(db, len(payload.lines))
             dispatch = MaterialDispatch(
                 dispatch_no=None, source_team_id=source.id,
                 **destination,
@@ -245,25 +250,40 @@ def create_dispatch(db, team_id, payload, user):
             db.add(dispatch)
             db.flush()
             items = []
-            for line in payload.lines:
+            for line, batch_no in zip(payload.lines, batch_numbers, strict=True):
                 lot = lots[line.source_transfer_id]
                 fields = {field: getattr(lot, field) for field in workflow.DOCUMENT_FIELDS}
                 if "material_type" in line.model_fields_set:
                     fields["material_type"] = line.material_type
                 transfer = MaterialTransfer(
-                    batch_no=next_transfer_batch_number(db), serial_no=lot.serial_no, **fields,
-                    **purpose_snapshot(db, target.id if target else None, line.purpose_id),
+                    batch_no=batch_no, serial_no=lot.serial_no, **fields, **purposes[line.purpose_id],
                     source_transfer_id=lot.id, dispatch_id=dispatch.id,
                     source_team_id=source.id, source_team_code=source.code, source_team_name=source.name,
                     **destination,
                     quantity=line.quantity, weight=line.weight, status="pending", notes=payload.notes,
                     created_by=actor_name(user), created_by_user_id=user.id,
+                    history=[],
                 )
                 db.add(transfer)
-                db.flush()
-                db.refresh(transfer, attribute_names=["created_at", "updated_at"])
-                workflow._record_event(db, transfer, user, "created")
                 items.append(transfer)
+            # Flush the whole set so repeated sources receive one balance delta.
+            db.flush()
+            persisted_times = {row.id: row for row in db.execute(select(
+                MaterialTransfer.id, MaterialTransfer.created_at, MaterialTransfer.updated_at
+            ).where(MaterialTransfer.id.in_([item.id for item in items])))}
+            urgencies = {row.serial_no: row for row in db.scalars(select(SerialUrgency).where(
+                SerialUrgency.serial_no.in_({item.serial_no for item in items})
+            ))}
+            for transfer in items:
+                # Keep database timestamp precision in both response and audit.
+                for field in ("created_at", "updated_at"):
+                    set_committed_value(transfer, field, getattr(persisted_times[transfer.id], field))
+                for field, value in (("urgency", urgencies.get(transfer.serial_no)),
+                                     ("stock_source", lots[transfer.source_transfer_id]),
+                                     ("dispatch", dispatch), ("source_team", source), ("next_team", target)):
+                    set_committed_value(transfer, field, value)
+                workflow._record_event(db, transfer, user, "created", flush=False)
+            db.flush()
             # These rows were just created in our transaction; only replays need
             # the locking reread in dispatch_dict to observe concurrent changes.
             result = dispatch_dict(db, dispatch, user, items=items)

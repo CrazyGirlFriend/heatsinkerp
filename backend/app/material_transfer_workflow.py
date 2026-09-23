@@ -58,7 +58,7 @@ def _snapshot(transfer: MaterialTransfer) -> dict[str, Any]:
     return result
 
 
-def _record_event(db, transfer, user, action, before=None) -> None:
+def _record_event(db, transfer, user, action, before=None, *, flush=True) -> None:
     previous = before or {}
     changes = {
         field: {"before": previous.get(field), "after": value}
@@ -69,7 +69,8 @@ def _record_event(db, transfer, user, action, before=None) -> None:
         action=action, actor=actor_name(user), actor_user_id=user.id,
         occurred_at=transfer.updated_at, changes=changes,
     ))
-    db.flush()
+    if flush:
+        db.flush()
 
 
 def _assert_version(transfer, payload) -> None:

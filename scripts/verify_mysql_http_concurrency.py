@@ -178,6 +178,31 @@ def run_races(qa):
         for lot in lots:
             qa.expect_balance(lot, 90)
         results[name] = [status for status, _ in responses]
+    lots = [qa.receipt(f"bulk-parallel-{index}") for index in range(4)]
+    responses = qa.race(*(lambda index=index: qa.dispatch(
+        qa.warehouse[index % len(qa.warehouse)], lots[index], f"bulk-parallel-{index}",
+        lines=[{"source_transfer_id": lots[index]["id"], "quantity": 1, "weight": ".100"}] * 12,
+    ) for index in range(4)))
+    assert all(status == 201 and len(data["items"]) == 12 for status, data in responses)
+    assert len({item["batch_no"] for _, data in responses for item in data["items"]}) == 48
+    for lot in lots:
+        qa.expect_balance(lot, 88)
+    results["parallel_bulk_dispatches"] = [status for status, _ in responses]
+    lot = qa.receipt("duplicate-bulk")
+    lines = [{"source_transfer_id": lot["id"], "quantity": 1, "weight": ".100"}] * 12
+    responses = qa.race(*(lambda actor=actor: qa.dispatch(
+        actor, lot, "duplicate-bulk-out", lines=lines
+    ) for actor in qa.warehouse))
+    assert all(status == 201 and data == responses[0][1] for status, data in responses)
+    qa.expect_balance(lot, 88)
+    results["duplicate_bulk_dispatch"] = [status for status, _ in responses]
+    lot = qa.receipt("hundred-line-bulk")
+    lines = [{"source_transfer_id": lot["id"], "quantity": 1, "weight": ".100"}] * 100
+    status, data = qa.dispatch(qa.warehouse[0], lot, "hundred-line-bulk-out", lines=lines)
+    assert status == 201 and len({item["batch_no"] for item in data["items"]}) == 100
+    assert qa.dispatch(qa.warehouse[0], lot, "hundred-line-bulk-out", lines=lines) == (status, data)
+    qa.expect_balance(lot, 0)
+    results["hundred_line_bulk_replay"] = status
     for name, operations in (("dispatch_vs_dispatch", (qa.dispatch, qa.dispatch)),
                              ("loss_vs_dispatch", (qa.loss, qa.dispatch)),
                              ("loss_vs_loss", (qa.loss, qa.loss))):
