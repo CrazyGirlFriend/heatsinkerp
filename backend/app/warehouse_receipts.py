@@ -67,6 +67,8 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
                 created_by=actor_name(user), created_by_user_id=user.id,
                 received_by=actor_name(user), received_by_user_id=user.id,
                 created_at=now, updated_at=now, received_at=now,
+                # Only a new origin is known to have no audit or losses yet.
+                history=[], losses=[],
             )
             db.add(receipt)
             db.flush()

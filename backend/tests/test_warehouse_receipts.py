@@ -102,6 +102,26 @@ def test_intake_retry_is_idempotent_and_different_payload_conflicts(client, ware
     assert intake(client, warehouse, idempotency_key='ordinary-transfer').status_code == 409
 
 
+def test_new_intake_does_not_query_empty_history_but_retry_keeps_later_losses(client, warehouse):
+    from test_transfer_list_loading import read_statements
+
+    with read_statements() as statements:
+        response = intake(client, warehouse)
+    assert response.status_code == 201, response.text
+    receipt = response.json()
+    assert [event['action'] for event in receipt['history']] == ['stocked']
+    assert receipt['loss_records'] == []
+    assert not any('material_transfer_events' in sql or 'material_losses' in sql for sql in statements)
+    assert client.post(f"/api/team-materials/{warehouse['team']['id']}/losses", headers=warehouse['headers'], json={
+        'source_transfer_id': receipt['id'], 'quantity': 1, 'weight': '.125',
+        'reason': '复核丢失', 'idempotency_key': 'receipt-later-loss',
+    }).status_code == 201
+    replay = intake(client, warehouse)
+    assert replay.status_code == 201
+    assert replay.json()['loss_records'][0]['reason'] == '复核丢失'
+    assert replay.json() == client.get(f"/api/material-transfers/{receipt['batch_no']}").json()
+
+
 def test_intake_audit_failure_rolls_back_number_and_stock(client, warehouse):
     with patch('app.warehouse_receipts.workflow._record_event', side_effect=RuntimeError('audit failed')):
         assert intake(client, warehouse).status_code == 500
