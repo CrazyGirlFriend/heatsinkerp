@@ -8,7 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import StreamingResponse
 
-from .auth import bearer_scheme, get_auth_context
+from .auth import bearer_scheme, get_auth_context, token_digest
 from .database import SessionLocal
 from .factory_overview import factory_overview, live_endpoint
 from .inventory_events import inventory_events
@@ -25,15 +25,20 @@ def factory_day():
     return period(1, utcnow())[0][0]
 
 
-def read_inventory(credentials, *, snapshot=True, view="inventory"):
+def read_inventory(credentials, *, snapshot=True, view="inventory", change=None):
     # Recheck each caller, including cache hits; release auth connections before
     # waiting for the shared report. No credentials or permissions enter the cache.
     with SessionLocal() as db:
-        get_auth_context(credentials, db)
+        context = get_auth_context(credentials, db)
+        user_id = context.user.id
     if not snapshot:
         return None
     if view == "inventory-changed":
-        return message(view, {"changed": True})
+        if change is not None and not (change.inventory or change.directory or change.accounts or user_id in change.user_ids):
+            return None
+        return message(view, change.payload(user_id) if change is not None else {"changed": True})
+    if change is not None and not change.inventory:
+        return None
 
     def build():
         with SessionLocal() as db:
@@ -50,13 +55,20 @@ def message(event, data):
 async def inventory_stream(request, credentials, view="inventory"):
     with inventory_events.subscribe() as changed:
         try:
+            change = None
             while True:
-                changed.clear()
                 day = factory_day()
                 if not request.app.state.site_access_gate.is_unlocked(request):
                     yield message("access-required", {})
                     return
-                yield await run_in_threadpool(read_inventory, credentials, view=view)
+                # Session-only changes don't make unrelated clients query auth
+                # or stock. Heartbeats continue to validate every connection.
+                session_only = change is not None and change.sessions and not (change.inventory or change.accounts or change.directory or change.user_ids)
+                if not session_only or credentials is None or token_digest(credentials.credentials) in change.sessions:
+                    options = {"change": change} if change is not None else {}
+                    frame = await run_in_threadpool(read_inventory, credentials, view=view, **options)
+                    if frame is not None:
+                        yield frame
                 while not changed.is_set():
                     try:
                         await asyncio.wait_for(changed.wait(), HEARTBEAT_SECONDS)
@@ -71,6 +83,7 @@ async def inventory_stream(request, credentials, view="inventory"):
                         if view != "inventory" and factory_day() != day:
                             break
                         yield ": heartbeat\n\n"
+                change = changed.take() if changed.is_set() else None
         except HTTPException as exc:
             if exc.status_code != 401:
                 raise
