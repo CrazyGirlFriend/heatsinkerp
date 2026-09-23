@@ -2,12 +2,12 @@
 import { defineComponent, ref } from 'vue'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { InventorySubscription } from '@/services/inventoryStream'
+import type { InventoryChange, InventorySubscription } from '@/services/inventoryStream'
 import { useLiveRefresh } from './useLiveRefresh'
 
 const transport = vi.hoisted(() => ({ subscribe: vi.fn(), stop: vi.fn() }))
 vi.mock('@/services/inventoryStream', () => ({ subscribeInventoryChanges: transport.subscribe }))
-let callbacks: InventorySubscription<{ changed: boolean }>
+let callbacks: InventorySubscription<InventoryChange>
 let wrappers: VueWrapper[] = []
 beforeEach(() => {
   vi.useFakeTimers()
@@ -16,9 +16,9 @@ beforeEach(() => {
   transport.subscribe.mockReset().mockImplementation(value => { callbacks = value; return transport.stop })
 })
 afterEach(() => { wrappers.forEach(wrapper => wrapper.unmount()); wrappers = []; vi.useRealTimers() })
-function render(refresh: () => Promise<void>, busy = ref(false), enabled = ref(true)) {
+function render(refresh: () => Promise<void>, busy = ref(false), enabled = ref(true), options: Parameters<typeof useLiveRefresh>[1] = {}) {
   let live!: ReturnType<typeof useLiveRefresh>
-  const wrapper = mount(defineComponent({ setup() { live = useLiveRefresh(refresh, { busy: () => busy.value, enabled: () => enabled.value }); return () => null } }))
+  const wrapper = mount(defineComponent({ setup() { live = useLiveRefresh(refresh, { busy: () => busy.value, enabled: () => enabled.value, ...options }); return () => null } }))
   wrappers.push(wrapper)
   return { wrapper, live }
 }
@@ -26,6 +26,36 @@ async function tick() { await vi.advanceTimersByTimeAsync(100); await flushPromi
 function event() { callbacks.onData({ changed: true }) }
 
 describe('shared table change notifications', () => {
+  it('only refreshes affected teams, follows current scope, and keeps global/legacy notifications', async () => {
+    const a = vi.fn().mockResolvedValue(undefined), b = vi.fn().mockResolvedValue(undefined)
+    const team = ref(1)
+    render(a, ref(false), ref(true), { teamId: () => team.value })
+    render(b, ref(false), ref(true), { teamId: () => 2 })
+    callbacks.onData({ changed: true, team_ids: [1, 3] }); await tick()
+    expect(a).toHaveBeenCalledOnce(); expect(b).not.toHaveBeenCalled()
+    team.value = 4
+    callbacks.onData({ changed: true, team_ids: [1] }); await tick()
+    expect(a).toHaveBeenCalledOnce()
+    callbacks.onData({ changed: true, team_ids: [4] }); await tick()
+    expect(a).toHaveBeenCalledTimes(2)
+    callbacks.onData({ changed: true, team_ids: null }); await tick()
+    event(); await tick()
+    expect(a).toHaveBeenCalledTimes(4); expect(b).toHaveBeenCalledTimes(2)
+  })
+  it('separates account and directory pages from material notifications', async () => {
+    const stock = vi.fn().mockResolvedValue(undefined), directory = vi.fn().mockResolvedValue(undefined), accounts = vi.fn().mockResolvedValue(undefined)
+    render(stock, ref(false), ref(true), { teamId: () => 1 })
+    render(directory, ref(false), ref(true), { scope: 'directory' })
+    render(accounts, ref(false), ref(true), { scope: 'accounts' })
+    callbacks.onData({ changed: true, team_ids: [1] }); await tick()
+    expect(stock).toHaveBeenCalledOnce(); expect(accounts).not.toHaveBeenCalled(); expect(directory).not.toHaveBeenCalled()
+    callbacks.onData({ changed: true, team_ids: [], accounts_changed: true }); await tick()
+    expect(stock).toHaveBeenCalledOnce(); expect(accounts).toHaveBeenCalledOnce(); expect(directory).not.toHaveBeenCalled()
+    callbacks.onData({ changed: true, team_ids: [], directory_changed: true }); await tick()
+    expect(stock).toHaveBeenCalledTimes(2); expect(accounts).toHaveBeenCalledTimes(2); expect(directory).toHaveBeenCalledOnce()
+    callbacks.onData({ changed: true, team_ids: [], current_user_changed: true }); await tick()
+    expect(stock).toHaveBeenCalledTimes(3); expect(accounts).toHaveBeenCalledTimes(3); expect(directory).toHaveBeenCalledTimes(2)
+  })
   it('shares one stream, coalesces events and closes only its last subscriber', async () => {
     const a = vi.fn().mockResolvedValue(undefined), b = vi.fn().mockResolvedValue(undefined)
     const first = render(a), second = render(b)

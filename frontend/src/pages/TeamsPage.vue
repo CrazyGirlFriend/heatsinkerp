@@ -102,6 +102,7 @@ async function loadTeams(background = false): Promise<void> {
   }
 }
 const liveRefresh = useLiveRefresh(async () => { await refreshCurrentUser(); await loadTeams(true) }, {
+  scope: 'directory',
   enabled: () => isAdmin.value,
   busy: () => loading.value || saving.value || deletingId.value !== null,
 })

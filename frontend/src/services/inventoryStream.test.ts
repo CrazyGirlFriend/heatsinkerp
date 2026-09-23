@@ -51,6 +51,27 @@ afterEach(async () => {
 })
 
 describe('authenticated inventory SSE', () => {
+  it('preserves scoped changes and rejects malformed team scopes instead of silently skipping updates', async () => {
+    vi.mocked(fetch).mockResolvedValue(response())
+    const onData = vi.fn(),
+      onState = vi.fn()
+    stop = subscribeInventoryChanges({ onData, onState })
+    await flushPromises()
+    const change = {
+      changed: true,
+      team_ids: [1, 2],
+      directory_changed: false,
+      accounts_changed: false,
+      current_user_changed: false,
+    }
+    push(`event: inventory-changed\ndata: ${JSON.stringify(change)}\n\n`)
+    await flushPromises()
+    expect(onData).toHaveBeenCalledWith(change)
+    push('event: inventory-changed\ndata: {"changed":true,"team_ids":["1"]}\n\n')
+    await flushPromises()
+    expect(onState).toHaveBeenLastCalledWith('reconnecting')
+    expect(onData).toHaveBeenCalledOnce()
+  })
   it('receives lightweight ledger changes and does not treat a heartbeat as a change', async () => {
     vi.mocked(fetch).mockResolvedValue(response())
     const onData = vi.fn(),

@@ -24,7 +24,7 @@ const loading = ref(false), error = ref(''), result = ref<SerialHistory | null>(
 const batchOpen = ref(false), batchNo = ref('')
 const totals = computed(() => (result.value?.groups || []).reduce((sum, group) => ({ quantity: sum.quantity + group.on_hand_quantity, weight: sum.weight + group.on_hand_weight }), { quantity: 0, weight: 0 }))
 let epoch = 0
-const live = useLiveRefresh(() => load(true), { enabled: () => Boolean(applied.value.serial_no), busy: () => loading.value || batchOpen.value })
+const live = useLiveRefresh(() => load(true), { teamId: () => props.teamId, enabled: () => Boolean(applied.value.serial_no), busy: () => loading.value || batchOpen.value })
 async function load(background = false) {
   if (!applied.value.serial_no) return
   const current = ++epoch

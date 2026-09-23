@@ -128,6 +128,7 @@ async function loadData(background = false): Promise<void> {
   }
 }
 const liveRefresh = useLiveRefresh(async () => { await refreshCurrentUser(); await loadData(true) }, {
+  scope: 'accounts',
   enabled: () => isAdmin.value,
   busy: () => loading.value || saving.value || deletingId.value !== null,
 })

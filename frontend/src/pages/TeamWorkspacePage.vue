@@ -29,7 +29,7 @@ import { showToast } from '@/stores/toast'
 import { teamWorkspaceProfile } from '@/config/teamWorkspaces'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { InventoryConnection } from '@/services/inventoryStream'
-import { subscribeSharedInventoryChanges as subscribeInventoryChanges } from '@/services/inventoryChanges'
+import { shouldRefreshInventory, subscribeSharedInventoryChanges as subscribeInventoryChanges } from '@/services/inventoryChanges'
 import { materialTransferApi } from '@/services/materialTransferApi'
 import { isExternalEntryKind, materialEntryLabel, materialSourceLabel, receiptSourceLabel, materialTypeOptions, materialTypeLabel, type MaterialTransfer, type MaterialType } from '@/types/materialTransfer'
 import { isDispatchNumber, dispatchStatusLabels, type DispatchKind, type DispatchStatus, type TeamMaterialOverview, type StockBatch, type CreatedMaterialBatches, type MaterialLoss } from '@/types/teamMaterials'
@@ -113,6 +113,7 @@ let hidTime = 0
 const syncState = ref<InventoryConnection>('connecting'), syncError = ref('')
 let unsubscribe: (() => void) | undefined, streamVersion = 0
 let refreshQueued = false, refreshing = false, disposed = false
+let identityQueued = false, directoryQueued = false
 let refreshTimer: ReturnType<typeof setTimeout> | undefined
 
 function queueRefresh() {
@@ -125,10 +126,15 @@ function queueRefresh() {
     if (loading.value) return // Its completion watcher drains the queued update.
     refreshQueued = false; refreshing = true
     const scope = teamKey.value
+    const refreshIdentity = identityQueued, refreshDirectory = directoryQueued
+    identityQueued = false; directoryQueued = false
     try {
-      await Promise.all([auth.refreshCurrentUser(), directory.refreshTeamDirectory()])
+      await Promise.all([
+        ...(refreshIdentity ? [auth.refreshCurrentUser()] : []),
+        ...(refreshDirectory ? [directory.refreshTeamDirectory()] : []),
+      ])
       if (!disposed && !document.hidden && scope === teamKey.value && scopeReady.value) await loadView(false, true)
-    } catch { if (!disposed) syncError.value = '数据更新失败，保留上次结果，请刷新重试。' }
+    } catch { if (!disposed) { identityQueued ||= refreshIdentity; directoryQueued ||= refreshDirectory; syncError.value = '数据更新失败，保留上次结果，请刷新重试。' } }
     finally { refreshing = false; if (refreshQueued) queueRefresh() }
   }, 100)
 }
@@ -136,12 +142,17 @@ function connectChanges() {
   const current = ++streamVersion
   unsubscribe?.()
   unsubscribe = subscribeInventoryChanges({
-    onData() { if (current === streamVersion) queueRefresh() },
+    onData(change) {
+      if (current !== streamVersion || !shouldRefreshInventory(change, teamId.value)) return
+      identityQueued ||= change.team_ids === undefined || Boolean(change.current_user_changed)
+      directoryQueued ||= change.team_ids === undefined || Boolean(change.directory_changed)
+      queueRefresh()
+    },
     onState(state) { if (current === streamVersion) syncState.value = state },
   })
 }
 function syncVisibility() {
-  if (document.hidden) { ++streamVersion; unsubscribe?.(); unsubscribe = undefined; clearTimeout(refreshTimer); refreshTimer = undefined; refreshQueued = false }
+  if (document.hidden) { ++streamVersion; unsubscribe?.(); unsubscribe = undefined; clearTimeout(refreshTimer); refreshTimer = undefined; refreshQueued = false; identityQueued = directoryQueued = false }
   else connectChanges()
 }
 watch(loading, value => { if (!value && refreshQueued) queueRefresh() })

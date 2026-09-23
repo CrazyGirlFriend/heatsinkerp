@@ -18,7 +18,7 @@ const rows = ref<StockBatch[]>([]), total = ref(0), page = ref(1), pageSize = re
 const loading = ref(false), error = ref('')
 const batchOpen = ref(false), selected = ref<MaterialTransfer | null>(null)
 let version = 0
-const live = useLiveRefresh(() => load(true), { enabled: () => !!props.group, busy: () => loading.value })
+const live = useLiveRefresh(() => load(true), { teamId: () => props.teamId, enabled: () => !!props.group, busy: () => loading.value })
 async function load(background = false) {
   const current = ++version
   if (!props.group) return

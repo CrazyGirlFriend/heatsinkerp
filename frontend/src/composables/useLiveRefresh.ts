@@ -1,10 +1,12 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { InventoryConnection } from '@/services/inventoryStream'
-import { subscribeSharedInventoryChanges } from '@/services/inventoryChanges'
+import { shouldRefreshInventory, subscribeSharedInventoryChanges } from '@/services/inventoryChanges'
 
 export function useLiveRefresh(refresh: () => Promise<void>, options: {
   enabled?: () => boolean
   busy?: () => boolean
+  teamId?: () => number | undefined
+  scope?: 'inventory' | 'directory' | 'accounts'
 } = {}) {
   const mounted = ref(false), hidden = ref(true)
   const state = ref<InventoryConnection>('connecting'), failure = ref('')
@@ -40,7 +42,7 @@ export function useLiveRefresh(refresh: () => Promise<void>, options: {
     const current = epoch
     state.value = 'connecting'
     stop = subscribeSharedInventoryChanges({
-      onData() { if (current === epoch) request() },
+      onData(change) { if (current === epoch && shouldRefreshInventory(change, options.teamId?.(), options.scope)) request() },
       onState(value) { if (current === epoch) state.value = value },
     })
   }, { flush: 'sync' })

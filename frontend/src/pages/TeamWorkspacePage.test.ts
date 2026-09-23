@@ -28,7 +28,7 @@ vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
 const source = (id = 10): StockBatch => ({ transfer: normalizeMaterialTransfer({ id, batch_no: `TL${id}`, serial_no: `SERIAL${id}`, source_team: { id: 1, name: '库房' }, next_team: { id: 914, name: '轧制' }, status: 'received', locked: true }), available_quantity: 9, available_weight: 0.005, reserved_quantity: 1, reserved_weight: 0 } as StockBatch)
 const summary: TeamMaterialOverview = { team_id: 914, totals: { available_quantity: 309, available_weight: 30.95, reserved_quantity: 10, reserved_weight: 1, in_transit_quantity: 10, in_transit_weight: 1, received_quantity: 330, received_weight: 33, dispatched_quantity: 10, dispatched_weight: 1, lost_quantity: 1, lost_weight: 0.05, on_hand_quantity: 309, on_hand_weight: 30.95 }, materials: [], pending_incoming: { quantity: 130, weight: 13, count: 1 }, legacy_received_count: 2 }
 let wrapper: VueWrapper
-let subscription: inventoryStream.InventorySubscription<{ changed: boolean }>, stopStream: ReturnType<typeof vi.fn>
+let subscription: inventoryStream.InventorySubscription<inventoryStream.InventoryChange>, stopStream: ReturnType<typeof vi.fn>
 beforeEach(() => {
   vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
   stopStream = vi.fn()
@@ -53,6 +53,30 @@ async function render(path = '/team-workspaces/914') {
   return router
 }
 describe('team workspace material ledger', () => {
+  it('ignores unrelated teams and only reloads identity/directory when those actually change', async () => {
+    vi.useFakeTimers()
+    const router = await render('/team-workspaces/914?tab=stock&query=AL&page=2')
+    vi.mocked(teamMaterialApi.overview).mockClear()
+    vi.mocked(teamMaterialApi.teamInventory).mockClear()
+    state.auth.refreshCurrentUser.mockClear(); state.directory.refreshTeamDirectory.mockClear()
+    subscription.onData({ changed: true, team_ids: [900, 901] })
+    subscription.onData({ changed: true, team_ids: [], accounts_changed: true })
+    await vi.advanceTimersByTimeAsync(110); await flushPromises()
+    expect(teamMaterialApi.overview).not.toHaveBeenCalled()
+    expect(teamMaterialApi.teamInventory).not.toHaveBeenCalled()
+    subscription.onData({ changed: true, team_ids: [914, 901] })
+    await vi.advanceTimersByTimeAsync(110); await flushPromises()
+    expect(teamMaterialApi.overview).toHaveBeenCalledOnce()
+    expect(teamMaterialApi.teamInventory).toHaveBeenCalledOnce()
+    expect(state.auth.refreshCurrentUser).not.toHaveBeenCalled()
+    expect(state.directory.refreshTeamDirectory).not.toHaveBeenCalled()
+    expect(router.currentRoute.value.query).toMatchObject({ query: 'AL', page: '2' })
+    subscription.onData({ changed: true, team_ids: [], current_user_changed: true })
+    subscription.onData({ changed: true, team_ids: [], directory_changed: true })
+    await vi.advanceTimersByTimeAsync(110); await flushPromises()
+    expect(state.auth.refreshCurrentUser).toHaveBeenCalledOnce()
+    expect(state.directory.refreshTeamDirectory).toHaveBeenCalledOnce()
+  })
   it('redirects the old serial tab while retaining filters and provides only one inventory tab', async () => {
     const router = await render('/team-workspaces/914?tab=serials&query=AL&date_from=2026-09-12&urgent_only=true&page=2&page_size=20#detail')
     expect(router.currentRoute.value.query).toEqual({ tab: 'stock', query: 'AL', date_from: '2026-09-12', urgent_only: 'true', page: '2', page_size: '20' })

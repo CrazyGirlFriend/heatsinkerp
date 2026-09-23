@@ -5,6 +5,13 @@ import type { FactoryLive } from '@/types/factoryLive'
 import { reportDiagnostic, type DiagnosticCode } from './diagnostics'
 
 export type InventoryConnection = 'connecting' | 'live' | 'reconnecting' | 'expired'
+export interface InventoryChange {
+  changed: boolean
+  team_ids?: number[] | null
+  directory_changed?: boolean
+  accounts_changed?: boolean
+  current_user_changed?: boolean
+}
 export interface InventorySubscription<T = FactoryOverview> {
   onData: (report: T) => void
   onState: (state: InventoryConnection) => void
@@ -30,13 +37,21 @@ export function subscribeFactoryLive(subscription: InventorySubscription<Factory
   )
 }
 export function subscribeInventoryChanges(
-  subscription: InventorySubscription<{ changed: boolean }>,
+  subscription: InventorySubscription<InventoryChange>,
 ): () => void {
   return subscribeStream(
     '/factory-overview/changes',
     'inventory-changed',
     subscription,
-    (data) => data?.changed === true,
+    (data) =>
+      data?.changed === true &&
+      (data.team_ids === undefined ||
+        data.team_ids === null ||
+        (Array.isArray(data.team_ids) &&
+          data.team_ids.every((id) => Number.isInteger(id) && id > 0))) &&
+      [data.directory_changed, data.accounts_changed, data.current_user_changed].every(
+        (flag) => flag === undefined || typeof flag === 'boolean',
+      ),
   )
 }
 function subscribeStream<T>(

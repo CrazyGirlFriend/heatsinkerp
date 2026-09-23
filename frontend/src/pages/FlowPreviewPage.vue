@@ -118,7 +118,7 @@ async function toggleFullscreen() {
 }
 function updateFullscreen() { fullscreen.value = document.fullscreenElement === pageRoot.value }
 onMounted(() => document.addEventListener('fullscreenchange', updateFullscreen))
-const live = useLiveRefresh(() => load(true), { enabled: () => Boolean(serial.value) && !example.value, busy: () => loading.value || Boolean(selected.value) || drawerOpen.value })
+const live = useLiveRefresh(() => load(true), { teamId: () => mode.value === 'team' ? teamId.value : undefined, enabled: () => Boolean(serial.value) && !example.value, busy: () => loading.value || Boolean(selected.value) || drawerOpen.value })
 watch(() => [route.path, route.params.view, route.query.serial_no, route.query.team_id, route.query.sample], () => {
   ++epoch; loading.value = false; error.value = ''; selected.value = null; selectedId.value = ''; drawerOpen.value = false
   history.value = null; trace.value = null
