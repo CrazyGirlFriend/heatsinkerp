@@ -17,6 +17,12 @@ class InventoryEvents:
     def __init__(self):
         self._lock = Lock()
         self._subscribers = set()
+        self._revision = 0
+
+    @property
+    def revision(self):
+        with self._lock:
+            return self._revision
 
     @contextmanager
     def subscribe(self):
@@ -31,6 +37,7 @@ class InventoryEvents:
 
     def publish(self):
         with self._lock:
+            self._revision += 1
             subscribers = tuple(self._subscribers)
         for loop, changed in subscribers:
             try:

@@ -12,11 +12,13 @@ from .auth import bearer_scheme, get_auth_context
 from .database import SessionLocal
 from .factory_overview import factory_overview, live_endpoint
 from .inventory_events import inventory_events
+from .inventory_snapshots import SnapshotFrames
 from .material_analytics import period
 from .models import utcnow
 
 router = APIRouter(prefix="/api/factory-overview")
 HEARTBEAT_SECONDS = 15
+snapshot_frames = SnapshotFrames()
 
 
 def factory_day():
@@ -24,14 +26,21 @@ def factory_day():
 
 
 def read_inventory(credentials, *, snapshot=True, view="inventory"):
-    # Do not hold a database connection or request-scoped session while waiting.
+    # Recheck each caller, including cache hits; release auth connections before
+    # waiting for the shared report. No credentials or permissions enter the cache.
     with SessionLocal() as db:
         get_auth_context(credentials, db)
-        if not snapshot:
-            return None
-        if view == "inventory-changed":
-            return {"changed": True}
-        return live_endpoint(db) if view == "factory-live" else factory_overview(db)
+    if not snapshot:
+        return None
+    if view == "inventory-changed":
+        return message(view, {"changed": True})
+
+    def build():
+        with SessionLocal() as db:
+            report = live_endpoint(db) if view == "factory-live" else factory_overview(db)
+            return message(view, report)
+
+    return snapshot_frames.get(view, lambda: (inventory_events.revision, str(factory_day())), build)
 
 
 def message(event, data):
@@ -47,8 +56,7 @@ async def inventory_stream(request, credentials, view="inventory"):
                 if not request.app.state.site_access_gate.is_unlocked(request):
                     yield message("access-required", {})
                     return
-                report = await run_in_threadpool(read_inventory, credentials, view=view)
-                yield message(view, report)
+                yield await run_in_threadpool(read_inventory, credentials, view=view)
                 while not changed.is_set():
                     try:
                         await asyncio.wait_for(changed.wait(), HEARTBEAT_SECONDS)

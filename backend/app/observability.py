@@ -59,18 +59,30 @@ class RequestLogMiddleware:
         started = time.monotonic()
         status = 499
         response_started = False
+        is_stream = False
+        first_body_ms = None
 
         async def tracked_send(message: Message) -> None:
-            nonlocal status, response_started
+            nonlocal status, response_started, is_stream, first_body_ms
             if message["type"] == "http.response.start":
                 status = message["status"]
                 response_started = True
+                is_stream = any(
+                    key.lower() == b"content-type" and value.startswith(b"text/event-stream")
+                    for key, value in message.get("headers", [])
+                )
                 message = dict(message)
                 message["headers"] = [
                     (key, value)
                     for key, value in message.get("headers", [])
                     if key.lower() != b"x-request-id"
                 ] + [(b"x-request-id", correlation.encode("ascii"))]
+            elif (
+                message["type"] == "http.response.body"
+                and message.get("body")
+                and first_body_ms is None
+            ):
+                first_body_ms = round((time.monotonic() - started) * 1000, 2)
             await send(message)
 
         try:
@@ -92,5 +104,7 @@ class RequestLogMiddleware:
                 route=getattr(route, "path", "<unmatched>"),
                 status=status,
                 duration_ms=round((time.monotonic() - started) * 1000, 2),
+                is_stream=is_stream,
+                first_body_ms=first_body_ms,
             )
             request_id.reset(token)

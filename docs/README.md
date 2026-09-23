@@ -36,6 +36,7 @@
 
 以下记录对应各自的实现阶段和测试环境，不表示已部署线上。
 
+- [性能与容量验收](performance-and-capacity.md)：线上受控并发基线、吞吐/延迟/正确性口径及本地共享快照对比；优化尚未发布，不承诺线上容量。
 - [全项目界面一致性审查](ui-consistency-review-20260914.md)：2026-09-14 浅白紫界面、手机/2K、导航、详情及打印检查；部署状态另见服务器部署说明。
 - [班组物料台账验收记录](team-material-stock-test-report.md)
 - [库房手工入库验收记录](warehouse-receipt-test-report.md)

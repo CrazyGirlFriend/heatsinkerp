@@ -27,6 +27,8 @@ def test_request_id_is_local_and_route_is_template(client, monkeypatch):
     assert response.status_code == 404
     assert records[-1]["route"] == "/api/teams/{team_id}"
     assert records[-1]["request_id"] == correlation
+    assert records[-1]["is_stream"] is False
+    assert 0 <= records[-1]["first_body_ms"] <= records[-1]["duration_ms"]
     assert "SECRET" not in json.dumps(records)
     assert request_id.get() is None
 
@@ -62,7 +64,13 @@ def test_stream_is_forwarded_before_completion_and_context_is_isolated(monkeypat
         async def stream(scope, receive, send):
             own_id = request_id.get()
             ids.append(own_id)
-            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [(b"content-type", b"text/event-stream; charset=utf-8")],
+                }
+            )
             await send({"type": "http.response.body", "body": b"data: {}\n\n", "more_body": True})
             ready[scope["index"]].set()
             await finish.wait()
@@ -87,6 +95,8 @@ def test_stream_is_forwarded_before_completion_and_context_is_isolated(monkeypat
             finish.set()
             await asyncio.gather(*tasks)
         assert len(records) == 2
+        assert all(row["is_stream"] for row in records)
+        assert all(0 <= row["first_body_ms"] <= row["duration_ms"] for row in records)
 
     asyncio.run(scenario())
 

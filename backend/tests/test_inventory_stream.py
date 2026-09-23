@@ -220,7 +220,7 @@ def test_failed_and_replayed_business_writes_do_not_publish(client, warehouse, m
 
 def test_heartbeat_does_not_requery_inventory_and_expired_stream_stops(client, monkeypatch):
     async def run():
-        read = Mock(return_value={'as_of': 'now', 'totals': {}, 'teams': []})
+        read = Mock(return_value=factory_stream.message('inventory', {'as_of': 'now', 'totals': {}, 'teams': []}))
         monkeypatch.setattr(factory_stream, 'read_inventory', read)
         monkeypatch.setattr(factory_stream, 'HEARTBEAT_SECONDS', .01)
         stream = factory_stream.inventory_stream(LiveRequest(), None)
@@ -316,7 +316,7 @@ def test_ledger_notifications_do_not_compute_full_reports(client, warehouse, mon
 def test_local_midnight_updates_date_sensitive_views_without_periodic_inventory_reads(client, monkeypatch, view):
     async def run():
         day = ['2026-09-14']
-        read = Mock(return_value={'changed': True})
+        read = Mock(return_value=factory_stream.message(view, {'changed': True}))
         monkeypatch.setattr(factory_stream, 'read_inventory', read)
         monkeypatch.setattr(factory_stream, 'factory_day', lambda: day[0])
         monkeypatch.setattr(factory_stream, 'HEARTBEAT_SECONDS', .01)
