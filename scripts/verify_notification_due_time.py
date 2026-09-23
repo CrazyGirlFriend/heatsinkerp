@@ -11,6 +11,7 @@ from verify_async_notifications import assert_isolated
 def run():
     assert_isolated()
     from app.database import SessionLocal
+    from app.inventory_events import InventoryChange
     from app.models import NotificationOutbox, Team, TeamPurpose
     from app.notification_queue import claim, complete
     from sqlalchemy import select, text
@@ -29,6 +30,27 @@ def run():
             assert len(created) == 1
             message_id = created.pop()
             assert db.get(NotificationOutbox, message_id).available_at == now.replace(microsecond=0)
+        legacy_id = uuid4().hex
+        with SessionLocal.begin() as db:
+            db.add(
+                NotificationOutbox(
+                    id=legacy_id,
+                    payload=InventoryChange().envelope(),
+                    created_at=now,
+                    available_at=now,
+                    attempts=0,
+                )
+            )
+        with SessionLocal() as db:
+            legacy_due = (
+                db.scalar(
+                    select(NotificationOutbox.id).where(
+                        NotificationOutbox.id == legacy_id, NotificationOutbox.available_at <= now
+                    )
+                )
+                is not None
+            )
+        assert legacy_due == (rounded <= now)
         claimed = set()
         with patch("app.notification_queue.utcnow", return_value=now), SessionLocal() as db:
             for _ in range(250):
@@ -43,6 +65,7 @@ def run():
             {
                 "fraction_us": microsecond,
                 "mysql_rounds_forward": rounded > now,
+                "legacy_immediately_claimable": legacy_due,
                 "immediately_claimable": True,
             }
         )
