@@ -80,12 +80,12 @@ class Harness:
     def key(self, suffix):
         return f"{self.prefix}-{suffix}"
 
-    def receipt(self, name, quantity=100):
+    def receipt(self, name, quantity=100, *, actor=None):
         payload = {"serial_no": self.key(name), "material_name": "铜钼 CuMo70",
                    "material_type": "semi_finished", "quantity": quantity,
                    "weight": str(Decimal(quantity) / 10), "notes": "隔离并发验证",
                    "idempotency_key": self.key(name)}
-        return self.request(self.warehouse[0], f"/api/team-materials/{self.teams[0]}/receipts", payload)[1]
+        return self.request(actor or self.warehouse[0], f"/api/team-materials/{self.teams[0]}/receipts", payload)[1]
 
     def dispatch(self, actor, lot, key, quantity=60, **extra):
         payload = {"next_team_id": self.teams[1], "idempotency_key": self.key(key),
