@@ -19,6 +19,30 @@ def credentials(headers):
     return HTTPAuthorizationCredentials(scheme="Bearer", credentials=headers["Authorization"].split(" ", 1)[1])
 
 
+@pytest.mark.parametrize("view", ["factory-live", "inventory-changed"])
+@pytest.mark.parametrize("change", [InventoryChange(team_ids=frozenset((123,))), InventoryChange(accounts=True)])
+def test_midnight_is_not_hidden_by_a_simultaneous_scoped_change(client, monkeypatch, view, change):
+    async def run():
+        day = ["2026-09-23"]
+        read = Mock(wraps=factory_stream.read_inventory)
+        monkeypatch.setattr(factory_stream, "factory_day", lambda: day[0])
+        monkeypatch.setattr(factory_stream, "read_inventory", read)
+        monkeypatch.setattr(factory_stream, "HEARTBEAT_SECONDS", .01)
+        stream = factory_stream.inventory_stream(LiveRequest(), credentials(client.headers), view)
+        try:
+            await anext(stream)
+            day[0] = "2026-09-24"
+            inventory_events.publish(change)
+            await asyncio.sleep(0)
+            assert (await asyncio.wait_for(anext(stream), 2)).startswith("event: " + view)
+            refreshed = read.call_args.kwargs["change"]
+            assert refreshed.team_ids is None
+            assert refreshed.accounts == change.accounts
+        finally:
+            await stream.aclose()
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("view", ["inventory", "factory-live", "inventory-changed"])
 def test_other_logins_and_logouts_never_refresh_stock_but_own_logout_closes(client, monkeypatch, view):
     async def run():

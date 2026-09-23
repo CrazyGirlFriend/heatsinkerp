@@ -11,7 +11,7 @@ from starlette.responses import StreamingResponse
 from .auth import bearer_scheme, get_auth_context, token_digest
 from .database import SessionLocal
 from .factory_overview import factory_overview, live_endpoint
-from .inventory_events import inventory_events
+from .inventory_events import InventoryChange, inventory_events
 from .inventory_snapshots import SnapshotFrames
 from .material_analytics import period
 from .models import utcnow
@@ -84,6 +84,10 @@ async def inventory_stream(request, credentials, view="inventory"):
                             break
                         yield ": heartbeat\n\n"
                 change = changed.take() if changed.is_set() else None
+                # A scoped event arriving at midnight must not hide the date
+                # rollover from other teams or from today's robot snapshot.
+                if change is not None and view != "inventory" and factory_day() != day:
+                    change = change.merge(InventoryChange(team_ids=None))
         except HTTPException as exc:
             if exc.status_code != 401:
                 raise
