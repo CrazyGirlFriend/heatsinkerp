@@ -13,6 +13,7 @@
     "tests/test_admin_audit.py",
     "tests/test_factory_stock_matrix.py",
     "tests/test_inventory_snapshots.py",
+    "tests/test_transfer_list_loading.py",
     "tests/test_observability.py",
     "tests/test_material_reset.py",
     "tests/test_admin_audit_migration.py",

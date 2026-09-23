@@ -11,12 +11,12 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm import lazyload
+from sqlalchemy.orm import joinedload, lazyload, raiseload
 from sqlalchemy.orm.attributes import set_committed_value
 
 from .auth import actor_name
 from .batch_numbers import next_transfer_batch_number
-from .models import MaterialTransfer, MaterialTransferEvent, Team, User, utcnow
+from .models import MaterialDispatch, MaterialTransfer, MaterialTransferEvent, Team, User, utcnow
 from .schemas import MaterialTransferDocumentFields, SCRAP_MATERIAL_TYPES
 from .team_constants import EXTERNAL_ENTRY_KINDS
 
@@ -176,6 +176,18 @@ def material_loss_dict(loss):
         "quantity": loss.quantity, "weight": float(loss.weight), "reason": loss.reason,
         "created_by": loss.created_by, "created_at": _utc(loss.created_at),
     }
+
+
+def material_transfer_list_options():
+    # Lists need only the immediate source's identity, not its own relationships.
+    # All joins are scalar/unique, so they preserve page limits and row counts.
+    return (
+        joinedload(MaterialTransfer.urgency),
+        joinedload(MaterialTransfer.stock_source).load_only(MaterialTransfer.batch_no).raiseload("*"),
+        joinedload(MaterialTransfer.dispatch).load_only(MaterialDispatch.dispatch_no),
+        raiseload(MaterialTransfer.history),
+        raiseload(MaterialTransfer.losses),
+    )
 
 
 def material_transfer_dict(

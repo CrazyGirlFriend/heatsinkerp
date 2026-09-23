@@ -377,7 +377,7 @@ def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=
         filters.append(literal_query(query, [stock.c.batch_no, stock.c.serial_no, stock.c.material_name, stock.c.source_batch_no]))
     total = db.scalar(select(func.count()).select_from(stock).where(*filters)) or 0
     rows = db.execute(select(stock).where(*filters).order_by(stock.c.received_at.desc(), stock.c.transfer_id.desc()).offset((page-1)*page_size).limit(page_size)).mappings().all()
-    transfers = {item.id: item for item in db.scalars(select(MaterialTransfer).where(MaterialTransfer.id.in_([row["transfer_id"] for row in rows]))).all()}
+    transfers = {item.id: item for item in db.scalars(select(MaterialTransfer).options(*workflow.material_transfer_list_options()).where(MaterialTransfer.id.in_([row["transfer_id"] for row in rows]))).all()}
     return {"items": [{"transfer": workflow.material_transfer_dict(transfers[row["transfer_id"]], user, include_history=False), **balance_dict(row)} for row in rows],
             "total": total, "page": page, "page_size": page_size}
 
@@ -439,7 +439,7 @@ def list_outbound_batches(db, team_id, user, *, record_filters, query=None, next
     if query and query.strip():
         filters.append(literal_query(query, [mt.batch_no, mt.serial_no, mt.material_name, mt.external_destination]))
     total = db.scalar(select(func.count(mt.id)).where(*filters)) or 0
-    items = db.scalars(select(mt).where(*filters).order_by(mt.created_at.desc(), mt.id.desc())
+    items = db.scalars(select(mt).options(*workflow.material_transfer_list_options()).where(*filters).order_by(mt.created_at.desc(), mt.id.desc())
                        .offset((page - 1) * page_size).limit(page_size)).all()
     return {"items": [workflow.material_transfer_dict(item, user, include_history=False) for item in items],
             "total": total, "page": page, "page_size": page_size}
@@ -490,7 +490,7 @@ def list_dispatches(db, team_id, user, *, record_filters=None, query=None, next_
     group_ids = [row["group_id"] for row in rows if row["group_id"] is not None]
     single_ids = [row["single_id"] for row in rows if row["single_id"] is not None]
     groups = {group.id: group for group in db.scalars(select(MaterialDispatch).where(MaterialDispatch.id.in_(group_ids))).all()}
-    transfers = db.scalars(select(mt).where(or_(mt.dispatch_id.in_(group_ids), mt.id.in_(single_ids))).order_by(mt.id)).all()
+    transfers = db.scalars(select(mt).options(*workflow.material_transfer_list_options()).where(or_(mt.dispatch_id.in_(group_ids), mt.id.in_(single_ids))).order_by(mt.id)).all()
     items = []
     for row in rows:
         if row["group_id"] is not None:

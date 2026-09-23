@@ -105,6 +105,7 @@ def list_material_transfers(
     )
     transfers = db.scalars(
         select(MaterialTransfer)
+        .options(*material_transfer_workflow.material_transfer_list_options())
         .where(*filters)
         .order_by(*order_columns)
         .offset((page - 1) * page_size)

@@ -15,7 +15,7 @@ from .auth import get_current_user
 from .database import get_db
 from .material_analytics import META_FIELDS, SearchField, SerialFilters, serial_predicates, serial_table
 from .material_stock import BALANCE_KEYS, balance_dict, literal_query, require_team, stock_table
-from .material_transfer_workflow import material_transfer_dict
+from .material_transfer_workflow import material_transfer_dict, material_transfer_list_options
 from .models import MaterialLoss, MaterialTransfer, User, utcnow
 from .record_filters import RecordFilters, day_bounds, urgent_serials
 from .serial_urgency import urgency_dict, urgency_map
@@ -180,7 +180,7 @@ def list_group_sources(db, team_id, group_id, user, *, page=1, page_size=20, cur
         statement = statement.where(literal_query(query, [mt.batch_no, mt.serial_no, mt.material_name, mt.source_batch_no]))
     statement = statement.where(*(record_filters or RecordFilters()).predicates(mt.received_at, mt.serial_no))
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
-    rows = db.execute(statement.order_by(mt.received_at.desc(), mt.id.desc()).offset((page - 1) * page_size).limit(page_size)).unique().all()
+    rows = db.execute(statement.options(*material_transfer_list_options()).order_by(mt.received_at.desc(), mt.id.desc()).offset((page - 1) * page_size).limit(page_size)).unique().all()
     return {"items": [{"transfer": material_transfer_dict(row[0], user, include_history=False), **balance_dict(row._mapping)} for row in rows],
             "total": total, "page": page, "page_size": page_size}
 

@@ -109,7 +109,7 @@ def list_receipts(db, team_id, user, *, record_filters=None, query=None, materia
                                                    MaterialTransfer.material_name, MaterialTransfer.source_batch_no,
                                                    MaterialTransfer.external_source, MaterialTransfer.source_team_name, MaterialTransfer.return_dispatch_no]))
     total = db.scalar(select(func.count(MaterialTransfer.id)).where(*filters)) or 0
-    items = db.scalars(select(MaterialTransfer).where(*filters)
+    items = db.scalars(select(MaterialTransfer).options(*workflow.material_transfer_list_options()).where(*filters)
         .order_by(MaterialTransfer.received_at.desc(), MaterialTransfer.id.desc())
         .offset((page-1)*page_size).limit(page_size)).all()
     return {"items": [workflow.material_transfer_dict(item, user, include_history=False) for item in items],
