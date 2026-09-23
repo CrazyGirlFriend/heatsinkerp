@@ -39,8 +39,13 @@ def run():
                     claimed.add(key)
                     complete(db, key, "due-time-probe", attempts)
         assert message_id in claimed, "Immediate message was incorrectly scheduled into the future"
-        results.append({"fraction_us": microsecond, "mysql_rounds_forward": rounded > now,
-                        "immediately_claimable": True})
+        results.append(
+            {
+                "fraction_us": microsecond,
+                "mysql_rounds_forward": rounded > now,
+                "immediately_claimable": True,
+            }
+        )
     print(json.dumps({"mysql_due_time_regression": results, "production_business_writes": 0}))
 
 

@@ -1,7 +1,7 @@
 """Real HTTP stock races, restricted to the disposable capacity MySQL database.
 
-Run inside its test application container with --confirm-disposable. There is
-deliberately no configurable URL, password, or production database argument.
+Run in the test application or a separate client with --confirm-disposable.
+Only loopback/the fixed test alias are accepted, never a production database.
 """
 
 import argparse
@@ -18,11 +18,15 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 
 class Harness:
+    HTTP_HOST = os.environ.get("CAPACITY_HTTP_HOST", "127.0.0.1")
+
     def __init__(self):
         if not (os.environ.get("APP_ENV") == "test"
                 and os.environ.get("MYSQL_HOST") == "validation-db"
                 and os.environ.get("MYSQL_DATABASE") == "heatsink_capacity_20260923"):
             raise RuntimeError("Refusing anything except the isolated capacity database")
+        if self.HTTP_HOST not in ("127.0.0.1", "validation-app"):
+            raise RuntimeError("Refusing a non-test HTTP host")
         from sqlalchemy import func, select
         from app.auth import hash_password
         from app.database import SessionLocal, engine
@@ -65,7 +69,7 @@ class Harness:
         headers = {"Content-Type": "application/json"}
         if actor:
             headers["Authorization"] = "Bearer " + actor["token"]
-        request = Request("http://127.0.0.1:8000" + path, headers=headers, method=method,
+        request = Request("http://" + Harness.HTTP_HOST + ":8000" + path, headers=headers, method=method,
                           data=None if body is None else json.dumps(body).encode())
         try:
             response = build_opener(ProxyHandler({})).open(request, timeout=10)

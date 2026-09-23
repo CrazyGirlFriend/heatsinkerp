@@ -1,7 +1,7 @@
 """Bounded multi-account reads, writes and correlated SSE in isolated MySQL.
 
-Runs beside the test app in its container; not a browser/public-network test.
-Uses verify_mysql_http_concurrency's non-configurable target and DB guard.
+Runs in the test app or a separate client container; not a browser/public-network test.
+Uses verify_mysql_http_concurrency's fixed test targets and disposable DB guard.
 """
 
 import argparse
@@ -73,7 +73,7 @@ class Observer:
         self.thread = Thread(target=self.run, daemon=True)
 
     def run(self):
-        connection = HTTPConnection("127.0.0.1", 8000, timeout=25)
+        connection = HTTPConnection(Harness.HTTP_HOST, 8000, timeout=25)
         suffix = "/stream" if self.index == 0 else "/live/stream" if self.index == 1 else "/changes"
         expected = "inventory" if self.index == 0 else "factory-live" if self.index == 1 else "inventory-changed"
         try:
