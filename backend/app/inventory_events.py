@@ -186,7 +186,10 @@ def persist_notification(db):
         now = utcnow()
         message_id = uuid4().hex
         db.connection().execute(NotificationOutbox.__table__.insert().values(
-            id=message_id, payload=change.envelope(), created_at=now, available_at=now, attempts=0
+            # DATETIME(0) rounds fractions; never schedule an immediate event into
+            # the next second and make the publisher fall back to its 1 s scan.
+            id=message_id, payload=change.envelope(), created_at=now,
+            available_at=now.replace(microsecond=0), attempts=0
         ))
         record("notification.staged", message_id=message_id)
 

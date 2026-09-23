@@ -1,5 +1,5 @@
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -36,6 +36,25 @@ def test_notification_stages_are_correlated_without_business_data(client, wareho
     assert stages["notification.publish_finished"]["message_id"] == staged["message_id"]
     assert stages["notification.publish_finished"]["success"]
     assert "PRIVATE-SERIAL" not in str(records)
+
+
+@pytest.mark.parametrize("microsecond", [1, 499999, 500000, 999999])
+def test_immediate_notification_cannot_round_into_a_future_mysql_second(
+    client,
+    warehouse,  # noqa: F811
+    monkeypatch,
+    microsecond,
+):
+    now = datetime(2026, 9, 23, 23, 59, 59, microsecond)
+    monkeypatch.setattr("app.inventory_events.utcnow", lambda: now)
+    monkeypatch.setattr(app.state.notifications.transport, "ready", False)
+    assert intake(client, warehouse).status_code == 201
+    pending = pending_rows()[0]
+    assert pending.available_at == now.replace(microsecond=0)
+    # DATETIME(0) may round a fractional value forward, even across minute/day boundaries.
+    monkeypatch.setattr(notification_queue, "utcnow", lambda: now)
+    with SessionLocal() as db:
+        assert claim(db, "immediate-test")[0][0] == pending.id
 
 
 def test_many_flushes_in_one_dispatch_emit_one_committed_notification(
