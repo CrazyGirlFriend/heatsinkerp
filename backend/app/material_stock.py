@@ -244,7 +244,7 @@ def create_dispatch(db, team_id, payload, user):
             )
             db.add(dispatch)
             db.flush()
-            db.refresh(dispatch, attribute_names=["created_at"])
+            items = []
             for line in payload.lines:
                 lot = lots[line.source_transfer_id]
                 fields = {field: getattr(lot, field) for field in workflow.DOCUMENT_FIELDS}
@@ -263,7 +263,10 @@ def create_dispatch(db, team_id, payload, user):
                 db.flush()
                 db.refresh(transfer, attribute_names=["created_at", "updated_at"])
                 workflow._record_event(db, transfer, user, "created")
-            result = dispatch_dict(db, dispatch, user)
+                items.append(transfer)
+            # These rows were just created in our transaction; only replays need
+            # the locking reread in dispatch_dict to observe concurrent changes.
+            result = dispatch_dict(db, dispatch, user, items=items)
         return result
     except (IntegrityError, OperationalError) as exc:
         db.rollback()
