@@ -560,8 +560,9 @@ def live_endpoint(db: Session = Depends(get_db)) -> dict:
         for team in report["teams"]:
             team[key] = counts.get(team["id"], 0) if team["id"] else None
     # Group pending internal receipts by receiving team, preserving each batch.
+    pending_by_team = pending_transfer_rows(db, ids)
     for team in report["teams"]:
-        team["pending_transfers"] = pending_transfer_rows(db, team["id"]) if team["id"] else []
+        team["pending_transfers"] = pending_by_team.get(team["id"], [])
     # Only actual team-to-team handoffs create edges. External operations remain
     # visible in the batch feed, never as a fictitious receiving team or robot.
     since = datetime.fromisoformat(report["as_of"]).replace(tzinfo=None) - timedelta(hours=24)
@@ -619,9 +620,11 @@ def live_endpoint(db: Session = Depends(get_db)) -> dict:
     return FactoryLiveResponse.model_validate(payload).model_dump()
 
 
-def pending_transfer_rows(db: Session, team_id: int) -> list[dict]:
+def pending_transfer_rows(db: Session, team_ids: list[int]) -> dict[int, list[dict]]:
+    if not team_ids:
+        return {}
     code = mt.batch_no
-    rows = db.execute(
+    grouped = (
         select(
             code.label("batch_no"),
             mt.serial_no,
@@ -632,18 +635,33 @@ def pending_transfer_rows(db: Session, team_id: int) -> list[dict]:
             func.sum(mt.weight).label("weight"),
             func.max(mt.updated_at).label("updated_at"),
         )
-        .outerjoin(MaterialDispatch, mt.dispatch_id == MaterialDispatch.id)
-        .where(mt.next_team_id == team_id, mt.entry_kind == "transfer", mt.status == "pending")
+        .where(mt.next_team_id.in_(team_ids), mt.entry_kind == "transfer", mt.status == "pending")
         .group_by(code, mt.serial_no, mt.source_team_id, mt.next_team_id)
-        .order_by(func.max(mt.updated_at).desc(), code.desc(), mt.serial_no)
-        .limit(100)
+        .subquery()
+    )
+    # Limit within each receiving team, not across the whole factory.
+    ranked = select(
+        grouped,
+        func.row_number()
+        .over(
+            partition_by=grouped.c.target_id,
+            order_by=(grouped.c.updated_at.desc(), grouped.c.batch_no.desc(), grouped.c.serial_no),
+        )
+        .label("position"),
+    ).subquery()
+    rows = db.execute(
+        select(*(ranked.c[key] for key in grouped.c.keys()))
+        .where(ranked.c.position <= 100)
+        .order_by(ranked.c.target_id, ranked.c.position)
     ).mappings()
-    return [
-        {
-            **dict(row),
-            "quantity": int(row["quantity"] or 0),
-            "weight": float(row["weight"] or 0),
-            "updated_at": row["updated_at"].replace(tzinfo=timezone.utc).isoformat(),
-        }
-        for row in rows
-    ]
+    result = {}
+    for row in rows:
+        result.setdefault(row["target_id"], []).append(
+            {
+                **dict(row),
+                "quantity": int(row["quantity"] or 0),
+                "weight": float(row["weight"] or 0),
+                "updated_at": row["updated_at"].replace(tzinfo=timezone.utc).isoformat(),
+            }
+        )
+    return result
