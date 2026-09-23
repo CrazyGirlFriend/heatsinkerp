@@ -7,12 +7,14 @@ import asyncio
 from contextlib import contextmanager
 from dataclasses import dataclass
 from threading import Lock
+from time import monotonic
 from uuid import uuid4
 
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
 from .models import AuthSession, MaterialDispatch, MaterialLoss, MaterialTransfer, SerialUrgency, Team, User, TeamPurpose, OpeningStockSubmission, NotificationOutbox, utcnow
+from .observability import record
 
 
 @dataclass(frozen=True)
@@ -178,9 +180,16 @@ def persist_notification(db, *_):
     change = db.info.pop(FLUSH_CHANGE, None)
     if change is not None:
         now = utcnow()
+        message_id = uuid4().hex
         db.connection().execute(NotificationOutbox.__table__.insert().values(
-            id=uuid4().hex, payload=change.envelope(), created_at=now, available_at=now, attempts=0
+            id=message_id, payload=change.envelope(), created_at=now, available_at=now, attempts=0
         ))
+        record("notification.staged", message_id=message_id)
+
+
+@event.listens_for(Session, "before_commit")
+def time_commit(db):
+    db.info["notification_commit_started"] = monotonic()
 
 
 @event.listens_for(Session, "after_commit")
@@ -193,7 +202,12 @@ def wake_notification_publisher(db):
             pending[nested.parent] = pending.get(nested.parent, InventoryChange()).merge(change)
         return
     if db.info.pop(PENDING, None):
+        started = db.info.pop("notification_commit_started", None)
+        record("notification.transaction_committed",
+               commit_ms=round((monotonic() - started) * 1000, 2) if started is not None else None)
         outbox_wakeups.publish(InventoryChange())
+    else:
+        db.info.pop("notification_commit_started", None)
 
 
 @event.listens_for(Session, "after_soft_rollback")
@@ -203,3 +217,4 @@ def discard_inventory_change(db, transaction):
     pending.pop(transaction, None)
     if transaction.parent is None:
         db.info.pop(PENDING, None)
+        db.info.pop("notification_commit_started", None)

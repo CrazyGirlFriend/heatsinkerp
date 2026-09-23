@@ -1,6 +1,7 @@
 """Authenticated SSE snapshots, emitted after inventory transactions commit."""
 import asyncio
 import json
+from time import monotonic
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
@@ -14,6 +15,7 @@ from .inventory_events import InventoryChange, inventory_events
 from .inventory_snapshots import SnapshotFrames
 from .material_analytics import period
 from .models import utcnow
+from .observability import record
 
 router = APIRouter(prefix="/api/factory-overview")
 HEARTBEAT_SECONDS = 15
@@ -42,7 +44,11 @@ async def read_inventory(credentials, *, snapshot=True, view="inventory", change
     async def build():
         async with AsyncSessionLocal() as db:
             report = await db.run_sync(live_endpoint if view == "factory-live" else factory_overview)
-            return message(view, report)
+            started = monotonic()
+            frame = message(view, report)
+            record("inventory.snapshot.encoded", view=view,
+                   duration_ms=round((monotonic() - started) * 1000, 2))
+            return frame
 
     return await snapshot_frames.get(view, lambda: (inventory_events.revision, str(factory_day())), build)
 
@@ -67,8 +73,12 @@ async def inventory_stream(request, credentials, view="inventory"):
                 session_only = change is not None and change.sessions and not (change.inventory or change.accounts or change.directory or change.user_ids)
                 if not session_only or credentials is None or token_digest(credentials.credentials) in change.sessions:
                     options = {"change": change} if change is not None else {}
+                    revision = inventory_events.revision
+                    started = monotonic()
                     frame = await read_inventory(credentials, view=view, **options)
                     if frame is not None:
+                        record("inventory.frame.ready", view=view, revision=revision,
+                               duration_ms=round((monotonic() - started) * 1000, 2))
                         yield frame
                 while not changed.is_set():
                     try:

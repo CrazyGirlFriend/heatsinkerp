@@ -22,6 +22,22 @@ def pending_rows():
         )
 
 
+def test_notification_stages_are_correlated_without_business_data(client, warehouse, monkeypatch):  # noqa: F811
+    from test_observability import capture
+
+    records = capture(monkeypatch)
+    result = intake(client, warehouse, serial_no="PRIVATE-SERIAL")
+    assert result.status_code == 201
+    stages = {row["event"]: row for row in records}
+    staged = stages["notification.staged"]
+    assert staged["request_id"] == result.headers["x-request-id"]
+    assert stages["notification.transaction_committed"]["request_id"] == staged["request_id"]
+    assert stages["notification.claimed"]["message_id"] == staged["message_id"]
+    assert stages["notification.publish_finished"]["message_id"] == staged["message_id"]
+    assert stages["notification.publish_finished"]["success"]
+    assert "PRIVATE-SERIAL" not in str(records)
+
+
 def test_broker_outage_keeps_committed_inventory_readable_and_notification_durable(
     client,
     warehouse,  # noqa: F811

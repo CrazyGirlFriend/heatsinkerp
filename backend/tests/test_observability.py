@@ -3,7 +3,7 @@ import json
 import traceback
 
 import pytest
-from app.observability import RequestLogMiddleware, logger, request_id
+from app.observability import RequestLogMiddleware, logger, measure_database, request_id
 from fastapi import HTTPException
 
 
@@ -28,9 +28,43 @@ def test_request_id_is_local_and_route_is_template(client, monkeypatch):
     assert records[-1]["route"] == "/api/teams/{team_id}"
     assert records[-1]["request_id"] == correlation
     assert records[-1]["is_stream"] is False
+    assert records[-1]["sql_count"] > 0
+    assert 0 <= records[-1]["sql_ms"] <= records[-1]["duration_ms"]
     assert 0 <= records[-1]["first_body_ms"] <= records[-1]["duration_ms"]
     assert "SECRET" not in json.dumps(records)
     assert request_id.get() is None
+
+
+def test_database_timing_counts_failures_without_logging_sql_or_parameters(client, monkeypatch):
+    from app.database import SessionLocal
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+
+    records = capture(monkeypatch)
+    with measure_database() as timing, SessionLocal() as db:
+        db.execute(text("SELECT :value"), {"value": "PRIVATE-PARAMETER"})
+        with pytest.raises(DBAPIError):
+            db.execute(text("SELECT * FROM PRIVATE_TABLE_DOES_NOT_EXIST"))
+    assert timing.sql_count == 2 and timing.sql_ms > 0
+    assert records == []
+
+
+def test_async_database_measurements_are_task_local(client):
+    from app.database import AsyncSessionLocal
+    from sqlalchemy import text
+
+    async def query(count):
+        with measure_database() as timing:
+            async with AsyncSessionLocal() as db:
+                for _ in range(count):
+                    await db.execute(text("SELECT 1"))
+                    await asyncio.sleep(0)
+            return timing.sql_count
+
+    async def run():
+        assert await asyncio.gather(query(2), query(5)) == [2, 5]
+
+    asyncio.run(run())
 
 
 def test_unexpected_exception_returns_safe_correlated_500(monkeypatch):

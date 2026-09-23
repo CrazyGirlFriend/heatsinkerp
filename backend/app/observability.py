@@ -6,7 +6,9 @@ import json
 import logging
 import time
 import traceback
+from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -15,6 +17,52 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 request_id: ContextVar[str | None] = ContextVar("request_id", default=None)
+
+
+@dataclass
+class DatabaseTiming:
+    sql_count: int = 0
+    sql_ms: float = 0
+
+    def fields(self):
+        return {"sql_count": self.sql_count, "sql_ms": round(self.sql_ms, 2)}
+
+
+database_timing: ContextVar[DatabaseTiming | None] = ContextVar("database_timing", default=None)
+
+
+@contextmanager
+def measure_database():
+    timing = DatabaseTiming()
+    token = database_timing.set(timing)
+    try:
+        yield timing
+    finally:
+        database_timing.reset(token)
+
+
+def instrument_database(engine):
+    """Measure driver waits without logging SQL, parameters or returned data."""
+    from sqlalchemy import event
+
+    def before(_connection, _cursor, _statement, _parameters, context, _many):
+        timing = database_timing.get()
+        if timing is not None:
+            timing.sql_count += 1
+            context._heatsink_timing = (timing, time.monotonic())
+
+    def finish(context):
+        measured = getattr(context, "_heatsink_timing", None)
+        if measured is not None:
+            timing, started = measured
+            timing.sql_ms += (time.monotonic() - started) * 1000
+            context._heatsink_timing = None
+
+    event.listen(engine, "before_cursor_execute", before)
+    event.listen(engine, "after_cursor_execute", lambda _c, _cu, _s, _p, ctx, _m: finish(ctx))
+    event.listen(engine, "handle_error", lambda error: finish(error.execution_context))
+
+
 logger = logging.getLogger("heatsink.application")
 if not logger.handlers:
     handler = logging.StreamHandler()
@@ -56,6 +104,8 @@ class RequestLogMiddleware:
         # Generate locally: untrusted headers must not inject secrets into logs.
         correlation = uuid4().hex
         token = request_id.set(correlation)
+        timing = DatabaseTiming()
+        database_token = database_timing.set(timing)
         started = time.monotonic()
         status = 499
         response_started = False
@@ -106,5 +156,7 @@ class RequestLogMiddleware:
                 duration_ms=round((time.monotonic() - started) * 1000, 2),
                 is_stream=is_stream,
                 first_body_ms=first_body_ms,
+                **timing.fields(),
             )
+            database_timing.reset(database_token)
             request_id.reset(token)

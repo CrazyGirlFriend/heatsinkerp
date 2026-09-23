@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from time import monotonic
 
-from .observability import record
+from .observability import measure_database, record
 
 VIEWS = frozenset(("inventory", "factory-live"))
 
@@ -29,11 +29,14 @@ class SnapshotFrames:
 
             async def compute():
                 started = monotonic()
-                frame = await build()
+                with measure_database() as timing:
+                    frame = await build()
                 record(
                     "inventory.snapshot.built",
                     view=view if isinstance(view, str) else view[0],
                     duration_ms=round((monotonic() - started) * 1000, 2),
+                    revision=key[2][0],
+                    **timing.fields(),
                 )
                 return frame
 

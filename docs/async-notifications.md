@@ -31,6 +31,14 @@
 
 RabbitMQ 当前为单节点，具备进程/连接重启恢复能力，不等于跨机器高可用；服务器磁盘损坏仍需备份恢复。异步化也不能消除数据库锁等待或 CPU 瓶颈，不能凭代码结构直接承诺在线人数或 QPS。
 
+## 延迟诊断（本地修复，尚未发布）
+
+日志按请求 ID 串联业务提交，并按消息 ID 串联 `notification.staged`、`notification.claimed`、`notification.publish_finished` 和 `notification.consumed`。`notification.transaction_committed` 只在业务提交成功后记录；`commit_ms` 为提交阶段（包括该阶段触发的 flush），不是整笔业务处理时间。回滚的 staged 记录不代表消息已发送。
+
+HTTP 请求与大屏构建分别记录 SQL 次数、驱动等待时间；快照编码和 SSE 帧就绪时间单独记录。驱动计时包含等待期间的调度，不包括连接池领取、SQL 编译及最终数据库提交；不能把总耗时减 SQL 时间全解释成 CPU 时间。消费日志的本地 revision 用于关联随后的快照，不是跨进程业务版本号。SSE 帧就绪也不等于浏览器已绘制。
+
+这些日志不输出 SQL 文本、参数、业务载荷、令牌或密码。数据库 outbox 时间列的精度不足以单独推算毫秒级推送耗时，应使用关联日志和客户端端到端计时。
+
 ## 隔离验证
 
 真实 MySQL 8.4、RabbitMQ 4.3.6 和两个独立后端进程已验证跨进程广播、重复消息不重复入账、非法消息进入死信队列。停止 RabbitMQ 后业务提交成功且通知留在 outbox，重启后待发数量从 1 降至 0，两端重新收到最新状态。异步 MySQL 等待期间事件循环仍可推进，不只检查函数名是否写了 `async`。

@@ -9,6 +9,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import NullPool, StaticPool
 
 from .config import settings
+from .observability import instrument_database
 
 
 class Base(DeclarativeBase):
@@ -45,6 +46,8 @@ def _async_options():
 
 _async_url, _async_engine_options = _async_options()
 async_engine = create_async_engine(_async_url, **_async_engine_options)
+instrument_database(engine)
+instrument_database(async_engine.sync_engine)
 AsyncSessionLocal = async_sessionmaker(async_engine, autoflush=False, expire_on_commit=False)
 
 
