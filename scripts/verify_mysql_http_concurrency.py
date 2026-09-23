@@ -203,6 +203,28 @@ def run_races(qa):
     assert qa.dispatch(qa.warehouse[0], lot, "hundred-line-bulk-out", lines=lines) == (status, data)
     qa.expect_balance(lot, 0)
     results["hundred_line_bulk_replay"] = status
+    first = data["items"][0]
+    assert qa.confirm(qa.receivers[0], first, "hundred-line-confirm")[0] == 200
+    qa.request(qa.actors[0], "/api/serial-urgency", {
+        "serial_no": lot["serial_no"].upper(), "urgent": True,
+        "reason": "隔离批量重试验证", "expected_version": 0,
+    }, method="PUT")
+    replay_status, replay = qa.dispatch(qa.warehouse[0], lot, "hundred-line-bulk-out", lines=lines)
+    assert replay_status == 201 and replay["items"][0]["status"] == "received"
+    assert replay["items"][0]["allowed_actions"] == []
+    assert all(item["urgency"]["urgent"] for item in replay["items"])
+    assert all(item["status"] == "pending" for item in replay["items"][1:])
+    qa.expect_balance(lot, 0)
+    qa.expect_balance(first, 1)
+    results["bulk_replay_latest_state_and_collation"] = replay_status
+    lot = qa.receipt("receipt-replay-loss")
+    assert qa.loss(qa.warehouse[0], lot, "receipt-replay-loss-record", 1)[0] == 201
+    retried_receipt = qa.receipt("receipt-replay-loss")
+    assert retried_receipt["id"] == lot["id"]
+    assert len(retried_receipt["loss_records"]) == 1
+    assert [event["action"] for event in retried_receipt["history"]] == ["stocked"]
+    qa.expect_balance(lot, 99)
+    results["receipt_replay_latest_loss"] = "passed"
     lot = qa.receipt("casefolded-urgency")
     qa.request(qa.actors[0], "/api/serial-urgency", {
         "serial_no": lot["serial_no"].upper(), "urgent": True,

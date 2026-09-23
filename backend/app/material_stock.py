@@ -15,7 +15,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import case, func, or_, select, union_all, literal
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm import lazyload
+from sqlalchemy.orm import lazyload, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
 from .auth import actor_name
@@ -314,13 +314,24 @@ def dispatch_dict(db, dispatch, user, *, items=None, include_history=False):
         # This branch is used by write/replay transactions. A waiter can have
         # an older REPEATABLE READ snapshot than the newly committed header;
         # its lines must also use a current read, never an empty old snapshot.
-        items = db.scalars(select(MaterialTransfer).options(lazyload("*")).where(
+        items = db.scalars(select(MaterialTransfer).options(
+            lazyload("*"),
+            # Keep the locking query confined to transfer rows. Load scalar
+            # response relationships in batches, without locking joined teams
+            # or recursively following the source's own history/relationships.
+            selectinload(MaterialTransfer.urgency),
+            selectinload(MaterialTransfer.stock_source).load_only(MaterialTransfer.batch_no).raiseload("*"),
+            selectinload(MaterialTransfer.source_team),
+            selectinload(MaterialTransfer.next_team),
+        ).where(
             MaterialTransfer.dispatch_id == dispatch.id
         ).order_by(MaterialTransfer.id).with_for_update().execution_options(populate_existing=True)).all()
         # A creation retry can have read the header before batch confirmation
         # committed. Refresh its confirmation metadata after the line locks.
         dispatch = db.scalar(select(MaterialDispatch).where(MaterialDispatch.id == dispatch.id)
                              .with_for_update().execution_options(populate_existing=True))
+        for item in items:
+            set_committed_value(item, "dispatch", dispatch)
     if dispatch.dispatch_no is None:
         # This is a retry ledger, not a business document or a second batch identity.
         return {"items": [workflow.material_transfer_dict(item, user, include_history=include_history) for item in items]}
