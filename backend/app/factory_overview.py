@@ -238,7 +238,9 @@ def recent_batches(db, involved, limit=12):
     ]
 
 
-def factory_overview(db: Session, days: int = 30, recent_limit: int = 12) -> dict:
+def factory_overview(
+    db: Session, days: int = 30, recent_limit: int = 12, *, include_analytics: bool = True
+) -> dict:
     now = utcnow()
     dates, start, end = period(days, now)
     configured = {
@@ -347,6 +349,33 @@ def factory_overview(db: Session, days: int = 30, recent_limit: int = 12) -> dic
         "quantity": int(pending_total["quantity"] or 0),
         "weight": float(pending_total["weight"] or 0),
     }
+    report = {
+        "as_of": now.replace(tzinfo=timezone.utc).isoformat(),
+        "days": days,
+        "teams": teams,
+        "totals": totals,
+        "recent_batches": recent_batches(db, involved, recent_limit),
+        "pending": pending_amount,
+        "material_types": amounts(
+            db,
+            select(
+                func.coalesce(stock.c.material_type, "unknown").label("key"),
+                func.sum(stock.c.on_hand_quantity).label("quantity"),
+                func.sum(stock.c.on_hand_weight).label("weight"),
+            )
+            .where(in_scope, remaining)
+            .group_by(stock.c.material_type),
+        ),
+        "legacy_received_count": db.scalar(
+            select(func.count(mt.id)).where(
+                mt.next_team_id.in_(ids), mt.status == "received", mt.stock_tracked.is_(False)
+            )
+        )
+        or 0,
+    }
+    # The live board consumes only the shared balances and batch state, not charts.
+    if not include_analytics:
+        return report
     bucket = case(
         *[(condition, key) for key, condition in age_conditions(mt.created_at, now).items()]
     )
@@ -431,16 +460,6 @@ def factory_overview(db: Session, days: int = 30, recent_limit: int = 12) -> dic
         }
         for key, values in movement.items()
     }
-    types = amounts(
-        db,
-        select(
-            func.coalesce(stock.c.material_type, "unknown").label("key"),
-            func.sum(stock.c.on_hand_quantity).label("quantity"),
-            func.sum(stock.c.on_hand_weight).label("weight"),
-        )
-        .where(in_scope, remaining)
-        .group_by(stock.c.material_type),
-    )
     age_bucket = case(
         *[(condition, key) for key, condition in age_conditions(stock.c.received_at, now).items()],
         else_="unknown",
@@ -458,26 +477,12 @@ def factory_overview(db: Session, days: int = 30, recent_limit: int = 12) -> dic
             .group_by(age_bucket),
         )
     }
-    legacy = (
-        db.scalar(
-            select(func.count(mt.id)).where(
-                mt.next_team_id.in_(ids), mt.status == "received", mt.stock_tracked.is_(False)
-            )
-        )
-        or 0
-    )
     return {
-        "as_of": now.replace(tzinfo=timezone.utc).isoformat(),
-        "days": days,
-        "teams": teams,
-        "totals": totals,
+        **report,
         "stock_matrix": stock_matrix(db, teams),
         "material_ranking": stock_rankings(db, stock, in_scope, remaining, stock.c.material_name),
         "serial_ranking": stock_rankings(db, stock, in_scope, remaining, stock.c.serial_no),
-        "recent_batches": recent_batches(db, involved, recent_limit),
-        "pending": pending_amount,
         "period_totals": period_totals,
-        "material_types": types,
         "trend": [
             {
                 "key": day.isoformat(),
@@ -498,7 +503,6 @@ def factory_overview(db: Session, days: int = 30, recent_limit: int = 12) -> dic
             }
             for key, label in AGE_LABELS.items()
         ],
-        "legacy_received_count": legacy,
     }
 
 
@@ -510,7 +514,7 @@ def overview_endpoint(days: Days = 30, db: Session = Depends(get_db)):
 @router.get("/live", response_model=FactoryLiveResponse)
 def live_endpoint(db: Session = Depends(get_db)) -> dict:
     """Visual status board using the same independent batch identities as the ledger."""
-    report = factory_overview(db, recent_limit=100)
+    report = factory_overview(db, recent_limit=100, include_analytics=False)
     live_stock_classification(db, report)
     ids = [team["id"] for team in report["teams"] if team["id"]]
     batch_key = mt.batch_no
