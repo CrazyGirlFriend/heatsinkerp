@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from asyncio import to_thread
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -13,17 +14,33 @@ from .access_gate import SiteAccessGate, SiteAccessMiddleware, create_access_rou
 from .api import public_router, router
 from .auth import ensure_initial_admin
 from .config import settings
-from .database import Base, SessionLocal, engine
+from .database import Base, SessionLocal, async_engine, engine
 from .observability import RequestLogMiddleware
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
+def initialize():
     if settings.auto_create_tables:
         Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
         ensure_initial_admin(db)
-    yield
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    await to_thread(initialize)
+    from .notification_queue import NotificationService
+
+    service = NotificationService()
+    application.state.notifications = service
+    await service.start()
+    try:
+        yield
+    finally:
+        await service.stop()
+        from .factory_stream import snapshot_frames
+
+        await snapshot_frames.close()
+        await async_engine.dispose()
 
 
 app = FastAPI(
@@ -69,5 +86,5 @@ app.include_router(router)
 
 
 @app.get("/health", include_in_schema=False)
-def root_health() -> dict[str, str]:
+async def root_health() -> dict[str, str]:
     return {"status": "ok"}

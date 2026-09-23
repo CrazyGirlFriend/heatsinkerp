@@ -78,8 +78,8 @@ def test_admin_account_changes_refresh_identity_without_invalidating_stock(clien
     change = publish.call_args.args[0]
     assert change.accounts and not change.inventory
     assert inventory_events.revision == revision
-    assert factory_stream.read_inventory(credentials(client.headers), change=change) is None
-    frame = factory_stream.read_inventory(credentials(warehouse["headers"]), view="inventory-changed", change=change)
+    assert asyncio.run(factory_stream.read_inventory(credentials(client.headers), change=change)) is None
+    frame = asyncio.run(factory_stream.read_inventory(credentials(warehouse["headers"]), view="inventory-changed", change=change))
     payload = json.loads(frame.split("data: ", 1)[1])
     assert payload == {"changed": True, "team_ids": [], "accounts_changed": True,
                        "directory_changed": False, "current_user_changed": True}

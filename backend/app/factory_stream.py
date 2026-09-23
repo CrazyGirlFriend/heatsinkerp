@@ -5,11 +5,10 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.security import HTTPAuthorizationCredentials
-from starlette.concurrency import run_in_threadpool
 from starlette.responses import StreamingResponse
 
-from .auth import bearer_scheme, get_auth_context, token_digest
-from .database import SessionLocal
+from .auth import bearer_scheme, read_auth_context, token_digest
+from .database import AsyncSessionLocal
 from .factory_overview import factory_overview, live_endpoint
 from .inventory_events import InventoryChange, inventory_events
 from .inventory_snapshots import SnapshotFrames
@@ -25,11 +24,11 @@ def factory_day():
     return period(1, utcnow())[0][0]
 
 
-def read_inventory(credentials, *, snapshot=True, view="inventory", change=None):
-    # Recheck each caller, including cache hits; release auth connections before
-    # waiting for the shared report. No credentials or permissions enter the cache.
-    with SessionLocal() as db:
-        context = get_auth_context(credentials, db)
+async def read_inventory(credentials, *, snapshot=True, view="inventory", change=None):
+    # Recheck every caller and release auth connections before an overlapping
+    # report is shared. Completed reports are never cached.
+    async with AsyncSessionLocal() as db:
+        context = await db.run_sync(lambda session: read_auth_context(credentials, session))
         user_id = context.user.id
     if not snapshot:
         return None
@@ -40,12 +39,12 @@ def read_inventory(credentials, *, snapshot=True, view="inventory", change=None)
     if change is not None and not change.inventory:
         return None
 
-    def build():
-        with SessionLocal() as db:
-            report = live_endpoint(db) if view == "factory-live" else factory_overview(db)
+    async def build():
+        async with AsyncSessionLocal() as db:
+            report = await db.run_sync(live_endpoint if view == "factory-live" else factory_overview)
             return message(view, report)
 
-    return snapshot_frames.get(view, lambda: (inventory_events.revision, str(factory_day())), build)
+    return await snapshot_frames.get(view, lambda: (inventory_events.revision, str(factory_day())), build)
 
 
 def message(event, data):
@@ -61,12 +60,14 @@ async def inventory_stream(request, credentials, view="inventory"):
                 if not request.app.state.site_access_gate.is_unlocked(request):
                     yield message("access-required", {})
                     return
+                if not request.app.state.notifications.transport.ready:
+                    return  # EOF makes clients show reconnecting, never a false live state.
                 # Session-only changes don't make unrelated clients query auth
                 # or stock. Heartbeats continue to validate every connection.
                 session_only = change is not None and change.sessions and not (change.inventory or change.accounts or change.directory or change.user_ids)
                 if not session_only or credentials is None or token_digest(credentials.credentials) in change.sessions:
                     options = {"change": change} if change is not None else {}
-                    frame = await run_in_threadpool(read_inventory, credentials, view=view, **options)
+                    frame = await read_inventory(credentials, view=view, **options)
                     if frame is not None:
                         yield frame
                 while not changed.is_set():
@@ -77,7 +78,9 @@ async def inventory_stream(request, credentials, view="inventory"):
                             yield message("access-required", {})
                             return
                         # Heartbeats validate access but never poll inventory totals.
-                        await run_in_threadpool(read_inventory, credentials, snapshot=False)
+                        await read_inventory(credentials, snapshot=False)
+                        if not request.app.state.notifications.transport.ready:
+                            return
                         # Today's robot totals and rolling ledger periods must
                         # expire at local midnight even if nobody moves stock.
                         if view != "inventory" and factory_day() != day:
@@ -102,7 +105,9 @@ async def inventory_endpoint(request: Request, credentials: HTTPAuthorizationCre
 async def stream_response(request, credentials, view):
     # Reject invalid credentials as HTTP 401 before opening the stream, without
     # a yielded request dependency retaining a DB session for its lifetime.
-    await run_in_threadpool(read_inventory, credentials, snapshot=False)
+    await read_inventory(credentials, snapshot=False)
+    if not request.app.state.notifications.transport.ready:
+        raise HTTPException(503, "实时通知正在重连，请稍后重试", headers={"Retry-After": "3"})
     return StreamingResponse(inventory_stream(request, credentials, view), media_type="text/event-stream",
         headers={"Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no"})
 

@@ -35,8 +35,9 @@
 
 - `frontend/`：Vue 3、TypeScript、Vite、Vue Router、Element Plus 自定义工业主题
 - 前端状态与数据：Pinia、Axios；图表与条形码：ECharts、JsBarcode
-- `backend/`：FastAPI、SQLAlchemy、Alembic
+- `backend/`：FastAPI 异步接口、SQLAlchemy AsyncSession/asyncmy、Alembic
 - 数据库：MySQL 8.4，`utf8mb4`
+- 实时通知：事务 outbox + RabbitMQ + SSE；库存余额与业务同事务落库，不保留短期库存响应缓存，见 [异步接口与消息队列](docs/async-notifications.md)
 - 运行入口：Nginx 托管单页应用并反向代理 FastAPI，Docker Compose 组合部署
 
 一期业务边界见 [一期物料流转口径](docs/phase-1-material-transfer.md)，现场操作见 [一期用户使用说明](docs/phase-1-user-guide.md)，技术目录和数据流见 [前端与系统架构](docs/frontend-architecture.md)。
@@ -49,7 +50,7 @@
 cp .env.example .env
 ```
 
-编辑 `.env` 中的 MySQL 密码和 `SEED_ADMIN_PASSWORD`，然后启动：
+编辑 `.env` 中的 MySQL 密码、`MQ_PASSWORD` 和 `SEED_ADMIN_PASSWORD`，然后启动：
 
 ```bash
 docker compose up --build -d
@@ -69,9 +70,9 @@ docker compose logs -f backend
 docker compose down
 ```
 
-MySQL 数据保存在 `mysql_data` 卷中；普通停止不会删除数据。后端容器启动时会先执行 `alembic upgrade head`。
+MySQL 数据保存在 `mysql_data` 卷中，RabbitMQ 使用 `rabbitmq_data` 卷；普通停止不会删除数据。后端容器启动时会先执行 `alembic upgrade head`。升级已有系统须先停写、备份并演练余额回填。
 
-首次配置本期八个正式班组，在迁移至当前 `20260912_0011` 后运行：
+首次配置本期八个正式班组，在迁移至当前版本后运行：
 
 ```bash
 docker compose exec backend python -m app.configure_material_teams

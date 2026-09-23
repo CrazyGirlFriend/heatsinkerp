@@ -1,4 +1,4 @@
-"""Commit-driven notifications for the single-worker inventory stream.
+"""Transactional outbox production and local fan-out after MQ consumption.
 
 Only committed ORM changes wake subscribers. Each subscriber has one event,
 so bursts coalesce instead of accumulating an unbounded notification queue.
@@ -7,11 +7,12 @@ import asyncio
 from contextlib import contextmanager
 from dataclasses import dataclass
 from threading import Lock
+from uuid import uuid4
 
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
-from .models import AuthSession, MaterialDispatch, MaterialLoss, MaterialTransfer, SerialUrgency, Team, User, TeamPurpose, OpeningStockSubmission
+from .models import AuthSession, MaterialDispatch, MaterialLoss, MaterialTransfer, SerialUrgency, Team, User, TeamPurpose, OpeningStockSubmission, NotificationOutbox, utcnow
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,27 @@ class InventoryChange:
         return {"changed": True, "team_ids": None if self.team_ids is None else sorted(self.team_ids),
                 "directory_changed": self.directory, "accounts_changed": self.accounts,
                 "current_user_changed": user_id in self.user_ids}
+
+    def envelope(self):
+        return {"team_ids": None if self.team_ids is None else sorted(self.team_ids),
+                "directory": self.directory, "accounts": self.accounts,
+                "user_ids": sorted(self.user_ids), "sessions": sorted(self.sessions)}
+
+    @classmethod
+    def from_envelope(cls, value):
+        if not isinstance(value, dict) or set(value) != {"team_ids", "directory", "accounts", "user_ids", "sessions"}:
+            raise ValueError("Invalid notification envelope")
+        for key in ("team_ids", "user_ids", "sessions"):
+            items = value[key]
+            if key == "team_ids" and items is None:
+                continue
+            kind = str if key == "sessions" else int
+            if not isinstance(items, list) or not all(type(item) is kind for item in items):
+                raise ValueError("Invalid notification scope")
+        if type(value["directory"]) is not bool or type(value["accounts"]) is not bool:
+            raise ValueError("Invalid notification flags")
+        return cls(None if value["team_ids"] is None else frozenset(value["team_ids"]),
+                   value["directory"], value["accounts"], frozenset(value["user_ids"]), frozenset(value["sessions"]))
 
 
 class ChangeSignal(asyncio.Event):
@@ -96,8 +118,10 @@ class InventoryEvents:
 
 
 inventory_events = InventoryEvents()
+outbox_wakeups = InventoryEvents()
 WATCHED = (MaterialTransfer, MaterialLoss, MaterialDispatch, SerialUrgency, Team, User, AuthSession, TeamPurpose, OpeningStockSubmission)
 PENDING = "inventory_changed_transactions"
+FLUSH_CHANGE = "notification_flush_change"
 
 
 def affected_teams(row):
@@ -143,13 +167,24 @@ def remember_inventory_change(db, *_):
         if isinstance(row, WATCHED) and (row in db.new or row in db.deleted or db.is_modified(row, include_collections=False)):
             change = change.merge(change_for(row, db))
     if change != InventoryChange():
+        db.info[FLUSH_CHANGE] = change
         transaction = db.get_nested_transaction() or db.get_transaction()
         pending = db.info.setdefault(PENDING, {})
         pending[transaction] = pending.get(transaction, InventoryChange()).merge(change)
 
 
+@event.listens_for(Session, "after_flush_postexec")
+def persist_notification(db, *_):
+    change = db.info.pop(FLUSH_CHANGE, None)
+    if change is not None:
+        now = utcnow()
+        db.connection().execute(NotificationOutbox.__table__.insert().values(
+            id=uuid4().hex, payload=change.envelope(), created_at=now, available_at=now, attempts=0
+        ))
+
+
 @event.listens_for(Session, "after_commit")
-def publish_inventory_change(db):
+def wake_notification_publisher(db):
     pending = db.info.get(PENDING, {})
     nested = db.get_nested_transaction()
     if nested is not None:
@@ -158,14 +193,12 @@ def publish_inventory_change(db):
             pending[nested.parent] = pending.get(nested.parent, InventoryChange()).merge(change)
         return
     if db.info.pop(PENDING, None):
-        change = InventoryChange()
-        for value in pending.values():
-            change = change.merge(value)
-        inventory_events.publish(change)
+        outbox_wakeups.publish(InventoryChange())
 
 
 @event.listens_for(Session, "after_soft_rollback")
 def discard_inventory_change(db, transaction):
+    db.info.pop(FLUSH_CHANGE, None)
     pending = db.info.get(PENDING, {})
     pending.pop(transaction, None)
     if transaction.parent is None:

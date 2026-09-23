@@ -1,65 +1,59 @@
-"""Bounded, single-flight serialized reads; authentication is never cached here."""
+"""Share only overlapping reads; never retain a completed inventory response."""
 
-from collections import OrderedDict
-from collections.abc import Callable
-from threading import Condition
+import asyncio
+from collections.abc import Awaitable, Callable
 from time import monotonic
 
 from .observability import record
 
-# Expiry is checked only on demand, not by a polling task. Commit revisions
-# invalidate immediately; the age bound also keeps new viewers' time windows fresh.
-MAX_AGE_SECONDS = 2.0
 VIEWS = frozenset(("inventory", "factory-live"))
 
 
 class SnapshotFrames:
     def __init__(self, *, views: frozenset[str] | None = VIEWS, capacity: int = 2) -> None:
-        self._condition = Condition()
         self._views = views
         self._capacity = capacity
-        self._frames: OrderedDict[
-            str | tuple[str, int, str], tuple[tuple[int, str], float, str]
-        ] = OrderedDict()
-        self._building: set[str | tuple[str, int, str]] = set()
+        self._building: dict[tuple, asyncio.Task] = {}
 
-    def get(
+    async def get(
         self,
         view: str | tuple[str, int, str],
         revision: Callable[[], tuple[int, str]],
-        build: Callable[[], str],
+        build: Callable[[], Awaitable[str]],
     ) -> str:
         if self._views is not None and view not in self._views:
             raise ValueError("Unknown inventory snapshot view")
-        while True:
-            with self._condition:
-                version = revision()
-                cached = self._frames.get(view)
-                if cached and cached[0] == version and monotonic() - cached[1] < MAX_AGE_SECONDS:
-                    self._frames.move_to_end(view)
-                    return cached[2]
-                if view in self._building:
-                    self._condition.wait()
-                    continue
-                self._building.add(view)
-            started = monotonic()
-            try:
-                # No database session or frame computation under the condition lock.
-                frame = build()
-                with self._condition:
-                    if revision() == version:
-                        self._frames[view] = (version, monotonic(), frame)
-                        self._frames.move_to_end(view)
-                        while len(self._frames) > self._capacity:
-                            self._frames.popitem(last=False)
+        key = (asyncio.get_running_loop(), view, revision())
+        task = self._building.get(key)
+        if task is None:
+
+            async def compute():
+                started = monotonic()
+                frame = await build()
                 record(
                     "inventory.snapshot.built",
-                    # Team keys contain search criteria; never put them in logs.
                     view=view if isinstance(view, str) else view[0],
                     duration_ms=round((monotonic() - started) * 1000, 2),
                 )
                 return frame
-            finally:
-                with self._condition:
-                    self._building.discard(view)
-                    self._condition.notify_all()
+
+            if len(self._building) >= self._capacity:
+                return await compute()
+            task = asyncio.create_task(compute(), name="inventory-frame")
+            self._building[key] = task
+
+            def finished(result):
+                self._building.pop(key, None)
+                if not result.cancelled():
+                    result.exception()  # Retrieve errors even if every waiter disconnected.
+
+            task.add_done_callback(finished)
+        return await asyncio.shield(task)
+
+    async def close(self):
+        tasks = [
+            task for key, task in self._building.items() if key[0] is asyncio.get_running_loop()
+        ]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)

@@ -6,7 +6,7 @@ an actual received lot; it also scopes drill-down and outbound source selection.
 from datetime import date, timezone
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import Depends, HTTPException, Path, Query
 from pydantic import Field, model_validator
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
@@ -20,7 +20,9 @@ from .models import MaterialLoss, MaterialTransfer, User, utcnow
 from .record_filters import RecordFilters, day_bounds, urgent_serials
 from .serial_urgency import urgency_dict, urgency_map
 from .warehouse_receipts import require_warehouse
-from .team_read_snapshots import team_read_response
+from .async_read_response import team_read_response
+
+from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/team-materials", tags=["classified inventory"])
 mt = MaterialTransfer
@@ -188,8 +190,8 @@ def list_group_sources(db, team_id, group_id, user, *, page=1, page_size=20, cur
 
 @router.get("/{team_id}/inventory")
 def inventory_endpoint(filters: Annotated[WarehouseInventoryFilters, Query()], team_id: int = Path(ge=1),
-                       _: User = Depends(get_current_user)):
-    return team_read_response("team-inventory", team_id, lambda db: list_inventory(db, team_id, filters), filters.model_dump_json())
+                       _: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return team_read_response(db, lambda session: list_inventory(session, team_id, filters))
 
 
 @router.get("/{team_id}/inventory/{group_id}/sources")

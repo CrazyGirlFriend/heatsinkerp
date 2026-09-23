@@ -1,7 +1,7 @@
 import asyncio
 import json
 from decimal import Decimal
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import HTTPException
@@ -35,18 +35,20 @@ def test_events_only_after_commit_never_reads_rollbacks_or_savepoint_rollback(cl
         row = Team(code='EVENT-TEST', name='推送测试', kind='normal')
         db.add(row); db.flush()
         publish.assert_not_called()
-        db.commit(); publish.assert_called_once()
+        db.commit(); publish.assert_not_called()
+        client.drain_notifications(); publish.assert_called_once()
         publish.reset_mock()
-        db.commit(); publish.assert_not_called()
+        db.commit(); client.drain_notifications(); publish.assert_not_called()
         row.name = '未提交'; db.flush(); db.rollback()
-        db.commit(); publish.assert_not_called()
+        db.commit(); client.drain_notifications(); publish.assert_not_called()
         with db.begin_nested() as nested:
             row.name = '回滚保存点'; db.flush(); nested.rollback()
-        db.commit(); publish.assert_not_called()
+        db.commit(); client.drain_notifications(); publish.assert_not_called()
         with db.begin_nested():
             row.name = '已提交保存点'; db.flush()
         publish.assert_not_called()
-        db.commit(); publish.assert_called_once()
+        db.commit(); publish.assert_not_called()
+        client.drain_notifications(); publish.assert_called_once()
     publish.reset_mock()
     assert client.get('/api/factory-overview').status_code == 200
     publish.assert_not_called()
@@ -220,7 +222,7 @@ def test_failed_and_replayed_business_writes_do_not_publish(client, warehouse, m
 
 def test_heartbeat_does_not_requery_inventory_and_expired_stream_stops(client, monkeypatch):
     async def run():
-        read = Mock(return_value=factory_stream.message('inventory', {'as_of': 'now', 'totals': {}, 'teams': []}))
+        read = AsyncMock(return_value=factory_stream.message('inventory', {'as_of': 'now', 'totals': {}, 'teams': []}))
         monkeypatch.setattr(factory_stream, 'read_inventory', read)
         monkeypatch.setattr(factory_stream, 'HEARTBEAT_SECONDS', .01)
         stream = factory_stream.inventory_stream(LiveRequest(), None)
@@ -316,7 +318,7 @@ def test_ledger_notifications_do_not_compute_full_reports(client, warehouse, mon
 def test_local_midnight_updates_date_sensitive_views_without_periodic_inventory_reads(client, monkeypatch, view):
     async def run():
         day = ['2026-09-14']
-        read = Mock(return_value=factory_stream.message(view, {'changed': True}))
+        read = AsyncMock(return_value=factory_stream.message(view, {'changed': True}))
         monkeypatch.setattr(factory_stream, 'read_inventory', read)
         monkeypatch.setattr(factory_stream, 'factory_day', lambda: day[0])
         monkeypatch.setattr(factory_stream, 'HEARTBEAT_SECONDS', .01)

@@ -11,6 +11,8 @@
 
 迁移现有系统时，不要同时升级程序、MySQL 或数据库结构。先搬迁实际运行的同一版本，验收后再单独升级。GitHub 中只有代码和示例配置，没有业务数据库、实际密码或密钥。
 
+如果实际运行版本已包含 RabbitMQ，还必须搬迁消息队列镜像、配置和停机备份的数据卷，具体见 [异步/MQ 迁移补充](async-notifications.md#迁移到另一台机器时的补充)。第 4 节原有三服务命令只适用于不含 MQ 的旧版本，不能直接当作四服务的完整备份。
+
 ## 2. 文件和数据分别放在哪里
 
 | 内容 | 当前服务器位置 | 迁移方法 |
@@ -61,6 +63,7 @@ nano /opt/heatsinkrep/.env
 | --- | --- |
 | `MYSQL_DATABASE`、`MYSQL_USER` | 可保留示例名称 |
 | `MYSQL_PASSWORD`、`MYSQL_ROOT_PASSWORD` | 改为不同的强密码，不能保留示例值 |
+| `MQ_USER`、`MQ_PASSWORD` | 新版 RabbitMQ 账号及独立强密码；不公开消息队列端口 |
 | `SEED_ADMIN_PASSWORD` | 新系统初始管理员密码，账号为 `admin` |
 | `SITE_ACCESS_PASSWORD` | 登录前访问锁口令 |
 | `SITE_ACCESS_SECRET` | 新生成的随机签名密钥 |
@@ -100,7 +103,7 @@ dc ps
 
 Compose 自动创建数据库数据卷。后端启动时执行 Alembic 迁移，创建表和初始管理员。不要公开执行、粘贴完整的 `docker compose config` 输出，它可能包含密码；这里只使用 `--quiet` 校验。
 
-确认三个服务均为 `healthy`。首次准备八个正式班组：
+确认所有服务均为 `healthy`（新版为前端、后端、MySQL、RabbitMQ 四个服务）。首次准备八个正式班组：
 
 ```bash
 dc exec -T backend python -m app.configure_material_teams

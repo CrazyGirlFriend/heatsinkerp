@@ -8,7 +8,7 @@ from collections import defaultdict
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import Depends, HTTPException, Path, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, lazyload
 
@@ -17,6 +17,8 @@ from .database import get_db
 from .material_stock import require_team, stock_table
 from .models import MaterialTransfer as MT, MaterialTransferEvent, MaterialLoss, User
 from .record_filters import RecordFilters, day_bounds
+
+from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/team-materials", tags=["serial receipt and dispatch history"])
 

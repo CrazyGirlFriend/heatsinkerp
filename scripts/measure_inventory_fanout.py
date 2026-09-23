@@ -8,7 +8,10 @@ Add --team-reads to exercise concurrent authenticated team API reads via ASGI.
 """
 
 import argparse
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
+from inspect import iscoroutinefunction
 import json
 import logging
 import math
@@ -19,6 +22,7 @@ import sys
 from tempfile import TemporaryDirectory
 from threading import Barrier, Lock
 from time import monotonic
+from unittest.mock import AsyncMock, patch
 
 
 def measure_team_reads(args, engine, token, team_id):
@@ -29,7 +33,11 @@ def measure_team_reads(args, engine, token, team_id):
 
     # One in-process ASGI server, no browser or network listener. Each request
     # still traverses route validation and authentication with the shared actor.
-    with TestClient(app, headers={'Authorization': f'Bearer {token}'}) as client:
+    # This read-only microbenchmark does not connect to any notification broker.
+    from app import database
+    lifecycle = (patch('app.notification_queue.NotificationService.start', new=AsyncMock())
+                 if hasattr(database, 'async_engine') else nullcontext())
+    with lifecycle, TestClient(app, headers={'Authorization': f'Bearer {token}'}) as client:
         for view, module, name in (('overview', material_stock, 'overview'),
                                    ('inventory', warehouse_inventory, 'list_inventory')):
             counts, guard, start = {'builds': 0, 'sql': 0}, Lock(), Barrier(args.clients)
@@ -88,6 +96,7 @@ def main():
         from fastapi.security import HTTPAuthorizationCredentials
         from sqlalchemy import event, func, select
         from app import factory_stream
+        from app import database
         from app.auth import create_session, ensure_initial_admin
         from app.configure_material_teams import configure_material_teams
         from app.database import Base, SessionLocal, engine
@@ -97,6 +106,8 @@ def main():
         from app.team_constants import WAREHOUSE_TEAM_CODE
 
         logger.setLevel(logging.CRITICAL)
+        is_async = iscoroutinefunction(factory_stream.read_inventory)
+        query_engine = database.async_engine.sync_engine if is_async else engine
         try:
             Base.metadata.create_all(engine)
             with SessionLocal() as db:
@@ -114,7 +125,7 @@ def main():
             print(json.dumps({'kind': 'local SQLite fanout microbenchmark', 'material_records': record_count,
                               'clients': args.clients, 'backend': str(args.backend.resolve())}), flush=True)
             if args.team_reads:
-                measure_team_reads(args, engine, token, warehouse_id)
+                measure_team_reads(args, query_engine, token, warehouse_id)
                 return
             for view, name in (('inventory', 'factory_overview'), ('factory-live', 'live_endpoint')):
                 counts, guard, start = {'builds': 0, 'sql': 0}, Lock(), Barrier(args.clients)
@@ -137,13 +148,25 @@ def main():
                     payload = json.loads(frame.split('data: ', 1)[1])
                     return (monotonic() - before) * 1000, payload['totals']
 
+                async def read_async():
+                    before = monotonic()
+                    frame = await factory_stream.read_inventory(credentials, view=view)
+                    payload = json.loads(frame.split('data: ', 1)[1])
+                    return (monotonic() - before) * 1000, payload['totals']
+
+                async def concurrent_reads():
+                    return await asyncio.gather(*(read_async() for _ in range(args.clients)))
+
                 setattr(factory_stream, name, build)
-                event.listen(engine, 'before_cursor_execute', query)
+                event.listen(query_engine, 'before_cursor_execute', query)
                 before = monotonic()
                 try:
-                    with ThreadPoolExecutor(max_workers=args.clients) as pool:
-                        futures = [pool.submit(read) for _ in range(args.clients)]
-                        values = [future.result(timeout=90) for future in futures]
+                    if is_async:
+                        values = asyncio.run(concurrent_reads())
+                    else:
+                        with ThreadPoolExecutor(max_workers=args.clients) as pool:
+                            futures = [pool.submit(read) for _ in range(args.clients)]
+                            values = [future.result(timeout=90) for future in futures]
                     assert all(value[1] == values[0][1] for value in values)
                     durations = sorted(value[0] for value in values)
                     print(json.dumps({'view': view, **counts, 'total_ms': round((monotonic() - before) * 1000, 1),
@@ -151,9 +174,11 @@ def main():
                                       'p95_ms': round(durations[math.ceil(len(values) * .95) - 1], 1),
                                       'identical_totals': True, 'errors': 0}), flush=True)
                 finally:
-                    event.remove(engine, 'before_cursor_execute', query)
+                    event.remove(query_engine, 'before_cursor_execute', query)
                     setattr(factory_stream, name, original)
         finally:
+            if is_async:
+                asyncio.run(database.async_engine.dispose())
             engine.dispose()
 
 

@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import Depends, Path, Query
 from pydantic import BeforeValidator, Field, model_validator
 from sqlalchemy import and_, case, cast, func, or_, select, String
 from sqlalchemy.orm import Session
@@ -16,6 +16,8 @@ from .record_filters import RecordFilters, day_bounds, urgent_serials
 from .serial_urgency import urgency_map, urgency_dict
 from .models import MaterialLoss, MaterialTransfer, utcnow
 from .material_stock import BALANCE_KEYS, balance_dict, literal_query, require_team, stock_table
+
+from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/team-materials", dependencies=[Depends(get_current_user)])
 Age = Literal["lt1", "1_3", "3_7", "ge7"]

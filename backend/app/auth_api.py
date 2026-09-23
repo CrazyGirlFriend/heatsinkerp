@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from asyncio import to_thread
 from datetime import timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import Depends, HTTPException, Response
 from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from .async_api import AsyncAPIRouter as APIRouter
 from .auth import AuthContext, create_session, get_auth_context, verify_password
 from .database import get_db
 from .models import User, utcnow
@@ -29,17 +32,17 @@ def health(db: Session = Depends(get_db)) -> dict:
 
 
 @router.post("/auth/login", response_model=LoginResponse, tags=["authentication"])
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> dict:
-    user = db.scalar(select(User).where(User.username == payload.username))
+async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    user = await db.scalar(select(User).where(User.username == payload.username))
     if (
         user is None
         or not user.active
         or (user.role == "TEAM" and (user.team is None or not user.team.active))
-        or not verify_password(payload.password, user.password_hash)
+        or not await to_thread(verify_password, payload.password, user.password_hash)
     ):
         raise HTTPException(status_code=401, detail="invalid username or password")
-    raw_token, auth_session = create_session(db, user)
-    db.commit()
+    raw_token, auth_session = await db.run_sync(lambda session: create_session(session, user))
+    await db.commit()
     return {
         "access_token": raw_token,
         "token_type": "bearer",

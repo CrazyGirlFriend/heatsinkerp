@@ -287,7 +287,10 @@ def test_stock_changes_push_only_after_commit_and_unlinked_legacy_is_flagged(cli
     assert client.post(url(s, suffix='opening-stock'), headers=s['target_headers'], json=bad).status_code == 422
     publish.assert_not_called()
     assert client.post(url(s, suffix='opening-stock'), headers=s['target_headers'], json=open_payload()).status_code == 201
-    publish.assert_called_once()
+    # A multi-flush transaction can produce several at-least-once MQ messages;
+    # all become visible only after its final commit, then the SSE signal coalesces them.
+    assert publish.called
+    assert all(call.args[0].inventory for call in publish.call_args_list)
     publish.reset_mock()
     history(client, s)
     publish.assert_not_called()

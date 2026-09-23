@@ -1,7 +1,7 @@
 """Process-independent transfer documents, lookup and whole-batch receipt."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from .auth import get_current_user, require_admin
@@ -13,6 +13,8 @@ from .material_transfer_query import search_predicate, team_scope_predicate
 from . import material_transfer_workflow
 from .schemas import (DIRECT_MATERIAL_TYPE_PATTERN, MaterialTransferCreate, MaterialTransferUpdate,
                       MaterialTransferConfirm, MaterialTransferReject, MaterialTransferList, MaterialTransferResponse)
+
+from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
 

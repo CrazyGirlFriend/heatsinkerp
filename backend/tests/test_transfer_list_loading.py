@@ -3,7 +3,7 @@
 from contextlib import contextmanager
 
 import pytest
-from app.database import SessionLocal, engine
+from app.database import SessionLocal, async_engine, engine
 from app.material_transfer_workflow import material_transfer_dict, material_transfer_list_options
 from app.models import MaterialDispatch, MaterialTransfer
 from app.schemas import MaterialTransferResponse
@@ -17,14 +17,19 @@ def read_statements():
     statements = []
 
     def capture(_connection, _cursor, statement, _parameters, _context, _many):
-        if statement.lstrip().upper().startswith("SELECT"):
+        if (
+            statement.lstrip().upper().startswith("SELECT")
+            and "notification_outbox" not in statement
+        ):
             statements.append(statement)
 
     event.listen(engine, "before_cursor_execute", capture)
+    event.listen(async_engine.sync_engine, "before_cursor_execute", capture)
     try:
         yield statements
     finally:
         event.remove(engine, "before_cursor_execute", capture)
+        event.remove(async_engine.sync_engine, "before_cursor_execute", capture)
 
 
 @pytest.fixture()

@@ -21,6 +21,24 @@ services:
       timeout: 5s
       retries: 20
 
+  mq:
+    image: ${RABBITMQ_IMAGE:-rabbitmq:4.3.6-alpine}
+    hostname: heatsink-mq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${MQ_USER:-heatsink}
+      RABBITMQ_DEFAULT_PASS: ${MQ_PASSWORD:-heatsink_mq_dev}
+    ports:
+      - "127.0.0.1:${MQ_PORT:-5672}:5672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   backend:
     build:
       context: ./backend
@@ -31,6 +49,9 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-heatsink_rep}
       MYSQL_USER: ${MYSQL_USER:-heatsink}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-heatsink_dev}
+      MQ_HOST: mq
+      MQ_USER: ${MQ_USER:-heatsink}
+      MQ_PASSWORD: ${MQ_PASSWORD:-heatsink_mq_dev}
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-8080},http://localhost:5173
       AUTO_CREATE_TABLES: "false"
       SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-24}
@@ -49,6 +70,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mq:
+        condition: service_healthy
 
   frontend:
     build:
@@ -61,3 +84,4 @@ services:
 
 volumes:
   mysql_data:
+  rabbitmq_data:

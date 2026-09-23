@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from asyncio import to_thread
+
+from fastapi import Depends, HTTPException, Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from .admin_audit import audit, snapshot
 from .api_errors import conflict as _conflict
 from .api_errors import not_found as _not_found
+from .async_api import AsyncAPIRouter as APIRouter
 from .auth import get_current_user, hash_password, require_admin
 from .database import get_db
 from .history_protection import team_has_historical_references
@@ -192,11 +196,16 @@ def _validated_team(db: Session, role: str, team_id: int | None) -> Team | None:
 
 @router.post("/users", response_model=UserResponse, status_code=201, tags=["administration"])
 @router.post("/accounts", response_model=UserResponse, status_code=201, tags=["administration"])
-def create_user(
+async def create_user(
     payload: UserCreate,
     admin: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
+    password_hash = await to_thread(hash_password, payload.password)
+    return await db.run_sync(lambda session: _create_user(payload, admin, session, password_hash))
+
+
+def _create_user(payload, admin, db, password_hash):
     if payload.role != "TEAM":
         raise HTTPException(
             status_code=422,
@@ -206,7 +215,7 @@ def create_user(
     user = User(
         username=payload.username,
         display_name=payload.display_name,
-        password_hash=hash_password(payload.password),
+        password_hash=password_hash,
         role=payload.role,
         team=team,
         active=payload.active,
@@ -247,12 +256,23 @@ def get_user(
 
 @router.patch("/users/{user_id}", response_model=UserResponse, tags=["administration"])
 @router.patch("/accounts/{user_id}", response_model=UserResponse, tags=["administration"])
-def update_user(
+async def update_user(
     user_id: int,
     payload: UserUpdate,
     admin: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
+    password_hash = (
+        await to_thread(hash_password, payload.password)
+        if "password" in payload.model_fields_set
+        else None
+    )
+    return await db.run_sync(
+        lambda session: _update_user(user_id, payload, admin, session, password_hash)
+    )
+
+
+def _update_user(user_id, payload, admin, db, password_hash):
     user = _get_user_or_404(db, user_id)
     before = snapshot(user)
     supplied = payload.model_fields_set
@@ -288,7 +308,7 @@ def update_user(
     if "active" in supplied:
         user.active = payload.active
     if "password" in supplied:
-        user.password_hash = hash_password(payload.password)
+        user.password_hash = password_hash
     if "password" in supplied or ("active" in supplied and not payload.active):
         for auth_session in user.sessions:
             auth_session.revoked_at = utcnow()

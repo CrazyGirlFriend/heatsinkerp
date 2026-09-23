@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.pool import NullPool, StaticPool
 
 from .config import settings
 
@@ -28,10 +30,24 @@ engine = create_engine(settings.database_url, **_engine_options(settings.databas
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
-def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def _async_options():
+    url = make_url(settings.database_url)
+    if url.get_backend_name() == "mysql":
+        return url.set(drivername="mysql+asyncmy"), _engine_options(settings.database_url)
+    if url.get_backend_name() == "sqlite":
+        if url.database in (None, "", ":memory:"):
+            raise ValueError("Use a SQLite file: async HTTP and maintenance connections must share one database")
+        options = _engine_options(settings.database_url)
+        options["poolclass"] = NullPool
+        return url.set(drivername="sqlite+aiosqlite"), options
+    raise ValueError("Unsupported async database backend")
 
+
+_async_url, _async_engine_options = _async_options()
+async_engine = create_async_engine(_async_url, **_async_engine_options)
+AsyncSessionLocal = async_sessionmaker(async_engine, autoflush=False, expire_on_commit=False)
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as db:
+        yield db

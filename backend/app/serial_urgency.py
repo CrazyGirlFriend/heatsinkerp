@@ -1,12 +1,14 @@
 """Administrative serial flags are independent of locked stock documents."""
 from datetime import timezone
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from .auth import actor_name, get_current_user, require_admin
 from .database import get_db
 from .models import MaterialTransfer, SerialUrgency, SerialUrgencyEvent, User, utcnow
+
+from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/serial-urgency", tags=["serial urgency"])
 

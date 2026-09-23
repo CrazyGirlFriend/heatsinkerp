@@ -1,0 +1,9 @@
+.git/
+.env
+backend/.env
+output/
+**/node_modules/
+**/__pycache__/
+**/*.py[cod]
+**/._*
+**/.DS_Store

@@ -1,6 +1,6 @@
 """One authorized, atomic initialization per team; never overwrite balances."""
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import Depends, HTTPException, Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, OperationalError
@@ -14,6 +14,8 @@ from .schemas import MaterialTransferDocumentFields
 from . import material_stock as stock
 from . import material_transfer_workflow as workflow
 from .team_business import purpose_snapshot
+
+from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/team-materials", tags=["opening stock"])
 

@@ -1,18 +1,22 @@
 """One encrypted configuration, optimistic writes, and saved-configuration testing."""
 from dataclasses import replace
+from asyncio import to_thread
 from urllib.parse import urlsplit
 
 from cryptography.fernet import Fernet, InvalidToken
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .auth import actor_name, require_admin
 from .config import settings
 from .database import SessionLocal, get_db
 from .models import MainSystemConfiguration, User, utcnow
+
+from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/main-system/configuration", tags=["main system configuration"],
                    dependencies=[Depends(require_admin)])
@@ -56,16 +60,20 @@ def decode(row):
 
 
 def effective_settings(fallback=None):
-    fallback = fallback or settings
     with SessionLocal() as db:
-        row = db.get(MainSystemConfiguration, 1)
-        if row is None:
-            return fallback
-        if not row.enabled:
-            return replace(fallback, main_system_base_url="", main_system_token="")
-        validate_target(row.base_url)
-        return replace(fallback, main_system_base_url=row.base_url, main_system_token=decode(row),
-                       main_system_timeout_seconds=float(row.timeout_seconds))
+        return settings_from_db(db, fallback)
+
+
+def settings_from_db(db, fallback=None):
+    fallback = fallback or settings
+    row = db.get(MainSystemConfiguration, 1)
+    if row is None:
+        return fallback
+    if not row.enabled:
+        return replace(fallback, main_system_base_url="", main_system_token="")
+    validate_target(row.base_url)
+    return replace(fallback, main_system_base_url=row.base_url, main_system_token=decode(row),
+                   main_system_timeout_seconds=float(row.timeout_seconds))
 
 
 def public_config(row):
@@ -157,9 +165,26 @@ class ConfigurationTest(BaseModel):
 
 
 @router.post("/test")
-def test_configuration(payload: ConfigurationTest, response: Response, db: Session = Depends(get_db)):
+async def test_configuration(payload: ConfigurationTest, response: Response, db: AsyncSession = Depends(get_db)):
     from . import main_system
     response.headers['Cache-Control'] = 'no-store'
+    connection, serial_no = await db.run_sync(lambda session: prepare_test(session, payload))
+    data = None
+    try:
+        record = await to_thread(main_system.fetch_serial, serial_no, connection=connection)
+        data = {**record.model_dump(mode="json"), "snapshot_hash": main_system.snapshot_hash(record)}
+        ok, message = True, "查询成功" if record.active else "查询成功，流水号已停用"
+    except HTTPException as exc:
+        messages = {404:"主系统未找到该流水号", 502:"主系统连接、鉴权或返回格式异常，请核对接口规范",
+                    503:"主系统暂不可用或请求受限", 504:"主系统请求超时"}
+        details = {"main system credentials were rejected": "主系统认证失败，访问令牌无效或已过期",
+                   "main system credentials lack read permission": "认证凭证无资料读取权限，请联系主系统管理员授权",
+                   "main system response does not match the serial-material contract": "主系统返回字段不符合约定，请核对接口规范"}
+        ok, message = False, details.get(str(exc.detail), messages.get(exc.status_code, "测试失败，请检查配置"))
+    return await db.run_sync(lambda session: finish_test(session, payload, ok, message, data))
+
+
+def prepare_test(db, payload):
     row = db.get(MainSystemConfiguration, 1)
     if row is None or row.version != payload.expected_version:
         raise HTTPException(409, "请先保存当前配置，再执行测试")
@@ -172,18 +197,10 @@ def test_configuration(payload: ConfigurationTest, response: Response, db: Sessi
     connection = replace(settings, main_system_base_url=row.base_url, main_system_token=decode(row),
                          main_system_timeout_seconds=float(row.timeout_seconds))
     db.commit()
-    data = None
-    try:
-        record = main_system.fetch_serial(serial_no, connection=connection)
-        data = {**record.model_dump(mode="json"), "snapshot_hash": main_system.snapshot_hash(record)}
-        ok, message = True, "查询成功" if record.active else "查询成功，流水号已停用"
-    except HTTPException as exc:
-        messages = {404:"主系统未找到该流水号", 502:"主系统连接、鉴权或返回格式异常，请核对接口规范",
-                    503:"主系统暂不可用或请求受限", 504:"主系统请求超时"}
-        details = {"main system credentials were rejected": "主系统认证失败，访问令牌无效或已过期",
-                   "main system credentials lack read permission": "认证凭证无资料读取权限，请联系主系统管理员授权",
-                   "main system response does not match the serial-material contract": "主系统返回字段不符合约定，请核对接口规范"}
-        ok, message = False, details.get(str(exc.detail), messages.get(exc.status_code, "测试失败，请检查配置"))
+    return connection, serial_no
+
+
+def finish_test(db, payload, ok, message, data):
     at = utcnow()
     changed = db.execute(update(MainSystemConfiguration).where(MainSystemConfiguration.id == 1,
         MainSystemConfiguration.version == payload.expected_version).values(

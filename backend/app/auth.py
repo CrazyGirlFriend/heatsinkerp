@@ -11,6 +11,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .database import get_db
@@ -73,10 +74,7 @@ class AuthContext:
     session: AuthSession
 
 
-def get_auth_context(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    db: Session = Depends(get_db),
-) -> AuthContext:
+def read_auth_context(credentials, db: Session) -> AuthContext:
     unauthorized = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="invalid or expired access token",
@@ -111,11 +109,18 @@ def get_auth_context(
     return AuthContext(user=auth_session.user, session=auth_session)
 
 
-def get_current_user(context: AuthContext = Depends(get_auth_context)) -> User:
+async def get_auth_context(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> AuthContext:
+    return await db.run_sync(lambda session: read_auth_context(credentials, session))
+
+
+async def get_current_user(context: AuthContext = Depends(get_auth_context)) -> User:
     return context.user
 
 
-def require_admin(user: User = Depends(get_current_user)) -> User:
+async def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != "ADMIN":
         raise HTTPException(status_code=403, detail="administrator role required")
     return user

@@ -1,5 +1,5 @@
 """Team stock workspace HTTP routes. Business writes remain transaction services."""
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import Depends, Path, Query
 from sqlalchemy.orm import Session
 
 from .auth import get_current_user
@@ -9,7 +9,9 @@ from .models import User
 from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, WarehouseReceiptCreate, MaterialTransferResponse, MaterialTransferList
 from . import material_stock as stock
 from . import warehouse_receipts
-from .team_read_snapshots import team_read_response
+from .async_read_response import team_read_response
+
+from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/team-materials", tags=["team material stock"])
 
@@ -31,8 +33,8 @@ def list_warehouse_receipts(record_filters: RecordFilters = Depends(), team_id: 
 
 
 @router.get("/{team_id}/overview")
-def overview(team_id: int = Path(ge=1), _: User = Depends(get_current_user)):
-    return team_read_response("team-overview", team_id, lambda db: stock.overview(db, team_id))
+def overview(team_id: int = Path(ge=1), _: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return team_read_response(db, lambda session: stock.overview(session, team_id))
 
 
 @router.get("/{team_id}/stock")

@@ -1,13 +1,13 @@
 ARG BASE_IMAGE=heatsinkrep-backend:latest
 FROM ${BASE_IMAGE}
 
-# Application dependencies are unchanged from the selected, already verified
-# backend image.  A release build replaces only source and migrations, keeping
-# deployment independent from an external package download while still
-# producing an immutable image that can be rolled back by tag.
+# Resolve the locked dependencies too: a previous release may not contain the
+# async database driver or RabbitMQ client. Build failure leaves the old image intact.
+COPY backend/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt && pip check
 COPY backend/app/ /app/app/
 COPY backend/alembic.ini /app/alembic.ini
 COPY backend/alembic/ /app/alembic/
 
-# The commit-driven SSE broker is process-local; keep HTTP writes and streams together.
+# Each worker receives RabbitMQ fan-out. Keep the tested deployment worker count.
 CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --no-access-log"]

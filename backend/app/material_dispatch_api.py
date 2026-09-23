@@ -1,11 +1,13 @@
 """One batch barcode for complete outbound documents and confirmation."""
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from .auth import get_current_user
 from .database import get_db
 from .models import User
 from . import material_dispatch_workflow as workflow
+
+from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/material-dispatches", tags=["material dispatch batches"])
 

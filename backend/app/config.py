@@ -26,6 +26,15 @@ def _database_url() -> str:
     )
 
 
+def _message_queue_url() -> str:
+    explicit = os.getenv("MESSAGE_QUEUE_URL")
+    if explicit:
+        return explicit
+    user = quote(os.getenv("MQ_USER", "guest"), safe="")
+    password = quote(os.getenv("MQ_PASSWORD", "guest"), safe="")
+    return f"amqp://{user}:{password}@{os.getenv('MQ_HOST', '127.0.0.1')}:{int(os.getenv('MQ_PORT', '5672'))}/"
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     app_name: str
@@ -46,6 +55,7 @@ class Settings:
     main_system_timeout_seconds: float = 5.0
     main_system_config_key: str = ""
     main_system_allowed_origins: str = ""
+    message_queue_url: str = "amqp://guest:guest@127.0.0.1/"
 
     def __post_init__(self) -> None:
         if self.main_system_base_url:
@@ -92,6 +102,7 @@ def get_settings() -> Settings:
         main_system_timeout_seconds=float(os.getenv("MAIN_SYSTEM_TIMEOUT_SECONDS", "5")),
         main_system_config_key=os.getenv("MAIN_SYSTEM_CONFIG_KEY", ""),
         main_system_allowed_origins=os.getenv("MAIN_SYSTEM_ALLOWED_ORIGINS", ""),
+        message_queue_url=_message_queue_url(),
     )
 
 

@@ -16,6 +16,7 @@ from .main_system_configuration import router as main_system_configuration_route
 from .team_business import router as team_business_router
 from .opening_stock import router as opening_stock_router
 from .team_serial_history import router as serial_history_router
+from .notification_api import router as notification_router
 
 router = APIRouter()
 router.include_router(admin_router)
@@ -32,3 +33,4 @@ router.include_router(main_system_configuration_router)
 router.include_router(team_business_router)
 router.include_router(opening_stock_router)
 router.include_router(serial_history_router)
+router.include_router(notification_router)

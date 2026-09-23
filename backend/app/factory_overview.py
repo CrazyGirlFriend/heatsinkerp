@@ -2,10 +2,11 @@
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
+from .async_api import AsyncAPIRouter as APIRouter
 from .auth import get_current_user
 from .configure_material_teams import MATERIAL_TEAMS
 from .database import get_db

@@ -1,5 +1,5 @@
 """Team-owned purpose vocabulary; never a route or a production operation."""
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import Depends, HTTPException, Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -9,6 +9,8 @@ from .auth import actor_name, get_current_user, require_admin
 from .database import get_db
 from .models import Team, TeamPurpose, TeamSettingEvent, OpeningStockSubmission, MaterialTransfer, User, utcnow
 from .material_stock import require_actor, require_team
+
+from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/team-materials", tags=["team business settings"])
 
