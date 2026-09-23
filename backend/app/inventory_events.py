@@ -123,7 +123,6 @@ inventory_events = InventoryEvents()
 outbox_wakeups = InventoryEvents()
 WATCHED = (MaterialTransfer, MaterialLoss, MaterialDispatch, SerialUrgency, Team, User, AuthSession, TeamPurpose, OpeningStockSubmission)
 PENDING = "inventory_changed_transactions"
-FLUSH_CHANGE = "notification_flush_change"
 
 
 def affected_teams(row):
@@ -169,15 +168,20 @@ def remember_inventory_change(db, *_):
         if isinstance(row, WATCHED) and (row in db.new or row in db.deleted or db.is_modified(row, include_collections=False)):
             change = change.merge(change_for(row, db))
     if change != InventoryChange():
-        db.info[FLUSH_CHANGE] = change
         transaction = db.get_nested_transaction() or db.get_transaction()
         pending = db.info.setdefault(PENDING, {})
         pending[transaction] = pending.get(transaction, InventoryChange()).merge(change)
 
 
-@event.listens_for(Session, "after_flush_postexec")
-def persist_notification(db, *_):
-    change = db.info.pop(FLUSH_CHANGE, None)
+@event.listens_for(Session, "before_commit")
+def persist_notification(db):
+    db.info["notification_commit_started"] = monotonic()
+    # Collect implicit final changes as well as all earlier explicit flushes.
+    # Savepoints only merge their scope on success; the root writes one outbox row.
+    db.flush()
+    if db.get_nested_transaction() is not None:
+        return
+    change = db.info.get(PENDING, {}).get(db.get_transaction())
     if change is not None:
         now = utcnow()
         message_id = uuid4().hex
@@ -185,11 +189,6 @@ def persist_notification(db, *_):
             id=message_id, payload=change.envelope(), created_at=now, available_at=now, attempts=0
         ))
         record("notification.staged", message_id=message_id)
-
-
-@event.listens_for(Session, "before_commit")
-def time_commit(db):
-    db.info["notification_commit_started"] = monotonic()
 
 
 @event.listens_for(Session, "after_commit")
@@ -212,7 +211,6 @@ def wake_notification_publisher(db):
 
 @event.listens_for(Session, "after_soft_rollback")
 def discard_inventory_change(db, transaction):
-    db.info.pop(FLUSH_CHANGE, None)
     pending = db.info.get(PENDING, {})
     pending.pop(transaction, None)
     if transaction.parent is None:

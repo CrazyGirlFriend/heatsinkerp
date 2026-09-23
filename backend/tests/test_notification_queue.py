@@ -38,6 +38,78 @@ def test_notification_stages_are_correlated_without_business_data(client, wareho
     assert "PRIVATE-SERIAL" not in str(records)
 
 
+def test_many_flushes_in_one_dispatch_emit_one_committed_notification(
+    client,
+    warehouse,  # noqa: F811
+    monkeypatch,
+):
+    lot = intake(client, warehouse).json()
+    monkeypatch.setattr(app.state.notifications.transport, "ready", False)
+    response = client.post(
+        f"/api/team-materials/{warehouse['team']['id']}/dispatches",
+        headers=warehouse["headers"],
+        json={
+            "next_team_id": warehouse["other"]["id"],
+            "idempotency_key": "one-notification-per-transaction",
+            "lines": [
+                {"source_transfer_id": lot["id"], "quantity": 1, "weight": ".1"} for _ in range(4)
+            ],
+        },
+    )
+    assert response.status_code == 201
+    assert len(response.json()["items"]) == 4
+    rows = pending_rows()
+    assert len(rows) == 1
+    assert set(rows[0].payload["team_ids"]) == {warehouse["team"]["id"], warehouse["other"]["id"]}
+
+
+def test_nested_flushes_merge_only_committed_scopes(client, monkeypatch):
+    from app.models import Team, TeamPurpose
+
+    with SessionLocal.begin() as db:
+        teams = [Team(code=f"NESTED-{index}", name=f"班组 {index}") for index in range(3)]
+        db.add_all(teams)
+        db.flush()
+        ids = [team.id for team in teams]
+    client.drain_notifications()
+    monkeypatch.setattr(app.state.notifications.transport, "ready", False)
+    with SessionLocal.begin() as db:
+        db.add(TeamPurpose(team_id=ids[0], name="外层"))
+        db.flush()
+        with db.begin_nested():
+            db.add(TeamPurpose(team_id=ids[1], name="提交保存点"))
+            db.flush()
+        with db.begin_nested() as nested:
+            db.add(TeamPurpose(team_id=ids[2], name="回滚保存点"))
+            db.flush()
+            nested.rollback()
+    rows = pending_rows()
+    assert len(rows) == 1
+    assert set(rows[0].payload["team_ids"]) == set(ids[:2])
+
+
+def test_commit_failure_after_outbox_insert_rolls_back_stock_and_notification(client, warehouse):  # noqa: F811
+    from app.inventory_events import PENDING
+    from sqlalchemy import event
+    from sqlalchemy.orm import Session
+
+    with SessionLocal() as db:
+        before = db.scalar(select(func.count()).select_from(NotificationOutbox))
+
+    def fail_after_staging(db):
+        if db.info.get(PENDING):
+            raise RuntimeError("simulated commit failure after staging")
+
+    event.listen(Session, "before_commit", fail_after_staging)
+    try:
+        assert intake(client, warehouse).status_code == 500
+    finally:
+        event.remove(Session, "before_commit", fail_after_staging)
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(NotificationOutbox)) == before
+        assert db.scalar(select(func.count()).select_from(MaterialStockBalance)) == 0
+
+
 def test_broker_outage_keeps_committed_inventory_readable_and_notification_durable(
     client,
     warehouse,  # noqa: F811
