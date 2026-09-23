@@ -288,6 +288,50 @@ class MaterialTransfer(Base):
     )
 
 
+class MaterialStockBalance(Base):
+    """Current lot amounts, updated in the same transaction as their ledger."""
+
+    __tablename__ = "material_stock_balances"
+    transfer_id: Mapped[int] = mapped_column(
+        ForeignKey("material_transfers.id", ondelete="CASCADE"), primary_key=True
+    )
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
+    received_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    received_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    on_hand_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    on_hand_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    reserved_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    reserved_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    in_transit_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    in_transit_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    dispatched_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    dispatched_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    lost_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    lost_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    __table_args__ = (
+        Index("ix_msb_team_lot", "team_id", "transfer_id"),
+        *(
+            CheckConstraint(f"{prefix}_{amount} >= 0", name=f"ck_msb_{prefix}_{amount}")
+            for prefix in ("received", "on_hand", "reserved", "in_transit", "dispatched", "lost")
+            for amount in ("quantity", "weight")
+        ),
+        *(
+            CheckConstraint(
+                f"round(received_{amount}, 3) = round(on_hand_{amount} + reserved_{amount} + dispatched_{amount} + lost_{amount}, 3)",
+                name=f"ck_msb_reconcile_{amount}",
+            )
+            for amount in ("quantity", "weight")
+        ),
+        *(
+            CheckConstraint(
+                f"in_transit_{amount} <= reserved_{amount}", name=f"ck_msb_transit_{amount}"
+            )
+            for amount in ("quantity", "weight")
+        ),
+    )
+
+
 class MaterialDispatch(Base):
     """Atomic submission/retry ledger; only historical submissions have a CK number."""
 
@@ -459,3 +503,4 @@ class AuthSession(Base):
 
 # Preserve all historical table metadata for migrations without old workflows.
 from . import legacy_models  # noqa: E402,F401
+from . import stock_balances  # noqa: E402,F401

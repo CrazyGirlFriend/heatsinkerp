@@ -16,6 +16,7 @@ from . import models  # noqa: F401
 from .database import Base, SessionLocal, engine
 
 RESET_TABLES = (
+    "material_stock_balances",
     "material_transfer_events",
     "material_losses",
     "material_transfers",

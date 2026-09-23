@@ -19,7 +19,7 @@ from sqlalchemy.orm import lazyload
 
 from .auth import actor_name
 from .batch_numbers import next_transfer_batch_number
-from .models import MaterialDispatch, MaterialLoss, MaterialTransfer, Team
+from .models import MaterialDispatch, MaterialLoss, MaterialStockBalance, MaterialTransfer, Team
 from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, SCRAP_MATERIAL_TYPES
 from .team_constants import EXTERNAL_ENTRY_KINDS, WAREHOUSE_TEAM_CODE, INSPECTION_TEAM_CODE
 from . import material_transfer_workflow as workflow
@@ -127,15 +127,18 @@ def lock_lot(db, transfer_id, team_id=None):
 
 
 def available_locked(db, lot, exclude_transfer_id=None):
-    where = [MaterialTransfer.source_transfer_id == lot.id, MaterialTransfer.status.in_(["pending", "received", "dispatched"])]
+    balance = db.execute(select(MaterialStockBalance.on_hand_quantity, MaterialStockBalance.on_hand_weight)
+        .where(MaterialStockBalance.transfer_id == lot.id).with_for_update()).one_or_none()
+    if balance is None:
+        raise HTTPException(409, "stock balance is missing; reconcile before changing stock")
+    quantity, weight = balance
     if exclude_transfer_id is not None:
-        where.append(MaterialTransfer.id != exclude_transfer_id)
-    outgoing = db.execute(select(MaterialTransfer.quantity, MaterialTransfer.weight).where(*where).with_for_update()).all()
-    losses = db.execute(select(MaterialLoss.quantity, MaterialLoss.weight).where(
-        MaterialLoss.source_transfer_id == lot.id
-    ).with_for_update()).all()
-    return (lot.quantity - sum(row.quantity for row in (*outgoing, *losses)),
-            lot.weight - sum((row.weight for row in (*outgoing, *losses)), Decimal(0)))
+        prior = db.execute(select(MaterialTransfer.quantity, MaterialTransfer.weight).where(
+            MaterialTransfer.id == exclude_transfer_id, MaterialTransfer.source_transfer_id == lot.id,
+            MaterialTransfer.status.in_(["pending", "received", "dispatched"])).with_for_update()).one_or_none()
+        if prior is not None:
+            quantity, weight = quantity + prior.quantity, weight + prior.weight
+    return quantity, weight
 
 
 def validate_available(db, lot, quantity, weight, exclude_transfer_id=None):
@@ -307,43 +310,23 @@ def dispatch_dict(db, dispatch, user, *, items=None, include_history=False):
 
 
 def stock_table(team_id=None):
-    """Every pending outbound has already left source inventory.
-
-    reserved retains all pending outbound amounts for compatibility; it is not
-    stock to deduct again. Only internal handoffs count as in_transit.
-    """
-    allocations = select(MaterialTransfer.source_transfer_id.label("lot_id"), *[
-        func.sum(case((predicate, getattr(MaterialTransfer, amount)), else_=0)).label(f"{prefix}_{amount}")
-        for predicate, prefix in (
-            (MaterialTransfer.status == "pending", "reserved"),
-            ((MaterialTransfer.status == "pending") & (MaterialTransfer.entry_kind == "transfer"), "in_transit"),
-            (MaterialTransfer.status.in_(["received", "dispatched"]), "dispatched"))
-        for amount in ("quantity", "weight")
-    ]).where(MaterialTransfer.source_team_id == team_id if team_id is not None else True, MaterialTransfer.source_transfer_id.is_not(None)).group_by(MaterialTransfer.source_transfer_id).subquery()
-    losses = select(MaterialLoss.source_transfer_id.label("lot_id"),
-                    func.sum(MaterialLoss.quantity).label("lost_quantity"),
-                    func.sum(MaterialLoss.weight).label("lost_weight")).where(MaterialLoss.team_id == team_id if team_id is not None else True).group_by(MaterialLoss.source_transfer_id).subquery()
-    columns = {}
+    """Read committed lot balances; pending outbound is already deducted."""
+    from .stock_balances import AMOUNTS
+    balance = MaterialStockBalance
+    columns = {name: getattr(balance, name) for name in AMOUNTS}
     for amount in ("quantity", "weight"):
-        columns[f"received_{amount}"] = getattr(MaterialTransfer, amount)
-        for prefix, aggregate in (("reserved", allocations), ("in_transit", allocations), ("dispatched", allocations), ("lost", losses)):
-            columns[f"{prefix}_{amount}"] = func.coalesce(aggregate.c[f"{prefix}_{amount}"], 0)
-        settled = columns[f"received_{amount}"] - columns[f"dispatched_{amount}"] - columns[f"lost_{amount}"]
-        columns[f"on_hand_{amount}"] = settled - columns[f"reserved_{amount}"]
         free = columns[f"on_hand_{amount}"]
-        if amount == "weight":
-            free = func.round(free, 3)
         scrap = MaterialTransfer.material_type.in_(SCRAP_MATERIAL_TYPES)
         columns[f"available_{amount}"] = case((scrap, 0), else_=free)
-        columns[f"scrap_{amount}"] = case((scrap, columns[f"on_hand_{amount}"]), else_=0)
+        columns[f"scrap_{amount}"] = case((scrap, free), else_=0)
         columns[f"scrap_available_{amount}"] = case((scrap, free), else_=0)
-    return select(MaterialTransfer.id.label("transfer_id"), MaterialTransfer.next_team_id.label("team_id"),
+    return select(balance.transfer_id, balance.team_id,
                   MaterialTransfer.batch_no, MaterialTransfer.serial_no, MaterialTransfer.material_name,
                   MaterialTransfer.material_type, MaterialTransfer.source_batch_no, MaterialTransfer.received_at,
-                  *(value.label(key) for key, value in columns.items())).outerjoin(
-        allocations, allocations.c.lot_id == MaterialTransfer.id
-    ).outerjoin(losses, losses.c.lot_id == MaterialTransfer.id).where(
-        MaterialTransfer.next_team_id == team_id if team_id is not None else True, MaterialTransfer.status == "received", MaterialTransfer.stock_tracked.is_(True)
+                  *(value.label(key) for key, value in columns.items())).join(
+        MaterialTransfer, MaterialTransfer.id == balance.transfer_id
+    ).where(
+        balance.team_id == team_id if team_id is not None else True
     ).subquery()
 
 
