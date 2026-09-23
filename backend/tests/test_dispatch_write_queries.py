@@ -88,6 +88,7 @@ def test_dispatch_shared_reads_do_not_grow_with_line_count(client, warehouse, li
         response = dispatch(client, warehouse, lines)
     assert response.status_code == 201, response.text
     assert len(statements) <= 12, len(statements)
+    assert any("LEFT OUTER JOIN serial_urgencies" in sql for sql in statements)
     assert not any("material_transfer_events" in sql for sql in statements)
     items = response.json()["items"]
     assert len(items) == line_count

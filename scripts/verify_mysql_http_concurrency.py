@@ -203,6 +203,15 @@ def run_races(qa):
     assert qa.dispatch(qa.warehouse[0], lot, "hundred-line-bulk-out", lines=lines) == (status, data)
     qa.expect_balance(lot, 0)
     results["hundred_line_bulk_replay"] = status
+    lot = qa.receipt("casefolded-urgency")
+    qa.request(qa.actors[0], "/api/serial-urgency", {
+        "serial_no": lot["serial_no"].upper(), "urgent": True,
+        "reason": "隔离大小写匹配验证", "expected_version": 0,
+    }, method="PUT")
+    status, data = qa.dispatch(qa.warehouse[0], lot, "casefolded-urgency-out", 1)
+    assert status == 201 and data["items"][0]["urgency"]["urgent"]
+    assert qa.dispatch(qa.warehouse[0], lot, "casefolded-urgency-out", 1) == (status, data)
+    results["collation_preserved_in_bulk_response"] = status
     for name, operations in (("dispatch_vs_dispatch", (qa.dispatch, qa.dispatch)),
                              ("loss_vs_dispatch", (qa.loss, qa.dispatch)),
                              ("loss_vs_loss", (qa.loss, qa.loss))):

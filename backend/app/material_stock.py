@@ -268,17 +268,18 @@ def create_dispatch(db, team_id, payload, user):
                 items.append(transfer)
             # Flush the whole set so repeated sources receive one balance delta.
             db.flush()
-            persisted_times = {row.id: row for row in db.execute(select(
-                MaterialTransfer.id, MaterialTransfer.created_at, MaterialTransfer.updated_at
+            # Join in SQL so serial matching keeps the database's collation
+            # (including MySQL's case/accent rules), not Python dict equality.
+            persisted = {row.id: row for row in db.execute(select(
+                MaterialTransfer.id, MaterialTransfer.created_at, MaterialTransfer.updated_at, SerialUrgency
+            ).select_from(MaterialTransfer).outerjoin(
+                SerialUrgency, MaterialTransfer.serial_no == SerialUrgency.serial_no
             ).where(MaterialTransfer.id.in_([item.id for item in items])))}
-            urgencies = {row.serial_no: row for row in db.scalars(select(SerialUrgency).where(
-                SerialUrgency.serial_no.in_({item.serial_no for item in items})
-            ))}
             for transfer in items:
                 # Keep database timestamp precision in both response and audit.
                 for field in ("created_at", "updated_at"):
-                    set_committed_value(transfer, field, getattr(persisted_times[transfer.id], field))
-                for field, value in (("urgency", urgencies.get(transfer.serial_no)),
+                    set_committed_value(transfer, field, getattr(persisted[transfer.id], field))
+                for field, value in (("urgency", persisted[transfer.id].SerialUrgency),
                                      ("stock_source", lots[transfer.source_transfer_id]),
                                      ("dispatch", dispatch), ("source_team", source), ("next_team", target)):
                     set_committed_value(transfer, field, value)
