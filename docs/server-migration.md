@@ -11,7 +11,7 @@
 
 迁移现有系统时，不要同时升级程序、MySQL 或数据库结构。先搬迁实际运行的同一版本，验收后再单独升级。GitHub 中只有代码和示例配置，没有业务数据库、实际密码或密钥。
 
-如果实际运行版本已包含 RabbitMQ，还必须搬迁消息队列镜像、配置和停机备份的数据卷，具体见 [异步/MQ 迁移补充](async-notifications.md#迁移到另一台机器时的补充)。第 4 节原有三服务命令只适用于不含 MQ 的旧版本，不能直接当作四服务的完整备份。
+当前线上 `20260923T110054Z` 已包含 RabbitMQ，迁移还必须搬迁消息队列镜像、配置和停机备份的数据卷，具体见 [异步/MQ 迁移补充](async-notifications.md#迁移到另一台机器时的补充)。第 4 节原有三服务命令只适用于不含 MQ 的旧版本，不能直接当作当前四服务的完整备份。
 
 ## 2. 文件和数据分别放在哪里
 
@@ -23,6 +23,7 @@
 | 数据库备份 | `/opt/heatsinkrep/backups/` | 保留一份异机备份 |
 | Docker 镜像存储 | `/var/lib/docker/` 下，由 Docker 分层管理 | 使用 `docker image save/load`，不要直接复制整个 Docker 目录 |
 | MySQL 实际数据 | `/var/lib/docker/volumes/heatsinkrep_mysql_data/_data/` | 本手册使用 SQL 导出与恢复，不复制运行中的数据文件 |
+| RabbitMQ 数据 | `/var/lib/docker/volumes/heatsinkrep_rabbitmq_data/_data/` | 停止业务及消息服务后备份；同时保留节点名、Erlang cookie 和配置，见异步/MQ 补充 |
 
 数据库数据卷由 Compose 中的 `mysql_data` 定义自动创建。项目名固定为 `heatsinkrep` 时，实际卷名为 `heatsinkrep_mysql_data`，挂到数据库容器的 `/var/lib/mysql`。不必手动创建 `_data` 文件夹；新机器的实际磁盘位置以 `docker volume inspect heatsinkrep_mysql_data` 为准。
 
