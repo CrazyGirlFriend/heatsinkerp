@@ -107,17 +107,18 @@ describe('team management directory ordering', () => {
     expect(mocks.refresh).toHaveBeenCalledOnce()
   })
 
-  it('preserves an existing scrap-team marker without exposing phase-one type editing', async () => {
-    const scrapTeam: Team = { ...team, id: 9, code: 'SCRAP', name: '转废', kind: 'scrap' }
-    vi.mocked(adminApi.listTeams).mockResolvedValue([scrapTeam])
-    const update = vi.spyOn(adminApi, 'updateTeam').mockResolvedValue(scrapTeam)
+  it('shows production teams without offering a separate scrap-team type', async () => {
+    const productionTeam: Team = { ...team, id: 9, code: 'FACTORY-QC', name: '检验', kind: 'production' }
+    vi.mocked(adminApi.listTeams).mockResolvedValue([productionTeam])
+    const update = vi.spyOn(adminApi, 'updateTeam').mockResolvedValue(productionTeam)
     const wrapper = await mountTeams()
-    expect(wrapper.get('tbody tr').text()).toContain('转废班组')
+    expect(wrapper.get('tbody tr').text()).toContain('普通班组')
+    expect(wrapper.text()).not.toContain('转废班组')
     await wrapper.get('tbody tr').findAll('button').find((button) => button.text().includes('编辑'))!.trigger('click')
     expect(wrapper.find('input[aria-label="班组类型"]').exists()).toBe(false)
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(update).toHaveBeenCalledWith(9, expect.objectContaining({ kind: 'scrap' }))
+    expect(update).toHaveBeenCalledWith(9, expect.objectContaining({ kind: 'production' }))
   })
 
   it('rejects an invalid sort position before saving', async () => {

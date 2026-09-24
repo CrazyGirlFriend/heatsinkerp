@@ -251,12 +251,12 @@ function teamRowClass({ row }: { row: Team }): string {
 
 function kindLabel(team: Team): string {
   if (isWarehouse(team)) return '库房'
-  return team.kind === 'scrap' ? '转废班组' : '普通班组'
+  return '普通班组'
 }
 
-function kindTagType(team: Team): 'success' | 'danger' | 'info' {
+function kindTagType(team: Team): 'success' | 'info' {
   if (isWarehouse(team)) return 'success'
-  return team.kind === 'scrap' ? 'danger' : 'info'
+  return 'info'
 }
 
 function asTeam(row: Record<PropertyKey, unknown>): Team {

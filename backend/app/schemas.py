@@ -258,7 +258,7 @@ class TeamCreate(APIModel):
     description: str | None = Field(default=None, max_length=240)
     active: bool = True
     sort_order: int = Field(default=0, ge=0, le=1000000)
-    kind: str = Field(default="production", pattern="^(production|scrap|warehouse)$")
+    kind: str = Field(default="production", pattern="^(production|warehouse)$")
 
 
 class TeamUpdate(APIModel):
@@ -267,7 +267,7 @@ class TeamUpdate(APIModel):
     description: str | None = Field(default=None, max_length=240)
     active: bool | None = None
     sort_order: int | None = Field(default=None, ge=0, le=1000000)
-    kind: str | None = Field(default=None, pattern="^(production|scrap|warehouse)$")
+    kind: str | None = Field(default=None, pattern="^(production|warehouse)$")
 
 
 class TeamResponse(APIModel):

@@ -33,12 +33,21 @@ from .team_constants import WAREHOUSE_TEAM_CODE, WAREHOUSE_TEAM_NAME
 router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
 
 
+def _validate_team_identity(code: str, name: str) -> None:
+    if code.strip().upper() in {"FACTORY-SCRAP", "FACTORY-SHIP"} or name.strip() in {
+        "转废",
+        "发货",
+    }:
+        raise HTTPException(422, "转废由库房管理，发货由检验管理，不单独设置班组")
+
+
 @router.post("/teams", response_model=TeamResponse, status_code=201, tags=["administration"])
 def create_team(
     payload: TeamCreate,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
+    _validate_team_identity(payload.code, payload.name)
     if payload.kind == "warehouse" and (
         payload.code != WAREHOUSE_TEAM_CODE or payload.name != WAREHOUSE_TEAM_NAME
     ):
@@ -126,6 +135,10 @@ def update_team(
             )
     if any(getattr(payload, field) is None for field in supplied if field != "description"):
         raise HTTPException(422, "team fields cannot be null")
+    _validate_team_identity(
+        payload.code if "code" in supplied else team.code,
+        payload.name if "name" in supplied else team.name,
+    )
     if "kind" in supplied and payload.kind != team.kind:
         referenced = team_has_historical_references(db, team.id)
         referenced = referenced or any(

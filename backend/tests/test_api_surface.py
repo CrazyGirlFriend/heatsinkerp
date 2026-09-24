@@ -55,7 +55,7 @@ def test_history_table_metadata_and_references_remain_protected(client):
         db.commit()
         product_id = product.id
     assert client.delete(f"/api/teams/{team['id']}").status_code == 409
-    assert client.patch(f"/api/teams/{team['id']}", json={"kind": "scrap"}).status_code == 409
+    assert client.patch(f"/api/teams/{team['id']}", json={"kind": "warehouse"}).status_code == 409
     with SessionLocal() as db:
         assert db.get(Product, product_id).name == "保留的历史产品"
         assert db.scalar(select(ProductRouteOperation.responsible_team_id)) == team["id"]

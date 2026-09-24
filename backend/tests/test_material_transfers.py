@@ -680,7 +680,7 @@ def test_warehouse_requires_classification_and_preserves_notes_audit_and_kind(cl
                                  headers=setup["source_headers"])
     assert switched_back.status_code == 200, switched_back.text
     assert switched_back.json()["next_team"]["kind"] == "production"
-    assert client.patch(f"/api/teams/{setup['third']['id']}", json={"kind": "scrap"}).status_code == 409
+    assert client.patch(f"/api/teams/{setup['third']['id']}", json={"kind": "warehouse"}).status_code == 409
     assert client.patch(f"/api/teams/{setup['third']['id']}", json={"name": "新的班组名"}).status_code == 200
     read = client.get(url).json()
     assert read["next_team"]["name"] == "后续班"  # Name is a historic snapshot.

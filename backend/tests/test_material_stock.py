@@ -233,7 +233,11 @@ def test_weight_only_stock_and_explicit_warehouse_classification(client, stock_s
 def test_eight_team_configuration_preserves_old_references_and_is_idempotent(client):
     setup = _setup_three_teams(client)
     old = client.post("/api/teams", json={"code": "FACTORY-ROLL", "name": "扎板"}).json()
-    scrap = client.post("/api/teams", json={"code": "FACTORY-SCRAP", "name": "转废", "kind": "scrap"}).json()
+    with SessionLocal() as db:
+        legacy = Team(code="FACTORY-SCRAP", name="转废", kind="scrap")
+        db.add(legacy)
+        db.commit()
+        scrap = {"id": legacy.id}
     with SessionLocal() as db:
         first = configure_material_teams(db)
         second = configure_material_teams(db)

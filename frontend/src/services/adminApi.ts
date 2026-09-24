@@ -2,7 +2,7 @@ import { HTTP_AUTH_SESSION_STORAGE_KEY, httpRequest, HttpRequestError, type Http
 
 export type UserRole = 'ADMIN' | 'TEAM'
 export type EntityId = string | number
-export type TeamKind = 'production' | 'scrap' | 'warehouse'
+export type TeamKind = 'production' | 'warehouse'
 
 export interface Team {
   opening_stock_enabled?: boolean
@@ -138,7 +138,7 @@ export function normalizeTeam(value: unknown): Team {
     opening_stock_enabled: raw.opening_stock_enabled === true,
     active: booleanValue(raw.active ?? raw.is_active ?? raw.enabled),
     sort_order: Number.isFinite(Number(raw.sort_order)) ? Number(raw.sort_order) : 0,
-    kind: raw.kind === 'scrap' ? 'scrap' : raw.kind === 'warehouse' ? 'warehouse' : 'production',
+    kind: raw.kind === 'warehouse' ? 'warehouse' : 'production',
     account_count:
       raw.account_count === undefined && raw.user_count === undefined
         ? undefined
