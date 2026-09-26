@@ -3,13 +3,15 @@ import { ArrowDown, Fold, Menu, Monitor, SwitchButton, User } from '@element-plu
 import { ElConfigProvider, ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import FactorySidebar from '@/components/FactorySidebar.vue'
 import AccessPage from '@/pages/AccessPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
 import { currentUser, isAuthenticated, logout, refreshCurrentUser } from '@/stores/auth'
 import { teamDirectory, refreshTeamDirectory } from '@/stores/teamDirectory'
-import { canEnterSite } from '@/stores/access'
+import { appPinia, canEnterSite } from '@/stores/access'
+import { useSidebarStore } from '@/stores/sidebar'
 import { resolveTeamWorkspaceSection, teamWorkspaceProfile, teamWorkspaceSections } from '@/config/teamWorkspaces'
 
 const teamLabel = computed(() => currentUser.value?.role === 'ADMIN' ? '系统管理员' : teamDirectory.items.find(team => String(team.id) === String(currentUser.value?.team_id))?.name || currentUser.value?.team?.name || '未配置班组')
@@ -33,7 +35,7 @@ const breadcrumb = computed(() => {
   return [title]
 })
 const mobileMenuOpen = ref(false)
-const compactSidebar = ref(false)
+const { compact: compactSidebar } = storeToRefs(useSidebarStore(appPinia))
 const sidebarElement = ref<HTMLElement | null>(null)
 const mobileMenuButton = ref<HTMLButtonElement | null>(null)
 const mainContent = ref<HTMLElement | null>(null)
@@ -150,7 +152,7 @@ function enterBigScreen(event: MouseEvent): void {
       <RouterView />
     </main>
 
-    <div v-else class="app-shell app-shell--business" :class="{ 'app-shell--compact': compactSidebar, 'app-shell--overview': route.name === 'home' }">
+    <div v-else class="app-shell app-shell--business" :class="{ 'app-shell--compact': compactSidebar }">
       <a class="skip-link" href="#main-content" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined" @click.prevent="focusMainContent">跳到正文</a>
 
       <header v-if="mobileViewport || compactSidebar" class="topbar">
@@ -165,7 +167,7 @@ function enterBigScreen(event: MouseEvent): void {
           <img v-if="sidebarCompact" class="brand-mark__icon" src="/brand/attl-official-favicon.ico" alt="安泰天龙" width="32" height="32" />
           <img v-else class="brand-mark__logo" src="/brand/attl-official-logo.png" alt="中国钢研 安泰科技 · 安泰天龙" width="1017" height="143" />
         </div>
-        <FactorySidebar :compact="sidebarCompact" :overview="route.name === 'home'" :pending-team-id="workspacePending?.teamId" :pending-count="workspacePending?.count" illustrated />
+        <FactorySidebar :compact="sidebarCompact" :pending-team-id="workspacePending?.teamId" :pending-count="workspacePending?.count" illustrated />
 
         <div class="sidebar__footer">
           <RouterLink to="/factory-live" class="sidebar__screen" title="大屏展示" aria-label="动态流转大屏" @click="enterBigScreen"><ElIcon><Monitor /></ElIcon><span v-if="!sidebarCompact">大屏展示</span></RouterLink>

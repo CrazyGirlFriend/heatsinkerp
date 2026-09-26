@@ -2,13 +2,14 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import FactorySidebar from './FactorySidebar.vue'
 import { ElMenu, ElMenuItem, ElSubMenu } from 'element-plus'
 import { ArrowRight } from '@element-plus/icons-vue'
 import { authState, clearSession } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { appPinia } from '@/stores/access'
+import { useSidebarStore } from '@/stores/sidebar'
 
 const wrappers: VueWrapper[] = []
 
@@ -53,6 +54,7 @@ async function renderSidebar(path = '/transfer-batches', compact = false) {
 
 beforeEach(() => {
   clearSession()
+  localStorage.clear()
   signIn()
   const directory = useTeamDirectoryStore(appPinia)
   directory.items = []; directory.loaded = true; directory.loading = false; directory.error = ''
@@ -61,9 +63,92 @@ beforeEach(() => {
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount())
   clearSession()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('three-level team navigation', () => {
+  it('preserves a manually opened branch during directory refreshes and filter changes', async () => {
+    const directory = useTeamDirectoryStore(appPinia)
+    directory.items = [{ id: 7, code: 'FACTORY-ROLL', name: '轧制', active: true }, { id: 8, code: 'FACTORY-QC', name: '检验', active: true }]
+    const { wrapper, router } = await renderSidebar('/team-workspaces/7?tab=outgoing')
+    await wrapper.get('[aria-label="检验工作台"] > .el-sub-menu__title').trigger('click')
+    directory.items = directory.items.map(team => ({ ...team }))
+    await router.push('/team-workspaces/7?tab=outgoing&query=铜&page=2'); await flushPromises()
+    expect(wrapper.get('[aria-label="检验工作台"]').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('[aria-label="轧制工作台"]').attributes('aria-expanded')).toBe('false')
+    await wrapper.setProps({ compact: true }); await wrapper.setProps({ compact: false }); await flushPromises()
+    expect(wrapper.get('[aria-label="检验工作台"]').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('[aria-label="轧制工作台"]').attributes('aria-expanded')).toBe('false')
+    // Selecting a different page, unlike changing filters, reveals its branch.
+    await router.push('/team-workspaces/7?tab=pending'); await flushPromises()
+    expect(wrapper.get('[aria-label="轧制工作台"]').attributes('aria-expanded')).toBe('true')
+  })
+
+  it('restores a deliberately folded branch after remounting', async () => {
+    const { wrapper } = await renderSidebar('/factory-stock')
+    await wrapper.get('[aria-label="全厂总览"] > .el-sub-menu__title').trigger('click')
+    expect(useSidebarStore(appPinia).opened).toEqual([])
+    wrapper.unmount()
+    const restored = await renderSidebar('/factory-stock')
+    expect(restored.wrapper.get('[aria-label="全厂总览"]').attributes('aria-expanded')).toBe('false')
+    expect(restored.wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('库存明细')
+  })
+
+  it('waits for the team directory before restoring a saved section and manual branch', async () => {
+    const directory = useTeamDirectoryStore(appPinia)
+    directory.loaded = false; directory.loading = true
+    const sidebar = useSidebarStore(appPinia)
+    sidebar.page = '/team-workspaces/8?tab=history'; sidebar.opened = ['teams', 'team-7']
+    const { wrapper } = await renderSidebar('/team-workspaces/8?tab=history')
+    expect(sidebar.page).toBe('/team-workspaces/8?tab=history')
+    directory.items = [{ id: 7, code: 'FACTORY-ROLL', name: '轧制', active: true }, { id: 8, code: 'FACTORY-QC', name: '检验', active: true }]
+    directory.loaded = true; directory.loading = false
+    await flushPromises()
+    expect(sidebar.opened).toEqual(['teams', 'team-7'])
+    expect(wrapper.get('[aria-label="轧制工作台"]').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('[aria-label="检验工作台"]').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('检验 · 收发历史')
+  })
+
+  it('does not overwrite saved preferences with the temporary route during initial authentication', async () => {
+    useTeamDirectoryStore(appPinia).items = [{ id: 7, code: 'FACTORY-ROLL', name: '轧制', active: true }, { id: 8, code: 'FACTORY-QC', name: '检验', active: true }]
+    const sidebar = useSidebarStore(appPinia)
+    sidebar.page = '/team-workspaces/8?tab=history'; sidebar.opened = ['teams', 'team-7']
+    const history = createMemoryHistory()
+    history.push('/team-workspaces/8?tab=history')
+    const router = createRouter({ history, routes: [{ path: '/team-workspaces/:teamId', component: { template: '<div />' } }] })
+    let release: () => void = () => undefined
+    router.beforeEach(() => new Promise<void>(resolve => { release = resolve }))
+    const wrapper = mount(FactorySidebar, { global: { plugins: [router] } })
+    wrappers.push(wrapper)
+    await flushPromises()
+    expect(sidebar.page).toBe('/team-workspaces/8?tab=history')
+    release(); await router.isReady(); await flushPromises()
+    expect(sidebar.opened).toEqual(['teams', 'team-7'])
+    expect(wrapper.get('[aria-label="轧制工作台"]').attributes('aria-expanded')).toBe('true')
+  })
+
+  it('shows scroll controls when menus overflow, scrolls only navigation, and disconnects observation', async () => {
+    const observe = vi.fn(), disconnect = vi.fn()
+    let resize: () => void = () => undefined
+    vi.stubGlobal('ResizeObserver', class { constructor(callback: () => void) { resize = callback } observe = observe; disconnect = disconnect; unobserve = vi.fn() })
+    const { wrapper } = await renderSidebar()
+    const viewport = wrapper.get('.factory-nav__scroll').element as HTMLElement
+    Object.defineProperties(viewport, { clientHeight: { value: 300 }, scrollHeight: { value: 600 } })
+    resize(); await nextTick()
+    expect(wrapper.find('[aria-label="向上滚动导航"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="向下滚动导航"]').exists()).toBe(true)
+    await wrapper.get('[aria-label="向下滚动导航"]').trigger('click')
+    expect(viewport.scrollTop).toBe(195)
+    expect(wrapper.find('[aria-label="向上滚动导航"]').exists()).toBe(true)
+    viewport.scrollTop = 300
+    await wrapper.get('.factory-nav__scroll').trigger('scroll')
+    expect(wrapper.find('[aria-label="向下滚动导航"]').exists()).toBe(false)
+    wrapper.unmount()
+    expect(disconnect).toHaveBeenCalled()
+  })
+
   it('groups all eight teams under one parent, using real ids only', async () => {
     const directory = useTeamDirectoryStore(appPinia)
     directory.items = [

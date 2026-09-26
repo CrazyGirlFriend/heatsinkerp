@@ -21,6 +21,7 @@ const accessAdapter: AxiosAdapter = async (config: InternalAxiosRequestConfig): 
 
 beforeEach(async () => {
   clearSession()
+  localStorage.clear()
   mocks.list.mockReset().mockResolvedValue([{ id: 1, code: 'FACTORY-ROLL', name: '扎板', active: true }])
   accessHttpClient.defaults.adapter = accessAdapter
   await checkSiteAccess(true)
@@ -45,6 +46,7 @@ async function renderApp(mobile: boolean) {
   vi.stubGlobal('matchMedia', vi.fn().mockReturnValue(media))
   const page = { template: '<div>转料记录</div>' }
   const router = createRouter({ history: createMemoryHistory(), routes: [
+    { path: '/', name: 'home', component: page },
     { path: '/transfer-batches', component: page }, { path: '/transfer-batches/scan', component: page },
     { path: '/material-trace', component: page },
     { path: '/team-workspaces/:teamId', name: 'team-workspace', component: { emits: ['pending-count'], template: '<button class="emit-pending" @click="$emit(\'pending-count\', { teamId: 1, count: 23 })">更新数量</button>' } },
@@ -84,6 +86,8 @@ describe('application navigation shell', () => {
       await router.push(path); await flushPromises()
       expect(wrapper.get('.app-shell').classes()).toContain('app-shell--business')
       expect(wrapper.getComponent(FactorySidebar).props('illustrated')).toBe(true)
+      expect(wrapper.get('.factory-nav .el-menu').findAll(':scope > .el-sub-menu').map(group => group.attributes('aria-label'))).toEqual(['全厂总览', '班组工作台', '流转查询', '系统设置'])
+      expect(wrapper.find('.factory-nav--overview').exists()).toBe(false)
       expect(wrapper.find('.topbar').exists()).toBe(false)
       expect(wrapper.find('.topbar-clock').exists()).toBe(false)
       expect(wrapper.find('#factory-sidebar .sidebar__user').exists()).toBe(true)
