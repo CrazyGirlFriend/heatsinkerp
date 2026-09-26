@@ -47,6 +47,7 @@ async function renderApp(mobile: boolean) {
   const router = createRouter({ history: createMemoryHistory(), routes: [
     { path: '/transfer-batches', component: page }, { path: '/transfer-batches/scan', component: page },
     { path: '/material-trace', component: page },
+    { path: '/team-workspaces/:teamId', name: 'team-workspace', component: { emits: ['pending-count'], template: '<button class="emit-pending" @click="$emit(\'pending-count\', { teamId: 1, count: 23 })">更新数量</button>' } },
     { path: '/factory-live', component: { template: '<section>独立机器人大屏</section>' }, meta: { standalone: true } },
     { path: '/settings/teams', component: page }, { path: '/settings/accounts', component: page },
     { path: '/:pathMatch(.*)*', component: page },
@@ -65,6 +66,17 @@ async function renderApp(mobile: boolean) {
 }
 
 describe('application navigation shell', () => {
+  it('shows the current workspace section and forwards only matching pending counts', async () => {
+    const { wrapper, router } = await renderApp(false)
+    await router.push('/team-workspaces/1?tab=pending'); await flushPromises()
+    expect(wrapper.get('.breadcrumb').text()).toBe('班组工作台轧制待接收')
+    await wrapper.get('.emit-pending').trigger('click'); await flushPromises()
+    expect(wrapper.get('[aria-label="轧制 · 待接收"] small').text()).toBe('23')
+    await wrapper.get('[aria-label="轧制 · 收发历史"]').trigger('click'); await flushPromises()
+    expect(wrapper.get('.breadcrumb').text()).toBe('班组工作台轧制收发历史')
+    await router.push('/transfer-batches'); await flushPromises()
+    expect(wrapper.find('.factory-nav__count').exists()).toBe(false)
+  })
   it('keeps the same business shell and illustrated navigation across all normal pages', async () => {
     const { wrapper, router } = await renderApp(false)
     for (const path of ['/', '/factory-stock', '/team-workspaces/1', '/transfer-batches', '/transfer-batches/scan', '/material-trace', '/settings/teams', '/settings/accounts', '/factory-analysis']) {
@@ -172,7 +184,7 @@ describe('application navigation shell', () => {
     await wrapper.get('.sidebar__collapse').trigger('click')
     expect(wrapper.getComponent(FactorySidebar).props('compact')).toBe(false)
     expect(wrapper.get('.brand-mark img').attributes('src')).toBe('/brand/attl-official-logo.png')
-    expect(wrapper.get('#factory-sidebar [aria-label="轧制工作台"]').text()).toBe('轧制')
+    expect(wrapper.get('#factory-sidebar [aria-label="轧制工作台"] > .el-sub-menu__title').text()).toBe('轧制')
     expect(wrapper.get('#factory-sidebar [aria-label="转料记录"]').text()).toBe('转料记录')
   })
 

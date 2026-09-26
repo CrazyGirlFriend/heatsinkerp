@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { configuredTeamWorkspaces, teamWorkspaceProfiles } from './teamWorkspaces'
+import { configuredTeamWorkspaces, resolveTeamWorkspaceSection, teamWorkspaceProfiles, teamWorkspaceSectionPath, teamWorkspaceSectionsFor } from './teamWorkspaces'
 
 describe('eight official workspace profiles', () => {
   it('maps stable codes to actual database ids without substituting same-name demo teams', () => {
@@ -14,5 +14,24 @@ describe('eight official workspace profiles', () => {
     expect(entries[2]!.team).toBeUndefined()
     expect(entries[7]!.team?.id).toBe(900)
     expect(teamWorkspaceProfiles.some(profile => ['FACTORY-SHIP', 'FACTORY-SCRAP'].includes(profile.code))).toBe(false)
+  })
+})
+
+describe('shared workspace navigation', () => {
+  it('keeps six workshop entries and the extra warehouse receipt entry', () => {
+    expect(teamWorkspaceSectionsFor(false).map(item => item.label)).toEqual(['库存明细', '待接收', '出库记录', '丢失记录', '材质归类', '收发历史'])
+    expect(teamWorkspaceSectionsFor(true).map(item => item.value)).toContain('receipts')
+    expect(teamWorkspaceSectionPath(7, 'stock')).toBe('/team-workspaces/7')
+    expect(teamWorkspaceSectionPath(7, 'pending')).toBe('/team-workspaces/7?tab=pending')
+  })
+  it('uses the same selected section for legacy links, filters and unsupported tabs', () => {
+    expect(resolveTeamWorkspaceSection({ tab: 'overview' }, false)).toBe('history')
+    expect(resolveTeamWorkspaceSection({ tab: 'serials' }, false)).toBe('stock')
+    expect(resolveTeamWorkspaceSection({ tab: 'receipts' }, false)).toBe('stock')
+    expect(resolveTeamWorkspaceSection({ tab: 'receipts' }, true)).toBe('receipts')
+    expect(resolveTeamWorkspaceSection({ direction: 'incoming' }, false)).toBe('pending')
+    expect(resolveTeamWorkspaceSection({ direction: 'incoming', status: 'received' }, false)).toBe('stock')
+    expect(resolveTeamWorkspaceSection({ direction: 'outgoing' }, false)).toBe('outgoing')
+    expect(resolveTeamWorkspaceSection({ tab: ['stock', 'pending'] }, false)).toBe('stock')
   })
 })

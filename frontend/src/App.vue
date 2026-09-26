@@ -11,7 +11,7 @@ import { currentUser, isAuthenticated, logout, refreshCurrentUser } from '@/stor
 import { teamDirectory, refreshTeamDirectory } from '@/stores/teamDirectory'
 import { canEnterSite } from '@/stores/access'
 import { formatDateTime } from '@/utils/format'
-import { teamWorkspaceProfile } from '@/config/teamWorkspaces'
+import { resolveTeamWorkspaceSection, teamWorkspaceProfile, teamWorkspaceSections } from '@/config/teamWorkspaces'
 
 const now = ref(new Date().toISOString())
 let clockTimer: ReturnType<typeof setInterval> | undefined
@@ -20,10 +20,16 @@ onBeforeUnmount(() => { if (clockTimer) clearInterval(clockTimer) })
 const teamLabel = computed(() => currentUser.value?.role === 'ADMIN' ? '系统管理员' : teamDirectory.items.find(team => String(team.id) === String(currentUser.value?.team_id))?.name || currentUser.value?.team?.name || '未配置班组')
 const route = useRoute()
 const router = useRouter()
+const workspacePending = ref<{ teamId: number; count: number | null } | null>(null)
+function updateWorkspacePending(value: { teamId: number; count: number | null }) {
+  if (String(value.teamId) === String(route.params.teamId)) workspacePending.value = value
+}
+watch([() => route.path, () => currentUser.value?.id, () => currentUser.value?.team_id], () => { workspacePending.value = null })
 const breadcrumb = computed(() => {
   if (route.path.startsWith('/team-workspaces/')) {
     const team = teamDirectory.items.find(item => String(item.id) === String(route.params.teamId))
-    return ['班组工作台', teamWorkspaceProfile(team?.code)?.name || team?.name || '班组']
+    const section = resolveTeamWorkspaceSection(route.query, team?.code === 'FACTORY-WAREHOUSE' && team?.kind === 'warehouse')
+    return ['班组工作台', teamWorkspaceProfile(team?.code)?.name || team?.name || '班组', teamWorkspaceSections.find(item => item.value === section)!.label]
   }
   const title = String(route.meta.title || '物料流转')
   if (['/factory-stock', '/factory-analysis'].includes(route.path)) return ['全厂总览', title]
@@ -179,7 +185,7 @@ function enterBigScreen(event: MouseEvent): void {
       </header>
 
       <aside id="factory-sidebar" ref="sidebarElement" class="sidebar" :class="{ 'sidebar--open': mobileMenuOpen }" :inert="mobileViewport && !mobileMenuOpen ? true : undefined" :aria-hidden="mobileViewport && !mobileMenuOpen ? true : undefined" @keydown="handleSidebarKeydown">
-        <FactorySidebar :compact="compactSidebar && !mobileViewport" :overview="route.name === 'home'" illustrated />
+        <FactorySidebar :compact="compactSidebar && !mobileViewport" :overview="route.name === 'home'" :pending-team-id="workspacePending?.teamId" :pending-count="workspacePending?.count" illustrated />
 
         <button class="sidebar__collapse" type="button" :aria-label="compactSidebar ? '展开侧栏' : '收起侧栏'" :aria-expanded="!compactSidebar" aria-controls="factory-sidebar" :title="compactSidebar ? '展开侧栏' : '收起侧栏'" @click="compactSidebar = !compactSidebar">
           <Fold />
@@ -194,7 +200,7 @@ function enterBigScreen(event: MouseEvent): void {
       <main id="main-content" ref="mainContent" class="main-content" tabindex="-1" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined">
         <RouterView v-slot="{ Component }">
           <Transition name="page-shift">
-            <component :is="Component" :key="route.path" />
+            <component :is="Component" :key="route.path" v-on="route.name === 'team-workspace' ? { 'pending-count': updateWorkspacePending } : {}" />
           </Transition>
         </RouterView>
       </main>

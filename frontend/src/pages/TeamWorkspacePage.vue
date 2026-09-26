@@ -26,7 +26,7 @@ import StatePanel from '@/components/StatePanel.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { showToast } from '@/stores/toast'
-import { teamWorkspaceProfile } from '@/config/teamWorkspaces'
+import { resolveTeamWorkspaceSection, teamWorkspaceProfile } from '@/config/teamWorkspaces'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { InventoryConnection } from '@/services/inventoryStream'
 import { shouldRefreshInventory, subscribeSharedInventoryChanges as subscribeInventoryChanges } from '@/services/inventoryChanges'
@@ -36,6 +36,7 @@ import { isDispatchNumber, dispatchStatusLabels, type DispatchKind, type Dispatc
 import { formatDateTime } from '@/utils/format'
 
 const route = useRoute()
+const emit = defineEmits<{ 'pending-count': [value: { teamId: number; count: number | null }] }>()
 const router = useRouter()
 const auth = useAuthStore()
 const directory = useTeamDirectoryStore()
@@ -50,9 +51,8 @@ const canWrite = computed(() => scopeReady.value && auth.isTeamAccount && auth.c
 const isWarehouse = computed(() => scopeReady.value && team.value?.code === 'FACTORY-WAREHOUSE' && team.value?.kind === 'warehouse')
 const canReceive = computed(() => isWarehouse.value && canWrite.value && auth.currentUser?.active !== false)
 const title = computed(() => scopeReady.value ? profile.value?.name || team.value!.name : '班组工作台')
-const tabValues = computed(() => ['overview', 'history', 'materials', 'pending', 'stock', 'outgoing', 'losses', ...(isWarehouse.value ? ['receipts'] : [])])
 const queryText = (key: string) => typeof route.query[key] === 'string' ? String(route.query[key]) : ''
-const tab = computed(() => queryText('tab') === 'overview' ? 'history' : queryText('tab') === 'serials' ? 'stock' : tabValues.value.includes(queryText('tab')) ? queryText('tab') : queryText('direction') === 'outgoing' ? 'outgoing' : queryText('direction') === 'incoming' ? queryText('status') === 'received' ? 'stock' : 'pending' : 'stock')
+const tab = computed(() => resolveTeamWorkspaceSection(route.query, isWarehouse.value))
 watch(() => queryText('tab'), value => {
   if (value === 'serials') void router.replace({ path: route.path, query: { ...route.query, tab: 'stock' }, hash: route.hash })
   if (value === 'overview') void router.replace({ path: route.path, query: { ...route.query, tab: 'history' }, hash: route.hash })
@@ -70,6 +70,10 @@ const nextTeamDraft = ref<string | number>('')
 const kindDraft = ref<DispatchKind | ''>('')
 const dispatchKinds = ['transfer', 'warehouse_outbound', 'inspection_shipment'] as const
 const overview = ref<TeamMaterialOverview | null>(null)
+watch([overview, scopeReady, teamId], () => emit('pending-count', {
+  teamId: teamId.value,
+  count: scopeReady.value && overview.value && Number(overview.value.team_id) === teamId.value ? (isWarehouse.value ? overview.value.pending_incoming.batch_count ?? overview.value.pending_incoming.count : overview.value.pending_incoming.count) : null,
+}), { immediate: true })
 const overviewError = ref('')
 const pending = ref<MaterialTransfer[]>([])
 const outgoing = ref<MaterialTransfer[]>([])
@@ -160,7 +164,6 @@ watch(loading, value => { if (!value && refreshQueued) queueRefresh() })
 function asTransfer(row: unknown) { return row as MaterialTransfer }
 function asLoss(row: unknown) { return row as MaterialLoss }
 
-function selectTab(value: string) { void router.push({ path: route.path, query: value === 'stock' ? {} : { tab: value } }) }
 function applyFilters(nextPage = 1, size = pageSize.value) {
   void router.replace({ path: route.path, query: { tab: tab.value, ...(tab.value === 'receipts' && receiptSourceDraft.value ? { receipt_source: receiptSourceDraft.value } : {}), ...(dateDraft.value.from ? { date_from: dateDraft.value.from } : {}), ...(dateDraft.value.to ? { date_to: dateDraft.value.to } : {}), ...(urgentDraft.value ? { urgent_only: 'true' } : {}), ...(queryDraft.value.trim() ? { query: queryDraft.value.trim() } : {}), ...(['receipts', 'outgoing'].includes(tab.value) && materialDraft.value ? { material_type: materialDraft.value } : {}), ...(tab.value === 'outgoing' ? { ...(kindDraft.value ? { entry_kind: kindDraft.value } : {}), ...(statusDraft.value ? { status: statusDraft.value } : {}), ...(!isExternalEntryKind(kindDraft.value) && nextTeamDraft.value ? { next_team_id: String(nextTeamDraft.value) } : {}) } : {}), ...(nextPage > 1 ? { page: String(nextPage) } : {}), ...(size !== 10 ? { page_size: String(size) } : {}) } })
 }
@@ -288,7 +291,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 </script>
 
 <template>
-  <TeamWorkspaceShell :title="title" :model-value="tab" :warehouse="isWarehouse" :pending-count="isWarehouse ? overview?.pending_incoming.batch_count ?? overview?.pending_incoming.count : overview?.pending_incoming.count" :class="{ 'team-workspace--docked': docked && detailOpen }" @update:model-value="selectTab">
+  <TeamWorkspaceShell :title="title" :model-value="tab" :class="{ 'team-workspace--docked': docked && detailOpen }">
     <template #actions><ElButton v-if="canWrite" @click="businessOpen = true">班组设置</ElButton><TeamWorkspaceActions v-if="scopeReady" v-bind="actionBindings" :warehouse="isWarehouse" :show-scan="!isWarehouse && tab !== 'pending'" /></template>
     <div ref="container" class="team-material-content">
       <ElAlert v-if="syncError || syncState === 'reconnecting' || syncState === 'expired'" type="warning" :closable="false" :title="syncState === 'expired' ? '登录或访问凭证已失效，请重新验证。' : syncError || '实时连接中断，当前显示上次结果，正在重连。'" />

@@ -53,6 +53,13 @@ async function render(path = '/team-workspaces/914') {
   return router
 }
 describe('team workspace material ledger', () => {
+  it('reports actual pending counts for sidebar navigation without extra requests', async () => {
+    const router = await render()
+    expect(wrapper.emitted('pending-count')?.at(-1)).toEqual([{ teamId: 914, count: 1 }])
+    expect(teamMaterialApi.overview).toHaveBeenCalledOnce()
+    await router.push('/team-workspaces/nope'); await flushPromises()
+    expect(wrapper.emitted('pending-count')?.at(-1)?.[0]).toMatchObject({ count: null })
+  })
   it('ignores unrelated teams and only reloads identity/directory when those actually change', async () => {
     vi.useFakeTimers()
     const router = await render('/team-workspaces/914?tab=stock&query=AL&page=2')
@@ -81,7 +88,8 @@ describe('team workspace material ledger', () => {
     const router = await render('/team-workspaces/914?tab=serials&query=AL&date_from=2026-09-12&urgent_only=true&page=2&page_size=20#detail')
     expect(router.currentRoute.value.query).toEqual({ tab: 'stock', query: 'AL', date_from: '2026-09-12', urgent_only: 'true', page: '2', page_size: '20' })
     expect(router.currentRoute.value.hash).toBe('#detail')
-    expect(wrapper.findAll('[role=tab]').filter(item => item.text() === '库存明细')).toHaveLength(1)
+    expect(wrapper.find('[role=tablist]').exists()).toBe(false)
+    expect(wrapper.get('h1').text()).toBe('库存明细')
     expect(wrapper.text()).not.toContain('流水号台账')
     expect(teamMaterialApi.stock).not.toHaveBeenCalled()
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, expect.objectContaining({ availability: 'current', query: 'AL', date_from: '2026-09-12', urgent_only: true, page: 2, page_size: 20 }))
@@ -168,10 +176,9 @@ describe('team workspace material ledger', () => {
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, expect.objectContaining({ page: 1, page_size: 100 }))
   })
   it('provides separate analysis, serial and material pages with authoritative balances', async () => {
-    await render()
+    const router = await render()
     expect(wrapper.get('h1').text()).toBe('库存明细')
-    expect(wrapper.findAll('[role=tab]')).toHaveLength(6)
-    expect(wrapper.text()).toContain('材质归类')
+    expect(wrapper.findAll('[role=tab]')).toHaveLength(0)
     expect(teamMaterialApi.overview).toHaveBeenCalledWith(914)
     expect(wrapper.find('.team-workspace__heading').exists()).toBe(false)
     expect(wrapper.find('.workspace-balance-strip').exists()).toBe(false)
@@ -183,12 +190,12 @@ describe('team workspace material ledger', () => {
     expect(materialTransferApi.list).not.toHaveBeenCalled()
     expect(wrapper.findComponent(TeamSerialHistory).exists()).toBe(false)
     expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
-    await wrapper.get('#workspace-tab-history').trigger('click'); await flushPromises()
+    await router.push('/team-workspaces/914?tab=history'); await flushPromises()
     expect(wrapper.findComponent(TeamSerialHistory).exists()).toBe(true)
     expect(wrapper.text()).toContain('本班组收发')
     expect(wrapper.text()).not.toContain('内部在途')
     expect(wrapper.findComponent(TeamInventory).exists()).toBe(false)
-    await wrapper.get('#workspace-tab-stock').trigger('click'); await flushPromises()
+    await router.push('/team-workspaces/914'); await flushPromises()
     expect(wrapper.findComponent(TeamSerialHistory).exists()).toBe(false)
     expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
     vi.mocked(teamMaterialApi.overview).mockClear()
@@ -312,9 +319,9 @@ describe('warehouse intake workspace', () => {
   it('provides an intake entry only on the official warehouse and refreshes overview, stock and receipts after saving', async () => {
     state.auth.currentUser.team_id = 901
     await render('/team-workspaces/901')
-    expect(wrapper.findAll('[role=tab]')).toHaveLength(6)
+    expect(wrapper.findAll('[role=tab]')).toHaveLength(0)
     expect(wrapper.getComponent(TeamInventory).props('warehouse')).toBe(true)
-    expect(wrapper.get('button[aria-label="库房统计"]').text()).toContain('统计')
+    expect(wrapper.find('button[aria-label="库房统计"]').exists()).toBe(false)
     const button = wrapper.findAll('button').find(button => button.text() === '新建入库')!
     expect(button.exists()).toBe(true)
     await button.trigger('click'); await flushPromises()
@@ -336,7 +343,7 @@ describe('warehouse intake workspace', () => {
   })
   it('ignores warehouse-only tabs on the other seven workspaces', async () => {
     await render('/team-workspaces/914?tab=receipts')
-    expect(wrapper.findAll('[role=tab]')).toHaveLength(6)
+    expect(wrapper.findAll('[role=tab]')).toHaveLength(0)
     expect(teamMaterialApi.receipts).not.toHaveBeenCalled()
     expect(wrapper.findAll('button').some(button => button.text() === '手工入库')).toBe(false)
   })

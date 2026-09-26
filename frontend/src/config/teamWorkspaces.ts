@@ -1,4 +1,34 @@
 import type { Team } from '@/services/adminApi'
+import type { LocationQuery } from 'vue-router'
+
+export const teamWorkspaceSections = [
+  { value: 'stock', label: '库存明细' },
+  { value: 'pending', label: '待接收' },
+  { value: 'receipts', label: '入库记录' },
+  { value: 'outgoing', label: '出库记录' },
+  { value: 'losses', label: '丢失记录' },
+  { value: 'materials', label: '材质归类' },
+  { value: 'history', label: '收发历史' },
+] as const
+export type TeamWorkspaceSection = typeof teamWorkspaceSections[number]['value']
+
+export function teamWorkspaceSectionsFor(warehouse: boolean) {
+  return teamWorkspaceSections.filter(section => warehouse || section.value !== 'receipts')
+}
+
+export function resolveTeamWorkspaceSection(query: LocationQuery, warehouse: boolean): TeamWorkspaceSection {
+  if (query.tab === 'serials') return 'stock'
+  if (query.tab === 'overview') return 'history'
+  const section = teamWorkspaceSectionsFor(warehouse).find(item => item.value === query.tab)
+  if (section) return section.value
+  if (query.direction === 'outgoing') return 'outgoing'
+  if (query.direction === 'incoming') return query.status === 'received' ? 'stock' : 'pending'
+  return 'stock'
+}
+
+export function teamWorkspaceSectionPath(teamId: Team['id'], section: TeamWorkspaceSection) {
+  return `/team-workspaces/${teamId}${section === 'stock' ? '' : `?tab=${section}`}`
+}
 
 // Stable page profiles; these do not prescribe a processing route or change team-management permissions.
 export const teamWorkspaceProfiles = [

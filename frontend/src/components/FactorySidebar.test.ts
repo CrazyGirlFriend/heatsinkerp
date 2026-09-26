@@ -62,25 +62,60 @@ afterEach(() => {
   clearSession()
 })
 
-describe('two-level material navigation', () => {
+describe('three-level team navigation', () => {
   it('groups all eight teams under one parent, using real ids only', async () => {
     const directory = useTeamDirectoryStore(appPinia)
     directory.items = [
       { id: 7, code: 'FACTORY-ROLL', name: '扎板', active: true },
-      { id: 8, code: 'FACTORY-WAREHOUSE', name: '库房', active: true },
+      { id: 8, code: 'FACTORY-WAREHOUSE', name: '库房', kind: 'warehouse', active: true },
       { id: 9, code: 'DEMO', name: '退火', active: true },
     ]
     const { wrapper, router } = await renderSidebar('/team-workspaces/7')
     const groups = wrapper.findAllComponents(ElSubMenu)
-    expect(groups.map(group => group.props('index'))).toEqual(['factory', 'teams', 'materials', 'settings'])
+    expect(groups.map(group => group.props('index'))).toEqual(['factory', 'teams', 'team-8', 'team-7', 'materials', 'settings'])
     const teams = groups.find(group => group.props('index') === 'teams')!
-    expect(teams.findAllComponents(ElSubMenu)).toHaveLength(0)
-    expect(teams.findAllComponents(ElMenuItem).filter(item => !item.props('disabled')).map(item => item.props('index'))).toEqual(['/team-workspaces/8', '/team-workspaces/7'])
+    expect(teams.findAllComponents(ElSubMenu).map(item => item.props('index'))).toEqual(['team-8', 'team-7'])
+    expect(teams.find('[aria-label="库房 · 入库记录"]').exists()).toBe(true)
+    expect(teams.find('[aria-label="轧制 · 入库记录"]').exists()).toBe(false)
     expect(wrapper.findAll('.factory-nav__missing')).toHaveLength(6)
-    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制工作台')
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制 · 库存明细')
     await router.push('/transfer-batches/scan'); await nextTick()
     expect(wrapper.findAll('[aria-current="page"]')).toHaveLength(1)
     expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('扫码查询')
+  })
+
+  it('keeps all eight team headings and opens only one team branch at a time', async () => {
+    const { teamWorkspaceProfiles } = await import('@/config/teamWorkspaces')
+    useTeamDirectoryStore(appPinia).items = teamWorkspaceProfiles.map((profile, index) => ({ id: index + 1, code: profile.code, name: profile.name, active: true, kind: index === 0 ? 'warehouse' : 'production' }))
+    const { wrapper, router } = await renderSidebar('/team-workspaces/4?tab=outgoing&query=铜&page=2')
+    expect(wrapper.findAll('.factory-nav__team')).toHaveLength(8)
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('研磨 · 出库记录')
+    expect(wrapper.get('[aria-label="研磨工作台"]').attributes('aria-expanded')).toBe('true')
+    await wrapper.get('[aria-label="轧制工作台"] > .el-sub-menu__title').trigger('click')
+    expect(wrapper.get('[aria-label="研磨工作台"]').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.get('[aria-label="轧制工作台"]').attributes('aria-expanded')).toBe('true')
+    await wrapper.get('[aria-label="轧制 · 待接收"]').trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/2?tab=pending')
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制 · 待接收')
+    await router.back(); await flushPromises()
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('研磨 · 出库记录')
+    expect(wrapper.get('[aria-label="研磨工作台"]').attributes('aria-expanded')).toBe('true')
+    await wrapper.setProps({ compact: true }); await wrapper.setProps({ compact: false }); await flushPromises()
+    expect(wrapper.get('[aria-label="研磨工作台"]').attributes('aria-expanded')).toBe('true')
+  })
+
+  it('normalizes old links and shows a live count only for its matching team', async () => {
+    useTeamDirectoryStore(appPinia).items = [{ id: 7, code: 'FACTORY-ROLL', name: '轧制', active: true }]
+    const { wrapper, router } = await renderSidebar('/team-workspaces/7?tab=overview')
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制 · 收发历史')
+    await wrapper.setProps({ pendingTeamId: 7, pendingCount: 23 })
+    expect(wrapper.get('[aria-label="轧制 · 待接收"] small').text()).toBe('23')
+    await wrapper.setProps({ pendingCount: 24 })
+    expect(wrapper.get('[aria-label="轧制 · 待接收"] small').text()).toBe('24')
+    await wrapper.setProps({ pendingTeamId: 8 })
+    expect(wrapper.find('.factory-nav__count').exists()).toBe(false)
+    await router.push('/team-workspaces/7?direction=incoming&query=铜'); await flushPromises()
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制 · 待接收')
   })
 
   it('expands and folds a first-level group without promoting its children', async () => {

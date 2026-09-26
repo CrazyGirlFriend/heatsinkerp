@@ -5,19 +5,25 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { isAdmin } from '@/stores/auth'
 import { teamDirectory, refreshTeamDirectory } from '@/stores/teamDirectory'
-import { configuredTeamWorkspaces } from '@/config/teamWorkspaces'
+import { configuredTeamWorkspaces, resolveTeamWorkspaceSection, teamWorkspaceSectionsFor, teamWorkspaceSectionPath } from '@/config/teamWorkspaces'
 
-const props = withDefaults(defineProps<{ compact?: boolean; illustrated?: boolean; overview?: boolean }>(), { compact: false, illustrated: false })
+const props = withDefaults(defineProps<{ compact?: boolean; illustrated?: boolean; overview?: boolean; pendingTeamId?: number; pendingCount?: number | null }>(), { compact: false, illustrated: false })
 const teamIcons = { 'FACTORY-WAREHOUSE': Box, 'FACTORY-ROLL': Connection, 'FACTORY-ANNEAL': HotWater, 'FACTORY-GRIND': Tools,
   'FACTORY-WIRE': Scissor, 'FACTORY-ENGRAVE': EditPen, 'FACTORY-PLATE': Coin, 'FACTORY-QC': CircleCheck }
 const route = useRoute()
 const menu = ref<MenuInstance>()
 const activeGroup = computed(() => route.path.startsWith('/settings/') ? 'settings' : ['/', '/factory-stock', '/factory-analysis'].includes(route.path) ? 'factory' : ['/transfer-batches', '/transfer-batches/scan', '/material-trace'].includes(route.path) ? 'materials' : 'teams')
-watch([() => route.path, () => props.compact], async () => {
-  await nextTick()
-  if (!props.compact && !props.overview) menu.value?.open(activeGroup.value)
-})
 const workspaces = computed(() => configuredTeamWorkspaces(teamDirectory.items))
+const activeTeam = computed(() => workspaces.value.find(({ team }) => team && route.path === `/team-workspaces/${team.id}`)?.team)
+const activeIndex = computed(() => activeTeam.value ? teamWorkspaceSectionPath(activeTeam.value.id, resolveTeamWorkspaceSection(route.query, activeTeam.value.code === 'FACTORY-WAREHOUSE' && activeTeam.value.kind === 'warehouse')) : route.path)
+const openedGroups = computed(() => props.overview ? [] : [activeGroup.value, ...(activeTeam.value ? [`team-${activeTeam.value.id}`] : [])])
+watch([() => route.fullPath, () => props.compact, () => props.overview, workspaces], async () => {
+  await nextTick()
+  if (!props.compact && !props.overview) {
+    menu.value?.open(activeGroup.value)
+    if (activeTeam.value) menu.value?.open(`team-${activeTeam.value.id}`)
+  }
+}, { immediate: true })
 const materialLinks = computed(() => [
   { path: '/transfer-batches', label: '转料记录', icon: Tickets },
   { path: '/transfer-batches/scan', label: '扫码查询', icon: Aim },
@@ -27,7 +33,7 @@ const materialLinks = computed(() => [
 
 <template>
   <nav class="factory-nav" :class="{ 'factory-nav--compact': compact, 'factory-nav--illustrated': illustrated, 'factory-nav--overview': overview }" aria-label="主导航">
-    <ElMenu ref="menu" router tabindex="0" :default-active="route.path" :default-openeds="overview ? [] : [activeGroup]" :collapse="compact" :collapse-transition="false" popper-class="factory-nav-popup">
+    <ElMenu ref="menu" router unique-opened tabindex="0" :default-active="activeIndex" :default-openeds="openedGroups" :collapse="compact" :collapse-transition="false" popper-class="factory-nav-popup">
       <ElMenuItem v-if="overview" index="/" aria-label="库存总览" aria-current="page"><ElIcon><House /></ElIcon><span>全厂总览</span></ElMenuItem>
       <ElSubMenu v-else index="factory" aria-label="全厂总览">
         <template #title><ElIcon><House /></ElIcon><span>全厂总览</span></template>
@@ -40,7 +46,12 @@ const materialLinks = computed(() => [
         <ElMenuItem v-else-if="teamDirectory.error" index="teams-retry" :route="route.fullPath" @click="refreshTeamDirectory"><ElIcon><Refresh /></ElIcon>重新加载班组</ElMenuItem>
         <template v-else>
           <template v-for="{ profile, team } in workspaces" :key="profile.code">
-            <ElMenuItem v-if="team" :index="'/team-workspaces/' + team.id" class="factory-nav__team-link" :aria-label="profile.name + '工作台'" :aria-current="route.path === '/team-workspaces/' + team.id ? 'page' : undefined"><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"><component :is="teamIcons[profile.code as keyof typeof teamIcons]" /></ElIcon>{{ profile.name }}</ElMenuItem>
+            <ElSubMenu v-if="team" :index="`team-${team.id}`" class="factory-nav__team" :aria-label="profile.name + '工作台'" popper-class="factory-nav-popup">
+              <template #title><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"><component :is="teamIcons[profile.code as keyof typeof teamIcons]" /></ElIcon><span>{{ profile.name }}</span></template>
+              <ElMenuItem v-for="section in teamWorkspaceSectionsFor(profile.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse')" :key="section.value" :index="teamWorkspaceSectionPath(team.id, section.value)" class="factory-nav__workspace-link" :aria-label="`${profile.name} · ${section.label}`" :aria-current="activeIndex === teamWorkspaceSectionPath(team.id, section.value) ? 'page' : undefined">
+                <span>{{ section.label }}</span><small v-if="section.value === 'pending' && String(pendingTeamId) === String(team.id) && pendingCount" class="factory-nav__count">{{ pendingCount }}</small>
+              </ElMenuItem>
+            </ElSubMenu>
             <ElMenuItem v-else :index="'missing-' + profile.code" class="factory-nav__missing" disabled>{{ profile.name }}<small>未配置</small></ElMenuItem>
           </template>
         </template>
@@ -71,6 +82,11 @@ const materialLinks = computed(() => [
 .factory-nav :deep(.el-menu-item.is-active) { color: var(--primary); background: var(--surface-soft); font-weight: 550; }
 .factory-nav :deep(.el-sub-menu .el-menu-item.is-active::before) { position: absolute; left: 24px; height: 20px; width: 2px; background: var(--primary); content: ''; }
 .factory-nav__missing small { margin-left: auto; font-size: 11px; }
+.factory-nav :deep(.factory-nav__team > .el-sub-menu__title) { height: 38px; line-height: 38px; padding-left: 24px; font-weight: 450; }
+.factory-nav :deep(.factory-nav__team.is-active > .el-sub-menu__title) { color: var(--primary); }
+.factory-nav :deep(.factory-nav__team > .el-menu > .el-menu-item) { min-width: 0; height: 34px; line-height: 34px; padding-left: 56px; padding-right: 12px; font-size: 13px; }
+.factory-nav :deep(.factory-nav__team .el-menu-item.is-active::before) { left: 42px; height: 16px; }
+.factory-nav__count { min-width: 18px; margin-left: auto; padding: 0 5px; border-radius: 4px; background: var(--surface-soft); color: var(--primary); font-size: 11px; line-height: 18px; font-variant-numeric: tabular-nums; }
 .factory-nav--compact { padding-inline: 6px; }
 .factory-nav--compact :deep(.el-menu-item), .factory-nav--compact :deep(.el-sub-menu__title), .factory-nav--compact :deep(.el-menu-tooltip__trigger) { justify-content: center; padding: 0; }
 .factory-nav--compact :deep(.el-menu .el-icon:not(.el-sub-menu__icon-arrow)) { margin: 0; }
