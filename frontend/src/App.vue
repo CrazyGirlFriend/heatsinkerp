@@ -163,7 +163,7 @@ function enterBigScreen(event: MouseEvent): void {
       </header>
 
       <aside id="factory-sidebar" ref="sidebarElement" class="sidebar" :class="{ 'sidebar--open': mobileMenuOpen }" :inert="mobileViewport && !mobileMenuOpen ? true : undefined" :aria-hidden="mobileViewport && !mobileMenuOpen ? true : undefined" @keydown="handleSidebarKeydown">
-        <div class="brand-mark" aria-label="安泰天龙 · 热沉物料">
+        <div class="brand-mark" aria-label="热沉事业部综合管理系统">
           <img v-if="sidebarCompact" class="brand-mark__icon" src="/brand/attl-official-favicon.ico" alt="安泰天龙" width="32" height="32" />
           <img v-else class="brand-mark__logo" src="/brand/attl-official-logo.png" alt="中国钢研 安泰科技 · 安泰天龙" width="1017" height="143" />
         </div>
