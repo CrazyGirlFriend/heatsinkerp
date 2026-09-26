@@ -335,6 +335,8 @@ class MaterialStockBalance(Base):
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
     received_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     received_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    adjusted_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     on_hand_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     on_hand_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
     reserved_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -355,7 +357,7 @@ class MaterialStockBalance(Base):
         ),
         *(
             CheckConstraint(
-                f"round(received_{amount}, 3) = round(on_hand_{amount} + reserved_{amount} + dispatched_{amount} + lost_{amount}, 3)",
+                f"round(received_{amount}{' + adjusted_quantity' if amount == 'quantity' else ''}, 3) = round(on_hand_{amount} + reserved_{amount} + dispatched_{amount} + lost_{amount}, 3)",
                 name=f"ck_msb_reconcile_{amount}",
             )
             for amount in ("quantity", "weight")
@@ -445,6 +447,31 @@ class MaterialLoss(Base):
     source_transfer: Mapped[MaterialTransfer] = relationship(
         foreign_keys=[source_transfer_id], back_populates="losses", lazy="joined"
     )
+
+
+class MaterialQuantityAdjustment(Base):
+    """Processing changes the pieces in stock, never the signed receipt or mass."""
+
+    __tablename__ = "material_quantity_adjustments"
+    __table_args__ = (
+        CheckConstraint("before_quantity >= 0 AND after_quantity >= 0", name="ck_mqa_quantities"),
+        CheckConstraint("before_quantity != after_quantity", name="ck_mqa_changed"),
+        CheckConstraint("weight_snapshot >= 0", name="ck_mqa_weight"),
+        Index("ix_mqa_lot_created", "source_transfer_id", "created_at", "id"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_transfer_id: Mapped[int] = mapped_column(ForeignKey("material_transfers.id", ondelete="RESTRICT"))
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
+    before_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    after_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    weight_snapshot: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    stock_revision_before: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(80), nullable=False)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
 
 class MaterialTransferEvent(Base):

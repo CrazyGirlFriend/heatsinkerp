@@ -9,11 +9,25 @@ from .models import User
 from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, WarehouseReceiptCreate, MaterialTransferResponse, MaterialTransferList
 from . import material_stock as stock
 from . import warehouse_receipts
+from . import quantity_adjustments
 from .async_read_response import team_read_response
 
 from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/team-materials", tags=["team material stock"])
+
+
+@router.post("/{team_id}/quantity-adjustments", status_code=201)
+def change_quantity(payload: quantity_adjustments.AdjustmentCreate, team_id: int = Path(ge=1),
+                    user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return quantity_adjustments.create(db, team_id, payload, user)
+
+
+@router.get("/{team_id}/stock/{lot_id}/quantity-adjustments")
+def quantity_context(team_id: int = Path(ge=1), lot_id: int = Path(ge=1),
+                     page: int = Query(default=1, ge=1), page_size: int = Query(default=10, ge=1, le=100),
+                     _: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return team_read_response(db, lambda session: quantity_adjustments.context(session, team_id, lot_id, page, page_size))
 
 
 @router.post("/{team_id}/receipts", status_code=201, response_model=MaterialTransferResponse)

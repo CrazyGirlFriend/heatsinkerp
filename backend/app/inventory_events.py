@@ -13,7 +13,7 @@ from uuid import uuid4
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
-from .models import AuthSession, MaterialDispatch, MaterialLoss, MaterialTransfer, SerialUrgency, SerialDeliveryPlan, Team, User, TeamPurpose, OpeningStockSubmission, NotificationOutbox, utcnow
+from .models import AuthSession, MaterialDispatch, MaterialLoss, MaterialQuantityAdjustment, MaterialTransfer, SerialUrgency, SerialDeliveryPlan, Team, User, TeamPurpose, OpeningStockSubmission, NotificationOutbox, utcnow
 from .observability import record
 
 
@@ -121,7 +121,7 @@ class InventoryEvents:
 
 inventory_events = InventoryEvents()
 outbox_wakeups = InventoryEvents()
-WATCHED = (MaterialTransfer, MaterialLoss, MaterialDispatch, SerialUrgency, SerialDeliveryPlan, Team, User, AuthSession, TeamPurpose, OpeningStockSubmission)
+WATCHED = (MaterialTransfer, MaterialLoss, MaterialQuantityAdjustment, MaterialDispatch, SerialUrgency, SerialDeliveryPlan, Team, User, AuthSession, TeamPurpose, OpeningStockSubmission)
 PENDING = "inventory_changed_transactions"
 
 

@@ -115,6 +115,16 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
         item["lost_weight"] += loss.weight
         add(lot, lot, "loss", loss.created_at, loss.quantity, loss.weight, loss.reason,
             -loss.quantity, -loss.weight, f"loss-{loss.id}")
+    adjustments = db.scalars(select(MaterialTransferEvent).join(MT, MT.id == MaterialTransferEvent.transfer_id)
+        .where(MT.next_team_id == team_id, MT.serial_no == serial_no, MaterialTransferEvent.action == "quantity_changed")
+        .order_by(MaterialTransferEvent.id)).all()
+    for adjustment in adjustments:
+        lot = received.get(adjustment.transfer_id)
+        if lot:
+            pieces = adjustment.changes["stock_quantity"]
+            delta = pieces["after"] - pieces["before"]
+            add(lot, lot, "quantity_changed", adjustment.occurred_at, abs(delta), 0, adjustment.changes["reason"]["after"],
+                delta, 0, f"event-{adjustment.id}")
     ledger = stock_table(team_id)
     lots = {lot.batch_no: {
         "batch_no": lot.batch_no, "group_key": group(lot)["key"],

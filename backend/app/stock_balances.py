@@ -12,7 +12,7 @@ from decimal import Decimal
 from sqlalchemy import delete, event, func, select, update
 from sqlalchemy.orm import Session
 
-from .models import MaterialLoss, MaterialStockBalance, MaterialTransfer, utcnow
+from .models import MaterialLoss, MaterialQuantityAdjustment, MaterialStockBalance, MaterialTransfer, utcnow
 
 PREFIXES = ("received", "on_hand", "reserved", "in_transit", "dispatched", "lost")
 AMOUNTS = tuple(f"{prefix}_{amount}" for prefix in PREFIXES for amount in ("quantity", "weight"))
@@ -28,6 +28,7 @@ FIELDS = {
         "weight",
     ),
     MaterialLoss: ("id", "source_transfer_id", "quantity", "weight"),
+    MaterialQuantityAdjustment: ("id", "source_transfer_id", "before_quantity", "after_quantity"),
 }
 PENDING = "stock_balance_flush_changes"
 
@@ -50,6 +51,8 @@ def remember_balances(db, *_):
         ]
         if not rows:
             continue
+        if model is MaterialQuantityAdjustment and any(row not in db.new for row in rows):
+            raise RuntimeError("Quantity adjustments are append-only; record a correction instead")
         ids = [row.id for row in rows if row not in db.new]
         table = model.__table__
         # Current/locking reads, not an earlier MySQL REPEATABLE READ snapshot.
@@ -75,6 +78,11 @@ def remember_balances(db, *_):
 
 def contribute(deltas, model, row, sign):
     if row is None:
+        return
+    if model is MaterialQuantityAdjustment:
+        delta = sign * (row["after_quantity"] - row["before_quantity"])
+        deltas[row["source_transfer_id"]]["adjusted_quantity"] += delta
+        deltas[row["source_transfer_id"]]["on_hand_quantity"] += delta
         return
 
     def add(lot_id, prefix, direction=1):
@@ -104,7 +112,7 @@ def apply_balances(db, *_):
     changes = db.info.pop(PENDING, ())
     if not changes:
         return
-    deltas = defaultdict(lambda: {name: 0 for name in AMOUNTS})
+    deltas = defaultdict(lambda: {name: 0 for name in (*AMOUNTS, "adjusted_quantity")})
     created, removed, teams = {}, set(), {}
     for row, before, deleted in changes:
         model = type(row)
@@ -145,7 +153,7 @@ def apply_balances(db, *_):
             result = connection.execute(
                 update(table)
                 .where(table.c.transfer_id == lot_id)
-                .values(**values, updated_at=utcnow())
+                .values(**values, revision=table.c.revision + 1, updated_at=utcnow())
             )
             if result.rowcount != 1:
                 raise RuntimeError(
