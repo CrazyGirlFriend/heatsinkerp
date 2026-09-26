@@ -7,7 +7,7 @@ import { isAdmin } from '@/stores/auth'
 import { teamDirectory, refreshTeamDirectory } from '@/stores/teamDirectory'
 import { configuredTeamWorkspaces } from '@/config/teamWorkspaces'
 
-const props = withDefaults(defineProps<{ compact?: boolean; illustrated?: boolean }>(), { compact: false, illustrated: false })
+const props = withDefaults(defineProps<{ compact?: boolean; illustrated?: boolean; overview?: boolean }>(), { compact: false, illustrated: false })
 const teamIcons = { 'FACTORY-WAREHOUSE': Box, 'FACTORY-ROLL': Connection, 'FACTORY-ANNEAL': HotWater, 'FACTORY-GRIND': Tools,
   'FACTORY-WIRE': Scissor, 'FACTORY-ENGRAVE': EditPen, 'FACTORY-PLATE': Coin, 'FACTORY-QC': CircleCheck }
 const route = useRoute()
@@ -15,7 +15,7 @@ const menu = ref<MenuInstance>()
 const activeGroup = computed(() => route.path.startsWith('/settings/') ? 'settings' : ['/', '/factory-stock', '/factory-analysis'].includes(route.path) ? 'factory' : ['/transfer-batches', '/transfer-batches/scan', '/material-trace'].includes(route.path) ? 'materials' : 'teams')
 watch([() => route.path, () => props.compact], async () => {
   await nextTick()
-  if (!props.compact) menu.value?.open(activeGroup.value)
+  if (!props.compact && !props.overview) menu.value?.open(activeGroup.value)
 })
 const workspaces = computed(() => configuredTeamWorkspaces(teamDirectory.items))
 const materialLinks = computed(() => [
@@ -26,9 +26,10 @@ const materialLinks = computed(() => [
 </script>
 
 <template>
-  <nav class="factory-nav" :class="{ 'factory-nav--compact': compact, 'factory-nav--illustrated': illustrated }" aria-label="主导航">
-    <ElMenu ref="menu" router tabindex="0" :default-active="route.path" :default-openeds="[activeGroup]" :collapse="compact" :collapse-transition="false" popper-class="factory-nav-popup">
-      <ElSubMenu index="factory" aria-label="全厂总览">
+  <nav class="factory-nav" :class="{ 'factory-nav--compact': compact, 'factory-nav--illustrated': illustrated, 'factory-nav--overview': overview }" aria-label="主导航">
+    <ElMenu ref="menu" router tabindex="0" :default-active="route.path" :default-openeds="overview ? [] : [activeGroup]" :collapse="compact" :collapse-transition="false" popper-class="factory-nav-popup">
+      <ElMenuItem v-if="overview" index="/" aria-label="库存总览" aria-current="page"><ElIcon><House /></ElIcon><span>全厂总览</span></ElMenuItem>
+      <ElSubMenu v-else index="factory" aria-label="全厂总览">
         <template #title><ElIcon><House /></ElIcon><span>全厂总览</span></template>
         <ElMenuItem index="/" aria-label="库存总览" :aria-current="route.path === '/' ? 'page' : undefined">库存总览</ElMenuItem>
         <ElMenuItem index="/factory-stock" aria-label="库存明细" :aria-current="route.path === '/factory-stock' ? 'page' : undefined">库存明细</ElMenuItem>
@@ -44,7 +45,8 @@ const materialLinks = computed(() => [
           </template>
         </template>
       </ElSubMenu>
-      <ElSubMenu index="materials" aria-label="流转查询">
+      <template v-if="overview"><ElMenuItem index="/factory-stock"><ElIcon><Box /></ElIcon><span>库存明细</span></ElMenuItem><ElMenuItem v-for="link in materialLinks" :key="link.path" :index="link.path" :aria-label="link.label"><ElIcon><component :is="link.icon" /></ElIcon><span>{{ link.label }}</span></ElMenuItem></template>
+      <ElSubMenu v-else index="materials" aria-label="流转查询">
         <template #title><ElIcon><Search /></ElIcon><span>流转查询</span></template>
         <ElMenuItem v-for="link in materialLinks" :key="link.path" :index="link.path" :aria-label="link.label" :aria-current="route.path === link.path ? 'page' : undefined"><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"><component :is="link.icon" /></ElIcon>{{ link.label }}</ElMenuItem>
       </ElSubMenu>
@@ -79,4 +81,8 @@ const materialLinks = computed(() => [
 .factory-nav--illustrated :deep(.el-sub-menu .el-menu-item:not(.is-active)) { color: var(--muted); }
 .factory-nav--illustrated :deep(.factory-nav__team-icon) { width: 22px; margin-right: 10px; font-size: 20px; color: #847096; }
 .factory-nav--illustrated.factory-nav--compact { padding-inline: 6px; }
+.factory-nav--overview :deep(.el-menu-item), .factory-nav--overview :deep(.el-sub-menu__title) { font-size: 14px; font-weight: 450; }
+.factory-nav--overview :deep(.el-menu > .el-menu-item), .factory-nav--overview :deep(.el-sub-menu__title) { height: 42px; line-height: 42px; }
+.factory-nav--overview :deep(.el-menu-item.is-active) { font-weight: 550; }
+.factory-nav--overview :deep(.el-menu .el-icon) { font-size: 19px; }
 </style>

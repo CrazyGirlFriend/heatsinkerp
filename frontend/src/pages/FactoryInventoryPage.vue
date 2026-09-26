@@ -1,250 +1,1295 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { ElAlert, ElButton, ElIcon, ElTag } from 'element-plus'
-import { ArrowRight, Flag, Refresh, VideoPause, VideoPlay } from '@element-plus/icons-vue'
-import AnimatedMetric from '@/components/AnimatedMetric.vue'
+import { ElAlert, ElButton, ElDialog, ElIcon } from 'element-plus'
+import {
+  ArrowRight,
+  Box,
+  CircleCheck,
+  Flag,
+  Monitor,
+  Refresh,
+  Tickets,
+  Van,
+} from '@element-plus/icons-vue'
+import LedgerChart from '@/components/LedgerChart.vue'
 import StatePanel from '@/components/StatePanel.vue'
-import SpotlightCard from '@/components/motion/SpotlightCard.vue'
-import StarBorder from '@/components/motion/StarBorder.vue'
-import InventoryAmbient from '@/components/motion/InventoryAmbient.vue'
-import { factoryOverviewApi } from '@/services/factoryOverviewApi'
+import { factoryLiveApi } from '@/services/factoryLiveApi'
 import type { InventoryConnection } from '@/services/inventoryStream'
-import type { FactoryOverview, FactoryTeam } from '@/types/factoryOverview'
+import type { FactoryLive, LiveTeam } from '@/types/factoryLive'
+import { inventoryReconciles, kg, number, stockTypes, sumAmounts } from '@/utils/factoryGlass'
+import { formatDateTime } from '@/utils/format'
 
-const report = ref<FactoryOverview | null>(null), loading = ref(false), error = ref('')
+const report = ref<FactoryLive | null>(null)
+const loading = ref(false),
+  error = ref('')
 const connection = ref<InventoryConnection>('connecting')
-const connectionLabel = computed(() => ({ connecting: '正在连接实时数据', live: '实时同步', reconnecting: '连接中断，正在重连', expired: '登录或访问凭证已失效' })[connection.value])
-const hidden = ref(document.hidden), reduced = ref(false), paused = ref(false)
-const changedTeams = ref<string[]>([])
-const motion = computed(() => !hidden.value && !reduced.value && !paused.value && !error.value)
-const summaryItems = [{ key: 'on_hand', label: '全厂在库', image: 'stock-v2' }, { key: 'in_transit', label: '内部在途', image: 'transit' }] as const
-const teamImages: Record<string, string> = {
-  'FACTORY-WAREHOUSE': 'warehouse', 'FACTORY-ROLL': 'rolling', 'FACTORY-ANNEAL': 'annealing', 'FACTORY-GRIND': 'grinding',
-  'FACTORY-WIRE': 'wire', 'FACTORY-ENGRAVE': 'engraving', 'FACTORY-PLATE': 'plating', 'FACTORY-QC': 'inspection',
-}
-const updatedAt = computed(() => report.value ? new Intl.DateTimeFormat('zh-CN', {
-  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
-  hour12: false, timeZone: 'Asia/Shanghai',
-}).format(new Date(report.value.as_of)).replaceAll('/', '-') : '—')
-let version = 0, unsubscribe: (() => void) | undefined, changeTimer: ReturnType<typeof setTimeout> | undefined
+const reduced = ref(false),
+  hidden = ref(document.hidden)
+const typeDialog = ref(false),
+  selectedTeam = ref<string | null>(null)
+let version = 0,
+  unsubscribe: (() => void) | undefined
 let media: MediaQueryList | undefined
+const motion = computed(() => !reduced.value && !hidden.value && !error.value)
+const teams = computed(() => report.value?.teams || [])
+const connectionLabel = computed(
+  () =>
+    ({ connecting: '正在连接', live: '实时同步', reconnecting: '正在重连', expired: '凭证已失效' })[
+      connection.value
+    ],
+)
+const updatedAt = computed(() => (report.value ? formatDateTime(report.value.as_of) : '—'))
 const warning = computed(() => {
   if (!report.value) return ''
-  const missing = report.value.teams.filter(team => !team.id).map(team => team.name)
-  const inactive = report.value.teams.filter(team => team.id && !team.active).map(team => team.name)
-  return [missing.length ? `未配置：${missing.join('、')}，汇总范围不完整` : '', inactive.length ? `停用班组仍保留库存：${inactive.join('、')}` : '', report.value.legacy_received_count ? `${report.value.legacy_received_count} 条历史接收未纳入库存` : ''].filter(Boolean).join('；')
+  const missing = teams.value.filter((team) => !team.id).map((team) => team.name)
+  const inactive = teams.value.filter((team) => team.id && !team.active).map((team) => team.name)
+  return [
+    missing.length ? `未配置：${missing.join('、')}，汇总范围不完整` : '',
+    inactive.length ? `已停用班组仍保留库存：${inactive.join('、')}` : '',
+    report.value.legacy_received_count
+      ? `${report.value.legacy_received_count} 条历史接收未纳入库存`
+      : '',
+    !inventoryReconciles(report.value) ? '班组与物料分类合计未核平，请核对库存明细' : '',
+  ]
+    .filter(Boolean)
+    .join('；')
 })
-function fingerprint(team: FactoryTeam) {
-  return JSON.stringify([team.balance?.on_hand_quantity, team.balance?.on_hand_weight, team.serial_count, team.urgent_serial_count,
-    team.pending_incoming?.batches, team.pending_incoming?.quantity, team.pending_incoming?.weight])
+const colors = ['#58986f', '#a2c899', '#79a9ce', '#a6afb6']
+const allTypes = computed(() => stockTypes(report.value?.material_types || []))
+const mainTypes = computed(() =>
+  [
+    ...allTypes.value.slice(0, 3),
+    { key: 'others', label: '其余类型', color: colors[3]!, ...sumAmounts(allTypes.value.slice(3)) },
+  ].map((item, i) => ({ ...item, color: colors[i]! })),
+)
+const focusedTeam = computed(() => teams.value.find((team) => team.code === selectedTeam.value))
+const dialogTypes = computed(() =>
+  selectedTeam.value ? stockTypes(focusedTeam.value?.material_types || []) : allTypes.value,
+)
+const dialogTotal = computed(() => sumAmounts(dialogTypes.value))
+const maxWeight = computed(() =>
+  Math.max(1, ...teams.value.map((team) => team.balance?.on_hand_weight || 0)),
+)
+const ringOption = computed(() => ({
+  tooltip: { trigger: 'item', valueFormatter: (value: unknown) => `${kg(Number(value))} kg` },
+  series: [
+    {
+      type: 'pie',
+      radius: ['66%', '86%'],
+      center: ['50%', '50%'],
+      label: { show: false },
+      itemStyle: { borderWidth: 2, borderColor: '#fff' },
+      emphasis: { scaleSize: 4 },
+      data: mainTypes.value
+        .filter((item) => item.weight > 0)
+        .map((item) => ({
+          name: item.label,
+          value: item.weight,
+          itemStyle: { color: item.color },
+        })),
+    },
+  ],
+}))
+// A pending batch can contain many serials. Use the server's complete batch rows
+// for amounts; the capped per-team serial feed cannot safely reconstruct totals.
+const recentPending = computed(() =>
+  (report.value?.recent_batches || [])
+    .filter(
+      (row) =>
+        row.entry_kind === 'transfer' &&
+        ['pending', 'partial'].includes(row.status) &&
+        row.source_id != null &&
+        row.target_id != null,
+    )
+    .slice(0, 4),
+)
+const attentionTab = ref<'pending' | 'urgent'>('pending')
+const attentionTeams = computed(() =>
+  teams.value
+    .filter((team) =>
+      attentionTab.value === 'pending'
+        ? (team.pending_incoming?.batches || 0) > 0
+        : (team.urgent_serial_count || 0) > 0,
+    )
+    .sort((a, b) =>
+      attentionTab.value === 'pending'
+        ? (b.pending_incoming?.batches || 0) - (a.pending_incoming?.batches || 0)
+        : (b.urgent_serial_count || 0) - (a.urgent_serial_count || 0),
+    ),
+)
+const pendingLink = {
+  path: '/transfer-batches',
+  query: { status: 'pending', entry_kind: 'transfer' },
 }
-function clearChanges() { if (changeTimer) clearTimeout(changeTimer); changedTeams.value = [] }
-function acceptReport(next: FactoryOverview) {
-  clearChanges()
-  if (report.value && motion.value) {
-    const previous = new Map(report.value.teams.map(team => [team.code, fingerprint(team)]))
-    changedTeams.value = next.teams.filter(team => previous.has(team.code) && previous.get(team.code) !== fingerprint(team)).map(team => team.code)
-    if (changedTeams.value.length) changeTimer = setTimeout(clearChanges, 1400)
+function teamLink(team: LiveTeam, tab = 'stock', urgent = false) {
+  return {
+    path: `/team-workspaces/${team.id}`,
+    query: { tab, ...(urgent ? { urgent_only: 'true' } : {}) },
   }
-  report.value = next; error.value = ''; loading.value = false
+}
+function showTypes(team?: LiveTeam) {
+  selectedTeam.value = team?.code ?? null
+  typeDialog.value = true
 }
 function load() {
   const current = ++version
   unsubscribe?.()
-  unsubscribe = factoryOverviewApi.subscribe({
-    onData(next) { if (current === version) acceptReport(next) },
+  // All homepage sections switch together on a single authoritative snapshot.
+  unsubscribe = factoryLiveApi.subscribe({
+    onData(next) {
+      if (current === version) {
+        report.value = next
+        loading.value = false
+        error.value = ''
+      }
+    },
     onState(state) {
       if (current !== version) return
       connection.value = state
       loading.value = state === 'connecting'
       if (state === 'live') error.value = ''
       if (state === 'reconnecting' || state === 'expired') {
-        clearChanges()
-        error.value = report.value ? '实时连接中断，当前显示上次成功读取的数据。' : '库存数据连接失败，正在自动重连。'
+        error.value = report.value
+          ? '实时连接中断，当前显示上次成功读取的数据。'
+          : '库存数据连接失败，正在自动重连。'
         if (state === 'expired') error.value = '登录或访问凭证已失效，请重新验证。'
       }
     },
   })
 }
-function syncMotion() { reduced.value = Boolean(media?.matches); if (reduced.value) clearChanges() }
+function syncMotion() {
+  reduced.value = Boolean(media?.matches)
+}
 function syncVisibility() {
   hidden.value = document.hidden
-  if (hidden.value) { ++version; unsubscribe?.(); unsubscribe = undefined; clearChanges() }
-  else load()
+  if (hidden.value) {
+    ++version
+    unsubscribe?.()
+    unsubscribe = undefined
+  } else load()
 }
-function teamLink(team: FactoryTeam, tab = 'stock') { return { path: `/team-workspaces/${team.id}`, query: { tab } } }
 onMounted(() => {
-  media = window.matchMedia?.('(prefers-reduced-motion: reduce)'); syncMotion()
+  media = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+  syncMotion()
   media?.addEventListener('change', syncMotion)
   document.addEventListener('visibilitychange', syncVisibility)
   if (!document.hidden) load()
 })
 onBeforeUnmount(() => {
-  ++version; unsubscribe?.(); clearChanges()
-  media?.removeEventListener('change', syncMotion); document.removeEventListener('visibilitychange', syncVisibility)
+  ++version
+  unsubscribe?.()
+  media?.removeEventListener('change', syncMotion)
+  document.removeEventListener('visibilitychange', syncVisibility)
 })
 </script>
+
 <template>
-  <section class="page factory-inventory" :class="{ 'factory-inventory--still': !motion }" aria-label="全厂库存总览">
-    <InventoryAmbient :animate="motion" />
-    <div class="inventory-content">
-    <header class="inventory-heading">
-      <h1>全厂库存总览</h1>
-      <div class="inventory-actions">
-        <ElButton :icon="Refresh" :loading="loading" @click="load">刷新</ElButton>
-        <ElButton class="motion-toggle" :icon="paused ? VideoPlay : VideoPause" :disabled="reduced" :aria-pressed="paused" :aria-label="reduced ? '系统已减少动画' : paused ? '开启动效' : '暂停动效'" @click="paused = !paused">{{ paused ? '播放' : '暂停' }}</ElButton>
-      </div>
-    </header>
-    <ElAlert v-if="error && report" :title="error" type="warning" :closable="false" show-icon />
-    <ElAlert v-if="warning" :title="warning" type="warning" :closable="false" show-icon />
-    <StatePanel v-if="!report && error" state="error" :description="error" @retry="load" />
-    <StatePanel v-else-if="!report" state="loading" title="正在读取库存" />
-    <template v-else>
-      <section class="inventory-summary" aria-label="全厂库存汇总">
-        <div v-for="item in summaryItems" :key="item.key" class="summary-group">
-          <img class="summary-icon" :src="`/assets/factory-inventory/${item.image}.png`" alt="" width="106" height="106" />
-          <div class="summary-copy"><h2>{{ item.label }}</h2>
-          <div class="summary-amount"><span class="summary-quantity"><strong class="inventory-number"><AnimatedMetric :value="report.totals[`${item.key}_quantity`]" :animate="motion" :precision="0" /></strong><span>件</span></span><span class="summary-weight"><span class="summary-divider">/</span><b class="inventory-number"><AnimatedMetric :value="report.totals[`${item.key}_weight`]" :animate="motion" :precision="3" /></b><span>kg</span></span></div></div>
+  <section class="page inventory-home" aria-label="全厂库存总览">
+    <div class="home-content">
+      <header class="home-heading">
+        <div>
+          <h1>全厂库存总览</h1>
+          <p>看清库存分布，及时完成班组交接</p>
         </div>
-      </section>
-      <section class="inventory-teams" aria-labelledby="inventory-teams-title">
-        <header class="inventory-section-heading"><h2 id="inventory-teams-title">班组库存</h2><span>共 {{ report.teams.length }} 个班组</span></header>
-        <div class="inventory-grid">
-          <div v-for="(team, index) in report.teams" :key="team.code" class="inventory-card-arrival" :style="{ '--arrival-delay': `${index * 45}ms` }">
-            <SpotlightCard :enabled="motion && Boolean(team.id)" class="inventory-card" :class="{ 'inventory-card--changed': changedTeams.includes(team.code) }" :aria-label="`${team.name}库存`" :data-team-code="team.code">
-              <header class="inventory-card-heading">
-                <div class="team-identity"><img class="team-symbol" :src="`/assets/factory-inventory/${teamImages[team.code]}-v2.png`" alt="" width="82" height="82" /><h3>{{ team.name }}</h3></div>
-                <ElTag v-if="!team.id || !team.active" type="info" effect="plain">{{ team.id ? '已停用' : '未配置' }}</ElTag>
-                <StarBorder v-else-if="team.urgent_serial_count" :paused="!motion" :title="`${team.urgent_serial_count} 个在库加急流水号`"><ElIcon aria-hidden="true"><Flag /></ElIcon>加急 <AnimatedMetric :value="team.urgent_serial_count" :animate="motion" :precision="0" /></StarBorder>
-              </header>
-              <div class="inventory-card-stock">
-                <span class="stock-label">当前库存</span>
-                <div class="stock-quantity"><strong class="inventory-number"><AnimatedMetric :value="team.balance?.on_hand_quantity ?? null" :animate="motion" :precision="0" /></strong><span>件</span></div>
-                <div class="stock-weight"><span class="inventory-number"><AnimatedMetric :value="team.balance?.on_hand_weight ?? null" :animate="motion" :precision="3" /></span><span>kg</span></div>
+        <div class="home-actions">
+          <ElButton :icon="Refresh" :loading="loading" aria-label="刷新库存" circle @click="load" />
+          <RouterLink :to="pendingLink" class="home-button home-button--primary"
+            ><ElIcon><Tickets /></ElIcon>查看待接收<span v-if="report" class="button-count">{{
+              number(report.internal_pending.batches)
+            }}</span></RouterLink
+          >
+          <RouterLink to="/factory-live" class="home-button"
+            ><ElIcon><Monitor /></ElIcon>大屏展示</RouterLink
+          >
+        </div>
+      </header>
+      <ElAlert v-if="error && report" :title="error" type="warning" :closable="false" show-icon />
+      <ElAlert v-if="warning" :title="warning" type="warning" :closable="false" show-icon />
+      <StatePanel v-if="!report && error" state="error" :description="error" @retry="load" />
+      <StatePanel v-else-if="!report" state="loading" title="正在读取库存" />
+      <template v-else>
+        <section class="home-metrics" aria-label="全厂关键数据">
+          <article class="home-metric">
+            <ElIcon><Box /></ElIcon>
+            <div>
+              <h2>全厂在库</h2>
+              <p>
+                <strong>{{ number(report.totals.on_hand_quantity) }}</strong> 件
+              </p>
+              <span>{{ kg(report.totals.on_hand_weight) }} kg</span>
+            </div>
+          </article>
+          <article class="home-metric">
+            <ElIcon><Van /></ElIcon>
+            <div>
+              <h2>内部在途</h2>
+              <p>
+                <strong>{{ number(report.totals.in_transit_quantity) }}</strong> 件
+              </p>
+              <span>{{ kg(report.totals.in_transit_weight) }} kg</span>
+            </div>
+          </article>
+          <article class="home-metric">
+            <ElIcon><Tickets /></ElIcon>
+            <div>
+              <h2>待接收</h2>
+              <p>
+                <strong>{{ number(report.internal_pending.batches) }}</strong> 批
+              </p>
+              <span>班组间待确认</span>
+            </div>
+          </article>
+          <article class="home-metric">
+            <ElIcon><CircleCheck /></ElIcon>
+            <div>
+              <h2>今日已接收</h2>
+              <p>
+                <strong>{{ number(report.today.received_batches) }}</strong> 批
+              </p>
+              <span>{{ updatedAt.slice(0, 10) }}</span>
+            </div>
+          </article>
+        </section>
+        <div class="home-grid">
+          <section class="home-panel team-panel" aria-labelledby="team-stock-title">
+            <header class="panel-heading">
+              <div>
+                <h2 id="team-stock-title">班组库存分布</h2>
+                <p>按在库重量展示 · 件数与重量同时核对</p>
               </div>
-              <div class="inventory-card-pending">
-                <div class="pending-heading"><span>待接收</span><RouterLink v-if="team.id && team.active && team.pending_incoming?.batches" :to="teamLink(team, 'pending')" :aria-label="`查看${team.name}待接收`"><AnimatedMetric :value="team.pending_incoming.batches" :animate="motion" :precision="0" /> 批</RouterLink><span v-else class="pending-zero"><AnimatedMetric :value="team.pending_incoming?.batches ?? null" :animate="motion" :precision="0" /> 批</span></div>
-                <div class="pending-amount"><AnimatedMetric :value="team.pending_incoming?.quantity ?? null" :animate="motion" :precision="0" /> 件<span>/</span><AnimatedMetric :value="team.pending_incoming?.weight ?? null" :animate="motion" :precision="3" /> kg</div>
+              <RouterLink to="/factory-stock" class="text-action"
+                >查看明细<ElIcon><ArrowRight /></ElIcon
+              ></RouterLink>
+            </header>
+            <div class="team-head" aria-hidden="true">
+              <span>班组</span><span>库存分布</span><span>件数</span><span>重量 kg</span
+              ><span>分类</span>
+            </div>
+            <div
+              v-for="team in teams"
+              :key="team.code"
+              class="team-stock-row"
+              :data-team-code="team.code"
+            >
+              <div class="team-name">
+                <RouterLink
+                  v-if="team.id && team.active"
+                  :to="teamLink(team)"
+                  :aria-label="`查看${team.name}库存明细`"
+                  >{{ team.name }}</RouterLink
+                ><span v-else>{{ team.name }}</span
+                ><small v-if="!team.id || !team.active">{{ team.id ? '已停用' : '未配置' }}</small>
               </div>
-              <footer class="inventory-card-footer"><span><AnimatedMetric :value="team.serial_count ?? null" :animate="motion" :precision="0" /> 个在库流水号</span><RouterLink v-if="team.id && team.active" :to="teamLink(team)" :aria-label="`查看${team.name}库存明细`">查看明细<ElIcon><ArrowRight /></ElIcon></RouterLink><span v-else>暂不可进入</span></footer>
-            </SpotlightCard>
+              <meter
+                :value="Math.max(0, team.balance?.on_hand_weight || 0)"
+                min="0"
+                :max="maxWeight"
+                :aria-label="`${team.name}在库重量 ${kg(team.balance?.on_hand_weight)} kg`"
+              />
+              <span class="stock-quantity numeric">{{
+                number(team.balance?.on_hand_quantity)
+              }}</span
+              ><span class="stock-weight numeric">{{ kg(team.balance?.on_hand_weight) }}</span>
+              <button
+                class="type-detail"
+                :disabled="!team.balance"
+                :aria-label="`查看${team.name}物料分类`"
+                @click="showTypes(team)"
+              >
+                <ElIcon><ArrowRight /></ElIcon>
+              </button>
+            </div>
+            <footer class="team-panel-footer">
+              <span>{{ teams.length }} 个班组</span><span>库存含余料及废料，内部在途单列</span>
+            </footer>
+          </section>
+          <section class="home-panel type-panel" aria-labelledby="stock-types-title">
+            <header class="panel-heading">
+              <div>
+                <h2 id="stock-types-title">物料类型</h2>
+                <p>按在库重量</p>
+              </div>
+            </header>
+            <div class="home-ring">
+              <LedgerChart
+                :option="ringOption"
+                :smooth-update="true"
+                :enter-duration="250"
+                label="物料类型在库重量占比，件数及重量见下方明细"
+                :motion="motion"
+                :empty="!mainTypes.some((item) => item.weight > 0)"
+                @select="showTypes()"
+              />
+              <div v-if="mainTypes.some((item) => item.weight > 0)" class="ring-total">
+                <strong>{{ kg(report.totals.on_hand_weight) }}</strong
+                ><span>kg</span>
+              </div>
+            </div>
+            <table class="type-table">
+              <thead>
+                <tr>
+                  <th>类型</th>
+                  <th>件数</th>
+                  <th>重量 kg</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in mainTypes" :key="item.key">
+                  <td>
+                    <span class="type-key" :style="{ color: item.color }">●</span>{{ item.label }}
+                  </td>
+                  <td>{{ number(item.quantity) }}</td>
+                  <td>{{ kg(item.weight) }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <footer class="type-footer">
+              <span>其余含余料、废品、废料等</span
+              ><button class="text-action" @click="showTypes()">
+                全部类型<ElIcon><ArrowRight /></ElIcon>
+              </button>
+            </footer>
+          </section>
+          <section class="home-panel pending-panel" aria-labelledby="pending-title">
+            <header class="panel-heading">
+              <div><h2 id="pending-title">待接收转料</h2></div>
+              <RouterLink :to="pendingLink" class="text-action"
+                >查看全部<ElIcon><ArrowRight /></ElIcon
+              ></RouterLink>
+            </header>
+            <div v-if="recentPending.length" class="pending-scroll">
+              <table class="pending-table">
+                <thead>
+                  <tr>
+                    <th>批次</th>
+                    <th>班组流向</th>
+                    <th>件数 / 重量</th>
+                    <th>状态</th>
+                    <th aria-label="操作"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in recentPending" :key="row.batch_no">
+                    <td>
+                      <span class="batch-number" :title="row.batch_no">{{ row.batch_no }}</span>
+                    </td>
+                    <td>{{ row.source_name }} → {{ row.target_name }}</td>
+                    <td>{{ number(row.quantity) }} 件 / {{ kg(row.weight) }} kg</td>
+                    <td>
+                      <span class="pending-label">{{
+                        row.status === 'partial' ? '部分接收' : '待接收'
+                      }}</span>
+                    </td>
+                    <td>
+                      <RouterLink
+                        :to="{ path: '/transfer-batches/scan', query: { batch_no: row.batch_no } }"
+                        class="text-action"
+                        :aria-label="`查看批次 ${row.batch_no}`"
+                        >查看</RouterLink
+                      >
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else class="home-empty">
+              <ElIcon><CircleCheck /></ElIcon
+              ><strong>{{
+                report.internal_pending.batches
+                  ? '近期记录中没有待接收批次'
+                  : '暂无班组间待接收物料'
+              }}</strong>
+              <p>
+                {{
+                  report.internal_pending.batches
+                    ? '可通过“查看全部”查询历史待接收记录。'
+                    : '新的班组交接会在这里显示。'
+                }}
+              </p>
+            </div>
+            <p v-if="recentPending.some((row) => row.status === 'partial')" class="amount-note">
+              部分接收显示整批件数与重量，剩余待接收量请进入批次查看。
+            </p>
+          </section>
+          <section class="home-panel attention-panel" aria-labelledby="attention-title">
+            <header class="panel-heading">
+              <h2 id="attention-title">重点关注</h2>
+              <ElIcon><Flag /></ElIcon>
+            </header>
+            <div class="attention-tabs" role="group" aria-label="关注类别">
+              <button :aria-pressed="attentionTab === 'pending'" @click="attentionTab = 'pending'">
+                待接收班组</button
+              ><button :aria-pressed="attentionTab === 'urgent'" @click="attentionTab = 'urgent'">
+                在库加急
+              </button>
+            </div>
+            <div v-if="attentionTeams.length" class="attention-list">
+              <div v-for="team in attentionTeams" :key="team.code" class="attention-row">
+                <div>
+                  <strong>{{ team.name }}</strong
+                  ><span>{{
+                    attentionTab === 'pending'
+                      ? `${number(team.pending_incoming?.quantity)} 件 / ${kg(team.pending_incoming?.weight)} kg`
+                      : '在库加急流水号'
+                  }}</span>
+                </div>
+                <RouterLink
+                  v-if="team.id && team.active"
+                  :to="
+                    teamLink(
+                      team,
+                      attentionTab === 'pending' ? 'pending' : 'stock',
+                      attentionTab === 'urgent',
+                    )
+                  "
+                  :aria-label="`查看${team.name}${attentionTab === 'pending' ? '待接收' : '加急物料'}`"
+                  >{{
+                    number(
+                      attentionTab === 'pending'
+                        ? team.pending_incoming?.batches
+                        : team.urgent_serial_count,
+                    )
+                  }}
+                  {{ attentionTab === 'pending' ? '批' : '个'
+                  }}<ElIcon><ArrowRight /></ElIcon></RouterLink
+                ><span v-else>已停用</span>
+              </div>
+            </div>
+            <div v-else class="home-empty attention-empty">
+              <ElIcon><CircleCheck /></ElIcon>
+              <p>{{ attentionTab === 'pending' ? '各班组暂无待接收记录' : '暂无在库加急物料' }}</p>
+            </div>
+          </section>
+        </div>
+        <footer class="home-footer">
+          <span>在库含废料，不含已转出待确认物料；内部在途单独统计。</span>
+          <div>
+            <span role="status">{{ connectionLabel }}</span
+            ><time :datetime="report.as_of">{{ updatedAt }}</time
+            ><RouterLink to="/factory-analysis">数据分析</RouterLink>
           </div>
-        </div>
-      </section>
-      <footer class="inventory-footer"><span>当前库存含废料，不含已转出待确认物料</span><div><span role="status">{{ connectionLabel }}</span><time :datetime="report.as_of">更新于 {{ updatedAt }}</time><RouterLink to="/factory-analysis">数据分析<ElIcon><ArrowRight /></ElIcon></RouterLink></div></footer>
-    </template>
+        </footer>
+      </template>
     </div>
+    <ElDialog
+      v-model="typeDialog"
+      :title="`${focusedTeam?.name || '全厂'} · 在库物料分类`"
+      width="560px"
+      class="home-types-dialog"
+    >
+      <p class="type-dialog-summary">
+        合计 {{ number(dialogTotal.quantity) }} 件 / {{ kg(dialogTotal.weight) }} kg
+      </p>
+      <table class="type-table type-table--dialog">
+        <thead>
+          <tr>
+            <th>类型</th>
+            <th>件数</th>
+            <th>重量 kg</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in dialogTypes" :key="item.key">
+            <td>{{ item.label }}</td>
+            <td>{{ number(item.quantity) }}</td>
+            <td>{{ kg(item.weight) }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <template #footer><ElButton @click="typeDialog = false">关闭</ElButton></template>
+    </ElDialog>
   </section>
 </template>
+
 <style scoped>
-.factory-inventory {
-  --inventory-ink: #211a32;
-  --inventory-muted: #70647f;
-  position: relative; isolation: isolate; container-type: inline-size;
-  padding: 24px 26px 28px; background: #fcfbfe; color: var(--inventory-ink);
-  font-family: 'HeatSink Han', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  font-size: 16px; font-synthesis: none;
+.inventory-home {
+  --primary: #337d4d;
+  --text: #24312a;
+  --muted: #67756d;
+  --subtle: #67756d;
+  --line: #e5ebe7;
+  --surface-soft: #edf5ef;
+  --el-color-primary: #337d4d;
+  padding: 20px 28px;
+  background: #f6f8f7;
+  color: var(--text);
+  font-family: 'HeatSink Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
-.inventory-content { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 20px; max-width: 1920px; margin-inline: auto; }
-.inventory-heading, .inventory-section-heading, .inventory-card-heading, .inventory-card-footer, .inventory-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.inventory-heading { min-height: 44px; }
-.inventory-heading h1 { margin: 0; font-size: 36px; line-height: 44px; font-weight: 700; letter-spacing: .01em; }
-.inventory-actions { display: flex; gap: 12px; }
-.inventory-actions .el-button { margin: 0; height: 46px; padding-inline: 18px; font: inherit; font-weight: 500; border-radius: 9px; color: #574171; border-color: #e0d5ee; background: rgb(255 255 255 / 90%); box-shadow: inset 0 1px 1px #fff, 0 3px 10px rgb(102 70 146 / 9%); }
-.inventory-actions .motion-toggle { color: #fff; border-color: #9673ff; background: #7950ff; box-shadow: inset 0 3px 9px rgb(255 255 255 / 36%), 0 4px 12px rgb(116 74 225 / 22%); }
-.inventory-actions .el-button:hover { border-color: #835aff; }
-.inventory-actions .motion-toggle:hover { background: #6d41ee; }
-.inventory-actions .motion-toggle.is-disabled { opacity: .55; }
-.inventory-number { font-family: 'HeatSink Inter', 'HeatSink Han', sans-serif; font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; letter-spacing: -.035em; }
-.inventory-summary { display: grid; grid-template-columns: minmax(0, 47fr) minmax(0, 53fr); min-height: 130px; padding: 11px 28px; border: 1px solid rgb(255 255 255 / 96%); border-radius: 16px; background: linear-gradient(112deg, rgb(243 235 253 / 30.8%), rgb(255 255 255 / 80.4%) 48%, rgb(237 225 251 / 22.4%)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 2px 2px #fff, inset 0 -1px 1px rgb(255 255 255 / 85%), 0 7px 18px rgb(103 75 141 / 12%); }
-.summary-group { display: flex; align-items: center; gap: 20px; min-width: 0; padding-inline: 0 20px; }
-.summary-group + .summary-group { border-left: 1px solid #dacbe9; padding-inline: 58px 0; }
-.summary-icon { flex: 0 0 106px; width: 106px; height: 106px; object-fit: contain; }
-.summary-copy { min-width: 0; }
-.summary-group h2 { font-size: 20px; font-weight: 500; line-height: 28px; margin: 0 0 2px; color: var(--inventory-ink); }
-.summary-amount { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 2px; }
-.summary-quantity, .summary-weight { display: inline-flex; align-items: baseline; gap: 8px; white-space: nowrap; }
-.summary-amount strong { color: #692ad6; font-size: 46px; font-weight: 700; line-height: 1.16; }
-.summary-group + .summary-group .summary-amount strong { color: #8650c5; }
-.summary-amount b { font-size: 23px; font-weight: 600; white-space: nowrap; }
-.summary-amount > span { font-size: 20px; }
-.summary-divider { color: #8b7b9c; padding-inline: 2px; }
-.inventory-teams { min-width: 0; }
-.inventory-section-heading { margin-bottom: 14px; }
-.inventory-section-heading h2 { margin: 0; font-size: 24px; line-height: 30px; font-weight: 650; }
-.inventory-section-heading > span { color: var(--inventory-muted); font-size: 16px; }
-.inventory-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px 18px; }
-.inventory-card-arrival { min-width: 0; animation: inventory-arrive 420ms cubic-bezier(.2,.7,.3,1) var(--arrival-delay) both; }
-.inventory-card {
-  --glass-rim: inset 0 2px 2px rgb(255 255 255 / 98%), inset 2px 0 3px rgb(255 255 255 / 75%), inset 0 -2px 3px rgb(255 255 255 / 70%), inset -1px 0 1px #fff;
-  height: 100%; min-height: 328px; padding: 12px 20px 16px;
-  border: 1px solid rgb(255 255 255 / 96%); border-radius: 16px;
-  background: linear-gradient(132deg, rgb(255 255 255 / 88%), rgb(240 231 250 / 16.8%) 52%, rgb(255 255 255 / 76%));
-  -webkit-backdrop-filter: blur(14px) saturate(115%); backdrop-filter: blur(14px) saturate(115%);
-  box-shadow: var(--glass-rim), 0 6px 18px rgb(104 78 139 / 11%);
-  transition: transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+.home-content {
+  max-width: 1600px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
-.inventory-card:hover { border-color: #fff; }
-.inventory-card:focus-within { border-color: #9573ff; }
-.inventory-card-heading { position: relative; min-height: 76px; margin-bottom: 4px; gap: 4px; }
-.team-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.inventory-card-heading h3 { margin: 0; font-size: 22px; line-height: 30px; font-weight: 650; white-space: nowrap; }
-.team-symbol { flex: 0 0 82px; width: 82px; height: 76px; object-fit: contain; margin-left: -4px; }
-.inventory-card[data-team-code="FACTORY-ANNEAL"] .team-symbol { transform: scale(1.12); }
-.inventory-card[data-team-code="FACTORY-ENGRAVE"] .team-symbol { transform: scale(1.24); }
-.inventory-card-heading > :not(.team-identity) { position: absolute; top: 0; right: -8px; font-size: 12px; }
-.inventory-card-stock { display: flex; flex-direction: column; gap: 0; }
-.stock-label { color: var(--inventory-muted); font-size: 18px; line-height: 24px; }
-.stock-quantity { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; min-width: 0; }
-.stock-quantity strong { font-size: 44px; line-height: 50px; font-weight: 700; overflow-wrap: anywhere; }
-.stock-quantity > span { font-size: 20px; font-weight: 500; }
-.stock-weight { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; color: var(--inventory-muted); font-size: 22px; line-height: 26px; font-weight: 450; }
-.stock-weight > span:last-child { font-size: 18px; }
-.inventory-card-pending { margin-top: 10px; padding: 8px 14px; background: rgb(255 247 235 / 65%); border: 1px solid rgb(255 255 255 / 96%); border-radius: 10px; box-shadow: inset 0 1px 0 #fff; }
-.pending-heading { display: flex; align-items: baseline; gap: 10px; color: var(--inventory-muted); font-size: 18px; line-height: 26px; }
-.pending-heading a { color: #b95208; font-size: 19px; font-weight: 600; }
-.pending-zero { color: var(--inventory-muted); font-size: 19px; }
-.pending-amount { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px; color: var(--inventory-muted); font-size: 17px; line-height: 24px; font-variant-numeric: tabular-nums; }
-.inventory-card-footer { flex-wrap: wrap; margin-top: 14px; min-height: 24px; gap: 4px 8px; color: var(--inventory-muted); font-size: 14px; line-height: 24px; }
-.inventory-card-footer a, .inventory-footer a { display: inline-flex; align-items: center; gap: 6px; color: #692ad6; white-space: nowrap; }
-.factory-inventory a { text-decoration: none; }
-.factory-inventory a:hover { text-decoration: underline; text-underline-offset: 4px; }
-.factory-inventory a:focus-visible { outline: 2px solid #7651de; outline-offset: 4px; border-radius: 2px; }
-.inventory-footer { margin-top: 8px; flex-wrap: wrap; color: var(--inventory-muted); font-size: 14px; line-height: 24px; }
-.inventory-footer > div { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; }
-.inventory-card--changed { animation: inventory-updated 1400ms ease-out; }
-@keyframes inventory-arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes inventory-updated { 0%, 20% { border-color: #b5a8e4; box-shadow: var(--glass-rim), 0 0 0 3px rgb(101 80 237 / 12%), 0 12px 26px rgb(104 78 139 / 10%); } }
-@media (hover: hover) and (prefers-reduced-motion: no-preference) { .factory-inventory:not(.factory-inventory--still) .inventory-card:hover { transform: translateY(-2px); box-shadow: var(--glass-rim), 0 12px 24px rgb(104 78 139 / 16%); } }
-.factory-inventory--still .inventory-card-arrival { animation: none; }
-.factory-inventory--still .inventory-card { animation: none; transition: none; }
-@container (max-width: 1080px) {
-  .inventory-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .summary-group { gap: 12px; padding-inline: 0 16px; }
-  .summary-group + .summary-group { padding-left: 20px; }
-  .summary-icon { width: 82px; height: 82px; flex-basis: 82px; }
-  .summary-amount strong { font-size: 38px; }
+.home-heading,
+.home-actions,
+.panel-heading,
+.home-footer,
+.home-footer > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
-@container (max-width: 680px) {
-  .inventory-summary { grid-template-columns: 1fr; gap: 16px; padding: 20px; }
-  .summary-group + .summary-group { border-left: none; border-top: 1px solid #dacbe9; padding: 16px 0 0; }
-  .summary-group { padding: 0; }
-  .summary-weight { flex-basis: 100%; }
-  .summary-divider { display: none; }
-  .inventory-heading { align-items: flex-start; flex-wrap: wrap; }
-  .inventory-footer > div { gap: 8px 14px; }
+.home-heading {
+  margin-bottom: 0;
 }
-@container (max-width: 559px) {
-  .inventory-grid { grid-template-columns: minmax(0, 1fr); }
-  .inventory-card { padding-inline: 22px; }
+.home-heading h1 {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.3;
+  font-weight: 550;
+  letter-spacing: -0.5px;
+}
+.home-heading p,
+.panel-heading p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.home-actions {
+  gap: 10px;
+  flex-shrink: 0;
+}
+.home-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid #d9e2dc;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.home-button:hover {
+  border-color: var(--primary);
+}
+.home-button--primary {
+  color: #fff;
+  border-color: var(--primary);
+  background: var(--primary);
+}
+.button-count {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #e9f3dc;
+  color: #245633;
+  font-size: 12px;
+}
+.home-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.home-metric {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 15px 22px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.home-metric > .el-icon {
+  flex: 0 0 40px;
+  height: 40px;
+  font-size: 23px;
+  border-radius: 9px;
+  color: var(--primary);
+  background: #eef6f0;
+}
+.home-metric > div {
+  min-width: 0;
+}
+.home-metric h2 {
+  margin: 0 0 5px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.home-metric p {
+  line-height: 1.3;
+  margin: 0 0 4px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.home-metric strong {
+  font-size: clamp(22px, 2vw, 30px);
+  font-weight: 550;
+  letter-spacing: -0.7px;
+  font-variant-numeric: tabular-nums;
+}
+.home-metric span {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(310px, 1fr);
+  gap: 16px;
+}
+.home-panel {
+  padding: 18px 22px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+.panel-heading {
+  min-height: 28px;
+  margin-bottom: 16px;
+  align-items: flex-start;
+}
+.panel-heading h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 550;
+  letter-spacing: -0.3px;
+}
+.text-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  color: var(--primary);
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 13px;
+}
+.text-action:hover {
+  text-decoration: underline;
+}
+.team-head,
+.team-stock-row {
+  display: grid;
+  grid-template-columns: 66px minmax(40px, 1fr) 76px 88px 28px;
+  column-gap: 12px;
+  align-items: center;
+}
+.team-head {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 8px 0;
+}
+.team-head > :nth-child(n + 3),
+.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.team-stock-row {
+  min-height: 33px;
+  border-bottom: 1px solid #f0f3f1;
+  font-size: 14px;
+}
+.team-name {
+  display: flex;
+  flex-direction: column;
+}
+.team-name a:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.team-name small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.stock-weight {
+  color: var(--muted);
+}
+meter {
+  width: 100%;
+  height: 9px;
+  border: none;
+  background: #eef2f0;
+  border-radius: 3px;
+  appearance: none;
+}
+meter::-webkit-meter-bar {
+  border: 0;
+  border-radius: 3px;
+  background: #eef2f0;
+  height: 9px;
+}
+meter::-webkit-meter-optimum-value {
+  background: #80ab8c;
+  border-radius: 3px;
+}
+meter::-moz-meter-bar {
+  background: #80ab8c;
+  border-radius: 3px;
+}
+.type-detail {
+  border: 0;
+  background: none;
+  color: var(--primary);
+  width: 28px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+.type-detail:disabled {
+  color: #b9c3bc;
+  cursor: default;
+}
+.team-panel-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 14px;
+}
+.home-ring {
+  height: 146px;
+  position: relative;
+  display: flex;
+  margin: -4px 0 8px;
+}
+.ring-total {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+}
+.ring-total strong {
+  font-size: 22px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+.ring-total span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.type-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.type-table th {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.type-table th,
+.type-table td {
+  padding: 4px 0;
+  border-bottom: 1px solid #f0f3f1;
+  text-align: right;
+}
+.type-table :is(th, td):first-child {
+  text-align: left;
+}
+.type-key {
+  margin-right: 9px;
+  font-size: 16px;
+}
+.type-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.pending-scroll {
+  position: relative;
+  overflow-x: auto;
+}
+.pending-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.pending-table th {
+  color: var(--muted);
+  font-weight: 400;
+  background: #f7f9f8;
+  font-size: 12px;
+}
+.pending-table th,
+.pending-table td {
+  line-height: 20px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #edf1ee;
+  text-align: left;
+  white-space: nowrap;
+}
+.pending-table th:first-child,
+.pending-table td:first-child {
+  padding-left: 0;
+}
+.batch-number {
+  display: block;
+  max-width: 155px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pending-label {
+  padding: 3px 7px;
+  border-radius: 5px;
+  color: #94600f;
+  background: #fff5e4;
+  font-size: 12px;
+}
+.attention-tabs {
+  display: flex;
+  gap: 16px;
+  margin-top: -4px;
+  border-bottom: 1px solid var(--line);
+}
+.attention-tabs button {
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 7px 0 10px;
+  border-bottom: 2px solid transparent;
+}
+.attention-tabs button[aria-pressed='true'] {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+.attention-list {
+  max-height: 124px;
+  overflow-y: auto;
+}
+.attention-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f3f1;
+}
+.attention-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.attention-row strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.attention-row span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.attention-row a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--primary);
+  font-size: 13px;
+}
+.attention-row a:hover {
+  text-decoration: underline;
+}
+.home-empty {
+  display: flex;
+  min-height: 170px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  text-align: center;
+}
+.home-empty > .el-icon {
+  font-size: 25px;
+  color: #82a88d;
+}
+.home-empty strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+.home-empty p {
+  margin: 0;
+  font-size: 13px;
+}
+.attention-empty {
+  min-height: 150px;
+}
+.amount-note {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 0;
+}
+.home-footer {
+  font-size: 11px;
+  color: var(--muted);
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.home-footer > div {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.home-footer a {
+  color: var(--primary);
+}
+.home-footer [role='status'] {
+  color: var(--primary);
+}
+.pending-panel .panel-heading {
+  margin-bottom: 12px;
+}
+.home-actions :deep(.el-button) {
+  border-color: #d9e2dc;
+  color: #64726a;
+}
+.type-panel .panel-heading > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.type-panel .panel-heading p {
+  margin: 0;
+}
+.type-dialog-summary {
+  margin: 0 0 20px;
+  color: #52645a;
+}
+.type-table--dialog {
+  font-size: 14px;
+}
+.type-table--dialog td {
+  padding-block: 11px;
+}
+
+@media (min-width: 1800px) and (min-height: 950px) {
+  .inventory-home {
+    padding: 36px;
+  }
+  .home-content {
+    gap: 24px;
+  }
+  .home-panel {
+    padding: 28px;
+  }
+  .team-stock-row {
+    min-height: 44px;
+  }
+  .home-ring {
+    height: 220px;
+  }
+}
+@media (max-width: 1180px) {
+  .inventory-home {
+    padding: 22px;
+  }
+  .home-metric {
+    padding: 16px;
+    gap: 10px;
+  }
+  .home-metric > .el-icon {
+    flex-basis: 32px;
+    height: 32px;
+    font-size: 20px;
+  }
+  .home-grid {
+    grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr);
+    gap: 16px;
+  }
+  .home-panel {
+    padding: 18px;
+  }
+  .team-head,
+  .team-stock-row {
+    grid-template-columns: 54px minmax(28px, 1fr) 64px 68px 24px;
+    gap: 8px;
+  }
+}
+@media (max-width: 1000px) {
+  .home-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .home-grid {
+    grid-template-columns: 1fr;
+  }
+  .home-heading {
+    flex-wrap: wrap;
+  }
+  .home-ring {
+    height: 185px;
+  }
+  .type-panel .type-table {
+    font-size: 14px;
+  }
+  .home-footer {
+    line-height: 1.8;
+  }
 }
 @media (max-width: 640px) {
-  .factory-inventory { padding: 20px 18px 28px; }
-  .inventory-content { gap: 20px; }
-  .inventory-heading h1 { font-size: 28px; line-height: 38px; }
-  .inventory-actions .el-button { height: 42px; padding-inline: 14px; font-size: 15px; }
+  .inventory-home {
+    padding: 20px 14px;
+  }
+  .home-content {
+    gap: 16px;
+  }
+  .home-heading h1 {
+    font-size: 23px;
+  }
+  .home-actions {
+    width: 100%;
+    gap: 8px;
+  }
+  .home-button {
+    font-size: 12px;
+    padding-inline: 10px;
+  }
+  .home-metrics {
+    gap: 10px;
+  }
+  .home-metric {
+    padding: 14px 12px;
+    gap: 10px;
+  }
+  .home-metric strong {
+    font-size: 24px;
+  }
+  .home-metric > .el-icon {
+    display: none;
+  }
+  .home-panel {
+    padding: 16px;
+  }
+  .team-head,
+  .team-stock-row {
+    grid-template-columns: 48px minmax(10px, 1fr) 65px 66px 22px;
+    gap: 5px;
+  }
+  .team-head > :last-child {
+    font-size: 10px;
+    white-space: nowrap;
+  }
+  .team-panel-footer {
+    flex-wrap: wrap;
+  }
+  .home-heading p {
+    font-size: 12px;
+  }
+  .home-footer > div {
+    gap: 8px;
+  }
 }
-@media (prefers-reduced-motion: reduce) { .inventory-card-arrival, .inventory-card { animation: none; transition: none; } }
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .inventory-card, .inventory-summary { background: #fcfaff; } }
+
+/* Allocate desktop panels from the available viewport, including browser chrome.
+   Narrow windows and zoomed layouts retain normal page scrolling. */
+@media (min-width: 1100px) and (min-height: 650px) {
+  .inventory-home {
+    --home-gap: clamp(8px, 1.4dvh, 16px);
+    padding-block: clamp(8px, 1.4dvh, 20px);
+  }
+  .home-content {
+    height: 100%;
+    gap: var(--home-gap);
+  }
+  .home-heading,
+  .home-metrics,
+  .home-footer {
+    flex-shrink: 0;
+  }
+  .home-grid {
+    flex: 1;
+    min-height: 0;
+    grid-template-rows: minmax(264px, 1.5fr) minmax(138px, 1fr);
+    gap: var(--home-gap);
+  }
+  .home-panel {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding-block: clamp(9px, 1.4dvh, 18px);
+  }
+  .panel-heading,
+  .pending-panel .panel-heading {
+    flex-shrink: 0;
+    min-height: 24px;
+    margin-bottom: 8px;
+  }
+  .team-head,
+  .team-panel-footer,
+  .type-table,
+  .type-footer,
+  .attention-tabs {
+    flex-shrink: 0;
+  }
+  .team-head {
+    padding-block: 3px;
+  }
+  .team-stock-row {
+    flex: 1;
+    min-height: 22px;
+  }
+  .type-detail {
+    height: 24px;
+  }
+  .team-panel-footer {
+    margin-top: 6px;
+  }
+  .home-ring {
+    flex: 1;
+    height: auto;
+    min-height: 60px;
+    max-height: 220px;
+    margin: 0 0 6px;
+  }
+  .pending-scroll,
+  .attention-list {
+    min-height: 0;
+    overflow: auto;
+  }
+  .attention-list {
+    flex: 1;
+    max-height: none;
+  }
+  .home-empty {
+    flex: 1;
+    min-height: 0;
+  }
+  .amount-note {
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+  /* Keep connection and reconciliation warnings visible even if they need a
+     second screen; never clip a business warning to meet the dashboard fit. */
+  .home-content:has(> .el-alert) {
+    height: auto;
+    min-height: 100%;
+  }
+}
+@media (min-width: 1100px) and (min-height: 650px) and (max-height: 950px) {
+  .home-heading > div:first-child {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+  }
+  .home-heading h1 {
+    font-size: 23px;
+    white-space: nowrap;
+  }
+  .home-heading p {
+    margin: 0;
+    font-size: 12px;
+  }
+  .home-button {
+    min-height: 36px;
+    padding-block: 6px;
+  }
+  .home-metric {
+    padding: 6px 16px;
+    gap: 12px;
+    align-items: center;
+  }
+  .home-metric h2 {
+    margin-bottom: 2px;
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .home-metric > div {
+    line-height: 16px;
+  }
+  .home-metric p {
+    margin: 0;
+    line-height: 28px;
+  }
+  .home-metric strong {
+    font-size: 26px;
+  }
+  .home-metric span {
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .panel-heading,
+  .pending-panel .panel-heading {
+    min-height: 22px;
+    margin-bottom: 4px;
+  }
+  .panel-heading h2 {
+    font-size: 16px;
+    line-height: 22px;
+  }
+  .team-panel .panel-heading p {
+    display: none;
+  }
+  .team-head {
+    padding-block: 1px;
+  }
+  .team-panel-footer {
+    margin-top: 4px;
+  }
+  .type-panel .type-table :is(th, td) {
+    padding-block: 1px;
+  }
+  .type-footer {
+    margin-top: 4px;
+  }
+  .ring-total strong {
+    font-size: 18px;
+  }
+  .ring-total {
+    gap: 0;
+  }
+  .pending-table :is(th, td) {
+    padding-block: 1px;
+  }
+  .attention-tabs button {
+    padding-block: 5px;
+  }
+  .attention-row {
+    padding-block: 6px;
+  }
+}
+@media (min-width: 1100px) and (min-height: 650px) and (max-height: 780px) {
+  .type-panel {
+    display: grid;
+    grid-template-columns: minmax(80px, 1fr) minmax(0, 2fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    column-gap: 12px;
+  }
+  .type-panel .panel-heading,
+  .type-footer {
+    grid-column: 1 / -1;
+  }
+  .home-ring {
+    align-self: stretch;
+    max-height: none;
+    margin: 0;
+  }
+  .type-panel .type-table {
+    align-self: center;
+  }
+  .type-key {
+    margin-right: 5px;
+  }
+  .ring-total strong {
+    font-size: clamp(13px, 1.2vw, 16px);
+  }
+}
+</style>
+<style>
+.home-types-dialog {
+  max-width: calc(100vw - 28px);
+  border-radius: 12px;
+}
 </style>

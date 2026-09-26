@@ -147,7 +147,7 @@ function enterBigScreen(event: MouseEvent): void {
       <RouterView />
     </main>
 
-    <div v-else class="app-shell app-shell--business" :class="{ 'app-shell--compact': compactSidebar }">
+    <div v-else class="app-shell app-shell--business" :class="{ 'app-shell--compact': compactSidebar, 'app-shell--overview': route.name === 'home' }">
       <a class="skip-link" href="#main-content" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined" @click.prevent="focusMainContent">跳到正文</a>
 
       <div class="brand-mark" aria-label="安泰天龙 · 热沉物料">
@@ -179,7 +179,7 @@ function enterBigScreen(event: MouseEvent): void {
       </header>
 
       <aside id="factory-sidebar" ref="sidebarElement" class="sidebar" :class="{ 'sidebar--open': mobileMenuOpen }" :inert="mobileViewport && !mobileMenuOpen ? true : undefined" :aria-hidden="mobileViewport && !mobileMenuOpen ? true : undefined" @keydown="handleSidebarKeydown">
-        <FactorySidebar :compact="compactSidebar && !mobileViewport" illustrated />
+        <FactorySidebar :compact="compactSidebar && !mobileViewport" :overview="route.name === 'home'" illustrated />
 
         <button class="sidebar__collapse" type="button" :aria-label="compactSidebar ? '展开侧栏' : '收起侧栏'" :aria-expanded="!compactSidebar" aria-controls="factory-sidebar" :title="compactSidebar ? '展开侧栏' : '收起侧栏'" @click="compactSidebar = !compactSidebar">
           <Fold />
@@ -219,4 +219,9 @@ function enterBigScreen(event: MouseEvent): void {
 .app-shell--business .sidebar { background: linear-gradient(rgb(255 255 255 / 45.4%), rgb(255 255 255 / 45.4%)), #fefcff url('/assets/factory-inventory/ambient-white-purple.png') left bottom / auto 115% no-repeat; }
 .app-shell--business.app-shell--compact .brand-mark { padding: 0; }
 @media (max-width: 640px) { .app-shell--business { --topbar-height: 60px; } .app-shell--business .topbar { gap: 10px; } }
+.app-shell--overview { --sidebar-width: 184px; --topbar-height: 56px; --primary: #337d4d; --text: #24312a; --muted: #64726a; --subtle: #64726a; --line: #e5ebe7; --surface-soft: #edf5ef; --el-color-primary: #337d4d; font-family: 'HeatSink Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+.app-shell--overview .sidebar { background: #fff; }
+.app-shell--overview .breadcrumb { font-size: 14px; }
+.app-shell--overview .topbar__screen { display: none; }
+.app-shell--overview .sidebar__collapse { font-size: 12px; }
 </style>
