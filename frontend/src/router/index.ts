@@ -119,7 +119,7 @@ if (typeof window !== 'undefined') {
 }
 
 router.afterEach((to) => {
-  document.title = `${String(to.meta.title || '物料流转')} · 热沉物料流转管理`
+  document.title = `${String(to.meta.title || '首页')} · 热沉事业部综合管理系统`
 })
 
 export default router

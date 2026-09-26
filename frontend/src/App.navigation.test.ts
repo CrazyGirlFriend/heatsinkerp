@@ -195,7 +195,7 @@ describe('application navigation shell', () => {
     expect(wrapper.get('#factory-sidebar').attributes('inert')).toBeUndefined()
     expect(wrapper.get('.app-shell').classes()).not.toContain('app-shell--compact')
     expect(wrapper.get('.brand-mark img').attributes('src')).toBe('/brand/attl-official-logo.png')
-    expect(wrapper.get('.brand-mark').attributes('aria-label')).toBe('安泰天龙 · 热沉物料')
+    expect(wrapper.get('.brand-mark').attributes('aria-label')).toBe('热沉事业部综合管理系统')
     await wrapper.get('.sidebar__collapse').trigger('click')
     expect(wrapper.get('.app-shell').classes()).toContain('app-shell--compact')
     expect(wrapper.getComponent(FactorySidebar).props('compact')).toBe(true)
