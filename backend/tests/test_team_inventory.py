@@ -101,7 +101,10 @@ def test_group_outbound_loss_dates_confirmation_and_void_keep_balances(client, w
 def test_warehouse_alias_and_authentication_remain_compatible(client, warehouse):
     s = warehouse
     intake(client, s)
-    assert get_inventory(client, s['team']['id']) == client.get(f"/api/team-materials/{s['team']['id']}/warehouse-inventory").json()
+    current = get_inventory(client, s['team']['id'])
+    legacy = client.get(f"/api/team-materials/{s['team']['id']}/warehouse-inventory").json()
+    assert datetime.fromisoformat(current.pop('as_of')) <= datetime.fromisoformat(legacy.pop('as_of'))
+    assert current == legacy
     client.headers.pop('Authorization')
     assert client.get(f"/api/team-materials/{s['other']['id']}/inventory").status_code == 401
     assert client.get(f"/api/team-materials/{s['other']['id']}/inventory/1/sources").status_code == 401

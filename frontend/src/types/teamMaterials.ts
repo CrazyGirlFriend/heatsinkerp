@@ -1,9 +1,11 @@
 import { externalActionLabel, isExternalEntryKind, type ExternalEntryKind, type MaterialEntryKind, type MaterialTransfer, type MaterialTransferDocumentFields, type MaterialTransferTeam, type MaterialType } from './materialTransfer'
 
 export const balanceFields = ['received', 'dispatched', 'reserved', 'in_transit', 'lost', 'on_hand', 'available'] as const
-export type MaterialBalance = Record<`${typeof balanceFields[number]}_${'quantity' | 'weight'}`, number | null> & Partial<Record<`${'scrap' | 'scrap_available'}_${'quantity' | 'weight'}`, number | null>>
+export const ownershipFields = ['owned', 'external_pending'] as const
+export type MaterialBalance = Record<`${typeof balanceFields[number]}_${'quantity' | 'weight'}`, number | null> & Partial<Record<`${'scrap' | 'scrap_available' | typeof ownershipFields[number]}_${'quantity' | 'weight'}`, number | null>>
 export interface TeamMaterialOverview {
   team_id: number
+  as_of?: string
   totals: MaterialBalance
   materials: (MaterialBalance & { material_name: string | null })[]
   material_types?: (MaterialBalance & { material_type: MaterialType | null })[]
@@ -36,7 +38,7 @@ export interface CreatedMaterialBatches { items: MaterialTransfer[] }
 export const isDispatchNumber = (code: string): boolean => /^CK[A-Z0-9-]+$/i.test(code.trim())
 export const dispatchDocumentTitle = (kind?: MaterialEntryKind): string => kind === 'inspection_shipment' ? '批次发货单' : '批次出库单'
 export const dispatchConfirmLabel = (kind?: MaterialEntryKind): string => isExternalEntryKind(kind) ? `确认整批${externalActionLabel(kind)}` : '确认整批接收'
-export interface MaterialPage<T> { items: T[]; total: number; page: number; page_size: number }
+export interface MaterialPage<T> { items: T[]; total: number; page: number; page_size: number; as_of?: string }
 export type MaterialPageParams = import('./recordFilters').RecordFilterParams & { query?: string; serial_no?: string; page?: number; page_size?: number }
 export interface StockParams extends MaterialPageParams { material_type?: MaterialType; availability?: 'available' | 'all' | 'dispatchable' }
 export interface WarehouseReceiptParams extends MaterialPageParams { material_type?: MaterialType; receipt_source?: 'external' | 'internal' | 'return' }

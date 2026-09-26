@@ -83,7 +83,7 @@ export const warehouseSearchColumns = [warehouseSerialColumn, ...warehouseColumn
 export type WarehouseSearchField = 'all' | typeof warehouseSearchColumns[number]['key']
 export const warehouseSearchKind = (field: WarehouseSearchField) => field === 'urgency' ? 'status' : field === 'last_activity_at' || field === 'oldest_received_at' ? 'date' : warehouseColumns.some(column => column.key === field && 'numeric' in column) ? 'number' : 'text'
 export interface TeamInventoryParams extends Omit<SerialParams, 'availability' | 'search_field'> {
-  availability?: 'current' | 'all' | 'available' | 'scrap'
+  availability?: 'current' | 'owned' | 'all' | 'available' | 'scrap'
   search_field?: WarehouseSearchField
   receipt_source?: WarehouseSource
   source_team_id?: number

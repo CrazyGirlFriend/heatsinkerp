@@ -26,12 +26,12 @@ from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/team-materials", tags=["classified inventory"])
 mt = MaterialTransfer
-WarehouseSearchField = Literal[SearchField, "source", "purpose_name", "oldest_received_at", "on_hand_quantity", "on_hand_weight"]
+WarehouseSearchField = Literal[SearchField, "source", "purpose_name", "oldest_received_at", "on_hand_quantity", "on_hand_weight", "owned_quantity", "owned_weight", "in_transit_quantity", "in_transit_weight", "external_pending_quantity", "external_pending_weight"]
 
 
 class WarehouseInventoryFilters(SerialFilters):
     search_field: WarehouseSearchField = "all"
-    availability: Literal["current", "all", "available", "scrap"] = "current"
+    availability: Literal["current", "owned", "all", "available", "scrap"] = "current"
     receipt_source: Literal["external", "return", "internal", "opening"] | None = None
     source_team_id: int | None = Field(default=None, ge=1)
 
@@ -40,6 +40,8 @@ class WarehouseInventoryFilters(SerialFilters):
         # Share numeric/date validation without treating warehouse balances as
         # serial totals. The parent's field validator is deliberately overridden.
         field = {"source": "material_name", "purpose_name": "material_name", "oldest_received_at": "last_activity_at", "on_hand_quantity": "available_quantity", "on_hand_weight": "available_weight"}.get(self.search_field, self.search_field)
+        if field.startswith(("owned_", "in_transit_", "external_pending_")):
+            field = "available_weight" if field.endswith("_weight") else "available_quantity"
         SerialFilters(query=self.query, search_field=field, search_operator=self.search_operator)
         return self
 
@@ -104,7 +106,7 @@ def list_inventory(db, team_id, filters):
     table = warehouse_groups(team_id, filters)
     conditions = [table.c.matches_date == 1]
     if filters.availability != "all":
-        prefix = "on_hand" if filters.availability == "current" else "scrap" if filters.availability == "scrap" else "available"
+        prefix = "on_hand" if filters.availability == "current" else "owned" if filters.availability == "owned" else "scrap" if filters.availability == "scrap" else "available"
         conditions.append(or_(table.c[prefix + "_quantity"] > 0, table.c[prefix + "_weight"] > 0))
     for key in ("serial_no", "material_name", "material_type", "receipt_source", "source_team_id"):
         value = getattr(filters, key)
@@ -175,7 +177,8 @@ def list_inventory(db, team_id, filters):
         for key in ("last_activity_at", "oldest_received_at"):
             item[key] = row[key].replace(tzinfo=timezone.utc).isoformat() if row[key] else None
         items.append(item)
-    return {"items": items, "total": total, "page": filters.page, "page_size": filters.page_size}
+    return {"items": items, "total": total, "page": filters.page, "page_size": filters.page_size,
+            "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
 
 
 def list_group_sources(db, team_id, group_id, user, *, page=1, page_size=20, current_only=False, query=None, record_filters=None):
@@ -195,7 +198,33 @@ def list_group_sources(db, team_id, group_id, user, *, page=1, page_size=20, cur
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
     rows = db.execute(statement.options(*material_transfer_list_options()).order_by(mt.received_at.desc(), mt.id.desc()).offset((page - 1) * page_size).limit(page_size)).unique().all()
     return {"items": [{"transfer": material_transfer_dict(row[0], user, include_history=False), **balance_dict(row._mapping)} for row in rows],
-            "total": total, "page": page, "page_size": page_size}
+            "total": total, "page": page, "page_size": page_size,
+            "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
+
+
+def list_group_pending(db, team_id, group_id, user, *, page=1, page_size=20):
+    require_team(db, team_id)
+    origins = origin_columns()
+    anchor = db.execute(select(*(column.label(name) for name, column in origins.items())).where(
+        mt.id == group_id, mt.next_team_id == team_id, mt.status == "received", mt.stock_tracked.is_(True))).mappings().first()
+    if anchor is None:
+        raise HTTPException(404, "未找到该班组的库存来源")
+    sources = select(mt.id).where(*group_conditions(origins, anchor), mt.next_team_id == team_id,
+                                 mt.status == "received", mt.stock_tracked.is_(True))
+    conditions = [mt.source_team_id == team_id, mt.status == "pending", mt.source_transfer_id.in_(sources)]
+    total = db.scalar(select(func.count()).select_from(mt).where(*conditions)) or 0
+    items = db.scalars(select(mt).where(*conditions).options(*material_transfer_list_options())
+        .order_by(mt.created_at.desc(), mt.id.desc()).offset((page - 1) * page_size).limit(page_size)).unique().all()
+    return {"items": [material_transfer_dict(item, user, include_history=False) for item in items],
+            "total": total, "page": page, "page_size": page_size,
+            "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
+
+
+@router.get("/{team_id}/inventory/{group_id}/pending-outbound")
+def pending_endpoint(team_id: int = Path(ge=1), group_id: int = Path(ge=1),
+                     page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100),
+                     user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return team_read_response(db, lambda session: list_group_pending(session, team_id, group_id, user, page=page, page_size=page_size))
 
 
 @router.get("/{team_id}/inventory")

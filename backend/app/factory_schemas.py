@@ -41,6 +41,10 @@ class MaterialBalance(Contract):
     scrap_weight: float | None
     scrap_available_quantity: int | None
     scrap_available_weight: float | None
+    owned_quantity: int | None
+    owned_weight: float | None
+    external_pending_quantity: int | None
+    external_pending_weight: float | None
 
 
 class LiveTransfer(Amount):

@@ -18,6 +18,17 @@ beforeEach(() => {
 })
 afterEach(() => { httpClient.defaults.adapter = originalAdapter })
 describe('team material API contract', () => {
+  it('normalizes ownership without recalculating it and retains observation time', async () => {
+    data = { items: [{ group_id: 19, on_hand_weight: '70', owned_weight: '100', external_pending_weight: '5' }], total: 1, page: 1, page_size: 10, as_of: '2026-09-27T00:00:00Z' }
+    const result = await teamMaterialApi.teamInventory(2, { availability: 'owned' })
+    expect(requests[0]!.url).toBe('/team-materials/2/inventory?availability=owned')
+    expect(result.items[0]).toMatchObject({ owned_weight: 100, on_hand_weight: 70, external_pending_weight: 5, owned_quantity: null, external_pending_quantity: null })
+    expect(result.as_of).toBe('2026-09-27T00:00:00Z')
+    data = { items: [{ batch_no: 'TL19', quantity: 2, weight: 3 }], total: 1, page: 1, page_size: 10 }
+    const pending = await teamMaterialApi.inventoryPending(2, 19, { page_size: 10 })
+    expect(requests[1]!.url).toBe('/team-materials/2/inventory/19/pending-outbound?page_size=10')
+    expect(pending.items[0]).toMatchObject({ batch_no: 'TL19', quantity: 2, weight: 3 })
+  })
   it('reads classified inventory and its exact source group through shared team endpoints', async () => {
     data = { items: [{ group_id: 19, serial_no: '0000123', on_hand_quantity: '4', on_hand_weight: '0.333' }], total: 1, page: 1, page_size: 10 }
     const result = await teamMaterialApi.teamInventory(2, { source_team_id: 1, material_type: 'finished', availability: 'current' })

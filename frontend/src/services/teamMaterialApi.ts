@@ -5,14 +5,14 @@ import type { CreateWarehouseReceipt, WarehouseReceiptParams, CreatedMaterialBat
 import { isExternalEntryKind } from '@/types/materialTransfer'
 import type { MaterialAnalytics, Metric, SerialParams, SerialSummary } from '@/types/materialAnalytics'
 import type { WarehouseGroupParams, TeamInventoryParams, TeamInventoryRow } from '@/types/teamInventory'
-import { balanceFields, type MaterialBalance, type TeamMaterialOverview, type StockBatch, type StockParams, type MaterialPage, type MaterialPageParams, type MaterialLoss, type MaterialDispatch, type DispatchParams, type CreateDispatch, type CreateLoss } from '@/types/teamMaterials'
+import { balanceFields, ownershipFields, type MaterialBalance, type TeamMaterialOverview, type StockBatch, type StockParams, type MaterialPage, type MaterialPageParams, type MaterialLoss, type MaterialDispatch, type DispatchParams, type CreateDispatch, type CreateLoss } from '@/types/teamMaterials'
 
 type Raw = Record<string, unknown>
 const record = (value: unknown): Raw => value && typeof value === 'object' ? value as Raw : {}
 const numeric = (value: unknown): number | null => (typeof value === 'string' && value.trim() || typeof value === 'number') && Number.isFinite(Number(value)) ? Number(value) : null
 function balance(value: unknown): MaterialBalance {
   const raw = record(value)
-  return Object.fromEntries([...balanceFields, 'scrap', 'scrap_available'].flatMap(key => ['quantity', 'weight'].map(unit => [`${key}_${unit}`, numeric(raw[`${key}_${unit}`])]))) as MaterialBalance
+  return Object.fromEntries([...balanceFields, ...ownershipFields, 'scrap', 'scrap_available'].flatMap(key => ['quantity', 'weight'].map(unit => [`${key}_${unit}`, numeric(raw[`${key}_${unit}`])]))) as MaterialBalance
 }
 function stock(value: unknown): StockBatch { return { ...balance(value), transfer: normalizeMaterialTransfer(record(value).transfer) } }
 function loss(value: unknown): MaterialLoss {
@@ -48,7 +48,7 @@ function path(teamId: number, resource: string, params: object = {}): string {
 async function page<T>(url: string, normalize: (raw: unknown) => T): Promise<MaterialPage<T>> {
   const raw = record(await request(url))
   if (!Array.isArray(raw.items) || numeric(raw.total) === null) throw new TeamMaterialApiError('物料台账数据不完整，请重试')
-  return { items: raw.items.map(normalize), total: Number(raw.total), page: Number(raw.page), page_size: Number(raw.page_size) }
+  return { items: raw.items.map(normalize), total: Number(raw.total), page: Number(raw.page), page_size: Number(raw.page_size), ...(typeof raw.as_of === 'string' ? { as_of: raw.as_of } : {}) }
 }
 export const teamMaterialApi = {
   purposes(teamId: number) { return request<TeamPurpose[]>(path(teamId, 'purposes')) },
@@ -59,6 +59,7 @@ export const teamMaterialApi = {
   serialHistory(teamId: number, params: { serial_no: string; date_from?: string; date_to?: string }) { return request<SerialHistory>(path(teamId, 'serial-history', params)) },
   teamInventory(teamId: number, params: TeamInventoryParams = {}) { return page(path(teamId, 'inventory', params), value => ({ ...record(value), ...balance(value) } as unknown as TeamInventoryRow)) },
   inventorySources(teamId: number, groupId: number, params: WarehouseGroupParams = {}) { return page(path(teamId, `inventory/${groupId}/sources`, params), stock) },
+  inventoryPending(teamId: number, groupId: number, params: { page?: number; page_size?: number } = {}) { return page(path(teamId, `inventory/${groupId}/pending-outbound`, params), normalizeMaterialTransfer) },
   analytics(teamId: number, params: { days?: 7 | 30; metric?: Metric } = {}) { return request<MaterialAnalytics>(path(teamId, 'analytics', params)) },
   serials(teamId: number, params: SerialParams = {}) { return request<MaterialPage<SerialSummary>>(path(teamId, 'serials', params)) },
   async overview(teamId: number): Promise<TeamMaterialOverview> {

@@ -7,6 +7,7 @@ not make an old snapshot usable for a second reservation after waiting on a lock
 from __future__ import annotations
 
 from decimal import Decimal
+from datetime import timezone
 import hashlib
 import json
 from uuid import uuid4
@@ -20,7 +21,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 
 from .auth import actor_name
 from .batch_numbers import next_transfer_batch_numbers
-from .models import MaterialDispatch, MaterialLoss, MaterialStockBalance, MaterialTransfer, SerialUrgency, Team
+from .models import MaterialDispatch, MaterialLoss, MaterialStockBalance, MaterialTransfer, SerialUrgency, Team, utcnow
 from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, SCRAP_MATERIAL_TYPES
 from .team_constants import EXTERNAL_ENTRY_KINDS, WAREHOUSE_TEAM_CODE, INSPECTION_TEAM_CODE
 from . import material_transfer_workflow as workflow
@@ -369,6 +370,8 @@ def stock_table(team_id=None):
     columns = {name: getattr(balance, name) for name in AMOUNTS}
     for amount in ("quantity", "weight"):
         free = columns[f"on_hand_{amount}"]
+        columns[f"owned_{amount}"] = free + columns[f"reserved_{amount}"]
+        columns[f"external_pending_{amount}"] = columns[f"reserved_{amount}"] - columns[f"in_transit_{amount}"]
         scrap = MaterialTransfer.material_type.in_(SCRAP_MATERIAL_TYPES)
         columns[f"available_{amount}"] = case((scrap, 0), else_=free)
         columns[f"scrap_{amount}"] = case((scrap, free), else_=0)
@@ -383,7 +386,7 @@ def stock_table(team_id=None):
     ).subquery()
 
 
-BALANCE_KEYS = tuple(f"{prefix}_{amount}" for prefix in ("received", "dispatched", "reserved", "in_transit", "lost", "on_hand", "available", "scrap", "scrap_available") for amount in ("quantity", "weight"))
+BALANCE_KEYS = tuple(f"{prefix}_{amount}" for prefix in ("received", "dispatched", "reserved", "in_transit", "lost", "on_hand", "available", "scrap", "scrap_available", "owned", "external_pending") for amount in ("quantity", "weight"))
 
 
 def balance_dict(row):
@@ -415,7 +418,7 @@ def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=
     rows = db.execute(select(stock).where(*filters).order_by(stock.c.received_at.desc(), stock.c.transfer_id.desc()).offset((page-1)*page_size).limit(page_size)).mappings().all()
     transfers = {item.id: item for item in db.scalars(select(MaterialTransfer).options(*workflow.material_transfer_list_options()).where(MaterialTransfer.id.in_([row["transfer_id"] for row in rows]))).all()}
     return {"items": [{"transfer": workflow.material_transfer_dict(transfers[row["transfer_id"]], user, include_history=False), **balance_dict(row)} for row in rows],
-            "total": total, "page": page, "page_size": page_size}
+            "total": total, "page": page, "page_size": page_size, "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
 
 
 def overview(db, team_id):
@@ -438,7 +441,7 @@ def overview(db, team_id):
         pending_batches["batch_count"] = pending[0]
     legacy = db.scalar(select(func.count(MaterialTransfer.id)).where(MaterialTransfer.next_team_id == team_id,
         MaterialTransfer.status == "received", MaterialTransfer.stock_tracked.is_(False))) or 0
-    return {"team_id": team_id, "totals": balance_dict(totals),
+    return {"team_id": team_id, "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat(), "totals": balance_dict(totals),
             "material_types": [{"material_type": row["material_type"], **balance_dict(row)} for row in types],
             "materials": [{"material_name": row["material_name"], **balance_dict(row)} for row in materials],
             "pending_incoming": {"count": pending[0], "quantity": int(pending[1] or 0), "weight": float(pending[2] or 0), **pending_batches},
