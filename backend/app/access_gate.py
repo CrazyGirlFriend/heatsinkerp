@@ -22,7 +22,8 @@ from .config import Settings
 ACCESS_COOKIE_NAME = "heatsink_site_access"
 ACCESS_TTL_SECONDS = 12 * 60 * 60
 ACCESS_EXEMPT_PATHS = frozenset(
-    {"/api/access/status", "/api/access/unlock", "/api/access/lock", "/health", "/api/health"}
+    {"/api/access/status", "/api/access/unlock", "/api/access/lock", "/health", "/api/health",
+     "/internal/monitor"}  # Independently authenticated with a read-only service token.
 )
 NO_STORE_HEADERS = {"Cache-Control": "no-store"}
 MAX_UNLOCK_BODY_BYTES = 4096
