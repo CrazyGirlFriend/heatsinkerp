@@ -1,15 +1,17 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { CircleCheck, Clock, Remove } from '@element-plus/icons-vue'
 import { ElIcon, ElTag } from 'element-plus'
-import { materialTransferStatusLabel, materialTransferStatusTone, type MaterialEntryKind, type MaterialTransferStatus } from '@/types/materialTransfer'
-withDefaults(defineProps<{ status: MaterialTransferStatus; entryKind?: MaterialEntryKind; plain?: boolean }>(), { plain: false })
+import { isExternalEntryKind, materialTransferStatusLabel, materialTransferStatusTone, type MaterialEntryKind, type MaterialTransferStatus } from '@/types/materialTransfer'
+const props = withDefaults(defineProps<{ status: MaterialTransferStatus; entryKind?: MaterialEntryKind; plain?: boolean; outgoing?: boolean }>(), { plain: false })
+const label = computed(() => props.outgoing && !isExternalEntryKind(props.entryKind) && ['pending', 'received'].includes(props.status) ? props.status === 'pending' ? '转出待签收' : '已签收' : materialTransferStatusLabel(props.status, props.entryKind))
 </script>
 
 <template>
-  <span v-if="plain" class="transfer-status-text" :class="`transfer-status-text--${status}`">{{ materialTransferStatusLabel(status, entryKind) }}</span>
+  <span v-if="plain" class="transfer-status-text" :class="`transfer-status-text--${status}`">{{ label }}</span>
   <ElTag v-else class="transfer-status" :type="materialTransferStatusTone(status)" effect="light">
     <ElIcon><Clock v-if="status === 'pending'" /><CircleCheck v-else-if="status === 'received' || status === 'dispatched'" /><Remove v-else /></ElIcon>
-    {{ materialTransferStatusLabel(status, entryKind) }}
+    {{ label }}
   </ElTag>
 </template>
 

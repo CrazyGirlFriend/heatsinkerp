@@ -1,7 +1,7 @@
 import type { MaterialBalance, MaterialPageParams } from './teamMaterials'
 import type { SerialSummary, SerialParams } from './materialAnalytics'
 import { inventoryColumns } from './inventoryColumns'
-import { materialTypeLabel, type MaterialType } from './materialTransfer'
+import { isScrapType, materialTypeLabel, type MaterialType } from './materialTransfer'
 import { formatDateTime } from '@/utils/format'
 
 export type WarehouseSource = 'external' | 'return' | 'internal' | 'opening'
@@ -36,6 +36,11 @@ export const warehouseSourceLabel = (row: TeamInventoryRow) => row.receipt_sourc
 export const inventorySourceLabel = (row: TeamInventoryRow, warehouse = false) => row.receipt_source === 'opening' ? '期初库存' : warehouse ? warehouseSourceLabel(row) : row.source_name || '上序未登记'
 export const inventoryAmount = (value: number | null | undefined) => value == null ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)
 const amount = inventoryAmount
+export function inventoryDispatchable(row: TeamInventoryRow) {
+  const prefix = isScrapType(row.material_type || null) ? 'scrap_available' : 'available'
+  return { quantity: row[`${prefix}_quantity`], weight: row[`${prefix}_weight`] }
+}
+export const inventoryCanDispatch = (row: TeamInventoryRow) => Object.values(inventoryDispatchable(row)).some(value => value != null && value > 0)
 export function inventoryAge(value: string | null, now = Date.now()) {
   if (!value) return '—'
   const elapsed = now - new Date(value).getTime()
@@ -64,6 +69,9 @@ export const warehouseColumns = [
   { key: 'transfer_specification', label: '规格', width: 180, defaultVisible: false, format: (row: TeamInventoryRow) => row.transfer_specification || '—' },
   { key: 'material_type', label: '物料类型', width: 140, defaultVisible: true, format: (row: TeamInventoryRow) => materialTypeLabel(row.material_type || null) },
   { key: 'source', label: '来源', width: 120, defaultVisible: true, format: warehouseSourceLabel },
+  { key: 'owned_balance', label: '归属余量', width: 145, defaultVisible: false, format: (row: TeamInventoryRow) => `${amount(row.owned_quantity)} 件 / ${amount(row.owned_weight)} kg` },
+  { key: 'dispatchable_balance', label: '可转出量', width: 145, defaultVisible: false, format: (row: TeamInventoryRow) => { const value = inventoryDispatchable(row); return `${amount(value.quantity)} 件 / ${amount(value.weight)} kg` } },
+  { key: 'pending_transfer', label: '转出待签收', width: 160, defaultVisible: false, format: (row: TeamInventoryRow) => `${amount(row.in_transit_quantity)} 件 / ${amount(row.in_transit_weight)} kg` },
   { key: 'stock_balance', label: '当前结存', width: 130, defaultVisible: true, format: (row: TeamInventoryRow) => `${amount(row.on_hand_quantity)} 件 / ${amount(row.on_hand_weight)} kg` },
   { key: 'movement', label: '累计收发', width: 220, defaultVisible: true, format: (row: TeamInventoryRow) => `${amount(row.received_quantity)} 件 / ${amount(row.received_weight)} kg` },
   { key: 'oldest_received_at', label: '最早在库接收', width: 160, defaultVisible: true, format: (row: TeamInventoryRow) => formatDateTime(row.oldest_received_at) },
@@ -79,7 +87,7 @@ export const warehouseColumns = [
 ] as const
 export type WarehouseColumnKey = typeof warehouseColumns[number]['key']
 export const warehouseSerialColumn = { key: 'serial_no', label: '流水号', width: 170, format: (row: TeamInventoryRow) => row.serial_no } as const
-export const warehouseSearchColumns = [warehouseSerialColumn, ...warehouseColumns.filter(column => column.key !== 'material_type' && column.key !== 'stock_balance' && column.key !== 'movement')]
+export const warehouseSearchColumns = [warehouseSerialColumn, ...warehouseColumns.filter(column => !['material_type', 'stock_balance', 'movement', 'owned_balance', 'dispatchable_balance', 'pending_transfer'].includes(column.key))]
 export type WarehouseSearchField = 'all' | typeof warehouseSearchColumns[number]['key']
 export const warehouseSearchKind = (field: WarehouseSearchField) => field === 'urgency' ? 'status' : field === 'last_activity_at' || field === 'oldest_received_at' ? 'date' : warehouseColumns.some(column => column.key === field && 'numeric' in column) ? 'number' : 'text'
 export interface TeamInventoryParams extends Omit<SerialParams, 'availability' | 'search_field'> {

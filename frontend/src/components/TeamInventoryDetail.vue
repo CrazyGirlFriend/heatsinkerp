@@ -13,7 +13,7 @@ import type { StockBatch } from '@/types/teamMaterials'
 import { stockAvailable } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
 
-const props = defineProps<{ teamId: number; group: TeamInventoryRow | null; canWrite?: boolean; warehouse?: boolean }>()
+const props = defineProps<{ teamId: number; group: TeamInventoryRow | null; canWrite?: boolean; warehouse?: boolean; ownership?: boolean }>()
 const emit = defineEmits<{ close: []; changed: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]] }>()
 const rows = ref<StockBatch[]>([]), total = ref(0), page = ref(1), pageSize = ref(10)
 const loading = ref(false), error = ref('')
@@ -56,7 +56,9 @@ onBeforeUnmount(() => { ++version })
     <StatePanel v-else-if="loading" state="loading" title="正在读取来源批次" />
     <ElTable v-else class="business-table warehouse-source-table" :data="rows" row-key="transfer.id" empty-text="暂无来源记录">
       <ElTableColumn label="来源批次" min-width="215" align="center"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
-      <ElTableColumn label="当前结存" min-width="160" align="center"><template #default="{ row }"><div class="source-balance"><strong>{{ inventoryAmount(row.on_hand_quantity) }} 件</strong><span>{{ inventoryAmount(row.on_hand_weight) }} kg</span><small>{{ inventoryBalanceState(asStock(row)) }}</small></div></template></ElTableColumn>
+      <ElTableColumn v-if="ownership" label="归属余量" min-width="140" align="center"><template #default="{ row }"><div class="source-balance"><strong>{{ inventoryAmount(row.owned_quantity) }} 件</strong><span>{{ inventoryAmount(row.owned_weight) }} kg</span></div></template></ElTableColumn>
+      <ElTableColumn :label="ownership ? '在库余量' : '当前结存'" min-width="160" align="center"><template #default="{ row }"><div class="source-balance"><strong>{{ inventoryAmount(row.on_hand_quantity) }} 件</strong><span>{{ inventoryAmount(row.on_hand_weight) }} kg</span><small>{{ inventoryBalanceState(asStock(row)) }}</small></div></template></ElTableColumn>
+      <ElTableColumn v-if="ownership" label="转出待签收" min-width="140" align="center"><template #default="{ row }"><div class="source-balance"><span>{{ inventoryAmount(row.in_transit_quantity) }} 件</span><span>{{ inventoryAmount(row.in_transit_weight) }} kg</span></div></template></ElTableColumn>
       <ElTableColumn label="累计收发" min-width="245" align="center"><template #default="{ row }"><InventoryMovementSummary :balance="asStock(row)" /></template></ElTableColumn>
       <ElTableColumn label="接收时间" min-width="170" align="center"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>
       <ElTableColumn v-if="canWrite" label="操作" width="160" fixed="right" align="center"><template #default="{ row }"><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('dispatch', asStock(row))">出库</ElButton><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('loss', asStock(row))">登记丢失</ElButton></template></ElTableColumn>

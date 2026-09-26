@@ -5,6 +5,7 @@ import { ArrowDown, Search } from '@element-plus/icons-vue'
 import { ElAlert, ElButton, ElCheckbox, ElDatePicker, ElInput, ElOption, ElOptionGroup, ElPagination, ElPopover, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
 import InventoryMovementSummary from './InventoryMovementSummary.vue'
+import InventoryPendingDialog from './InventoryPendingDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
 import SerialUrgencyBadge from './SerialUrgencyBadge.vue'
@@ -16,19 +17,21 @@ import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialTypeLabel, materialTypeOptions, isScrapType as isScrapMaterialType } from '@/types/materialTransfer'
-import { warehouseColumns, warehouseSearchColumns, warehouseSearchKind, warehouseSerialColumn, inventorySourceLabel, warehouseSourceNames, inventoryAmount, inventoryAge, inventoryBalanceState, type WarehouseColumnKey, type TeamInventoryParams, type TeamInventoryRow, type WarehouseSearchField, type WarehouseSource } from '@/types/teamInventory'
+import { warehouseColumns, warehouseSearchColumns, warehouseSearchKind, warehouseSerialColumn, inventorySourceLabel, warehouseSourceNames, inventoryAmount, inventoryAge, inventoryBalanceState, inventoryDispatchable, inventoryCanDispatch, type WarehouseColumnKey, type TeamInventoryParams, type TeamInventoryRow, type WarehouseSearchField, type WarehouseSource } from '@/types/teamInventory'
 import type { InventoryColumnChoice } from '@/types/inventoryColumns'
 import type { CalendarRange } from '@/types/recordFilters'
 import type { StockBatch, TeamMaterialOverview } from '@/types/teamMaterials'
 import type { AgeBand } from '@/types/materialAnalytics'
+import { formatDateTime } from '@/utils/format'
 
-const props = defineProps<{ teamId: number; overview: TeamMaterialOverview; canWrite?: boolean; warehouse?: boolean }>()
+const props = defineProps<{ teamId: number; overview: TeamMaterialOverview; canWrite?: boolean; warehouse?: boolean; ownership?: boolean }>()
 const emit = defineEmits<{ changed: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]] }>()
 const route = useRoute(), router = useRouter(), auth = useAuthStore(), directory = useTeamDirectoryStore()
 const text = (key: string) => typeof route.query[key] === 'string' ? String(route.query[key]) : ''
 const page = computed(() => Math.max(1, Number.parseInt(text('page')) || 1))
 const pageSize = computed(() => [10, 20, 50, 100].includes(Number(text('page_size'))) ? Number(text('page_size')) : 10)
 const rows = ref<TeamInventoryRow[]>([]), total = ref(0), loading = ref(false), error = ref(''), refreshError = ref('')
+const asOf = ref('')
 const queryDraft = ref(''), sourceDraft = ref<WarehouseSource | ''>(''), typeDraft = ref(''), materialDraft = ref('')
 const fieldDraft = ref<WarehouseSearchField>('all'), operatorDraft = ref<'eq' | 'gte' | 'lte'>('eq'), inputError = ref('')
 const availabilityDraft = ref<TeamInventoryParams['availability']>('current'), sourceTeamDraft = ref<number | undefined>()
@@ -40,7 +43,12 @@ const analysisLabel = computed(() => text('filter_label') || (text('stock_age') 
 const dates = computed(() => ({ from: text('date_from') || text('activity_day'), to: text('date_to') || text('activity_day') }))
 const sourceTeams = computed(() => directory.items.filter(team => team.id !== props.teamId))
 const sourceLabel = (row: TeamInventoryRow) => inventorySourceLabel(row, props.warehouse)
-const columns = computed(() => warehouseColumns.map(column => column.key === 'source' ? { ...column, label: props.warehouse ? '来源' : '上序班组', format: sourceLabel } : column))
+const ownershipDefaults = ['material_name', 'material_type', 'source', 'owned_balance', 'dispatchable_balance', 'pending_transfer']
+const columns = computed(() => warehouseColumns.map(column => ({ ...column,
+  defaultVisible: props.ownership ? ownershipDefaults.includes(column.key) : column.defaultVisible,
+  label: column.key === 'source' ? props.ownership || props.warehouse ? '来源' : '上序班组' : props.ownership && column.key === 'stock_balance' ? '在库余量' : column.label,
+  format: column.key === 'source' ? sourceLabel : column.format,
+})))
 const searchColumns = computed(() => warehouseSearchColumns.map(column => column.key === 'source' ? { ...column, label: props.warehouse ? '来源' : '上序班组' } : column))
 const columnChoices = ref<InventoryColumnChoice<WarehouseColumnKey>[]>(warehouseColumns.map(column => ({ key: column.key, visible: column.defaultVisible })))
 const storageKey = computed(() => auth.currentUser?.id ? `heatsink.${props.warehouse ? 'warehouse' : 'classified'}-columns.v1:${auth.currentUser.id}:${props.teamId}` : null)
@@ -57,7 +65,7 @@ function columnLabel(key: string, label: string) {
   return label
 }
 const filters = computed<TeamInventoryParams>(() => {
-  const params: Record<string, string | number | boolean> = { page: page.value, page_size: pageSize.value, availability: ['current', 'all', 'available', 'scrap'].includes(text('availability')) ? text('availability') : 'current' }
+  const params: Record<string, string | number | boolean> = { page: page.value, page_size: pageSize.value, availability: ['current', 'owned', 'all', 'available', 'scrap'].includes(text('availability')) ? text('availability') : props.ownership ? 'owned' : 'current' }
   for (const key of ['query', 'search_field', 'search_operator', 'serial_no', 'material_name', 'material_type', 'source_team_id', 'date_from', 'date_to', 'stock_age', 'waiting_age', 'waiting_direction', 'activity_day', 'activity_kind', 'flow_direction', 'peer', 'days']) if (text(key)) params[key] = text(key)
   if (props.warehouse && text('receipt_source')) params.receipt_source = text('receipt_source')
   if (text('source_team_id')) params.source_team_id = Number(text('source_team_id'))
@@ -104,7 +112,7 @@ async function load(background = false) {
     const result = await teamMaterialApi.teamInventory(props.teamId, filters.value)
     if (current !== version) return
     if (page.value > 1 && !result.items.length && result.total <= (page.value - 1) * pageSize.value) { paginate(Math.max(1, Math.ceil(result.total / pageSize.value))); return }
-    rows.value = result.items; total.value = result.total; error.value = ''
+    rows.value = result.items; total.value = result.total; asOf.value = result.as_of || ''; error.value = ''
   } catch (e) {
     if (current === version) {
       if (background) refreshError.value = '库存更新失败，当前保留上次结果，请刷新重试。'
@@ -121,14 +129,14 @@ function span({ rowIndex, column }: { rowIndex: number; column: { property: stri
   return { rowspan: end - rowIndex, colspan: 1 }
 }
 function rowClass({ rowIndex }: { rowIndex: number }) { return rowIndex > 0 && rows.value[rowIndex - 1]!.serial_no !== rows.value[rowIndex]!.serial_no ? 'serial-group-start' : '' }
-const detail = ref<TeamInventoryRow | null>(null), picker = ref<TeamInventoryRow | null>(null)
+const detail = ref<TeamInventoryRow | null>(null), picker = ref<TeamInventoryRow | null>(null), pending = ref<TeamInventoryRow | null>(null)
 const serialOpen = ref(false), serialNo = ref(''), urgencyOpen = ref(false), urgencySerial = ref('')
 const canManageUrgency = computed(() => auth.isAdmin && auth.currentUser?.active !== false && !auth.currentUserError)
 function asRow(row: unknown) { return row as TeamInventoryRow }
 function openSerial(value: unknown) { serialNo.value = asRow(value).serial_no; serialOpen.value = true }
 function flag(value: unknown) { urgencySerial.value = asRow(value).serial_no; urgencyOpen.value = true }
 function action(mode: 'dispatch' | 'loss', sources: StockBatch[]) { if (props.canWrite) { picker.value = detail.value = null; serialOpen.value = false; emit('action', mode, sources) } }
-function resetDetails() { detail.value = picker.value = null; serialOpen.value = urgencyOpen.value = false }
+function resetDetails() { detail.value = picker.value = pending.value = null; serialOpen.value = urgencyOpen.value = false }
 watch([() => props.teamId, filters], () => {
   queryDraft.value = text('query'); sourceDraft.value = text('receipt_source') as WarehouseSource | ''; typeDraft.value = text('material_type'); materialDraft.value = text('material_name')
   fieldDraft.value = warehouseSearchColumns.some(column => column.key === text('search_field')) ? text('search_field') as WarehouseSearchField : 'all'
@@ -161,14 +169,14 @@ onBeforeUnmount(() => { ++version })
         <template #reference><ElButton text :icon="ArrowDown">更多</ElButton></template>
         <div class="warehouse-extra-filters">
           <label>材质<ElSelect v-model="materialDraft" aria-label="库存材质筛选" clearable filterable placeholder="全部材质" @change="search"><ElOption v-for="item in overview.materials" :key="item.material_name || ''" :value="item.material_name || ''" :label="item.material_name || '未填写材质'" /></ElSelect></label>
-          <label>库存范围<ElSelect v-model="availabilityDraft" aria-label="库存范围" @change="search"><ElOption value="current" label="当前库存（含废料）" /><ElOption value="available" label="正常可用库存" /><ElOption value="scrap" label="废料库存" /><ElOption value="all" label="全部（含无结存）" /></ElSelect></label>
+          <label>库存范围<ElSelect v-model="availabilityDraft" aria-label="库存范围" @change="search"><ElOption v-if="ownership" value="owned" label="归属余量（含待签收）" /><ElOption value="current" :label="ownership ? '在库余量（含废料）' : '当前库存（含废料）'" /><ElOption value="available" label="正常可用库存" /><ElOption value="scrap" label="废料库存" /><ElOption value="all" label="全部（含无结存）" /></ElSelect></label>
           <label v-if="warehouse && sourceDraft === 'internal'">来源班组<ElSelect v-model="sourceTeamDraft" aria-label="库房来源班组" clearable @change="search"><ElOption v-for="team in sourceTeams" :key="team.id" :value="team.id" :label="team.name" /></ElSelect></label>
           <label>分析条件<ElSelect :model-value="analysisChoice" aria-label="库存分析条件" placeholder="库存与流转条件" clearable @change="selectAnalysis"><ElOptionGroup label="库存停留"><ElOption v-for="[key, label] in ages" :key="key" :value="`age:${key}`" :label="`库存停留 ${label}`" /></ElOptionGroup><ElOptionGroup v-for="direction in ['incoming', 'outgoing']" :key="direction" :label="direction === 'incoming' ? '待接收' : '转出待确认'"><ElOption v-for="[key, label] in ages" :key="key" :value="`${direction}:${key}`" :label="`${direction === 'incoming' ? '待接收' : '转出待确认'} ${label}`" /></ElOptionGroup><ElOption value="loss" :label="`近${days}天有丢失记录`" /></ElSelect></label>
           <label>事件周期<ElSelect :model-value="days" aria-label="库存事件筛选周期" @change="apply({ ...draftFilters(), days: $event })"><ElOption :value="7" label="近7天" /><ElOption :value="30" label="近30天" /></ElSelect></label>
           <ElCheckbox :model-value="text('urgent_only') === 'true'" @change="apply({ ...draftFilters(), urgent_only: $event === true || undefined })">仅看加急</ElCheckbox>
         </div>
       </ElPopover>
-      <InventoryColumnSettings :storage-key="storageKey" :columns="columns" @change="columnChoices = $event" />
+      <InventoryColumnSettings :key="String(!!ownership)" :storage-key="storageKey" :columns="columns" @change="columnChoices = $event" />
       <slot name="actions" />
     </header>
     <ElAlert v-if="inputError" :title="inputError" type="warning" :closable="false" />
@@ -183,16 +191,23 @@ onBeforeUnmount(() => { ++version })
           <div v-else-if="column.key === 'material_name'" class="inventory-cell-stack"><span>{{ row.material_name || '—' }}</span><small v-if="!separateSpecification">{{ row.transfer_specification || '规格未填写' }}</small></div>
           <div v-else-if="column.key === 'material_type'" class="inventory-cell-stack"><ElTag effect="light" :type="isScrapMaterialType(row.material_type) ? 'warning' : row.material_type === 'finished' ? 'success' : 'primary'">{{ column.format(asRow(row)) }}</ElTag><small v-if="!separatePurpose">{{ row.purpose_name || '未指定业务' }}</small></div>
           <div v-else-if="column.key === 'source' && warehouse" class="inventory-cell-stack"><span>{{ row.receipt_source === 'opening' ? '期初库存' : row.source_name || '来源未登记' }}</span><small v-if="row.receipt_source !== 'opening'">{{ warehouseSourceNames[asRow(row).receipt_source] }}</small></div>
+          <div v-else-if="column.key === 'owned_balance'" class="inventory-cell-stack inventory-balance"><strong>{{ inventoryAmount(row.owned_quantity) }} <small>件</small></strong><span>{{ inventoryAmount(row.owned_weight) }} <small>kg</small></span></div>
+          <div v-else-if="column.key === 'dispatchable_balance'" class="inventory-cell-stack inventory-balance"><strong>{{ inventoryAmount(inventoryDispatchable(asRow(row)).quantity) }} <small>件</small></strong><span>{{ inventoryAmount(inventoryDispatchable(asRow(row)).weight) }} <small>kg</small></span><small v-if="isScrapMaterialType(row.material_type)">可处理量</small></div>
+          <div v-else-if="column.key === 'pending_transfer'" class="inventory-cell-stack">
+            <ElButton v-if="row.in_transit_quantity > 0 || row.in_transit_weight > 0" link type="primary" :aria-label="`查看${row.serial_no}转出待签收批次`" @click="pending = asRow(row)"><span class="inventory-cell-stack"><span>{{ inventoryAmount(row.in_transit_quantity) }} 件</span><span>{{ inventoryAmount(row.in_transit_weight) }} kg</span></span></ElButton>
+            <template v-else><span>{{ inventoryAmount(row.in_transit_quantity) }} 件</span><span>{{ inventoryAmount(row.in_transit_weight) }} kg</span></template>
+          </div>
           <div v-else-if="column.key === 'stock_balance'" class="inventory-cell-stack inventory-balance"><strong>{{ inventoryAmount(row.on_hand_quantity) }} <small>件</small></strong><span>{{ inventoryAmount(row.on_hand_weight) }} <small>kg</small></span><small>{{ inventoryBalanceState(asRow(row)) }}<template v-if="row.current_batch_count"> · {{ row.current_batch_count }} 批</template></small></div>
           <InventoryMovementSummary v-else-if="column.key === 'movement'" :balance="asRow(row)" />
           <div v-else-if="column.key === 'oldest_received_at'" class="inventory-cell-stack inventory-receipt"><span>{{ column.format(asRow(row)) }}</span><small v-if="row.oldest_received_at">{{ inventoryAge(row.oldest_received_at) }}</small></div>
           <span v-else>{{ column.format(asRow(row)) }}</span>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="操作" :width="88" align="center" fixed="right"><template #default="{ row }"><div class="inventory-row-actions"><ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton><ElButton v-if="canWrite" link type="primary" :disabled="!(row.on_hand_quantity > 0 || row.on_hand_weight > 0)" @click="picker = asRow(row)">出库</ElButton></div></template></ElTableColumn>
+      <ElTableColumn label="操作" :width="88" align="center" fixed="right"><template #default="{ row }"><div class="inventory-row-actions"><ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton><ElButton v-if="canWrite" link type="primary" :disabled="ownership ? !inventoryCanDispatch(asRow(row)) : !(row.on_hand_quantity > 0 || row.on_hand_weight > 0)" @click="picker = asRow(row)">出库</ElButton></div></template></ElTableColumn>
     </ElTable>
-    <footer v-if="!error"><span>共 {{ total }} 条分类结存<span class="inventory-balance-note">转出即扣减，待接收不计入结存</span></span><ElPagination background :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="paginate($event)" @size-change="paginate(1, $event)" /></footer>
-    <TeamInventoryDetail :team-id="teamId" :group="detail" :warehouse="warehouse" :can-write="canWrite" @close="detail = null" @changed="emit('changed')" @action="action" />
+    <footer v-if="!error"><span>共 {{ total }} 条分类结存<span class="inventory-balance-note">{{ ownership ? '归属含转出待签收，待接收不计入本班归属' : '转出即扣减，待接收不计入结存' }}</span><small v-if="ownership && asOf" class="inventory-as-of">账面统计 · {{ formatDateTime(asOf) }}</small></span><ElPagination background :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="paginate($event)" @size-change="paginate(1, $event)" /></footer>
+    <TeamInventoryDetail :team-id="teamId" :group="detail" :warehouse="warehouse" :can-write="canWrite" :ownership="ownership" @close="detail = null" @changed="emit('changed')" @action="action" />
+    <InventoryPendingDialog v-if="pending" :team-id="teamId" :group="pending" @close="pending = null" @changed="load(true); emit('changed')" />
     <StockSourcePicker v-if="picker && canWrite" :team-id="teamId" :group-id="picker.group_id" :group-label="[picker.serial_no, materialTypeLabel(picker.material_type || null), picker.purpose_name, sourceLabel(picker)].filter(Boolean).join(' · ')" @close="picker = null" @selected="action('dispatch', $event)" />
     <SerialMaterialDrawer v-model="serialOpen" :team-id="teamId" :serial-no="serialNo" :can-write="canWrite" @changed="emit('changed')" @action="action" />
     <SerialUrgencyDialog v-model="urgencyOpen" :serial-no="urgencySerial" @changed="load(); emit('changed')" />
@@ -225,6 +240,7 @@ onBeforeUnmount(() => { ++version })
 .inventory-row-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .inventory-row-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .inventory-balance-note { margin-left: 18px; font-size: 13px; }
+.inventory-as-of { display: block; margin-top: 4px; font-size: 13px; }
 .warehouse-table :deep(.searched-column) { color: var(--primary); }
 .warehouse-table :deep(td.warehouse-group-cell) { border-right: 1px solid var(--line); }
 .warehouse-table :deep(tr.serial-group-start > td) { border-top: 1px solid var(--table-header-line); }
