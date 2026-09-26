@@ -1,10 +1,10 @@
 """All workshops share source/type stock grouping without changing receipt rules."""
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
 from app.database import SessionLocal
-from app.models import MaterialTransfer
+from app.models import MaterialTransfer, utcnow
 from test_material_transfers import _leader, _team
 from test_warehouse_receipts import warehouse, intake
 from test_warehouse_classification import dispatch, confirm
@@ -105,3 +105,70 @@ def test_warehouse_alias_and_authentication_remain_compatible(client, warehouse)
     client.headers.pop('Authorization')
     assert client.get(f"/api/team-materials/{s['other']['id']}/inventory").status_code == 401
     assert client.get(f"/api/team-materials/{s['other']['id']}/inventory/1/sources").status_code == 401
+
+
+def test_purposes_partition_balances_search_and_source_selection(client, warehouse):
+    s = warehouse
+    target = s['other']['id']
+    endpoint = f'/api/team-materials/{target}/purposes'
+    purposes = []
+    for name in ('检验', '去毛刺'):
+        response = client.post(endpoint, headers=s['other_headers'], json={'name': name})
+        assert response.status_code == 201, response.text
+        purposes.append(response.json())
+    first = incoming(client, s['headers'], s['other_headers'], target, 'inspect-a', purpose_id=purposes[0]['id'])
+    second = incoming(client, s['headers'], s['other_headers'], target, 'inspect-b', purpose_id=purposes[0]['id'])
+    incoming(client, s['headers'], s['other_headers'], target, 'deburr', purpose_id=purposes[1]['id'])
+    result = get_inventory(client, target)
+    assert result['total'] == 2
+    inspection = next(row for row in result['items'] if row['purpose_name'] == '检验')
+    assert inspection['on_hand_quantity'] == 20 and inspection['current_batch_count'] == 2
+    assert get_inventory(client, target, search_field='purpose_name', query='毛刺')['total'] == 1
+    assert get_inventory(client, target, query='检验')['items'][0]['on_hand_quantity'] == 20
+    sources = client.get(f"/api/team-materials/{target}/inventory/{first['id']}/sources").json()
+    assert {row['transfer']['id'] for row in sources['items']} == {first['id'], second['id']}
+    # Keep historical purpose snapshots separate when a label is later renamed.
+    assert client.patch(endpoint + f"/{purposes[0]['id']}", headers=s['other_headers'],
+                        json={'name': '复检', 'expected_version': 1}).status_code == 200
+    incoming(client, s['headers'], s['other_headers'], target, 'recheck', purpose_id=purposes[0]['id'])
+    assert get_inventory(client, target)['total'] == 3
+    assert client.get(f"/api/team-materials/{target}/inventory/{first['id']}/sources").json()['total'] == 2
+
+
+def test_oldest_receipt_uses_only_remaining_lots_and_classification_scope(client, warehouse):
+    s = warehouse
+    old = intake(client, s, idempotency_key='old', weight=10).json()
+    recent = intake(client, s, idempotency_key='recent', weight=10).json()
+    intake(client, s, idempotency_key='different', material_type='finished')
+    now = utcnow()
+    with SessionLocal() as db:
+        db.get(MaterialTransfer, old['id']).received_at = now - timedelta(days=10)
+        db.get(MaterialTransfer, recent['id']).received_at = now - timedelta(hours=2)
+        db.commit()
+    aged = get_inventory(client, s['team']['id'], stock_age='ge7')
+    assert aged['total'] == 1  # Not the newer finished stock of the same serial.
+    row = aged['items'][0]
+    assert row['current_batch_count'] == 2
+    assert datetime.fromisoformat(row['oldest_received_at']).replace(tzinfo=None) == now - timedelta(days=10)
+    dispatch(client, s, [{'source_transfer_id': old['id'], 'quantity': 100, 'weight': 10}])
+    assert get_inventory(client, s['team']['id'], stock_age='ge7')['total'] == 0
+    row = next(row for row in get_inventory(client, s['team']['id'])['items'] if row['group_id'] == old['id'])
+    assert row['current_batch_count'] == 1
+    assert datetime.fromisoformat(row['oldest_received_at']).replace(tzinfo=None) == now - timedelta(hours=2)
+    dispatch(client, s, [{'source_transfer_id': recent['id'], 'quantity': 100, 'weight': 10}], idempotency_key='last-age')
+    row = next(row for row in get_inventory(client, s['team']['id'], availability='all')['items'] if row['group_id'] == old['id'])
+    assert row['oldest_received_at'] is None and row['current_batch_count'] == 0
+
+
+def test_weight_only_receipt_has_age_and_date_search(client, warehouse):
+    s = warehouse
+    intake(client, s, material_type='scrap_chips', quantity=0, weight=.625)
+    row = get_inventory(client, s['team']['id'])['items'][0]
+    assert row['current_batch_count'] == 1 and row['oldest_received_at']
+    # The search uses factory-local dates, just like other date fields.
+    from zoneinfo import ZoneInfo
+    from app.config import settings
+    day = datetime.fromisoformat(row['oldest_received_at']).astimezone(ZoneInfo(settings.factory_timezone)).date().isoformat()
+    assert get_inventory(client, s['team']['id'], query=day, search_field='oldest_received_at')['total'] == 1
+    assert client.get(f"/api/team-materials/{s['team']['id']}/inventory", params={
+        'query': 'wrong', 'search_field': 'oldest_received_at'}).status_code == 422

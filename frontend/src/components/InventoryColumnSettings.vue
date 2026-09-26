@@ -16,7 +16,8 @@ function normalize(value: unknown): InventoryColumnChoice<K>[] {
   if (!Array.isArray(value)) return defaults()
   const result: InventoryColumnChoice<K>[] = []
   for (const item of value) if (item && options.value.some(column => column.key === item.key) && typeof item.visible === 'boolean' && !result.some(column => column.key === item.key)) result.push({ key: item.key, visible: item.visible })
-  return [...result, ...defaults().filter(column => !result.some(item => item.key === column.key))]
+  // Newly introduced columns must not expand an existing customized layout.
+  return [...result, ...defaults().filter(column => !result.some(item => item.key === column.key)).map(column => ({ ...column, visible: result.length ? false : column.visible }))]
 }
 watch(opened, value => { if (value) draft.value = copy(saved.value) }, { flush: 'sync' })
 watch(() => props.storageKey, key => {

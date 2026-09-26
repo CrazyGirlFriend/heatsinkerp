@@ -2,12 +2,13 @@
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { ElButton, ElDescriptions, ElDescriptionsItem, ElDrawer, ElPagination, ElTable, ElTableColumn } from 'element-plus'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
+import InventoryMovementSummary from './InventoryMovementSummary.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import StatePanel from './StatePanel.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
-import { inventorySourceLabel, type TeamInventoryRow } from '@/types/teamInventory'
+import { inventorySourceLabel, inventoryAmount, inventoryBalanceState, type TeamInventoryRow } from '@/types/teamInventory'
 import type { StockBatch } from '@/types/teamMaterials'
 import { stockAvailable } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
@@ -48,21 +49,19 @@ onBeforeUnmount(() => { ++version })
       <ElDescriptionsItem label="材质">{{ group.material_name || '—' }}</ElDescriptionsItem>
       <ElDescriptionsItem label="规格">{{ group.transfer_specification || '—' }}</ElDescriptionsItem>
       <ElDescriptionsItem label="物料类型">{{ materialTypeLabel(group.material_type || null) }}</ElDescriptionsItem>
-      <ElDescriptionsItem :label="warehouse ? '来源' : '上序班组'" :span="2">{{ inventorySourceLabel(group, warehouse) }}</ElDescriptionsItem>
+      <ElDescriptionsItem label="本班组用途">{{ group.purpose_name || '未指定用途' }}</ElDescriptionsItem>
+      <ElDescriptionsItem :label="warehouse ? '来源' : '上序班组'">{{ inventorySourceLabel(group, warehouse) }}</ElDescriptionsItem>
     </ElDescriptions>
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取来源批次" />
     <ElTable v-else class="business-table warehouse-source-table" :data="rows" row-key="transfer.id" empty-text="暂无来源记录">
       <ElTableColumn label="来源批次" min-width="215" align="center"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
-      <ElTableColumn label="本班组用途" min-width="120" align="center" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.purpose_name || '未分类' }}</template></ElTableColumn>
-      <ElTableColumn label="入库件数" min-width="100" align="center" prop="received_quantity" />
-      <ElTableColumn label="入库重量 (kg)" min-width="135" align="center" prop="received_weight" />
-      <ElTableColumn label="当前件数" min-width="100" align="center" prop="on_hand_quantity" />
-      <ElTableColumn label="当前重量 (kg)" min-width="135" align="center" prop="on_hand_weight" />
+      <ElTableColumn label="当前结存" min-width="160" align="center"><template #default="{ row }"><div class="source-balance"><strong>{{ inventoryAmount(row.on_hand_quantity) }} 件</strong><span>{{ inventoryAmount(row.on_hand_weight) }} kg</span><small>{{ inventoryBalanceState(asStock(row)) }}</small></div></template></ElTableColumn>
+      <ElTableColumn label="累计收发" min-width="245" align="center"><template #default="{ row }"><InventoryMovementSummary :balance="asStock(row)" /></template></ElTableColumn>
       <ElTableColumn label="接收时间" min-width="170" align="center"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>
       <ElTableColumn v-if="canWrite" label="操作" width="160" fixed="right" align="center"><template #default="{ row }"><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('dispatch', asStock(row))">出库</ElButton><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('loss', asStock(row))">登记丢失</ElButton></template></ElTableColumn>
     </ElTable>
-    <template #footer><div class="warehouse-detail-footer"><span>共 {{ total }} 个来源批次（含已出完）</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></div></template>
+    <template #footer><div class="warehouse-detail-footer"><span>共 {{ total }} 个来源批次（含无结存）</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></div></template>
   </ElDrawer>
   <MaterialTransferDrawer v-model="batchOpen" :transfer="selected" :trace-scope="{ team_id: teamId, direction: 'all' }" @changed="changed" />
 </template>
@@ -70,6 +69,9 @@ onBeforeUnmount(() => { ++version })
 <style scoped>
 .warehouse-source-table { margin-top: 20px; font-size: 16px; font-variant-numeric: tabular-nums; }
 .warehouse-source-table :deep(.el-table__cell) { padding-block: 16px; }
+.source-balance { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.source-balance strong { font-weight: 600; font-size: 20px; }
+.source-balance small { font-size: 13px; color: var(--muted); }
 .warehouse-detail-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
 .warehouse-detail-footer > span { color: var(--muted); }
 @media (max-width: 760px) { :deep(.el-descriptions__body) { overflow-x: auto; }:deep(.el-descriptions__table) { min-width: 640px; }.warehouse-detail-footer { overflow-x: auto; } }

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from .auth import get_current_user
 from .database import get_db
-from .material_analytics import META_FIELDS, SearchField, SerialFilters, serial_predicates, serial_table
+from .material_analytics import META_FIELDS, SearchField, SerialFilters, age_conditions, serial_predicates, serial_table
 from .material_stock import BALANCE_KEYS, balance_dict, literal_query, require_team, stock_table
 from .material_transfer_workflow import material_transfer_dict, material_transfer_list_options
 from .models import MaterialLoss, MaterialTransfer, User, utcnow
@@ -26,7 +26,7 @@ from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/team-materials", tags=["classified inventory"])
 mt = MaterialTransfer
-WarehouseSearchField = Literal[SearchField, "source", "on_hand_quantity", "on_hand_weight"]
+WarehouseSearchField = Literal[SearchField, "source", "purpose_name", "oldest_received_at", "on_hand_quantity", "on_hand_weight"]
 
 
 class WarehouseInventoryFilters(SerialFilters):
@@ -39,7 +39,7 @@ class WarehouseInventoryFilters(SerialFilters):
     def validate_search(self):
         # Share numeric/date validation without treating warehouse balances as
         # serial totals. The parent's field validator is deliberately overridden.
-        field = {"source": "material_name", "on_hand_quantity": "available_quantity", "on_hand_weight": "available_weight"}.get(self.search_field, self.search_field)
+        field = {"source": "material_name", "purpose_name": "material_name", "oldest_received_at": "last_activity_at", "on_hand_quantity": "available_quantity", "on_hand_weight": "available_weight"}.get(self.search_field, self.search_field)
         SerialFilters(query=self.query, search_field=field, search_operator=self.search_operator)
         return self
 
@@ -51,6 +51,8 @@ def origin_columns():
         "material_name": func.coalesce(mt.material_name, ""),
         "transfer_specification": func.coalesce(mt.transfer_specification, ""),
         "material_type": func.coalesce(mt.material_type, ""),
+        "purpose_id": mt.purpose_id,
+        "purpose_name": func.coalesce(mt.purpose_name, ""),
         "receipt_source": case((mt.entry_kind == "opening_stock", "opening"), (~manual, "internal"), (mt.receipt_kind == "return", "return"), else_="external"),
         "source_team_id": case((~manual, mt.source_team_id), else_=None),
         "external_source": case((manual, func.coalesce(mt.external_source, "")), else_=""),
@@ -59,6 +61,7 @@ def origin_columns():
 
 def warehouse_groups(team_id, filters):
     stock = stock_table(team_id)
+    remaining = or_(stock.c.on_hand_quantity > 0, stock.c.on_hand_weight > 0)
     origins = origin_columns()
     moves = select(mt.source_transfer_id.label("lot_id"), func.max(mt.updated_at).label("at")).where(
         mt.source_team_id == team_id, mt.source_transfer_id.is_not(None)).group_by(mt.source_transfer_id).subquery()
@@ -83,6 +86,8 @@ def warehouse_groups(team_id, filters):
         matching_dates = or_(and_(*calendar.dates(mt.received_at)), mt.id.in_(movement_matches), mt.id.in_(loss_matches))
     return select(*(column.label(name) for name, column in origins.items()),
         func.min(mt.id).label("group_id"), func.count(mt.id).label("batch_count"),
+        func.sum(case((remaining, 1), else_=0)).label("current_batch_count"),
+        func.min(case((remaining, mt.received_at), else_=None)).label("oldest_received_at"),
         func.max(case((origins["receipt_source"] == "internal", mt.source_team_name), else_=origins["external_source"])).label("source_name"),
         func.max(recent).label("last_activity_at"), func.max(case((matching_dates, 1), else_=0)).label("matches_date"),
         *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS), *meta
@@ -109,6 +114,10 @@ def list_inventory(db, team_id, filters):
             conditions.append(table.c[key] == value)
     if filters.urgent_only:
         conditions.append(table.c.serial_no.in_(urgent_serials()))
+    if filters.stock_age:
+        # Age belongs to remaining lots in this classification, not a different
+        # source/purpose of the same serial. New receipts must not reset it.
+        conditions.append(age_conditions(table.c.oldest_received_at, utcnow())[filters.stock_age])
     term = (filters.query or "").strip()
     field = filters.search_field
     matching_sources = [*group_conditions(origin_columns(), table.c), mt.next_team_id == team_id,
@@ -117,9 +126,9 @@ def list_inventory(db, team_id, filters):
         if field == "urgency":
             urgent = table.c.serial_no.in_(urgent_serials())
             conditions.append(urgent if term == "urgent" else ~urgent)
-        elif field == "last_activity_at":
+        elif field in ("last_activity_at", "oldest_received_at"):
             start, end = day_bounds(date.fromisoformat(term))
-            conditions.append(and_(table.c.last_activity_at >= start, table.c.last_activity_at < end))
+            conditions.append(and_(table.c[field] >= start, table.c[field] < end))
         elif field.endswith(("_quantity", "_weight")):
             from decimal import Decimal
             # Pending incoming is intentionally not warehouse stock; outbound
@@ -137,7 +146,7 @@ def list_inventory(db, team_id, filters):
             source_kind = case((table.c.receipt_source == "opening", "期初库存"), (table.c.receipt_source == "internal", "车间转入"), (table.c.receipt_source == "return", "外部退回"), else_="外部来料")
             columns = [table.c.source_name, source_kind]
             if field == "all":
-                columns += [table.c[name] for name in ("serial_no", "material_name", "transfer_specification")]
+                columns += [table.c[name] for name in ("serial_no", "material_name", "transfer_specification", "purpose_name")]
             matches = literal_query(term, columns)
             if field == "all":
                 matches = or_(matches, select(mt.id).where(*matching_sources,
@@ -147,11 +156,11 @@ def list_inventory(db, team_id, filters):
             conditions.append(select(mt.id).where(*matching_sources, literal_query(term, [getattr(mt, field)])).exists())
     # Existing chart deep links still select matching serials, while source/type
     # filters above constrain the displayed group quantities themselves.
-    if any((filters.stock_age, filters.waiting_direction, filters.activity_day, filters.has_loss, filters.flow_direction)):
+    if any((filters.waiting_direction, filters.activity_day, filters.has_loss, filters.flow_direction)):
         serial = serial_table(team_id)
         scope_filters = SerialFilters(**{**filters.model_dump(exclude={"receipt_source", "source_team_id"}),
             "query": None, "search_field": "all", "availability": "all", "material_type": None, "material_name": None,
-            "date_from": None, "date_to": None})
+            "date_from": None, "date_to": None, "stock_age": None})
         conditions.append(table.c.serial_no.in_(select(serial.c.serial_no).where(*serial_predicates(team_id, serial, scope_filters, utcnow()))))
     total = db.scalar(select(func.count()).select_from(table).where(*conditions)) or 0
     rows = db.execute(select(table).where(*conditions).order_by(table.c.serial_no, table.c.material_name, table.c.group_id)
@@ -163,7 +172,8 @@ def list_inventory(db, team_id, filters):
         item.pop("matches_date")
         item.update(balance_dict(row))
         item["urgency"] = priorities.get(row["serial_no"], urgency_dict(None))
-        item["last_activity_at"] = row["last_activity_at"].replace(tzinfo=timezone.utc).isoformat() if row["last_activity_at"] else None
+        for key in ("last_activity_at", "oldest_received_at"):
+            item[key] = row[key].replace(tzinfo=timezone.utc).isoformat() if row[key] else None
         items.append(item)
     return {"items": items, "total": total, "page": filters.page, "page_size": filters.page_size}
 

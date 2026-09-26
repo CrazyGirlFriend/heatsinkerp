@@ -39,7 +39,7 @@ describe('warehouse grouped stock', () => {
     await render(undefined, true, false)
     useTeamDirectoryStore().items = [{ id: 1, name: '库房', kind: 'warehouse' }, { id: 3, name: '退火' }, { id: 901, name: '本班组' }] as ReturnType<typeof useTeamDirectoryStore>['items']
     await flushPromises()
-    expect(headers()).toEqual(['流水号', '材质', '规格', '物料类型', '上序班组', '当前件数', '当前重量 (kg)', '操作'])
+    expect(headers()).toEqual(['流水号', '材质 / 规格', '类型 / 用途', '上序班组', '当前结存', '累计收发', '最早在库接收', '操作'])
     expect(wrapper.text()).not.toContain('车间转入 ·')
     expect(select('库存来源筛选')).toBeUndefined()
     expect(select('库存上序班组筛选').findAllComponents(ElOption).map(option => option.props('label'))).toEqual(['库房', '退火'])
@@ -101,11 +101,11 @@ describe('warehouse grouped stock', () => {
   })
   it('groups serial and material, displays nature and source, and pages detail rows', async () => {
     await render()
-    expect(headers()).toEqual(['流水号', '材质', '规格', '物料类型', '来源', '当前件数', '当前重量 (kg)', '操作'])
+    expect(headers()).toEqual(['流水号', '材质 / 规格', '类型 / 用途', '来源', '当前结存', '累计收发', '最早在库接收', '操作'])
     expect(wrapper.findAll('td[rowspan="2"]')).toHaveLength(2)
-    expect(wrapper.text()).toContain('外部来料 · 供应商 A')
-    expect(wrapper.text()).toContain('车间转入 · 检验')
-    expect(wrapper.text()).toContain('共 28 条库存明细')
+    expect(wrapper.text()).toContain('供应商 A外部来料')
+    expect(wrapper.text()).toContain('检验车间转入')
+    expect(wrapper.text()).toContain('共 28 条分类结存')
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, { availability: 'current', page: 1, page_size: 10 })
     expect(wrapper.getComponent(ElPagination).props('pageSizes')).toEqual([10,20,50,100])
     expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBeUndefined()
@@ -121,6 +121,34 @@ describe('warehouse grouped stock', () => {
     wrapper.getComponent(ElPagination).vm.$emit('current-change', 2); await flushPromises()
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ receipt_source: 'internal', material_type: 'finished', query: '000128', date_from: '2026-09-17', date_to: '2026-09-17', page: 2 }))
     expect(router.currentRoute.value.query.receipt_source).toBe('internal')
+  })
+  it('shows purpose, weight-only balance and receipt age without pretending production is complete', async () => {
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValueOnce({ items: [warehouseFixture({
+      purpose_name: '去毛刺', on_hand_quantity: 0, on_hand_weight: .625, current_batch_count: 1,
+      received_quantity: 0, received_weight: 2, dispatched_quantity: 0, dispatched_weight: 1,
+      reserved_quantity: 0, reserved_weight: .25, lost_quantity: 0, lost_weight: .125,
+    })], total: 1, page: 1, page_size: 10 })
+    await render()
+    expect(wrapper.text()).toContain('去毛刺')
+    expect(wrapper.get('.inventory-balance').text()).toContain('0.625 kg')
+    expect(wrapper.get('.inventory-balance').text()).toContain('部分转出 · 1 批')
+    expect(wrapper.get('.inventory-movement').text()).toContain('已转出0 件 / 1.25 kg')
+    expect(wrapper.get('.movement-pending').text()).toContain('其中待确认0 件 / 0.25 kg')
+    expect(wrapper.get('.movement-loss').text()).toContain('丢失0 件 / 0.125 kg')
+    expect(wrapper.get('.inventory-receipt').text()).toContain('2026-09-01 11:00')
+    expect(wrapper.text()).not.toContain('加工完成')
+    expect(wrapper.findAll('button').find(button => button.text() === '出库')!.attributes('disabled')).toBeUndefined()
+    select('库存搜索字段').vm.$emit('update:modelValue', 'purpose_name'); await flushPromises()
+    await submit('去毛刺')
+    expect(headers()[0]).toBe('本班组用途')
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ search_field: 'purpose_name', query: '去毛刺' }))
+  })
+  it('does not merge different specifications when they share a material and serial', async () => {
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValueOnce({ items: [warehouseFixture(), warehouseFixture({ group_id: 12, transfer_specification: '40 × 30 × 2' })], total: 2, page: 1, page_size: 10 })
+    await render()
+    expect(wrapper.findAll('td[rowspan="2"]')).toHaveLength(1)
+    expect(wrapper.text()).toContain('100 × 80 × 5')
+    expect(wrapper.text()).toContain('40 × 30 × 2')
   })
   it('promotes a searched hidden column and restores custom column order', async () => {
     await render('/team-workspaces/901?tab=stock&search_field=customer_code&query=C01')

@@ -59,6 +59,13 @@ describe('inventory display columns', () => {
     wrapper.unmount(); await render()
     expect(latest().some(item => item.visible)).toBe(false)
   })
+  it('keeps newly introduced columns hidden for an existing customized layout', async () => {
+    localStorage.setItem(key, JSON.stringify([{ key: 'product_code', visible: true }]))
+    await render()
+    expect(latest().filter(item => item.visible).map(item => item.key)).toEqual(['product_code'])
+    await button('恢复默认').trigger('click'); await button('应用').trigger('click')
+    expect(latest()).toEqual(defaultInventoryColumns())
+  })
   it('does not overwrite a quick edit when the opening animation finishes', async () => {
     await render()
     const popover = wrapper.getComponent(ElPopover)
