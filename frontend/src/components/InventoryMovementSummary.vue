@@ -16,10 +16,10 @@ const outbound = (balance: MaterialBalance, unit: 'quantity' | 'weight') => bala
 </template>
 
 <style scoped>
-.inventory-movement { display: inline-flex; flex-direction: column; gap: 6px; max-width: 100%; font-size: 15px; line-height: 1.5; font-variant-numeric: tabular-nums; text-align: left; }
+.inventory-movement { display: inline-flex; flex-direction: column; gap: 6px; max-width: 100%; font-size: 13px; line-height: 1.5; font-variant-numeric: tabular-nums; text-align: left; }
 .inventory-movement > div { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; }
 .inventory-movement span { color: var(--muted); font-size: 13px; white-space: nowrap; }
 .inventory-movement b { font-weight: 500; white-space: nowrap; }
-.inventory-movement .movement-pending { border-left: 2px solid #c2b3df; padding-left: 7px; font-size: 13px; }
+.inventory-movement .movement-pending { border-left: 2px solid #c69b54; padding-left: 7px; font-size: 13px; }
 .inventory-movement .movement-loss, .inventory-movement .movement-loss span { color: #9a502d; }
 </style>

@@ -544,7 +544,7 @@ onBeforeUnmount(() => {
 .status-filter__copy > span { font-size: 14px; }
 .status-filter__copy strong { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .counts-retry { position: absolute; right: 4px; top: 4px; display: grid; place-items: center; width: 24px; height: 24px; border: 0; background: transparent; color: var(--subtle); }
-.transfers-card { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--panel-line); border-radius: 8px; box-shadow: var(--panel-shadow); }
+.transfers-card { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--panel-line); border-radius: var(--card-radius); box-shadow: var(--panel-shadow); }
 .transfers-card :deep(.el-card__body) { display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; padding: 0; flex-direction: column; }
 .filter-bar { display: flex; flex-wrap: wrap; align-items: center; flex: 0 0 auto; min-height: 60px; padding: 12px; gap: 8px 12px; border-bottom: 1px solid var(--line-light); }
 .search-fields { display: flex; align-items: center; gap: 4px; flex: 1 1 470px; min-width: 0; }
@@ -574,13 +574,13 @@ onBeforeUnmount(() => {
 .table-skeleton :deep(.el-skeleton__p) { height: 24px; margin-top: 24px; }
 .transfer-table { font-size: 16px; }
 .transfer-table :deep(.el-table__row) { cursor: pointer; }
-.transfers-page .transfer-table :deep(th.el-table__cell) { height: 54px; padding-block: 14px; }
-.transfers-page .transfer-table :deep(.el-table__body td.el-table__cell) { height: 88px; padding-block: 16px; }
+.transfers-page .transfer-table :deep(th.el-table__cell) { height: 42px; padding-block: 10px; }
+.transfers-page .transfer-table :deep(.el-table__body td.el-table__cell) { height: 64px; padding-block: 10px; }
 .transfer-table :deep(.el-table__inner-wrapper::before) { display: none; }
-.transfers-page .transfer-table :deep(.cell) { padding-inline: 18px; line-height: 24px; }
+.transfers-page .transfer-table :deep(.cell) { padding-inline: 12px; line-height: 22px; }
 .transfer-time { display: flex; flex-direction: column; align-items: center; color: var(--muted); font-size: 14px; white-space: nowrap; }
 .transfer-serial { justify-content: center; }
-.transfers-page .transfer-table :deep(.transfer-status-text) { font-size: 16px; }
+.transfers-page .transfer-table :deep(.transfer-status-text) { font-size: 14px; }
 .transfers-page .transfer-table :deep(.transfer-status-text--pending) { color: #946200; }
 .transfers-page .transfer-table :deep(.transfer-status-text--received), .transfers-page .transfer-table :deep(.transfer-status-text--dispatched) { color: #258058; }
 .batch-link { justify-content: flex-start; height: auto; min-height: 20px; padding: 0 !important; color: var(--text); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }

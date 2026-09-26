@@ -380,7 +380,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 .legacy-notice a { color: var(--primary); }
 .team-list-layout { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-width: 0; min-height: 0; gap: 12px; }
 .team-list-layout--detail { grid-template-columns: minmax(0, 1fr) 900px; }
-.team-list-panel { container-type: inline-size; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #fff; overflow: hidden; }
+.team-list-panel { container-type: inline-size; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #fff; border: 1px solid var(--line); border-radius: var(--card-radius); overflow: hidden; }
 .list-toolbar, .scanner-error, .table-footer { flex-shrink: 0; }
 .list-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px 0; }
 .list-toolbar > .el-input { flex: 1 1 220px; max-width: 380px; }

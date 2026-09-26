@@ -286,7 +286,7 @@ onBeforeUnmount(() => {
 }
 .matrix-tools .el-button {
   height: 40px;
-  font-size: 15px;
+  font-size: 14px;
 }
 .matrix-connection {
   display: inline-flex;
@@ -299,7 +299,7 @@ onBeforeUnmount(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #a8a1b3;
+  background: #9ba99f;
 }
 .matrix-connection.is-live i {
   background: #258058;
@@ -307,17 +307,17 @@ onBeforeUnmount(() => {
 .matrix-table {
   flex: 0 0 auto;
   width: 100%;
-  font-size: 16px;
-  border-radius: 8px;
+  font-size: 14px;
+  border-radius: var(--card-radius);
   --el-table-header-bg-color: var(--table-header-bg);
   --el-table-header-text-color: var(--text);
   --el-table-border-color: var(--line);
   --el-table-text-color: var(--text);
-  --business-table-padding: 12px;
+  --business-table-padding: 8px;
 }
 .matrix-table :deep(th.el-table__cell) {
-  height: 56px;
-  font-weight: 600;
+  height: 44px;
+  font-weight: 550;
 }
 .matrix-table :deep(.cell) {
   padding: 0 12px;
@@ -333,13 +333,13 @@ onBeforeUnmount(() => {
 }
 .matrix-table :deep(.matrix-total-row .matrix-quantity),
 .matrix-table :deep(.matrix-total-column .matrix-quantity) {
-  font-weight: 600;
+  font-weight: 550;
   color: var(--primary);
 }
 .matrix-team {
   display: block;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 550;
 }
 .matrix-amount {
   padding: 4px 8px;
@@ -355,7 +355,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 .matrix-quantity {
-  font-size: 18px;
+  font-size: 16px;
 }
 .matrix-weight,
 .matrix-amount small {
@@ -372,8 +372,8 @@ onBeforeUnmount(() => {
 @keyframes stock-cell-update {
   0%,
   35% {
-    background: #e9defb;
-    box-shadow: inset 0 0 0 1px #c8b3e8;
+    background: var(--surface-soft);
+    box-shadow: inset 0 0 0 1px #99bea5;
   }
   100% {
     background: transparent;

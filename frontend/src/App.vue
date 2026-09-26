@@ -207,21 +207,17 @@ function enterBigScreen(event: MouseEvent): void {
 .skip-link:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; transform: translateY(0); }
 .main-content:focus { outline: none; }
 .standalone-screen { position: fixed; inset: 0; width: 100%; height: 100dvh; overflow: hidden; background: #00111d; }
-.app-shell--business { --sidebar-width: 200px; --topbar-height: 52px; color: var(--text); font-family: var(--font-body); }
+.app-shell--business { --sidebar-width: 184px; --topbar-height: 56px; color: var(--text); font-family: var(--font-body); }
 .app-shell--business.app-shell--compact { --sidebar-width: 64px; }
 .app-shell--business .brand-mark { justify-content: center; padding-inline: 14px; }
 .brand-mark__logo { display: block; width: 100%; height: auto; object-fit: contain; }
 .brand-mark__icon { display: block; flex: none; width: 32px; height: 32px; object-fit: contain; }
 .app-shell--business .topbar { gap: 18px; }
-.app-shell--business .breadcrumb { font-size: 16px; }
+.app-shell--business .breadcrumb { font-size: 14px; }
 .app-shell--business .topbar-clock, .app-shell--business .topbar__screen, .app-shell--business .topbar__user-label strong { font-size: 14px; }
-.app-shell--business .sidebar__collapse { height: 60px; padding-bottom: 0; font-size: 14px; }
-.app-shell--business .sidebar { background: linear-gradient(rgb(255 255 255 / 45.4%), rgb(255 255 255 / 45.4%)), #fefcff url('/assets/factory-inventory/ambient-white-purple.png') left bottom / auto 115% no-repeat; }
+.app-shell--business .sidebar__collapse { height: 60px; padding-bottom: 0; font-size: 12px; }
+.app-shell--business .sidebar { background: #fff; }
 .app-shell--business.app-shell--compact .brand-mark { padding: 0; }
 @media (max-width: 640px) { .app-shell--business { --topbar-height: 60px; } .app-shell--business .topbar { gap: 10px; } }
-.app-shell--overview { --sidebar-width: 184px; --topbar-height: 56px; --primary: #337d4d; --text: #24312a; --muted: #64726a; --subtle: #64726a; --line: #e5ebe7; --surface-soft: #edf5ef; --el-color-primary: #337d4d; font-family: 'HeatSink Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
-.app-shell--overview .sidebar { background: #fff; }
-.app-shell--overview .breadcrumb { font-size: 14px; }
 .app-shell--overview .topbar__screen { display: none; }
-.app-shell--overview .sidebar__collapse { font-size: 12px; }
 </style>

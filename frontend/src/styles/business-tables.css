@@ -1,10 +1,10 @@
 /* Shared screen-only reading scale. Print sheets and dashboards are excluded. */
 @media screen {
   :root {
-    --business-table-font: 16px;
-    --business-table-meta: 14px;
-    --business-table-line: 24px;
-    --business-table-padding: 16px;
+    --business-table-font: 14px;
+    --business-table-meta: 12px;
+    --business-table-line: 22px;
+    --business-table-padding: 10px;
   }
   :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table {
     font-family: inherit;
@@ -24,9 +24,9 @@
     font-size: var(--business-table-font);
   }
   :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table th.el-table__cell {
-    height: 52px;
-    padding-block: 14px;
-    font-weight: 600;
+    height: 42px;
+    padding-block: 10px;
+    font-weight: 500;
     font-size: var(--business-table-font);
     text-align: center;
     vertical-align: middle;
@@ -76,7 +76,7 @@
   :is(.drawer-content, .dispatch-detail-content) table.business-document-table:is(.document-table, .document-history, .loss-record-table, .dispatch-detail-lines) th {
     background: var(--table-header-bg);
     font-size: var(--business-table-font);
-    font-weight: 600;
+    font-weight: 500;
   }
   :is(.drawer-content, .dispatch-detail-content) table.business-document-table:is(.document-table, .document-history, .loss-record-table, .dispatch-detail-lines) small { font-size: var(--business-table-meta); }
   :is(.drawer-content, .dispatch-detail-content) table.business-document-table:is(.document-table, .document-history, .loss-record-table, .dispatch-detail-lines) td.table-prose { text-align: left; }

@@ -1,9 +1,9 @@
-/* Workbench pilot: typography and spacing stay inside the team workspace. */
+/* Workbench uses the same density and typography as the inventory overview. */
 .team-workspace {
-  --workspace-body-size: 16px;
-  --workspace-meta-size: 14px;
-  --workspace-number-size: 16px;
-  --workspace-control-height: 40px;
+  --workspace-body-size: 14px;
+  --workspace-meta-size: 12px;
+  --workspace-number-size: 14px;
+  --workspace-control-height: 36px;
   --workspace-gutter: 12px;
   --workspace-ink: var(--text);
   --workspace-muted: var(--muted);
@@ -15,13 +15,13 @@
 .team-workspace :is(.serial-toolbar, .list-toolbar, .workspace-actions) .el-button:not(.is-link) {
   height: var(--workspace-control-height);
   padding-inline: 12px;
-  font-size: 15px;
-  line-height: 24px;
+  font-size: 14px;
+  line-height: 22px;
   font-weight: 400;
 }
 .team-workspace :is(.serial-toolbar, .serial-extra-filters, .list-toolbar) :is(.el-input__wrapper, .el-select__wrapper) {
   min-height: var(--workspace-control-height);
-  font-size: 15px;
+  font-size: 14px;
 }
 .team-workspace :is(.serial-toolbar, .list-toolbar) .el-checkbox { height: var(--workspace-control-height); margin-right: 0; }
 .team-workspace :is(.serial-toolbar, .list-toolbar) .el-checkbox__label { font-size: 14px; font-weight: 400; color: var(--workspace-muted); }
@@ -37,15 +37,15 @@
   --el-table-row-hover-bg-color: var(--table-hover-bg);
 }
 .team-workspace :is(.serial-table, .team-table, .ledger-table) th.el-table__cell {
-  height: 48px;
+  height: 42px;
   padding-block: 12px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   border-bottom-color: var(--table-header-line);
 }
-.team-workspace :is(.serial-table, .team-table, .ledger-table) .cell { padding-inline: var(--workspace-gutter); line-height: 24px; }
+.team-workspace :is(.serial-table, .team-table, .ledger-table) .cell { padding-inline: var(--workspace-gutter); line-height: 22px; }
 .team-workspace .team-table .stock-selection-column .cell { display: flex; justify-content: center; padding-inline: 8px; }
-.team-workspace :is(.serial-table, .team-table, .ledger-table) .el-button.is-link { min-height: 24px; height: auto; font-size: 15px; line-height: 24px; }
+.team-workspace :is(.serial-table, .team-table, .ledger-table) .el-button.is-link { min-height: 24px; height: auto; font-size: 14px; line-height: 22px; }
 .team-workspace :is(.serial-table, .team-table, .ledger-table) .material-amount strong { font-size: var(--workspace-number-size); font-weight: 400; color: var(--workspace-ink); }
 .team-workspace :is(.serial-table, .team-table, .ledger-table) .material-amount small { font-size: var(--workspace-meta-size); color: var(--workspace-muted); }
 .team-workspace .ledger-table .material-amount { flex-direction: column; align-items: flex-start; gap: 2px; }
@@ -63,4 +63,4 @@
 
 .team-workspace.team-workspace--reading { overflow-y: auto; scrollbar-gutter: stable; }
 .team-workspace.team-workspace--reading :is(.team-workspace__content, .team-material-content) { flex: 0 0 auto; overflow: visible; }
-.team-workspace--reading .serial-table .el-table__body .el-table__cell { height: 61px; padding-block: 18px; }
+.team-workspace--reading .serial-table .el-table__body .el-table__cell { height: 52px; padding-block: 10px; }

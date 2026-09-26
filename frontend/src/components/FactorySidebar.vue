@@ -63,23 +63,23 @@ const materialLinks = computed(() => [
 <style scoped>
 .factory-nav { flex: 1; min-height: 0; padding: 16px 10px; overflow-y: auto; scrollbar-width: thin; }
 .factory-nav :deep(.el-menu) { width: 100%; border: 0; --el-menu-base-level-padding: 12px; --el-menu-level-padding: 34px; --el-menu-item-height: 44px; --el-menu-sub-item-height: 38px; --el-menu-text-color: var(--muted); --el-menu-hover-bg-color: var(--surface-soft); --el-menu-active-color: var(--primary); }
-.factory-nav :deep(.el-sub-menu__title) { border-radius: 6px; color: var(--text); font-size: 16px; font-weight: 500; }
-.factory-nav :deep(.el-menu-item) { margin: 2px 0; border-radius: 6px; font-size: 16px; }
+.factory-nav :deep(.el-sub-menu__title) { border-radius: 6px; color: var(--text); font-size: 14px; font-weight: 450; }
+.factory-nav :deep(.el-menu-item) { margin: 2px 0; border-radius: 6px; font-size: 14px; }
 .factory-nav :deep(.el-menu > .el-menu-item) { color: var(--text); }
 .factory-nav :deep(.el-menu > .el-menu-item > .el-icon), .factory-nav :deep(.el-sub-menu__title > .el-icon:not(.el-sub-menu__icon-arrow)) { width: 24px; margin-right: 8px; }
 .factory-nav > :deep(.el-menu > .el-menu-item), .factory-nav > :deep(.el-menu > .el-sub-menu) { margin: 4px 0; }
-.factory-nav :deep(.el-menu-item.is-active) { color: var(--primary); background: var(--surface-soft); font-weight: 600; }
-.factory-nav :deep(.el-sub-menu .el-menu-item.is-active::before) { position: absolute; left: 24px; height: 20px; width: 2px; background: #d8d0fb; content: ''; }
+.factory-nav :deep(.el-menu-item.is-active) { color: var(--primary); background: var(--surface-soft); font-weight: 550; }
+.factory-nav :deep(.el-sub-menu .el-menu-item.is-active::before) { position: absolute; left: 24px; height: 20px; width: 2px; background: var(--primary); content: ''; }
 .factory-nav__missing small { margin-left: auto; font-size: 11px; }
 .factory-nav--compact { padding-inline: 6px; }
 .factory-nav--compact :deep(.el-menu-item), .factory-nav--compact :deep(.el-sub-menu__title), .factory-nav--compact :deep(.el-menu-tooltip__trigger) { justify-content: center; padding: 0; }
 .factory-nav--compact :deep(.el-menu .el-icon:not(.el-sub-menu__icon-arrow)) { margin: 0; }
 .factory-nav--illustrated { padding: 14px 10px; }
-.factory-nav--illustrated :deep(.el-menu) { background: transparent; --el-menu-item-height: 48px; --el-menu-sub-item-height: 44px; --el-menu-level-padding: 20px; }
-.factory-nav--illustrated :deep(.el-sub-menu__title), .factory-nav--illustrated :deep(.el-menu > .el-menu-item) { font-weight: 600; }
+.factory-nav--illustrated :deep(.el-menu) { background: transparent; --el-menu-item-height: 42px; --el-menu-sub-item-height: 40px; --el-menu-level-padding: 20px; }
+.factory-nav--illustrated :deep(.el-sub-menu__title), .factory-nav--illustrated :deep(.el-menu > .el-menu-item) { font-weight: 550; }
 .factory-nav--illustrated :deep(.el-sub-menu > .el-menu) { background: transparent; }
 .factory-nav--illustrated :deep(.el-sub-menu .el-menu-item:not(.is-active)) { color: var(--muted); }
-.factory-nav--illustrated :deep(.factory-nav__team-icon) { width: 22px; margin-right: 10px; font-size: 20px; color: #847096; }
+.factory-nav--illustrated :deep(.factory-nav__team-icon) { width: 22px; margin-right: 10px; font-size: 19px; color: var(--muted); }
 .factory-nav--illustrated.factory-nav--compact { padding-inline: 6px; }
 .factory-nav--overview :deep(.el-menu-item), .factory-nav--overview :deep(.el-sub-menu__title) { font-size: 14px; font-weight: 450; }
 .factory-nav--overview :deep(.el-menu > .el-menu-item), .factory-nav--overview :deep(.el-sub-menu__title) { height: 42px; line-height: 42px; }

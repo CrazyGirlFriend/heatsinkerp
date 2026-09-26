@@ -10,11 +10,11 @@ import type { ChartPoint } from '@/types/materialAnalytics'
 const props = withDefaults(defineProps<{ data: FactoryOverview; metric: Metric; dark: boolean; scene?: FactoryScene; focusIndex?: number; motion?: boolean }>(), { scene: 'overview', motion: true })
 const emit = defineEmits<{ team: [team: FactoryTeam] }>()
 const unit = computed(() => props.metric === 'weight' ? 'kg' : '件')
-const colors = computed(() => props.dark ? ['#ac9cff', '#62d6c2', '#f3bd75', '#f08fab'] : ['#8063e9', '#35ad9b', '#d99840', '#d66e8a'])
-const ink = computed(() => props.dark ? '#a9b8ce' : '#70647f')
+const colors = computed(() => props.dark ? ['#ac9cff', '#62d6c2', '#f3bd75', '#f08fab'] : ['#58986f', '#79a9ce', '#c6a15c', '#a6afb6'])
+const ink = computed(() => props.dark ? '#a9b8ce' : '#64726a')
 const fontSize = computed(() => 14)
 const format = (value: number) => new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)
-const common = computed(() => ({ color: colors.value, textStyle: { fontFamily: props.dark ? 'system-ui, sans-serif' : 'HeatSink Han, sans-serif', fontSize: fontSize.value, color: ink.value },
+const common = computed(() => ({ color: colors.value, textStyle: { fontFamily: props.dark ? 'system-ui, sans-serif' : 'HeatSink Inter, PingFang SC, Microsoft YaHei, sans-serif', fontSize: fontSize.value, color: ink.value },
   tooltip: { trigger: 'axis', renderMode: 'richText', confine: true, valueFormatter: (value: number) => `${format(value)} ${unit.value}` },
   legend: { top: 0, right: 0, itemWidth: 9, itemHeight: 9, textStyle: { fontSize: fontSize.value, color: ink.value } } }))
 function plot(labels: string[], series: object[], horizontal = false, legend = true): EChartsCoreOption {

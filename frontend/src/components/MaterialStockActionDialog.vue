@@ -168,13 +168,13 @@ async function submit() {
 </template>
 
 <style scoped>
-.external-confirmation { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 22px; padding: 14px 16px; background: #f8f6fc; border-radius: 10px; font-size: 13px; }
+.external-confirmation { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 22px; padding: 14px 16px; background: var(--surface-soft); border-radius: 10px; font-size: 13px; }
 .external-confirmation span, .external-confirmation small { color: var(--subtle); }
 .external-confirmation small { margin-left: auto; }
 .action-intro { margin: 0 0 24px; color: var(--subtle); line-height: 1.8; }
 .destination-field { max-width: 370px; }
 .source-lines { display: grid; gap: 14px; margin-bottom: 24px; max-height: 47vh; overflow-y: auto; padding: 1px; }
-.source-line { padding: 18px 20px 6px; border: 1px solid var(--line); border-radius: 12px; background: #fcfbfe; }
+.source-line { padding: 18px 20px 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--workspace-bg); }
 .source-line header { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 .source-line header > div { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; }
 .source-line header strong { color: var(--text); font-size: 16px; font-weight: 600; }

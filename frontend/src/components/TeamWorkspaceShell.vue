@@ -57,19 +57,19 @@ function changeTab(event: KeyboardEvent, index: number): void {
 </template>
 
 <style scoped>
-.team-workspace { gap: 0; padding: 12px 24px 20px; background: #fff; }
-.team-workspace__navigation { display: flex; flex-shrink: 0; align-items: center; gap: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.team-workspace { gap: 0; padding: 20px 24px; background: var(--workspace-bg); }
+.team-workspace__navigation { display: flex; flex-shrink: 0; align-items: center; gap: 16px; padding: 10px 12px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: var(--card-radius); background: var(--surface); }
 .team-workspace__navigation > :deep(.workspace-actions) { flex: 0 0 auto; }
 .team-workspace__navigation:has(.workspace-statistics) .team-workspace__tabs { flex: 0 1 auto; }
-.workspace-statistics { display: flex; align-items: center; gap: 8px; padding: 10px; border: 0; border-radius: 5px; background: transparent; font: inherit; font-size: 16px; color: var(--muted); cursor: pointer; white-space: nowrap; }
-.workspace-statistics.is-selected { color: var(--primary); background: var(--surface-soft); box-shadow: inset 0 -2px var(--primary); }
+.workspace-statistics { display: flex; align-items: center; gap: 8px; padding: 10px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 14px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.workspace-statistics.is-selected { color: var(--primary); background: var(--surface-soft); }
 .workspace-statistics:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .team-workspace__tabs { display: flex; flex: 1; min-width: 0; align-items: stretch; overflow-x: auto; gap: 4px; scrollbar-width: thin; }
-.team-workspace__tabs button { display: flex; flex-shrink: 0; align-items: center; gap: 6px; padding: 10px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-size: 16px; cursor: pointer; transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease; }
-.team-workspace__tabs button.is-selected { color: var(--primary); background: var(--surface-soft); box-shadow: inset 0 -2px var(--primary); font-weight: 500; }
+.team-workspace__tabs button { display: flex; flex-shrink: 0; align-items: center; gap: 6px; padding: 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease; }
+.team-workspace__tabs button.is-selected { color: var(--primary); background: var(--surface-soft); font-weight: 500; }
 .team-workspace__tabs button:not(.is-selected):hover { color: var(--text); background: var(--table-hover-bg); }
 .team-workspace__tabs button:focus-visible { outline: 2px solid var(--primary); outline-offset: -4px; }
-.team-workspace__tabs small { min-width: 20px; padding: 0 5px; border-radius: 4px; background: var(--table-header-bg); color: var(--muted); font-size: 14px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.team-workspace__tabs small { min-width: 20px; padding: 0 5px; border-radius: 4px; background: var(--table-header-bg); color: var(--muted); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .team-workspace__tabs button.is-selected small { background: #fff; color: var(--primary); }
 .team-workspace__content { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; gap: 12px; overflow: hidden; overscroll-behavior: contain; scrollbar-width: thin; }
 @media (max-width: 760px) {
@@ -80,6 +80,7 @@ function changeTab(event: KeyboardEvent, index: number): void {
   .team-workspace__navigation:has(.workspace-statistics) { display: grid; grid-template-columns: auto 1fr; }
   .team-workspace__navigation:has(.workspace-statistics) .team-workspace__tabs { grid-column: 1 / -1; }
   .team-workspace__navigation:has(.workspace-statistics) > :deep(.workspace-actions) { width: auto; justify-content: flex-end; }
+  .team-workspace__navigation:has(.workspace-statistics):has(> .el-button) > :deep(.workspace-actions) { grid-column: 1 / -1; justify-content: flex-start; }
 }
 @media (prefers-reduced-motion: reduce) { .team-workspace__tabs button { transition: none; } }
 </style>

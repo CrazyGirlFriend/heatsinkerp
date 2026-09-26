@@ -8,10 +8,10 @@
 .admin-workspace .state-region { flex: 1; padding: 24px; }
 .admin-workspace .workspace-card .el-result, .admin-workspace .workspace-card .el-empty { flex: 1; justify-content: center; }
 .metric-strip { display: flex; flex-shrink: 0; align-items: center; padding: 14px 16px; gap: 32px; border-bottom: 1px solid var(--line); }
-.admin-workspace > .metric-strip { margin-bottom: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.admin-workspace > .metric-strip { margin-bottom: 12px; border: 1px solid var(--line); border-radius: var(--card-radius); background: #fff; }
 .metric-cell { display: flex; align-items: baseline; gap: 8px; color: var(--subtle); font-size: 14px; }
 .metric-cell > .el-icon { display: none; }
-.metric-cell strong { color: var(--text); font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.metric-cell strong { color: var(--text); font-size: 18px; font-weight: 550; font-variant-numeric: tabular-nums; }
 .system-admin-notice { margin: 0 0 12px; }
 .admin-workspace .workspace-card .admin-pagination { min-height: 56px; padding: 12px 16px; border-top: 1px solid var(--line); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 20px; }

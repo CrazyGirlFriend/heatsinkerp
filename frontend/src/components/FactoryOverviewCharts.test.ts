@@ -23,7 +23,7 @@ describe('factory screen charts', () => {
       ])
       await wrapper.setProps({ metric: 'quantity', dark: false })
       expect(charts[1]!.props('option').series).toEqual(expect.arrayContaining([expect.objectContaining({ name: '库房入库', data: [100] })]))
-      expect(charts[0]!.props('option')).toMatchObject({ textStyle: { fontSize: 14, fontFamily: 'HeatSink Han, sans-serif' } })
+      expect(charts[0]!.props('option')).toMatchObject({ textStyle: { fontSize: 14, fontFamily: 'HeatSink Inter, PingFang SC, Microsoft YaHei, sans-serif' } })
     } finally { wrapper.unmount() }
   })
   it('separates stock and handoff scenes and rotates readable point summaries', async () => {

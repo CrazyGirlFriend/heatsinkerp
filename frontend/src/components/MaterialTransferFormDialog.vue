@@ -330,14 +330,14 @@ onBeforeUnmount(() => { ++formGeneration })
 <style scoped>
 .form-heading { display: flex; align-items: center; gap: 11px; }
 .form-heading > .el-icon { display: none; }
-.form-heading h2 { margin: 0; color: #1c2e42; font-size: 20px; }
-.form-heading span { display: block; margin-top: 2px; color: #718094; font-size: 13px; }
+.form-heading h2 { margin: 0; color: var(--text); font-size: 20px; }
+.form-heading span { display: block; margin-top: 2px; color: var(--muted); font-size: 13px; }
 .handoff-preview { display: grid; grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr); align-items: center; margin-bottom: 8px; padding: 0 0 16px; border-bottom: 1px solid var(--line); }
 .handoff-preview > div { display: grid; min-width: 0; gap: 3px; }
 .handoff-preview > div:last-child { text-align: right; }
-.handoff-preview span, .handoff-preview small { color: #718094; font-size: 13px; }
-.handoff-preview strong { overflow: hidden; color: #2e455d; text-overflow: ellipsis; white-space: nowrap; }
-.handoff-preview > .el-icon { justify-self: center; color: #8c9bad; }
+.handoff-preview span, .handoff-preview small { color: var(--muted); font-size: 13px; }
+.handoff-preview strong { overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
+.handoff-preview > .el-icon { justify-self: center; color: var(--subtle); }
 .transfer-form { margin-top: 0; }
 .quantity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .document-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
@@ -346,7 +346,7 @@ onBeforeUnmount(() => { ++formGeneration })
 .quantity-hint { margin: -5px 0 18px; color: var(--subtle); font-size: 12px; }
 .quantity-grid :deep(.el-input-number) { width: calc(100% - 42px); }
 .quantity-grid :deep(.el-form-item__content) { flex-wrap: nowrap; }
-.unit-suffix { display: grid; width: 42px; height: 40px; place-items: center; border: 1px solid var(--el-border-color); border-left: 0; border-radius: 0 4px 4px 0; color: #5c6c80; background: #f5f7fa; }
+.unit-suffix { display: grid; width: 42px; height: 40px; place-items: center; border: 1px solid var(--el-border-color); border-left: 0; border-radius: 0 4px 4px 0; color: var(--muted); background: var(--workspace-bg); }
 .form-error { margin: -2px 0 0; color: var(--danger); font-size: 13px; }
 @media (max-width: 560px) {
   .quantity-grid, .document-grid { grid-template-columns: 1fr; gap: 0; }

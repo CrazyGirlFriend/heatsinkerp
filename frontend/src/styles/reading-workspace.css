@@ -1,56 +1,56 @@
-/* The approved ledger's reading scale, shared only by normal business pages.
+/* Compact reading scale shared by normal business pages.
    Dialogs and both large-screen dashboards retain their own bounded layouts. */
 .main-content > .page.reading-workspace {
   --reading-ink: var(--text);
   --reading-muted: var(--muted);
   color: var(--reading-ink);
   background: var(--workspace-bg);
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.5;
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
 .page.reading-workspace :is(.workspace-heading, .page-heading) { margin-bottom: 16px; }
-.page.reading-workspace :is(.workspace-heading, .page-heading) h1 { font-size: 22px; font-weight: 600; }
+.page.reading-workspace :is(.workspace-heading, .page-heading) h1 { font-size: 24px; font-weight: 550; }
 .page.reading-workspace :is(.filter-bar, .heading-actions, .workspace-heading, .trace-search, .analysis-controls, .selection-bar) .el-button:not(.is-link) {
-  min-height: 40px;
-  height: 40px;
+  min-height: 36px;
+  height: 36px;
   padding-inline: 12px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 400;
 }
-.page.reading-workspace :is(.filter-bar, .trace-search, .analysis-controls) :is(.el-input__wrapper, .el-select__wrapper) { min-height: 40px; font-size: 15px; }
+.page.reading-workspace :is(.filter-bar, .trace-search, .analysis-controls) :is(.el-input__wrapper, .el-select__wrapper) { min-height: 36px; font-size: 14px; }
 .page.reading-workspace :is(.filter-bar, .analysis-controls) .el-checkbox__label { color: var(--reading-muted); font-size: 14px; font-weight: 400; }
-.page.reading-workspace .analysis-controls .el-radio-button__inner { padding: 12px; font-size: 15px; }
+.page.reading-workspace .analysis-controls .el-radio-button__inner { padding: 12px; font-size: 14px; }
 .page.reading-workspace :is(.serial-table, .team-table, .ledger-table, .transfer-table, .table-region > .el-table) {
   --el-table-text-color: var(--reading-ink);
   --el-table-header-bg-color: var(--table-header-bg);
   --el-table-header-text-color: var(--text);
   --el-table-border-color: var(--line);
   --el-table-row-hover-bg-color: var(--table-hover-bg);
-  font-size: 16px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 .page.reading-workspace :is(.serial-table, .team-table, .ledger-table, .transfer-table, .table-region > .el-table) th.el-table__cell {
-  height: 48px;
-  padding-block: 12px;
+  height: 42px;
+  padding-block: 10px;
   border-bottom-color: var(--table-header-line);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
 }
 .page.reading-workspace :is(.serial-table, .team-table, .ledger-table, .transfer-table, .table-region > .el-table) .el-table__body td.el-table__cell {
-  height: 61px;
-  padding-block: 18px;
-  font-size: 16px;
+  height: 52px;
+  padding-block: 10px;
+  font-size: 14px;
 }
-.page.reading-workspace :is(.serial-table, .team-table, .ledger-table, .transfer-table, .table-region > .el-table) .cell { padding-inline: 12px; line-height: 24px; }
-.page.reading-workspace :is(.team-table, .ledger-table, .transfer-table, .table-region > .el-table) .el-button.is-link { min-height: 24px; height: auto; font-size: 15px; font-weight: 400; }
-.page.reading-workspace :is(.code-cell, .account-cell strong, .transfer-table .batch-link, .transfer-table .serial-number, .amount-cell) { color: var(--reading-ink); font-size: 16px; font-weight: 400; }
+.page.reading-workspace :is(.serial-table, .team-table, .ledger-table, .transfer-table, .table-region > .el-table) .cell { padding-inline: 12px; line-height: 22px; }
+.page.reading-workspace :is(.team-table, .ledger-table, .transfer-table, .table-region > .el-table) .el-button.is-link { min-height: 24px; height: auto; font-size: 14px; font-weight: 400; }
+.page.reading-workspace :is(.code-cell, .account-cell strong, .transfer-table .batch-link, .transfer-table .serial-number, .amount-cell) { color: var(--reading-ink); font-size: 14px; font-weight: 400; }
 .page.reading-workspace .transfer-table :is(.batch-link, .serial-number):hover { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
 .page.reading-workspace .transfer-time { font-size: 14px; color: var(--reading-muted); }
 .page.reading-workspace .transfer-serial { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .page.reading-workspace .transfer-serial .serial-number { font-size: 14px; color: var(--reading-muted); }
-.page.reading-workspace :is(.pagination-bar, .admin-pagination) { min-height: 64px; padding: 14px 12px; font-size: 14px; color: var(--reading-muted); }
+.page.reading-workspace :is(.pagination-bar, .admin-pagination) { min-height: 52px; padding: 10px 16px; font-size: 14px; color: var(--reading-muted); }
 .page.reading-workspace .el-pagination { flex-wrap: wrap; row-gap: 8px; }
 .page.reading-workspace .el-pagination :is(.el-select__wrapper, .el-pagination__total) { font-size: 14px; }
 
@@ -70,17 +70,17 @@
 .page.reading-workspace .status-filter { padding: 10px 8px; border-radius: 5px; }
 .page.reading-workspace .status-filter.is-selected { color: var(--primary); background: var(--surface-soft); box-shadow: inset 0 -2px var(--primary); }
 .page.reading-workspace .status-filter::before, .page.reading-workspace .status-filter.is-selected::after { display: none; }
-.page.reading-workspace .status-filter__copy > span { font-size: 16px; }
-.page.reading-workspace .status-filter__copy strong { padding: 0 5px; border-radius: 4px; font-size: 14px; font-weight: 400; background: #e9edf4; }
+.page.reading-workspace .status-filter__copy > span { font-size: 14px; }
+.page.reading-workspace .status-filter__copy strong { padding: 0 5px; border-radius: 4px; font-size: 14px; font-weight: 400; background: var(--surface-soft); }
 .page.reading-workspace .team-list-layout { flex: 0 0 auto; grid-template-rows: auto; align-items: start; }
 .page.reading-workspace :is(.team-list-panel, .team-table-scroll) { overflow: visible; }
 .page.reading-workspace .team-table-scroll { flex: 0 0 auto; }
 .page.reading-workspace .selection-bar { padding: 0 0 12px; font-size: 14px; }
 .page.reading-workspace .material-ledger { flex: 0 0 auto; margin-top: 16px; }
-.page.reading-workspace .material-ledger h2 { font-size: 16px; font-weight: 500; }
+.page.reading-workspace .material-ledger h2 { font-size: 14px; font-weight: 500; }
 .page.reading-workspace .material-ledger h2 small { font-size: 14px; }
 .page.reading-workspace .ledger-table { flex: 0 0 auto; }
-.page.reading-workspace .ledger-table .el-button.is-link { color: var(--reading-ink); font-size: 16px; }
+.page.reading-workspace .ledger-table .el-button.is-link { color: var(--reading-ink); font-size: 14px; }
 .page.reading-workspace .ledger-table .el-button.is-link:hover { color: var(--primary); text-decoration: underline; }
 .page.reading-workspace.transfers-page .detail-slot, .page.reading-workspace .team-list-layout > .transfer-detail-frame { position: sticky; top: 0; height: calc(100dvh - var(--topbar-height) - 120px); }
 
@@ -88,22 +88,22 @@
 .page.reading-workspace :is(.trace-result, .trace-chain, .scan-workspace) { flex: 0 0 auto; min-height: 0; }
 .page.reading-workspace :is(.chain-scroll, .recent-scroll), .page.reading-workspace :is(.trace-chain, .recent-panel) > .el-card__body { height: auto; }
 .page.reading-workspace.material-trace-page, .page.reading-workspace.material-scan-page { height: calc(100dvh - var(--topbar-height)); }
-.page.reading-workspace :is(.chain-top strong, .chain-route b, .recent-item__head strong, .recent-item__route b) { color: var(--reading-ink); font-size: 16px; font-weight: 400; }
+.page.reading-workspace :is(.chain-top strong, .chain-route b, .recent-item__head strong, .recent-item__route b) { color: var(--reading-ink); font-size: 14px; font-weight: 400; }
 .page.reading-workspace :is(.chain-meta, .chain-heading span, .serial-identity > span, .location-summary > div > span, .location-summary small, .trace-metrics span, .scanner-shortcuts, .recent-material, .recent-item__meta, .recent-heading small) { color: var(--reading-muted); font-size: 14px; }
 .page.reading-workspace .trace-search form { flex-wrap: wrap; max-width: none; }
 .page.reading-workspace .serial-identity .serial-urgency-badge { justify-self: start; width: max-content; }
 .page.reading-workspace .trace-search form > .el-input { flex: 1 1 240px; max-width: 400px; }
 .page.reading-workspace .chain-heading { flex-wrap: wrap; }
 .page.reading-workspace .trace-chain > .el-card__header { height: auto; }
-.page.reading-workspace .chain-item { padding-block: 18px; }
+.page.reading-workspace .chain-item { padding-block: 12px; }
 .page.reading-workspace .scanner-panel > .el-card__body { min-height: 0; padding: 24px; }
 .page.reading-workspace .scanner-main { padding: 0; }
 .page.reading-workspace .scanner-icon { font-size: 28px; }
 .page.reading-workspace .scanner-main h2 { margin-top: 16px; font-size: 20px; }
 .page.reading-workspace .scanner-input { margin-top: 24px; }
 .page.reading-workspace .recent-panel { min-height: 0; }
-.page.reading-workspace .recent-item { padding-block: 18px; }
-.page.reading-workspace .mobile-row-head strong { font-size: 16px; font-weight: 400; }
+.page.reading-workspace .recent-item { padding-block: 12px; }
+.page.reading-workspace .mobile-row-head strong { font-size: 14px; font-weight: 400; }
 .page.reading-workspace :is(.mobile-row-meta, .mobile-material-brief) { font-size: 14px; }
 @media (max-width: 760px) {
   .page.reading-workspace .status-overview { display: flex; overflow-x: auto; }

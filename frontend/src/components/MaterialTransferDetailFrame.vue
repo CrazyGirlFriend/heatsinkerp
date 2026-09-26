@@ -26,7 +26,7 @@ watch(() => [props.modelValue, props.docked], async ([open, docked]) => {
 </template>
 
 <style scoped>
-.transfer-detail-frame { display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; border: 1px solid var(--panel-line); background: #fff; outline: none; }
+.transfer-detail-frame { display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; border: 1px solid var(--panel-line); border-radius: var(--card-radius); background: #fff; outline: none; }
 .detail-frame-heading { position: relative; flex-shrink: 0; padding: 20px; border-bottom: 1px solid var(--line); }
 .detail-close { position: absolute; top: 16px; right: 12px; width: 32px; height: 32px; padding: 0; color: var(--subtle); font-size: 20px; }
 .detail-frame-body { flex: 1; min-height: 0; padding: 20px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }

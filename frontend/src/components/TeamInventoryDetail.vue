@@ -70,7 +70,7 @@ onBeforeUnmount(() => { ++version })
 .warehouse-source-table { margin-top: 20px; font-size: 16px; font-variant-numeric: tabular-nums; }
 .warehouse-source-table :deep(.el-table__cell) { padding-block: 16px; }
 .source-balance { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.source-balance strong { font-weight: 600; font-size: 20px; }
+.source-balance strong { font-weight: 550; font-size: 18px; }
 .source-balance small { font-size: 13px; color: var(--muted); }
 .warehouse-detail-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
 .warehouse-detail-footer > span { color: var(--muted); }

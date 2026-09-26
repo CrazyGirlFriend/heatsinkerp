@@ -134,8 +134,8 @@ async function closeInput(): Promise<void> {
   place-items: center;
   overflow: auto;
   padding: 32px 24px;
-  color: #737b86;
-  background: #fff;
+  color: var(--muted);
+  background: var(--workspace-bg);
 }
 
 .access-gate__content {
@@ -162,9 +162,9 @@ async function closeInput(): Promise<void> {
 .access-gate__lock { width: 56px; height: 56px; font-size: 32px; }
 .access-gate__submit { width: 44px; height: 44px; font-size: 18px; }
 .access-gate__lock:hover:not(:disabled),
-.access-gate__submit:hover:not(:disabled) { color: #252e3b; }
+.access-gate__submit:hover:not(:disabled) { color: var(--text); }
 .access-gate__lock:focus-visible,
-.access-gate__submit:focus-visible { outline: 2px solid #aeb7c2; outline-offset: 4px; }
+.access-gate__submit:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
 .access-gate__lock:disabled,
 .access-gate__submit:disabled { cursor: wait; opacity: 0.5; }
 
@@ -172,10 +172,10 @@ async function closeInput(): Promise<void> {
   display: flex;
   align-items: center;
   width: 100%;
-  border-bottom: 1px solid #dce0e5;
+  border-bottom: 1px solid var(--line);
 }
 
-.access-gate__form:focus-within { border-bottom-color: #737b86; }
+.access-gate__form:focus-within { border-bottom-color: var(--primary); }
 .access-gate__form input {
   flex: 1;
   min-width: 0;
@@ -184,11 +184,11 @@ async function closeInput(): Promise<void> {
   border: 0;
   border-radius: 0;
   outline: 0;
-  color: #252e3b;
+  color: var(--text);
   background: transparent;
   font-size: 16px;
 }
-.access-gate__form input::placeholder { color: #9da5af; }
+.access-gate__form input::placeholder { color: var(--subtle); }
 .access-gate__error { margin: 0; color: #b55252; font-size: 13px; line-height: 1.6; text-align: center; }
 .access-gate__spinner { animation: access-spin 800ms linear infinite; }
 .access-gate__sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

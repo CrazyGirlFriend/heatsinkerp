@@ -1,11 +1,11 @@
 :root {
   --el-color-primary: var(--primary);
-  --el-color-primary-light-3: #9568e2;
-  --el-color-primary-light-5: #b495eb;
-  --el-color-primary-light-7: #d2bff3;
-  --el-color-primary-light-8: #e1d4f7;
-  --el-color-primary-light-9: #f3edfc;
-  --el-color-primary-dark-2: #5422ab;
+  --el-color-primary-light-3: #70a082;
+  --el-color-primary-light-5: #99bea5;
+  --el-color-primary-light-7: #c2d8c9;
+  --el-color-primary-light-8: #d6e5db;
+  --el-color-primary-light-9: #edf5ef;
+  --el-color-primary-dark-2: #28643d;
   --el-color-success: #23825b;
   --el-color-warning: #b9660b;
   --el-color-warning-light-3: #b98e59;
@@ -16,19 +16,19 @@
   --el-color-warning-dark-2: #7a4a0e;
   --el-color-danger: #c4474d;
   --el-color-error: #c4474d;
-  --el-color-info: #617186;
+  --el-color-info: #67756d;
   --el-text-color-primary: var(--text);
   --el-text-color-regular: var(--muted);
   --el-text-color-secondary: var(--subtle);
-  --el-text-color-placeholder: #84768f;
-  --el-border-color: #ddd2e8;
+  --el-text-color-placeholder: #88968d;
+  --el-border-color: #dbe4de;
   --el-border-color-light: var(--line);
   --el-border-color-lighter: var(--line-light);
-  --el-fill-color-light: #f5f1fa;
-  --el-fill-color-lighter: #fcfaff;
+  --el-fill-color-light: #f3f7f4;
+  --el-fill-color-lighter: #fafcfb;
   --el-fill-color-blank: #fff;
   --el-bg-color-page: var(--workspace-bg);
-  --el-border-radius-base: 6px;
+  --el-border-radius-base: 8px;
   --el-border-radius-small: 6px;
   --el-card-border-radius: var(--card-radius);
   --el-box-shadow-light: 0 8px 24px rgb(15 34 58 / 8%);
@@ -59,7 +59,7 @@
 .el-input__wrapper.is-focus,
 .el-select__wrapper.is-focused,
 .el-textarea__inner:focus {
-  box-shadow: 0 0 0 1px var(--el-color-primary) inset, 0 0 0 3px rgb(101 80 237 / 10%);
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset, 0 0 0 3px rgb(51 125 77 / 10%);
 }
 
 .el-card {
@@ -68,8 +68,8 @@
 
 .el-card__header {
   border-bottom-color: var(--el-border-color-lighter);
-  color: #26364a;
-  font-weight: 650;
+  color: var(--text);
+  font-weight: 550;
 }
 
 .el-dialog {
@@ -78,22 +78,22 @@
   max-height: calc(100dvh - 64px);
   margin-block: 32px;
   padding: 20px;
-  border-radius: 8px;
+  border-radius: var(--card-radius);
   overflow: hidden;
-  border: 1px solid #dfe5ec;
-  box-shadow: 0 22px 68px rgb(5 24 48 / 24%);
+  border: 1px solid var(--line);
+  box-shadow: 0 22px 68px rgb(26 49 35 / 16%);
 }
 
 .el-dialog__header {
   flex-shrink: 0;
   padding: 0 28px 16px 0;
-  border-bottom: 1px solid #f0eef6;
+  border-bottom: 1px solid var(--line-light);
 }
 
 .el-dialog__body { min-height: 0; padding: 20px 0; overflow: auto; }
 .el-dialog__footer { flex-shrink: 0; padding: 16px 0 0; border-top: 1px solid var(--el-border-color-lighter); }
 .el-dialog__headerbtn { width: 48px; height: 48px; top: 12px; right: 12px; }
-.el-dialog__title { font-size: 20px; font-weight: 600; }
+.el-dialog__title { font-size: 20px; font-weight: 550; }
 .el-form-item__label { color: var(--el-text-color-regular); }
 .el-message-box { padding: 24px; border-radius: 10px; }
 .el-message-box__btns { padding-top: 24px; }
@@ -118,11 +118,11 @@
 
 .el-table {
   font-size: 13px;
-  --el-table-header-bg-color: #f4f6fb;
-  --el-table-header-text-color: #53617a;
-  --el-table-row-hover-bg-color: #f5f3ff;
-  --el-table-current-row-bg-color: #f5f2ff;
-  --el-table-border-color: #edf0f6;
+  --el-table-header-bg-color: var(--table-header-bg);
+  --el-table-header-text-color: var(--muted);
+  --el-table-row-hover-bg-color: var(--table-hover-bg);
+  --el-table-current-row-bg-color: var(--surface-soft);
+  --el-table-border-color: var(--line-light);
 }
 
 .el-table th.el-table__cell { height: 42px; font-weight: 500; }
@@ -133,9 +133,9 @@
   --el-table-border-color: var(--line);
   --el-table-row-hover-bg-color: var(--table-hover-bg);
   --el-table-current-row-bg-color: var(--surface-soft);
-  --el-fill-color-lighter: #fcfaff;
+  --el-fill-color-lighter: #fafcfb;
 }
-.el-table:not(.live-table) th.el-table__cell { font-weight: 650; border-bottom-color: var(--table-header-line); }
+.el-table:not(.live-table) th.el-table__cell { font-weight: 550; border-bottom-color: var(--table-header-line); }
 .el-table td.el-table__cell { padding-block: 7px; }
 .el-table .cell { padding-inline: 12px; line-height: 22px; }
 .el-table .el-button.is-link { font-weight: 400; }
@@ -160,7 +160,7 @@
 .factory-account-menu.el-popper {
   overflow: hidden;
   min-width: 150px;
-  border-color: #dfe5ec;
+  border-color: var(--line);
   box-shadow: 0 14px 36px rgb(7 27 52 / 16%);
 }
 

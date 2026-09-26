@@ -151,8 +151,8 @@ onBeforeUnmount(() => { ++generation })
 </template>
 
 <style scoped>
-.receipt-heading h2 { margin: 0; color: var(--text); font-size: 20px; font-weight: 600; }
-.receipt-destination { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 12px; padding: 12px; border-radius: 6px; background: #f4f6fb; font-size: 13px; }
+.receipt-heading h2 { margin: 0; color: var(--text); font-size: 20px; font-weight: 550; }
+.receipt-destination { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 12px; padding: 12px; border-radius: 6px; background: var(--surface-soft); font-size: 13px; }
 .receipt-destination span, .receipt-destination small { color: var(--subtle); }
 .receipt-destination strong { color: var(--text); font-weight: 500; }
 .receipt-destination small { margin-left: auto; }
