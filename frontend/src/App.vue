@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, Calendar, Fold, Menu, Monitor, SwitchButton, User } from '@element-plus/icons-vue'
+import { ArrowDown, Fold, Menu, Monitor, SwitchButton, User } from '@element-plus/icons-vue'
 import { ElConfigProvider, ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -10,13 +10,8 @@ import LoginPage from '@/pages/LoginPage.vue'
 import { currentUser, isAuthenticated, logout, refreshCurrentUser } from '@/stores/auth'
 import { teamDirectory, refreshTeamDirectory } from '@/stores/teamDirectory'
 import { canEnterSite } from '@/stores/access'
-import { formatDateTime } from '@/utils/format'
 import { resolveTeamWorkspaceSection, teamWorkspaceProfile, teamWorkspaceSections } from '@/config/teamWorkspaces'
 
-const now = ref(new Date().toISOString())
-let clockTimer: ReturnType<typeof setInterval> | undefined
-onMounted(() => { clockTimer = setInterval(() => { now.value = new Date().toISOString() }, 60000) })
-onBeforeUnmount(() => { if (clockTimer) clearInterval(clockTimer) })
 const teamLabel = computed(() => currentUser.value?.role === 'ADMIN' ? '系统管理员' : teamDirectory.items.find(team => String(team.id) === String(currentUser.value?.team_id))?.name || currentUser.value?.team?.name || '未配置班组')
 const route = useRoute()
 const router = useRouter()
@@ -44,6 +39,8 @@ const mobileMenuButton = ref<HTMLButtonElement | null>(null)
 const mainContent = ref<HTMLElement | null>(null)
 const mobileViewport = ref(typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 640px)').matches)
 const mobileDrawerOpen = computed(() => mobileViewport.value && mobileMenuOpen.value)
+const sidebarCompact = computed(() => compactSidebar.value && !mobileViewport.value)
+const currentLocation = computed(() => breadcrumb.value.slice(-2).join(' · '))
 let viewportQuery: MediaQueryList | undefined
 async function refreshWorkspaceIdentity(): Promise<void> {
   if (!isAuthenticated.value || !canEnterSite.value) return
@@ -156,48 +153,46 @@ function enterBigScreen(event: MouseEvent): void {
     <div v-else class="app-shell app-shell--business" :class="{ 'app-shell--compact': compactSidebar, 'app-shell--overview': route.name === 'home' }">
       <a class="skip-link" href="#main-content" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined" @click.prevent="focusMainContent">跳到正文</a>
 
-      <div class="brand-mark" aria-label="安泰天龙 · 热沉物料">
-        <img v-if="compactSidebar" class="brand-mark__icon" src="/brand/attl-official-favicon.ico" alt="安泰天龙" width="32" height="32" />
-        <img v-else class="brand-mark__logo" src="/brand/attl-official-logo.png" alt="中国钢研 安泰科技 · 安泰天龙" width="1017" height="143" />
-      </div>
-
-      <header class="topbar">
+      <header v-if="mobileViewport || compactSidebar" class="topbar">
         <button ref="mobileMenuButton" class="topbar__menu" type="button" :aria-label="mobileMenuOpen ? '关闭导航' : '打开导航'" :aria-expanded="mobileMenuOpen" aria-controls="factory-sidebar" :title="mobileMenuOpen ? '关闭导航' : '打开导航'" @click="toggleMobileMenu">
           <Menu />
         </button>
-        <nav class="brand breadcrumb" aria-label="当前位置" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined"><span v-for="(part, index) in breadcrumb" :key="index" :aria-current="index === breadcrumb.length - 1 ? 'page' : undefined">{{ part }}</span></nav>
-        <div class="topbar-clock" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined"><ElIcon><Calendar /></ElIcon><time>{{ formatDateTime(now).slice(0, 10) }}</time></div>
-        <div class="topbar__account" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined">
-          <ElDropdown placement="bottom-end" trigger="click" popper-class="factory-account-menu" @command="handleUserCommand">
-            <button class="topbar__user" type="button" title="账户菜单" :aria-label="`${userLabel}，打开账户菜单`">
-              <ElIcon class="topbar__account-icon"><User /></ElIcon>
-              <span class="topbar__user-label"><strong>{{ currentUser?.display_name || currentUser?.username }}</strong><small v-if="teamLabel !== currentUser?.display_name">/ {{ teamLabel }}</small></span>
-              <ElIcon class="topbar__chevron"><ArrowDown /></ElIcon>
-            </button>
-            <template #dropdown>
-              <ElDropdownMenu>
-                <ElDropdownItem command="logout"><ElIcon><SwitchButton /></ElIcon>退出登录</ElDropdownItem>
-              </ElDropdownMenu>
-            </template>
-          </ElDropdown>
-        </div>
-        <RouterLink to="/factory-live" class="topbar__screen" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined" aria-label="动态流转大屏" @click="enterBigScreen"><ElIcon><Monitor /></ElIcon><span>大屏展示</span></RouterLink>
+        <span class="topbar__location" :title="currentLocation" aria-label="当前位置" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined">{{ currentLocation }}</span>
       </header>
 
       <aside id="factory-sidebar" ref="sidebarElement" class="sidebar" :class="{ 'sidebar--open': mobileMenuOpen }" :inert="mobileViewport && !mobileMenuOpen ? true : undefined" :aria-hidden="mobileViewport && !mobileMenuOpen ? true : undefined" @keydown="handleSidebarKeydown">
-        <FactorySidebar :compact="compactSidebar && !mobileViewport" :overview="route.name === 'home'" :pending-team-id="workspacePending?.teamId" :pending-count="workspacePending?.count" illustrated />
+        <div class="brand-mark" aria-label="安泰天龙 · 热沉物料">
+          <img v-if="sidebarCompact" class="brand-mark__icon" src="/brand/attl-official-favicon.ico" alt="安泰天龙" width="32" height="32" />
+          <img v-else class="brand-mark__logo" src="/brand/attl-official-logo.png" alt="中国钢研 安泰科技 · 安泰天龙" width="1017" height="143" />
+        </div>
+        <FactorySidebar :compact="sidebarCompact" :overview="route.name === 'home'" :pending-team-id="workspacePending?.teamId" :pending-count="workspacePending?.count" illustrated />
 
-        <button class="sidebar__collapse" type="button" :aria-label="compactSidebar ? '展开侧栏' : '收起侧栏'" :aria-expanded="!compactSidebar" aria-controls="factory-sidebar" :title="compactSidebar ? '展开侧栏' : '收起侧栏'" @click="compactSidebar = !compactSidebar">
-          <Fold />
-          <span v-if="!compactSidebar">收起导航</span>
-        </button>
+        <div class="sidebar__footer">
+          <RouterLink to="/factory-live" class="sidebar__screen" title="大屏展示" aria-label="动态流转大屏" @click="enterBigScreen"><ElIcon><Monitor /></ElIcon><span v-if="!sidebarCompact">大屏展示</span></RouterLink>
+          <div class="sidebar__account">
+            <ElDropdown placement="top-start" trigger="click" :teleported="false" popper-class="factory-account-menu" @command="handleUserCommand">
+              <button class="sidebar__user" type="button" :title="userLabel" :aria-label="`${userLabel}，打开账户菜单`">
+                <ElIcon><User /></ElIcon>
+                <span v-if="!sidebarCompact" class="sidebar__user-label">{{ currentUser?.display_name || currentUser?.username }}</span>
+                <ElIcon v-if="!sidebarCompact" class="sidebar__chevron"><ArrowDown /></ElIcon>
+              </button>
+              <template #dropdown>
+                <ElDropdownMenu>
+                  <ElDropdownItem disabled>{{ teamLabel }}</ElDropdownItem>
+                  <ElDropdownItem command="logout"><ElIcon><SwitchButton /></ElIcon>退出登录</ElDropdownItem>
+                </ElDropdownMenu>
+              </template>
+            </ElDropdown>
+          </div>
+          <button class="sidebar__collapse" type="button" :aria-label="compactSidebar ? '展开侧栏' : '收起侧栏'" :aria-expanded="!compactSidebar" aria-controls="factory-sidebar" :title="compactSidebar ? '展开侧栏' : '收起侧栏'" @click="compactSidebar = !compactSidebar"><Fold /></button>
+        </div>
       </aside>
 
       <Transition name="overlay-fade">
         <button v-if="mobileMenuOpen" class="sidebar-mask" type="button" aria-label="关闭导航" title="关闭导航" tabindex="-1" @click="closeMobileMenu" />
       </Transition>
 
-      <main id="main-content" ref="mainContent" class="main-content" tabindex="-1" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined">
+      <main id="main-content" ref="mainContent" class="main-content" :aria-label="currentLocation" tabindex="-1" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined">
         <RouterView v-slot="{ Component }">
           <Transition name="page-shift">
             <component :is="Component" :key="route.path" v-on="route.name === 'team-workspace' ? { 'pending-count': updateWorkspacePending } : {}" />
@@ -213,17 +208,32 @@ function enterBigScreen(event: MouseEvent): void {
 .skip-link:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; transform: translateY(0); }
 .main-content:focus { outline: none; }
 .standalone-screen { position: fixed; inset: 0; width: 100%; height: 100dvh; overflow: hidden; background: #00111d; }
-.app-shell--business { --sidebar-width: 184px; --topbar-height: 56px; color: var(--text); font-family: var(--font-body); }
-.app-shell--business.app-shell--compact { --sidebar-width: 64px; }
-.app-shell--business .brand-mark { justify-content: center; padding-inline: 14px; }
+.app-shell--business { --sidebar-width: 184px; --topbar-height: 0px; color: var(--text); font-family: var(--font-body); }
+.app-shell--business.app-shell--compact { --sidebar-width: 64px; --topbar-height: 40px; }
+.app-shell--business .brand-mark { display: flex; flex-shrink: 0; height: 56px; justify-content: center; padding-inline: 14px; border-right: 0; }
 .brand-mark__logo { display: block; width: 100%; height: auto; object-fit: contain; }
 .brand-mark__icon { display: block; flex: none; width: 32px; height: 32px; object-fit: contain; }
-.app-shell--business .topbar { gap: 18px; }
-.app-shell--business .breadcrumb { font-size: 14px; }
-.app-shell--business .topbar-clock, .app-shell--business .topbar__screen, .app-shell--business .topbar__user-label strong { font-size: 14px; }
-.app-shell--business .sidebar__collapse { height: 60px; padding-bottom: 0; font-size: 12px; }
-.app-shell--business .sidebar { background: #fff; }
+.topbar__location { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; }
+.app-shell--business .sidebar { grid-row: 1 / -1; background: #fff; }
+.sidebar__footer { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 4px; flex-shrink: 0; margin: 0 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.sidebar__screen, .sidebar__user { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 0 8px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; font: inherit; font-size: 13px; text-align: left; }
+.sidebar__screen { grid-column: 1 / -1; }
+.sidebar__screen:hover, .sidebar__user:hover, .app-shell--business .sidebar__collapse:hover { color: var(--primary); background: var(--primary-soft); }
+.sidebar__screen > .el-icon, .sidebar__user > .el-icon { flex-shrink: 0; font-size: 18px; }
+.sidebar__account { min-width: 0; }
+.sidebar__account :deep(.el-dropdown) { display: flex; width: 100%; }
+.sidebar__user-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar__user { gap: 6px; padding-inline: 4px; }
+.sidebar__user > .sidebar__chevron { margin-left: auto; font-size: 12px; }
+.app-shell--business .sidebar__collapse { width: 32px; height: 36px; padding: 0; justify-content: center; border-radius: 6px; }
+.app-shell--compact .sidebar__footer { grid-template-columns: minmax(0, 1fr); margin-inline: 8px; }
+.app-shell--compact .sidebar__screen, .app-shell--compact .sidebar__user, .app-shell--compact .sidebar__collapse { justify-content: center; width: 100%; }
 .app-shell--business.app-shell--compact .brand-mark { padding: 0; }
-@media (max-width: 640px) { .app-shell--business { --topbar-height: 60px; } .app-shell--business .topbar { gap: 10px; } }
-.app-shell--overview .topbar__screen { display: none; }
+@media (max-width: 640px) {
+  .app-shell--business, .app-shell--business.app-shell--compact { --topbar-height: 48px; }
+  .app-shell--business .topbar { gap: 10px; }
+  .app-shell--business .brand-mark { display: none; }
+  .sidebar__footer { grid-template-columns: minmax(0, 1fr); padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+  .app-shell--compact .sidebar__screen, .app-shell--compact .sidebar__user { justify-content: flex-start; }
+}
 </style>

@@ -76,7 +76,7 @@
 .page.reading-workspace :is(.team-list-panel, .team-table-scroll) { overflow: visible; }
 .page.reading-workspace .team-table-scroll { flex: 0 0 auto; }
 .page.reading-workspace .selection-bar { padding: 0 0 12px; font-size: 14px; }
-.page.reading-workspace .material-ledger { flex: 0 0 auto; margin-top: 16px; }
+.page.reading-workspace .material-ledger { flex: 0 0 auto; }
 .page.reading-workspace .material-ledger h2 { font-size: 14px; font-weight: 500; }
 .page.reading-workspace .material-ledger h2 small { font-size: 14px; }
 .page.reading-workspace .ledger-table { flex: 0 0 auto; }

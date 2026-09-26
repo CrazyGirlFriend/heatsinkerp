@@ -169,6 +169,7 @@ onBeforeUnmount(() => { ++version })
         </div>
       </ElPopover>
       <InventoryColumnSettings :storage-key="storageKey" :columns="columns" @change="columnChoices = $event" />
+      <slot name="actions" />
     </header>
     <ElAlert v-if="inputError" :title="inputError" type="warning" :closable="false" />
     <div v-if="analysisLabel" class="warehouse-search-context"><ElTag closable @close="selectAnalysis('')">{{ analysisLabel }}</ElTag><span v-if="!text('stock_age')"> 符合条件流水号的分类库存</span></div>
@@ -200,14 +201,14 @@ onBeforeUnmount(() => { ++version })
 
 <style scoped>
 .warehouse-inventory { min-width: 0; padding: 0 16px; border: 1px solid var(--line); border-radius: var(--card-radius); background: var(--surface); container-type: inline-size; }
-.warehouse-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; padding: 12px 0; }
-.warehouse-search { display: flex; gap: 8px; flex: 1 1 360px; min-width: 310px; max-width: 460px; }
+.warehouse-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 0; }
+.warehouse-search { display: flex; gap: 8px; flex: 1 1 270px; min-width: 270px; max-width: 460px; }
 .warehouse-search > .el-select { width: 118px; flex-shrink: 0; }
 .warehouse-search > .el-input { min-width: 140px; }
 .warehouse-search > .numeric-operator { width: 98px; }
 .warehouse-search > :last-child { flex: 1; }
-.warehouse-toolbar > .el-select { width: 138px; flex-shrink: 0; }
-.warehouse-toolbar :deep(.record-date-trigger) { max-width: 240px; flex-shrink: 0; }
+.warehouse-toolbar > .el-select { width: 110px; flex-shrink: 0; }
+.warehouse-toolbar :deep(.record-date-trigger) { max-width: 166px; flex-shrink: 0; }
 .warehouse-toolbar :deep(.record-date-trigger > span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .warehouse-toolbar :deep(.el-button + .el-button) { margin-left: 0; }
 .warehouse-extra-filters { display: flex; flex-direction: column; gap: 14px; }

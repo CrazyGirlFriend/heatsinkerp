@@ -69,11 +69,12 @@ describe('application navigation shell', () => {
   it('shows the current workspace section and forwards only matching pending counts', async () => {
     const { wrapper, router } = await renderApp(false)
     await router.push('/team-workspaces/1?tab=pending'); await flushPromises()
-    expect(wrapper.get('.breadcrumb').text()).toBe('班组工作台轧制待接收')
+    expect(wrapper.find('.topbar').exists()).toBe(false)
+    expect(wrapper.get('#main-content').attributes('aria-label')).toBe('轧制 · 待接收')
     await wrapper.get('.emit-pending').trigger('click'); await flushPromises()
     expect(wrapper.get('[aria-label="轧制 · 待接收"] small').text()).toBe('23')
     await wrapper.get('[aria-label="轧制 · 收发历史"]').trigger('click'); await flushPromises()
-    expect(wrapper.get('.breadcrumb').text()).toBe('班组工作台轧制收发历史')
+    expect(wrapper.get('#main-content').attributes('aria-label')).toBe('轧制 · 收发历史')
     await router.push('/transfer-batches'); await flushPromises()
     expect(wrapper.find('.factory-nav__count').exists()).toBe(false)
   })
@@ -83,6 +84,10 @@ describe('application navigation shell', () => {
       await router.push(path); await flushPromises()
       expect(wrapper.get('.app-shell').classes()).toContain('app-shell--business')
       expect(wrapper.getComponent(FactorySidebar).props('illustrated')).toBe(true)
+      expect(wrapper.find('.topbar').exists()).toBe(false)
+      expect(wrapper.find('.topbar-clock').exists()).toBe(false)
+      expect(wrapper.find('#factory-sidebar .sidebar__user').exists()).toBe(true)
+      expect(wrapper.get('#factory-sidebar .sidebar__screen').attributes('href')).toBe('/factory-live')
     }
   })
 
@@ -91,7 +96,7 @@ describe('application navigation shell', () => {
     const requestFullscreen = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(document.documentElement, 'requestFullscreen', { configurable: true, value: requestFullscreen })
     try {
-      await wrapper.get('.topbar__screen').trigger('click', { button: 0 })
+      await wrapper.get('.sidebar__screen').trigger('click', { button: 0 })
       await flushPromises()
       expect(requestFullscreen).toHaveBeenCalledOnce()
       expect(router.currentRoute.value.path).toBe('/factory-live')
@@ -101,7 +106,8 @@ describe('application navigation shell', () => {
       expect(wrapper.find('#factory-sidebar').exists()).toBe(false)
       await router.push('/transfer-batches'); await flushPromises()
       expect(wrapper.find('.standalone-screen').exists()).toBe(false)
-      expect(wrapper.find('.topbar').exists()).toBe(true)
+      expect(wrapper.find('.topbar').exists()).toBe(false)
+      expect(wrapper.find('.sidebar__screen').exists()).toBe(true)
     } finally { Reflect.deleteProperty(document.documentElement, 'requestFullscreen') }
   })
 
@@ -109,7 +115,7 @@ describe('application navigation shell', () => {
     const { wrapper } = await renderApp(false)
     Object.defineProperty(document.documentElement, 'requestFullscreen', { configurable: true, value: vi.fn().mockRejectedValue(new Error('Not allowed')) })
     try {
-      await wrapper.get('.topbar__screen').trigger('click', { button: 0 }); await flushPromises()
+      await wrapper.get('.sidebar__screen').trigger('click', { button: 0 }); await flushPromises()
       expect(wrapper.find('.standalone-screen').exists()).toBe(true)
     } finally { Reflect.deleteProperty(document.documentElement, 'requestFullscreen') }
   })
@@ -129,14 +135,14 @@ describe('application navigation shell', () => {
     expect(main.attributes('inert')).toBeDefined()
     expect(main.attributes('aria-hidden')).toBe('true')
     expect(wrapper.get('.skip-link').attributes('inert')).toBeDefined()
-    expect(wrapper.get('.brand').attributes('inert')).toBeDefined()
-    expect(wrapper.get('.topbar__account').attributes('inert')).toBeDefined()
+    expect(wrapper.get('.topbar__location').attributes('inert')).toBeDefined()
+    expect(wrapper.get('.sidebar__account').attributes('inert')).toBeUndefined()
     expect(wrapper.get('#factory-sidebar').attributes('inert')).toBeUndefined()
     expect(document.activeElement).toBe(wrapper.get('#factory-sidebar [role="menubar"]').element)
     // jsdom has no layout. Model only the first and last visible controls to
     // verify both keyboard boundaries without relying on artificial CSS layout.
     const first = wrapper.get('#factory-sidebar [role="menubar"]').element as HTMLElement
-    const last = wrapper.get('#factory-sidebar [aria-label="班组长管理"]').element as HTMLElement
+    const last = wrapper.get('#factory-sidebar .sidebar__user').element as HTMLElement
     const rects = [new DOMRect(0, 0, 44, 44)] as unknown as DOMRectList
     vi.spyOn(first, 'getClientRects').mockReturnValue(rects)
     vi.spyOn(last, 'getClientRects').mockReturnValue(rects)
@@ -154,8 +160,7 @@ describe('application navigation shell', () => {
     expect(menu.attributes('aria-expanded')).toBe('false')
     expect(wrapper.get('#factory-sidebar').attributes('inert')).toBeDefined()
     expect(main.attributes('inert')).toBeUndefined()
-    expect(wrapper.get('.brand').attributes('inert')).toBeUndefined()
-    expect(wrapper.get('.topbar__account').attributes('inert')).toBeUndefined()
+    expect(wrapper.get('.topbar__location').attributes('inert')).toBeUndefined()
     expect(document.activeElement).toBe(main.element)
   })
 
@@ -171,6 +176,16 @@ describe('application navigation shell', () => {
     expect(document.activeElement).toBe(main.element)
   })
 
+  it('keeps the account menu and logout accessible in the sidebar', async () => {
+    const { wrapper } = await renderApp(false)
+    const user = wrapper.get('#factory-sidebar .sidebar__user')
+    expect(user.text()).toBe('测试')
+    expect(user.attributes('aria-label')).toContain('系统管理员')
+    await user.trigger('click'); await flushPromises()
+    expect(wrapper.get('#factory-sidebar .factory-account-menu').text()).toContain('退出登录')
+    expect(wrapper.get('#factory-sidebar .factory-account-menu').text()).toContain('系统管理员')
+  })
+
   it('keeps all phase-one destinations available in desktop compact mode', async () => {
     const { wrapper } = await renderApp(false)
     expect(wrapper.get('#factory-sidebar').attributes('inert')).toBeUndefined()
@@ -180,9 +195,13 @@ describe('application navigation shell', () => {
     await wrapper.get('.sidebar__collapse').trigger('click')
     expect(wrapper.get('.app-shell').classes()).toContain('app-shell--compact')
     expect(wrapper.getComponent(FactorySidebar).props('compact')).toBe(true)
+    expect(wrapper.get('.topbar__location').text()).toBe('流转查询 · 物料流转')
+    expect(wrapper.find('.sidebar__user-label').exists()).toBe(false)
+    expect(wrapper.get('.sidebar__user').attributes('aria-label')).toContain('测试')
     expect(wrapper.get('.brand-mark img').attributes('src')).toBe('/brand/attl-official-favicon.ico')
     await wrapper.get('.sidebar__collapse').trigger('click')
     expect(wrapper.getComponent(FactorySidebar).props('compact')).toBe(false)
+    expect(wrapper.find('.topbar').exists()).toBe(false)
     expect(wrapper.get('.brand-mark img').attributes('src')).toBe('/brand/attl-official-logo.png')
     expect(wrapper.get('#factory-sidebar [aria-label="轧制工作台"] > .el-sub-menu__title').text()).toBe('轧制')
     expect(wrapper.get('#factory-sidebar [aria-label="转料记录"]').text()).toBe('转料记录')
@@ -194,6 +213,7 @@ describe('application navigation shell', () => {
     expect(wrapper.getComponent(FactorySidebar).props('compact')).toBe(true)
     await setMobile(true)
     expect(wrapper.getComponent(FactorySidebar).props('compact')).toBe(false)
+    expect(wrapper.get('.sidebar__user-label').text()).toBe('测试')
     expect(wrapper.get('#factory-sidebar').attributes('inert')).toBeDefined()
     await wrapper.get('.topbar__menu').trigger('click')
     expect(wrapper.get('#factory-sidebar').classes()).toContain('sidebar--open')

@@ -183,8 +183,8 @@ describe('team workspace material ledger', () => {
     expect(wrapper.find('.team-workspace__heading').exists()).toBe(false)
     expect(wrapper.find('.workspace-balance-strip').exists()).toBe(false)
     expect(wrapper.get('h1').classes()).toContain('sr-only')
-    expect(wrapper.get('.team-workspace__navigation').text()).toContain('新建出库')
-    expect(wrapper.get('.serial-toolbar').find('.workspace-actions').exists()).toBe(false)
+    expect(wrapper.find('.team-workspace__navigation').exists()).toBe(false)
+    expect(wrapper.get('.serial-toolbar .workspace-actions').text()).toContain('新建出库')
     expect(wrapper.text()).toContain('2 张历史已接收单')
     expect(wrapper.find('a[href*="next_team_id=914"]').exists()).toBe(true)
     expect(materialTransferApi.list).not.toHaveBeenCalled()
@@ -202,10 +202,11 @@ describe('team workspace material ledger', () => {
     wrapper.getComponent(TeamInventory).vm.$emit('changed'); await flushPromises()
     expect(teamMaterialApi.overview).toHaveBeenCalledWith(914)
   })
-  it.each(['serials', 'stock', 'outgoing', 'pending', 'receipts', 'losses', 'materials', 'overview'])('keeps workspace actions beside navigation for %s without duplicating query controls', async tab => {
+  it.each(['serials', 'stock', 'outgoing', 'pending', 'receipts', 'losses', 'materials', 'overview', 'history'])('merges workspace actions into the %s toolbar without duplicating query controls', async tab => {
     state.auth.currentUser.team_id = 901
     await render(`/team-workspaces/901?tab=${tab}`)
-    const actions = wrapper.get('.team-workspace__navigation .workspace-actions')
+    const toolbar = ['serials', 'stock'].includes(tab) ? '.serial-toolbar' : ['overview', 'history'].includes(tab) ? '.history-header' : tab === 'materials' ? '.material-ledger header' : '.list-toolbar'
+    const actions = wrapper.get(`${toolbar} .workspace-actions`)
     expect(actions.text()).toContain('新建入库')
     expect(actions.text()).toContain('新建出库')
     if (tab === 'pending') {
@@ -213,6 +214,7 @@ describe('team workspace material ledger', () => {
       expect(wrapper.get('.list-toolbar .scanner-inline').text()).toContain('查看来料')
     } else expect(actions.text()).not.toContain('扫码查询')
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(1)
+    expect(wrapper.find('.team-workspace__navigation').exists()).toBe(false)
     expect(wrapper.find('.team-workspace__heading').exists()).toBe(false)
   })
   it.each(['administrator', 'other-team', 'inactive'])('does not expose creation for %s accounts', async kind => {
@@ -221,7 +223,9 @@ describe('team workspace material ledger', () => {
     if (kind === 'inactive') state.auth.currentUser.active = false
     await render()
     expect(wrapper.findAll('button').some(button => button.text() === '新建出库')).toBe(false)
-    expect(wrapper.text()).toContain('仅查看')
+    expect(wrapper.text()).not.toContain('仅查看')
+    expect(wrapper.find('[aria-label="班组设置"]').exists()).toBe(false)
+    expect(wrapper.find('.serial-toolbar [aria-label="刷新工作台"]').exists()).toBe(true)
     expect(wrapper.getComponent(TeamInventory).props('canWrite')).toBe(false)
     wrapper.getComponent(TeamInventory).vm.$emit('action', 'loss', [source()]); await flushPromises()
     expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(false)

@@ -18,10 +18,10 @@ describe('workspace with sidebar navigation', () => {
     expect(wrapper.find('.workspace-statistics').exists()).toBe(false)
     expect(wrapper.find('.team-workspace__navigation').exists()).toBe(false)
   })
-  it('keeps actions outside the data region without a second navigation bar', () => {
-    wrapper = mount(TeamWorkspaceShell, { props: { title: '研磨', modelValue: 'stock' }, slots: { actions: '<button>新建出库</button>', default: '<div>库存数据</div>' } })
-    expect(wrapper.get('[aria-label="工作台操作"]').text()).toBe('新建出库')
-    expect(wrapper.get('[role=region]').text()).toBe('库存数据')
+  it('starts with the data region and keeps actions inside its toolbar', () => {
+    wrapper = mount(TeamWorkspaceShell, { props: { title: '研磨', modelValue: 'stock' }, slots: { default: '<div><header><button>新建出库</button></header>库存数据</div>' } })
+    expect(wrapper.find('.team-workspace__navigation').exists()).toBe(false)
+    expect(wrapper.get('[role=region] header').text()).toBe('新建出库')
     expect(wrapper.get('h1').classes()).toContain('sr-only')
   })
 })

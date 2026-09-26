@@ -107,7 +107,7 @@ const container = ref<HTMLElement>()
 const contentWidth = ref(0)
 const docked = computed(() => contentWidth.value >= 1660)
 const traceScope = computed(() => ({ team_id: teamId.value, direction: 'all' as const }))
-const actionBindings = computed(() => ({ canWrite: canWrite.value, canReceive: canReceive.value, openingReceipt: openingReceipt.value, openingDispatch: openingDispatch.value, loading: loading.value, onDispatch: openNewDispatch, onReceipt: openReceipt, onScan: focusScan, onRefresh: loadView }))
+const actionBindings = computed(() => ({ canWrite: canWrite.value, canReceive: canReceive.value, openingReceipt: openingReceipt.value, openingDispatch: openingDispatch.value, loading: loading.value, warehouse: isWarehouse.value, showScan: !isWarehouse.value && tab.value !== 'pending', onDispatch: openNewDispatch, onReceipt: openReceipt, onScan: focusScan, onRefresh: loadView, onSettings: () => { businessOpen.value = true } }))
 let version = 0
 let actionVersion = 0
 let scanVersion = 0
@@ -292,19 +292,18 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 
 <template>
   <TeamWorkspaceShell :title="title" :model-value="tab" :class="{ 'team-workspace--docked': docked && detailOpen }">
-    <template #actions><ElButton v-if="canWrite" @click="businessOpen = true">班组设置</ElButton><TeamWorkspaceActions v-if="scopeReady" v-bind="actionBindings" :warehouse="isWarehouse" :show-scan="!isWarehouse && tab !== 'pending'" /></template>
     <div ref="container" class="team-material-content">
       <ElAlert v-if="syncError || syncState === 'reconnecting' || syncState === 'expired'" type="warning" :closable="false" :title="syncState === 'expired' ? '登录或访问凭证已失效，请重新验证。' : syncError || '实时连接中断，当前显示上次结果，正在重连。'" />
       <StatePanel v-if="scopeLoading" state="loading" title="正在读取班组信息" />
       <StatePanel v-else-if="!scopeReady" state="error" :title="!validId ? '无效的班组编号' : directory.error ? '班组目录加载失败' : '未找到启用的班组'" description="请刷新班组目录，或从侧边栏选择已配置的班组。" @retry="directory.refreshTeamDirectory" />
       <template v-else>
         <ElAlert v-if="overview?.legacy_received_count" class="legacy-notice" type="info" :closable="false" :title="`另有 ${overview.legacy_received_count} 张历史已接收单未纳入台账余额。`"><template #default>历史单据仍可在 <RouterLink :to="{ path: '/transfer-batches', query: { next_team_id: teamKey, status: 'received' } }">全局转料记录</RouterLink> 查看。</template></ElAlert>
-        <TeamSerialHistory v-if="['overview', 'history'].includes(tab)" :key="teamId" :team-id="teamId" />
+        <TeamSerialHistory v-if="['overview', 'history'].includes(tab)" :key="teamId" :team-id="teamId"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamSerialHistory>
         <template v-else-if="['stock', 'materials'].includes(tab)">
           <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料结存" />
           <StatePanel v-else-if="overviewError" state="error" :description="overviewError" @retry="loadView" />
-          <TeamInventory v-else-if="overview && tab === 'stock'" :key="teamId" :team-id="teamId" :warehouse="isWarehouse" :overview="overview" :can-write="canWrite" @changed="loadView" @action="openAction" />
-          <TeamMaterialOverviewPanel v-else-if="overview" :overview="overview" @filter="router.push({ path: route.path, query: { tab: 'stock', material_name: $event, filter_label: `库存材质：${$event}` } })" />
+          <TeamInventory v-else-if="overview && tab === 'stock'" :key="teamId" :team-id="teamId" :warehouse="isWarehouse" :overview="overview" :can-write="canWrite" @changed="loadView" @action="openAction"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamInventory>
+          <TeamMaterialOverviewPanel v-else-if="overview" :overview="overview" @filter="router.push({ path: route.path, query: { tab: 'stock', material_name: $event, filter_label: `库存材质：${$event}` } })"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamMaterialOverviewPanel>
         </template>
         <template v-else>
           <div class="team-list-layout" :class="{ 'team-list-layout--detail': docked && detailOpen }">
@@ -321,6 +320,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                 <ElCheckbox v-model="urgentDraft" @change="applyFilters()">仅看加急</ElCheckbox>
                 <ElButton v-if="tab !== 'pending'" @click="applyFilters()">查询</ElButton>
                 <ElButton v-if="tab === 'outgoing'" :disabled="!selectedPrintRows.length" @click="openPrint(selectedPrintRows)">合并打印<span v-if="selectedPrintRows.length">（{{ selectedPrintRows.length }}）</span></ElButton>
+                <TeamWorkspaceActions v-bind="actionBindings" />
               </div>
               <p v-if="tab === 'pending' && scanError" class="scanner-error" role="alert">{{ scanError }}</p>
               <StatePanel v-if="loading" state="loading" title="正在读取物料记录" />
@@ -388,7 +388,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 .list-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px 0; }
 .list-toolbar > .el-input { flex: 1 1 220px; max-width: 380px; }
 .list-toolbar > .el-select { width: 145px; }
-.list-toolbar--pending { flex-wrap: nowrap; }
+.list-toolbar--pending { flex-wrap: wrap; }
 .list-toolbar--pending > .el-input { flex: 1 1 180px; min-width: 160px; max-width: 240px; }
 .list-toolbar--pending > .el-button { margin-left: 0; }
 .list-toolbar--pending :deep(.record-date-trigger) { max-width: 280px; }

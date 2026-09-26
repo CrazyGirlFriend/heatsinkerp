@@ -59,6 +59,7 @@ if (serial.value) search()
       <h2>本班组收发</h2>
       <form class="history-search" @submit.prevent="search"><ElInput v-model="serial" :prefix-icon="Search" aria-label="历史流水号" placeholder="输入完整流水号" maxlength="80" clearable /><RecordDateFilter v-model="dates" label="收发日期" /><ElButton native-type="submit" type="primary" :loading="loading">查询</ElButton></form>
       <div v-if="result?.found" class="history-total"><span>当前结存</span><strong>{{ num(totals.quantity) }} <small>件</small><i>/</i>{{ num(totals.weight) }} <small>kg</small></strong></div>
+      <slot name="actions" />
     </header>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="loading" state="loading" title="正在读取收发历史" />
@@ -75,7 +76,7 @@ if (serial.value) search()
 </template>
 
 <style scoped>
-.serial-history { padding-top: 22px; flex: 0 0 auto; min-width: 0; color: #24324a; }
+.serial-history { flex: 0 0 auto; min-width: 0; color: #24324a; }
 .history-header { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 24px; margin-bottom: 18px; }
 .history-header h2 { margin: 0; font-size: 27px; font-weight: 600; letter-spacing: -.025em; white-space: nowrap; }
 .history-search { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
