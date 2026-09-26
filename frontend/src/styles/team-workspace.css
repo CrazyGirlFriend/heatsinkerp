@@ -62,6 +62,17 @@
 .team-workspace :is(.serial-ledger > footer, .table-footer, .material-ledger > footer) > span { color: var(--workspace-muted); font-size: var(--workspace-meta-size); }
 
 .team-workspace.team-workspace--reading { overflow-y: auto; scrollbar-gutter: stable; }
-.team-workspace.team-workspace--reading :is(.team-workspace__content, .team-material-content) { flex: 0 0 auto; overflow: visible; }
-.team-workspace.team-workspace--reading.team-workspace--materials :is(.team-workspace__content, .team-material-content, .material-ledger) { flex: 1 0 auto; }
+.team-workspace.team-workspace--reading :is(.team-workspace__content, .team-material-content) { flex: 1 0 auto; overflow: visible; }
+
+/* Fill short lists without stretching rows or replacing whole-page scrolling. */
+.team-workspace.team-workspace--reading :is(.warehouse-inventory, .material-ledger, .team-list-layout) { flex: 1 0 auto; }
+.team-workspace.team-workspace--reading .warehouse-inventory { display: flex; flex-direction: column; }
+.team-workspace.team-workspace--reading .team-list-layout { grid-template-rows: auto; align-items: stretch; }
+.team-workspace.team-workspace--reading .team-table-scroll { display: flex; flex: 1 0 auto; flex-direction: column; }
+.team-workspace.team-workspace--reading :is(.warehouse-inventory, .team-list-panel) > .state-panel { flex: 1 0 auto; }
+.team-workspace.team-workspace--reading :is(.warehouse-table, .team-table, .ledger-table) { display: flex; flex: 1 0 auto; flex-direction: column; }
+.team-workspace.team-workspace--reading .material-ledger > .ledger-table:not(:last-of-type) { flex-grow: 0; }
+.team-workspace.team-workspace--reading :is(.warehouse-table, .team-table, .ledger-table) .el-table__inner-wrapper { flex: 1 0 auto; }
+.team-workspace.team-workspace--reading :is(.warehouse-table, .team-table, .ledger-table) .el-scrollbar__view { height: 100%; }
+.team-workspace.team-workspace--reading :is(.warehouse-inventory > footer, .material-ledger > footer, .table-footer) { flex-shrink: 0; margin-top: auto; }
 .team-workspace--reading .serial-table .el-table__body .el-table__cell { height: 52px; padding-block: 10px; }
