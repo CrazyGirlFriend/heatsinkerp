@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import FactorySidebar from './FactorySidebar.vue'
 import { ElMenu, ElMenuItem, ElSubMenu } from 'element-plus'
+import { ArrowRight } from '@element-plus/icons-vue'
 import { authState, clearSession } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { appPinia } from '@/stores/access'
@@ -116,6 +117,22 @@ describe('three-level team navigation', () => {
     expect(wrapper.find('.factory-nav__count').exists()).toBe(false)
     await router.push('/team-workspaces/7?direction=incoming&query=铜'); await flushPromises()
     expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制 · 待接收')
+  })
+
+  it('toggles the team disclosure without navigating or changing the selected leaf', async () => {
+    useTeamDirectoryStore(appPinia).items = [{ id: 7, code: 'FACTORY-ROLL', name: '轧制', active: true }]
+    const { wrapper, router } = await renderSidebar('/team-workspaces/7?tab=outgoing')
+    const team = wrapper.findAllComponents(ElSubMenu).find(group => group.props('index') === 'team-7')!
+    expect(team.props('expandCloseIcon')).toBe(ArrowRight)
+    expect(team.props('expandOpenIcon')).toBe(ArrowRight)
+    await team.get('.el-sub-menu__title > .el-sub-menu__icon-arrow').trigger('click')
+    expect(team.attributes('aria-expanded')).toBe('false')
+    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/7?tab=outgoing')
+    await team.get('.el-sub-menu__title').trigger('click')
+    await flushPromises()
+    expect(team.attributes('aria-expanded')).toBe('true')
+    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/7?tab=outgoing')
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制 · 出库记录')
   })
 
   it('expands and folds a first-level group without promoting its children', async () => {

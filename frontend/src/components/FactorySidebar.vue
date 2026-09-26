@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Search, OfficeBuilding, Setting, Refresh, House, Box, Connection, HotWater, Tools, Scissor, EditPen, Coin, CircleCheck, Tickets, Aim, Location, User } from '@element-plus/icons-vue'
+import { Search, OfficeBuilding, Setting, Refresh, House, Box, Connection, HotWater, Tools, Scissor, EditPen, Coin, CircleCheck, Tickets, Aim, Location, User, ArrowRight } from '@element-plus/icons-vue'
 import { ElIcon, ElMenu, ElMenuItem, ElSubMenu, type MenuInstance } from 'element-plus'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -46,7 +46,7 @@ const materialLinks = computed(() => [
         <ElMenuItem v-else-if="teamDirectory.error" index="teams-retry" :route="route.fullPath" @click="refreshTeamDirectory"><ElIcon><Refresh /></ElIcon>重新加载班组</ElMenuItem>
         <template v-else>
           <template v-for="{ profile, team } in workspaces" :key="profile.code">
-            <ElSubMenu v-if="team" :index="`team-${team.id}`" class="factory-nav__team" :aria-label="profile.name + '工作台'" popper-class="factory-nav-popup">
+            <ElSubMenu v-if="team" :index="`team-${team.id}`" class="factory-nav__team" :aria-label="profile.name + '工作台'" :expand-close-icon="ArrowRight" :expand-open-icon="ArrowRight" popper-class="factory-nav-popup">
               <template #title><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"><component :is="teamIcons[profile.code as keyof typeof teamIcons]" /></ElIcon><span>{{ profile.name }}</span></template>
               <ElMenuItem v-for="section in teamWorkspaceSectionsFor(profile.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse')" :key="section.value" :index="teamWorkspaceSectionPath(team.id, section.value)" class="factory-nav__workspace-link" :aria-label="`${profile.name} · ${section.label}`" :aria-current="activeIndex === teamWorkspaceSectionPath(team.id, section.value) ? 'page' : undefined">
                 <span>{{ section.label }}</span><small v-if="section.value === 'pending' && String(pendingTeamId) === String(team.id) && pendingCount" class="factory-nav__count">{{ pendingCount }}</small>
@@ -75,6 +75,8 @@ const materialLinks = computed(() => [
 .factory-nav { flex: 1; min-height: 0; padding: 16px 10px; overflow-y: auto; scrollbar-width: thin; }
 .factory-nav :deep(.el-menu) { width: 100%; border: 0; --el-menu-base-level-padding: 12px; --el-menu-level-padding: 34px; --el-menu-item-height: 44px; --el-menu-sub-item-height: 38px; --el-menu-text-color: var(--muted); --el-menu-hover-bg-color: var(--surface-soft); --el-menu-active-color: var(--primary); }
 .factory-nav :deep(.el-sub-menu__title) { border-radius: 6px; color: var(--text); font-size: 14px; font-weight: 450; }
+.factory-nav :deep(.el-sub-menu__icon-arrow) { color: var(--muted); font-size: 11px; transition: transform var(--motion-standard) var(--motion-ease); }
+.factory-nav :deep(.el-menu--inline) { --el-transition-duration: var(--motion-standard); }
 .factory-nav :deep(.el-menu-item) { margin: 2px 0; border-radius: 6px; font-size: 14px; }
 .factory-nav :deep(.el-menu > .el-menu-item) { color: var(--text); }
 .factory-nav :deep(.el-menu > .el-menu-item > .el-icon), .factory-nav :deep(.el-sub-menu__title > .el-icon:not(.el-sub-menu__icon-arrow)) { width: 24px; margin-right: 8px; }
@@ -83,9 +85,18 @@ const materialLinks = computed(() => [
 .factory-nav :deep(.el-sub-menu .el-menu-item.is-active::before) { position: absolute; left: 24px; height: 20px; width: 2px; background: var(--primary); content: ''; }
 .factory-nav__missing small { margin-left: auto; font-size: 11px; }
 .factory-nav :deep(.factory-nav__team > .el-sub-menu__title) { height: 38px; line-height: 38px; padding-left: 24px; font-weight: 450; }
-.factory-nav :deep(.factory-nav__team.is-active > .el-sub-menu__title) { color: var(--primary); }
 .factory-nav :deep(.factory-nav__team > .el-menu > .el-menu-item) { min-width: 0; height: 34px; line-height: 34px; padding-left: 56px; padding-right: 12px; font-size: 13px; }
 .factory-nav :deep(.factory-nav__team .el-menu-item.is-active::before) { left: 42px; height: 16px; }
+.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team) { margin-block: 2px; border-radius: 8px; transition: background-color var(--motion-standard) var(--motion-ease); }
+.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team.is-opened) { background: var(--workspace-bg); }
+.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team > .el-sub-menu__title) { padding-right: 12px; color: var(--text); font-weight: 450; }
+.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team.is-opened > .el-sub-menu__title) { font-weight: 550; }
+.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team > .el-sub-menu__title > .el-sub-menu__icon-arrow) { position: static; flex: 0 0 12px; width: 12px; height: 12px; margin: 0 0 0 7px; font-size: 10px; }
+.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team > .el-sub-menu__title > .el-sub-menu__icon-arrow svg) { transition: transform var(--motion-standard) var(--motion-ease); }
+.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team.is-opened > .el-sub-menu__title > .el-sub-menu__icon-arrow svg) { transform: rotate(90deg); }
+.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team > .el-menu) { padding-bottom: 4px; }
+.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team > .el-menu > .el-menu-item) { margin: 2px 6px 2px 38px; padding-left: 34px; padding-right: 8px; }
+.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team .el-menu-item.is-active::before) { left: 12px; }
 .factory-nav__count { min-width: 18px; margin-left: auto; padding: 0 5px; border-radius: 4px; background: var(--surface-soft); color: var(--primary); font-size: 11px; line-height: 18px; font-variant-numeric: tabular-nums; }
 .factory-nav--compact { padding-inline: 6px; }
 .factory-nav--compact :deep(.el-menu-item), .factory-nav--compact :deep(.el-sub-menu__title), .factory-nav--compact :deep(.el-menu-tooltip__trigger) { justify-content: center; padding: 0; }
