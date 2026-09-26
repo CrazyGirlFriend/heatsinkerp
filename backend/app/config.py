@@ -56,7 +56,6 @@ class Settings:
     main_system_config_key: str = ""
     main_system_allowed_origins: str = ""
     message_queue_url: str = "amqp://guest:guest@127.0.0.1/"
-    monitor_token_file: str = ""
 
     def __post_init__(self) -> None:
         if self.main_system_base_url:
@@ -104,7 +103,6 @@ def get_settings() -> Settings:
         main_system_config_key=os.getenv("MAIN_SYSTEM_CONFIG_KEY", ""),
         main_system_allowed_origins=os.getenv("MAIN_SYSTEM_ALLOWED_ORIGINS", ""),
         message_queue_url=_message_queue_url(),
-        monitor_token_file=os.getenv("MONITOR_TOKEN_FILE", ""),
     )
 
 

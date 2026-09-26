@@ -16,7 +16,6 @@ from .auth import ensure_initial_admin
 from .config import settings
 from .database import Base, SessionLocal, async_engine, engine
 from .observability import RequestLogMiddleware
-from .monitor_api import router as monitor_router
 
 
 def initialize():
@@ -84,7 +83,6 @@ app.add_middleware(
 app.include_router(create_access_router(site_access_gate))
 app.include_router(public_router)
 app.include_router(router)
-app.include_router(monitor_router)
 
 
 @app.get("/health", include_in_schema=False)
