@@ -1,1295 +1,1119 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { ElAlert, ElButton, ElDialog, ElIcon } from 'element-plus'
-import {
-  ArrowRight,
-  Box,
-  CircleCheck,
-  Flag,
-  Monitor,
-  Refresh,
-  Tickets,
-  Van,
-} from '@element-plus/icons-vue'
-import LedgerChart from '@/components/LedgerChart.vue'
+import { ElAlert, ElButton, ElDialog, ElPagination, ElTable, ElTableColumn } from 'element-plus'
+import { ArrowRight, FullScreen, QuestionFilled, Refresh } from '@element-plus/icons-vue'
 import StatePanel from '@/components/StatePanel.vue'
-import { factoryLiveApi } from '@/services/factoryLiveApi'
-import type { InventoryConnection } from '@/services/inventoryStream'
-import type { FactoryLive, LiveTeam } from '@/types/factoryLive'
-import { inventoryReconciles, kg, number, stockTypes, sumAmounts } from '@/utils/factoryGlass'
+import FactoryShipmentChart from '@/components/FactoryShipmentChart.vue'
+import FactoryShippingAnalysis from '@/components/FactoryShippingAnalysis.vue'
+import FactoryDeliveryPlans from '@/components/FactoryDeliveryPlans.vue'
+import { factoryDashboardApi as api } from '@/services/factoryDashboardApi'
+import { subscribeInventoryChanges } from '@/services/inventoryStream'
+import type { FactoryDashboard, StockDetail, TeamYield, YieldRow } from '@/types/factoryDashboard'
+import {
+  dashboardNumber as number,
+  dashboardColors as colors,
+  deliveryStatus,
+  shipmentColors,
+  yieldStatus,
+} from '@/utils/factoryDashboard'
+import { materialTypeOptions } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
 
-const report = ref<FactoryLive | null>(null)
-const loading = ref(false),
+const report = ref<FactoryDashboard>(),
+  loading = ref(false),
   error = ref('')
-const connection = ref<InventoryConnection>('connecting')
-const reduced = ref(false),
-  hidden = ref(document.hidden)
-const typeDialog = ref(false),
-  selectedTeam = ref<string | null>(null)
-let version = 0,
-  unsubscribe: (() => void) | undefined
-let media: MediaQueryList | undefined
-const motion = computed(() => !reduced.value && !hidden.value && !error.value)
-const teams = computed(() => report.value?.teams || [])
-const connectionLabel = computed(
+const stockUnit = ref<'weight' | 'quantity'>('weight'),
+  attentionTab = ref('全部')
+const analysis = ref(false),
+  plans = ref(false),
+  rules = ref(false),
+  analysisTrigger = ref<HTMLButtonElement>()
+const attention = computed(
   () =>
-    ({ connecting: '正在连接', live: '实时同步', reconnecting: '正在重连', expired: '凭证已失效' })[
-      connection.value
-    ],
+    report.value?.attention.filter(
+      (row) => attentionTab.value === '全部' || row.reasons.includes(attentionTab.value),
+    ) || [],
 )
-const updatedAt = computed(() => (report.value ? formatDateTime(report.value.as_of) : '—'))
 const warning = computed(() => {
-  if (!report.value) return ''
-  const missing = teams.value.filter((team) => !team.id).map((team) => team.name)
-  const inactive = teams.value.filter((team) => team.id && !team.active).map((team) => team.name)
+  const missing =
+    report.value?.stock.rows.filter((r) => r.team_id === null).map((r) => r.team_name) || []
   return [
-    missing.length ? `未配置：${missing.join('、')}，汇总范围不完整` : '',
-    inactive.length ? `已停用班组仍保留库存：${inactive.join('、')}` : '',
-    report.value.legacy_received_count
-      ? `${report.value.legacy_received_count} 条历史接收未纳入库存`
-      : '',
-    !inventoryReconciles(report.value) ? '班组与物料分类合计未核平，请核对库存明细' : '',
+    missing.length ? `未配置班组：${missing.join('、')}` : '',
+    report.value?.legacy_count ? `${report.value.legacy_count} 条历史接收未纳入库存` : '',
   ]
     .filter(Boolean)
     .join('；')
 })
-const colors = ['#58986f', '#a2c899', '#79a9ce', '#a6afb6']
-const allTypes = computed(() => stockTypes(report.value?.material_types || []))
-const mainTypes = computed(() =>
-  [
-    ...allTypes.value.slice(0, 3),
-    { key: 'others', label: '其余类型', color: colors[3]!, ...sumAmounts(allTypes.value.slice(3)) },
-  ].map((item, i) => ({ ...item, color: colors[i]! })),
+const stockOpen = ref(false),
+  stockRows = ref<StockDetail[]>([]),
+  stockMaterial = ref(''),
+  stockTeam = ref<number>(),
+  stockPage = ref(1),
+  stockTotal = ref(0)
+const lineColors = computed(() =>
+  shipmentColors(report.value?.shipping.series.map((row) => row.serial_no) || []),
 )
-const focusedTeam = computed(() => teams.value.find((team) => team.code === selectedTeam.value))
-const dialogTypes = computed(() =>
-  selectedTeam.value ? stockTypes(focusedTeam.value?.material_types || []) : allTypes.value,
-)
-const dialogTotal = computed(() => sumAmounts(dialogTypes.value))
-const maxWeight = computed(() =>
-  Math.max(1, ...teams.value.map((team) => team.balance?.on_hand_weight || 0)),
-)
-const ringOption = computed(() => ({
-  tooltip: { trigger: 'item', valueFormatter: (value: unknown) => `${kg(Number(value))} kg` },
-  series: [
-    {
-      type: 'pie',
-      radius: ['66%', '86%'],
-      center: ['50%', '50%'],
-      label: { show: false },
-      itemStyle: { borderWidth: 2, borderColor: '#fff' },
-      emphasis: { scaleSize: 4 },
-      data: mainTypes.value
-        .filter((item) => item.weight > 0)
-        .map((item) => ({
-          name: item.label,
-          value: item.weight,
-          itemStyle: { color: item.color },
-        })),
-    },
-  ],
-}))
-// A pending batch can contain many serials. Use the server's complete batch rows
-// for amounts; the capped per-team serial feed cannot safely reconstruct totals.
-const recentPending = computed(() =>
-  (report.value?.recent_batches || [])
-    .filter(
-      (row) =>
-        row.entry_kind === 'transfer' &&
-        ['pending', 'partial'].includes(row.status) &&
-        row.source_id != null &&
-        row.target_id != null,
-    )
-    .slice(0, 4),
-)
-const attentionTab = ref<'pending' | 'urgent'>('pending')
-const attentionTeams = computed(() =>
-  teams.value
-    .filter((team) =>
-      attentionTab.value === 'pending'
-        ? (team.pending_incoming?.batches || 0) > 0
-        : (team.urgent_serial_count || 0) > 0,
-    )
-    .sort((a, b) =>
-      attentionTab.value === 'pending'
-        ? (b.pending_incoming?.batches || 0) - (a.pending_incoming?.batches || 0)
-        : (b.urgent_serial_count || 0) - (a.urgent_serial_count || 0),
-    ),
-)
-const pendingLink = {
-  path: '/transfer-batches',
-  query: { status: 'pending', entry_kind: 'transfer' },
-}
-function teamLink(team: LiveTeam, tab = 'stock', urgent = false) {
-  return {
-    path: `/team-workspaces/${team.id}`,
-    query: { tab, ...(urgent ? { urgent_only: 'true' } : {}) },
+const yieldOpen = ref(false),
+  yieldRows = ref<YieldRow[]>([]),
+  teamRows = ref<TeamYield[]>([]),
+  yieldMaterial = ref(''),
+  yieldSerial = ref(''),
+  yieldPage = ref(1),
+  yieldTotal = ref(0)
+const detailLoading = ref(false),
+  detailError = ref('')
+let generation = 0,
+  detailGeneration = 0,
+  stop: (() => void) | undefined,
+  refreshTimer: ReturnType<typeof setTimeout> | undefined,
+  timer: ReturnType<typeof setInterval> | undefined
+async function load() {
+  const version = ++generation
+  loading.value = true
+  try {
+    const data = await api.get()
+    if (version === generation) {
+      report.value = data
+      error.value = ''
+    }
+  } catch {
+    if (version === generation)
+      error.value = report.value
+        ? '更新失败，当前显示上次成功读取的数据。'
+        : '全厂总览读取失败，请重试。'
+  } finally {
+    if (version === generation) loading.value = false
   }
 }
-function showTypes(team?: LiveTeam) {
-  selectedTeam.value = team?.code ?? null
-  typeDialog.value = true
+function scheduleRefresh() {
+  clearTimeout(refreshTimer)
+  refreshTimer = setTimeout(load, 250)
 }
-function load() {
-  const current = ++version
-  unsubscribe?.()
-  // All homepage sections switch together on a single authoritative snapshot.
-  unsubscribe = factoryLiveApi.subscribe({
-    onData(next) {
-      if (current === version) {
-        report.value = next
-        loading.value = false
-        error.value = ''
-      }
-    },
-    onState(state) {
-      if (current !== version) return
-      connection.value = state
-      loading.value = state === 'connecting'
-      if (state === 'live') error.value = ''
-      if (state === 'reconnecting' || state === 'expired') {
-        error.value = report.value
-          ? '实时连接中断，当前显示上次成功读取的数据。'
-          : '库存数据连接失败，正在自动重连。'
-        if (state === 'expired') error.value = '登录或访问凭证已失效，请重新验证。'
-      }
+function visibility() {
+  if (document.hidden) {
+    stop?.()
+    stop = undefined
+    clearTimeout(refreshTimer)
+    ++generation
+    loading.value = false
+  } else {
+    load()
+    connect()
+  }
+}
+function connect() {
+  stop?.()
+  stop = subscribeInventoryChanges({
+    onData: scheduleRefresh,
+    onState: (state) => {
+      if (state === 'live') scheduleRefresh()
+      if (state === 'expired') error.value = '登录或访问凭证已失效，请重新验证。'
     },
   })
 }
-function syncMotion() {
-  reduced.value = Boolean(media?.matches)
+async function stockDetails(material = '', team?: number) {
+  stockMaterial.value = material
+  stockTeam.value = team
+  stockPage.value = 1
+  stockOpen.value = true
+  await loadStock()
 }
-function syncVisibility() {
-  hidden.value = document.hidden
-  if (hidden.value) {
-    ++version
-    unsubscribe?.()
-    unsubscribe = undefined
-  } else load()
+async function loadStock() {
+  const version = ++detailGeneration
+  detailLoading.value = true
+  detailError.value = ''
+  try {
+    const data = await api.stockDetail(stockMaterial.value, stockTeam.value, stockPage.value)
+    if (version === detailGeneration) {
+      stockRows.value = data.items
+      stockTotal.value = data.total
+    }
+  } catch {
+    if (version === detailGeneration) detailError.value = '库存明细读取失败'
+  } finally {
+    if (version === detailGeneration) detailLoading.value = false
+  }
 }
+async function yieldDetails(material = '') {
+  yieldMaterial.value = material
+  yieldSerial.value = ''
+  yieldPage.value = 1
+  yieldOpen.value = true
+  await loadYields()
+}
+async function loadYields() {
+  const version = ++detailGeneration
+  detailLoading.value = true
+  detailError.value = ''
+  yieldSerial.value = ''
+  try {
+    const data = await api.yields(yieldMaterial.value, yieldPage.value)
+    if (version === detailGeneration) {
+      yieldRows.value = data.items
+      yieldTotal.value = data.total
+    }
+  } catch {
+    if (version === detailGeneration) detailError.value = '成品率读取失败'
+  } finally {
+    if (version === detailGeneration) detailLoading.value = false
+  }
+}
+async function teamYields(row: YieldRow) {
+  const version = ++detailGeneration
+  yieldSerial.value = row.serial_no!
+  detailLoading.value = true
+  detailError.value = ''
+  try {
+    const data = await api.teamYields(row.serial_no!, row.material)
+    if (version === detailGeneration) teamRows.value = data.items
+  } catch {
+    if (version === detailGeneration) detailError.value = '班组成品率读取失败'
+  } finally {
+    if (version === detailGeneration) detailLoading.value = false
+  }
+}
+function closeAnalysis() {
+  analysis.value = false
+  nextTick(() => analysisTrigger.value?.focus())
+}
+const visibleYields = computed<(YieldRow | TeamYield)[]>(() =>
+  yieldSerial.value ? teamRows.value : yieldRows.value,
+)
+const rate = (value: number | null) => (value == null ? '—' : `${number(value)}%`)
+const stockValue = (value: { quantity: number; weight: number } | null | undefined) =>
+  value === null ? '—' : number(value?.[stockUnit.value] || 0, stockUnit.value === 'weight' ? 3 : 0)
+const typeLabel = (kind: string | null) =>
+  materialTypeOptions.find((o) => o.value === kind)?.label || '未分类'
 onMounted(() => {
-  media = window.matchMedia?.('(prefers-reduced-motion: reduce)')
-  syncMotion()
-  media?.addEventListener('change', syncMotion)
-  document.addEventListener('visibilitychange', syncVisibility)
-  if (!document.hidden) load()
+  load()
+  if (!document.hidden) connect()
+  timer = setInterval(() => {
+    if (!document.hidden && !loading.value) load()
+  }, 60000)
+  document.addEventListener('visibilitychange', visibility)
 })
 onBeforeUnmount(() => {
-  ++version
-  unsubscribe?.()
-  media?.removeEventListener('change', syncMotion)
-  document.removeEventListener('visibilitychange', syncVisibility)
+  ++generation
+  ++detailGeneration
+  stop?.()
+  clearTimeout(refreshTimer)
+  clearInterval(timer)
+  document.removeEventListener('visibilitychange', visibility)
 })
 </script>
 
 <template>
-  <section class="page inventory-home" aria-label="全厂库存总览">
-    <div class="home-content">
-      <header class="home-heading">
-        <div>
-          <h1>全厂库存总览</h1>
-          <p>看清库存分布，及时完成班组交接</p>
-        </div>
-        <div class="home-actions">
-          <ElButton :icon="Refresh" :loading="loading" aria-label="刷新库存" circle @click="load" />
-          <RouterLink :to="pendingLink" class="home-button home-button--primary"
-            ><ElIcon><Tickets /></ElIcon>查看待接收<span v-if="report" class="button-count">{{
-              number(report.internal_pending.batches)
-            }}</span></RouterLink
-          >
-          <RouterLink to="/factory-live" class="home-button"
-            ><ElIcon><Monitor /></ElIcon>大屏展示</RouterLink
-          >
-        </div>
-      </header>
-      <ElAlert v-if="error && report" :title="error" type="warning" :closable="false" show-icon />
-      <ElAlert v-if="warning" :title="warning" type="warning" :closable="false" show-icon />
-      <StatePanel v-if="!report && error" state="error" :description="error" @retry="load" />
-      <StatePanel v-else-if="!report" state="loading" title="正在读取库存" />
-      <template v-else>
-        <section class="home-metrics" aria-label="全厂关键数据">
-          <article class="home-metric">
-            <ElIcon><Box /></ElIcon>
-            <div>
-              <h2>全厂在库</h2>
-              <p>
-                <strong>{{ number(report.totals.on_hand_quantity) }}</strong> 件
-              </p>
-              <span>{{ kg(report.totals.on_hand_weight) }} kg</span>
-            </div>
-          </article>
-          <article class="home-metric">
-            <ElIcon><Van /></ElIcon>
-            <div>
-              <h2>内部在途</h2>
-              <p>
-                <strong>{{ number(report.totals.in_transit_quantity) }}</strong> 件
-              </p>
-              <span>{{ kg(report.totals.in_transit_weight) }} kg</span>
-            </div>
-          </article>
-          <article class="home-metric">
-            <ElIcon><Tickets /></ElIcon>
-            <div>
-              <h2>待接收</h2>
-              <p>
-                <strong>{{ number(report.internal_pending.batches) }}</strong> 批
-              </p>
-              <span>班组间待确认</span>
-            </div>
-          </article>
-          <article class="home-metric">
-            <ElIcon><CircleCheck /></ElIcon>
-            <div>
-              <h2>今日已接收</h2>
-              <p>
-                <strong>{{ number(report.today.received_batches) }}</strong> 批
-              </p>
-              <span>{{ updatedAt.slice(0, 10) }}</span>
-            </div>
-          </article>
-        </section>
-        <div class="home-grid">
-          <section class="home-panel team-panel" aria-labelledby="team-stock-title">
-            <header class="panel-heading">
-              <div>
-                <h2 id="team-stock-title">班组库存分布</h2>
-                <p>按在库重量展示 · 件数与重量同时核对</p>
-              </div>
-              <RouterLink to="/factory-stock" class="text-action"
-                >查看明细<ElIcon><ArrowRight /></ElIcon
-              ></RouterLink>
-            </header>
-            <div class="team-head" aria-hidden="true">
-              <span>班组</span><span>库存分布</span><span>件数</span><span>重量 kg</span
-              ><span>分类</span>
-            </div>
-            <div
-              v-for="team in teams"
-              :key="team.code"
-              class="team-stock-row"
-              :data-team-code="team.code"
+  <section class="page factory-dashboard" aria-label="全厂库存总览">
+    <header class="overview-heading">
+      <h1>全厂库存总览</h1>
+      <div>
+        <span v-if="report" class="updated">{{ formatDateTime(report.as_of) }} 更新</span
+        ><button class="text-button" :disabled="loading" aria-label="刷新总览" @click="load">
+          <Refresh /></button
+        ><button class="text-button" @click="rules = true"><QuestionFilled />统计说明</button>
+      </div>
+    </header>
+    <ElAlert
+      v-if="error && report"
+      :title="error"
+      type="warning"
+      :closable="false"
+      show-icon
+    /><ElAlert v-if="warning" :title="warning" type="warning" :closable="false" show-icon />
+    <StatePanel
+      v-if="!report && error"
+      state="error"
+      :description="error"
+      @retry="load"
+    /><StatePanel v-else-if="!report" state="loading" title="正在读取全厂总览" />
+    <div v-else class="dashboard">
+      <section class="panel inventory">
+        <div class="panel-heading">
+          <h2>班组材质库存</h2>
+          <div class="segmented" aria-label="库存显示单位">
+            <button :class="{ selected: stockUnit === 'weight' }" @click="stockUnit = 'weight'">
+              重量 kg</button
+            ><button
+              :class="{ selected: stockUnit === 'quantity' }"
+              @click="stockUnit = 'quantity'"
             >
-              <div class="team-name">
-                <RouterLink
-                  v-if="team.id && team.active"
-                  :to="teamLink(team)"
-                  :aria-label="`查看${team.name}库存明细`"
-                  >{{ team.name }}</RouterLink
-                ><span v-else>{{ team.name }}</span
-                ><small v-if="!team.id || !team.active">{{ team.id ? '已停用' : '未配置' }}</small>
-              </div>
-              <meter
-                :value="Math.max(0, team.balance?.on_hand_weight || 0)"
-                min="0"
-                :max="maxWeight"
-                :aria-label="`${team.name}在库重量 ${kg(team.balance?.on_hand_weight)} kg`"
-              />
-              <span class="stock-quantity numeric">{{
-                number(team.balance?.on_hand_quantity)
-              }}</span
-              ><span class="stock-weight numeric">{{ kg(team.balance?.on_hand_weight) }}</span>
-              <button
-                class="type-detail"
-                :disabled="!team.balance"
-                :aria-label="`查看${team.name}物料分类`"
-                @click="showTypes(team)"
-              >
-                <ElIcon><ArrowRight /></ElIcon>
-              </button>
-            </div>
-            <footer class="team-panel-footer">
-              <span>{{ teams.length }} 个班组</span><span>库存含余料及废料，内部在途单列</span>
-            </footer>
-          </section>
-          <section class="home-panel type-panel" aria-labelledby="stock-types-title">
-            <header class="panel-heading">
-              <div>
-                <h2 id="stock-types-title">物料类型</h2>
-                <p>按在库重量</p>
-              </div>
-            </header>
-            <div class="home-ring">
-              <LedgerChart
-                :option="ringOption"
-                :smooth-update="true"
-                :enter-duration="250"
-                label="物料类型在库重量占比，件数及重量见下方明细"
-                :motion="motion"
-                :empty="!mainTypes.some((item) => item.weight > 0)"
-                @select="showTypes()"
-              />
-              <div v-if="mainTypes.some((item) => item.weight > 0)" class="ring-total">
-                <strong>{{ kg(report.totals.on_hand_weight) }}</strong
-                ><span>kg</span>
-              </div>
-            </div>
-            <table class="type-table">
-              <thead>
-                <tr>
-                  <th>类型</th>
-                  <th>件数</th>
-                  <th>重量 kg</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="item in mainTypes" :key="item.key">
-                  <td>
-                    <span class="type-key" :style="{ color: item.color }">●</span>{{ item.label }}
-                  </td>
-                  <td>{{ number(item.quantity) }}</td>
-                  <td>{{ kg(item.weight) }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <footer class="type-footer">
-              <span>其余含余料、废品、废料等</span
-              ><button class="text-action" @click="showTypes()">
-                全部类型<ElIcon><ArrowRight /></ElIcon>
-              </button>
-            </footer>
-          </section>
-          <section class="home-panel pending-panel" aria-labelledby="pending-title">
-            <header class="panel-heading">
-              <div><h2 id="pending-title">待接收转料</h2></div>
-              <RouterLink :to="pendingLink" class="text-action"
-                >查看全部<ElIcon><ArrowRight /></ElIcon
-              ></RouterLink>
-            </header>
-            <div v-if="recentPending.length" class="pending-scroll">
-              <table class="pending-table">
-                <thead>
-                  <tr>
-                    <th>批次</th>
-                    <th>班组流向</th>
-                    <th>件数 / 重量</th>
-                    <th>状态</th>
-                    <th aria-label="操作"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="row in recentPending" :key="row.batch_no">
-                    <td>
-                      <span class="batch-number" :title="row.batch_no">{{ row.batch_no }}</span>
-                    </td>
-                    <td>{{ row.source_name }} → {{ row.target_name }}</td>
-                    <td>{{ number(row.quantity) }} 件 / {{ kg(row.weight) }} kg</td>
-                    <td>
-                      <span class="pending-label">{{
-                        row.status === 'partial' ? '部分接收' : '待接收'
-                      }}</span>
-                    </td>
-                    <td>
-                      <RouterLink
-                        :to="{ path: '/transfer-batches/scan', query: { batch_no: row.batch_no } }"
-                        class="text-action"
-                        :aria-label="`查看批次 ${row.batch_no}`"
-                        >查看</RouterLink
-                      >
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div v-else class="home-empty">
-              <ElIcon><CircleCheck /></ElIcon
-              ><strong>{{
-                report.internal_pending.batches
-                  ? '近期记录中没有待接收批次'
-                  : '暂无班组间待接收物料'
-              }}</strong>
-              <p>
-                {{
-                  report.internal_pending.batches
-                    ? '可通过“查看全部”查询历史待接收记录。'
-                    : '新的班组交接会在这里显示。'
-                }}
-              </p>
-            </div>
-            <p v-if="recentPending.some((row) => row.status === 'partial')" class="amount-note">
-              部分接收显示整批件数与重量，剩余待接收量请进入批次查看。
-            </p>
-          </section>
-          <section class="home-panel attention-panel" aria-labelledby="attention-title">
-            <header class="panel-heading">
-              <h2 id="attention-title">重点关注</h2>
-              <ElIcon><Flag /></ElIcon>
-            </header>
-            <div class="attention-tabs" role="group" aria-label="关注类别">
-              <button :aria-pressed="attentionTab === 'pending'" @click="attentionTab = 'pending'">
-                待接收班组</button
-              ><button :aria-pressed="attentionTab === 'urgent'" @click="attentionTab = 'urgent'">
-                在库加急
-              </button>
-            </div>
-            <div v-if="attentionTeams.length" class="attention-list">
-              <div v-for="team in attentionTeams" :key="team.code" class="attention-row">
-                <div>
-                  <strong>{{ team.name }}</strong
-                  ><span>{{
-                    attentionTab === 'pending'
-                      ? `${number(team.pending_incoming?.quantity)} 件 / ${kg(team.pending_incoming?.weight)} kg`
-                      : '在库加急流水号'
-                  }}</span>
-                </div>
-                <RouterLink
-                  v-if="team.id && team.active"
-                  :to="
-                    teamLink(
-                      team,
-                      attentionTab === 'pending' ? 'pending' : 'stock',
-                      attentionTab === 'urgent',
-                    )
-                  "
-                  :aria-label="`查看${team.name}${attentionTab === 'pending' ? '待接收' : '加急物料'}`"
-                  >{{
-                    number(
-                      attentionTab === 'pending'
-                        ? team.pending_incoming?.batches
-                        : team.urgent_serial_count,
-                    )
-                  }}
-                  {{ attentionTab === 'pending' ? '批' : '个'
-                  }}<ElIcon><ArrowRight /></ElIcon></RouterLink
-                ><span v-else>已停用</span>
-              </div>
-            </div>
-            <div v-else class="home-empty attention-empty">
-              <ElIcon><CircleCheck /></ElIcon>
-              <p>{{ attentionTab === 'pending' ? '各班组暂无待接收记录' : '暂无在库加急物料' }}</p>
-            </div>
-          </section>
-        </div>
-        <footer class="home-footer">
-          <span>在库含废料，不含已转出待确认物料；内部在途单独统计。</span>
-          <div>
-            <span role="status">{{ connectionLabel }}</span
-            ><time :datetime="report.as_of">{{ updatedAt }}</time
-            ><RouterLink to="/factory-analysis">数据分析</RouterLink>
+              件数
+            </button>
           </div>
-        </footer>
-      </template>
+        </div>
+        <div class="stock-wrap">
+          <table class="stock-table">
+            <thead>
+              <tr>
+                <th>班组</th>
+                <th v-for="(m, i) in report.stock.materials" :key="m.name">
+                  <i class="dot" :style="{ background: colors[i % colors.length] }"></i>{{ m.name }}
+                </th>
+                <th class="sum-col">合计</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="team in report.stock.rows" :key="team.team_code">
+                <th>{{ team.team_name }}</th>
+                <td v-for="m in report.stock.materials" :key="m.name">
+                  <button
+                    :disabled="!team.team_id"
+                    :aria-label="`${team.team_name} ${m.name} 库存明细`"
+                    @click="stockDetails(m.name, team.team_id!)"
+                  >
+                    {{ team.total === null ? '—' : stockValue(team.amounts[m.name]) }}
+                  </button>
+                </td>
+                <td class="sum-col">{{ stockValue(team.total) }}</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <th>总计</th>
+                <td v-for="m in report.stock.materials" :key="m.name">{{ stockValue(m) }}</td>
+                <td class="sum-col">{{ stockValue(report.stock.total) }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <button class="panel-foot" @click="stockDetails()">库存明细<ArrowRight /></button>
+      </section>
+      <section class="panel yield">
+        <div class="panel-heading">
+          <h2>成品率</h2>
+          <span class="muted">已完结</span>
+        </div>
+        <div class="yield-head">
+          <span>材质</span><span>投入 / 成品 kg</span><span>成品率</span>
+        </div>
+        <div class="yield-list">
+          <button
+            v-for="(row, i) in report.yields"
+            :key="row.material"
+            class="yield-row"
+            @click="yieldDetails(row.material)"
+          >
+            <div class="yield-values">
+              <strong
+                ><i class="dot" :style="{ background: colors[i % colors.length] }"></i
+                >{{ row.material }}</strong
+              ><span>{{
+                row.completed_count
+                  ? number(row.input_weight) + ' / ' + number(row.output_weight)
+                  : '暂无已完结'
+              }}</span
+              ><b>{{ row.completed_count ? rate(row.rate) : '进行中' }}</b>
+            </div>
+            <div class="meter">
+              <span
+                :style="{ width: (row.rate ?? 0) + '%', background: colors[i % colors.length] }"
+              ></span>
+            </div>
+          </button>
+          <p v-if="!report.yields.length" class="empty">暂无成品率数据</p>
+        </div>
+        <button class="panel-foot" @click="yieldDetails()">查看流水号与班组<ArrowRight /></button>
+      </section>
+      <section class="panel deadline">
+        <div class="panel-heading">
+          <h2>交期与超时</h2>
+          <button class="text-button" aria-label="查看交付计划" @click="plans = true">
+            <ArrowRight />
+          </button>
+        </div>
+        <div class="deadline-summary">
+          <div>
+            <b>{{ rate(report.delivery.on_time_rate) }}</b
+            ><span>到期批次按期率</span>
+          </div>
+          <div class="late">
+            <b>{{ report.delivery.overdue_count }}<small>批</small></b
+            ><span>已超期</span>
+          </div>
+          <div>
+            <b>{{ report.delivery.upcoming_count }}<small>批</small></b
+            ><span>近 3 天到期</span>
+          </div>
+        </div>
+        <div class="delivery-list">
+          <button
+            v-for="row in report.delivery.items"
+            :key="row.serial_no + row.index"
+            class="delivery-item"
+            @click="plans = true"
+          >
+            <div>
+              <strong>{{ row.serial_no }}</strong
+              ><span class="badge" :class="{ late: row.status === 'overdue' }">{{
+                row.status === 'overdue'
+                  ? '超期 ' + row.overdue_days + ' 天'
+                  : deliveryStatus(row.status)
+              }}</span>
+            </div>
+            <p>
+              {{ row.label }} · {{ row.due_date.slice(5)
+              }}<span
+                >还差 <b>{{ number(row.remaining, 0) }}</b> 件</span
+              >
+            </p>
+            <div class="meter">
+              <span
+                :style="{ width: Math.min(100, (row.shipped / row.quantity) * 100) + '%' }"
+              ></span>
+            </div>
+            <small>已发 {{ number(row.shipped, 0) }} / 应发 {{ number(row.quantity, 0) }} 件</small>
+          </button>
+          <p v-if="!report.delivery.items.length" class="empty">
+            {{ report.delivery.total ? '当前没有待交批次' : '尚未设置交付计划' }}
+          </p>
+        </div>
+        <button class="panel-foot" @click="plans = true">查看全部交付计划<ArrowRight /></button>
+      </section>
+      <section class="panel shipping">
+        <div class="panel-heading">
+          <h2>流水号发货速率</h2>
+          <span class="muted">最新 {{ report.shipping.series.length }} 条</span>
+        </div>
+        <div class="chart-toolbar">
+          <span
+            >{{ report.shipping.dates[0]?.slice(5) }} —
+            {{ report.shipping.dates.at(-1)?.slice(5) }}</span
+          ><button ref="analysisTrigger" class="text-button" @click="analysis = true">
+            <FullScreen />展开分析
+          </button>
+        </div>
+        <div
+          class="shipping-chart"
+          role="button"
+          tabindex="0"
+          aria-label="展开发货速率分析画布"
+          @click="analysis = true"
+          @keydown.enter.prevent="analysis = true"
+          @keydown.space.prevent="analysis = true"
+        >
+          <FactoryShipmentChart :data="report.shipping" />
+        </div>
+        <div class="legend">
+          <span v-for="row in report.shipping.series" :key="row.serial_no"
+            ><i :style="{ background: lineColors[row.serial_no] }"></i>{{ row.serial_no }}</span
+          >
+        </div>
+      </section>
+      <section class="panel attention">
+        <div class="panel-heading">
+          <h2>重点关注流水号</h2>
+          <div class="tabs">
+            <button
+              v-for="tab in ['全部', '超期', '加急', '库龄']"
+              :key="tab"
+              :class="{ selected: attentionTab === tab }"
+              @click="attentionTab = tab"
+            >
+              {{ tab }}
+            </button>
+          </div>
+        </div>
+        <div class="attention-table-wrap">
+          <table class="attention-table">
+            <thead>
+              <tr>
+                <th>流水号</th>
+                <th>材质</th>
+                <th>关注原因</th>
+                <th>当前班组</th>
+                <th>待交件数</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in attention" :key="row.serial_no">
+                <td>
+                  <RouterLink
+                    :to="{ path: '/material-trace', query: { serial_no: row.serial_no } }"
+                    >{{ row.serial_no }}</RouterLink
+                  >
+                </td>
+                <td>{{ row.materials.join('、') || '—' }}</td>
+                <td>
+                  <span
+                    v-for="reason in row.reasons"
+                    :key="reason"
+                    class="badge"
+                    :class="{ late: reason === '超期' }"
+                    >{{
+                      reason === '超期'
+                        ? '超期 ' + row.overdue_days + ' 天'
+                        : reason === '库龄'
+                          ? '库龄 ' + row.age_days + ' 天'
+                          : '加急'
+                    }}</span
+                  >
+                </td>
+                <td>{{ row.teams.join('、') || '—' }}</td>
+                <td>{{ number(row.remaining, 0) }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-if="!attention.length" class="empty">暂无需要关注的流水号</p>
+        </div>
+      </section>
     </div>
+    <FactoryShippingAnalysis
+      v-if="analysis && report"
+      :initial-selection="report.shipping.series"
+      :today="report.today"
+      @close="closeAnalysis"
+    />
+    <FactoryDeliveryPlans v-if="plans" @close="plans = false" @saved="load" />
     <ElDialog
-      v-model="typeDialog"
-      :title="`${focusedTeam?.name || '全厂'} · 在库物料分类`"
-      width="560px"
-      class="home-types-dialog"
-    >
-      <p class="type-dialog-summary">
-        合计 {{ number(dialogTotal.quantity) }} 件 / {{ kg(dialogTotal.weight) }} kg
+      v-model="stockOpen"
+      :title="(stockMaterial || '全厂') + ' · 库存明细'"
+      width="950px"
+      class="factory-detail-dialog"
+      ><p v-if="detailError" role="alert">
+        {{ detailError }}<ElButton link @click="loadStock">重试</ElButton>
       </p>
-      <table class="type-table type-table--dialog">
-        <thead>
-          <tr>
-            <th>类型</th>
-            <th>件数</th>
-            <th>重量 kg</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="item in dialogTypes" :key="item.key">
-            <td>{{ item.label }}</td>
-            <td>{{ number(item.quantity) }}</td>
-            <td>{{ kg(item.weight) }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <template #footer><ElButton @click="typeDialog = false">关闭</ElButton></template>
-    </ElDialog>
+      <ElTable v-loading="detailLoading" :data="stockRows" max-height="460" empty-text="暂无库存"
+        ><ElTableColumn prop="team_name" label="班组" width="90" /><ElTableColumn
+          prop="serial_no"
+          label="流水号"
+          min-width="140"
+        /><ElTableColumn prop="material" label="材质" min-width="100" /><ElTableColumn
+          label="类型"
+          width="100"
+          ><template #default="{ row }">{{ typeLabel(row.material_type) }}</template></ElTableColumn
+        ><ElTableColumn label="件数" align="right"
+          ><template #default="{ row }">{{ number(row.quantity, 0) }}</template></ElTableColumn
+        ><ElTableColumn label="重量 kg" align="right"
+          ><template #default="{ row }">{{ number(row.weight, 3) }}</template></ElTableColumn
+        ></ElTable
+      ><ElPagination
+        v-model:current-page="stockPage"
+        :page-size="30"
+        :total="stockTotal"
+        layout="total, prev, pager, next"
+        @current-change="loadStock"
+    /></ElDialog>
+    <ElDialog
+      v-model="yieldOpen"
+      :title="
+        yieldSerial
+          ? yieldSerial + ' · 班组成品率'
+          : (yieldMaterial || '全部材质') + ' · 流水号成品率'
+      "
+      width="950px"
+      class="factory-detail-dialog"
+      ><p v-if="detailError" role="alert">{{ detailError }}</p>
+      <ElButton v-if="yieldSerial" link type="primary" @click="loadYields">返回流水号</ElButton
+      ><ElTable
+        v-loading="detailLoading"
+        :data="visibleYields"
+        max-height="460"
+        empty-text="暂无成品率数据"
+        ><ElTableColumn v-if="yieldSerial" prop="team_name" label="班组" /><ElTableColumn
+          v-else
+          prop="serial_no"
+          label="流水号"
+          min-width="140"
+        /><ElTableColumn v-if="!yieldSerial" prop="material" label="材质" /><ElTableColumn
+          label="投入 kg"
+          align="right"
+          ><template #default="{ row }">{{ number(row.input_weight, 3) }}</template></ElTableColumn
+        ><ElTableColumn :label="yieldSerial ? '合格产出 kg' : '成品 kg'" align="right"
+          ><template #default="{ row }">{{ number(row.output_weight, 3) }}</template></ElTableColumn
+        ><ElTableColumn label="成品率" align="right"
+          ><template #default="{ row }">{{ rate(row.rate) }}</template></ElTableColumn
+        ><ElTableColumn label="状态"
+          ><template #default="{ row }">{{ yieldStatus(row.status) }}</template></ElTableColumn
+        ><ElTableColumn v-if="!yieldSerial" width="90"
+          ><template #default="{ row }"
+            ><ElButton link type="primary" @click="teamYields(row as YieldRow)"
+              >各班组</ElButton
+            ></template
+          ></ElTableColumn
+        ></ElTable
+      ><ElPagination
+        v-if="!yieldSerial"
+        v-model:current-page="yieldPage"
+        :page-size="30"
+        :total="yieldTotal"
+        layout="total, prev, pager, next"
+        @current-change="loadYields"
+    /></ElDialog>
+    <ElDialog v-model="rules" title="统计说明" width="620px" class="factory-detail-dialog"
+      ><dl class="rule-list">
+        <dt>库存归属</dt>
+        <dd>
+          待接收的内部转料计在上游，接收后转入下游；待确认的外部发货仍计在发货班组。全厂只计一次，预留的料不可再次领用。
+        </dd>
+        <dt>成品率</dt>
+        <dd>
+          成品确认发货重量 ÷
+          库房外部入库重量，仅汇总库存及待确认记录已结清的流水号。班组按确认交出的合格料重量 ÷
+          收料重量计算；尚未做完显示“进行中”。期初库存、历史未追踪记录或退货造成投入不可比时显示“投入待核对”。
+        </dd>
+        <dt>发货速率</dt>
+        <dd>
+          按工厂当地日期，统计每条流水号每天确认发出的成品件数；默认显示最新创建的5条，展开可搜索全部流水号。
+        </dd>
+        <dt>交期与超时</dt>
+        <dd>
+          同一流水号的确认发货件数按交期先后抵扣各批计划。批次发满应发件数才完成。按期率只统计交期已经过去的批次，超期未完成也计入分母。
+        </dd>
+        <dt>重点关注</dt>
+        <dd>展示超期、加急及仍有库存且库龄达到7天的流水号。库龄从仍有结存的批次接收时间计算。</dd>
+      </dl></ElDialog
+    >
   </section>
 </template>
 
 <style scoped>
-.inventory-home {
-  --primary: #337d4d;
-  --text: #24312a;
-  --muted: #67756d;
-  --subtle: #67756d;
-  --line: #e5ebe7;
-  --surface-soft: #edf5ef;
-  --el-color-primary: #337d4d;
-  padding: 20px 28px;
-  background: #f6f8f7;
-  color: var(--text);
-  font-family: 'HeatSink Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-}
-.home-content {
-  max-width: 1600px;
-  margin: 0 auto;
+.factory-dashboard {
+  height: calc(100dvh - var(--topbar-height, 56px));
+  min-height: 0;
+  padding: 16px 24px 18px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+  background: #f6f8f7;
+  color: #24312a;
+  --green: #337d4d;
+  --muted: #64726a;
+  --line: #e5ebe7;
 }
-.home-heading,
-.home-actions,
-.panel-heading,
-.home-footer,
-.home-footer > div {
+.overview-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-}
-.home-heading {
-  margin-bottom: 0;
-}
-.home-heading h1 {
-  margin: 0;
-  font-size: 26px;
-  line-height: 1.3;
-  font-weight: 550;
-  letter-spacing: -0.5px;
-}
-.home-heading p,
-.panel-heading p {
-  margin: 6px 0 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--muted);
-}
-.home-actions {
-  gap: 10px;
+  min-height: 38px;
   flex-shrink: 0;
 }
-.home-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 40px;
-  gap: 8px;
-  padding: 8px 14px;
-  border: 1px solid #d9e2dc;
-  border-radius: 8px;
-  background: #fff;
-  font-size: 13px;
-  white-space: nowrap;
+.overview-heading h1 {
+  font-size: 23px;
+  letter-spacing: -0.6px;
+  font-weight: 550;
+  margin: 0;
 }
-.home-button:hover {
-  border-color: var(--primary);
-}
-.home-button--primary {
-  color: #fff;
-  border-color: var(--primary);
-  background: var(--primary);
-}
-.button-count {
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: #e9f3dc;
-  color: #245633;
-  font-size: 12px;
-}
-.home-metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-}
-.home-metric {
+.overview-heading > div {
   display: flex;
   gap: 16px;
-  align-items: flex-start;
-  padding: 15px 22px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  align-items: center;
 }
-.home-metric > .el-icon {
-  flex: 0 0 40px;
-  height: 40px;
-  font-size: 23px;
-  border-radius: 9px;
-  color: var(--primary);
-  background: #eef6f0;
-}
-.home-metric > div {
-  min-width: 0;
-}
-.home-metric h2 {
-  margin: 0 0 5px;
-  font-size: 13px;
-  font-weight: 400;
+.updated {
+  font-size: 11px;
   color: var(--muted);
 }
-.home-metric p {
-  line-height: 1.3;
-  margin: 0 0 4px;
-  font-size: 13px;
-  white-space: nowrap;
+.factory-dashboard button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
 }
-.home-metric strong {
-  font-size: clamp(22px, 2vw, 30px);
-  font-weight: 550;
-  letter-spacing: -0.7px;
-  font-variant-numeric: tabular-nums;
+.factory-dashboard button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
-.home-metric span {
-  font-size: 13px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
+.factory-dashboard button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
-.home-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.75fr) minmax(310px, 1fr);
-  gap: 16px;
+.factory-dashboard svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
 }
-.home-panel {
-  padding: 18px 22px;
-  min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #fff;
-}
-.panel-heading {
-  min-height: 28px;
-  margin-bottom: 16px;
-  align-items: flex-start;
-}
-.panel-heading h2 {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 550;
-  letter-spacing: -0.3px;
-}
-.text-action {
+.factory-dashboard .text-button {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  flex-shrink: 0;
-  color: var(--primary);
-  background: none;
-  border: 0;
-  padding: 2px 0;
-  font: inherit;
-  font-size: 13px;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--green);
+  padding: 0;
+  white-space: nowrap;
 }
-.text-action:hover {
-  text-decoration: underline;
-}
-.team-head,
-.team-stock-row {
+.dashboard {
   display: grid;
-  grid-template-columns: 66px minmax(40px, 1fr) 76px 88px 28px;
-  column-gap: 12px;
+  grid-template-columns: minmax(0, 1.78fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: 'inventory yield deadline' 'shipping attention attention';
+  grid-template-rows: minmax(300px, 1.06fr) minmax(252px, 1fr);
+  gap: 14px;
+  flex: 1;
+  min-height: 566px;
+}
+.panel {
+  min-width: 0;
+  min-height: 0;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.inventory {
+  grid-area: inventory;
+}
+.yield {
+  grid-area: yield;
+}
+.deadline {
+  grid-area: deadline;
+}
+.shipping {
+  grid-area: shipping;
+}
+.attention {
+  grid-area: attention;
+}
+.panel-heading {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 15px 17px 11px;
+  min-height: 49px;
+  flex-shrink: 0;
 }
-.team-head {
-  font-size: 12px;
+.panel-heading h2 {
+  font-size: 15px;
+  font-weight: 550;
+  margin: 0;
+  letter-spacing: -0.25px;
+  white-space: nowrap;
+}
+.muted {
+  font-size: 11px;
   color: var(--muted);
-  padding: 8px 0;
 }
-.team-head > :nth-child(n + 3),
-.numeric {
+.segmented {
+  display: flex;
+  background: #f4f7f5;
+  border-radius: 6px;
+  padding: 2px;
+  flex-shrink: 0;
+}
+.segmented button {
+  font-size: 11px;
+  color: var(--muted);
+  border-radius: 4px;
+  padding: 3px 8px;
+}
+.segmented .selected {
+  background: #fff;
+  color: var(--green);
+  box-shadow: 0 1px 3px #24312a13;
+  font-weight: 550;
+}
+.stock-wrap {
+  padding: 0 15px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+}
+.stock-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  table-layout: auto;
+  min-width: 100%;
+}
+.stock-table th,
+.stock-table td {
+  border-bottom: 1px solid #edf1ee;
+  padding: 3px 7px;
+  white-space: nowrap;
+  text-align: right;
+}
+.stock-table th {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--muted);
+}
+.stock-table th:first-child {
+  text-align: left;
+  min-width: 55px;
+}
+.stock-table tbody th {
+  font-size: 12px;
+  color: #36483c;
+}
+.stock-table td {
+  font-size: 13px;
+  line-height: 19px;
+}
+.stock-table td button {
+  padding: 0;
+  width: 100%;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-.team-stock-row {
-  min-height: 33px;
-  border-bottom: 1px solid #f0f3f1;
-  font-size: 14px;
+.stock-table td button:hover {
+  color: var(--green);
 }
-.team-name {
+.sum-col {
+  background: #f6f9f7;
+  font-weight: 550;
+}
+.stock-table tfoot {
+  background: #edf5ef;
+  font-weight: 600;
+}
+.stock-table tfoot th {
+  color: var(--green);
+  font-weight: 550;
+}
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+.factory-dashboard .panel-foot {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  padding: 9px 17px;
+  font-size: 11px;
+  color: var(--green);
+  border-top: 1px solid #f0f3f1;
+  flex-shrink: 0;
+  margin-top: auto;
+  min-height: 33px;
+  text-align: left;
+}
+.panel-foot svg {
+  width: 12px;
+}
+.yield-head {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 17px;
+  font-size: 10px;
+  color: #718077;
+  gap: 8px;
+}
+.yield-list {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
-.team-name a:hover {
-  color: var(--primary);
-  text-decoration: underline;
+.yield-row {
+  margin: 0 17px;
+  padding: 9px 0;
+  text-align: left;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 50px;
 }
-.team-name small {
+.yield-values {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  font-size: 11px;
+}
+.yield-values strong {
+  font-size: 12px;
+  max-width: 35%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.yield-values > span {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.yield-values b {
+  font-size: 21px;
+  font-weight: 550;
+  letter-spacing: -0.6px;
+  white-space: nowrap;
+}
+.meter {
+  height: 4px;
+  background: #eef2ef;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 7px;
+}
+.meter span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: #84a791;
+}
+.deadline-summary {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  margin: 3px 17px 5px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  gap: 8px;
+}
+.deadline-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.deadline-summary b {
+  font-size: 24px;
+  font-weight: 550;
+  line-height: 1.1;
+  letter-spacing: -1px;
+}
+.deadline-summary small {
+  font-size: 11px;
+  margin-left: 2px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.deadline-summary span {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.late {
+  color: #ad6544;
+}
+.delivery-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.delivery-item {
+  padding: 9px 17px;
+  text-align: left;
+  flex: 1;
+  min-height: 88px;
+}
+.delivery-item + .delivery-item {
+  border-top: 1px solid #f0f3f1;
+}
+.delivery-item > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  font-size: 11px;
+}
+.delivery-item strong {
+  font-weight: 550;
+}
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #f0f3f1;
+  white-space: nowrap;
+  margin-right: 4px;
+}
+.badge.late {
+  background: #fbf0e9;
+}
+.delivery-item p {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--muted);
+  margin: 5px 0 0;
+}
+.delivery-item .meter {
+  height: 3px;
+}
+.delivery-item > small {
+  display: block;
+  color: #78877d;
+  font-size: 10px;
+  margin-top: 5px;
+}
+.chart-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 17px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.shipping-chart {
+  flex: 1;
+  display: flex;
+  min-height: 120px;
+  margin: 0 14px 0 10px;
+  cursor: pointer;
+}
+.legend {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 0 12px 12px;
   font-size: 10px;
   color: var(--muted);
 }
-.stock-weight {
-  color: var(--muted);
-}
-meter {
-  width: 100%;
-  height: 9px;
-  border: none;
-  background: #eef2f0;
-  border-radius: 3px;
-  appearance: none;
-}
-meter::-webkit-meter-bar {
-  border: 0;
-  border-radius: 3px;
-  background: #eef2f0;
-  height: 9px;
-}
-meter::-webkit-meter-optimum-value {
-  background: #80ab8c;
-  border-radius: 3px;
-}
-meter::-moz-meter-bar {
-  background: #80ab8c;
-  border-radius: 3px;
-}
-.type-detail {
-  border: 0;
-  background: none;
-  color: var(--primary);
-  width: 28px;
-  height: 32px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-}
-.type-detail:disabled {
-  color: #b9c3bc;
-  cursor: default;
-}
-.team-panel-footer {
+.legend > span {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--muted);
-  font-size: 12px;
-  margin-top: 14px;
+  align-items: center;
+  gap: 5px;
 }
-.home-ring {
-  height: 146px;
+.legend i {
+  height: 3px;
+  width: 14px;
+  border-radius: 3px;
+}
+.tabs {
+  display: flex;
+  gap: 13px;
+}
+.tabs button {
   position: relative;
-  display: flex;
-  margin: -4px 0 8px;
-}
-.ring-total {
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 4px;
-}
-.ring-total strong {
-  font-size: 22px;
-  font-weight: 550;
-  font-variant-numeric: tabular-nums;
-}
-.ring-total span {
-  font-size: 12px;
-  color: var(--muted);
-}
-.type-table {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-.type-table th {
-  font-size: 12px;
-  color: var(--muted);
-  font-weight: 400;
-}
-.type-table th,
-.type-table td {
-  padding: 4px 0;
-  border-bottom: 1px solid #f0f3f1;
-  text-align: right;
-}
-.type-table :is(th, td):first-child {
-  text-align: left;
-}
-.type-key {
-  margin-right: 9px;
-  font-size: 16px;
-}
-.type-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
   font-size: 11px;
   color: var(--muted);
+  padding: 0 0 4px;
 }
-.pending-scroll {
-  position: relative;
-  overflow-x: auto;
+.tabs .selected {
+  color: var(--green);
+  border-bottom: 2px solid var(--green);
 }
-.pending-table {
+.attention-table-wrap {
+  padding: 0 15px 10px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.attention-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
-.pending-table th {
-  color: var(--muted);
-  font-weight: 400;
-  background: #f7f9f8;
-  font-size: 12px;
-}
-.pending-table th,
-.pending-table td {
-  line-height: 20px;
-  padding: 6px 8px;
-  border-bottom: 1px solid #edf1ee;
+.attention-table th {
   text-align: left;
+  font-weight: 400;
+  color: #6c7c72;
+  background: #f6f9f7;
+  font-size: 10px;
+  padding: 7px 6px;
   white-space: nowrap;
 }
-.pending-table th:first-child,
-.pending-table td:first-child {
-  padding-left: 0;
+.attention-table td {
+  padding: 13px 6px;
+  border-bottom: 1px solid #edf1ee;
+  white-space: nowrap;
 }
-.batch-number {
-  display: block;
-  max-width: 155px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.attention-table td:last-child,
+.attention-table th:last-child {
+  text-align: right;
 }
-.pending-label {
-  padding: 3px 7px;
-  border-radius: 5px;
-  color: #94600f;
-  background: #fff5e4;
-  font-size: 12px;
+.attention-table a {
+  color: var(--green);
+  text-decoration: none;
 }
-.attention-tabs {
-  display: flex;
-  gap: 16px;
-  margin-top: -4px;
-  border-bottom: 1px solid var(--line);
-}
-.attention-tabs button {
-  font: inherit;
-  font-size: 13px;
-  color: var(--muted);
-  background: none;
-  border: 0;
-  padding: 7px 0 10px;
-  border-bottom: 2px solid transparent;
-}
-.attention-tabs button[aria-pressed='true'] {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
-}
-.attention-list {
-  max-height: 124px;
-  overflow-y: auto;
-}
-.attention-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid #f0f3f1;
-}
-.attention-row > div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.attention-row strong {
-  font-size: 13px;
-  font-weight: 500;
-}
-.attention-row span {
-  font-size: 12px;
-  color: var(--muted);
-}
-.attention-row a {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--primary);
-  font-size: 13px;
-}
-.attention-row a:hover {
+.attention-table a:hover {
   text-decoration: underline;
 }
-.home-empty {
-  display: flex;
-  min-height: 170px;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 10px;
-  color: var(--muted);
-  text-align: center;
-}
-.home-empty > .el-icon {
-  font-size: 25px;
-  color: #82a88d;
-}
-.home-empty strong {
-  font-size: 14px;
-  font-weight: 500;
-}
-.home-empty p {
-  margin: 0;
-  font-size: 13px;
-}
-.attention-empty {
-  min-height: 150px;
-}
-.amount-note {
+.empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
   font-size: 12px;
   color: var(--muted);
-  margin-bottom: 0;
-}
-.home-footer {
-  font-size: 11px;
-  color: var(--muted);
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.home-footer > div {
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.home-footer a {
-  color: var(--primary);
-}
-.home-footer [role='status'] {
-  color: var(--primary);
-}
-.pending-panel .panel-heading {
-  margin-bottom: 12px;
-}
-.home-actions :deep(.el-button) {
-  border-color: #d9e2dc;
-  color: #64726a;
-}
-.type-panel .panel-heading > div {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-.type-panel .panel-heading p {
+  min-height: 65px;
+  text-align: center;
   margin: 0;
+  padding: 15px;
 }
-.type-dialog-summary {
-  margin: 0 0 20px;
-  color: #52645a;
+.el-pagination {
+  margin-top: 16px;
+  justify-content: flex-end;
 }
-.type-table--dialog {
-  font-size: 14px;
+.rule-list dt {
+  font-weight: 550;
+  margin-top: 20px;
 }
-.type-table--dialog td {
-  padding-block: 11px;
+.rule-list dd {
+  color: var(--muted);
+  line-height: 1.8;
+  margin: 6px 0 0;
 }
-
-@media (min-width: 1800px) and (min-height: 950px) {
-  .inventory-home {
-    padding: 36px;
-  }
-  .home-content {
-    gap: 24px;
-  }
-  .home-panel {
-    padding: 28px;
-  }
-  .team-stock-row {
-    min-height: 44px;
-  }
-  .home-ring {
-    height: 220px;
-  }
-}
-@media (max-width: 1180px) {
-  .inventory-home {
-    padding: 22px;
-  }
-  .home-metric {
-    padding: 16px;
-    gap: 10px;
-  }
-  .home-metric > .el-icon {
-    flex-basis: 32px;
-    height: 32px;
-    font-size: 20px;
-  }
-  .home-grid {
-    grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr);
-    gap: 16px;
-  }
-  .home-panel {
-    padding: 18px;
-  }
-  .team-head,
-  .team-stock-row {
-    grid-template-columns: 54px minmax(28px, 1fr) 64px 68px 24px;
-    gap: 8px;
-  }
-}
-@media (max-width: 1000px) {
-  .home-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .home-grid {
-    grid-template-columns: 1fr;
-  }
-  .home-heading {
-    flex-wrap: wrap;
-  }
-  .home-ring {
-    height: 185px;
-  }
-  .type-panel .type-table {
+@media (min-width: 1250px) and (min-height: 840px) {
+  .stock-table td {
     font-size: 14px;
   }
-  .home-footer {
-    line-height: 1.8;
+  .stock-table tbody th {
+    font-size: 13px;
   }
-}
-@media (max-width: 640px) {
-  .inventory-home {
-    padding: 20px 14px;
-  }
-  .home-content {
-    gap: 16px;
-  }
-  .home-heading h1 {
+  .yield-values b {
     font-size: 23px;
   }
-  .home-actions {
-    width: 100%;
-    gap: 8px;
-  }
-  .home-button {
+  .attention-table td {
     font-size: 12px;
-    padding-inline: 10px;
-  }
-  .home-metrics {
-    gap: 10px;
-  }
-  .home-metric {
-    padding: 14px 12px;
-    gap: 10px;
-  }
-  .home-metric strong {
-    font-size: 24px;
-  }
-  .home-metric > .el-icon {
-    display: none;
-  }
-  .home-panel {
-    padding: 16px;
-  }
-  .team-head,
-  .team-stock-row {
-    grid-template-columns: 48px minmax(10px, 1fr) 65px 66px 22px;
-    gap: 5px;
-  }
-  .team-head > :last-child {
-    font-size: 10px;
-    white-space: nowrap;
-  }
-  .team-panel-footer {
-    flex-wrap: wrap;
-  }
-  .home-heading p {
-    font-size: 12px;
-  }
-  .home-footer > div {
-    gap: 8px;
-  }
-}
-
-/* Allocate desktop panels from the available viewport, including browser chrome.
-   Narrow windows and zoomed layouts retain normal page scrolling. */
-@media (min-width: 1100px) and (min-height: 650px) {
-  .inventory-home {
-    --home-gap: clamp(8px, 1.4dvh, 16px);
-    padding-block: clamp(8px, 1.4dvh, 20px);
-  }
-  .home-content {
-    height: 100%;
-    gap: var(--home-gap);
-  }
-  .home-heading,
-  .home-metrics,
-  .home-footer {
-    flex-shrink: 0;
-  }
-  .home-grid {
-    flex: 1;
-    min-height: 0;
-    grid-template-rows: minmax(264px, 1.5fr) minmax(138px, 1fr);
-    gap: var(--home-gap);
-  }
-  .home-panel {
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    padding-block: clamp(9px, 1.4dvh, 18px);
-  }
-  .panel-heading,
-  .pending-panel .panel-heading {
-    flex-shrink: 0;
-    min-height: 24px;
-    margin-bottom: 8px;
-  }
-  .team-head,
-  .team-panel-footer,
-  .type-table,
-  .type-footer,
-  .attention-tabs {
-    flex-shrink: 0;
-  }
-  .team-head {
-    padding-block: 3px;
-  }
-  .team-stock-row {
-    flex: 1;
-    min-height: 22px;
-  }
-  .type-detail {
-    height: 24px;
-  }
-  .team-panel-footer {
-    margin-top: 6px;
-  }
-  .home-ring {
-    flex: 1;
-    height: auto;
-    min-height: 60px;
-    max-height: 220px;
-    margin: 0 0 6px;
-  }
-  .pending-scroll,
-  .attention-list {
-    min-height: 0;
-    overflow: auto;
-  }
-  .attention-list {
-    flex: 1;
-    max-height: none;
-  }
-  .home-empty {
-    flex: 1;
-    min-height: 0;
-  }
-  .amount-note {
-    flex-shrink: 0;
-    margin-top: 4px;
-  }
-  /* Keep connection and reconciliation warnings visible even if they need a
-     second screen; never clip a business warning to meet the dashboard fit. */
-  .home-content:has(> .el-alert) {
-    height: auto;
-    min-height: 100%;
-  }
-}
-@media (min-width: 1100px) and (min-height: 650px) and (max-height: 950px) {
-  .home-heading > div:first-child {
-    display: flex;
-    align-items: baseline;
-    gap: 14px;
-  }
-  .home-heading h1 {
-    font-size: 23px;
-    white-space: nowrap;
-  }
-  .home-heading p {
-    margin: 0;
-    font-size: 12px;
-  }
-  .home-button {
-    min-height: 36px;
-    padding-block: 6px;
-  }
-  .home-metric {
-    padding: 6px 16px;
-    gap: 12px;
-    align-items: center;
-  }
-  .home-metric h2 {
-    margin-bottom: 2px;
-    font-size: 12px;
-    line-height: 16px;
-  }
-  .home-metric > div {
-    line-height: 16px;
-  }
-  .home-metric p {
-    margin: 0;
-    line-height: 28px;
-  }
-  .home-metric strong {
-    font-size: 26px;
-  }
-  .home-metric span {
-    font-size: 12px;
-    line-height: 16px;
-  }
-  .panel-heading,
-  .pending-panel .panel-heading {
-    min-height: 22px;
-    margin-bottom: 4px;
+    padding-block: 15px;
   }
   .panel-heading h2 {
     font-size: 16px;
-    line-height: 22px;
-  }
-  .team-panel .panel-heading p {
-    display: none;
-  }
-  .team-head {
-    padding-block: 1px;
-  }
-  .team-panel-footer {
-    margin-top: 4px;
-  }
-  .type-panel .type-table :is(th, td) {
-    padding-block: 1px;
-  }
-  .type-footer {
-    margin-top: 4px;
-  }
-  .ring-total strong {
-    font-size: 18px;
-  }
-  .ring-total {
-    gap: 0;
-  }
-  .pending-table :is(th, td) {
-    padding-block: 1px;
-  }
-  .attention-tabs button {
-    padding-block: 5px;
-  }
-  .attention-row {
-    padding-block: 6px;
   }
 }
-@media (min-width: 1100px) and (min-height: 650px) and (max-height: 780px) {
-  .type-panel {
-    display: grid;
-    grid-template-columns: minmax(80px, 1fr) minmax(0, 2fr);
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    column-gap: 12px;
+@media (max-width: 1249px) {
+  .factory-dashboard {
+    height: auto;
+    min-height: calc(100dvh - var(--topbar-height, 56px));
   }
-  .type-panel .panel-heading,
-  .type-footer {
-    grid-column: 1 / -1;
+  .dashboard {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    grid-template-rows: 350px 325px 310px;
+    grid-template-areas: 'inventory yield' 'shipping deadline' 'attention attention';
+    flex: none;
   }
-  .home-ring {
-    align-self: stretch;
-    max-height: none;
-    margin: 0;
+  .updated {
+    display: none;
   }
-  .type-panel .type-table {
-    align-self: center;
+}
+@media (max-width: 800px) {
+  .factory-dashboard {
+    padding: 12px;
   }
-  .type-key {
-    margin-right: 5px;
+  .dashboard {
+    grid-template-columns: 1fr;
+    grid-template-rows: 335px 315px 300px 340px 300px;
+    grid-template-areas: 'inventory' 'yield' 'shipping' 'deadline' 'attention';
+    gap: 12px;
   }
-  .ring-total strong {
-    font-size: clamp(13px, 1.2vw, 16px);
+  .overview-heading h1 {
+    font-size: 20px;
+  }
+  .overview-heading > div {
+    gap: 10px;
+  }
+  .attention .panel-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .stock-table td {
+    font-size: 13px;
+  }
+  .attention-table {
+    min-width: 550px;
   }
 }
 </style>
 <style>
-.home-types-dialog {
+.factory-detail-dialog {
   max-width: calc(100vw - 28px);
-  border-radius: 12px;
+}
+.factory-detail-dialog .el-table {
+  font-size: 13px;
 }
 </style>

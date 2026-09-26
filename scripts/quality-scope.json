@@ -23,7 +23,11 @@
     "tests/test_observability.py",
     "tests/test_material_reset.py",
     "tests/test_admin_audit_migration.py",
-    "alembic/versions/20260920_0016_admin_audit.py"
+    "alembic/versions/20260920_0016_admin_audit.py",
+    "app/factory_dashboard.py",
+    "tests/test_factory_dashboard.py",
+    "alembic/versions/20260926_0019_delivery_plans.py",
+    "tests/test_delivery_plan_migration.py"
   ],
   "frontend": [
     "src/main.ts",
@@ -40,6 +44,14 @@
     "src/types/factoryLive.ts",
     "eslint.config.mjs",
     "scripts/check-format.mjs",
-    "src/utils/factoryGlass.ts"
+    "src/utils/factoryGlass.ts",
+    "src/pages/FactoryInventoryPage.vue",
+    "src/pages/FactoryInventoryPage.test.ts",
+    "src/components/FactoryDeliveryPlans.vue",
+    "src/components/FactoryShipmentChart.vue",
+    "src/components/FactoryShippingAnalysis.vue",
+    "src/services/factoryDashboardApi.ts",
+    "src/types/factoryDashboard.ts",
+    "src/utils/factoryDashboard.ts"
   ]
 }

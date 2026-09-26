@@ -5,7 +5,7 @@ import { BarChart, LineChart, PieChart, CustomChart, ScatterChart } from 'echart
 import { GridComponent, LegendComponent, TooltipComponent, AriaComponent, DataZoomComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 use([BarChart, LineChart, PieChart, CustomChart, ScatterChart, GridComponent, LegendComponent, TooltipComponent, AriaComponent, DataZoomComponent, CanvasRenderer])
-const props = withDefaults(defineProps<{ option: EChartsCoreOption; label: string; empty?: boolean; smoothUpdate?: boolean; motion?: boolean; highlightIndex?: number; pixelRatio?: number; enterDuration?: number }>(), { motion: true })
+const props = withDefaults(defineProps<{ option: EChartsCoreOption; label: string; empty?: boolean; smoothUpdate?: boolean; motion?: boolean; highlightIndex?: number; pixelRatio?: number; enterDuration?: number; updateDuration?: number }>(), { motion: true })
 const emit = defineEmits<{ select: [value: { dataIndex: number; seriesIndex: number }] }>()
 const root = ref<HTMLElement>()
 let chart: ECharts | undefined
@@ -26,7 +26,7 @@ function render() {
     chart = init(root.value, undefined, { devicePixelRatio: props.pixelRatio })
     chart.on('click', params => emit('select', { dataIndex: params.dataIndex, seriesIndex: params.seriesIndex ?? 0 }))
   }
-  chart.setOption({ ...props.option, aria: { enabled: true, label: { description: props.label } }, animation: props.motion && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches, animationDuration: props.enterDuration ?? (props.smoothUpdate ? 600 : 300), animationDurationUpdate: props.smoothUpdate ? 600 : 220 }, { notMerge: !props.smoothUpdate, ...(props.smoothUpdate ? { replaceMerge: ['series'] } : {}) })
+  chart.setOption({ ...props.option, aria: { enabled: true, label: { description: props.label } }, animation: props.motion && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches, animationDuration: props.enterDuration ?? (props.smoothUpdate ? 600 : 300), animationDurationUpdate: props.updateDuration ?? (props.smoothUpdate ? 600 : 220) }, { notMerge: !props.smoothUpdate, ...(props.smoothUpdate ? { replaceMerge: ['series'] } : {}) })
   focusPoint()
 }
 watch(() => [props.option, props.empty, props.motion], render, { flush: 'post' })

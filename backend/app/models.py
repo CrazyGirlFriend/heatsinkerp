@@ -133,6 +133,18 @@ class OpeningStockSubmission(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class SerialDeliveryPlan(Base):
+    """Versioned delivery installments; fulfillment is derived from confirmed shipments."""
+
+    __tablename__ = "serial_delivery_plans"
+    serial_no: Mapped[str] = mapped_column(String(80), primary_key=True)
+    installments: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(80), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    __table_args__ = (CheckConstraint("version > 0", name="ck_delivery_plan_version"),)
+
+
 class MaterialTransfer(Base):
     """A material batch: internal handoff, warehouse intake, or external exit.
 

@@ -13,7 +13,7 @@ from uuid import uuid4
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
-from .models import AuthSession, MaterialDispatch, MaterialLoss, MaterialTransfer, SerialUrgency, Team, User, TeamPurpose, OpeningStockSubmission, NotificationOutbox, utcnow
+from .models import AuthSession, MaterialDispatch, MaterialLoss, MaterialTransfer, SerialUrgency, SerialDeliveryPlan, Team, User, TeamPurpose, OpeningStockSubmission, NotificationOutbox, utcnow
 from .observability import record
 
 
@@ -121,7 +121,7 @@ class InventoryEvents:
 
 inventory_events = InventoryEvents()
 outbox_wakeups = InventoryEvents()
-WATCHED = (MaterialTransfer, MaterialLoss, MaterialDispatch, SerialUrgency, Team, User, AuthSession, TeamPurpose, OpeningStockSubmission)
+WATCHED = (MaterialTransfer, MaterialLoss, MaterialDispatch, SerialUrgency, SerialDeliveryPlan, Team, User, AuthSession, TeamPurpose, OpeningStockSubmission)
 PENDING = "inventory_changed_transactions"
 
 
@@ -155,7 +155,7 @@ def change_for(row, db):
         return InventoryChange(accounts=True, user_ids=frozenset((row.id,)) if row.id is not None else frozenset())
     if isinstance(row, Team):
         return InventoryChange(team_ids=None, directory=True)
-    if isinstance(row, SerialUrgency):
+    if isinstance(row, (SerialUrgency, SerialDeliveryPlan)):
         # The serial may exist in several teams; refresh all affected views.
         return InventoryChange(team_ids=None)
     return InventoryChange(team_ids=affected_teams(row), directory=isinstance(row, TeamPurpose))

@@ -16,7 +16,7 @@ def test_only_supported_business_routes_are_registered(client):
     supported_prefixes = ("/api/access/", "/api/auth/", "/api/health", "/api/teams",
                           "/api/team-directory", "/api/accounts", "/api/users",
                           "/api/material-transfers", "/api/material-trace", "/api/material-dispatches", "/api/team-materials/",
-                          "/api/factory-overview", "/api/serial-urgency", "/api/main-system/", "/api/notifications/")
+                          "/api/factory-dashboard", "/api/factory-overview", "/api/serial-urgency", "/api/main-system/", "/api/notifications/")
     assert all(path.startswith(supported_prefixes) for path in paths), paths
     for method, path in (
         ("GET", "/api/work-orders"), ("POST", "/api/work-orders"),
