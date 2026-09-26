@@ -21,6 +21,14 @@ function event(id: number, action: MaterialTransferHistoryEntry['action'], day: 
 }
 
 describe('full-chain residence from committed stock history', () => {
+  it('includes processing piece changes in residence, without inventing incoming weight', () => {
+    const root = lot(1, { quantity: 10, weight: 100, on_hand_quantity: 40, on_hand_weight: 43,
+      history: [{ id: 10, action: 'quantity_changed', actor: '测试', occurred_at: at(11), changes: { stock_quantity: { before: 10, after: 100 } } }] })
+    const child = lot(2, { quantity: 60, weight: 57, transferred_at: at(12), status: 'pending', received_at: null, on_hand_quantity: null, on_hand_weight: null })
+    const node = traceFlowModel([root, child], at(17)).byId.get('1')!
+    expect(node.residenceIssue).toBe(false)
+    expect(node.stays.map(stay => [stay.quantity, stay.weight])).toEqual([[10, 100], [100, 100], [40, 43]])
+  })
   it('deducts pending splits immediately and extends only the remaining received stock to the observation time', () => {
     const root = lot(1, { on_hand_quantity: 50, on_hand_weight: 5 })
     const pending = lot(2, { quantity: 30, weight: 3, transferred_at: at(12), status: 'pending', received_at: null, on_hand_quantity: null, on_hand_weight: null })

@@ -156,6 +156,13 @@ function residence(node: PathNode, outgoing: TraceBatch[], closing: number): { s
     }
   }
   for (const loss of lot.loss_records || []) add(traceTimestamp(loss.created_at), -loss.quantity, -loss.weight)
+  for (const event of lot.history || []) {
+    if (event.action === 'quantity_changed') {
+      const pieces = event.changes.stock_quantity
+      if (!pieces || !Number.isInteger(pieces.before) || !Number.isInteger(pieces.after)) { issue = true; continue }
+      add(traceTimestamp(event.occurred_at), Number(pieces.after) - Number(pieces.before), 0)
+    }
+  }
   const stays: ResidenceSegment[] = []
   let start = received, quantity = lot.quantity, weight = lot.weight
   for (const [at, delta] of [...changes].sort((a, b) => a[0] - b[0])) {

@@ -2,6 +2,7 @@
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { ElButton, ElDescriptions, ElDescriptionsItem, ElDrawer, ElPagination, ElTable, ElTableColumn } from 'element-plus'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
+import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import InventoryMovementSummary from './InventoryMovementSummary.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import StatePanel from './StatePanel.vue'
@@ -18,8 +19,9 @@ const emit = defineEmits<{ close: []; changed: []; action: [mode: 'dispatch' | '
 const rows = ref<StockBatch[]>([]), total = ref(0), page = ref(1), pageSize = ref(10)
 const loading = ref(false), error = ref('')
 const batchOpen = ref(false), selected = ref<MaterialTransfer | null>(null)
+const quantityOpen = ref(false), quantitySource = ref<number | null>(null)
 let version = 0
-const live = useLiveRefresh(() => load(true), { teamId: () => props.teamId, enabled: () => !!props.group, busy: () => loading.value })
+const live = useLiveRefresh(() => load(true), { teamId: () => props.teamId, enabled: () => !!props.group, busy: () => loading.value || quantityOpen.value })
 async function load(background = false) {
   const current = ++version
   if (!props.group) return
@@ -36,8 +38,9 @@ function open(transfer: MaterialTransfer) {
 }
 function action(mode: 'dispatch' | 'loss', row: StockBatch) { if (props.canWrite && !loading.value && !error.value && stockAvailable(row)) emit('action', mode, [row]) }
 function asStock(row: unknown) { return row as StockBatch }
+function openQuantity(row: StockBatch) { quantitySource.value = Number(row.transfer.id); quantityOpen.value = true }
 function changed() { void load(); emit('changed') }
-watch(() => [props.teamId, props.group?.group_id], () => { page.value = 1; rows.value = []; total.value = 0; batchOpen.value = false; void load() }, { immediate: true })
+watch(() => [props.teamId, props.group?.group_id], () => { page.value = 1; rows.value = []; total.value = 0; batchOpen.value = quantityOpen.value = false; void load() }, { immediate: true })
 onBeforeUnmount(() => { ++version })
 </script>
 
@@ -55,7 +58,7 @@ onBeforeUnmount(() => { ++version })
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取来源批次" />
     <ElTable v-else class="business-table warehouse-source-table" :data="rows" row-key="transfer.id" empty-text="暂无来源记录">
-      <ElTableColumn label="来源批次" min-width="215" align="center"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
+      <ElTableColumn label="来源批次" min-width="215" align="center"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton><div><ElButton link type="primary" @click="openQuantity(asStock(row))">{{ canWrite && stockAvailable(asStock(row)) ? '加工件数变更' : '件数记录' }}</ElButton></div></template></ElTableColumn>
       <ElTableColumn v-if="ownership" label="归属余量" min-width="140" align="center"><template #default="{ row }"><div class="source-balance"><strong>{{ inventoryAmount(row.owned_quantity) }} 件</strong><span>{{ inventoryAmount(row.owned_weight) }} kg</span></div></template></ElTableColumn>
       <ElTableColumn :label="ownership ? '在库余量' : '当前结存'" min-width="160" align="center"><template #default="{ row }"><div class="source-balance"><strong>{{ inventoryAmount(row.on_hand_quantity) }} 件</strong><span>{{ inventoryAmount(row.on_hand_weight) }} kg</span><small>{{ inventoryBalanceState(asStock(row)) }}</small></div></template></ElTableColumn>
       <ElTableColumn v-if="ownership" label="转出待签收" min-width="140" align="center"><template #default="{ row }"><div class="source-balance"><span>{{ inventoryAmount(row.in_transit_quantity) }} 件</span><span>{{ inventoryAmount(row.in_transit_weight) }} kg</span></div></template></ElTableColumn>
@@ -66,6 +69,7 @@ onBeforeUnmount(() => { ++version })
     <template #footer><div class="warehouse-detail-footer"><span>共 {{ total }} 个来源批次（含无结存）</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></div></template>
   </ElDrawer>
   <MaterialTransferDrawer v-model="batchOpen" :transfer="selected" :trace-scope="{ team_id: teamId, direction: 'all' }" @changed="changed" />
+  <QuantityAdjustmentDialog v-model="quantityOpen" :team-id="teamId" :source-id="quantitySource" :can-write="canWrite" @saved="changed" />
 </template>
 
 <style scoped>

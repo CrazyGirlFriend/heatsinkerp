@@ -70,7 +70,7 @@ export type MaterialTransferDocumentFields = Record<MaterialTransferTextField, s
 
 export interface MaterialTransferHistoryEntry {
   id: number
-  action: 'created' | 'updated' | 'received' | 'voided' | 'stocked' | 'dispatched' | 'rejected'
+  action: 'created' | 'updated' | 'received' | 'voided' | 'stocked' | 'dispatched' | 'rejected' | 'quantity_changed'
   actor: string
   occurred_at: string
   changes: Record<string, { before: unknown; after: unknown }>

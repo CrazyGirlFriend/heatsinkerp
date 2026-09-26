@@ -2,6 +2,7 @@ import { httpRequest, HttpRequestError, type HttpRequestOptions } from './httpCl
 import type { TeamPurpose, OpeningLine, OpeningState, SerialHistory } from '@/types/teamBusiness'
 import { normalizeMaterialTransfer } from './materialTransferApi'
 import type { CreateWarehouseReceipt, WarehouseReceiptParams, CreatedMaterialBatches } from '@/types/teamMaterials'
+import type { QuantityAdjustment, QuantityAdjustmentContext, CreateQuantityAdjustment } from '@/types/teamMaterials'
 import { isExternalEntryKind } from '@/types/materialTransfer'
 import type { MaterialAnalytics, Metric, SerialParams, SerialSummary } from '@/types/materialAnalytics'
 import type { WarehouseGroupParams, TeamInventoryParams, TeamInventoryRow } from '@/types/teamInventory'
@@ -51,6 +52,8 @@ async function page<T>(url: string, normalize: (raw: unknown) => T): Promise<Mat
   return { items: raw.items.map(normalize), total: Number(raw.total), page: Number(raw.page), page_size: Number(raw.page_size), ...(typeof raw.as_of === 'string' ? { as_of: raw.as_of } : {}) }
 }
 export const teamMaterialApi = {
+  quantityContext(teamId: number, sourceId: number, page = 1) { return request<QuantityAdjustmentContext>(path(teamId, `stock/${sourceId}/quantity-adjustments`, { page, page_size: 10 })) },
+  changeQuantity(teamId: number, payload: CreateQuantityAdjustment) { return request<QuantityAdjustment>(path(teamId, 'quantity-adjustments'), { method: 'POST', body: payload }) },
   purposes(teamId: number) { return request<TeamPurpose[]>(path(teamId, 'purposes')) },
   savePurpose(teamId: number, payload: { name: string; active: boolean; expected_version?: number }, id?: number) { return request<TeamPurpose>(path(teamId, id ? `purposes/${id}` : 'purposes'), { method: id ? 'PATCH' : 'POST', body: payload }) },
   authorizeOpening(teamId: number, enabled: boolean) { return request(path(teamId, 'opening-stock/authorization'), { method: 'PUT', body: { enabled } }) },

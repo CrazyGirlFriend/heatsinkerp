@@ -13,6 +13,16 @@ export interface TeamMaterialOverview {
   legacy_received_count: number
 }
 export interface StockBatch extends MaterialBalance { transfer: MaterialTransfer }
+export interface QuantityAdjustment {
+  id: number; source_transfer_id: number; before_quantity: number; after_quantity: number; delta_quantity: number
+  weight: number; reason: string; created_by: string; created_at: string
+}
+export interface QuantityAdjustmentContext extends MaterialPage<QuantityAdjustment> {
+  source_transfer_id: number; batch_no: string; quantity: number; weight: number; revision: number; as_of: string
+}
+export interface CreateQuantityAdjustment {
+  source_transfer_id: number; quantity: number; expected_revision: number; reason: string; idempotency_key: string
+}
 export interface MaterialLoss {
   urgency?: import('./recordFilters').SerialUrgency
   id: number; loss_no: string; source_transfer_id: number; batch_no: string; serial_no: string

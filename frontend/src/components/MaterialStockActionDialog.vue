@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElRadioButton, ElRadioGroup, ElSelect } from 'element-plus'
 import MaterialAmount from './MaterialAmount.vue'
+import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamWorkspaceProfile } from '@/config/teamWorkspaces'
@@ -21,6 +22,7 @@ const saving = ref(false)
 const refreshing = ref(false)
 const errorMessage = ref('')
 const balanceNotice = ref('')
+const quantityOpen = ref(false), quantitySource = ref<number | null>(null)
 let generation = 0
 let requestKey = ''
 let fingerprint = ''
@@ -40,7 +42,17 @@ const destinations = computed(() => directory.items.filter(team => team.active &
 const warehouse = computed(() => !external.value && destinations.value.find(team => String(team.id) === String(form.nextTeamId))?.kind === 'warehouse')
 const totalQuantity = computed(() => lines.value.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0))
 const totalWeight = computed(() => Math.round(lines.value.reduce((sum, line) => sum + (Number(line.weight) || 0), 0) * 1000) / 1000)
-const busy = computed(() => saving.value || refreshing.value)
+const busy = computed(() => saving.value || refreshing.value || quantityOpen.value)
+function openQuantity(source: StockBatch) {
+  if (!canWrite.value || busy.value) return
+  quantitySource.value = Number(source.transfer.id); quantityOpen.value = true
+}
+async function quantitySaved() {
+  const current = generation
+  quantityOpen.value = false
+  await refreshBalances()
+  if (current === generation && props.modelValue) balanceNotice.value = `加工件数已入账。${balanceNotice.value}`
+}
 function close() { if (!busy.value) emit('update:modelValue', false) }
 function fillAll(index: number) {
   const line = lines.value[index]
@@ -59,6 +71,7 @@ watch([() => props.modelValue, () => props.teamId, () => props.mode], ([open]) =
   ++generation
   saving.value = false
   refreshing.value = false
+  quantityOpen.value = false
   if (!open) return
   lines.value = (isLoss.value ? props.sources.slice(0, 1) : props.sources).map(source => ({ source, latest: source, quantity: isLoss.value ? undefined : dispatchableAmounts(source).quantity ?? undefined, weight: isLoss.value ? undefined : dispatchableAmounts(source).weight ?? undefined, materialType: source.transfer.material_type || '' }))
   form.nextTeamId = ''; form.entryKind = 'transfer'; form.externalDestination = ''; form.notes = ''; form.reason = ''
@@ -148,6 +161,7 @@ async function submit() {
           <header><div><strong>{{ line.source.transfer.material_name || '未填写材质' }}</strong><span>{{ line.source.transfer.batch_no }}</span></div><small>来源 · {{ line.source.transfer.source_team.name }}</small></header>
           <p class="source-identity">流水号 {{ line.source.transfer.serial_no }}<span>本班组业务 {{ line.source.transfer.purpose_name || '未分类' }}</span><span>原单批号 {{ line.source.transfer.source_batch_no || '未填写' }}</span></p>
           <div class="source-balance"><span>{{ isScrapType(line.source.transfer.material_type) ? '废料可处理余量' : '来源可用余量' }}</span><MaterialAmount :quantity="dispatchableAmounts(line.latest).quantity" :weight="dispatchableAmounts(line.latest).weight" /><ElButton link type="primary" :disabled="!line.latest" @click="fillAll(index)">填入剩余量</ElButton><ElButton v-if="!isLoss" link type="primary" :disabled="lines.length >= 100" @click="splitLine(index)">拆分物料</ElButton><ElButton v-if="!isLoss && lines.length > 1" link type="danger" @click="lines.splice(index, 1)">移除</ElButton></div>
+          <ElButton v-if="!isLoss" link type="primary" @click="openQuantity(line.source)">加工后件数变化？更新在库件数</ElButton>
           <div class="source-inputs">
             <ElFormItem :label="isLoss ? '丢失件数' : `${actionLabel}件数`" required><ElInputNumber v-model="line.quantity" :aria-label="`${line.source.transfer.batch_no}件数`" :min="0" :precision="0" controls-position="right" /><span class="amount-unit">件</span></ElFormItem>
             <ElFormItem :label="isLoss ? '丢失重量' : `${actionLabel}重量`" required><ElInputNumber v-model="line.weight" :aria-label="`${line.source.transfer.batch_no}重量`" :min="0" :precision="3" :step="0.1" controls-position="right" /><span class="amount-unit">kg</span></ElFormItem>
@@ -166,6 +180,7 @@ async function submit() {
     <ElButton v-if="balanceNotice" link type="primary" :loading="refreshing" :disabled="saving" @click="refreshBalances">重新刷新余量</ElButton>
     <template #footer><div class="action-footer"><div><span>{{ isLoss ? '本次丢失' : `共 ${lines.length} 条物料明细` }}</span><MaterialAmount :quantity="totalQuantity" :weight="totalWeight" /></div><div><ElButton :disabled="busy" @click="close">取消</ElButton><ElButton type="primary" :loading="saving" :disabled="busy || !canWrite || lines.some(line => !line.latest)" @click="submit">{{ isLoss ? '确认登记丢失' : external ? `生成${actionLabel}单` : '确认出库' }}</ElButton></div></div></template>
   </ElDialog>
+  <QuantityAdjustmentDialog v-model="quantityOpen" :team-id="teamId" :source-id="quantitySource" :can-write="canWrite" @saved="quantitySaved" />
 </template>
 
 <style scoped>

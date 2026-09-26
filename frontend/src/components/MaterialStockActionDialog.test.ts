@@ -4,6 +4,7 @@ import { reactive } from 'vue'
 import { ElInputNumber, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialStockActionDialog from './MaterialStockActionDialog.vue'
+import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import type { MaterialDispatch, MaterialLoss, StockBatch } from '@/types/teamMaterials'
@@ -30,6 +31,22 @@ async function submit() { await wrapper.findAll('button').find(button => /^(确�
 async function destination(id = 3) { wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', id); await flushPromises() }
 
 describe('source batch dispatch and loss drafts', () => {
+  it('refreshes all split-source balances after processing without overwriting the dispatch draft', async () => {
+    vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({ source_transfer_id: 10, batch_no: 'TL10', quantity: 100, weight: 10, revision: 0, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
+    await render('dispatch', [source()]); await destination()
+    const inputs = wrapper.findAllComponents(ElInputNumber)
+    inputs[0]!.vm.$emit('update:modelValue', 3); inputs[1]!.vm.$emit('update:modelValue', .3)
+    await wrapper.findAll('button').find(button => button.text() === '加工后件数变化？更新在库件数')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.getComponent(QuantityAdjustmentDialog).props('sourceId')).toBe(10)
+    wrapper.getComponent(QuantityAdjustmentDialog).vm.$emit('saved', {})
+    await flushPromises()
+    expect(inputs[0]!.props('modelValue')).toBe(3)
+    expect(inputs[1]!.props('modelValue')).toBe(.3)
+    expect(wrapper.text()).toContain('加工件数已入账')
+    await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ next_team_id: 3, lines: [{ source_transfer_id: 10, quantity: 3, weight: .3, material_type: 'semi_finished' }] }))
+  })
   it('requires a destination purpose per batch and clears choices when the destination changes', async () => {
     vi.mocked(teamMaterialApi.purposes).mockResolvedValue([{ id: 31, team_id: 3, name: '检验', active: true, version: 1 }, { id: 32, team_id: 3, name: '去毛刺', active: true, version: 1 }])
     await render(); await destination()

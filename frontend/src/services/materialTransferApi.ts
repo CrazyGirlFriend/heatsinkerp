@@ -71,7 +71,7 @@ function normalizeHistory(value: unknown): MaterialTransferHistoryEntry[] {
   return value.flatMap(item => {
     const event = objectValue(item)
     const id = optionalInteger(event.id, 1)
-    if (id === null || !['created', 'updated', 'received', 'voided', 'stocked', 'dispatched', 'rejected'].includes(String(event.action))) return []
+    if (id === null || !['created', 'updated', 'received', 'voided', 'stocked', 'dispatched', 'rejected', 'quantity_changed'].includes(String(event.action))) return []
     const changes: MaterialTransferHistoryEntry['changes'] = {}
     Object.entries(objectValue(event.changes)).forEach(([field, change]) => {
       const values = objectValue(change)
