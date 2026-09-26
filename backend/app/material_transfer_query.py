@@ -19,6 +19,8 @@ CONTAINS_SEARCH_FIELDS = (
     MaterialTransfer.next_team_code,
     MaterialTransfer.next_team_name,
     MaterialTransfer.created_by,
+    # Search the document snapshot so renamed/disabled activities remain findable.
+    MaterialTransfer.purpose_name,
 )
 
 

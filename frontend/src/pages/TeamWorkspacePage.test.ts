@@ -231,7 +231,10 @@ describe('team workspace material ledger', () => {
     expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(false)
   })
   it('places search and scanning in one toolbar without removing date or urgency filters', async () => {
+    vi.mocked(materialTransferApi.list).mockResolvedValue({ items: [normalizeMaterialTransfer({ ...source().transfer, status: 'pending', purpose_id: 31, purpose_name: '去毛刺' })], total: 1, page: 1, page_size: 10 })
     await render('/team-workspaces/914?tab=pending')
+    expect(wrapper.get('.team-table').text()).toContain('去毛刺')
+    expect(wrapper.get('[aria-label="班组设置"]').text()).toBe('班组设置')
     const toolbar = wrapper.get('.list-toolbar--pending')
     expect(toolbar.find('input[aria-label="物料搜索"]').exists()).toBe(true)
     expect(toolbar.find('input[aria-label="扫描转料批次号"]').exists()).toBe(true)
@@ -241,9 +244,9 @@ describe('team workspace material ledger', () => {
     expect(wrapper.find('.scanner-bar').exists()).toBe(false)
     expect(wrapper.find('.scanner-error').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('扫码后核对整批明细')
-    await toolbar.get('input[aria-label="物料搜索"]').setValue('AL')
+    await toolbar.get('input[aria-label="物料搜索"]').setValue('去毛刺')
     await toolbar.get('input[aria-label="物料搜索"]').trigger('keyup.enter'); await flushPromises()
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ query: 'AL', status: 'pending' }))
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ query: '去毛刺', status: 'pending' }))
   })
   it('scopes pending incoming records and rejects a scanned transfer addressed to another team', async () => {
     await render('/team-workspaces/914?tab=pending')

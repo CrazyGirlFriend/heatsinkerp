@@ -17,8 +17,8 @@ const shortKind = (event: SerialHistoryEvent) => ({ incoming: '收进', opening:
 </script>
 
 <template>
-  <div class="event-lanes" tabindex="0" aria-label="本班组各用途收发时间线，可横向滚动">
-    <div class="lane-axis"><span>本班组用途 / 当前结存</span><span>每个用途独立按时间从左向右排列 <b>点击节点查看批次</b></span></div>
+  <div class="event-lanes" tabindex="0" aria-label="本班组各业务收发时间线，可横向滚动">
+    <div class="lane-axis"><span>本班组业务 / 当前结存</span><span>每个业务独立按时间从左向右排列 <b>点击节点查看批次</b></span></div>
     <div v-for="lane in lanes" :key="lane.key" class="event-lane" :style="{ '--lane-color': colors.get(lane.key), '--track-width': `${columns * 234 + 36}px`, '--columns': columns, '--steps': Math.max(0, lane.events.length - 1) }">
       <aside class="lane-label"><i /><strong>{{ lane.name }}</strong><span>{{ num(lane.on_hand_quantity) }} <small>件</small></span><span>{{ num(lane.on_hand_weight) }} <small>kg</small></span></aside>
       <div :key="replay" class="lane-track">

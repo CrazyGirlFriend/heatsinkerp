@@ -17,7 +17,7 @@ const fields = computed<DocumentField[]>(() => {
     { label: '批次号', value: t.batch_no },
     { label: '状态', value: materialTransferStatusLabel(t.status, t.entry_kind) },
     { label: receipt ? '入库来源' : external ? `${verb}班组` : '转出班组', value: materialSourceLabel(t) },
-    { label: '转料用途', value: t.purpose_name || '未分类' },
+    { label: '承接业务', value: t.purpose_name || '未分类' },
     { label: opening ? '入账班组' : receipt ? '入库库房' : external ? `${verb}去向` : '接收班组', value: external ? t.external_destination || '—' : t.next_team.name },
     { label: '流水号', key: 'serial', value: t.serial_no },
     { label: '来源批次', value: t.source_transfer_batch_no || '—' },

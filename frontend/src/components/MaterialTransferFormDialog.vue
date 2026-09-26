@@ -117,8 +117,8 @@ function validate(): boolean {
   else if (!serialNo) formError.value = '请输入流水号'
   else if (serialNo.length > 80) formError.value = '流水号不能超过 80 个字符'
   else if (!external.value && form.nextTeamId === '') formError.value = '请选择接收班组'
-  else if (!external.value && (purposes.loading.value || purposes.error.value)) formError.value = purposes.error.value || '请等待用途加载完成'
-  else if (!external.value && purposes.items.value.length && form.purposeId !== editingSnapshot.value?.purpose_id && !purposes.items.value.some(item => item.active && item.id === form.purposeId)) formError.value = '请选择下序班组的转料用途'
+  else if (!external.value && (purposes.loading.value || purposes.error.value)) formError.value = purposes.error.value || '请等待业务加载完成'
+  else if (!external.value && purposes.items.value.length && form.purposeId !== editingSnapshot.value?.purpose_id && !purposes.items.value.some(item => item.active && item.id === form.purposeId)) formError.value = '请选择下序班组的承接业务'
   else if (!external.value && String(form.nextTeamId) === String(sourceTeam.value.id)) formError.value = '接收班组不能与转出班组相同'
   else if (form.quantity == null || !Number.isInteger(quantity) || quantity < 0 || quantity > 2147483647) formError.value = '转料件数须为 0 至 2147483647 的整数'
   else if (form.weight == null || !Number.isFinite(weight) || weight < 0 || weight > 99999999999.999) formError.value = '请输入有效的非负转料重量'
@@ -269,12 +269,13 @@ onBeforeUnmount(() => { ++formGeneration })
           <ElOption v-for="team in destinationTeams" :key="team.id" :label="team.name" :value="team.id" />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem v-if="!external" label="转料用途" :required="purposes.items.value.length > 0">
-        <ElSelect v-model="form.purposeId" aria-label="转料用途" :loading="purposes.loading.value" :disabled="!canSubmit || !form.nextTeamId" :placeholder="form.nextTeamId && !purposes.loading.value && !purposes.items.value.length ? '下序未配置用途' : '请选择转料用途'">
+      <ElFormItem v-if="!external" label="承接业务" :required="purposes.items.value.length > 0">
+        <ElSelect v-model="form.purposeId" aria-label="承接业务" :loading="purposes.loading.value" :disabled="!canSubmit || !form.nextTeamId" :placeholder="!form.nextTeamId ? '先选择接收班组' : !purposes.items.value.length ? '接收班组尚未配置业务' : purposes.items.value.some(item => item.active) ? '请选择承接业务' : '接收班组暂无启用业务'">
           <ElOption v-for="purpose in purposes.items.value.filter(item => item.active)" :key="purpose.id" :value="purpose.id" :label="purpose.name" />
-          <ElOption v-if="editingSnapshot?.purpose_id && String(form.nextTeamId) === String(editingSnapshot.next_team.id) && !purposes.items.value.some(item => item.active && item.id === editingSnapshot?.purpose_id)" :value="editingSnapshot.purpose_id" :label="`${editingSnapshot.purpose_name}（原单用途）`" />
+          <ElOption v-if="editingSnapshot?.purpose_id && String(form.nextTeamId) === String(editingSnapshot.next_team.id) && !purposes.items.value.some(item => item.active && item.id === editingSnapshot?.purpose_id)" :value="editingSnapshot.purpose_id" :label="`${editingSnapshot.purpose_name}（原单业务）`" />
         </ElSelect>
-        <ElButton v-if="purposes.error.value" link type="danger" @click="purposes.refresh">用途加载失败，点击重试</ElButton>
+        <p v-if="purposes.items.value.length && !purposes.items.value.some(item => item.active)">接收班组暂无启用业务，新转料前需由该班组在工作台中启用。</p>
+        <ElButton v-if="purposes.error.value" link type="danger" @click="purposes.refresh">业务加载失败，点击重试</ElButton>
       </ElFormItem>
       </div>
       <ElFormItem label="流水号" required>

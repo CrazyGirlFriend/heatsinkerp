@@ -17,7 +17,7 @@ const fields = computed(() => {
     { label: '流水号', value: transfer.serial_no },
     { label: '状态', value: materialTransferStatusLabel(transfer.status, transfer.entry_kind) },
     { label: '物料类型', value: materialTypeLabel(transfer.material_type) },
-    { label: '转料用途', value: transfer.purpose_name || '未分类' },
+    { label: '承接业务', value: transfer.purpose_name || '未分类' },
     { label: '原单批号', value: transfer.source_batch_no || '—' },
     { label: '材质', value: transfer.material_name || '—' },
     { label: '客户代码', value: transfer.customer_code || '—' },

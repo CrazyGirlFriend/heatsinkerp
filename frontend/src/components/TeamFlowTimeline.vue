@@ -58,7 +58,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
       <div class="node-legend"><span><i class="marker received" />实心收进</span><span><i class="marker" />空心转出</span><span><ElIcon><Close /></ElIcon>丢失</span></div>
     </header>
     <div v-if="model.extent" class="timeline-scroll">
-      <FlowPreviewCanvas ref="chart" :option="option" :replay="replay" :motion="motion" renderer="svg" :interaction="interaction" :label="`${history.team_name}，流水号 ${history.serial_no}，按用途及来源批次排列的收发时间图；件数和重量，滚轮缩放，H 平移，V 选择。`" @select="pick" @zoom="zoom = $event" />
+      <FlowPreviewCanvas ref="chart" :option="option" :replay="replay" :motion="motion" renderer="svg" :interaction="interaction" :label="`${history.team_name}，流水号 ${history.serial_no}，按业务及来源批次排列的收发时间图；件数和重量，滚轮缩放，H 平移，V 选择。`" @select="pick" @zoom="zoom = $event" />
     </div>
     <div v-else class="timeline-empty">所选日期内没有已入账的收发或结存。</div>
     <div v-if="model.extent" class="timeline-controls" role="group" aria-label="班组画布工具">

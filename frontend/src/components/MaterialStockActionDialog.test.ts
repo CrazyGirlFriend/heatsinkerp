@@ -36,7 +36,7 @@ describe('source batch dispatch and loss drafts', () => {
     await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('请为每行物料选择')
-    const selects = wrapper.findAllComponents(ElSelect).filter(select => select.props('ariaLabel')?.endsWith('转料用途'))
+    const selects = wrapper.findAllComponents(ElSelect).filter(select => select.props('ariaLabel')?.endsWith('承接业务'))
     selects[0]!.vm.$emit('update:modelValue', 31); selects[1]!.vm.$emit('update:modelValue', 32)
     await submit()
     expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].lines.map(line => line.purpose_id)).toEqual([31, 32])
@@ -45,9 +45,15 @@ describe('source batch dispatch and loss drafts', () => {
     expect(selects[1]!.props('modelValue')).toBeUndefined()
   })
   it('cannot silently bypass a failed purpose lookup', async () => {
-    vi.mocked(teamMaterialApi.purposes).mockRejectedValue(new Error('用途读取失败'))
+    vi.mocked(teamMaterialApi.purposes).mockRejectedValue(new Error('业务读取失败'))
     await render(); await destination(); await submit()
-    expect(wrapper.text()).toContain('用途读取失败')
+    expect(wrapper.text()).toContain('业务读取失败')
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+  })
+  it('blocks new transfers when every destination business is disabled', async () => {
+    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([{ id: 31, team_id: 3, name: '检验', active: false, version: 2 }])
+    await render(); await destination(); await submit()
+    expect(wrapper.text()).toContain('接收班组暂无启用业务，请联系该班组在工作台中启用。')
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
   })
   it('splits one source into two typed lines and validates their combined quantity', async () => {

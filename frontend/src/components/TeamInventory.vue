@@ -53,7 +53,7 @@ const separateSpecification = computed(() => visibleColumns.value.some(column =>
 const separatePurpose = computed(() => visibleColumns.value.some(column => column.key === 'purpose_name'))
 function columnLabel(key: string, label: string) {
   if (key === 'material_name' && !separateSpecification.value) return '材质 / 规格'
-  if (key === 'material_type' && !separatePurpose.value) return '类型 / 用途'
+  if (key === 'material_type' && !separatePurpose.value) return '类型 / 业务'
   return label
 }
 const filters = computed<TeamInventoryParams>(() => {
@@ -150,7 +150,7 @@ onBeforeUnmount(() => { ++version })
         <ElSelect v-if="searchKind === 'number'" v-model="operatorDraft" class="numeric-operator" aria-label="库存数值比较"><ElOption value="eq" label="等于" /><ElOption value="gte" label="不少于" /><ElOption value="lte" label="不多于" /></ElSelect>
         <ElDatePicker v-if="searchKind === 'date'" :model-value="queryDraft || null" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" aria-label="库存日期搜索" @update:model-value="queryDraft = $event || ''" @clear="queryDraft = ''; search()" />
         <ElSelect v-else-if="searchKind === 'status'" v-model="queryDraft" aria-label="库存加急状态" clearable @clear="queryDraft = ''; search()"><ElOption value="urgent" label="加急" /><ElOption value="normal" label="普通" /></ElSelect>
-        <ElInput v-else v-model="queryDraft" :prefix-icon="searchKind === 'text' ? Search : undefined" aria-label="库存明细搜索" :placeholder="fieldDraft === 'all' ? '流水号、材质、用途或来源' : `搜索${searchColumns.find(column => column.key === fieldDraft)?.label}`" clearable @keyup.enter="search" @clear="search" />
+        <ElInput v-else v-model="queryDraft" :prefix-icon="searchKind === 'text' ? Search : undefined" aria-label="库存明细搜索" :placeholder="fieldDraft === 'all' ? '流水号、材质、业务或来源' : `搜索${searchColumns.find(column => column.key === fieldDraft)?.label}`" clearable @keyup.enter="search" @clear="search" />
       </div>
       <ElSelect v-if="warehouse" v-model="sourceDraft" class="warehouse-source-filter" aria-label="库存来源筛选" placeholder="全部来源" clearable @change="search"><ElOption v-for="(label, value) in warehouseSourceNames" :key="value" :value="value" :label="label" /></ElSelect>
       <ElSelect v-else v-model="sourceTeamDraft" class="warehouse-source-filter" aria-label="库存上序班组筛选" placeholder="全部上序" clearable filterable @change="search"><ElOption v-for="team in sourceTeams" :key="team.id" :value="team.id" :label="team.name" /></ElSelect>
@@ -181,7 +181,7 @@ onBeforeUnmount(() => { ++version })
         <template #default="{ row }">
           <template v-if="column.key === 'serial_no'"><ElButton class="serial-number-link" :title="row.serial_no" link type="primary" @click="openSerial(row)"><strong>{{ row.serial_no }}</strong></ElButton><SerialUrgencyBadge :urgency="row.urgency" /><ElButton v-if="canManageUrgency" class="warehouse-urgency-action" link type="primary" @click="flag(row)">{{ row.urgency?.urgent ? '取消加急' : '标记加急' }}</ElButton></template>
           <div v-else-if="column.key === 'material_name'" class="inventory-cell-stack"><span>{{ row.material_name || '—' }}</span><small v-if="!separateSpecification">{{ row.transfer_specification || '规格未填写' }}</small></div>
-          <div v-else-if="column.key === 'material_type'" class="inventory-cell-stack"><ElTag effect="light" :type="isScrapMaterialType(row.material_type) ? 'warning' : row.material_type === 'finished' ? 'success' : 'primary'">{{ column.format(asRow(row)) }}</ElTag><small v-if="!separatePurpose">{{ row.purpose_name || '未指定用途' }}</small></div>
+          <div v-else-if="column.key === 'material_type'" class="inventory-cell-stack"><ElTag effect="light" :type="isScrapMaterialType(row.material_type) ? 'warning' : row.material_type === 'finished' ? 'success' : 'primary'">{{ column.format(asRow(row)) }}</ElTag><small v-if="!separatePurpose">{{ row.purpose_name || '未指定业务' }}</small></div>
           <div v-else-if="column.key === 'source' && warehouse" class="inventory-cell-stack"><span>{{ row.receipt_source === 'opening' ? '期初库存' : row.source_name || '来源未登记' }}</span><small v-if="row.receipt_source !== 'opening'">{{ warehouseSourceNames[asRow(row).receipt_source] }}</small></div>
           <div v-else-if="column.key === 'stock_balance'" class="inventory-cell-stack inventory-balance"><strong>{{ inventoryAmount(row.on_hand_quantity) }} <small>件</small></strong><span>{{ inventoryAmount(row.on_hand_weight) }} <small>kg</small></span><small>{{ inventoryBalanceState(asRow(row)) }}<template v-if="row.current_batch_count"> · {{ row.current_batch_count }} 批</template></small></div>
           <InventoryMovementSummary v-else-if="column.key === 'movement'" :balance="asRow(row)" />

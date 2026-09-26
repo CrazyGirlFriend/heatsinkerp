@@ -27,7 +27,7 @@ function actionLabel(action: keyof typeof actions): string {
   return actions[action]
 }
 function fieldLabel(field: string): string {
-  const purposeLabels: Record<string, string> = { purpose_id: '转料用途编号', purpose_name: '转料用途', opening_stock_id: '期初提交编号' }
+  const purposeLabels: Record<string, string> = { purpose_id: '承接业务编号', purpose_name: '承接业务', opening_stock_id: '期初提交编号' }
   if (purposeLabels[field]) return purposeLabels[field]
   if (props.transfer.entry_kind === 'opening_stock') {
     const openingLabels: Record<string, string> = { next_team_id: '入账班组编号', next_team_code: '入账班组编码', next_team_name: '入账班组', received_at: '入账时间', received_by: '登记人' }

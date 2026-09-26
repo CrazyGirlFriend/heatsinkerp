@@ -67,7 +67,7 @@ export const warehouseColumns = [
   { key: 'stock_balance', label: '当前结存', width: 130, defaultVisible: true, format: (row: TeamInventoryRow) => `${amount(row.on_hand_quantity)} 件 / ${amount(row.on_hand_weight)} kg` },
   { key: 'movement', label: '累计收发', width: 220, defaultVisible: true, format: (row: TeamInventoryRow) => `${amount(row.received_quantity)} 件 / ${amount(row.received_weight)} kg` },
   { key: 'oldest_received_at', label: '最早在库接收', width: 160, defaultVisible: true, format: (row: TeamInventoryRow) => formatDateTime(row.oldest_received_at) },
-  { key: 'purpose_name', label: '本班组用途', width: 150, defaultVisible: false, format: (row: TeamInventoryRow) => row.purpose_name || '未指定用途' },
+  { key: 'purpose_name', label: '本班组业务', width: 150, defaultVisible: false, format: (row: TeamInventoryRow) => row.purpose_name || '未指定业务' },
   { key: 'on_hand_quantity', label: '当前件数', width: 140, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(row.on_hand_quantity) },
   { key: 'on_hand_weight', label: '当前重量 (kg)', width: 170, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(row.on_hand_weight) },
   ...inventoryColumns.filter(column => extraKeys.includes(column.key as typeof extraKeys[number])).map(column => ({

@@ -8,7 +8,7 @@ from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 
 from app.database import SessionLocal
-from app.models import MaterialTransfer, MaterialTransferEvent, OpeningStockSubmission, TeamSettingEvent
+from app.models import MaterialTransfer, MaterialTransferEvent, OpeningStockSubmission, Team, TeamSettingEvent
 from test_material_transfers import _setup_three_teams, _create
 from test_material_stock import stock_setup, receive_lot, dispatch, loss, totals
 from test_warehouse_receipts import migration
@@ -95,6 +95,47 @@ def test_each_outbound_batch_has_its_own_purpose_and_bad_line_rolls_back(client,
     assert response.status_code == 201, response.text
     assert [r['purpose_name'] for r in response.json()['items']] == ['检验', '去毛刺']
     assert totals(client, s)['on_hand_quantity'] == 70
+
+
+@pytest.mark.parametrize('warehouse_destination', [False, True])
+def test_business_search_uses_historical_names_and_literal_wildcards(client, stock_setup, warehouse_destination):
+    s = stock_setup
+    if warehouse_destination:
+        with SessionLocal() as db:
+            team = db.get(Team, s['third']['id'])
+            team.kind = 'warehouse'
+            team.code = 'FACTORY-WAREHOUSE'
+            db.commit()
+    lot = receive_lot(client, s)
+    chosen = purpose(client, s, '去毛刺_100%', role='third')
+    other = purpose(client, s, '去毛刺X100Y', role='third')
+    response = dispatch(client, s, [
+        {'source_transfer_id': lot['id'], 'quantity': 10, 'weight': 1, 'purpose_id': item['id']}
+        for item in (chosen, other)
+    ])
+    assert response.status_code == 201, response.text
+    row = response.json()['items'][0]
+    updated = client.patch(url(s, 'third') + f"/{chosen['id']}", headers=s['third_headers'],
+                           json={'name': '精修', 'active': False, 'expected_version': 1})
+    assert updated.status_code == 200, updated.text
+    # Existing documents remain searchable by their original activity, not the current catalog name.
+    filters = {'team_id': s['third']['id'], 'direction': 'incoming', 'status': 'pending'}
+    endpoints = [('/api/material-transfers', filters), (url(s, suffix='outbound-batches'), {})]
+    for endpoint, params in endpoints:
+        found = client.get(endpoint, params={**params, 'query': '去毛刺_100%'}).json()
+        assert found['total'] == 1 and found['items'][0]['id'] == row['id']
+        assert found['items'][0]['purpose_name'] == '去毛刺_100%'
+        assert client.get(endpoint, params={**params, 'query': '精修'}).json()['total'] == 0
+    confirmed = client.post('/api/material-transfers/' + row['batch_no'] + '/confirm',
+                            headers=s['third_headers'], json={'idempotency_key': 'receive-business'})
+    assert confirmed.status_code == 200, confirmed.text
+    inventory = client.get(url(s, 'third', 'inventory'), params={'search_field': 'purpose_name', 'query': '去毛刺_100%'}).json()
+    assert inventory['total'] == 1 and inventory['items'][0]['purpose_name'] == '去毛刺_100%'
+    if warehouse_destination:
+        response = client.get(url(s, 'third', 'receipts'), params={'query': '去毛刺_100%'})
+        assert response.status_code == 200, response.text
+        receipt = response.json()
+        assert receipt['total'] == 1 and receipt['items'][0]['id'] == row['id']
 
 
 def test_opening_requires_admin_authorization_but_only_own_team_can_post(client):

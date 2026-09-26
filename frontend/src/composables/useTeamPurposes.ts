@@ -10,7 +10,7 @@ export function useTeamPurposes(teamId: () => number | null) {
     items.value = []; error.value = ''; loading.value = Boolean(id)
     if (!id) return
     try { const result = await teamMaterialApi.purposes(id); if (current === epoch) items.value = result }
-    catch (e) { if (current === epoch) error.value = e instanceof Error ? e.message : '用途加载失败' }
+    catch (e) { if (current === epoch) error.value = e instanceof Error ? e.message : '业务加载失败' }
     finally { if (current === epoch) loading.value = false }
   }
   watch(teamId, refresh, { immediate: true })

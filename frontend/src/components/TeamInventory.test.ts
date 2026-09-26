@@ -39,7 +39,7 @@ describe('warehouse grouped stock', () => {
     await render(undefined, true, false)
     useTeamDirectoryStore().items = [{ id: 1, name: '库房', kind: 'warehouse' }, { id: 3, name: '退火' }, { id: 901, name: '本班组' }] as ReturnType<typeof useTeamDirectoryStore>['items']
     await flushPromises()
-    expect(headers()).toEqual(['流水号', '材质 / 规格', '类型 / 用途', '上序班组', '当前结存', '累计收发', '最早在库接收', '操作'])
+    expect(headers()).toEqual(['流水号', '材质 / 规格', '类型 / 业务', '上序班组', '当前结存', '累计收发', '最早在库接收', '操作'])
     expect(wrapper.text()).not.toContain('车间转入 ·')
     expect(select('库存来源筛选')).toBeUndefined()
     expect(select('库存上序班组筛选').findAllComponents(ElOption).map(option => option.props('label'))).toEqual(['库房', '退火'])
@@ -101,7 +101,7 @@ describe('warehouse grouped stock', () => {
   })
   it('groups serial and material, displays nature and source, and pages detail rows', async () => {
     await render()
-    expect(headers()).toEqual(['流水号', '材质 / 规格', '类型 / 用途', '来源', '当前结存', '累计收发', '最早在库接收', '操作'])
+    expect(headers()).toEqual(['流水号', '材质 / 规格', '类型 / 业务', '来源', '当前结存', '累计收发', '最早在库接收', '操作'])
     expect(wrapper.findAll('td[rowspan="2"]')).toHaveLength(2)
     expect(wrapper.text()).toContain('供应商 A外部来料')
     expect(wrapper.text()).toContain('检验车间转入')
@@ -140,7 +140,7 @@ describe('warehouse grouped stock', () => {
     expect(wrapper.findAll('button').find(button => button.text() === '出库')!.attributes('disabled')).toBeUndefined()
     select('库存搜索字段').vm.$emit('update:modelValue', 'purpose_name'); await flushPromises()
     await submit('去毛刺')
-    expect(headers()[0]).toBe('本班组用途')
+    expect(headers()[0]).toBe('本班组业务')
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ search_field: 'purpose_name', query: '去毛刺' }))
   })
   it('does not merge different specifications when they share a material and serial', async () => {

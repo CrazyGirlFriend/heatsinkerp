@@ -49,7 +49,7 @@ onBeforeUnmount(() => { ++version })
       <ElDescriptionsItem label="材质">{{ group.material_name || '—' }}</ElDescriptionsItem>
       <ElDescriptionsItem label="规格">{{ group.transfer_specification || '—' }}</ElDescriptionsItem>
       <ElDescriptionsItem label="物料类型">{{ materialTypeLabel(group.material_type || null) }}</ElDescriptionsItem>
-      <ElDescriptionsItem label="本班组用途">{{ group.purpose_name || '未指定用途' }}</ElDescriptionsItem>
+      <ElDescriptionsItem label="本班组业务">{{ group.purpose_name || '未指定业务' }}</ElDescriptionsItem>
       <ElDescriptionsItem :label="warehouse ? '来源' : '上序班组'">{{ inventorySourceLabel(group, warehouse) }}</ElDescriptionsItem>
     </ElDescriptions>
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />

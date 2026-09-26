@@ -25,7 +25,7 @@ class PurposeInput(BaseModel):
     @classmethod
     def trim(cls, value):
         if not value.strip():
-            raise ValueError("用途名称不能为空")
+            raise ValueError("业务名称不能为空")
         return value.strip()
 
 
@@ -37,18 +37,18 @@ def purpose_snapshot(db, team_id, purpose_id, *, required=True):
     """Call with target Team locked; configuration writes take that same lock."""
     if team_id is None:
         if purpose_id is not None:
-            raise HTTPException(422, "对外出库不能指定下序班组用途")
+            raise HTTPException(422, "对外出库不能指定下序班组业务")
         return {"purpose_id": None, "purpose_name": None}
     if purpose_id is None:
         # Unconfigured teams and historical clients remain usable. Once a team
         # configures its vocabulary, new handoffs cannot bypass it (even if all
         # options have subsequently been disabled).
         if required and db.scalar(select(TeamPurpose.id).where(TeamPurpose.team_id == team_id).limit(1)) is not None:
-            raise HTTPException(422, "请选择下序班组的转料用途；无可用选项时请联系该班组长")
+            raise HTTPException(422, "请选择下序班组的承接业务；无可用选项时请联系该班组长")
         return {"purpose_id": None, "purpose_name": None}
     row = db.scalar(select(TeamPurpose).where(TeamPurpose.id == purpose_id).with_for_update().execution_options(populate_existing=True))
     if row is None or row.team_id != team_id or not row.active:
-        raise HTTPException(422, "转料用途须属于接收班组且处于启用状态")
+        raise HTTPException(422, "承接业务须属于接收班组且处于启用状态")
     return {"purpose_id": row.id, "purpose_name": row.name}
 
 
@@ -67,10 +67,10 @@ def save_purpose(db, team_id, user, payload, purpose_id=None):
                 raise HTTPException(403, "班组已停用")
             row = None if purpose_id is None else db.scalar(select(TeamPurpose).where(TeamPurpose.id == purpose_id).with_for_update())
             if purpose_id is not None and (row is None or row.team_id != team_id):
-                raise HTTPException(404, "未找到本班组用途")
+                raise HTTPException(404, "未找到本班组业务")
             before = purpose_dict(row) if row else None
             if row and payload.expected_version != row.version:
-                raise HTTPException(409, "用途配置已变化，请刷新后重试")
+                raise HTTPException(409, "业务配置已变化，请刷新后重试")
             if row is None:
                 row = TeamPurpose(team_id=team_id, name=payload.name, active=payload.active)
                 db.add(row)
@@ -84,7 +84,7 @@ def save_purpose(db, team_id, user, payload, purpose_id=None):
         return result
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "本班组已存在同名用途") from exc
+        raise HTTPException(409, "本班组已存在同名业务") from exc
 
 
 @router.post("/{team_id}/purposes", status_code=201)

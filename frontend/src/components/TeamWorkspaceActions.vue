@@ -10,7 +10,7 @@ const emit = defineEmits<{ dispatch: []; receipt: []; scan: []; refresh: []; set
     <ElButton v-if="canReceive" :type="warehouse ? 'primary' : 'default'" :icon="warehouse ? Plus : undefined" :loading="openingReceipt" @click="emit('receipt')">{{ warehouse ? '新建入库' : '手工入库' }}</ElButton>
     <ElButton v-if="canWrite" :type="warehouse ? 'default' : 'primary'" :icon="Plus" :loading="openingDispatch" @click="emit('dispatch')">新建出库</ElButton>
     <ElButton v-if="showScan" :icon="FullScreen" @click="emit('scan')">扫码查询</ElButton>
-    <ElButton v-if="canWrite" :icon="Setting" text aria-label="班组设置" title="班组设置" @click="emit('settings')" />
+    <ElButton v-if="canWrite" :icon="Setting" text aria-label="班组设置" title="班组设置" @click="emit('settings')">班组设置</ElButton>
     <ElButton :icon="Refresh" :loading="loading" text aria-label="刷新工作台" title="刷新" @click="emit('refresh')" />
   </div>
 </template>

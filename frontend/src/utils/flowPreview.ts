@@ -42,7 +42,7 @@ export function teamFlowModel(history: SerialHistory) {
   }
   for (const group of history.groups) {
     const color = palette.get(group.name) || '#758397'
-    const middle = touch(`purpose:${group.key}`, group.name, 1, color, `${history.team_name}接收时登记的用途`)
+    const middle = touch(`purpose:${group.key}`, group.name, 1, color, `${history.team_name}接收时登记的业务`)
     const flows = history.flows.filter(flow => flow.group_key === group.key && flow.status !== 'voided')
     for (const flow of flows) {
       if (flow.direction === 'incoming') {
@@ -422,7 +422,7 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, _metri
       const node = interval?.node || model.nodes[item.dataIndex]!, batch = node.batch, stay = interval?.stay
       const balance = batch.on_hand_quantity == null || batch.on_hand_weight == null ? '' : `\n当前结存 ${amountLabel({ quantity: batch.on_hand_quantity, weight: batch.on_hand_weight })}`
       if (stay) return chainTooltip(`${batch.batch_no}\n${batch.next_team.name} · 在库停留\n本段结存 ${amountLabel(stay)}\n${traceTime(stay.start)}\n至 ${traceTime(stay.end)}\n累计停留 ${traceDuration(node.finishedAt, stay.end)}${balance}`)
-      return chainTooltip(`${batch.batch_no}\n${batch.source_team.name} → ${batch.next_team.name}\n${amountLabel(batch)}\n${node.intake ? '入库' : '转出'} ${traceTime(node.startedAt)}${node.intake ? '' : `\n${isExternalTransfer(batch) ? '对外确认' : '接收'} ${traceTime(node.finishedAt)}`}\n接收用途 ${batch.purpose_name || '未分类'} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}${balance}${batch.notes ? `\n备注 ${batch.notes}` : ''}${node.timingIssue ? '\n时间记录不完整或异常' : ''}${node.residenceIssue ? '\n历史变动与结存未核平，未绘制停留条' : ''}`)
+      return chainTooltip(`${batch.batch_no}\n${batch.source_team.name} → ${batch.next_team.name}\n${amountLabel(batch)}\n${node.intake ? '入库' : '转出'} ${traceTime(node.startedAt)}${node.intake ? '' : `\n${isExternalTransfer(batch) ? '对外确认' : '接收'} ${traceTime(node.finishedAt)}`}\n接收业务 ${batch.purpose_name || '未分类'} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}${balance}${batch.notes ? `\n备注 ${batch.notes}` : ''}${node.timingIssue ? '\n时间记录不完整或异常' : ''}${node.residenceIssue ? '\n历史变动与结存未核平，未绘制停留条' : ''}`)
     } },
     series: [series, lanes, residenceSeries],
   }

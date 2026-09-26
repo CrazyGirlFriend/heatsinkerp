@@ -7,7 +7,7 @@ const props = defineProps<{ items: MaterialTransfer[] }>()
 const opening = computed(() => props.items.length > 0 && props.items.every(item => item.entry_kind === 'opening_stock'))
 const totals = computed(() => props.items.filter(item => item.status !== 'voided').reduce((sum, item) => ({ quantity: sum.quantity + item.quantity, weight: Math.round((sum.weight + item.weight) * 1000) / 1000 }), { quantity: 0, weight: 0 }))
 function details(item: MaterialTransfer) {
-  return [`转料用途：${item.purpose_name || '未分类'}`, ...materialDocumentTextFields.filter(field => item[field.key]).map(field => `${field.label}：${item[field.key]}`),
+  return [`承接业务：${item.purpose_name || '未分类'}`, ...materialDocumentTextFields.filter(field => item[field.key]).map(field => `${field.label}：${item[field.key]}`),
     ...(item.finished_quantity != null ? [`成品件数：${item.finished_quantity}`] : []),
     ...(item.notes ? [`说明：${item.notes}`] : [])].join('；')
 }

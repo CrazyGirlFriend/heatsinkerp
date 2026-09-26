@@ -474,7 +474,7 @@ def list_outbound_batches(db, team_id, user, *, record_filters, query=None, next
         if value is not None:
             filters.append(column == value)
     if query and query.strip():
-        filters.append(literal_query(query, [mt.batch_no, mt.serial_no, mt.material_name, mt.external_destination]))
+        filters.append(literal_query(query, [mt.batch_no, mt.serial_no, mt.material_name, mt.external_destination, mt.purpose_name]))
     total = db.scalar(select(func.count(mt.id)).where(*filters)) or 0
     items = db.scalars(select(mt).options(*workflow.material_transfer_list_options()).where(*filters).order_by(mt.created_at.desc(), mt.id.desc())
                        .offset((page - 1) * page_size).limit(page_size)).all()

@@ -48,8 +48,8 @@ function saveDraft() {
 }
 async function savePurpose(item?: TeamPurpose) {
   if (saving.value || loading.value) return
-  const name = (item?.name || newName.value).trim()
-  if (!name) { error.value = '请输入用途名称'; return }
+  const name = (item ? item.name : newName.value).trim()
+  if (!name) { error.value = '请输入业务名称'; return }
   const current = epoch
   saving.value = true; error.value = ''
   try {
@@ -84,18 +84,19 @@ async function submitOpening() {
 
 <template>
   <ElDialog :model-value="modelValue" title="班组设置" width="min(1080px, 96vw)" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving" @close="close">
-    <ElTabs v-model="tab"><ElTabPane name="purposes" label="转料用途" /><ElTabPane name="opening" label="期初库存" /></ElTabs>
+    <ElTabs v-model="tab"><ElTabPane name="purposes" label="承接业务" /><ElTabPane name="opening" label="期初库存" /></ElTabs>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <p v-if="loading">正在读取班组设置…</p>
     <section v-else-if="tab === 'purposes'" class="purpose-settings">
-      <p class="settings-note">由本班组维护，上序开转料单时选择。改名、停用不会改写历史单据。</p>
+      <p class="settings-note">设置本班组承接哪些业务，上序转料时按物料选择。改名、停用后点击保存，历史单据保持原名称。</p>
       <div v-for="item in purposes" :key="item.id" class="purpose-editor">
-        <ElInput v-model="item.name" :aria-label="`用途名称 ${item.id}`" maxlength="80" :disabled="saving" />
+        <ElInput v-model="item.name" :aria-label="`业务名称 ${item.id}`" maxlength="80" :disabled="saving" />
         <ElSwitch v-model="item.active" :aria-label="`${item.name}启用状态`" active-text="启用" :disabled="saving" />
         <ElButton :disabled="saving" @click="savePurpose(item)">保存</ElButton>
       </div>
-      <div class="purpose-editor"><ElInput v-model="newName" aria-label="新增用途名称" placeholder="例如：检验、去毛刺、发货" maxlength="80" :disabled="saving" @keyup.enter="savePurpose()" /><ElButton type="primary" :loading="saving" @click="savePurpose()">新增用途</ElButton></div>
-      <p v-if="!purposes.length" class="settings-note">尚未配置时，新单暂归“未分类”；配置后，上序新开单必须选择启用的用途。</p>
+      <ElAlert v-if="purposes.length && !purposes.some(item => item.active)" title="业务全部停用后，上序无法新建转给本班组的转料单。" type="info" :closable="false" />
+      <div class="purpose-editor"><ElInput v-model="newName" aria-label="新增业务名称" placeholder="例如：检验、去毛刺" maxlength="80" :disabled="saving" @keyup.enter="savePurpose()" /><ElButton type="primary" :loading="saving" @click="savePurpose()">新增业务</ElButton></div>
+      <p v-if="!purposes.length" class="settings-note">尚未配置时，新单暂归“未分类”；配置后，上序新开单必须选择启用的业务。</p>
     </section>
     <section v-else class="opening-settings">
       <ElAlert v-if="opening?.completed" title="本班组已完成期初入账，不能重复初始化。" type="success" :closable="false" />
@@ -113,7 +114,7 @@ async function submitOpening() {
               <label>物料类型<ElSelect v-model="line.material_type" :aria-label="`第${index + 1}行物料类型`" :disabled="saving"><ElOption v-for="option in materialTypeOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect></label>
               <label>件数<ElInputNumber v-model="line.quantity" :aria-label="`第${index + 1}行件数`" :min="0" :precision="0" :disabled="saving" controls-position="right" /></label>
               <label>重量（kg）<ElInputNumber v-model="line.weight" :aria-label="`第${index + 1}行重量`" :min="0" :precision="3" :disabled="saving" controls-position="right" /></label>
-              <label>本班组用途<ElSelect v-model="line.purpose_id" aria-label="期初物料用途" clearable placeholder="未分类" :disabled="saving"><ElOption v-for="item in purposes.filter(item => item.active)" :key="item.id" :value="item.id" :label="item.name" /></ElSelect></label>
+              <label>本班组业务<ElSelect v-model="line.purpose_id" aria-label="期初物料业务" clearable placeholder="未分类" :disabled="saving"><ElOption v-for="item in purposes.filter(item => item.active)" :key="item.id" :value="item.id" :label="item.name" /></ElSelect></label>
               <label>备注<ElInput v-model="line.notes" aria-label="期初备注" maxlength="2000" :disabled="saving" /></label>
             </div>
           </article>

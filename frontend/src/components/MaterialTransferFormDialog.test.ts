@@ -47,7 +47,7 @@ describe('material transfer document form', () => {
     vi.mocked(teamMaterialApi.purposes).mockResolvedValue([{ id: 31, team_id: 3, name: '电镀', active: true, version: 1 }])
     await render(); await base(); await submit()
     expect(materialTransferApi.create).not.toHaveBeenCalled()
-    wrapper.findAllComponents(ElSelect).find(select => select.props('ariaLabel') === '转料用途')!.vm.$emit('update:modelValue', 31)
+    wrapper.findAllComponents(ElSelect).find(select => select.props('ariaLabel') === '承接业务')!.vm.$emit('update:modelValue', 31)
     await submit()
     expect(materialTransferApi.create).toHaveBeenCalledWith(expect.objectContaining({ next_team_id: 3, purpose_id: 31 }))
     wrapper.unmount()

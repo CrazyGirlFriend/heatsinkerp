@@ -34,7 +34,7 @@ it('labels the snapshot and does not query live stock or open a possibly unrelat
   expect(page.text()).toContain('153')
   expect(page.get('input[aria-label="流水号"]').attributes('disabled')).toBeDefined()
   expect(team).not.toHaveBeenCalled(); expect(trace).not.toHaveBeenCalled()
-  page.getComponent(FlowPreviewCanvas).vm.$emit('select', { dataIndex: 0, data: { title: '检验', description: '接收用途', quantity: 100, weight: 12.5, batches: [snapshot.history.flows[0]!.batch_no] } })
+  page.getComponent(FlowPreviewCanvas).vm.$emit('select', { dataIndex: 0, data: { title: '检验', description: '接收业务', quantity: 100, weight: 12.5, batches: [snapshot.history.flows[0]!.batch_no] } })
   await flushPromises()
   expect(document.body.textContent).toContain('演示快照，不打开业务单据')
   expect(document.body.querySelector('.selection-batches button')?.hasAttribute('disabled')).toBe(true)
