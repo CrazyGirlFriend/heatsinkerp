@@ -16,7 +16,7 @@ watch(pageSize, () => { page.value = 1 })
 <template>
   <section class="material-ledger">
     <header><h2>材质结存<small>单位：件 / kg</small></h2><slot name="actions" /></header>
-    <ElTable :data="materials" class="business-table ledger-table" empty-text="暂无库存">
+    <ElTable :data="materials" class="business-table ledger-table" :class="{ 'ledger-table--empty': !materials.length }" empty-text="暂无库存">
       <ElTableColumn prop="material_name" label="材质" min-width="140" show-overflow-tooltip><template #default="{ row }"><ElButton link type="primary" @click="emit('filter', row.material_name || '未填写材质')">{{ row.material_name || '未填写材质' }}</ElButton></template></ElTableColumn>
       <ElTableColumn label="正常可用库存" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.available_quantity" :weight="row.available_weight" /></template></ElTableColumn>
       <ElTableColumn label="废料结存" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.scrap_quantity" :weight="row.scrap_weight" /></template></ElTableColumn>
@@ -26,7 +26,6 @@ watch(pageSize, () => { page.value = 1 })
       <ElTableColumn label="确认转出" min-width="140"><template #default="{ row }"><MaterialAmount :quantity="row.dispatched_quantity" :weight="row.dispatched_weight" /></template></ElTableColumn>
       <ElTableColumn label="累计丢失" min-width="140"><template #default="{ row }"><MaterialAmount :quantity="row.lost_quantity" :weight="row.lost_weight" /></template></ElTableColumn>
     </ElTable>
-    <footer><span>共 {{ overview.materials.length }} 种材质</span><ElPagination v-model:current-page="page" v-model:page-size="pageSize" :page-sizes="[10, 20, 50, 100]" :total="overview.materials.length" layout="sizes, prev, pager, next" /></footer>
     <template v-if="overview.material_types?.length">
       <header><h2>物料性质结存<small>当前库存包含废料；正常可用库存不含废料</small></h2></header>
       <ElTable :data="overview.material_types" class="business-table ledger-table">
@@ -36,6 +35,7 @@ watch(pageSize, () => { page.value = 1 })
         <ElTableColumn label="废料可处理余量" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.scrap_available_quantity" :weight="row.scrap_available_weight" /></template></ElTableColumn>
       </ElTable>
     </template>
+    <footer><span>共 {{ overview.materials.length }} 种材质</span><ElPagination v-model:current-page="page" v-model:page-size="pageSize" :page-sizes="[10, 20, 50, 100]" :total="overview.materials.length" layout="sizes, prev, pager, next" /></footer>
   </section>
 </template>
 
@@ -45,7 +45,10 @@ watch(pageSize, () => { page.value = 1 })
 .material-ledger h2 { display: flex; align-items: center; gap: 12px; flex-shrink: 0; margin: 0; font-size: 14px; font-weight: 600; }
 .material-ledger h2 small, .material-ledger footer > span { font-size: 12px; font-weight: 400; color: var(--subtle); }
 .ledger-table { flex: 1; min-height: 0; }
+.material-ledger > .ledger-table--empty { display: flex; flex: 1 0 auto; flex-direction: column; min-height: 180px; }
+.ledger-table--empty :deep(.el-table__inner-wrapper) { flex: 1; height: auto; }
+.ledger-table--empty :deep(.el-scrollbar__view) { height: 100%; }
 .ledger-table :deep(.el-table__cell) { padding: 10px 0; }
-.material-ledger footer { border-top: 1px solid var(--line); flex-wrap: wrap; }
+.material-ledger footer { margin-top: auto; border-top: 1px solid var(--line); flex-wrap: wrap; }
 @media (max-width: 760px) { .material-ledger header { flex-wrap: wrap; }.material-ledger footer { padding: 8px; } }
 </style>

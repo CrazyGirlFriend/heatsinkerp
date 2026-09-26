@@ -63,4 +63,5 @@
 
 .team-workspace.team-workspace--reading { overflow-y: auto; scrollbar-gutter: stable; }
 .team-workspace.team-workspace--reading :is(.team-workspace__content, .team-material-content) { flex: 0 0 auto; overflow: visible; }
+.team-workspace.team-workspace--reading.team-workspace--materials :is(.team-workspace__content, .team-material-content, .material-ledger) { flex: 1 0 auto; }
 .team-workspace--reading .serial-table .el-table__body .el-table__cell { height: 52px; padding-block: 10px; }

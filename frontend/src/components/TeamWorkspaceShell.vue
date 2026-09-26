@@ -8,7 +8,7 @@ const sectionLabel = computed(() => teamWorkspaceSections.find(section => sectio
 </script>
 
 <template>
-  <section class="page workspace-page team-workspace reading-workspace team-workspace--reading" :aria-label="title + '工作台'">
+  <section class="page workspace-page team-workspace reading-workspace team-workspace--reading" :class="{ 'team-workspace--materials': modelValue === 'materials' }" :aria-label="title + '工作台'">
     <h1 id="workspace-page-heading" class="sr-only">{{ sectionLabel }}</h1>
     <div :id="`workspace-panel-${modelValue}`" class="team-workspace__content" role="region" aria-labelledby="workspace-page-heading"><slot /></div>
     <slot name="dialogs" />

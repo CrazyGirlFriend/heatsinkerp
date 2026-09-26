@@ -35,9 +35,23 @@ describe('compact material classification', () => {
     expect(pager.props('currentPage')).toBe(1)
     expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(25)
   })
-  it('shows an empty table without creating summary values', () => {
+  it('expands only the empty table without creating placeholder rows', async () => {
     wrapper = mount(TeamMaterialOverview, { props: { overview: overview(0) } })
     expect(wrapper.text()).toContain('暂无库存')
     expect(wrapper.text()).toContain('共 0 种材质')
+    expect(wrapper.find('.ledger-table--empty').exists()).toBe(true)
+    expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(0)
+    await wrapper.setProps({ overview: overview(2) }); await flushPromises()
+    expect(wrapper.find('.ledger-table--empty').exists()).toBe(false)
+    expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(2)
+  })
+  it('keeps the material-type summary above the bottom pagination', async () => {
+    const data = overview(2)
+    data.material_types = [{ ...data.materials[0]!, material_type: 'semi_finished' }]
+    wrapper = mount(TeamMaterialOverview, { props: { overview: data } }); await flushPromises()
+    expect(wrapper.findAll('.ledger-table')).toHaveLength(2)
+    expect(wrapper.text()).toContain('物料性质结存')
+    expect(wrapper.get('.material-ledger').element.lastElementChild?.tagName).toBe('FOOTER')
+    expect(wrapper.get('footer').text()).toContain('共 2 种材质')
   })
 })

@@ -11,6 +11,7 @@ describe('workspace with sidebar navigation', () => {
     for (const [modelValue, label] of [['stock', '库存明细'], ['pending', '待接收'], ['receipts', '入库记录'], ['outgoing', '出库记录'], ['losses', '丢失记录'], ['materials', '材质归类'], ['history', '收发历史']]) {
       await wrapper.setProps({ modelValue })
       expect(wrapper.classes()).toContain('team-workspace--reading')
+      expect(wrapper.classes('team-workspace--materials')).toBe(modelValue === 'materials')
       expect(wrapper.get('h1').text()).toBe(label)
       expect(wrapper.get('[role=region]').attributes('aria-labelledby')).toBe(wrapper.get('h1').attributes('id'))
     }
