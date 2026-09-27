@@ -120,9 +120,6 @@ async function render() {
       plugins: [router],
       directives: { loading: {} },
       stubs: {
-        FactoryShipmentChart: true,
-        FactoryShippingAnalysis: true,
-        FactoryDeliveryPlans: true,
         MaterialTransferDrawer: true,
         ElDialog: { props: ['modelValue'], template: '<div v-if="modelValue"><slot/></div>' },
         ElDrawer: {
@@ -143,23 +140,20 @@ async function click(label: string) {
     .trigger('click')
   await flushPromises()
 }
-describe('live factory dashboard', () => {
-  it('renders the five agreed modules from one API snapshot and switches stock units', async () => {
+describe('live team material stock page', () => {
+  it('renders only the full-page stock matrix and switches stock units', async () => {
     await render()
-    expect(wrapper.findAll('.dashboard>.panel')).toHaveLength(5)
+    expect(wrapper.get('h1').text()).toBe('班组材质库存')
+    expect(wrapper.findAll('.stock-panel')).toHaveLength(1)
     expect(wrapper.find('.stock-table tbody').text()).toContain('10')
-    await click('件数')
+    await wrapper.get('input[value="quantity"]').setValue(true)
     expect(wrapper.find('.stock-table tbody').text()).toContain('100')
+    expect(wrapper.get('.stock-table').attributes('aria-label')).toBe('班组材质库存（件）')
     expect(wrapper.text()).not.toContain('示例')
-    expect(wrapper.text()).not.toContain('班组每日收发')
-    expect(wrapper.find('.deadline-summary').text()).toContain('—')
-  })
-  it('opens the all-serial analysis with the newest API selection and no material selector', async () => {
-    await render()
-    await click('展开分析')
-    expect(
-      wrapper.findComponent({ name: 'FactoryShippingAnalysis' }).props('initialSelection'),
-    ).toEqual(fixture().shipping.series)
+    for (const title of ['成品率', '交期与超时', '发货速率', '重点关注流水号'])
+      expect(wrapper.text()).not.toContain(title)
+    expect(wrapper.find('.dashboard, .shipping-chart, .attention').exists()).toBe(false)
+    expect(factoryDashboardApi.get).toHaveBeenCalledTimes(1)
   })
   it('opens scoped serial inventory from cells, team totals, material totals and the factory total', async () => {
     await render()
@@ -227,28 +221,18 @@ describe('live factory dashboard', () => {
     expect(factoryDashboardApi.stockDetail).toHaveBeenLastCalledWith('', undefined, 1)
     expect(wrapper.find('button[aria-label="查看库房 REAL-01流水号详情"]').exists()).toBe(true)
   })
-  it('filters attention by serial and links to the existing trace', async () => {
-    await render()
-    expect(wrapper.find('.attention a').attributes('href')).toBe(
-      '/material-trace?serial_no=REAL-01',
-    )
-    await click('超期')
-    expect(wrapper.find('.attention').text()).not.toContain('REAL-01')
-    await click('加急')
-    expect(wrapper.find('.attention').text()).toContain('REAL-01')
-  })
   it('shows failed reads instead of mock zeros and retries', async () => {
     vi.mocked(factoryDashboardApi.get).mockRejectedValueOnce(new Error('offline'))
     await render()
-    expect(wrapper.text()).toContain('全厂总览读取失败')
-    expect(wrapper.find('.dashboard').exists()).toBe(false)
+    expect(wrapper.text()).toContain('班组材质库存读取失败')
+    expect(wrapper.find('.stock-table').exists()).toBe(false)
     await click('重新加载')
-    expect(wrapper.find('.dashboard').exists()).toBe(true)
+    expect(wrapper.find('.stock-table').exists()).toBe(true)
   })
   it('retains a labeled previous snapshot when refresh fails', async () => {
     await render()
     vi.mocked(factoryDashboardApi.get).mockRejectedValueOnce(new Error('offline'))
-    await click('刷新总览')
+    await click('刷新库存')
     expect(wrapper.text()).toContain('上次成功读取')
     expect(wrapper.find('.stock-table').text()).toContain('铜钼')
   })
@@ -261,5 +245,96 @@ describe('live factory dashboard', () => {
     expect(stop).toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(60001)
     expect(factoryDashboardApi.get).toHaveBeenCalledTimes(2)
+  })
+  it('renders dynamic materials, exact totals, missing teams and three-decimal weights', async () => {
+    const data = fixture()
+    data.stock.materials.push({ name: '钨铜 WCu80', quantity: 0, weight: 1.234 })
+    data.stock.rows[0]!.amounts['钨铜 WCu80'] = { quantity: 0, weight: 1.234 }
+    data.stock.rows[0]!.total = { quantity: 100, weight: 11.234 }
+    data.stock.rows.push({
+      team_id: null,
+      team_name: '研磨',
+      team_code: 'FACTORY-GRIND',
+      active: false,
+      amounts: {},
+      total: null,
+    })
+    data.stock.total = { quantity: 100, weight: 11.234 }
+    data.legacy_count = 2
+    vi.mocked(factoryDashboardApi.get).mockResolvedValue(data)
+    await render()
+    expect(wrapper.findAll('.stock-table thead th').map((th) => th.text())).toEqual([
+      '班组',
+      '铜钼',
+      '钨铜 WCu80',
+      '合计',
+    ])
+    expect(wrapper.findAll('.stock-table tbody tr')[0]!.text()).toContain('1.234')
+    expect(wrapper.findAll('.stock-table tfoot td').map((td) => td.text())).toEqual([
+      '10',
+      '1.234',
+      '11.234',
+    ])
+    expect(
+      wrapper
+        .findAll('.stock-table tbody tr')[1]!
+        .findAll('td')
+        .map((td) => td.text()),
+    ).toEqual(['—', '—', '—'])
+    expect(
+      wrapper
+        .findAll('.stock-table tbody tr')[1]!
+        .findAll('button')
+        .every((button) => button.attributes('disabled') !== undefined),
+    ).toBe(true)
+    expect(wrapper.text()).toContain('未配置班组：研磨')
+    expect(wrapper.text()).toContain('2 条历史接收未纳入库存')
+  })
+  it('keeps the full panel and configured teams when there is no material stock', async () => {
+    const data = fixture()
+    data.stock.materials = []
+    data.stock.rows[0]!.amounts = {}
+    data.stock.rows[0]!.total = { quantity: 0, weight: 0 }
+    data.stock.total = { quantity: 0, weight: 0 }
+    vi.mocked(factoryDashboardApi.get).mockResolvedValue(data)
+    await render()
+    expect(wrapper.find('.stock-panel').exists()).toBe(true)
+    expect(wrapper.get('.stock-empty').text()).toBe('暂无材质库存')
+    expect(wrapper.get('.stock-table tbody th').text()).toBe('库房')
+    expect(wrapper.get('.stock-footer').text()).toContain('1 个班组 · 0 种材质')
+  })
+  it('updates live cells and open stock details without resetting the selected unit', async () => {
+    await render()
+    await wrapper.get('input[value="quantity"]').setValue(true)
+    await click('库房 铜钼 库存明细')
+    const data = fixture()
+    data.stock.rows[0]!.amounts['铜钼'] = { quantity: 80, weight: 8 }
+    data.stock.rows[0]!.total = { quantity: 80, weight: 8 }
+    data.stock.materials[0]!.quantity = 80
+    data.stock.materials[0]!.weight = 8
+    data.stock.total = { quantity: 80, weight: 8 }
+    vi.mocked(factoryDashboardApi.get).mockResolvedValue(data)
+    subscription.onData({ changed: true })
+    subscription.onData({ changed: true })
+    await vi.advanceTimersByTimeAsync(260)
+    expect(factoryDashboardApi.get).toHaveBeenCalledTimes(2)
+    expect(factoryDashboardApi.stockDetail).toHaveBeenCalledTimes(2)
+    expect(factoryDashboardApi.stockDetail).toHaveBeenLastCalledWith('铜钼', 1, 1)
+    expect(wrapper.get('.stock-table').attributes('aria-label')).toBe('班组材质库存（件）')
+    expect(wrapper.get('.stock-table tbody td').text()).toBe('80')
+    expect(wrapper.get('.stock-table tfoot .sum-col').text()).toBe('80')
+  })
+  it('stops hidden-page refresh and reconnects when visible', async () => {
+    await render()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(stop).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(60001)
+    expect(factoryDashboardApi.get).toHaveBeenCalledTimes(1)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(factoryDashboardApi.get).toHaveBeenCalledTimes(2)
+    expect(streams.subscribeInventoryChanges).toHaveBeenCalledTimes(2)
   })
 })

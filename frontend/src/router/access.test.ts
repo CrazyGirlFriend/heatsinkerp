@@ -23,6 +23,7 @@ it('redirects retired stock bookmarks to the authenticated factory overview for 
     await router.push('/factory-stock')
     expect(router.currentRoute.value.name).toBe('home')
     expect(router.currentRoute.value.path).toBe('/')
+    expect(router.currentRoute.value.meta.title).toBe('班组材质库存')
     expect(router.currentRoute.value.meta.standalone).not.toBe(true)
     expect(router.currentRoute.value.meta.public).not.toBe(true)
   }

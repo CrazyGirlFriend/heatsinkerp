@@ -10,7 +10,7 @@ const router = createRouter({
   routes: [
     { path: '/access', name: 'access', component: AccessPage, meta: { title: '访问验证', public: true } },
     { path: '/login', name: 'login', component: LoginPage, meta: { title: '登录', public: true } },
-    { path: '/', name: 'home', component: () => import('@/pages/FactoryInventoryPage.vue'), meta: { title: '全厂总览' } },
+    { path: '/', name: 'home', component: () => import('@/pages/FactoryInventoryPage.vue'), meta: { title: '班组材质库存' } },
     { path: '/factory-stock', name: 'factory-stock', redirect: '/' },
     { path: '/factory-analysis', name: 'factory-analysis', component: () => import('@/pages/FactoryOverviewPage.vue'), meta: { title: '全厂数据分析' } },
     { path: '/factory-live', name: 'factory-live', component: () => import('@/pages/FactoryLivePage.vue'), meta: { title: '动态流转大屏', standalone: true } },

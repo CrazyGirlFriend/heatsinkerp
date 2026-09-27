@@ -92,7 +92,7 @@ describe('two-level team navigation', () => {
     wrapper.unmount()
     const restored = await renderSidebar('/factory-stock')
     expect(restored.wrapper.get('[aria-label="全厂总览"]').attributes('aria-expanded')).toBe('false')
-    expect(restored.wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('库存总览')
+    expect(restored.wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('班组材质库存')
   })
 
   it('waits for the team directory before restoring a saved section and manual branch', async () => {
@@ -249,9 +249,9 @@ describe('two-level team navigation', () => {
     expect(group.attributes('aria-expanded')).toBe('true')
     expect(group.findAllComponents(ElMenuItem).map(item => item.props('index'))).toEqual(['/'])
     expect(wrapper.find('[aria-label="库存明细"]').exists()).toBe(false)
-    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('库存总览')
-    await wrapper.get('[aria-label="库存总览"]').trigger('click'); await flushPromises()
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('班组材质库存')
+    await wrapper.get('[aria-label="班组材质库存"]').trigger('click'); await flushPromises()
     expect(router.currentRoute.value.path).toBe('/')
-    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('库存总览')
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('班组材质库存')
   })
 })

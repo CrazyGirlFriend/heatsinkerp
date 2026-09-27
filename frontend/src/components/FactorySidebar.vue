@@ -141,7 +141,7 @@ const materialLinks = computed(() => [
     <ElMenu ref="menu" router unique-opened tabindex="0" :default-active="activeIndex" :collapse="compact" :collapse-transition="false" popper-class="factory-nav-popup" @open="onOpen" @close="onClose">
       <ElSubMenu index="factory" data-nav-index="factory" aria-label="全厂总览">
         <template #title><ElIcon><House /></ElIcon><span>全厂总览</span></template>
-        <ElMenuItem index="/" aria-label="库存总览" :aria-current="route.path === '/' ? 'page' : undefined">库存总览</ElMenuItem>
+        <ElMenuItem index="/" aria-label="班组材质库存" :aria-current="route.path === '/' ? 'page' : undefined">班组材质库存</ElMenuItem>
       </ElSubMenu>
       <ElSubMenu index="teams" data-nav-index="teams" aria-label="班组工作台">
         <template #title><ElIcon><OfficeBuilding /></ElIcon><span>班组工作台</span></template>
