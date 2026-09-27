@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Search, OfficeBuilding, Setting, Refresh, House, Box, Connection, HotWater, Tools, Scissor, EditPen, Coin, CircleCheck, Tickets, Location, User, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { Search, OfficeBuilding, Setting, Refresh, House, Box, Connection, HotWater, Tools, Scissor, EditPen, Coin, CircleCheck, Tickets, Location, User, ArrowUp, ArrowDown, DataAnalysis, Grid } from '@element-plus/icons-vue'
 import { ElIcon, ElMenu, ElMenuItem, ElSubMenu, type MenuInstance } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -141,7 +141,8 @@ const materialLinks = computed(() => [
     <ElMenu ref="menu" router unique-opened tabindex="0" :default-active="activeIndex" :collapse="compact" :collapse-transition="false" popper-class="factory-nav-popup" @open="onOpen" @close="onClose">
       <ElSubMenu index="factory" data-nav-index="factory" aria-label="全厂总览">
         <template #title><ElIcon><House /></ElIcon><span>全厂总览</span></template>
-        <ElMenuItem index="/" aria-label="班组材质库存" :aria-current="route.path === '/' ? 'page' : undefined">班组材质库存</ElMenuItem>
+        <ElMenuItem index="/factory-analysis" aria-label="全厂数据分析" :aria-current="route.path === '/factory-analysis' ? 'page' : undefined"><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"><DataAnalysis /></ElIcon><span>全厂数据分析</span></ElMenuItem>
+        <ElMenuItem index="/" aria-label="班组材质库存" :aria-current="route.path === '/' ? 'page' : undefined"><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"><Grid /></ElIcon><span>班组材质库存</span></ElMenuItem>
       </ElSubMenu>
       <ElSubMenu index="teams" data-nav-index="teams" aria-label="班组工作台">
         <template #title><ElIcon><OfficeBuilding /></ElIcon><span>班组工作台</span></template>

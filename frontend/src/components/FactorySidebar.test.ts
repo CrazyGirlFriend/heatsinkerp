@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import FactorySidebar from './FactorySidebar.vue'
 import { ElMenu, ElMenuItem, ElSubMenu } from 'element-plus'
+import { DataAnalysis, Grid } from '@element-plus/icons-vue'
 import { authState, clearSession } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { appPinia } from '@/stores/access'
@@ -35,6 +36,7 @@ async function renderSidebar(path = '/transfer-batches', compact = false) {
     routes: [
       { path: '/', component: page },
       { path: '/factory-stock', redirect: '/' },
+      { path: '/factory-analysis', component: page },
       { path: '/transfer-batches', component: page },
       { path: '/transfer-batches/scan', component: page },
       { path: '/material-trace', component: page },
@@ -243,13 +245,26 @@ describe('two-level team navigation', () => {
     expect(wrapper.find('[aria-label="全链路追踪"]').exists()).toBe(false)
   })
 
-  it('keeps only the overview under the factory menu and selects it for legacy bookmarks', async () => {
+  it('puts analysis before stock with distinct matching icons and keeps routes and legacy bookmarks selected correctly', async () => {
     const { wrapper, router } = await renderSidebar('/factory-stock')
+    await wrapper.setProps({ illustrated: true })
     const group = wrapper.findAllComponents(ElSubMenu).find(item => item.props('index') === 'factory')!
     expect(group.attributes('aria-expanded')).toBe('true')
-    expect(group.findAllComponents(ElMenuItem).map(item => item.props('index'))).toEqual(['/'])
+    expect(group.findAllComponents(ElMenuItem).map(item => item.props('index'))).toEqual(['/factory-analysis', '/'])
+    const analysis = group.findAllComponents(ElMenuItem).find(item => item.props('index') === '/factory-analysis')!
+    const stock = group.findAllComponents(ElMenuItem).find(item => item.props('index') === '/')!
+    expect(analysis.findComponent(DataAnalysis).exists()).toBe(true)
+    expect(stock.findComponent(Grid).exists()).toBe(true)
+    for (const item of [analysis, stock]) {
+      expect(item.get('.el-icon').classes()).toContain('factory-nav__team-icon')
+      expect(item.get('.el-icon').attributes('aria-hidden')).toBe('true')
+    }
     expect(wrapper.find('[aria-label="库存明细"]').exists()).toBe(false)
     expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('班组材质库存')
+    await wrapper.get('[aria-label="全厂数据分析"]').trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/factory-analysis')
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('全厂数据分析')
+    expect(group.attributes('aria-expanded')).toBe('true')
     await wrapper.get('[aria-label="班组材质库存"]').trigger('click'); await flushPromises()
     expect(router.currentRoute.value.path).toBe('/')
     expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('班组材质库存')
