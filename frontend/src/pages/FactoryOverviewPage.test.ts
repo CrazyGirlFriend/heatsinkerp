@@ -104,7 +104,7 @@ describe('factory dashboard', () => {
   })
   it('keeps every recent batch reachable manually and opens the selected detail', async () => {
     const data = factoryFixture()
-    data.recent_batches = Array.from({ length: 7 }, (_, i) => ({ batch_no: `TL-RECENT-${i}`, entry_kind: 'transfer', source_name: '库房', target_name: '轧制', external_destination: null, status: 'received', line_count: 1, quantity: 10, weight: 1, updated_at: data.as_of }))
+    data.recent_batches = Array.from({ length: 7 }, (_, i) => ({ batch_no: `TL-RECENT-${i}`, entry_kind: 'transfer', source_name: '库房', target_name: '轧制', external_destination: null, status: 'received', line_count: 1, quantity: 10, weight: 1, updated_at: data.as_of, received_at: data.as_of }))
     vi.mocked(factoryOverviewApi.get).mockResolvedValue(data)
     const router = await render()
     const recent = wrapper.getComponent(FactoryRecentBatches)
@@ -116,7 +116,7 @@ describe('factory dashboard', () => {
     expect(router.currentRoute.value.fullPath).toBe('/transfer-batches?batch_no=TL-RECENT-6')
   })
   it('keeps recent rows accessible manually with reduced motion', async () => {
-    const rows = Array.from({ length: 4 }, (_, i) => ({ batch_no: `TL-REDUCED-${i}`, entry_kind: 'transfer' as const, source_name: '库房', target_name: '轧制', external_destination: null, status: 'received' as const, line_count: 1, quantity: 10, weight: 1, updated_at: factoryFixture().as_of }))
+    const rows = Array.from({ length: 4 }, (_, i) => ({ batch_no: `TL-REDUCED-${i}`, entry_kind: 'transfer' as const, source_name: '库房', target_name: '轧制', external_destination: null, status: 'received' as const, line_count: 1, quantity: 10, weight: 1, updated_at: factoryFixture().as_of, received_at: factoryFixture().as_of }))
     wrapper = mount(FactoryRecentBatches, { props: { rows, motion: false }, global: { stubs: { transition: false } } })
     await click('下一条近期转料')
     expect(wrapper.findAll('tbody tr:not([aria-hidden])')).toHaveLength(3)

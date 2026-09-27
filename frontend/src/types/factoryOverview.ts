@@ -34,6 +34,6 @@ export interface FactoryRecentBatch extends Amount {
   batch_no: string; entry_kind: MaterialEntryKind
   source_name: string | null; target_name: string | null; external_destination: string | null
   status: 'pending' | 'received' | 'dispatched' | 'partial' | 'voided'
-  line_count: number; updated_at: string
+  line_count: number; updated_at: string; received_at: string | null
 }
 export type FactoryScene = 'overview' | 'stock' | 'handoff'

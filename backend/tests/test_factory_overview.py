@@ -24,6 +24,7 @@ def test_factory_conservation_internal_not_inbound_and_batch_count_once(client, 
     feed = next(row for row in pending['recent_batches'] if row['batch_no'] == group['items'][0]['batch_no'])
     assert feed['line_count'] == 1 and feed['quantity'] == 30 and feed['weight'] == 3
     assert feed['status'] == 'pending' and feed['external_destination'] == group['items'][0]['external_destination']
+    assert feed['received_at'] is None
     assert pending['pending'] == {'batches': 2, 'quantity': 60, 'weight': 6}
     assert pending['totals']['on_hand_quantity'] == 140
     kind = 'outbound' if outbound['kind'] == 'warehouse_outbound' else 'shipment'
@@ -39,6 +40,8 @@ def test_factory_conservation_internal_not_inbound_and_batch_count_once(client, 
     assert after['totals']['on_hand_quantity'] == 140
     assert after['totals']['on_hand_weight'] == 14
     assert after['pending']['batches'] == 0
+    # External shipment confirmation is not a recipient's signed receipt.
+    assert all(row['received_at'] is None for row in after['recent_batches'] if row['batch_no'] in {line['batch_no'] for line in group['items']})
     assert after['period_totals']['inbound']['quantity'] == 200
     assert sum(team['balance']['on_hand_quantity'] for team in after['teams'] if team['balance']) == 140
     assert client.get('/api/factory-overview', headers=outbound['headers']).status_code == 200
@@ -55,6 +58,9 @@ def test_factory_age_confirmation_day_and_inactive_stock_are_explicit(client, wa
         db.commit()
     d = report(client)
     assert d['trend'][-1]['inbound']['quantity'] == 100
+    feed = next(row for row in d['recent_batches'] if row['batch_no'] == lot['batch_no'])
+    assert feed['received_at'] == '2026-09-11T17:00:00+00:00'
+    assert feed['received_at'] != feed['updated_at']
     assert next(row for row in d['stock_age'] if row['key'] == 'lt1')['quantity'] == 100
     with SessionLocal() as db:
         db.get(Team, warehouse['team']['id']).active = False
@@ -92,6 +98,9 @@ def test_internal_bulk_pending_is_counted_once_and_confirmation_keeps_factory_st
     assert after['pending']['batches'] == 1 and after['pending']['quantity'] == 30
     feed = [row for row in after['recent_batches'] if row['batch_no'] in {item['batch_no'] for item in group['items']}]
     assert len(feed) == 2 and {row['status'] for row in feed} == {'pending', 'received'}
+    received_at = next(row for row in feed if row['status'] == 'received')['received_at']
+    assert datetime.fromisoformat(received_at) == datetime.fromisoformat(result.json()['received_at'].replace('Z', '+00:00'))
+    assert next(row for row in feed if row['status'] == 'pending')['received_at'] is None
     assert sum(row['quantity'] for row in feed) == 60
 
 

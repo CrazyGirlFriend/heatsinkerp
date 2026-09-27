@@ -153,6 +153,7 @@ def recent_batches(db, involved, limit=12):
             func.min(case((mt.status == "pending", mt.created_at))).label("waiting_since"),
             func.sum(case((mt.status != "voided", mt.quantity), else_=0)).label("quantity"),
             func.sum(case((mt.status != "voided", mt.weight), else_=0)).label("weight"),
+            func.max(mt.received_at).label("received_at"),
             func.max(mt.updated_at).label("updated_at"),
         )
         .outerjoin(MaterialDispatch, mt.dispatch_id == MaterialDispatch.id)
@@ -167,6 +168,9 @@ def recent_batches(db, involved, limit=12):
             "weight": float(row["weight"] or 0),
             "waiting_since": row["waiting_since"].replace(tzinfo=timezone.utc).isoformat()
             if row["waiting_since"]
+            else None,
+            "received_at": row["received_at"].replace(tzinfo=timezone.utc).isoformat()
+            if row["received_at"]
             else None,
             "updated_at": row["updated_at"].replace(tzinfo=timezone.utc).isoformat(),
         }

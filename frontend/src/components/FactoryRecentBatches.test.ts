@@ -4,13 +4,23 @@ import { afterEach, describe, expect, it } from 'vitest'
 import FactoryRecentBatches from './FactoryRecentBatches.vue'
 import type { FactoryRecentBatch } from '@/types/factoryOverview'
 
-const rows: FactoryRecentBatch[] = Array.from({ length: 7 }, (_, index) => ({ batch_no: `TL-${index}`, entry_kind: 'transfer', source_name: '库房', target_name: '轧制', external_destination: null, status: 'received', line_count: 1, quantity: 10, weight: 1, updated_at: '2026-09-27T12:00:00Z' }))
+const rows: FactoryRecentBatch[] = Array.from({ length: 7 }, (_, index) => ({ batch_no: `TL-${index}`, entry_kind: 'transfer', source_name: '库房', target_name: '轧制', external_destination: null, status: 'received', line_count: 1, quantity: 10, weight: 1, updated_at: '2026-09-27T12:00:00Z', received_at: '2026-09-27T10:00:00Z' }))
 let wrapper: VueWrapper
 afterEach(() => wrapper?.unmount())
 const first = () => wrapper.get('tbody tr:first-child button').text()
 const state = () => wrapper.get('tbody').attributes('style')
 
 describe('recent batch playback', () => {
+  it('shows the signed receipt time instead of the later update time, leaving unsigned rows blank', () => {
+    wrapper = mount(FactoryRecentBatches, { props: { rows: [rows[0]!, { ...rows[1]!, status: 'pending', received_at: null }], motion: false } })
+    expect(wrapper.findAll('thead th').at(-1)!.text()).toBe('签收时间')
+    const cells = wrapper.findAll('tbody tr td:last-child')
+    expect(cells[0]!.get('time').attributes('datetime')).toBe('2026-09-27T10:00:00Z')
+    expect(cells[0]!.text()).toBe('2026-09-27 18:00')
+    expect(cells[1]!.text()).toBe('—')
+    expect(cells[1]!.find('time').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('2026-09-27 20:00')
+  })
   it('cycles through every record and wraps without exposing the entering row to focus', async () => {
     wrapper = mount(FactoryRecentBatches, { props: { rows, motion: true } })
     for (let index = 0; index < rows.length; index++) {
