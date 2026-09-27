@@ -11,7 +11,7 @@ const router = createRouter({
     { path: '/access', name: 'access', component: AccessPage, meta: { title: '访问验证', public: true } },
     { path: '/login', name: 'login', component: LoginPage, meta: { title: '登录', public: true } },
     { path: '/', name: 'home', component: () => import('@/pages/FactoryInventoryPage.vue'), meta: { title: '全厂总览' } },
-    { path: '/factory-stock', name: 'factory-stock', component: () => import('@/pages/FactoryStockMatrixPage.vue'), meta: { title: '库存明细' } },
+    { path: '/factory-stock', name: 'factory-stock', redirect: '/' },
     { path: '/factory-analysis', name: 'factory-analysis', component: () => import('@/pages/FactoryOverviewPage.vue'), meta: { title: '全厂数据分析' } },
     { path: '/factory-live', name: 'factory-live', component: () => import('@/pages/FactoryLivePage.vue'), meta: { title: '动态流转大屏', standalone: true } },
     { path: '/flow-preview/:view(team|chain)', name: 'flow-preview', component: () => import('@/pages/FlowPreviewPage.vue'), meta: { title: '物料流向预览', standalone: true } },

@@ -12,6 +12,7 @@ import {
 } from 'element-plus'
 import { ArrowRight, FullScreen, QuestionFilled, Refresh } from '@element-plus/icons-vue'
 import StatePanel from '@/components/StatePanel.vue'
+import SerialMaterialDrawer from '@/components/SerialMaterialDrawer.vue'
 import FactoryShipmentChart from '@/components/FactoryShipmentChart.vue'
 import FactoryShippingAnalysis from '@/components/FactoryShippingAnalysis.vue'
 import FactoryDeliveryPlans from '@/components/FactoryDeliveryPlans.vue'
@@ -60,6 +61,18 @@ const stockOpen = ref(false),
   stockTeam = ref<number>(),
   stockPage = ref(1),
   stockTotal = ref(0)
+const stockSerial = ref<StockDetail | null>(null)
+const stockTitle = computed(() =>
+  [
+    stockTeam.value
+      ? report.value?.stock.rows.find((row) => row.team_id === stockTeam.value)?.team_name
+      : '全厂',
+    stockMaterial.value,
+    '库存明细',
+  ]
+    .filter(Boolean)
+    .join(' · '),
+)
 const lineColors = computed(() =>
   shipmentColors(report.value?.shipping.series.map((row) => row.serial_no) || []),
 )
@@ -122,9 +135,12 @@ function connect() {
   })
 }
 async function stockDetails(material = '', team?: number) {
+  stockSerial.value = null
   stockMaterial.value = material
   stockTeam.value = team
   stockPage.value = 1
+  stockRows.value = []
+  stockTotal.value = 0
   stockOpen.value = true
   await loadStock()
 }
@@ -143,6 +159,10 @@ async function loadStock() {
   } finally {
     if (version === detailGeneration) detailLoading.value = false
   }
+}
+function refreshStock() {
+  void loadStock()
+  void load()
 }
 async function yieldDetails(material = '') {
   yieldMaterial.value = material
@@ -274,14 +294,30 @@ onBeforeUnmount(() => {
                     {{ team.total === null ? '—' : stockValue(team.amounts[m.name]) }}
                   </button>
                 </td>
-                <td class="sum-col">{{ stockValue(team.total) }}</td>
+                <td class="sum-col">
+                  <button
+                    :disabled="!team.team_id"
+                    :aria-label="`${team.team_name}全部材质库存明细`"
+                    @click="stockDetails('', team.team_id!)"
+                  >
+                    {{ stockValue(team.total) }}
+                  </button>
+                </td>
               </tr>
             </tbody>
             <tfoot>
               <tr>
                 <th>总计</th>
-                <td v-for="m in report.stock.materials" :key="m.name">{{ stockValue(m) }}</td>
-                <td class="sum-col">{{ stockValue(report.stock.total) }}</td>
+                <td v-for="m in report.stock.materials" :key="m.name">
+                  <button :aria-label="`全厂${m.name}库存明细`" @click="stockDetails(m.name)">
+                    {{ stockValue(m) }}
+                  </button>
+                </td>
+                <td class="sum-col">
+                  <button aria-label="全厂全部库存明细" @click="stockDetails()">
+                    {{ stockValue(report.stock.total) }}
+                  </button>
+                </td>
               </tr>
             </tfoot>
           </table>
@@ -476,8 +512,8 @@ onBeforeUnmount(() => {
     <FactoryDeliveryPlans v-if="plans" @close="plans = false" @saved="load" />
     <ElDialog
       v-model="stockOpen"
-      :title="(stockMaterial || '全厂') + ' · 库存明细'"
-      width="950px"
+      :title="stockTitle"
+      width="min(950px, 96vw)"
       class="factory-detail-dialog"
       ><p v-if="detailError" role="alert">
         {{ detailError }}<ElButton link @click="loadStock">重试</ElButton>
@@ -486,8 +522,17 @@ onBeforeUnmount(() => {
         ><ElTableColumn prop="team_name" label="班组" width="90" /><ElTableColumn
           prop="serial_no"
           label="流水号"
-          min-width="140"
-        /><ElTableColumn prop="material" label="材质" min-width="100" /><ElTableColumn
+          min-width="160"
+          ><template #default="{ row }">
+            <ElButton
+              link
+              type="primary"
+              :aria-label="`查看${row.team_name} ${row.serial_no}流水号详情`"
+              @click="stockSerial = row as StockDetail"
+              >{{ row.serial_no }}</ElButton
+            >
+          </template></ElTableColumn
+        ><ElTableColumn prop="material" label="材质" min-width="100" /><ElTableColumn
           label="类型"
           width="100"
           ><template #default="{ row }">{{ typeLabel(row.material_type) }}</template></ElTableColumn
@@ -503,6 +548,15 @@ onBeforeUnmount(() => {
         layout="total, prev, pager, next"
         @current-change="loadStock"
     /></ElDialog>
+    <SerialMaterialDrawer
+      v-if="stockOpen && stockSerial"
+      :model-value="true"
+      :team-id="stockSerial.team_id"
+      :serial-no="stockSerial.serial_no"
+      :can-write="false"
+      @update:model-value="!$event && (stockSerial = null)"
+      @changed="refreshStock"
+    />
     <ElDialog
       v-model="yieldOpen"
       :title="

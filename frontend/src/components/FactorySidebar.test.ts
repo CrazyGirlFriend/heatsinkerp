@@ -34,7 +34,7 @@ async function renderSidebar(path = '/transfer-batches', compact = false) {
     history: createMemoryHistory(),
     routes: [
       { path: '/', component: page },
-      { path: '/factory-stock', component: page },
+      { path: '/factory-stock', redirect: '/' },
       { path: '/transfer-batches', component: page },
       { path: '/transfer-batches/scan', component: page },
       { path: '/material-trace', component: page },
@@ -92,7 +92,7 @@ describe('two-level team navigation', () => {
     wrapper.unmount()
     const restored = await renderSidebar('/factory-stock')
     expect(restored.wrapper.get('[aria-label="全厂总览"]').attributes('aria-expanded')).toBe('false')
-    expect(restored.wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('库存明细')
+    expect(restored.wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('库存总览')
   })
 
   it('waits for the team directory before restoring a saved section and manual branch', async () => {
@@ -243,12 +243,13 @@ describe('two-level team navigation', () => {
     expect(wrapper.find('[aria-label="全链路追踪"]').exists()).toBe(false)
   })
 
-  it('groups the overview and material matrix under the factory menu and preserves active selection', async () => {
+  it('keeps only the overview under the factory menu and selects it for legacy bookmarks', async () => {
     const { wrapper, router } = await renderSidebar('/factory-stock')
     const group = wrapper.findAllComponents(ElSubMenu).find(item => item.props('index') === 'factory')!
     expect(group.attributes('aria-expanded')).toBe('true')
-    expect(group.findAllComponents(ElMenuItem).map(item => item.props('index'))).toEqual(['/', '/factory-stock'])
-    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('库存明细')
+    expect(group.findAllComponents(ElMenuItem).map(item => item.props('index'))).toEqual(['/'])
+    expect(wrapper.find('[aria-label="库存明细"]').exists()).toBe(false)
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('库存总览')
     await wrapper.get('[aria-label="库存总览"]').trigger('click'); await flushPromises()
     expect(router.currentRoute.value.path).toBe('/')
     expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('库存总览')

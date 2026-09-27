@@ -24,7 +24,7 @@ const breadcrumb = computed(() => {
     return ['班组工作台', teamWorkspaceProfile(team?.code)?.name || team?.name || '班组', teamWorkspaceSections.find(item => item.value === section)!.label]
   }
   const title = String(route.meta.title || '物料流转')
-  if (['/factory-stock', '/factory-analysis'].includes(route.path)) return ['全厂总览', title]
+  if (route.path === '/factory-analysis') return ['全厂总览', title]
   if (route.path.startsWith('/settings/')) return ['系统设置', title]
   if (['/transfer-batches', '/material-trace'].includes(route.path)) return ['流转查询', title]
   return [title]

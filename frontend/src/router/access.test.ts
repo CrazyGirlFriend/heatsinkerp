@@ -12,16 +12,17 @@ vi.mock('@/pages/LoginPage.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/pages/AccessPage.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/pages/FlowPreviewPage.vue', () => ({ default: { template: '<div>chain</div>' } }))
 vi.mock('@/pages/TeamWorkspacePage.vue', () => ({ default: { template: '<div>team</div>' } }))
-vi.mock('@/pages/FactoryStockMatrixPage.vue', () => ({ default: { template: '<div>stock matrix</div>' } }))
+vi.mock('@/pages/FactoryInventoryPage.vue', () => ({ default: { template: '<div>factory overview</div>' } }))
 import router from './index'
 
 beforeEach(() => { state.admin = false; vi.spyOn(window, 'scrollTo').mockImplementation(() => {}) })
 afterEach(() => vi.restoreAllMocks())
-it('keeps the factory inventory matrix in the normal authenticated shell for both roles', async () => {
+it('redirects retired stock bookmarks to the authenticated factory overview for both roles', async () => {
   for (const admin of [false, true]) {
     state.admin = admin
     await router.push('/factory-stock')
-    expect(router.currentRoute.value.name).toBe('factory-stock')
+    expect(router.currentRoute.value.name).toBe('home')
+    expect(router.currentRoute.value.path).toBe('/')
     expect(router.currentRoute.value.meta.standalone).not.toBe(true)
     expect(router.currentRoute.value.meta.public).not.toBe(true)
   }

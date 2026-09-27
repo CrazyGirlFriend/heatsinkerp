@@ -38,8 +38,6 @@
     "src/services/inventoryStream.ts",
     "src/services/inventoryStream.test.ts",
     "src/pages/FactoryLivePage.vue",
-    "src/pages/FactoryStockMatrixPage.vue",
-    "src/pages/FactoryStockMatrixPage.test.ts",
     "src/components/FactoryGlassScene.vue",
     "src/types/factoryLive.ts",
     "eslint.config.mjs",

@@ -47,6 +47,7 @@ async function renderApp(mobile: boolean) {
   const page = { template: '<div>转料记录</div>' }
   const router = createRouter({ history: createMemoryHistory(), routes: [
     { path: '/', name: 'home', component: page },
+    { path: '/factory-stock', redirect: '/' },
     { path: '/transfer-batches', component: page }, { path: '/transfer-batches/scan', redirect: '/transfer-batches?scan=1' },
     { path: '/material-trace', component: page },
     { path: '/team-workspaces/:teamId', name: 'team-workspace', component: page },
