@@ -22,10 +22,13 @@ it('supports source-batch dispatch and loss only for writable available inventor
   const rows = [source(1), source(2), source(3, 0)]
   vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({ items: [serialFixture('SERIAL-DETAIL')], total: 1, page: 1, page_size: 1 })
   vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({ items: rows, total: 3, page: 1, page_size: 10 })
-  const wrapper = mount(SerialMaterialDrawer, { props: { modelValue: true, teamId: 914, serialNo: 'SERIAL-DETAIL', canWrite: false }, global: { stubs: { ElDrawer: { template: '<section><slot/><slot name="footer"/></section>' }, MaterialTransferDrawer: true, MaterialDispatchDrawer: true } } })
+  const wrapper = mount(SerialMaterialDrawer, { props: { modelValue: true, teamId: 914, serialNo: 'SERIAL-DETAIL', canWrite: false }, global: { stubs: { ElDialog: { name: 'ElDialog', props: { modelValue: Boolean, alignCenter: Boolean, appendToBody: Boolean }, template: '<section><slot/><slot name="footer"/></section>' }, MaterialTransferDrawer: true, MaterialDispatchDrawer: true } } })
   const button = (label: string) => wrapper.findAll('button').find(item => item.text() === label)!
   try {
     await flushPromises()
+    const dialog = wrapper.getComponent({ name: 'ElDialog' })
+    expect(dialog.props()).toMatchObject({ modelValue: true, alignCenter: true, appendToBody: true })
+    expect(dialog.classes()).toContain('material-detail-dialog')
     expect(teamMaterialApi.stock).toHaveBeenCalledWith(914, expect.objectContaining({ serial_no: 'SERIAL-DETAIL', availability: 'all' }))
     expect(wrapper.find('.serial-stock-actions').exists()).toBe(false)
     expect(wrapper.find('input[type=checkbox]').exists()).toBe(false)
@@ -49,7 +52,7 @@ it('keeps the three secondary ledger fields accessible in serial detail', async 
   const summary = serialFixture('SERIAL-DETAIL')
   vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({ items: [summary], total: 1, page: 1, page_size: 1 })
   vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
-  const wrapper = mount(SerialMaterialDrawer, { props: { modelValue: false, teamId: 914, serialNo: summary.serial_no }, global: { stubs: { ElDrawer: { props: ['modelValue'], template: '<section v-if="modelValue"><slot name="header"/><slot/><slot name="footer"/></section>' }, ElTabs: true, ElTable: true, ElPagination: true, MaterialTransferDrawer: true, MaterialDispatchDrawer: true } } })
+  const wrapper = mount(SerialMaterialDrawer, { props: { modelValue: false, teamId: 914, serialNo: summary.serial_no }, global: { stubs: { ElDialog: { props: ['modelValue'], template: '<section v-if="modelValue"><slot name="header"/><slot/><slot name="footer"/></section>' }, ElTabs: true, ElTable: true, ElPagination: true, MaterialTransferDrawer: true, MaterialDispatchDrawer: true } } })
   try {
     await wrapper.setProps({ modelValue: true })
     await flushPromises()

@@ -135,22 +135,8 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
   void loadRows()
   void loadCounts()
 })
-const layoutElement = ref<HTMLElement>()
-const workspaceWidth = ref(0)
 const detailBusy = ref(false)
-const docked = computed(() => workspaceWidth.value >= 1660)
-const showDockedDetail = computed(() => docked.value && anyDetailOpen.value)
 const teamFilterLabel = computed(() => sourceTeamDraft.value !== '' || nextTeamDraft.value !== '' ? '班组筛选 · 已设置' : '全部班组')
-let layoutObserver: ResizeObserver | undefined
-let detailTrigger: HTMLElement | null = null
-function measureWorkspace() { workspaceWidth.value = layoutElement.value?.clientWidth || 0 }
-watch(anyDetailOpen, async (open) => {
-  if (!open && docked.value) {
-    await nextTick()
-    if (detailTrigger?.isConnected) detailTrigger.focus({ preventScroll: true })
-    else layoutElement.value?.querySelector<HTMLElement>('.batch-link')?.focus({ preventScroll: true })
-  }
-})
 
 function numberText(value: number, unit: string): string {
   return `${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)} ${unit}`
@@ -321,7 +307,6 @@ watch(() => route.query, () => {
 
 function openDetail(transfer: MaterialTransfer): void {
   if (detailBusy.value) return
-  detailTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
   selected.value = transfer
   groupOpen.value = false
   drawerOpen.value = true
@@ -337,7 +322,6 @@ async function scan(raw?: string): Promise<void> {
     if (isDispatchNumber(batchNo)) {
       const group = await materialDispatchApi.get(batchNo)
       if (disposed || version !== scanVersion) return
-      detailTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
       selectedDispatchNo.value = group.dispatch_no; drawerOpen.value = false; groupOpen.value = true
       scanValue.value = ''; scanPanelOpen.value = false
       showToast(`已读取历史合并记录，共 ${group.line_count} 个批次`, 'success')
@@ -430,11 +414,6 @@ function handleCreated(transfer: MaterialTransfer): void {
 }
 
 onMounted(() => {
-  measureWorkspace()
-  if (typeof ResizeObserver !== 'undefined' && layoutElement.value) {
-    layoutObserver = new ResizeObserver(measureWorkspace)
-    layoutObserver.observe(layoutElement.value)
-  } else window.addEventListener('resize', measureWorkspace)
   window.addEventListener('keydown', handleHidKeydown)
   if (!teamStore.items.length) void teamStore.refreshTeamDirectory()
   void loadRows()
@@ -443,8 +422,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   disposed = true
-  layoutObserver?.disconnect()
-  window.removeEventListener('resize', measureWorkspace)
   ++requestVersion
   ++scanVersion
   window.removeEventListener('keydown', handleHidKeydown)
@@ -452,7 +429,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section ref="layoutElement" class="page workspace-page transfers-page reading-workspace" :class="{ 'transfers-page--detail': showDockedDetail }">
+  <section class="page workspace-page transfers-page reading-workspace">
     <h1 class="sr-only">转料记录</h1>
     <div class="transfers-main">
       <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
@@ -531,22 +508,21 @@ onBeforeUnmount(() => {
         <footer v-if="!errorMessage" class="pagination-bar"><span>共 {{ total }} 条</span><ElPagination background layout="sizes, prev, pager, next" :total="total" :current-page="page" :page-size="pageSize" :page-sizes="[10, 20, 50, 100]" @current-change="setPage" @size-change="setPageSize" /></footer>
       </ElCard>
     </div>
-    <div class="detail-slot"><MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="selectedDispatchNo" :docked="docked" @changed="loadRows(); loadCounts()" @busy-change="detailBusy = $event" /><MaterialTransferDrawer v-model="drawerOpen" :batch-no="selected?.batch_no" :transfer="selected" :docked="docked" @changed="updateTransfer" @busy-change="detailBusy = $event" /></div>
+    <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="selectedDispatchNo" @changed="loadRows(); loadCounts()" @busy-change="detailBusy = $event" />
+    <MaterialTransferDrawer v-model="drawerOpen" :batch-no="selected?.batch_no" :transfer="selected" @changed="updateTransfer" @busy-change="detailBusy = $event" />
     <MaterialTransferFormDialog v-model="createOpen" @saved="handleCreated" />
   </section>
 </template>
 
 <style scoped>
 .mobile-material-brief { display: block; color: var(--muted); font-size: 12px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-.transfers-page { --detail-width: 900px; display: grid; grid-template-columns: minmax(0, 1fr) 0; grid-template-rows: minmax(0, 1fr); padding: 20px 24px; gap: 16px 0; background: var(--workspace-bg); transition: grid-template-columns var(--motion-panel) var(--motion-ease), column-gap var(--motion-panel) var(--motion-ease); }
-.transfers-page--detail { grid-template-columns: minmax(0, 1fr) var(--detail-width); column-gap: 24px; }
+.transfers-page { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); padding: 20px 24px; gap: 16px 0; background: var(--workspace-bg); }
 .status-toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
 .status-toolbar .status-overview { flex: 1; min-width: 0; padding-bottom: 0; border-bottom: 0; }
 .status-toolbar .heading-actions { padding-bottom: 8px; }
 .heading-actions { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }
 .heading-actions :deep(.el-button) { height: 32px; margin: 0; padding-inline: 12px; font-size: 14px; }
 .transfers-main { container: workspace / inline-size; display: flex; grid-column: 1; grid-row: 1; min-width: 0; min-height: 0; flex-direction: column; gap: 10px; }
-.detail-slot { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; }
 .status-overview { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); flex-shrink: 0; min-height: 44px; padding: 0 18px; border: 1px solid var(--panel-line); border-radius: 8px; background: var(--surface); box-shadow: var(--panel-shadow); }
 .status-filter { position: relative; display: flex; align-items: center; justify-content: center; gap: 16px; min-width: 0; padding: 8px; border: 0; border-radius: 8px; color: var(--text); background: transparent; transition: background-color var(--motion-fast) ease; }
 .status-filter + .status-filter::before { position: absolute; top: 25%; bottom: 25%; left: 0; width: 1px; background: var(--line); content: ''; }
@@ -645,7 +621,6 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 1100px) {
   .transfers-page { padding: 14px; gap: 10px 0; }
-  .transfers-page--detail { column-gap: 20px; }
 }
 @media (max-width: 640px) {
   .transfers-page { padding: 12px; row-gap: 10px; }

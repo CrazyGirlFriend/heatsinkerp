@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElButton, ElDescriptions, ElDescriptionsItem, ElDrawer, ElPagination, ElTable, ElTableColumn, ElTag } from 'element-plus'
+import { ElButton, ElDescriptions, ElDescriptionsItem, ElDialog, ElPagination, ElTable, ElTableColumn, ElTag } from 'element-plus'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
@@ -66,7 +66,7 @@ onBeforeUnmount(() => { ++version })
 </script>
 
 <template>
-  <ElDrawer :model-value="!!group" title="库存明细" size="min(1480px, 96vw)" append-to-body class="warehouse-stock-detail" @update:model-value="!$event && emit('close')">
+  <ElDialog :model-value="!!group" title="库存明细" width="min(1480px, calc(100vw - 32px))" align-center append-to-body class="material-detail-dialog warehouse-stock-detail" @update:model-value="!$event && emit('close')">
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <ElDescriptions v-if="group" :column="3" border>
       <ElDescriptionsItem label="流水号">{{ group.serial_no }}</ElDescriptionsItem>
@@ -109,7 +109,7 @@ onBeforeUnmount(() => { ++version })
         <footer><span>共 {{ movementTotal }} 笔收发记录</span><ElPagination aria-label="收发记录分页" :current-page="movementPage" :page-size="movementPageSize" :page-sizes="[10,20,50,100]" :total="movementTotal" layout="sizes, prev, pager, next" @current-change="movementPage = $event; load()" @size-change="movementPageSize = $event; movementPage = 1; load()" /></footer>
       </section>
     </template>
-  </ElDrawer>
+  </ElDialog>
   <MaterialTransferDrawer v-model="batchOpen" :transfer="selected" :trace-scope="{ team_id: teamId, direction: 'all' }" @changed="changed" />
   <QuantityAdjustmentDialog v-model="quantityOpen" :team-id="teamId" :source-id="quantitySource" :can-write="canWrite" @saved="changed" />
 </template>

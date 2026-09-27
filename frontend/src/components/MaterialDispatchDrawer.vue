@@ -13,7 +13,7 @@ import { useAuthStore } from '@/stores/auth'
 import { materialDispatchApi } from '@/services/materialDispatchApi'
 import { materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import type { MaterialDispatchDocument } from '@/types/teamMaterials'
-const props = withDefaults(defineProps<{ modelValue: boolean; dispatchNo?: string; docked?: boolean; allowPrint?: boolean }>(), { dispatchNo: '', docked: false, allowPrint: true })
+const props = withDefaults(defineProps<{ modelValue: boolean; dispatchNo?: string; allowPrint?: boolean }>(), { dispatchNo: '', allowPrint: true })
 const emit = defineEmits<{ 'update:modelValue': [boolean]; changed: [MaterialDispatchDocument]; busyChange: [boolean] }>()
 const auth = useAuthStore()
 const current = ref<MaterialDispatchDocument | null>(null), loading = ref(false), error = ref('')
@@ -46,7 +46,7 @@ onBeforeUnmount(reset)
 </script>
 
 <template>
-  <MaterialTransferDetailFrame :model-value="modelValue" :docked="docked" :busy="batchBusy" title="历史合并记录" @close="close">
+  <MaterialTransferDetailFrame :model-value="modelValue" :busy="batchBusy" title="历史合并记录" @close="close">
     <template #header><h2>历史合并记录</h2></template>
     <StatePanel v-if="loading && !current" state="loading" title="正在读取历史记录" />
     <StatePanel v-else-if="!current" state="error" :description="error" @retry="load()" />

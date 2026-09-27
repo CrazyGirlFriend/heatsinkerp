@@ -77,6 +77,8 @@ describe('team workspace material ledger', () => {
     expect(table.find('.barcode-card').exists()).toBe(false)
     await table.get('.batch-link').trigger('click'); await flushPromises()
     expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: 'TL10', allowPrint: tab !== 'pending' })
+    expect(wrapper.find('.team-list-layout--detail, .team-workspace--docked').exists()).toBe(false)
+    expect(wrapper.getComponent(MaterialTransferDrawer).attributes('docked')).toBeUndefined()
     if (tab === 'outgoing') {
       wrapper.getComponent({ name: 'ElTable' }).vm.$emit('selection-change', [transfer]); await flushPromises()
       await wrapper.findAll('button').find(button => button.text().startsWith('合并打印'))!.trigger('click'); await flushPromises()

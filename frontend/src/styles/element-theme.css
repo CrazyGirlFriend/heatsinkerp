@@ -102,19 +102,8 @@
 .el-drawer-fade-enter-active,
 .el-drawer-fade-leave-active { transition: background-color var(--motion-panel) ease; }
 
-.material-transfer-drawer .el-drawer__header {
-  flex-shrink: 0;
-  margin-bottom: 0;
-  padding: 20px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-.material-transfer-drawer .el-drawer__body { min-height: 0; padding: 20px; }
-.material-transfer-drawer .el-drawer__footer {
-  flex-shrink: 0;
-  padding: 16px 20px;
-  border-top: 1px solid var(--el-border-color-lighter);
-}
-.serial-drawer .el-drawer__header { margin-bottom: 0; padding: 20px; border-bottom: 1px solid var(--line); }
+.el-dialog.material-detail-dialog { max-height: calc(100dvh - 48px); margin: auto; }
+.material-detail-dialog .el-dialog__body { overscroll-behavior: contain; scrollbar-width: thin; }
 
 .el-table {
   font-size: 13px;

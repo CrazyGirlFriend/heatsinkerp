@@ -110,15 +110,11 @@ const scanner = ref<InputInstance>()
 const scanValue = ref('')
 const scanError = ref('')
 const scanning = ref(false)
-const container = ref<HTMLElement>()
-const contentWidth = ref(0)
-const docked = computed(() => contentWidth.value >= 1660)
 const traceScope = computed(() => ({ team_id: teamId.value, direction: 'all' as const }))
 const actionBindings = computed(() => ({ canWrite: canWrite.value, canReceive: canReceive.value, openingReceipt: openingReceipt.value, openingDispatch: openingDispatch.value, loading: loading.value, warehouse: isWarehouse.value, showScan: !isWarehouse.value && tab.value !== 'pending', onDispatch: openNewDispatch, onReceipt: openReceipt, onScan: focusScan, onRefresh: loadView, onSettings: () => { businessOpen.value = true } }))
 let version = 0
 let actionVersion = 0
 let scanVersion = 0
-let observer: ResizeObserver | undefined
 let hid = ''
 let hidTime = 0
 const syncState = ref<InventoryConnection>('connecting'), syncError = ref('')
@@ -288,18 +284,16 @@ function handleScanKey(event: KeyboardEvent) {
 }
 onMounted(() => {
   if (!directory.loaded && !directory.loading) void directory.refreshTeamDirectory()
-  observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => { contentWidth.value = container.value?.clientWidth || 0 }) : undefined
-  if (container.value) { contentWidth.value = container.value.clientWidth; observer?.observe(container.value) }
   document.addEventListener('keydown', handleScanKey)
   document.addEventListener('visibilitychange', syncVisibility)
   if (!document.hidden) connectChanges()
 })
-onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clearTimeout(refreshTimer); ++version; ++scanVersion; ++actionVersion; observer?.disconnect(); document.removeEventListener('keydown', handleScanKey); document.removeEventListener('visibilitychange', syncVisibility) })
+onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clearTimeout(refreshTimer); ++version; ++scanVersion; ++actionVersion; document.removeEventListener('keydown', handleScanKey); document.removeEventListener('visibilitychange', syncVisibility) })
 </script>
 
 <template>
-  <TeamWorkspaceShell :title="title" :model-value="tab" :warehouse="isWarehouse" :pending-count="pendingCount" :class="{ 'team-workspace--docked': docked && detailOpen }" @update:model-value="selectSection">
-    <div ref="container" class="team-material-content">
+  <TeamWorkspaceShell :title="title" :model-value="tab" :warehouse="isWarehouse" :pending-count="pendingCount" @update:model-value="selectSection">
+    <div class="team-material-content">
       <ElAlert v-if="syncError || syncState === 'reconnecting' || syncState === 'expired'" type="warning" :closable="false" :title="syncState === 'expired' ? '登录或访问凭证已失效，请重新验证。' : syncError || '实时连接中断，当前显示上次结果，正在重连。'" />
       <StatePanel v-if="scopeLoading" state="loading" title="正在读取班组信息" />
       <StatePanel v-else-if="!scopeReady" state="error" :title="!validId ? '无效的班组编号' : directory.error ? '班组目录加载失败' : '未找到启用的班组'" description="请刷新班组目录，或从侧边栏选择已配置的班组。" @retry="directory.refreshTeamDirectory" />
@@ -313,7 +307,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
           <TeamMaterialOverviewPanel v-else-if="overview" :key="tab" :overview="overview" :kind="tab === 'material-types' ? 'type' : 'material'" :page="page" :page-size="pageSize" @filter="openSummaryDetail" @paginate="paginateSummary"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamMaterialOverviewPanel>
         </template>
         <template v-else>
-          <div class="team-list-layout" :class="{ 'team-list-layout--detail': docked && detailOpen }">
+          <div class="team-list-layout">
             <section class="team-list-panel">
               <div class="list-toolbar" :class="{ 'list-toolbar--pending': tab === 'pending' }">
                 <ElInput v-model="queryDraft" :prefix-icon="Search" :aria-label="`${tab === 'losses' ? '丢失记录' : '物料'}搜索`" clearable :placeholder="tab === 'outgoing' ? '搜索批次、流水号、业务或去向' : tab === 'losses' ? '搜索批次、流水号或材质' : '搜索批次、流水号、材质或业务'" @keyup.enter="applyFilters()" @clear="applyFilters()" />
@@ -385,8 +379,8 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
               </div>
               <footer v-if="!loading && !loadError" class="table-footer"><span>共 {{ total }} 条记录</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[10, 20, 50, 100]" :total="total" layout="sizes, prev, pager, next" @current-change="applyFilters($event)" @size-change="applyFilters(1, $event)" /></footer>
             </section>
-            <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="selectedDispatchNo" :docked="docked" :allow-print="tab !== 'pending'" @changed="loadView" />
-            <MaterialTransferDrawer v-model="drawerOpen" :transfer="selected" :batch-no="selectedBatchNo" :docked="docked" :trace-scope="traceScope" :allow-print="tab !== 'pending'" @changed="loadView" />
+            <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="selectedDispatchNo" :allow-print="tab !== 'pending'" @changed="loadView" />
+            <MaterialTransferDrawer v-model="drawerOpen" :transfer="selected" :batch-no="selectedBatchNo" :trace-scope="traceScope" :allow-print="tab !== 'pending'" @changed="loadView" />
           </div>
         </template>
       </template>
@@ -407,7 +401,6 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 .legacy-notice { flex-shrink: 0; }
 .legacy-notice a { color: var(--primary); }
 .team-list-layout { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-width: 0; min-height: 0; gap: 12px; }
-.team-list-layout--detail { grid-template-columns: minmax(0, 1fr) 900px; }
 .team-list-panel { container-type: inline-size; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #fff; border: 1px solid var(--line); border-radius: var(--card-radius); overflow: hidden; }
 .list-toolbar, .scanner-error, .table-footer { flex-shrink: 0; }
 .list-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px 0; }

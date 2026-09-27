@@ -16,12 +16,13 @@ beforeEach(() => { vi.spyOn(teamMaterialApi, 'inventoryPending').mockResolvedVal
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
 async function render() {
   wrapper = mount(InventoryPendingDialog, { props: { teamId: 4, group: warehouseFixture() }, global: { stubs: {
-    ElDialog: { template: '<div><slot/><slot name="footer"/></div>' }, LiveRefreshNotice: true, MaterialTransferDrawer: true,
+    ElDialog: { name: 'ElDialog', props: { alignCenter: Boolean, appendToBody: Boolean }, template: '<div><slot/><slot name="footer"/></div>' }, LiveRefreshNotice: true, MaterialTransferDrawer: true,
   } } }); await flushPromises()
 }
 describe('pending ownership detail', () => {
   it('shows batch, downstream, both units and submission time, with original document drilldown', async () => {
     await render()
+    expect(wrapper.getComponent({ name: 'ElDialog' }).props()).toMatchObject({ alignCenter: true, appendToBody: true })
     expect(teamMaterialApi.inventoryPending).toHaveBeenLastCalledWith(4, 11, { page: 1, page_size: 10 })
     for (const label of ['BATCH-12', '库房', '0 件 / 30 kg', '转出待签收', '2026-09-27', '统计于']) expect(wrapper.text()).toContain(label)
     expect(wrapper.findAll('tbody td')[4]!.text()).toContain('2026-09-27')

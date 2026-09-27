@@ -77,6 +77,8 @@ describe('transfer list refresh continuity', () => {
     expect(page.get('input[aria-label="搜索转料记录"]').element).toHaveProperty('value', '未提交文字')
     expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, query: 'APPLIED', status: 'pending' }))
     expect(page.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, transfer })
+    expect(page.find('.transfers-page--detail, .detail-slot').exists()).toBe(false)
+    expect(page.getComponent(MaterialTransferDrawer).attributes('docked')).toBeUndefined()
     expect(page.text()).toContain('99')
     vi.mocked(materialTransferApi.list).mockRejectedValueOnce(new Error('offline'))
     await expect(live.refresh()).rejects.toThrow()

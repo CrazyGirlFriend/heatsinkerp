@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElButton, ElCheckbox, ElDescriptions, ElDescriptionsItem, ElDrawer, ElPagination, ElTable, ElTableColumn, ElTabs, ElTabPane } from 'element-plus'
+import { ElButton, ElCheckbox, ElDescriptions, ElDescriptionsItem, ElDialog, ElPagination, ElTable, ElTableColumn, ElTabs, ElTabPane } from 'element-plus'
 import MaterialAmount from './MaterialAmount.vue'
 import MaterialTransferStatus from './MaterialTransferStatus.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
@@ -69,7 +69,7 @@ watch(tab, () => { page.value = 1; void load() })
 onBeforeUnmount(() => { ++version })
 </script>
 <template>
-  <ElDrawer :model-value="modelValue" title="流水号详情" size="min(1050px, 96vw)" append-to-body class="serial-drawer" @update:model-value="emit('update:modelValue', $event)">
+  <ElDialog :model-value="modelValue" title="流水号详情" width="min(1200px, calc(100vw - 32px))" align-center append-to-body class="material-detail-dialog serial-detail-dialog" @update:model-value="emit('update:modelValue', $event)">
     <template #header><div class="serial-title"><span>流水号详情</span><strong>{{ serialNo }}<SerialUrgencyBadge :urgency="summary?.urgency" /></strong></div></template>
     <div class="serial-detail-body">
       <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
@@ -88,7 +88,7 @@ onBeforeUnmount(() => { ++version })
       <StatePanel v-if="error" state="error" :description="error" @retry="load" />
       <StatePanel v-else-if="loading" state="loading" title="正在读取明细" />
       <div v-else class="serial-record-table">
-        <ElTable class="business-table" v-if="tab === 'stock'" :data="stock" height="100%" stripe size="small" empty-text="暂无已接收来源批次">
+        <ElTable class="business-table" v-if="tab === 'stock'" :data="stock" stripe size="small" empty-text="暂无已接收来源批次">
           <ElTableColumn v-if="canWrite" width="44" class-name="stock-selection-column">
             <template #header><ElCheckbox aria-label="选择本页可用批次" :model-value="allChecked" :indeterminate="selectedRows.length > 0 && !allChecked" :disabled="!availableRows.length" @change="toggleAll" /></template>
             <template #default="{ row }"><ElCheckbox :aria-label="'选择 ' + row.transfer.batch_no" :model-value="selectedRows.some(item => item.transfer.id === row.transfer.id)" :disabled="!stockAvailable(asStock(row))" @change="toggle(asStock(row), $event)" /></template>
@@ -103,11 +103,11 @@ onBeforeUnmount(() => { ++version })
           <ElTableColumn label="接收时间" min-width="145"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>
           <ElTableColumn v-if="canWrite" label="操作" width="160" fixed="right"><template #default="{ row }"><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('dispatch', [asStock(row)])">出库</ElButton><ElButton link :disabled="!stockAvailable(asStock(row))" @click="action('loss', [asStock(row)])">登记丢失</ElButton></template></ElTableColumn>
         </ElTable>
-        <ElTable class="business-table" v-else-if="tab === 'losses'" :data="losses" height="100%" stripe size="small" empty-text="暂无丢失记录">
+        <ElTable class="business-table" v-else-if="tab === 'losses'" :data="losses" stripe size="small" empty-text="暂无丢失记录">
           <ElTableColumn prop="loss_no" label="记录编号" min-width="200" /><ElTableColumn label="丢失数量" min-width="130"><template #default="{ row }"><MaterialAmount :quantity="row.quantity" :weight="row.weight" /></template></ElTableColumn>
           <ElTableColumn prop="reason" class-name="table-prose" label="原因" min-width="180" show-overflow-tooltip /><ElTableColumn prop="created_by" label="登记人" min-width="110" /><ElTableColumn label="时间" min-width="140"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></ElTableColumn><ElTableColumn label="操作" width="90"><template #default="{ row }"><ElButton link type="primary" @click="openLoss(row)">查看来源</ElButton></template></ElTableColumn>
         </ElTable>
-        <ElTable class="business-table" v-else :data="records" height="100%" stripe size="small" empty-text="暂无交接明细">
+        <ElTable class="business-table" v-else :data="records" stripe size="small" empty-text="暂无交接明细">
           <ElTableColumn label="交接批次" min-width="200"><template #default="{ row }"><ElButton link type="primary" @click="open(row)">{{ row.batch_no }}</ElButton></template></ElTableColumn>
           <ElTableColumn label="材质 / 规格" min-width="135"><template #default="{ row }">{{ row.material_name || '—' }}<small>{{ row.transfer_specification || '—' }}</small></template></ElTableColumn>
           <ElTableColumn label="上下序" min-width="160"><template #default="{ row }">{{ row.source_team.name }} → {{ row.next_team.name }}</template></ElTableColumn>
@@ -118,13 +118,13 @@ onBeforeUnmount(() => { ++version })
       </div>
     </div>
     <template #footer><div class="serial-detail-footer"><span>共 {{ total }} 条{{ tab === 'stock' ? '来源记录' : tab === 'losses' ? '丢失记录' : '交接明细' }}</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></div></template>
-  </ElDrawer>
+  </ElDialog>
   <MaterialTransferDrawer v-model="batchOpen" :transfer="selected" :batch-no="batchNo" :trace-scope="{ team_id: teamId, direction: 'all' }" @changed="changed" />
 </template>
 <style scoped>
 .serial-stock-actions { display: flex; flex-shrink: 0; justify-content: space-between; align-items: center; gap: 12px; color: var(--muted); }
 .serial-title { display: flex; flex-direction: column; gap: 5px; }.serial-title span { color: var(--subtle); font-size: 12px; }.serial-title strong { color: var(--text); font-size: 19px; overflow-wrap: anywhere; }
-.serial-detail-body { display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 12px; }.serial-detail-body > .el-descriptions { flex-shrink: 0; }.serial-balances { display: flex; flex-wrap: wrap; gap: 16px; }.serial-balances > div { display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--subtle); padding: 9px 12px; border-radius: 6px; background: var(--primary-soft); }.serial-detail-tabs { flex-shrink: 0; }.serial-detail-tabs :deep(.el-tabs__header) { margin: 0; }.serial-record-table { flex: 1; min-height: 0; }.serial-record-table small { display: block; color: var(--subtle); font-size: 11px; }.serial-detail-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; overflow-x: auto; }.serial-detail-footer > span { font-size: 12px; white-space: nowrap; color: var(--subtle); }
+.serial-detail-body { display: flex; flex-direction: column; min-height: 0; gap: 12px; }.serial-detail-body > .el-descriptions { flex-shrink: 0; }.serial-balances { display: flex; flex-wrap: wrap; gap: 16px; }.serial-balances > div { display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--subtle); padding: 9px 12px; border-radius: 6px; background: var(--primary-soft); }.serial-detail-tabs { flex-shrink: 0; }.serial-detail-tabs :deep(.el-tabs__header) { margin: 0; }.serial-record-table { flex-shrink: 0; min-width: 0; }.serial-record-table small { display: block; color: var(--subtle); font-size: 11px; }.serial-detail-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; overflow-x: auto; }.serial-detail-footer > span { font-size: 12px; white-space: nowrap; color: var(--subtle); }
 .serial-title span, .serial-balances > div, .serial-record-table small, .serial-detail-footer > span { font-size: 14px; }
 .serial-detail-body :deep(.el-descriptions__cell) { font-size: 14px; line-height: 22px; padding: 10px 12px; }
 .serial-record-table :deep(.el-table), .serial-record-table :deep(.el-button.is-link) { font-size: 15px; }

@@ -44,10 +44,9 @@ const props = withDefaults(defineProps<{
   batchNo?: string
   transfer?: MaterialTransfer | null
   traceScope?: Pick<MaterialTransferFilterParams, 'team_id' | 'direction'>
-  docked?: boolean
   showHistoryGroup?: boolean
   allowPrint?: boolean
-}>(), { batchNo: '', transfer: null, docked: false, showHistoryGroup: true, allowPrint: true })
+}>(), { batchNo: '', transfer: null, showHistoryGroup: true, allowPrint: true })
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -341,7 +340,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
 </script>
 
 <template>
-  <MaterialTransferDetailFrame :model-value="modelValue && !groupOpen" :docked="docked" :busy="confirming || voiding || deliveryBusy" @close="close">
+  <MaterialTransferDetailFrame :model-value="modelValue && !groupOpen" :busy="confirming || voiding || deliveryBusy" @close="close">
     <template #header>
       <header class="drawer-heading">
         <span>{{ opening ? '期初库存' : receipt ? '库房手工入库' : external ? `${actionLabel}详情` : '转料详情' }}</span>
@@ -378,7 +377,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
       <p class="permission-note" :title="stateMessage" aria-live="polite"><ElIcon><Lock /></ElIcon>{{ canConfirm ? '接收后本单将锁定。' : stateMessage }}</p>
     </template>
   </MaterialTransferDetailFrame>
-  <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="current?.dispatch_no || ''" :docked="docked" :allow-print="allowPrint" @changed="groupChanged" @busy-change="emit('busyChange', $event)" />
+  <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="current?.dispatch_no || ''" :allow-print="allowPrint" @changed="groupChanged" @busy-change="emit('busyChange', $event)" />
   <MaterialDeliveryDialog v-model="deliveryOpen" :transfer="current" @saved="updateCurrent" @refreshed="updateCurrent" @busy="deliveryBusy = $event" />
   <MaterialTransferFormDialog v-model="editOpen" :transfer="current" @saved="updateCurrent" @refreshed="updateCurrent" />
   <Teleport to="body"><MaterialTransferPrintSheet v-if="current && printReady" :transfer="current" /></Teleport>

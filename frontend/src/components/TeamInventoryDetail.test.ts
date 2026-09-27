@@ -30,10 +30,18 @@ beforeEach(() => {
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
 async function render(canWrite = true, warehouse = true) {
   wrapper = mount(TeamInventoryDetail, { props: { teamId: 1, group: warehouseFixture(), canWrite, warehouse }, global: { stubs: {
-    ElDrawer: { template: '<div><slot/><slot name="footer"/></div>' }, LiveRefreshNotice: true, MaterialTransferDrawer: true, MaterialDispatchDrawer: true,
+    ElDialog: { name: 'ElDialog', props: { modelValue: Boolean, alignCenter: Boolean, appendToBody: Boolean }, template: '<div><slot/><slot name="footer"/></div>' }, LiveRefreshNotice: true, MaterialTransferDrawer: true, MaterialDispatchDrawer: true,
   } } }); await flushPromises()
 }
 describe('warehouse source detail', () => {
+  it('shows inventory details in a centered dialog and keeps batch drilldown independent', async () => {
+    await render(false)
+    const dialog = wrapper.getComponent({ name: 'ElDialog' })
+    expect(dialog.props()).toMatchObject({ modelValue: true, alignCenter: true, appendToBody: true })
+    expect(dialog.classes()).toContain('material-detail-dialog')
+    dialog.vm.$emit('update:modelValue', false)
+    expect(wrapper.emitted('close')).toHaveLength(1)
+  })
   it('shows independent receipt and outbound batch rows, including pending, and opens each original document', async () => {
     await render(false)
     const table = wrapper.get('.warehouse-movement-table')
