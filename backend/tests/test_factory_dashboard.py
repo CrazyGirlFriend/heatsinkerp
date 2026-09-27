@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from app.database import SessionLocal
-from app.models import MaterialTransfer, NotificationOutbox, SerialDeliveryPlan
+from app.models import MaterialTransfer, NotificationOutbox, SerialDeliveryPlan, Team
 from sqlalchemy import select
 from test_external_outbound import confirm, dispatch
 from test_external_outbound import outbound as outbound
@@ -24,7 +24,7 @@ def dashboard(client):
 def test_empty_dashboard_is_not_demo_data(client):
     data = dashboard(client)
     assert data["stock"]["total"] == {"quantity": 0, "weight": 0}
-    assert len(data["stock"]["rows"]) == 8
+    assert data["stock"]["rows"] == []
     assert data["yields"] == data["attention"] == data["shipping"]["series"] == []
     assert data["delivery"]["on_time_rate"] is None
     assert data["delivery"]["total"] == data["serial_count"] == 0
@@ -212,6 +212,59 @@ def test_dynamic_materials_and_literal_serial_search(client, warehouse):
     )
     assert client.get(ROOT + "/serials", params={"query": "%"}).json()["total"] == 0
     assert data["stock"]["total"]["weight"] == pytest.approx(7 * 10.125)
+
+
+def test_stock_axes_follow_configured_teams_and_effective_materials(client, warehouse):
+    from test_material_transfers import _team
+
+    added = _team(client, "CUSTOM-TEAM", "新增班组")
+    _team(client, "RETIRED-EMPTY", "停用空班组", active=False)
+    first = intake(client, warehouse, material_name="特殊牌号 A", idempotency_key="axis-first").json()
+    # A different grade may have no balance yet, but is already in the system.
+    pending = client.post("/api/material-transfers", headers=warehouse["headers"], json={
+        "serial_no": "AXIS-PENDING", "material_name": "新材质 B",
+        "next_team_id": added["id"], "quantity": 1, "weight": 1,
+        "idempotency_key": "axis-pending",
+    })
+    assert pending.status_code == 201, pending.text
+    with SessionLocal() as db:
+        team = db.get(Team, added["id"])
+        team.name, team.sort_order = "自定义班组", -1
+        db.get(Team, warehouse["team"]["id"]).active = False
+        db.commit()
+    stock = dashboard(client)["stock"]
+    assert [r["team_name"] for r in stock["rows"]] == ["自定义班组", "库房", "轧制"]
+    assert stock["rows"][0]["total"] == {"quantity": 0, "weight": 0}
+    assert stock["rows"][1]["active"] is False
+    assert {m["name"] for m in stock["materials"]} == {"特殊牌号 A", "新材质 B"}
+    assert next(m for m in stock["materials"] if m["name"] == "新材质 B")["weight"] == 0
+    assert stock["total"] == {"quantity": 100, "weight": 10.125}
+    assert sum(r["total"]["weight"] for r in stock["rows"]) == stock["total"]["weight"]
+    # Reactivate to exercise normal inventory writes and deletion permissions.
+    with SessionLocal() as db:
+        db.get(Team, warehouse["team"]["id"]).active = True
+        db.commit()
+    assert client.delete(f"/api/material-transfers/{pending.json()['batch_no']}", headers=warehouse["headers"]).status_code == 204
+    result = client.post(f"/api/team-materials/{warehouse['team']['id']}/losses", headers=warehouse["headers"], json={
+        "source_transfer_id": first["id"], "quantity": 100, "weight": "10.125",
+        "reason": "隔离测试结清库存", "idempotency_key": "axis-clear",
+    })
+    assert result.status_code == 201, result.text
+    stock = dashboard(client)["stock"]
+    assert stock["materials"] == [{"name": "特殊牌号 A", "quantity": 0, "weight": 0}]
+    assert stock["total"] == {"quantity": 0, "weight": 0}
+
+
+def test_team_directory_change_queues_overview_refresh(client):
+    from test_material_transfers import _team
+
+    with SessionLocal() as db:
+        before = set(db.scalars(select(NotificationOutbox.id)))
+    _team(client, "NEW-DIRECTORY-TEAM", "新配置班组")
+    with SessionLocal() as db:
+        messages = list(db.scalars(select(NotificationOutbox).where(NotificationOutbox.id.not_in(before))))
+        assert any(m.payload["directory"] and m.payload["team_ids"] is None for m in messages)
+    assert dashboard(client)["stock"]["rows"][0]["team_name"] == "新配置班组"
 
 
 def test_delivery_plan_change_queues_live_overview_refresh(client, outbound):

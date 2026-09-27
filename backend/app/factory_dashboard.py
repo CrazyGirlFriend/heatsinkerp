@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 from .async_api import AsyncAPIRouter
 from .auth import get_current_user
 from .config import settings
-from .configure_material_teams import MATERIAL_TEAMS
 from .database import get_db
 from .material_stock import literal_query, stock_table
 from .models import MaterialTransfer, SerialDeliveryPlan, Team, utcnow
@@ -177,23 +176,13 @@ def ownership(db):
             .group_by(stock.c.team_id, stock.c.serial_no, name)
         ).mappings()
     )
-    directory = {t.code: t for t in db.scalars(select(Team))}
-    # Include any historical team that still owns stock; never silently lose it
-    # from the factory total merely because it is outside the formal eight.
+    # Use the configured directory, not the phase-one installation template.
+    # Disabled teams still holding stock must remain visible in factory totals.
     team_ids = {r["team_id"] for r in rows}
     teams = [
-        {
-            "team_id": directory[code].id if code in directory else None,
-            "team_code": code,
-            "team_name": directory[code].name if code in directory else name,
-            "active": bool(code in directory and directory[code].active),
-        }
-        for code, name, _, _ in MATERIAL_TEAMS
-    ]
-    teams += [
         {"team_id": t.id, "team_code": t.code, "team_name": t.name, "active": t.active}
-        for t in directory.values()
-        if t.id in team_ids and t.code not in {x[0] for x in MATERIAL_TEAMS}
+        for t in db.scalars(select(Team).order_by(Team.sort_order, Team.id))
+        if t.active or t.id in team_ids
     ]
 
     def total(items):
@@ -201,28 +190,26 @@ def ownership(db):
             sum(r["quantity"] for r in items), sum((r["weight"] for r in items), Decimal(0))
         )
 
-    materials = [
-        {"name": name, **total([r for r in rows if r["material"] == name])}
-        for name in sorted({r["material"] for r in rows})
-    ]
+    # There is no separate material master: effective documents supply the
+    # vocabulary. Keep a grade's column after its balance reaches zero.
+    names = set(db.scalars(select(material_name(mt.material_name)).where(mt.status != "voided").distinct()))
+    names.update(r["material"] for r in rows)
+    by_material, by_team, by_cell = defaultdict(list), defaultdict(list), defaultdict(list)
+    for row in rows:
+        by_material[row["material"]].append(row)
+        by_team[row["team_id"]].append(row)
+        by_cell[row["team_id"], row["material"]].append(row)
+    materials = [{"name": name, **total(by_material[name])} for name in sorted(names)]
     matrix = {
         "materials": materials,
         "rows": [
             {
                 **t,
                 "amounts": {
-                    m["name"]: total(
-                        [
-                            r
-                            for r in rows
-                            if r["team_id"] == t["team_id"] and r["material"] == m["name"]
-                        ]
-                    )
+                    m["name"]: total(by_cell[t["team_id"], m["name"]])
                     for m in materials
                 },
-                "total": total([r for r in rows if r["team_id"] == t["team_id"]])
-                if t["team_id"]
-                else None,
+                "total": total(by_team[t["team_id"]]),
             }
             for t in teams
         ],
