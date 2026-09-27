@@ -1,0 +1,74 @@
+// @vitest-environment jsdom
+import { mount, type VueWrapper } from '@vue/test-utils'
+import { afterEach, describe, expect, it } from 'vitest'
+import FactoryRecentBatches from './FactoryRecentBatches.vue'
+import type { FactoryRecentBatch } from '@/types/factoryOverview'
+
+const rows: FactoryRecentBatch[] = Array.from({ length: 7 }, (_, index) => ({ batch_no: `TL-${index}`, entry_kind: 'transfer', source_name: '库房', target_name: '轧制', external_destination: null, status: 'received', line_count: 1, quantity: 10, weight: 1, updated_at: '2026-09-27T12:00:00Z' }))
+let wrapper: VueWrapper
+afterEach(() => wrapper?.unmount())
+const first = () => wrapper.get('tbody tr:first-child button').text()
+const state = () => wrapper.get('tbody').attributes('style')
+
+describe('recent batch playback', () => {
+  it('cycles through every record and wraps without exposing the entering row to focus', async () => {
+    wrapper = mount(FactoryRecentBatches, { props: { rows, motion: true } })
+    for (let index = 0; index < rows.length; index++) {
+      expect(first()).toBe(`TL-${index}`)
+      expect(wrapper.findAll('tbody tr:not([aria-hidden])')).toHaveLength(3)
+      expect(wrapper.get('tbody tr:last-child').attributes('inert')).toBeDefined()
+      await wrapper.get('tbody').trigger('animationiteration')
+    }
+    expect(first()).toBe('TL-0')
+    await wrapper.get('tbody tr:first-child button').trigger('click')
+    expect(wrapper.emitted('open')).toEqual([[rows[0]]])
+  })
+  it('pauses for pointer, keyboard and explicit pause without losing the current record', async () => {
+    wrapper = mount(FactoryRecentBatches, { props: { rows, motion: true } })
+    await wrapper.trigger('mouseenter')
+    expect(state()).toContain('paused')
+    await wrapper.get('tbody').trigger('animationiteration')
+    expect(first()).toBe('TL-0')
+    await wrapper.trigger('mouseleave')
+    expect(state()).toContain('running')
+    await wrapper.get('.recent-table-scroll').trigger('focusin')
+    expect(state()).toContain('paused')
+    await wrapper.get('.recent-table-scroll').trigger('focusout', { relatedTarget: wrapper.get('tbody button').element })
+    expect(state()).toContain('paused')
+    await wrapper.get('.recent-table-scroll').trigger('focusout', { relatedTarget: null })
+    expect(state()).toContain('running')
+    await wrapper.get('[aria-label="暂停近期转料"]').trigger('click')
+    expect(state()).toContain('paused')
+    await wrapper.get('[aria-label="下一条近期转料"]').trigger('click')
+    expect(first()).toBe('TL-1')
+    expect(state()).toContain('paused')
+    await wrapper.get('[aria-label="播放近期转料"]').trigger('click')
+    expect(state()).toContain('running')
+  })
+  it('stops automatic motion while hidden or reduced, preserving manual navigation', async () => {
+    wrapper = mount(FactoryRecentBatches, { props: { rows, motion: true } })
+    await wrapper.get('tbody').trigger('animationiteration')
+    await wrapper.setProps({ motion: false })
+    expect(wrapper.find('.recent-rolling').exists()).toBe(false)
+    await wrapper.get('tbody').trigger('animationiteration')
+    expect(first()).toBe('TL-1')
+    await wrapper.get('[aria-label="上一条近期转料"]').trigger('click')
+    expect(first()).toBe('TL-0')
+    await wrapper.setProps({ motion: true })
+    expect(state()).toContain('running')
+  })
+  it('shows fresh records and handles short or empty reports without animation', async () => {
+    wrapper = mount(FactoryRecentBatches, { props: { rows, motion: true } })
+    await wrapper.get('[aria-label="上一条近期转料"]').trigger('click')
+    expect(first()).toBe('TL-6')
+    await wrapper.setProps({ rows: [{ ...rows[0]!, batch_no: 'TL-NEW' }, ...rows] })
+    expect(first()).toBe('TL-NEW')
+    await wrapper.setProps({ rows: rows.slice(0, 2) })
+    expect(wrapper.findAll('tbody tr')).toHaveLength(2)
+    expect(wrapper.find('.recent-pagination').exists()).toBe(false)
+    expect(wrapper.find('.recent-rolling').exists()).toBe(false)
+    await wrapper.setProps({ rows: [] })
+    expect(wrapper.text()).toContain('暂无转料记录')
+    expect(wrapper.find('table').exists()).toBe(false)
+  })
+})
