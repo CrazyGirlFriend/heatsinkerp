@@ -227,6 +227,34 @@ def pending_endpoint(team_id: int = Path(ge=1), group_id: int = Path(ge=1),
     return team_read_response(db, lambda session: list_group_pending(session, team_id, group_id, user, page=page, page_size=page_size))
 
 
+def list_group_movements(db, team_id, group_id, user, *, page=1, page_size=20):
+    require_team(db, team_id)
+    origins = origin_columns()
+    anchor = db.execute(select(*(column.label(name) for name, column in origins.items())).where(
+        mt.id == group_id, mt.next_team_id == team_id, mt.status == "received", mt.stock_tracked.is_(True))).mappings().first()
+    if anchor is None:
+        raise HTTPException(404, "未找到该班组的库存来源")
+    sources = select(mt.id).where(*group_conditions(origins, anchor), mt.next_team_id == team_id,
+                                 mt.status == "received", mt.stock_tracked.is_(True))
+    # Each actual receipt/outbound document appears once, with its own TL number.
+    # Match children by source identity, not their destination nature or purpose.
+    scope = or_(mt.id.in_(sources), and_(mt.source_team_id == team_id, mt.source_transfer_id.in_(sources)))
+    occurred_at = case((mt.next_team_id == team_id, func.coalesce(mt.received_at, mt.created_at)), else_=mt.created_at)
+    total = db.scalar(select(func.count()).select_from(mt).where(scope)) or 0
+    rows = db.scalars(select(mt).where(scope).options(*material_transfer_list_options())
+        .order_by(occurred_at.desc(), mt.id.desc()).offset((page - 1) * page_size).limit(page_size)).unique().all()
+    return {"items": [material_transfer_dict(row, user, include_history=False) for row in rows],
+            "total": total, "page": page, "page_size": page_size,
+            "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
+
+
+@router.get("/{team_id}/inventory/{group_id}/movements")
+def movements_endpoint(team_id: int = Path(ge=1), group_id: int = Path(ge=1),
+                       page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100),
+                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return team_read_response(db, lambda session: list_group_movements(session, team_id, group_id, user, page=page, page_size=page_size))
+
+
 @router.get("/{team_id}/inventory")
 def inventory_endpoint(filters: Annotated[WarehouseInventoryFilters, Query()], team_id: int = Path(ge=1),
                        _: User = Depends(get_current_user), db: Session = Depends(get_db)):

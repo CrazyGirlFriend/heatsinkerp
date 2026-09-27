@@ -41,17 +41,6 @@ export function inventoryDispatchable(row: TeamInventoryRow) {
   return { quantity: row[`${prefix}_quantity`], weight: row[`${prefix}_weight`] }
 }
 export const inventoryCanDispatch = (row: TeamInventoryRow) => Object.values(inventoryDispatchable(row)).some(value => value != null && value > 0)
-export function inventoryAge(value: string | null, now = Date.now()) {
-  if (!value) return '—'
-  const elapsed = now - new Date(value).getTime()
-  if (!Number.isFinite(elapsed) || elapsed < 0) return '—'
-  const days = Math.floor(elapsed / 86_400_000)
-  return days ? `已在库 ${days} 天` : '不足 1 天'
-}
-export function inventoryBalanceState(row: MaterialBalance) {
-  if (!(Number(row.on_hand_quantity) > 0 || Number(row.on_hand_weight) > 0)) return '无结存'
-  return [row.dispatched_quantity, row.dispatched_weight, row.reserved_quantity, row.reserved_weight].some(value => Number(value) > 0) ? '部分转出' : '尚未转出'
-}
 const extraKeys = ['customer_code', 'product_code', 'finished_specification', 'finished_quantity', 'lost_quantity', 'lost_weight', 'urgency', 'last_activity_at'] as const
 const balanceKeys = ['available_quantity', 'available_weight', 'pending_outgoing_quantity', 'pending_outgoing_weight', 'scrap_quantity', 'scrap_weight'] as const
 function extraBalance(row: TeamInventoryRow, key: typeof balanceKeys[number]) {
@@ -73,8 +62,6 @@ export const warehouseColumns = [
   { key: 'dispatchable_balance', label: '可转出量', width: 145, defaultVisible: false, format: (row: TeamInventoryRow) => { const value = inventoryDispatchable(row); return `${amount(value.quantity)} 件 / ${amount(value.weight)} kg` } },
   { key: 'pending_transfer', label: '转出待签收', width: 160, defaultVisible: false, format: (row: TeamInventoryRow) => `${amount(row.in_transit_quantity)} 件 / ${amount(row.in_transit_weight)} kg` },
   { key: 'stock_balance', label: '当前结存', width: 130, defaultVisible: true, format: (row: TeamInventoryRow) => `${amount(row.on_hand_quantity)} 件 / ${amount(row.on_hand_weight)} kg` },
-  { key: 'movement', label: '累计收发', width: 220, defaultVisible: true, format: (row: TeamInventoryRow) => `${amount(row.received_quantity)} 件 / ${amount(row.received_weight)} kg` },
-  { key: 'oldest_received_at', label: '最早在库接收', width: 160, defaultVisible: true, format: (row: TeamInventoryRow) => formatDateTime(row.oldest_received_at) },
   { key: 'purpose_name', label: '本班组业务', width: 150, defaultVisible: false, format: (row: TeamInventoryRow) => row.purpose_name || '未指定业务' },
   { key: 'on_hand_quantity', label: '当前件数', width: 140, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(row.on_hand_quantity) },
   { key: 'on_hand_weight', label: '当前重量 (kg)', width: 170, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(row.on_hand_weight) },
@@ -87,9 +74,9 @@ export const warehouseColumns = [
 ] as const
 export type WarehouseColumnKey = typeof warehouseColumns[number]['key']
 export const warehouseSerialColumn = { key: 'serial_no', label: '流水号', width: 170, format: (row: TeamInventoryRow) => row.serial_no } as const
-export const warehouseSearchColumns = [warehouseSerialColumn, ...warehouseColumns.filter(column => !['material_type', 'stock_balance', 'movement', 'owned_balance', 'dispatchable_balance', 'pending_transfer'].includes(column.key))]
+export const warehouseSearchColumns = [warehouseSerialColumn, ...warehouseColumns.filter(column => !['material_type', 'stock_balance', 'owned_balance', 'dispatchable_balance', 'pending_transfer'].includes(column.key))]
 export type WarehouseSearchField = 'all' | typeof warehouseSearchColumns[number]['key']
-export const warehouseSearchKind = (field: WarehouseSearchField) => field === 'urgency' ? 'status' : field === 'last_activity_at' || field === 'oldest_received_at' ? 'date' : warehouseColumns.some(column => column.key === field && 'numeric' in column) ? 'number' : 'text'
+export const warehouseSearchKind = (field: WarehouseSearchField) => field === 'urgency' ? 'status' : field === 'last_activity_at' ? 'date' : warehouseColumns.some(column => column.key === field && 'numeric' in column) ? 'number' : 'text'
 export interface TeamInventoryParams extends Omit<SerialParams, 'availability' | 'search_field'> {
   availability?: 'current' | 'owned' | 'all' | 'available' | 'scrap'
   search_field?: WarehouseSearchField

@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowDown, Search } from '@element-plus/icons-vue'
 import { ElAlert, ElButton, ElCheckbox, ElDatePicker, ElInput, ElOption, ElOptionGroup, ElPagination, ElPopover, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
-import InventoryMovementSummary from './InventoryMovementSummary.vue'
 import InventoryPendingDialog from './InventoryPendingDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
@@ -17,7 +16,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialTypeLabel, materialTypeOptions, isScrapType as isScrapMaterialType } from '@/types/materialTransfer'
-import { warehouseColumns, warehouseSearchColumns, warehouseSearchKind, warehouseSerialColumn, inventorySourceLabel, warehouseSourceNames, inventoryAmount, inventoryAge, inventoryDispatchable, inventoryCanDispatch, type WarehouseColumnKey, type TeamInventoryParams, type TeamInventoryRow, type WarehouseSearchField, type WarehouseSource } from '@/types/teamInventory'
+import { warehouseColumns, warehouseSearchColumns, warehouseSearchKind, warehouseSerialColumn, inventorySourceLabel, warehouseSourceNames, inventoryAmount, inventoryDispatchable, inventoryCanDispatch, type WarehouseColumnKey, type TeamInventoryParams, type TeamInventoryRow, type WarehouseSearchField, type WarehouseSource } from '@/types/teamInventory'
 import type { InventoryColumnChoice } from '@/types/inventoryColumns'
 import type { CalendarRange } from '@/types/recordFilters'
 import type { StockBatch, TeamMaterialOverview } from '@/types/teamMaterials'
@@ -117,6 +116,7 @@ async function load(background = false) {
     if (current !== version) return
     if (page.value > 1 && !result.items.length && result.total <= (page.value - 1) * pageSize.value) { paginate(Math.max(1, Math.ceil(result.total / pageSize.value))); return }
     rows.value = result.items; total.value = result.total; asOf.value = result.as_of || ''; error.value = ''
+    if (detail.value) detail.value = rows.value.find(row => row.group_id === detail.value?.group_id) || detail.value
   } catch (e) {
     if (current === version) {
       if (background) refreshError.value = '库存更新失败，当前保留上次结果，请刷新重试。'
@@ -209,15 +209,13 @@ onBeforeUnmount(() => { ++version })
               <div><span>{{ isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量' }}</span><b>{{ inventoryAmount(inventoryDispatchable(asRow(row)).quantity) }} 件 / {{ inventoryAmount(inventoryDispatchable(asRow(row)).weight) }} kg</b></div>
             </div>
           </div>
-          <InventoryMovementSummary v-else-if="column.key === 'movement'" :balance="asRow(row)" :ownership="ownership" @pending="pending = asRow(row)" />
-          <div v-else-if="column.key === 'oldest_received_at'" class="inventory-cell-stack inventory-receipt"><span>{{ column.format(asRow(row)) }}</span><small v-if="row.oldest_received_at">{{ inventoryAge(row.oldest_received_at) }}</small></div>
           <span v-else>{{ column.format(asRow(row)) }}</span>
         </template>
       </ElTableColumn>
       <ElTableColumn label="操作" :width="88" align="center" fixed="right"><template #default="{ row }"><div class="inventory-row-actions"><ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton><ElButton v-if="canWrite" link type="primary" :disabled="ownership ? !inventoryCanDispatch(asRow(row)) : !(row.on_hand_quantity > 0 || row.on_hand_weight > 0)" @click="picker = asRow(row)">出库</ElButton></div></template></ElTableColumn>
     </ElTable>
     <footer v-if="!error"><span>共 {{ total }} 条分类结存<span class="inventory-balance-note">{{ ownership ? '归属含转出待签收，待接收不计入本班归属' : '转出即扣减，待接收不计入结存' }}</span><small v-if="ownership && asOf" class="inventory-as-of">账面统计 · {{ formatDateTime(asOf) }}</small></span><ElPagination background :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="paginate($event)" @size-change="paginate(1, $event)" /></footer>
-    <TeamInventoryDetail :team-id="teamId" :group="detail" :warehouse="warehouse" :can-write="canWrite" :ownership="ownership" @close="detail = null" @changed="emit('changed')" @action="action" />
+    <TeamInventoryDetail :team-id="teamId" :group="detail" :warehouse="warehouse" :can-write="canWrite" :ownership="ownership" @close="detail = null" @changed="emit('changed')" @action="action" @pending="pending = detail" />
     <InventoryPendingDialog v-if="pending" :team-id="teamId" :group="pending" @close="pending = null" @changed="load(true); emit('changed')" />
     <StockSourcePicker v-if="picker && canWrite" :team-id="teamId" :group-id="picker.group_id" :group-label="[picker.serial_no, materialTypeLabel(picker.material_type || null), picker.purpose_name, sourceLabel(picker)].filter(Boolean).join(' · ')" @close="picker = null" @selected="action('dispatch', $event)" />
     <SerialMaterialDrawer v-model="serialOpen" :team-id="teamId" :serial-no="serialNo" :can-write="canWrite" @changed="emit('changed')" @action="action" />
@@ -251,7 +249,6 @@ onBeforeUnmount(() => { ++version })
 .inventory-ownership-details > div { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; }
 .inventory-ownership-details span { color: var(--muted); }
 .inventory-ownership-details b { font-weight: 500; }
-.inventory-receipt { font-size: 14px; }
 .inventory-row-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .inventory-row-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .inventory-balance-note { margin-left: 18px; font-size: 13px; }

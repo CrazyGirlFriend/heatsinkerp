@@ -38,6 +38,10 @@ describe('team material API contract', () => {
     const sources = await teamMaterialApi.inventorySources(2, 19, { current_only: true, page_size: 10 })
     expect(requests[1]!.url).toBe('/team-materials/2/inventory/19/sources?current_only=true&page_size=10')
     expect(sources.items[0]).toMatchObject({ transfer: { id: 19 }, on_hand_weight: 0.333 })
+    data = { items: [{ id: 20, batch_no: 'TL20', source_transfer_id: 19, source_transfer_batch_no: 'TL19', quantity: '2', weight: '0.125', status: 'pending' }], total: 11, page: 2, page_size: 10 }
+    const records = await teamMaterialApi.inventoryMovements(2, 19, { page: 2, page_size: 10 })
+    expect(requests[2]!.url).toBe('/team-materials/2/inventory/19/movements?page=2&page_size=10')
+    expect(records.items[0]).toMatchObject({ batch_no: 'TL20', source_transfer_batch_no: 'TL19', quantity: 2, weight: 0.125, status: 'pending' })
   })
   it('posts an external group with no receiving team and preserves its filtered destination and completion state', async () => {
     const raw = { dispatch_no: 'CK-EXTERNAL', entry_kind: 'inspection_shipment', external_destination: '客户仓库', next_team: null, status: 'dispatched', total_quantity: 4, total_weight: '0.005', items: [{ batch_no: 'TL-EXTERNAL', entry_kind: 'inspection_shipment', external_destination: '客户仓库', next_team: null, status: 'dispatched', stock_tracked: false }] }

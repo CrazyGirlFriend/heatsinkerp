@@ -62,6 +62,7 @@ export const teamMaterialApi = {
   serialHistory(teamId: number, params: { serial_no: string; date_from?: string; date_to?: string }) { return request<SerialHistory>(path(teamId, 'serial-history', params)) },
   teamInventory(teamId: number, params: TeamInventoryParams = {}) { return page(path(teamId, 'inventory', params), value => ({ ...record(value), ...balance(value) } as unknown as TeamInventoryRow)) },
   inventorySources(teamId: number, groupId: number, params: WarehouseGroupParams = {}) { return page(path(teamId, `inventory/${groupId}/sources`, params), stock) },
+  inventoryMovements(teamId: number, groupId: number, params: { page?: number; page_size?: number } = {}) { return page(path(teamId, `inventory/${groupId}/movements`, params), normalizeMaterialTransfer) },
   inventoryPending(teamId: number, groupId: number, params: { page?: number; page_size?: number } = {}) { return page(path(teamId, `inventory/${groupId}/pending-outbound`, params), normalizeMaterialTransfer) },
   analytics(teamId: number, params: { days?: 7 | 30; metric?: Metric } = {}) { return request<MaterialAnalytics>(path(teamId, 'analytics', params)) },
   serials(teamId: number, params: SerialParams = {}) { return request<MaterialPage<SerialSummary>>(path(teamId, 'serials', params)) },
