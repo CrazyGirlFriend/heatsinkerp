@@ -37,7 +37,7 @@ describe('team batch timeline', () => {
     const series = (teamTimelineOption(model).series as CustomSeriesOption[])[0]!
     const graphic = series.renderItem!({ dataIndex: 0, context: {}, coordSys: { x: 0, y: 0, width: 1000, height: 500 } } as never,
       { coord: ([at, lane]: number[]) => [(at! - model.first!) / model.span * 950, 80 + lane! * 100] } as never)
-    expect(JSON.stringify(graphic)).toContain('区间期初')
+    expect(JSON.stringify(graphic)).toContain('所选时间开始时未转出')
     expect(JSON.stringify(graphic)).toContain('60 件 / 7.5 kg')
     expect(JSON.stringify(graphic)).toContain('opening-cap')
   })
@@ -71,7 +71,57 @@ describe('team batch timeline', () => {
     const model = teamTimelineModel(data())
     const option = teamTimelineOption(model)
     expect(option.series).toEqual([expect.objectContaining({ id: 'team-batch-timeline', type: 'custom' })])
-    expect(option.dataZoom).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'time', zoomOnMouseWheel: true, moveOnMouseMove: false })]))
+    expect(option.dataZoom).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'time', zoomOnMouseWheel: 'ctrl', moveOnMouseMove: false })]))
     expect(teamTimelineOption(model, '', 'pan').series).toEqual([expect.objectContaining({ silent: true })])
+  })
+  it('shows actual receipt batch IDs, directional wording and owned balances in separate columns', () => {
+    const h = data(), lots = teamTimelineModel(h).rows.map(row => row.lot)
+    h.lots = [{ ...lots[0]!, from_name: '库房', owned_quantity: 30, owned_weight: 3.75, on_hand_quantity: 0, on_hand_weight: 0 }]
+    const model = teamTimelineModel(h)
+    const series = (teamTimelineOption(model).series as CustomSeriesOption[])[0]!
+    const graphic = series.renderItem!({ dataIndex: 0, context: {}, coordSys: { x: 220, y: 48, width: 600, height: 500 } } as never,
+      { coord: ([at, lane]: number[]) => [240 + (at! - model.first!) / model.span * 540, 120 + lane! * 150] } as never)
+    const content = JSON.stringify(graphic)
+    expect(content).toContain(lots[0]!.batch_no)
+    expect(content).toContain('从库房接收')
+    expect(content).toContain('30 件')
+    expect(content).toContain('3.75 kg')
+    expect(content).not.toContain('已转完')
+    expect(content).not.toContain('库房收进')
+  })
+  it('never overlaps captions for close handoffs and retains every outgoing event in hover details', () => {
+    const h = data(), lot = teamTimelineModel(h).rows[0]!.lot
+    const group = h.groups.find(g => g.key === lot.group_key)!
+    const incoming = group.events.find(e => e.kind === 'incoming')!
+    group.events = [incoming, ...Array.from({ length: 4 }, (_, index) => ({ ...incoming,
+      id: `out-${index}`, batch_no: `OUT-${index}`, source_batch_no: lot.batch_no, kind: 'outgoing' as const,
+      at: '2026-09-18T08:45:00Z', counterpart: `班组${index + 1}`, quantity: 10, weight: 1,
+      delta_quantity: -10, delta_weight: -1, status: 'pending',
+    }))]
+    h.groups = [group]
+    const model = teamTimelineModel(h), option = teamTimelineOption(model)
+    const series = (option.series as CustomSeriesOption[])[0]!, context: { labels?: Array<{ x: number; y: number; width: number }> } = {}
+    model.nodes.forEach((_, dataIndex) => series.renderItem!({ dataIndex, context, coordSys: { x: 220, y: 48, width: 600, height: 500 } } as never,
+      { coord: ([at, lane]: number[]) => [240 + (at! - model.first!) / model.span * 540, 130 + lane! * 150] } as never))
+    expect(context.labels!.length).toBeGreaterThanOrEqual(3)
+    context.labels!.forEach((label, index) => {
+      for (const other of context.labels!.slice(index + 1)) {
+        expect(label.x + label.width <= other.x || other.x + other.width <= label.x || Math.abs(label.y - other.y) >= 24).toBe(true)
+      }
+    })
+    const tooltip = option.tooltip as { formatter: (params: { dataIndex: number }) => string }
+    model.nodes.forEach((node, dataIndex) => {
+      if (node.event) expect(tooltip.formatter({ dataIndex })).toContain(`转给${node.event.counterpart}`)
+    })
+  })
+  it('labels piece adjustments and signed changes accurately instead of presenting them as shipments', () => {
+    const h = data(), group = h.groups[0]!, incoming = group.events.find(e => e.kind === 'incoming')!
+    group.events.push({ ...incoming, id: 'adjust-pieces', kind: 'quantity_changed', delta_quantity: -3, delta_weight: 0, quantity: 3, weight: 0 })
+    const model = teamTimelineModel(h), option = teamTimelineOption(model)
+    const tooltip = option.tooltip as { formatter: (params: { dataIndex: number }) => string }
+    const content = tooltip.formatter({ dataIndex: model.nodes.findIndex(node => node.id === 'adjust-pieces') })
+    expect(content).toContain('加工件数调整')
+    expect(content).toContain('-3 件 · 重量不变')
+    expect(content).not.toContain('转给')
   })
 })

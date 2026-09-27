@@ -58,20 +58,22 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
         if key not in groups:
             groups[key] = {"key": key, "purpose_id": lot.purpose_id, "name": lot.purpose_name or "未分类",
                 "incoming_quantity": 0, "incoming_weight": Decimal(0), "outgoing_quantity": 0, "outgoing_weight": Decimal(0),
-                "lost_quantity": 0, "lost_weight": Decimal(0), "on_hand_quantity": 0, "on_hand_weight": Decimal(0), "events": []}
+                "lost_quantity": 0, "lost_weight": Decimal(0), "on_hand_quantity": 0, "on_hand_weight": Decimal(0),
+                "owned_quantity": 0, "owned_weight": Decimal(0), "events": []}
         return groups[key]
 
     def add(lot, row, kind, at, quantity, weight, counterpart, delta_quantity, delta_weight, event_id):
         group(lot)["events"].append({"id": event_id, "at": iso(at), "kind": kind, "batch_no": row.batch_no,
             "source_batch_no": lot.batch_no, "material_type": row.material_type, "source_material_type": lot.material_type,
             "counterpart": counterpart, "quantity": int(quantity), "weight": float(weight),
-            "delta_quantity": int(delta_quantity), "delta_weight": float(delta_weight), "status": row.status})
+            "delta_quantity": int(delta_quantity), "delta_weight": float(delta_weight), "status": row.status,
+            "entry_kind": row.entry_kind})
 
     for lot in received.values():
         item = group(lot)
         item["incoming_quantity"] += lot.quantity
         item["incoming_weight"] += lot.weight
-        label = "期初库存" if lot.entry_kind == "opening_stock" else (lot.external_source or "外部入库") if lot.entry_kind == "warehouse_receipt" else lot.source_team_name
+        label = "初始库存" if lot.entry_kind == "opening_stock" else (lot.external_source or "外部入库") if lot.entry_kind == "warehouse_receipt" else lot.source_team_name
         add(lot, lot, "opening" if lot.entry_kind == "opening_stock" else "incoming", lot.received_at or lot.created_at,
             lot.quantity, lot.weight, label, lot.quantity, lot.weight, f"receipt-{lot.id}")
     for row in outgoing:
@@ -129,10 +131,11 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
     lots = {lot.batch_no: {
         "batch_no": lot.batch_no, "group_key": group(lot)["key"],
         "received_at": iso(lot.received_at or lot.created_at),
-        "from_name": "期初库存" if lot.entry_kind == "opening_stock" else
+        "from_name": "初始库存" if lot.entry_kind == "opening_stock" else
             (lot.external_source or "外部入库") if lot.entry_kind == "warehouse_receipt" else lot.source_team_name,
         "quantity": lot.quantity, "weight": float(lot.weight),
         "on_hand_quantity": 0, "on_hand_weight": 0,
+        "owned_quantity": 0, "owned_weight": 0,
         "baseline_quantity": 0, "baseline_weight": Decimal(0),
         "closing_quantity": 0, "closing_weight": Decimal(0),
         "last_event_at": iso(lot.received_at or lot.created_at),
@@ -144,6 +147,11 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
         item["on_hand_weight"] += Decimal(str(balance["on_hand_weight"]))
         lots[lot.batch_no]["on_hand_quantity"] = balance["on_hand_quantity"]
         lots[lot.batch_no]["on_hand_weight"] = float(balance["on_hand_weight"])
+        # Current ownership includes reservations; historical deltas still show
+        # when a dispatch was created, edited or voided, without rewriting history.
+        for amount in ("quantity", "weight"):
+            item[f"owned_{amount}"] += balance[f"owned_{amount}"]
+            lots[lot.batch_no][f"owned_{amount}"] = balance[f"owned_{amount}"]
     start = iso(day_bounds(date_from)[0]) if date_from else None
     end = iso(day_bounds(date_to)[1]) if date_to else None
     observed_at = iso(datetime.now(timezone.utc))
@@ -162,7 +170,7 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
             "weight": float(row.weight), "status": row.status, "entry_kind": row.entry_kind})
 
     for lot in received.values():
-        origin = "期初库存" if lot.entry_kind == "opening_stock" else (lot.external_source or "外部入库") if lot.entry_kind == "warehouse_receipt" else lot.source_team_name
+        origin = "初始库存" if lot.entry_kind == "opening_stock" else (lot.external_source or "外部入库") if lot.entry_kind == "warehouse_receipt" else lot.source_team_name
         add_flow(lot, lot, "incoming", lot.received_at or lot.created_at, origin, team.name)
     for row in outgoing:
         if row.status != "voided":

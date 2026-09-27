@@ -45,12 +45,10 @@ const detailOptions = computed(() => mode.value === 'team'
   : chainModel.value.nodes.map(node => ({ value: String(node.batch.id), label: `${node.batch.next_team.name} · ${node.batch.batch_no}` })))
 const chartHeight = computed(() => Math.max(560, (localModel.value?.nodes.filter(node => node.depth === 2).length || 0) * 52))
 const untracked = computed(() => mode.value === 'team' ? history.value?.untracked_count : trace.value?.untracked_count)
-const stats = computed(() => {
-  const groups = history.value?.groups || []
-  return [{ key: 'incoming', label: '累计接收' }, { key: 'outgoing', label: '累计转出' }, { key: 'on_hand', label: '当前结存' }, { key: 'lost', label: '累计丢失' }].map(item => ({
-    label: item.label, quantity: groups.reduce((sum, group) => sum + Number(group[`${item.key}_quantity` as keyof typeof group]), 0), weight: groups.reduce((sum, group) => sum + Number(group[`${item.key}_weight` as keyof typeof group]), 0),
-  }))
-})
+const teamStock = computed(() => (history.value?.groups || []).reduce((sum, group) => ({
+  quantity: sum.quantity + (group.owned_quantity ?? group.on_hand_quantity),
+  weight: sum.weight + (group.owned_weight ?? group.on_hand_weight),
+}), { quantity: 0, weight: 0 }))
 const selectionRows = computed(() => (selected.value?.batches || []).map(code => {
   const flow = flowByBatch(history.value?.flows || [], code), batch = trace.value?.items.find(item => item.batch_no === code)
   return { code, amount: flow || batch, at: flow?.at || batch?.transferred_at || '', status: flow || batch ? materialTransferStatusLabel((flow || batch)!.status, (flow || batch)!.entry_kind) : '' }
@@ -149,7 +147,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
         <ElButton v-if="embedded" class="chain-fullscreen" :icon="FullScreen" :aria-pressed="fullscreen" @click="toggleFullscreen">{{ fullscreen ? '退出全屏' : '全屏查看' }}</ElButton>
         <ElPopover trigger="click" title="画布说明" :width="320" :append-to="pageRoot">
           <template #reference><ElButton class="header-icon" :icon="InfoFilled" aria-label="画布说明" title="画布说明" text /></template>
-          <div class="canvas-help"><p>滚轮缩放 · H 平移 · V 选择 · 双击还原</p><p>浅色横条为在库停留，不代表加工耗时。悬浮查看明细，点击仅高亮关联路径。</p><p>空心点为转出，实心点为接收；虚线为未完成交接。</p><p v-if="chainModel.extent">{{ traceTime(chainModel.first) }}<br>至 {{ traceTime(chainModel.last) }}（北京时间）</p><p v-if="timeIssues">{{ timeIssues }} 个批次时间异常，仅显示有效时间点。</p><p v-if="residenceIssues">{{ residenceIssues }} 个批次历史变动与结存未核平，不推算停留条。</p><p v-if="untracked">{{ untracked }} 个历史批次未纳入库存台账。</p><p v-if="colors.some(entry => entry.name === '未分类')">未登记接收业务的历史批次标为“未分类”。</p><p v-if="example">演示快照，不影响库存。</p></div>
+          <div class="canvas-help"><p>滚轮缩放 · H 平移 · V 选择 · 双击还原</p><p>浅色横条为在库停留，不代表加工耗时。悬浮查看明细，点击仅高亮关联路径。</p><p>空心点为转出，实心点为接收；虚线为未完成交接。</p><p v-if="chainModel.extent">{{ traceTime(chainModel.first) }}<br>至 {{ traceTime(chainModel.last) }}（北京时间）</p><p v-if="timeIssues">{{ timeIssues }} 个批次时间异常，仅显示有效时间点。</p><p v-if="residenceIssues">{{ residenceIssues }} 个批次历史收发记录与库存对不上，暂不显示停留时间。</p><p v-if="untracked">{{ untracked }} 个历史批次未计入库存。</p><p v-if="colors.some(entry => entry.name === '未分类')">未登记接收业务的历史批次标为“未分类”。</p><p v-if="example">演示数据，不影响库存。</p></div>
         </ElPopover>
       </div>
     </header>
@@ -164,11 +162,11 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
       </header>
       <ElAlert v-if="error || live.message.value" :title="error || live.message.value" type="warning" :closable="false" />
       <section v-if="hasData && !loading && mode === 'team' && history" class="team-preview-workspace">
-        <header class="identity-row"><div><span class="serial-prefix">流水号</span><strong>{{ serial }}</strong><span class="scope-label">{{ history.team_name }}</span></div><span>当前结存 {{ num(stats[2]!.quantity) }} 件 / {{ num(stats[2]!.weight) }} kg</span></header>
-        <TeamFlowTimeline :history="history" :example="example" @select="code => example ? selected = { title: code, description: '演示快照，不打开业务单据', quantity: 0, weight: 0, batches: [code] } : openBatch(code)" />
+        <header class="identity-row"><div><span class="serial-prefix">流水号</span><strong>{{ serial }}</strong><span class="scope-label">{{ history.team_name }}</span></div><span>当前库存 {{ num(teamStock.quantity) }} 件 / {{ num(teamStock.weight) }} kg</span></header>
+        <TeamFlowTimeline :history="history" :example="example" @select="code => example ? selected = { title: code, description: '演示数据，不打开业务单据', quantity: 0, weight: 0, batches: [code] } : openBatch(code)" />
       </section>
       <section v-else-if="hasData && !loading" class="flow-workspace">
-        <header class="chart-toolbar"><div class="chain-legends"><div class="mark-legend" aria-label="图形说明"><span><i class="stay-mark" />在库停留</span><span><i class="departure-mark" />转出</span><span><i class="receipt-mark" />接收</span></div><div class="purpose-legend"><span class="legend-title">接收业务</span><span v-for="entry in colors" :key="entry.name"><i :style="{ background: entry.color }" />{{ entry.name }}</span></div></div><div class="chart-tools"><span v-if="timeIssues" class="data-warning">时间异常 {{ timeIssues }}</span><span v-if="residenceIssues" class="data-warning">历史不完整 {{ residenceIssues }}</span><span v-if="untracked" class="data-warning">未入账 {{ untracked }}</span><ElSelect class="detail-select" placeholder="定位批次" aria-label="选择图形明细" filterable :append-to="pageRoot" :model-value="selectedId || undefined" @change="chooseDetail"><ElOption v-for="option in detailOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect></div></header>
+        <header class="chart-toolbar"><div class="chain-legends"><div class="mark-legend" aria-label="图形说明"><span><i class="stay-mark" />在库停留</span><span><i class="departure-mark" />转出</span><span><i class="receipt-mark" />接收</span></div><div class="purpose-legend"><span class="legend-title">接收业务</span><span v-for="entry in colors" :key="entry.name"><i :style="{ background: entry.color }" />{{ entry.name }}</span></div></div><div class="chart-tools"><span v-if="timeIssues" class="data-warning">时间异常 {{ timeIssues }}</span><span v-if="residenceIssues" class="data-warning">历史不完整 {{ residenceIssues }}</span><span v-if="untracked" class="data-warning">未计入库存 {{ untracked }}</span><ElSelect class="detail-select" placeholder="定位批次" aria-label="选择图形明细" filterable :append-to="pageRoot" :model-value="selectedId || undefined" @change="chooseDetail"><ElOption v-for="option in detailOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect></div></header>
         <div class="chain-flow-region">
         <div class="canvas-area" :style="mode === 'team' ? { height: `${chartHeight}px` } : undefined">
           <FlowPreviewCanvas v-if="hasMetricData && (mode === 'team' || chainModel.extent)" :key="mode" ref="chart" :renderer="mode === 'chain' ? 'svg' : 'canvas'" :option="chartOption" :replay="replay" :motion="motion" :interaction="mode === 'chain' ? interaction : undefined" :label="`${serial}，${mode === 'team' ? history?.team_name + '收发流向' : '全链路时间画布；滚轮缩放，H键平移，V键选择，双击还原；加减键缩放，0键还原'}，件数和重量`" @select="pick" @zoom="zoomLevel = $event" @team-range="teamRange = $event" />
@@ -202,7 +200,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
     <ElDrawer v-if="mode === 'team'" :model-value="Boolean(selected)" title="流向明细" size="380px" :modal="false" :lock-scroll="false" class="flow-selection-drawer" @close="selected = null">
       <div v-if="selected">
         <h2 class="selection-title">{{ selected.title }}</h2><p class="selection-description">{{ selected.description }}</p><strong class="selection-amount">{{ amountLabel(selected) }}</strong>
-        <p class="selection-label">{{ selected.batches.length }} 个关联批次{{ example ? ' · 演示快照，不打开业务单据' : '' }}</p><div class="selection-batches"><button v-for="row in selectionRows" :key="row.code" :disabled="example" @click="openBatch(row.code)"><b>{{ row.code }}</b><span v-if="row.amount">{{ amountLabel(row.amount) }}<em>{{ row.status }}</em></span><small v-if="row.at">{{ formatDateTime(row.at) }}</small><small v-else>查看原始批次</small></button></div>
+        <p class="selection-label">{{ selected.batches.length }} 个关联批次{{ example ? ' · 演示数据，不打开业务单据' : '' }}</p><div class="selection-batches"><button v-for="row in selectionRows" :key="row.code" :disabled="example" @click="openBatch(row.code)"><b>{{ row.code }}</b><span v-if="row.amount">{{ amountLabel(row.amount) }}<em>{{ row.status }}</em></span><small v-if="row.at">{{ formatDateTime(row.at) }}</small><small v-else>查看原始批次</small></button></div>
       </div>
     </ElDrawer>
     <MaterialTransferDrawer v-if="mode === 'team'" v-model="drawerOpen" :batch-no="batchNo" @changed="live.request" />

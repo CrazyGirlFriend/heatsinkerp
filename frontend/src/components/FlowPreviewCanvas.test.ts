@@ -66,6 +66,14 @@ it('reports the actual zoom level and preserves range width when zooming out nea
   await page.trigger('keydown', { key: '-' })
   expect(chart.dispatchAction).toHaveBeenLastCalledWith({ type: 'dataZoom', batch: [{ dataZoomIndex: 0, start: 0, end: 26.6 }, { dataZoomIndex: 1, start: 16.75, end: 83.25 }] })
 })
+it('restores the default batch window and respects its row limit when zooming out', async () => {
+  chart.getOption.mockReturnValue({ dataZoom: [{ id: 'time', type: 'inside', start: 20, end: 80 }, { id: 'teams', type: 'inside', start: 40, end: 70, maxSpan: 30 }] })
+  wrapper = mount(FlowPreviewCanvas, { props: { option: { dataZoom: [{ id: 'time', start: 0, end: 100 }, { id: 'teams', start: 0, end: 30 }] }, label: '批次收发', replay: 0, motion: false } })
+  await wrapper.trigger('keydown', { key: '-' })
+  expect(chart.dispatchAction.mock.lastCall![0].batch[1]).toEqual({ dataZoomIndex: 1, start: 40, end: 70 })
+  await wrapper.trigger('dblclick')
+  expect(chart.dispatchAction).toHaveBeenLastCalledWith({ type: 'dataZoom', batch: [{ dataZoomIndex: 0, start: 0, end: 100 }, { dataZoomIndex: 1, start: 0, end: 30 }] })
+})
 it('honors a long history’s finer time limit instead of capping dense event inspection', async () => {
   chart.getOption.mockReturnValue({ dataZoom: [{ id: 'time', type: 'inside', start: 0, end: .02, minSpan: .001 }] })
   const page = render()

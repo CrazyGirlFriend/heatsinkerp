@@ -40,7 +40,7 @@ function resize() {
   if (root.value && (root.value.clientWidth !== chart.getWidth() || root.value.clientHeight !== chart.getHeight())) chart.resize()
 }
 function changeMotion() { render() }
-interface ZoomState { id?: string; type?: string; start?: number; end?: number; minSpan?: number }
+interface ZoomState { id?: string; type?: string; start?: number; end?: number; minSpan?: number; maxSpan?: number }
 function zoomStates() { return (chart?.getOption()?.dataZoom || []) as ZoomState[] }
 function reportZoom() {
   const time = zoomStates().find(item => item.id === 'time')
@@ -51,8 +51,12 @@ function reportZoom() {
 function zoom(direction: number) {
   chart?.dispatchAction({ type: 'dataZoom', batch: zoomStates().flatMap((item, index) => {
     if (item.type === 'slider') return []
+    if (direction === 0) {
+      const defaults = (props.option.dataZoom as ZoomState[] | undefined)?.find(state => state.id === item.id)
+      return [{ dataZoomIndex: index, start: defaults?.start ?? 0, end: defaults?.end ?? 100 }]
+    }
     const start = item.start || 0, end = item.end ?? 100, center = (start + end) / 2
-    const range = direction === 0 ? 100 : Math.max(item.minSpan ?? (item.id === 'teams' ? 10 : .05), Math.min(100, (end - start) * (direction > 0 ? .75 : 1.33)))
+    const range = Math.max(item.minSpan ?? (item.id === 'teams' ? 10 : .05), Math.min(item.maxSpan ?? 100, (end - start) * (direction > 0 ? .75 : 1.33)))
     const left = Math.max(0, Math.min(100 - range, center - range / 2))
     return [{ dataZoomIndex: index, start: left, end: left + range }]
   }) })

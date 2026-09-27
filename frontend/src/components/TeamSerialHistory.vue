@@ -22,7 +22,7 @@ const dates = ref<CalendarRange>({ from: query('date_from'), to: query('date_to'
 const applied = ref({ serial_no: '', date_from: '', date_to: '' })
 const loading = ref(false), error = ref(''), result = ref<SerialHistory | null>(null)
 const batchOpen = ref(false), batchNo = ref('')
-const totals = computed(() => (result.value?.groups || []).reduce((sum, group) => ({ quantity: sum.quantity + group.on_hand_quantity, weight: sum.weight + group.on_hand_weight }), { quantity: 0, weight: 0 }))
+const totals = computed(() => (result.value?.groups || []).reduce((sum, group) => ({ quantity: sum.quantity + (group.owned_quantity ?? group.on_hand_quantity), weight: sum.weight + (group.owned_weight ?? group.on_hand_weight) }), { quantity: 0, weight: 0 }))
 let epoch = 0
 const live = useLiveRefresh(() => load(true), { teamId: () => props.teamId, enabled: () => Boolean(applied.value.serial_no), busy: () => loading.value || batchOpen.value })
 async function load(background = false) {
@@ -58,17 +58,17 @@ if (serial.value) search()
     <header class="history-header">
       <h2>本班组收发</h2>
       <form class="history-search" @submit.prevent="search"><ElInput v-model="serial" :prefix-icon="Search" aria-label="历史流水号" placeholder="输入完整流水号" maxlength="80" clearable /><RecordDateFilter v-model="dates" label="收发日期" /><ElButton native-type="submit" type="primary" :loading="loading">查询</ElButton></form>
-      <div v-if="result?.found" class="history-total"><span>当前结存</span><strong>{{ num(totals.quantity) }} <small>件</small><i>/</i>{{ num(totals.weight) }} <small>kg</small></strong></div>
+      <div v-if="result?.found" class="history-total"><span>当前库存</span><strong>{{ num(totals.quantity) }} <small>件</small><i>/</i>{{ num(totals.weight) }} <small>kg</small></strong></div>
       <slot name="actions" />
     </header>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="loading" state="loading" title="正在读取收发历史" />
     <StatePanel v-else-if="error" state="error" :description="error" @retry="search" />
-    <div v-else-if="!result" class="history-prompt"><Connection /><h3>查询本班组的收发记录</h3><p>输入完整流水号，查看来源批次、分批转出和结存。</p></div>
+    <div v-else-if="!result" class="history-prompt"><Connection /><h3>查询本班组的收发记录</h3><p>输入完整流水号，查看来源批次、分批转出和库存。</p></div>
     <template v-else>
-      <ElAlert v-if="result.untracked_count" :title="result.untracked_count + ' 条历史记录未纳入库存台账，不参与收发计算。'" type="info" :closable="false" />
+      <ElAlert v-if="result.untracked_count" :title="result.untracked_count + ' 条历史记录未计入库存，不参与收发计算。'" type="info" :closable="false" />
       <p v-if="result.pending_incoming_count" class="history-note">另有 {{ result.pending_incoming_count }} 批待本班组接收，尚未计入库存。</p>
-      <p v-if="!result.found || !result.groups.length" class="history-prompt">{{ result.found ? '暂无已入账收发记录' : '当前班组未找到该流水号' }}</p>
+      <p v-if="!result.found || !result.groups.length" class="history-prompt">{{ result.found ? '暂无已登记的收发记录' : '当前班组未找到该流水号' }}</p>
       <TeamFlowTimeline v-else :history="result" @select="showBatch" />
     </template>
     <MaterialTransferDrawer v-model="batchOpen" :batch-no="batchNo" :trace-scope="{ team_id: teamId }" @changed="live.request" />

@@ -10,11 +10,13 @@ export interface SerialHistoryEvent {
   batch_no: string; source_batch_no: string; counterpart: string; material_type: MaterialType | null
   source_material_type: MaterialType | null; quantity: number; weight: number
   delta_quantity: number; delta_weight: number; balance_quantity: number; balance_weight: number; status: string
+  entry_kind?: MaterialEntryKind
 }
 export interface SerialHistoryGroup {
   key: string; purpose_id: number | null; name: string
   incoming_quantity: number; incoming_weight: number; outgoing_quantity: number; outgoing_weight: number
   lost_quantity: number; lost_weight: number; on_hand_quantity: number; on_hand_weight: number
+  owned_quantity?: number; owned_weight?: number
   baseline_quantity: number; baseline_weight: number; events: SerialHistoryEvent[]
 }
 export interface SerialHistory {
@@ -26,6 +28,7 @@ export interface SerialHistory {
 export interface SerialHistoryLot {
   batch_no: string; group_key: string; received_at: string; from_name: string
   quantity: number; weight: number; on_hand_quantity: number; on_hand_weight: number
+  owned_quantity?: number; owned_weight?: number
   baseline_quantity: number; baseline_weight: number; closing_quantity: number; closing_weight: number
   last_event_at: string
 }

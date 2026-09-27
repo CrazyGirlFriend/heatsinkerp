@@ -27,6 +27,14 @@ async function render(query = '') {
 async function search(serial = '000012') { await wrapper.get('input[aria-label="历史流水号"]').setValue(serial); await wrapper.get('form').trigger('submit'); await flushPromises() }
 
 describe('team serial history', () => {
+  it('includes pending outbound in the current stock header while retaining historical events', async () => {
+    const history = result()
+    history.groups.forEach(group => { group.owned_quantity = 10; group.owned_weight = 1 })
+    vi.mocked(teamMaterialApi.serialHistory).mockResolvedValueOnce(history)
+    await render('?serial_no=000012')
+    expect(wrapper.get('.history-total').text()).toContain('20 件/2 kg')
+    expect(wrapper.getComponent(TeamFlowTimeline).props('history').groups[0].on_hand_quantity).toBe(6)
+  })
   it('starts empty, queries the exact leading-zero identity, and renders purpose charts instead of a table', async () => {
     await render()
     expect(teamMaterialApi.serialHistory).not.toHaveBeenCalled()
@@ -35,7 +43,7 @@ describe('team serial history', () => {
     expect(wrapper.findAllComponents(TeamFlowTimeline)).toHaveLength(1)
     expect(wrapper.find('table').exists()).toBe(false)
     expect(wrapper.text()).toContain('1 批待本班组接收')
-    expect(wrapper.text()).toContain('当前结存')
+    expect(wrapper.text()).toContain('当前库存')
     expect(wrapper.getComponent(TeamFlowTimeline).props('history').groups).toHaveLength(2)
     expect(wrapper.find('a.chain-link').exists()).toBe(false)
   })
@@ -65,8 +73,8 @@ describe('team serial history', () => {
     vi.mocked(teamMaterialApi.serialHistory).mockResolvedValueOnce({ ...result(), found: false, groups: [], pending_incoming_count: 0 })
     await search(); expect(wrapper.text()).toContain('当前班组未找到该流水号')
     vi.mocked(teamMaterialApi.serialHistory).mockResolvedValueOnce({ ...result(), groups: [], untracked_count: 2 })
-    await search(); expect(wrapper.text()).toContain('2 条历史记录未纳入库存台账')
-    expect(wrapper.text()).toContain('暂无已入账收发记录')
+    await search(); expect(wrapper.text()).toContain('2 条历史记录未计入库存')
+    expect(wrapper.text()).toContain('暂无已登记的收发记录')
   })
   it('keeps the same timeline on live refresh without adding another chart or global link', async () => {
     await render('?serial_no=000012')

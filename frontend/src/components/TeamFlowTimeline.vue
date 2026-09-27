@@ -55,12 +55,15 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
   <section ref="root" class="team-timeline" aria-label="本班组批次收发时间画布" @keydown="shortcut">
     <header class="timeline-legend">
       <ElSelect v-if="dense" :model-value="selected || undefined" filterable clearable :append-to="root" placeholder="查找收发节点" aria-label="查找收发节点" @change="select" @clear="selected = ''"><ElOption v-for="entry in selectionOptions" :key="entry.id" :value="entry.id" :label="entry.label" /></ElSelect>
-      <div class="node-legend"><span><i class="marker received" />实心收进</span><span><i class="marker" />空心转出</span><span><ElIcon><Close /></ElIcon>丢失</span></div>
+      <div class="node-legend"><span><i class="marker received" />接收</span><span><i class="marker" />转出</span><span><ElIcon><Close /></ElIcon>丢失</span></div>
     </header>
     <div v-if="model.extent" class="timeline-scroll">
-      <FlowPreviewCanvas ref="chart" :option="option" :replay="replay" :motion="motion" renderer="svg" :interaction="interaction" :label="`${history.team_name}，流水号 ${history.serial_no}，按业务及来源批次排列的收发时间图；件数和重量，滚轮缩放，H 平移，V 选择。`" @select="pick" @zoom="zoom = $event" />
+      <div class="timeline-content">
+      <div class="timeline-columns"><span>接收批次 / 本组业务</span><span>收发过程</span><span>当前库存</span></div>
+      <FlowPreviewCanvas ref="chart" :option="option" :replay="replay" :motion="motion" renderer="svg" :interaction="interaction" :label="`${history.team_name}，流水号 ${history.serial_no}，按业务及来源批次排列的收发时间图；件数和重量，上下滚动查看批次，Ctrl 加滚轮缩放，H 平移，V 选择。`" @select="pick" @zoom="zoom = $event" />
+      </div>
     </div>
-    <div v-else class="timeline-empty">所选日期内没有已入账的收发或结存。</div>
+    <div v-else class="timeline-empty">所选日期内没有已登记的收发或库存。</div>
     <div v-if="model.extent" class="timeline-controls" role="group" aria-label="班组画布工具">
       <div class="tool-group tool-mode" :class="{ panning: interaction === 'pan' }">
         <ElTooltip content="选择批次 · V" :append-to="root" :show-after="350"><button type="button" aria-label="选择批次" :aria-pressed="interaction === 'select'" @click="interaction = 'select'"><ElIcon><Pointer /></ElIcon></button></ElTooltip>
@@ -77,7 +80,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
         <button type="button" :aria-label="fullscreen ? '退出全屏' : '全屏画布'" @click="toggleFullscreen"><ElIcon><FullScreen /></ElIcon></button>
       </div>
     </div>
-    <footer class="timeline-caption"><span>{{ example ? '演示快照 · 非实时 · ' : '' }}图示截至 {{ traceTime(model.closing) }}<template v-if="model.rows.length > 4"> · {{ model.rows.length }} 个接收批次</template></span><span>{{ fullscreenError || '滚轮缩放 · 拖动平移 · 点击节点查看批次' }}</span></footer>
+    <footer class="timeline-caption"><span>{{ example ? '演示数据 · 非实时 · ' : '' }}图示截至 {{ traceTime(model.closing) }}<template v-if="model.rows.length"> · {{ model.rows.length }} 个接收批次</template></span><span>{{ fullscreenError || '上下滚动查看批次 · 点击节点查看明细' }}</span></footer>
   </section>
 </template>
 
@@ -90,7 +93,8 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
 .node-legend { gap: 24px; color: #657493; font-size: 13px; white-space: nowrap; }
 .node-legend .marker { box-sizing: border-box; width: 12px; height: 12px; border: 2px solid #8670b6; border-radius: 50%; }
 .node-legend .received { background: #8670b6; }.node-legend .el-icon { color: #cc3a66; font-size: 17px; }
-.timeline-scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }.timeline-scroll :deep(.flow-canvas) { min-height: 0; min-width: 760px; height: 100%; }
+.timeline-scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }.timeline-content { position: relative; min-width: 920px; height: 100%; }.timeline-scroll :deep(.flow-canvas) { min-height: 0; height: 100%; }
+.timeline-columns { position: absolute; z-index: 1; top: 8px; left: 14px; right: 16px; display: grid; grid-template-columns: 206px 1fr 136px; color: #76849b; font-size: 12px; pointer-events: none; }
 .timeline-empty { flex: 1; display: grid; place-items: center; padding: 24px; color: #76849b; }
 .timeline-controls { display: flex; align-items: center; gap: 10px; padding: 6px 8px; margin: 0 auto 12px; border: 1px solid #e0e5ee; border-radius: 16px; box-shadow: 0 4px 18px #263c6010; background: #ffffffed; }
 .tool-group { display: flex; align-items: center; gap: 1px; }.tool-group + .tool-group { border-left: 1px solid #e5e9f1; padding-left: 10px; }
