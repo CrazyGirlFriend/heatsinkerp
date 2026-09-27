@@ -89,26 +89,29 @@ describe('transfer list refresh continuity', () => {
   it('uses separate source and destination columns for receipts, transfers and external outbound records', async () => {
     const items = [
       normalizeMaterialTransfer({ ...transfer, id: 2, batch_no: 'TL-RECEIPT', entry_kind: 'warehouse_receipt', status: 'received', next_team: { id: 1, name: '库房' } }),
-      normalizeMaterialTransfer({ ...transfer, id: 3, batch_no: 'TL-INTERNAL', source_team: { id: 4, name: '线切割' }, next_team: { id: 5, name: '雕刻' } }),
-      normalizeMaterialTransfer({ ...transfer, id: 4, batch_no: 'TL-EXTERNAL', entry_kind: 'warehouse_outbound', external_destination: '外协收料单位' }),
+      normalizeMaterialTransfer({ ...transfer, id: 3, batch_no: 'TL-INTERNAL', source_team: { id: 7, name: '电镀' }, next_team: { id: 8, name: '检验' }, purpose_name: '去毛刺' }),
+      normalizeMaterialTransfer({ ...transfer, id: 4, batch_no: 'TL-EXTERNAL', entry_kind: 'warehouse_outbound', external_destination: '外协收料单位', purpose_name: '旧来源业务' }),
       normalizeMaterialTransfer({ ...transfer, id: 5, batch_no: 'TL-SHIPMENT', entry_kind: 'inspection_shipment', source_team: { id: 8, name: '检验' }, external_destination: '客户收货仓', status: 'dispatched' }),
     ]
     vi.mocked(materialTransferApi.list).mockResolvedValue({ ...result, items, total: items.length })
     const page = await renderList('/transfer-batches')
     const headings = page.findAll('.el-table__header th .cell').map(cell => cell.text())
-    expect(headings).toEqual(['批次号', '流水号', '材质', '来源', '去向', '数量', '重量', '状态', '转出时间'])
+    expect(headings).toEqual(['批次号', '流水号', '材质', '来源', '去向', '承接业务', '数量', '重量', '状态', '转出时间'])
     expect(page.findAll('.el-table__header th.el-table__cell').every(cell => cell.classes().includes('is-center'))).toBe(true)
     expect(page.getComponent({ name: 'ElTable' }).props('border')).toBe(true)
     const tableRows = page.findAll('.el-table__body .el-table__row')
     expect(tableRows.every(row => row.findAll('td').every(cell => cell.classes().includes('is-center')))).toBe(true)
-    expect(tableRows.map(row => row.get('.transfer-source-cell').text())).toEqual(['库房手工入库', '线切割', '库房', '检验'])
-    expect(tableRows.map(row => row.get('.transfer-destination-cell').text())).toEqual(['库房', '雕刻', '外协收料单位', '客户收货仓'])
+    expect(tableRows.map(row => row.get('.transfer-source-cell').text())).toEqual(['库房手工入库', '电镀', '库房', '检验'])
+    expect(tableRows.map(row => row.get('.transfer-destination-cell').text())).toEqual(['库房', '检验', '外协收料单位', '客户收货仓'])
+    expect(tableRows.map(row => row.get('.transfer-purpose-cell').text())).toEqual(['未指定', '去毛刺', '—', '—'])
     expect(tableRows.map(row => row.get('.transfer-status-cell').text())).toEqual(['已入库', '待接收', '待出库', '已发货'])
     expect(page.find('.transfer-flow, .receipt-flow, .flow-track').exists()).toBe(false)
     const mobileRows = page.findAll('.mobile-transfer-parties')
-    expect(mobileRows.map(row => row.findAll('small').map(label => label.text()))).toEqual(Array.from({ length: 4 }, () => ['来源', '去向']))
+    expect(mobileRows.map(row => row.findAll('small').map(label => label.text()))).toEqual(Array.from({ length: 4 }, () => ['来源', '去向', '承接业务']))
     expect(mobileRows[0].text()).toContain('库房手工入库')
+    expect(mobileRows[1].text()).toContain('去毛刺')
     expect(mobileRows[2].text()).toContain('外协收料单位')
+    expect(mobileRows[2].text()).not.toContain('旧来源业务')
   })
 
   it('separates quantities and weights into columns while keeping the timestamp on one line', async () => {

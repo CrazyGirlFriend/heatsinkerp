@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import BarcodeCard from './BarcodeCard.vue'
-import { materialDocumentTextFields, materialTypeLabel, materialTransferStatusLabel, materialSourceLabel, isExternalEntryKind, type MaterialTransfer } from '@/types/materialTransfer'
+import { materialDocumentTextFields, materialTypeLabel, materialTransferStatusLabel, materialSourceLabel, materialPurposeLabel, isExternalEntryKind, type MaterialTransfer } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
 const props = defineProps<{ items: MaterialTransfer[] }>()
 const opening = computed(() => props.items.length > 0 && props.items.every(item => item.entry_kind === 'opening_stock'))
 const totals = computed(() => props.items.filter(item => item.status !== 'voided').reduce((sum, item) => ({ quantity: sum.quantity + item.quantity, weight: Math.round((sum.weight + item.weight) * 1000) / 1000 }), { quantity: 0, weight: 0 }))
 function details(item: MaterialTransfer) {
-  return [`承接业务：${item.purpose_name || '未分类'}`, ...materialDocumentTextFields.filter(field => item[field.key]).map(field => `${field.label}：${item[field.key]}`),
+  return [...materialDocumentTextFields.filter(field => item[field.key]).map(field => `${field.label}：${item[field.key]}`),
     ...(item.delivery_date ? [`要求发货日期：${item.delivery_date}`, `应发成品件数：${item.delivery_quantity}`, `交期源头批次：${item.delivery_origin_batch_no || item.batch_no}`] : []),
     ...(item.finished_quantity != null ? [`成品件数：${item.finished_quantity}`] : []),
     ...(item.notes ? [`说明：${item.notes}`] : [])].join('；')
@@ -18,13 +18,13 @@ function details(item: MaterialTransfer) {
   <article class="material-batches-print-sheet" aria-label="多批次转料打印单">
     <header><h1>{{ opening ? '期初库存入账单' : '物料流转单' }}</h1><span>共 {{ items.length }} 个独立批次</span></header>
     <table aria-label="批次转料明细">
-      <colgroup><col style="width: 31%" /><col style="width: 19%" /><col style="width: 19%" /><col style="width: 12%" /><col style="width: 9%" /><col style="width: 10%" /></colgroup>
-      <thead><tr><th>批次条码 / 流水号</th><th>材质 / 类型</th><th>{{ opening ? '来源 / 入账班组' : '上序 / 下序' }}</th><th>状态</th><th>件数</th><th>重量 kg</th></tr></thead>
+      <colgroup><col style="width: 31%" /><col style="width: 14%" /><col style="width: 16%" /><col style="width: 12%" /><col style="width: 9%" /><col style="width: 8%" /><col style="width: 10%" /></colgroup>
+      <thead><tr><th>批次条码 / 流水号</th><th>材质 / 类型</th><th>{{ opening ? '来源 / 入账班组' : '来源 / 去向' }}</th><th>承接业务</th><th>状态</th><th>件数</th><th>重量 kg</th></tr></thead>
       <tbody v-for="item in items" :key="item.batch_no" :data-batch-no="item.batch_no">
-        <tr><td><BarcodeCard :value="item.batch_no" entity-label="批次号" compact /><div>{{ item.serial_no }}</div></td><td>{{ item.material_name || '—' }}<br />{{ materialTypeLabel(item.material_type) }}</td><td>{{ materialSourceLabel(item) }}<br />{{ isExternalEntryKind(item.entry_kind) ? item.external_destination : item.next_team.name }}</td><td>{{ materialTransferStatusLabel(item.status, item.entry_kind) }}</td><td>{{ item.quantity }}</td><td>{{ item.weight }}</td></tr>
-        <tr><td colspan="6" class="batch-note">{{ opening ? '登记' : '转出' }}：{{ item.transferred_by || '—' }} · {{ formatDateTime(item.transferred_at) }}；确认：{{ item.received_by || item.dispatched_by || '—' }} · {{ formatDateTime(item.received_at || item.dispatched_at) }}<br v-if="details(item)" />{{ details(item) }}</td></tr>
+        <tr><td><BarcodeCard :value="item.batch_no" entity-label="批次号" compact /><div>{{ item.serial_no }}</div></td><td>{{ item.material_name || '—' }}<br />{{ materialTypeLabel(item.material_type) }}</td><td>{{ materialSourceLabel(item) }}<br />{{ isExternalEntryKind(item.entry_kind) ? item.external_destination : item.next_team.name }}</td><td>{{ materialPurposeLabel(item) }}</td><td>{{ materialTransferStatusLabel(item.status, item.entry_kind) }}</td><td>{{ item.quantity }}</td><td>{{ item.weight }}</td></tr>
+        <tr><td colspan="7" class="batch-note">{{ opening ? '登记' : '转出' }}：{{ item.transferred_by || '—' }} · {{ formatDateTime(item.transferred_at) }}；确认：{{ item.received_by || item.dispatched_by || '—' }} · {{ formatDateTime(item.received_at || item.dispatched_at) }}<br v-if="details(item)" />{{ details(item) }}</td></tr>
       </tbody>
-      <tfoot><tr><th colspan="4">合计（不含作废批次）</th><td>{{ totals.quantity }}</td><td>{{ totals.weight }}</td></tr></tfoot>
+      <tfoot><tr><th colspan="5">合计（不含作废批次）</th><td>{{ totals.quantity }}</td><td>{{ totals.weight }}</td></tr></tfoot>
     </table>
     <footer><span>{{ opening ? '登记人' : '转出方' }}签字：________________</span><span>{{ opening ? '班组复核' : '接收 / 确认方' }}签字：________________</span></footer>
   </article>

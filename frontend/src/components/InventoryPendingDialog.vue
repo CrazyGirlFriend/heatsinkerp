@@ -6,7 +6,7 @@ import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import StatePanel from './StatePanel.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
-import { isExternalEntryKind, materialTransferStatusLabel, type MaterialTransfer } from '@/types/materialTransfer'
+import { isExternalEntryKind, materialPurposeLabel, materialTransferStatusLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import { inventoryAmount, type TeamInventoryRow } from '@/types/teamInventory'
 import { formatDateTime } from '@/utils/format'
 
@@ -45,6 +45,7 @@ onBeforeUnmount(() => { ++version })
     <ElTable v-else :data="rows" row-key="id" class="business-table" empty-text="暂无转出待确认批次">
       <ElTableColumn label="批次号" min-width="210" align="center"><template #default="{ row }"><ElButton link type="primary" @click="open(row)">{{ row.batch_no }}</ElButton></template></ElTableColumn>
       <ElTableColumn label="下序 / 去向" min-width="130" align="center"><template #default="{ row }">{{ row.next_team?.name || row.external_destination || '—' }}</template></ElTableColumn>
+      <ElTableColumn label="承接业务" min-width="125" align="center" show-overflow-tooltip><template #default="{ row }">{{ materialPurposeLabel(row) }}</template></ElTableColumn>
       <ElTableColumn label="件数" min-width="100" align="center"><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
       <ElTableColumn label="重量 (kg)" min-width="125" align="center"><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
       <ElTableColumn label="状态" min-width="130" align="center"><template #default="{ row }">{{ isExternalEntryKind(row.entry_kind) ? materialTransferStatusLabel(row.status, row.entry_kind) : '转出待签收' }}</template></ElTableColumn>

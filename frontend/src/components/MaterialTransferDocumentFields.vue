@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import MaterialDocumentTable, { type DocumentField } from './MaterialDocumentTable.vue'
-import { externalActionLabel, isExternalTransfer, isWarehouseReceipt, materialSourceLabel, receiptSourceLabel, materialDocumentTextFields, materialTransferNotesLabel, materialTransferStatusLabel, materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
+import { externalActionLabel, isExternalTransfer, isWarehouseReceipt, materialSourceLabel, materialPurposeLabel, receiptSourceLabel, materialDocumentTextFields, materialTransferNotesLabel, materialTransferStatusLabel, materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
 
 const props = withDefaults(defineProps<{ transfer: MaterialTransfer; group?: 'basic' | 'extra' | 'all' }>(), { group: 'basic' })
@@ -19,9 +19,9 @@ const fields = computed<DocumentField[]>(() => {
     { label: '批次号', value: t.batch_no },
     { label: '状态', value: materialTransferStatusLabel(t.status, t.entry_kind) },
     { label: receipt ? '入库来源' : external ? `${verb}班组` : '转出班组', value: materialSourceLabel(t) },
-    { label: '承接业务', value: t.purpose_name || '未分类' },
-    { label: opening ? '入账班组' : receipt ? '入库库房' : external ? `${verb}去向` : '接收班组', value: external ? t.external_destination || '—' : t.next_team.name },
     { label: '流水号', key: 'serial', value: t.serial_no },
+    { label: opening ? '入账班组' : receipt ? '入库库房' : external ? `${verb}去向` : '接收班组', value: external ? t.external_destination || '—' : t.next_team.name },
+    { label: '承接业务', value: materialPurposeLabel(t) },
     { label: '来源批次', value: t.source_transfer_batch_no || '—' },
     ...(t.delivery_origin_batch_no && t.delivery_origin_batch_no !== t.batch_no ? [{ label: '交期源头批次', value: t.delivery_origin_batch_no }] : []),
     { label: receipt ? '入库件数' : external ? `${verb}件数` : '转料件数', value: `${t.quantity} ${t.quantity_unit}` },

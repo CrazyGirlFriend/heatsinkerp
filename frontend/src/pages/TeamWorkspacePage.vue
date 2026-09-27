@@ -31,7 +31,7 @@ import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { InventoryConnection } from '@/services/inventoryStream'
 import { shouldRefreshInventory, subscribeSharedInventoryChanges as subscribeInventoryChanges } from '@/services/inventoryChanges'
 import { materialTransferApi } from '@/services/materialTransferApi'
-import { isExternalEntryKind, materialEntryLabel, materialSourceLabel, receiptSourceLabel, materialTypeOptions, materialTypeLabel, type MaterialTransfer, type MaterialType } from '@/types/materialTransfer'
+import { isExternalEntryKind, materialEntryLabel, materialSourceLabel, materialPurposeLabel, receiptSourceLabel, materialTypeOptions, materialTypeLabel, type MaterialTransfer, type MaterialType } from '@/types/materialTransfer'
 import { isDispatchNumber, dispatchStatusLabels, type DispatchKind, type DispatchStatus, type TeamMaterialOverview, type StockBatch, type CreatedMaterialBatches, type MaterialLoss } from '@/types/teamMaterials'
 import { formatDateTime } from '@/utils/format'
 
@@ -332,7 +332,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                   <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip><template #default="{ row }"><span class="record-serial"><span :title="row.serial_no">{{ row.serial_no }}</span><SerialUrgencyBadge :urgency="row.urgency" /></span></template></ElTableColumn>
                   <ElTableColumn label="材质" min-width="130" show-overflow-tooltip><template #default="{ row }">{{ row.material_name || '—' }}</template></ElTableColumn>
                   <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.material_type) }}</template></ElTableColumn>
-                  <ElTableColumn prop="purpose_name" label="业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.purpose_name || '—' }}</template></ElTableColumn>
+                  <ElTableColumn prop="purpose_name" label="承接业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ materialPurposeLabel(asTransfer(row)) }}</template></ElTableColumn>
                   <ElTableColumn label="件数" min-width="100" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
                   <ElTableColumn label="重量 (kg)" min-width="125" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
                   <ElTableColumn label="上序" min-width="100" show-overflow-tooltip><template #default="{ row }">{{ row.source_team.name }}</template></ElTableColumn>
@@ -347,7 +347,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                   <ElTableColumn label="来源" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ materialSourceLabel(asTransfer(row)) }}</template></ElTableColumn>
                   <ElTableColumn label="材质" min-width="130" show-overflow-tooltip><template #default="{ row }">{{ row.material_name || '—' }}</template></ElTableColumn>
                   <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.material_type) }}</template></ElTableColumn>
-                  <ElTableColumn prop="purpose_name" label="业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.purpose_name || '—' }}</template></ElTableColumn>
+                  <ElTableColumn prop="purpose_name" label="承接业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ materialPurposeLabel(asTransfer(row)) }}</template></ElTableColumn>
                   <ElTableColumn label="件数" min-width="100" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
                   <ElTableColumn label="重量 (kg)" min-width="125" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
                   <ElTableColumn label="状态" width="120"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" /></template></ElTableColumn>
@@ -361,9 +361,9 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                   <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip><template #default="{ row }"><span class="record-serial"><span :title="row.serial_no">{{ row.serial_no }}</span><SerialUrgencyBadge :urgency="row.urgency" /></span></template></ElTableColumn>
                   <ElTableColumn label="材质" min-width="130" show-overflow-tooltip><template #default="{ row }">{{ row.material_name || '—' }}</template></ElTableColumn>
                   <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.material_type) }}</template></ElTableColumn>
-                  <ElTableColumn prop="purpose_name" label="业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.purpose_name || '—' }}</template></ElTableColumn>
                   <ElTableColumn label="出库方式" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ materialEntryLabel(row.entry_kind) }}</template></ElTableColumn>
                   <ElTableColumn label="下序 / 去向" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ isExternalEntryKind(row.entry_kind) ? row.external_destination || row.next_team.name : teamWorkspaceProfile(row.next_team.code)?.name || row.next_team.name }}</template></ElTableColumn>
+                  <ElTableColumn prop="purpose_name" label="承接业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ materialPurposeLabel(asTransfer(row)) }}</template></ElTableColumn>
                   <ElTableColumn label="件数" min-width="100" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
                   <ElTableColumn label="重量 (kg)" min-width="125" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
                   <ElTableColumn label="状态" width="120"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" outgoing /></template></ElTableColumn>

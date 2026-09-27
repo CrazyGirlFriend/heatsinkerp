@@ -35,7 +35,7 @@ import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/stores/toast'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import type { MaterialSearchField, MaterialSearchMode, MaterialType, MaterialTransfer, MaterialTransferFilterParams, MaterialTransferStatus as TransferStatusValue, MaterialTransferStatusCounts } from '@/types/materialTransfer'
-import { isWarehouseReceipt, materialSearchFields, materialSearchModes, materialTypeLabel, materialTypeOptions } from '@/types/materialTransfer'
+import { isWarehouseReceipt, materialPurposeLabel, materialSearchFields, materialSearchModes, materialTypeLabel, materialTypeOptions } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
 
 const route = useRoute()
@@ -495,6 +495,7 @@ onBeforeUnmount(() => {
             <ElTableColumn label="材质" min-width="150" align="center" show-overflow-tooltip prop="material_name" />
             <ElTableColumn label="来源" min-width="156" align="center" class-name="transfer-source-cell" show-overflow-tooltip><template #default="{ row }">{{ isWarehouseReceipt(asTransfer(row)) ? '库房手工入库' : row.source_team.name }}</template></ElTableColumn>
             <ElTableColumn label="去向" min-width="110" align="center" class-name="transfer-destination-cell" show-overflow-tooltip prop="next_team.name" />
+            <ElTableColumn label="承接业务" min-width="125" align="center" class-name="transfer-purpose-cell" show-overflow-tooltip><template #default="{ row }">{{ materialPurposeLabel(asTransfer(row)) }}</template></ElTableColumn>
             <ElTableColumn label="数量" min-width="120" align="center" class-name="transfer-quantity-cell"><template #default="{ row }">{{ numberText(row.quantity, row.quantity_unit) }}</template></ElTableColumn>
             <ElTableColumn label="重量" min-width="140" align="center" class-name="transfer-weight-cell"><template #default="{ row }">{{ numberText(row.weight, row.weight_unit) }}</template></ElTableColumn>
             <ElTableColumn label="状态" min-width="140" align="center" class-name="transfer-status-cell"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" plain /></template></ElTableColumn>
@@ -503,7 +504,7 @@ onBeforeUnmount(() => {
           <div v-if="hasRows" class="transfer-mobile-list">
             <ElButton v-for="transfer in rows" :key="transfer.batch_no" text class="transfer-mobile-row" @click="openDetail(transfer)">
               <span class="mobile-row-head"><strong>{{ transfer.batch_no }}</strong><MaterialTransferStatus :status="transfer.status" :entry-kind="transfer.entry_kind" plain /></span>
-              <span class="mobile-transfer-parties"><span><small>来源</small><span>{{ isWarehouseReceipt(transfer) ? '库房手工入库' : transfer.source_team.name }}</span></span><span><small>去向</small><span>{{ transfer.next_team.name }}</span></span></span>
+              <span class="mobile-transfer-parties"><span><small>来源</small><span>{{ isWarehouseReceipt(transfer) ? '库房手工入库' : transfer.source_team.name }}</span></span><span><small>去向</small><span>{{ transfer.next_team.name }}</span></span><span><small>承接业务</small><span>{{ materialPurposeLabel(transfer) }}</span></span></span>
               <span class="mobile-material-brief">{{ materialTypeLabel(transfer.material_type) }}<template v-if="transfer.material_name"> · {{ transfer.material_name }}</template></span>
               <span class="mobile-row-meta"><span>{{ numberText(transfer.quantity, transfer.quantity_unit) }} · {{ numberText(transfer.weight, transfer.weight_unit) }}</span><span>{{ transfer.serial_no }}</span></span>
             </ElButton>
@@ -602,7 +603,7 @@ onBeforeUnmount(() => {
   .mobile-row-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .mobile-row-head strong { overflow: hidden; color: var(--text); font-size: 14px; font-weight: 500; text-overflow: ellipsis; }
   .mobile-row-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--subtle); font-size: 12px; }
-  .mobile-transfer-parties { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; color: var(--reading-ink); font-size: 16px; }
+  .mobile-transfer-parties { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; color: var(--reading-ink); font-size: 16px; }
   .mobile-transfer-parties > span { display: grid; gap: 4px; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
   .mobile-transfer-parties small { color: var(--reading-muted); font-size: 14px; }
   .pagination-bar { flex-wrap: wrap; padding-inline: 4px; }

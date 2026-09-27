@@ -6,6 +6,22 @@ import BarcodeCard from './BarcodeCard.vue'
 import { dispatchFixture } from '@/testFixtures/materialDispatch'
 
 describe('independent batch co-printing', () => {
+  it('gives each batch its own purpose column alongside the destination, without repeating it in notes', () => {
+    const items = dispatchFixture(4).items
+    const purposes = ['去毛刺', '检验', null, '旧来源业务']
+    items.forEach((item, index) => Object.assign(item, { next_team: { id: 8, name: '检验' }, purpose_name: purposes[index] }))
+    Object.assign(items[3]!, { entry_kind: 'inspection_shipment', external_destination: '客户单位' })
+    const wrapper = mount(MaterialBatchPrintSheet, { props: { items }, global: { stubs: { BarcodeCard: true } } })
+    const headings = wrapper.findAll('thead th').map(th => th.text())
+    const purposeIndex = headings.indexOf('承接业务')
+    expect(purposeIndex).toBe(headings.indexOf('来源 / 去向') + 1)
+    expect(wrapper.findAll('tbody').map(body => body.findAll('tr')[0]!.findAll('td')[purposeIndex]!.text())).toEqual(['去毛刺', '检验', '未指定', '—'])
+    expect(wrapper.findAll('.batch-note').every(note => note.attributes('colspan') === '7' && !note.text().includes('承接业务'))).toBe(true)
+    expect(wrapper.get('tfoot th').attributes('colspan')).toBe('5')
+    expect(wrapper.findAllComponents(BarcodeCard).map(c => c.props('value'))).toEqual(items.map(item => item.batch_no))
+    wrapper.unmount()
+  })
+
   it('prints every batch barcode and customer fields without a CK header barcode', () => {
     const items = dispatchFixture(3).items
     Object.assign(items[0]!, { serial_no: '000012', customer_code: '客户 A', product_code: 'CP-009', quantity: 0, weight: .125, material_type: 'scrap_chips' })

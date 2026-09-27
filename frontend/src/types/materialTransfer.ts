@@ -213,6 +213,10 @@ export function materialTransferVersion(transfer: MaterialTransfer): { expected_
   return Number.isSafeInteger(transfer.version) && Number(transfer.version) > 0 ? { expected_version: Number(transfer.version) } : {}
 }
 
+export function materialPurposeLabel(transfer: Pick<MaterialTransfer, 'entry_kind' | 'purpose_name'>): string {
+  return isExternalEntryKind(transfer.entry_kind) ? '—' : transfer.purpose_name?.trim() || '未指定'
+}
+
 export function materialTransferStatusLabel(status: MaterialTransferStatus | string, entryKind?: MaterialEntryKind): string {
   if (entryKind === 'opening_stock') return '已入账'
   if (isExternalEntryKind(entryKind) && status === 'pending') return `待${externalActionLabel(entryKind)}`

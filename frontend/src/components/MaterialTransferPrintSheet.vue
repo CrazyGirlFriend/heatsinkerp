@@ -2,7 +2,7 @@
 import BarcodeCard from '@/components/BarcodeCard.vue'
 import { computed } from 'vue'
 import type { MaterialTransfer } from '@/types/materialTransfer'
-import { externalActionLabel, isExternalTransfer, isWarehouseReceipt, materialSourceLabel, receiptSourceLabel, materialDocumentTitle, materialDocumentTextFields, materialTransferNotesLabel, materialTransferStatusLabel, materialTypeLabel } from '@/types/materialTransfer'
+import { externalActionLabel, isExternalTransfer, isWarehouseReceipt, materialSourceLabel, materialPurposeLabel, receiptSourceLabel, materialDocumentTitle, materialDocumentTextFields, materialTransferNotesLabel, materialTransferStatusLabel, materialTypeLabel } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
 
 const props = defineProps<{ transfer: MaterialTransfer }>()
@@ -16,8 +16,11 @@ const fields = computed(() => {
   return [
     { label: '流水号', value: transfer.serial_no },
     { label: '状态', value: materialTransferStatusLabel(transfer.status, transfer.entry_kind) },
+    { label: receipt.value ? '入库来源' : external.value ? `${verb.value}班组` : '转出班组', value: materialSourceLabel(transfer) },
+    { label: receipt.value || external.value ? '登记人' : '转料人', value: transfer.transferred_by || '—' },
+    { label: opening.value ? '入账班组' : receipt.value ? '入库库房' : external.value ? `${verb.value}去向` : '接收班组', value: external.value ? transfer.external_destination || '—' : transfer.next_team.name },
+    { label: '承接业务', value: materialPurposeLabel(transfer) },
     { label: '物料类型', value: materialTypeLabel(transfer.material_type) },
-    { label: '承接业务', value: transfer.purpose_name || '未分类' },
     { label: '原单批号', value: transfer.source_batch_no || '—' },
     { label: '材质', value: transfer.material_name || '—' },
     { label: '客户代码', value: transfer.customer_code || '—' },
@@ -27,10 +30,7 @@ const fields = computed(() => {
     { label: receipt.value ? '入库重量' : external.value ? `${verb.value}重量` : '转料重量', value: `${transfer.weight} kg` },
     { label: '成品件数', value: transfer.finished_quantity == null ? '—' : `${transfer.finished_quantity} 件` },
     ...(transfer.delivery_date ? [{ label: '要求发货日期', value: transfer.delivery_date }, { label: '应发成品件数', value: `${transfer.delivery_quantity} 件` }] : []),
-    { label: receipt.value || external.value ? '登记人' : '转料人', value: transfer.transferred_by || '—' },
-    { label: receipt.value ? '入库来源' : external.value ? `${verb.value}班组` : '转出班组', value: materialSourceLabel(transfer) },
     ...(isWarehouseReceipt(transfer) ? [{ label: '入库来源类别', value: receiptSourceLabel(transfer) }, { label: '原出库批次', value: transfer.return_dispatch_no || '未关联' }] : []),
-    { label: opening.value ? '入账班组' : receipt.value ? '入库库房' : external.value ? `${verb.value}去向` : '接收班组', value: external.value ? transfer.external_destination || '—' : transfer.next_team.name },
     ...(external.value ? [{ label: `${verb.value}确认人`, value: transfer.dispatched_by || '—' }, { label: `${verb.value}确认时间`, value: formatDateTime(transfer.dispatched_at) }] : []),
     ...materialDocumentTextFields.filter(field => field.group === 'extra' && !field.multiline && transfer[field.key]).map(field => ({ label: field.label, value: transfer[field.key]! })),
   ]

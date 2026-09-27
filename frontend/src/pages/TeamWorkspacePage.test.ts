@@ -91,7 +91,8 @@ describe('team workspace material ledger', () => {
     expect(headings).not.toContain('类型 / 业务')
     if (tab !== 'losses') {
       expect(cells[headings.indexOf('物料类型')]!.text()).toBe('半成品')
-      expect(cells[headings.indexOf('业务')]!.text()).toBe('去毛刺')
+      expect(cells[headings.indexOf('承接业务')]!.text()).toBe('去毛刺')
+      if (tab === 'outgoing') expect(headings.indexOf('承接业务')).toBe(headings.indexOf('下序 / 去向') + 1)
     }
     expect(table.find('.barcode-card').exists()).toBe(false)
     await table.get('.batch-link').trigger('click'); await flushPromises()

@@ -36,6 +36,18 @@ const transfer: MaterialTransfer = {
 }
 
 describe('material transfer print sheet', () => {
+  it('places the receiving team and its historical purpose together in both copies', async () => {
+    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, next_team: { id: 8, code: 'FACTORY-QC', name: '检验' }, purpose_name: '去毛刺' } } })
+    await flushPromises()
+    for (const copy of wrapper.findAll('.material-transfer-print-copy')) {
+      const destination = copy.findAll('tr').find(row => row.findAll('th').some(th => th.text() === '接收班组'))!
+      expect(destination.findAll('th').map(th => th.text())).toEqual(['接收班组', '承接业务'])
+      expect(destination.findAll('td').map(td => td.text())).toEqual(['检验', '去毛刺'])
+      expect(copy.findAll('th').filter(th => th.text() === '承接业务')).toHaveLength(1)
+    }
+    wrapper.unmount()
+  })
+
   it('prints opening stock as an already-posted origin, with purpose and no fictitious upstream', async () => {
     const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, entry_kind: 'opening_stock', purpose_id: 1, purpose_name: '去毛刺' } } })
     await flushPromises()

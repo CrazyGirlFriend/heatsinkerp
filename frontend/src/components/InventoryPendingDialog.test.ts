@@ -11,7 +11,7 @@ import { warehouseFixture } from '@/testFixtures/teamInventory'
 const live = vi.hoisted(() => ({ refresh: async () => {} }))
 vi.mock('@/composables/useLiveRefresh', () => ({ useLiveRefresh: (refresh: () => Promise<void>) => { live.refresh = refresh; return { message: { value: '' }, request: refresh } } }))
 let wrapper: VueWrapper
-const batch = (id = 12) => normalizeMaterialTransfer({ id, batch_no: `BATCH-${id}`, serial_no: '000128', quantity: 0, weight: 30, next_team: { id: 8, name: '库房' }, transferred_at: '2026-09-27T00:00:00Z' })
+const batch = (id = 12) => normalizeMaterialTransfer({ id, batch_no: `BATCH-${id}`, serial_no: '000128', quantity: 0, weight: 30, next_team: { id: 8, name: '检验' }, purpose_name: '去毛刺', transferred_at: '2026-09-27T00:00:00Z' })
 beforeEach(() => { vi.spyOn(teamMaterialApi, 'inventoryPending').mockResolvedValue({ items: [batch()], total: 11, page: 1, page_size: 10, as_of: '2026-09-27T00:00:00Z' }) })
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
 async function render() {
@@ -24,12 +24,14 @@ describe('pending ownership detail', () => {
     await render()
     expect(wrapper.getComponent({ name: 'ElDialog' }).props()).toMatchObject({ alignCenter: true, appendToBody: true })
     expect(teamMaterialApi.inventoryPending).toHaveBeenLastCalledWith(4, 11, { page: 1, page_size: 10 })
-    for (const label of ['BATCH-12', '库房', '转出待签收', '2026-09-27', '统计于']) expect(wrapper.text()).toContain(label)
+    for (const label of ['BATCH-12', '检验', '转出待签收', '2026-09-27', '统计于']) expect(wrapper.text()).toContain(label)
     const headings = wrapper.findAll('thead th').map(cell => cell.text())
     const cells = wrapper.findAll('tbody td')
     expect(cells[headings.indexOf('件数')]!.text()).toBe('0')
     expect(cells[headings.indexOf('重量 (kg)')]!.text()).toBe('30')
-    expect(cells[5]!.text()).toContain('2026-09-27')
+    expect(headings.indexOf('承接业务')).toBe(headings.indexOf('下序 / 去向') + 1)
+    expect(cells[headings.indexOf('承接业务')]!.text()).toBe('去毛刺')
+    expect(cells[headings.indexOf('转出时间')]!.text()).toContain('2026-09-27')
     await wrapper.findAll('button').find(button => button.text() === 'BATCH-12')!.trigger('click')
     expect(wrapper.getComponent(MaterialTransferDrawer).props('transfer')?.id).toBe(12)
     wrapper.getComponent(ElPagination).vm.$emit('current-change', 2); await flushPromises()
@@ -41,6 +43,7 @@ describe('pending ownership detail', () => {
     expect(wrapper.text()).toContain(label)
     expect(wrapper.text()).toContain('外部单位')
     expect(wrapper.text()).not.toContain('转出待签收')
+    expect(wrapper.text()).not.toContain('去毛刺')
   })
   it('keeps data on live refresh failure, replaces confirmed batches on update, and ignores closed requests', async () => {
     await render()
