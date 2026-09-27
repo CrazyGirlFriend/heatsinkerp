@@ -35,11 +35,12 @@ describe('pending ownership detail', () => {
     wrapper.getComponent(ElPagination).vm.$emit('current-change', 2); await flushPromises()
     expect(teamMaterialApi.inventoryPending).toHaveBeenLastCalledWith(4, 11, { page: 2, page_size: 10 })
   })
-  it('labels external confirmation separately instead of internal transit', async () => {
-    vi.mocked(teamMaterialApi.inventoryPending).mockResolvedValue({ items: [normalizeMaterialTransfer({ ...batch(), entry_kind: 'warehouse_outbound', next_team: null, external_destination: '回收单位' })], total: 1, page: 1, page_size: 10 })
+  it.each([['warehouse_outbound', '待出库'], ['inspection_shipment', '待发货']] as const)('labels %s separately instead of internal transit', async (entry_kind, label) => {
+    vi.mocked(teamMaterialApi.inventoryPending).mockResolvedValue({ items: [normalizeMaterialTransfer({ ...batch(), status: 'pending', entry_kind, next_team: null, external_destination: '外部单位' })], total: 1, page: 1, page_size: 10 })
     await render()
-    expect(wrapper.text()).toContain('对外待确认')
-    expect(wrapper.text()).toContain('回收单位')
+    expect(wrapper.text()).toContain(label)
+    expect(wrapper.text()).toContain('外部单位')
+    expect(wrapper.text()).not.toContain('转出待签收')
   })
   it('keeps data on live refresh failure, replaces confirmed batches on update, and ignores closed requests', async () => {
     await render()

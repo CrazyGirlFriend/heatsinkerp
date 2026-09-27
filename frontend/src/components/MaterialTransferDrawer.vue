@@ -82,7 +82,7 @@ const effectiveBatchNo = computed(() => props.batchNo.trim() || props.transfer?.
 const canEdit = computed(() => Boolean(current.value && !loadError.value && !loading.value && canEditMaterialTransfer(current.value)))
 const canVoid = computed(() => Boolean(current.value && !loadError.value && !loading.value && canVoidMaterialTransfer(current.value)))
 const canConfirm = computed(() => Boolean(current.value && !loadError.value && !loading.value && canConfirmMaterialTransfer(current.value)))
-const canConfirmExternal = computed(() => Boolean(current.value && !loadError.value && !loading.value && authStore.isTeamAccount && String(authStore.currentUser?.team_id) === String(current.value.source_team.id) && canConfirmOutbound(current.value)))
+const canConfirmExternal = computed(() => Boolean(current.value && !loadError.value && !loading.value && authStore.isTeamAccount && authStore.currentUser?.active !== false && !authStore.currentUserError && String(authStore.currentUser?.team_id) === String(current.value.source_team.id) && canConfirmOutbound(current.value)))
 const canReject = computed(() => Boolean(current.value?.version && current.value.status === 'pending' && current.value.allowed_actions.includes('reject') && !loadError.value && !loading.value && authStore.isTeamAccount && authStore.currentUser?.active !== false && !authStore.currentUserError && String(authStore.currentUser?.team_id) === String(current.value.next_team.id)))
 watch(effectiveBatchNo, () => { reviewNotice.value = '' })
 const tracePath = computed(() => {
@@ -103,7 +103,7 @@ const stateMessage = computed(() => {
   if (receipt.value) return '手工入库已入账，单据已锁定'
   if (authStore.isAdmin) return '管理员仅可查看转料记录'
   if (current.value.status === 'dispatched') return `${actionLabel.value}已确认，单据已锁定`
-  if (external.value && current.value.status === 'pending') return `已扣减库存，待${current.value.source_team.name}确认${actionLabel.value}`
+  if (external.value && current.value.status === 'pending') return `由${current.value.source_team.name}确认实际${actionLabel.value}，确认后扣减库存`
   if (current.value.status === 'received') return '接收已确认，转料内容已锁定'
   if (current.value.status === 'voided') return '该转料单已作废'
   if (canConfirm.value) return '整单确认接收：无需重新录入数量或重量，请核对后确认。'
@@ -208,7 +208,7 @@ async function confirmExternal() {
   confirming.value = true
   try {
     await ElMessageBox.confirm(
-      `批次：${transfer.batch_no}\n材质：${transfer.material_name || '未填写'} · ${materialTypeLabel(transfer.material_type)}\n${verb}去向：${transfer.external_destination || '未填写'}\n数量：${numberText(transfer.quantity, '件')}、${numberText(transfer.weight, 'kg')}\n确认物料已实际${verb}？库存已在提交时扣减，本次确认仅锁定单据，不重复扣减。`,
+      `批次：${transfer.batch_no}\n材质：${transfer.material_name || '未填写'} · ${materialTypeLabel(transfer.material_type)}\n${verb}去向：${transfer.external_destination || '未填写'}\n数量：${numberText(transfer.quantity, '件')}、${numberText(transfer.weight, 'kg')}\n确认物料已实际${verb}？确认后扣减本班组库存，单据不可再修改。`,
       `确认${verb}`,
       { type: 'warning', confirmButtonText: `确认${verb}`, cancelButtonText: '取消', customClass: 'outbound-confirmation' },
     )
@@ -237,7 +237,7 @@ async function rejectTransfer() {
   const active = () => epoch === actionVersion && props.modelValue && effectiveBatchNo.value === transfer.batch_no
   confirming.value = true
   try {
-    const { value } = await ElMessageBox.prompt('填写需上序修正的内容。物料仍在途，修正后才能接收；不会恢复上序库存。', '退回核对', { inputType: 'textarea', inputValue: transfer.rejection_reason || '', inputValidator: value => !!value?.trim() && value.trim().length <= 2000 || '请填写 1 至 2000 字的原因', confirmButtonText: '退回核对', cancelButtonText: '取消' })
+    const { value } = await ElMessageBox.prompt('填写需上序修正的内容，修正后才能接收。', '退回核对', { inputType: 'textarea', inputValue: transfer.rejection_reason || '', inputValidator: value => !!value?.trim() && value.trim().length <= 2000 || '请填写 1 至 2000 字的原因', confirmButtonText: '退回核对', cancelButtonText: '取消' })
     if (!active()) return
     await authStore.refreshCurrentUser()
     if (!active() || !canReject.value) return

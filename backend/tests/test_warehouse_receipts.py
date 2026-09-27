@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, func, inspect, select
 from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal, engine as app_engine
-from app.models import MaterialTransfer, MaterialTransferEvent, TransferBatchNumberSequence
+from app.models import MaterialTransfer, MaterialTransferEvent, Team, TransferBatchNumberSequence, User
 from test_material_transfers import _leader, _team
 
 
@@ -70,6 +70,18 @@ def test_only_the_bound_warehouse_leader_can_intake(client, warehouse):
     other_url = f"/api/team-materials/{warehouse['other']['id']}/receipts"
     assert client.post(other_url, headers=warehouse['other_headers'], json=payload).status_code == 403
     assert client.get(other_url).status_code == 403
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count(MaterialTransfer.id))) == 0
+
+
+@pytest.mark.parametrize('disabled', ['account', 'team'])
+def test_disabled_warehouse_actor_cannot_intake_with_existing_token(client, warehouse, disabled):
+    actor = client.get('/api/auth/me', headers=warehouse['headers']).json()
+    with SessionLocal() as db:
+        target = db.get(User, actor['id']) if disabled == 'account' else db.get(Team, warehouse['team']['id'])
+        target.active = False
+        db.commit()
+    assert intake(client, warehouse).status_code == 401
     with SessionLocal() as db:
         assert db.scalar(select(func.count(MaterialTransfer.id))) == 0
 

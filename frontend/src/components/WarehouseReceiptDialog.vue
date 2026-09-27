@@ -127,7 +127,7 @@ onBeforeUnmount(() => { ++generation })
 <template>
   <ElDialog :model-value="modelValue" title="库房手工入库" width="min(740px, 94vw)" class="warehouse-receipt-dialog" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving" @close="close">
     <template #header><div class="receipt-heading"><h2>手工入库</h2></div></template>
-    <div class="receipt-destination"><span>入库库房</span><strong>{{ warehouse?.name || '当前库房不可用' }}</strong><small>确认后立即入账，单据将锁定</small></div>
+    <div class="receipt-destination"><span>入库库房</span><strong>{{ warehouse?.name || '当前库房不可用' }}</strong><small>清点后确认入库，立即增加库房库存，无需再次签收</small></div>
     <ElAlert v-if="!canWrite" type="warning" :closable="false" title="仅绑定正式库房的有效班组账号可以手工入库" />
     <ElAlert v-if="attempt" class="receipt-retry" type="warning" :closable="false" title="上次提交结果待确认" description="请重试核对同一次入库。核对完成前保留原内容，避免重复登记。" show-icon />
     <ElForm label-position="top" @submit.prevent="submit">

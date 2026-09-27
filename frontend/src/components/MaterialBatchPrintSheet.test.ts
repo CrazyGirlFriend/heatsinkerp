@@ -25,7 +25,7 @@ describe('independent batch co-printing', () => {
     expect(wrapper.findAll('tbody')).toHaveLength(25)
     expect(wrapper.text()).toContain(items[24]!.serial_no)
     expect(wrapper.text()).toContain('客户收货仓')
-    expect(wrapper.text()).toContain('待出库确认')
+    expect(wrapper.text()).toContain('待出库')
     wrapper.unmount()
   })
 })

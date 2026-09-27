@@ -200,7 +200,7 @@ onBeforeUnmount(() => {
                   title="统计口径"
               /></template>
               <p class="stock-scope-note">
-                转出待签收的物料仍计在上游，签收后转入下游；对外待确认的物料仍计在转出班组。全厂库存只计一次。
+                下序签收前计入上序班组库存，签收后转入下序班组。
               </p>
             </ElPopover>
             <ElButton :icon="Refresh" :loading="loading" aria-label="刷新库存" @click="refresh"

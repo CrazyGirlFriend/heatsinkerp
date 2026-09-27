@@ -6,7 +6,7 @@ import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import StatePanel from './StatePanel.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
-import { isExternalEntryKind, type MaterialTransfer } from '@/types/materialTransfer'
+import { isExternalEntryKind, materialTransferStatusLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import { inventoryAmount, type TeamInventoryRow } from '@/types/teamInventory'
 import { formatDateTime } from '@/utils/format'
 
@@ -47,7 +47,7 @@ onBeforeUnmount(() => { ++version })
       <ElTableColumn label="下序 / 去向" min-width="130" align="center"><template #default="{ row }">{{ row.next_team?.name || row.external_destination || '—' }}</template></ElTableColumn>
       <ElTableColumn label="件数" min-width="100" align="center"><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
       <ElTableColumn label="重量 (kg)" min-width="125" align="center"><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
-      <ElTableColumn label="状态" min-width="130" align="center"><template #default="{ row }">{{ isExternalEntryKind(row.entry_kind) ? '对外待确认' : '转出待签收' }}</template></ElTableColumn>
+      <ElTableColumn label="状态" min-width="130" align="center"><template #default="{ row }">{{ isExternalEntryKind(row.entry_kind) ? materialTransferStatusLabel(row.status, row.entry_kind) : '转出待签收' }}</template></ElTableColumn>
       <ElTableColumn label="转出时间" min-width="175" align="center"><template #default="{ row }">{{ formatDateTime(row.transferred_at) }}</template></ElTableColumn>
     </ElTable>
     <template #footer><div class="pending-footer"><span>共 {{ total }} 批<span v-if="asOf"> · 统计于 {{ formatDateTime(asOf) }}</span></span><ElPagination :current-page="page" :page-size="10" :total="total" layout="prev, pager, next" @current-change="page = $event; load()" /></div></template>

@@ -9,6 +9,8 @@ from alembic.runtime.migration import MigrationContext
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.exc import IntegrityError
 
+from app.database import SessionLocal
+from app.models import Team, User
 from test_material_transfers import _leader, _team
 from test_warehouse_receipts import migration
 
@@ -129,6 +131,10 @@ def test_external_authorization_no_internal_self_receipt_loophole(client, outbou
     url = f"/api/material-transfers/{line['batch_no']}"
     for headers in ({}, outbound['other_headers']):
         assert client.post(url+'/confirm-outbound', headers=headers, json={'idempotency_key': 'denied'}).status_code == 403
+        assert client.post(outbound['url']+'/dispatches', headers=headers, json={
+            'entry_kind': outbound['kind'], 'external_destination': '外部', 'idempotency_key': 'denied-create',
+            'lines': [{'source_transfer_id': outbound['lots'][0]['id'], 'quantity': 1, 'weight': 1}],
+        }).status_code == 403
     assert client.post(url+'/confirm', headers=outbound['headers'], json={'idempotency_key': 'not-a-receipt'}).status_code == 403
     other_kind = 'inspection_shipment' if outbound['kind'] == 'warehouse_outbound' else 'warehouse_outbound'
     assert dispatch(client, outbound, entry_kind=other_kind, idempotency_key='wrong-kind').status_code == 403
@@ -143,6 +149,22 @@ def test_external_authorization_no_internal_self_receipt_loophole(client, outbou
     internal = response.json()['items'][0]
     assert confirm(client, outbound, internal).status_code == 403
     assert client.post(f"/api/material-transfers/{internal['batch_no']}/confirm", headers=outbound['other_headers'], json={'idempotency_key': 'internal-receive'}).status_code == 200
+
+
+@pytest.mark.parametrize('disabled', ['account', 'team'])
+def test_disabled_outbound_actor_cannot_create_or_confirm_with_existing_token(client, outbound, disabled):
+    line = dispatch(client, outbound).json()['items'][0]
+    actor = client.get('/api/auth/me', headers=outbound['headers']).json()
+    before = client.get(outbound['url']+'/overview').json()['totals']
+    # Isolated test data: even an already issued token must fail once disabled.
+    with SessionLocal() as db:
+        target = db.get(User, actor['id']) if disabled == 'account' else db.get(Team, outbound['team']['id'])
+        target.active = False
+        db.commit()
+    assert dispatch(client, outbound, idempotency_key='disabled-create').status_code == 401
+    assert confirm(client, outbound, line).status_code == 401
+    assert client.get(f"/api/material-transfers/{line['batch_no']}").json()['status'] == 'pending'
+    assert client.get(outbound['url']+'/overview').json()['totals'] == before
 
 
 def test_pending_edit_version_void_and_key_collision_are_safe(client, outbound):

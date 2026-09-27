@@ -56,12 +56,13 @@ describe('external dispatch creation', () => {
     expect(id).toBe(teamId); expect(body).toMatchObject({ entry_kind: kind, external_destination: '客户收货仓', lines: [{ source_transfer_id: 3 }, { source_transfer_id: 4 }] })
     expect(body).not.toHaveProperty('next_team_id')
     expect(wrapper.text()).toContain(`创建后需本班组确认${verb}`)
-    expect(wrapper.text()).toContain('提交即扣减库存')
-    expect(wrapper.text()).not.toContain('先预留库存')
+    expect(wrapper.text()).toContain(`开单后减少可转出量，本班组确认${verb}后扣减库存`)
+    expect(wrapper.text()).not.toContain('提交即扣减库存')
     expect(wrapper.find('[aria-label="出库接收班组"]').exists()).toBe(false)
   })
   it('keeps ordinary production teams on internal transfers', async () => {
     state.auth.currentUser.team_id = 2; await stockDialog()
+    expect(wrapper.text()).toContain('下序签收后转移库存')
     expect(wrapper.findComponent(ElRadioGroup).exists()).toBe(false)
     expect(wrapper.find('[aria-label="出库接收班组"]').exists()).toBe(true)
     expect(wrapper.find('[aria-label="出库去向"]').exists()).toBe(false)
@@ -99,10 +100,12 @@ describe('external document confirmation', () => {
     state.auth.currentUser.team_id = teamId
     vi.mocked(materialTransferApi.confirmOutbound).mockResolvedValue(record(kind, { status: 'dispatched', locked: true, allowed_actions: [], dispatched_by: '本班组确认人', dispatched_at: '2026-09-07T01:00:00Z' }))
     await drawer(kind)
-    expect(wrapper.text()).toContain(`待${verb}确认`)
+    expect(wrapper.text()).toContain(`待${verb}`)
+    expect(wrapper.text()).not.toContain(`待${verb}确认`)
     expect(wrapper.findAll('button').some(button => button.text() === '确认接收')).toBe(false)
     await confirm(`确认${verb}`)
     expect(ElMessageBox.confirm).toHaveBeenCalledWith(expect.stringContaining('外部收货单位'), `确认${verb}`, expect.any(Object))
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(expect.stringContaining('确认后扣减本班组库存'), `确认${verb}`, expect.any(Object))
     expect(materialTransferApi.confirmOutbound).toHaveBeenCalledWith('TL-EXTERNAL', { expected_version: 4, idempotency_key: expect.any(String) })
     expect(materialTransferApi.confirm).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain(`已${verb}`); expect(wrapper.text()).toContain('本班组确认人')
@@ -117,6 +120,16 @@ describe('external document confirmation', () => {
     expect(materialTransferApi.confirmOutbound).toHaveBeenCalledTimes(1)
     await confirm()
     expect(vi.mocked(materialTransferApi.confirmOutbound).mock.calls[1]![1].expected_version).toBe(5)
+  })
+  it.each(['inactive', 'auth-error'])('blocks confirmation after %s is found during identity refresh', async reason => {
+    await drawer()
+    state.auth.refreshCurrentUser.mockImplementation(async () => {
+      if (reason === 'inactive') state.auth.currentUser.active = false
+      else state.auth.currentUserError = '账号核验失败'
+    })
+    await confirm()
+    expect(materialTransferApi.confirmOutbound).not.toHaveBeenCalled()
+    expect(wrapper.findAll('button').some(button => button.text() === '确认出库')).toBe(false)
   })
   it('keeps the confirmation key after an uncertain response and a same-version refresh', async () => {
     await drawer(); vi.mocked(materialTransferApi.confirmOutbound).mockRejectedValueOnce(new MaterialTransferApiError('网络失败'))

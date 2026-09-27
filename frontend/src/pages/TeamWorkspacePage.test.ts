@@ -451,7 +451,7 @@ describe('warehouse intake workspace', () => {
     vi.mocked(teamMaterialApi.dispatches).mockResolvedValue({ items: [line], total: 1, page: 1, page_size: 10 })
     await render('/team-workspaces/901?tab=outgoing&entry_kind=warehouse_outbound&status=pending&query=客户&next_team_id=900&material_type=scrap_chips')
     expect(teamMaterialApi.dispatches).toHaveBeenCalledWith(901, expect.objectContaining({ entry_kind: 'warehouse_outbound', status: 'pending', query: '客户', material_type: 'scrap_chips', next_team_id: undefined }))
-    expect(wrapper.text()).toContain('待出库确认'); expect(wrapper.text()).toContain('外部客户')
+    expect(wrapper.text()).toContain('待出库'); expect(wrapper.text()).toContain('外部客户')
     expect(wrapper.findAll('button').filter(button => button.text() === '核对出库')).toHaveLength(0)
     await wrapper.findAll('button').find(button => button.text() === '查看详情')!.trigger('click'); await flushPromises()
     expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: 'TL-EXTERNAL' })

@@ -103,7 +103,7 @@ describe('transfer list refresh continuity', () => {
     expect(tableRows.every(row => row.findAll('td').every(cell => cell.classes().includes('is-center')))).toBe(true)
     expect(tableRows.map(row => row.get('.transfer-source-cell').text())).toEqual(['库房手工入库', '线切割', '库房', '检验'])
     expect(tableRows.map(row => row.get('.transfer-destination-cell').text())).toEqual(['库房', '雕刻', '外协收料单位', '客户收货仓'])
-    expect(tableRows.map(row => row.get('.transfer-status-cell').text())).toEqual(['已入库', '待接收', '待出库确认', '已发货'])
+    expect(tableRows.map(row => row.get('.transfer-status-cell').text())).toEqual(['已入库', '待接收', '待出库', '已发货'])
     expect(page.find('.transfer-flow, .receipt-flow, .flow-track').exists()).toBe(false)
     const mobileRows = page.findAll('.mobile-transfer-parties')
     expect(mobileRows.map(row => row.findAll('small').map(label => label.text()))).toEqual(Array.from({ length: 4 }, () => ['来源', '去向']))

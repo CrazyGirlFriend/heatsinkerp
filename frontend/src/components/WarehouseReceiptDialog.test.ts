@@ -67,6 +67,7 @@ describe('warehouse manual receipt', () => {
   })
   it('creates a root receipt for the bound warehouse with no transfer destination or status fields', async () => {
     await render(); await fill()
+    expect(wrapper.text()).toContain('清点后确认入库，立即增加库房库存，无需再次签收')
     expect(wrapper.findAllComponents(ElSelect)).toHaveLength(2)
     expect(wrapper.text()).not.toContain('接收班组')
     await wrapper.get('input[aria-label="原单批号"]').setValue('RAW-91')
@@ -90,10 +91,11 @@ describe('warehouse manual receipt', () => {
     await amount('入库重量', 0.0005); await submit(); expect(wrapper.text()).toContain('最多保留 3 位小数')
     expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
   })
-  it.each(['admin', 'other-team', 'inactive', 'wrong-code', 'wrong-kind'])('blocks %s from creating a warehouse receipt', async kind => {
+  it.each(['admin', 'other-team', 'inactive', 'inactive-account', 'wrong-code', 'wrong-kind'])('blocks %s from creating a warehouse receipt', async kind => {
     if (kind === 'admin') state.auth.isTeamAccount = false
     if (kind === 'other-team') state.auth.currentUser.team_id = 2
     if (kind === 'inactive') state.directory.items[0]!.active = false
+    if (kind === 'inactive-account') state.auth.currentUser.active = false
     if (kind === 'wrong-code') state.directory.items[0]!.code = 'OLD-WAREHOUSE'
     if (kind === 'wrong-kind') state.directory.items[0]!.kind = 'production'
     await render(); await submit()

@@ -215,7 +215,7 @@ export function materialTransferVersion(transfer: MaterialTransfer): { expected_
 
 export function materialTransferStatusLabel(status: MaterialTransferStatus | string, entryKind?: MaterialEntryKind): string {
   if (entryKind === 'opening_stock') return '已入账'
-  if (isExternalEntryKind(entryKind) && status === 'pending') return `待${externalActionLabel(entryKind)}确认`
+  if (isExternalEntryKind(entryKind) && status === 'pending') return `待${externalActionLabel(entryKind)}`
   if (status === 'dispatched') return `已${externalActionLabel(entryKind)}`
   if (status === 'received' && entryKind === 'warehouse_receipt') return '已入库'
   const labels: Record<string, string> = {
