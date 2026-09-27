@@ -86,6 +86,29 @@ def test_only_bound_team_may_change_and_weight_only_stock_allowed(client, wareho
     assert change(client, s, lot, 9, key="forged-weight", weight=200).status_code == 422
 
 
+def test_first_response_uses_persisted_timestamp_precision(client, warehouse, monkeypatch):
+    from datetime import datetime, timezone
+    from sqlalchemy import event
+    from app import quantity_adjustments
+
+    lot = intake(client, warehouse, quantity=10, weight=100).json()
+    monkeypatch.setattr(quantity_adjustments, "utcnow", lambda: datetime(2026, 9, 27, 1, 2, 3, 123456, tzinfo=timezone.utc))
+
+    # Emulate a database storing DateTime with second precision, as MySQL does.
+    def persist_seconds(mapper, connection, row):
+        table = MaterialQuantityAdjustment.__table__
+        connection.execute(table.update().where(table.c.id == row.id)
+                           .values(created_at=row.created_at.replace(microsecond=0)))
+
+    event.listen(MaterialQuantityAdjustment, "after_insert", persist_seconds)
+    try:
+        first = change(client, warehouse, lot, 100, revision=0)
+    finally:
+        event.remove(MaterialQuantityAdjustment, "after_insert", persist_seconds)
+    assert first.status_code == 201, first.text
+    assert change(client, warehouse, lot, 100, revision=0).json() == first.json()
+
+
 def test_pending_stock_is_not_recounted_and_confirmation_invalidates_snapshot(client, warehouse):
     s = warehouse
     lot = intake(client, s, quantity=10, weight=100).json()
