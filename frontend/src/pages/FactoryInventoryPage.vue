@@ -199,9 +199,7 @@ onBeforeUnmount(() => {
                   aria-label="统计口径"
                   title="统计口径"
               /></template>
-              <p class="stock-scope-note">
-                下序签收前计入上序班组库存，签收后转入下序班组。
-              </p>
+              <p class="stock-scope-note">下序签收前计入上序班组库存，签收后转入下序班组。</p>
             </ElPopover>
             <ElButton :icon="Refresh" :loading="loading" aria-label="刷新库存" @click="refresh"
               >刷新</ElButton
@@ -422,8 +420,8 @@ onBeforeUnmount(() => {
 }
 .stock-heading h1 {
   margin: 0;
-  font-size: 28px;
-  font-weight: 600;
+  font-size: 24px;
+  font-weight: 550;
   line-height: 1.35;
   letter-spacing: -0.02em;
   color: var(--text);
@@ -515,7 +513,7 @@ onBeforeUnmount(() => {
     (100cqw - var(--stock-team-width) - var(--stock-total-width) - 2px) /
       var(--stock-material-count)
   );
-  --stock-number-size: clamp(18px, calc(var(--stock-material-width) * 0.16), 22px);
+  --stock-number-size: clamp(18px, calc(var(--stock-material-width) * 0.16), 20px);
   --stock-row-height: clamp(
     48px,
     calc((100cqh - var(--stock-header-height) - 2px) / var(--stock-row-count)),
@@ -552,15 +550,15 @@ onBeforeUnmount(() => {
   transition: background-color 140ms ease;
 }
 .stock-table th {
-  font-size: clamp(16px, calc(var(--stock-material-width) * 0.14), 19px);
-  font-weight: 550;
+  font-size: clamp(16px, calc(var(--stock-material-width) * 0.14), 17px);
+  font-weight: 500;
   white-space: normal;
   overflow-wrap: anywhere;
   line-height: 1.4;
 }
 .stock-table td {
   font-size: var(--stock-number-size);
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1.4;
 }
 .stock-table th:first-child {
@@ -575,7 +573,7 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 3;
   height: var(--stock-header-height);
-  font-size: clamp(16px, calc(var(--stock-material-width) * 0.14), 18px);
+  font-size: clamp(16px, calc(var(--stock-material-width) * 0.14), 17px);
   color: #354d3e;
   background: #edf3ef;
   border-bottom-color: #dce6df;
@@ -609,7 +607,7 @@ onBeforeUnmount(() => {
   z-index: 2;
   background: #f3f7f4;
   border-left: 1px solid #e2ebe5;
-  font-weight: 600;
+  font-weight: 550;
   color: var(--primary);
 }
 .stock-table thead .sum-col {
@@ -634,7 +632,7 @@ onBeforeUnmount(() => {
 .stock-table tfoot > tr > * {
   background: #f0f6f2;
   color: #346b47;
-  font-weight: 600;
+  font-weight: 550;
   border-top: 1px solid var(--table-header-line);
   border-bottom: 0;
 }
@@ -645,8 +643,7 @@ onBeforeUnmount(() => {
   border-bottom-right-radius: 7px;
   background: #e2eee5;
   color: #205c35;
-  font-weight: 650;
-  font-size: calc(var(--stock-number-size) + 2px);
+  font-weight: 600;
 }
 .stock-retired {
   display: block;
