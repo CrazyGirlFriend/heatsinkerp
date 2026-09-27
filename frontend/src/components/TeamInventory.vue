@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowDown, Search } from '@element-plus/icons-vue'
-import { ElAlert, ElButton, ElCheckbox, ElDatePicker, ElInput, ElOption, ElOptionGroup, ElPagination, ElPopover, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus'
+import { ArrowDown, Close, Flag, Search } from '@element-plus/icons-vue'
+import { ElAlert, ElButton, ElCheckbox, ElDatePicker, ElInput, ElOption, ElOptionGroup, ElPagination, ElPopover, ElSelect, ElTable, ElTableColumn, ElTag, ElTooltip } from 'element-plus'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
 import InventoryPendingDialog from './InventoryPendingDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
@@ -49,7 +49,7 @@ const sourceTeams = computed(() => directory.items.filter(team => team.id !== pr
 const sourceLabel = (row: TeamInventoryRow) => inventorySourceLabel(row, props.warehouse)
 const columns = computed(() => warehouseColumns.map(column => ({ ...column,
   label: column.key === 'source' ? props.warehouse ? '来源' : '上序班组' : props.ownership && column.key === 'stock_balance' ? '在库余量' : column.label,
-  width: props.ownership && column.key === 'stock_balance' ? 230 : column.width,
+  width: column.key === 'stock_balance' ? 220 : ['owned_balance', 'dispatchable_balance', 'pending_transfer', 'material_type'].includes(column.key) ? 190 : column.key === 'source' ? 170 : column.width,
   format: column.key === 'source' ? sourceLabel : column.format,
 })))
 const searchColumns = computed(() => warehouseSearchColumns.map(column => column.key === 'source' ? { ...column, label: props.warehouse ? '来源' : '上序班组' } : column))
@@ -57,15 +57,18 @@ const columnChoices = ref<InventoryColumnChoice<WarehouseColumnKey>[]>(warehouse
 const storageKey = computed(() => auth.currentUser?.id ? `heatsink.${props.warehouse ? 'warehouse' : 'classified'}-columns.v1:${auth.currentUser.id}:${props.teamId}` : null)
 const searchedColumn = computed(() => text('query').trim() ? searchColumns.value.find(column => column.key === text('search_field')) : undefined)
 const visibleColumns = computed(() => {
-  const saved = [warehouseSerialColumn, ...columnChoices.value.filter(choice => choice.visible).map(choice => columns.value.find(column => column.key === choice.key)!)]
+  const saved = [{ ...warehouseSerialColumn, width: 250 }, ...columnChoices.value.filter(choice => choice.visible).map(choice => columns.value.find(column => column.key === choice.key)!)]
   return searchedColumn.value ? [searchedColumn.value, ...saved.filter(column => column.key !== searchedColumn.value!.key)] : saved
 })
 const separateSpecification = computed(() => visibleColumns.value.some(column => column.key === 'transfer_specification'))
 const separatePurpose = computed(() => visibleColumns.value.some(column => column.key === 'purpose_name'))
 function columnLabel(key: string, label: string) {
-  if (key === 'material_name' && !separateSpecification.value) return '材质 / 规格'
   if (key === 'material_type' && !separatePurpose.value) return '类型 / 业务'
   return label
+}
+function ownershipHint(row: TeamInventoryRow) {
+  const available = inventoryDispatchable(row)
+  return `在库余量 ${inventoryAmount(row.on_hand_quantity)} 件 / ${inventoryAmount(row.on_hand_weight)} kg\n归属余量 ${inventoryAmount(row.owned_quantity)} 件 / ${inventoryAmount(row.owned_weight)} kg\n${isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量'} ${inventoryAmount(available.quantity)} 件 / ${inventoryAmount(available.weight)} kg`
 }
 const filters = computed<TeamInventoryParams>(() => {
   const params: Record<string, string | number | boolean> = { page: page.value, page_size: pageSize.value, availability: ['current', 'owned', 'all', 'available', 'scrap'].includes(text('availability')) ? text('availability') : props.ownership ? 'owned' : 'current' }
@@ -190,29 +193,26 @@ onBeforeUnmount(() => { ++version })
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存" />
     <ElTable v-else class="business-table serial-table warehouse-table" :data="rows" row-key="group_id" :span-method="span" :row-class-name="rowClass" empty-text="暂无符合条件的库存">
-      <ElTableColumn v-for="column in visibleColumns" :key="column.key" :prop="column.key" :label="columnLabel(column.key, column.label)" :min-width="column.width" align="center" :label-class-name="column.key === searchedColumn?.key ? 'searched-column' : ''" :class-name="['serial_no', 'material_name'].includes(column.key) ? 'warehouse-group-cell' : ''">
+      <ElTableColumn v-for="column in visibleColumns" :key="column.key" :prop="column.key" :label="columnLabel(column.key, column.label)" :min-width="column.width" align="center" show-overflow-tooltip :label-class-name="column.key === searchedColumn?.key ? 'searched-column' : ''" :class-name="['serial_no', 'material_name'].includes(column.key) ? 'warehouse-group-cell' : ''">
         <template #default="{ row }">
-          <template v-if="column.key === 'serial_no'"><ElButton class="serial-number-link" :title="row.serial_no" link type="primary" @click="openSerial(row)"><strong>{{ row.serial_no }}</strong></ElButton><SerialUrgencyBadge :urgency="row.urgency" /><ElButton v-if="canManageUrgency" class="warehouse-urgency-action" link type="primary" @click="flag(row)">{{ row.urgency?.urgent ? '取消加急' : '标记加急' }}</ElButton></template>
-          <div v-else-if="column.key === 'material_name'" class="inventory-cell-stack"><span>{{ row.material_name || '—' }}</span><small v-if="!separateSpecification">{{ row.transfer_specification || '规格未填写' }}</small></div>
-          <div v-else-if="column.key === 'material_type'" class="inventory-cell-stack"><ElTag effect="light" :type="isScrapMaterialType(row.material_type) ? 'warning' : row.material_type === 'finished' ? 'success' : 'primary'">{{ column.format(asRow(row)) }}</ElTag><small v-if="!separatePurpose">{{ row.purpose_name || '未指定业务' }}</small></div>
-          <div v-else-if="column.key === 'source' && warehouse" class="inventory-cell-stack"><span>{{ row.receipt_source === 'opening' ? '期初库存' : row.source_name || '来源未登记' }}</span><small v-if="row.receipt_source !== 'opening'">{{ warehouseSourceNames[asRow(row).receipt_source] }}</small></div>
-          <div v-else-if="column.key === 'owned_balance'" class="inventory-cell-stack inventory-balance"><strong>{{ inventoryAmount(row.owned_quantity) }} <small>件</small></strong><span>{{ inventoryAmount(row.owned_weight) }} <small>kg</small></span></div>
-          <div v-else-if="column.key === 'dispatchable_balance'" class="inventory-cell-stack inventory-balance"><strong>{{ inventoryAmount(inventoryDispatchable(asRow(row)).quantity) }} <small>件</small></strong><span>{{ inventoryAmount(inventoryDispatchable(asRow(row)).weight) }} <small>kg</small></span><small v-if="isScrapMaterialType(row.material_type)">可处理量</small></div>
-          <div v-else-if="column.key === 'pending_transfer'" class="inventory-cell-stack">
-            <ElButton v-if="row.in_transit_quantity > 0 || row.in_transit_weight > 0" link type="primary" :aria-label="`查看${row.serial_no}转出待签收批次`" @click="pending = asRow(row)"><span class="inventory-cell-stack"><span>{{ inventoryAmount(row.in_transit_quantity) }} 件</span><span>{{ inventoryAmount(row.in_transit_weight) }} kg</span></span></ElButton>
-            <template v-else><span>{{ inventoryAmount(row.in_transit_quantity) }} 件</span><span>{{ inventoryAmount(row.in_transit_weight) }} kg</span></template>
-          </div>
-          <div v-else-if="column.key === 'stock_balance'" class="inventory-cell-stack inventory-balance">
-            <strong>{{ inventoryAmount(row.on_hand_quantity) }} <small>件</small></strong><span>{{ inventoryAmount(row.on_hand_weight) }} <small>kg</small></span>
-            <div v-if="ownership" class="inventory-ownership-details">
-              <div><span>归属余量</span><b>{{ inventoryAmount(row.owned_quantity) }} 件 / {{ inventoryAmount(row.owned_weight) }} kg</b></div>
-              <div><span>{{ isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量' }}</span><b>{{ inventoryAmount(inventoryDispatchable(asRow(row)).quantity) }} 件 / {{ inventoryAmount(inventoryDispatchable(asRow(row)).weight) }} kg</b></div>
-            </div>
-          </div>
+          <div v-if="column.key === 'serial_no'" class="inventory-inline inventory-serial"><ElButton class="serial-number-link" :title="row.serial_no" link type="primary" @click="openSerial(row)"><strong>{{ row.serial_no }}</strong></ElButton><SerialUrgencyBadge :urgency="row.urgency" /><ElTooltip v-if="canManageUrgency" :content="row.urgency?.urgent ? '取消加急' : '标记加急'" placement="top"><ElButton class="warehouse-urgency-action" link type="primary" :icon="row.urgency?.urgent ? Close : Flag" :aria-label="row.urgency?.urgent ? '取消加急' : '标记加急'" @click="flag(row)" /></ElTooltip></div>
+          <ElTooltip v-else-if="column.key === 'material_name'" :content="`规格：${row.transfer_specification}`" :disabled="!row.transfer_specification || separateSpecification" :trigger="['hover', 'focus']" placement="top"><span class="inventory-material" :tabindex="row.transfer_specification && !separateSpecification ? 0 : undefined">{{ row.material_name || '—' }}</span></ElTooltip>
+          <div v-else-if="column.key === 'material_type'" class="inventory-inline"><ElTag effect="light" :type="isScrapMaterialType(row.material_type) ? 'warning' : row.material_type === 'finished' ? 'success' : 'primary'">{{ column.format(asRow(row)) }}</ElTag><span v-if="!separatePurpose && row.purpose_name" class="inventory-inline-meta">{{ row.purpose_name }}</span></div>
+          <div v-else-if="column.key === 'source' && warehouse" class="inventory-inline"><span class="inventory-source-name">{{ row.receipt_source === 'opening' ? '期初库存' : row.source_name || '—' }}</span><span v-if="row.receipt_source !== 'opening'" class="inventory-inline-meta">{{ warehouseSourceNames[asRow(row).receipt_source] }}</span></div>
+          <span v-else-if="column.key === 'owned_balance'" class="inventory-inline">{{ column.format(asRow(row)) }}</span>
+          <span v-else-if="column.key === 'dispatchable_balance'" class="inventory-inline" :title="isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量'">{{ column.format(asRow(row)) }}</span>
+          <template v-else-if="column.key === 'pending_transfer'">
+            <ElButton v-if="row.in_transit_quantity > 0 || row.in_transit_weight > 0" link type="primary" :aria-label="`查看${row.serial_no}转出待签收批次`" @click="pending = asRow(row)">{{ column.format(asRow(row)) }}</ElButton>
+            <span v-else>{{ column.format(asRow(row)) }}</span>
+          </template>
+          <ElTooltip v-else-if="column.key === 'stock_balance'" :disabled="!ownership" :content="ownershipHint(asRow(row))" :trigger="['hover', 'focus']" popper-class="inventory-balance-tooltip" placement="top">
+            <span class="inventory-inline inventory-balance" :tabindex="ownership ? 0 : undefined"><strong>{{ inventoryAmount(row.on_hand_quantity) }} <small>件</small></strong><span class="inventory-amount-divider"> / </span><span>{{ inventoryAmount(row.on_hand_weight) }} <small>kg</small></span></span>
+          </ElTooltip>
+          <span v-else-if="column.key === 'purpose_name'">{{ row.purpose_name || '—' }}</span>
           <span v-else>{{ column.format(asRow(row)) }}</span>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="操作" :width="88" align="center" fixed="right"><template #default="{ row }"><div class="inventory-row-actions"><ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton><ElButton v-if="canWrite" link type="primary" :disabled="ownership ? !inventoryCanDispatch(asRow(row)) : !(row.on_hand_quantity > 0 || row.on_hand_weight > 0)" @click="picker = asRow(row)">出库</ElButton></div></template></ElTableColumn>
+      <ElTableColumn label="操作" :width="canWrite ? 120 : 88" align="center" fixed="right"><template #default="{ row }"><div class="inventory-row-actions"><ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton><ElButton v-if="canWrite" link type="primary" :disabled="ownership ? !inventoryCanDispatch(asRow(row)) : !(row.on_hand_quantity > 0 || row.on_hand_weight > 0)" @click="picker = asRow(row)">出库</ElButton></div></template></ElTableColumn>
     </ElTable>
     <footer v-if="!error"><span>共 {{ total }} 条分类结存<span class="inventory-balance-note">{{ ownership ? '归属含转出待签收，待接收不计入本班归属' : '转出即扣减，待接收不计入结存' }}</span><small v-if="ownership && asOf" class="inventory-as-of">账面统计 · {{ formatDateTime(asOf) }}</small></span><ElPagination background :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="paginate($event)" @size-change="paginate(1, $event)" /></footer>
     <TeamInventoryDetail :team-id="teamId" :group="detail" :warehouse="warehouse" :can-write="canWrite" :ownership="ownership" @close="detail = null" @changed="emit('changed')" @action="action" @pending="pending = detail" />
@@ -240,27 +240,31 @@ onBeforeUnmount(() => { ++version })
 .warehouse-search-context { padding-bottom: 12px; }
 .warehouse-table { --business-table-font: 14px; --business-table-padding: 11px; font-variant-numeric: tabular-nums; }
 .warehouse-table.el-table.business-table :deep(th.el-table__cell) { height: 44px; }
-.warehouse-table :deep(.cell) { white-space: normal; overflow-wrap: anywhere; }
-.inventory-cell-stack { display: flex; flex-direction: column; align-items: center; gap: 4px; line-height: 1.5; }
-.inventory-cell-stack small { font-size: 14px; font-weight: 400; color: var(--muted); }
+.warehouse-table.el-table.business-table :deep(.cell) { white-space: nowrap; overflow-wrap: normal; }
+.inventory-inline { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; white-space: nowrap; line-height: 24px; }
+.inventory-inline-meta, .inventory-amount-divider { color: var(--muted); }
+.inventory-inline-meta, .inventory-source-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.inventory-inline-meta::before { content: '·'; margin-right: 8px; }
+.inventory-inline .el-tag { flex-shrink: 0; }
+.inventory-balance { display: block; overflow: hidden; text-overflow: ellipsis; }
+.inventory-balance small { font-size: 14px; font-weight: 400; color: var(--muted); }
 .inventory-balance strong { font-size: 18px; font-weight: 550; color: var(--text); }
 .inventory-balance > span { font-size: 14px; }
-.inventory-ownership-details { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); max-width: 100%; font-size: 14px; }
-.inventory-ownership-details > div { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; }
-.inventory-ownership-details span { color: var(--muted); }
-.inventory-ownership-details b { font-weight: 500; }
-.inventory-row-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.inventory-material:focus-visible, .inventory-balance:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 3px; }
+:global(.inventory-balance-tooltip) { white-space: pre-line; line-height: 1.7; }
+.inventory-row-actions { display: flex; justify-content: center; align-items: center; gap: 14px; white-space: nowrap; }
 .inventory-row-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .inventory-balance-note { margin-left: 18px; font-size: 13px; }
 .inventory-as-of { display: block; margin-top: 4px; font-size: 13px; }
 .warehouse-table :deep(.searched-column) { color: var(--primary); }
 .warehouse-table :deep(td.warehouse-group-cell) { border-right: 1px solid var(--line); }
 .warehouse-table :deep(tr.serial-group-start > td) { border-top: 1px solid var(--table-header-line); }
-.warehouse-table.el-table.business-table :deep(.el-tag) { font-size: 12px; border: 0; padding: 5px 12px; height: auto; line-height: 22px; }
-.warehouse-table :deep(.serial-number-link) { max-width: 100%; }
-.warehouse-table :deep(.serial-number-link > span) { display: block; white-space: normal; overflow-wrap: anywhere; }
+.warehouse-table.el-table.business-table :deep(.el-tag) { font-size: 12px; border: 0; padding: 0 9px; height: 26px; line-height: 24px; }
+.warehouse-table :deep(.serial-number-link) { min-width: 0; max-width: 100%; flex-shrink: 1; }
+.warehouse-table :deep(.serial-number-link > span) { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .warehouse-table :deep(.serial-number-link strong) { font-weight: 550; }
-.warehouse-table :deep(.el-button.warehouse-urgency-action) { display: block; margin: 5px auto 0; font-size: 13px; }
+.warehouse-table :deep(.el-button.warehouse-urgency-action) { flex: 0 0 26px; width: 26px; height: 26px; margin: 0; font-size: 15px; }
+.inventory-serial :deep(.serial-urgency-badge) { flex-shrink: 0; margin-left: 0; }
 .warehouse-inventory > footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 56px; padding: 14px 12px; border-top: 1px solid var(--line); }
 .warehouse-inventory > footer > span { color: var(--muted); font-size: 14px; }
 @container (max-width: 1230px) { .warehouse-toolbar { flex-wrap: wrap; }.warehouse-search { max-width: none; }.warehouse-toolbar :deep(.inventory-columns-trigger) { margin-left: auto; } }
