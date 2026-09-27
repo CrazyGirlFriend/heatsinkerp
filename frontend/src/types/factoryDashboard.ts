@@ -40,12 +40,9 @@ export interface Installment {
   due_date: string
   quantity: number
 }
-export interface DeliveryPlan {
-  serial_no: string
-  version: number
-  installments: Installment[]
-}
 export interface Delivery extends Installment {
+  source_batch_no?: string | null
+  legacy?: boolean
   serial_no: string
   index: number
   shipped: number

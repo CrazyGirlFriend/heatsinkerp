@@ -8,7 +8,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from sqlalchemy import MetaData, Table, delete, exists, func, inspect, select
+from sqlalchemy import MetaData, Table, delete, exists, func, inspect, or_, select
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
@@ -80,7 +80,10 @@ def reset_business_data(db: Session) -> dict[str, int]:
                             .where(
                                 ~exists(
                                     select(child.c.id).where(
-                                        child.c.source_transfer_id == table.c.id
+                                        or_(
+                                            child.c.source_transfer_id == table.c.id,
+                                            child.c.delivery_origin_id == table.c.id,
+                                        )
                                     )
                                 )
                             )

@@ -8,6 +8,7 @@ const opening = computed(() => props.items.length > 0 && props.items.every(item 
 const totals = computed(() => props.items.filter(item => item.status !== 'voided').reduce((sum, item) => ({ quantity: sum.quantity + item.quantity, weight: Math.round((sum.weight + item.weight) * 1000) / 1000 }), { quantity: 0, weight: 0 }))
 function details(item: MaterialTransfer) {
   return [`承接业务：${item.purpose_name || '未分类'}`, ...materialDocumentTextFields.filter(field => item[field.key]).map(field => `${field.label}：${item[field.key]}`),
+    ...(item.delivery_date ? [`要求发货日期：${item.delivery_date}`, `应发成品件数：${item.delivery_quantity}`, `交期源头批次：${item.delivery_origin_batch_no || item.batch_no}`] : []),
     ...(item.finished_quantity != null ? [`成品件数：${item.finished_quantity}`] : []),
     ...(item.notes ? [`说明：${item.notes}`] : [])].join('；')
 }

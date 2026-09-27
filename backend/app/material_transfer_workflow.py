@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 import hashlib
 import json
@@ -54,6 +54,8 @@ def _snapshot(transfer: MaterialTransfer) -> dict[str, Any]:
             value = float(value)
         elif isinstance(value, datetime):
             value = _utc(value).isoformat()
+        elif isinstance(value, date):
+            value = value.isoformat()
         result[field] = value
     return result
 
@@ -184,6 +186,9 @@ def material_transfer_list_options():
     # All joins are scalar/unique, so they preserve page limits and row counts.
     return (
         joinedload(MaterialTransfer.urgency),
+        joinedload(MaterialTransfer.delivery_origin).load_only(
+            MaterialTransfer.batch_no, MaterialTransfer.delivery_date, MaterialTransfer.delivery_quantity
+        ).raiseload("*"),
         joinedload(MaterialTransfer.stock_source).load_only(MaterialTransfer.batch_no).raiseload("*"),
         joinedload(MaterialTransfer.dispatch).load_only(MaterialDispatch.dispatch_no),
         raiseload(MaterialTransfer.history),
@@ -195,6 +200,7 @@ def material_transfer_dict(
     transfer: MaterialTransfer, user: User | None = None, *, include_history: bool = True
 ) -> dict[str, Any]:
     from .serial_urgency import urgency_dict
+    from .material_delivery import document
     locked_at = transfer.received_at or transfer.dispatched_at or transfer.voided_at
     return {
         "id": transfer.id,
@@ -212,6 +218,7 @@ def material_transfer_dict(
         "return_dispatch_no": transfer.return_dispatch_no,
         "rejection_reason": transfer.rejection_reason,
         **{field: getattr(transfer, field) for field in DOCUMENT_FIELDS},
+        **document(transfer, user),
         "version": transfer.version,
         "stock_tracked": transfer.stock_tracked,
         "source_transfer_id": transfer.source_transfer_id,
@@ -264,6 +271,8 @@ def material_transfer_dict(
 
 def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
     from .team_business import purpose_snapshot
+    from .material_delivery import validate_pair
+    validate_pair(payload.delivery_date, payload.delivery_quantity)
     source = _require_team_actor(user)
     request_hash = _creation_fingerprint(payload)
     try:
@@ -346,6 +355,12 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
         _assert_version(transfer, payload)
         before = _snapshot(transfer)
         supplied = payload.model_fields_set
+        from .material_delivery import FIELDS, validate_pair
+        if transfer.source_transfer_id or transfer.delivery_origin_id:
+            if any(field in supplied for field in FIELDS):
+                raise HTTPException(422, "交期继承自源头批次，请在源头单据维护")
+        validate_pair(*(getattr(payload, field) if field in supplied else getattr(transfer, field)
+                        for field in FIELDS))
         quantity = payload.quantity if "quantity" in supplied else transfer.quantity
         weight = payload.weight if "weight" in supplied else transfer.weight
         if quantity == 0 and weight == 0:

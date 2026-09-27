@@ -12,7 +12,7 @@ export interface ConfigurationSave {
 }
 export interface ConfigurationTestResult {
   ok: boolean; message: string; tested_at: string
-  data: null | { serial_no: string; revision: string; updated_at: string; active: boolean; document: MaterialTransferDocumentFields }
+  data: null | { serial_no: string; revision: string; updated_at: string; active: boolean; document: Omit<MaterialTransferDocumentFields, 'delivery_date' | 'delivery_quantity'> }
 }
 async function request<T>(suffix = '', options: HttpRequestOptions = {}): Promise<T> {
   try { return await httpRequest<T>('/main-system/configuration' + suffix, { ...options, noCache: true }) }

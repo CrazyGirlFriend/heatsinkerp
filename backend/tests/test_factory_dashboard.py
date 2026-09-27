@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 from app.database import SessionLocal
-from app.models import AdminAuditEvent, MaterialTransfer, NotificationOutbox, SerialDeliveryPlan
-from sqlalchemy import func, select
+from app.models import MaterialTransfer, NotificationOutbox, SerialDeliveryPlan
+from sqlalchemy import select
 from test_external_outbound import confirm, dispatch
 from test_external_outbound import outbound as outbound
 from test_warehouse_receipts import intake
@@ -157,28 +157,23 @@ def test_delivery_fifo_completed_late_and_pending_with_version_and_audit(client,
             {"label": "第一批", "due_date": "2026-09-24", "quantity": 20},
         ],
     }
-    assert (
-        client.put(ROOT + "/delivery-plan", json=payload, headers=outbound["headers"]).status_code
-        == 403
-    )
-    response = client.put(ROOT + "/delivery-plan", json=payload)
-    assert response.status_code == 200, response.text
-    assert response.json()["version"] == 1
-    assert response.json()["installments"][0]["label"] == "第一批"
-    assert client.put(ROOT + "/delivery-plan", json=payload).status_code == 409
+    assert client.put(ROOT + "/delivery-plan", json=payload).status_code == 410
+    with SessionLocal() as db:
+        db.add(
+            SerialDeliveryPlan(
+                serial_no=serial,
+                version=1,
+                installments=payload["installments"],
+                updated_by="历史管理员",
+                updated_at=datetime(2026, 9, 20),
+            )
+        )
+        db.commit()
     first = dispatch(client, outbound).json()["items"][0]
     assert confirm(client, outbound, first).status_code == 200
     with SessionLocal() as db:
         db.get(MaterialTransfer, first["id"]).dispatched_at = datetime(2026, 9, 25, 2)
         db.commit()
-        assert (
-            db.scalar(
-                select(func.count())
-                .select_from(AdminAuditEvent)
-                .where(AdminAuditEvent.target_type == "delivery_plan")
-            )
-            == 1
-        )
         assert db.get(SerialDeliveryPlan, serial).version == 1
     with patch("app.factory_dashboard.utcnow", return_value=datetime(2026, 9, 26, 2)):
         rows = client.get(ROOT + "/deliveries").json()["items"]
@@ -192,7 +187,7 @@ def test_delivery_fifo_completed_late_and_pending_with_version_and_audit(client,
         assert any(r["serial_no"] == serial and "超期" in r["reasons"] for r in data["attention"])
     payload["expected_version"] = 1
     payload["installments"][0]["quantity"] = 0
-    assert client.put(ROOT + "/delivery-plan", json=payload).status_code == 422
+    assert client.put(ROOT + "/delivery-plan", json=payload).status_code == 410
 
 
 def test_dynamic_materials_and_literal_serial_search(client, warehouse):
@@ -220,15 +215,17 @@ def test_dynamic_materials_and_literal_serial_search(client, warehouse):
 
 
 def test_delivery_plan_change_queues_live_overview_refresh(client, outbound):
-    serial = outbound["lots"][0]["serial_no"]
+    origin_batch = outbound["lots"][0]["delivery_origin_batch_no"]
+    origin = client.get(f"/api/material-transfers/{origin_batch}").json()
     with SessionLocal() as db:
         before = set(db.scalars(select(NotificationOutbox.id)))
-    result = client.put(
-        ROOT + "/delivery-plan",
+    result = client.patch(
+        f"/api/material-transfers/{origin_batch}/delivery",
+        headers=outbound["all_headers"][origin["source_team_id"] or origin["next_team_id"]],
         json={
-            "serial_no": serial,
-            "expected_version": 0,
-            "installments": [{"label": "第一批", "due_date": "2026-10-01", "quantity": 30}],
+            "delivery_date": "2026-10-01",
+            "delivery_quantity": 30,
+            "expected_version": origin["version"],
         },
     )
     assert result.status_code == 200, result.text

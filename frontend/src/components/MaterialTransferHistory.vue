@@ -12,6 +12,7 @@ const labels: Record<string, string> = {
   main_system_schema_version: '主系统接口版本', main_system_revision: '主系统资料版本',
   main_system_updated_at: '主系统资料更新时间', main_system_snapshot_hash: '主系统资料校验值',
   ...Object.fromEntries(materialDocumentTextFields.map(field => [field.key, field.label])),
+  delivery_date: '要求发货日期', delivery_quantity: '应发成品件数',
   material_type: '物料类型', finished_quantity: '成品件数', serial_no: '流水号', quantity: '转料件数', weight: '转料重量',
   notes: '备注', source_team_id: '转出班组', next_team_id: '接收班组', status: '状态',
   external_destination: '外部去向', dispatched_by: '确认人', dispatched_at: '确认时间', dispatched_by_user_id: '确认账号',
@@ -52,7 +53,7 @@ function valueText(field: string, value: unknown): string {
   if (field === 'receipt_kind') return value === 'return' ? '外部退回' : '外部来料'
   if (field === 'status') return materialTransferStatusLabel(String(value), props.transfer.entry_kind)
   if (field.endsWith('_at')) return formatDateTime(String(value))
-  if (field === 'quantity' || field === 'finished_quantity' || field === 'stock_quantity') return `${value} 件`
+  if (field === 'delivery_quantity' || field === 'quantity' || field === 'finished_quantity' || field === 'stock_quantity') return `${value} 件`
   if (field === 'weight') return `${value} kg`
   if (field === 'source_team_id' && String(value) === String(props.transfer.source_team.id)) return props.transfer.source_team.name
   if (field === 'next_team_id' && String(value) === String(props.transfer.next_team.id)) return props.transfer.next_team.name

@@ -43,6 +43,22 @@ async function base(type: string | null = 'finished') {
 async function submit() { await wrapper.get('form').trigger('submit'); await flushPromises() }
 
 describe('material transfer document form', () => {
+  it('records a paired delivery requirement on the origin and never submits inherited values', async () => {
+    await render(); await base()
+    await wrapper.get('input[aria-label="要求发货日期"]').setValue('2026-10-01')
+    await submit()
+    expect(materialTransferApi.create).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('请同时填写')
+    await number('应发成品件数', 80); await submit()
+    expect(materialTransferApi.create).toHaveBeenCalledWith(expect.objectContaining({ delivery_date: '2026-10-01', delivery_quantity: 80, quantity: 0 }))
+    wrapper.unmount()
+    await render(fixture({ source_transfer_id: 12, delivery_date: '2026-10-01', delivery_quantity: 80, delivery_origin_batch_no: 'ORIGIN' }))
+    expect(wrapper.get('input[aria-label="要求发货日期"]').attributes('disabled')).toBeDefined()
+    await submit()
+    const body = vi.mocked(materialTransferApi.update).mock.calls[0]![1]
+    expect(body).not.toHaveProperty('delivery_date'); expect(body).not.toHaveProperty('delivery_quantity')
+  })
+
   it('carries the upstream-selected destination purpose and preserves disabled historical snapshots', async () => {
     vi.mocked(teamMaterialApi.purposes).mockResolvedValue([{ id: 31, team_id: 3, name: '电镀', active: true, version: 1 }])
     await render(); await base(); await submit()

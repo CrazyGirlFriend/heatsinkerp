@@ -28,6 +28,10 @@ def replay(prior, user, request_hash):
 
 
 def create_receipt(db, team_id, payload, user, *, request_hash=None, source_reference=None):
+    from .material_delivery import validate_pair
+    validate_pair(payload.delivery_date, payload.delivery_quantity)
+    if payload.receipt_kind == "return" and payload.delivery_date is not None:
+        raise HTTPException(422, "返料沿用原批次交期，不能新增交付要求")
     require_warehouse(stock.require_actor(user, team_id))
     request_hash = request_hash or workflow._creation_fingerprint(payload)
     try:
@@ -43,21 +47,27 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
             ).with_for_update().execution_options(populate_existing=True))
             if prior is not None:
                 return replay(prior, user, request_hash)
+            delivery_origin_id = None
             if payload.return_dispatch_no:
                 # New returns reference the actual batch; old CK references remain readable.
                 historical = select(MaterialDispatch.id).where(MaterialDispatch.dispatch_no == payload.return_dispatch_no)
-                matching = db.scalar(select(MaterialTransfer.id).where(
+                matching = db.execute(select(MaterialTransfer.id, MaterialTransfer.delivery_origin_id).where(
                     (MaterialTransfer.batch_no == payload.return_dispatch_no) | MaterialTransfer.dispatch_id.in_(historical),
                     MaterialTransfer.entry_kind.in_(("warehouse_outbound", "inspection_shipment")),
-                    MaterialTransfer.serial_no == payload.serial_no, MaterialTransfer.status == "dispatched"))
-                if matching is None:
+                    MaterialTransfer.serial_no == payload.serial_no, MaterialTransfer.status == "dispatched")).all()
+                if not matching:
                     raise HTTPException(422, "关联批次没有该流水号的已确认出库记录")
+                origins = {row.delivery_origin_id or row.id for row in matching}
+                # An old combined dispatch can span several requirements; do not guess one.
+                if len(origins) == 1:
+                    delivery_origin_id = origins.pop()
             now = utcnow()
             receipt = MaterialTransfer(
                 batch_no=next_transfer_batch_number(db), entry_kind="warehouse_receipt",
                 receipt_kind=payload.receipt_kind, external_source=payload.external_source,
                 return_dispatch_no=payload.return_dispatch_no,
                 serial_no=payload.serial_no,
+                delivery_origin_id=delivery_origin_id,
                 **{field: getattr(payload, field) for field in workflow.DOCUMENT_FIELDS},
                 source_team_id=None, source_team_code=None, source_team_name=None,
                 next_team_id=team.id, next_team_code=team.code, next_team_name=team.name,

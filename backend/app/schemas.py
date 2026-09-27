@@ -1,6 +1,6 @@
 """Supported material-transfer, authentication and administration contracts."""
 from __future__ import annotations
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -15,7 +15,7 @@ class APIModel(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
-class MaterialTransferDocumentFields(APIModel):
+class MaterialDocumentFields(APIModel):
     """Optional document snapshots, independent of product/process master data."""
 
     material_type: str | None = Field(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN)
@@ -48,6 +48,20 @@ class MaterialTransferDocumentFields(APIModel):
         if value is None:
             return None
         return value.strip() or None
+
+
+class MaterialTransferDocumentFields(MaterialDocumentFields):
+    """Local batch delivery requirements do not alter the company-system v1 contract."""
+
+    delivery_date: date | None = None
+    delivery_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647)
+
+    @field_validator("delivery_date")
+    @classmethod
+    def validate_delivery_date(cls, value):
+        if value is not None and not date(2000, 1, 1) <= value <= date(2100, 12, 31):
+            raise ValueError("要求发货日期须在2000至2100年之间")
+        return value
 
 
 class MaterialTransferCreate(MaterialTransferDocumentFields):
@@ -149,6 +163,21 @@ class WarehouseReceiptCreate(MaterialTransferDocumentFields):
         return self
 
 
+class MaterialDeliveryUpdate(APIModel):
+    model_config = ConfigDict(extra="forbid")
+    delivery_date: date | None
+    delivery_quantity: int | None = Field(gt=0, le=2_147_483_647)
+    expected_version: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def validate_delivery(self):
+        if (self.delivery_date is None) != (self.delivery_quantity is None):
+            raise ValueError("请同时填写要求发货日期和应发成品件数")
+        if self.delivery_date and not date(2000, 1, 1) <= self.delivery_date <= date(2100, 12, 31):
+            raise ValueError("要求发货日期须在2000至2100年之间")
+        return self
+
+
 class MaterialTransferConfirm(APIModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
 
@@ -186,6 +215,8 @@ class MaterialTransferEventResponse(APIModel):
 
 
 class MaterialTransferResponse(MaterialTransferDocumentFields):
+    delivery_origin_batch_no: str | None = None
+    can_edit_delivery: bool = False
     urgency: dict | None = None
     id: int
     batch_no: str

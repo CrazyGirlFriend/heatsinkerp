@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { ElAlert, ElButton, ElDialog, ElPagination, ElTable, ElTableColumn } from 'element-plus'
+import {
+  ElAlert,
+  ElButton,
+  ElDialog,
+  ElLoading,
+  ElPagination,
+  ElTable,
+  ElTableColumn,
+} from 'element-plus'
 import { ArrowRight, FullScreen, QuestionFilled, Refresh } from '@element-plus/icons-vue'
 import StatePanel from '@/components/StatePanel.vue'
 import FactoryShipmentChart from '@/components/FactoryShipmentChart.vue'
@@ -20,6 +28,7 @@ import {
 import { materialTypeOptions } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
 
+const vLoading = ElLoading.directive
 const report = ref<FactoryDashboard>(),
   loading = ref(false),
   error = ref('')
@@ -318,7 +327,7 @@ onBeforeUnmount(() => {
       <section class="panel deadline">
         <div class="panel-heading">
           <h2>交期与超时</h2>
-          <button class="text-button" aria-label="查看交付计划" @click="plans = true">
+          <button class="text-button" aria-label="查看批次交期" @click="plans = true">
             <ArrowRight />
           </button>
         </div>
@@ -365,10 +374,10 @@ onBeforeUnmount(() => {
             <small>已发 {{ number(row.shipped, 0) }} / 应发 {{ number(row.quantity, 0) }} 件</small>
           </button>
           <p v-if="!report.delivery.items.length" class="empty">
-            {{ report.delivery.total ? '当前没有待交批次' : '尚未设置交付计划' }}
+            {{ report.delivery.total ? '当前没有待交批次' : '尚未填写批次交期' }}
           </p>
         </div>
-        <button class="panel-foot" @click="plans = true">查看全部交付计划<ArrowRight /></button>
+        <button class="panel-foot" @click="plans = true">查看全部批次交期<ArrowRight /></button>
       </section>
       <section class="panel shipping">
         <div class="panel-heading">

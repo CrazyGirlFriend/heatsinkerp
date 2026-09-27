@@ -39,6 +39,9 @@ def database(monkeypatch):
                 Column(
                     "source_transfer_id", ForeignKey("material_transfers.id", ondelete="RESTRICT")
                 ),
+                Column(
+                    "delivery_origin_id", ForeignKey("material_transfers.id", ondelete="RESTRICT")
+                ),
                 Column("dispatch_id", ForeignKey("material_dispatches.id", ondelete="RESTRICT")),
                 Column(
                     "opening_stock_id",
@@ -85,6 +88,16 @@ def test_material_only_reset_preserves_history_and_is_repeatable(database):
     after = contents(engine, metadata)
     for name in metadata.tables:
         assert after[name] == ([] if name in reset.RESET_TABLES else before[name])
+
+
+def test_reset_respects_delivery_origin_reference_without_stock_source(database):
+    engine, metadata = database
+    with engine.begin() as connection:
+        connection.execute(
+            metadata.tables["material_transfers"].insert(), {"id": 3, "delivery_origin_id": 1}
+        )
+    with Session(engine) as db:
+        assert reset.reset_business_data(db)["material_transfers"] == 3
 
 
 @pytest.mark.parametrize("failure", ["cycle", "dependent", "trigger"])
