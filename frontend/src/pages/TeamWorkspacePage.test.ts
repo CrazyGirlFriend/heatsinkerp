@@ -73,7 +73,14 @@ describe('team workspace material ledger', () => {
     const cells = table.findAll('.el-table__body tr').at(0)!.findAll('td')
     expect(cells[headings.indexOf('流水号')]!.text()).toBe('00001234')
     expect(cells[headings.indexOf('材质')]!.text()).toBe('铜钼 CuMo70')
-    expect(cells[headings.indexOf('数量 / 重量')]!.findAll('strong').map(value => value.text())).toEqual(['30', '1.234'])
+    expect(cells[headings.indexOf('件数')]!.text()).toBe('30')
+    expect(cells[headings.indexOf('重量 (kg)')]!.text()).toBe('1.234')
+    expect(headings).not.toContain('数量 / 重量')
+    expect(headings).not.toContain('类型 / 业务')
+    if (tab !== 'losses') {
+      expect(cells[headings.indexOf('物料类型')]!.text()).toBe('半成品')
+      expect(cells[headings.indexOf('业务')]!.text()).toBe('去毛刺')
+    }
     expect(table.find('.barcode-card').exists()).toBe(false)
     await table.get('.batch-link').trigger('click'); await flushPromises()
     expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: 'TL10', allowPrint: tab !== 'pending' })

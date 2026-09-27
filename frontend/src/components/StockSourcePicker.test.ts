@@ -17,6 +17,21 @@ async function render() {
 }
 const nextButton = () => wrapper.findAll('button').find(button => button.text() === '下一步：填写出库')!
 describe('stock selection for new outbound', () => {
+  it('separates material, nature, quantity and weight and preserves weight-only waste selection', async () => {
+    const row = { ...source(1, 0), transfer: { ...source(1).transfer, material_type: 'sludge' as const }, scrap_available_quantity: 0, scrap_available_weight: 1.234 }
+    vi.mocked(teamMaterialApi.stock).mockResolvedValue({ items: [row], total: 1, page: 1, page_size: 20 })
+    await render()
+    const headings = wrapper.findAll('thead th').map(cell => cell.text())
+    const cells = wrapper.get('tbody tr').findAll('td')
+    expect(cells[headings.indexOf('材质')]!.text()).toBe('铜')
+    expect(cells[headings.indexOf('物料类型')]!.text()).toBe('废泥')
+    expect(cells[headings.indexOf('可出库件数')]!.text()).toBe('0')
+    expect(cells[headings.indexOf('可出库重量 (kg)')]!.text()).toBe('1.234')
+    expect(wrapper.find('.material-amount').exists()).toBe(false)
+    await wrapper.get('label[aria-label="选择出库 TL1"] input').setValue(true)
+    await nextButton().trigger('click')
+    expect(wrapper.emitted('selected')?.[0]?.[0]).toEqual([row])
+  })
   it('restricts a warehouse row to its group across filters and clears selection if the group changes', async () => {
     vi.spyOn(teamMaterialApi, 'inventorySources').mockResolvedValue({ items: [source(31)], total: 1, page: 1, page_size: 20 })
     wrapper = mount(StockSourcePicker, { props: { teamId: 901, groupId: 11, groupLabel: '000128 · 成品 · 车间转入 · 检验' }, global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } } })

@@ -16,7 +16,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialTypeLabel, materialTypeOptions, isScrapType as isScrapMaterialType } from '@/types/materialTransfer'
-import { warehouseColumns, warehouseSearchColumns, warehouseSearchKind, warehouseSerialColumn, inventorySourceLabel, warehouseSourceNames, inventoryAmount, inventoryDispatchable, inventoryCanDispatch, type WarehouseColumnKey, type TeamInventoryParams, type TeamInventoryRow, type WarehouseSearchField, type WarehouseSource } from '@/types/teamInventory'
+import { warehouseColumns, warehouseLegacyColumnKeys, warehouseSearchColumns, warehouseSearchKind, warehouseSerialColumn, inventorySourceLabel, warehouseSourceNames, inventoryAmount, inventoryDispatchable, inventoryCanDispatch, type WarehouseColumnKey, type TeamInventoryParams, type TeamInventoryRow, type WarehouseSearchField, type WarehouseSource } from '@/types/teamInventory'
 import type { InventoryColumnChoice } from '@/types/inventoryColumns'
 import type { CalendarRange } from '@/types/recordFilters'
 import type { StockBatch, TeamMaterialOverview } from '@/types/teamMaterials'
@@ -48,8 +48,8 @@ const dates = computed(() => ({ from: text('date_from') || text('activity_day'),
 const sourceTeams = computed(() => directory.items.filter(team => team.id !== props.teamId))
 const sourceLabel = (row: TeamInventoryRow) => inventorySourceLabel(row, props.warehouse)
 const columns = computed(() => warehouseColumns.map(column => ({ ...column,
-  label: column.key === 'source' ? props.warehouse ? '来源' : '上序班组' : props.ownership && column.key === 'stock_balance' ? '在库余量' : column.label,
-  width: column.key === 'stock_balance' ? 220 : ['owned_balance', 'dispatchable_balance', 'pending_transfer', 'material_type'].includes(column.key) ? 190 : column.key === 'source' ? 170 : column.width,
+  label: column.key === 'source' ? props.warehouse ? '来源' : '上序班组' : column.label,
+  width: column.key === 'on_hand_quantity' ? 100 : column.key === 'on_hand_weight' ? 130 : column.key === 'source' ? 170 : column.width,
   format: column.key === 'source' ? sourceLabel : column.format,
 })))
 const searchColumns = computed(() => warehouseSearchColumns.map(column => column.key === 'source' ? { ...column, label: props.warehouse ? '来源' : '上序班组' } : column))
@@ -61,11 +61,6 @@ const visibleColumns = computed(() => {
   return searchedColumn.value ? [searchedColumn.value, ...saved.filter(column => column.key !== searchedColumn.value!.key)] : saved
 })
 const separateSpecification = computed(() => visibleColumns.value.some(column => column.key === 'transfer_specification'))
-const separatePurpose = computed(() => visibleColumns.value.some(column => column.key === 'purpose_name'))
-function columnLabel(key: string, label: string) {
-  if (key === 'material_type' && !separatePurpose.value) return '类型 / 业务'
-  return label
-}
 function ownershipHint(row: TeamInventoryRow) {
   const available = inventoryDispatchable(row)
   return `在库余量 ${inventoryAmount(row.on_hand_quantity)} 件 / ${inventoryAmount(row.on_hand_weight)} kg\n归属余量 ${inventoryAmount(row.owned_quantity)} 件 / ${inventoryAmount(row.owned_weight)} kg\n${isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量'} ${inventoryAmount(available.quantity)} 件 / ${inventoryAmount(available.weight)} kg`
@@ -184,7 +179,7 @@ onBeforeUnmount(() => { ++version })
           <ElCheckbox :model-value="text('urgent_only') === 'true'" @change="apply({ ...draftFilters(), urgent_only: $event === true || undefined })">仅看加急</ElCheckbox>
         </div>
       </ElPopover>
-      <InventoryColumnSettings :key="String(!!ownership)" :storage-key="storageKey" :columns="columns" @change="columnChoices = $event" />
+      <InventoryColumnSettings :key="String(!!ownership)" :storage-key="storageKey" :columns="columns" :legacy-keys="warehouseLegacyColumnKeys" @change="columnChoices = $event" />
       <slot name="actions" />
     </header>
     <ElAlert v-if="inputError" :title="inputError" type="warning" :closable="false" />
@@ -193,20 +188,19 @@ onBeforeUnmount(() => { ++version })
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存" />
     <ElTable v-else class="business-table serial-table warehouse-table" :data="rows" row-key="group_id" :span-method="span" :row-class-name="rowClass" empty-text="暂无符合条件的库存">
-      <ElTableColumn v-for="column in visibleColumns" :key="column.key" :prop="column.key" :label="columnLabel(column.key, column.label)" :min-width="column.width" align="center" show-overflow-tooltip :label-class-name="column.key === searchedColumn?.key ? 'searched-column' : ''" :class-name="['serial_no', 'material_name'].includes(column.key) ? 'warehouse-group-cell' : ''">
+      <ElTableColumn v-for="column in visibleColumns" :key="column.key" :prop="column.key" :label="column.label" :min-width="column.width" align="center" show-overflow-tooltip :label-class-name="column.key === searchedColumn?.key ? 'searched-column' : ''" :class-name="['serial_no', 'material_name'].includes(column.key) ? 'warehouse-group-cell' : ''">
         <template #default="{ row }">
           <div v-if="column.key === 'serial_no'" class="inventory-inline inventory-serial"><ElButton class="serial-number-link" :title="row.serial_no" link type="primary" @click="openSerial(row)"><strong>{{ row.serial_no }}</strong></ElButton><SerialUrgencyBadge :urgency="row.urgency" /><ElTooltip v-if="canManageUrgency" :content="row.urgency?.urgent ? '取消加急' : '标记加急'" placement="top"><ElButton class="warehouse-urgency-action" link type="primary" :icon="row.urgency?.urgent ? Close : Flag" :aria-label="row.urgency?.urgent ? '取消加急' : '标记加急'" @click="flag(row)" /></ElTooltip></div>
           <ElTooltip v-else-if="column.key === 'material_name'" :content="`规格：${row.transfer_specification}`" :disabled="!row.transfer_specification || separateSpecification" :trigger="['hover', 'focus']" placement="top"><span class="inventory-material" :tabindex="row.transfer_specification && !separateSpecification ? 0 : undefined">{{ row.material_name || '—' }}</span></ElTooltip>
-          <div v-else-if="column.key === 'material_type'" class="inventory-inline"><ElTag effect="light" :type="isScrapMaterialType(row.material_type) ? 'warning' : row.material_type === 'finished' ? 'success' : 'primary'">{{ column.format(asRow(row)) }}</ElTag><span v-if="!separatePurpose && row.purpose_name" class="inventory-inline-meta">{{ row.purpose_name }}</span></div>
-          <div v-else-if="column.key === 'source' && warehouse" class="inventory-inline"><span class="inventory-source-name">{{ row.receipt_source === 'opening' ? '期初库存' : row.source_name || '—' }}</span><span v-if="row.receipt_source !== 'opening'" class="inventory-inline-meta">{{ warehouseSourceNames[asRow(row).receipt_source] }}</span></div>
-          <span v-else-if="column.key === 'owned_balance'" class="inventory-inline">{{ column.format(asRow(row)) }}</span>
-          <span v-else-if="column.key === 'dispatchable_balance'" class="inventory-inline" :title="isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量'">{{ column.format(asRow(row)) }}</span>
-          <template v-else-if="column.key === 'pending_transfer'">
+          <ElTag v-else-if="column.key === 'material_type'" effect="light" :type="isScrapMaterialType(row.material_type) ? 'warning' : row.material_type === 'finished' ? 'success' : 'primary'">{{ column.format(asRow(row)) }}</ElTag>
+          <div v-else-if="column.key === 'source' && warehouse" class="inventory-inline"><span class="inventory-source-name">{{ row.receipt_source === 'opening' ? '期初库存' : row.source_name || '—' }}</span></div>
+          <span v-else-if="column.key === 'dispatchable_quantity' || column.key === 'dispatchable_weight'" :title="isScrapMaterialType(row.material_type) ? '废料可处理余量' : '正常料可转出余量'">{{ column.format(asRow(row)) }}</span>
+          <template v-else-if="column.key === 'in_transit_quantity' || column.key === 'in_transit_weight'">
             <ElButton v-if="row.in_transit_quantity > 0 || row.in_transit_weight > 0" link type="primary" :aria-label="`查看${row.serial_no}转出待签收批次`" @click="pending = asRow(row)">{{ column.format(asRow(row)) }}</ElButton>
             <span v-else>{{ column.format(asRow(row)) }}</span>
           </template>
-          <ElTooltip v-else-if="column.key === 'stock_balance'" :disabled="!ownership" :content="ownershipHint(asRow(row))" :trigger="['hover', 'focus']" popper-class="inventory-balance-tooltip" placement="top">
-            <span class="inventory-inline inventory-balance" :tabindex="ownership ? 0 : undefined"><strong>{{ inventoryAmount(row.on_hand_quantity) }} <small>件</small></strong><span class="inventory-amount-divider"> / </span><span>{{ inventoryAmount(row.on_hand_weight) }} <small>kg</small></span></span>
+          <ElTooltip v-else-if="column.key === 'on_hand_quantity' || column.key === 'on_hand_weight'" :disabled="!ownership" :content="ownershipHint(asRow(row))" :trigger="['hover', 'focus']" popper-class="inventory-balance-tooltip" placement="top">
+            <span class="inventory-balance" :data-field="column.key" :tabindex="ownership ? 0 : undefined"><strong>{{ column.format(asRow(row)) }}</strong></span>
           </ElTooltip>
           <span v-else-if="column.key === 'purpose_name'">{{ row.purpose_name || '—' }}</span>
           <span v-else>{{ column.format(asRow(row)) }}</span>
@@ -242,14 +236,10 @@ onBeforeUnmount(() => { ++version })
 .warehouse-table.el-table.business-table :deep(th.el-table__cell) { height: 44px; }
 .warehouse-table.el-table.business-table :deep(.cell) { white-space: nowrap; overflow-wrap: normal; }
 .inventory-inline { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; white-space: nowrap; line-height: 24px; }
-.inventory-inline-meta, .inventory-amount-divider { color: var(--muted); }
-.inventory-inline-meta, .inventory-source-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.inventory-inline-meta::before { content: '·'; margin-right: 8px; }
+.inventory-source-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .inventory-inline .el-tag { flex-shrink: 0; }
 .inventory-balance { display: block; overflow: hidden; text-overflow: ellipsis; }
-.inventory-balance small { font-size: 14px; font-weight: 400; color: var(--muted); }
 .inventory-balance strong { font-size: 18px; font-weight: 550; color: var(--text); }
-.inventory-balance > span { font-size: 14px; }
 .inventory-material:focus-visible, .inventory-balance:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 3px; }
 :global(.inventory-balance-tooltip) { white-space: pre-line; line-height: 1.7; }
 .inventory-row-actions { display: flex; justify-content: center; align-items: center; gap: 14px; white-space: nowrap; }

@@ -45,7 +45,8 @@ onBeforeUnmount(() => { ++version })
     <ElTable v-else :data="rows" row-key="id" class="business-table" empty-text="暂无转出待确认批次">
       <ElTableColumn label="批次号" min-width="210" align="center"><template #default="{ row }"><ElButton link type="primary" @click="open(row)">{{ row.batch_no }}</ElButton></template></ElTableColumn>
       <ElTableColumn label="下序 / 去向" min-width="130" align="center"><template #default="{ row }">{{ row.next_team?.name || row.external_destination || '—' }}</template></ElTableColumn>
-      <ElTableColumn label="件数 / 重量" min-width="170" align="center"><template #default="{ row }">{{ inventoryAmount(row.quantity) }} 件 / {{ inventoryAmount(row.weight) }} kg</template></ElTableColumn>
+      <ElTableColumn label="件数" min-width="100" align="center"><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
+      <ElTableColumn label="重量 (kg)" min-width="125" align="center"><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
       <ElTableColumn label="状态" min-width="130" align="center"><template #default="{ row }">{{ isExternalEntryKind(row.entry_kind) ? '对外待确认' : '转出待签收' }}</template></ElTableColumn>
       <ElTableColumn label="转出时间" min-width="175" align="center"><template #default="{ row }">{{ formatDateTime(row.transferred_at) }}</template></ElTableColumn>
     </ElTable>

@@ -5,6 +5,7 @@ import { ElCheckbox, ElMessage, ElPopover } from 'element-plus'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
 import { defaultInventoryColumns, inventoryColumns, normalizeInventoryColumns, type InventoryColumnChoice } from '@/types/inventoryColumns'
 import { serialFixture } from '@/testFixtures/materialAnalytics'
+import { warehouseColumns, warehouseLegacyColumnKeys } from '@/types/teamInventory'
 
 let wrapper: VueWrapper
 const key = 'heatsink.inventory-columns.v1:1:914'
@@ -16,9 +17,29 @@ async function render(storageKey: string | null = key) {
 }
 function button(text: string) { return wrapper.findAll('button').find(item => item.text() === text)! }
 function check(label: string, value: boolean) { wrapper.findAllComponents(ElCheckbox).find(item => item.text() === label)!.vm.$emit('update:modelValue', value) }
-const latest = () => wrapper.emitted('change')!.at(-1)![0] as InventoryColumnChoice[]
+const latest = () => wrapper.emitted('change')!.at(-1)![0] as InventoryColumnChoice<string>[]
 
 describe('inventory display columns', () => {
+  it('expands old combined balances without duplicates and saves quantity and weight independently', async () => {
+    const old = [{ key: 'on_hand_weight', visible: false }, { key: 'stock_balance', visible: true }, { key: 'on_hand_quantity', visible: false }, { key: 'owned_balance', visible: true }, { key: 'dispatchable_balance', visible: true }, { key: 'pending_transfer', visible: true }, { key: 'removed_field', visible: true }]
+    localStorage.setItem(key, JSON.stringify(old))
+    const renderWarehouse = async () => {
+      wrapper = mount(InventoryColumnSettings, { props: { storageKey: key, columns: warehouseColumns, legacyKeys: warehouseLegacyColumnKeys }, global: { stubs: { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } } } })
+      await flushPromises()
+    }
+    await renderWarehouse()
+    expect(latest().filter(item => item.visible).map(item => item.key)).toEqual(['on_hand_weight', 'on_hand_quantity', 'owned_quantity', 'owned_weight', 'dispatchable_quantity', 'dispatchable_weight', 'in_transit_quantity', 'in_transit_weight'])
+    expect(new Set(latest().map(item => item.key)).size).toBe(warehouseColumns.length)
+    expect(localStorage.getItem(key)).toBe(JSON.stringify(old))
+    check('当前件数', false)
+    await button('应用').trigger('click')
+    const saved = latest()
+    wrapper.unmount(); await renderWarehouse()
+    expect(latest()).toEqual(saved)
+    expect(latest().find(item => item.key === 'on_hand_quantity')?.visible).toBe(false)
+    expect(latest().find(item => item.key === 'on_hand_weight')?.visible).toBe(true)
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual(saved)
+  })
   it('keeps current defaults and never offers batch-level columns', async () => {
     await render()
     expect(latest().filter(item => item.visible).map(item => item.key)).toEqual(['material_name', 'transfer_specification', 'available_quantity', 'available_weight'])

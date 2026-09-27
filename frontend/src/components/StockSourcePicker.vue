@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import { ElButton, ElCheckbox, ElDialog, ElInput, ElPagination, ElTable, ElTableColumn } from 'element-plus'
-import MaterialAmount from './MaterialAmount.vue'
+import { inventoryAmount } from '@/types/teamInventory'
 import RecordDateFilter from './RecordDateFilter.vue'
 import SerialUrgencyBadge from './SerialUrgencyBadge.vue'
 import StatePanel from './StatePanel.vue'
@@ -70,8 +70,10 @@ onBeforeUnmount(() => { ++version })
         <ElTableColumn label="流水号" min-width="245" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.serial_no }}<SerialUrgencyBadge :urgency="row.transfer.urgency" /></template></ElTableColumn>
         <ElTableColumn label="来源批次" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.batch_no }}</template></ElTableColumn>
         <ElTableColumn label="本班组业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.purpose_name || '未分类' }}</template></ElTableColumn>
-        <ElTableColumn label="材质 / 类型" min-width="150"><template #default="{ row }">{{ row.transfer.material_name || '—' }}<small class="picker-secondary">{{ materialTypeLabel(row.transfer.material_type) }}</small></template></ElTableColumn>
-        <ElTableColumn label="可出库余量" min-width="170"><template #default="{ row }"><MaterialAmount :quantity="dispatchableAmounts(asStock(row)).quantity" :weight="dispatchableAmounts(asStock(row)).weight" /></template></ElTableColumn>
+        <ElTableColumn label="材质" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.material_name || '—' }}</template></ElTableColumn>
+        <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.transfer.material_type) }}</template></ElTableColumn>
+        <ElTableColumn label="可出库件数" min-width="130" align="center"><template #default="{ row }">{{ inventoryAmount(dispatchableAmounts(asStock(row)).quantity) }}</template></ElTableColumn>
+        <ElTableColumn label="可出库重量 (kg)" min-width="160" align="center"><template #default="{ row }">{{ inventoryAmount(dispatchableAmounts(asStock(row)).weight) }}</template></ElTableColumn>
       </ElTable>
     </div>
     <div class="picker-pagination"><span>共 {{ total }} 个来源批次</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[20, 50, 100]" :total="total" layout="sizes, prev, pager, next" @current-change="paginate($event)" @size-change="paginate(1, $event)" /></div>
@@ -84,7 +86,7 @@ onBeforeUnmount(() => { ++version })
 .picker-scope { margin: 0 0 16px; font-size: 16px; color: var(--text); }
 .picker-toolbar { margin-bottom: 12px; }.picker-toolbar > .el-input { flex: 1 1 180px; max-width: 390px; }
 .picker-toolbar > span { margin-left: auto; }.picker-toolbar :deep(.el-button + .el-button) { margin-left: 0; }
-.picker-toolbar > span, .picker-pagination > span, .picker-secondary { color: var(--muted); font-size: 12px; }
-.picker-table { height: min(52vh, 520px); }.picker-secondary { display: block; }
+.picker-toolbar > span, .picker-pagination > span { color: var(--muted); font-size: 12px; }
+.picker-table { height: min(52vh, 520px); }
 .picker-pagination { justify-content: space-between; padding-top: 12px; }.picker-pagination :deep(.el-pagination) { max-width: 100%; overflow-x: auto; }
 </style>

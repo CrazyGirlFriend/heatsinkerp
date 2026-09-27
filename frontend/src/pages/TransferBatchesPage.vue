@@ -486,15 +486,17 @@ onBeforeUnmount(() => {
           <StatePanel v-else-if="errorMessage" state="error" :description="errorMessage" @retry="loadRows" />
           <StatePanel v-else-if="!hasRows" state="empty" title="暂无转料记录" description="请调整筛选条件。"><ElButton v-if="canCreate" type="primary" plain :icon="Plus" @click="openCreate">新建转料</ElButton></StatePanel>
           <ElTable v-else :data="rows" class="business-table transfer-table" border row-key="batch_no" :current-row-key="drawerOpen ? selected?.batch_no : undefined" highlight-current-row @row-click="openDetail">
-            <ElTableColumn label="批次号 / 流水号" min-width="250" align="center">
-              <template #default="{ row }"><ElButton text class="batch-link" :aria-label="'查看转料单 ' + row.batch_no" @click.stop="openDetail(asTransfer(row))">{{ row.batch_no }}</ElButton><div class="transfer-serial"><RouterLink class="serial-number" :to="traceLink(row.serial_no)" @click.stop>{{ row.serial_no }}</RouterLink><SerialUrgencyBadge :urgency="row.urgency" @click.stop /></div></template>
+            <ElTableColumn label="批次号" min-width="210" align="center" show-overflow-tooltip>
+              <template #default="{ row }"><ElButton text class="batch-link" :aria-label="'查看转料单 ' + row.batch_no" @click.stop="openDetail(asTransfer(row))">{{ row.batch_no }}</ElButton></template>
             </ElTableColumn>
+            <ElTableColumn label="流水号" min-width="220" align="center" show-overflow-tooltip><template #default="{ row }"><div class="transfer-serial"><RouterLink class="serial-number" :to="traceLink(row.serial_no)" @click.stop>{{ row.serial_no }}</RouterLink><SerialUrgencyBadge :urgency="row.urgency" @click.stop /></div></template></ElTableColumn>
             <ElTableColumn label="材质" min-width="150" align="center" show-overflow-tooltip prop="material_name" />
             <ElTableColumn label="来源" min-width="156" align="center" class-name="transfer-source-cell" show-overflow-tooltip><template #default="{ row }">{{ isWarehouseReceipt(asTransfer(row)) ? '库房手工入库' : row.source_team.name }}</template></ElTableColumn>
             <ElTableColumn label="去向" min-width="110" align="center" class-name="transfer-destination-cell" show-overflow-tooltip prop="next_team.name" />
-            <ElTableColumn label="数量 / 重量" min-width="150" align="center"><template #default="{ row }"><div class="amount-cell"><span>{{ numberText(row.quantity, row.quantity_unit) }}</span><span class="amount-weight">{{ numberText(row.weight, row.weight_unit) }}</span></div></template></ElTableColumn>
+            <ElTableColumn label="数量" min-width="120" align="center" class-name="transfer-quantity-cell"><template #default="{ row }">{{ numberText(row.quantity, row.quantity_unit) }}</template></ElTableColumn>
+            <ElTableColumn label="重量" min-width="140" align="center" class-name="transfer-weight-cell"><template #default="{ row }">{{ numberText(row.weight, row.weight_unit) }}</template></ElTableColumn>
             <ElTableColumn label="状态" min-width="140" align="center" class-name="transfer-status-cell"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" plain /></template></ElTableColumn>
-            <ElTableColumn label="转出时间" min-width="140" align="center"><template #default="{ row }"><time class="transfer-time" :title="formatDateTime(row.transferred_at)"><span v-for="(part, index) in formatDateTime(row.transferred_at).split(' ')" :key="index">{{ part }}</span></time></template></ElTableColumn>
+            <ElTableColumn label="转出时间" min-width="180" align="center"><template #default="{ row }"><time class="transfer-time" :title="formatDateTime(row.transferred_at)">{{ formatDateTime(row.transferred_at) }}</time></template></ElTableColumn>
           </ElTable>
           <div v-if="hasRows" class="transfer-mobile-list">
             <ElButton v-for="transfer in rows" :key="transfer.batch_no" text class="transfer-mobile-row" @click="openDetail(transfer)">
@@ -568,10 +570,10 @@ onBeforeUnmount(() => {
 .transfer-table { font-size: 16px; }
 .transfer-table :deep(.el-table__row) { cursor: pointer; }
 .transfers-page .transfer-table :deep(th.el-table__cell) { height: 42px; padding-block: 10px; }
-.transfers-page .transfer-table :deep(.el-table__body td.el-table__cell) { height: 64px; padding-block: 10px; }
+.transfers-page .transfer-table :deep(.el-table__body td.el-table__cell) { height: 48px; padding-block: 10px; }
 .transfer-table :deep(.el-table__inner-wrapper::before) { display: none; }
-.transfers-page .transfer-table :deep(.cell) { padding-inline: 12px; line-height: 22px; }
-.transfer-time { display: flex; flex-direction: column; align-items: center; color: var(--muted); font-size: 14px; white-space: nowrap; }
+.transfers-page .transfer-table :deep(.cell) { padding-inline: 12px; line-height: 22px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.transfer-time { color: var(--muted); font-size: 14px; white-space: nowrap; }
 .transfer-serial { justify-content: center; }
 .transfers-page .transfer-table :deep(.transfer-status-text) { font-size: 14px; }
 .transfers-page .transfer-table :deep(.transfer-status-text--pending) { color: #946200; }
@@ -579,8 +581,6 @@ onBeforeUnmount(() => {
 .batch-link { justify-content: flex-start; height: auto; min-height: 20px; padding: 0 !important; color: var(--text); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .serial-number { color: var(--subtle); font-size: 12px; }
 .serial-number:hover { color: var(--primary); text-decoration: underline; }
-.amount-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 16px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.amount-weight { color: var(--reading-muted); font-size: 14px; }
 .pagination-bar { display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto; min-height: 56px; padding: 12px 16px; gap: 12px; border-top: 1px solid var(--line-light); color: var(--subtle); font-size: 13px; }
 .transfer-mobile-list { display: none; }
 @container workspace (max-width: 820px) {

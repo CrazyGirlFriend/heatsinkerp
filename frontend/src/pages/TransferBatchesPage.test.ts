@@ -96,7 +96,7 @@ describe('transfer list refresh continuity', () => {
     vi.mocked(materialTransferApi.list).mockResolvedValue({ ...result, items, total: items.length })
     const page = await renderList('/transfer-batches')
     const headings = page.findAll('.el-table__header th .cell').map(cell => cell.text())
-    expect(headings).toEqual(['批次号 / 流水号', '材质', '来源', '去向', '数量 / 重量', '状态', '转出时间'])
+    expect(headings).toEqual(['批次号', '流水号', '材质', '来源', '去向', '数量', '重量', '状态', '转出时间'])
     expect(page.findAll('.el-table__header th.el-table__cell').every(cell => cell.classes().includes('is-center'))).toBe(true)
     expect(page.getComponent({ name: 'ElTable' }).props('border')).toBe(true)
     const tableRows = page.findAll('.el-table__body .el-table__row')
@@ -111,13 +111,16 @@ describe('transfer list refresh continuity', () => {
     expect(mobileRows[2].text()).toContain('外协收料单位')
   })
 
-  it('keeps quantities, units and local transfer time legible in separate lines', async () => {
+  it('separates quantities and weights into columns while keeping the timestamp on one line', async () => {
     vi.mocked(materialTransferApi.list).mockResolvedValue({ ...result, items: [{ ...transfer, quantity: 12345, weight: 1234.567, transferred_at: '2026-09-14T01:36:00Z' }] })
     const page = await renderList()
     const row = page.get('.el-table__body .el-table__row')
-    expect(row.findAll('.amount-cell > span').map(line => line.text())).toEqual(['12,345 件', '1,234.567 kg'])
-    expect(row.get('.amount-cell').element.closest('td')?.classList.contains('is-center')).toBe(true)
-    expect(row.findAll('.transfer-time > span').map(line => line.text())).toEqual(['2026-09-14', '09:36'])
+    expect(row.get('td.transfer-quantity-cell').text()).toBe('12,345 件')
+    expect(row.get('td.transfer-weight-cell').text()).toBe('1,234.567 kg')
+    expect(row.get('td.transfer-quantity-cell').classes()).toContain('is-center')
+    expect(row.get('td.transfer-weight-cell').classes()).toContain('is-center')
+    expect(row.get('.transfer-time').text()).toBe('2026-09-14 09:36')
+    expect(row.find('.amount-cell, .transfer-time > span, br').exists()).toBe(false)
     expect(row.get('.transfer-time').attributes('title')).toBe('2026-09-14 09:36')
   })
 

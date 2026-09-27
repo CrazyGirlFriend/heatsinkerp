@@ -7,7 +7,7 @@ import { ElPagination } from 'element-plus'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { serialFixture } from '@/testFixtures/materialAnalytics'
 import { formatDateTime } from '@/utils/format'
-import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
+import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import type { StockBatch } from '@/types/teamMaterials'
 const live = vi.hoisted(() => ({ refresh: async () => {} }))
 vi.mock('@/composables/useLiveRefresh', async () => {
@@ -16,6 +16,21 @@ vi.mock('@/composables/useLiveRefresh', async () => {
 })
 
 afterEach(() => vi.restoreAllMocks())
+
+it.each(['incoming', 'outgoing'])('separates all %s record fields inside serial detail', async tab => {
+  const transfer = normalizeMaterialTransfer({ id: 12, batch_no: 'TL-12', serial_no: '000128', material_name: '铜钼', transfer_specification: '10 × 20', quantity: 2, weight: 1.234, source_team: { id: 1, name: '库房' }, next_team: { id: 4, name: '研磨' }, transferred_by: '张师傅', transferred_at: '2026-09-27T00:00:00Z' })
+  vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({ items: [serialFixture('000128')], total: 1, page: 1, page_size: 1 })
+  vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
+  vi.spyOn(materialTransferApi, 'list').mockResolvedValue({ items: [transfer], total: 1, page: 1, page_size: 10 })
+  const wrapper = mount(SerialMaterialDrawer, { props: { modelValue: true, teamId: 4, serialNo: '000128' }, global: { stubs: { ElDialog: { template: '<section><slot/><slot name="footer"/></section>' }, MaterialTransferDrawer: true } } })
+  try {
+    await flushPromises()
+    wrapper.getComponent({ name: 'ElTabs' }).vm.$emit('update:modelValue', tab); await flushPromises()
+    expect(wrapper.findAll('.serial-record-table thead th').map(cell => cell.text())).toEqual(['交接批次', '材质', '规格', '来源', '去向', '件数', '重量 (kg)', '状态', '登记人', '登记时间'])
+    expect(wrapper.get('.serial-record-table tbody tr').findAll('td').map(cell => cell.text())).toEqual(['TL-12', '铜钼', '10 × 20', '库房', '研磨', '2', '1.234', '待接收', '张师傅', formatDateTime(transfer.transferred_at)])
+    expect(wrapper.find('.serial-record-table .material-amount, .serial-record-table small').exists()).toBe(false)
+  } finally { wrapper.unmount() }
+})
 
 it('supports source-batch dispatch and loss only for writable available inventory', async () => {
   const source = (id: number, quantity = 10): StockBatch => ({ transfer: normalizeMaterialTransfer({ id, batch_no: `TL-${id}`, serial_no: 'SERIAL-DETAIL', status: 'received' }), available_quantity: quantity, available_weight: 0, on_hand_quantity: quantity, on_hand_weight: 0, reserved_quantity: 0, reserved_weight: 0, lost_quantity: 0, lost_weight: 0, received_quantity: quantity, received_weight: 0, dispatched_quantity: 0, dispatched_weight: 0, in_transit_quantity: 0, in_transit_weight: 0 })
@@ -32,6 +47,11 @@ it('supports source-batch dispatch and loss only for writable available inventor
     expect(teamMaterialApi.stock).toHaveBeenCalledWith(914, expect.objectContaining({ serial_no: 'SERIAL-DETAIL', availability: 'all' }))
     expect(wrapper.find('.serial-stock-actions').exists()).toBe(false)
     expect(wrapper.find('input[type=checkbox]').exists()).toBe(false)
+    const headings = wrapper.findAll('.serial-record-table thead th').map(cell => cell.text())
+    const cells = wrapper.get('.serial-record-table tbody tr').findAll('td')
+    expect(cells[headings.indexOf('结存件数')]!.text()).toBe('10')
+    expect(cells[headings.indexOf('结存重量 (kg)')]!.text()).toBe('0')
+    expect(wrapper.find('.serial-record-table .material-amount').exists()).toBe(false)
     await wrapper.setProps({ canWrite: true }); await flushPromises()
     expect(wrapper.get('label[aria-label="选择 TL-3"] input').attributes('disabled')).toBeDefined()
     await wrapper.get('label[aria-label="选择本页可用批次"] input').setValue(true)

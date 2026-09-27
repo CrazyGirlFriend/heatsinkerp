@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, Setting } from '@element-plus/icons-vue'
 import { ElButton, ElCheckbox, ElMessage, ElPopover } from 'element-plus'
 import { inventoryColumns, type InventoryColumnChoice, type InventoryColumnKey } from '@/types/inventoryColumns'
 
-const props = defineProps<{ storageKey: string | null; columns?: readonly { key: K; label: string; defaultVisible?: boolean }[] }>()
+const props = defineProps<{ storageKey: string | null; columns?: readonly { key: K; label: string; defaultVisible?: boolean }[]; legacyKeys?: Record<string, readonly K[]> }>()
 const emit = defineEmits<{ change: [columns: InventoryColumnChoice<K>[]] }>()
 const options = computed(() => props.columns || inventoryColumns.map((column, index) => ({ ...column, key: column.key as K, defaultVisible: index < 4 })))
 const defaults = (): InventoryColumnChoice<K>[] => options.value.map(column => ({ key: column.key, visible: !!column.defaultVisible }))
@@ -15,7 +15,15 @@ const copy = (columns: InventoryColumnChoice<K>[]) => columns.map(column => ({ .
 function normalize(value: unknown): InventoryColumnChoice<K>[] {
   if (!Array.isArray(value)) return defaults()
   const result: InventoryColumnChoice<K>[] = []
-  for (const item of value) if (item && options.value.some(column => column.key === item.key) && typeof item.visible === 'boolean' && !result.some(column => column.key === item.key)) result.push({ key: item.key, visible: item.visible })
+  for (const item of value) {
+    if (!item || typeof item.visible !== 'boolean') continue
+    for (const key of props.legacyKeys?.[item.key] || [item.key]) {
+      if (!options.value.some(column => column.key === key)) continue
+      const existing = result.find(column => column.key === key)
+      if (existing) existing.visible ||= item.visible
+      else result.push({ key, visible: item.visible })
+    }
+  }
   // Newly introduced columns must not expand an existing customized layout.
   return [...result, ...defaults().filter(column => !result.some(item => item.key === column.key)).map(column => ({ ...column, visible: result.length ? false : column.visible }))]
 }

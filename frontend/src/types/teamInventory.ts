@@ -57,14 +57,16 @@ export const warehouseColumns = [
   { key: 'material_name', label: '材质', width: 160, defaultVisible: true, format: (row: TeamInventoryRow) => row.material_name || '—' },
   { key: 'transfer_specification', label: '规格', width: 180, defaultVisible: false, format: (row: TeamInventoryRow) => row.transfer_specification || '—' },
   { key: 'material_type', label: '物料类型', width: 140, defaultVisible: true, format: (row: TeamInventoryRow) => materialTypeLabel(row.material_type || null) },
+  { key: 'purpose_name', label: '本班组业务', width: 150, defaultVisible: true, format: (row: TeamInventoryRow) => row.purpose_name || '—' },
   { key: 'source', label: '来源', width: 120, defaultVisible: true, format: warehouseSourceLabel },
-  { key: 'owned_balance', label: '归属余量', width: 145, defaultVisible: false, format: (row: TeamInventoryRow) => `${amount(row.owned_quantity)} 件 / ${amount(row.owned_weight)} kg` },
-  { key: 'dispatchable_balance', label: '可转出量', width: 145, defaultVisible: false, format: (row: TeamInventoryRow) => { const value = inventoryDispatchable(row); return `${amount(value.quantity)} 件 / ${amount(value.weight)} kg` } },
-  { key: 'pending_transfer', label: '转出待签收', width: 160, defaultVisible: false, format: (row: TeamInventoryRow) => `${amount(row.in_transit_quantity)} 件 / ${amount(row.in_transit_weight)} kg` },
-  { key: 'stock_balance', label: '当前结存', width: 130, defaultVisible: true, format: (row: TeamInventoryRow) => `${amount(row.on_hand_quantity)} 件 / ${amount(row.on_hand_weight)} kg` },
-  { key: 'purpose_name', label: '本班组业务', width: 150, defaultVisible: false, format: (row: TeamInventoryRow) => row.purpose_name || '未指定业务' },
-  { key: 'on_hand_quantity', label: '当前件数', width: 140, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(row.on_hand_quantity) },
-  { key: 'on_hand_weight', label: '当前重量 (kg)', width: 170, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(row.on_hand_weight) },
+  { key: 'owned_quantity', label: '归属件数', width: 140, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(row.owned_quantity) },
+  { key: 'owned_weight', label: '归属重量 (kg)', width: 170, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(row.owned_weight) },
+  { key: 'dispatchable_quantity', label: '可转出件数', width: 150, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(inventoryDispatchable(row).quantity) },
+  { key: 'dispatchable_weight', label: '可转出重量 (kg)', width: 180, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(inventoryDispatchable(row).weight) },
+  { key: 'in_transit_quantity', label: '待签收件数', width: 150, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(row.in_transit_quantity) },
+  { key: 'in_transit_weight', label: '待签收重量 (kg)', width: 180, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(row.in_transit_weight) },
+  { key: 'on_hand_quantity', label: '当前件数', width: 140, defaultVisible: true, numeric: true, format: (row: TeamInventoryRow) => amount(row.on_hand_quantity) },
+  { key: 'on_hand_weight', label: '当前重量 (kg)', width: 170, defaultVisible: true, numeric: true, format: (row: TeamInventoryRow) => amount(row.on_hand_weight) },
   ...inventoryColumns.filter(column => extraKeys.includes(column.key as typeof extraKeys[number])).map(column => ({
     ...column, key: column.key as typeof extraKeys[number], defaultVisible: false, format: (row: TeamInventoryRow) => extraValue(row, column.key as typeof extraKeys[number]),
   })),
@@ -73,8 +75,14 @@ export const warehouseColumns = [
   })),
 ] as const
 export type WarehouseColumnKey = typeof warehouseColumns[number]['key']
+export const warehouseLegacyColumnKeys = {
+  stock_balance: ['on_hand_quantity', 'on_hand_weight'],
+  owned_balance: ['owned_quantity', 'owned_weight'],
+  dispatchable_balance: ['dispatchable_quantity', 'dispatchable_weight'],
+  pending_transfer: ['in_transit_quantity', 'in_transit_weight'],
+} satisfies Record<string, WarehouseColumnKey[]>
 export const warehouseSerialColumn = { key: 'serial_no', label: '流水号', width: 170, format: (row: TeamInventoryRow) => row.serial_no } as const
-export const warehouseSearchColumns = [warehouseSerialColumn, ...warehouseColumns.filter(column => !['material_type', 'stock_balance', 'owned_balance', 'dispatchable_balance', 'pending_transfer'].includes(column.key))]
+export const warehouseSearchColumns = [warehouseSerialColumn, ...warehouseColumns.filter(column => !['material_type', 'owned_quantity', 'owned_weight', 'dispatchable_quantity', 'dispatchable_weight', 'in_transit_quantity', 'in_transit_weight'].includes(column.key))]
 export type WarehouseSearchField = 'all' | typeof warehouseSearchColumns[number]['key']
 export const warehouseSearchKind = (field: WarehouseSearchField) => field === 'urgency' ? 'status' : field === 'last_activity_at' ? 'date' : warehouseColumns.some(column => column.key === field && 'numeric' in column) ? 'number' : 'text'
 export interface TeamInventoryParams extends Omit<SerialParams, 'availability' | 'search_field'> {

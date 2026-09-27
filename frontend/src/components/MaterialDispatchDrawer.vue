@@ -55,8 +55,8 @@ onBeforeUnmount(reset)
       <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
       <ElAlert v-if="error" :title="error" type="error" :closable="false" />
       <div class="historical-table"><table class="business-document-table" aria-label="历史记录中的独立批次">
-        <thead><tr><th>批次号 / 流水号</th><th>材质 / 类型</th><th>件数</th><th>重量 kg</th><th>状态</th><th>操作</th></tr></thead>
-        <tbody><tr v-for="item in current.items" :key="item.batch_no"><td>{{ item.batch_no }}<small>{{ item.serial_no }}</small></td><td>{{ item.material_name || '—' }}<small>{{ materialTypeLabel(item.material_type) }}</small></td><td>{{ item.quantity }}</td><td>{{ item.weight }}</td><td><MaterialTransferStatus :status="item.status" :entry-kind="item.entry_kind" /></td><td><ElButton link type="primary" :disabled="loading || !!error" :aria-label="'查看批次 ' + item.batch_no" @click="openBatch(item)">查看批次</ElButton></td></tr></tbody>
+        <thead><tr><th>批次号</th><th>流水号</th><th>材质</th><th>物料类型</th><th>件数</th><th>重量 (kg)</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody><tr v-for="item in current.items" :key="item.batch_no"><td>{{ item.batch_no }}</td><td>{{ item.serial_no }}</td><td>{{ item.material_name || '—' }}</td><td>{{ materialTypeLabel(item.material_type) }}</td><td>{{ item.quantity }}</td><td>{{ item.weight }}</td><td><MaterialTransferStatus :status="item.status" :entry-kind="item.entry_kind" /></td><td><ElButton link type="primary" :disabled="loading || !!error" :aria-label="'查看批次 ' + item.batch_no" @click="openBatch(item)">查看批次</ElButton></td></tr></tbody>
       </table></div>
     </template>
     <template v-if="allowPrint" #footer><ElButton :disabled="!current || loading || !!error" @click="printOpen = true">合并打印</ElButton></template>
@@ -66,5 +66,5 @@ onBeforeUnmount(reset)
 </template>
 <style scoped>
 h2 { margin: 0; font-size: 22px; } p { color: var(--el-text-color-secondary); line-height: 1.7; }
-.historical-table { overflow-x: auto; margin-top: 16px; } table { width: 100%; min-width: 580px; } small { display: block; margin-top: 4px; }
+.historical-table { overflow-x: auto; margin-top: 16px; } table { width: 100%; min-width: 980px; white-space: nowrap; }
 </style>
