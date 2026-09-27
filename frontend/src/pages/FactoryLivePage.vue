@@ -602,9 +602,7 @@ onBeforeUnmount(() => {
               :key="batch.batch_no"
               class="recent-item"
               :title="`${batch.batch_no} · ${number(batch.quantity)} 件 / ${kg(batch.weight)} kg`"
-              @click="
-                navigate('/transfer-batches/scan?batch_no=' + encodeURIComponent(batch.batch_no))
-              "
+              @click="navigate('/transfer-batches?batch_no=' + encodeURIComponent(batch.batch_no))"
             >
               <time>{{ formatDateTime(batch.updated_at).slice(5, 10) }}</time
               ><span :title="batchLabel(batch)">{{ batchLabel(batch) }}</span

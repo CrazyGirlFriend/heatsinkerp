@@ -30,8 +30,7 @@ const router = createRouter({
     {
       path: '/transfer-batches/scan',
       name: 'transfer-batch-scan',
-      component: () => import('@/pages/TransferBatchScanPage.vue'),
-      meta: { title: '扫码查询' },
+      redirect: (to) => ({ path: '/transfer-batches', query: { ...to.query, scan: '1' }, hash: to.hash }),
     },
     {
       path: '/material-trace',

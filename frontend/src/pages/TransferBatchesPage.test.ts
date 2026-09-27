@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { reactive } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ElPagination, ElSelect } from 'element-plus'
+import { ElPagination, ElPopover, ElSelect } from 'element-plus'
 import TransferBatchesPage from './TransferBatchesPage.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
 import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
@@ -11,14 +12,13 @@ import { dispatchFixture } from '@/testFixtures/materialDispatch'
 import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { appPinia } from '@/stores/access'
 const live = vi.hoisted(() => ({ refresh: async () => {} }))
+const state = vi.hoisted(() => ({ auth: { isAdmin: true, isTeamAccount: false, currentUser: { id: 1, team_id: null as number | null } } }))
 vi.mock('@/composables/useLiveRefresh', async () => {
   const { ref } = await import('vue')
   return { useLiveRefresh: (refresh: () => Promise<void>) => { live.refresh = refresh; return { message: ref(''), request: vi.fn() } } }
 })
 
-vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ isAdmin: true, isTeamAccount: false, currentUser: null }),
-}))
+vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/teamDirectory', () => ({
   useTeamDirectoryStore: () => ({ items: [{ id: 1, name: '库房', active: true }], refreshTeamDirectory: vi.fn() }),
 }))
@@ -33,6 +33,7 @@ const result = { items: [transfer], total: 1, page: 1, page_size: 10 }
 let wrapper: VueWrapper | undefined
 
 beforeEach(() => {
+  state.auth = reactive({ isAdmin: true, isTeamAccount: false, currentUser: { id: 1, team_id: null } })
   vi.spyOn(materialTransferApi, 'list').mockResolvedValue(result)
   vi.spyOn(materialTransferApi, 'counts').mockResolvedValue({ all: 28, pending: 12, received: 14, voided: 2, dispatched: 0 })
 })
@@ -52,6 +53,18 @@ async function renderList(path = '/transfer-batches?status=pending') {
 }
 
 describe('transfer list refresh continuity', () => {
+  it('discards a late barcode lookup after the account changes', async () => {
+    let finish!: (value: Awaited<ReturnType<typeof materialDispatchApi.get>>) => void
+    vi.spyOn(materialDispatchApi, 'get').mockReturnValue(new Promise(resolve => { finish = resolve }))
+    const page = await renderList('/transfer-batches?batch_no=CK-GROUP')
+    state.auth.currentUser.id = 99
+    await flushPromises()
+    finish(dispatchFixture())
+    await flushPromises()
+    expect(page.getComponent(MaterialDispatchDrawer).props('modelValue')).toBe(false)
+    expect(page.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
+  })
+
   it('updates rows and counts in place without changing page, drafts or open details', async () => {
     vi.mocked(materialTransferApi.list).mockResolvedValue({ ...result, total: 30, page: 2 })
     const page = await renderList('/transfer-batches?status=pending&page=2&query=APPLIED')
@@ -144,6 +157,44 @@ describe('transfer list refresh continuity', () => {
     expect(materialDispatchApi.get).toHaveBeenCalledWith('CK-GROUP'); expect(materialTransferApi.get).not.toHaveBeenCalled()
     expect(page.getComponent(MaterialDispatchDrawer).props()).toMatchObject({ modelValue: true, dispatchNo: 'CK-GROUP' })
     expect(page.vm.$route.query).toMatchObject({ query: '001440', search_mode: 'exact', search_field: 'customer_code' })
+  })
+
+  it('opens the retained batch link without replacing list filters', async () => {
+    vi.spyOn(materialTransferApi, 'get').mockResolvedValue(transfer)
+    const page = await renderList('/transfer-batches?scan=1&batch_no=tl000001&status=pending&query=0001')
+    expect(materialTransferApi.get).toHaveBeenCalledWith('TL000001')
+    expect(page.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, transfer })
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'pending', query: '0001' }))
+  })
+
+  it('keeps historical grouped scan links usable inside the list page', async () => {
+    vi.spyOn(materialDispatchApi, 'get').mockResolvedValue(dispatchFixture())
+    vi.spyOn(materialTransferApi, 'get').mockResolvedValue(transfer)
+    const page = await renderList('/transfer-batches?scan=1&batch_no=CK-GROUP')
+    expect(materialDispatchApi.get).toHaveBeenCalledWith('CK-GROUP')
+    expect(materialTransferApi.get).not.toHaveBeenCalled()
+    expect(page.getComponent(MaterialDispatchDrawer).props()).toMatchObject({ modelValue: true, dispatchNo: 'CK-GROUP' })
+  })
+
+  it('opens the scanner from its old entry or F2 without starting a query', async () => {
+    vi.spyOn(materialTransferApi, 'get').mockResolvedValue(transfer)
+    const page = await renderList('/transfer-batches?scan=1')
+    const popover = page.findAllComponents(ElPopover).find(item => item.props('popperClass') === 'transfer-scan-popover')!
+    expect(popover.props('visible')).toBe(true)
+    expect(materialTransferApi.get).not.toHaveBeenCalled()
+    popover.vm.$emit('update:visible', false); await flushPromises()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }))
+    await flushPromises()
+    expect(popover.props('visible')).toBe(true)
+  })
+
+  it('keeps a failed legacy barcode visible for correction', async () => {
+    vi.spyOn(materialTransferApi, 'get').mockRejectedValue(new Error('未找到批次'))
+    const page = await renderList('/transfer-batches?scan=1&batch_no=TL-MISSING')
+    expect(page.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
+    const popover = page.findAllComponents(ElPopover).find(item => item.props('popperClass') === 'transfer-scan-popover')!
+    expect(popover.props('visible')).toBe(true)
+    expect(document.body.textContent).toContain('未找到批次')
   })
 
   it('restores the same field, mode and material type for list and status totals from a shared URL', async () => {

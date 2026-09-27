@@ -3,7 +3,6 @@ import drawerSource from './MaterialTransferDrawer.vue?raw'
 import formSource from './MaterialTransferFormDialog.vue?raw'
 import printSource from './MaterialTransferPrintSheet.vue?raw'
 import listSource from '@/pages/TransferBatchesPage.vue?raw'
-import scanSource from '@/pages/TransferBatchScanPage.vue?raw'
 import traceSource from '@/pages/MaterialTracePage.vue?raw'
 
 describe('pure material transfer interface', () => {
@@ -29,25 +28,23 @@ describe('pure material transfer interface', () => {
     expect(drawerSource).not.toContain('<ElInputNumber')
   })
 
-  it('uses Element Plus and whole-page reading layouts for list, scan and trace', () => {
+  it('keeps scanning inside the Element Plus transfer list and retains serial tracing', () => {
     expect(listSource).toContain('class="page workspace-page transfers-page reading-workspace"')
     expect(listSource).toContain('<ElTable v-else')
     expect(listSource).not.toContain('height="100%"')
-    expect(scanSource).toContain('class="page workspace-page material-scan-page reading-workspace"')
+    expect(listSource).toContain('aria-label="扫码查询"')
     expect(traceSource).toContain('class="page workspace-page material-trace-page reading-workspace"')
     expect(traceSource).toContain('<SerialBatchGraph')
-    for (const source of [listSource, scanSource, traceSource, drawerSource, formSource]) {
+    for (const source of [listSource, traceSource, drawerSource, formSource]) {
       expect(source).not.toContain("from '@ant-design/icons-vue'")
     }
   })
 
   it('supports HID Code 128 scanning without intercepting form entry', () => {
-    for (const source of [listSource, scanSource]) {
-      expect(source).toContain('isEditableTarget(event.target)')
-      expect(source).toContain("event.key === 'Enter'")
-      expect(source).toContain('/^(?:TL|CK)[A-Z0-9-]{4,}$/')
-      expect(source).toContain('materialTransferApi.get(batchNo)')
-    }
+    expect(listSource).toContain('isEditableTarget(event.target)')
+    expect(listSource).toContain("event.key === 'Enter'")
+    expect(listSource).toContain('/^(?:TL|CK)[A-Z0-9-]{4,}$/')
+    expect(listSource).toContain('materialTransferApi.get(batchNo)')
   })
 
   it('traces only a serial-number handoff chain and reports the current state', () => {

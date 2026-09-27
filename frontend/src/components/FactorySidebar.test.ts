@@ -165,9 +165,11 @@ describe('three-level team navigation', () => {
     expect(teams.find('[aria-label="轧制 · 入库记录"]').exists()).toBe(false)
     expect(wrapper.findAll('.factory-nav__missing')).toHaveLength(6)
     expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制 · 库存明细')
-    await router.push('/transfer-batches/scan'); await nextTick()
+    await router.push('/transfer-batches?scan=1'); await nextTick()
     expect(wrapper.findAll('[aria-current="page"]')).toHaveLength(1)
-    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('扫码查询')
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('转料记录')
+    expect(wrapper.find('[aria-label="扫码查询"]').exists()).toBe(false)
+    expect(groups.find(group => group.props('index') === 'materials')!.findAllComponents(ElMenuItem).map(item => item.attributes('aria-label'))).toEqual(['转料记录', '全链路追踪'])
   })
 
   it('keeps all eight team headings and opens only one team branch at a time', async () => {

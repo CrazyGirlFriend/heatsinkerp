@@ -92,7 +92,7 @@ async function navigate(path: string) {
   await router.push(path)
 }
 function openTeam(team: FactoryTeam) { if (team.id && team.active) void navigate(`/team-workspaces/${team.id}?tab=stock`) }
-function openBatch(row: FactoryRecentBatch) { void navigate(`/transfer-batches/scan?batch_no=${encodeURIComponent(row.batch_no)}`) }
+function openBatch(row: FactoryRecentBatch) { void navigate(`/transfer-batches?batch_no=${encodeURIComponent(row.batch_no)}`) }
 watch(days, load, { immediate: true })
 onMounted(() => {
   document.addEventListener('fullscreenchange', syncFullscreen)

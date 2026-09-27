@@ -47,7 +47,7 @@ async function renderApp(mobile: boolean) {
   const page = { template: '<div>转料记录</div>' }
   const router = createRouter({ history: createMemoryHistory(), routes: [
     { path: '/', name: 'home', component: page },
-    { path: '/transfer-batches', component: page }, { path: '/transfer-batches/scan', component: page },
+    { path: '/transfer-batches', component: page }, { path: '/transfer-batches/scan', redirect: '/transfer-batches?scan=1' },
     { path: '/material-trace', component: page },
     { path: '/team-workspaces/:teamId', name: 'team-workspace', component: { emits: ['pending-count'], template: '<button class="emit-pending" @click="$emit(\'pending-count\', { teamId: 1, count: 23 })">更新数量</button>' } },
     { path: '/factory-live', component: { template: '<section>独立机器人大屏</section>' }, meta: { standalone: true } },

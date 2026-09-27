@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Search, OfficeBuilding, Setting, Refresh, House, Box, Connection, HotWater, Tools, Scissor, EditPen, Coin, CircleCheck, Tickets, Aim, Location, User, ArrowRight, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { Search, OfficeBuilding, Setting, Refresh, House, Box, Connection, HotWater, Tools, Scissor, EditPen, Coin, CircleCheck, Tickets, Location, User, ArrowRight, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { ElIcon, ElMenu, ElMenuItem, ElSubMenu, type MenuInstance } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -17,7 +17,7 @@ const router = useRouter()
 const menu = ref<MenuInstance>()
 const viewport = ref<HTMLElement>()
 const sidebar = useSidebarStore(appPinia)
-const activeGroup = computed(() => route.path.startsWith('/settings/') ? 'settings' : ['/', '/factory-stock', '/factory-analysis'].includes(route.path) ? 'factory' : ['/transfer-batches', '/transfer-batches/scan', '/material-trace'].includes(route.path) ? 'materials' : 'teams')
+const activeGroup = computed(() => route.path.startsWith('/settings/') ? 'settings' : ['/', '/factory-stock', '/factory-analysis'].includes(route.path) ? 'factory' : ['/transfer-batches', '/material-trace'].includes(route.path) ? 'materials' : 'teams')
 const workspaces = computed(() => configuredTeamWorkspaces(teamDirectory.items))
 const activeTeam = computed(() => workspaces.value.find(({ team }) => team && route.path === `/team-workspaces/${team.id}`)?.team)
 const activeIndex = computed(() => activeTeam.value ? teamWorkspaceSectionPath(activeTeam.value.id, resolveTeamWorkspaceSection(route.query, activeTeam.value.code === 'FACTORY-WAREHOUSE' && activeTeam.value.kind === 'warehouse')) : route.path)
@@ -133,7 +133,6 @@ onMounted(async () => {
 onBeforeUnmount(() => { disposed = true; ready = false; observer?.disconnect() })
 const materialLinks = computed(() => [
   { path: '/transfer-batches', label: '转料记录', icon: Tickets },
-  { path: '/transfer-batches/scan', label: '扫码查询', icon: Aim },
   ...(isAdmin.value ? [{ path: '/material-trace', label: '全链路追踪', icon: Location }] : []),
 ])
 </script>

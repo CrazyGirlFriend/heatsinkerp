@@ -370,8 +370,25 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return target instanceof Element && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
 }
 
+watch([() => route.query.batch_no, () => route.query.scan], ([batchNo, scanner]) => {
+  if (typeof batchNo === 'string' && batchNo.trim()) {
+    scanPanelOpen.value = true
+    scanValue.value = batchNo
+    void scan(batchNo)
+  } else if (scanner === '1') {
+    scanPanelOpen.value = true
+    focusScanner()
+  }
+}, { immediate: true })
+
 function handleHidKeydown(event: KeyboardEvent): void {
   if (anyDetailOpen.value || createOpen.value || isEditableTarget(event.target) || event.ctrlKey || event.metaKey || event.altKey) return
+  if (event.key === 'F2') {
+    event.preventDefault()
+    scanPanelOpen.value = true
+    focusScanner()
+    return
+  }
   const now = Date.now()
   if (event.key === 'Enter' || event.key === 'Tab') {
     const code = hidBuffer.toUpperCase()
@@ -449,7 +466,7 @@ onBeforeUnmount(() => {
       </div>
         <div class="heading-actions">
           <ElPopover v-model:visible="scanPanelOpen" trigger="click" placement="bottom-end" :width="400" popper-class="transfer-scan-popover" @show="focusScanner">
-            <template #reference><ElButton class="scan-trigger" :icon="FullScreen" aria-label="扫码查询">扫码查询</ElButton></template>
+            <template #reference><ElButton class="scan-trigger" :icon="FullScreen" aria-label="扫码查询" title="扫码查询 · F2">扫码查询</ElButton></template>
             <div class="scan-popover-content">
               <strong>批次查询</strong>
               <ElInput ref="scanInput" v-model="scanValue" clearable autocomplete="off" aria-label="转料批次号" placeholder="扫描或输入批次号" :disabled="scanning" @keyup.enter="scan()">

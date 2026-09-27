@@ -94,7 +94,7 @@ describe('glass dashboard connected to factory live snapshots', () => {
     expect(router.currentRoute.value.path).toBe('/transfer-batches')
     expect(router.currentRoute.value.query).toMatchObject({ source_team_id: '1', next_team_id: '2', status: 'pending' })
     await wrapper.get('.recent-item').trigger('click'); await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/transfer-batches/scan')
+    expect(router.currentRoute.value.path).toBe('/transfer-batches')
     expect(router.currentRoute.value.query.batch_no).toBe('TL-REAL-BATCH')
   })
   it('shows all other categories and supports closing the dialog with Escape', async () => {

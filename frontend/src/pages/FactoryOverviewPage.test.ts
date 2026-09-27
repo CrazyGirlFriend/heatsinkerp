@@ -12,7 +12,7 @@ let wrapper: VueWrapper
 beforeEach(() => { vi.useFakeTimers(); vi.spyOn(document, 'hidden', 'get').mockReturnValue(false); vi.spyOn(factoryOverviewApi, 'get').mockResolvedValue(factoryFixture()) })
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); vi.useRealTimers() })
 async function render(path = '/') {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/team-workspaces/:teamId', component: { template: '<div/>' } }, { path: '/transfer-batches/scan', component: { template: '<div/>' } }] })
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/team-workspaces/:teamId', component: { template: '<div/>' } }, { path: '/transfer-batches', component: { template: '<div/>' } }] })
   await router.push(path)
   wrapper = mount(FactoryOverviewPage, { global: { plugins: [router], stubs: { FactoryOverviewCharts: true } } })
   await flushPromises()
@@ -95,7 +95,7 @@ describe('factory dashboard', () => {
     await vi.advanceTimersByTimeAsync(21000)
     expect(wrapper.getComponent(FactoryOverviewCharts).props('scene')).toBe('overview')
     wrapper.getComponent(FactoryRecentBatches).vm.$emit('open', { batch_no: 'CK202609120001' }); await flushPromises()
-    expect(router.currentRoute.value.fullPath).toBe('/transfer-batches/scan?batch_no=CK202609120001')
+    expect(router.currentRoute.value.fullPath).toBe('/transfer-batches?batch_no=CK202609120001')
     expect(wrapper.text()).toContain('轮播已暂停')
   })
 })

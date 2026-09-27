@@ -31,7 +31,7 @@ const breadcrumb = computed(() => {
   const title = String(route.meta.title || '物料流转')
   if (['/factory-stock', '/factory-analysis'].includes(route.path)) return ['全厂总览', title]
   if (route.path.startsWith('/settings/')) return ['系统设置', title]
-  if (['/transfer-batches', '/transfer-batches/scan', '/material-trace'].includes(route.path)) return ['流转查询', title]
+  if (['/transfer-batches', '/material-trace'].includes(route.path)) return ['流转查询', title]
   return [title]
 })
 const mobileMenuOpen = ref(false)

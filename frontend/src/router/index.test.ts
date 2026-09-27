@@ -88,9 +88,16 @@ describe('phase-one routes', () => {
     expect(router.currentRoute.value.path).toBe('/transfer-batches')
   })
 
-  it('keeps legacy scan links usable while preserving their query', async () => {
-    await router.push('/scan?batch_no=TL001')
-    expect(router.currentRoute.value.fullPath).toBe('/transfer-batches/scan?batch_no=TL001')
+  it.each(['/scan', '/transfer-batches/scan'])('merges legacy scan route %s while preserving batch and filters', async (path) => {
+    await router.push(path + '?batch_no=TL001&status=pending#batch')
+    expect(router.currentRoute.value.path).toBe('/transfer-batches')
+    expect(router.currentRoute.value.query).toEqual({ batch_no: 'TL001', status: 'pending', scan: '1' })
+    expect(router.currentRoute.value.hash).toBe('#batch')
+  })
+
+  it('opens the scanner from a bookmarked scan page without a batch number', async () => {
+    await router.push('/transfer-batches/scan')
+    expect(router.currentRoute.value.fullPath).toBe('/transfer-batches?scan=1')
   })
 
   it('returns a team leader from administrator settings to transfer records', async () => {
