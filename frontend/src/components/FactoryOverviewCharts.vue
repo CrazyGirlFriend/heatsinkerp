@@ -72,8 +72,8 @@ function pick(key: string, index: number) { const team = props.data.teams[index]
         <LedgerChart :option="card.option" :empty="card.empty" :label="`${card.title}，单位${unit}`" smooth-update :motion="motion" @select="pick(card.key, $event.dataIndex)" />
         <div v-if="card.key === 'types' && materialTypes.length" class="nature-table-scroll" tabindex="0" role="region" aria-label="物料性质库存明细">
         <table class="nature-table">
-          <thead><tr><th scope="col">性质</th><th scope="col">件数</th><th scope="col">重量 (kg)</th></tr></thead>
-          <tbody><tr v-for="row in materialTypes" :key="row.key"><th scope="row"><i :style="{ background: row.color }" aria-hidden="true" />{{ row.name }}</th><td>{{ format(row.quantity) }}</td><td>{{ format(row.weight) }}</td></tr></tbody>
+          <thead><tr><th scope="col">性质</th><th scope="col">{{ metric === 'weight' ? '重量 (kg)' : '件数' }}</th></tr></thead>
+          <tbody><tr v-for="row in materialTypes" :key="row.key"><th scope="row"><i :style="{ background: row.color }" aria-hidden="true" />{{ row.name }}</th><td>{{ format(row[metric]) }}</td></tr></tbody>
         </table>
         </div>
       </div>

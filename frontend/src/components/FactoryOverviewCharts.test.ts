@@ -41,23 +41,28 @@ describe('factory analysis charts', () => {
       expect(wrapper.text()).not.toContain('流水号库存排行')
     } finally { wrapper.unmount() }
   })
-  it('keeps nature quantity and weight in separate columns regardless of the chart unit', async () => {
+  it('switches the single nature value column together with the chart unit', async () => {
     const data = factoryFixture()
     data.material_types = [{ key: 'finished', quantity: 1200, weight: 345.678 }, { key: 'sludge', quantity: 0, weight: 8.5 }, { key: 'unknown', quantity: 2, weight: 0 }]
     const wrapper = mount(FactoryOverviewCharts, { props: { data, metric: 'weight' }, global: { stubs: { LedgerChart: true } } })
     try {
       const card = wrapper.get('.factory-chart--types')
       expect(card.get('h2').text()).toBe('物料性质分布')
-      expect(card.findAll('thead th').map(cell => cell.text())).toEqual(['性质', '件数', '重量 (kg)'])
+      const headers = () => card.findAll('thead th').map(cell => cell.text())
+      expect(headers()).toEqual(['性质', '重量 (kg)'])
       const values = () => card.findAll('tbody tr').map(row => row.findAll('th, td').map(cell => cell.text()))
-      const expected = [['成品', '1,200', '345.678'], ['废泥', '0', '8.5'], ['未填写性质', '2', '0']]
+      const expected = [['成品', '345.678'], ['废泥', '8.5'], ['未填写性质', '0']]
       expect(values()).toEqual(expected)
       const chart = wrapper.findAllComponents(LedgerChart)[2]!
       expect(chart.props('option')).toMatchObject({ series: [{ data: [{ value: 345.678 }, { value: 8.5 }, { value: 0 }] }] })
       await wrapper.setProps({ metric: 'quantity' })
       expect(chart.props('option')).toMatchObject({ series: [{ data: [{ value: 1200 }, { value: 0 }, { value: 2 }] }] })
-      expect(values()).toEqual(expected)
+      expect(headers()).toEqual(['性质', '件数'])
+      expect(values()).toEqual([['成品', '1,200'], ['废泥', '0'], ['未填写性质', '2']])
       expect(card.text()).toContain('件数占比')
+      await wrapper.setProps({ metric: 'weight' })
+      expect(headers()).toEqual(['性质', '重量 (kg)'])
+      expect(values()).toEqual(expected)
     } finally { wrapper.unmount() }
   })
   it('opens only a configured active team and does not treat other charts as teams', () => {
