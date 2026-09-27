@@ -4,6 +4,7 @@ import { ElAlert, ElButton, ElDrawer, ElIcon, ElInput, ElOption, ElPopover, ElSe
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import FlowPreviewCanvas from '@/components/FlowPreviewCanvas.vue'
+import TraceStockSummary from '@/components/TraceStockSummary.vue'
 import PageBackButton from '@/components/PageBackButton.vue'
 import TeamFlowTimeline from '@/components/TeamFlowTimeline.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
@@ -31,6 +32,7 @@ const selected = ref<FlowSelection | null>(null), selectedId = ref(''), drawerOp
 const chart = ref<InstanceType<typeof FlowPreviewCanvas>>()
 const pageRoot = ref<HTMLElement>(), fullscreen = ref(false), zoomLevel = ref(100)
 const interaction = ref<FlowInteraction>('select')
+const teamRange = ref({ start: 0, end: 100 })
 let epoch = 0
 const localModel = computed(() => history.value ? teamFlowModel(history.value) : null)
 const chainModel = computed(() => traceFlowModel(trace.value?.items || [], trace.value?.observed_at))
@@ -167,8 +169,9 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
       </section>
       <section v-else-if="hasData && !loading" class="flow-workspace">
         <header class="chart-toolbar"><div class="chain-legends"><div class="mark-legend" aria-label="图形说明"><span><i class="stay-mark" />在库停留</span><span><i class="departure-mark" />转出</span><span><i class="receipt-mark" />接收</span></div><div class="purpose-legend"><span class="legend-title">接收业务</span><span v-for="entry in colors" :key="entry.name"><i :style="{ background: entry.color }" />{{ entry.name }}</span></div></div><div class="chart-tools"><span v-if="timeIssues" class="data-warning">时间异常 {{ timeIssues }}</span><span v-if="residenceIssues" class="data-warning">历史不完整 {{ residenceIssues }}</span><span v-if="untracked" class="data-warning">未入账 {{ untracked }}</span><ElSelect class="detail-select" placeholder="定位批次" aria-label="选择图形明细" filterable :append-to="pageRoot" :model-value="selectedId || undefined" @change="chooseDetail"><ElOption v-for="option in detailOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect></div></header>
+        <div class="chain-flow-region">
         <div class="canvas-area" :style="mode === 'team' ? { height: `${chartHeight}px` } : undefined">
-          <FlowPreviewCanvas v-if="hasMetricData && (mode === 'team' || chainModel.extent)" :key="mode" ref="chart" :renderer="mode === 'chain' ? 'svg' : 'canvas'" :option="chartOption" :replay="replay" :motion="motion" :interaction="mode === 'chain' ? interaction : undefined" :label="`${serial}，${mode === 'team' ? history?.team_name + '收发流向' : '全链路时间画布；滚轮缩放，H键平移，V键选择，双击还原；加减键缩放，0键还原'}，件数和重量`" @select="pick" @zoom="zoomLevel = $event" />
+          <FlowPreviewCanvas v-if="hasMetricData && (mode === 'team' || chainModel.extent)" :key="mode" ref="chart" :renderer="mode === 'chain' ? 'svg' : 'canvas'" :option="chartOption" :replay="replay" :motion="motion" :interaction="mode === 'chain' ? interaction : undefined" :label="`${serial}，${mode === 'team' ? history?.team_name + '收发流向' : '全链路时间画布；滚轮缩放，H键平移，V键选择，双击还原；加减键缩放，0键还原'}，件数和重量`" @select="pick" @zoom="zoomLevel = $event" @team-range="teamRange = $event" />
           <div v-else class="zero-measure">{{ mode === 'chain' ? '缺少有效时间记录，请通过上方批次查询查看明细。' : '当前记录没有件数。请切换重量查看废屑等按重量记录的物料。' }}</div>
           <template v-if="mode === 'chain' && chainModel.extent">
             <div v-if="selectedId && selectedBatch" class="selection-chip"><span>{{ selectedBatch.batch_no }}</span><button type="button" aria-label="取消路径高亮" @click="clearSelection"><ElIcon><Close /></ElIcon></button></div>
@@ -190,6 +193,8 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
               </div>
             </div>
           </template>
+        </div>
+        <TraceStockSummary v-if="trace" v-model:metric="metric" :trace="trace" :teams="chainModel.teams" :range="teamRange" :append-to="pageRoot" />
         </div>
       </section>
       <div v-else class="preview-empty"><span class="empty-orbit"><ElIcon><Search /></ElIcon></span><h2>{{ mode === 'chain' ? (loading ? '加载中…' : serial ? '暂无记录' : '输入流水号查询') : (loading ? '正在读取批次记录' : serial ? '未找到可展示的记录' : '从一个流水号开始') }}</h2><p v-if="mode === 'team'">{{ loading ? '按真实收发关系组织图形…' : '输入完整流水号，保留前导零。' }}</p></div>
@@ -273,4 +278,12 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
 .chain-page--embedded:fullscreen { height: 100dvh; padding: 0; background: #fff; }
 .chain-page--embedded:fullscreen .chain-header, .chain-page--embedded:fullscreen .preview-main { border-radius: 0; border: 0; }
 @media (max-width: 700px) { .chain-page--embedded { padding: 12px; }.chain-page--embedded .chain-header { gap: 8px; }.chain-page--embedded .chain-actions { width: 100%; justify-content: flex-end; }.chain-page--embedded .chain-query { order: 0; min-width: 0; width: 100%; }.chain-page--embedded .preview-main { padding-inline: 8px; min-height: 660px; }.chain-page--embedded .chain-asof { margin-right: auto; }.chain-page--embedded .canvas-area :deep(.flow-canvas) { min-width: 0; } }
+.chain-flow-region { display: flex; flex: 1; min-height: 0; }
+.chain-flow-region .canvas-area { min-width: 0; }
+@media (max-width: 1100px) {
+  .chain-page { height: auto; min-height: 100dvh; overflow: auto; }
+  .chain-flow-region { flex-direction: column; }
+  .chain-flow-region .canvas-area { flex: none; height: 580px; min-height: 580px; }
+  .chain-page:fullscreen { overflow: auto; }
+}
 </style>

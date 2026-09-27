@@ -25,6 +25,7 @@ def serial_trace(db, serial_no, user):
         'on_hand', 'in_transit', 'external_pending', 'dispatched', 'lost'
     )}
     positions = {}
+    holdings = {}
     items = []
 
     def add(bucket, quantity, weight):
@@ -43,6 +44,18 @@ def serial_trace(db, serial_no, user):
         if balance:
             quantity, weight = int(balance['on_hand_quantity']), balance['on_hand_weight']
             add(buckets['on_hand'], quantity, weight)
+            # Pending dispatches remain owned by the source lot until receipt or
+            # external confirmation. Keep its material nature, not the child's.
+            owned_quantity, owned_weight = int(balance['owned_quantity']), balance['owned_weight']
+            if owned_quantity or owned_weight:
+                holding = holdings.setdefault(transfer.next_team_id, {
+                    'team_id': transfer.next_team_id, 'team_code': transfer.next_team_code,
+                    'team_name': transfer.next_team_name, 'material_types': {},
+                })
+                nature = holding['material_types'].setdefault(transfer.material_type, {
+                    'material_type': transfer.material_type, 'quantity': 0, 'weight': Decimal(0),
+                })
+                add(nature, owned_quantity, owned_weight)
             if quantity or weight:
                 position = positions.setdefault(transfer.next_team_id, {
                     'team_id': transfer.next_team_id, 'team_name': transfer.next_team_name,
@@ -66,5 +79,7 @@ def serial_trace(db, serial_no, user):
         'observed_at': datetime.now(timezone.utc).isoformat(),
         'totals': {key: amounts(value) for key, value in buckets.items()},
         'positions': [amounts(value) for value in positions.values()],
+        'holdings': [{**value, 'material_types': [amounts(nature) for nature in value['material_types'].values()]}
+                     for value in holdings.values()],
         'untracked_count': sum(t.status == 'received' and not t.stock_tracked for t in transfers),
     }

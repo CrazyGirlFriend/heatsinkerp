@@ -59,11 +59,12 @@ it('supports SVG rendering, keyboard zoom and a double-click reset without launc
   expect(initialize).toHaveBeenCalledOnce()
 })
 it('reports the actual zoom level and preserves range width when zooming out near an edge', async () => {
-  chart.getOption.mockReturnValue({ dataZoom: [{ id: 'time', type: 'inside', start: 0, end: 20 }] })
+  chart.getOption.mockReturnValue({ dataZoom: [{ id: 'time', type: 'inside', start: 0, end: 20 }, { id: 'teams', type: 'inside', start: 25, end: 75 }] })
   const page = render()
   expect(page.emitted('zoom')?.at(-1)).toEqual([500])
+  expect(page.emitted('teamRange')?.at(-1)).toEqual([{ start: 25, end: 75 }])
   await page.trigger('keydown', { key: '-' })
-  expect(chart.dispatchAction).toHaveBeenLastCalledWith({ type: 'dataZoom', batch: [{ dataZoomIndex: 0, start: 0, end: 26.6 }] })
+  expect(chart.dispatchAction).toHaveBeenLastCalledWith({ type: 'dataZoom', batch: [{ dataZoomIndex: 0, start: 0, end: 26.6 }, { dataZoomIndex: 1, start: 16.75, end: 83.25 }] })
 })
 it('honors a long history’s finer time limit instead of capping dense event inspection', async () => {
   chart.getOption.mockReturnValue({ dataZoom: [{ id: 'time', type: 'inside', start: 0, end: .02, minSpan: .001 }] })

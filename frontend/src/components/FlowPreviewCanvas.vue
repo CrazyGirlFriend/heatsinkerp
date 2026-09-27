@@ -8,7 +8,7 @@ import type { FlowInteraction } from '@/utils/flowPreview'
 
 use([SankeyChart, CustomChart, AriaComponent, TooltipComponent, GridComponent, DataZoomComponent, CanvasRenderer, SVGRenderer])
 const props = defineProps<{ option: EChartsCoreOption; label: string; replay: number; motion: boolean; renderer?: 'canvas' | 'svg'; interaction?: FlowInteraction }>()
-const emit = defineEmits<{ select: [value: { dataIndex: number; dataType?: string; data: unknown }]; zoom: [value: number] }>()
+const emit = defineEmits<{ select: [value: { dataIndex: number; dataType?: string; data: unknown }]; zoom: [value: number]; teamRange: [value: { start: number; end: number }] }>()
 const root = ref<HTMLElement>()
 const dragging = ref(false)
 let chart: ECharts | undefined, observer: ResizeObserver | undefined
@@ -45,6 +45,8 @@ function zoomStates() { return (chart?.getOption()?.dataZoom || []) as ZoomState
 function reportZoom() {
   const time = zoomStates().find(item => item.id === 'time')
   emit('zoom', time ? Math.round(10000 / Math.max(Number.EPSILON, (time.end ?? 100) - (time.start ?? 0))) : 100)
+  const teams = zoomStates().find(item => item.id === 'teams')
+  emit('teamRange', { start: teams?.start ?? 0, end: teams?.end ?? 100 })
 }
 function zoom(direction: number) {
   chart?.dispatchAction({ type: 'dataZoom', batch: zoomStates().flatMap((item, index) => {

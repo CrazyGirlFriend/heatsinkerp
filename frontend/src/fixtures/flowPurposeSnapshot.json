@@ -509,6 +509,32 @@
         "batch_count": 3
       }
     ],
-    "untracked_count": 0
+    "untracked_count": 0,
+    "holdings": [
+      {
+        "team_id": 1,
+        "team_code": "FACTORY-WAREHOUSE",
+        "team_name": "库房",
+        "material_types": [
+          {
+            "material_type": "semi_finished",
+            "quantity": 800,
+            "weight": 100
+          }
+        ]
+      },
+      {
+        "team_id": 8,
+        "team_code": "FACTORY-QC",
+        "team_name": "检验",
+        "material_types": [
+          {
+            "material_type": "semi_finished",
+            "quantity": 198,
+            "weight": 24.75
+          }
+        ]
+      }
+    ]
   }
 }

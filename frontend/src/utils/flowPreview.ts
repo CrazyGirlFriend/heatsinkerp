@@ -378,9 +378,8 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, _metri
       }
       if (stay.current && b[0]! <= grid.x + grid.width && b[0]! >= grid.x) {
         children.push({ name: 'balance-cap', type: 'line', shape: { x1: b[0]!, y1: b[1]! - 9, x2: b[0]!, y2: b[1]! + 9 }, style: { stroke: '#a699ca', lineWidth: 1.5, opacity } })
-        label('balance-label', b[0]! - 8, `结存 ${amountLabel(stay)}`, 'right')
       }
-      if (right - left > 110) label('stay-label', left + 10, amountLabel(stay))
+      if (!stay.current && right - left > 110) label('stay-label', left + 10, amountLabel(stay))
       return { type: 'group', children, $mergeChildren: 'byName' }
     },
   }

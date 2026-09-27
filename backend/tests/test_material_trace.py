@@ -47,6 +47,10 @@ def test_split_pending_receipt_return_void_and_losses_share_the_stock_ledger(cli
     assert [event['action'] for event in rows[first['id']]['history']] == ['created', 'received']
     assert rows[first['id']]['history'][0]['changes']['quantity']['after'] == 30
     assert {p['team_id']: p['quantity'] for p in data['positions']} == {s['target']['id']: 48, s['third']['id']: 20}
+    assert {p['team_id']: p['material_types'] for p in data['holdings']} == {
+        s['target']['id']: [{'material_type': 'semi_finished', 'quantity': 68, 'weight': 6.8}],
+        s['third']['id']: [{'material_type': 'semi_finished', 'quantity': 30, 'weight': 3}],
+    }
     assert client.post(f"/api/material-transfers/{returned['batch_no']}/confirm", headers=s['target_headers'],
                        json={'idempotency_key': 'receive-return'}).status_code == 200
     assert client.delete(f"/api/material-transfers/{second['batch_no']}", headers=s['target_headers']).status_code == 204
@@ -57,6 +61,9 @@ def test_split_pending_receipt_return_void_and_losses_share_the_stock_ledger(cli
     voided = next(item for item in data['items'] if item['id'] == second['id'])
     assert [event['action'] for event in voided['history']] == ['created', 'voided']
     assert {p['team_id']: p['quantity'] for p in data['positions']} == {s['target']['id']: 78, s['third']['id']: 20}
+    assert {p['team_id']: p['material_types'][0]['quantity'] for p in data['holdings']} == {
+        s['target']['id']: 78, s['third']['id']: 20,
+    }
 
 
 def test_exact_identity_untracked_history_and_weight_only_stock(client, stock_setup):
@@ -65,6 +72,7 @@ def test_exact_identity_untracked_history_and_weight_only_stock(client, stock_se
     assert data['serial_no'] == '000012'
     assert data['totals']['on_hand'] == {'quantity': 0, 'weight': 1.234}
     assert data['positions'][0]['quantity'] == 0
+    assert data['holdings'][0]['material_types'] == [{'material_type': 'scrap_chips', 'quantity': 0, 'weight': 1.234}]
     assert trace(client, '12')['items'] == []
     legacy = receive_lot(client, stock_setup)
     with SessionLocal() as db:
@@ -74,6 +82,25 @@ def test_exact_identity_untracked_history_and_weight_only_stock(client, stock_se
     assert old['untracked_count'] == 1
     assert old['items'][0]['on_hand_quantity'] is None
     assert old['totals']['on_hand'] == {'quantity': 0, 'weight': 0}
+    assert old['holdings'] == []
+
+
+def test_pending_nature_change_stays_with_source_until_received(client, stock_setup):
+    root = initialize(client, stock_setup, weight='10.000')
+    response = dispatch(client, stock_setup, [
+        {'source_transfer_id': root['id'], 'quantity': 30, 'weight': 3, 'material_type': 'finished'},
+    ])
+    assert response.status_code == 201, response.text
+    item = response.json()['items'][0]
+    assert trace(client)['holdings'][0]['material_types'] == [
+        {'material_type': 'semi_finished', 'quantity': 100, 'weight': 10},
+    ]
+    assert client.post(f"/api/material-transfers/{item['batch_no']}/confirm", headers=stock_setup['third_headers'],
+                       json={'idempotency_key': 'receive-finished'}).status_code == 200
+    assert {p['team_id']: p['material_types'] for p in trace(client)['holdings']} == {
+        stock_setup['target']['id']: [{'material_type': 'semi_finished', 'quantity': 70, 'weight': 7}],
+        stock_setup['third']['id']: [{'material_type': 'finished', 'quantity': 30, 'weight': 3}],
+    }
 
 
 def test_external_pending_and_confirmed_are_not_recipient_stock(client, outbound):
@@ -84,12 +111,14 @@ def test_external_pending_and_confirmed_are_not_recipient_stock(client, outbound
     assert before['totals']['on_hand'] == {'quantity': 70, 'weight': 7}
     assert before['totals']['in_transit']['quantity'] == 0
     assert before['totals']['external_pending'] == {'quantity': 30, 'weight': 3}
+    assert before['holdings'][0]['material_types'][0]['quantity'] == 100
     assert external_confirm(client, outbound, row).status_code == 200
     after = trace(client, row['serial_no'])
     assert after['totals']['on_hand'] == before['totals']['on_hand']
     assert after['totals']['external_pending']['quantity'] == 0
     assert after['totals']['dispatched'] == {'quantity': 30, 'weight': 3}
     assert len(after['positions']) == 1
+    assert after['holdings'][0]['material_types'][0]['quantity'] == 70
 
 
 def test_full_trace_has_no_list_pagination_cutoff_and_requires_auth(client, stock_setup):
