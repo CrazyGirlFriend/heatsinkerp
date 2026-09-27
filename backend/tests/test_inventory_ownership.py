@@ -48,7 +48,7 @@ def test_ownership_stays_with_sender_until_receipt_in_every_balance_view(client,
     assert_amounts(totals(client, s), 100, 80, 20)
     for suffix in ('/stock?availability=all', '/inventory?availability=owned', '/serials?availability=all'):
         assert_amounts(client.get(base(s) + suffix).json()['items'][0], 100, 80, 20)
-    for path in ('/api/factory-overview', '/api/factory-overview/live'):
+    for path in ('/api/factory-overview',):
         report = client.get(path).json()
         assert_amounts(report['totals'], 100, 80, 20)
         assert_amounts(next(t['balance'] for t in report['teams'] if t['id'] == s['team']['id']), 100, 80, 20)
@@ -133,5 +133,5 @@ def test_weight_only_waste_return_and_partial_receipt_do_not_create_factory_inpu
     upstream, downstream = totals(client, s, True), totals(client, s)
     assert upstream['owned_weight'] == 70 and upstream['on_hand_weight'] == 50 and upstream['in_transit_weight'] == 20
     assert downstream['owned_weight'] == 30 and downstream['scrap_available_weight'] == 30
-    assert client.get('/api/factory-overview/live').json()['totals']['owned_weight'] == 100
+    assert client.get('/api/factory-overview').json()['totals']['owned_weight'] == 100
     assert client.get(base(s) + '/inventory?availability=owned').json()['items'][0]['owned_quantity'] == 0

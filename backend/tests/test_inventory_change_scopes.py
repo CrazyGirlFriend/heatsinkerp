@@ -19,7 +19,7 @@ def credentials(headers):
     return HTTPAuthorizationCredentials(scheme="Bearer", credentials=headers["Authorization"].split(" ", 1)[1])
 
 
-@pytest.mark.parametrize("view", ["factory-live", "inventory-changed"])
+@pytest.mark.parametrize("view", ["inventory-changed"])
 @pytest.mark.parametrize("change", [InventoryChange(team_ids=frozenset((123,))), InventoryChange(accounts=True)])
 def test_midnight_is_not_hidden_by_a_simultaneous_scoped_change(client, monkeypatch, view, change):
     async def run():
@@ -43,7 +43,7 @@ def test_midnight_is_not_hidden_by_a_simultaneous_scoped_change(client, monkeypa
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("view", ["inventory", "factory-live", "inventory-changed"])
+@pytest.mark.parametrize("view", ["inventory", "inventory-changed"])
 def test_other_logins_and_logouts_never_refresh_stock_but_own_logout_closes(client, monkeypatch, view):
     async def run():
         monkeypatch.setattr(factory_stream, "HEARTBEAT_SECONDS", .01)

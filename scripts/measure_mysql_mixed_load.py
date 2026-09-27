@@ -74,8 +74,8 @@ class Observer:
 
     def run(self):
         connection = HTTPConnection(Harness.HTTP_HOST, 8000, timeout=25)
-        suffix = "/stream" if self.index == 0 else "/live/stream" if self.index == 1 else "/changes"
-        expected = "inventory" if self.index == 0 else "factory-live" if self.index == 1 else "inventory-changed"
+        suffix = "/stream" if self.index < 2 else "/changes"
+        expected = "inventory" if self.index < 2 else "inventory-changed"
         try:
             connection.connect()
             self.socket = connection.sock

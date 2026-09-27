@@ -1,11 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  subscribeFactoryLive,
-  subscribeInventory,
-  subscribeInventoryChanges,
-} from './inventoryStream'
+import { subscribeInventory, subscribeInventoryChanges } from './inventoryStream'
 import { HTTP_AUTH_SESSION_STORAGE_KEY } from './httpClient'
 import { reportDiagnostic } from './diagnostics'
 vi.mock('./diagnostics', () => ({
@@ -92,26 +88,6 @@ describe('authenticated inventory SSE', () => {
     await flushPromises()
     expect(onState).toHaveBeenLastCalledWith('reconnecting')
     expect(onData).toHaveBeenCalledOnce()
-  })
-  it('uses the dedicated robot snapshot instead of the shorter homepage feed', async () => {
-    vi.mocked(fetch).mockResolvedValue(response())
-    const onData = vi.fn(),
-      onState = vi.fn()
-    stop = subscribeFactoryLive({ onData, onState })
-    await flushPromises()
-    expect(fetch).toHaveBeenCalledWith('/api/factory-overview/live/stream', expect.any(Object))
-    const report = {
-      ...factoryFixture(),
-      today: { outgoing_quantity: 10, received_batches: 1 },
-      recent_batches: [],
-      material_stock: [{ key: '铜钼 CuMo70', quantity: 10, weight: 1 }],
-    }
-    push(`event: factory-live\ndata: ${JSON.stringify(report)}\n\n`)
-    await flushPromises()
-    expect(onData).toHaveBeenCalledWith(report)
-    push('event: factory-live\ndata: {}\n\n')
-    await flushPromises()
-    expect(onState).toHaveBeenLastCalledWith('reconnecting')
   })
   it('receives split UTF-8 frames with credentials, ignores heartbeats, and never polls', async () => {
     localStorage.setItem(

@@ -13,12 +13,9 @@ def check_stock(client, setup, quantity, weight, pending_quantity, pending_weigh
     overview = client.get(setup['url'] + '/overview').json()
     assert overview['pending_incoming']['count'] == 0
     balances = [overview['totals'], *overview['materials'], *overview['material_types']]
-    for path in ('/api/factory-overview', '/api/factory-overview/live'):
+    for path in ('/api/factory-overview',):
         data = client.get(path).json()
         balances.extend([data['totals'], next(t['balance'] for t in data['teams'] if t['id'] == setup['team']['id'])])
-        if path.endswith('/live'):
-            assert data['material_stock'] == [{'key': '铜钼', 'quantity': quantity, 'weight': weight}]
-            assert all(not t['pending_transfers'] for t in data['teams'])
     for balance in balances:
         assert balance['on_hand_quantity'] == balance['available_quantity'] == quantity
         assert balance['on_hand_weight'] == balance['available_weight'] == weight
@@ -77,22 +74,18 @@ def test_external_submission_keeps_units_independent_and_void_restores_both(clie
 
 
 def test_internal_and_external_pending_both_deduct_but_only_internal_is_in_transit(client, outbound):
-    internal = dispatch(client, outbound, entry_kind='transfer', external_destination=None,
+    dispatch(client, outbound, entry_kind='transfer', external_destination=None,
                         next_team_id=outbound['other']['id']).json()
     external = dispatch(client, outbound, idempotency_key='external-alongside-internal').json()
-    for path in (outbound['url'] + '/overview', '/api/factory-overview', '/api/factory-overview/live'):
+    for path in (outbound['url'] + '/overview', '/api/factory-overview'):
         totals = client.get(path).json()['totals']
         assert totals['on_hand_quantity'] == totals['available_quantity'] == 80
         assert totals['on_hand_weight'] == totals['available_weight'] == 8
         assert totals['reserved_quantity'] == 120 and totals['in_transit_quantity'] == 60
         assert totals['reserved_weight'] == 12 and totals['in_transit_weight'] == 6
-    live = client.get('/api/factory-overview/live').json()
-    incoming = next(team['pending_transfers'] for team in live['teams'] if team['id'] == outbound['other']['id'])
-    assert sum(row['quantity'] for row in incoming) == 60
-    assert {row['batch_no'] for row in incoming} == {item['batch_no'] for item in internal['items']}
     for line in external['items']:
         assert client.delete('/api/material-transfers/' + line['batch_no'], headers=outbound['headers']).status_code == 204
-    totals = client.get('/api/factory-overview/live').json()['totals']
+    totals = client.get('/api/factory-overview').json()['totals']
     assert totals['on_hand_quantity'] == 140 and totals['in_transit_quantity'] == 60
     assert totals['on_hand_weight'] == 14 and totals['in_transit_weight'] == 6
 
@@ -113,7 +106,6 @@ def test_external_outgoing_trends_use_submission_day_without_counting_confirmati
     for path, key in ((outbound['url'] + '/analytics', 'outgoing'), ('/api/factory-overview', kind)):
         movement = client.get(path).json()['trend'][-1][key]
         assert (movement['quantity'], movement['weight']) == (60, 6)
-    assert client.get('/api/factory-overview/live').json()['today']['outgoing_quantity'] == 60
 
     for item in group['items']:
         url = '/api/material-transfers/' + item['batch_no']
@@ -130,4 +122,3 @@ def test_external_outgoing_trends_use_submission_day_without_counting_confirmati
         trend = client.get(path).json()['trend']
         assert (trend[-2][key]['quantity'], trend[-2][key]['weight']) == (60, 6)
         assert trend[-1][key] == {'quantity': 0, 'weight': 0}
-    assert client.get('/api/factory-overview/live').json()['today']['outgoing_quantity'] == 0

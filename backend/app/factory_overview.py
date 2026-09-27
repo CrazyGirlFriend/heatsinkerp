@@ -1,6 +1,6 @@
 """Factory-wide read-only stock and movement report for the eight official teams."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import timezone
 
 from fastapi import Depends
 from sqlalchemy import and_, case, func, or_, select
@@ -10,14 +10,12 @@ from .async_api import AsyncAPIRouter as APIRouter
 from .auth import get_current_user
 from .configure_material_teams import MATERIAL_TEAMS
 from .database import get_db
-from .factory_schemas import FactoryLiveResponse
 from .material_analytics import (
     AGE_LABELS,
     Days,
     age_conditions,
     amounts,
     daily,
-    outgoing_flow,
     period,
 )
 from .material_stock import BALANCE_KEYS, balance_dict, stock_table
@@ -49,27 +47,6 @@ def stock_rankings(db, stock, in_scope, remaining, column):
         )
         for unit in ("quantity", "weight")
     }
-
-
-def material_stock_summary(db: Session, team_ids: list[int]) -> list[dict]:
-    # Full material names/grades, not material nature or a truncated top-eight ranking.
-    # Reuse balances that exclude all submitted outbound and losses, including pending exits.
-    stock = stock_table()
-    name = func.coalesce(func.nullif(func.trim(stock.c.material_name), ""), "未填写材质")
-    return amounts(
-        db,
-        select(
-            name.label("key"),
-            func.sum(stock.c.on_hand_quantity).label("quantity"),
-            func.sum(stock.c.on_hand_weight).label("weight"),
-        )
-        .where(
-            stock.c.team_id.in_(team_ids),
-            or_(stock.c.on_hand_quantity > 0, stock.c.on_hand_weight > 0),
-        )
-        .group_by(name)
-        .order_by(name),
-    )
 
 
 def stock_matrix(db: Session, teams: list[dict]) -> dict:
@@ -121,47 +98,6 @@ def stock_matrix(db: Session, teams: list[dict]) -> dict:
         ],
         "total": total(rows),
     }
-
-
-def live_stock_classification(db: Session, report: dict) -> None:
-    """Derive team balances and factory/type totals from the same grouped read."""
-    stock = stock_table()
-    ids = [team["id"] for team in report["teams"] if team["id"] is not None]
-    kind = func.coalesce(func.nullif(func.trim(stock.c.material_type), ""), "unknown")
-    rows = list(
-        db.execute(
-            select(
-                stock.c.team_id,
-                kind.label("key"),
-                *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS),
-            )
-            .where(stock.c.team_id.in_(ids))
-            .group_by(stock.c.team_id, kind)
-            .order_by(stock.c.team_id, kind)
-        ).mappings()
-    )
-
-    def total(items):
-        return balance_dict({key: sum(row[key] or 0 for row in items) for key in BALANCE_KEYS})
-
-    def amount(key, items):
-        balance = total(items)
-        return {
-            "key": key,
-            "quantity": balance["on_hand_quantity"],
-            "weight": balance["on_hand_weight"],
-        }
-
-    for team in report["teams"]:
-        team_rows = [row for row in rows if row["team_id"] == team["id"]]
-        team["material_types"] = [amount(row["key"], [row]) for row in team_rows]
-        if team["id"] is not None:
-            team["balance"] = total(team_rows)
-    report["totals"] = total(rows)
-    report["material_types"] = [
-        amount(key, [row for row in rows if row["key"] == key])
-        for key in sorted({row["key"] for row in rows})
-    ]
 
 
 def recent_batches(db, involved, limit=12):
@@ -239,9 +175,7 @@ def recent_batches(db, involved, limit=12):
     ]
 
 
-def factory_overview(
-    db: Session, days: int = 30, recent_limit: int = 12, *, include_analytics: bool = True
-) -> dict:
+def factory_overview(db: Session, days: int = 30) -> dict:
     now = utcnow()
     dates, start, end = period(days, now)
     configured = {
@@ -355,7 +289,7 @@ def factory_overview(
         "days": days,
         "teams": teams,
         "totals": totals,
-        "recent_batches": recent_batches(db, involved, recent_limit),
+        "recent_batches": recent_batches(db, involved),
         "pending": pending_amount,
         "material_types": amounts(
             db,
@@ -374,9 +308,6 @@ def factory_overview(
         )
         or 0,
     }
-    # The live board consumes only the shared balances and batch state, not charts.
-    if not include_analytics:
-        return report
     bucket = case(
         *[(condition, key) for key, condition in age_conditions(mt.created_at, now).items()]
     )
@@ -510,158 +441,3 @@ def factory_overview(
 @router.get("")
 def overview_endpoint(days: Days = 30, db: Session = Depends(get_db)):
     return factory_overview(db, days)
-
-
-@router.get("/live", response_model=FactoryLiveResponse)
-def live_endpoint(db: Session = Depends(get_db)) -> dict:
-    """Visual status board using the same independent batch identities as the ledger."""
-    report = factory_overview(db, recent_limit=100, include_analytics=False)
-    live_stock_classification(db, report)
-    ids = [team["id"] for team in report["teams"] if team["id"]]
-    batch_key = mt.batch_no
-    pending = mt.status == "pending"
-    now = datetime.fromisoformat(report["as_of"]).replace(tzinfo=None)
-    _, start, end = period(1, now)
-    # All outgoing pieces count at submission, never again at confirmation.
-    # Each received batch counts once.
-    outgoing_at, outgoing = outgoing_flow()
-    outgoing_quantity = (
-        db.scalar(
-            select(func.sum(mt.quantity)).where(
-                mt.source_team_id.in_(ids), outgoing, outgoing_at >= start, outgoing_at <= end
-            )
-        )
-        or 0
-    )
-    received_groups = (
-        select(batch_key)
-        .where(or_(mt.source_team_id.in_(ids), mt.next_team_id.in_(ids)))
-        .group_by(batch_key)
-        .having(
-            func.sum(case((pending, 1), else_=0)) == 0,
-            func.sum(case((mt.status == "received", 1), else_=0)) > 0,
-            func.max(case((mt.status == "received", mt.received_at))) >= start,
-            func.max(case((mt.status == "received", mt.received_at))) <= end,
-        )
-        .subquery()
-    )
-    today = {
-        "outgoing_quantity": int(outgoing_quantity),
-        "received_batches": db.scalar(select(func.count()).select_from(received_groups)) or 0,
-    }
-    for key, column in (("incoming", mt.next_team_id), ("outgoing", mt.source_team_id)):
-        counts = dict(
-            db.execute(
-                select(column, func.count(func.distinct(batch_key)))
-                .where(pending, column.in_(ids))
-                .group_by(column)
-            ).all()
-        )
-        for team in report["teams"]:
-            team[key] = counts.get(team["id"], 0) if team["id"] else None
-    # Group pending internal receipts by receiving team, preserving each batch.
-    pending_by_team = pending_transfer_rows(db, ids)
-    for team in report["teams"]:
-        team["pending_transfers"] = pending_by_team.get(team["id"], [])
-    # Only actual team-to-team handoffs create edges. External operations remain
-    # visible in the batch feed, never as a fictitious receiving team or robot.
-    since = datetime.fromisoformat(report["as_of"]).replace(tzinfo=None) - timedelta(hours=24)
-    confirmed = and_(mt.status == "received", mt.received_at >= since)
-    links = db.execute(
-        select(
-            mt.source_team_id.label("source_id"),
-            mt.next_team_id.label("target_id"),
-            func.count(func.distinct(case((pending, batch_key)))).label("pending_batches"),
-            func.count(func.distinct(case((confirmed, batch_key)))).label("confirmed_batches"),
-            func.sum(case((pending, mt.quantity), else_=0)).label("pending_quantity"),
-            func.sum(case((pending, mt.weight), else_=0)).label("pending_weight"),
-        )
-        .where(
-            mt.entry_kind == "transfer",
-            mt.source_team_id.in_(ids),
-            mt.next_team_id.in_(ids),
-            or_(pending, confirmed),
-        )
-        .group_by(mt.source_team_id, mt.next_team_id)
-        .order_by(mt.source_team_id, mt.next_team_id)
-    ).mappings()
-    links = [
-        {
-            **dict(row),
-            "pending_quantity": int(row["pending_quantity"] or 0),
-            "pending_weight": round(float(row["pending_weight"] or 0), 3),
-        }
-        for row in links
-    ]
-    internal_pending = {
-        "batches": sum(row["pending_batches"] for row in links),
-        "quantity": sum(row["pending_quantity"] for row in links),
-        "weight": round(sum(row["pending_weight"] for row in links), 3),
-    }
-    payload = {
-        **{
-            key: report[key]
-            for key in (
-                "as_of",
-                "teams",
-                "totals",
-                "pending",
-                "recent_batches",
-                "legacy_received_count",
-                "material_types",
-            )
-        },
-        "today": today,
-        "links": links,
-        "internal_pending": internal_pending,
-        "material_stock": material_stock_summary(db, ids),
-    }
-    # SSE calls this function directly, so validate here as well as at REST.
-    return FactoryLiveResponse.model_validate(payload).model_dump()
-
-
-def pending_transfer_rows(db: Session, team_ids: list[int]) -> dict[int, list[dict]]:
-    if not team_ids:
-        return {}
-    code = mt.batch_no
-    grouped = (
-        select(
-            code.label("batch_no"),
-            mt.serial_no,
-            mt.source_team_id.label("source_id"),
-            mt.next_team_id.label("target_id"),
-            func.min(mt.source_team_name).label("source_name"),
-            func.sum(mt.quantity).label("quantity"),
-            func.sum(mt.weight).label("weight"),
-            func.max(mt.updated_at).label("updated_at"),
-        )
-        .where(mt.next_team_id.in_(team_ids), mt.entry_kind == "transfer", mt.status == "pending")
-        .group_by(code, mt.serial_no, mt.source_team_id, mt.next_team_id)
-        .subquery()
-    )
-    # Limit within each receiving team, not across the whole factory.
-    ranked = select(
-        grouped,
-        func.row_number()
-        .over(
-            partition_by=grouped.c.target_id,
-            order_by=(grouped.c.updated_at.desc(), grouped.c.batch_no.desc(), grouped.c.serial_no),
-        )
-        .label("position"),
-    ).subquery()
-    rows = db.execute(
-        select(*(ranked.c[key] for key in grouped.c.keys()))
-        .where(ranked.c.position <= 100)
-        .order_by(ranked.c.target_id, ranked.c.position)
-    ).mappings()
-    result = {}
-    for row in rows:
-        result.setdefault(row["target_id"], []).append(
-            {
-                **dict(row),
-                "quantity": int(row["quantity"] or 0),
-                "weight": float(row["weight"] or 0),
-                "updated_at": row["updated_at"].replace(tzinfo=timezone.utc).isoformat(),
-            }
-        )
-    return result

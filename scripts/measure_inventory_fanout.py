@@ -127,7 +127,7 @@ def main():
             if args.team_reads:
                 measure_team_reads(args, query_engine, token, warehouse_id)
                 return
-            for view, name in (('inventory', 'factory_overview'), ('factory-live', 'live_endpoint')):
+            for view, name in (('inventory', 'factory_overview'),):
                 counts, guard, start = {'builds': 0, 'sql': 0}, Lock(), Barrier(args.clients)
                 original = getattr(factory_stream, name)
 

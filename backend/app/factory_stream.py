@@ -10,7 +10,7 @@ from starlette.responses import StreamingResponse
 
 from .auth import bearer_scheme, read_auth_context, token_digest
 from .database import AsyncSessionLocal
-from .factory_overview import factory_overview, live_endpoint
+from .factory_overview import factory_overview
 from .inventory_events import InventoryChange, inventory_events
 from .inventory_snapshots import SnapshotFrames
 from .material_analytics import period
@@ -43,7 +43,7 @@ async def read_inventory(credentials, *, snapshot=True, view="inventory", change
 
     async def build():
         async with AsyncSessionLocal() as db:
-            report = await db.run_sync(live_endpoint if view == "factory-live" else factory_overview)
+            report = await db.run_sync(factory_overview)
             started = monotonic()
             frame = message(view, report)
             record("inventory.snapshot.encoded", view=view,
@@ -91,14 +91,14 @@ async def inventory_stream(request, credentials, view="inventory"):
                         await read_inventory(credentials, snapshot=False)
                         if not request.app.state.notifications.transport.ready:
                             return
-                        # Today's robot totals and rolling ledger periods must
+                        # Rolling ledger periods must
                         # expire at local midnight even if nobody moves stock.
                         if view != "inventory" and factory_day() != day:
                             break
                         yield ": heartbeat\n\n"
                 change = changed.take() if changed.is_set() else None
                 # A scoped event arriving at midnight must not hide the date
-                # rollover from other teams or from today's robot snapshot.
+                # rollover from other teams.
                 if change is not None and view != "inventory" and factory_day() != day:
                     change = change.merge(InventoryChange(team_ids=None))
         except HTTPException as exc:
@@ -120,11 +120,6 @@ async def stream_response(request, credentials, view):
         raise HTTPException(503, "实时通知正在重连，请稍后重试", headers={"Retry-After": "3"})
     return StreamingResponse(inventory_stream(request, credentials, view), media_type="text/event-stream",
         headers={"Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no"})
-
-
-@router.get("/live/stream")
-async def live_stream_endpoint(request: Request, credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
-    return await stream_response(request, credentials, "factory-live")
 
 
 @router.get("/changes")

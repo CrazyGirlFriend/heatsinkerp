@@ -1,7 +1,6 @@
 import { API_BASE, authorizationValue, invalidateAccountSession } from './httpClient'
 import { notifySiteAccessRequired } from '@/stores/access'
 import type { FactoryOverview } from '@/types/factoryOverview'
-import type { FactoryLive } from '@/types/factoryLive'
 import { reportDiagnostic, type DiagnosticCode } from './diagnostics'
 
 export type InventoryConnection = 'connecting' | 'live' | 'reconnecting' | 'expired'
@@ -22,18 +21,6 @@ export interface InventorySubscription<T = FactoryOverview> {
 export function subscribeInventory(subscription: InventorySubscription): () => void {
   return subscribeStream('/factory-overview/stream', 'inventory', subscription, (data) =>
     Boolean(data?.as_of && data?.totals && Array.isArray(data?.teams)),
-  )
-}
-export function subscribeFactoryLive(subscription: InventorySubscription<FactoryLive>): () => void {
-  return subscribeStream('/factory-overview/live/stream', 'factory-live', subscription, (data) =>
-    Boolean(
-      data?.as_of &&
-      data?.totals &&
-      data?.today &&
-      Array.isArray(data?.teams) &&
-      Array.isArray(data?.recent_batches) &&
-      Array.isArray(data?.material_stock),
-    ),
   )
 }
 export function subscribeInventoryChanges(

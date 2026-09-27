@@ -74,7 +74,7 @@ class LiveRequest:
         self.cookies = {}
 
 
-@pytest.mark.parametrize('view', ['inventory', 'factory-live'])
+@pytest.mark.parametrize('view', ['inventory'])
 def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_loss(client, warehouse, view):
     assert client.patch(f"/api/teams/{warehouse['other']['id']}", json={'code': 'FACTORY-ROLL'}).status_code == 200
     async def run():
@@ -91,17 +91,9 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
         try:
             first = await snapshot()
             assert first['totals']['on_hand_quantity'] == 0
-            if view == 'factory-live':
-                assert first['material_stock'] == []
-                assert first['material_types'] == []
-                assert first['internal_pending'] == {'batches': 0, 'quantity': 0, 'weight': 0}
             lot = (await asyncio.to_thread(intake, client, warehouse)).json()
             stocked = await snapshot()
             assert stocked['totals']['on_hand_quantity'] == 100
-            if view == 'factory-live':
-                assert stocked['material_stock'] == [{'key': '铜钼', 'quantity': 100, 'weight': 10.125}]
-                assert stocked['material_types'] == [{'key': 'semi_finished', 'quantity': 100, 'weight': 10.125}]
-                assert stocked['teams'][0]['material_types'] == stocked['material_types']
             response = await asyncio.to_thread(client.post, f"/api/team-materials/{warehouse['team']['id']}/dispatches",
                 headers=warehouse['headers'], json={'next_team_id': warehouse['other']['id'], 'idempotency_key': 'stream-out',
                 'lines': [{'source_transfer_id': lot['id'], 'quantity': 30, 'weight': 3}]})
@@ -109,12 +101,6 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
             moved = await snapshot()
             assert moved['totals']['on_hand_quantity'] == 70
             assert moved['totals']['in_transit_quantity'] == 30
-            if view == 'factory-live':
-                assert moved['material_stock'] == [{'key': '铜钼', 'quantity': 70, 'weight': 7.125}]
-                assert moved['material_types'] == [{'key': 'semi_finished', 'quantity': 70, 'weight': 7.125}]
-                assert moved['internal_pending'] == {'batches': 1, 'quantity': 30, 'weight': 3}
-                assert moved['links'][0]['pending_quantity'] == 30
-                assert moved['links'][0]['pending_weight'] == 3
             assert moved['teams'][1]['pending_incoming']['quantity'] == 30
             line = response.json()['items'][0]
             response = await asyncio.to_thread(client.post, f"/api/material-transfers/{line['batch_no']}/confirm",
@@ -123,15 +109,6 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
             received = await snapshot()
             assert received['totals']['on_hand_quantity'] == 100
             assert received['totals']['in_transit_quantity'] == 0
-            if view == 'factory-live':
-                assert received['material_stock'] == [{'key': '铜钼', 'quantity': 100, 'weight': 10.125}]
-                assert received['material_types'] == stocked['material_types']
-                assert received['teams'][1]['material_types'] == [{'key': 'semi_finished', 'quantity': 30, 'weight': 3}]
-                assert received['internal_pending'] == {'batches': 0, 'quantity': 0, 'weight': 0}
-                assert received['links'][0]['pending_batches'] == 0
-                assert received['links'][0]['pending_quantity'] == 0
-                assert received['links'][0]['pending_weight'] == 0
-                assert received['links'][0]['confirmed_batches'] == 1
             assert received['teams'][1]['balance']['on_hand_quantity'] == 30
             assert received['teams'][1]['pending_incoming']['quantity'] == 0
             response = await asyncio.to_thread(client.post, f"/api/team-materials/{warehouse['team']['id']}/losses",
@@ -141,8 +118,6 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
             lost = await snapshot()
             assert lost['totals']['on_hand_quantity'] == 98
             assert lost['teams'][0]['balance']['on_hand_quantity'] == 68
-            if view == 'factory-live':
-                assert lost['material_stock'] == [{'key': '铜钼', 'quantity': 98, 'weight': 10}]
             response = await asyncio.to_thread(client.put, '/api/serial-urgency',
                 json={'serial_no': lot['serial_no'], 'urgent': True, 'expected_version': 0})
             assert response.status_code == 200
@@ -169,7 +144,7 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
     asyncio.run(run())
 
 
-@pytest.mark.parametrize('view', ['inventory', 'factory-live'])
+@pytest.mark.parametrize('view', ['inventory'])
 def test_external_submission_and_confirmation_push_the_same_remaining_stock(client, outbound, view):
     async def run():
         token = client.headers['Authorization'].split(' ', 1)[1]
@@ -187,9 +162,6 @@ def test_external_submission_and_confirmation_push_the_same_remaining_stock(clie
             assert submitted['totals']['on_hand_weight'] == submitted['totals']['available_weight'] == 14
             assert submitted['totals']['reserved_quantity'] == 60
             assert submitted['totals']['in_transit_quantity'] == 0
-            if view == 'factory-live':
-                assert submitted['material_stock'] == [{'key': '铜钼', 'quantity': 140, 'weight': 14}]
-                assert all(not team['pending_transfers'] for team in submitted['teams'])
             for index, item in enumerate(response.json()['items']):
                 url = '/api/material-transfers/' + item['batch_no']
                 response = await asyncio.to_thread(client.post, url + '/confirm-outbound', headers=outbound['headers'],
@@ -199,8 +171,6 @@ def test_external_submission_and_confirmation_push_the_same_remaining_stock(clie
                 assert confirmed['totals']['on_hand_quantity'] == 140
                 assert confirmed['totals']['on_hand_weight'] == 14
                 assert confirmed['totals']['reserved_quantity'] == (30 if index == 0 else 0)
-            if view == 'factory-live':
-                assert confirmed['material_stock'] == submitted['material_stock']
         finally:
             await stream.aclose()
         assert not inventory_events._subscribers
@@ -240,7 +210,7 @@ def test_heartbeat_does_not_requery_inventory_and_expired_stream_stops(client, m
     asyncio.run(run())
 
 
-@pytest.mark.parametrize('path,event', [('/stream', 'inventory'), ('/live/stream', 'factory-live'), ('/changes', 'inventory-changed')])
+@pytest.mark.parametrize('path,event', [('/stream', 'inventory'), ('/changes', 'inventory-changed')])
 def test_stream_http_auth_and_sse_headers_without_buffering(client, path, event):
     # Drive ASGI directly: TestClient.stream buffers an infinite response.
     async def run():
@@ -274,7 +244,7 @@ def test_stream_http_auth_and_sse_headers_without_buffering(client, path, event)
     assert client.get('/api/factory-overview' + path, headers={'Authorization': 'Bearer invalid'}).status_code == 401
 
 
-@pytest.mark.parametrize('view', ['inventory', 'factory-live', 'inventory-changed'])
+@pytest.mark.parametrize('view', ['inventory', 'inventory-changed'])
 def test_open_stream_stops_when_the_site_access_cookie_expires(client, monkeypatch, view):
     async def run():
         gate = make_gate()
@@ -298,7 +268,6 @@ def test_open_stream_stops_when_the_site_access_cookie_expires(client, monkeypat
 
 def test_ledger_notifications_do_not_compute_full_reports(client, warehouse, monkeypatch):
     monkeypatch.setattr(factory_stream, 'factory_overview', Mock(side_effect=AssertionError('no full summary')))
-    monkeypatch.setattr(factory_stream, 'live_endpoint', Mock(side_effect=AssertionError('no robot summary')))
     async def run():
         token = client.headers['Authorization'].split(' ', 1)[1]
         stream = factory_stream.inventory_stream(LiveRequest(), HTTPAuthorizationCredentials(scheme='Bearer', credentials=token), 'inventory-changed')
@@ -314,7 +283,7 @@ def test_ledger_notifications_do_not_compute_full_reports(client, warehouse, mon
     asyncio.run(run())
 
 
-@pytest.mark.parametrize('view', ['factory-live', 'inventory-changed'])
+@pytest.mark.parametrize('view', ['inventory-changed'])
 def test_local_midnight_updates_date_sensitive_views_without_periodic_inventory_reads(client, monkeypatch, view):
     async def run():
         day = ['2026-09-14']
@@ -335,14 +304,14 @@ def test_local_midnight_updates_date_sensitive_views_without_periodic_inventory_
     asyncio.run(run())
 
 
-def test_live_and_ledger_streams_both_receive_external_confirmation(client, outbound):
+def test_inventory_and_ledger_streams_both_receive_external_confirmation(client, outbound):
     async def run():
         token = client.headers['Authorization'].split(' ', 1)[1]
         credentials = HTTPAuthorizationCredentials(scheme='Bearer', credentials=token)
-        live = factory_stream.inventory_stream(LiveRequest(), credentials, 'factory-live')
+        inventory = factory_stream.inventory_stream(LiveRequest(), credentials, 'inventory')
         changes = factory_stream.inventory_stream(LiveRequest(), credentials, 'inventory-changed')
         async def snapshot():
-            report, notification = await asyncio.gather(anext(live), anext(changes))
+            report, notification = await asyncio.gather(anext(inventory), anext(changes))
             assert notification.startswith('event: inventory-changed')
             return json.loads(report.split('data: ', 1)[1])
         try:
@@ -361,6 +330,12 @@ def test_live_and_ledger_streams_both_receive_external_confirmation(client, outb
             assert row['status'] == 'dispatched'
             assert row['target_id'] is None
         finally:
-            await live.aclose(); await changes.aclose()
+            await inventory.aclose(); await changes.aclose()
         assert not inventory_events._subscribers
     asyncio.run(run())
+
+
+@pytest.mark.parametrize('path', ['/api/factory-overview/live', '/api/factory-overview/live/stream'])
+def test_retired_screen_endpoints_are_not_exposed(client, path):
+    assert client.get(path).status_code == 404
+    assert path not in client.get('/openapi.json').json()['paths']

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ArrowDown, Fold, Menu, Monitor, SwitchButton, User } from '@element-plus/icons-vue'
+import { ArrowDown, Fold, Menu, SwitchButton, User } from '@element-plus/icons-vue'
 import { ElConfigProvider, ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import FactorySidebar from '@/components/FactorySidebar.vue'
 import AccessPage from '@/pages/AccessPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
@@ -126,11 +126,6 @@ function handleUserCommand(command: string | number | object): void {
   if (command === 'logout') void signOut()
 }
 
-function enterBigScreen(event: MouseEvent): void {
-  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
-  // The click supplies browser activation; direct links still get the standalone layout.
-  void document.documentElement.requestFullscreen?.().catch(() => { /* Standalone display remains available. */ })
-}
 </script>
 
 <template>
@@ -142,10 +137,6 @@ function enterBigScreen(event: MouseEvent): void {
     <template v-else-if="isAuthenticationPage">
       <RouterView />
     </template>
-
-    <main v-else-if="route.meta.standalone" id="main-content" ref="mainContent" class="standalone-screen" tabindex="-1">
-      <RouterView />
-    </main>
 
     <div v-else class="app-shell app-shell--business" :class="{ 'app-shell--compact': compactSidebar }">
       <a class="skip-link" href="#main-content" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined" @click.prevent="focusMainContent">跳到正文</a>
@@ -165,7 +156,6 @@ function enterBigScreen(event: MouseEvent): void {
         <FactorySidebar :compact="sidebarCompact" illustrated />
 
         <div class="sidebar__footer">
-          <RouterLink to="/factory-live" class="sidebar__screen" title="大屏展示" aria-label="动态流转大屏" @click="enterBigScreen"><ElIcon><Monitor /></ElIcon><span v-if="!sidebarCompact">大屏展示</span></RouterLink>
           <div class="sidebar__account">
             <ElDropdown placement="top-start" trigger="click" :teleported="false" popper-class="factory-account-menu" @command="handleUserCommand">
               <button class="sidebar__user" type="button" :title="userLabel" :aria-label="`${userLabel}，打开账户菜单`">
@@ -204,7 +194,6 @@ function enterBigScreen(event: MouseEvent): void {
 .skip-link { position: fixed; z-index: 110; top: 8px; left: 8px; padding: 9px 13px; border-radius: 4px; color: #fff; background: var(--navy-active); transform: translateY(calc(-100% - 12px)); }
 .skip-link:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; transform: translateY(0); }
 .main-content:focus { outline: none; }
-.standalone-screen { position: fixed; inset: 0; width: 100%; height: 100dvh; overflow: hidden; background: #00111d; }
 .app-shell--business { --sidebar-width: 184px; --topbar-height: 0px; color: var(--text); font-family: var(--font-body); }
 .app-shell--business.app-shell--compact { --sidebar-width: 64px; --topbar-height: 40px; }
 .app-shell--business .brand-mark { display: flex; flex-shrink: 0; height: 56px; justify-content: center; padding-inline: 14px; border-right: 0; }
@@ -213,10 +202,9 @@ function enterBigScreen(event: MouseEvent): void {
 .topbar__location { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; }
 .app-shell--business .sidebar { grid-row: 1 / -1; background: #fff; }
 .sidebar__footer { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 4px; flex-shrink: 0; margin: 0 12px; padding: 8px 0; border-top: 1px solid var(--line); }
-.sidebar__screen, .sidebar__user { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 0 8px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; font: inherit; font-size: 13px; text-align: left; }
-.sidebar__screen { grid-column: 1 / -1; }
-.sidebar__screen:hover, .sidebar__user:hover, .app-shell--business .sidebar__collapse:hover { color: var(--primary); background: var(--primary-soft); }
-.sidebar__screen > .el-icon, .sidebar__user > .el-icon { flex-shrink: 0; font-size: 18px; }
+.sidebar__user { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 0 8px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; font: inherit; font-size: 13px; text-align: left; }
+.sidebar__user:hover, .app-shell--business .sidebar__collapse:hover { color: var(--primary); background: var(--primary-soft); }
+.sidebar__user > .el-icon { flex-shrink: 0; font-size: 18px; }
 .sidebar__account { min-width: 0; }
 .sidebar__account :deep(.el-dropdown) { display: flex; width: 100%; }
 .sidebar__user-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -224,13 +212,13 @@ function enterBigScreen(event: MouseEvent): void {
 .sidebar__user > .sidebar__chevron { margin-left: auto; font-size: 12px; }
 .app-shell--business .sidebar__collapse { width: 32px; height: 36px; padding: 0; justify-content: center; border-radius: 6px; }
 .app-shell--compact .sidebar__footer { grid-template-columns: minmax(0, 1fr); margin-inline: 8px; }
-.app-shell--compact .sidebar__screen, .app-shell--compact .sidebar__user, .app-shell--compact .sidebar__collapse { justify-content: center; width: 100%; }
+.app-shell--compact .sidebar__user, .app-shell--compact .sidebar__collapse { justify-content: center; width: 100%; }
 .app-shell--business.app-shell--compact .brand-mark { padding: 0; }
 @media (max-width: 640px) {
   .app-shell--business, .app-shell--business.app-shell--compact { --topbar-height: 48px; }
   .app-shell--business .topbar { gap: 10px; }
   .app-shell--business .brand-mark { display: none; }
   .sidebar__footer { grid-template-columns: minmax(0, 1fr); padding-bottom: max(8px, env(safe-area-inset-bottom)); }
-  .app-shell--compact .sidebar__screen, .app-shell--compact .sidebar__user { justify-content: flex-start; }
+  .app-shell--compact .sidebar__user { justify-content: flex-start; }
 }
 </style>

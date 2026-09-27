@@ -64,11 +64,3 @@ You may use this Software, including for any commercial purpose, so long as you 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 License source: https://github.com/DavidHDev/vue-bits/blob/main/LICENSE.md
-# RobotExpressive animation rig
-
-`public/assets/factory-live/robot-expressive.glb`: RobotExpressive by Tomás Laulhé
-(Quaternius), with modifications by Don McCurdy. CC0 1.0 Universal.
-Source: https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/RobotExpressive
-License: https://creativecommons.org/publicdomain/zero/1.0/
-The dashboard uses its skeleton and animation clips with project-specific rounded
-cladding, materials and a tray-constrained arm pose. Three.js is MIT-licensed.

@@ -51,7 +51,7 @@ async function renderApp(mobile: boolean) {
     { path: '/transfer-batches', component: page }, { path: '/transfer-batches/scan', redirect: '/transfer-batches?scan=1' },
     { path: '/material-trace', component: page },
     { path: '/team-workspaces/:teamId', name: 'team-workspace', component: page },
-    { path: '/factory-live', component: { template: '<section>独立机器人大屏</section>' }, meta: { standalone: true } },
+    { path: '/factory-live', redirect: '/' },
     { path: '/settings/teams', component: page }, { path: '/settings/accounts', component: page },
     { path: '/:pathMatch(.*)*', component: page },
   ] })
@@ -92,37 +92,16 @@ describe('application navigation shell', () => {
       expect(wrapper.find('.topbar').exists()).toBe(false)
       expect(wrapper.find('.topbar-clock').exists()).toBe(false)
       expect(wrapper.find('#factory-sidebar .sidebar__user').exists()).toBe(true)
-      expect(wrapper.get('#factory-sidebar .sidebar__screen').attributes('href')).toBe('/factory-live')
+      expect(wrapper.find('.sidebar__screen').exists()).toBe(false)
     }
   })
 
-  it('opens the robot route without the business shell and restores navigation on return', async () => {
+  it('redirects an old screen bookmark to the business homepage', async () => {
     const { wrapper, router } = await renderApp(false)
-    const requestFullscreen = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(document.documentElement, 'requestFullscreen', { configurable: true, value: requestFullscreen })
-    try {
-      await wrapper.get('.sidebar__screen').trigger('click', { button: 0 })
-      await flushPromises()
-      expect(requestFullscreen).toHaveBeenCalledOnce()
-      expect(router.currentRoute.value.path).toBe('/factory-live')
-      expect(wrapper.get('.standalone-screen').text()).toContain('独立机器人大屏')
-      expect(wrapper.find('.app-shell').exists()).toBe(false)
-      expect(wrapper.find('.topbar').exists()).toBe(false)
-      expect(wrapper.find('#factory-sidebar').exists()).toBe(false)
-      await router.push('/transfer-batches'); await flushPromises()
-      expect(wrapper.find('.standalone-screen').exists()).toBe(false)
-      expect(wrapper.find('.topbar').exists()).toBe(false)
-      expect(wrapper.find('.sidebar__screen').exists()).toBe(true)
-    } finally { Reflect.deleteProperty(document.documentElement, 'requestFullscreen') }
-  })
-
-  it('keeps the standalone route usable when browser fullscreen is rejected', async () => {
-    const { wrapper } = await renderApp(false)
-    Object.defineProperty(document.documentElement, 'requestFullscreen', { configurable: true, value: vi.fn().mockRejectedValue(new Error('Not allowed')) })
-    try {
-      await wrapper.get('.sidebar__screen').trigger('click', { button: 0 }); await flushPromises()
-      expect(wrapper.find('.standalone-screen').exists()).toBe(true)
-    } finally { Reflect.deleteProperty(document.documentElement, 'requestFullscreen') }
+    await router.push('/factory-live'); await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/')
+    expect(wrapper.find('.app-shell--business').exists()).toBe(true)
+    expect(wrapper.find('.sidebar__screen').exists()).toBe(false)
   })
 
   it('keeps the closed mobile menu inert, supports Escape, and closes after navigation', async () => {

@@ -39,7 +39,7 @@ def test_pending_transfer_deducts_inventory_and_edit_void_restore_it(client, sto
 def test_factory_stock_plus_transit_conserves_and_acceptance_never_deducts_twice(client, outbound):
     group = bulk_dispatch(client, outbound, entry_kind='transfer', external_destination=None,
                           next_team_id=outbound['other']['id']).json()
-    for path in ('/api/factory-overview', '/api/factory-overview/live'):
+    for path in ('/api/factory-overview',):
         report = client.get(path).json()
         assert report['totals']['on_hand_quantity'] == 140
         assert report['totals']['in_transit_quantity'] == 60
@@ -55,7 +55,7 @@ def test_factory_stock_plus_transit_conserves_and_acceptance_never_deducts_twice
         target = client.get(f"/api/team-materials/{outbound['other']['id']}/overview").json()['totals']
         assert source['on_hand_quantity'] == 140 and source['on_hand_weight'] == 14
         assert target['on_hand_quantity'] == 60 and target['on_hand_weight'] == 6
-        report = client.get('/api/factory-overview/live').json()
+        report = client.get('/api/factory-overview').json()
         assert report['totals']['on_hand_quantity'] == 200
         assert report['totals']['in_transit_quantity'] == 0 and report['pending']['batches'] == 0
 
@@ -77,7 +77,6 @@ def test_internal_outgoing_trend_uses_submission_day_not_receipt_day(client, out
         analytics = client.get(outbound['url'] + '/analytics').json()
         assert analytics['trend'][-1]['outgoing']['quantity'] == 60
         assert client.get('/api/factory-overview').json()['trend'][-1]['internal']['quantity'] == 60
-        assert client.get('/api/factory-overview/live').json()['today']['outgoing_quantity'] == 60
     check()
     with SessionLocal() as db:
         for line in group['items']:
@@ -85,4 +84,3 @@ def test_internal_outgoing_trend_uses_submission_day_not_receipt_day(client, out
             item.status, item.stock_tracked, item.received_at = 'received', True, now
         db.commit()
     check()
-    assert client.get('/api/factory-overview/live').json()['today']['received_batches'] == 2

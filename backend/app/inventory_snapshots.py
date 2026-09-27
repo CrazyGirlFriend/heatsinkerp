@@ -6,7 +6,7 @@ from time import monotonic
 
 from .observability import measure_database, record
 
-VIEWS = frozenset(("inventory", "factory-live"))
+VIEWS = frozenset(("inventory",))
 
 
 class SnapshotFrames:
