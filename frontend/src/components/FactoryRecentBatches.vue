@@ -13,10 +13,6 @@ const visible = computed(() => scrollable.value
   ? Array.from({ length: 4 }, (_, index) => props.rows[(start.value + index) % props.rows.length]!)
   : props.rows)
 watch(() => props.rows.map(row => row.batch_no).join('|'), () => { start.value = 0; cycle.value++ })
-function move(direction: number) {
-  start.value = (start.value + direction + props.rows.length) % props.rows.length
-  cycle.value++
-}
 function advance() {
   if (playing.value) start.value = (start.value + 1) % props.rows.length
 }
@@ -27,10 +23,10 @@ const format = (value: number) => new Intl.NumberFormat('zh-CN', { maximumFracti
 const label = (row: FactoryRecentBatch) => row.entry_kind === 'warehouse_receipt' ? '已入库' : dispatchStatusLabel(row.status, row.entry_kind)
 </script>
 <template>
-  <section class="factory-recent" aria-label="近期转料动态" @mouseenter="hovered = true" @mouseleave="hovered = false">
-    <header><h2>近期转料动态</h2><div class="recent-actions"><div v-if="scrollable" class="recent-pagination"><ElButton text aria-label="上一条近期转料" @click="move(-1)">上一条</ElButton><small>{{ start + 1 }} / {{ rows.length }}</small><ElButton text aria-label="下一条近期转料" @click="move(1)">下一条</ElButton><ElButton text :disabled="!motion" :aria-label="paused || !motion ? '播放近期转料' : '暂停近期转料'" @click="paused = !paused">{{ paused || !motion ? '播放' : '暂停' }}</ElButton></div><slot name="actions" /></div></header>
-    <div v-if="!rows.length" class="recent-empty">暂无转料记录</div>
-    <div v-else class="recent-table-scroll" tabindex="0" role="region" aria-label="近期转料表格" @focusin="focused = true" @focusout="focusOut">
+  <section class="factory-recent" aria-label="今日转料动态" @mouseenter="hovered = true" @mouseleave="hovered = false">
+    <header><h2>今日转料动态</h2><div class="recent-actions"><div v-if="scrollable" class="recent-pagination"><small>{{ start + 1 }} / {{ rows.length }}</small><ElButton text :disabled="!motion" :aria-label="paused || !motion ? '播放今日转料' : '暂停今日转料'" @click="paused = !paused">{{ paused || !motion ? '播放' : '暂停' }}</ElButton></div><slot name="actions" /></div></header>
+    <div v-if="!rows.length" class="recent-empty">今日暂无转料记录</div>
+    <div v-else class="recent-table-scroll" tabindex="0" role="region" aria-label="今日转料表格" @focusin="focused = true" @focusout="focusOut">
       <div class="recent-table-window">
         <table class="recent-table">
           <thead><tr><th scope="col">批次号</th><th scope="col">来源</th><th scope="col">去向</th><th scope="col" class="recent-number">件数</th><th scope="col" class="recent-number">重量 <span>(kg)</span></th><th scope="col">状态</th><th scope="col">签收时间</th></tr></thead>

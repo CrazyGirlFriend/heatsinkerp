@@ -99,9 +99,12 @@ def stock_matrix(db: Session, teams: list[dict]) -> dict:
     }
 
 
-def recent_batches(db, involved, limit=12):
+def today_batches(db, involved, now):
     # Every transfer is an independent batch, including historically co-printed rows.
     code = mt.batch_no
+    _, start, end = period(1, now)
+    # Editing an old document must not turn it into today's material movement.
+    activity_at = func.coalesce(mt.voided_at, mt.dispatched_at, mt.received_at, mt.created_at)
 
     def count(predicate):
         return func.sum(case((predicate, 1), else_=0))
@@ -157,10 +160,9 @@ def recent_batches(db, involved, limit=12):
             func.max(mt.updated_at).label("updated_at"),
         )
         .outerjoin(MaterialDispatch, mt.dispatch_id == MaterialDispatch.id)
-        .where(involved)
+        .where(involved, activity_at >= start, activity_at <= end)
         .group_by(code)
-        .order_by(func.max(mt.updated_at).desc(), code.desc())
-        .limit(limit)
+        .order_by(func.max(activity_at).desc(), code.desc())
     ).mappings()
     return [
         {
@@ -292,7 +294,7 @@ def factory_overview(db: Session, days: int = 30) -> dict:
         "days": days,
         "teams": teams,
         "totals": totals,
-        "recent_batches": recent_batches(db, involved),
+        "recent_batches": today_batches(db, involved, now),
         "pending": pending_amount,
         "material_types": amounts(
             db,

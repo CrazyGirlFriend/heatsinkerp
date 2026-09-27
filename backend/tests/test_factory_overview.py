@@ -107,16 +107,64 @@ def test_internal_bulk_pending_is_counted_once_and_confirmation_keeps_factory_st
 def test_rankings_group_serials_and_materials_before_limit_and_sort_each_unit(client, warehouse):
     assert intake(client, warehouse, serial_no='SHARED', material_name='铜', quantity=2, weight=20).status_code == 201
     assert intake(client, warehouse, serial_no='SHARED', material_name='铜', quantity=3, weight=30, idempotency_key='second').status_code == 201
-    for i in range(10):
+    for i in range(14):
         assert intake(client, warehouse, serial_no=f'S-{i:02}', material_name=f'材质-{i:02}', quantity=10+i, weight=1+i/10, idempotency_key=f'rank-{i}').status_code == 201
     d = report(client)
     assert len(d['serial_ranking']['weight']) == len(d['material_ranking']['quantity']) == 8
     assert d['serial_ranking']['weight'][0] == {'key': 'SHARED', 'quantity': 5, 'weight': 50}
     assert d['material_ranking']['weight'][0]['key'] == '铜'
-    assert d['serial_ranking']['quantity'][0]['key'] == 'S-09'
-    assert len(d['recent_batches']) == 12
+    assert d['serial_ranking']['quantity'][0]['key'] == 'S-13'
+    assert len(d['recent_batches']) == 16  # Today's feed is not truncated to 12 batches.
     assert all(row['entry_kind'] == 'warehouse_receipt' and row['source_name'] is None for row in d['recent_batches'])
-    assert [row['updated_at'] for row in d['recent_batches']] == sorted([row['updated_at'] for row in d['recent_batches']], reverse=True)
+    assert [row['received_at'] for row in d['recent_batches']] == sorted([row['received_at'] for row in d['recent_batches']], reverse=True)
+
+
+def test_today_feed_uses_factory_midnight_and_ignores_document_edit_times(client, warehouse, monkeypatch):
+    now = datetime(2026, 9, 12, 12)
+    midnight = datetime(2026, 9, 11, 16)  # Factory timezone is UTC+8.
+    monkeypatch.setattr(factory_overview, 'utcnow', lambda: now)
+    times = [midnight - timedelta(seconds=1), midnight, now, now + timedelta(seconds=1), midnight + timedelta(days=1)]
+    lots = [intake(client, warehouse, idempotency_key=f'daily-{i}').json() for i in range(len(times))]
+    with SessionLocal() as db:
+        for lot, at in zip(lots, times):
+            row = db.get(MaterialTransfer, lot['id'])
+            row.created_at = row.received_at = at
+            row.updated_at = now
+        db.commit()
+    expected = [lots[2]['batch_no'], lots[1]['batch_no']]
+    for days in (3, 30, 365):
+        rows = client.get(f'/api/factory-overview?days={days}').json()['recent_batches']
+        assert [row['batch_no'] for row in rows] == expected
+    monkeypatch.setattr(factory_overview, 'utcnow', lambda: now + timedelta(days=1))
+    assert [row['batch_no'] for row in report(client)['recent_batches']] == [lots[4]['batch_no']]
+    monkeypatch.setattr(factory_overview, 'utcnow', lambda: now + timedelta(days=2))
+    assert report(client)['recent_batches'] == []
+
+
+def test_today_feed_includes_yesterdays_batches_received_or_shipped_today(client, outbound, monkeypatch):
+    internal = dispatch(client, outbound, entry_kind='transfer', external_destination=None,
+        next_team_id=outbound['other']['id'], idempotency_key='daily-internal').json()['items']
+    assert client.post(f"/api/material-transfers/{internal[0]['batch_no']}/confirm", headers=outbound['other_headers'],
+        json={'idempotency_key': 'daily-receive'}).status_code == 200
+    external = dispatch(client, outbound, idempotency_key='daily-external').json()['items']
+    assert confirm(client, outbound, external[0]).status_code == 200
+    now = datetime(2026, 9, 12, 12)
+    monkeypatch.setattr(factory_overview, 'utcnow', lambda: now)
+    with SessionLocal() as db:
+        for row in db.query(MaterialTransfer).all():
+            row.created_at = now - timedelta(days=1)
+            if row.received_at:
+                row.received_at = row.created_at
+            if row.dispatched_at:
+                row.dispatched_at = row.created_at
+            row.updated_at = now  # An unrelated edit does not qualify old batches.
+        db.get(MaterialTransfer, internal[1]['id']).created_at = now - timedelta(minutes=15)
+        db.get(MaterialTransfer, internal[0]['id']).received_at = now - timedelta(minutes=10)
+        db.get(MaterialTransfer, external[0]['id']).dispatched_at = now - timedelta(minutes=5)
+        db.commit()
+    rows = report(client)['recent_batches']
+    assert [row['batch_no'] for row in rows] == [external[0]['batch_no'], internal[0]['batch_no'], internal[1]['batch_no']]
+    assert [row['status'] for row in rows] == ['dispatched', 'received', 'pending']
 
 
 def test_missing_scope_empty_validation_and_login(client):

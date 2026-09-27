@@ -2,8 +2,8 @@ from datetime import datetime
 import pytest
 from sqlalchemy import func, select
 from app.database import SessionLocal
-from app.models import MaterialTransfer, MaterialLoss, SerialUrgencyEvent
-from app.factory_overview import recent_batches
+from app.models import MaterialTransfer, MaterialLoss, SerialUrgencyEvent, utcnow
+from app.factory_overview import today_batches
 from test_material_stock import stock_setup, receive_lot, dispatch, loss, endpoint, totals
 from test_warehouse_receipts import warehouse, intake
 
@@ -48,7 +48,7 @@ def test_urgency_global_read_only_stock_and_optimistic_cancel(client, stock_setu
     batches = [client.get('/api/material-transfers/' + item['batch_no']).json() for item in group['items']]
     assert [line['urgency']['urgent'] for line in batches] == [True, False]
     with SessionLocal() as db:
-        feed = recent_batches(db, True, 100)
+        feed = today_batches(db, True, utcnow())
         assert next(row for row in feed if row['batch_no'] == batches[0]['batch_no'])['urgent_serial_count'] == 1
     assert mark(client, lot['serial_no'], False, 0).status_code == 409
     assert mark(client, lot['serial_no'], False, 1).status_code == 200
