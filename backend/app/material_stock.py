@@ -145,7 +145,9 @@ def available_locked(db, lot, exclude_transfer_id=None):
 
 def validate_available(db, lot, quantity, weight, exclude_transfer_id=None):
     available_quantity, available_weight = available_locked(db, lot, exclude_transfer_id)
-    if quantity > available_quantity or weight > available_weight:
+    if weight > available_weight:
+        raise HTTPException(409, f"本次提交超过上一批次的剩余可转重量，请调整重量或重新选择批次。（上一批次 {lot.batch_no}，剩余 {available_weight} kg）")
+    if quantity > available_quantity:
         raise HTTPException(409, "insufficient available stock; refresh the batch balance and review amounts")
 
 

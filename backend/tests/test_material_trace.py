@@ -43,6 +43,10 @@ def test_split_pending_receipt_return_void_and_losses_share_the_stock_ledger(cli
     assert rows[returned['id']]['source_transfer_id'] == first['id']
     assert rows[returned['id']]['on_hand_quantity'] is None
     assert rows[root['id']]['on_hand_quantity'] == 48
+    assert rows[root['id']]['owned_quantity'] == 68
+    assert rows[root['id']]['owned_weight'] == 6.8
+    assert rows[first['id']]['owned_quantity'] == 30
+    assert rows[returned['id']]['owned_quantity'] is None
     assert rows[root['id']]['loss_records'][0]['reason'] == '清点发现丢失'
     assert [event['action'] for event in rows[first['id']]['history']] == ['created', 'received']
     assert rows[first['id']]['history'][0]['changes']['quantity']['after'] == 30

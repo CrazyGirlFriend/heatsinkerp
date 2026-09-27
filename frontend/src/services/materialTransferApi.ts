@@ -208,7 +208,7 @@ function queryString(params: MaterialTransferListParams): string {
 export const materialTransferApi = {
   async trace(serialNo: string): Promise<MaterialTrace> {
     const result = await request<MaterialTrace>(`/material-trace?${new URLSearchParams({ serial_no: serialNo.trim() })}`)
-    return { ...result, items: result.items.map(item => ({ ...normalizeMaterialTransfer(item), on_hand_quantity: item.on_hand_quantity, on_hand_weight: item.on_hand_weight })) }
+    return { ...result, items: result.items.map(item => ({ ...normalizeMaterialTransfer(item), on_hand_quantity: item.on_hand_quantity, on_hand_weight: item.on_hand_weight, owned_quantity: item.owned_quantity, owned_weight: item.owned_weight })) }
   },
   async counts(params: MaterialTransferFilterParams = {}): Promise<MaterialTransferStatusCounts> {
     const statuses = ['pending', 'received', 'voided', 'dispatched'] as const

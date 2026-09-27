@@ -1,7 +1,7 @@
 import type { EChartsOption, CustomSeriesOption, SankeySeriesOption, CustomSeriesRenderItemReturn, XAxisComponentOption } from 'echarts'
 import type { SerialHistory, SerialHistoryFlow } from '@/types/teamBusiness'
 import type { TraceBatch } from '@/types/materialTrace'
-import { isExternalTransfer, materialTransferStatusLabel } from '@/types/materialTransfer'
+import { isExternalTransfer, isScrapType, materialTypeLabel, materialTransferStatusLabel } from '@/types/materialTransfer'
 import { historyNumber as num, purposePalette } from './serialHistoryChart'
 import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
 
@@ -272,8 +272,9 @@ export function traceRelated(model: ReturnType<typeof traceFlowModel>, id: strin
   return related
 }
 
-export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, _metric: FlowMetric, selectedId = '', animate = true, interaction: FlowInteraction = 'select', zoom = 100): EChartsOption {
+export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, metric: FlowMetric, selectedId = '', animate = true, interaction: FlowInteraction = 'select', zoom = 100, originColors?: Map<string, string>): EChartsOption {
   const related = selectedId ? traceRelated(model, selectedId) : null
+  const colorFor = (batch: TraceBatch) => originColors && isScrapType(batch.material_type) ? '#b48b50' : originColors?.get(String(batch.id)) || model.palette.get(batch.purpose_name || '未分类') || '#7762d4'
   const series: CustomSeriesOption = {
     id: 'batch-paths', type: 'custom', name: '批次路径', clip: true, silent: interaction === 'pan', animationDuration: 900, animationDurationUpdate: 180,
     stateAnimation: { duration: 160, easing: 'cubicOut' },
@@ -281,7 +282,7 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, _metri
     data: model.nodes.map(node => ({ id: String(node.batch.id), name: node.batch.batch_no, value: [node.startedAt, node.stays.at(-1)?.end ?? node.finishedAt ?? node.startedAt, node.sourceLane, node.targetLane, node.finishedAt ?? node.startedAt] })),
     renderItem(params, api): CustomSeriesRenderItemReturn {
       const node = model.nodes[params.dataIndex]!, batch = node.batch
-      const color = model.palette.get(batch.purpose_name || '未分类') || '#7762d4'
+      const color = batch.status === 'pending' && originColors ? '#b48b50' : colorFor(batch)
       const faded = related && !related.has(String(batch.id))
       const opacity = faded ? .16 : 1, chosen = selectedId === String(batch.id)
       const delay = animate && node.startedAt !== null && model.first !== null ? Math.min(1200, (node.startedAt - model.first) / model.span * 1200) : 0
@@ -299,20 +300,31 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, _metri
         if (faded || left < grid.x || left + width > grid.x + grid.width || y < grid.y + 2 || y + 22 > grid.y + grid.height) return
         if (!chosen && labels.some(box => left < box.x + box.width + 12 && left + width + 12 > box.x && Math.abs(box.y - y) < 30)) return
         labels.push({ x: left, y, width })
-        children.push({ name, type: 'text', z2: 6, silent: true, style: { x, y, text, align, font: `500 15px ${font}`, fill: '#30304f', backgroundColor: '#ffffffdf', padding: [2, 3], opacity, ...(animate ? { enterFrom: { opacity: 0 } } : {}) }, enterAnimation: { duration: 220 } })
+        children.push({ name, type: 'text', z2: 6, silent: true, style: { x, y, text, align, font: `500 ${originColors ? 12 : 15}px ${font}`, fill: '#2b4038', backgroundColor: '#ffffffdf', padding: [2, 3], opacity, ...(animate ? { enterFrom: { opacity: 0 } } : {}) }, enterAnimation: { duration: 220 } })
       }
       const path = (points: number[][]) => {
         children.push({ name: 'transfer-hit', type: 'polyline', shape: { points }, style: { stroke: color, fill: 'none', lineWidth: 14, opacity: 0 } })
         // White clearance separates cross-lane connections from residence bars.
         children.push({ name: 'transfer-clearance', type: 'polyline', silent: true, z2: 2, shape: { points }, style: { stroke: '#fff', fill: 'none', lineWidth: 6, opacity, lineJoin: 'round', lineCap: 'round' } })
         children.push({ name: 'transfer', type: 'polyline', z2: 3, shape: { points },
-          style: { stroke: color, fill: 'none', strokePercent: 1, ...(animate ? { enterFrom: { strokePercent: 0 } } : {}), transition: ['opacity', 'lineWidth'], lineWidth: chosen ? 3 : 2, lineJoin: 'round', lineCap: 'round', opacity, lineDash: batch.status === 'voided' ? [5, 5] : undefined },
+          style: { stroke: color, fill: 'none', strokePercent: 1, ...(animate ? { enterFrom: { strokePercent: 0 } } : {}), transition: ['opacity', 'lineWidth'], lineWidth: chosen ? 3 : 2, lineJoin: 'round', lineCap: 'round', opacity, lineDash: batch.status === 'voided' || batch.status === 'pending' ? [5, 5] : undefined },
           emphasis: { style: { opacity: 1, lineWidth: 3.2 } }, enterAnimation: { delay, duration: animate ? 900 : 0 },
         })
+        if (originColors && points.length > 1 && points[0]![1] !== points.at(-1)![1]) {
+          const x = points.length > 2 ? points[1]![0]! : points[0]![0]!
+          const y = (points[0]![1]! + points.at(-1)![1]!) / 2, direction = Math.sign(points.at(-1)![1]! - points[0]![1]!)
+          children.push({ name: 'direction', type: 'polyline', silent: true, z2: 4, shape: { points: [[x - 3, y - direction * 3], [x, y + direction * 2], [x + 3, y - direction * 3]] }, style: { stroke: color, fill: 'none', lineWidth: 1.5, opacity } })
+        }
       }
       if (start && end && !node.intake) {
         const dx = end[0]! - start[0]!
         path([start, [start[0]! + dx * .35, start[1]!], [start[0]! + dx * .35, end[1]!], end])
+      }
+      if (originColors && start && !end && batch.status === 'pending') {
+        // Destination is shown at dispatch time, with no fabricated receipt date.
+        const target = api.coord([node.startedAt, node.targetLane + node.targetOffset])
+        path([start, target])
+        children.push({ name: 'pending-target', type: 'circle', z2: 4, shape: { cx: target[0]!, cy: target[1]!, r: 5.5 }, style: { fill: '#fff', stroke: color, lineWidth: 2, lineDash: [3, 3], opacity } })
       }
       const point = (position: number[], filled: boolean) => {
         const name = filled ? 'receipt' : 'departure'
@@ -331,8 +343,8 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, _metri
         const p = api.coord([at, other.finishedAt === null ? other.sourceLane + other.sourceOffset : other.targetLane + other.targetOffset])
         return Math.abs(p[0]! - x) < 150 && Math.abs(p[1]! - y) < 32
       })
-      if (inView && !node.stays.length && !crowded) {
-        label(`amount:${batch.quantity}:${batch.weight}`, Math.max(grid.x + 6, Math.min(x + 12, grid.x + grid.width - 170)), y - 28, amountLabel(batch))
+      if (inView && (originColors || !node.stays.length) && (!crowded || chosen) && (!originColors || chosen || model.nodes.length <= 18)) {
+        label(`amount:${batch.quantity}:${batch.weight}`, Math.max(grid.x + 6, Math.min(x + 12, grid.x + grid.width - 170)), y - 28, originColors ? metricLabel(batch, metric) : amountLabel(batch))
         if (!end) label('pending-label', x + 36, y + 12, `${batch.next_team.name} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}`)
       }
       return {
@@ -364,8 +376,8 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, _metri
       const chosen = selectedId === String(node.batch.id), faded = related && !related.has(String(node.batch.id)), opacity = faded ? .16 : 1
       const children: NonNullable<Extract<CustomSeriesRenderItemReturn, { type: 'group' }>['children']> = [{
         name: 'stay', type: 'rect', z2: -1, shape: { x: left, y: a[1]! - height / 2, width: Math.max(1, right - left), height, r: Math.min(9, height / 2) },
-        style: { fill: '#d9d1f5', opacity: opacity * (chosen ? 1 : .82), ...(animate ? { enterFrom: { opacity: 0 } } : {}) },
-        emphasis: { style: { fill: '#c6b9ef', opacity: 1 } }, enterAnimation: { duration: 450 },
+        style: { fill: originColors ? colorFor(node.batch) : '#d9d1f5', opacity: opacity * (originColors ? chosen ? .28 : .13 : chosen ? 1 : .82), ...(animate ? { enterFrom: { opacity: 0 } } : {}) },
+        emphasis: { style: { fill: originColors ? colorFor(node.batch) : '#c6b9ef', opacity: originColors ? .35 : 1 } }, enterAnimation: { duration: 450 },
       }]
       const labels = (params.context.labels ||= []) as Array<{ x: number; y: number; width: number }>
       const label = (name: string, x: number, text: string, align: 'left' | 'right' = 'left') => {
@@ -379,7 +391,7 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, _metri
       if (stay.current && b[0]! <= grid.x + grid.width && b[0]! >= grid.x) {
         children.push({ name: 'balance-cap', type: 'line', shape: { x1: b[0]!, y1: b[1]! - 9, x2: b[0]!, y2: b[1]! + 9 }, style: { stroke: '#a699ca', lineWidth: 1.5, opacity } })
       }
-      if (!stay.current && right - left > 110) label('stay-label', left + 10, amountLabel(stay))
+      if (!originColors && !stay.current && right - left > 110) label('stay-label', left + 10, amountLabel(stay))
       return { type: 'group', children, $mergeChildren: 'byName' }
     },
   }
@@ -392,14 +404,14 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, _metri
       const top = Math.max(grid.y, y), height = Math.min(grid.y + grid.height, bottom) - top
       if (height <= 0) return
       const children: NonNullable<Extract<CustomSeriesRenderItemReturn, { type: 'group' }>['children']> = [
-        { type: 'rect', shape: { x: 0, y: top, width: grid.x + grid.width, height, r: 6 }, style: { fill: params.dataIndex % 2 === 0 ? '#f5f3fc' : '#fff' } },
-        { type: 'text', style: { x: 12, y: (y + bottom) / 2, text: model.teams[params.dataIndex], verticalAlign: 'middle', font: `600 ${grid.x < 100 ? 15 : 17}px ${font}`, fill: '#30304f', width: grid.x - 22, overflow: 'truncate' } },
+        { type: 'rect', shape: { x: 0, y: top, width: grid.x + grid.width, height, r: 6 }, style: { fill: params.dataIndex % 2 === 0 ? originColors ? '#f5f8f6' : '#f5f3fc' : '#fff' } },
+        { type: 'text', style: { x: 12, y: (y + bottom) / 2, text: model.teams[params.dataIndex], verticalAlign: 'middle', font: `600 ${originColors ? 13 : grid.x < 100 ? 15 : 17}px ${font}`, fill: '#2b4038', width: grid.x - 22, overflow: 'truncate' } },
       ]
       if (params.dataIndex === 0 && model.ongoing && model.closing !== null) {
         const x = api.coord([model.closing, 0])[0]!
         if (x >= grid.x && x <= grid.x + grid.width) children.push(
-          { type: 'line', z2: 1, shape: { x1: x, x2: x, y1: grid.y, y2: grid.y + grid.height }, style: { stroke: '#b4a2e7', lineWidth: 1, lineDash: [5, 4] } },
-          { type: 'text', style: { x, y: grid.y - 14, text: `截至 ${traceTime(model.closing).slice(5, 16)}`, align: 'right', font: `12px ${font}`, fill: '#8061be' } },
+          { type: 'line', z2: 1, shape: { x1: x, x2: x, y1: grid.y, y2: grid.y + grid.height }, style: { stroke: originColors ? '#b6cbbb' : '#b4a2e7', lineWidth: 1, lineDash: [5, 4] } },
+          { type: 'text', style: { x, y: grid.y - 14, text: `截至 ${traceTime(model.closing).slice(5, 16)}`, align: 'right', font: `12px ${font}`, fill: originColors ? '#788c7e' : '#8061be' } },
         )
       }
       return { type: 'group', children }
@@ -407,25 +419,26 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, _metri
   }
   series.z = 3
   const minSpan = Math.min(.05, 100 / Math.max(1, model.span))
-  const timeAxis: XAxisComponentOption = { type: model.span < 1000 ? 'value' : 'time', min: model.extent?.[0], max: model.extent?.[1], minInterval: visibleSpan > 3 * 86400000 ? 86400000 : 1, splitNumber: 10, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: '#68718e', fontSize: 14, lineHeight: 21, margin: 16, hideOverlap: true, formatter: axisTime }, splitLine: { show: true, lineStyle: { color: '#dedced', type: 'dashed' } } }
+  const timeAxis: XAxisComponentOption = { type: model.span < 1000 ? 'value' : 'time', min: model.extent?.[0], max: model.extent?.[1], minInterval: visibleSpan > 3 * 86400000 ? 86400000 : 1, splitNumber: 10, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: originColors ? '#77887f' : '#68718e', fontSize: originColors ? 12 : 14, lineHeight: 21, margin: 16, hideOverlap: true, formatter: axisTime }, splitLine: { show: true, lineStyle: { color: originColors ? '#e4ece7' : '#dedced', type: 'dashed' } } }
   return {
     useUTC: true, textStyle: { fontFamily: font },
-    grid: { left: 108, right: 40, top: 64, bottom: 144 },
-    xAxis: [{ ...timeAxis, position: 'top' }, { ...timeAxis, position: 'bottom', splitLine: { show: false } }],
+    grid: { left: originColors ? 82 : 108, right: 32, top: originColors ? 44 : 64, bottom: originColors ? 100 : 144 },
+    xAxis: [{ ...timeAxis, position: 'top' }, { ...timeAxis, position: 'bottom', axisLabel: originColors ? { show: false } : timeAxis.axisLabel, splitLine: { show: false } } as XAxisComponentOption],
     yAxis: { type: 'value', min: -.5, max: model.teams.length - .5, interval: 1, inverse: true, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { show: false }, splitLine: { show: false } },
     dataZoom: [
       { id: 'time', type: 'inside', xAxisIndex: [0, 1], filterMode: 'none', minSpan, zoomOnMouseWheel: true, moveOnMouseMove: interaction === 'pan', moveOnMouseWheel: false, preventDefaultMouseMove: true },
       { id: 'teams', type: 'inside', yAxisIndex: 0, filterMode: 'none', minSpan: 10, zoomOnMouseWheel: false, moveOnMouseMove: interaction === 'pan', moveOnMouseWheel: false },
-      { id: 'time-slider', type: 'slider', xAxisIndex: [0, 1], filterMode: 'none', minSpan, bottom: 88, left: 112, right: 40, height: 8, borderColor: 'transparent', backgroundColor: '#f0edf9', fillerColor: '#d8d0f1', handleIcon: 'circle', handleSize: 20, handleStyle: { color: '#fff', borderColor: '#987edf', borderWidth: 2, shadowBlur: 3, shadowColor: '#18243b18' }, showDataShadow: false, brushSelect: false, labelFormatter: value => traceTime(Number(value)) },
+      { id: 'time-slider', type: 'slider', xAxisIndex: [0, 1], filterMode: 'none', minSpan, bottom: originColors ? 62 : 88, left: originColors ? 86 : 112, right: 32, height: 6, borderColor: 'transparent', backgroundColor: originColors ? '#f0f5f1' : '#f0edf9', fillerColor: originColors ? '#cbded1' : '#d8d0f1', handleIcon: 'circle', handleSize: 20, handleStyle: { color: '#fff', borderColor: originColors ? '#789b85' : '#987edf', borderWidth: 2, shadowBlur: 3, shadowColor: '#18243b18' }, showDataShadow: false, brushSelect: false, labelFormatter: value => traceTime(Number(value)) },
     ],
     media: [
-      { query: { maxWidth: 540 }, option: { grid: { left: 82, right: 20, bottom: 190 }, dataZoom: [{ id: 'time-slider', left: 86, right: 24, bottom: 136 }] } },
-      { option: { grid: { left: 108, right: 40, bottom: 144 }, dataZoom: [{ id: 'time-slider', left: 112, right: 40, bottom: 88 }] } },
+      { query: { maxWidth: 540 }, option: { grid: { left: 70, right: 20, bottom: originColors ? 130 : 190 }, dataZoom: [{ id: 'time-slider', left: 74, right: 24, bottom: originColors ? 106 : 136 }] } },
+      { option: { grid: { left: originColors ? 82 : 108, right: 32, bottom: originColors ? 100 : 144 }, dataZoom: [{ id: 'time-slider', left: originColors ? 86 : 112, right: 32, bottom: originColors ? 62 : 88 }] } },
     ],
     tooltip: { ...tooltip, renderMode: 'html', show: interaction === 'select', triggerOn: 'mousemove', enterable: true, hideDelay: 150, borderRadius: 8, shadowColor: '#2421391f', borderColor: '#e0daf1', textStyle: { color: '#30304f', fontFamily: font, fontSize: 15, lineHeight: 26 }, formatter: params => {
       const item = (Array.isArray(params) ? params[0] : params)!
       const interval = item.seriesId === 'residence-bars' ? residences[item.dataIndex] : undefined
       const node = interval?.node || model.nodes[item.dataIndex]!, batch = node.batch, stay = interval?.stay
+      if (originColors) return chainTooltip(`${batch.batch_no}\n${node.intake ? batch.entry_kind === 'opening_stock' ? '初始库存登记' : '库房入库' : `${batch.source_team.name} → ${batch.next_team.name}`}\n${materialTypeLabel(batch.material_type)} · ${metricLabel(stay || batch, metric)}\n${stay ? '在库停留' : materialTransferStatusLabel(batch.status, batch.entry_kind)} · 点击查看详情`)
       const balance = batch.on_hand_quantity == null || batch.on_hand_weight == null ? '' : `\n未转出库存 ${amountLabel({ quantity: batch.on_hand_quantity, weight: batch.on_hand_weight })}`
       if (stay) return chainTooltip(`${batch.batch_no}\n${batch.next_team.name} · 在库停留\n这段时间的未转出库存 ${amountLabel(stay)}\n${traceTime(stay.start)}\n至 ${traceTime(stay.end)}\n累计停留 ${traceDuration(node.finishedAt, stay.end)}${balance}`)
       return chainTooltip(`${batch.batch_no}\n${batch.source_team.name} → ${batch.next_team.name}\n${amountLabel(batch)}\n${node.intake ? '入库' : '转出'} ${traceTime(node.startedAt)}${node.intake ? '' : `\n${isExternalTransfer(batch) ? '对外确认' : '接收'} ${traceTime(node.finishedAt)}`}\n接收业务 ${batch.purpose_name || '未分类'} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}${balance}${batch.notes ? `\n备注 ${batch.notes}` : ''}${node.timingIssue ? '\n时间记录不完整或异常' : ''}${node.residenceIssue ? '\n历史收发记录与库存对不上，暂不显示停留时间' : ''}`)

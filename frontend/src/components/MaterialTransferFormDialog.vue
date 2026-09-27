@@ -248,7 +248,7 @@ onBeforeUnmount(() => { ++formGeneration })
     <ElAlert v-else-if="!sourceTeam" type="error" :closable="false" title="当前账号未绑定班组" show-icon />
     <ElAlert v-else-if="!editable" type="info" :closable="false" title="此转料单已锁定或无编辑权限" show-icon />
     <ElAlert v-else-if="sourceChanged" type="warning" :closable="false" title="账号所属班组已变更，请关闭后重新新建转料" show-icon />
-    <ElAlert v-if="linkedSource" type="info" :closable="false" :title="`来源批次 ${editingSnapshot?.source_transfer_batch_no || '已关联'} · 流水号与材质继承自来料`" />
+    <ElAlert v-if="linkedSource" type="info" :closable="false" :title="`上一批次 ${editingSnapshot?.source_transfer_batch_no || '已关联'} · 流水号与材质继承自来料`" />
 
     <div v-if="sourceTeam" class="handoff-preview" aria-label="转料方向">
       <div><span>转出班组</span><strong>{{ sourceTeam.name }}</strong><small>由当前账号自动确定</small></div>

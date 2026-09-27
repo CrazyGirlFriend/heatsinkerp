@@ -22,7 +22,7 @@ const fields = computed<DocumentField[]>(() => {
     { label: '流水号', key: 'serial', value: t.serial_no },
     { label: opening ? '登记班组' : receipt ? '入库库房' : external ? `${verb}去向` : '接收班组', value: external ? t.external_destination || '—' : t.next_team.name },
     { label: '接收业务', value: materialPurposeLabel(t) },
-    { label: '来源批次', value: t.source_transfer_batch_no || '—' },
+    { label: '上一批次', value: t.source_transfer_batch_no || '—' },
     ...(t.delivery_origin_batch_no && t.delivery_origin_batch_no !== t.batch_no ? [{ label: '交期源头批次', value: t.delivery_origin_batch_no }] : []),
     { label: receipt ? '入库件数' : external ? `${verb}件数` : '转料件数', value: `${t.quantity} ${t.quantity_unit}` },
     { label: receipt ? '入库重量' : external ? `${verb}重量` : '转料重量', value: `${t.weight} ${t.weight_unit}` },

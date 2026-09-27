@@ -7,6 +7,7 @@ import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialTransferApi } from '@/services/materialTransferApi'
 import FlowPreviewCanvas from '@/components/FlowPreviewCanvas.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
+import TraceStockSummary from '@/components/TraceStockSummary.vue'
 import FlowPreviewPage from './FlowPreviewPage.vue'
 import snapshot from '@/fixtures/flowPurposeSnapshot.json'
 import type { SerialHistory } from '@/types/teamBusiness'
@@ -27,6 +28,28 @@ async function render(path: string) {
   await flushPromises()
   return { page: wrapper, router }
 }
+it('filters a complete intake family and keeps its source distinct from the previous batch', async () => {
+  const items = snapshot.trace.items.map(item => ({ ...normalizeMaterialTransfer(item), on_hand_quantity: item.on_hand_quantity, on_hand_weight: item.on_hand_weight }))
+  const seed = items[0]!
+  const first = { ...seed, id: 101, batch_no: 'WAREHOUSE-A', entry_kind: 'warehouse_receipt' as const, source_transfer_id: null, on_hand_quantity: 40, on_hand_weight: 40, owned_quantity: 40, owned_weight: 40 }
+  const other = { ...first, id: 102, batch_no: 'WAREHOUSE-B', on_hand_quantity: 999, on_hand_weight: 999, owned_quantity: 999, owned_weight: 999 }
+  const previous = { ...seed, id: 103, batch_no: 'PREVIOUS-A', source_transfer_id: 101, source_transfer_batch_no: 'WAREHOUSE-A', on_hand_quantity: 20, on_hand_weight: 20, owned_quantity: 60, owned_weight: 60 }
+  const pending = { ...seed, id: 104, batch_no: 'PENDING-A', source_transfer_id: 103, source_transfer_batch_no: 'PREVIOUS-A', status: 'pending' as const, quantity: 40, weight: 40, on_hand_quantity: null, on_hand_weight: null }
+  vi.spyOn(materialTransferApi, 'trace').mockResolvedValue({ ...snapshot.trace, items: [first, other, previous, pending] })
+  const { page } = await render('/material-trace?serial_no=000012')
+  page.getComponent(FlowPreviewCanvas).vm.zoom = vi.fn()
+  const filter = page.findAllComponents(ElSelect).find(select => select.props('ariaLabel') === '筛选来源入库批次')!
+  filter.vm.$emit('change', '101'); await flushPromises()
+  expect(page.getComponent(TraceStockSummary).props('trace').items.map(item => item.id)).toEqual([101, 103, 104])
+  page.getComponent(FlowPreviewCanvas).vm.$emit('select', { dataIndex: 0, data: { batchId: '104' } }); await flushPromises()
+  const detail = page.get('[aria-label="选中批次收发详情"]').text()
+  expect(detail).toContain('来源批次WAREHOUSE-A')
+  expect(detail).toContain('上一批次PREVIOUS-A')
+  expect(detail).toContain('已占用可转额度')
+  filter.vm.$emit('change', '102'); await flushPromises()
+  expect(page.getComponent(TraceStockSummary).props('trace').items).toHaveLength(1)
+  expect(page.find('.selection-chip').exists()).toBe(false)
+})
 it('labels the snapshot and does not query live stock or open a possibly unrelated real batch', async () => {
   const team = vi.spyOn(teamMaterialApi, 'serialHistory'), trace = vi.spyOn(materialTransferApi, 'trace')
   const { page } = await render('/flow-preview/team?sample=purposes')
@@ -72,7 +95,8 @@ it('shows a single SVG time canvas with both units and hover details instead of 
   expect(page.findComponent(MaterialTransferDrawer).exists()).toBe(false)
   const tooltip = canvas.props('option').tooltip as { triggerOn: string; formatter: (params: { dataIndex: number }) => string }
   expect(tooltip.triggerOn).toBe('mousemove')
-  expect(tooltip.formatter({ dataIndex: 1 })).toContain('2026-09-18 16:44:09.')
+  expect(page.get('[aria-label="选中批次收发详情"]').text()).toContain('上一批次')
+  expect(tooltip.formatter({ dataIndex: 1 })).toContain('点击查看详情')
   expect(tooltip.formatter({ dataIndex: 1 })).toContain('kg')
   expect(page.getComponent(FlowPreviewCanvas).props('option')).toHaveProperty('dataZoom')
 })

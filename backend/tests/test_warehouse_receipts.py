@@ -62,6 +62,35 @@ def test_manual_intake_is_a_locked_stock_origin_not_a_self_transfer(client, ware
     assert client.get(base+'/stock').json()['items'][0]['transfer']['id'] == receipt['id']
 
 
+def test_downstream_limit_uses_its_remaining_receipt_not_the_larger_warehouse_origin(client, warehouse):
+    origin = intake(client, warehouse, quantity=0, weight='100.000').json()
+    response = client.post(warehouse['url'].replace('/receipts', '/dispatches'), headers=warehouse['headers'], json={
+        'next_team_id': warehouse['other']['id'], 'idempotency_key': 'send-sixty',
+        'lines': [{'source_transfer_id': origin['id'], 'quantity': 0, 'weight': 60}],
+    })
+    assert response.status_code == 201, response.text
+    previous = response.json()['items'][0]
+    assert client.post(f"/api/material-transfers/{previous['batch_no']}/confirm", headers=warehouse['other_headers'],
+                       json={'idempotency_key': 'receive-sixty'}).status_code == 200
+    url = f"/api/team-materials/{warehouse['other']['id']}/dispatches"
+
+    def send(weight, key):
+        return client.post(url, headers=warehouse['other_headers'], json={
+            'next_team_id': warehouse['team']['id'], 'idempotency_key': key,
+            'lines': [{'source_transfer_id': previous['id'], 'quantity': 0, 'weight': weight}],
+        })
+
+    assert send(40, 'send-forty').status_code == 201
+    rejected = send('20.001', 'excessive-remainder')
+    assert rejected.status_code == 409
+    assert previous['batch_no'] in rejected.json()['detail']
+    assert '请调整重量或重新选择批次' in rejected.json()['detail']
+    accepted = send(20, 'send-twenty')
+    assert accepted.status_code == 201, accepted.text
+    assert accepted.json()['items'][0]['source_transfer_batch_no'] == previous['batch_no']
+    assert accepted.json()['items'][0]['delivery_origin_batch_no'] == origin['batch_no']
+
+
 def test_only_the_bound_warehouse_leader_can_intake(client, warehouse):
     payload = {'serial_no': 'WH', 'material_name': '铜', 'material_type': 'semi_finished',
                'quantity': 1, 'weight': 1, 'notes': '验收', 'idempotency_key': 'denied'}

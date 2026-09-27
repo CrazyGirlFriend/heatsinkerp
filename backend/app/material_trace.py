@@ -40,6 +40,9 @@ def serial_trace(db, serial_no, user):
         # Null means this document is not an accounted stock lot, not zero stock.
         item['on_hand_quantity'] = int(balance['on_hand_quantity']) if balance else None
         item['on_hand_weight'] = float(balance['on_hand_weight']) if balance else None
+        # Per-lot ownership lets a selected origin retain pending stock at its sender.
+        item['owned_quantity'] = int(balance['owned_quantity']) if balance else None
+        item['owned_weight'] = float(balance['owned_weight']) if balance else None
         items.append(item)
         if balance:
             quantity, weight = int(balance['on_hand_quantity']), balance['on_hand_weight']

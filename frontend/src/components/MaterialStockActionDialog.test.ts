@@ -73,7 +73,7 @@ describe('source batch dispatch and loss drafts', () => {
     expect(wrapper.text()).toContain('接收班组暂无启用业务，请联系该班组在工作台中启用。')
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
   })
-  it('splits one source into two typed lines and validates their combined quantity', async () => {
+  it('splits one source into two typed lines and validates their combined quantity and weight', async () => {
     await render('dispatch', [source()]); await destination(1)
     await wrapper.findAll('button').find(button => button.text() === '拆分物料')!.trigger('click')
     await flushPromises()
@@ -83,8 +83,12 @@ describe('source batch dispatch and loss drafts', () => {
     wrapper.findAllComponents(ElSelect).filter(select => select.props('ariaLabel')?.endsWith('物料类型'))[1]!.vm.$emit('update:modelValue', 'waste')
     await wrapper.get('textarea').setValue('加工废料回库'); await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('拆分后的合计超过本批可转出库存')
-    inputs[2]!.vm.$emit('update:modelValue', 20); await submit()
+    expect(wrapper.text()).toContain('件数超过当前可转出库存')
+    inputs[2]!.vm.$emit('update:modelValue', 20); inputs[3]!.vm.$emit('update:modelValue', 2.001)
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('本次提交超过上一批次的剩余可转重量，请调整重量或重新选择批次。')
+    inputs[3]!.vm.$emit('update:modelValue', 2); await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ next_team_id: 1, lines: [
       { source_transfer_id: 10, quantity: 80, weight: 8, material_type: 'semi_finished' },
       { source_transfer_id: 10, quantity: 20, weight: 2, material_type: 'waste' },
@@ -115,7 +119,7 @@ describe('source batch dispatch and loss drafts', () => {
     expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(100)
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledTimes(1)
-    expect(wrapper.text()).toContain('超过当前可转出库存')
+    expect(wrapper.text()).toContain('超过上一批次的剩余可转重量')
     wrapper.findAllComponents(ElInputNumber).forEach(input => input.vm.$emit('update:modelValue', 0.0))
     wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 1)
     wrapper.findAllComponents(ElInputNumber)[2]!.vm.$emit('update:modelValue', 1)

@@ -5,6 +5,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import FlowPreviewCanvas from '@/components/FlowPreviewCanvas.vue'
 import TraceStockSummary from '@/components/TraceStockSummary.vue'
+import TraceBatchDetail from '@/components/TraceBatchDetail.vue'
+import { traceOrigins, traceOriginScope } from '@/utils/traceOrigins'
 import PageBackButton from '@/components/PageBackButton.vue'
 import TeamFlowTimeline from '@/components/TeamFlowTimeline.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
@@ -35,16 +37,26 @@ const interaction = ref<FlowInteraction>('select')
 const teamRange = ref({ start: 0, end: 100 })
 let epoch = 0
 const localModel = computed(() => history.value ? teamFlowModel(history.value) : null)
-const chainModel = computed(() => traceFlowModel(trace.value?.items || [], trace.value?.observed_at))
+const originId = ref('all')
+const origins = computed(() => traceOrigins(trace.value?.items || []))
+const activeOrigin = computed(() => origins.value.groups.find(group => group.id === originId.value))
+const scopedTrace = computed(() => trace.value && activeOrigin.value ? traceOriginScope(trace.value, activeOrigin.value.items) : trace.value)
+const chainModel = computed(() => traceFlowModel(scopedTrace.value?.items || [], trace.value?.observed_at))
+const visibleOrigins = computed(() => activeOrigin.value ? [activeOrigin.value] : origins.value.groups)
+const originInput = computed(() => visibleOrigins.value.filter(group => group.batch.entry_kind === 'warehouse_receipt').reduce((sum, group) => sum + group.batch[metric.value], 0))
+async function changeOrigin(id: string) {
+  originId.value = id; selectedId.value = ''; teamRange.value = { start: 0, end: 100 }
+  await nextTick(); chart.value?.zoom(0)
+}
 const hasData = computed(() => mode.value === 'team' ? Boolean(history.value?.groups.length) : Boolean(trace.value?.items.length))
 const hasMetricData = computed(() => mode.value === 'chain' || Boolean(localModel.value?.links.some(link => link[metric.value] > 0)))
-const chartOption = computed(() => mode.value === 'team' && localModel.value ? teamFlowOption(localModel.value, metric.value) : traceFlowOption(chainModel.value, metric.value, selectedId.value, motion.value, interaction.value, zoomLevel.value))
+const chartOption = computed(() => mode.value === 'team' && localModel.value ? teamFlowOption(localModel.value, metric.value) : traceFlowOption(chainModel.value, metric.value, selectedId.value, motion.value, interaction.value, zoomLevel.value, origins.value.colors))
 const colors = computed(() => [...(mode.value === 'team' ? localModel.value?.palette || new Map<string, string>() : chainModel.value.palette)].map(([name, color]) => ({ name, color })))
 const detailOptions = computed(() => mode.value === 'team'
   ? (localModel.value?.nodes || []).map(node => ({ value: node.name, label: `${['来源', '业务', '去向'][node.depth]} · ${node.title}` }))
   : chainModel.value.nodes.map(node => ({ value: String(node.batch.id), label: `${node.batch.next_team.name} · ${node.batch.batch_no}` })))
 const chartHeight = computed(() => Math.max(560, (localModel.value?.nodes.filter(node => node.depth === 2).length || 0) * 52))
-const untracked = computed(() => mode.value === 'team' ? history.value?.untracked_count : trace.value?.untracked_count)
+const untracked = computed(() => mode.value === 'team' ? history.value?.untracked_count : scopedTrace.value?.untracked_count)
 const teamStock = computed(() => (history.value?.groups || []).reduce((sum, group) => ({
   quantity: sum.quantity + (group.owned_quantity ?? group.on_hand_quantity),
   weight: sum.weight + (group.owned_weight ?? group.on_hand_weight),
@@ -92,7 +104,7 @@ async function chooseDetail(id: string) {
   if (mode.value === 'team') selected.value = localModel.value?.nodes.find(node => node.name === id) || null
   else {
     const batch = chainModel.value.byId.get(id)?.batch
-    if (batch) { selectedId.value = id; await nextTick(); chart.value?.showBatch(id) }
+    if (batch) { selectedId.value = id; await nextTick(); chart.value?.zoom(0) }
   }
 }
 function pick(event: { dataIndex: number; dataType?: string; data: unknown }) {
@@ -121,7 +133,7 @@ function updateFullscreen() { fullscreen.value = document.fullscreenElement === 
 onMounted(() => document.addEventListener('fullscreenchange', updateFullscreen))
 const live = useLiveRefresh(() => load(true), { teamId: () => mode.value === 'team' ? teamId.value : undefined, enabled: () => Boolean(serial.value) && !example.value, busy: () => loading.value || Boolean(selected.value) || drawerOpen.value })
 watch(() => [route.path, route.params.view, route.query.serial_no, route.query.team_id, route.query.sample], () => {
-  ++epoch; loading.value = false; error.value = ''; selected.value = null; selectedId.value = ''; drawerOpen.value = false
+  ++epoch; loading.value = false; error.value = ''; selected.value = null; selectedId.value = ''; originId.value = 'all'; drawerOpen.value = false
   history.value = null; trace.value = null
   serial.value = example.value ? purposeSnapshot.history.serial_no : typeof route.query.serial_no === 'string' ? route.query.serial_no.trim() : ''; serialDraft.value = serial.value
   const id = example.value ? 8 : Number(route.query.team_id || currentUser.value?.team_id || 1)
@@ -147,7 +159,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
         <ElButton v-if="embedded" class="chain-fullscreen" :icon="FullScreen" :aria-pressed="fullscreen" @click="toggleFullscreen">{{ fullscreen ? '退出全屏' : '全屏查看' }}</ElButton>
         <ElPopover trigger="click" title="画布说明" :width="320" :append-to="pageRoot">
           <template #reference><ElButton class="header-icon" :icon="InfoFilled" aria-label="画布说明" title="画布说明" text /></template>
-          <div class="canvas-help"><p>滚轮缩放 · H 平移 · V 选择 · 双击还原</p><p>浅色横条为在库停留，不代表加工耗时。悬浮查看明细，点击仅高亮关联路径。</p><p>空心点为转出，实心点为接收；虚线为未完成交接。</p><p v-if="chainModel.extent">{{ traceTime(chainModel.first) }}<br>至 {{ traceTime(chainModel.last) }}（北京时间）</p><p v-if="timeIssues">{{ timeIssues }} 个批次时间异常，仅显示有效时间点。</p><p v-if="residenceIssues">{{ residenceIssues }} 个批次历史收发记录与库存对不上，暂不显示停留时间。</p><p v-if="untracked">{{ untracked }} 个历史批次未计入库存。</p><p v-if="colors.some(entry => entry.name === '未分类')">未登记接收业务的历史批次标为“未分类”。</p><p v-if="example">演示数据，不影响库存。</p></div>
+          <div class="canvas-help"><p>滚轮缩放 · H 平移 · V 选择 · 双击还原</p><p>颜色区分入库批次，浅色横条表示在库停留。点击节点，在图下方查看收发详情。</p><p>空心点为转出，实心点为接收；金色虚线表示待确认，物料仍计入转出班组库存。</p><p v-if="chainModel.extent">{{ traceTime(chainModel.first) }}<br>至 {{ traceTime(chainModel.last) }}（北京时间）</p><p v-if="timeIssues">{{ timeIssues }} 个批次时间异常，仅显示有效时间点。</p><p v-if="residenceIssues">{{ residenceIssues }} 个批次历史收发记录与库存对不上，暂不显示停留时间。</p><p v-if="untracked">{{ untracked }} 个历史批次未计入库存。</p><p v-if="colors.some(entry => entry.name === '未分类')">未登记接收业务的历史批次标为“未分类”。</p><p v-if="example">演示数据，不影响库存。</p></div>
         </ElPopover>
       </div>
     </header>
@@ -166,7 +178,14 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
         <TeamFlowTimeline :history="history" :example="example" @select="code => example ? selected = { title: code, description: '演示数据，不打开业务单据', quantity: 0, weight: 0, batches: [code] } : openBatch(code)" />
       </section>
       <section v-else-if="hasData && !loading" class="flow-workspace">
-        <header class="chart-toolbar"><div class="chain-legends"><div class="mark-legend" aria-label="图形说明"><span><i class="stay-mark" />在库停留</span><span><i class="departure-mark" />转出</span><span><i class="receipt-mark" />接收</span></div><div class="purpose-legend"><span class="legend-title">接收业务</span><span v-for="entry in colors" :key="entry.name"><i :style="{ background: entry.color }" />{{ entry.name }}</span></div></div><div class="chart-tools"><span v-if="timeIssues" class="data-warning">时间异常 {{ timeIssues }}</span><span v-if="residenceIssues" class="data-warning">历史不完整 {{ residenceIssues }}</span><span v-if="untracked" class="data-warning">未计入库存 {{ untracked }}</span><ElSelect class="detail-select" placeholder="定位批次" aria-label="选择图形明细" filterable :append-to="pageRoot" :model-value="selectedId || undefined" @change="chooseDetail"><ElOption v-for="option in detailOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect></div></header>
+        <div class="origin-filter">
+          <label>来源批次</label><ElSelect class="origin-select" aria-label="筛选来源入库批次" :append-to="pageRoot" :model-value="originId" filterable @change="changeOrigin"><ElOption value="all" :label="`全部来源批次（${origins.groups.length} 批）`" /><ElOption v-for="group in origins.groups" :key="group.id" :value="group.id" :label="`${group.name} · ${group.batch.batch_no}`" /></ElSelect>
+          <span class="origin-input">{{ activeOrigin?.batch.entry_kind === 'warehouse_receipt' || !activeOrigin ? '入库' : '起点物料' }} <strong>{{ num(activeOrigin && activeOrigin.batch.entry_kind !== 'warehouse_receipt' ? activeOrigin.batch[metric] : originInput) }}</strong> {{ metric === 'weight' ? 'kg' : '件' }}</span>
+        </div>
+        <header class="chart-toolbar">
+          <div class="chain-legends"><strong class="path-heading">流转路径 <small>{{ chainModel.nodes.length }} 笔记录</small></strong><div class="purpose-legend"><span v-for="group in visibleOrigins" :key="group.id" :title="group.batch.batch_no"><i :style="{ background: group.color }" />{{ group.name }}</span></div><div class="mark-legend" aria-label="图形说明"><span><i class="stay-mark" />在库停留</span><span><i class="departure-mark" />转出</span><span><i class="receipt-mark" />签收</span><span><i class="pending-mark" />待确认</span><span><i class="waste-mark" />废料</span></div></div>
+          <div class="chart-tools"><span v-if="timeIssues" class="data-warning">时间异常 {{ timeIssues }}</span><span v-if="residenceIssues" class="data-warning">历史不完整 {{ residenceIssues }}</span><span v-if="untracked" class="data-warning">未计入库存 {{ untracked }}</span><ElSelect class="detail-select" placeholder="选择转料批次" aria-label="选择图形明细" filterable :append-to="pageRoot" :model-value="selectedId || undefined" @change="chooseDetail"><ElOption v-for="option in detailOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect></div>
+        </header>
         <div class="chain-flow-region">
         <div class="canvas-area" :style="mode === 'team' ? { height: `${chartHeight}px` } : undefined">
           <FlowPreviewCanvas v-if="hasMetricData && (mode === 'team' || chainModel.extent)" :key="mode" ref="chart" :renderer="mode === 'chain' ? 'svg' : 'canvas'" :option="chartOption" :replay="replay" :motion="motion" :interaction="mode === 'chain' ? interaction : undefined" :label="`${serial}，${mode === 'team' ? history?.team_name + '收发流向' : '全链路时间画布；滚轮缩放，H键平移，V键选择，双击还原；加减键缩放，0键还原'}，件数和重量`" @select="pick" @zoom="zoomLevel = $event" @team-range="teamRange = $event" />
@@ -192,8 +211,9 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
             </div>
           </template>
         </div>
-        <TraceStockSummary v-if="trace" v-model:metric="metric" :trace="trace" :teams="chainModel.teams" :range="teamRange" :append-to="pageRoot" />
+        <TraceStockSummary v-if="scopedTrace" compact v-model:metric="metric" :trace="scopedTrace" :teams="chainModel.teams" :range="teamRange" :append-to="pageRoot" />
         </div>
+        <TraceBatchDetail :batch="selectedBatch || null" :origin="origins.originById.get(selectedId)" :example="example" @open="openBatch" />
       </section>
       <div v-else class="preview-empty"><span class="empty-orbit"><ElIcon><Search /></ElIcon></span><h2>{{ mode === 'chain' ? (loading ? '加载中…' : serial ? '暂无记录' : '输入流水号查询') : (loading ? '正在读取批次记录' : serial ? '未找到可展示的记录' : '从一个流水号开始') }}</h2><p v-if="mode === 'team'">{{ loading ? '按真实收发关系组织图形…' : '输入完整流水号，保留前导零。' }}</p></div>
     </div>
@@ -203,7 +223,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
         <p class="selection-label">{{ selected.batches.length }} 个关联批次{{ example ? ' · 演示数据，不打开业务单据' : '' }}</p><div class="selection-batches"><button v-for="row in selectionRows" :key="row.code" :disabled="example" @click="openBatch(row.code)"><b>{{ row.code }}</b><span v-if="row.amount">{{ amountLabel(row.amount) }}<em>{{ row.status }}</em></span><small v-if="row.at">{{ formatDateTime(row.at) }}</small><small v-else>查看原始批次</small></button></div>
       </div>
     </ElDrawer>
-    <MaterialTransferDrawer v-if="mode === 'team'" v-model="drawerOpen" :batch-no="batchNo" @changed="live.request" />
+    <MaterialTransferDrawer v-if="mode === 'team' || drawerOpen" v-model="drawerOpen" :batch-no="batchNo" @changed="live.request" />
   </div>
 </template>
 
@@ -284,4 +304,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
   .chain-flow-region .canvas-area { flex: none; height: 580px; min-height: 580px; }
   .chain-page:fullscreen { overflow: auto; }
 }
+.origin-filter { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--line); font-size: 13px; flex-shrink: 0; }.origin-filter label { color: var(--text); font-weight: 500; white-space: nowrap; }.origin-select { width: 340px; max-width: 65%; }.origin-input { margin-left: auto; color: var(--muted); white-space: nowrap; }.origin-input strong { color: var(--text); font-size: 20px; font-weight: 550; margin-left: 8px; }.path-heading { font-size: 14px; white-space: nowrap; font-weight: 600; }.path-heading small { font-weight: 400; font-size: 11px; color: var(--muted); margin-left: 6px; }
+.chain-page .chain-legends { gap: 10px 18px; }.chain-page .purpose-legend { gap: 7px 12px; font-size: 11px; }.chain-page .mark-legend { border: 0; padding: 0; gap: 12px; font-size: 11px; }.chain-page .mark-legend .departure-mark, .chain-page .mark-legend .receipt-mark { width: 10px; height: 10px; border-color: #52866b; }.chain-page .mark-legend .receipt-mark { background: #52866b; }.chain-page .mark-legend .stay-mark { width: 20px; height: 6px; background: #dfeae3; }.chain-page .mark-legend .waste-mark { width: 10px; height: 10px; border-color: #b48b50; background: #b48b50; }.chain-page .mark-legend .pending-mark { width: 20px; height: 0; border: 0; border-top: 2px dashed #b48b50; border-radius: 0; }.chain-page .canvas-controls { padding: 4px; border-radius: 12px; bottom: 8px; }.chain-page .canvas-controls button { width: 32px; height: 32px; border-radius: 8px; }.chain-page .canvas-controls .el-icon { font-size: 18px; }.chain-page .flow-workspace { overflow: visible; }.chain-page--embedded { min-height: 700px; }
+@media (max-width: 700px) { .origin-filter { flex-wrap: wrap; }.origin-select { flex: 1; max-width: none; width: auto; min-width: 160px; }.origin-input { flex-basis: 100%; text-align: right; }.chain-page--embedded { height: auto; min-height: calc(100dvh - var(--topbar-height)); }.chain-page .canvas-area { min-height: 520px; }.chain-page .chart-tools { margin-left: 0; }.chain-page .canvas-controls { bottom: 8px; }.chain-page .origin-filter label { font-size: 12px; } }
 </style>

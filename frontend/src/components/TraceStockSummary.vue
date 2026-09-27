@@ -7,7 +7,7 @@ import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
 import { historyNumber as num } from '@/utils/serialHistoryChart'
 import type { FlowMetric } from '@/utils/flowPreview'
 
-const props = defineProps<{ trace: MaterialTrace; teams: string[]; metric: FlowMetric; range: { start: number; end: number }; appendTo?: HTMLElement }>()
+const props = defineProps<{ trace: MaterialTrace; teams: string[]; metric: FlowMetric; range: { start: number; end: number }; appendTo?: HTMLElement; compact?: boolean }>()
 const emit = defineEmits<{ 'update:metric': [value: FlowMetric] }>()
 const unit = computed(() => props.metric === 'weight' ? 'kg' : '件')
 const available = computed(() => props.trace.holdings !== undefined)
@@ -49,8 +49,8 @@ const rows = computed(() => props.teams.map((name, index) => ({ name,
 </script>
 
 <template>
-  <aside class="trace-stock-summary" aria-label="流水号当前库存">
-    <header class="stock-heading"><h2>当前库存</h2><div class="stock-unit" role="group" aria-label="库存单位"><button type="button" :aria-pressed="metric === 'quantity'" @click="emit('update:metric', 'quantity')">件数</button><button type="button" :aria-pressed="metric === 'weight'" @click="emit('update:metric', 'weight')">重量</button></div></header>
+  <aside class="trace-stock-summary" :class="{ compact }" aria-label="流水号当前库存">
+    <header class="stock-heading"><h2>当前正常料库存</h2><div class="stock-unit" role="group" aria-label="库存单位"><button type="button" :aria-pressed="metric === 'quantity'" @click="emit('update:metric', 'quantity')">件数</button><button type="button" :aria-pressed="metric === 'weight'" @click="emit('update:metric', 'weight')">重量</button></div></header>
     <div class="stock-rows">
       <div v-for="row in rows" :key="row.name" class="stock-row" :class="{ 'stock-row--external': row.external }" :style="{ top: `${row.top}%`, height: `${10000 / teams.length / (range.end - range.start)}%` }" :data-team="row.name">
         <span class="stock-team">{{ row.name }}</span>
@@ -86,9 +86,11 @@ small { font-size: 11px; font-weight: 400; color: var(--muted); margin-left: 4px
 .stock-totals > div, .stock-waste { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }.stock-total strong { font-size: 17px; color: var(--primary); }.stock-totals b { font-weight: 500; }.stock-waste { border: 0; padding: 0; background: none; color: #8a6c3f; cursor: pointer; font: inherit; text-align: left; }.stock-waste i { font-size: 17px; font-style: normal; }.stock-waste:disabled { color: var(--muted); cursor: default; }.stock-shipped { color: var(--muted); }
 .stock-breakdown { max-height: min(420px, 55vh); overflow: auto; font-size: 13px; color: var(--text); }.stock-breakdown > div, .stock-breakdown section > div, .stock-breakdown header { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; }.stock-breakdown b { font-weight: 500; }.stock-waste-details section + section { border-top: 1px solid var(--line); margin-top: 4px; }.stock-waste-details section > div { color: var(--muted); padding-top: 0; }
 button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.compact { width: 190px; flex-basis: 190px; }.compact .stock-heading { height: 44px; gap: 5px; }.compact .stock-heading h2 { font-size: 13px; }.compact .stock-unit button { padding-block: 2px; font-size: 11px; }.compact .stock-rows { top: 44px; bottom: 100px; }.compact .stock-totals { height: 100px; gap: 10px; padding-top: 12px; }.compact .stock-value strong { font-size: 16px; }
 @media (max-width: 1100px) {
   .trace-stock-summary { width: auto; flex: none; border-left: 0; border-top: 1px solid var(--line); padding-top: 16px; }.stock-heading { height: auto; flex-direction: row; justify-content: space-between; align-items: center; padding-bottom: 12px; }
   .stock-rows { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }.stock-row { position: static; height: auto !important; min-height: 42px; transform: none; justify-content: space-between; gap: 8px; }.stock-team { display: inline; font-size: 13px; }.stock-row--external { display: none; }.stock-value strong { font-size: 16px; }
   .stock-totals { position: static; height: auto; margin-top: 8px; }.stock-totals > div, .stock-waste { min-height: 22px; }
 }
+@media (max-width: 1100px) { .compact { width: auto; flex-basis: auto; }.compact .stock-heading { height: auto; }.compact .stock-totals { height: auto; }.compact .stock-rows { position: static; } }
 </style>

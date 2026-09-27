@@ -3,6 +3,8 @@ import type { MaterialTransfer } from './materialTransfer'
 export interface TraceBatch extends MaterialTransfer {
   on_hand_quantity: number | null
   on_hand_weight: number | null
+  owned_quantity?: number | null
+  owned_weight?: number | null
 }
 export interface TraceAmount { quantity: number; weight: number }
 export interface TraceHolding {

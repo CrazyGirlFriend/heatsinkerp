@@ -148,6 +148,43 @@ def test_stock_idempotency_atomic_failure_and_permission_checks(client, stock_se
         assert db.scalar(select(func.count(MaterialLoss.id))) == 1
 
 
+@pytest.mark.parametrize("separate_requests", [False, True])
+def test_source_weight_limit_accumulates_all_pending_splits(client, stock_setup, separate_requests):
+    setup = stock_setup
+    lot = receive_lot(client, setup, quantity=0, weight="100.000")
+
+    def portion(weight):
+        return {"source_transfer_id": lot["id"], "quantity": 0, "weight": weight}
+
+    # The same source cannot exceed its weight within one request either.
+    excessive = dispatch(client, setup, [portion("60.000"), portion("40.001")],
+                         idempotency_key="excessive-split")
+    assert excessive.status_code == 409, excessive.text
+    assert totals(client, setup)["available_weight"] == 100
+    assert totals(client, setup)["reserved_weight"] == 0
+
+    groups = [[portion("30.000")], [portion("50.000")]] if separate_requests else [
+        [portion("30.000"), portion("50.000")]
+    ]
+    for index, lines in enumerate(groups):
+        response = dispatch(client, setup, lines, idempotency_key=f"split-{index}")
+        assert response.status_code == 201, response.text
+        assert all(item["status"] == "pending" for item in response.json()["items"])
+    assert totals(client, setup)["available_weight"] == 20
+    assert totals(client, setup)["reserved_weight"] == 80
+
+    # Pending receipts already reserve weight; only the remaining 20 kg can leave.
+    excess = dispatch(client, setup, [portion("20.001")], idempotency_key="exceeds-remainder")
+    assert excess.status_code == 409, excess.text
+    assert "本次提交超过上一批次的剩余可转重量" in excess.json()["detail"]
+    assert lot["batch_no"] in excess.json()["detail"]
+    exact = dispatch(client, setup, [portion("20.000")], idempotency_key="exact-remainder")
+    assert exact.status_code == 201, exact.text
+    assert totals(client, setup)["available_weight"] == 0
+    assert totals(client, setup)["reserved_weight"] == 100
+    assert dispatch(client, setup, [portion("0.001")], idempotency_key="exhausted").status_code == 409
+
+
 def test_linked_edits_adjust_reservation_without_rewriting_identity(client, stock_setup):
     setup = stock_setup
     lot = receive_lot(client, setup)

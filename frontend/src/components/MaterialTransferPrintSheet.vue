@@ -20,6 +20,7 @@ const fields = computed(() => {
     { label: receipt.value || external.value ? '登记人' : '转料人', value: transfer.transferred_by || '—' },
     { label: opening.value ? '登记班组' : receipt.value ? '入库库房' : external.value ? `${verb.value}去向` : '接收班组', value: external.value ? transfer.external_destination || '—' : transfer.next_team.name },
     { label: '接收业务', value: materialPurposeLabel(transfer) },
+    ...(transfer.source_transfer_batch_no ? [{ label: '上一批次', value: transfer.source_transfer_batch_no }] : []),
     { label: '物料类型', value: materialTypeLabel(transfer.material_type) },
     { label: '原单批号', value: transfer.source_batch_no || '—' },
     { label: '材质', value: transfer.material_name || '—' },
