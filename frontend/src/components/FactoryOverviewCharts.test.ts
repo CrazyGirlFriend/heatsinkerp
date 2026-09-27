@@ -48,6 +48,7 @@ describe('factory analysis charts', () => {
     try {
       const card = wrapper.get('.factory-chart--types')
       expect(card.get('h2').text()).toBe('物料性质分布')
+      expect(card.text()).not.toContain('重量占比')
       const headers = () => card.findAll('thead th').map(cell => cell.text())
       expect(headers()).toEqual(['性质', '重量 (kg)'])
       const values = () => card.findAll('tbody tr').map(row => row.findAll('th, td').map(cell => cell.text()))
@@ -59,7 +60,7 @@ describe('factory analysis charts', () => {
       expect(chart.props('option')).toMatchObject({ series: [{ data: [{ value: 1200 }, { value: 0 }, { value: 2 }] }] })
       expect(headers()).toEqual(['性质', '件数'])
       expect(values()).toEqual([['成品', '1,200'], ['废泥', '0'], ['未填写性质', '2']])
-      expect(card.text()).toContain('件数占比')
+      expect(card.text()).not.toContain('件数占比')
       await wrapper.setProps({ metric: 'weight' })
       expect(headers()).toEqual(['性质', '重量 (kg)'])
       expect(values()).toEqual(expected)

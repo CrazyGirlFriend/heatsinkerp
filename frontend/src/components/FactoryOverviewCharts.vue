@@ -66,8 +66,8 @@ function pick(key: string, index: number) { const team = props.data.teams[index]
 </script>
 <template>
   <section class="factory-charts" :data-scene="scene" aria-label="全厂物料分析">
-    <article v-for="card in cards" :key="card.key" class="factory-chart" :class="`factory-chart--${card.key}`">
-      <header><h2 :title="card.hint">{{ card.title }}</h2><span>{{ card.key === 'types' ? `${metric === 'weight' ? '重量' : '件数'}占比` : unit }}</span></header>
+    <article v-for="card in cards" :key="card.key" class="factory-chart" :class="[`factory-chart--${card.key}`, { 'factory-chart--nature': card.key === 'types' && materialTypes.length }]">
+      <header><h2 :title="card.hint">{{ card.title }}</h2><span v-if="card.key !== 'types'">{{ unit }}</span></header>
       <div class="factory-chart-content" :class="{ 'nature-content': card.key === 'types' && materialTypes.length }">
         <LedgerChart :option="card.option" :empty="card.empty" :label="`${card.title}，单位${unit}`" smooth-update :motion="motion" @select="pick(card.key, $event.dataIndex)" />
         <div v-if="card.key === 'types' && materialTypes.length" class="nature-table-scroll" tabindex="0" role="region" aria-label="物料性质库存明细">
@@ -88,15 +88,18 @@ function pick(key: string, index: number) { const team = props.data.teams[index]
 .factory-chart--serials, .factory-chart--materials { grid-column: span 6; }
 .factory-chart-content { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .factory-chart--teams, .factory-chart--types { grid-column: span 4; }
-.nature-content { display: grid; grid-template-columns: minmax(65px, .65fr) minmax(0, 1.7fr); gap: 12px; align-items: center; }
-.nature-content .ledger-chart-frame { height: 130px; }
-.nature-table-scroll { min-width: 0; max-height: 100%; overflow: auto; scrollbar-width: thin; }
-.nature-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; line-height: 20px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.nature-table th, .nature-table td { padding: 5px 3px; border-bottom: 1px solid var(--dashboard-line); text-align: right; }
+.factory-chart--nature { display: grid; grid-template-columns: minmax(100px, .8fr) minmax(0, 1.7fr); grid-template-rows: auto minmax(0, 1fr); gap: 8px 12px; }
+.factory-chart--nature > header { grid-area: 1 / 1; }
+.nature-content { display: contents; }
+.nature-content .ledger-chart-frame { grid-area: 2 / 1; align-self: center; height: 130px; }
+.nature-table-scroll { grid-area: 1 / 2 / -1 / 3; align-self: start; min-width: 0; max-height: 100%; overflow: auto; scrollbar-width: thin; }
+.nature-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nature-table th, .nature-table td { padding: 2px 3px; border-bottom: 1px solid var(--dashboard-line); text-align: right; }
 .nature-table thead th { position: sticky; top: 0; z-index: 1; background: var(--dashboard-surface); color: var(--dashboard-muted); font-weight: 400; }
 .nature-table th:first-child { padding-left: 0; text-align: left; }.nature-table tbody th { font-weight: 400; }.nature-table td:last-child, .nature-table th:last-child { padding-right: 0; }
 .nature-table tbody tr:last-child > * { border-bottom: 0; }.nature-table i { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; vertical-align: 1px; }
 .nature-table-scroll:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 3px; }
+@media (min-width: 1101px) and (min-height: 801px) { .nature-table th, .nature-table td { padding-block: 5px; } }
 @media (min-width: 1101px) and (max-height: 800px) { .factory-charts { gap: 12px; }.factory-chart { padding: 12px 16px 10px; }.factory-chart header { margin-bottom: 8px; } }
 @media (max-width: 1100px) { .factory-charts { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: 300px; height: auto; }.factory-chart { grid-column: span 1; }.factory-charts:not([data-scene="stock"]) .factory-chart:last-child { grid-column: 1 / -1; }.factory-charts[data-scene="stock"] { grid-auto-rows: 310px; } }
 @media (max-width: 640px) { .factory-charts { grid-template-columns: minmax(0, 1fr); grid-auto-rows: 280px; }.factory-chart { padding: 16px 14px 12px; }.factory-charts[data-scene="stock"] { grid-auto-rows: 300px; } }
