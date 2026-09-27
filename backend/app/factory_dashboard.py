@@ -11,18 +11,16 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from .async_api import AsyncAPIRouter
-from .auth import actor_name, get_current_user, require_admin
+from .auth import get_current_user
 from .config import settings
 from .configure_material_teams import MATERIAL_TEAMS
 from .database import get_db
 from .material_stock import literal_query, stock_table
-from .models import AdminAuditEvent, MaterialTransfer, SerialDeliveryPlan, Team, User, utcnow
-from .observability import record, request_id
+from .models import MaterialTransfer, SerialDeliveryPlan, Team, utcnow
 from .record_filters import day_bounds
 from .schemas import SCRAP_MATERIAL_TYPES
 from .serial_urgency import urgency_map
@@ -433,34 +431,6 @@ def get_stock_detail(
     }
 
 
-class Installment(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    label: str = Field(min_length=1, max_length=60)
-    due_date: date
-    quantity: int = Field(gt=0, le=2_147_483_647)
-
-    @field_validator("label")
-    @classmethod
-    def clean_label(cls, value):
-        if not value.strip():
-            raise ValueError("批次名称不能为空")
-        return value.strip()
-
-    @field_validator("due_date")
-    @classmethod
-    def supported_date(cls, value):
-        if not date(2000, 1, 1) <= value <= date(2100, 12, 31):
-            raise ValueError("交期须在2000至2100年之间")
-        return value
-
-
-class PlanUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    serial_no: str = Field(min_length=1, max_length=80)
-    expected_version: int = Field(ge=0)
-    installments: list[Installment] = Field(max_length=100)
-
-
 @router.get("/delivery-plan")
 def get_plan(serial_no: str = Query(min_length=1, max_length=80), db: Session = Depends(get_db)):
     if not db.scalar(
@@ -476,85 +446,54 @@ def get_plan(serial_no: str = Query(min_length=1, max_length=80), db: Session = 
 
 
 @router.put("/delivery-plan")
-def save_plan(
-    payload: PlanUpdate, user: User = Depends(require_admin), db: Session = Depends(get_db)
-):
-    serial = payload.serial_no.strip()
-    with db.begin():
-        origin = db.scalar(
-            select(mt.id)
-            .where(mt.serial_no == serial, mt.status != "voided")
-            .order_by(mt.id)
-            .limit(1)
-            .with_for_update()
-        )
-        if origin is None:
-            raise HTTPException(404, "未找到流水号")
-        row = db.scalar(
-            select(SerialDeliveryPlan)
-            .where(SerialDeliveryPlan.serial_no == serial)
-            .with_for_update()
-        )
-        if (row.version if row else 0) != payload.expected_version:
-            raise HTTPException(409, "交付计划已更新，请重新打开后修改")
-        before = row.installments if row else []
-        if row is None:
-            row = SerialDeliveryPlan(serial_no=serial, version=0)
-            db.add(row)
-        row.installments = sorted(
-            [part.model_dump(mode="json") for part in payload.installments],
-            key=lambda p: p["due_date"],
-        )
-        row.version += 1
-        row.updated_by = actor_name(user)
-        row.updated_at = utcnow()
-        db.add(
-            AdminAuditEvent(
-                actor_user_id=user.id,
-                actor=actor_name(user),
-                target_type="delivery_plan",
-                target_id=origin,
-                action="updated",
-                request_id=request_id.get(),
-                changes={
-                    "serial_no": serial,
-                    "before": before,
-                    "after": row.installments,
-                    "version": row.version,
-                },
-            )
-        )
-        db.flush()
-        result = {"serial_no": serial, "version": row.version, "installments": row.installments}
-    record(
-        "delivery_plan.updated",
-        actor_id=user.id,
-        version=result["version"],
-        installment_count=len(result["installments"]),
-    )
-    return result
+def save_plan():
+    raise HTTPException(410, "交期已改为在源头批次单据上填写，请打开对应转料单或入库单")
 
 
 def delivery_rows(db, today):
-    plans = list(db.scalars(select(SerialDeliveryPlan).order_by(SerialDeliveryPlan.serial_no)))
+    plans = defaultdict(list)
+    # Historical plans remain visible, explicitly distinguished from batch-owned requirements.
+    for plan in db.scalars(select(SerialDeliveryPlan).order_by(SerialDeliveryPlan.serial_no)):
+        plans[plan.serial_no].extend(
+            {**part, "source_batch_no": None, "legacy": True} for part in plan.installments
+        )
+    for origin in db.execute(
+        select(mt.serial_no, mt.batch_no, mt.delivery_date, mt.delivery_quantity).where(
+            mt.delivery_origin_id.is_(None),
+            mt.source_transfer_id.is_(None),
+            mt.status != "voided",
+            mt.delivery_date.is_not(None),
+        )
+    ):
+        plans[origin.serial_no].append(
+            {
+                "label": origin.batch_no,
+                "due_date": origin.delivery_date.isoformat(),
+                "quantity": origin.delivery_quantity,
+                "source_batch_no": origin.batch_no,
+                "legacy": False,
+            }
+        )
     shipments = defaultdict(list)
     # Historical confirmation times determine completion, not today's balance.
     for row in db.execute(
         select(mt.serial_no, mt.dispatched_at, func.sum(mt.quantity).label("quantity"))
-        .where(finished_shipments(), mt.serial_no.in_([p.serial_no for p in plans]))
+        .where(finished_shipments(), mt.serial_no.in_(list(plans)))
         .group_by(mt.serial_no, mt.dispatched_at)
         .order_by(mt.dispatched_at)
     ):
         shipments[row.serial_no].append((local_day(row.dispatched_at), int(row.quantity)))
     rows = []
-    for plan in plans:
+    for serial, installments in plans.items():
         cumulative = 0
-        total_shipped = sum(q for _, q in shipments[plan.serial_no])
-        for index, part in enumerate(sorted(plan.installments, key=lambda p: p["due_date"])):
+        total_shipped = sum(q for _, q in shipments[serial])
+        for index, part in enumerate(
+            sorted(installments, key=lambda p: (p["due_date"], p["label"]))
+        ):
             start, cumulative = cumulative, cumulative + part["quantity"]
             confirmed, completed = min(part["quantity"], max(0, total_shipped - start)), None
             running = 0
-            for day, quantity in shipments[plan.serial_no]:
+            for day, quantity in shipments[serial]:
                 running += quantity
                 if running >= cumulative:
                     completed = day
@@ -569,7 +508,7 @@ def delivery_rows(db, today):
             )
             rows.append(
                 {
-                    "serial_no": plan.serial_no,
+                    "serial_no": serial,
                     "index": index,
                     **part,
                     "shipped": confirmed,

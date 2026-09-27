@@ -49,7 +49,7 @@ def test_manual_intake_is_a_locked_stock_origin_not_a_self_transfer(client, ware
     assert [event['action'] for event in receipt['history']] == ['stocked']
     assert receipt['history'][0]['changes']['entry_kind']['after'] == 'warehouse_receipt'
     detail_url = f"/api/material-transfers/{receipt['batch_no']}"
-    assert client.get(detail_url).json() == receipt
+    assert client.get(detail_url, headers=warehouse['headers']).json() == receipt
     assert client.patch(detail_url, headers=warehouse['headers'], json={'quantity': 200}).status_code == 403
     assert client.delete(detail_url, headers=warehouse['headers']).status_code == 403
     assert client.post(detail_url+'/confirm', headers=warehouse['headers'], json={'idempotency_key': 'double-receive'}).status_code == 409
@@ -119,7 +119,7 @@ def test_new_intake_does_not_query_empty_history_but_retry_keeps_later_losses(cl
     replay = intake(client, warehouse)
     assert replay.status_code == 201
     assert replay.json()['loss_records'][0]['reason'] == '复核丢失'
-    assert replay.json() == client.get(f"/api/material-transfers/{receipt['batch_no']}").json()
+    assert replay.json() == client.get(f"/api/material-transfers/{receipt['batch_no']}", headers=warehouse["headers"]).json()
 
 
 def test_intake_audit_failure_rolls_back_number_and_stock(client, warehouse):
@@ -144,7 +144,7 @@ def test_first_response_and_audit_use_persisted_database_time_precision(client, 
     receipt = first.json()
     retry = intake(client, warehouse).json()
     assert receipt == retry
-    assert receipt == client.get(f"/api/material-transfers/{receipt['batch_no']}").json()
+    assert receipt == client.get(f"/api/material-transfers/{receipt['batch_no']}", headers=warehouse["headers"]).json()
     assert receipt['history'][0]['occurred_at'] == receipt['received_at']
     assert receipt['history'][0]['changes']['created_at']['after'] == receipt['created_at'].replace('Z', '+00:00')
 

@@ -14,12 +14,12 @@ from app import main_system
 from app.config import settings
 from app.database import SessionLocal
 from app.models import MaterialTransfer
-from app.schemas import MaterialTransferDocumentFields
+from app.schemas import MaterialDocumentFields
 from test_warehouse_receipts import warehouse
 
 
 def record(**changes):
-    document = dict.fromkeys(MaterialTransferDocumentFields.model_fields)
+    document = dict.fromkeys(MaterialDocumentFields.model_fields)
     document.update(material_name="铜钼 CuMo70", product_code="P-001", part_no="J-001",
                     source_batch_no="RAW-001", customer_code="C-001",
                     finished_specification="30×20×2 mm", transfer_specification="32×22×2 mm",
@@ -186,7 +186,7 @@ def test_redirect_handler_does_not_forward_credentials():
 
 def test_schema_requires_every_document_key():
     schema = main_system.MainSystemSerial.model_json_schema()
-    assert set(schema['$defs']['MainSystemDocument']['required']) == set(MaterialTransferDocumentFields.model_fields)
+    assert set(schema['$defs']['MainSystemDocument']['required']) == set(MaterialDocumentFields.model_fields)
     root = Path(__file__).resolve().parents[2]
     published = json.loads((root / 'docs/contracts/main-system-serial.schema.json').read_text())
     assert schema == published

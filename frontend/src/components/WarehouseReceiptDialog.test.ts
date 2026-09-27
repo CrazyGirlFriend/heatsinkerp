@@ -40,6 +40,19 @@ async function fill() {
 async function submit() { await wrapper.get('form').trigger('submit'); await flushPromises() }
 
 describe('warehouse manual receipt', () => {
+  it('saves the origin requirement together with the receipt and preserves it in an uncertain retry', async () => {
+    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(new TeamMaterialApiError('网络中断'))
+    await render(); await fill()
+    await wrapper.get('input[aria-label="要求发货日期"]').setValue('2026-10-01')
+    await amount('应发成品件数', 80); await submit()
+    const body = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
+    expect(body).toMatchObject({ delivery_date: '2026-10-01', delivery_quantity: 80 })
+    wrapper.unmount(); await render()
+    expect((wrapper.get('input[aria-label="要求发货日期"]').element as HTMLInputElement).value).toBe('2026-10-01')
+    await submit()
+    expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]).toEqual(body)
+  })
+
   it('records an external return against the existing serial and optional CK', async () => {
     await render(); await fill()
     wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'return'); await flushPromises()

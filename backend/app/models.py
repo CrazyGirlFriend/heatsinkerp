@@ -169,6 +169,15 @@ class MaterialTransfer(Base):
             name="ck_material_transfers_finished_quantity",
         ),
         CheckConstraint(
+            "(delivery_date IS NULL AND delivery_quantity IS NULL) OR "
+            "(delivery_date IS NOT NULL AND delivery_quantity IS NOT NULL AND delivery_quantity > 0)",
+            name="ck_mt_delivery_pair",
+        ),
+        CheckConstraint(
+            "delivery_origin_id IS NULL OR (delivery_date IS NULL AND delivery_quantity IS NULL)",
+            name="ck_mt_delivery_origin",
+        ),
+        CheckConstraint(
             "(entry_kind IN ('transfer', 'warehouse_outbound', 'inspection_shipment') AND source_team_id IS NOT NULL AND source_team_code IS NOT NULL AND source_team_name IS NOT NULL) OR "
             "(entry_kind IN ('warehouse_receipt', 'opening_stock') AND source_team_id IS NULL AND source_team_code IS NULL AND source_team_name IS NULL "
             "AND source_transfer_id IS NULL AND dispatch_id IS NULL AND status = 'received' AND stock_tracked = 1)",
@@ -239,6 +248,18 @@ class MaterialTransfer(Base):
     finished_specification: Mapped[str | None] = mapped_column(String(240))
     transfer_specification: Mapped[str | None] = mapped_column(String(240))
     finished_quantity: Mapped[int | None] = mapped_column(Integer)
+    # Delivery requirements live on the origin; split handoffs only reference it.
+    delivery_date: Mapped[date | None] = mapped_column(Date)
+    delivery_quantity: Mapped[int | None] = mapped_column(Integer)
+    delivery_origin_id: Mapped[int | None] = mapped_column(
+        ForeignKey("material_transfers.id", ondelete="RESTRICT"), index=True
+    )
+    delivery_origin: Mapped[MaterialTransfer | None] = relationship(
+        remote_side="MaterialTransfer.id",
+        foreign_keys=[delivery_origin_id],
+        lazy="selectin",
+        join_depth=1,
+    )
     customer_code: Mapped[str | None] = mapped_column(String(80))
     technical_requirements: Mapped[str | None] = mapped_column(Text)
     product_code: Mapped[str | None] = mapped_column(String(80))

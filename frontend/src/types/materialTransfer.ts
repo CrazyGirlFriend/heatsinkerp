@@ -66,6 +66,8 @@ export type MaterialTransferTextField = typeof materialDocumentTextFields[number
 export type MaterialTransferDocumentFields = Record<MaterialTransferTextField, string | null> & {
   material_type: MaterialType | null
   finished_quantity: number | null
+  delivery_date: string | null
+  delivery_quantity: number | null
 }
 
 export interface MaterialTransferHistoryEntry {
@@ -84,6 +86,8 @@ export interface MaterialTransferTeam {
 }
 
 export interface MaterialTransfer extends Partial<MaterialTransferDocumentFields> {
+  delivery_origin_batch_no?: string | null
+  can_edit_delivery?: boolean
   purpose_id?: number | null
   purpose_name?: string | null
   urgency?: import('./recordFilters').SerialUrgency

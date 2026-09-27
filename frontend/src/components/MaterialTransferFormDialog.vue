@@ -19,6 +19,8 @@ import { MaterialTransferApiError, materialTransferApi } from '@/services/materi
 import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/stores/toast'
 import { useTeamPurposes } from '@/composables/useTeamPurposes'
+import MaterialDeliveryFields from './MaterialDeliveryFields.vue'
+import { deliveryError } from '@/utils/materialDelivery'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { canEditMaterialTransfer, externalActionLabel, isExternalTransfer, materialDocumentTextFields, materialTransferVersion, materialTypeOptions, type MaterialTransfer, type MaterialTransferTextField, type MaterialType } from '@/types/materialTransfer'
 
@@ -46,6 +48,8 @@ const createRequestFingerprint = ref('')
 const openedSourceTeamId = ref<string | number | null>(null)
 const form = reactive({
   serialNo: '',
+  deliveryDate: '',
+  deliveryQuantity: undefined as number | undefined,
   nextTeamId: '' as string | number,
   purposeId: null as number | null,
   quantity: undefined as number | undefined,
@@ -85,6 +89,8 @@ function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
   openedSourceTeamId.value = authStore.currentUser?.team_id ?? null
   editingSnapshot.value = transfer
   form.serialNo = transfer?.serial_no ?? ''
+  form.deliveryDate = transfer?.delivery_date ?? ''
+  form.deliveryQuantity = transfer?.delivery_quantity ?? undefined
   form.nextTeamId = transfer?.next_team.id ?? ''
   form.purposeId = transfer?.purpose_id ?? null
   form.quantity = transfer?.quantity
@@ -126,6 +132,10 @@ function validate(): boolean {
   else if (form.notes.trim().length > 2000) formError.value = `${notesLabel.value}不能超过 2000 个字符`
   else formError.value = ''
   if (formError.value) { activeTab.value = 'handoff'; return false }
+  if (!linkedSource.value && !external.value) {
+    formError.value = deliveryError(form.deliveryDate, form.deliveryQuantity)
+    if (formError.value) { activeTab.value = 'handoff'; return false }
+  }
   if (form.finishedQuantity != null && (!Number.isInteger(form.finishedQuantity) || form.finishedQuantity < 0 || form.finishedQuantity > 2147483647)) {
     formError.value = '成品件数须为非负整数，不能超过 2147483647'
     activeTab.value = 'document'
@@ -164,6 +174,7 @@ async function submit(): Promise<void> {
   formError.value = ''
   const payload = {
     serial_no: form.serialNo.trim(),
+    ...(!linkedSource.value && !external.value ? { delivery_date: form.deliveryDate || null, delivery_quantity: form.deliveryQuantity ?? null } : {}),
     next_team_id: form.nextTeamId,
     ...(!external.value && (form.purposeId || editingSnapshot.value?.purpose_id) ? { purpose_id: form.purposeId } : {}),
     quantity: Number(form.quantity),
@@ -281,6 +292,8 @@ onBeforeUnmount(() => { ++formGeneration })
       <ElFormItem label="流水号" required>
         <ElInput v-model="form.serialNo" aria-label="流水号" maxlength="80" show-word-limit clearable :disabled="!canSubmit || linkedSource || external" placeholder="输入工件流水号" />
       </ElFormItem>
+      <MaterialDeliveryFields v-if="!external" v-model:date="form.deliveryDate" v-model:quantity="form.deliveryQuantity" :disabled="!canSubmit || linkedSource" />
+      <p v-if="linkedSource && form.deliveryDate" class="delivery-origin">交期沿用源头批次 {{ editingSnapshot?.delivery_origin_batch_no }}</p>
       <div class="quantity-grid">
         <ElFormItem :label="external ? `${actionLabel}件数` : '转料件数'" required>
           <ElInputNumber v-model="form.quantity" :aria-label="external ? `${actionLabel}件数` : '转料件数'" :min="0" :max="2147483647" :step="1" :precision="0" controls-position="right" :disabled="!canSubmit" />

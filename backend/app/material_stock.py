@@ -254,11 +254,14 @@ def create_dispatch(db, team_id, payload, user):
             for line, batch_no in zip(payload.lines, batch_numbers, strict=True):
                 lot = lots[line.source_transfer_id]
                 fields = {field: getattr(lot, field) for field in workflow.DOCUMENT_FIELDS}
+                # A split inherits its origin's live requirement, never a second planned quantity.
+                fields.update(delivery_date=None, delivery_quantity=None)
                 if "material_type" in line.model_fields_set:
                     fields["material_type"] = line.material_type
                 transfer = MaterialTransfer(
                     batch_no=batch_no, serial_no=lot.serial_no, **fields, **purposes[line.purpose_id],
                     source_transfer_id=lot.id, dispatch_id=dispatch.id,
+                    delivery_origin_id=lot.delivery_origin_id or lot.id,
                     source_team_id=source.id, source_team_code=source.code, source_team_name=source.name,
                     **destination,
                     quantity=line.quantity, weight=line.weight, status="pending", notes=payload.notes,

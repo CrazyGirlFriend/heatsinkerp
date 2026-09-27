@@ -14,6 +14,7 @@ import MaterialTransferStatus from '@/components/MaterialTransferStatus.vue'
 import MaterialTransferDocumentFields from '@/components/MaterialTransferDocumentFields.vue'
 import MaterialTransferHistory from '@/components/MaterialTransferHistory.vue'
 import MaterialTransferFormDialog from '@/components/MaterialTransferFormDialog.vue'
+import MaterialDeliveryDialog from './MaterialDeliveryDialog.vue'
 import MaterialTransferPrintSheet from '@/components/MaterialTransferPrintSheet.vue'
 import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
 import { isDispatchNumber } from '@/types/teamMaterials'
@@ -68,13 +69,14 @@ const loadError = ref('')
 const confirming = ref(false)
 const voiding = ref(false)
 const editOpen = ref(false)
+const deliveryOpen = ref(false), deliveryBusy = ref(false)
 const printReady = ref(false)
 const reviewNotice = ref('')
 let requestVersion = 0
 let actionVersion = 0
 let confirmKey = ''
 onBeforeUnmount(() => { ++requestVersion; ++actionVersion })
-watch([confirming, voiding], ([confirmBusy, voidBusy]) => emit('busyChange', confirmBusy || voidBusy), { flush: 'sync' })
+watch([confirming, voiding, deliveryBusy], ([confirmBusy, voidBusy, deadlineBusy]) => emit('busyChange', confirmBusy || voidBusy || deadlineBusy), { flush: 'sync' })
 
 const effectiveBatchNo = computed(() => props.batchNo.trim() || props.transfer?.batch_no || '')
 const canEdit = computed(() => Boolean(current.value && !loadError.value && !loading.value && canEditMaterialTransfer(current.value)))
@@ -117,7 +119,7 @@ function newIdempotencyKey(): string {
   return globalThis.crypto?.randomUUID?.() || `confirm-transfer-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-const freezeLive = computed(() => loading.value || confirming.value || voiding.value || editOpen.value || printReady.value || groupOpen.value)
+const freezeLive = computed(() => loading.value || confirming.value || voiding.value || editOpen.value || deliveryOpen.value || printReady.value || groupOpen.value)
 const liveRefresh = useLiveRefresh(() => load(false, true), {
   enabled: () => props.modelValue && Boolean(effectiveBatchNo.value), busy: () => freezeLive.value,
 })
@@ -149,8 +151,8 @@ async function load(resetKey: unknown = true, background = false): Promise<void>
 }
 
 function close(): void {
-  if (confirming.value || voiding.value) return
-  editOpen.value = false
+  if (confirming.value || voiding.value || deliveryBusy.value) return
+  editOpen.value = false; deliveryOpen.value = false
   ++requestVersion
   emit('update:modelValue', false)
 }
@@ -303,11 +305,11 @@ watch(
     ++actionVersion; confirming.value = false; voiding.value = false
     if (!open) {
       ++requestVersion
-      editOpen.value = false
+      editOpen.value = false; deliveryOpen.value = false
       return
     }
     current.value = props.transfer || null
-    editOpen.value = false
+    editOpen.value = false; deliveryOpen.value = false
     confirmKey = newIdempotencyKey()
     void load()
   },
@@ -330,7 +332,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
   groupOpen.value = false
   ++requestVersion
   ++actionVersion; confirming.value = false; voiding.value = false
-  editOpen.value = false
+  editOpen.value = false; deliveryOpen.value = false
   current.value = null
   emit('update:modelValue', false)
 })
@@ -338,7 +340,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
 </script>
 
 <template>
-  <MaterialTransferDetailFrame :model-value="modelValue && !groupOpen" :docked="docked" :busy="confirming || voiding" @close="close">
+  <MaterialTransferDetailFrame :model-value="modelValue && !groupOpen" :docked="docked" :busy="confirming || voiding || deliveryBusy" @close="close">
     <template #header>
       <header class="drawer-heading">
         <span>{{ opening ? '期初库存' : receipt ? '库房手工入库' : external ? `${actionLabel}详情` : '转料详情' }}</span>
@@ -366,6 +368,8 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
         <ElButton v-if="canReject" type="warning" plain :disabled="confirming || voiding" @click="rejectTransfer">退回核对</ElButton>
         <ElButton v-if="canConfirm" type="primary" :icon="CircleCheck" :loading="confirming" @click="confirmReceipt">确认接收</ElButton>
         <ElButton v-if="canConfirmExternal" type="primary" :icon="CircleCheck" :loading="confirming" @click="confirmExternal">确认{{ actionLabel }}</ElButton>
+        <ElButton v-if="current.can_edit_delivery && !loadError && !loading" :disabled="confirming || voiding" @click="deliveryOpen = true">维护交期</ElButton>
+        <a v-if="current.delivery_origin_batch_no && current.delivery_origin_batch_no !== current.batch_no" :href="'/transfer-batches/scan?batch_no=' + encodeURIComponent(current.delivery_origin_batch_no)">查看交期源单</a>
         <ElButton v-if="canEdit" type="primary" :icon="EditPen" :disabled="voiding" @click="editOpen = true">编辑</ElButton>
         <ElButton :icon="Printer" @click="printTransfer">{{ receipt ? '打印入库单' : external ? `打印${actionLabel}单` : '打印转料单' }}</ElButton>
         <ElButton v-if="canVoid" type="danger" plain :icon="Delete" :loading="voiding" @click="voidTransfer">作废</ElButton>
@@ -374,6 +378,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
     </template>
   </MaterialTransferDetailFrame>
   <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="current?.dispatch_no || ''" :docked="docked" @changed="groupChanged" @busy-change="emit('busyChange', $event)" />
+  <MaterialDeliveryDialog v-model="deliveryOpen" :transfer="current" @saved="updateCurrent" @refreshed="updateCurrent" @busy="deliveryBusy = $event" />
   <MaterialTransferFormDialog v-model="editOpen" :transfer="current" @saved="updateCurrent" @refreshed="updateCurrent" />
   <Teleport to="body"><MaterialTransferPrintSheet v-if="current && printReady" :transfer="current" /></Teleport>
 </template>

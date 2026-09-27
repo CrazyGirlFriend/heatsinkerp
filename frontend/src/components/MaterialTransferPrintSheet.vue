@@ -26,6 +26,7 @@ const fields = computed(() => {
     { label: receipt.value ? '入库件数' : external.value ? `${verb.value}件数` : '转料件数', value: `${transfer.quantity} 件` },
     { label: receipt.value ? '入库重量' : external.value ? `${verb.value}重量` : '转料重量', value: `${transfer.weight} kg` },
     { label: '成品件数', value: transfer.finished_quantity == null ? '—' : `${transfer.finished_quantity} 件` },
+    ...(transfer.delivery_date ? [{ label: '要求发货日期', value: transfer.delivery_date }, { label: '应发成品件数', value: `${transfer.delivery_quantity} 件` }] : []),
     { label: receipt.value || external.value ? '登记人' : '转料人', value: transfer.transferred_by || '—' },
     { label: receipt.value ? '入库来源' : external.value ? `${verb.value}班组` : '转出班组', value: materialSourceLabel(transfer) },
     ...(isWarehouseReceipt(transfer) ? [{ label: '入库来源类别', value: receiptSourceLabel(transfer) }, { label: '原出库批次', value: transfer.return_dispatch_no || '未关联' }] : []),

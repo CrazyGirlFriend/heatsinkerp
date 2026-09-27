@@ -11,7 +11,7 @@ from .database import get_db
 from .models import MaterialTransfer, Team, User
 from .material_transfer_query import search_predicate, team_scope_predicate
 from . import material_transfer_workflow
-from .schemas import (DIRECT_MATERIAL_TYPE_PATTERN, MaterialTransferCreate, MaterialTransferUpdate,
+from .schemas import (DIRECT_MATERIAL_TYPE_PATTERN, MaterialDeliveryUpdate, MaterialTransferCreate, MaterialTransferUpdate,
                       MaterialTransferConfirm, MaterialTransferReject, MaterialTransferList, MaterialTransferResponse)
 
 from .async_api import AsyncAPIRouter as APIRouter
@@ -151,6 +151,14 @@ def update_material_transfer(
     return material_transfer_workflow.update_material_transfer(
         db, batch_no, payload, current_user
     )
+
+
+@router.patch("/material-transfers/{batch_no}/delivery", response_model=MaterialTransferResponse,
+              tags=["material transfers"])
+def update_delivery(batch_no: str, payload: MaterialDeliveryUpdate,
+                    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from .material_delivery import update
+    return update(db, batch_no, payload, current_user)
 
 
 @router.delete(

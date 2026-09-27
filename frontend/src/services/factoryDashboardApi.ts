@@ -2,7 +2,6 @@ import { httpRequest } from './httpClient'
 import type {
   FactoryDashboard,
   Delivery,
-  DeliveryPlan,
   PageResult,
   SerialChoice,
   Shipments,
@@ -35,15 +34,4 @@ export const factoryDashboardApi = {
     read<PageResult<StockDetail>>(
       `/stock-detail?${new URLSearchParams({ material, page: String(page), ...(teamId ? { team_id: String(teamId) } : {}) })}`,
     ),
-  plan: (serial: string) =>
-    read<DeliveryPlan>(`/delivery-plan?${new URLSearchParams({ serial_no: serial })}`),
-  savePlan: (plan: DeliveryPlan) =>
-    httpRequest<DeliveryPlan>(root + '/delivery-plan', {
-      method: 'PUT',
-      body: {
-        serial_no: plan.serial_no,
-        expected_version: plan.version,
-        installments: plan.installments,
-      },
-    }),
 }

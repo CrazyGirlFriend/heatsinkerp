@@ -10,9 +10,11 @@ const fields = computed<DocumentField[]>(() => {
   const material = [
     { label: '物料类型', value: materialTypeLabel(t.material_type) },
     { label: '成品件数', value: t.finished_quantity == null ? '—' : `${t.finished_quantity} 件` },
+    { label: '要求发货日期', value: t.delivery_date || '未填写' },
+    { label: '应发成品件数', value: t.delivery_quantity == null ? '—' : `${t.delivery_quantity} 件` },
     ...materialDocumentTextFields.filter(field => props.group === 'all' ? field.group === 'basic' || t[field.key] : field.group === props.group).map(field => ({ label: field.label, value: t[field.key] || '—', fullWidth: field.multiline })),
   ]
-  if (props.group !== 'all') return props.group === 'extra' ? material.slice(2) : material
+  if (props.group !== 'all') return props.group === 'extra' ? material.slice(4) : material
   return [
     { label: '批次号', value: t.batch_no },
     { label: '状态', value: materialTransferStatusLabel(t.status, t.entry_kind) },
@@ -21,6 +23,7 @@ const fields = computed<DocumentField[]>(() => {
     { label: opening ? '入账班组' : receipt ? '入库库房' : external ? `${verb}去向` : '接收班组', value: external ? t.external_destination || '—' : t.next_team.name },
     { label: '流水号', key: 'serial', value: t.serial_no },
     { label: '来源批次', value: t.source_transfer_batch_no || '—' },
+    ...(t.delivery_origin_batch_no && t.delivery_origin_batch_no !== t.batch_no ? [{ label: '交期源头批次', value: t.delivery_origin_batch_no }] : []),
     { label: receipt ? '入库件数' : external ? `${verb}件数` : '转料件数', value: `${t.quantity} ${t.quantity_unit}` },
     { label: receipt ? '入库重量' : external ? `${verb}重量` : '转料重量', value: `${t.weight} ${t.weight_unit}` },
     ...material,

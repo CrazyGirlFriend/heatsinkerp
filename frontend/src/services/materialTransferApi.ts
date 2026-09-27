@@ -104,6 +104,10 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
     dispatched_at: textValue(raw.dispatched_at) || null,
     material_type: materialTypeOptions.find(option => option.value === raw.material_type)?.value ?? null,
     finished_quantity: optionalInteger(raw.finished_quantity),
+    delivery_date: textValue(raw.delivery_date) || null,
+    delivery_quantity: optionalInteger(raw.delivery_quantity, 1),
+    delivery_origin_batch_no: textValue(raw.delivery_origin_batch_no) || null,
+    can_edit_delivery: raw.can_edit_delivery === true,
     version: optionalInteger(raw.version, 1),
     history: normalizeHistory(raw.history),
     source_transfer_id: optionalInteger(raw.source_transfer_id, 1),
@@ -250,6 +254,9 @@ export const materialTransferApi = {
       `/material-transfers/${encodeURIComponent(batchNo)}`,
       { method: 'PATCH', body: JSON.stringify(payload) },
     ))
+  },
+  async updateDelivery(batchNo: string, payload: { delivery_date: string | null; delivery_quantity: number | null; expected_version: number }): Promise<MaterialTransfer> {
+    return normalizeMaterialTransfer(await request<unknown>(`/material-transfers/${encodeURIComponent(batchNo)}/delivery`, { method: 'PATCH', body: payload }))
   },
 
   async void(batchNo: string): Promise<MaterialTransfer> {

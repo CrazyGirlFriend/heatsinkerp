@@ -158,6 +158,12 @@ def change_for(row, db):
     if isinstance(row, (SerialUrgency, SerialDeliveryPlan)):
         # The serial may exist in several teams; refresh all affected views.
         return InventoryChange(team_ids=None)
+    if isinstance(row, MaterialTransfer) and any(
+        inspect(row).attrs[field].history.has_changes()
+        for field in ("delivery_date", "delivery_quantity")
+    ):
+        # Descendant batches in other teams read this origin's delivery requirement.
+        return InventoryChange(team_ids=None)
     return InventoryChange(team_ids=affected_teams(row), directory=isinstance(row, TeamPurpose))
 
 
