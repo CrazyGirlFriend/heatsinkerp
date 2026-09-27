@@ -11,31 +11,41 @@ depends_on = None
 
 def upgrade():
     connection = op.get_bind()
-    if "delivery_date" in {
-        c["name"] for c in sa.inspect(connection).get_columns("material_transfers")
-    }:
-        return
+    inspector = sa.inspect(connection)
+    columns = {c["name"] for c in inspector.get_columns("material_transfers")}
+    foreign_keys = {c["name"] for c in inspector.get_foreign_keys("material_transfers")}
+    indexes = {c["name"] for c in inspector.get_indexes("material_transfers")}
+    checks = {c["name"] for c in inspector.get_check_constraints("material_transfers")}
+    # MySQL commits DDL individually; a retry must finish a partially applied migration.
     with op.batch_alter_table("material_transfers") as batch:
-        batch.add_column(sa.Column("delivery_date", sa.Date(), nullable=True))
-        batch.add_column(sa.Column("delivery_quantity", sa.Integer(), nullable=True))
-        batch.add_column(sa.Column("delivery_origin_id", sa.Integer(), nullable=True))
-        batch.create_foreign_key(
-            "fk_mt_delivery_origin",
-            "material_transfers",
-            ["delivery_origin_id"],
-            ["id"],
-            ondelete="RESTRICT",
-        )
-        batch.create_index("ix_material_transfers_delivery_origin_id", ["delivery_origin_id"])
-        batch.create_check_constraint(
-            "ck_mt_delivery_pair",
-            "(delivery_date IS NULL AND delivery_quantity IS NULL) OR "
-            "(delivery_date IS NOT NULL AND delivery_quantity IS NOT NULL AND delivery_quantity > 0)",
-        )
-        batch.create_check_constraint(
-            "ck_mt_delivery_origin",
-            "delivery_origin_id IS NULL OR (delivery_date IS NULL AND delivery_quantity IS NULL)",
-        )
+        for name, kind in (
+            ("delivery_date", sa.Date()),
+            ("delivery_quantity", sa.Integer()),
+            ("delivery_origin_id", sa.Integer()),
+        ):
+            if name not in columns:
+                batch.add_column(sa.Column(name, kind, nullable=True))
+        if "fk_mt_delivery_origin" not in foreign_keys:
+            batch.create_foreign_key(
+                "fk_mt_delivery_origin",
+                "material_transfers",
+                ["delivery_origin_id"],
+                ["id"],
+                ondelete="RESTRICT",
+            )
+        if "ix_material_transfers_delivery_origin_id" not in indexes:
+            batch.create_index("ix_material_transfers_delivery_origin_id", ["delivery_origin_id"])
+        if "ck_mt_delivery_pair" not in checks:
+            batch.create_check_constraint(
+                "ck_mt_delivery_pair",
+                "(delivery_date IS NULL AND delivery_quantity IS NULL) OR "
+                "(delivery_date IS NOT NULL AND delivery_quantity IS NOT NULL AND delivery_quantity > 0)",
+            )
+        if "ck_mt_delivery_origin" not in checks:
+            batch.create_check_constraint(
+                "ck_mt_delivery_origin",
+                "delivery_origin_id IS NULL OR (delivery_date IS NULL AND delivery_quantity IS NULL)",
+            )
     # Follow explicit source links only. Dates are never guessed from creation times or notes.
     parents = {
         row.id: row.source_transfer_id
@@ -63,7 +73,10 @@ def upgrade():
     ]
     for start in range(0, len(rows), 1000):
         connection.execute(
-            sa.text("UPDATE material_transfers SET delivery_origin_id=:origin WHERE id=:identity"),
+            sa.text(
+                "UPDATE material_transfers SET delivery_origin_id=:origin WHERE id=:identity "
+                "AND delivery_origin_id IS NULL AND delivery_date IS NULL"
+            ),
             rows[start : start + 1000],
         )
 

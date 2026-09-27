@@ -258,7 +258,8 @@ def test_unlinked_return_cannot_create_an_extra_delivery_requirement(client, war
     assert client.get(warehouse["url"]).json()["total"] == 0
 
 
-def test_migration_preserves_dates_unknown_and_rebuilds_explicit_ancestry_only():
+@pytest.mark.parametrize("partial", [False, True])
+def test_migration_preserves_dates_unknown_and_rebuilds_explicit_ancestry_only(partial):
     path = Path(__file__).parents[1] / "alembic/versions/20260927_0021_batch_delivery.py"
     spec = spec_from_file_location("batch_delivery_migration", path)
     migration = module_from_spec(spec)
@@ -272,6 +273,10 @@ def test_migration_preserves_dates_unknown_and_rebuilds_explicit_ancestry_only()
             connection.exec_driver_sql(
                 "INSERT INTO material_transfers VALUES (1, NULL, 100), (2, 1, 40), (3, 2, 20), (4, 1, 60)"
             )
+            if partial:
+                connection.exec_driver_sql(
+                    "ALTER TABLE material_transfers ADD COLUMN delivery_date DATE"
+                )
             with Operations.context(MigrationContext.configure(connection)):
                 migration.upgrade()
                 migration.upgrade()
