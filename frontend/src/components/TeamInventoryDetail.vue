@@ -7,13 +7,13 @@ import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import StatePanel from './StatePanel.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
-import { materialTypeLabel, materialTransferStatusLabel, materialTransferStatusTone, type MaterialTransfer } from '@/types/materialTransfer'
+import { isScrapType, materialTypeLabel, materialTransferStatusLabel, materialTransferStatusTone, type MaterialTransfer } from '@/types/materialTransfer'
 import { inventorySourceLabel, inventoryAmount, type TeamInventoryRow } from '@/types/teamInventory'
 import type { StockBatch } from '@/types/teamMaterials'
-import { stockAvailable } from '@/utils/materialStock'
+import { dispatchableAmounts, stockAvailable } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
 
-const props = defineProps<{ teamId: number; group: TeamInventoryRow | null; canWrite?: boolean; warehouse?: boolean; ownership?: boolean }>()
+const props = defineProps<{ teamId: number; group: TeamInventoryRow | null; canWrite?: boolean; warehouse?: boolean }>()
 const emit = defineEmits<{ close: []; changed: []; pending: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]] }>()
 const rows = ref<StockBatch[]>([]), total = ref(0), page = ref(1), pageSize = ref(10)
 const movements = ref<MaterialTransfer[]>([]), movementTotal = ref(0), movementPage = ref(1), movementPageSize = ref(10)
@@ -21,6 +21,9 @@ const loading = ref(false), error = ref('')
 const batchOpen = ref(false), selected = ref<MaterialTransfer | null>(null)
 const quantityOpen = ref(false), quantitySource = ref<number | null>(null)
 const hasLoss = computed(() => rows.value.some(row => Number(row.lost_quantity) > 0 || Number(row.lost_weight) > 0))
+const hasPending = computed(() => rows.value.some(row => Number(row.in_transit_quantity) > 0 || Number(row.in_transit_weight) > 0))
+const hasExternalPending = computed(() => rows.value.some(row => Number(row.external_pending_quantity) > 0 || Number(row.external_pending_weight) > 0))
+const availableLabel = computed(() => isScrapType(props.group?.material_type) ? '可处理' : '可转出')
 let version = 0
 const live = useLiveRefresh(() => load(true), { teamId: () => props.teamId, enabled: () => !!props.group, busy: () => loading.value || quantityOpen.value || batchOpen.value })
 async function load(background = false) {
@@ -80,13 +83,17 @@ onBeforeUnmount(() => { ++version })
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存明细" />
     <template v-else>
       <section class="stock-detail-section" aria-label="来源结存">
-        <header><h3>来源结存</h3><ElButton v-if="ownership && group && (Number(group.in_transit_quantity) > 0 || Number(group.in_transit_weight) > 0)" link type="primary" @click="emit('pending')">查看待签收批次</ElButton></header>
+        <header><h3>来源结存</h3><ElButton v-if="group && (Number(group.reserved_quantity) > 0 || Number(group.reserved_weight) > 0)" link type="primary" @click="emit('pending')">查看转出待确认批次</ElButton></header>
         <ElTable class="business-table warehouse-source-table" :data="rows" row-key="transfer.id" empty-text="暂无来源记录">
           <ElTableColumn label="来源批次号" min-width="205"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
-          <ElTableColumn label="结存件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.on_hand_quantity) }}</template></ElTableColumn>
-          <ElTableColumn label="结存重量 (kg)" min-width="140" align="right"><template #default="{ row }">{{ inventoryAmount(row.on_hand_weight) }}</template></ElTableColumn>
-          <ElTableColumn v-if="ownership" label="归属件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.owned_quantity) }}</template></ElTableColumn>
-          <ElTableColumn v-if="ownership" label="归属重量 (kg)" min-width="140" align="right"><template #default="{ row }">{{ inventoryAmount(row.owned_weight) }}</template></ElTableColumn>
+          <ElTableColumn label="库存件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.owned_quantity) }}</template></ElTableColumn>
+          <ElTableColumn label="库存重量 (kg)" min-width="140" align="right"><template #default="{ row }">{{ inventoryAmount(row.owned_weight) }}</template></ElTableColumn>
+          <ElTableColumn :label="`${availableLabel}件数`" min-width="120" align="right"><template #default="{ row }">{{ inventoryAmount(dispatchableAmounts(asStock(row)).quantity) }}</template></ElTableColumn>
+          <ElTableColumn :label="`${availableLabel}重量 (kg)`" min-width="150" align="right"><template #default="{ row }">{{ inventoryAmount(dispatchableAmounts(asStock(row)).weight) }}</template></ElTableColumn>
+          <ElTableColumn v-if="hasPending" label="待签收件数" min-width="120" align="right"><template #default="{ row }">{{ inventoryAmount(row.in_transit_quantity) }}</template></ElTableColumn>
+          <ElTableColumn v-if="hasPending" label="待签收重量 (kg)" min-width="150" align="right"><template #default="{ row }">{{ inventoryAmount(row.in_transit_weight) }}</template></ElTableColumn>
+          <ElTableColumn v-if="hasExternalPending" label="对外待确认件数" min-width="150" align="right"><template #default="{ row }">{{ inventoryAmount(row.external_pending_quantity) }}</template></ElTableColumn>
+          <ElTableColumn v-if="hasExternalPending" label="对外待确认重量 (kg)" min-width="180" align="right"><template #default="{ row }">{{ inventoryAmount(row.external_pending_weight) }}</template></ElTableColumn>
           <ElTableColumn v-if="hasLoss" label="丢失件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.lost_quantity) }}</template></ElTableColumn>
           <ElTableColumn v-if="hasLoss" label="丢失重量 (kg)" min-width="140" align="right"><template #default="{ row }">{{ inventoryAmount(row.lost_weight) }}</template></ElTableColumn>
           <ElTableColumn label="接收时间" min-width="170"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>

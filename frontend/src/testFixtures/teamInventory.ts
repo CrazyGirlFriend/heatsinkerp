@@ -6,5 +6,5 @@ export function warehouseFixture(overrides: Partial<TeamInventoryRow> = {}): Tea
     current_batch_count: 2, purpose_id: null, purpose_name: '', oldest_received_at: '2026-09-01T03:00:00Z',
     material_name: '铜钼 CuMo70', transfer_specification: '100 × 80 × 5', material_type: 'raw_material',
     receipt_source: 'external', source_team_id: null, external_source: '供应商 A', source_name: '供应商 A',
-    on_hand_quantity: 100, on_hand_weight: 50, ...overrides }
+    on_hand_quantity: 100, on_hand_weight: 50, owned_quantity: 110, owned_weight: 51, external_pending_quantity: 0, external_pending_weight: 0, ...overrides }
 }

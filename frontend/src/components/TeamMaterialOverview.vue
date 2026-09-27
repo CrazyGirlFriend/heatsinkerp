@@ -25,8 +25,8 @@ const rows = computed(() => entries.value.slice((props.page - 1) * props.pageSiz
       <ElTableColumn v-if="isMaterial" label="废料重量 (kg)" min-width="145" align="center"><template #default="{ row }">{{ inventoryAmount(row.scrap_weight) }}</template></ElTableColumn>
       <ElTableColumn v-if="isMaterial" label="待确认件数" min-width="125" align="center"><template #default="{ row }">{{ inventoryAmount(row.reserved_quantity) }}</template></ElTableColumn>
       <ElTableColumn v-if="isMaterial" label="待确认重量 (kg)" min-width="155" align="center"><template #default="{ row }">{{ inventoryAmount(row.reserved_weight) }}</template></ElTableColumn>
-      <ElTableColumn label="在库件数" min-width="115" align="center"><template #default="{ row }">{{ inventoryAmount(row.on_hand_quantity) }}</template></ElTableColumn>
-      <ElTableColumn label="在库重量 (kg)" min-width="145" align="center"><template #default="{ row }">{{ inventoryAmount(row.on_hand_weight) }}</template></ElTableColumn>
+      <ElTableColumn label="库存件数" min-width="115" align="center"><template #default="{ row }">{{ inventoryAmount(row.owned_quantity) }}</template></ElTableColumn>
+      <ElTableColumn label="库存重量 (kg)" min-width="145" align="center"><template #default="{ row }">{{ inventoryAmount(row.owned_weight) }}</template></ElTableColumn>
       <ElTableColumn v-if="!isMaterial" label="废料可处理件数" min-width="150" align="center"><template #default="{ row }">{{ inventoryAmount(row.scrap_available_quantity) }}</template></ElTableColumn>
       <ElTableColumn v-if="!isMaterial" label="废料可处理重量 (kg)" min-width="180" align="center"><template #default="{ row }">{{ inventoryAmount(row.scrap_available_weight) }}</template></ElTableColumn>
       <ElTableColumn v-if="isMaterial" label="累计接收件数" min-width="145" align="center"><template #default="{ row }">{{ inventoryAmount(row.received_quantity) }}</template></ElTableColumn>

@@ -14,6 +14,7 @@ import { dispatchFixture } from '@/testFixtures/materialDispatch'
 import { ElPagination } from 'element-plus'
 import { analyticsFixture } from '@/testFixtures/materialAnalytics'
 import { warehouseFixture } from '@/testFixtures/teamInventory'
+import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
 import MaterialStockActionDialog from '@/components/MaterialStockActionDialog.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
 import WarehouseReceiptDialog from '@/components/WarehouseReceiptDialog.vue'
@@ -54,6 +55,17 @@ async function render(path = '/team-workspaces/914', animate = false) {
   return router
 }
 describe('team workspace material ledger', () => {
+  it.each(teamWorkspaceProfiles)('uses the same pending-inclusive stock for $name', async profile => {
+    const previous = state.directory.items
+    state.directory.items = [{ id: 914, code: profile.code, name: profile.name, active: true, ...(profile.code === 'FACTORY-WAREHOUSE' ? { kind: 'warehouse' } : {}) }]
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [warehouseFixture({ owned_quantity: 100, owned_weight: 10, on_hand_quantity: 0, on_hand_weight: 0, available_quantity: 0, available_weight: 0, in_transit_quantity: 100, in_transit_weight: 10 })], total: 1, page: 1, page_size: 10 })
+    try {
+      await render('/team-workspaces/914?tab=stock')
+      expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, expect.objectContaining({ availability: 'owned' }))
+      expect(wrapper.get('.warehouse-table').findAll('.inventory-balance').map(cell => cell.text())).toEqual(['100', '10'])
+      expect(wrapper.get('.inventory-row-actions').findAll('button').find(button => button.text() === '出库')!.attributes('disabled')).toBeDefined()
+    } finally { state.directory.items = previous }
+  })
   it.each(['pending', 'receipts', 'outgoing', 'losses'])('keeps %s record fields in separate single-line cells and preserves batch details', async tab => {
     const transfer = normalizeMaterialTransfer({ ...source().transfer, serial_no: '00001234', material_name: '铜钼 CuMo70', material_type: 'semi_finished', purpose_name: '去毛刺', quantity: 30, weight: 1.234, transferred_by: '张师傅', transferred_at: '2026-09-27T12:30:00', received_by: '李师傅', received_at: '2026-09-27T13:30:00' })
     const result = { items: [transfer], total: 1, page: 1, page_size: 10 }
@@ -199,7 +211,7 @@ describe('team workspace material ledger', () => {
     expect(wrapper.get('h1').text()).toBe('库存明细')
     expect(wrapper.text()).not.toContain('流水号台账')
     expect(teamMaterialApi.stock).not.toHaveBeenCalled()
-    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, expect.objectContaining({ availability: 'current', query: 'AL', date_from: '2026-09-12', urgent_only: true, page: 2, page_size: 20 }))
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, expect.objectContaining({ availability: 'owned', query: 'AL', date_from: '2026-09-12', urgent_only: true, page: 2, page_size: 20 }))
   })
   it('coalesces pushed changes, preserves filters and drafts, and closes its stream', async () => {
     vi.useFakeTimers()

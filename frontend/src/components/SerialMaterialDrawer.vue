@@ -83,7 +83,7 @@ onBeforeUnmount(() => { ++version })
           <ElDescriptionsItem label="最近更新">{{ formatDateTime(summary.last_activity_at) }}</ElDescriptionsItem>
           <ElDescriptionsItem label="废料结存"><MaterialAmount :quantity="summary.scrap_quantity" :weight="summary.scrap_weight" /></ElDescriptionsItem>
         </ElDescriptions>
-        <div class="serial-balances"><div>当前库存<MaterialAmount :quantity="summary.on_hand_quantity" :weight="summary.on_hand_weight" /></div><div>可用库存<MaterialAmount :quantity="summary.available_quantity" :weight="summary.available_weight" /></div><div>累计丢失<MaterialAmount :quantity="summary.lost_quantity" :weight="summary.lost_weight" /></div></div>
+        <div class="serial-balances"><div>本班组库存<MaterialAmount :quantity="summary.owned_quantity" :weight="summary.owned_weight" /></div><div>正常料可转出<MaterialAmount :quantity="summary.available_quantity" :weight="summary.available_weight" /></div><div>累计丢失<MaterialAmount :quantity="summary.lost_quantity" :weight="summary.lost_weight" /></div></div>
       </template>
       <ElTabs v-model="tab" class="serial-detail-tabs"><ElTabPane name="stock" label="来源余量" /><ElTabPane name="incoming" label="转入明细" /><ElTabPane name="outgoing" label="转出明细" /><ElTabPane name="losses" label="丢失记录" /></ElTabs>
       <div v-if="tab === 'stock' && canWrite" class="serial-stock-actions"><span>已选 {{ selectedRows.length }} 个来源批次</span><ElButton type="primary" :disabled="!selectedRows.length || loading || !!error" @click="action('dispatch', selectedRows)">批量出库</ElButton></div>
@@ -99,8 +99,8 @@ onBeforeUnmount(() => { ++version })
           <ElTableColumn label="材质" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.material_name || '—' }}</template></ElTableColumn>
           <ElTableColumn label="物料类型" min-width="110"><template #default="{ row }">{{ materialTypeLabel(row.transfer.material_type) }}</template></ElTableColumn>
           <ElTableColumn label="来源" min-width="140"><template #default="{ row }">{{ materialSourceLabel(row.transfer) }}</template></ElTableColumn>
-          <ElTableColumn label="结存件数" min-width="115" align="center"><template #default="{ row }">{{ inventoryAmount(row.on_hand_quantity) }}</template></ElTableColumn>
-          <ElTableColumn label="结存重量 (kg)" min-width="145" align="center"><template #default="{ row }">{{ inventoryAmount(row.on_hand_weight) }}</template></ElTableColumn>
+          <ElTableColumn label="库存件数" min-width="115" align="center"><template #default="{ row }">{{ inventoryAmount(row.owned_quantity) }}</template></ElTableColumn>
+          <ElTableColumn label="库存重量 (kg)" min-width="145" align="center"><template #default="{ row }">{{ inventoryAmount(row.owned_weight) }}</template></ElTableColumn>
           <ElTableColumn label="可用件数" min-width="115" align="center"><template #default="{ row }">{{ inventoryAmount(row.available_quantity) }}</template></ElTableColumn>
           <ElTableColumn label="可用重量 (kg)" min-width="145" align="center"><template #default="{ row }">{{ inventoryAmount(row.available_weight) }}</template></ElTableColumn>
           <ElTableColumn label="废料可处理件数" min-width="150" align="center"><template #default="{ row }">{{ inventoryAmount(row.scrap_available_quantity) }}</template></ElTableColumn>

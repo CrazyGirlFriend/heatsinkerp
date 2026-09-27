@@ -9,7 +9,7 @@ let wrapper: VueWrapper
 const overview = (count = 25): Overview => ({
   team_id: 1, legacy_received_count: 0, pending_incoming: { count: 2, quantity: 20, weight: 2 },
   totals: {} as Overview['totals'],
-  materials: Array.from({ length: count }, (_, i) => ({ material_name: `材质 ${i + 1}`, available_quantity: 10, available_weight: 1, reserved_quantity: 2, reserved_weight: .2, on_hand_quantity: 12, on_hand_weight: 1.2, received_quantity: 20, received_weight: 2, dispatched_quantity: 7, dispatched_weight: .7, lost_quantity: 1, lost_weight: .1, in_transit_quantity: 0, in_transit_weight: 0 })),
+  materials: Array.from({ length: count }, (_, i) => ({ material_name: `材质 ${i + 1}`, available_quantity: 10, available_weight: 1, reserved_quantity: 2, reserved_weight: .2, on_hand_quantity: 10, on_hand_weight: 1, owned_quantity: 12, owned_weight: 1.2, received_quantity: 20, received_weight: 2, dispatched_quantity: 7, dispatched_weight: .7, lost_quantity: 1, lost_weight: .1, in_transit_quantity: 2, in_transit_weight: .2 })),
 })
 afterEach(() => wrapper?.unmount())
 describe('compact material classification', () => {
@@ -25,7 +25,7 @@ describe('compact material classification', () => {
     expect(wrapper.find('.material-amount').exists()).toBe(false)
     expect(wrapper.get('thead th').classes()).toContain('el-table-fixed-column--left')
     expect(wrapper.get('.el-table__body tr').findAll('td').slice(1, -1).map(cell => cell.text())).toEqual(['10', '1', '—', '—', '2', '0.2', '12', '1.2', '20', '2', '7', '0.7', '1', '0.1'])
-    expect(wrapper.findAll('th').map(cell => cell.text())).toEqual(['材质', '正常料件数', '正常料重量 (kg)', '废料件数', '废料重量 (kg)', '待确认件数', '待确认重量 (kg)', '在库件数', '在库重量 (kg)', '累计接收件数', '累计接收重量 (kg)', '确认转出件数', '确认转出重量 (kg)', '累计丢失件数', '累计丢失重量 (kg)', '操作'])
+    expect(wrapper.findAll('th').map(cell => cell.text())).toEqual(['材质', '正常料件数', '正常料重量 (kg)', '废料件数', '废料重量 (kg)', '待确认件数', '待确认重量 (kg)', '库存件数', '库存重量 (kg)', '累计接收件数', '累计接收重量 (kg)', '确认转出件数', '确认转出重量 (kg)', '累计丢失件数', '累计丢失重量 (kg)', '操作'])
   })
   it('retains material drill-down and 10/20/50/100 pagination', async () => {
     wrapper = mount(TeamMaterialOverview, { props: { overview: overview() } }); await flushPromises()
@@ -67,7 +67,7 @@ describe('compact material classification', () => {
     expect(wrapper.get('.ledger-table').classes()).toContain('single-line-table')
     expect(wrapper.get('header h2').text()).toContain('物料性质结存')
     expect(wrapper.get('footer').text()).toContain('共 1 种物料性质')
-    expect(wrapper.findAll('th').map(cell => cell.text())).toEqual(['物料性质', '正常料件数', '正常料重量 (kg)', '在库件数', '在库重量 (kg)', '废料可处理件数', '废料可处理重量 (kg)', '操作'])
+    expect(wrapper.findAll('th').map(cell => cell.text())).toEqual(['物料性质', '正常料件数', '正常料重量 (kg)', '库存件数', '库存重量 (kg)', '废料可处理件数', '废料可处理重量 (kg)', '操作'])
     await wrapper.findAll('.el-table__body button').find(button => button.text() === '查看详情')!.trigger('click')
     expect(wrapper.emitted('filter')).toEqual([['semi_finished']])
   })

@@ -37,8 +37,8 @@ onBeforeUnmount(() => { ++version })
 </script>
 
 <template>
-  <ElDialog :model-value="!!group" title="转出待签收" width="min(1040px, calc(100vw - 32px))" align-center append-to-body class="material-detail-dialog" @update:model-value="!$event && emit('close')">
-    <p v-if="group" class="pending-context">{{ group.serial_no }} · {{ group.material_name || '材质未填写' }}<span>签收前仍归本班组，不可重复出库。</span></p>
+  <ElDialog :model-value="!!group" title="转出待确认" width="min(1040px, calc(100vw - 32px))" align-center append-to-body class="material-detail-dialog" @update:model-value="!$event && emit('close')">
+    <p v-if="group" class="pending-context">{{ group.serial_no }} · {{ group.material_name || '材质未填写' }}<span>确认前仍计入本班组库存，不可重复出库。</span></p>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取待签收批次" />

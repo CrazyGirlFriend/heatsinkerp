@@ -16,6 +16,7 @@ const source = (id: number, quantity: number, dispatch_no: string | null = null)
   transfer: normalizeMaterialTransfer({ id, batch_no: `TL${id}`, serial_no: '000128', status: 'received', dispatch_no }),
   received_quantity: 10, received_weight: 1, on_hand_quantity: quantity, on_hand_weight: quantity / 10,
   available_quantity: quantity, available_weight: quantity / 10,
+  owned_quantity: quantity, owned_weight: quantity / 10,
 } as StockBatch)
 const movement = (id: number, status = 'pending') => normalizeMaterialTransfer({ id, batch_no: `TL${id}`, serial_no: '000128',
   next_team: { id: id === 11 ? 1 : 2, name: id === 11 ? '库房' : '轧制' }, source_team: { id: 1, name: '库房' },
@@ -34,6 +35,17 @@ async function render(canWrite = true, warehouse = true) {
   } } }); await flushPromises()
 }
 describe('warehouse source detail', () => {
+  it('separates stock, dispatchable, internal pending and external pending amounts', async () => {
+    vi.mocked(teamMaterialApi.inventorySources).mockResolvedValue({ items: [{ ...source(11, 70), owned_quantity: 100, owned_weight: 10, in_transit_quantity: 20, in_transit_weight: 2, external_pending_quantity: 10, external_pending_weight: 1 }], total: 1, page: 1, page_size: 10 })
+    await render()
+    const table = wrapper.get('.warehouse-source-table')
+    const headings = table.findAll('th').map(cell => cell.text())
+    const cells = table.get('tbody tr').findAll('td')
+    for (const [label, amount] of [['库存件数', '100'], ['库存重量 (kg)', '10'], ['可转出件数', '70'], ['可转出重量 (kg)', '7'], ['待签收件数', '20'], ['对外待确认件数', '10']]) {
+      expect(cells[headings.indexOf(label!)]!.text()).toBe(amount)
+    }
+    expect(headings).not.toContain('归属件数')
+  })
   it('shows inventory details in a centered dialog and keeps batch drilldown independent', async () => {
     await render(false)
     const dialog = wrapper.getComponent({ name: 'ElDialog' })
@@ -73,11 +85,11 @@ describe('warehouse source detail', () => {
   })
   it('shows the upstream team on a workshop group and forwards losses from the actual batch', async () => {
     await render(true, false)
-    await wrapper.setProps({ ownership: true, group: warehouseFixture({ receipt_source: 'internal', source_name: '轧制', source_team_id: 2, received_quantity: 130, received_weight: 130, dispatched_quantity: 20, dispatched_weight: 20, reserved_quantity: 30, reserved_weight: 30, in_transit_quantity: 30, in_transit_weight: 30, lost_quantity: 10, lost_weight: 10 }) }); await flushPromises()
+    await wrapper.setProps({ group: warehouseFixture({ receipt_source: 'internal', source_name: '轧制', source_team_id: 2, received_quantity: 130, received_weight: 130, dispatched_quantity: 20, dispatched_weight: 20, reserved_quantity: 30, reserved_weight: 30, in_transit_quantity: 30, in_transit_weight: 30, lost_quantity: 10, lost_weight: 10 }) }); await flushPromises()
     expect(wrapper.text()).toContain('上序班组')
     expect(wrapper.text()).toContain('轧制')
     expect(wrapper.text()).not.toContain('车间转入 ·')
-    await wrapper.findAll('button').find(button => button.text() === '查看待签收批次')!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === '查看转出待确认批次')!.trigger('click')
     expect(wrapper.emitted('pending')).toEqual([[]])
     await wrapper.findAll('button').find(button => button.text() === '登记丢失')!.trigger('click')
     expect(wrapper.emitted('action')).toEqual([['loss', [source(11, 5)]]])

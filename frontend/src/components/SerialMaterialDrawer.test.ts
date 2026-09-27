@@ -33,7 +33,7 @@ it.each(['incoming', 'outgoing'])('separates all %s record fields inside serial 
 })
 
 it('supports source-batch dispatch and loss only for writable available inventory', async () => {
-  const source = (id: number, quantity = 10): StockBatch => ({ transfer: normalizeMaterialTransfer({ id, batch_no: `TL-${id}`, serial_no: 'SERIAL-DETAIL', status: 'received' }), available_quantity: quantity, available_weight: 0, on_hand_quantity: quantity, on_hand_weight: 0, reserved_quantity: 0, reserved_weight: 0, lost_quantity: 0, lost_weight: 0, received_quantity: quantity, received_weight: 0, dispatched_quantity: 0, dispatched_weight: 0, in_transit_quantity: 0, in_transit_weight: 0 })
+  const source = (id: number, quantity = 10): StockBatch => ({ transfer: normalizeMaterialTransfer({ id, batch_no: `TL-${id}`, serial_no: 'SERIAL-DETAIL', status: 'received' }), available_quantity: quantity, available_weight: 0, on_hand_quantity: quantity, on_hand_weight: 0, owned_quantity: quantity, owned_weight: 0, reserved_quantity: 0, reserved_weight: 0, lost_quantity: 0, lost_weight: 0, received_quantity: quantity, received_weight: 0, dispatched_quantity: 0, dispatched_weight: 0, in_transit_quantity: 0, in_transit_weight: 0 })
   const rows = [source(1), source(2), source(3, 0)]
   vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({ items: [serialFixture('SERIAL-DETAIL')], total: 1, page: 1, page_size: 1 })
   vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({ items: rows, total: 3, page: 1, page_size: 10 })
@@ -49,8 +49,8 @@ it('supports source-batch dispatch and loss only for writable available inventor
     expect(wrapper.find('input[type=checkbox]').exists()).toBe(false)
     const headings = wrapper.findAll('.serial-record-table thead th').map(cell => cell.text())
     const cells = wrapper.get('.serial-record-table tbody tr').findAll('td')
-    expect(cells[headings.indexOf('结存件数')]!.text()).toBe('10')
-    expect(cells[headings.indexOf('结存重量 (kg)')]!.text()).toBe('0')
+    expect(cells[headings.indexOf('库存件数')]!.text()).toBe('10')
+    expect(cells[headings.indexOf('库存重量 (kg)')]!.text()).toBe('0')
     expect(wrapper.find('.serial-record-table .material-amount').exists()).toBe(false)
     await wrapper.setProps({ canWrite: true }); await flushPromises()
     expect(wrapper.get('label[aria-label="选择 TL-3"] input').attributes('disabled')).toBeDefined()
@@ -89,7 +89,7 @@ it('keeps the three secondary ledger fields accessible in serial detail', async 
     expect(fields.text()).toContain('最近更新')
     expect(fields.text()).toContain(formatDateTime(summary.last_activity_at))
     const table = wrapper.getComponent({ name: 'ElTable' }).element
-    vi.mocked(teamMaterialApi.serials).mockResolvedValue({ items: [{ ...summary, on_hand_quantity: 55 }], total: 1, page: 1, page_size: 1 })
+    vi.mocked(teamMaterialApi.serials).mockResolvedValue({ items: [{ ...summary, owned_quantity: 55, on_hand_quantity: 45 }], total: 1, page: 1, page_size: 1 })
     await live.refresh(); await flushPromises()
     expect(wrapper.getComponent({ name: 'ElTable' }).element).toBe(table)
     expect(wrapper.get('.serial-balances').text()).toContain('55')

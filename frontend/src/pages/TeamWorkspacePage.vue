@@ -48,7 +48,6 @@ const scopeReady = computed(() => validId.value && directory.loaded && !director
 const scopeLoading = computed(() => validId.value && !directory.error && (!directory.loaded || directory.loading) && !scopeReady.value)
 const canWrite = computed(() => scopeReady.value && auth.isTeamAccount && auth.currentUser?.active !== false && String(auth.currentUser?.team_id) === teamKey.value && !auth.currentUserError)
 const isWarehouse = computed(() => scopeReady.value && team.value?.code === 'FACTORY-WAREHOUSE' && team.value?.kind === 'warehouse')
-const ownershipSample = computed(() => team.value?.code === 'FACTORY-GRIND')
 const canReceive = computed(() => isWarehouse.value && canWrite.value && auth.currentUser?.active !== false)
 const title = computed(() => scopeReady.value ? profile.value?.name || team.value!.name : '班组工作台')
 const queryText = (key: string) => typeof route.query[key] === 'string' ? String(route.query[key]) : ''
@@ -73,7 +72,7 @@ const queryDraft = ref('')
 const dateDraft = ref<CalendarRange>({ from: '', to: '' }), urgentDraft = ref(false)
 const materialDraft = ref<MaterialType | ''>('')
 const receiptSourceDraft = ref<'external' | 'internal' | 'return' | ''>('')
-const batchStatusLabels = computed(() => ({ pending: ownershipSample.value ? '转出待签收' : dispatchStatusLabels.pending, received: ownershipSample.value ? '已签收' : dispatchStatusLabels.received, dispatched: dispatchStatusLabels.dispatched, voided: dispatchStatusLabels.voided }))
+const batchStatusLabels = { pending: '转出待确认', received: '已签收', dispatched: dispatchStatusLabels.dispatched, voided: dispatchStatusLabels.voided }
 type BatchStatus = Exclude<DispatchStatus, 'partial'>
 const statusDraft = ref<BatchStatus | ''>('')
 const nextTeamDraft = ref<string | number>('')
@@ -228,7 +227,7 @@ async function loadView(refreshWarehouse: unknown = false, background = false) {
   const currentTab = tab.value
   const params = { date_from: queryText('date_from') || undefined, date_to: queryText('date_to') || undefined, urgent_only: queryText('urgent_only') === 'true' || undefined, query: queryText('query') || undefined, page: page.value, page_size: pageSize.value }
   const materialType = materialTypeOptions.find(option => option.value === queryText('material_type'))?.value
-  const dispatchStatus = Object.keys(batchStatusLabels.value).includes(queryText('status')) ? queryText('status') as BatchStatus : undefined
+  const dispatchStatus = Object.keys(batchStatusLabels).includes(queryText('status')) ? queryText('status') as BatchStatus : undefined
   const balanceRequest = teamMaterialApi.overview(id).then(result => { if (current === version) { overview.value = result; overviewError.value = '' } }).catch(error => { if (current === version) { if (background) syncError.value = '数据更新失败，保留上次结果，请刷新重试。'; else { overview.value = null; overviewError.value = error instanceof Error ? error.message : '物料纵览加载失败' } } })
   const refreshRequests = refreshWarehouse === true && isWarehouse.value ? [
     ...(currentTab !== 'receipts' ? [teamMaterialApi.receipts(id, { page: 1, page_size: 20 }).then(result => { if (current === version) receipts.value = result.items })] : []),
@@ -249,7 +248,7 @@ watch([() => ['overview', 'stock', 'materials', 'material-types'].includes(tab.v
   closeDetails(); pending.value = []; outgoing.value = []; selectedPrintRows.value = []; printOpen.value = false; losses.value = []; receipts.value = []; overview.value = null
   dateDraft.value = { from: queryText('date_from'), to: queryText('date_to') }; urgentDraft.value = queryText('urgent_only') === 'true'
   receiptSourceDraft.value = ['external', 'internal', 'return'].includes(queryText('receipt_source')) ? queryText('receipt_source') as 'external' | 'internal' | 'return' : ''
-  queryDraft.value = queryText('query'); materialDraft.value = materialTypeOptions.find(option => option.value === queryText('material_type'))?.value || ''; statusDraft.value = Object.keys(batchStatusLabels.value).includes(queryText('status')) ? queryText('status') as BatchStatus : ''; nextTeamDraft.value = queryText('next_team_id'); kindDraft.value = dispatchKinds.find(kind => kind === queryText('entry_kind')) || ''
+  queryDraft.value = queryText('query'); materialDraft.value = materialTypeOptions.find(option => option.value === queryText('material_type'))?.value || ''; statusDraft.value = Object.keys(batchStatusLabels).includes(queryText('status')) ? queryText('status') as BatchStatus : ''; nextTeamDraft.value = queryText('next_team_id'); kindDraft.value = dispatchKinds.find(kind => kind === queryText('entry_kind')) || ''
   void loadView()
 }, { immediate: true })
 watch(() => `${auth.currentUser?.id ?? ''}:${auth.currentUser?.team_id ?? ''}:${auth.currentUser?.active}:${auth.isTeamAccount}`, () => { closeDetails(); void loadView() })
@@ -303,7 +302,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
         <template v-else-if="['stock', 'materials', 'material-types'].includes(tab)">
           <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料结存" />
           <StatePanel v-else-if="overviewError" state="error" :description="overviewError" @retry="loadView" />
-          <TeamInventory v-else-if="overview && tab === 'stock'" :key="teamId" :team-id="teamId" :warehouse="isWarehouse" :overview="overview" :can-write="canWrite" :ownership="ownershipSample" @changed="loadView" @action="openAction"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamInventory>
+          <TeamInventory v-else-if="overview && tab === 'stock'" :key="teamId" :team-id="teamId" :warehouse="isWarehouse" :overview="overview" :can-write="canWrite" @changed="loadView" @action="openAction"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamInventory>
           <TeamMaterialOverviewPanel v-else-if="overview" :key="tab" :overview="overview" :kind="tab === 'material-types' ? 'type' : 'material'" :page="page" :page-size="pageSize" @filter="openSummaryDetail" @paginate="paginateSummary"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamMaterialOverviewPanel>
         </template>
         <template v-else>
@@ -367,7 +366,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                   <ElTableColumn label="下序 / 去向" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ isExternalEntryKind(row.entry_kind) ? row.external_destination || row.next_team.name : teamWorkspaceProfile(row.next_team.code)?.name || row.next_team.name }}</template></ElTableColumn>
                   <ElTableColumn label="件数" min-width="100" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
                   <ElTableColumn label="重量 (kg)" min-width="125" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
-                  <ElTableColumn label="状态" width="120"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" :outgoing="ownershipSample" /></template></ElTableColumn>
+                  <ElTableColumn label="状态" width="120"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" outgoing /></template></ElTableColumn>
                   <ElTableColumn label="登记人" min-width="100" show-overflow-tooltip><template #default="{ row }">{{ row.transferred_by || '—' }}</template></ElTableColumn>
                   <ElTableColumn label="登记时间" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ formatDateTime(row.transferred_at) }}</template></ElTableColumn>
                   <ElTableColumn label="操作" width="110" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="openDetail(asTransfer(row))">查看详情</ElButton></template></ElTableColumn>

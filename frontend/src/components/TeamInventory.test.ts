@@ -22,10 +22,10 @@ const data = () => [warehouseFixture(), warehouseFixture({ group_id: 12, materia
 const overview = () => ({ team_id: 901, totals: warehouseFixture(), materials: [], pending_incoming: { quantity: 0, weight: 0, count: 0 }, legacy_received_count: 0 })
 beforeEach(() => { vi.spyOn(teamMaterialApi, 'teamInventory').mockResolvedValue({ items: data(), total: 28, page: 1, page_size: 10 }); localStorage.clear() })
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
-async function render(path = '/team-workspaces/901?tab=stock', canWrite = true, warehouse = true, ownership = false) {
+async function render(path = '/team-workspaces/901?tab=stock', canWrite = true, warehouse = true) {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/team-workspaces/:teamId', component: { template: '<div/>' } }] })
   await router.push(path)
-  wrapper = mount(TeamInventory, { props: { teamId: 901, overview: overview(), canWrite, warehouse, ownership }, global: { plugins: [router, createPinia()], stubs: { TeamInventoryDetail: true, SerialMaterialDrawer: true, StockSourcePicker: true, SerialUrgencyDialog: true, InventoryPendingDialog: true } } })
+  wrapper = mount(TeamInventory, { props: { teamId: 901, overview: overview(), canWrite, warehouse }, global: { plugins: [router, createPinia()], stubs: { TeamInventoryDetail: true, SerialMaterialDrawer: true, StockSourcePicker: true, SerialUrgencyDialog: true, InventoryPendingDialog: true } } })
   await flushPromises()
   return router
 }
@@ -35,8 +35,38 @@ const select = (label: string) => wrapper.findAllComponents(ElSelect).find(item 
 async function submit(term: string) { await wrapper.get('input[aria-label="库存明细搜索"]').setValue(term); await wrapper.get('input[aria-label="库存明细搜索"]').trigger('keyup.enter'); await flushPromises() }
 
 describe('warehouse grouped stock', () => {
+  it.each([true, false])('keeps stock until receipt, not departure, and reflects edits and cancellation (warehouse=%s)', async warehouse => {
+    const update = async (owned: number, available: number, pending: number) => {
+      const row = warehouseFixture({ owned_quantity: owned, owned_weight: owned, on_hand_quantity: available, on_hand_weight: available, available_quantity: available, available_weight: available, in_transit_quantity: pending, in_transit_weight: pending, reserved_quantity: pending, reserved_weight: pending })
+      vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [row], total: 1, page: 1, page_size: 10 })
+      await wrapper.setProps({ overview: overview() }); await flushPromises()
+      expect(wrapper.findAll('.inventory-balance').map(cell => cell.text())).toEqual([String(owned), String(owned)])
+      expect(hints()).toContain(`其中转出待签收 ${pending} 件 / ${pending} kg`)
+      expect(hints()).toContain(`可转出量 ${available} 件 / ${available} kg`)
+    }
+    await render(undefined, true, warehouse)
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ availability: 'owned' }))
+    await update(100, 100, 0)
+    await update(100, 70, 30)
+    await update(100, 80, 20)
+    await update(80, 80, 0)
+    await update(80, 0, 80)
+    expect(wrapper.findAll('button').find(button => button.text() === '出库')!.attributes('disabled')).toBeDefined()
+    await update(80, 80, 0)
+    expect(wrapper.findAll('button').find(button => button.text() === '出库')!.attributes('disabled')).toBeUndefined()
+  })
+  it('keeps external pending stock distinct and searches authoritative stock amounts', async () => {
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [warehouseFixture({ owned_quantity: 100, owned_weight: 10, on_hand_quantity: 70, on_hand_weight: 7, in_transit_quantity: 0, in_transit_weight: 0, external_pending_quantity: 30, external_pending_weight: 3 })], total: 1, page: 1, page_size: 10 })
+    await render()
+    expect(hints()).toContain('其中对外待确认 30 件 / 3 kg')
+    expect(hints()).toContain('其中转出待签收 0 件 / 0 kg')
+    select('库存搜索字段').vm.$emit('update:modelValue', 'owned_quantity'); await flushPromises()
+    await submit('100')
+    expect(headers()[0]).toBe('库存件数')
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ search_field: 'owned_quantity', query: '100' }))
+  })
   it('keeps cells on one visual tier while preserving specifications and row actions', async () => {
-    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValueOnce({ items: [warehouseFixture({ purpose_name: '', transfer_specification: '100 × 80 × 5', on_hand_quantity: 50, on_hand_weight: 5 })], total: 1, page: 1, page_size: 10 })
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValueOnce({ items: [warehouseFixture({ purpose_name: '', transfer_specification: '100 × 80 × 5', owned_quantity: 50, owned_weight: 5 })], total: 1, page: 1, page_size: 10 })
     await render()
     const row = wrapper.get('tbody tr')
     expect(row.find('.inventory-cell-stack, .inventory-ownership-details, br').exists()).toBe(false)
@@ -70,11 +100,11 @@ describe('warehouse grouped stock', () => {
   it('renders optional ownership and pending balances inline and retains the pending link', async () => {
     const row = warehouseFixture({ owned_quantity: 100, owned_weight: 10, in_transit_quantity: 30, in_transit_weight: 3 })
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValueOnce({ items: [row], total: 1, page: 1, page_size: 10 })
-    await render(undefined, true, false, true)
+    await render(undefined, true, false)
     wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', warehouseColumns.map(column => ({ key: column.key, visible: ['owned_quantity', 'owned_weight', 'dispatchable_quantity', 'dispatchable_weight', 'in_transit_quantity', 'in_transit_weight'].includes(column.key) }))); await flushPromises()
     const cells = wrapper.get('tbody tr').findAll('td')
-    expect(cells[headers().indexOf('归属件数')]!.text()).toBe('100')
-    expect(cells[headers().indexOf('归属重量 (kg)')]!.text()).toBe('10')
+    expect(cells[headers().indexOf('库存件数')]!.text()).toBe('100')
+    expect(cells[headers().indexOf('库存重量 (kg)')]!.text()).toBe('10')
     const pending = wrapper.findAll(`button[aria-label="查看${row.serial_no}转出待签收批次"]`)
     expect(pending.map(button => button.text())).toEqual(['30', '3'])
     await pending[0]!.trigger('click')
@@ -85,15 +115,15 @@ describe('warehouse grouped stock', () => {
   it('shows ownership in the list and opens pending batches from inventory detail', async () => {
     const row = warehouseFixture({ owned_quantity: 100, owned_weight: 100, on_hand_quantity: 70, on_hand_weight: 70, available_quantity: 70, available_weight: 70, in_transit_quantity: 30, in_transit_weight: 30, reserved_quantity: 30, reserved_weight: 30, received_quantity: 130, received_weight: 130, dispatched_quantity: 20, dispatched_weight: 20, lost_quantity: 10, lost_weight: 10 })
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [row], total: 1, page: 1, page_size: 10, as_of: '2026-09-27T00:00:00Z' })
-    const router = await render(undefined, true, false, true)
-    expect(headers()).toEqual(['流水号', '材质', '物料类型', '本班组业务', '上序班组', '当前件数', '当前重量 (kg)', '操作'])
+    const router = await render(undefined, true, false)
+    expect(headers()).toEqual(['流水号', '材质', '物料类型', '本班组业务', '上序班组', '库存件数', '库存重量 (kg)', '操作'])
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ availability: 'owned' }))
     const cells = wrapper.findAll('tbody tr')[0]!.findAll('td')
-    expect(cells[headers().indexOf('当前件数')]!.text()).toBe('70')
-    expect(cells[headers().indexOf('当前重量 (kg)')]!.text()).toBe('70')
+    expect(cells[headers().indexOf('库存件数')]!.text()).toBe('100')
+    expect(cells[headers().indexOf('库存重量 (kg)')]!.text()).toBe('100')
     expect(wrapper.find('.inventory-balance > small').exists()).toBe(false)
-    expect(hints()).toContain('归属余量 100 件 / 100 kg')
-    expect(hints()).toContain('在库余量 70 件 / 70 kg')
+    expect(hints()).toContain('本班组库存 100 件 / 100 kg')
+    expect(hints()).toContain('其中转出待签收 30 件 / 30 kg')
     expect(hints()).toContain('可转出量 70 件 / 70 kg')
     expect(wrapper.find('.inventory-movement').exists()).toBe(false)
     await wrapper.findAll('button').find(button => button.text() === '明细')!.trigger('click')
@@ -107,42 +137,42 @@ describe('warehouse grouped stock', () => {
   it('keeps pending-only rows visible with outbound disabled and updates them on pushed data', async () => {
     const row = warehouseFixture({ owned_quantity: 100, owned_weight: 100, on_hand_quantity: 0, on_hand_weight: 0, available_quantity: 0, available_weight: 0, in_transit_quantity: 100, in_transit_weight: 100 })
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [row], total: 1, page: 1, page_size: 10 })
-    await render(undefined, true, false, true)
+    await render(undefined, true, false)
     expect(wrapper.findAll('button').find(button => button.text() === '出库')!.attributes('disabled')).toBeDefined()
-    expect(wrapper.findAll('.inventory-balance').map(cell => cell.text())).toEqual(['0', '0'])
+    expect(wrapper.findAll('.inventory-balance').map(cell => cell.text())).toEqual(['100', '100'])
     expect(wrapper.find('.inventory-balance > small').exists()).toBe(false)
-    expect(hints()).toContain('归属余量 100 件 / 100 kg')
+    expect(hints()).toContain('本班组库存 100 件 / 100 kg')
     await wrapper.findAll('button').find(button => button.text() === '明细')!.trigger('click')
     expect(wrapper.getComponent(TeamInventoryDetail).props('group')?.in_transit_quantity).toBe(100)
     await wrapper.get('input[aria-label="库存明细搜索"]').setValue('未提交草稿')
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [{ ...row, owned_quantity: 0, owned_weight: 0, in_transit_quantity: 0, in_transit_weight: 0 }], total: 1, page: 1, page_size: 10 })
     await wrapper.setProps({ overview: overview() }); await flushPromises()
-    expect(hints()).toContain('归属余量 0 件 / 0 kg')
+    expect(hints()).toContain('本班组库存 0 件 / 0 kg')
     expect(wrapper.getComponent(TeamInventoryDetail).props('group')?.in_transit_quantity).toBe(0)
     expect((wrapper.get('input[aria-label="库存明细搜索"]').element as HTMLInputElement).value).toBe('未提交草稿')
   })
   it('preserves custom stock columns without replacing their on-hand values with ownership', async () => {
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [warehouseFixture({ owned_quantity: 100, owned_weight: 100, on_hand_quantity: 70, on_hand_weight: 70 })], total: 1, page: 1, page_size: 10 })
-    await render(undefined, true, false, true)
+    await render(undefined, true, false)
     localStorage.setItem('heatsink.classified-columns.v1:42:901', JSON.stringify([{ key: 'movement', visible: true }, { key: 'oldest_received_at', visible: true }, { key: 'stock_balance', visible: true }]))
     useAuthStore().session = { access_token: 'test', token_type: 'Bearer', user: { id: 42 } } as ReturnType<typeof useAuthStore>['session']; await flushPromises()
-    expect(headers()).toEqual(['流水号', '当前件数', '当前重量 (kg)', '操作'])
+    expect(headers()).toEqual(['流水号', '在库件数', '在库重量 (kg)', '操作'])
     expect(wrapper.findAll('.inventory-balance').map(cell => cell.text())).toEqual(['70', '70'])
     expect(localStorage.getItem('heatsink.classified-columns.v1:42:901')).toBe(JSON.stringify([{ key: 'movement', visible: true }, { key: 'oldest_received_at', visible: true }, { key: 'stock_balance', visible: true }]))
     wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', [
       { key: 'on_hand_weight', visible: true }, { key: 'on_hand_quantity', visible: true },
     ]); await flushPromises()
-    expect(headers()).toEqual(['流水号', '当前重量 (kg)', '当前件数', '操作'])
+    expect(headers()).toEqual(['流水号', '在库重量 (kg)', '在库件数', '操作'])
     expect(wrapper.findAll('.inventory-balance')).toHaveLength(2)
   })
   it('uses waste handling availability and never turns unknown amounts into zero', async () => {
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [warehouseFixture({ material_type: 'sludge', owned_quantity: 0, owned_weight: 10, available_quantity: 0, available_weight: 0, scrap_available_quantity: 0, scrap_available_weight: 5 }), warehouseFixture({ group_id: 12, owned_quantity: null, owned_weight: null, available_quantity: null, available_weight: null })], total: 2, page: 1, page_size: 10 })
-    await render(undefined, true, false, true)
+    await render(undefined, true, false)
     expect(hints()).toContain('可处理量 0 件 / 5 kg')
     const buttons = wrapper.findAll('button').filter(button => button.text() === '出库')
     expect(buttons[0]!.attributes('disabled')).toBeUndefined()
     expect(buttons[1]!.attributes('disabled')).toBeDefined()
-    expect(hints()).toContain('归属余量 — 件 / — kg')
+    expect(hints()).toContain('本班组库存 — 件 / — kg')
   })
   it('uses upstream team names on workshops and scopes outbound to the chosen classified row', async () => {
     const workshopRows = [warehouseFixture({ receipt_source: 'internal', source_team_id: 1, source_name: '库房' }), warehouseFixture({ group_id: 12, receipt_source: 'internal', source_team_id: 3, source_name: '退火', material_type: 'finished' })]
@@ -150,7 +180,7 @@ describe('warehouse grouped stock', () => {
     await render(undefined, true, false)
     useTeamDirectoryStore().items = [{ id: 1, name: '库房', kind: 'warehouse' }, { id: 3, name: '退火' }, { id: 901, name: '本班组' }] as ReturnType<typeof useTeamDirectoryStore>['items']
     await flushPromises()
-    expect(headers()).toEqual(['流水号', '材质', '物料类型', '本班组业务', '上序班组', '当前件数', '当前重量 (kg)', '操作'])
+    expect(headers()).toEqual(['流水号', '材质', '物料类型', '本班组业务', '上序班组', '库存件数', '库存重量 (kg)', '操作'])
     expect(wrapper.text()).not.toContain('车间转入 ·')
     expect(select('库存来源筛选')).toBeUndefined()
     expect(select('库存上序班组筛选').findAllComponents(ElOption).map(option => option.props('label'))).toEqual(['库房', '退火'])
@@ -212,11 +242,12 @@ describe('warehouse grouped stock', () => {
   })
   it('groups serial and material, displays nature and source, and pages detail rows', async () => {
     await render()
-    expect(headers()).toEqual(['流水号', '材质', '物料类型', '本班组业务', '来源', '当前件数', '当前重量 (kg)', '操作'])
+    expect(headers()).toEqual(['流水号', '材质', '物料类型', '本班组业务', '来源', '库存件数', '库存重量 (kg)', '操作'])
     expect(wrapper.findAll('td[rowspan="2"]')).toHaveLength(2)
     expect(wrapper.findAll('.inventory-source-name').map(cell => cell.element.parentElement?.textContent)).toEqual(['供应商 A', '检验', '供应商 A'])
     expect(wrapper.text()).toContain('共 28 条分类结存')
-    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, { availability: 'current', page: 1, page_size: 10 })
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, { availability: 'owned', page: 1, page_size: 10 })
+    expect(wrapper.text()).not.toContain('转出即扣减')
     expect(wrapper.getComponent(ElPagination).props('pageSizes')).toEqual([10,20,50,100])
     expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBeUndefined()
     wrapper.getComponent(ElPagination).vm.$emit('size-change', 20); await flushPromises()
@@ -224,9 +255,9 @@ describe('warehouse grouped stock', () => {
   })
   it.each([true, false])('keeps only quantity and weight in stock cells and retains batches in detail (warehouse=%s)', async warehouse => {
     const items = [
-      warehouseFixture({ on_hand_quantity: 20, on_hand_weight: 2, current_batch_count: 1, dispatched_quantity: 0, dispatched_weight: 0, reserved_quantity: 0, reserved_weight: 0 }),
-      warehouseFixture({ group_id: 12, on_hand_quantity: 50, on_hand_weight: 5, current_batch_count: 2, dispatched_quantity: 30, dispatched_weight: 3 }),
-      warehouseFixture({ group_id: 13, on_hand_quantity: 0, on_hand_weight: 0, current_batch_count: 0 }),
+      warehouseFixture({ owned_quantity: 20, owned_weight: 2, current_batch_count: 1, dispatched_quantity: 0, dispatched_weight: 0, reserved_quantity: 0, reserved_weight: 0 }),
+      warehouseFixture({ group_id: 12, owned_quantity: 50, owned_weight: 5, current_batch_count: 2, dispatched_quantity: 30, dispatched_weight: 3 }),
+      warehouseFixture({ group_id: 13, owned_quantity: 0, owned_weight: 0, current_batch_count: 0 }),
     ]
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items, total: 3, page: 1, page_size: 10 })
     await render('/team-workspaces/901?tab=stock&availability=all', false, warehouse)
@@ -246,13 +277,13 @@ describe('warehouse grouped stock', () => {
   })
   it('shows purpose and weight-only balance without pretending production is complete', async () => {
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValueOnce({ items: [warehouseFixture({
-      purpose_name: '去毛刺', on_hand_quantity: 0, on_hand_weight: .625, current_batch_count: 1,
+      purpose_name: '去毛刺', on_hand_quantity: 0, on_hand_weight: .625, owned_quantity: 0, owned_weight: .875, current_batch_count: 1,
       received_quantity: 0, received_weight: 2, dispatched_quantity: 0, dispatched_weight: 1,
       reserved_quantity: 0, reserved_weight: .25, lost_quantity: 0, lost_weight: .125,
     })], total: 1, page: 1, page_size: 10 })
     await render()
     expect(wrapper.text()).toContain('去毛刺')
-    expect(wrapper.findAll('.inventory-balance').map(cell => cell.text())).toEqual(['0', '0.625'])
+    expect(wrapper.findAll('.inventory-balance').map(cell => cell.text())).toEqual(['0', '0.875'])
     expect(wrapper.find('.inventory-movement').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('加工完成')
     expect(wrapper.findAll('button').find(button => button.text() === '出库')!.attributes('disabled')).toBeUndefined()
@@ -273,9 +304,9 @@ describe('warehouse grouped stock', () => {
     expect(headers()[0]).toBe('客户编号')
     const choices = warehouseColumns.map(column => ({ key: column.key, visible: column.key === 'source' || column.key === 'on_hand_weight' })).reverse()
     wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', choices); await flushPromises()
-    expect(headers()).toEqual(['客户编号', '流水号', '当前重量 (kg)', '来源', '操作'])
+    expect(headers()).toEqual(['客户编号', '流水号', '在库重量 (kg)', '来源', '操作'])
     wrapper.findAllComponents(ElTag).find(item => item.text().includes('首列显示'))!.vm.$emit('close', new MouseEvent('click')); await flushPromises()
-    expect(headers()).toEqual(['流水号', '当前重量 (kg)', '来源', '操作'])
+    expect(headers()).toEqual(['流水号', '在库重量 (kg)', '来源', '操作'])
   })
   it('validates numeric queries before requesting grouped amounts', async () => {
     await render()
@@ -286,7 +317,7 @@ describe('warehouse grouped stock', () => {
     expect(teamMaterialApi.teamInventory).toHaveBeenCalledTimes(count)
     select('库存数值比较').vm.$emit('update:modelValue', 'gte'); await submit('20')
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ search_field: 'on_hand_quantity', search_operator: 'gte', query: '20' }))
-    expect(headers()[0]).toBe('当前件数')
+    expect(headers()[0]).toBe('在库件数')
   })
   it('scopes row details and outbound picker to the selected group, while the serial opens full history', async () => {
     await render()
@@ -310,7 +341,7 @@ describe('warehouse grouped stock', () => {
     await wrapper.get('input[aria-label="库存明细搜索"]').setValue('未提交')
     await wrapper.findAll('button').find(item => item.text() === '明细')!.trigger('click')
     const table = wrapper.get('.el-table').element
-    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValueOnce({ items: [warehouseFixture({ on_hand_quantity: 99 })], total: 28, page: 1, page_size: 10 })
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValueOnce({ items: [warehouseFixture({ owned_quantity: 99 })], total: 28, page: 1, page_size: 10 })
     await wrapper.setProps({ overview: overview() }); await flushPromises()
     expect(wrapper.get('.el-table').element).toBe(table)
     expect(wrapper.getComponent(TeamInventoryDetail).props('group')?.group_id).toBe(11)
