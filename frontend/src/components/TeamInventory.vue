@@ -43,10 +43,9 @@ const analysisLabel = computed(() => text('filter_label') || (text('stock_age') 
 const dates = computed(() => ({ from: text('date_from') || text('activity_day'), to: text('date_to') || text('activity_day') }))
 const sourceTeams = computed(() => directory.items.filter(team => team.id !== props.teamId))
 const sourceLabel = (row: TeamInventoryRow) => inventorySourceLabel(row, props.warehouse)
-const ownershipDefaults = ['material_name', 'material_type', 'source', 'owned_balance', 'dispatchable_balance', 'pending_transfer']
 const columns = computed(() => warehouseColumns.map(column => ({ ...column,
-  defaultVisible: props.ownership ? ownershipDefaults.includes(column.key) : column.defaultVisible,
-  label: column.key === 'source' ? props.ownership || props.warehouse ? '来源' : '上序班组' : props.ownership && column.key === 'stock_balance' ? '在库余量' : column.label,
+  label: column.key === 'source' ? props.warehouse ? '来源' : '上序班组' : props.ownership && column.key === 'stock_balance' ? '在库余量' : column.label,
+  width: props.ownership && column.key === 'stock_balance' ? 230 : column.width,
   format: column.key === 'source' ? sourceLabel : column.format,
 })))
 const searchColumns = computed(() => warehouseSearchColumns.map(column => column.key === 'source' ? { ...column, label: props.warehouse ? '来源' : '上序班组' } : column))
@@ -197,8 +196,15 @@ onBeforeUnmount(() => { ++version })
             <ElButton v-if="row.in_transit_quantity > 0 || row.in_transit_weight > 0" link type="primary" :aria-label="`查看${row.serial_no}转出待签收批次`" @click="pending = asRow(row)"><span class="inventory-cell-stack"><span>{{ inventoryAmount(row.in_transit_quantity) }} 件</span><span>{{ inventoryAmount(row.in_transit_weight) }} kg</span></span></ElButton>
             <template v-else><span>{{ inventoryAmount(row.in_transit_quantity) }} 件</span><span>{{ inventoryAmount(row.in_transit_weight) }} kg</span></template>
           </div>
-          <div v-else-if="column.key === 'stock_balance'" class="inventory-cell-stack inventory-balance"><strong>{{ inventoryAmount(row.on_hand_quantity) }} <small>件</small></strong><span>{{ inventoryAmount(row.on_hand_weight) }} <small>kg</small></span><small>{{ inventoryBalanceState(asRow(row)) }}<template v-if="row.current_batch_count"> · {{ row.current_batch_count }} 批</template></small></div>
-          <InventoryMovementSummary v-else-if="column.key === 'movement'" :balance="asRow(row)" />
+          <div v-else-if="column.key === 'stock_balance'" class="inventory-cell-stack inventory-balance">
+            <strong>{{ inventoryAmount(row.on_hand_quantity) }} <small>件</small></strong><span>{{ inventoryAmount(row.on_hand_weight) }} <small>kg</small></span>
+            <small><template v-if="ownership && row.on_hand_quantity === 0 && row.on_hand_weight === 0 && (row.in_transit_quantity > 0 || row.in_transit_weight > 0)">已全部转出 · 待签收</template><template v-else>{{ inventoryBalanceState(asRow(row)) }}<template v-if="row.current_batch_count"> · {{ row.current_batch_count }} 批</template></template></small>
+            <div v-if="ownership" class="inventory-ownership-details">
+              <div><span>归属余量</span><b>{{ inventoryAmount(row.owned_quantity) }} 件 / {{ inventoryAmount(row.owned_weight) }} kg</b></div>
+              <div><span>{{ isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量' }}</span><b>{{ inventoryAmount(inventoryDispatchable(asRow(row)).quantity) }} 件 / {{ inventoryAmount(inventoryDispatchable(asRow(row)).weight) }} kg</b></div>
+            </div>
+          </div>
+          <InventoryMovementSummary v-else-if="column.key === 'movement'" :balance="asRow(row)" :ownership="ownership" @pending="pending = asRow(row)" />
           <div v-else-if="column.key === 'oldest_received_at'" class="inventory-cell-stack inventory-receipt"><span>{{ column.format(asRow(row)) }}</span><small v-if="row.oldest_received_at">{{ inventoryAge(row.oldest_received_at) }}</small></div>
           <span v-else>{{ column.format(asRow(row)) }}</span>
         </template>
@@ -236,6 +242,10 @@ onBeforeUnmount(() => { ++version })
 .inventory-cell-stack small { font-size: 14px; font-weight: 400; color: var(--muted); }
 .inventory-balance strong { font-size: 18px; font-weight: 550; color: var(--text); }
 .inventory-balance > span { font-size: 14px; }
+.inventory-ownership-details { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); max-width: 100%; font-size: 14px; }
+.inventory-ownership-details > div { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; }
+.inventory-ownership-details span { color: var(--muted); }
+.inventory-ownership-details b { font-weight: 500; }
 .inventory-receipt { font-size: 14px; }
 .inventory-row-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .inventory-row-actions :deep(.el-button + .el-button) { margin-left: 0; }
