@@ -21,6 +21,8 @@ describe('compact material classification', () => {
     expect(wrapper.find('.balance-cards').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('材质库存分布')
     expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(10)
+    expect(wrapper.get('.ledger-table').classes()).toContain('single-line-table')
+    expect(wrapper.get('.material-amount').findAll('strong').map(value => value.text())).toEqual(['10', '1'])
     expect(wrapper.findAll('th').map(cell => cell.text())).toEqual(['材质', '正常料在库', '废料在库', '转出待确认', '在库合计', '累计接收', '确认转出', '累计丢失', '操作'])
   })
   it('retains material drill-down and 10/20/50/100 pagination', async () => {
@@ -60,6 +62,7 @@ describe('compact material classification', () => {
     expect(wrapper.get('footer').text()).toContain('共 2 种材质')
     await wrapper.setProps({ kind: 'type' }); await flushPromises()
     expect(wrapper.findAll('.ledger-table')).toHaveLength(1)
+    expect(wrapper.get('.ledger-table').classes()).toContain('single-line-table')
     expect(wrapper.get('header h2').text()).toContain('物料性质结存')
     expect(wrapper.get('footer').text()).toContain('共 1 种物料性质')
     expect(wrapper.findAll('th').map(cell => cell.text())).toEqual(['物料性质', '正常料在库', '在库合计', '废料可处理余量', '操作'])

@@ -55,6 +55,19 @@
     flex-direction: column;
     gap: 2px;
   }
+  /* Workbench peer lists stay on one line; detail and print layouts are unchanged. */
+  .team-workspace.team-workspace--reading .el-table.business-table.single-line-table .cell {
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+  .team-workspace.team-workspace--reading .el-table.business-table.single-line-table .material-amount {
+    display: inline-flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: baseline;
+    gap: 10px;
+    white-space: nowrap;
+  }
   :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table .table-prose .cell {
     text-align: left;
     white-space: pre-wrap;

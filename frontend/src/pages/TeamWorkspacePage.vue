@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { FullScreen, Search } from '@element-plus/icons-vue'
-import { ElAlert, ElButton, ElCheckbox, ElInput, ElOption, ElPagination, ElSelect, ElTable, ElTableColumn, type InputInstance } from 'element-plus'
+import { ElAlert, ElButton, ElCheckbox, ElInput, ElOption, ElPagination, ElPopover, ElSelect, ElTable, ElTableColumn, type InputInstance } from 'element-plus'
 import RecordDateFilter from '@/components/RecordDateFilter.vue'
 import SerialUrgencyBadge from '@/components/SerialUrgencyBadge.vue'
 import type { CalendarRange } from '@/types/recordFilters'
@@ -334,40 +334,53 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
               <StatePanel v-else-if="loadError" state="error" :description="loadError" @retry="loadView" />
               <StatePanel v-else-if="!total" state="empty" :title="tab === 'pending' ? '暂无待接收来料' : tab === 'outgoing' ? '暂无出库记录' : tab === 'receipts' ? '暂无入库记录' : '暂无丢失记录'" description="可以调整搜索条件或刷新记录。" />
               <div v-else class="team-table-scroll">
-                <ElTable v-if="tab === 'pending'" :data="pending" class="business-table team-table" row-key="id">
-                  <ElTableColumn label="批次 / 流水号" min-width="220"><template #default="{ row }"><button class="batch-link" @click="openIncoming(asTransfer(row))">{{ row.batch_no }}</button><small class="cell-secondary">{{ row.serial_no }}<SerialUrgencyBadge :urgency="row.urgency" /></small></template></ElTableColumn>
-                  <ElTableColumn label="材质 / 类型" min-width="140"><template #default="{ row }">{{ row.material_name || '—' }}<small class="cell-secondary">{{ materialTypeLabel(row.material_type) }}<template v-if="row.purpose_name"> · {{ row.purpose_name }}</template></small></template></ElTableColumn>
-                  <ElTableColumn label="数量 / 重量" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.quantity" :weight="row.weight" /></template></ElTableColumn>
-                  <ElTableColumn label="上序" min-width="100"><template #default="{ row }">{{ row.source_team.name }}</template></ElTableColumn>
-                  <ElTableColumn label="转出人 / 时间" min-width="150"><template #default="{ row }">{{ row.transferred_by || '—' }}<small class="cell-secondary">{{ formatDateTime(row.transferred_at) }}</small></template></ElTableColumn>
+                <ElTable v-if="tab === 'pending'" :data="pending" class="business-table team-table single-line-table" row-key="id">
+                  <ElTableColumn label="批次号" min-width="190" show-overflow-tooltip><template #default="{ row }"><button class="batch-link" :title="row.batch_no" @click="openIncoming(asTransfer(row))">{{ row.batch_no }}</button></template></ElTableColumn>
+                  <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip><template #default="{ row }"><span class="record-serial"><span :title="row.serial_no">{{ row.serial_no }}</span><SerialUrgencyBadge :urgency="row.urgency" /></span></template></ElTableColumn>
+                  <ElTableColumn label="材质" min-width="130" show-overflow-tooltip><template #default="{ row }">{{ row.material_name || '—' }}</template></ElTableColumn>
+                  <ElTableColumn label="类型 / 业务" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.material_type) }}<template v-if="row.purpose_name"> · {{ row.purpose_name }}</template></template></ElTableColumn>
+                  <ElTableColumn label="数量 / 重量" min-width="190" show-overflow-tooltip><template #default="{ row }"><MaterialAmount :quantity="row.quantity" :weight="row.weight" /></template></ElTableColumn>
+                  <ElTableColumn label="上序" min-width="100" show-overflow-tooltip><template #default="{ row }">{{ row.source_team.name }}</template></ElTableColumn>
+                  <ElTableColumn label="转出人" min-width="100" show-overflow-tooltip><template #default="{ row }">{{ row.transferred_by || '—' }}</template></ElTableColumn>
+                  <ElTableColumn label="转出时间" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ formatDateTime(row.transferred_at) }}</template></ElTableColumn>
                   <ElTableColumn label="操作" width="110" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="openIncoming(asTransfer(row))">{{ canWrite ? '核对接收' : '查看详情' }}</ElButton></template></ElTableColumn>
                 </ElTable>
-                <ElTable v-else-if="tab === 'receipts'" :data="receipts" class="business-table team-table" row-key="id">
-                  <ElTableColumn label="入库单 / 流水号" min-width="240"><template #default="{ row }"><button class="batch-link" @click="openDetail(asTransfer(row))">{{ row.batch_no }}</button><small class="cell-secondary">{{ row.serial_no }}<SerialUrgencyBadge :urgency="row.urgency" /></small></template></ElTableColumn>
-                  <ElTableColumn label="入库来源" min-width="160"><template #default="{ row }">{{ receiptSourceLabel(asTransfer(row)) }}<small class="cell-secondary">{{ materialSourceLabel(asTransfer(row)) }}</small></template></ElTableColumn>
-                  <ElTableColumn label="材质 / 类型" min-width="140"><template #default="{ row }">{{ row.material_name }}<small class="cell-secondary">{{ materialTypeLabel(row.material_type) }}<template v-if="row.purpose_name"> · {{ row.purpose_name }}</template></small></template></ElTableColumn>
-                  <ElTableColumn label="数量 / 重量" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.quantity" :weight="row.weight" /></template></ElTableColumn>
-                  <ElTableColumn label="入库说明" min-width="160" prop="notes" show-overflow-tooltip />
+                <ElTable v-else-if="tab === 'receipts'" :data="receipts" class="business-table team-table single-line-table" row-key="id">
+                  <ElTableColumn label="批次号" min-width="190" show-overflow-tooltip><template #default="{ row }"><button class="batch-link" :title="row.batch_no" @click="openDetail(asTransfer(row))">{{ row.batch_no }}</button></template></ElTableColumn>
+                  <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip><template #default="{ row }"><span class="record-serial"><span :title="row.serial_no">{{ row.serial_no }}</span><SerialUrgencyBadge :urgency="row.urgency" /></span></template></ElTableColumn>
+                  <ElTableColumn label="来源类别" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ receiptSourceLabel(asTransfer(row)) }}</template></ElTableColumn>
+                  <ElTableColumn label="来源" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ materialSourceLabel(asTransfer(row)) }}</template></ElTableColumn>
+                  <ElTableColumn label="材质" min-width="130" show-overflow-tooltip><template #default="{ row }">{{ row.material_name || '—' }}</template></ElTableColumn>
+                  <ElTableColumn label="类型 / 业务" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.material_type) }}<template v-if="row.purpose_name"> · {{ row.purpose_name }}</template></template></ElTableColumn>
+                  <ElTableColumn label="数量 / 重量" min-width="190" show-overflow-tooltip><template #default="{ row }"><MaterialAmount :quantity="row.quantity" :weight="row.weight" /></template></ElTableColumn>
                   <ElTableColumn label="状态" width="120"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" /></template></ElTableColumn>
-                  <ElTableColumn label="接收人 / 时间" min-width="150"><template #default="{ row }">{{ row.received_by || '—' }}<small class="cell-secondary">{{ formatDateTime(row.received_at) }}</small></template></ElTableColumn>
+                  <ElTableColumn label="接收人" min-width="100" show-overflow-tooltip><template #default="{ row }">{{ row.received_by || '—' }}</template></ElTableColumn>
+                  <ElTableColumn label="接收时间" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ formatDateTime(row.received_at) }}</template></ElTableColumn>
                   <ElTableColumn label="操作" width="100" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="openDetail(asTransfer(row))">查看入库单</ElButton></template></ElTableColumn>
                 </ElTable>
-                <ElTable v-else-if="tab === 'outgoing'" :data="outgoing" class="business-table team-table dispatch-table" row-key="batch_no" @selection-change="selectedPrintRows = $event">
+                <ElTable v-else-if="tab === 'outgoing'" :data="outgoing" class="business-table team-table dispatch-table single-line-table" row-key="batch_no" @selection-change="selectedPrintRows = $event">
                   <ElTableColumn type="selection" width="48" />
-                  <ElTableColumn label="批次 / 流水号" min-width="250"><template #default="{ row }"><BarcodeCard :value="row.batch_no" entity-label="批次号" compact /><button class="batch-link" @click="openDetail(asTransfer(row))">{{ row.serial_no }}</button><SerialUrgencyBadge :urgency="row.urgency" /></template></ElTableColumn>
-                  <ElTableColumn label="材质 / 类型" min-width="140"><template #default="{ row }">{{ row.material_name || '—' }}<small class="cell-secondary">{{ materialTypeLabel(row.material_type) }}<template v-if="row.purpose_name"> · {{ row.purpose_name }}</template></small></template></ElTableColumn>
-                  <ElTableColumn label="方式 / 下序" min-width="140"><template #default="{ row }">{{ materialEntryLabel(row.entry_kind) }}<small class="cell-secondary">{{ isExternalEntryKind(row.entry_kind) ? row.external_destination || row.next_team.name : teamWorkspaceProfile(row.next_team.code)?.name || row.next_team.name }}</small></template></ElTableColumn>
-                  <ElTableColumn label="数量 / 重量" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.quantity" :weight="row.weight" /></template></ElTableColumn>
+                  <ElTableColumn label="批次号" min-width="190"><template #default="{ row }"><ElPopover :trigger="['hover', 'focus']" placement="top" :width="320" :show-after="180"><template #reference><button class="batch-link" :title="row.batch_no" :aria-label="`${row.batch_no}，悬停查看条码，点击查看详情`" @click="openDetail(asTransfer(row))">{{ row.batch_no }}</button></template><BarcodeCard :value="row.batch_no" entity-label="批次号" compact /></ElPopover></template></ElTableColumn>
+                  <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip><template #default="{ row }"><span class="record-serial"><span :title="row.serial_no">{{ row.serial_no }}</span><SerialUrgencyBadge :urgency="row.urgency" /></span></template></ElTableColumn>
+                  <ElTableColumn label="材质" min-width="130" show-overflow-tooltip><template #default="{ row }">{{ row.material_name || '—' }}</template></ElTableColumn>
+                  <ElTableColumn label="类型 / 业务" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.material_type) }}<template v-if="row.purpose_name"> · {{ row.purpose_name }}</template></template></ElTableColumn>
+                  <ElTableColumn label="出库方式" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ materialEntryLabel(row.entry_kind) }}</template></ElTableColumn>
+                  <ElTableColumn label="下序 / 去向" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ isExternalEntryKind(row.entry_kind) ? row.external_destination || row.next_team.name : teamWorkspaceProfile(row.next_team.code)?.name || row.next_team.name }}</template></ElTableColumn>
+                  <ElTableColumn label="数量 / 重量" min-width="190" show-overflow-tooltip><template #default="{ row }"><MaterialAmount :quantity="row.quantity" :weight="row.weight" /></template></ElTableColumn>
                   <ElTableColumn label="状态" width="120"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" :outgoing="ownershipSample" /></template></ElTableColumn>
-                  <ElTableColumn label="登记人 / 时间" min-width="150"><template #default="{ row }">{{ row.transferred_by || '—' }}<small class="cell-secondary">{{ formatDateTime(row.transferred_at) }}</small></template></ElTableColumn>
+                  <ElTableColumn label="登记人" min-width="100" show-overflow-tooltip><template #default="{ row }">{{ row.transferred_by || '—' }}</template></ElTableColumn>
+                  <ElTableColumn label="登记时间" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ formatDateTime(row.transferred_at) }}</template></ElTableColumn>
                   <ElTableColumn label="操作" width="110" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="openDetail(asTransfer(row))">查看详情</ElButton></template></ElTableColumn>
                 </ElTable>
-                <ElTable v-else :data="losses" class="business-table team-table" row-key="id">
-                  <ElTableColumn label="丢失记录 / 来源" min-width="220"><template #default="{ row }">{{ row.loss_no }}<button class="batch-link cell-secondary" @click="openLossSource(asLoss(row))">{{ row.batch_no }}</button></template></ElTableColumn>
-                  <ElTableColumn label="材质 / 流水号" min-width="150"><template #default="{ row }">{{ row.material_name || '—' }}<small class="cell-secondary">{{ row.serial_no }}<SerialUrgencyBadge :urgency="row.urgency" /></small></template></ElTableColumn>
-                  <ElTableColumn label="数量 / 重量" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.quantity" :weight="row.weight" /></template></ElTableColumn>
-                  <ElTableColumn prop="reason" class-name="table-prose" label="原因" min-width="200" show-overflow-tooltip />
-                  <ElTableColumn label="登记人 / 时间" min-width="150"><template #default="{ row }">{{ row.created_by || '—' }}<small class="cell-secondary">{{ formatDateTime(row.created_at) }}</small></template></ElTableColumn>
+                <ElTable v-else :data="losses" class="business-table team-table single-line-table" row-key="id">
+                  <ElTableColumn prop="loss_no" label="丢失记录号" min-width="190" show-overflow-tooltip />
+                  <ElTableColumn label="来源批次号" min-width="190" show-overflow-tooltip><template #default="{ row }"><button class="batch-link" :title="row.batch_no" @click="openLossSource(asLoss(row))">{{ row.batch_no }}</button></template></ElTableColumn>
+                  <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip><template #default="{ row }"><span class="record-serial"><span :title="row.serial_no">{{ row.serial_no }}</span><SerialUrgencyBadge :urgency="row.urgency" /></span></template></ElTableColumn>
+                  <ElTableColumn label="材质" min-width="130" show-overflow-tooltip><template #default="{ row }">{{ row.material_name || '—' }}</template></ElTableColumn>
+                  <ElTableColumn label="数量 / 重量" min-width="190" show-overflow-tooltip><template #default="{ row }"><MaterialAmount :quantity="row.quantity" :weight="row.weight" /></template></ElTableColumn>
+                  <ElTableColumn prop="reason" label="原因" min-width="200" show-overflow-tooltip />
+                  <ElTableColumn label="登记人" min-width="100" show-overflow-tooltip><template #default="{ row }">{{ row.created_by || '—' }}</template></ElTableColumn>
+                  <ElTableColumn label="登记时间" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></ElTableColumn>
                 </ElTable>
               </div>
               <footer v-if="!loading && !loadError" class="table-footer"><span>共 {{ total }} 条记录</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[10, 20, 50, 100]" :total="total" layout="sizes, prev, pager, next" @current-change="applyFilters($event)" @size-change="applyFilters(1, $event)" /></footer>
@@ -410,11 +423,11 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 .scanner-error { margin: 0 12px 8px; font-size: 12px; color: var(--danger); }
 .team-table-scroll { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .team-table :deep(.el-checkbox) { height: 24px; }
-.team-table :deep(.material-amount) { gap: 4px 10px; white-space: nowrap; }
-.cell-secondary { display: block; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--workspace-muted, var(--subtle)); font-size: var(--workspace-meta-size, 14px); line-height: 22px; }
+.record-serial { display: flex; align-items: center; justify-content: center; min-width: 0; white-space: nowrap; }
+.record-serial > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.record-serial :deep(.serial-urgency-badge) { flex-shrink: 0; }
 .batch-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: transparent; color: var(--workspace-ink, #303133); font: inherit; font-size: var(--workspace-body-size, 16px); font-weight: 400; line-height: 24px; text-align: left; cursor: pointer; }
 .batch-link:hover { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
-.batch-link.cell-secondary { font-size: var(--workspace-meta-size, 14px); }
 .row-actions { display: flex; align-items: center; gap: 10px; }
 .row-actions .el-button + .el-button { margin-left: 0; }
 .table-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); }

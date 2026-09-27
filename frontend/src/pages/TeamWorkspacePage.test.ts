@@ -54,6 +54,35 @@ async function render(path = '/team-workspaces/914', animate = false) {
   return router
 }
 describe('team workspace material ledger', () => {
+  it.each(['pending', 'receipts', 'outgoing', 'losses'])('keeps %s record fields in separate single-line cells and preserves batch details', async tab => {
+    const transfer = normalizeMaterialTransfer({ ...source().transfer, serial_no: '00001234', material_name: '铜钼 CuMo70', material_type: 'semi_finished', purpose_name: '去毛刺', quantity: 30, weight: 1.234, transferred_by: '张师傅', transferred_at: '2026-09-27T12:30:00', received_by: '李师傅', received_at: '2026-09-27T13:30:00' })
+    const result = { items: [transfer], total: 1, page: 1, page_size: 10 }
+    vi.mocked(materialTransferApi.list).mockResolvedValue(result)
+    vi.mocked(teamMaterialApi.receipts).mockResolvedValue(result)
+    vi.mocked(teamMaterialApi.dispatches).mockResolvedValue(result)
+    vi.mocked(teamMaterialApi.losses).mockResolvedValue({ ...result, items: [{ id: 1, loss_no: 'LS00001', source_transfer_id: Number(transfer.id), batch_no: transfer.batch_no, serial_no: transfer.serial_no, material_name: transfer.material_name ?? null, quantity: 30, weight: 1.234, reason: '搬运时遗失，已核查现场', created_by: '张师傅', created_at: transfer.transferred_at, team_id: 914 }] })
+    await render(`/team-workspaces/${tab === 'receipts' ? 901 : 914}?tab=${tab}`)
+    const table = wrapper.get('.team-table')
+    const headings = table.findAll('thead th').map(cell => cell.text())
+    expect(table.classes()).toContain('single-line-table')
+    expect(headings).toContain('流水号')
+    expect(headings).toContain('材质')
+    expect(headings).toContain(tab === 'losses' ? '来源批次号' : '批次号')
+    expect(headings).not.toContain('批次 / 流水号')
+    expect(table.find('.cell-secondary').exists()).toBe(false)
+    const cells = table.findAll('.el-table__body tr').at(0)!.findAll('td')
+    expect(cells[headings.indexOf('流水号')]!.text()).toBe('00001234')
+    expect(cells[headings.indexOf('材质')]!.text()).toBe('铜钼 CuMo70')
+    expect(cells[headings.indexOf('数量 / 重量')]!.findAll('strong').map(value => value.text())).toEqual(['30', '1.234'])
+    expect(table.find('.barcode-card').exists()).toBe(false)
+    await table.get('.batch-link').trigger('click'); await flushPromises()
+    expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: 'TL10', allowPrint: tab !== 'pending' })
+    if (tab === 'outgoing') {
+      wrapper.getComponent({ name: 'ElTable' }).vm.$emit('selection-change', [transfer]); await flushPromises()
+      await wrapper.findAll('button').find(button => button.text().startsWith('合并打印'))!.trigger('click'); await flushPromises()
+      expect(wrapper.getComponent(MaterialBatchPrintDialog).props()).toMatchObject({ modelValue: true, items: [transfer] })
+    }
+  })
   it('supports the real page transition without a fragment-root animation warning', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     await render('/team-workspaces/914', true)
