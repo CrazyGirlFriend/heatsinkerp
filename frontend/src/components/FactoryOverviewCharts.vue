@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { EChartsCoreOption } from 'echarts/core'
 import LedgerChart from './LedgerChart.vue'
 import { materialTypeLabel, materialTypeOptions } from '@/types/materialTransfer'
@@ -8,6 +8,7 @@ import type { FactoryOverview, FactoryTeam, FactoryScene } from '@/types/factory
 
 const props = withDefaults(defineProps<{ data: FactoryOverview; metric: Metric; scene?: FactoryScene; motion?: boolean }>(), { scene: 'overview', motion: true })
 const emit = defineEmits<{ team: [team: FactoryTeam] }>()
+const chartsRoot = ref<HTMLElement>()
 const unit = computed(() => props.metric === 'weight' ? 'kg' : '件')
 const colors = computed(() => ['#58986f', '#79a9ce', '#c6a15c', '#a6afb6'])
 const ink = computed(() => '#64726a')
@@ -18,6 +19,13 @@ const natureOrder = (key: string) => { const index = materialTypeOptions.findInd
 const materialTypes = computed(() => props.data.material_types.filter(row => row.quantity > 0 || row.weight > 0).sort((a, b) => natureOrder(a.key) - natureOrder(b.key)).map((row, index) => ({
   ...row, name: row.key === 'unknown' ? '未填写性质' : materialTypeLabel(row.key), color: natureColors[index % natureColors.length],
 })))
+function natureTooltipPosition(_point: number[], _params: unknown, _dom: unknown, _rect: unknown, size: { contentSize: number[]; viewSize: number[] }) {
+  const bounds = chartsRoot.value?.querySelector('.factory-chart--types .ledger-chart')?.getBoundingClientRect()
+  const width = size.contentSize[0]!, height = size.contentSize[1]!
+  const left = (size.viewSize[0]! - width) / 2
+  // The narrow ring cannot contain its tooltip; place it above, within the viewport.
+  return bounds ? [Math.max(8 - bounds.left, Math.min(left, document.documentElement.clientWidth - bounds.left - width - 8)), Math.max(8 - bounds.top, -height - 10)] : [left, -height - 10]
+}
 const common = computed(() => ({ color: colors.value, textStyle: { fontFamily: 'HeatSink Inter, PingFang SC, Microsoft YaHei, sans-serif', fontSize: fontSize.value, color: ink.value },
   tooltip: { trigger: 'axis', renderMode: 'richText', confine: true, valueFormatter: (value: number) => `${format(value)} ${unit.value}` },
   legend: { top: 0, right: 0, itemWidth: 9, itemHeight: 9, textStyle: { fontSize: fontSize.value, color: ink.value } } }))
@@ -50,7 +58,7 @@ const cards = computed(() => {
     { key: 'flow', title: '全厂对外收发', hint: `近${d.days}天 · 内部转料不计入`, empty: !d.trend.some(row => row.inbound[metric] || row.outbound[metric] || row.shipment[metric]),
       option: plot(labels, [line('库房入库', d.trend.map(row => row.inbound[metric])), line('库房对外出库', d.trend.map(row => row.outbound[metric])), line('检验发货', d.trend.map(row => row.shipment[metric]))]) },
     { key: 'types', title: '物料性质分布', hint: '当前结存构成', empty: !materialTypes.value.some(row => row[metric] > 0),
-      option: { ...common.value, tooltip: { ...common.value.tooltip, trigger: 'item' }, legend: { show: false }, series: [{ type: 'pie', radius: ['55%', '86%'], center: ['50%', '50%'], label: { show: false }, itemStyle: { borderColor: '#fff', borderWidth: 2 }, data: materialTypes.value.map(row => ({ name: row.name, value: row[metric], itemStyle: { color: row.color } })) }] } },
+      option: { ...common.value, tooltip: { ...common.value.tooltip, trigger: 'item', renderMode: 'html', appendTo: 'body', confine: false, position: natureTooltipPosition, className: 'factory-nature-tooltip', textStyle: { fontSize: 12 }, padding: [8, 10] }, legend: { show: false }, series: [{ type: 'pie', radius: ['55%', '86%'], center: ['50%', '50%'], label: { show: false }, itemStyle: { borderColor: '#fff', borderWidth: 2 }, data: materialTypes.value.map(row => ({ name: row.name, value: row[metric], itemStyle: { color: row.color } })) }] } },
     { key: 'waiting', title: '待交接时长', hint: '每笔转料只统计一次', empty: !d.waiting_age.some(row => row.internal[metric] || row.external[metric]),
       option: plot(['<1天', '1–3天', '3–7天', '≥7天'], [bar('内部待接收', d.waiting_age.map(row => row.internal[metric]), 'waiting'), bar('对外待确认', d.waiting_age.map(row => row.external[metric]), 'waiting')]) },
     { key: 'loss', title: '丢失趋势', hint: `近${d.days}天 ${format(d.period_totals.loss[metric])} ${unit.value} · 不含转废`, empty: !d.trend.some(row => row.loss[metric] > 0),
@@ -65,7 +73,7 @@ const cards = computed(() => {
 function pick(key: string, index: number) { const team = props.data.teams[index]; if (key === 'teams' && team?.id && team.active) emit('team', team) }
 </script>
 <template>
-  <section class="factory-charts" :data-scene="scene" aria-label="全厂物料分析">
+  <section ref="chartsRoot" class="factory-charts" :data-scene="scene" aria-label="全厂物料分析">
     <article v-for="card in cards" :key="card.key" class="factory-chart" :class="[`factory-chart--${card.key}`, { 'factory-chart--nature': card.key === 'types' && materialTypes.length }]">
       <header><h2 :title="card.hint">{{ card.title }}</h2><span v-if="card.key !== 'types'">{{ unit }}</span></header>
       <div class="factory-chart-content" :class="{ 'nature-content': card.key === 'types' && materialTypes.length }">

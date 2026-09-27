@@ -55,6 +55,7 @@ describe('factory analysis charts', () => {
       const expected = [['成品', '345.678'], ['废泥', '8.5'], ['未填写性质', '0']]
       expect(values()).toEqual(expected)
       const chart = wrapper.findAllComponents(LedgerChart)[2]!
+      expect(chart.props('option').tooltip).toMatchObject({ renderMode: 'html', appendTo: 'body', confine: false, position: expect.any(Function) })
       expect(chart.props('option')).toMatchObject({ series: [{ data: [{ value: 345.678 }, { value: 8.5 }, { value: 0 }] }] })
       await wrapper.setProps({ metric: 'quantity' })
       expect(chart.props('option')).toMatchObject({ series: [{ data: [{ value: 1200 }, { value: 0 }, { value: 2 }] }] })
