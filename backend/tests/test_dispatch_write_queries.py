@@ -160,6 +160,7 @@ def test_mid_batch_audit_failure_rolls_back_numbers_balances_and_notification(
 @pytest.mark.parametrize("line_count", [1, 12, 100])
 def test_replay_loads_response_relationships_in_batches(client, warehouse, line_count):  # noqa: F811
     origins = [intake(client, warehouse, serial_no=f"0000{index}",
+                      delivery_date=f"2026-10-0{index + 1}", delivery_quantity=80 + index,
                       idempotency_key=f"replay-origin-{index}").json() for index in range(3)]
     lines = [{"source_transfer_id": origins[index % 3]["id"], "quantity": 1, "weight": ".100"}
              for index in range(line_count)]
@@ -182,10 +183,16 @@ def test_replay_loads_response_relationships_in_batches(client, warehouse, line_
         'serial_no': origins[0]['serial_no'], 'urgent': True, 'reason': '交期变更',
         'expected_version': 0,
     }).status_code == 200
+    assert client.patch(f"/api/material-transfers/{origins[0]['batch_no']}/delivery",
+        headers=warehouse['headers'], json={"delivery_date": "2026-10-05", "delivery_quantity": 90,
+                                            "expected_version": origins[0]['version']}).status_code == 200
     latest = dispatch(client, warehouse, lines).json()['items']
     assert latest[0]['status'] == 'received'
     assert latest[0]['allowed_actions'] == []
     for index, item in enumerate(latest):
         assert item['urgency']['urgent'] == (index % 3 == 0)
         assert item['source_transfer_batch_no'] == origins[index % 3]['batch_no']
+        assert item['delivery_origin_batch_no'] == origins[index % 3]['batch_no']
+        assert item['delivery_date'] == ('2026-10-05' if index % 3 == 0 else origins[index % 3]['delivery_date'])
+        assert item['delivery_quantity'] == (90 if index % 3 == 0 else origins[index % 3]['delivery_quantity'])
     assert sum(value[0] for value in reconcile().values()) == 301 - line_count

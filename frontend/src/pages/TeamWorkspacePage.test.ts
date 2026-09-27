@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { reactive } from 'vue'
+import { h, reactive, Transition } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TeamWorkspacePage from './TeamWorkspacePage.vue'
@@ -45,14 +45,21 @@ beforeEach(() => {
   vi.spyOn(materialTransferApi, 'list').mockResolvedValue({ items: [normalizeMaterialTransfer({ ...source().transfer, status: 'pending', locked: false })], total: 1, page: 1, page_size: 10 })
 })
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); vi.useRealTimers() })
-async function render(path = '/team-workspaces/914') {
+async function render(path = '/team-workspaces/914', animate = false) {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/team-workspaces/:teamId', component: TeamWorkspacePage }, { path: '/transfer-batches', component: { template: '<div/>' } }] })
   await router.push(path)
-  wrapper = mount(TeamWorkspacePage, { global: { plugins: [router], stubs: { StockSourcePicker: true, TeamAnalyticsCharts: true, SerialMaterialDrawer: true, LedgerChart: true, MaterialDispatchDrawer: true, BarcodeCard: true, MaterialTransferDrawer: true, MaterialStockActionDialog: true, WarehouseReceiptDialog: true } } })
+  const page = animate ? { setup: () => () => h(Transition, { name: 'page-shift' }, () => h(TeamWorkspacePage)) } : TeamWorkspacePage
+  wrapper = mount(page, { global: { plugins: [router], stubs: { transition: !animate, StockSourcePicker: true, TeamAnalyticsCharts: true, SerialMaterialDrawer: true, LedgerChart: true, MaterialDispatchDrawer: true, BarcodeCard: true, MaterialTransferDrawer: true, MaterialStockActionDialog: true, WarehouseReceiptDialog: true } } })
   await flushPromises()
   return router
 }
 describe('team workspace material ledger', () => {
+  it('supports the real page transition without a fragment-root animation warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    await render('/team-workspaces/914', true)
+    expect(wrapper.find('.team-workspace').exists()).toBe(true)
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('non-element root node')
+  })
   it('reports actual pending counts for sidebar navigation without extra requests', async () => {
     const router = await render()
     expect(wrapper.emitted('pending-count')?.at(-1)).toEqual([{ teamId: 914, count: 1 }])

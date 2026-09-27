@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // Historical CK lookup only. All business actions belong to an individual batch.
-import { defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { ElAlert, ElButton } from 'element-plus'
 import MaterialTransferDetailFrame from './MaterialTransferDetailFrame.vue'
 import MaterialBatchPrintDialog from './MaterialBatchPrintDialog.vue'
 import MaterialTransferStatus from './MaterialTransferStatus.vue'
+import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import StatePanel from './StatePanel.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
@@ -12,7 +13,6 @@ import { useAuthStore } from '@/stores/auth'
 import { materialDispatchApi } from '@/services/materialDispatchApi'
 import { materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import type { MaterialDispatchDocument } from '@/types/teamMaterials'
-const MaterialTransferDrawer = defineAsyncComponent(() => import('./MaterialTransferDrawer.vue'))
 const props = withDefaults(defineProps<{ modelValue: boolean; dispatchNo?: string; docked?: boolean }>(), { dispatchNo: '', docked: false })
 const emit = defineEmits<{ 'update:modelValue': [boolean]; changed: [MaterialDispatchDocument]; busyChange: [boolean] }>()
 const auth = useAuthStore()

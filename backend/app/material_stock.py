@@ -324,6 +324,9 @@ def dispatch_dict(db, dispatch, user, *, items=None, include_history=False):
             # response relationships in batches, without locking joined teams
             # or recursively following the source's own history/relationships.
             selectinload(MaterialTransfer.stock_source).load_only(MaterialTransfer.batch_no).raiseload("*"),
+            selectinload(MaterialTransfer.delivery_origin).load_only(
+                MaterialTransfer.batch_no, MaterialTransfer.delivery_date, MaterialTransfer.delivery_quantity
+            ).raiseload("*"),
             selectinload(MaterialTransfer.source_team),
             selectinload(MaterialTransfer.next_team),
         ).where(

@@ -101,11 +101,12 @@ def test_disabled_or_password_reset_account_is_ejected_from_existing_stream(clie
     asyncio.run(run())
 
 
-def test_receipt_dispatch_loss_and_confirmation_identify_affected_teams(client, warehouse, monkeypatch):
+@pytest.mark.parametrize("delivery", [{}, {"delivery_date": "2026-10-01", "delivery_quantity": 80}])
+def test_receipt_dispatch_loss_and_confirmation_identify_affected_teams(client, warehouse, monkeypatch, delivery):
     publish = Mock(wraps=inventory_events.publish)
     monkeypatch.setattr(inventory_events, "publish", publish)
     source, target = warehouse["team"]["id"], warehouse["other"]["id"]
-    lot = intake(client, warehouse).json()
+    lot = intake(client, warehouse, **delivery).json()
     assert publish.call_args.args[0].team_ids == {source}
     response = client.post(f"/api/team-materials/{source}/dispatches", headers=warehouse["headers"], json={
         "next_team_id": target, "idempotency_key": "scoped-out",
@@ -119,6 +120,25 @@ def test_receipt_dispatch_loss_and_confirmation_identify_affected_teams(client, 
         "source_transfer_id": lot["id"], "quantity": 1, "weight": .1,
         "reason": "清点丢失", "idempotency_key": "scoped-loss"}).status_code == 201
     assert publish.call_args.args[0].team_ids == {source}
+
+
+@pytest.mark.parametrize("delivery", [
+    {"delivery_date": "2026-10-03", "delivery_quantity": 90},
+    {"delivery_date": None, "delivery_quantity": None},
+])
+def test_editing_or_clearing_origin_delivery_refreshes_descendant_teams(client, warehouse, monkeypatch, delivery):
+    lot = intake(client, warehouse, delivery_date="2026-10-01", delivery_quantity=80).json()
+    publish = Mock(wraps=inventory_events.publish)
+    monkeypatch.setattr(inventory_events, "publish", publish)
+    response = client.patch(f"/api/material-transfers/{lot['batch_no']}/delivery",
+        headers=warehouse["headers"], json={**delivery, "expected_version": lot["version"]})
+    assert response.status_code == 200, response.text
+    assert publish.call_args.args[0].team_ids is None
+    publish.reset_mock()
+    response = client.patch(f"/api/material-transfers/{lot['batch_no']}/delivery",
+        headers=warehouse["headers"], json={**delivery, "expected_version": response.json()["version"]})
+    assert response.status_code == 200, response.text
+    publish.assert_not_called()
 
 
 def test_retargeting_notifies_both_previous_and_new_destination(client, monkeypatch):

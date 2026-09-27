@@ -372,10 +372,15 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
         </template>
       </template>
     </div>
-    <template #dialogs><StockSourcePicker v-if="pickerOpen && canWrite" :team-id="teamId" @close="closeDetails" @selected="openAction('dispatch', $event)" /><WarehouseReceiptDialog v-model="receiptOpen" :team-id="teamId" @saved="savedReceipt" /><MaterialStockActionDialog v-model="actionOpen" :team-id="teamId" :mode="actionMode" :sources="actionSources" @saved="savedAction" @balances-changed="loadView" /><MaterialDispatchDrawer v-if="['overview', 'stock', 'materials'].includes(tab)" v-model="groupOpen" :dispatch-no="selectedDispatchNo" @changed="loadView" /></template>
+    <template #dialogs>
+      <StockSourcePicker v-if="pickerOpen && canWrite" :team-id="teamId" @close="closeDetails" @selected="openAction('dispatch', $event)" />
+      <WarehouseReceiptDialog v-model="receiptOpen" :team-id="teamId" @saved="savedReceipt" />
+      <MaterialStockActionDialog v-model="actionOpen" :team-id="teamId" :mode="actionMode" :sources="actionSources" @saved="savedAction" @balances-changed="loadView" />
+      <MaterialDispatchDrawer v-if="['overview', 'stock', 'materials'].includes(tab)" v-model="groupOpen" :dispatch-no="selectedDispatchNo" @changed="loadView" />
+      <MaterialBatchPrintDialog v-model="printOpen" :items="printRows" />
+      <TeamBusinessDialog v-if="businessOpen && canWrite" :key="teamId" v-model="businessOpen" :team-id="teamId" @changed="businessChanged" @stocked="openPrint" />
+    </template>
   </TeamWorkspaceShell>
-  <MaterialBatchPrintDialog v-model="printOpen" :items="printRows" />
-  <TeamBusinessDialog v-if="businessOpen && canWrite" :key="teamId" v-model="businessOpen" :team-id="teamId" @changed="businessChanged" @stocked="openPrint" />
 </template>
 
 <style scoped>

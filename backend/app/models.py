@@ -356,7 +356,9 @@ class MaterialStockBalance(Base):
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
     received_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     received_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
-    adjusted_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    adjusted_quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     on_hand_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     on_hand_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
@@ -481,7 +483,9 @@ class MaterialQuantityAdjustment(Base):
         Index("ix_mqa_lot_created", "source_transfer_id", "created_at", "id"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    source_transfer_id: Mapped[int] = mapped_column(ForeignKey("material_transfers.id", ondelete="RESTRICT"))
+    source_transfer_id: Mapped[int] = mapped_column(
+        ForeignKey("material_transfers.id", ondelete="RESTRICT")
+    )
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
     before_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     after_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -491,7 +495,9 @@ class MaterialQuantityAdjustment(Base):
     idempotency_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     created_by: Mapped[str] = mapped_column(String(80), nullable=False)
-    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
 

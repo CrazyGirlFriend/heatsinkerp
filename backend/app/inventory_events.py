@@ -158,11 +158,12 @@ def change_for(row, db):
     if isinstance(row, (SerialUrgency, SerialDeliveryPlan)):
         # The serial may exist in several teams; refresh all affected views.
         return InventoryChange(team_ids=None)
-    if isinstance(row, MaterialTransfer) and any(
+    if isinstance(row, MaterialTransfer) and row not in db.new and any(
         inspect(row).attrs[field].history.has_changes()
         for field in ("delivery_date", "delivery_quantity")
     ):
-        # Descendant batches in other teams read this origin's delivery requirement.
+        # Existing origins may have descendants in other teams. A new receipt or
+        # split has no descendants yet and only affects its source/destination.
         return InventoryChange(team_ids=None)
     return InventoryChange(team_ids=affected_teams(row), directory=isinstance(row, TeamPurpose))
 
