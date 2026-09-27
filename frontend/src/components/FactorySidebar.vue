@@ -139,13 +139,13 @@ const materialLinks = computed(() => [
   <nav class="factory-nav" :class="{ 'factory-nav--compact': compact, 'factory-nav--illustrated': illustrated }" aria-label="主导航">
     <div ref="viewport" class="factory-nav__scroll" @scroll.passive="updateOverflow" @wheel.passive="revealIndex = null" @touchstart.passive="revealIndex = null" @pointerdown="revealIndex = null" @keydown="revealIndex = null" @transitionend="revealMenu">
     <ElMenu ref="menu" router unique-opened tabindex="0" :default-active="activeIndex" :collapse="compact" :collapse-transition="false" popper-class="factory-nav-popup" @open="onOpen" @close="onClose">
-      <ElSubMenu index="factory" data-nav-index="factory" aria-label="全厂总览">
-        <template #title><ElIcon><House /></ElIcon><span>全厂总览</span></template>
+      <ElSubMenu index="factory" data-nav-index="factory" aria-label="全厂总览" :class="{ 'factory-nav__current': activeGroup === 'factory' }" :aria-description="activeGroup === 'factory' ? '当前页面所属模块' : undefined">
+        <template #title><ElIcon><House /></ElIcon><span>全厂总览</span><span v-if="activeGroup === 'factory' && !compact" class="factory-nav__current-badge" aria-hidden="true">当前</span></template>
         <ElMenuItem index="/factory-analysis" aria-label="全厂数据分析" :aria-current="route.path === '/factory-analysis' ? 'page' : undefined"><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"><DataAnalysis /></ElIcon><span>全厂数据分析</span></ElMenuItem>
         <ElMenuItem index="/" aria-label="班组材质库存" :aria-current="route.path === '/' ? 'page' : undefined"><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"><Grid /></ElIcon><span>班组材质库存</span></ElMenuItem>
       </ElSubMenu>
-      <ElSubMenu index="teams" data-nav-index="teams" aria-label="班组工作台">
-        <template #title><ElIcon><OfficeBuilding /></ElIcon><span>班组工作台</span></template>
+      <ElSubMenu index="teams" data-nav-index="teams" aria-label="班组工作台" :class="{ 'factory-nav__current': activeGroup === 'teams' }" :aria-description="activeGroup === 'teams' ? '当前页面所属模块' : undefined">
+        <template #title><ElIcon><OfficeBuilding /></ElIcon><span>班组工作台</span><span v-if="activeGroup === 'teams' && !compact" class="factory-nav__current-badge" aria-hidden="true">当前</span></template>
         <ElMenuItem v-if="teamDirectory.loading && !teamDirectory.loaded" index="teams-loading" disabled>加载班组…</ElMenuItem>
         <ElMenuItem v-else-if="teamDirectory.error" index="teams-retry" :route="route.fullPath" @click="refreshTeamDirectory"><ElIcon><Refresh /></ElIcon>重新加载班组</ElMenuItem>
         <template v-else>
@@ -157,12 +157,12 @@ const materialLinks = computed(() => [
           </template>
         </template>
       </ElSubMenu>
-      <ElSubMenu index="materials" data-nav-index="materials" aria-label="流转查询">
-        <template #title><ElIcon><Search /></ElIcon><span>流转查询</span></template>
+      <ElSubMenu index="materials" data-nav-index="materials" aria-label="流转查询" :class="{ 'factory-nav__current': activeGroup === 'materials' }" :aria-description="activeGroup === 'materials' ? '当前页面所属模块' : undefined">
+        <template #title><ElIcon><Search /></ElIcon><span>流转查询</span><span v-if="activeGroup === 'materials' && !compact" class="factory-nav__current-badge" aria-hidden="true">当前</span></template>
         <ElMenuItem v-for="link in materialLinks" :key="link.path" :index="link.path" :aria-label="link.label" :aria-current="route.path === link.path ? 'page' : undefined"><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"><component :is="link.icon" /></ElIcon>{{ link.label }}</ElMenuItem>
       </ElSubMenu>
-      <ElSubMenu v-if="isAdmin" index="settings" data-nav-index="settings" aria-label="系统设置">
-        <template #title><ElIcon><Setting /></ElIcon><span>系统设置</span></template>
+      <ElSubMenu v-if="isAdmin" index="settings" data-nav-index="settings" aria-label="系统设置" :class="{ 'factory-nav__current': activeGroup === 'settings' }" :aria-description="activeGroup === 'settings' ? '当前页面所属模块' : undefined">
+        <template #title><ElIcon><Setting /></ElIcon><span>系统设置</span><span v-if="activeGroup === 'settings' && !compact" class="factory-nav__current-badge" aria-hidden="true">当前</span></template>
         <ElMenuItem index="/settings/teams" aria-label="班组管理" :aria-current="route.path === '/settings/teams' ? 'page' : undefined"><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"><OfficeBuilding /></ElIcon>班组管理</ElMenuItem>
         <ElMenuItem index="/settings/accounts" aria-label="班组长管理" :aria-current="route.path === '/settings/accounts' ? 'page' : undefined"><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"><User /></ElIcon>班组长管理</ElMenuItem>
         <ElMenuItem index="/settings/main-system" aria-label="主系统对接" :aria-current="route.path === '/settings/main-system' ? 'page' : undefined"><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"><Connection /></ElIcon>主系统对接</ElMenuItem>
@@ -184,8 +184,10 @@ const materialLinks = computed(() => [
 .factory-nav__scroll-hint--up { top: 0; background: linear-gradient(#fff 70%, #ffffffc9); }
 .factory-nav__scroll-hint--down { bottom: 0; background: linear-gradient(#ffffffc9, #fff 30%); }
 .factory-nav :deep(.el-menu) { width: 100%; border: 0; --el-menu-base-level-padding: 12px; --el-menu-level-padding: 34px; --el-menu-item-height: 44px; --el-menu-sub-item-height: 38px; --el-menu-text-color: var(--muted); --el-menu-hover-bg-color: var(--surface-soft); --el-menu-active-color: var(--primary); }
-.factory-nav :deep(.el-sub-menu__title) { border-radius: 6px; color: var(--text); font-size: 14px; font-weight: 450; }
-.factory-nav :deep(.el-sub-menu__icon-arrow) { color: var(--muted); font-size: 11px; transition: transform var(--motion-standard) var(--motion-ease); }
+.factory-nav :deep(.el-sub-menu__title) { border-radius: 6px; color: var(--text); font-size: 14px; font-weight: 450; padding-right: 24px; }
+.factory-nav :deep(.el-sub-menu__icon-arrow) { right: 8px; color: var(--muted); font-size: 11px; transition: transform var(--motion-standard) var(--motion-ease); }
+.factory-nav__current-badge { position: absolute; right: 22px; top: 50%; transform: translateY(-50%); padding: 0 2px; border-radius: 4px; background: var(--primary-soft); color: var(--primary); font-size: 10px; font-weight: 550; line-height: 18px; pointer-events: none; }
+.factory-nav--compact :deep(.factory-nav__current > .el-sub-menu__title::after) { content: ''; position: absolute; right: 8px; top: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); pointer-events: none; }
 .factory-nav :deep(.el-menu--inline) { --el-transition-duration: var(--motion-standard); }
 .factory-nav :deep(.el-menu-item) { margin: 2px 0; border-radius: 6px; font-size: 14px; }
 .factory-nav :deep(.el-menu > .el-menu-item) { color: var(--text); }

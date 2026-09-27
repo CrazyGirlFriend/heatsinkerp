@@ -69,6 +69,40 @@ afterEach(() => {
 })
 
 describe('two-level team navigation', () => {
+  it('keeps the current module badge on the actual page when other modules open or fold', async () => {
+    useTeamDirectoryStore(appPinia).items = [{ id: 7, code: 'FACTORY-PLATE', name: '电镀', active: true }]
+    const { wrapper, router } = await renderSidebar('/team-workspaces/7?tab=stock')
+    const current = () => wrapper.get('.factory-nav__current')
+    expect(current().attributes('aria-label')).toBe('班组工作台')
+    expect(current().attributes('aria-description')).toBe('当前页面所属模块')
+    expect(wrapper.findAll('.factory-nav__current-badge')).toHaveLength(1)
+    expect(current().get('.factory-nav__current-badge').text()).toBe('当前')
+    await wrapper.get('[aria-label="全厂总览"] > .el-sub-menu__title').trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/7?tab=stock')
+    expect(current().attributes('aria-expanded')).toBe('false')
+    expect(current().find('.factory-nav__current-badge').exists()).toBe(true)
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('电镀工作台')
+    await wrapper.get('[aria-label="全厂总览"] > .el-sub-menu__title').trigger('click'); await flushPromises()
+    expect(current().attributes('aria-label')).toBe('班组工作台')
+    for (const [path, module] of [['/factory-analysis', '全厂总览'], ['/', '全厂总览'], ['/transfer-batches', '流转查询'], ['/settings/accounts', '系统设置'], ['/team-workspaces/7?tab=outgoing', '班组工作台']]) {
+      await router.push(path!); await flushPromises()
+      expect(wrapper.findAll('.factory-nav__current-badge')).toHaveLength(1)
+      expect(current().attributes('aria-label')).toBe(module)
+    }
+    await router.back(); await flushPromises()
+    expect(current().attributes('aria-label')).toBe('系统设置')
+  })
+
+  it('retains the current module in compact mode without squeezing a text badge into the icon rail', async () => {
+    const { wrapper } = await renderSidebar('/transfer-batches')
+    await wrapper.setProps({ compact: true }); await flushPromises()
+    expect(wrapper.get('.factory-nav__current').attributes('aria-label')).toBe('流转查询')
+    expect(wrapper.get('.factory-nav__current').attributes('aria-description')).toBe('当前页面所属模块')
+    expect(wrapper.find('.factory-nav__current-badge').exists()).toBe(false)
+    await wrapper.setProps({ compact: false }); await flushPromises()
+    expect(wrapper.get('.factory-nav__current-badge').text()).toBe('当前')
+  })
+
   it('preserves a manually opened parent during directory refreshes, section and filter changes', async () => {
     const directory = useTeamDirectoryStore(appPinia)
     directory.items = [{ id: 7, code: 'FACTORY-ROLL', name: '轧制', active: true }, { id: 8, code: 'FACTORY-QC', name: '检验', active: true }]
