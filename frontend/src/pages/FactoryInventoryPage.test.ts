@@ -301,7 +301,9 @@ describe('live team material stock page', () => {
     expect(wrapper.find('.stock-panel').exists()).toBe(true)
     expect(wrapper.get('.stock-empty').text()).toBe('暂无材质库存')
     expect(wrapper.get('.stock-table tbody th').text()).toBe('库房')
-    expect(wrapper.get('.stock-footer').text()).toContain('1 个班组 · 0 种材质')
+    expect(wrapper.get('.stock-count').text()).toContain('1 个班组 · 0 种材质')
+    expect(wrapper.get('.stock-updated').attributes('datetime')).toBe(data.as_of)
+    expect(wrapper.get('.stock-wrap .stock-footer').text()).toBe('点击库存数字查看明细')
   })
   it('updates live cells and open stock details without resetting the selected unit', async () => {
     await render()
@@ -336,5 +338,59 @@ describe('live team material stock page', () => {
     await flushPromises()
     expect(factoryDashboardApi.get).toHaveBeenCalledTimes(2)
     expect(streams.subscribeInventoryChanges).toHaveBeenCalledTimes(2)
+  })
+  it('adds and renames directory rows and material columns on push, without fixed axes', async () => {
+    await render()
+    await wrapper.get('input[value="quantity"]').setValue(true)
+    const data = fixture()
+    data.stock.rows[0]!.team_name = '中心库房'
+    data.stock.materials.push({ name: '新增牌号 X', quantity: 0, weight: 0 })
+    data.stock.rows.push({
+      team_id: 902,
+      team_code: 'CUSTOM-902',
+      team_name: '新增配置班组',
+      active: true,
+      amounts: {},
+      total: { quantity: 0, weight: 0 },
+    })
+    vi.mocked(factoryDashboardApi.get).mockResolvedValue(data)
+    subscription.onData({ changed: true, directory_changed: true })
+    await vi.advanceTimersByTimeAsync(260)
+    expect(wrapper.findAll('.stock-table tbody th').map((th) => th.text())).toEqual([
+      '中心库房',
+      '新增配置班组',
+    ])
+    expect(wrapper.findAll('.stock-table thead th').map((th) => th.text())).toEqual([
+      '班组',
+      '铜钼',
+      '新增牌号 X',
+      '合计',
+    ])
+    expect(wrapper.get('.stock-count').text()).toBe('2 个班组 · 2 种材质')
+    expect(wrapper.get('.stock-table').attributes('aria-label')).toBe('班组材质库存（件）')
+    await click('新增配置班组 新增牌号 X 库存明细')
+    expect(factoryDashboardApi.stockDetail).toHaveBeenLastCalledWith('新增牌号 X', 902, 1)
+  })
+  it('keeps zeros readable, shows inactive stock and highlights material for mouse and keyboard', async () => {
+    const data = fixture()
+    data.stock.materials.push({ name: '仅重量材质', quantity: 0, weight: 1 })
+    data.stock.rows[0]!.active = false
+    data.stock.rows[0]!.amounts['仅重量材质'] = { quantity: 0, weight: 1 }
+    vi.mocked(factoryDashboardApi.get).mockResolvedValue(data)
+    await render()
+    const cell = wrapper.findAll('.stock-table tbody td')[1]!
+    expect(cell.classes()).not.toContain('is-zero')
+    expect(wrapper.get('.stock-retired').text()).toBe('已停用')
+    await wrapper.get('input[value="quantity"]').setValue(true)
+    expect(cell.classes()).toContain('is-zero')
+    expect(cell.text()).toBe('0')
+    await cell.get('button').trigger('mouseenter')
+    expect(wrapper.findAll('.stock-table thead th')[2]!.classes()).toContain('is-column-active')
+    await wrapper.get('.stock-table').trigger('mouseleave')
+    expect(cell.classes()).not.toContain('is-column-active')
+    await cell.get('button').trigger('focus')
+    expect(cell.classes()).toContain('is-column-active')
+    await cell.get('button').trigger('blur')
+    expect(cell.classes()).not.toContain('is-column-active')
   })
 })

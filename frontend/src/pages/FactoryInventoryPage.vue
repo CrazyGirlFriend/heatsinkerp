@@ -27,6 +27,7 @@ const report = ref<FactoryDashboard>(),
   loading = ref(false),
   error = ref('')
 const stockUnit = ref<'weight' | 'quantity'>('weight')
+const activeMaterial = ref<string | null>(null)
 const warning = computed(() => {
   const missing =
     report.value?.stock.rows.filter((r) => r.team_id === null).map((r) => r.team_name) || []
@@ -140,6 +141,8 @@ async function loadStock() {
 }
 const stockValue = (value: { quantity: number; weight: number } | null | undefined) =>
   value === null ? '—' : number(value?.[stockUnit.value] || 0, stockUnit.value === 'weight' ? 3 : 0)
+const isZero = (value: { quantity: number; weight: number } | null | undefined) =>
+  value !== null && !value?.[stockUnit.value]
 const typeLabel = (kind: string | null) =>
   materialTypeOptions.find((o) => o.value === kind)?.label || '未分类'
 onMounted(() => {
@@ -164,20 +167,30 @@ onBeforeUnmount(() => {
   <section class="page factory-stock-page" aria-label="班组材质库存">
     <section class="stock-panel">
       <header class="stock-heading">
-        <h1>班组材质库存</h1>
-        <div class="stock-actions">
-          <ElRadioGroup v-model="stockUnit" aria-label="库存显示单位">
-            <ElRadioButton value="weight">重量 kg</ElRadioButton>
-            <ElRadioButton value="quantity">件数</ElRadioButton>
-          </ElRadioGroup>
-          <ElPopover trigger="click" placement="bottom-end" :width="320">
-            <template #reference><ElButton text>统计口径</ElButton></template>
-            <p class="stock-scope-note">
-              转出待签收的物料仍计在上游，签收后转入下游；对外待确认的物料仍计在转出班组。全厂库存只计一次。
-            </p>
-          </ElPopover>
-          <ElButton :icon="Refresh" :loading="loading" aria-label="刷新库存" @click="refresh"
-            >刷新</ElButton
+        <div class="stock-title">
+          <h1>班组材质库存</h1>
+          <p v-if="report" class="stock-count">
+            {{ report.stock.rows.length }} 个班组 · {{ report.stock.materials.length }} 种材质
+          </p>
+        </div>
+        <div class="stock-tools">
+          <div class="stock-actions">
+            <ElRadioGroup v-model="stockUnit" aria-label="库存显示单位">
+              <ElRadioButton value="weight">重量 kg</ElRadioButton>
+              <ElRadioButton value="quantity">件数</ElRadioButton>
+            </ElRadioGroup>
+            <ElPopover trigger="click" placement="bottom-end" :width="320">
+              <template #reference><ElButton text>统计口径</ElButton></template>
+              <p class="stock-scope-note">
+                转出待签收的物料仍计在上游，签收后转入下游；对外待确认的物料仍计在转出班组。全厂库存只计一次。
+              </p>
+            </ElPopover>
+            <ElButton :icon="Refresh" :loading="loading" aria-label="刷新库存" @click="refresh"
+              >刷新</ElButton
+            >
+          </div>
+          <time v-if="report" :datetime="report.as_of" class="stock-updated"
+            >更新于 {{ formatDateTime(report.as_of) }}</time
           >
         </div>
       </header>
@@ -189,11 +202,17 @@ onBeforeUnmount(() => {
         <table
           class="stock-table"
           :aria-label="`班组材质库存（${stockUnit === 'weight' ? 'kg' : '件'}）`"
+          @mouseleave="activeMaterial = null"
         >
           <thead>
             <tr>
               <th scope="col">班组</th>
-              <th v-for="material in report.stock.materials" :key="material.name" scope="col">
+              <th
+                v-for="material in report.stock.materials"
+                :key="material.name"
+                scope="col"
+                :class="{ 'is-column-active': activeMaterial === material.name }"
+              >
                 {{ material.name }}
               </th>
               <th scope="col" class="sum-col">合计</th>
@@ -201,17 +220,30 @@ onBeforeUnmount(() => {
           </thead>
           <tbody>
             <tr v-for="team in report.stock.rows" :key="team.team_code">
-              <th scope="row">{{ team.team_name }}</th>
-              <td v-for="material in report.stock.materials" :key="material.name">
+              <th scope="row">
+                {{ team.team_name
+                }}<span v-if="!team.active && team.team_id" class="stock-retired">已停用</span>
+              </th>
+              <td
+                v-for="material in report.stock.materials"
+                :key="material.name"
+                :class="{
+                  'is-column-active': activeMaterial === material.name,
+                  'is-zero': team.total !== null && isZero(team.amounts[material.name]),
+                }"
+              >
                 <button
                   :disabled="!team.team_id"
                   :aria-label="`${team.team_name} ${material.name} 库存明细`"
+                  @mouseenter="activeMaterial = material.name"
+                  @focus="activeMaterial = material.name"
+                  @blur="activeMaterial = null"
                   @click="stockDetails(material.name, team.team_id!)"
                 >
                   {{ team.total === null ? '—' : stockValue(team.amounts[material.name]) }}
                 </button>
               </td>
-              <td class="sum-col">
+              <td class="sum-col" @mouseenter="activeMaterial = null">
                 <button
                   :disabled="!team.team_id"
                   :aria-label="`${team.team_name}全部材质库存明细`"
@@ -225,9 +257,16 @@ onBeforeUnmount(() => {
           <tfoot>
             <tr>
               <th scope="row">总计</th>
-              <td v-for="material in report.stock.materials" :key="material.name">
+              <td
+                v-for="material in report.stock.materials"
+                :key="material.name"
+                :class="{ 'is-column-active': activeMaterial === material.name }"
+              >
                 <button
                   :aria-label="`全厂${material.name}库存明细`"
+                  @mouseenter="activeMaterial = material.name"
+                  @focus="activeMaterial = material.name"
+                  @blur="activeMaterial = null"
                   @click="stockDetails(material.name)"
                 >
                   {{ stockValue(material) }}
@@ -242,13 +281,8 @@ onBeforeUnmount(() => {
           </tfoot>
         </table>
         <p v-if="!report.stock.materials.length" class="stock-empty">暂无材质库存</p>
+        <footer class="stock-footer"><span>点击库存数字查看明细</span></footer>
       </div>
-      <footer v-if="report" class="stock-footer">
-        <span
-          >{{ report.stock.rows.length }} 个班组 · {{ report.stock.materials.length }} 种材质</span
-        >
-        <span>{{ formatDateTime(report.as_of) }} 更新</span>
-      </footer>
     </section>
     <ElDialog
       v-model="stockOpen"
@@ -327,19 +361,48 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
-  padding: 20px 24px;
+  flex-shrink: 0;
+  gap: 20px;
+  padding: 30px 28px;
 }
 .stock-heading h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: 32px;
   font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
   color: var(--text);
+}
+.stock-count {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.stock-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+.stock-updated {
+  color: var(--muted);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
 }
 .stock-actions {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+.stock-actions :deep(.el-button),
+.stock-actions :deep(.el-radio-button__inner) {
+  font-size: 16px;
+}
+.stock-actions :deep(.el-button) {
+  height: 38px;
+}
+.stock-actions :deep(.el-radio-button__inner) {
+  padding: 10px 18px;
 }
 .stock-actions :deep(.el-button + .el-button) {
   margin-left: 0;
@@ -356,9 +419,8 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  margin: 0 24px;
+  margin: 0 28px;
   overflow: auto;
-  scrollbar-gutter: stable;
 }
 .stock-wrap:focus-visible {
   outline: 2px solid var(--primary);
@@ -370,40 +432,40 @@ onBeforeUnmount(() => {
   border-spacing: 0;
   font-variant-numeric: tabular-nums;
   color: var(--text);
+  border: 1px solid var(--line);
 }
 .stock-table th,
 .stock-table td {
-  height: 56px;
-  min-width: 140px;
-  padding: 12px 20px;
-  border-right: 1px solid var(--line);
+  height: 76px;
+  min-width: 160px;
+  padding: 12px 24px;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
   text-align: center;
   background: #fff;
 }
 .stock-table th {
-  font-size: 15px;
-  font-weight: 550;
+  font-size: 19px;
+  font-weight: 600;
 }
 .stock-table td {
-  font-size: 17px;
-  line-height: 24px;
+  font-size: 22px;
+  line-height: 28px;
 }
 .stock-table th:first-child {
   position: sticky;
   left: 0;
   z-index: 2;
-  min-width: 110px;
-  border-left: 1px solid var(--line);
+  min-width: 128px;
+  width: 128px;
 }
 .stock-table thead th {
   position: sticky;
   top: 0;
   z-index: 3;
-  height: 50px;
+  height: 68px;
+  font-size: 18px;
   background: var(--table-header-bg, #edf2ee);
-  border-top: 1px solid var(--line);
 }
 .stock-table thead th:first-child {
   z-index: 4;
@@ -413,26 +475,46 @@ onBeforeUnmount(() => {
   right: 0;
   z-index: 2;
   background: #f2f7f3;
+  border-left: 1px solid var(--line);
   font-weight: 600;
+  color: var(--primary);
 }
 .stock-table thead .sum-col {
   z-index: 4;
 }
-.stock-table tbody tr:nth-child(even) > :not(.sum-col) {
-  background: #fafcfb;
+.stock-table tbody .is-zero {
+  color: var(--muted);
 }
-.stock-table tbody tr:hover > * {
-  background: var(--table-hover-bg, #eef5f0);
+.stock-table tbody tr:hover > *,
+.stock-table tbody tr:focus-within > *,
+.stock-table .is-column-active {
+  background: var(--table-hover-bg, #f3f7f4);
+}
+.stock-table tbody td:hover,
+.stock-table tbody td:focus-within {
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 .stock-table tfoot > tr > * {
-  background: #eaf3ec;
+  height: 80px;
+  background: #edf5ef;
   color: var(--primary);
   font-weight: 600;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--table-header-line);
+  border-bottom: 0;
+}
+.stock-retired {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
 }
 .stock-table button {
+  display: block;
   width: 100%;
-  padding: 2px 0;
+  min-height: 44px;
+  padding: 6px 0;
   border: 0;
   background: none;
   color: inherit;
@@ -442,8 +524,6 @@ onBeforeUnmount(() => {
 }
 .stock-table button:hover:not(:disabled) {
   color: var(--primary);
-  text-decoration: underline;
-  text-underline-offset: 4px;
 }
 .stock-table button:focus-visible {
   outline: 2px solid var(--primary);
@@ -465,10 +545,9 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 18px 24px;
-  border-top: 1px solid var(--line);
+  padding: 20px 0 24px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 .stock-scope-note {
   margin: 0;
@@ -487,7 +566,11 @@ onBeforeUnmount(() => {
     padding: 16px;
   }
   .stock-heading h1 {
-    font-size: 18px;
+    font-size: 24px;
+  }
+  .stock-tools {
+    align-items: flex-start;
+    max-width: 100%;
   }
   .stock-actions {
     gap: 8px;
@@ -500,7 +583,32 @@ onBeforeUnmount(() => {
     margin-inline: 16px;
   }
   .stock-footer {
-    padding: 16px;
+    padding-block: 16px;
+  }
+  .stock-table th,
+  .stock-table td {
+    min-width: 136px;
+    padding-inline: 16px;
+  }
+  .stock-table th:first-child {
+    min-width: 96px;
+    width: 96px;
+  }
+  .stock-table .sum-col {
+    min-width: 100px;
+  }
+  .stock-table td {
+    font-size: 18px;
+  }
+}
+@media (max-width: 640px) {
+  /* On a phone, two frozen sides would conceal the material being read. */
+  .stock-table .sum-col {
+    position: static;
+    right: auto;
+  }
+  .stock-table thead .sum-col {
+    position: sticky;
   }
 }
 </style>
