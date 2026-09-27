@@ -17,7 +17,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialTypeLabel, materialTypeOptions, isScrapType as isScrapMaterialType } from '@/types/materialTransfer'
-import { warehouseColumns, warehouseSearchColumns, warehouseSearchKind, warehouseSerialColumn, inventorySourceLabel, warehouseSourceNames, inventoryAmount, inventoryAge, inventoryBalanceState, inventoryDispatchable, inventoryCanDispatch, type WarehouseColumnKey, type TeamInventoryParams, type TeamInventoryRow, type WarehouseSearchField, type WarehouseSource } from '@/types/teamInventory'
+import { warehouseColumns, warehouseSearchColumns, warehouseSearchKind, warehouseSerialColumn, inventorySourceLabel, warehouseSourceNames, inventoryAmount, inventoryAge, inventoryDispatchable, inventoryCanDispatch, type WarehouseColumnKey, type TeamInventoryParams, type TeamInventoryRow, type WarehouseSearchField, type WarehouseSource } from '@/types/teamInventory'
 import type { InventoryColumnChoice } from '@/types/inventoryColumns'
 import type { CalendarRange } from '@/types/recordFilters'
 import type { StockBatch, TeamMaterialOverview } from '@/types/teamMaterials'
@@ -204,7 +204,6 @@ onBeforeUnmount(() => { ++version })
           </div>
           <div v-else-if="column.key === 'stock_balance'" class="inventory-cell-stack inventory-balance">
             <strong>{{ inventoryAmount(row.on_hand_quantity) }} <small>件</small></strong><span>{{ inventoryAmount(row.on_hand_weight) }} <small>kg</small></span>
-            <small><template v-if="ownership && row.on_hand_quantity === 0 && row.on_hand_weight === 0 && (row.in_transit_quantity > 0 || row.in_transit_weight > 0)">已全部转出 · 待签收</template><template v-else>{{ inventoryBalanceState(asRow(row)) }}<template v-if="row.current_batch_count"> · {{ row.current_batch_count }} 批</template></template></small>
             <div v-if="ownership" class="inventory-ownership-details">
               <div><span>归属余量</span><b>{{ inventoryAmount(row.owned_quantity) }} 件 / {{ inventoryAmount(row.owned_weight) }} kg</b></div>
               <div><span>{{ isScrapMaterialType(row.material_type) ? '可处理量' : '可转出量' }}</span><b>{{ inventoryAmount(inventoryDispatchable(asRow(row)).quantity) }} 件 / {{ inventoryAmount(inventoryDispatchable(asRow(row)).weight) }} kg</b></div>

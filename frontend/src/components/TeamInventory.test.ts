@@ -41,7 +41,8 @@ describe('warehouse grouped stock', () => {
     expect(headers()).toEqual(['流水号', '材质 / 规格', '类型 / 业务', '上序班组', '在库余量', '累计收发', '最早在库接收', '操作'])
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ availability: 'owned' }))
     const cells = wrapper.findAll('tbody tr')[0]!.findAll('td')
-    expect(cells[4]!.text()).toContain('70 件70 kg部分转出 · 2 批')
+    expect(cells[4]!.text()).toContain('70 件70 kg')
+    expect(cells[4]!.find('.inventory-balance > small').exists()).toBe(false)
     expect(cells[4]!.text()).toContain('归属余量100 件 / 100 kg')
     expect(cells[4]!.text()).toContain('可转出量70 件 / 70 kg')
     expect(cells[5]!.text()).toContain('已接收130 件 / 130 kg')
@@ -61,7 +62,10 @@ describe('warehouse grouped stock', () => {
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [row], total: 1, page: 1, page_size: 10 })
     await render(undefined, true, false, true)
     expect(wrapper.findAll('button').find(button => button.text() === '出库')!.attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('已全部转出 · 待签收')
+    expect(wrapper.get('.inventory-balance > strong').text()).toBe('0 件')
+    expect(wrapper.get('.inventory-balance > span').text()).toBe('0 kg')
+    expect(wrapper.find('.inventory-balance > small').exists()).toBe(false)
+    expect(wrapper.get('.movement-pending').text()).toContain('其中待签收100 件 / 100 kg')
     await wrapper.get('input[aria-label="库存明细搜索"]').setValue('未提交草稿')
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [{ ...row, owned_quantity: 0, owned_weight: 0, in_transit_quantity: 0, in_transit_weight: 0 }], total: 1, page: 1, page_size: 10 })
     await wrapper.setProps({ overview: overview() }); await flushPromises()
@@ -165,6 +169,18 @@ describe('warehouse grouped stock', () => {
     wrapper.getComponent(ElPagination).vm.$emit('size-change', 20); await flushPromises()
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ page: 1, page_size: 20 }))
   })
+  it.each([true, false])('keeps only quantity and weight in stock cells and retains batches in detail (warehouse=%s)', async warehouse => {
+    const items = [
+      warehouseFixture({ on_hand_quantity: 20, on_hand_weight: 2, current_batch_count: 1, dispatched_quantity: 0, dispatched_weight: 0, reserved_quantity: 0, reserved_weight: 0 }),
+      warehouseFixture({ group_id: 12, on_hand_quantity: 50, on_hand_weight: 5, current_batch_count: 2, dispatched_quantity: 30, dispatched_weight: 3 }),
+      warehouseFixture({ group_id: 13, on_hand_quantity: 0, on_hand_weight: 0, current_batch_count: 0 }),
+    ]
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items, total: 3, page: 1, page_size: 10 })
+    await render('/team-workspaces/901?tab=stock&availability=all', false, warehouse)
+    expect(wrapper.findAll('.inventory-balance').map(cell => cell.text())).toEqual(['20 件2 kg', '50 件5 kg', '0 件0 kg'])
+    await wrapper.findAll('button').find(button => button.text() === '明细')!.trigger('click')
+    expect(wrapper.getComponent(TeamInventoryDetail).props('group')).toMatchObject({ group_id: 11, current_batch_count: 1 })
+  })
   it('combines source/type/date and preserves them on pagination', async () => {
     const router = await render()
     select('库存来源筛选').vm.$emit('update:modelValue', 'internal')
@@ -184,7 +200,7 @@ describe('warehouse grouped stock', () => {
     await render()
     expect(wrapper.text()).toContain('去毛刺')
     expect(wrapper.get('.inventory-balance').text()).toContain('0.625 kg')
-    expect(wrapper.get('.inventory-balance').text()).toContain('部分转出 · 1 批')
+    expect(wrapper.get('.inventory-balance').text()).toBe('0 件0.625 kg')
     expect(wrapper.get('.inventory-movement').text()).toContain('已转出0 件 / 1.25 kg')
     expect(wrapper.get('.movement-pending').text()).toContain('其中待确认0 件 / 0.25 kg')
     expect(wrapper.get('.movement-loss').text()).toContain('丢失0 件 / 0.125 kg')
