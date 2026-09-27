@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { ElButton } from 'element-plus'
 import type { MaterialBalance } from '@/types/teamMaterials'
 import { inventoryAmount as amount } from '@/types/teamInventory'
 
-defineProps<{ balance: MaterialBalance }>()
+defineProps<{ balance: MaterialBalance; ownership?: boolean }>()
+defineEmits<{ pending: [] }>()
 const outbound = (balance: MaterialBalance, unit: 'quantity' | 'weight') => balance[`dispatched_${unit}`] == null || balance[`reserved_${unit}`] == null ? null : Number(balance[`dispatched_${unit}`]) + Number(balance[`reserved_${unit}`])
 </script>
 
@@ -10,7 +12,11 @@ const outbound = (balance: MaterialBalance, unit: 'quantity' | 'weight') => bala
   <div class="inventory-movement">
     <div><span>已接收</span><b>{{ amount(balance.received_quantity) }} 件 / {{ amount(balance.received_weight) }} kg</b></div>
     <div><span>已转出</span><b>{{ amount(outbound(balance, 'quantity')) }} 件 / {{ amount(outbound(balance, 'weight')) }} kg</b></div>
-    <div v-if="Number(balance.reserved_quantity) > 0 || Number(balance.reserved_weight) > 0" class="movement-pending"><span>其中待确认</span><b>{{ amount(balance.reserved_quantity) }} 件 / {{ amount(balance.reserved_weight) }} kg</b></div>
+    <template v-if="ownership">
+      <div v-if="Number(balance.in_transit_quantity) > 0 || Number(balance.in_transit_weight) > 0" class="movement-pending"><span>其中待签收</span><ElButton link type="primary" aria-label="查看转出待签收批次" @click="$emit('pending')">{{ amount(balance.in_transit_quantity) }} 件 / {{ amount(balance.in_transit_weight) }} kg</ElButton></div>
+      <div v-if="Number(balance.external_pending_quantity) > 0 || Number(balance.external_pending_weight) > 0" class="movement-pending"><span>对外待确认</span><b>{{ amount(balance.external_pending_quantity) }} 件 / {{ amount(balance.external_pending_weight) }} kg</b></div>
+    </template>
+    <div v-else-if="Number(balance.reserved_quantity) > 0 || Number(balance.reserved_weight) > 0" class="movement-pending"><span>其中待确认</span><b>{{ amount(balance.reserved_quantity) }} 件 / {{ amount(balance.reserved_weight) }} kg</b></div>
     <div v-if="Number(balance.lost_quantity) > 0 || Number(balance.lost_weight) > 0" class="movement-loss"><span>丢失</span><b>{{ amount(balance.lost_quantity) }} 件 / {{ amount(balance.lost_weight) }} kg</b></div>
   </div>
 </template>
