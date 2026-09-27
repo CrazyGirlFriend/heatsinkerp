@@ -97,6 +97,9 @@ def create(db, team_id, payload, user):
                 changes={"stock_quantity": {"before": row.before_quantity, "after": row.after_quantity},
                          "reason": {"before": None, "after": row.reason}}))
             db.flush()
+            # MySQL persists DateTime at second precision; first response and
+            # idempotent replay must both use the stored timestamp.
+            db.refresh(row)
             result = record_dict(row)
         return result
     except (IntegrityError, OperationalError) as exc:
