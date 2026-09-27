@@ -76,7 +76,9 @@ if (serial.value) search()
 </template>
 
 <style scoped>
-.serial-history { flex: 0 0 auto; min-width: 0; color: #24324a; }
+.serial-history { display: flex; flex: 1 0 auto; flex-direction: column; min-width: 0; color: #24324a; }
+.serial-history > :is(.history-prompt, .state-panel) { display: flex; flex: 1 0 auto; flex-direction: column; align-items: center; justify-content: center; min-height: 300px; margin: 0; padding: 32px 16px; border: 1px solid var(--line); border-radius: var(--card-radius); background: var(--surface); }
+.serial-history > .history-header { flex-shrink: 0; }
 .history-header { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 24px; margin-bottom: 18px; }
 .history-header h2 { margin: 0; font-size: 27px; font-weight: 600; letter-spacing: -.025em; white-space: nowrap; }
 .history-search { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }

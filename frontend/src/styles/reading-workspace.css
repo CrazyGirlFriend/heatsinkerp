@@ -54,17 +54,21 @@
 .page.reading-workspace .el-pagination { flex-wrap: wrap; row-gap: 8px; }
 .page.reading-workspace .el-pagination :is(.el-select__wrapper, .el-pagination__total) { font-size: 14px; }
 
-/* Pages grow with their rows; only horizontal table scrolling stays internal. */
-.page.reading-workspace.admin-workspace .workspace-card { flex: 0 0 auto; overflow: visible; }
-.page.reading-workspace.admin-workspace .workspace-card > .el-card__body { height: auto; }
-.page.reading-workspace.admin-workspace .table-region { flex: 0 0 auto; overflow: visible; }
+/* Short lists fill the workspace; long lists grow with whole-page scrolling. */
+.page.reading-workspace.admin-workspace .workspace-card { display: flex; flex: 1 0 auto; flex-direction: column; overflow: visible; }
+.page.reading-workspace.admin-workspace .workspace-card > .el-card__body { flex: 1 0 auto; height: auto; }
+.page.reading-workspace.admin-workspace .table-region { flex: 1 0 auto; overflow: visible; }
+.page.reading-workspace.admin-workspace .workspace-card :is(.state-region, .el-empty, .el-result) { flex: 1 0 auto; }
+.page.reading-workspace.admin-workspace .workspace-card :is(.el-empty, .el-result) { min-height: 300px; }
+.page.reading-workspace :is(.admin-pagination, .pagination-bar) { flex-shrink: 0; margin-top: auto; }
 .page.reading-workspace.admin-workspace .filter-bar { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
 .page.reading-workspace.admin-workspace .filter-primary-action { margin-left: auto; }
 .page.reading-workspace .system-admin-notice { margin: 0 0 16px; color: var(--reading-muted); font-size: 14px; }
-.page.reading-workspace.transfers-page { grid-template-rows: max-content; align-content: start; }
-.page.reading-workspace.transfers-page :is(.transfers-card, .table-pane) { flex: 0 0 auto; }
-.page.reading-workspace.transfers-page .transfers-card > .el-card__body { height: auto; }
-.page.reading-workspace.transfers-page .table-pane { overflow: visible; }
+.page.reading-workspace.transfers-page { grid-template-rows: minmax(min-content, 1fr); align-content: stretch; }
+.page.reading-workspace.transfers-page :is(.transfers-card, .table-pane) { flex: 1 0 auto; }
+.page.reading-workspace.transfers-page .transfers-card > .el-card__body { flex: 1 0 auto; height: auto; }
+.page.reading-workspace.transfers-page .table-pane { display: flex; flex-direction: column; overflow: visible; }
+.page.reading-workspace.transfers-page .table-pane > .state-panel { flex: 1 0 auto; }
 .page.reading-workspace .filter-options { flex-wrap: wrap; gap: 8px; }
 .page.reading-workspace .status-overview { border: 0; border-radius: 0; border-bottom: 1px solid var(--line); box-shadow: none; padding: 0 0 12px; gap: 4px; }
 .page.reading-workspace .status-filter { padding: 10px 8px; border-radius: 5px; }
@@ -84,25 +88,18 @@
 .page.reading-workspace .ledger-table .el-button.is-link:hover { color: var(--primary); text-decoration: underline; }
 .page.reading-workspace.transfers-page .detail-slot, .page.reading-workspace .team-list-layout > .transfer-detail-frame { position: sticky; top: 0; height: calc(100dvh - var(--topbar-height) - 120px); }
 
-/* Readable detail/scan pages keep one outer scrollbar, including narrow screens. */
-.page.reading-workspace :is(.trace-result, .trace-chain, .scan-workspace) { flex: 0 0 auto; min-height: 0; }
-.page.reading-workspace :is(.chain-scroll, .recent-scroll), .page.reading-workspace :is(.trace-chain, .recent-panel) > .el-card__body { height: auto; }
-.page.reading-workspace.material-trace-page, .page.reading-workspace.material-scan-page { height: calc(100dvh - var(--topbar-height)); }
-.page.reading-workspace :is(.chain-top strong, .chain-route b, .recent-item__head strong, .recent-item__route b) { color: var(--reading-ink); font-size: 14px; font-weight: 400; }
-.page.reading-workspace :is(.chain-meta, .chain-heading span, .serial-identity > span, .location-summary > div > span, .location-summary small, .trace-metrics span, .scanner-shortcuts, .recent-material, .recent-item__meta, .recent-heading small) { color: var(--reading-muted); font-size: 14px; }
+/* Readable detail pages keep one outer scrollbar, including narrow screens. */
+.page.reading-workspace :is(.trace-result, .trace-chain) { flex: 0 0 auto; min-height: 0; }
+.page.reading-workspace .chain-scroll, .page.reading-workspace .trace-chain > .el-card__body { height: auto; }
+.page.reading-workspace.material-trace-page { height: calc(100dvh - var(--topbar-height)); }
+.page.reading-workspace :is(.chain-top strong, .chain-route b) { color: var(--reading-ink); font-size: 14px; font-weight: 400; }
+.page.reading-workspace :is(.chain-meta, .chain-heading span, .serial-identity > span, .location-summary > div > span, .location-summary small, .trace-metrics span) { color: var(--reading-muted); font-size: 14px; }
 .page.reading-workspace .trace-search form { flex-wrap: wrap; max-width: none; }
 .page.reading-workspace .serial-identity .serial-urgency-badge { justify-self: start; width: max-content; }
 .page.reading-workspace .trace-search form > .el-input { flex: 1 1 240px; max-width: 400px; }
 .page.reading-workspace .chain-heading { flex-wrap: wrap; }
 .page.reading-workspace .trace-chain > .el-card__header { height: auto; }
 .page.reading-workspace .chain-item { padding-block: 12px; }
-.page.reading-workspace .scanner-panel > .el-card__body { min-height: 0; padding: 24px; }
-.page.reading-workspace .scanner-main { padding: 0; }
-.page.reading-workspace .scanner-icon { font-size: 28px; }
-.page.reading-workspace .scanner-main h2 { margin-top: 16px; font-size: 20px; }
-.page.reading-workspace .scanner-input { margin-top: 24px; }
-.page.reading-workspace .recent-panel { min-height: 0; }
-.page.reading-workspace .recent-item { padding-block: 12px; }
 .page.reading-workspace .mobile-row-head strong { font-size: 14px; font-weight: 400; }
 .page.reading-workspace :is(.mobile-row-meta, .mobile-material-brief) { font-size: 14px; }
 @media (max-width: 760px) {
@@ -112,5 +109,4 @@
   .page.reading-workspace .chain-route { flex-wrap: wrap; }
   .page.reading-workspace .chain-top { align-items: flex-start; }
   .page.reading-workspace .chain-top strong { min-width: 0; white-space: normal; }
-  .page.reading-workspace .scanner-panel > .el-card__body { padding: 20px 16px; }
 }

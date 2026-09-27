@@ -305,7 +305,9 @@ onBeforeUnmount(() => {
   background: #258058;
 }
 .matrix-table {
-  flex: 0 0 auto;
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
   width: 100%;
   font-size: 14px;
   border-radius: var(--card-radius);
@@ -314,6 +316,15 @@ onBeforeUnmount(() => {
   --el-table-border-color: var(--line);
   --el-table-text-color: var(--text);
   --business-table-padding: 8px;
+}
+.matrix-table :deep(.el-table__inner-wrapper) {
+  flex: 1 0 auto;
+}
+.factory-stock-matrix > .state-panel {
+  flex: 1 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
 }
 .matrix-table :deep(th.el-table__cell) {
   height: 44px;
