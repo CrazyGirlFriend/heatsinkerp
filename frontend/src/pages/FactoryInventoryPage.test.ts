@@ -303,7 +303,8 @@ describe('live team material stock page', () => {
     expect(wrapper.get('.stock-table tbody th').text()).toBe('库房')
     expect(wrapper.get('.stock-count').text()).toContain('1 个班组 · 0 种材质')
     expect(wrapper.get('.stock-updated').attributes('datetime')).toBe(data.as_of)
-    expect(wrapper.get('.stock-wrap .stock-footer').text()).toBe('点击库存数字查看明细')
+    expect(wrapper.find('.stock-footer').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('点击库存数字查看明细')
     expect(wrapper.get('.stock-wrap').attributes('style')).toContain('--stock-material-count: 1')
     expect(wrapper.findAll('colgroup col')).toHaveLength(2)
   })
@@ -426,7 +427,52 @@ describe('live team material stock page', () => {
     expect(cell.classes()).not.toContain('is-column-active')
     await cell.get('button').trigger('focus')
     expect(cell.classes()).toContain('is-column-active')
+    await wrapper.get('.stock-table').trigger('mouseleave')
+    expect(cell.classes()).toContain('is-column-active')
     await cell.get('button').trigger('blur')
     expect(cell.classes()).not.toContain('is-column-active')
+  })
+  it('separates material names and codes without changing text or detail lookup keys', async () => {
+    const data = fixture()
+    const names = ['钨铜 WCu80', '动态材质-00', '铝 6061 T6', '超长未分类纯中文材质', '316L不锈钢']
+    data.stock.materials = names.map((name) => ({ name, quantity: 0, weight: 0 }))
+    vi.mocked(factoryDashboardApi.get).mockResolvedValue(data)
+    await render()
+    const headings = wrapper.findAll('.stock-table thead th').slice(1, -1)
+    expect(headings.map((heading) => heading.text())).toEqual(names)
+    expect(headings.map((heading) => heading.attributes('title'))).toEqual(names)
+    expect(headings.map((heading) => heading.get('.material-heading').text())).toEqual([
+      '钨铜',
+      '动态材质',
+      '铝',
+      '超长未分类纯中文材质',
+      '316L不锈钢',
+    ])
+    expect(headings.slice(0, 3).map((heading) => heading.get('.material-code').text())).toEqual([
+      'WCu80',
+      '-00',
+      '6061 T6',
+    ])
+    expect(headings[3]!.find('.material-code').exists()).toBe(false)
+    await click('库房 钨铜 WCu80 库存明细')
+    expect(factoryDashboardApi.stockDetail).toHaveBeenLastCalledWith('钨铜 WCu80', 1, 1)
+  })
+  it('keeps scope help accessible and distinguishes zero stock from the grand total', async () => {
+    await render()
+    const scope = wrapper.get('button[aria-label="统计口径"]')
+    expect(scope.text()).toBe('')
+    expect(scope.attributes('title')).toBe('统计口径')
+    expect(wrapper.get('tbody td button').attributes('title')).toBe('查看库房 · 铜钼库存明细')
+    expect(wrapper.get('tfoot .grand-total button').text()).toBe('10')
+    expect(wrapper.get('tbody td').classes()).not.toContain('is-zero')
+    const data = fixture()
+    data.stock.rows[0]!.total = { quantity: 0, weight: 0 }
+    data.stock.rows[0]!.amounts['铜钼'] = { quantity: 0, weight: 0 }
+    vi.mocked(factoryDashboardApi.get).mockResolvedValue(data)
+    subscription.onData({ changed: true })
+    await vi.advanceTimersByTimeAsync(260)
+    expect(wrapper.get('tbody td').text()).toBe('0')
+    expect(wrapper.get('tbody td').classes()).toContain('is-zero')
+    expect(wrapper.get('tbody .sum-col').classes()).toContain('is-zero')
   })
 })
