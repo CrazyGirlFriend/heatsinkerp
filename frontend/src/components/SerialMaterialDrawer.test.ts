@@ -68,7 +68,7 @@ it('supports source-batch dispatch and loss only for writable available inventor
   } finally { wrapper.unmount() }
 })
 
-it('keeps the three secondary ledger fields accessible in serial detail', async () => {
+it('keeps incoming and lost amounts separate from current stock and preserves live refresh', async () => {
   const summary = serialFixture('SERIAL-DETAIL')
   vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({ items: [summary], total: 1, page: 1, page_size: 1 })
   vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
@@ -80,11 +80,10 @@ it('keeps the three secondary ledger fields accessible in serial detail', async 
     expect(wrapper.getComponent(ElPagination).props('pageSizes')).toEqual([10, 20, 50, 100])
     const fields = wrapper.get('.el-descriptions')
     expect(fields.text()).toContain('待接收')
-    expect(fields.text()).toContain('转出待确认')
+    expect(fields.text()).toContain('累计丢失')
     expect(fields.findAllComponents(MaterialAmount).map((item: VueWrapper) => item.props())).toMatchObject([
       { quantity: summary.pending_incoming_quantity, weight: summary.pending_incoming_weight },
-      { quantity: summary.pending_outgoing_quantity, weight: summary.pending_outgoing_weight },
-      { quantity: summary.scrap_quantity, weight: summary.scrap_weight },
+      { quantity: summary.lost_quantity, weight: summary.lost_weight },
     ])
     expect(fields.text()).toContain('最近更新')
     expect(fields.text()).toContain(formatDateTime(summary.last_activity_at))
@@ -96,5 +95,30 @@ it('keeps the three secondary ledger fields accessible in serial detail', async 
     vi.mocked(teamMaterialApi.stock).mockRejectedValueOnce(new Error('offline'))
     await expect(live.refresh()).rejects.toThrow()
     await flushPromises(); expect(wrapper.getComponent({ name: 'ElTable' }).element).toBe(table)
+  } finally { wrapper.unmount() }
+})
+
+it.each([
+  { label: 'normal stock and waste, without pending outbound', owned: [60, 89.206], available: [48, 7.68], scrap: [12, 81.526], pending: [0, 0] },
+  { label: 'normal stock, waste and pending outbound together', owned: [60, 89.206], available: [38, 6.08], scrap: [12, 81.526], pending: [10, 1.6] },
+  { label: 'all stock already sent but not confirmed', owned: [60, 89.206], available: [0, 0], scrap: [0, 0], pending: [60, 89.206] },
+  { label: 'weight-only waste', owned: [0, 81.526], available: [0, 0], scrap: [0, 81.526], pending: [0, 0] },
+  { label: 'unknown balances', owned: [null, null], available: [null, null], scrap: [null, null], pending: [0, 0] },
+])('explains $label using separate API amounts', async ({ owned, available, scrap, pending }) => {
+  const summary = { ...serialFixture('YS-007'), owned_quantity: owned[0], owned_weight: owned[1], available_quantity: available[0]!, available_weight: available[1]!, scrap_quantity: scrap[0], scrap_weight: scrap[1], pending_outgoing_quantity: pending[0]!, pending_outgoing_weight: pending[1]! }
+  vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({ items: [summary], total: 1, page: 1, page_size: 1 })
+  vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({ items: [], total: 51, page: 1, page_size: 10 })
+  const wrapper = mount(SerialMaterialDrawer, { props: { modelValue: true, teamId: 1, serialNo: 'YS-007' }, global: { stubs: { ElDialog: { template: '<section><slot/></section>' }, ElTable: true, MaterialTransferDrawer: true } } })
+  try {
+    await flushPromises()
+    const balances = wrapper.get('.serial-balances')
+    expect(balances.findAll('dt').map(item => item.text())).toEqual(['库存合计', '正常料可转出', '废料未转出', '转出待确认'])
+    expect(balances.findAllComponents(MaterialAmount).map((item: VueWrapper) => item.props())).toMatchObject([owned, available, scrap, pending].map(([quantity, weight]) => ({ quantity, weight })))
+    expect(balances.text()).toContain('未转出的正常料，不含废料')
+    expect(balances.text()).toContain('包括废品、废料、废屑、废泥')
+    expect(balances.text()).toContain('已转出，不能再次转出')
+    expect(balances.text()).toContain('包含尚未确认的转出物料')
+    expect(balances.text()).not.toContain('累计丢失')
+    if (owned[0] === null) expect(balances.findAll('dd')[0]!.text()).toContain('—')
   } finally { wrapper.unmount() }
 })

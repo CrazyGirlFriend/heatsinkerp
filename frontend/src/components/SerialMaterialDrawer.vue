@@ -79,11 +79,31 @@ onBeforeUnmount(() => { ++version })
         <ElDescriptions :column="3" border>
           <ElDescriptionsItem v-for="[key, label] in meta" :key="key" :label="label">{{ field(key) }}</ElDescriptionsItem>
           <ElDescriptionsItem label="待接收"><MaterialAmount :quantity="summary.pending_incoming_quantity" :weight="summary.pending_incoming_weight" /></ElDescriptionsItem>
-          <ElDescriptionsItem label="转出待确认"><MaterialAmount :quantity="summary.pending_outgoing_quantity" :weight="summary.pending_outgoing_weight" /></ElDescriptionsItem>
+          <ElDescriptionsItem label="累计丢失"><MaterialAmount :quantity="summary.lost_quantity" :weight="summary.lost_weight" /></ElDescriptionsItem>
           <ElDescriptionsItem label="最近更新">{{ formatDateTime(summary.last_activity_at) }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="废料库存"><MaterialAmount :quantity="summary.scrap_quantity" :weight="summary.scrap_weight" /></ElDescriptionsItem>
         </ElDescriptions>
-        <div class="serial-balances"><div>本班组库存<MaterialAmount :quantity="summary.owned_quantity" :weight="summary.owned_weight" /></div><div>正常料可转出<MaterialAmount :quantity="summary.available_quantity" :weight="summary.available_weight" /></div><div>累计丢失<MaterialAmount :quantity="summary.lost_quantity" :weight="summary.lost_weight" /></div></div>
+        <dl class="serial-balances" aria-label="库存与转出状态">
+          <div class="serial-balance-total">
+            <dt>库存合计</dt>
+            <dd><MaterialAmount :quantity="summary.owned_quantity" :weight="summary.owned_weight" /></dd>
+            <small>包含尚未确认的转出物料</small>
+          </div>
+          <div>
+            <dt>正常料可转出</dt>
+            <dd><MaterialAmount :quantity="summary.available_quantity" :weight="summary.available_weight" /></dd>
+            <small>未转出的正常料，不含废料</small>
+          </div>
+          <div>
+            <dt>废料未转出</dt>
+            <dd><MaterialAmount :quantity="summary.scrap_quantity" :weight="summary.scrap_weight" /></dd>
+            <small>包括废品、废料、废屑、废泥</small>
+          </div>
+          <div>
+            <dt>转出待确认</dt>
+            <dd><MaterialAmount :quantity="summary.pending_outgoing_quantity" :weight="summary.pending_outgoing_weight" /></dd>
+            <small>已转出，不能再次转出</small>
+          </div>
+        </dl>
       </template>
       <ElTabs v-model="tab" class="serial-detail-tabs"><ElTabPane name="stock" label="当前库存" /><ElTabPane name="incoming" label="转入明细" /><ElTabPane name="outgoing" label="转出明细" /><ElTabPane name="losses" label="丢失记录" /></ElTabs>
       <div v-if="tab === 'stock' && canWrite" class="serial-stock-actions"><span>已选 {{ selectedRows.length }} 个来源批次</span><ElButton type="primary" :disabled="!selectedRows.length || loading || !!error" @click="action('dispatch', selectedRows)">批量出库</ElButton></div>
@@ -136,11 +156,20 @@ onBeforeUnmount(() => { ++version })
 <style scoped>
 .serial-stock-actions { display: flex; flex-shrink: 0; justify-content: space-between; align-items: center; gap: 12px; color: var(--muted); }
 .serial-title { display: flex; flex-direction: column; gap: 5px; }.serial-title span { color: var(--subtle); font-size: 12px; }.serial-title strong { color: var(--text); font-size: 19px; overflow-wrap: anywhere; }
-.serial-detail-body { display: flex; flex-direction: column; min-height: 0; gap: 12px; }.serial-detail-body > .el-descriptions { flex-shrink: 0; }.serial-balances { display: flex; flex-wrap: wrap; gap: 16px; }.serial-balances > div { display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--subtle); padding: 9px 12px; border-radius: 6px; background: var(--primary-soft); }.serial-detail-tabs { flex-shrink: 0; }.serial-detail-tabs :deep(.el-tabs__header) { margin: 0; }.serial-record-table { flex-shrink: 0; min-width: 0; }.serial-detail-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; overflow-x: auto; }.serial-detail-footer > span { font-size: 12px; white-space: nowrap; color: var(--subtle); }
-.serial-title span, .serial-balances > div, .serial-detail-footer > span { font-size: 14px; }
+.serial-detail-body { display: flex; flex-direction: column; min-height: 0; gap: 12px; }.serial-detail-body > .el-descriptions { flex-shrink: 0; }.serial-detail-tabs { flex-shrink: 0; }.serial-detail-tabs :deep(.el-tabs__header) { margin: 0; }.serial-record-table { flex-shrink: 0; min-width: 0; }.serial-detail-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; overflow-x: auto; }.serial-detail-footer > span { font-size: 12px; white-space: nowrap; color: var(--subtle); }
+.serial-balances { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border: 1px solid var(--el-border-color-light); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+.serial-balances > div { min-width: 0; display: grid; align-content: start; gap: 8px; padding: 12px 16px; }
+.serial-balances > div + div { border-left: 1px solid var(--el-border-color-light); }
+.serial-balance-total { background: var(--primary-soft); }
+.serial-balances dt { color: var(--text); font-size: 14px; font-weight: 500; }
+.serial-balances dd { margin: 0; }
+.serial-balances :deep(.material-amount strong) { font-size: 17px; }
+.serial-balances small { color: var(--subtle); font-size: 12px; line-height: 1.5; }
+.serial-title span, .serial-detail-footer > span { font-size: 14px; }
 .serial-detail-body :deep(.el-descriptions__cell) { font-size: 14px; line-height: 22px; padding: 10px 12px; }
 .serial-record-table :deep(.el-table), .serial-record-table :deep(.el-button.is-link) { font-size: 15px; }
 .serial-record-table :deep(td.el-table__cell) { padding-block: 12px; }
 .serial-record-table :deep(.cell) { white-space: nowrap; }
-@media(max-width:600px) { .serial-detail-body :deep(.el-descriptions__body) { overflow-x: auto; }.serial-detail-body :deep(.el-descriptions__table) { min-width: 720px; }.serial-balances { gap: 6px; }.serial-balances > div { padding: 6px; } }
+@media(max-width:900px) { .serial-balances { grid-template-columns: repeat(2, minmax(0, 1fr)); }.serial-balances > div:nth-child(3) { border-left: 0; }.serial-balances > div:nth-child(n+3) { border-top: 1px solid var(--el-border-color-light); } }
+@media(max-width:600px) { .serial-detail-body :deep(.el-descriptions__body) { overflow-x: auto; }.serial-detail-body :deep(.el-descriptions__table) { min-width: 720px; }.serial-balances > div { padding: 10px; } }
 </style>
