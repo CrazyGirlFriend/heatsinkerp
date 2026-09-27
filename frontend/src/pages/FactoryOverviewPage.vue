@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElAlert, ElButton, ElOption, ElRadioButton, ElRadioGroup, ElSelect, ElSwitch } from 'element-plus'
+import { ElAlert, ElButton, ElInputNumber, ElOption, ElRadioButton, ElRadioGroup, ElSelect, ElSwitch } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import FactoryOverviewCharts from '@/components/FactoryOverviewCharts.vue'
 import FactoryRecentBatches from '@/components/FactoryRecentBatches.vue'
@@ -13,7 +13,14 @@ import type { Metric } from '@/types/materialAnalytics'
 import type { FactoryOverview, FactoryTeam, FactoryScene, FactoryRecentBatch } from '@/types/factoryOverview'
 
 const route = useRoute(), router = useRouter()
-const days = computed<7 | 30>(() => route.query.days === '7' ? 7 : 30)
+const days = computed(() => {
+  const value = typeof route.query.days === 'string' ? Number(route.query.days) : NaN
+  return Number.isInteger(value) && value >= 1 && value <= 365 ? value : 30
+})
+const periodSelect = ref<InstanceType<typeof ElSelect>>()
+const customDays = ref<number | undefined>(days.value)
+const validCustomDays = computed(() => Number.isInteger(customDays.value) && customDays.value! >= 1 && customDays.value! <= 365)
+const periodOptions = computed(() => [...new Set([3, 7, 14, 30, days.value])].sort((a, b) => a - b))
 const metric = computed<Metric>(() => route.query.metric === 'quantity' ? 'quantity' : 'weight')
 const autoRefresh = ref(true)
 const report = ref<FactoryOverview | null>(null), loading = ref(false), error = ref('')
@@ -44,6 +51,11 @@ const metrics = computed(() => {
   ]
 })
 function preference(values: Record<string, string>) { void router.replace({ path: route.path, query: { ...route.query, ...values } }) }
+function applyCustomDays() {
+  if (!validCustomDays.value) return
+  preference({ days: String(customDays.value) })
+  periodSelect.value?.blur()
+}
 async function load() {
   const current = ++version; loading.value = true
   try { const result = await factoryOverviewApi.get(days.value); if (current === version) { report.value = result; error.value = '' } }
@@ -53,6 +65,7 @@ async function load() {
 function openTeam(team: FactoryTeam) { if (team.id && team.active) void router.push(`/team-workspaces/${team.id}?tab=stock`) }
 function openBatch(row: FactoryRecentBatch) { void router.push(`/transfer-batches?batch_no=${encodeURIComponent(row.batch_no)}`) }
 watch(days, load, { immediate: true })
+watch(days, value => { customDays.value = value })
 onMounted(() => {
   document.addEventListener('visibilitychange', syncVisibility)
   media = window.matchMedia?.('(prefers-reduced-motion: reduce)'); syncMotion()
@@ -67,7 +80,10 @@ onBeforeUnmount(() => { ++version; if (timer) clearInterval(timer); media?.remov
       <div><h1>全厂物料总览</h1><p v-if="report">{{ formatDateTime(report.as_of) }} 更新</p></div>
       <div class="factory-controls">
         <ElRadioGroup :model-value="metric" size="small" aria-label="全厂统计单位" @update:model-value="preference({ metric: String($event) })"><ElRadioButton value="weight">重量</ElRadioButton><ElRadioButton value="quantity">件数</ElRadioButton></ElRadioGroup>
-        <ElSelect :model-value="days" :teleported="false" size="small" aria-label="全厂统计周期" @update:model-value="preference({ days: String($event) })"><ElOption :value="7" label="近7天" /><ElOption :value="30" label="近30天" /></ElSelect>
+        <ElSelect ref="periodSelect" :model-value="days" :teleported="false" :fit-input-width="false" size="small" aria-label="全厂统计周期" @update:model-value="preference({ days: String($event) })" @visible-change="customDays = days">
+          <ElOption v-for="value in periodOptions" :key="value" :value="value" :label="`近${value}天`" />
+          <template #footer><form class="factory-custom-period" @submit.prevent="applyCustomDays"><label for="factory-custom-days">自定义天数</label><div><ElInputNumber id="factory-custom-days" v-model="customDays" :min="1" :max="365" :precision="0" :controls="false" size="small" placeholder="1–365" aria-label="自定义统计天数" /><span>天</span><ElButton native-type="submit" type="primary" size="small" :disabled="!validCustomDays">确定</ElButton></div></form></template>
+        </ElSelect>
         <ElSwitch v-model="autoRefresh" size="small" aria-label="每60秒自动刷新" active-text="自动刷新" />
         <ElButton :icon="Refresh" :loading="loading" size="small" @click="load">刷新</ElButton>
       </div>
@@ -101,6 +117,7 @@ onBeforeUnmount(() => { ++version; if (timer) clearInterval(timer); media?.remov
 .factory-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }.factory-heading h1 { margin: 0; font-size: 22px; line-height: 30px; font-weight: 550; }.factory-heading p { font-size: 12px; line-height: 18px; color: var(--dashboard-muted); margin: 4px 0 0; }
 .factory-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }.factory-controls > .el-select { width: 96px; }.factory-controls :deep(.el-switch__label) { font-size: 12px; }
 .factory-controls :deep(.el-button), .factory-controls :deep(.el-select__wrapper) { min-height: 34px; font-size: 13px; }.factory-controls :deep(.el-radio-button__inner) { padding: 9px 12px; font-size: 13px; }
+.factory-custom-period { display: grid; gap: 8px; padding: 2px 0; }.factory-custom-period > label { font-size: 12px; color: var(--muted); }.factory-custom-period > div { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }.factory-custom-period .el-input-number { width: 96px; }
 .factory-metrics { display: grid; grid-template-columns: 1.25fr repeat(3, minmax(0, 1fr)); gap: 14px; flex-shrink: 0; }.factory-metric { padding: 15px 20px; border-radius: var(--card-radius); border: 1px solid var(--dashboard-line); background: var(--dashboard-surface); min-width: 0; }.factory-metric--primary { background: var(--surface-soft); border-color: #dce8df; }.factory-metric h2 { font-size: 13px; line-height: 20px; color: var(--dashboard-muted); font-weight: 500; margin: 0 0 9px; }.factory-metric > div { display: flex; flex-wrap: wrap; gap: 3px 7px; align-items: baseline; }.factory-metric strong { font-size: clamp(26px, 2.1vw, 34px); line-height: 1.15; letter-spacing: -.7px; font-variant-numeric: tabular-nums; font-weight: 550; }.factory-metric--primary strong { color: #28643d; }.factory-metric > div > span { font-size: 12px; color: var(--dashboard-muted); }.factory-metric small { margin-left: auto; color: var(--dashboard-muted); font-size: 12px; line-height: 18px; white-space: nowrap; }
 .factory-sections { display: flex; align-self: flex-start; flex-shrink: 0; gap: 4px; padding: 4px; border: 1px solid #e3eae5; border-radius: 9px; background: #eaf0ec; }.factory-sections button { padding: 6px 18px; border: 0; border-radius: 6px; color: var(--dashboard-muted); background: transparent; font-size: 13px; line-height: 20px; transition: color 180ms ease, background 180ms ease, box-shadow 180ms ease; }.factory-sections button:hover { color: var(--primary); }.factory-sections button[aria-pressed="true"] { color: var(--primary); background: #fff; box-shadow: 0 1px 3px rgb(36 49 42 / 8%); font-weight: 550; }
 /* Keep every record row visible; let the charts absorb the remaining height. */

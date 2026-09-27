@@ -2,7 +2,7 @@
 
 from datetime import timezone
 
-from fastapi import Depends
+from fastapi import Depends, Query
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -12,7 +12,6 @@ from .configure_material_teams import MATERIAL_TEAMS
 from .database import get_db
 from .material_analytics import (
     AGE_LABELS,
-    Days,
     age_conditions,
     amounts,
     daily,
@@ -439,5 +438,5 @@ def factory_overview(db: Session, days: int = 30) -> dict:
 
 
 @router.get("")
-def overview_endpoint(days: Days = 30, db: Session = Depends(get_db)):
+def overview_endpoint(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
     return factory_overview(db, days)

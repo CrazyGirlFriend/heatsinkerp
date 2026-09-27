@@ -116,12 +116,37 @@ def test_missing_scope_empty_validation_and_login(client):
     assert all(team['serial_count'] is None and team['pending_incoming'] is None and team['urgent_serial_count'] is None for team in d['teams'])
     assert d['totals']['on_hand_quantity'] == 0 and d['pending']['batches'] == 0
     assert len(d['trend']) == 30
-    assert client.get('/api/factory-overview?days=1').status_code == 422
+    for days in (1, 3, 14, 365):
+        response = client.get(f'/api/factory-overview?days={days}')
+        assert response.status_code == 200, response.text
+        assert response.json()['days'] == days and len(response.json()['trend']) == days
+    for days in ('0', '-1', '366', '3.5', 'invalid'):
+        assert client.get(f'/api/factory-overview?days={days}').status_code == 422
     original = client.headers.pop('Authorization')
     try:
         assert client.get('/api/factory-overview').status_code == 401
     finally:
         client.headers['Authorization'] = original
+
+
+def test_custom_period_uses_factory_day_boundary_without_filtering_current_stock(client, warehouse, monkeypatch):
+    now = datetime(2026, 9, 12, 12)
+    monkeypatch.setattr(factory_overview, 'utcnow', lambda: now)
+    before = intake(client, warehouse, idempotency_key='before-custom-range').json()
+    included = intake(client, warehouse, idempotency_key='inside-custom-range').json()
+    with SessionLocal() as db:
+        # Near 3 days starts at local midnight on September 10 (UTC+8).
+        db.get(MaterialTransfer, before['id']).received_at = datetime(2026, 9, 9, 15, 59, 59)
+        db.get(MaterialTransfer, included['id']).received_at = datetime(2026, 9, 9, 16)
+        db.commit()
+    short = client.get('/api/factory-overview?days=3').json()
+    longer = client.get('/api/factory-overview?days=7').json()
+    assert [row['key'] for row in short['trend']] == ['2026-09-10', '2026-09-11', '2026-09-12']
+    assert short['period_totals']['inbound']['quantity'] == 100
+    assert short['trend'][0]['inbound']['quantity'] == 100
+    assert longer['period_totals']['inbound']['quantity'] == 200
+    assert short['totals']['on_hand_quantity'] == longer['totals']['on_hand_quantity'] == 200
+    assert short['material_types'] == longer['material_types']
 
 
 def test_inventory_cards_count_remaining_serials_and_urgency_once(client, warehouse):

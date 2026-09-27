@@ -17,7 +17,7 @@ export interface FactoryTeam {
   pending_incoming?: (Amount & { batches: number }) | null
 }
 export interface FactoryOverview {
-  as_of: string; days: 7 | 30; teams: FactoryTeam[]; totals: MaterialBalance
+  as_of: string; days: number; teams: FactoryTeam[]; totals: MaterialBalance
   pending: Amount & { batches: number }; period_totals: Record<FactoryFlow, Amount>
   trend: (Record<FactoryFlow, Amount> & { key: string })[]
   material_types: ChartPoint[]; stock_age: ChartPoint[]

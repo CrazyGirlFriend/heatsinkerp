@@ -2,7 +2,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ElSelect } from 'element-plus'
+import { ElInputNumber, ElSelect } from 'element-plus'
 import FactoryOverviewPage from './FactoryOverviewPage.vue'
 import FactoryOverviewCharts from '@/components/FactoryOverviewCharts.vue'
 import FactoryRecentBatches from '@/components/FactoryRecentBatches.vue'
@@ -46,6 +46,37 @@ describe('factory dashboard', () => {
     wrapper.unmount()
     await vi.advanceTimersByTimeAsync(60000)
     expect(factoryOverviewApi.get).toHaveBeenCalledTimes(2)
+  })
+  it('applies arbitrary days to the URL, summary and charts while preserving the unit', async () => {
+    vi.mocked(factoryOverviewApi.get).mockImplementation(async (days = 30) => ({ ...factoryFixture(), days }))
+    const router = await render('/?days=3&metric=quantity')
+    expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(3)
+    expect(wrapper.text()).toContain('近3天入库')
+    expect(wrapper.getComponent(FactoryOverviewCharts).props('data').days).toBe(3)
+    wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 5); await flushPromises()
+    await wrapper.get('.factory-custom-period').trigger('submit'); await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ days: '5', metric: 'quantity' })
+    expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(5)
+    expect(wrapper.getComponent(ElSelect).props('modelValue')).toBe(5)
+    expect(wrapper.text()).toContain('近5天入库')
+    expect(wrapper.getComponent(FactoryOverviewCharts).props('data').days).toBe(5)
+    await vi.advanceTimersByTimeAsync(60000); await flushPromises()
+    expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(5)
+    await router.push('/?days=365'); await flushPromises()
+    expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(365)
+  })
+  it('does not submit an empty custom period and falls back safely for invalid bookmarks', async () => {
+    const router = await render('/?days=366')
+    expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(30)
+    wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', undefined); await flushPromises()
+    expect(wrapper.get('.factory-custom-period button').attributes('disabled')).toBeDefined()
+    await wrapper.get('.factory-custom-period').trigger('submit'); await flushPromises()
+    expect(router.currentRoute.value.query.days).toBe('366')
+    for (const value of ['0', '-1', '3.5', 'invalid', '5&days=7']) {
+      await router.push(`/?days=${value}`); await flushPromises()
+      expect(wrapper.getComponent(ElSelect).props('modelValue')).toBe(30)
+    }
+    expect(factoryOverviewApi.get).toHaveBeenCalledTimes(1)
   })
   it('shows missing scope and legacy warnings without inventing configured teams', async () => {
     const data = factoryFixture(); data.teams[0] = { ...data.teams[0]!, id: null, balance: null }; data.legacy_received_count = 3
