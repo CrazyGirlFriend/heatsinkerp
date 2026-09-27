@@ -43,7 +43,7 @@ watch(() => [props.modelValue, props.teamId], () => {
 watch(() => `${auth.currentUser?.id}:${auth.currentUser?.team_id}`, () => { ++epoch; emit('update:modelValue', false) })
 onBeforeUnmount(() => { ++epoch })
 function saveDraft() {
-  try { localStorage.setItem(key(), JSON.stringify(lines.value)); showToast('草稿已保存在本机，尚未入账', 'success') }
+  try { localStorage.setItem(key(), JSON.stringify(lines.value)); showToast('草稿已保存在本机，尚未计入库存', 'success') }
   catch { error.value = '无法保存本机草稿，请检查浏览器存储权限' }
 }
 async function savePurpose(item?: TeamPurpose) {
@@ -65,7 +65,7 @@ async function submitOpening() {
   if (lines.value.some(line => !line.serial_no.trim() || !line.material_name.trim() || !line.material_type || !Number.isInteger(line.quantity) || Number(line.quantity) < 0 || line.weight == null || !Number.isFinite(line.weight) || line.weight < 0 || (!line.quantity && !line.weight))) { error.value = '请逐行填写流水号、材质、类型及有效件数和重量；至少一项大于零'; return }
   const body = lines.value.map(line => ({ ...line, purpose_id: line.purpose_id || null, serial_no: line.serial_no.trim(), material_name: line.material_name.trim() }))
   const current = epoch
-  try { await ElMessageBox.confirm(`将 ${body.length} 行期初库存正式入账。确认后不可重复初始化，不能直接修改已入账数量。`, '确认期初入账', { confirmButtonText: '确认入账', cancelButtonText: '返回核对', type: 'warning' }) }
+  try { await ElMessageBox.confirm(`将这 ${body.length} 行物料计入本班组库存。只能登记一次，确认后不能直接修改数量。`, '确认初始库存登记', { confirmButtonText: '确认登记', cancelButtonText: '返回核对', type: 'warning' }) }
   catch { return }
   if (current !== epoch || !props.modelValue || saving.value) return
   const fingerprint = JSON.stringify(body)
@@ -76,19 +76,19 @@ async function submitOpening() {
     if (current !== epoch) return
     try { localStorage.removeItem(key()) } catch { /* The committed receipt remains authoritative. */ }
     lines.value = [blank()]; emit('changed'); emit('stocked', rows); await load()
-    showToast('期初库存已入账，录入权限已关闭', 'success')
-  } catch (e) { if (current === epoch) error.value = e instanceof Error ? e.message : '入账失败，草稿未清除' }
+    showToast('初始库存已登记，录入权限已关闭', 'success')
+  } catch (e) { if (current === epoch) error.value = e instanceof Error ? e.message : '登记失败，草稿已保留' }
   finally { saving.value = false }
 }
 </script>
 
 <template>
   <ElDialog :model-value="modelValue" title="班组设置" width="min(1080px, 96vw)" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving" @close="close">
-    <ElTabs v-model="tab"><ElTabPane name="purposes" label="承接业务" /><ElTabPane name="opening" label="期初库存" /></ElTabs>
+    <ElTabs v-model="tab"><ElTabPane name="purposes" label="本组业务" /><ElTabPane name="opening" label="初始库存" /></ElTabs>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <p v-if="loading">正在读取班组设置…</p>
     <section v-else-if="tab === 'purposes'" class="purpose-settings">
-      <p class="settings-note">设置本班组承接哪些业务，上序转料时按物料选择。改名、停用后点击保存，历史单据保持原名称。</p>
+      <p class="settings-note">设置本班组可以做的业务，如检验、去毛刺。上序转料时选择；修改后需保存，历史单据保留原名称。</p>
       <div v-for="item in purposes" :key="item.id" class="purpose-editor">
         <ElInput v-model="item.name" :aria-label="`业务名称 ${item.id}`" maxlength="80" :disabled="saving" />
         <ElSwitch v-model="item.active" :aria-label="`${item.name}启用状态`" active-text="启用" :disabled="saving" />
@@ -99,9 +99,9 @@ async function submitOpening() {
       <p v-if="!purposes.length" class="settings-note">尚未配置时，新单暂归“未分类”；配置后，上序新开单必须选择启用的业务。</p>
     </section>
     <section v-else class="opening-settings">
-      <ElAlert v-if="opening?.completed" title="本班组已完成期初入账，不能重复初始化。" type="success" :closable="false" />
-      <ElAlert v-else-if="opening?.has_stock_history" title="本班组已有入账记录，不能将现有库存再次叠加为期初库存。" type="warning" :closable="false" />
-      <ElAlert v-else-if="!opening?.enabled" title="请系统管理员在“班组管理”中开启期初录入权限。" type="info" :closable="false" />
+      <ElAlert v-if="opening?.completed" title="本班组已登记初始库存，不能重复登记。" type="success" :closable="false" />
+      <ElAlert v-else-if="opening?.has_stock_history" title="本班组已有库存记录，不能重复登记初始库存。" type="warning" :closable="false" />
+      <ElAlert v-else-if="!opening?.enabled" title="请系统管理员在“班组管理”中开启初始库存录入权限。" type="info" :closable="false" />
       <template v-if="opening?.can_submit">
         <p class="settings-note">登记启用系统前已在本班组的物料。每行独立批次；仅确认后计入库存，不产生下序待接收。</p>
         <div class="opening-lines">
@@ -114,14 +114,14 @@ async function submitOpening() {
               <label>物料类型<ElSelect v-model="line.material_type" :aria-label="`第${index + 1}行物料类型`" :disabled="saving"><ElOption v-for="option in materialTypeOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect></label>
               <label>件数<ElInputNumber v-model="line.quantity" :aria-label="`第${index + 1}行件数`" :min="0" :precision="0" :disabled="saving" controls-position="right" /></label>
               <label>重量（kg）<ElInputNumber v-model="line.weight" :aria-label="`第${index + 1}行重量`" :min="0" :precision="3" :disabled="saving" controls-position="right" /></label>
-              <label>本班组业务<ElSelect v-model="line.purpose_id" aria-label="期初物料业务" clearable placeholder="未分类" :disabled="saving"><ElOption v-for="item in purposes.filter(item => item.active)" :key="item.id" :value="item.id" :label="item.name" /></ElSelect></label>
-              <label>备注<ElInput v-model="line.notes" aria-label="期初备注" maxlength="2000" :disabled="saving" /></label>
+              <label>本班组业务<ElSelect v-model="line.purpose_id" aria-label="初始库存业务" clearable placeholder="未分类" :disabled="saving"><ElOption v-for="item in purposes.filter(item => item.active)" :key="item.id" :value="item.id" :label="item.name" /></ElSelect></label>
+              <label>备注<ElInput v-model="line.notes" aria-label="初始库存备注" maxlength="2000" :disabled="saving" /></label>
             </div>
           </article>
         </div>
-        <div class="opening-actions"><ElButton :disabled="saving || lines.length >= 100" @click="lines.push(blank())">增加物料</ElButton><ElButton :disabled="saving" @click="saveDraft">保存本机草稿</ElButton><ElButton type="primary" :loading="saving" @click="submitOpening">确认期初入账</ElButton></div>
+        <div class="opening-actions"><ElButton :disabled="saving || lines.length >= 100" @click="lines.push(blank())">增加物料</ElButton><ElButton :disabled="saving" @click="saveDraft">保存本机草稿</ElButton><ElButton type="primary" :loading="saving" @click="submitOpening">确认初始库存登记</ElButton></div>
       </template>
-      <p v-if="opening?.completed" class="settings-note">共 {{ opening.items.length }} 个期初批次，可在库存明细和收发历史中查看。</p>
+      <p v-if="opening?.completed" class="settings-note">共 {{ opening.items.length }} 个初始库存批次，可在库存明细和收发历史中查看。</p>
     </section>
   </ElDialog>
 </template>

@@ -34,9 +34,9 @@ async function request<T>(path: string, options?: HttpRequestOptions): Promise<T
     if (!(error instanceof HttpRequestError)) throw error
     const detail = record(error.body).detail
     const message = typeof detail === 'string' ? detail : typeof record(detail).message === 'string' ? String(record(detail).message) : ''
-    const fallback: Record<number, string> = { 403: '当前账号不能操作此班组物料', 404: '未找到班组或来源批次', 409: '来源批次余额已变化，请核对最新余量', 422: '请检查数量、重量和必填内容' }
-    const knownMessage = /insufficient.*(available|stock|balance)|exceed.*available/i.test(message) ? '来源批次余额不足，请核对最新可用余量' : /idempotency.*(different|mismatch|used)/i.test(message) ? '重复提交的内容已改变，请关闭后重新核对提交' : ''
-    const localized = /[\u4e00-\u9fff]/.test(message) ? message : knownMessage || fallback[error.status] || '物料台账请求失败，请重试'
+    const fallback: Record<number, string> = { 403: '当前账号不能操作此班组物料', 404: '未找到班组或来源批次', 409: '该批次库存已变化，请刷新后核对', 422: '请检查数量、重量和必填内容' }
+    const knownMessage = /insufficient.*(available|stock|balance)|exceed.*available/i.test(message) ? '该批次可转出库存不足，请刷新后核对' : /idempotency.*(different|mismatch|used)/i.test(message) ? '重复提交的内容已改变，请关闭后重新核对提交' : ''
+    const localized = /[\u4e00-\u9fff]/.test(message) ? message : knownMessage || fallback[error.status] || '库存数据读取失败，请重试'
     throw new TeamMaterialApiError(localized, error.status)
   }
 }
@@ -48,7 +48,7 @@ function path(teamId: number, resource: string, params: object = {}): string {
 }
 async function page<T>(url: string, normalize: (raw: unknown) => T): Promise<MaterialPage<T>> {
   const raw = record(await request(url))
-  if (!Array.isArray(raw.items) || numeric(raw.total) === null) throw new TeamMaterialApiError('物料台账数据不完整，请重试')
+  if (!Array.isArray(raw.items) || numeric(raw.total) === null) throw new TeamMaterialApiError('库存数据不完整，请重试')
   return { items: raw.items.map(normalize), total: Number(raw.total), page: Number(raw.page), page_size: Number(raw.page_size), ...(typeof raw.as_of === 'string' ? { as_of: raw.as_of } : {}) }
 }
 export const teamMaterialApi = {

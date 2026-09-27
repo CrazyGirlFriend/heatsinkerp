@@ -495,7 +495,7 @@ onBeforeUnmount(() => {
             <ElTableColumn label="材质" min-width="150" align="center" show-overflow-tooltip prop="material_name" />
             <ElTableColumn label="来源" min-width="156" align="center" class-name="transfer-source-cell" show-overflow-tooltip><template #default="{ row }">{{ isWarehouseReceipt(asTransfer(row)) ? '库房手工入库' : row.source_team.name }}</template></ElTableColumn>
             <ElTableColumn label="去向" min-width="110" align="center" class-name="transfer-destination-cell" show-overflow-tooltip prop="next_team.name" />
-            <ElTableColumn label="承接业务" min-width="125" align="center" class-name="transfer-purpose-cell" show-overflow-tooltip><template #default="{ row }">{{ materialPurposeLabel(asTransfer(row)) }}</template></ElTableColumn>
+            <ElTableColumn label="接收业务" min-width="125" align="center" class-name="transfer-purpose-cell" show-overflow-tooltip><template #default="{ row }">{{ materialPurposeLabel(asTransfer(row)) }}</template></ElTableColumn>
             <ElTableColumn label="数量" min-width="120" align="center" class-name="transfer-quantity-cell"><template #default="{ row }">{{ numberText(row.quantity, row.quantity_unit) }}</template></ElTableColumn>
             <ElTableColumn label="重量" min-width="140" align="center" class-name="transfer-weight-cell"><template #default="{ row }">{{ numberText(row.weight, row.weight_unit) }}</template></ElTableColumn>
             <ElTableColumn label="状态" min-width="140" align="center" class-name="transfer-status-cell"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" plain /></template></ElTableColumn>
@@ -504,7 +504,7 @@ onBeforeUnmount(() => {
           <div v-if="hasRows" class="transfer-mobile-list">
             <ElButton v-for="transfer in rows" :key="transfer.batch_no" text class="transfer-mobile-row" @click="openDetail(transfer)">
               <span class="mobile-row-head"><strong>{{ transfer.batch_no }}</strong><MaterialTransferStatus :status="transfer.status" :entry-kind="transfer.entry_kind" plain /></span>
-              <span class="mobile-transfer-parties"><span><small>来源</small><span>{{ isWarehouseReceipt(transfer) ? '库房手工入库' : transfer.source_team.name }}</span></span><span><small>去向</small><span>{{ transfer.next_team.name }}</span></span><span><small>承接业务</small><span>{{ materialPurposeLabel(transfer) }}</span></span></span>
+              <span class="mobile-transfer-parties"><span><small>来源</small><span>{{ isWarehouseReceipt(transfer) ? '库房手工入库' : transfer.source_team.name }}</span></span><span><small>去向</small><span>{{ transfer.next_team.name }}</span></span><span><small>接收业务</small><span>{{ materialPurposeLabel(transfer) }}</span></span></span>
               <span class="mobile-material-brief">{{ materialTypeLabel(transfer.material_type) }}<template v-if="transfer.material_name"> · {{ transfer.material_name }}</template></span>
               <span class="mobile-row-meta"><span>{{ numberText(transfer.quantity, transfer.quantity_unit) }} · {{ numberText(transfer.weight, transfer.weight_unit) }}</span><span>{{ transfer.serial_no }}</span></span>
             </ElButton>

@@ -42,7 +42,7 @@ def context(db, team_id, lot_id, page=1, page_size=10):
         raise HTTPException(404, "未找到本班组已签收的库存批次")
     balance = db.get(Balance, lot_id)
     if balance is None:
-        raise HTTPException(409, "库存余额缺失，请先核对")
+        raise HTTPException(409, "未找到该批次的库存记录，请先核对")
     where = Adjustment.source_transfer_id == lot_id
     total = db.scalar(select(func.count()).select_from(Adjustment).where(where))
     rows = db.scalars(select(Adjustment).where(where).order_by(Adjustment.id.desc())

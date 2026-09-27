@@ -459,9 +459,9 @@ describe('live team material stock page', () => {
   })
   it('keeps scope help accessible and distinguishes zero stock from the grand total', async () => {
     await render()
-    const scope = wrapper.get('button[aria-label="统计口径"]')
+    const scope = wrapper.get('button[aria-label="统计说明"]')
     expect(scope.text()).toBe('')
-    expect(scope.attributes('title')).toBe('统计口径')
+    expect(scope.attributes('title')).toBe('统计说明')
     expect(wrapper.get('tbody td button').attributes('title')).toBe('查看库房 · 铜钼库存明细')
     expect(wrapper.get('tfoot .grand-total button').text()).toBe('10')
     expect(wrapper.get('tbody td').classes()).not.toContain('is-zero')

@@ -312,7 +312,7 @@ onMounted(() => void loadTeams())
           </ElTableColumn>
           <ElTableColumn label="操作" width="360" align="center">
             <template #default="{ row }">
-              <ElButton link type="primary" @click="authorizationTeam = asTeam(row); authorizationOpen = true">期初授权</ElButton>
+              <ElButton link type="primary" @click="authorizationTeam = asTeam(row); authorizationOpen = true">初始库存录入</ElButton>
               <template v-if="isWarehouse(asTeam(row))"><ElTag type="info" effect="plain">系统项</ElTag></template>
               <template v-else>
                 <ElButton link type="primary" :icon="EditPen" @click="openEdit(asTeam(row))">编辑</ElButton>

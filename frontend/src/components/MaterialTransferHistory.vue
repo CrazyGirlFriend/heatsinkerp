@@ -5,9 +5,9 @@ import { formatDateTime } from '@/utils/format'
 
 const props = defineProps<{ transfer: MaterialTransfer }>()
 const events = computed(() => [...(props.transfer.history ?? [])].sort((left, right) => right.id - left.id))
-const actions = { created: '创建转料单', updated: '修改转料单', received: '确认接收', voided: '作废转料单', stocked: '手工入库已入账', dispatched: '确认出库', rejected: '库房退回核对', quantity_changed: '加工件数变更' }
+const actions = { created: '创建转料单', updated: '修改转料单', received: '确认接收', voided: '作废转料单', stocked: '手工入库已完成', dispatched: '确认出库', rejected: '库房退回核对', quantity_changed: '加工件数变更' }
 const labels: Record<string, string> = {
-  stock_quantity: '在库件数', reason: '加工说明',
+  stock_quantity: '未转出件数', reason: '加工说明',
   receipt_kind: '入库来源类别', external_source: '外部来源单位', return_dispatch_no: '原出库批次', rejection_reason: '退回核对原因',
   main_system_schema_version: '主系统接口版本', main_system_revision: '主系统资料版本',
   main_system_updated_at: '主系统资料更新时间', main_system_snapshot_hash: '主系统资料校验值',
@@ -21,7 +21,7 @@ const labels: Record<string, string> = {
   received_at: '接收时间', received_by: '接收人', voided_at: '作废时间', voided_by: '作废人', locked: '锁定', version: '版本',
 }
 function actionLabel(action: keyof typeof actions): string {
-  if (props.transfer.entry_kind === 'opening_stock' && action === 'stocked') return '期初入账'
+  if (props.transfer.entry_kind === 'opening_stock' && action === 'stocked') return '初始库存登记'
   if (isExternalTransfer(props.transfer)) {
     const verb = externalActionLabel(props.transfer.entry_kind)
     return action === 'created' ? `创建${verb}单` : action === 'updated' ? `修改${verb}单` : action === 'dispatched' ? `确认${verb}` : action === 'voided' ? `作废${verb}单` : actions[action]
@@ -29,10 +29,10 @@ function actionLabel(action: keyof typeof actions): string {
   return actions[action]
 }
 function fieldLabel(field: string): string {
-  const purposeLabels: Record<string, string> = { purpose_id: '承接业务编号', purpose_name: '承接业务', opening_stock_id: '期初提交编号' }
+  const purposeLabels: Record<string, string> = { purpose_id: '接收业务编号', purpose_name: '接收业务', opening_stock_id: '初始库存登记编号' }
   if (purposeLabels[field]) return purposeLabels[field]
   if (props.transfer.entry_kind === 'opening_stock') {
-    const openingLabels: Record<string, string> = { next_team_id: '入账班组编号', next_team_code: '入账班组编码', next_team_name: '入账班组', received_at: '入账时间', received_by: '登记人' }
+    const openingLabels: Record<string, string> = { next_team_id: '登记班组编号', next_team_code: '登记班组编码', next_team_name: '登记班组', received_at: '登记时间', received_by: '登记人' }
     if (openingLabels[field]) return openingLabels[field]
   }
   if (isExternalTransfer(props.transfer) && ['quantity', 'weight', 'external_destination', 'dispatched_by', 'dispatched_at'].includes(field)) {

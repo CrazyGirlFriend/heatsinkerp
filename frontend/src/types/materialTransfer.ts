@@ -20,11 +20,11 @@ export const materialTypeOptions = [
 export type MaterialType = typeof materialTypeOptions[number]['value']
 export const isScrapType = (type?: string | null) => ['defective', 'waste', 'sludge', 'scrap_chips'].includes(type || '')
 export function receiptSourceLabel(transfer: MaterialTransfer): string {
-  if (transfer.entry_kind === 'opening_stock') return '期初库存'
+  if (transfer.entry_kind === 'opening_stock') return '初始库存'
   return transfer.entry_kind !== 'warehouse_receipt' ? '车间转入' : transfer.receipt_kind === 'return' ? '外部退回' : '外部入库'
 }
 export function materialSourceLabel(transfer: MaterialTransfer): string {
-  if (transfer.entry_kind === 'opening_stock') return '期初库存'
+  if (transfer.entry_kind === 'opening_stock') return '初始库存'
   return transfer.entry_kind === 'warehouse_receipt' ? transfer.external_source || '外部来源未登记' : transfer.source_team.name
 }
 
@@ -201,11 +201,11 @@ export function externalActionLabel(kind?: MaterialEntryKind): string {
   return kind === 'inspection_shipment' ? '发货' : '出库'
 }
 export function materialEntryLabel(kind?: MaterialEntryKind): string {
-  if (kind === 'opening_stock') return '期初库存'
+  if (kind === 'opening_stock') return '初始库存'
   return kind === 'warehouse_receipt' ? '库房手工入库' : kind === 'warehouse_outbound' ? '对外出库' : kind === 'inspection_shipment' ? '检验发货' : '内部转料'
 }
 export function materialDocumentTitle(transfer: MaterialTransfer): string {
-  if (transfer.entry_kind === 'opening_stock') return '期初库存入账单'
+  if (transfer.entry_kind === 'opening_stock') return '初始库存登记单'
   return isWarehouseReceipt(transfer) ? '库房入库单' : isExternalTransfer(transfer) ? `${externalActionLabel(transfer.entry_kind)}单` : '物料转料单'
 }
 
@@ -218,7 +218,7 @@ export function materialPurposeLabel(transfer: Pick<MaterialTransfer, 'entry_kin
 }
 
 export function materialTransferStatusLabel(status: MaterialTransferStatus | string, entryKind?: MaterialEntryKind): string {
-  if (entryKind === 'opening_stock') return '已入账'
+  if (entryKind === 'opening_stock') return '已登记'
   if (isExternalEntryKind(entryKind) && status === 'pending') return `待${externalActionLabel(entryKind)}`
   if (status === 'dispatched') return `已${externalActionLabel(entryKind)}`
   if (status === 'received' && entryKind === 'warehouse_receipt') return '已入库'

@@ -173,7 +173,7 @@ def test_opening_is_an_immutable_independent_origin_and_idempotent(client, stock
     assert client.get(url(s, suffix='overview')).json()['pending_incoming']['count'] == 0
     assert client.get(url(s, suffix='inventory'), params={'receipt_source': 'opening'}).json()['total'] == 1
     group = history(client, s)['groups'][0]
-    assert group['events'][0]['kind'] == 'opening' and group['events'][0]['counterpart'] == '期初库存'
+    assert group['events'][0]['kind'] == 'opening' and group['events'][0]['counterpart'] == '初始库存'
     assert group['on_hand_weight'] == 10.125
 
 
@@ -223,7 +223,7 @@ def test_history_uses_received_purpose_and_reconciles_pending_edits_void_loss(cl
     assert h['groups'][0]['events'][-1]['balance_quantity'] == 60
     assert h['team_name'] == s['target']['name']
     assert len(h['flows']) == 2
-    assert h['flows'][0]['from_name'] == '期初库存'
+    assert h['flows'][0]['from_name'] == '初始库存'
     assert h['flows'][1]['group_key'] == h['groups'][0]['key']
     assert h['flows'][1]['status'] == 'pending'
     assert h['flows'][1]['to_name'] == s['third']['name']

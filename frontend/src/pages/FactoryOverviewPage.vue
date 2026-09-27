@@ -27,7 +27,7 @@ const autoRefresh = ref(true)
 const report = ref<FactoryOverview | null>(null), loading = ref(false), error = ref('')
 let version = 0, timer: ReturnType<typeof setInterval> | undefined
 let media: MediaQueryList | undefined
-const scenes: { key: FactoryScene; label: string }[] = [{ key: 'overview', label: '全厂态势' }, { key: 'stock', label: '库存分析' }, { key: 'handoff', label: '交接与异常' }]
+const scenes: { key: FactoryScene; label: string }[] = [{ key: 'overview', label: '全厂概况' }, { key: 'stock', label: '库存分析' }, { key: 'handoff', label: '交接与异常' }]
 const sceneIndex = ref(0), hidden = ref(document.hidden), reduced = ref(false)
 const scene = computed(() => scenes[sceneIndex.value]!)
 const motion = computed(() => !reduced.value && !hidden.value && !error.value)
@@ -45,7 +45,7 @@ const metrics = computed(() => {
   const d = report.value
   if (!d) return []
   return [
-    { key: 'stock', label: '全厂在库物料', value: d.totals[`on_hand_${metric.value}`], detail: `在途 ${number(d.totals[`in_transit_${metric.value}`])} ${unit.value}`, hint: '内部转出即扣库存，待接收计入在途；在库与在途合计为全厂持有物料。', accent: true },
+    { key: 'stock', label: '全厂在库物料', value: d.totals[`on_hand_${metric.value}`], detail: `在途 ${number(d.totals[`in_transit_${metric.value}`])} ${unit.value}`, hint: '这里仅统计未转出的物料；已转出但未签收的物料单列显示。', accent: true },
     { key: 'pending', label: '待交接物料', value: d.pending[metric.value], detail: `${d.pending.batches} 批待确认`, hint: '含内部待接收及对外待确认物料。' },
     { key: 'inbound', label: `近${d.days}天入库`, value: d.period_totals.inbound[metric.value], hint: '库房已登记入库。' },
     { key: 'outbound', label: `近${d.days}天对外出库`, value: d.period_totals.outbound[metric.value] + d.period_totals.shipment[metric.value], hint: `含库房对外出库和检验发货；检验发货 ${number(d.period_totals.shipment[metric.value])} ${unit.value}。` },

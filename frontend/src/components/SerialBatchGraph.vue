@@ -55,7 +55,7 @@ watch(() => props.focusTeam, async team => {
             <strong class="batch-node__team" :title="node.batch.next_team.name">{{ node.batch.next_team.name }}</strong>
             <span class="batch-node__purpose"><b>{{ node.batch.purpose_name || materialTypeLabel(node.batch.material_type) }}</b><span v-if="!node.batch.source_transfer_id" :title="materialSourceLabel(node.batch)">{{ node.detached ? '来源未关联' : materialSourceLabel(node.batch) }}</span></span>
             <span class="batch-node__amount">{{ num(node.batch.quantity) }} <small>件</small><i>/</i>{{ num(node.batch.weight) }} <small>kg</small></span>
-            <span class="batch-node__balance" v-if="node.batch.on_hand_quantity !== null">结存 <b>{{ num(node.batch.on_hand_quantity) }} 件 / {{ num(node.batch.on_hand_weight || 0) }} kg</b></span>
+            <span class="batch-node__balance" v-if="node.batch.on_hand_quantity !== null">未转出库存 <b>{{ num(node.batch.on_hand_quantity) }} 件 / {{ num(node.batch.on_hand_weight || 0) }} kg</b></span>
             <span class="batch-node__balance" v-else>{{ node.batch.status === 'voided' ? '已撤销，不占用库存' : isExternalTransfer(node.batch) ? `外部去向 · ${node.batch.external_destination}` : node.batch.status === 'pending' ? '已转出，尚未接收' : '历史批次，未纳入库存' }}</span>
             <span class="batch-node__footer"><time>{{ formatDateTime(node.batch.transferred_at) }}</time><b v-if="node.batch.loss_records?.length" class="node-loss">丢失 {{ num(node.batch.loss_records.reduce((sum, loss) => sum + loss.quantity, 0)) }} 件 / {{ num(node.batch.loss_records.reduce((sum, loss) => sum + loss.weight, 0)) }} kg</b></span>
           </button>

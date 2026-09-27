@@ -48,7 +48,7 @@ describe('team business settings', () => {
   it('does not offer posting without administrator authorization or after existing stock', async () => {
     vi.mocked(teamMaterialApi.openingState).mockResolvedValue({ ...allowed, enabled: false, can_submit: false })
     await render(); expect(wrapper.text()).toContain('请系统管理员')
-    expect(wrapper.text()).not.toContain('确认期初入账')
+    expect(wrapper.text()).not.toContain('确认初始库存登记')
     expect(teamMaterialApi.createOpening).not.toHaveBeenCalled()
   })
   it('posts leading-zero stock once after confirmation, preserving local drafts on failure', async () => {
@@ -61,7 +61,7 @@ describe('team business settings', () => {
     await click('保存本机草稿')
     expect(localStorage.getItem('heatsink.opening-draft.v1:41:2')).toContain('000012')
     vi.mocked(teamMaterialApi.createOpening).mockRejectedValueOnce(new Error('网络错误'))
-    await click('确认期初入账'); await click('确认期初入账')
+    await click('确认初始库存登记'); await click('确认初始库存登记')
     const calls = vi.mocked(teamMaterialApi.createOpening).mock.calls
     expect(calls).toHaveLength(2)
     expect(calls[0]![0]).toBe(2)
@@ -72,7 +72,7 @@ describe('team business settings', () => {
   })
   it('validates empty stock and restores only this account/team draft', async () => {
     localStorage.setItem('heatsink.opening-draft.v1:41:3', JSON.stringify([{ serial_no: 'FOREIGN', material_name: '铜' }]))
-    await render(); await click('确认期初入账')
+    await render(); await click('确认初始库存登记')
     expect(wrapper.text()).toContain('请逐行填写')
     expect(teamMaterialApi.createOpening).not.toHaveBeenCalled()
     expect(wrapper.text()).not.toContain('FOREIGN')

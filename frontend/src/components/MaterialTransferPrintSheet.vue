@@ -10,7 +10,7 @@ const opening = computed(() => props.transfer.entry_kind === 'opening_stock')
 const receipt = computed(() => isWarehouseReceipt(props.transfer) || opening.value)
 const external = computed(() => isExternalTransfer(props.transfer))
 const verb = computed(() => externalActionLabel(props.transfer.entry_kind))
-const copies = computed(() => opening.value ? [{ key: 'source', name: '班组留存联' }, { key: 'target', name: '期初入账联' }] : external.value ? [{ key: 'source', name: `${verb.value}留存联` }, { key: 'target', name: `${verb.value}凭证联` }] : receipt.value ? [{ key: 'source', name: '库房留存联' }, { key: 'target', name: '入库凭证联' }] : [{ key: 'source', name: '转出留存联' }, { key: 'target', name: '接收确认联' }])
+const copies = computed(() => opening.value ? [{ key: 'source', name: '班组留存联' }, { key: 'target', name: '初始库存登记联' }] : external.value ? [{ key: 'source', name: `${verb.value}留存联` }, { key: 'target', name: `${verb.value}凭证联` }] : receipt.value ? [{ key: 'source', name: '库房留存联' }, { key: 'target', name: '入库凭证联' }] : [{ key: 'source', name: '转出留存联' }, { key: 'target', name: '接收确认联' }])
 const fields = computed(() => {
   const transfer = props.transfer
   return [
@@ -18,8 +18,8 @@ const fields = computed(() => {
     { label: '状态', value: materialTransferStatusLabel(transfer.status, transfer.entry_kind) },
     { label: receipt.value ? '入库来源' : external.value ? `${verb.value}班组` : '转出班组', value: materialSourceLabel(transfer) },
     { label: receipt.value || external.value ? '登记人' : '转料人', value: transfer.transferred_by || '—' },
-    { label: opening.value ? '入账班组' : receipt.value ? '入库库房' : external.value ? `${verb.value}去向` : '接收班组', value: external.value ? transfer.external_destination || '—' : transfer.next_team.name },
-    { label: '承接业务', value: materialPurposeLabel(transfer) },
+    { label: opening.value ? '登记班组' : receipt.value ? '入库库房' : external.value ? `${verb.value}去向` : '接收班组', value: external.value ? transfer.external_destination || '—' : transfer.next_team.name },
+    { label: '接收业务', value: materialPurposeLabel(transfer) },
     { label: '物料类型', value: materialTypeLabel(transfer.material_type) },
     { label: '原单批号', value: transfer.source_batch_no || '—' },
     { label: '材质', value: transfer.material_name || '—' },

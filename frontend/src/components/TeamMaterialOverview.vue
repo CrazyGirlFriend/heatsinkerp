@@ -7,7 +7,7 @@ import { materialTypeLabel } from '@/types/materialTransfer'
 const props = withDefaults(defineProps<{ overview: TeamMaterialOverview; kind?: 'material' | 'type'; page?: number; pageSize?: number }>(), { kind: 'material', page: 1, pageSize: 10 })
 const emit = defineEmits<{ filter: [value: string]; paginate: [page: number, pageSize: number] }>()
 const isMaterial = computed(() => props.kind === 'material')
-const title = computed(() => isMaterial.value ? '材质结存' : '物料性质结存')
+const title = computed(() => isMaterial.value ? '材质库存' : '类型库存')
 const entries = computed<(MaterialBalance & { key: string; label: string })[]>(() => isMaterial.value
   ? props.overview.materials.map(row => ({ ...row, key: row.material_name || '未填写材质', label: row.material_name || '未填写材质' }))
   : (props.overview.material_types || []).map(row => ({ ...row, key: row.material_type || 'unknown', label: row.material_type ? materialTypeLabel(row.material_type) : '未分类' })))
@@ -18,7 +18,7 @@ const rows = computed(() => entries.value.slice((props.page - 1) * props.pageSiz
   <section class="material-ledger">
     <header><h2>{{ title }}</h2><slot name="actions" /></header>
     <ElTable :data="rows" class="business-table ledger-table single-line-table" :class="{ 'ledger-table--empty': !rows.length }" empty-text="暂无库存" show-overflow-tooltip>
-      <ElTableColumn prop="label" :label="isMaterial ? '材质' : '物料性质'" min-width="140" fixed="left" show-overflow-tooltip><template #default="{ row }"><ElButton link type="primary" :aria-label="`查看${row.label}的库存明细`" @click="emit('filter', row.key)">{{ row.label }}</ElButton></template></ElTableColumn>
+      <ElTableColumn prop="label" :label="isMaterial ? '材质' : '物料类型'" min-width="140" fixed="left" show-overflow-tooltip><template #default="{ row }"><ElButton link type="primary" :aria-label="`查看${row.label}的库存明细`" @click="emit('filter', row.key)">{{ row.label }}</ElButton></template></ElTableColumn>
       <ElTableColumn label="正常料件数" min-width="125" align="center"><template #default="{ row }">{{ inventoryAmount(row.available_quantity) }}</template></ElTableColumn>
       <ElTableColumn label="正常料重量 (kg)" min-width="155" align="center"><template #default="{ row }">{{ inventoryAmount(row.available_weight) }}</template></ElTableColumn>
       <ElTableColumn v-if="isMaterial" label="废料件数" min-width="115" align="center"><template #default="{ row }">{{ inventoryAmount(row.scrap_quantity) }}</template></ElTableColumn>
@@ -37,7 +37,7 @@ const rows = computed(() => entries.value.slice((props.page - 1) * props.pageSiz
       <ElTableColumn v-if="isMaterial" label="累计丢失重量 (kg)" min-width="175" align="center"><template #default="{ row }">{{ inventoryAmount(row.lost_weight) }}</template></ElTableColumn>
       <ElTableColumn label="操作" width="110" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="emit('filter', row.key)">查看详情</ElButton></template></ElTableColumn>
     </ElTable>
-    <footer><span>共 {{ entries.length }} 种{{ isMaterial ? '材质' : '物料性质' }}</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[10, 20, 50, 100]" :total="entries.length" layout="sizes, prev, pager, next" @current-change="emit('paginate', $event, pageSize)" @size-change="emit('paginate', 1, $event)" /></footer>
+    <footer><span>共 {{ entries.length }} 种{{ isMaterial ? '材质' : '物料类型' }}</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[10, 20, 50, 100]" :total="entries.length" layout="sizes, prev, pager, next" @current-change="emit('paginate', $event, pageSize)" @size-change="emit('paginate', 1, $event)" /></footer>
   </section>
 </template>
 

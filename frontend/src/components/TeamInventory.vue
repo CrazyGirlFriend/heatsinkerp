@@ -29,7 +29,7 @@ const emit = defineEmits<{ changed: []; action: [mode: 'dispatch' | 'loss', sour
 const route = useRoute(), router = useRouter(), auth = useAuthStore(), directory = useTeamDirectoryStore()
 const text = (key: string) => typeof route.query[key] === 'string' ? String(route.query[key]) : ''
 const summarySection = computed(() => ['materials', 'material-types'].includes(text('summary')) ? text('summary') : '')
-const summaryLabel = computed(() => summarySection.value === 'material-types' ? '物料性质结存' : '材质结存')
+const summaryLabel = computed(() => summarySection.value === 'material-types' ? '类型库存' : '材质库存')
 function returnToSummary() {
   void router.push({ path: route.path, query: { tab: summarySection.value, ...(text('summary_page') ? { page: text('summary_page') } : {}), ...(text('summary_page_size') ? { page_size: text('summary_page_size') } : {}) } })
 }
@@ -173,7 +173,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
 
 <template>
   <section class="warehouse-inventory serial-ledger">
-    <div v-if="summarySection" class="warehouse-search-context"><ElButton link type="primary" @click="returnToSummary">返回{{ summaryLabel }}</ElButton><span>{{ summarySection === 'materials' ? text('material_name') || '全部材质' : text('material_type') === 'unknown' ? '未分类' : text('material_type') ? materialTypeLabel(text('material_type')) : '全部物料性质' }} · 库存明细</span></div>
+    <div v-if="summarySection" class="warehouse-search-context"><ElButton link type="primary" @click="returnToSummary">返回{{ summaryLabel }}</ElButton><span>{{ summarySection === 'materials' ? text('material_name') || '全部材质' : text('material_type') === 'unknown' ? '未分类' : text('material_type') ? materialTypeLabel(text('material_type')) : '全部物料类型' }} · 库存明细</span></div>
     <ElAlert v-if="refreshError" :title="refreshError" type="warning" :closable="false" />
     <header class="warehouse-toolbar serial-toolbar">
       <div class="warehouse-search">
@@ -193,7 +193,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
         <template #reference><ElButton text :icon="ArrowDown">更多</ElButton></template>
         <div class="warehouse-extra-filters">
           <label>材质<ElSelect v-model="materialDraft" aria-label="库存材质筛选" clearable filterable placeholder="全部材质" @change="search"><ElOption v-for="item in overview.materials" :key="item.material_name || '未填写材质'" :value="item.material_name || '未填写材质'" :label="item.material_name || '未填写材质'" /></ElSelect></label>
-          <label>库存范围<ElSelect v-model="availabilityDraft" aria-label="库存范围" @change="search"><ElOption value="owned" label="本班组库存（含转出待确认）" /><ElOption value="current" label="尚有在库余量" /><ElOption value="available" label="正常料可转出" /><ElOption value="scrap" label="废料可处理" /><ElOption value="all" label="全部（含无结存）" /></ElSelect></label>
+          <label>库存范围<ElSelect v-model="availabilityDraft" aria-label="库存范围" @change="search"><ElOption value="owned" label="本班组库存（含转出待确认）" /><ElOption value="current" label="有未转出库存" /><ElOption value="available" label="正常料可转出" /><ElOption value="scrap" label="废料可处理" /><ElOption value="all" label="全部（含零库存）" /></ElSelect></label>
           <label v-if="warehouse && sourceDraft === 'internal'">来源班组<ElSelect v-model="sourceTeamDraft" aria-label="库房来源班组" clearable @change="search"><ElOption v-for="team in sourceTeams" :key="team.id" :value="team.id" :label="team.name" /></ElSelect></label>
           <label>分析条件<ElSelect :model-value="analysisChoice" aria-label="库存分析条件" placeholder="库存与流转条件" clearable @change="selectAnalysis"><ElOptionGroup label="库存停留"><ElOption v-for="[key, label] in ages" :key="key" :value="`age:${key}`" :label="`库存停留 ${label}`" /></ElOptionGroup><ElOptionGroup v-for="direction in ['incoming', 'outgoing']" :key="direction" :label="direction === 'incoming' ? '待接收' : '转出待确认'"><ElOption v-for="[key, label] in ages" :key="key" :value="`${direction}:${key}`" :label="`${direction === 'incoming' ? '待接收' : '转出待确认'} ${label}`" /></ElOptionGroup><ElOption value="loss" :label="`近${days}天有丢失记录`" /></ElSelect></label>
           <label>事件周期<ElSelect :model-value="days" aria-label="库存事件筛选周期" @change="apply({ ...draftFilters(), days: $event })"><ElOption :value="7" label="近7天" /><ElOption :value="30" label="近30天" /></ElSelect></label>
@@ -215,13 +215,13 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
           <div v-if="column.key === 'serial_no'" class="inventory-inline inventory-serial"><ElButton class="serial-number-link" :title="row.serial_no" link type="primary" @click="openSerial(row)"><strong>{{ row.serial_no }}</strong></ElButton><SerialUrgencyBadge :urgency="row.urgency" /><ElTooltip v-if="canManageUrgency" :content="row.urgency?.urgent ? '取消加急' : '标记加急'" placement="top"><ElButton class="warehouse-urgency-action" link type="primary" :icon="row.urgency?.urgent ? Close : Flag" :aria-label="row.urgency?.urgent ? '取消加急' : '标记加急'" @click="flag(row)" /></ElTooltip></div>
           <ElTooltip v-else-if="column.key === 'material_name'" :content="`规格：${row.transfer_specification}`" :disabled="!row.transfer_specification || separateSpecification" :trigger="['hover', 'focus']" placement="top"><span class="inventory-material" :tabindex="row.transfer_specification && !separateSpecification ? 0 : undefined">{{ row.material_name || '—' }}</span></ElTooltip>
           <ElTag v-else-if="column.key === 'material_type'" effect="light" :type="isScrapMaterialType(row.material_type) ? 'warning' : row.material_type === 'finished' ? 'success' : 'primary'">{{ column.format(asRow(row)) }}</ElTag>
-          <div v-else-if="column.key === 'source' && warehouse" class="inventory-inline"><span class="inventory-source-name">{{ row.receipt_source === 'opening' ? '期初库存' : row.source_name || '—' }}</span></div>
-          <span v-else-if="column.key === 'dispatchable_quantity' || column.key === 'dispatchable_weight'" :title="isScrapMaterialType(row.material_type) ? '废料可处理余量' : '正常料可转出余量'">{{ column.format(asRow(row)) }}</span>
+          <div v-else-if="column.key === 'source' && warehouse" class="inventory-inline"><span class="inventory-source-name">{{ row.receipt_source === 'opening' ? '初始库存' : row.source_name || '—' }}</span></div>
+          <span v-else-if="column.key === 'dispatchable_quantity' || column.key === 'dispatchable_weight'" :title="isScrapMaterialType(row.material_type) ? '废料可处理的库存' : '正常料可转出的库存'">{{ column.format(asRow(row)) }}</span>
           <template v-else-if="column.key === 'in_transit_quantity' || column.key === 'in_transit_weight'">
             <ElButton v-if="row.in_transit_quantity > 0 || row.in_transit_weight > 0" link type="primary" :aria-label="`查看${row.serial_no}转出待签收批次`" @click="pending = asRow(row)">{{ column.format(asRow(row)) }}</ElButton>
             <span v-else>{{ column.format(asRow(row)) }}</span>
           </template>
-          <ElTooltip v-else-if="column.key === 'owned_quantity' || column.key === 'owned_weight' || column.key === 'on_hand_quantity' || column.key === 'on_hand_weight'" :content="column.key.startsWith('owned_') ? ownershipHint(asRow(row)) : '尚未发出的余量，不含已转出待确认物料'" :trigger="['hover', 'focus']" popper-class="inventory-balance-tooltip" placement="top">
+          <ElTooltip v-else-if="column.key === 'owned_quantity' || column.key === 'owned_weight' || column.key === 'on_hand_quantity' || column.key === 'on_hand_weight'" :content="column.key.startsWith('owned_') ? ownershipHint(asRow(row)) : '尚未转出的库存，不含已转出待确认的物料'" :trigger="['hover', 'focus']" popper-class="inventory-balance-tooltip" placement="top">
             <span class="inventory-balance" :data-field="column.key" tabindex="0"><strong>{{ column.format(asRow(row)) }}</strong></span>
           </ElTooltip>
           <span v-else-if="column.key === 'purpose_name'">{{ row.purpose_name || '—' }}</span>
@@ -230,7 +230,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
       </ElTableColumn>
       <ElTableColumn label="操作" :width="canWrite ? 120 : 88" align="center" fixed="right"><template #default="{ row }"><div class="inventory-row-actions"><ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton><ElButton v-if="canWrite" link type="primary" :disabled="!inventoryCanDispatch(asRow(row))" @click="picker = asRow(row)">出库</ElButton></div></template></ElTableColumn>
     </ElTable>
-    <footer v-if="!error"><span>共 {{ total }} 条分类结存<small v-if="asOf" class="inventory-as-of">账面统计 · {{ formatDateTime(asOf) }}</small></span><ElPagination background :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="paginate($event)" @size-change="paginate(1, $event)" /></footer>
+    <footer v-if="!error"><span>共 {{ total }} 条库存记录<small v-if="asOf" class="inventory-as-of">系统记录 · {{ formatDateTime(asOf) }}</small></span><ElPagination background :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="paginate($event)" @size-change="paginate(1, $event)" /></footer>
     <TeamInventoryDetail :team-id="teamId" :group="detail" :warehouse="warehouse" :can-write="canWrite" @close="detail = null" @changed="emit('changed')" @action="action" @pending="pending = detail" />
     <InventoryPendingDialog v-if="pending" :team-id="teamId" :group="pending" @close="pending = null" @changed="load(true); emit('changed')" />
     <StockSourcePicker v-if="picker && canWrite" :team-id="teamId" :group-id="picker.group_id" :group-label="[picker.serial_no, materialTypeLabel(picker.material_type || null), picker.purpose_name, sourceLabel(picker)].filter(Boolean).join(' · ')" @close="picker = null" @selected="action('dispatch', $event)" />

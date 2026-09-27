@@ -92,8 +92,8 @@ describe('team workspace material ledger', () => {
     expect(headings).not.toContain('类型 / 业务')
     if (tab !== 'losses') {
       expect(cells[headings.indexOf('物料类型')]!.text()).toBe('半成品')
-      expect(cells[headings.indexOf('承接业务')]!.text()).toBe('去毛刺')
-      if (tab === 'outgoing') expect(headings.indexOf('承接业务')).toBe(headings.indexOf('下序 / 去向') + 1)
+      expect(cells[headings.indexOf('接收业务')]!.text()).toBe('去毛刺')
+      if (tab === 'outgoing') expect(headings.indexOf('接收业务')).toBe(headings.indexOf('下序 / 去向') + 1)
     }
     expect(table.find('.barcode-card').exists()).toBe(false)
     await table.get('.batch-link').trigger('click'); await flushPromises()
@@ -144,10 +144,10 @@ describe('team workspace material ledger', () => {
     expect(wrapper.get('.team-workspace__navigation [aria-current=page]').text()).toBe('库存明细')
   })
   it.each([
-    ['materials', '铜钼', 'material_name', '铜钼', '材质结存'],
-    ['materials', null, 'material_name', '未填写材质', '材质结存'],
-    ['material-types', 'sludge', 'material_type', 'sludge', '物料性质结存'],
-    ['material-types', null, 'material_type', 'unknown', '物料性质结存'],
+    ['materials', '铜钼', 'material_name', '铜钼', '材质库存'],
+    ['materials', null, 'material_name', '未填写材质', '材质库存'],
+    ['material-types', 'sludge', 'material_type', 'sludge', '类型库存'],
+    ['material-types', null, 'material_type', 'unknown', '类型库存'],
   ] as const)('opens exact %s detail for %s and returns to its own summary', async (tab, value, filter, expected, label) => {
     vi.mocked(teamMaterialApi.overview).mockResolvedValue({ ...summary,
       materials: [{ ...summary.totals, material_name: tab === 'materials' ? value : '铜钼' }],
@@ -172,7 +172,7 @@ describe('team workspace material ledger', () => {
     wrapper.getComponent(ElPagination).vm.$emit('current-change', 2); await flushPromises()
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, { material_name: '铜钼11', availability: 'all', page: 2, page_size: 10 })
     expect(router.currentRoute.value.query.summary_page).toBe('2')
-    await wrapper.findAll('button').find(button => button.text() === '返回材质结存')!.trigger('click'); await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '返回材质库存')!.trigger('click'); await flushPromises()
     expect(router.currentRoute.value.query).toEqual({ tab: 'materials', page: '2' })
     expect(wrapper.get('.material-ledger .el-table__body button').text()).toBe('铜钼11')
     vi.mocked(teamMaterialApi.overview).mockClear()

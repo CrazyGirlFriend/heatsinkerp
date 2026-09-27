@@ -44,11 +44,11 @@ def purpose_snapshot(db, team_id, purpose_id, *, required=True):
         # configures its vocabulary, new handoffs cannot bypass it (even if all
         # options have subsequently been disabled).
         if required and db.scalar(select(TeamPurpose.id).where(TeamPurpose.team_id == team_id).limit(1)) is not None:
-            raise HTTPException(422, "请选择下序班组的承接业务；无可用选项时请联系该班组长")
+            raise HTTPException(422, "请选择下序班组的接收业务；无可用选项时请联系该班组长")
         return {"purpose_id": None, "purpose_name": None}
     row = db.scalar(select(TeamPurpose).where(TeamPurpose.id == purpose_id).with_for_update().execution_options(populate_existing=True))
     if row is None or row.team_id != team_id or not row.active:
-        raise HTTPException(422, "承接业务须属于接收班组且处于启用状态")
+        raise HTTPException(422, "接收业务须属于接收班组且处于启用状态")
     return {"purpose_id": row.id, "purpose_name": row.name}
 
 
@@ -109,10 +109,10 @@ def authorize_opening(payload: OpeningAuthorization, team_id: int = Path(ge=1), 
         if team is None:
             raise HTTPException(404, "未找到班组")
         if payload.enabled and (not team.active or db.scalar(select(OpeningStockSubmission.id).where(OpeningStockSubmission.team_id == team_id))):
-            raise HTTPException(409, "班组已完成期初入账或已停用，不能再次开启")
+            raise HTTPException(409, "班组已完成初始库存登记或已停用，不能再次开启")
         if payload.enabled and db.scalar(select(MaterialTransfer.id).where(MaterialTransfer.next_team_id == team_id,
             MaterialTransfer.status == "received", MaterialTransfer.stock_tracked.is_(True)).limit(1)) is not None:
-            raise HTTPException(409, "班组已有入账记录，不能将当前库存再次作为期初库存叠加")
+            raise HTTPException(409, "班组已有库存记录，不能重复登记初始库存")
         before = team.opening_stock_enabled
         team.opening_stock_enabled = payload.enabled
         if before != payload.enabled:

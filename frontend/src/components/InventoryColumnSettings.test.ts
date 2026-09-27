@@ -31,7 +31,7 @@ describe('inventory display columns', () => {
     expect(latest().filter(item => item.visible).map(item => item.key)).toEqual(['on_hand_weight', 'on_hand_quantity', 'owned_quantity', 'owned_weight', 'dispatchable_quantity', 'dispatchable_weight', 'in_transit_quantity', 'in_transit_weight'])
     expect(new Set(latest().map(item => item.key)).size).toBe(warehouseColumns.length)
     expect(localStorage.getItem(key)).toBe(JSON.stringify(old))
-    check('在库件数', false)
+    check('未转出件数', false)
     await button('应用').trigger('click')
     const saved = latest()
     wrapper.unmount(); await renderWarehouse()
@@ -125,7 +125,7 @@ describe('inventory display columns', () => {
     expect(display('transfer_specification')).toBe('多规格')
     expect(display('finished_quantity')).toBe('100')
     row.finished_quantity_count = 2
-    expect(display('finished_quantity')).toBe('多值')
+    expect(display('finished_quantity')).toBe('各批不同')
     expect(display('pending_incoming_quantity')).toBe('15')
     expect(display('last_activity_at')).toBe('2026-09-12 08:00')
   })

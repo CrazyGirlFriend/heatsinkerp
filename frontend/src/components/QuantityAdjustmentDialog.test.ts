@@ -72,7 +72,7 @@ describe('processing piece adjustment', () => {
   it('keeps exhausted lots readable but disables piece changes', async () => {
     vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({ ...context(), quantity: 0, weight: 0 })
     await render()
-    expect(wrapper.text()).toContain('本批暂无在库物料')
+    expect(wrapper.text()).toContain('本批没有未转出的库存')
     expect(wrapper.findAll('button').find(button => button.text() === '保存件数')!.attributes('disabled')).toBeDefined()
     expect(wrapper.findComponent(ElInputNumber).exists()).toBe(false)
   })

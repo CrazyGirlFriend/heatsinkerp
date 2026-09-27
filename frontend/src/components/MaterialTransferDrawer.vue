@@ -99,8 +99,8 @@ const tracePath = computed(() => {
 const stateMessage = computed(() => {
   if (!current.value) return ''
 
-  if (opening.value) return '期初库存已入账，单据已锁定'
-  if (receipt.value) return '手工入库已入账，单据已锁定'
+  if (opening.value) return '初始库存已登记，单据已锁定'
+  if (receipt.value) return '手工入库已完成，单据已锁定'
   if (authStore.isAdmin) return '管理员仅可查看转料记录'
   if (current.value.status === 'dispatched') return `${actionLabel.value}已确认，单据已锁定`
   if (external.value && current.value.status === 'pending') return `由${current.value.source_team.name}确认实际${actionLabel.value}，确认后扣减库存`
@@ -343,7 +343,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
   <MaterialTransferDetailFrame :model-value="modelValue && !groupOpen" :busy="confirming || voiding || deliveryBusy" @close="close">
     <template #header>
       <header class="drawer-heading">
-        <span>{{ opening ? '期初库存' : receipt ? '库房手工入库' : external ? `${actionLabel}详情` : '转料详情' }}</span>
+        <span>{{ opening ? '初始库存' : receipt ? '库房手工入库' : external ? `${actionLabel}详情` : '转料详情' }}</span>
         <h2>{{ current?.batch_no || effectiveBatchNo || '正在读取…' }}</h2>
         <MaterialTransferStatus v-if="current" :status="current.status" :entry-kind="current.entry_kind" />
       </header>

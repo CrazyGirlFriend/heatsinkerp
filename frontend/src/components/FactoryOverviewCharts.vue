@@ -42,22 +42,22 @@ const cards = computed(() => {
   const line = (name: string, data: number[]) => ({ id: name, name, data, type: 'line', showSymbol: false, smooth: false, lineStyle: { width: 2.5 } })
   const rank = (key: 'material' | 'serial', title: string) => {
     const rows = d[`${key}_ranking`]?.[metric] || []
-    const option = plot(rows.map(row => row.key), [{ ...bar('结存', rows.map(row => row[metric])), barMaxWidth: 12,
+    const option = plot(rows.map(row => row.key), [{ ...bar('未转出库存', rows.map(row => row[metric])), barMaxWidth: 12,
       showBackground: true, backgroundStyle: { color: '#f3f6f4', borderRadius: 3 },
       itemStyle: { borderRadius: 3, color: ({ dataIndex }: { dataIndex: number }) => dataIndex === 0 ? '#4f8f68' : '#9bbba7' },
       label: { show: true, position: 'right', distance: 10, color: '#354d3e', fontSize: 13, fontWeight: 500, formatter: ({ value }: { value: number }) => format(value) },
     }], true, false)
     option.grid = { left: 0, right: 84, top: 4, bottom: 4, outerBoundsMode: 'same', outerBoundsContain: 'axisLabel' }
     option.xAxis = { type: 'value', show: false }
-    return { key: `${key}s`, title, hint: '当前全厂结存 · 前8项', empty: !rows.length,
+    return { key: `${key}s`, title, hint: '全厂未转出库存 · 前8项', empty: !rows.length,
       option }
   }
   const all = [
-    { key: 'teams', title: '班组库存分布', hint: '当前在库 · 不含内部在途 · 点击查看班组', empty: !d.teams.some(team => team.balance && (team.balance[`on_hand_${metric}`] || 0) > 0),
-      option: plot(d.teams.map(team => team.name + (!team.balance ? '（未配置）' : !team.active ? '（停用）' : '')), [bar('当前库存', d.teams.map(team => team.balance?.[`on_hand_${metric}`] ?? null))], true, false) },
+    { key: 'teams', title: '班组库存分布', hint: '未转出库存 · 点击查看班组', empty: !d.teams.some(team => team.balance && (team.balance[`on_hand_${metric}`] || 0) > 0),
+      option: plot(d.teams.map(team => team.name + (!team.balance ? '（未配置）' : !team.active ? '（停用）' : '')), [bar('未转出库存', d.teams.map(team => team.balance?.[`on_hand_${metric}`] ?? null))], true, false) },
     { key: 'flow', title: '全厂对外收发', hint: `近${d.days}天 · 内部转料不计入`, empty: !d.trend.some(row => row.inbound[metric] || row.outbound[metric] || row.shipment[metric]),
       option: plot(labels, [line('库房入库', d.trend.map(row => row.inbound[metric])), line('库房对外出库', d.trend.map(row => row.outbound[metric])), line('检验发货', d.trend.map(row => row.shipment[metric]))]) },
-    { key: 'types', title: '物料性质分布', hint: '当前结存构成', empty: !materialTypes.value.some(row => row[metric] > 0),
+    { key: 'types', title: '物料类型分布', hint: '未转出库存构成', empty: !materialTypes.value.some(row => row[metric] > 0),
       option: { ...common.value, tooltip: { ...common.value.tooltip, trigger: 'item', renderMode: 'html', appendTo: 'body', confine: false, position: natureTooltipPosition, className: 'factory-nature-tooltip', textStyle: { fontSize: 12 }, padding: [8, 10] }, legend: { show: false }, series: [{ type: 'pie', radius: ['55%', '86%'], center: ['50%', '50%'], label: { show: false }, itemStyle: { borderColor: '#fff', borderWidth: 2 }, data: materialTypes.value.map(row => ({ name: row.name, value: row[metric], itemStyle: { color: row.color } })) }] } },
     { key: 'waiting', title: '待交接时长', hint: '每笔转料只统计一次', empty: !d.waiting_age.some(row => row.internal[metric] || row.external[metric]),
       option: plot(['<1天', '1–3天', '3–7天', '≥7天'], [bar('内部待接收', d.waiting_age.map(row => row.internal[metric]), 'waiting'), bar('对外待确认', d.waiting_age.map(row => row.external[metric]), 'waiting')]) },
@@ -78,7 +78,7 @@ function pick(key: string, index: number) { const team = props.data.teams[index]
       <header><h2 :title="card.hint">{{ card.title }}</h2><span v-if="card.key !== 'types'">{{ unit }}</span></header>
       <div class="factory-chart-content" :class="{ 'nature-content': card.key === 'types' && materialTypes.length }">
         <LedgerChart :option="card.option" :empty="card.empty" :label="`${card.title}，单位${unit}`" smooth-update :motion="motion" @select="pick(card.key, $event.dataIndex)" />
-        <div v-if="card.key === 'types' && materialTypes.length" class="nature-table-scroll" tabindex="0" role="region" aria-label="物料性质库存明细">
+        <div v-if="card.key === 'types' && materialTypes.length" class="nature-table-scroll" tabindex="0" role="region" aria-label="物料类型库存明细">
         <table class="nature-table">
           <thead><tr><th scope="col">性质</th><th scope="col">{{ metric === 'weight' ? '重量 (kg)' : '件数' }}</th></tr></thead>
           <tbody><tr v-for="row in materialTypes" :key="row.key"><th scope="row"><i :style="{ background: row.color }" aria-hidden="true" />{{ row.name }}</th><td>{{ format(row[metric]) }}</td></tr></tbody>

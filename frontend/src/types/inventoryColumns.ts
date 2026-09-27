@@ -2,7 +2,7 @@ import type { SerialMetaField, SerialSummary } from './materialAnalytics'
 import { formatDateTime } from '@/utils/format'
 
 const amount = (value: number | null | undefined) => value == null ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)
-const meta = (row: SerialSummary, key: SerialMetaField, multiple = '多值') => row[`${key}_count`] > 1 ? multiple : row[key] ?? '—'
+const meta = (row: SerialSummary, key: SerialMetaField, multiple = '各批不同') => row[`${key}_count`] > 1 ? multiple : row[key] ?? '—'
 
 // Only serial-level attributes and totals belong here. Batch numbers, peers and
 // individual movement fields remain in the serial detail drawer.
@@ -14,7 +14,7 @@ export const inventoryColumns = [
   { key: 'customer_code', label: '客户编号', width: 150, format: (row: SerialSummary) => meta(row, 'customer_code') },
   { key: 'product_code', label: '产品编号', width: 150, format: (row: SerialSummary) => meta(row, 'product_code') },
   { key: 'finished_specification', label: '成品规格', width: 160, format: (row: SerialSummary) => meta(row, 'finished_specification', '多规格') },
-  { key: 'finished_quantity', label: '成品件数', width: 120, numeric: true, format: (row: SerialSummary) => row.finished_quantity_count > 1 ? '多值' : amount(row.finished_quantity) },
+  { key: 'finished_quantity', label: '成品件数', width: 120, numeric: true, format: (row: SerialSummary) => row.finished_quantity_count > 1 ? '各批不同' : amount(row.finished_quantity) },
   { key: 'pending_incoming_quantity', label: '待接收件数', width: 140, numeric: true, format: (row: SerialSummary) => amount(row.pending_incoming_quantity) },
   { key: 'pending_incoming_weight', label: '待接收重量 (kg)', width: 170, numeric: true, format: (row: SerialSummary) => amount(row.pending_incoming_weight) },
   { key: 'pending_outgoing_quantity', label: '转出待确认件数', width: 170, numeric: true, format: (row: SerialSummary) => amount(row.pending_outgoing_quantity) },
@@ -23,8 +23,8 @@ export const inventoryColumns = [
   { key: 'lost_weight', label: '累计丢失重量 (kg)', width: 180, numeric: true, format: (row: SerialSummary) => amount(row.lost_weight) },
   { key: 'urgency', label: '加急状态', width: 120, format: (row: SerialSummary) => row.urgency?.urgent ? '加急' : '普通' },
   { key: 'last_activity_at', label: '最近流转时间', width: 200, format: (row: SerialSummary) => formatDateTime(row.last_activity_at) },
-  { key: 'scrap_quantity', label: '废料结存件数', width: 150, numeric: true, format: (row: SerialSummary) => amount(row.scrap_quantity) },
-  { key: 'scrap_weight', label: '废料结存 (kg)', width: 170, numeric: true, format: (row: SerialSummary) => amount(row.scrap_weight) },
+  { key: 'scrap_quantity', label: '废料库存件数', width: 150, numeric: true, format: (row: SerialSummary) => amount(row.scrap_quantity) },
+  { key: 'scrap_weight', label: '废料库存 (kg)', width: 170, numeric: true, format: (row: SerialSummary) => amount(row.scrap_weight) },
 ] as const
 export type InventoryColumnKey = typeof inventoryColumns[number]['key']
 export const serialNumberColumn = { key: 'serial_no', label: '流水号', width: 250, format: (row: SerialSummary) => row.serial_no } as const

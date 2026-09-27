@@ -93,7 +93,7 @@ onBeforeUnmount(() => { ++epoch })
 
 <template>
   <section class="page workspace-page material-trace-page reading-workspace">
-    <header class="trace-page-heading"><div><h1>全链路追踪</h1><p>一个流水号，查看全部批次的来源、分流与当前结存。</p></div><ElDropdown v-if="teams.length" trigger="click" @command="openTeam"><ElButton :icon="Connection">查看班组收发</ElButton><template #dropdown><ElDropdownMenu><ElDropdownItem v-for="team in teams" :key="team.id" :command="team.id">{{ team.name }}</ElDropdownItem></ElDropdownMenu></template></ElDropdown></header>
+    <header class="trace-page-heading"><div><h1>全链路追踪</h1><p>一个流水号，查看全部批次的来源、去向与未转出库存。</p></div><ElDropdown v-if="teams.length" trigger="click" @command="openTeam"><ElButton :icon="Connection">查看班组收发</ElButton><template #dropdown><ElDropdownMenu><ElDropdownItem v-for="team in teams" :key="team.id" :command="team.id">{{ team.name }}</ElDropdownItem></ElDropdownMenu></template></ElDropdown></header>
     <form class="trace-search" @submit.prevent="search"><ElInput v-model="serialDraft" :prefix-icon="Search" autocomplete="off" clearable placeholder="输入完整流水号" maxlength="80" aria-label="流水号" /><ElButton type="primary" native-type="submit" :loading="loading">查询</ElButton></form>
     <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
     <StatePanel v-if="loading" class="trace-state" state="loading" title="正在查询完整批次链路" />
@@ -103,11 +103,11 @@ onBeforeUnmount(() => { ++epoch })
     <div v-else class="trace-result">
       <header class="trace-identity"><div><span>流水号</span><h2>{{ result.serial_no }}</h2><SerialUrgencyBadge :urgency="result.items[0]?.urgency" /></div><span>{{ result.items.length }} 个批次 · 全部班组</span></header>
       <div class="trace-metrics" aria-label="该流水号全厂实时数量"><div v-for="metric in metrics" :key="metric.key"><span>{{ metric.label }}</span><strong>{{ num(result.totals[metric.key].quantity) }} <small>件</small><i>/</i>{{ num(result.totals[metric.key].weight) }} <small>kg</small></strong></div></div>
-      <ElAlert v-if="result.untracked_count" :title="result.untracked_count + ' 个历史接收批次未纳入库存台账，仍保留链路，不计入当前在库。'" type="info" :closable="false" />
-      <div class="trace-locations"><span>在库分布</span><button v-for="position in result.positions" :key="position.team_id" :aria-pressed="focusTeam === position.team_id" @click="focusTeam = focusTeam === position.team_id ? null : position.team_id"><b>{{ position.team_name }}</b>{{ num(position.quantity) }} 件 / {{ num(position.weight) }} kg</button><span v-if="!result.positions.length">暂无在库余量</span><button v-if="focusTeam" class="clear-focus" @click="focusTeam = null">取消高亮</button></div>
+      <ElAlert v-if="result.untracked_count" :title="result.untracked_count + ' 个历史接收批次未计入库存，仍保留链路，不计入当前在库。'" type="info" :closable="false" />
+      <div class="trace-locations"><span>在库分布</span><button v-for="position in result.positions" :key="position.team_id" :aria-pressed="focusTeam === position.team_id" @click="focusTeam = focusTeam === position.team_id ? null : position.team_id"><b>{{ position.team_name }}</b>{{ num(position.quantity) }} 件 / {{ num(position.weight) }} kg</button><span v-if="!result.positions.length">暂无未转出库存</span><button v-if="focusTeam" class="clear-focus" @click="focusTeam = null">取消高亮</button></div>
       <header class="chain-heading"><div><h3>批次流向</h3><span>按真实来源连接，不按固定工序排列</span></div><RecordDateFilter :model-value="dates" label="高亮日期" @update:model-value="router.replace({ path: route.path, query: { ...route.query, date_from: $event.from || undefined, date_to: $event.to || undefined } })" /></header>
       <SerialBatchGraph class="trace-chain" :items="result.items" :dates="dates" :focus-team="focusTeam" @select="openTransfer" />
-      <footer class="trace-footnote"><span>当前在库不含已转出待确认物料；日期仅高亮批次，不截断来源。</span><span>累计对外出库 {{ num(result.totals.dispatched.quantity) }} 件 / {{ num(result.totals.dispatched.weight) }} kg</span></footer>
+      <footer class="trace-footnote"><span>当前在库不含已转出待确认物料；日期仅高亮批次，保留完整来源记录。</span><span>累计对外出库 {{ num(result.totals.dispatched.quantity) }} 件 / {{ num(result.totals.dispatched.weight) }} kg</span></footer>
     </div>
     <MaterialTransferDrawer v-model="drawerOpen" :batch-no="selected?.batch_no" @changed="liveRefresh.request" />
   </section>

@@ -51,13 +51,13 @@ export function teamFlowModel(history: SerialHistory) {
       } else {
         const pending = flow.status === 'pending'
         const name = `${flow.to_name}${pending ? ' · 待确认' : ''}`
-        const target = touch(`out:${flow.to_name}:${pending}`, name, 2, pending ? '#cf8b36' : color, pending ? '已从本班组扣减，等待下序接收或对外确认' : '累计已转出，非该班组当前库存')
+        const target = touch(`out:${flow.to_name}:${pending}`, name, 2, pending ? '#cf8b36' : color, pending ? '已转出但未签收或确认，仍计入本班组库存' : '累计已转出，非该班组当前库存')
         add(middle, target, flow, color, [flow.batch_no])
       }
     }
     const received = flows.filter(flow => flow.direction === 'incoming').map(flow => flow.batch_no)
     for (const sink of [
-      { name: 'stock', title: '本班组结存', color: '#229d91', quantity: group.on_hand_quantity, weight: group.on_hand_weight, description: '当前仍在本班组，已扣除转出和丢失', batches: received },
+      { name: 'stock', title: '本班组未转出库存', color: '#229d91', quantity: group.on_hand_quantity, weight: group.on_hand_weight, description: '尚未转出的库存，已扣除丢失', batches: received },
       { name: 'loss', title: '丢失', color: '#cb6c71', quantity: group.lost_quantity, weight: group.lost_weight, description: '累计已登记的丢失', batches: group.events.filter(event => event.kind === 'loss').map(event => event.batch_no) },
     ]) {
       if (sink.quantity > 0 || sink.weight > 0) add(middle, touch(sink.name, sink.title, 2, sink.color, sink.description), sink, sink.color, sink.batches)
@@ -426,9 +426,9 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, _metri
       const item = (Array.isArray(params) ? params[0] : params)!
       const interval = item.seriesId === 'residence-bars' ? residences[item.dataIndex] : undefined
       const node = interval?.node || model.nodes[item.dataIndex]!, batch = node.batch, stay = interval?.stay
-      const balance = batch.on_hand_quantity == null || batch.on_hand_weight == null ? '' : `\n当前结存 ${amountLabel({ quantity: batch.on_hand_quantity, weight: batch.on_hand_weight })}`
-      if (stay) return chainTooltip(`${batch.batch_no}\n${batch.next_team.name} · 在库停留\n本段结存 ${amountLabel(stay)}\n${traceTime(stay.start)}\n至 ${traceTime(stay.end)}\n累计停留 ${traceDuration(node.finishedAt, stay.end)}${balance}`)
-      return chainTooltip(`${batch.batch_no}\n${batch.source_team.name} → ${batch.next_team.name}\n${amountLabel(batch)}\n${node.intake ? '入库' : '转出'} ${traceTime(node.startedAt)}${node.intake ? '' : `\n${isExternalTransfer(batch) ? '对外确认' : '接收'} ${traceTime(node.finishedAt)}`}\n接收业务 ${batch.purpose_name || '未分类'} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}${balance}${batch.notes ? `\n备注 ${batch.notes}` : ''}${node.timingIssue ? '\n时间记录不完整或异常' : ''}${node.residenceIssue ? '\n历史变动与结存未核平，未绘制停留条' : ''}`)
+      const balance = batch.on_hand_quantity == null || batch.on_hand_weight == null ? '' : `\n未转出库存 ${amountLabel({ quantity: batch.on_hand_quantity, weight: batch.on_hand_weight })}`
+      if (stay) return chainTooltip(`${batch.batch_no}\n${batch.next_team.name} · 在库停留\n这段时间的未转出库存 ${amountLabel(stay)}\n${traceTime(stay.start)}\n至 ${traceTime(stay.end)}\n累计停留 ${traceDuration(node.finishedAt, stay.end)}${balance}`)
+      return chainTooltip(`${batch.batch_no}\n${batch.source_team.name} → ${batch.next_team.name}\n${amountLabel(batch)}\n${node.intake ? '入库' : '转出'} ${traceTime(node.startedAt)}${node.intake ? '' : `\n${isExternalTransfer(batch) ? '对外确认' : '接收'} ${traceTime(node.finishedAt)}`}\n接收业务 ${batch.purpose_name || '未分类'} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}${balance}${batch.notes ? `\n备注 ${batch.notes}` : ''}${node.timingIssue ? '\n时间记录不完整或异常' : ''}${node.residenceIssue ? '\n历史收发记录与库存对不上，暂不显示停留时间' : ''}`)
     } },
     series: [series, lanes, residenceSeries],
   }

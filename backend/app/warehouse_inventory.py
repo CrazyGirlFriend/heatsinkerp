@@ -34,7 +34,7 @@ class WarehouseInventoryFilters(SerialFilters):
     availability: Literal["current", "owned", "all", "available", "scrap"] = "current"
     receipt_source: Literal["external", "return", "internal", "opening"] | None = None
     source_team_id: int | None = Field(default=None, ge=1)
-    purpose_id: int | None = Field(default=None, ge=0, description="本班组承接业务编号；0 表示未指定业务")
+    purpose_id: int | None = Field(default=None, ge=0, description="本班组业务编号；0 表示未指定业务")
 
     @model_validator(mode="after")
     def validate_search(self):
@@ -148,7 +148,7 @@ def list_inventory(db, team_id, filters):
                 predicate = column >= value if filters.search_operator == "gte" else column <= value if filters.search_operator == "lte" else column == value
                 conditions.append(select(mt.id).where(*matching_sources, predicate).exists() if field == "finished_quantity" else predicate)
         elif field in ("all", "source"):
-            source_kind = case((table.c.receipt_source == "opening", "期初库存"), (table.c.receipt_source == "internal", "车间转入"), (table.c.receipt_source == "return", "外部退回"), else_="外部来料")
+            source_kind = case((table.c.receipt_source == "opening", "初始库存"), (table.c.receipt_source == "internal", "车间转入"), (table.c.receipt_source == "return", "外部退回"), else_="外部来料")
             columns = [table.c.source_name, source_kind]
             if field == "all":
                 columns += [table.c[name] for name in ("serial_no", "material_name", "transfer_specification", "purpose_name")]

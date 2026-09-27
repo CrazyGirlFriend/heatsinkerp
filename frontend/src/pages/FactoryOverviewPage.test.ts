@@ -99,7 +99,7 @@ describe('factory dashboard', () => {
     expect(wrapper.getComponent(FactoryOverviewCharts).props('scene')).toBe('stock')
     await click('交接与异常')
     expect(wrapper.getComponent(FactoryOverviewCharts).props('scene')).toBe('handoff')
-    await click('全厂态势')
+    await click('全厂概况')
     expect(wrapper.getComponent(FactoryOverviewCharts).props('scene')).toBe('overview')
   })
   it('cycles through today’s batches and opens the selected detail', async () => {

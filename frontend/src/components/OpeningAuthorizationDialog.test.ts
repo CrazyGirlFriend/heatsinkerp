@@ -24,6 +24,6 @@ describe('administrator opening-stock authorization', () => {
   it('prevents enabling initialization for a team with posted history', async () => {
     await render(true)
     expect(wrapper.getComponent(ElSwitch).props('disabled')).toBe(true)
-    expect(wrapper.text()).toContain('已有入账记录')
+    expect(wrapper.text()).toContain('已有库存记录，不能重复登记初始库存')
   })
 })

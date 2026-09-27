@@ -98,7 +98,7 @@ describe('warehouse source detail', () => {
     await render()
     expect(teamMaterialApi.inventorySources).toHaveBeenLastCalledWith(1, 11, { page: 1, page_size: 10 })
     expect(wrapper.text()).toContain('外部来料 · 供应商 A')
-    expect(wrapper.text()).toContain('含无结存')
+    expect(wrapper.text()).toContain('含零库存')
     expect(wrapper.text()).not.toContain('累计收发')
     expect(wrapper.findAll('.warehouse-source-table tbody tr').map(row => row.findAll('td').slice(1, 3).map(cell => cell.text()))).toEqual([['5', '0.5'], ['0', '0']])
     const buttons = wrapper.findAll('button').filter(button => button.text() === '出库')

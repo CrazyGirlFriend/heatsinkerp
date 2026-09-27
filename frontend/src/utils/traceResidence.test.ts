@@ -102,9 +102,9 @@ describe('full-chain residence from committed stock history', () => {
     const model = traceFlowModel([root, child], at(17))
     const tooltip = traceFlowOption(model, 'weight').tooltip as { formatter: (params: unknown) => string; triggerOn: string }
     expect(tooltip.triggerOn).toBe('mousemove')
-    expect(tooltip.formatter({ dataIndex: 0, seriesId: 'residence-bars' })).toContain('本段结存 100 件 / 10 kg')
-    expect(tooltip.formatter({ dataIndex: 0, seriesId: 'residence-bars' })).toContain('当前结存 70 件 / 7 kg')
-    expect(tooltip.formatter({ dataIndex: 1, seriesId: 'residence-bars' })).toContain('本段结存 70 件 / 7 kg')
+    expect(tooltip.formatter({ dataIndex: 0, seriesId: 'residence-bars' })).toContain('这段时间的未转出库存 100 件 / 10 kg')
+    expect(tooltip.formatter({ dataIndex: 0, seriesId: 'residence-bars' })).toContain('未转出库存 70 件 / 7 kg')
+    expect(tooltip.formatter({ dataIndex: 1, seriesId: 'residence-bars' })).toContain('这段时间的未转出库存 70 件 / 7 kg')
     expect(tooltip.formatter({ dataIndex: 1 })).toContain('接收 未记录')
   })
   it('escapes batch and note text before displaying HTML hover details', () => {

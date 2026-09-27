@@ -38,7 +38,7 @@ function action(mode: 'dispatch' | 'loss', sources: StockBatch[]) {
 }
 const selected = ref<MaterialTransfer | null>(null), batchNo = ref(''), batchOpen = ref(false)
 const meta = computed(() => ([['material_name', '材质'], ['transfer_specification', '转料规格'], ['finished_specification', '成品规格'], ['finished_quantity', '成品件数'], ['source_batch_no', '原单批号'], ['customer_code', '客户代码'], ['product_code', '编号']] as [SerialMetaField, string][]))
-function field(key: SerialMetaField) { return !summary.value ? '—' : summary.value[`${key}_count`] > 1 ? '多值，见批次明细' : summary.value[key] ?? '—' }
+function field(key: SerialMetaField) { return !summary.value ? '—' : summary.value[`${key}_count`] > 1 ? '各批不同，见批次明细' : summary.value[key] ?? '—' }
 let version = 0
 const liveRefresh = useLiveRefresh(() => load(true), {
   enabled: () => props.modelValue && Boolean(props.serialNo), busy: () => loading.value,
@@ -81,11 +81,11 @@ onBeforeUnmount(() => { ++version })
           <ElDescriptionsItem label="待接收"><MaterialAmount :quantity="summary.pending_incoming_quantity" :weight="summary.pending_incoming_weight" /></ElDescriptionsItem>
           <ElDescriptionsItem label="转出待确认"><MaterialAmount :quantity="summary.pending_outgoing_quantity" :weight="summary.pending_outgoing_weight" /></ElDescriptionsItem>
           <ElDescriptionsItem label="最近更新">{{ formatDateTime(summary.last_activity_at) }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="废料结存"><MaterialAmount :quantity="summary.scrap_quantity" :weight="summary.scrap_weight" /></ElDescriptionsItem>
+          <ElDescriptionsItem label="废料库存"><MaterialAmount :quantity="summary.scrap_quantity" :weight="summary.scrap_weight" /></ElDescriptionsItem>
         </ElDescriptions>
         <div class="serial-balances"><div>本班组库存<MaterialAmount :quantity="summary.owned_quantity" :weight="summary.owned_weight" /></div><div>正常料可转出<MaterialAmount :quantity="summary.available_quantity" :weight="summary.available_weight" /></div><div>累计丢失<MaterialAmount :quantity="summary.lost_quantity" :weight="summary.lost_weight" /></div></div>
       </template>
-      <ElTabs v-model="tab" class="serial-detail-tabs"><ElTabPane name="stock" label="来源余量" /><ElTabPane name="incoming" label="转入明细" /><ElTabPane name="outgoing" label="转出明细" /><ElTabPane name="losses" label="丢失记录" /></ElTabs>
+      <ElTabs v-model="tab" class="serial-detail-tabs"><ElTabPane name="stock" label="当前库存" /><ElTabPane name="incoming" label="转入明细" /><ElTabPane name="outgoing" label="转出明细" /><ElTabPane name="losses" label="丢失记录" /></ElTabs>
       <div v-if="tab === 'stock' && canWrite" class="serial-stock-actions"><span>已选 {{ selectedRows.length }} 个来源批次</span><ElButton type="primary" :disabled="!selectedRows.length || loading || !!error" @click="action('dispatch', selectedRows)">批量出库</ElButton></div>
       <StatePanel v-if="error" state="error" :description="error" @retry="load" />
       <StatePanel v-else-if="loading" state="loading" title="正在读取明细" />

@@ -84,7 +84,7 @@ describe('full serial trace and separate team scope', () => {
     const node = page.findAll('.batch-node').find(node => node.text().includes('TL-2'))!
     expect(node.text()).toContain('已发货')
     expect(node.text()).toContain('外部客户仓')
-    expect(node.text()).not.toContain('结存')
+    expect(node.text()).not.toContain('库存')
   })
   it('routes old scoped URLs to the local page without issuing a global request', async () => {
     vi.spyOn(materialTransferApi, 'trace')

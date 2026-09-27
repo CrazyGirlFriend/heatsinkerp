@@ -51,7 +51,7 @@ async function quantitySaved() {
   const current = generation
   quantityOpen.value = false
   await refreshBalances()
-  if (current === generation && props.modelValue) balanceNotice.value = `加工件数已入账。${balanceNotice.value}`
+  if (current === generation && props.modelValue) balanceNotice.value = `加工件数已更新。${balanceNotice.value}`
 }
 function close() { if (!busy.value) emit('update:modelValue', false) }
 function fillAll(index: number) {
@@ -89,7 +89,7 @@ async function refreshBalances() {
   if (current !== generation || !props.modelValue) return
   results.forEach((result, index) => { lines.value[index]!.latest = result.status === 'fulfilled' ? result.value : null })
   refreshing.value = false
-  balanceNotice.value = results.some(result => result.status === 'rejected') ? '部分来源余量读取失败，请重试。填写内容已保留。' : '已刷新来源余量，填写内容已保留。请逐批核对后重新提交。'
+  balanceNotice.value = results.some(result => result.status === 'rejected') ? '部分批次的可转出库存读取失败，请重试。填写内容已保留。' : '已刷新各批次的可转出库存，填写内容已保留。请核对后重新提交。'
   emit('balancesChanged')
 }
 
@@ -102,7 +102,7 @@ async function submit() {
   if (external.value && (!form.externalDestination.trim() || form.externalDestination.trim().length > 240)) { errorMessage.value = '请填写外部去向，最多 240 个字符'; return }
   if (!isLoss.value && !external.value && !destinations.value.some(team => String(team.id) === String(form.nextTeamId))) { errorMessage.value = '请选择一个启用的接收班组'; return }
   if (!isLoss.value && !external.value && (purposes.loading.value || purposes.error.value)) { errorMessage.value = purposes.error.value || '请等待下序业务加载完成'; return }
-  if (!isLoss.value && !external.value && purposes.items.value.length && lines.value.some(line => !purposes.items.value.some(item => item.active && item.id === line.purposeId))) { errorMessage.value = '请为每行物料选择下序班组的承接业务'; return }
+  if (!isLoss.value && !external.value && purposes.items.value.length && lines.value.some(line => !purposes.items.value.some(item => item.active && item.id === line.purposeId))) { errorMessage.value = '请为每行物料选择下序班组的接收业务'; return }
   if (isLoss.value && (!form.reason.trim() || form.reason.trim().length > 2000)) { errorMessage.value = '请填写丢失原因，最多 2000 个字符'; return }
   if (form.notes.trim().length > 2000) { errorMessage.value = '说明不能超过 2000 个字符'; return }
   if (!isLoss.value && containsScrap.value && !form.notes.trim()) { errorMessage.value = '请填写转废或废料处理原因'; return }
@@ -116,7 +116,7 @@ async function submit() {
   for (const line of lines.value) {
     const sameSource = lines.value.filter(other => other.source.transfer.id === line.source.transfer.id)
     const error = amountError(sameSource.reduce((sum, other) => sum + Number(other.quantity), 0), Math.round(sameSource.reduce((sum, other) => sum + Number(other.weight), 0) * 1000) / 1000, line.latest)
-    if (error) { errorMessage.value = `${line.source.transfer.batch_no}：拆分明细合计超过来源余量`; return }
+    if (error) { errorMessage.value = `${line.source.transfer.batch_no}：拆分后的合计超过本批可转出库存`; return }
   }
   const current = generation
   const teamId = props.teamId
@@ -146,7 +146,7 @@ async function submit() {
 
 <template>
   <ElDialog :model-value="modelValue" :title="isLoss ? '登记物料丢失' : external ? `${sources.length > 1 ? '批量' : ''}${actionLabel}` : sources.length > 1 ? '批量出库' : '物料出库'" width="min(920px, 94vw)" class="stock-action-dialog" :close-on-click-modal="!busy" :close-on-press-escape="!busy" :show-close="!busy" @close="close">
-    <p class="action-intro">{{ isLoss ? '仅登记本班已接收物料的实际丢失。提交后扣减可用余量，记录保留。' : external ? `每行独立生成批次号，可合并打印。开单后减少可转出量，本班组确认${actionLabel}后扣减库存。` : '每行独立生成批次号，可合并打印。开单后减少可转出量，下序签收后转移库存。' }}</p>
+    <p class="action-intro">{{ isLoss ? '仅登记本班已接收物料的实际丢失。提交后减少库存，保留丢失记录。' : external ? `每行独立生成批次号，可合并打印。开单后减少可转出量，本班组确认${actionLabel}后扣减库存。` : '每行独立生成批次号，可合并打印。开单后减少可转出量，下序签收后转移库存。' }}</p>
     <ElForm label-position="top" :disabled="busy || !canWrite" @submit.prevent="submit">
       <ElFormItem v-if="!isLoss && externalOption" label="出库方式">
         <ElRadioGroup v-model="form.entryKind" aria-label="出库方式"><ElRadioButton value="transfer">内部转料</ElRadioButton><ElRadioButton :value="externalOption">{{ externalOption === 'warehouse_outbound' ? '对外出库' : '发货' }}</ElRadioButton></ElRadioGroup>
@@ -160,13 +160,13 @@ async function submit() {
         <article v-for="(line, index) in lines" :key="index" class="source-line">
           <header><div><strong>{{ line.source.transfer.material_name || '未填写材质' }}</strong><span>{{ line.source.transfer.batch_no }}</span></div><small>来源 · {{ line.source.transfer.source_team.name }}</small></header>
           <p class="source-identity">流水号 {{ line.source.transfer.serial_no }}<span>本班组业务 {{ line.source.transfer.purpose_name || '未分类' }}</span><span>原单批号 {{ line.source.transfer.source_batch_no || '未填写' }}</span></p>
-          <div class="source-balance"><span>{{ isScrapType(line.source.transfer.material_type) ? '废料可处理余量' : '来源可用余量' }}</span><MaterialAmount :quantity="dispatchableAmounts(line.latest).quantity" :weight="dispatchableAmounts(line.latest).weight" /><ElButton link type="primary" :disabled="!line.latest" @click="fillAll(index)">填入剩余量</ElButton><ElButton v-if="!isLoss" link type="primary" :disabled="lines.length >= 100" @click="splitLine(index)">拆分物料</ElButton><ElButton v-if="!isLoss && lines.length > 1" link type="danger" @click="lines.splice(index, 1)">移除</ElButton></div>
-          <ElButton v-if="!isLoss" link type="primary" @click="openQuantity(line.source)">加工后件数变化？更新在库件数</ElButton>
+          <div class="source-balance"><span>{{ isScrapType(line.source.transfer.material_type) ? '废料可处理的库存' : '本批可转出库存' }}</span><MaterialAmount :quantity="dispatchableAmounts(line.latest).quantity" :weight="dispatchableAmounts(line.latest).weight" /><ElButton link type="primary" :disabled="!line.latest" @click="fillAll(index)">全部填入</ElButton><ElButton v-if="!isLoss" link type="primary" :disabled="lines.length >= 100" @click="splitLine(index)">拆分物料</ElButton><ElButton v-if="!isLoss && lines.length > 1" link type="danger" @click="lines.splice(index, 1)">移除</ElButton></div>
+          <ElButton v-if="!isLoss" link type="primary" @click="openQuantity(line.source)">加工后件数变化？更新未转出件数</ElButton>
           <div class="source-inputs">
             <ElFormItem :label="isLoss ? '丢失件数' : `${actionLabel}件数`" required><ElInputNumber v-model="line.quantity" :aria-label="`${line.source.transfer.batch_no}件数`" :min="0" :precision="0" controls-position="right" /><span class="amount-unit">件</span></ElFormItem>
             <ElFormItem :label="isLoss ? '丢失重量' : `${actionLabel}重量`" required><ElInputNumber v-model="line.weight" :aria-label="`${line.source.transfer.batch_no}重量`" :min="0" :precision="3" :step="0.1" controls-position="right" /><span class="amount-unit">kg</span></ElFormItem>
             <ElFormItem v-if="!isLoss" :label="`${actionLabel}物料类型`" :required="warehouse"><ElSelect v-model="line.materialType" :aria-label="`${line.source.transfer.batch_no}物料类型`" :placeholder="materialTypeLabel(line.source.transfer.material_type)"><ElOption v-for="type in materialTypeOptions.filter(type => !isScrapType(line.source.transfer.material_type) || isScrapType(type.value))" :key="type.value" :label="type.label" :value="type.value" /></ElSelect></ElFormItem>
-            <ElFormItem v-if="!isLoss && !external" label="下序承接业务" :required="purposes.items.value.length > 0"><ElSelect v-model="line.purposeId" :aria-label="`${line.source.transfer.batch_no}承接业务`" :loading="purposes.loading.value" :disabled="!form.nextTeamId || !purposes.items.value.length" :placeholder="!form.nextTeamId ? '先选择接收班组' : !purposes.items.value.length ? '接收班组尚未配置业务' : purposes.items.value.some(item => item.active) ? '选择承接业务' : '接收班组暂无启用业务'"><ElOption v-for="purpose in purposes.items.value.filter(item => item.active)" :key="purpose.id" :value="purpose.id" :label="purpose.name" /></ElSelect></ElFormItem>
+            <ElFormItem v-if="!isLoss && !external" label="下序接收业务" :required="purposes.items.value.length > 0"><ElSelect v-model="line.purposeId" :aria-label="`${line.source.transfer.batch_no}接收业务`" :loading="purposes.loading.value" :disabled="!form.nextTeamId || !purposes.items.value.length" :placeholder="!form.nextTeamId ? '先选择接收班组' : !purposes.items.value.length ? '接收班组尚未配置业务' : purposes.items.value.some(item => item.active) ? '选择接收业务' : '接收班组暂无启用业务'"><ElOption v-for="purpose in purposes.items.value.filter(item => item.active)" :key="purpose.id" :value="purpose.id" :label="purpose.name" /></ElSelect></ElFormItem>
           </div>
         </article>
       </div>
@@ -177,7 +177,7 @@ async function submit() {
     <ElAlert v-if="!isLoss && !external && purposes.items.value.length && !purposes.items.value.some(item => item.active)" title="接收班组暂无启用业务，请联系该班组在工作台中启用。" type="warning" :closable="false" />
     <ElAlert v-if="purposes.error.value" :title="purposes.error.value" type="error" :closable="false"><ElButton link @click="purposes.refresh">重新加载业务</ElButton></ElAlert>
     <p v-if="errorMessage" role="alert" class="stock-action-error">{{ errorMessage }}</p>
-    <ElButton v-if="balanceNotice" link type="primary" :loading="refreshing" :disabled="saving" @click="refreshBalances">重新刷新余量</ElButton>
+    <ElButton v-if="balanceNotice" link type="primary" :loading="refreshing" :disabled="saving" @click="refreshBalances">刷新库存</ElButton>
     <template #footer><div class="action-footer"><div><span>{{ isLoss ? '本次丢失' : `共 ${lines.length} 条物料明细` }}</span><MaterialAmount :quantity="totalQuantity" :weight="totalWeight" /></div><div><ElButton :disabled="busy" @click="close">取消</ElButton><ElButton type="primary" :loading="saving" :disabled="busy || !canWrite || lines.some(line => !line.latest)" @click="submit">{{ isLoss ? '确认登记丢失' : external ? `生成${actionLabel}单` : '确认出库' }}</ElButton></div></div></template>
   </ElDialog>
   <QuantityAdjustmentDialog v-model="quantityOpen" :team-id="teamId" :source-id="quantitySource" :can-write="canWrite" @saved="quantitySaved" />

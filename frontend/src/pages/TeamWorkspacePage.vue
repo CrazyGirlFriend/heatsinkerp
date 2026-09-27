@@ -214,7 +214,7 @@ async function openReceipt() {
 }
 function savedReceipt(transfer: MaterialTransfer) {
   if (String(isExternalEntryKind(transfer.entry_kind) ? transfer.source_team.id : transfer.next_team.id) !== teamKey.value) return
-  showToast(`入库单 ${transfer.batch_no} 已入账`, 'success')
+  showToast(`入库单 ${transfer.batch_no} 已入库`, 'success')
   void loadView(true)
 }
 
@@ -297,10 +297,10 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
       <StatePanel v-if="scopeLoading" state="loading" title="正在读取班组信息" />
       <StatePanel v-else-if="!scopeReady" state="error" :title="!validId ? '无效的班组编号' : directory.error ? '班组目录加载失败' : '未找到启用的班组'" description="请刷新班组目录，或从侧边栏选择已配置的班组。" @retry="directory.refreshTeamDirectory" />
       <template v-else>
-        <ElAlert v-if="overview?.legacy_received_count" class="legacy-notice" type="info" :closable="false" :title="`另有 ${overview.legacy_received_count} 张历史已接收单未纳入台账余额。`"><template #default>历史单据仍可在 <RouterLink :to="{ path: '/transfer-batches', query: { next_team_id: teamKey, status: 'received' } }">全局转料记录</RouterLink> 查看。</template></ElAlert>
+        <ElAlert v-if="overview?.legacy_received_count" class="legacy-notice" type="info" :closable="false" :title="`另有 ${overview.legacy_received_count} 张历史已接收单未计入库存。`"><template #default>历史单据仍可在 <RouterLink :to="{ path: '/transfer-batches', query: { next_team_id: teamKey, status: 'received' } }">全局转料记录</RouterLink> 查看。</template></ElAlert>
         <TeamSerialHistory v-if="['overview', 'history'].includes(tab)" :key="teamId" :team-id="teamId"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamSerialHistory>
         <template v-else-if="['stock', 'materials', 'material-types'].includes(tab)">
-          <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料结存" />
+          <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料库存" />
           <StatePanel v-else-if="overviewError" state="error" :description="overviewError" @retry="loadView" />
           <TeamInventory v-else-if="overview && tab === 'stock'" :key="teamId" :team-id="teamId" :warehouse="isWarehouse" :overview="overview" :can-write="canWrite" @changed="loadView" @action="openAction"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamInventory>
           <TeamMaterialOverviewPanel v-else-if="overview" :key="tab" :overview="overview" :kind="tab === 'material-types' ? 'type' : 'material'" :page="page" :page-size="pageSize" @filter="openSummaryDetail" @paginate="paginateSummary"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamMaterialOverviewPanel>
@@ -332,7 +332,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                   <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip><template #default="{ row }"><span class="record-serial"><span :title="row.serial_no">{{ row.serial_no }}</span><SerialUrgencyBadge :urgency="row.urgency" /></span></template></ElTableColumn>
                   <ElTableColumn label="材质" min-width="130" show-overflow-tooltip><template #default="{ row }">{{ row.material_name || '—' }}</template></ElTableColumn>
                   <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.material_type) }}</template></ElTableColumn>
-                  <ElTableColumn prop="purpose_name" label="承接业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ materialPurposeLabel(asTransfer(row)) }}</template></ElTableColumn>
+                  <ElTableColumn prop="purpose_name" label="接收业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ materialPurposeLabel(asTransfer(row)) }}</template></ElTableColumn>
                   <ElTableColumn label="件数" min-width="100" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
                   <ElTableColumn label="重量 (kg)" min-width="125" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
                   <ElTableColumn label="上序" min-width="100" show-overflow-tooltip><template #default="{ row }">{{ row.source_team.name }}</template></ElTableColumn>
@@ -347,7 +347,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                   <ElTableColumn label="来源" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ materialSourceLabel(asTransfer(row)) }}</template></ElTableColumn>
                   <ElTableColumn label="材质" min-width="130" show-overflow-tooltip><template #default="{ row }">{{ row.material_name || '—' }}</template></ElTableColumn>
                   <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.material_type) }}</template></ElTableColumn>
-                  <ElTableColumn prop="purpose_name" label="承接业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ materialPurposeLabel(asTransfer(row)) }}</template></ElTableColumn>
+                  <ElTableColumn prop="purpose_name" label="接收业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ materialPurposeLabel(asTransfer(row)) }}</template></ElTableColumn>
                   <ElTableColumn label="件数" min-width="100" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
                   <ElTableColumn label="重量 (kg)" min-width="125" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
                   <ElTableColumn label="状态" width="120"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" /></template></ElTableColumn>
@@ -363,7 +363,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                   <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.material_type) }}</template></ElTableColumn>
                   <ElTableColumn label="出库方式" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ materialEntryLabel(row.entry_kind) }}</template></ElTableColumn>
                   <ElTableColumn label="下序 / 去向" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ isExternalEntryKind(row.entry_kind) ? row.external_destination || row.next_team.name : teamWorkspaceProfile(row.next_team.code)?.name || row.next_team.name }}</template></ElTableColumn>
-                  <ElTableColumn prop="purpose_name" label="承接业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ materialPurposeLabel(asTransfer(row)) }}</template></ElTableColumn>
+                  <ElTableColumn prop="purpose_name" label="接收业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ materialPurposeLabel(asTransfer(row)) }}</template></ElTableColumn>
                   <ElTableColumn label="件数" min-width="100" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
                   <ElTableColumn label="重量 (kg)" min-width="125" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
                   <ElTableColumn label="状态" width="120"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" outgoing /></template></ElTableColumn>

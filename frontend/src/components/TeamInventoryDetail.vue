@@ -52,12 +52,12 @@ function asStock(row: unknown) { return row as StockBatch }
 function asTransfer(row: unknown) { return row as MaterialTransfer }
 function incoming(row: MaterialTransfer) { return Number(row.next_team.id) === props.teamId }
 function movementLabel(row: MaterialTransfer) {
-  if (incoming(row)) return row.entry_kind === 'opening_stock' ? '期初入账' : row.entry_kind === 'warehouse_receipt' ? '入库' : '收料'
+  if (incoming(row)) return row.entry_kind === 'opening_stock' ? '初始库存登记' : row.entry_kind === 'warehouse_receipt' ? '入库' : '收料'
   return row.entry_kind === 'inspection_shipment' ? '发货' : row.entry_kind === 'warehouse_outbound' ? '对外出库' : '转出'
 }
 function counterpart(row: MaterialTransfer) {
   if (!incoming(row)) return row.external_destination || row.next_team.name || '—'
-  return row.entry_kind === 'opening_stock' ? '期初库存' : row.external_source || row.source_team.name || '—'
+  return row.entry_kind === 'opening_stock' ? '初始库存' : row.external_source || row.source_team.name || '—'
 }
 function openQuantity(row: StockBatch) { quantitySource.value = Number(row.transfer.id); quantityOpen.value = true }
 function changed() { void load(); emit('changed') }
@@ -82,8 +82,8 @@ onBeforeUnmount(() => { ++version })
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存明细" />
     <template v-else>
-      <section class="stock-detail-section" aria-label="来源结存">
-        <header><h3>来源结存</h3><ElButton v-if="group && (Number(group.reserved_quantity) > 0 || Number(group.reserved_weight) > 0)" link type="primary" @click="emit('pending')">查看转出待确认批次</ElButton></header>
+      <section class="stock-detail-section" aria-label="当前库存">
+        <header><h3>当前库存</h3><ElButton v-if="group && (Number(group.reserved_quantity) > 0 || Number(group.reserved_weight) > 0)" link type="primary" @click="emit('pending')">查看转出待确认批次</ElButton></header>
         <ElTable class="business-table warehouse-source-table" :data="rows" row-key="transfer.id" empty-text="暂无来源记录">
           <ElTableColumn label="来源批次号" min-width="205"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
           <ElTableColumn label="库存件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.owned_quantity) }}</template></ElTableColumn>
@@ -99,7 +99,7 @@ onBeforeUnmount(() => { ++version })
           <ElTableColumn label="接收时间" min-width="170"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>
           <ElTableColumn label="操作" :width="canWrite ? 250 : 110" fixed="right"><template #default="{ row }"><div class="source-actions"><ElButton link type="primary" @click="openQuantity(asStock(row))">{{ canWrite && stockAvailable(asStock(row)) ? '加工件数变更' : '件数记录' }}</ElButton><template v-if="canWrite"><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('dispatch', asStock(row))">出库</ElButton><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('loss', asStock(row))">登记丢失</ElButton></template></div></template></ElTableColumn>
         </ElTable>
-        <footer><span>共 {{ total }} 个来源批次（含无结存）</span><ElPagination aria-label="来源结存分页" :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></footer>
+        <footer><span>共 {{ total }} 个来源批次（含零库存）</span><ElPagination aria-label="当前库存分页" :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></footer>
       </section>
       <section class="stock-detail-section" aria-label="逐笔收发记录">
         <header><h3>收发记录</h3><span>{{ movementTotal }} 笔</span></header>

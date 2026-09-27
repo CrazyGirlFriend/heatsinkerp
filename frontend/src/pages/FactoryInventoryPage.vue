@@ -196,8 +196,8 @@ onBeforeUnmount(() => {
                   class="stock-info-button"
                   :icon="InfoFilled"
                   text
-                  aria-label="统计口径"
-                  title="统计口径"
+                  aria-label="统计说明"
+                  title="统计说明"
               /></template>
               <p class="stock-scope-note">下序签收前计入上序班组库存，签收后转入下序班组。</p>
             </ElPopover>

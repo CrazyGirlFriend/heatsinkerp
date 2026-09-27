@@ -75,7 +75,7 @@ describe('team material API contract', () => {
     expect(requests[1]!.url).toBe('/team-materials/901/receipts?query=%E9%93%9C+%E9%92%BC&material_type=semi_finished&page=2&page_size=10')
     expect(page.items[0]).toEqual(saved)
   })
-  it.each([[409, 'insufficient available stock for source transfer 12', '来源批次余额不足'], [403, 'only the owning team can write', '当前账号不能操作此班组物料']])('localizes English API error %s for the material workspace', async (code, detail, message) => {
+  it.each([[409, 'insufficient available stock for source transfer 12', '该批次可转出库存不足'], [403, 'only the owning team can write', '当前账号不能操作此班组物料']])('localizes English API error %s for the material workspace', async (code, detail, message) => {
     status = Number(code); data = { detail }
     await expect(teamMaterialApi.overview(2)).rejects.toMatchObject({ status: code, message: expect.stringContaining(String(message)) })
   })

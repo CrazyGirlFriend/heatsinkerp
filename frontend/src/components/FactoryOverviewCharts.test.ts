@@ -12,9 +12,9 @@ describe('factory analysis charts', () => {
       const charts = wrapper.findAllComponents(LedgerChart)
       expect(charts).toHaveLength(3)
       expect(charts[0]!.props('option').series).toEqual([
-        expect.objectContaining({ name: '当前库存', data: Array(8).fill(2.8) }),
+        expect.objectContaining({ name: '未转出库存', data: Array(8).fill(2.8) }),
       ])
-      expect(wrapper.get('.factory-chart--teams h2').attributes('title')).toContain('不含内部在途')
+      expect(wrapper.get('.factory-chart--teams h2').attributes('title')).toContain('未转出库存')
       expect(wrapper.text()).not.toContain('不含内部在途')
       expect(charts[0]!.props('option').textStyle).toMatchObject({ fontFamily: 'HeatSink Inter, PingFang SC, Microsoft YaHei, sans-serif', fontSize: 14 })
       expect(charts[1]!.props('option').series).toEqual([
@@ -47,7 +47,7 @@ describe('factory analysis charts', () => {
     const wrapper = mount(FactoryOverviewCharts, { props: { data, metric: 'weight' }, global: { stubs: { LedgerChart: true } } })
     try {
       const card = wrapper.get('.factory-chart--types')
-      expect(card.get('h2').text()).toBe('物料性质分布')
+      expect(card.get('h2').text()).toBe('物料类型分布')
       expect(card.text()).not.toContain('重量占比')
       const headers = () => card.findAll('thead th').map(cell => cell.text())
       expect(headers()).toEqual(['性质', '重量 (kg)'])

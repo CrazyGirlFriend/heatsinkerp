@@ -122,7 +122,7 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
     serial_no: textValue(raw.serial_no),
     urgency: raw.urgency as MaterialTransfer['urgency'],
     // An intake has no upstream team. This is a display label, never a directory identity.
-    source_team: raw.entry_kind === 'opening_stock' ? { id: '', code: '', name: '期初库存' } : raw.entry_kind === 'warehouse_receipt'
+    source_team: raw.entry_kind === 'opening_stock' ? { id: '', code: '', name: '初始库存' } : raw.entry_kind === 'warehouse_receipt'
       ? { id: '', code: '', name: '库房手工入库' }
       : normalizeTeam(raw.source_team, 'source', raw),
     next_team: isExternalEntryKind(String(raw.entry_kind)) ? { id: '', code: '', name: textValue(raw.external_destination) || '未填写外部去向' } : normalizeTeam(raw.next_team ?? raw.destination_team, 'next', {

@@ -87,12 +87,12 @@ def create(payload: OpeningCreate, team_id: int = Path(ge=1), user: User = Depen
                 stock._replay(prior, user, request_hash, "team_id")
                 return result(db, prior, user)
             if not team.active or not team.opening_stock_enabled:
-                raise HTTPException(403, "管理员尚未开启本班组的期初库存录入权限")
+                raise HTTPException(403, "管理员尚未开启本班组的初始库存录入权限")
             if db.scalar(select(OpeningStockSubmission.id).where(OpeningStockSubmission.team_id == team_id)):
-                raise HTTPException(409, "本班组已完成期初入账，不能重复提交")
+                raise HTTPException(409, "本班组已完成初始库存登记，不能重复提交")
             if db.scalar(select(MaterialTransfer.id).where(MaterialTransfer.next_team_id == team_id,
                 MaterialTransfer.status == "received", MaterialTransfer.stock_tracked.is_(True)).limit(1)):
-                raise HTTPException(409, "本班组已有入账记录，不能将当前库存再次作为期初库存叠加")
+                raise HTTPException(409, "本班组已有库存记录，不能重复登记初始库存")
             submission = OpeningStockSubmission(team_id=team_id, idempotency_key=payload.idempotency_key,
                 request_hash=request_hash, created_by=actor_name(user))
             db.add(submission)

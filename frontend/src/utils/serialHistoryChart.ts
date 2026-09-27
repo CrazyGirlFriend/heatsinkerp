@@ -2,7 +2,7 @@ import type { EChartsOption, LineSeriesOption } from 'echarts'
 import type { SerialHistoryEvent, SerialHistoryGroup } from '@/types/teamBusiness'
 import { formatDateTime } from './format'
 
-export const historyKindNames = { incoming: '接收入库', opening: '期初入库', outgoing: '转出', adjusted: '出库修改', voided: '作废退回', loss: '丢失', quantity_changed: '加工件数变更' }
+export const historyKindNames = { incoming: '接收入库', opening: '初始库存登记', outgoing: '转出', adjusted: '出库修改', voided: '作废退回', loss: '丢失', quantity_changed: '加工件数变更' }
 export const historyNumber = (value: number) => new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)
 export function purposePalette(names: string[]) {
   const palette = ['#4875c7', '#8660be', '#27918a', '#b07a29', '#bd5781', '#4c8399', '#708339', '#ac6848']

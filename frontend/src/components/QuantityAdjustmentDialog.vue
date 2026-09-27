@@ -70,15 +70,15 @@ onBeforeUnmount(() => { ++generation })
     <template v-if="snapshot">
       <ElDescriptions :column="2" border class="quantity-summary">
         <ElDescriptionsItem label="来源批次" :span="2">{{ snapshot.batch_no }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="在库件数">{{ snapshot.quantity }} 件</ElDescriptionsItem>
-        <ElDescriptionsItem label="在库重量">{{ snapshot.weight }} kg</ElDescriptionsItem>
+        <ElDescriptionsItem label="未转出件数">{{ snapshot.quantity }} 件</ElDescriptionsItem>
+        <ElDescriptionsItem label="未转出重量">{{ snapshot.weight }} kg</ElDescriptionsItem>
       </ElDescriptions>
       <ElForm v-if="editable && hasStock" label-position="top" :disabled="saving || loading" @submit.prevent="save">
-        <p class="quantity-note">只更新本批在库件数，重量不变；原签收单和已转出件数不变。保存后立即入账，不随出库取消撤回。</p>
-        <ElFormItem label="加工后在库件数" required><ElInputNumber v-model="quantity" aria-label="加工后在库件数" :min="0" :max="2147483647" :precision="0" controls-position="right" /><span class="quantity-unit">件</span></ElFormItem>
+        <p class="quantity-note">只修改本批未转出的件数，重量、原签收单和已转出件数不变。保存后立即生效，取消出库不会撤销本次修改。</p>
+        <ElFormItem label="加工后未转出件数" required><ElInputNumber v-model="quantity" aria-label="加工后未转出件数" :min="0" :max="2147483647" :precision="0" controls-position="right" /><span class="quantity-unit">件</span></ElFormItem>
         <ElFormItem label="加工说明" required><ElInput v-model="reason" type="textarea" aria-label="加工说明" :rows="2" maxlength="2000" show-word-limit placeholder="例如：10 块板材切割为 100 件" /></ElFormItem>
       </ElForm>
-      <p v-else-if="editable" class="quantity-note">本批暂无在库物料，不能变更件数。</p>
+      <p v-else-if="editable" class="quantity-note">本批没有未转出的库存，不能修改件数。</p>
       <h3 class="quantity-history-title">变更记录</h3>
       <ElTable :data="records" class="business-table" empty-text="暂无件数变更" aria-label="件数变更记录">
         <ElTableColumn label="时间 / 操作人" min-width="160" align="center"><template #default="{ row }">{{ formatDateTime(row.created_at) }}<br>{{ row.created_by }}</template></ElTableColumn>

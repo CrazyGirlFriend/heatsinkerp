@@ -105,7 +105,7 @@ describe('material transfer receipt review', () => {
     vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ entry_kind: 'warehouse_receipt', source_team: { id: '', code: '', name: '库房手工入库' }, status: 'received', locked: true, history: [{ id: 10, action: 'stocked', actor: '库管', occurred_at: '2026-09-07T00:00:00Z', changes: {} }], allowed_actions: ['edit', 'void', 'confirm'] }))
     await render()
     expect(wrapper.text()).toContain('入库来源'); expect(wrapper.text()).toContain('已入库')
-    expect(wrapper.text()).toContain('登记人'); expect(wrapper.text()).toContain('手工入库已入账')
+    expect(wrapper.text()).toContain('登记人'); expect(wrapper.text()).toContain('手工入库已完成')
     expect(wrapper.findAll('button').some(button => ['确认接收', '编辑', '作废'].includes(button.text()))).toBe(false)
     expect(wrapper.findAll('button').some(button => button.text() === '打印入库单')).toBe(true)
     expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('外部来源未登记')

@@ -13,12 +13,12 @@ const lanes = computed(() => props.groups.filter(group => !props.focus || props.
     || (props.direction === 'incoming' ? ['incoming', 'opening'] : ['outgoing', 'adjusted', 'voided']).includes(event.kind)),
 })))
 const columns = computed(() => Math.max(3, ...lanes.value.map(lane => lane.events.length)))
-const shortKind = (event: SerialHistoryEvent) => ({ incoming: '收进', opening: '期初', outgoing: '转出', adjusted: '改量', voided: '撤回', loss: '丢失', quantity_changed: '件数变更' })[event.kind]
+const shortKind = (event: SerialHistoryEvent) => ({ incoming: '收进', opening: '初始库存', outgoing: '转出', adjusted: '修改数量', voided: '撤回', loss: '丢失', quantity_changed: '件数变更' })[event.kind]
 </script>
 
 <template>
   <div class="event-lanes" tabindex="0" aria-label="本班组各业务收发时间线，可横向滚动">
-    <div class="lane-axis"><span>本班组业务 / 当前结存</span><span>每个业务独立按时间从左向右排列 <b>点击节点查看批次</b></span></div>
+    <div class="lane-axis"><span>本班组业务 / 未转出库存</span><span>每个业务独立按时间从左向右排列 <b>点击节点查看批次</b></span></div>
     <div v-for="lane in lanes" :key="lane.key" class="event-lane" :style="{ '--lane-color': colors.get(lane.key), '--track-width': `${columns * 234 + 36}px`, '--columns': columns, '--steps': Math.max(0, lane.events.length - 1) }">
       <aside class="lane-label"><i /><strong>{{ lane.name }}</strong><span>{{ num(lane.on_hand_quantity) }} <small>件</small></span><span>{{ num(lane.on_hand_weight) }} <small>kg</small></span></aside>
       <div :key="replay" class="lane-track">
