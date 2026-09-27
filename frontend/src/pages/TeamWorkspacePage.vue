@@ -56,6 +56,13 @@ const tab = computed(() => resolveTeamWorkspaceSection(route.query, isWarehouse.
 function selectSection(section: TeamWorkspaceSection) {
   if (section !== tab.value) void router.push(teamWorkspaceSectionPath(teamKey.value, section))
 }
+function paginateSummary(nextPage: number, size: number) {
+  void router.replace({ path: route.path, query: { tab: tab.value, ...(nextPage > 1 ? { page: String(nextPage) } : {}), ...(size !== 10 ? { page_size: String(size) } : {}) } })
+}
+function openSummaryDetail(value: string) {
+  void router.push({ path: route.path, query: { tab: 'stock', availability: 'all', [tab.value === 'material-types' ? 'material_type' : 'material_name']: value,
+    summary: tab.value, ...(page.value > 1 ? { summary_page: String(page.value) } : {}), ...(pageSize.value !== 10 ? { summary_page_size: String(pageSize.value) } : {}) } })
+}
 watch(() => queryText('tab'), value => {
   if (value === 'serials') void router.replace({ path: route.path, query: { ...route.query, tab: 'stock' }, hash: route.hash })
   if (value === 'overview') void router.replace({ path: route.path, query: { ...route.query, tab: 'history' }, hash: route.hash })
@@ -241,7 +248,7 @@ async function loadView(refreshWarehouse: unknown = false, background = false) {
   if (current === version) loading.value = false
 }
 
-watch([() => ['overview', 'stock', 'materials'].includes(tab.value) ? `${route.path}:${tab.value}` : route.fullPath, scopeReady], () => {
+watch([() => ['overview', 'stock', 'materials', 'material-types'].includes(tab.value) ? `${route.path}:${tab.value}` : route.fullPath, scopeReady], () => {
   businessOpen.value = false
   closeDetails(); pending.value = []; outgoing.value = []; selectedPrintRows.value = []; printOpen.value = false; losses.value = []; receipts.value = []; overview.value = null
   dateDraft.value = { from: queryText('date_from'), to: queryText('date_to') }; urgentDraft.value = queryText('urgent_only') === 'true'
@@ -299,11 +306,11 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
       <template v-else>
         <ElAlert v-if="overview?.legacy_received_count" class="legacy-notice" type="info" :closable="false" :title="`另有 ${overview.legacy_received_count} 张历史已接收单未纳入台账余额。`"><template #default>历史单据仍可在 <RouterLink :to="{ path: '/transfer-batches', query: { next_team_id: teamKey, status: 'received' } }">全局转料记录</RouterLink> 查看。</template></ElAlert>
         <TeamSerialHistory v-if="['overview', 'history'].includes(tab)" :key="teamId" :team-id="teamId"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamSerialHistory>
-        <template v-else-if="['stock', 'materials'].includes(tab)">
+        <template v-else-if="['stock', 'materials', 'material-types'].includes(tab)">
           <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料结存" />
           <StatePanel v-else-if="overviewError" state="error" :description="overviewError" @retry="loadView" />
           <TeamInventory v-else-if="overview && tab === 'stock'" :key="teamId" :team-id="teamId" :warehouse="isWarehouse" :overview="overview" :can-write="canWrite" :ownership="ownershipSample" @changed="loadView" @action="openAction"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamInventory>
-          <TeamMaterialOverviewPanel v-else-if="overview" :overview="overview" @filter="router.push({ path: route.path, query: { tab: 'stock', material_name: $event, filter_label: `库存材质：${$event}` } })"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamMaterialOverviewPanel>
+          <TeamMaterialOverviewPanel v-else-if="overview" :key="tab" :overview="overview" :kind="tab === 'material-types' ? 'type' : 'material'" :page="page" :page-size="pageSize" @filter="openSummaryDetail" @paginate="paginateSummary"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamMaterialOverviewPanel>
         </template>
         <template v-else>
           <div class="team-list-layout" :class="{ 'team-list-layout--detail': docked && detailOpen }">

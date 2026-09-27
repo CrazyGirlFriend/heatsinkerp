@@ -30,7 +30,7 @@ onBeforeUnmount(() => observer?.disconnect())
 </script>
 
 <template>
-  <section class="page workspace-page team-workspace reading-workspace team-workspace--reading" :class="{ 'team-workspace--materials': modelValue === 'materials' }" :aria-label="title + '工作台'">
+  <section class="page workspace-page team-workspace reading-workspace team-workspace--reading" :class="{ 'team-workspace--materials': ['materials', 'material-types'].includes(modelValue) }" :aria-label="title + '工作台'">
     <h1 id="workspace-page-heading" class="sr-only">{{ sectionLabel }}</h1>
     <nav ref="navigation" class="team-workspace__navigation" :aria-label="title + '功能'">
       <ElButton v-for="section in sections" :key="section.value" text class="team-workspace__section" :class="{ 'is-current': modelValue === section.value }" :aria-current="modelValue === section.value ? 'page' : undefined" aria-controls="workspace-panel" @click="emit('update:modelValue', section.value)">

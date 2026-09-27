@@ -1,41 +1,35 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { ElButton, ElTable, ElTableColumn, ElPagination } from 'element-plus'
 import MaterialAmount from './MaterialAmount.vue'
-import type { TeamMaterialOverview } from '@/types/teamMaterials'
+import type { MaterialBalance, TeamMaterialOverview } from '@/types/teamMaterials'
 import { materialTypeLabel } from '@/types/materialTransfer'
-const props = defineProps<{ overview: TeamMaterialOverview }>()
-const emit = defineEmits<{ filter: [material: string] }>()
-const page = ref(1)
-const pageSize = ref(10)
-const materials = computed(() => props.overview.materials.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
-watch(() => props.overview.team_id, () => { page.value = 1 })
-watch(pageSize, () => { page.value = 1 })
+const props = withDefaults(defineProps<{ overview: TeamMaterialOverview; kind?: 'material' | 'type'; page?: number; pageSize?: number }>(), { kind: 'material', page: 1, pageSize: 10 })
+const emit = defineEmits<{ filter: [value: string]; paginate: [page: number, pageSize: number] }>()
+const isMaterial = computed(() => props.kind === 'material')
+const title = computed(() => isMaterial.value ? '材质结存' : '物料性质结存')
+const entries = computed<(MaterialBalance & { key: string; label: string })[]>(() => isMaterial.value
+  ? props.overview.materials.map(row => ({ ...row, key: row.material_name || '未填写材质', label: row.material_name || '未填写材质' }))
+  : (props.overview.material_types || []).map(row => ({ ...row, key: row.material_type || 'unknown', label: row.material_type ? materialTypeLabel(row.material_type) : '未分类' })))
+const rows = computed(() => entries.value.slice((props.page - 1) * props.pageSize, props.page * props.pageSize))
 </script>
 
 <template>
   <section class="material-ledger">
-    <header><h2>材质结存<small>单位：件 / kg</small></h2><slot name="actions" /></header>
-    <ElTable :data="materials" class="business-table ledger-table" :class="{ 'ledger-table--empty': !materials.length }" empty-text="暂无库存">
-      <ElTableColumn prop="material_name" label="材质" min-width="140" show-overflow-tooltip><template #default="{ row }"><ElButton link type="primary" @click="emit('filter', row.material_name || '未填写材质')">{{ row.material_name || '未填写材质' }}</ElButton></template></ElTableColumn>
-      <ElTableColumn label="正常可用库存" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.available_quantity" :weight="row.available_weight" /></template></ElTableColumn>
-      <ElTableColumn label="废料结存" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.scrap_quantity" :weight="row.scrap_weight" /></template></ElTableColumn>
-      <ElTableColumn label="转出待确认" min-width="140"><template #default="{ row }"><MaterialAmount :quantity="row.reserved_quantity" :weight="row.reserved_weight" /></template></ElTableColumn>
-      <ElTableColumn label="当前库存" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.on_hand_quantity" :weight="row.on_hand_weight" /></template></ElTableColumn>
-      <ElTableColumn label="累计接收" min-width="140"><template #default="{ row }"><MaterialAmount :quantity="row.received_quantity" :weight="row.received_weight" /></template></ElTableColumn>
-      <ElTableColumn label="确认转出" min-width="140"><template #default="{ row }"><MaterialAmount :quantity="row.dispatched_quantity" :weight="row.dispatched_weight" /></template></ElTableColumn>
-      <ElTableColumn label="累计丢失" min-width="140"><template #default="{ row }"><MaterialAmount :quantity="row.lost_quantity" :weight="row.lost_weight" /></template></ElTableColumn>
+    <header><h2>{{ title }}<small>单位：件 / kg</small></h2><slot name="actions" /></header>
+    <ElTable :data="rows" class="business-table ledger-table" :class="{ 'ledger-table--empty': !rows.length }" empty-text="暂无库存">
+      <ElTableColumn prop="label" :label="isMaterial ? '材质' : '物料性质'" min-width="140" show-overflow-tooltip><template #default="{ row }"><ElButton link type="primary" :aria-label="`查看${row.label}的库存明细`" @click="emit('filter', row.key)">{{ row.label }}</ElButton></template></ElTableColumn>
+      <ElTableColumn label="正常料在库" min-width="120"><template #default="{ row }"><MaterialAmount :quantity="row.available_quantity" :weight="row.available_weight" /></template></ElTableColumn>
+      <ElTableColumn v-if="isMaterial" label="废料在库" min-width="120"><template #default="{ row }"><MaterialAmount :quantity="row.scrap_quantity" :weight="row.scrap_weight" /></template></ElTableColumn>
+      <ElTableColumn v-if="isMaterial" label="转出待确认" min-width="120"><template #default="{ row }"><MaterialAmount :quantity="row.reserved_quantity" :weight="row.reserved_weight" /></template></ElTableColumn>
+      <ElTableColumn label="在库合计" min-width="120"><template #default="{ row }"><MaterialAmount :quantity="row.on_hand_quantity" :weight="row.on_hand_weight" /></template></ElTableColumn>
+      <ElTableColumn v-if="!isMaterial" label="废料可处理余量" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.scrap_available_quantity" :weight="row.scrap_available_weight" /></template></ElTableColumn>
+      <ElTableColumn v-if="isMaterial" label="累计接收" min-width="120"><template #default="{ row }"><MaterialAmount :quantity="row.received_quantity" :weight="row.received_weight" /></template></ElTableColumn>
+      <ElTableColumn v-if="isMaterial" label="确认转出" min-width="120"><template #default="{ row }"><MaterialAmount :quantity="row.dispatched_quantity" :weight="row.dispatched_weight" /></template></ElTableColumn>
+      <ElTableColumn v-if="isMaterial" label="累计丢失" min-width="120"><template #default="{ row }"><MaterialAmount :quantity="row.lost_quantity" :weight="row.lost_weight" /></template></ElTableColumn>
+      <ElTableColumn label="操作" width="110" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="emit('filter', row.key)">查看详情</ElButton></template></ElTableColumn>
     </ElTable>
-    <template v-if="overview.material_types?.length">
-      <header><h2>物料性质结存<small>当前库存包含废料；正常可用库存不含废料</small></h2></header>
-      <ElTable :data="overview.material_types" class="business-table ledger-table">
-        <ElTableColumn label="物料性质" min-width="140"><template #default="{ row }">{{ materialTypeLabel(row.material_type) }}</template></ElTableColumn>
-        <ElTableColumn label="当前库存" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.on_hand_quantity" :weight="row.on_hand_weight" /></template></ElTableColumn>
-        <ElTableColumn label="正常可用库存" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.available_quantity" :weight="row.available_weight" /></template></ElTableColumn>
-        <ElTableColumn label="废料可处理余量" min-width="150"><template #default="{ row }"><MaterialAmount :quantity="row.scrap_available_quantity" :weight="row.scrap_available_weight" /></template></ElTableColumn>
-      </ElTable>
-    </template>
-    <footer><span>共 {{ overview.materials.length }} 种材质</span><ElPagination v-model:current-page="page" v-model:page-size="pageSize" :page-sizes="[10, 20, 50, 100]" :total="overview.materials.length" layout="sizes, prev, pager, next" /></footer>
+    <footer><span>共 {{ entries.length }} 种{{ isMaterial ? '材质' : '物料性质' }}</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[10, 20, 50, 100]" :total="entries.length" layout="sizes, prev, pager, next" @current-change="emit('paginate', $event, pageSize)" @size-change="emit('paginate', 1, $event)" /></footer>
   </section>
 </template>
 

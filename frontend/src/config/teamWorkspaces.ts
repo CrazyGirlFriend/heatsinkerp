@@ -7,7 +7,8 @@ export const teamWorkspaceSections = [
   { value: 'receipts', label: '入库记录' },
   { value: 'outgoing', label: '出库记录' },
   { value: 'losses', label: '丢失记录' },
-  { value: 'materials', label: '材质归类' },
+  { value: 'materials', label: '材质结存' },
+  { value: 'material-types', label: '物料性质结存' },
   { value: 'history', label: '收发历史' },
 ] as const
 export type TeamWorkspaceSection = typeof teamWorkspaceSections[number]['value']

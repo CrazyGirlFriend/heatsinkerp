@@ -28,6 +28,11 @@ const props = defineProps<{ teamId: number; overview: TeamMaterialOverview; canW
 const emit = defineEmits<{ changed: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]] }>()
 const route = useRoute(), router = useRouter(), auth = useAuthStore(), directory = useTeamDirectoryStore()
 const text = (key: string) => typeof route.query[key] === 'string' ? String(route.query[key]) : ''
+const summarySection = computed(() => ['materials', 'material-types'].includes(text('summary')) ? text('summary') : '')
+const summaryLabel = computed(() => summarySection.value === 'material-types' ? '物料性质结存' : '材质结存')
+function returnToSummary() {
+  void router.push({ path: route.path, query: { tab: summarySection.value, ...(text('summary_page') ? { page: text('summary_page') } : {}), ...(text('summary_page_size') ? { page_size: text('summary_page_size') } : {}) } })
+}
 const page = computed(() => Math.max(1, Number.parseInt(text('page')) || 1))
 const pageSize = computed(() => [10, 20, 50, 100].includes(Number(text('page_size'))) ? Number(text('page_size')) : 10)
 const rows = ref<TeamInventoryRow[]>([]), total = ref(0), loading = ref(false), error = ref(''), refreshError = ref('')
@@ -72,7 +77,7 @@ const filters = computed<TeamInventoryParams>(() => {
   return params as TeamInventoryParams
 })
 function apply(params: TeamInventoryParams = {}, label = text('filter_label')) {
-  void router.replace({ path: route.path, query: { tab: 'stock', ...(label ? { filter_label: label } : {}), ...Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)])) } })
+  void router.replace({ path: route.path, query: { tab: 'stock', ...(summarySection.value ? { summary: summarySection.value, ...(text('summary_page') ? { summary_page: text('summary_page') } : {}), ...(text('summary_page_size') ? { summary_page_size: text('summary_page_size') } : {}) } : {}), ...(label ? { filter_label: label } : {}), ...Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)])) } })
 }
 function selectAnalysis(value: string) {
   if (!validSearch()) return
@@ -150,6 +155,7 @@ onBeforeUnmount(() => { ++version })
 
 <template>
   <section class="warehouse-inventory serial-ledger">
+    <div v-if="summarySection" class="warehouse-search-context"><ElButton link type="primary" @click="returnToSummary">返回{{ summaryLabel }}</ElButton><span>{{ summarySection === 'materials' ? text('material_name') || '全部材质' : text('material_type') === 'unknown' ? '未分类' : text('material_type') ? materialTypeLabel(text('material_type')) : '全部物料性质' }} · 库存明细</span></div>
     <ElAlert v-if="refreshError" :title="refreshError" type="warning" :closable="false" />
     <header class="warehouse-toolbar serial-toolbar">
       <div class="warehouse-search">
@@ -161,13 +167,13 @@ onBeforeUnmount(() => { ++version })
       </div>
       <ElSelect v-if="warehouse" v-model="sourceDraft" class="warehouse-source-filter" aria-label="库存来源筛选" placeholder="全部来源" clearable @change="search"><ElOption v-for="(label, value) in warehouseSourceNames" :key="value" :value="value" :label="label" /></ElSelect>
       <ElSelect v-else v-model="sourceTeamDraft" class="warehouse-source-filter" aria-label="库存上序班组筛选" placeholder="全部上序" clearable filterable @change="search"><ElOption v-for="team in sourceTeams" :key="team.id" :value="team.id" :label="team.name" /></ElSelect>
-      <ElSelect v-model="typeDraft" class="warehouse-type-filter" aria-label="库存物料类型筛选" placeholder="全部类型" clearable @change="search"><ElOption v-for="item in materialTypeOptions" :key="item.value" :value="item.value" :label="item.label" /></ElSelect>
+      <ElSelect v-model="typeDraft" class="warehouse-type-filter" aria-label="库存物料类型筛选" placeholder="全部类型" clearable @change="search"><ElOption v-for="item in materialTypeOptions" :key="item.value" :value="item.value" :label="item.label" /><ElOption value="unknown" label="未分类" /></ElSelect>
       <RecordDateFilter :model-value="dates" label="流转日期" @update:model-value="selectDate" />
       <ElButton type="primary" @click="search">查询</ElButton><ElButton text @click="apply({ page_size: pageSize }, '')">重置</ElButton>
       <ElPopover trigger="click" placement="bottom-end" :width="280">
         <template #reference><ElButton text :icon="ArrowDown">更多</ElButton></template>
         <div class="warehouse-extra-filters">
-          <label>材质<ElSelect v-model="materialDraft" aria-label="库存材质筛选" clearable filterable placeholder="全部材质" @change="search"><ElOption v-for="item in overview.materials" :key="item.material_name || ''" :value="item.material_name || ''" :label="item.material_name || '未填写材质'" /></ElSelect></label>
+          <label>材质<ElSelect v-model="materialDraft" aria-label="库存材质筛选" clearable filterable placeholder="全部材质" @change="search"><ElOption v-for="item in overview.materials" :key="item.material_name || '未填写材质'" :value="item.material_name || '未填写材质'" :label="item.material_name || '未填写材质'" /></ElSelect></label>
           <label>库存范围<ElSelect v-model="availabilityDraft" aria-label="库存范围" @change="search"><ElOption v-if="ownership" value="owned" label="归属余量（含待签收）" /><ElOption value="current" :label="ownership ? '在库余量（含废料）' : '当前库存（含废料）'" /><ElOption value="available" label="正常可用库存" /><ElOption value="scrap" label="废料库存" /><ElOption value="all" label="全部（含无结存）" /></ElSelect></label>
           <label v-if="warehouse && sourceDraft === 'internal'">来源班组<ElSelect v-model="sourceTeamDraft" aria-label="库房来源班组" clearable @change="search"><ElOption v-for="team in sourceTeams" :key="team.id" :value="team.id" :label="team.name" /></ElSelect></label>
           <label>分析条件<ElSelect :model-value="analysisChoice" aria-label="库存分析条件" placeholder="库存与流转条件" clearable @change="selectAnalysis"><ElOptionGroup label="库存停留"><ElOption v-for="[key, label] in ages" :key="key" :value="`age:${key}`" :label="`库存停留 ${label}`" /></ElOptionGroup><ElOptionGroup v-for="direction in ['incoming', 'outgoing']" :key="direction" :label="direction === 'incoming' ? '待接收' : '转出待确认'"><ElOption v-for="[key, label] in ages" :key="key" :value="`${direction}:${key}`" :label="`${direction === 'incoming' ? '待接收' : '转出待确认'} ${label}`" /></ElOptionGroup><ElOption value="loss" :label="`近${days}天有丢失记录`" /></ElSelect></label>

@@ -91,6 +91,44 @@ describe('team workspace material ledger', () => {
     expect(wrapper.get('.team-workspace__pending').text()).toBe('5')
     expect(wrapper.get('.team-workspace__navigation [aria-current=page]').text()).toBe('库存明细')
   })
+  it.each([
+    ['materials', '铜钼', 'material_name', '铜钼', '材质结存'],
+    ['materials', null, 'material_name', '未填写材质', '材质结存'],
+    ['material-types', 'sludge', 'material_type', 'sludge', '物料性质结存'],
+    ['material-types', null, 'material_type', 'unknown', '物料性质结存'],
+  ] as const)('opens exact %s detail for %s and returns to its own summary', async (tab, value, filter, expected, label) => {
+    vi.mocked(teamMaterialApi.overview).mockResolvedValue({ ...summary,
+      materials: [{ ...summary.totals, material_name: tab === 'materials' ? value : '铜钼' }],
+      material_types: [{ ...summary.totals, material_type: tab === 'material-types' ? value as 'sludge' | null : 'semi_finished' }],
+    })
+    const router = await render(`/team-workspaces/914?tab=${tab}`)
+    expect(wrapper.get('h1').text()).toBe(label)
+    expect(wrapper.findAll('.material-ledger .ledger-table')).toHaveLength(1)
+    expect(teamMaterialApi.teamInventory).not.toHaveBeenCalled()
+    await wrapper.findAll('.material-ledger .el-table__body button').find(button => button.text() === '查看详情')!.trigger('click'); await flushPromises()
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, { [filter]: expected, availability: 'all', page: 1, page_size: 10 })
+    expect(router.currentRoute.value.query.summary).toBe(tab)
+    await wrapper.findAll('button').find(button => button.text() === `返回${label}`)!.trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ tab })
+    expect(wrapper.get('h1').text()).toBe(label)
+  })
+  it('restores the summary page after drilling into stock and preserves filters through detail pagination', async () => {
+    vi.mocked(teamMaterialApi.overview).mockResolvedValue({ ...summary, materials: Array.from({ length: 25 }, (_, index) => ({ ...summary.totals, material_name: `铜钼${index + 1}` })) })
+    const router = await render('/team-workspaces/914?tab=materials&page=2')
+    expect(wrapper.get('.material-ledger .el-table__body button').text()).toBe('铜钼11')
+    await wrapper.get('.material-ledger .el-table__body button').trigger('click'); await flushPromises()
+    wrapper.getComponent(ElPagination).vm.$emit('current-change', 2); await flushPromises()
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, { material_name: '铜钼11', availability: 'all', page: 2, page_size: 10 })
+    expect(router.currentRoute.value.query.summary_page).toBe('2')
+    await wrapper.findAll('button').find(button => button.text() === '返回材质结存')!.trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ tab: 'materials', page: '2' })
+    expect(wrapper.get('.material-ledger .el-table__body button').text()).toBe('铜钼11')
+    vi.mocked(teamMaterialApi.overview).mockClear()
+    wrapper.getComponent(ElPagination).vm.$emit('size-change', 50); await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ tab: 'materials', page_size: '50' })
+    expect(wrapper.findAll('.material-ledger .el-table__body .el-table__row')).toHaveLength(25)
+    expect(teamMaterialApi.overview).not.toHaveBeenCalled()
+  })
   it('ignores unrelated teams and only reloads identity/directory when those actually change', async () => {
     vi.useFakeTimers()
     const router = await render('/team-workspaces/914?tab=stock&query=AL&page=2')
@@ -233,10 +271,10 @@ describe('team workspace material ledger', () => {
     wrapper.getComponent(TeamInventory).vm.$emit('changed'); await flushPromises()
     expect(teamMaterialApi.overview).toHaveBeenCalledWith(914)
   })
-  it.each(['serials', 'stock', 'outgoing', 'pending', 'receipts', 'losses', 'materials', 'overview', 'history'])('merges workspace actions into the %s toolbar without duplicating query controls', async tab => {
+  it.each(['serials', 'stock', 'outgoing', 'pending', 'receipts', 'losses', 'materials', 'material-types', 'overview', 'history'])('merges workspace actions into the %s toolbar without duplicating query controls', async tab => {
     state.auth.currentUser.team_id = 901
     await render(`/team-workspaces/901?tab=${tab}`)
-    const toolbar = ['serials', 'stock'].includes(tab) ? '.serial-toolbar' : ['overview', 'history'].includes(tab) ? '.history-header' : tab === 'materials' ? '.material-ledger header' : '.list-toolbar'
+    const toolbar = ['serials', 'stock'].includes(tab) ? '.serial-toolbar' : ['overview', 'history'].includes(tab) ? '.history-header' : ['materials', 'material-types'].includes(tab) ? '.material-ledger header' : '.list-toolbar'
     const actions = wrapper.get(`${toolbar} .workspace-actions`)
     expect(actions.text()).toContain('新建入库')
     expect(actions.text()).toContain('新建出库')
@@ -245,7 +283,7 @@ describe('team workspace material ledger', () => {
       expect(wrapper.get('.list-toolbar .scanner-inline').text()).toContain('查看来料')
     } else expect(actions.text()).not.toContain('扫码查询')
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(1)
-    expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(7)
+    expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(8)
     expect(wrapper.find('.team-workspace__heading').exists()).toBe(false)
   })
   it.each(['administrator', 'other-team', 'inactive'])('does not expose creation for %s accounts', async kind => {
