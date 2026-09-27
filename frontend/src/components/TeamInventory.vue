@@ -20,6 +20,7 @@ import { warehouseColumns, warehouseLegacyColumnKeys, warehouseSearchColumns, wa
 import type { InventoryColumnChoice } from '@/types/inventoryColumns'
 import type { CalendarRange } from '@/types/recordFilters'
 import type { StockBatch, TeamMaterialOverview } from '@/types/teamMaterials'
+import type { TeamPurpose } from '@/types/teamBusiness'
 import type { AgeBand } from '@/types/materialAnalytics'
 import { formatDateTime } from '@/utils/format'
 
@@ -39,6 +40,20 @@ const asOf = ref('')
 const queryDraft = ref(''), sourceDraft = ref<WarehouseSource | ''>(''), typeDraft = ref(''), materialDraft = ref('')
 const fieldDraft = ref<WarehouseSearchField>('all'), operatorDraft = ref<'eq' | 'gte' | 'lte'>('eq'), inputError = ref('')
 const availabilityDraft = ref<TeamInventoryParams['availability']>('owned'), sourceTeamDraft = ref<number | undefined>()
+const purposeDraft = ref<number | undefined>(), purposes = ref<TeamPurpose[]>([]), purposesLoading = ref(false), purposesError = ref('')
+let purposeVersion = 0
+async function loadPurposes() {
+  const current = ++purposeVersion
+  purposesError.value = ''
+  if (props.warehouse) { purposesLoading.value = false; return }
+  purposesLoading.value = true
+  try {
+    const result = await teamMaterialApi.purposes(props.teamId)
+    if (current === purposeVersion) purposes.value = result
+  } catch {
+    if (current === purposeVersion) purposesError.value = '本组业务选项加载失败，请重试。'
+  } finally { if (current === purposeVersion) purposesLoading.value = false }
+}
 const searchKind = computed(() => warehouseSearchKind(fieldDraft.value))
 const days = computed<7 | 30>(() => text('days') === '7' ? 7 : 30)
 const ages: [AgeBand, string][] = [['lt1', '不足1天'], ['1_3', '1–3天'], ['3_7', '3–7天'], ['ge7', '7天及以上']]
@@ -70,6 +85,7 @@ const filters = computed<TeamInventoryParams>(() => {
   const params: Record<string, string | number | boolean> = { page: page.value, page_size: pageSize.value, availability: ['current', 'owned', 'all', 'available', 'scrap'].includes(text('availability')) ? text('availability') : 'owned' }
   for (const key of ['query', 'search_field', 'search_operator', 'serial_no', 'material_name', 'material_type', 'source_team_id', 'date_from', 'date_to', 'stock_age', 'waiting_age', 'waiting_direction', 'activity_day', 'activity_kind', 'flow_direction', 'peer', 'days']) if (text(key)) params[key] = text(key)
   if (props.warehouse && text('receipt_source')) params.receipt_source = text('receipt_source')
+  if (!props.warehouse && text('purpose_id')) params.purpose_id = Number(text('purpose_id'))
   if (text('source_team_id')) params.source_team_id = Number(text('source_team_id'))
   for (const key of ['urgent_only', 'has_loss']) if (text(key) === 'true') params[key] = true
   return params as TeamInventoryParams
@@ -90,6 +106,7 @@ function draftFilters(): TeamInventoryParams {
   return { ...filters.value, page: 1, query: queryDraft.value.trim() || undefined, search_field: queryDraft.value.trim() && fieldDraft.value !== 'all' ? fieldDraft.value : undefined,
     search_operator: queryDraft.value.trim() && searchKind.value === 'number' ? operatorDraft.value : undefined,
     receipt_source: props.warehouse ? sourceDraft.value || undefined : undefined, source_team_id: !props.warehouse || sourceDraft.value === 'internal' ? sourceTeamDraft.value : undefined,
+    purpose_id: !props.warehouse && typeof purposeDraft.value === 'number' ? purposeDraft.value : undefined,
     material_type: typeDraft.value || undefined, material_name: materialDraft.value || undefined, availability: availabilityDraft.value }
 }
 function validSearch() {
@@ -145,11 +162,13 @@ watch([() => props.teamId, filters], () => {
   fieldDraft.value = warehouseSearchColumns.some(column => column.key === text('search_field')) ? text('search_field') as WarehouseSearchField : 'all'
   operatorDraft.value = text('search_operator') === 'gte' ? 'gte' : text('search_operator') === 'lte' ? 'lte' : 'eq'
   availabilityDraft.value = filters.value.availability; sourceTeamDraft.value = Number(text('source_team_id')) || undefined; inputError.value = ''
+  purposeDraft.value = filters.value.purpose_id
   void load()
 }, { immediate: true })
-watch(() => props.overview, () => { void load(true) })
+watch([() => props.teamId, () => props.warehouse], () => { purposes.value = []; void loadPurposes() }, { immediate: true })
+watch(() => props.overview, () => { void load(true); void loadPurposes() })
 watch([() => props.teamId, () => props.canWrite, () => auth.currentUser?.id], resetDetails)
-onBeforeUnmount(() => { ++version })
+onBeforeUnmount(() => { ++version; ++purposeVersion })
 </script>
 
 <template>
@@ -167,6 +186,7 @@ onBeforeUnmount(() => { ++version })
       <ElSelect v-if="warehouse" v-model="sourceDraft" class="warehouse-source-filter" aria-label="库存来源筛选" placeholder="全部来源" clearable @change="search"><ElOption v-for="(label, value) in warehouseSourceNames" :key="value" :value="value" :label="label" /></ElSelect>
       <ElSelect v-else v-model="sourceTeamDraft" class="warehouse-source-filter" aria-label="库存上序班组筛选" placeholder="全部上序" clearable filterable @change="search"><ElOption v-for="team in sourceTeams" :key="team.id" :value="team.id" :label="team.name" /></ElSelect>
       <ElSelect v-model="typeDraft" class="warehouse-type-filter" aria-label="库存物料类型筛选" placeholder="全部类型" clearable @change="search"><ElOption v-for="item in materialTypeOptions" :key="item.value" :value="item.value" :label="item.label" /><ElOption value="unknown" label="未分类" /></ElSelect>
+      <ElSelect v-if="!warehouse" v-model="purposeDraft" class="inventory-purpose-filter" aria-label="库存本组业务筛选" placeholder="全部本组业务" clearable filterable :loading="purposesLoading" @change="search"><ElOption :value="0" label="未指定业务" /><ElOption v-for="purpose in purposes" :key="purpose.id" :value="purpose.id" :label="`${purpose.name}${purpose.active ? '' : '（已停用）'}`" /></ElSelect>
       <RecordDateFilter :model-value="dates" label="流转日期" @update:model-value="selectDate" />
       <ElButton type="primary" @click="search">查询</ElButton><ElButton text @click="apply({ page_size: pageSize }, '')">重置</ElButton>
       <ElPopover trigger="click" placement="bottom-end" :width="280">
@@ -184,6 +204,7 @@ onBeforeUnmount(() => { ++version })
       <slot name="actions" />
     </header>
     <ElAlert v-if="inputError" :title="inputError" type="warning" :closable="false" />
+    <ElAlert v-if="!warehouse && purposesError" type="warning" :closable="false"><span>{{ purposesError }}</span><ElButton link type="primary" @click="loadPurposes">重试</ElButton></ElAlert>
     <div v-if="analysisLabel" class="warehouse-search-context"><ElTag closable @close="selectAnalysis('')">{{ analysisLabel }}</ElTag><span v-if="!text('stock_age')"> 符合条件流水号的分类库存</span></div>
     <div v-if="searchedColumn" class="warehouse-search-context"><ElTag closable @close="apply({ ...filters, query: undefined, search_field: undefined, search_operator: undefined, page: 1 })">按{{ searchedColumn.label }}查询 · 首列显示</ElTag></div>
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
@@ -227,6 +248,7 @@ onBeforeUnmount(() => { ++version })
 .warehouse-search > .numeric-operator { width: 98px; }
 .warehouse-search > :last-child { flex: 1; }
 .warehouse-toolbar > .el-select { width: 110px; flex-shrink: 0; }
+.warehouse-toolbar > .inventory-purpose-filter { width: 150px; }
 .warehouse-toolbar :deep(.record-date-trigger) { max-width: 166px; flex-shrink: 0; }
 .warehouse-toolbar :deep(.record-date-trigger > span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .warehouse-toolbar :deep(.el-button + .el-button) { margin-left: 0; }

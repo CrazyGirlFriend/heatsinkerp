@@ -138,6 +138,44 @@ def test_purposes_partition_balances_search_and_source_selection(client, warehou
     assert client.get(f"/api/team-materials/{target}/inventory/{first['id']}/sources").json()['total'] == 2
 
 
+def test_business_filter_is_exact_paginated_and_keeps_historical_receipts(client, warehouse):
+    s = warehouse
+    target = s['other']['id']
+    unassigned = incoming(client, s['headers'], s['other_headers'], target, 'unassigned')
+    endpoint = f'/api/team-materials/{target}/purposes'
+    purposes = []
+    for name in ('检验', '复检验'):
+        response = client.post(endpoint, headers=s['other_headers'], json={'name': name})
+        assert response.status_code == 201, response.text
+        purposes.append(response.json())
+    chosen = purposes[0]['id']
+    first = incoming(client, s['headers'], s['other_headers'], target, 'first-business', purpose_id=chosen)
+    incoming(client, s['headers'], s['other_headers'], target, 'similar-business', purpose_id=purposes[1]['id'])
+    assert client.patch(endpoint + f'/{chosen}', headers=s['other_headers'],
+                        json={'name': '成品检验', 'expected_version': 1}).status_code == 200
+    second = incoming(client, s['headers'], s['other_headers'], target, 'renamed-business', purpose_id=chosen)
+    assert client.patch(endpoint + f'/{chosen}', headers=s['other_headers'],
+                        json={'name': '成品检验', 'active': False, 'expected_version': 2}).status_code == 200
+    filtered = get_inventory(client, target, purpose_id=chosen)
+    assert filtered['total'] == 2
+    assert {row['group_id'] for row in filtered['items']} == {first['id'], second['id']}
+    assert {row['purpose_name'] for row in filtered['items']} == {'检验', '成品检验'}
+    assert sum(row['owned_weight'] for row in filtered['items']) == 2
+    assert get_inventory(client, target, purpose_id=chosen, page_size=1, page=2)['items'][0]['group_id'] == second['id']
+    assert get_inventory(client, target, purpose_id=chosen, page_size=1)['total'] == 2
+    assert get_inventory(client, target, purpose_id=chosen, source_team_id=s['team']['id'],
+                         material_type='semi_finished', query='000007', stock_age='lt1')['total'] == 2
+    assert get_inventory(client, target, purpose_id=chosen, material_type='finished')['total'] == 0
+    # Chart-derived serial filters must not drop the exact business constraint.
+    assert get_inventory(client, target, purpose_id=chosen, has_loss=True)['total'] == 0
+    assert get_inventory(client, target, purpose_id=0)['items'][0]['group_id'] == unassigned['id']
+    assert get_inventory(client, target, purpose_id=0)['total'] == 1
+    assert get_inventory(client, target)['total'] == 4
+    assert get_inventory(client, s['team']['id'], purpose_id=chosen)['total'] == 0
+    for invalid in (-1, '检验', '1.5'):
+        assert client.get(f'/api/team-materials/{target}/inventory', params={'purpose_id': invalid}).status_code == 422
+
+
 def test_oldest_receipt_uses_only_remaining_lots_and_classification_scope(client, warehouse):
     s = warehouse
     old = intake(client, s, idempotency_key='old', weight=10).json()

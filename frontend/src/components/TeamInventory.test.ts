@@ -20,7 +20,7 @@ import { useAuthStore } from '@/stores/auth'
 let wrapper: VueWrapper
 const data = () => [warehouseFixture(), warehouseFixture({ group_id: 12, material_type: 'finished', receipt_source: 'internal', source_team_id: 8, source_name: '检验', on_hand_quantity: 20, on_hand_weight: 2 }), warehouseFixture({ group_id: 13, serial_no: '000129' })]
 const overview = () => ({ team_id: 901, totals: warehouseFixture(), materials: [], pending_incoming: { quantity: 0, weight: 0, count: 0 }, legacy_received_count: 0 })
-beforeEach(() => { vi.spyOn(teamMaterialApi, 'teamInventory').mockResolvedValue({ items: data(), total: 28, page: 1, page_size: 10 }); localStorage.clear() })
+beforeEach(() => { vi.spyOn(teamMaterialApi, 'teamInventory').mockResolvedValue({ items: data(), total: 28, page: 1, page_size: 10 }); vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([]); localStorage.clear() })
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
 async function render(path = '/team-workspaces/901?tab=stock', canWrite = true, warehouse = true) {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/team-workspaces/:teamId', component: { template: '<div/>' } }] })
@@ -35,6 +35,60 @@ const select = (label: string) => wrapper.findAllComponents(ElSelect).find(item 
 async function submit(term: string) { await wrapper.get('input[aria-label="库存明细搜索"]').setValue(term); await wrapper.get('input[aria-label="库存明细搜索"]').trigger('keyup.enter'); await flushPromises() }
 
 describe('warehouse grouped stock', () => {
+  it('filters workshops by configured business and retains the exact choice across pagination and dates', async () => {
+    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
+      { id: 11, team_id: 901, name: '检验', active: true, version: 1 },
+      { id: 12, team_id: 901, name: '去毛刺', active: false, version: 2 },
+    ])
+    const router = await render('/team-workspaces/901?tab=stock&page=2', true, false)
+    expect(teamMaterialApi.purposes).toHaveBeenCalledWith(901)
+    const business = select('库存本组业务筛选')
+    expect(business.findAllComponents(ElOption).map(option => option.props('label'))).toEqual(['未指定业务', '检验', '去毛刺（已停用）'])
+    select('库存上序班组筛选').vm.$emit('update:modelValue', 1)
+    select('库存物料类型筛选').vm.$emit('update:modelValue', 'semi_finished')
+    business.vm.$emit('update:modelValue', 12); business.vm.$emit('change', 12); await flushPromises()
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ purpose_id: 12, source_team_id: 1, material_type: 'semi_finished', page: 1 }))
+    wrapper.getComponent(ElPagination).vm.$emit('current-change', 2); await flushPromises()
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ purpose_id: 12, page: 2 }))
+    wrapper.getComponent(RecordDateFilter).vm.$emit('update:modelValue', { from: '2026-09-28', to: '2026-09-28' }); await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({ purpose_id: '12', page: '1', date_from: '2026-09-28', date_to: '2026-09-28' })
+    await wrapper.findAll('button').find(button => button.text() === '重置')!.trigger('click'); await flushPromises()
+    expect(select('库存本组业务筛选').props('modelValue')).toBeUndefined()
+    expect(vi.mocked(teamMaterialApi.teamInventory).mock.lastCall?.[1]).not.toHaveProperty('purpose_id')
+  })
+  it('restores unassigned business from the URL and clears it without losing other filters', async () => {
+    const router = await render('/team-workspaces/901?tab=stock&purpose_id=0&material_type=finished', false, false)
+    expect(select('库存本组业务筛选').props('modelValue')).toBe(0)
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ purpose_id: 0, material_type: 'finished' }))
+    select('库存本组业务筛选').vm.$emit('update:modelValue', '')
+    select('库存本组业务筛选').vm.$emit('change', ''); await flushPromises()
+    expect(router.currentRoute.value.query.purpose_id).toBeUndefined()
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ material_type: 'finished' }))
+  })
+  it('leaves warehouse filters unchanged and ignores workshop business parameters there', async () => {
+    await render('/team-workspaces/901?tab=stock&purpose_id=11')
+    expect(select('库存本组业务筛选')).toBeUndefined()
+    expect(teamMaterialApi.purposes).not.toHaveBeenCalled()
+    expect(vi.mocked(teamMaterialApi.teamInventory).mock.lastCall?.[1]).not.toHaveProperty('purpose_id')
+  })
+  it('keeps inventory usable when business options fail and retries explicitly', async () => {
+    vi.mocked(teamMaterialApi.purposes).mockRejectedValueOnce(new Error('offline'))
+    await render(undefined, true, false)
+    expect(wrapper.text()).toContain('本组业务选项加载失败，请重试。')
+    expect(wrapper.find('tbody tr').exists()).toBe(true)
+    await wrapper.findAll('button').find(button => button.text() === '重试')!.trigger('click'); await flushPromises()
+    expect(wrapper.text()).not.toContain('本组业务选项加载失败')
+    expect(teamMaterialApi.purposes).toHaveBeenCalledTimes(2)
+  })
+  it('discards business choices from an earlier team request', async () => {
+    let finish!: (value: Awaited<ReturnType<typeof teamMaterialApi.purposes>>) => void
+    vi.mocked(teamMaterialApi.purposes).mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    await render(undefined, true, false)
+    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([{ id: 22, team_id: 902, name: '新班组业务', active: true, version: 1 }])
+    await wrapper.setProps({ teamId: 902 }); await flushPromises()
+    finish([{ id: 11, team_id: 901, name: '旧班组业务', active: true, version: 1 }]); await flushPromises()
+    expect(select('库存本组业务筛选').findAllComponents(ElOption).map(option => option.props('label'))).toEqual(['未指定业务', '新班组业务'])
+  })
   it.each([true, false])('keeps stock until receipt, not departure, and reflects edits and cancellation (warehouse=%s)', async warehouse => {
     const update = async (owned: number, available: number, pending: number) => {
       const row = warehouseFixture({ owned_quantity: owned, owned_weight: owned, on_hand_quantity: available, on_hand_weight: available, available_quantity: available, available_weight: available, in_transit_quantity: pending, in_transit_weight: pending, reserved_quantity: pending, reserved_weight: pending })

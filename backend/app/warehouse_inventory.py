@@ -34,6 +34,7 @@ class WarehouseInventoryFilters(SerialFilters):
     availability: Literal["current", "owned", "all", "available", "scrap"] = "current"
     receipt_source: Literal["external", "return", "internal", "opening"] | None = None
     source_team_id: int | None = Field(default=None, ge=1)
+    purpose_id: int | None = Field(default=None, ge=0, description="本班组承接业务编号；0 表示未指定业务")
 
     @model_validator(mode="after")
     def validate_search(self):
@@ -114,6 +115,8 @@ def list_inventory(db, team_id, filters):
             if (key, value) in (("material_name", "未填写材质"), ("material_type", "unknown")):
                 value = ""
             conditions.append(table.c[key] == value)
+    if filters.purpose_id is not None:
+        conditions.append(table.c.purpose_id.is_(None) if filters.purpose_id == 0 else table.c.purpose_id == filters.purpose_id)
     if filters.urgent_only:
         conditions.append(table.c.serial_no.in_(urgent_serials()))
     if filters.stock_age:
@@ -160,7 +163,7 @@ def list_inventory(db, team_id, filters):
     # filters above constrain the displayed group quantities themselves.
     if any((filters.waiting_direction, filters.activity_day, filters.has_loss, filters.flow_direction)):
         serial = serial_table(team_id)
-        scope_filters = SerialFilters(**{**filters.model_dump(exclude={"receipt_source", "source_team_id"}),
+        scope_filters = SerialFilters(**{**filters.model_dump(exclude={"receipt_source", "source_team_id", "purpose_id"}),
             "query": None, "search_field": "all", "availability": "all", "material_type": None, "material_name": None,
             "date_from": None, "date_to": None, "stock_age": None})
         conditions.append(table.c.serial_no.in_(select(serial.c.serial_no).where(*serial_predicates(team_id, serial, scope_filters, utcnow()))))

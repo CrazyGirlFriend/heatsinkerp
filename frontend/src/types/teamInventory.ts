@@ -90,5 +90,7 @@ export interface TeamInventoryParams extends Omit<SerialParams, 'availability' |
   search_field?: WarehouseSearchField
   receipt_source?: WarehouseSource
   source_team_id?: number
+  /** 0 selects receipts without an assigned receiving business. */
+  purpose_id?: number
 }
 export interface WarehouseGroupParams extends MaterialPageParams { current_only?: boolean }

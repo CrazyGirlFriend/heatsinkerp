@@ -18,6 +18,12 @@ beforeEach(() => {
 })
 afterEach(() => { httpClient.defaults.adapter = originalAdapter })
 describe('team material API contract', () => {
+  it('passes exact receiving business filters including unassigned receipts', async () => {
+    data = { items: [], total: 0, page: 1, page_size: 10 }
+    await teamMaterialApi.teamInventory(2, { purpose_id: 12, page: 2 })
+    await teamMaterialApi.teamInventory(2, { purpose_id: 0 })
+    expect(requests.map(request => request.url)).toEqual(['/team-materials/2/inventory?purpose_id=12&page=2', '/team-materials/2/inventory?purpose_id=0'])
+  })
   it('normalizes ownership without recalculating it and retains observation time', async () => {
     data = { items: [{ group_id: 19, on_hand_weight: '70', owned_weight: '100', external_pending_weight: '5' }], total: 1, page: 1, page_size: 10, as_of: '2026-09-27T00:00:00Z' }
     const result = await teamMaterialApi.teamInventory(2, { availability: 'owned' })

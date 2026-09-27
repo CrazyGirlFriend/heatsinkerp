@@ -39,6 +39,7 @@ beforeEach(() => {
   vi.spyOn(teamMaterialApi, 'overview').mockImplementation(async () => ({ ...summary }))
   vi.spyOn(teamMaterialApi, 'analytics').mockResolvedValue(analyticsFixture())
   vi.spyOn(teamMaterialApi, 'teamInventory').mockResolvedValue({ items: [], total: 45, page: 1, page_size: 10 })
+  vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([])
   vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({ items: [source(), source(11)], total: 2, page: 1, page_size: 10 })
   vi.spyOn(teamMaterialApi, 'dispatches').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
   vi.spyOn(teamMaterialApi, 'receipts').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
