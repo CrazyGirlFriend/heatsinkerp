@@ -44,12 +44,16 @@ onBeforeUnmount(() => observer?.disconnect())
 
 <style scoped>
 .team-workspace { gap: 0; padding: 20px 24px; background: var(--workspace-bg); }
-.team-workspace__navigation { display: flex; flex: 0 0 auto; gap: 4px; min-width: 0; margin-bottom: 12px; padding: 6px; overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); scrollbar-width: thin; }
-.team-workspace__section.el-button { flex: 0 0 auto; height: 40px; margin: 0; padding: 0 16px; border-radius: 6px; color: var(--muted); font-size: 16px; font-weight: 450; }
-.team-workspace__section.el-button.is-current { background: var(--surface-soft); color: var(--primary); font-weight: 600; }
-.team-workspace__section.el-button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
-.team-workspace__pending { margin-left: 8px; padding: 0 6px; border-radius: 4px; background: var(--surface-soft); color: var(--primary); font-size: 13px; line-height: 20px; font-variant-numeric: tabular-nums; }
+.team-workspace__navigation { display: flex; flex: 0 0 auto; gap: 4px; min-width: 0; margin-bottom: 12px; padding: 6px; overflow-x: auto; border: 1px solid #d6e1d9; border-radius: 10px; background: #e9efeb; scrollbar-width: thin; }
+.team-workspace__section.el-button { flex: 0 0 auto; height: 40px; margin: 0; padding: 0 16px; border-radius: 6px; color: var(--text); background: transparent; font-size: 16px; font-weight: 500; transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
+.team-workspace__section.el-button:not(.is-current):hover { background: rgb(255 255 255 / 75%); }
+.team-workspace__section.el-button.is-current { background: var(--primary); color: #fff; font-weight: 600; box-shadow: 0 1px 3px rgb(36 49 42 / 14%); }
+.team-workspace__section.el-button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.team-workspace__pending { margin-left: 8px; padding: 0 6px; border-radius: 4px; background: var(--surface); color: var(--primary); font-size: 13px; font-weight: 600; line-height: 20px; font-variant-numeric: tabular-nums; }
 .team-workspace__content { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; gap: 12px; overflow: hidden; overscroll-behavior: contain; scrollbar-width: thin; }
+@media (prefers-reduced-motion: reduce) {
+  .team-workspace__section.el-button { transition: none; }
+}
 @media (max-width: 760px) {
   .team-workspace { padding: 12px; }
 }
