@@ -25,8 +25,8 @@ beforeEach(() => {
   vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>)
 })
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
-async function render() {
-  wrapper = mount(MaterialTransferDrawer, { props: { modelValue: true, batchNo: 'TL20260906000001' }, global: { stubs: {
+async function render(props: { allowPrint?: boolean } = {}) {
+  wrapper = mount(MaterialTransferDrawer, { props: { modelValue: true, batchNo: 'TL20260906000001', ...props }, global: { stubs: {
     MaterialTransferDetailFrame: { template: '<div><slot name="header"/><slot/><slot name="footer"/></div>' },
     MaterialDispatchDrawer: true, MaterialTransferFormDialog: true, MaterialTransferPrintSheet: true, BarcodeCard: true, RouterLink: { props: ['to'], template: '<a :href="to"><slot/></a>' },
   } } })
@@ -38,6 +38,28 @@ async function confirm() {
 }
 
 describe('material transfer receipt review', () => {
+  it('hides printing in receipt review, including historical groups, without removing receipt actions', async () => {
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ dispatch_no: 'CK-PENDING', allowed_actions: ['confirm', 'reject'] }))
+    await render({ allowPrint: false })
+    expect(wrapper.findAll('button').some(button => button.text().includes('打印'))).toBe(false)
+    expect(wrapper.findAll('button').some(button => button.text() === '退回核对')).toBe(true)
+    await wrapper.findAll('button').find(button => button.text().includes('历史合并记录'))!.trigger('click')
+    expect(wrapper.getComponent({ name: 'MaterialDispatchDrawer' }).props()).toMatchObject({ modelValue: true, allowPrint: false })
+    await confirm()
+    expect(materialTransferApi.confirm).toHaveBeenCalledOnce()
+    expect(wrapper.findAll('button').some(button => button.text().includes('打印'))).toBe(false)
+  })
+
+  it('keeps pending outbound documents printable by default', async () => {
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ source_team: { id: 3, code: 'FACTORY-PLATE', name: '电镀' }, next_team: { id: 4, code: 'FACTORY-QC', name: '检验' }, allowed_actions: ['edit', 'void'] }))
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {})
+    await render()
+    await wrapper.findAll('button').find(button => button.text() === '打印转料单')!.trigger('click')
+    await flushPromises()
+    expect(print).toHaveBeenCalledOnce()
+    expect(document.body.classList.contains('material-transfer-printing')).toBe(false)
+  })
+
   it.each(['warehouse_outbound', 'inspection_shipment'] as const)('explains that pending %s already left stock', async (entry_kind) => {
     vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({
       entry_kind, source_team: { id: 3, code: 'FACTORY-QC', name: '本班组' }, external_destination: '外部单位', allowed_actions: ['confirm_outbound'],

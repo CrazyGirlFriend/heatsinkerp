@@ -13,7 +13,7 @@ import { useAuthStore } from '@/stores/auth'
 import { materialDispatchApi } from '@/services/materialDispatchApi'
 import { materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import type { MaterialDispatchDocument } from '@/types/teamMaterials'
-const props = withDefaults(defineProps<{ modelValue: boolean; dispatchNo?: string; docked?: boolean }>(), { dispatchNo: '', docked: false })
+const props = withDefaults(defineProps<{ modelValue: boolean; dispatchNo?: string; docked?: boolean; allowPrint?: boolean }>(), { dispatchNo: '', docked: false, allowPrint: true })
 const emit = defineEmits<{ 'update:modelValue': [boolean]; changed: [MaterialDispatchDocument]; busyChange: [boolean] }>()
 const auth = useAuthStore()
 const current = ref<MaterialDispatchDocument | null>(null), loading = ref(false), error = ref('')
@@ -51,7 +51,7 @@ onBeforeUnmount(reset)
     <StatePanel v-if="loading && !current" state="loading" title="正在读取历史记录" />
     <StatePanel v-else-if="!current" state="error" :description="error" @retry="load()" />
     <template v-else>
-      <p>历史编号：{{ dispatchNo }}。以下批次分别核对、分别接收；合并打印不合并批次。</p>
+      <p>历史编号：{{ dispatchNo }}。以下批次分别核对、分别接收。<template v-if="allowPrint">合并打印不合并批次。</template></p>
       <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
       <ElAlert v-if="error" :title="error" type="error" :closable="false" />
       <div class="historical-table"><table class="business-document-table" aria-label="历史记录中的独立批次">
@@ -59,10 +59,10 @@ onBeforeUnmount(reset)
         <tbody><tr v-for="item in current.items" :key="item.batch_no"><td>{{ item.batch_no }}<small>{{ item.serial_no }}</small></td><td>{{ item.material_name || '—' }}<small>{{ materialTypeLabel(item.material_type) }}</small></td><td>{{ item.quantity }}</td><td>{{ item.weight }}</td><td><MaterialTransferStatus :status="item.status" :entry-kind="item.entry_kind" /></td><td><ElButton link type="primary" :disabled="loading || !!error" :aria-label="'查看批次 ' + item.batch_no" @click="openBatch(item)">查看批次</ElButton></td></tr></tbody>
       </table></div>
     </template>
-    <template #footer><ElButton :disabled="!current || loading || !!error" @click="printOpen = true">合并打印</ElButton></template>
+    <template v-if="allowPrint" #footer><ElButton :disabled="!current || loading || !!error" @click="printOpen = true">合并打印</ElButton></template>
   </MaterialTransferDetailFrame>
-  <MaterialTransferDrawer v-if="selected" v-model="batchOpen" :transfer="selected" :batch-no="selected.batch_no" :show-history-group="false" @changed="changed" @busy-change="setBusy" />
-  <MaterialBatchPrintDialog v-model="printOpen" :items="current?.items || []" />
+  <MaterialTransferDrawer v-if="selected" v-model="batchOpen" :transfer="selected" :batch-no="selected.batch_no" :show-history-group="false" :allow-print="allowPrint" @changed="changed" @busy-change="setBusy" />
+  <MaterialBatchPrintDialog v-if="allowPrint" v-model="printOpen" :items="current?.items || []" />
 </template>
 <style scoped>
 h2 { margin: 0; font-size: 22px; } p { color: var(--el-text-color-secondary); line-height: 1.7; }

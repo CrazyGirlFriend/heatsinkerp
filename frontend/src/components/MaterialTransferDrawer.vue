@@ -46,7 +46,8 @@ const props = withDefaults(defineProps<{
   traceScope?: Pick<MaterialTransferFilterParams, 'team_id' | 'direction'>
   docked?: boolean
   showHistoryGroup?: boolean
-}>(), { batchNo: '', transfer: null, docked: false, showHistoryGroup: true })
+  allowPrint?: boolean
+}>(), { batchNo: '', transfer: null, docked: false, showHistoryGroup: true, allowPrint: true })
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -279,7 +280,7 @@ async function voidTransfer(): Promise<void> {
 }
 
 async function printTransfer(): Promise<void> {
-  if (!current.value) return
+  if (!current.value || !props.allowPrint) return
 
   printReady.value = true
   await nextTick()
@@ -371,13 +372,13 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
         <ElButton v-if="current.can_edit_delivery && !loadError && !loading" :disabled="confirming || voiding" @click="deliveryOpen = true">维护交期</ElButton>
         <a v-if="current.delivery_origin_batch_no && current.delivery_origin_batch_no !== current.batch_no" :href="'/transfer-batches?batch_no=' + encodeURIComponent(current.delivery_origin_batch_no)">查看交期源单</a>
         <ElButton v-if="canEdit" type="primary" :icon="EditPen" :disabled="voiding" @click="editOpen = true">编辑</ElButton>
-        <ElButton :icon="Printer" @click="printTransfer">{{ receipt ? '打印入库单' : external ? `打印${actionLabel}单` : '打印转料单' }}</ElButton>
+        <ElButton v-if="allowPrint" :icon="Printer" @click="printTransfer">{{ receipt ? '打印入库单' : external ? `打印${actionLabel}单` : '打印转料单' }}</ElButton>
         <ElButton v-if="canVoid" type="danger" plain :icon="Delete" :loading="voiding" @click="voidTransfer">作废</ElButton>
       </div>
       <p class="permission-note" :title="stateMessage" aria-live="polite"><ElIcon><Lock /></ElIcon>{{ canConfirm ? '接收后本单将锁定。' : stateMessage }}</p>
     </template>
   </MaterialTransferDetailFrame>
-  <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="current?.dispatch_no || ''" :docked="docked" @changed="groupChanged" @busy-change="emit('busyChange', $event)" />
+  <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="current?.dispatch_no || ''" :docked="docked" :allow-print="allowPrint" @changed="groupChanged" @busy-change="emit('busyChange', $event)" />
   <MaterialDeliveryDialog v-model="deliveryOpen" :transfer="current" @saved="updateCurrent" @refreshed="updateCurrent" @busy="deliveryBusy = $event" />
   <MaterialTransferFormDialog v-model="editOpen" :transfer="current" @saved="updateCurrent" @refreshed="updateCurrent" />
   <Teleport to="body"><MaterialTransferPrintSheet v-if="current && printReady" :transfer="current" /></Teleport>

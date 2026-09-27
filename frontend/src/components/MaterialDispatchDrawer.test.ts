@@ -11,8 +11,8 @@ vi.mock('@/composables/useLiveRefresh', async () => { const { ref } = await impo
 let wrapper: VueWrapper
 beforeEach(() => { vi.spyOn(materialDispatchApi, 'get').mockResolvedValue(dispatchFixture()); vi.spyOn(materialDispatchApi, 'confirm') })
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
-async function render() {
-  wrapper = mount(MaterialDispatchDrawer, { props: { modelValue: true, dispatchNo: 'CK-GROUP' }, global: { stubs: { MaterialTransferDetailFrame: { template: '<div><slot name="header"/><slot/><slot name="footer"/></div>' }, MaterialTransferDrawer: { name: 'MaterialTransferDrawer', props: ['modelValue', 'batchNo', 'showHistoryGroup'], template: '<div />' }, MaterialBatchPrintDialog: true } } })
+async function render(props: { allowPrint?: boolean } = {}) {
+  wrapper = mount(MaterialDispatchDrawer, { props: { modelValue: true, dispatchNo: 'CK-GROUP', ...props }, global: { stubs: { MaterialTransferDetailFrame: { template: '<div><slot name="header"/><slot/><slot name="footer"/></div>' }, MaterialTransferDrawer: { name: 'MaterialTransferDrawer', props: ['modelValue', 'batchNo', 'showHistoryGroup', 'allowPrint'], template: '<div />' }, MaterialBatchPrintDialog: true } } })
   await flushPromises()
 }
 it('keeps legacy lookup but shows each batch and never offers whole-group confirmation', async () => {
@@ -30,6 +30,13 @@ it('co-prints actual batches without restoring a group barcode', async () => {
   await render()
   await wrapper.findAll('button').find(b => b.text() === '合并打印')!.trigger('click')
   expect(wrapper.getComponent(MaterialBatchPrintDialog).props()).toMatchObject({ modelValue: true, items: dispatchFixture().items })
+})
+it('disables group and nested batch printing when opened from pending receipts', async () => {
+  await render({ allowPrint: false })
+  expect(wrapper.findAll('button').some(button => button.text().includes('打印'))).toBe(false)
+  expect(wrapper.findComponent(MaterialBatchPrintDialog).exists()).toBe(false)
+  await wrapper.get('button[aria-label="查看批次 TL-GROUP-2"]').trigger('click'); await flushPromises()
+  expect(wrapper.getComponent({ name: 'MaterialTransferDrawer' }).props()).toMatchObject({ modelValue: true, batchNo: 'TL-GROUP-2', allowPrint: false })
 })
 it('ignores an old lookup after changing the historical identifier', async () => {
   let finish!: (value: MaterialDispatchDocument) => void

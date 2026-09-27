@@ -372,8 +372,8 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
               </div>
               <footer v-if="!loading && !loadError" class="table-footer"><span>共 {{ total }} 条记录</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[10, 20, 50, 100]" :total="total" layout="sizes, prev, pager, next" @current-change="applyFilters($event)" @size-change="applyFilters(1, $event)" /></footer>
             </section>
-            <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="selectedDispatchNo" :docked="docked" @changed="loadView" />
-            <MaterialTransferDrawer v-model="drawerOpen" :transfer="selected" :batch-no="selectedBatchNo" :docked="docked" :trace-scope="traceScope" @changed="loadView" />
+            <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="selectedDispatchNo" :docked="docked" :allow-print="tab !== 'pending'" @changed="loadView" />
+            <MaterialTransferDrawer v-model="drawerOpen" :transfer="selected" :batch-no="selectedBatchNo" :docked="docked" :trace-scope="traceScope" :allow-print="tab !== 'pending'" @changed="loadView" />
           </div>
         </template>
       </template>
