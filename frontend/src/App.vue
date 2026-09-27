@@ -17,11 +17,6 @@ import { resolveTeamWorkspaceSection, teamWorkspaceProfile, teamWorkspaceSection
 const teamLabel = computed(() => currentUser.value?.role === 'ADMIN' ? '系统管理员' : teamDirectory.items.find(team => String(team.id) === String(currentUser.value?.team_id))?.name || currentUser.value?.team?.name || '未配置班组')
 const route = useRoute()
 const router = useRouter()
-const workspacePending = ref<{ teamId: number; count: number | null } | null>(null)
-function updateWorkspacePending(value: { teamId: number; count: number | null }) {
-  if (String(value.teamId) === String(route.params.teamId)) workspacePending.value = value
-}
-watch([() => route.path, () => currentUser.value?.id, () => currentUser.value?.team_id], () => { workspacePending.value = null })
 const breadcrumb = computed(() => {
   if (route.path.startsWith('/team-workspaces/')) {
     const team = teamDirectory.items.find(item => String(item.id) === String(route.params.teamId))
@@ -167,7 +162,7 @@ function enterBigScreen(event: MouseEvent): void {
           <img v-if="sidebarCompact" class="brand-mark__icon" src="/brand/attl-official-favicon.ico" alt="安泰天龙" width="32" height="32" />
           <img v-else class="brand-mark__logo" src="/brand/attl-official-logo.png" alt="中国钢研 安泰科技 · 安泰天龙" width="1017" height="143" />
         </div>
-        <FactorySidebar :compact="sidebarCompact" :pending-team-id="workspacePending?.teamId" :pending-count="workspacePending?.count" illustrated />
+        <FactorySidebar :compact="sidebarCompact" illustrated />
 
         <div class="sidebar__footer">
           <RouterLink to="/factory-live" class="sidebar__screen" title="大屏展示" aria-label="动态流转大屏" @click="enterBigScreen"><ElIcon><Monitor /></ElIcon><span v-if="!sidebarCompact">大屏展示</span></RouterLink>
@@ -197,7 +192,7 @@ function enterBigScreen(event: MouseEvent): void {
       <main id="main-content" ref="mainContent" class="main-content" :aria-label="currentLocation" tabindex="-1" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined">
         <RouterView v-slot="{ Component }">
           <Transition name="page-shift">
-            <component :is="Component" :key="route.path" v-on="route.name === 'team-workspace' ? { 'pending-count': updateWorkspacePending } : {}" />
+            <component :is="Component" :key="route.path" />
           </Transition>
         </RouterView>
       </main>

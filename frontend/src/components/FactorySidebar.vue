@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Search, OfficeBuilding, Setting, Refresh, House, Box, Connection, HotWater, Tools, Scissor, EditPen, Coin, CircleCheck, Tickets, Location, User, ArrowRight, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { Search, OfficeBuilding, Setting, Refresh, House, Box, Connection, HotWater, Tools, Scissor, EditPen, Coin, CircleCheck, Tickets, Location, User, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { ElIcon, ElMenu, ElMenuItem, ElSubMenu, type MenuInstance } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -7,9 +7,9 @@ import { isAdmin } from '@/stores/auth'
 import { appPinia } from '@/stores/access'
 import { useSidebarStore } from '@/stores/sidebar'
 import { teamDirectory, refreshTeamDirectory } from '@/stores/teamDirectory'
-import { configuredTeamWorkspaces, resolveTeamWorkspaceSection, teamWorkspaceSectionsFor, teamWorkspaceSectionPath } from '@/config/teamWorkspaces'
+import { configuredTeamWorkspaces } from '@/config/teamWorkspaces'
 
-const props = withDefaults(defineProps<{ compact?: boolean; illustrated?: boolean; pendingTeamId?: number; pendingCount?: number | null }>(), { compact: false, illustrated: false })
+const props = withDefaults(defineProps<{ compact?: boolean; illustrated?: boolean }>(), { compact: false, illustrated: false })
 const teamIcons = { 'FACTORY-WAREHOUSE': Box, 'FACTORY-ROLL': Connection, 'FACTORY-ANNEAL': HotWater, 'FACTORY-GRIND': Tools,
   'FACTORY-WIRE': Scissor, 'FACTORY-ENGRAVE': EditPen, 'FACTORY-PLATE': Coin, 'FACTORY-QC': CircleCheck }
 const route = useRoute()
@@ -19,11 +19,10 @@ const viewport = ref<HTMLElement>()
 const sidebar = useSidebarStore(appPinia)
 const activeGroup = computed(() => route.path.startsWith('/settings/') ? 'settings' : ['/', '/factory-stock', '/factory-analysis'].includes(route.path) ? 'factory' : ['/transfer-batches', '/material-trace'].includes(route.path) ? 'materials' : 'teams')
 const workspaces = computed(() => configuredTeamWorkspaces(teamDirectory.items))
-const activeTeam = computed(() => workspaces.value.find(({ team }) => team && route.path === `/team-workspaces/${team.id}`)?.team)
-const activeIndex = computed(() => activeTeam.value ? teamWorkspaceSectionPath(activeTeam.value.id, resolveTeamWorkspaceSection(route.query, activeTeam.value.code === 'FACTORY-WAREHOUSE' && activeTeam.value.kind === 'warehouse')) : route.path)
-const routeGroups = computed(() => [activeGroup.value, ...(activeTeam.value ? [`team-${activeTeam.value.id}`] : [])])
+const activeIndex = computed(() => route.path)
+const routeGroups = computed(() => [activeGroup.value])
 const waitingForDirectory = computed(() => route.path.startsWith('/team-workspaces/') && !teamDirectory.loaded)
-const groupIndexes = computed(() => ['factory', 'teams', 'materials', ...(isAdmin.value ? ['settings'] : []), ...workspaces.value.flatMap(({ team }) => team ? [`team-${team.id}`] : [])])
+const groupIndexes = computed(() => ['factory', 'teams', 'materials', ...(isAdmin.value ? ['settings'] : [])])
 const canScrollUp = ref(false)
 const canScrollDown = ref(false)
 let ready = false
@@ -49,8 +48,7 @@ function revealMenu(): void {
   if (!target?.getClientRects().length) return
   const bounds = element.getBoundingClientRect()
   const title = target.querySelector<HTMLElement>(':scope > .el-sub-menu__title')
-  const rect = target.getBoundingClientRect()
-  const visibleRect = title && (!revealIndex.startsWith('team-') || rect.height > element.clientHeight - 48) ? title.getBoundingClientRect() : rect
+  const visibleRect = (title || target).getBoundingClientRect()
   if (visibleRect.top < bounds.top + 24) element.scrollTop += visibleRect.top - bounds.top - 24
   else if (visibleRect.bottom > bounds.bottom - 24) element.scrollTop += visibleRect.bottom - bounds.bottom + 24
   updateOverflow()
@@ -100,14 +98,14 @@ function onClose(index: string): void {
 async function restoreNavigation(): Promise<void> {
   if (!ready) return
   if (waitingForDirectory.value) { initialized = false; return }
-  // Resolve the team and its section before comparing a saved route on reload.
+  // Wait until team links exist before restoring selection and scroll position.
   const changedPage = sidebar.page !== activeIndex.value
   if (changedPage) { sidebar.page = activeIndex.value; sidebar.opened = routeGroups.value }
   await nextTick()
   if (!ready) return
   initialized = true
   syncMenu()
-  requestReveal(changedPage && activeTeam.value ? `team-${activeTeam.value.id}` : sidebar.opened.at(-1) || activeIndex.value)
+  requestReveal(changedPage ? activeIndex.value : sidebar.opened.at(-1) || activeIndex.value)
 }
 watch([activeIndex, () => routeGroups.value.join('/'), waitingForDirectory], restoreNavigation)
 watch(() => props.compact, async (compact) => {
@@ -152,12 +150,9 @@ const materialLinks = computed(() => [
         <ElMenuItem v-else-if="teamDirectory.error" index="teams-retry" :route="route.fullPath" @click="refreshTeamDirectory"><ElIcon><Refresh /></ElIcon>重新加载班组</ElMenuItem>
         <template v-else>
           <template v-for="{ profile, team } in workspaces" :key="profile.code">
-            <ElSubMenu v-if="team" :index="`team-${team.id}`" :data-nav-index="`team-${team.id}`" class="factory-nav__team" :aria-label="profile.name + '工作台'" :expand-close-icon="ArrowRight" :expand-open-icon="ArrowRight" popper-class="factory-nav-popup">
-              <template #title><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"><component :is="teamIcons[profile.code as keyof typeof teamIcons]" /></ElIcon><span>{{ profile.name }}</span></template>
-              <ElMenuItem v-for="section in teamWorkspaceSectionsFor(profile.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse')" :key="section.value" :index="teamWorkspaceSectionPath(team.id, section.value)" class="factory-nav__workspace-link" :aria-label="`${profile.name} · ${section.label}`" :aria-current="activeIndex === teamWorkspaceSectionPath(team.id, section.value) ? 'page' : undefined">
-                <span>{{ section.label }}</span><small v-if="section.value === 'pending' && String(pendingTeamId) === String(team.id) && pendingCount" class="factory-nav__count">{{ pendingCount }}</small>
-              </ElMenuItem>
-            </ElSubMenu>
+            <ElMenuItem v-if="team" :index="`/team-workspaces/${team.id}`" class="factory-nav__team" :aria-label="profile.name + '工作台'" :aria-current="activeIndex === `/team-workspaces/${team.id}` ? 'page' : undefined">
+              <ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"><component :is="teamIcons[profile.code as keyof typeof teamIcons]" /></ElIcon><span>{{ profile.name }}</span>
+            </ElMenuItem>
             <ElMenuItem v-else :index="'missing-' + profile.code" class="factory-nav__missing" disabled>{{ profile.name }}<small>未配置</small></ElMenuItem>
           </template>
         </template>
@@ -199,20 +194,6 @@ const materialLinks = computed(() => [
 .factory-nav :deep(.el-menu-item.is-active) { color: var(--primary); background: var(--surface-soft); font-weight: 550; }
 .factory-nav :deep(.el-sub-menu .el-menu-item.is-active::before) { position: absolute; left: 24px; height: 20px; width: 2px; background: var(--primary); content: ''; }
 .factory-nav__missing small { margin-left: auto; font-size: 11px; }
-.factory-nav :deep(.factory-nav__team > .el-sub-menu__title) { height: 38px; line-height: 38px; padding-left: 24px; font-weight: 450; }
-.factory-nav :deep(.factory-nav__team > .el-menu > .el-menu-item) { min-width: 0; height: 34px; line-height: 34px; padding-left: 56px; padding-right: 12px; font-size: 13px; }
-.factory-nav :deep(.factory-nav__team .el-menu-item.is-active::before) { left: 42px; height: 16px; }
-.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team) { margin-block: 2px; border-radius: 8px; transition: background-color var(--motion-standard) var(--motion-ease); }
-.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team.is-opened) { background: var(--workspace-bg); }
-.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team > .el-sub-menu__title) { padding-right: 12px; color: var(--text); font-weight: 450; }
-.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team.is-opened > .el-sub-menu__title) { font-weight: 550; }
-.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team > .el-sub-menu__title > .el-sub-menu__icon-arrow) { position: static; flex: 0 0 12px; width: 12px; height: 12px; margin: 0 0 0 7px; font-size: 10px; }
-.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team > .el-sub-menu__title > .el-sub-menu__icon-arrow svg) { transition: transform var(--motion-standard) var(--motion-ease); }
-.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team.is-opened > .el-sub-menu__title > .el-sub-menu__icon-arrow svg) { transform: rotate(90deg); }
-.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team > .el-menu) { padding-bottom: 4px; }
-.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team > .el-menu > .el-menu-item) { margin: 2px 6px 2px 38px; padding-left: 34px; padding-right: 8px; }
-.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team .el-menu-item.is-active::before) { left: 12px; }
-.factory-nav__count { min-width: 18px; margin-left: auto; padding: 0 5px; border-radius: 4px; background: var(--surface-soft); color: var(--primary); font-size: 11px; line-height: 18px; font-variant-numeric: tabular-nums; }
 .factory-nav--compact .factory-nav__scroll { padding-inline: 6px; }
 .factory-nav--compact :deep(.el-menu-item), .factory-nav--compact :deep(.el-sub-menu__title), .factory-nav--compact :deep(.el-menu-tooltip__trigger) { justify-content: center; padding: 0; }
 .factory-nav--compact :deep(.el-menu .el-icon:not(.el-sub-menu__icon-arrow)) { margin: 0; }

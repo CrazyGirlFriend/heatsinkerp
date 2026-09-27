@@ -26,7 +26,7 @@ import StatePanel from '@/components/StatePanel.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { showToast } from '@/stores/toast'
-import { resolveTeamWorkspaceSection, teamWorkspaceProfile } from '@/config/teamWorkspaces'
+import { resolveTeamWorkspaceSection, teamWorkspaceProfile, teamWorkspaceSectionPath, type TeamWorkspaceSection } from '@/config/teamWorkspaces'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { InventoryConnection } from '@/services/inventoryStream'
 import { shouldRefreshInventory, subscribeSharedInventoryChanges as subscribeInventoryChanges } from '@/services/inventoryChanges'
@@ -36,7 +36,6 @@ import { isDispatchNumber, dispatchStatusLabels, type DispatchKind, type Dispatc
 import { formatDateTime } from '@/utils/format'
 
 const route = useRoute()
-const emit = defineEmits<{ 'pending-count': [value: { teamId: number; count: number | null }] }>()
 const router = useRouter()
 const auth = useAuthStore()
 const directory = useTeamDirectoryStore()
@@ -54,6 +53,9 @@ const canReceive = computed(() => isWarehouse.value && canWrite.value && auth.cu
 const title = computed(() => scopeReady.value ? profile.value?.name || team.value!.name : '班组工作台')
 const queryText = (key: string) => typeof route.query[key] === 'string' ? String(route.query[key]) : ''
 const tab = computed(() => resolveTeamWorkspaceSection(route.query, isWarehouse.value))
+function selectSection(section: TeamWorkspaceSection) {
+  if (section !== tab.value) void router.push(teamWorkspaceSectionPath(teamKey.value, section))
+}
 watch(() => queryText('tab'), value => {
   if (value === 'serials') void router.replace({ path: route.path, query: { ...route.query, tab: 'stock' }, hash: route.hash })
   if (value === 'overview') void router.replace({ path: route.path, query: { ...route.query, tab: 'history' }, hash: route.hash })
@@ -71,10 +73,7 @@ const nextTeamDraft = ref<string | number>('')
 const kindDraft = ref<DispatchKind | ''>('')
 const dispatchKinds = ['transfer', 'warehouse_outbound', 'inspection_shipment'] as const
 const overview = ref<TeamMaterialOverview | null>(null)
-watch([overview, scopeReady, teamId], () => emit('pending-count', {
-  teamId: teamId.value,
-  count: scopeReady.value && overview.value && Number(overview.value.team_id) === teamId.value ? (isWarehouse.value ? overview.value.pending_incoming.batch_count ?? overview.value.pending_incoming.count : overview.value.pending_incoming.count) : null,
-}), { immediate: true })
+const pendingCount = computed(() => scopeReady.value && overview.value && Number(overview.value.team_id) === teamId.value ? (isWarehouse.value ? overview.value.pending_incoming.batch_count ?? overview.value.pending_incoming.count : overview.value.pending_incoming.count) : null)
 const overviewError = ref('')
 const pending = ref<MaterialTransfer[]>([])
 const outgoing = ref<MaterialTransfer[]>([])
@@ -292,7 +291,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 </script>
 
 <template>
-  <TeamWorkspaceShell :title="title" :model-value="tab" :class="{ 'team-workspace--docked': docked && detailOpen }">
+  <TeamWorkspaceShell :title="title" :model-value="tab" :warehouse="isWarehouse" :pending-count="pendingCount" :class="{ 'team-workspace--docked': docked && detailOpen }" @update:model-value="selectSection">
     <div ref="container" class="team-material-content">
       <ElAlert v-if="syncError || syncState === 'reconnecting' || syncState === 'expired'" type="warning" :closable="false" :title="syncState === 'expired' ? '登录或访问凭证已失效，请重新验证。' : syncError || '实时连接中断，当前显示上次结果，正在重连。'" />
       <StatePanel v-if="scopeLoading" state="loading" title="正在读取班组信息" />

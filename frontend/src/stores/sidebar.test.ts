@@ -14,18 +14,27 @@ afterEach(() => { clearSession(); vi.restoreAllMocks() })
 describe('sidebar preferences', () => {
   it('restores expanded and compact preferences on reload, isolated by account', () => {
     const store = useSidebarStore(createPinia())
-    store.compact = true; store.page = '/factory-stock'; store.opened = ['teams', 'team-8']
+    store.compact = true; store.page = '/factory-stock'; store.opened = ['teams']
     const restored = useSidebarStore(createPinia())
     expect(restored.compact).toBe(true)
-    expect(restored.opened).toEqual(['teams', 'team-8'])
+    expect(restored.opened).toEqual(['teams'])
     expect(restored.page).toBe('/factory-stock')
     signIn(2)
     expect(restored.compact).toBe(false)
     expect(restored.opened).toEqual([])
     signIn(1)
     expect(restored.compact).toBe(true)
-    expect(restored.opened).toEqual(['teams', 'team-8'])
+    expect(restored.opened).toEqual(['teams'])
     store.$dispose(); restored.$dispose()
+  })
+
+  it('migrates old team-section preferences to a two-level menu', () => {
+    localStorage.setItem('heatsink-sidebar:1:ADMIN', JSON.stringify({ compact: true, opened: ['teams', 'team-8'], page: '/team-workspaces/8?tab=history' }))
+    const store = useSidebarStore(createPinia())
+    expect(store.compact).toBe(true)
+    expect(store.opened).toEqual(['teams'])
+    expect(store.page).toBe('/team-workspaces/8')
+    store.$dispose()
   })
 
   it('works with unavailable or malformed browser storage', () => {

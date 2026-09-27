@@ -18,8 +18,8 @@ export const useSidebarStore = defineStore('sidebar', () => {
       const saved = JSON.parse(localStorage.getItem(key) || 'null')
       if (saved && typeof saved === 'object') {
         compact.value = saved.compact === true
-        opened.value = Array.isArray(saved.opened) ? saved.opened.filter((item: unknown) => typeof item === 'string' && /^(factory|teams|materials|settings|team-\d+)$/.test(item)) : []
-        page.value = typeof saved.page === 'string' ? saved.page : ''
+        opened.value = Array.isArray(saved.opened) ? saved.opened.filter((item: unknown) => typeof item === 'string' && /^(factory|teams|materials|settings)$/.test(item)) : []
+        page.value = typeof saved.page === 'string' ? saved.page.split('?')[0] : ''
       }
     } catch { /* Storage may be unavailable; navigation still works in memory. */ }
     storageKey = key
