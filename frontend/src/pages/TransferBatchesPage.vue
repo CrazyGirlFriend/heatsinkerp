@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageBackButton from '@/components/PageBackButton.vue'
 import { FullScreen, ArrowDown, CircleCheck, Clock, Collection, Plus, Refresh, Remove, Search } from '@element-plus/icons-vue'
 import {
   ElButton,
@@ -434,6 +435,7 @@ onBeforeUnmount(() => {
     <div class="transfers-main">
       <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
       <div class="status-toolbar">
+      <PageBackButton />
       <div class="status-overview" role="group" aria-label="按转料状态筛选" :aria-busy="countsLoading">
         <button v-for="option in statusOptions" :key="option.value" type="button" class="status-filter" :class="[`status-filter--${option.value}`, { 'is-selected': statusDraft === option.value }]" :aria-label="option.label === '全部' ? '全部转料' : option.label" :aria-pressed="statusDraft === option.value" @click="selectStatus(option.value)">
           <ElIcon class="status-filter__icon"><component :is="option.icon" /></ElIcon>

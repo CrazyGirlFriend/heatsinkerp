@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageBackButton from '@/components/PageBackButton.vue'
 import { CircleCheck, Delete, EditPen, Plus, Search, SwitchButton } from '@element-plus/icons-vue'
 import {
   ElAlert,
@@ -273,6 +274,7 @@ onMounted(() => void loadTeams())
 
     <ElCard shadow="never" class="workspace-card">
       <div class="filter-bar">
+        <PageBackButton />
         <ElInput v-model="query" clearable placeholder="班组编码或名称" aria-label="搜索班组">
           <template #prefix><ElIcon><Search /></ElIcon></template>
         </ElInput>

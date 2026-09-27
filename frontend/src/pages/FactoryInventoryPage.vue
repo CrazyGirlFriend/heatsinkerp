@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageBackButton from '@/components/PageBackButton.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   ElAlert,
@@ -177,6 +178,7 @@ onBeforeUnmount(() => {
     <section class="stock-panel">
       <header class="stock-heading">
         <div class="stock-title">
+          <PageBackButton />
           <h1>班组材质库存</h1>
           <p v-if="report" class="stock-count">
             {{ report.stock.rows.length }} 个班组 · {{ report.stock.materials.length }} 种材质

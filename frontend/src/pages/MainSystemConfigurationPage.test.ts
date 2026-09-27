@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+vi.mock('@/components/PageBackButton.vue', () => ({ default: { template: '<span />' } }))
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import MainSystemConfigurationPage from './MainSystemConfigurationPage.vue'

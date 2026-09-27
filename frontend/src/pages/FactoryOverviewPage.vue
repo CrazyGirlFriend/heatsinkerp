@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElAlert, ElButton, ElInputNumber, ElOption, ElRadioButton, ElRadioGroup, ElSelect, ElSwitch } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import FactoryOverviewCharts from '@/components/FactoryOverviewCharts.vue'
+import PageBackButton from '@/components/PageBackButton.vue'
 import FactoryRecentBatches from '@/components/FactoryRecentBatches.vue'
 import AnimatedMetric from '@/components/AnimatedMetric.vue'
 import StatePanel from '@/components/StatePanel.vue'
@@ -77,7 +78,8 @@ onBeforeUnmount(() => { ++version; if (timer) clearInterval(timer); media?.remov
 <template>
   <section class="page factory-overview">
     <header class="factory-heading">
-      <div><h1>全厂物料总览</h1><p v-if="report">{{ formatDateTime(report.as_of) }} 更新</p></div>
+      <PageBackButton />
+      <div class="factory-heading-title"><h1>全厂物料总览</h1><p v-if="report">{{ formatDateTime(report.as_of) }} 更新</p></div>
       <div class="factory-controls">
         <ElRadioGroup :model-value="metric" size="small" aria-label="全厂统计单位" @update:model-value="preference({ metric: String($event) })"><ElRadioButton value="weight">重量</ElRadioButton><ElRadioButton value="quantity">件数</ElRadioButton></ElRadioGroup>
         <ElSelect ref="periodSelect" :model-value="days" :teleported="false" :fit-input-width="false" size="small" aria-label="全厂统计周期" @update:model-value="preference({ days: String($event) })" @visible-change="customDays = days">
@@ -115,6 +117,7 @@ onBeforeUnmount(() => { ++version; if (timer) clearInterval(timer); media?.remov
 <style scoped>
 .factory-overview { --dashboard-surface: #fff; --dashboard-line: var(--line); --dashboard-muted: var(--muted); display: flex; flex-direction: column; gap: 14px; padding: 20px 24px; color: var(--text); background: var(--workspace-bg); overflow-y: auto; }
 .factory-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }.factory-heading h1 { margin: 0; font-size: 22px; line-height: 30px; font-weight: 550; }.factory-heading p { font-size: 12px; line-height: 18px; color: var(--dashboard-muted); margin: 4px 0 0; }
+.factory-heading-title { margin-right: auto; }
 .factory-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }.factory-controls > .el-select { width: 96px; }.factory-controls :deep(.el-switch__label) { font-size: 12px; }
 .factory-controls :deep(.el-button), .factory-controls :deep(.el-select__wrapper) { min-height: 34px; font-size: 13px; }.factory-controls :deep(.el-radio-button__inner) { padding: 9px 12px; font-size: 13px; }
 .factory-custom-period { display: grid; gap: 8px; padding: 2px 0; }.factory-custom-period > label { font-size: 12px; color: var(--muted); }.factory-custom-period > div { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }.factory-custom-period .el-input-number { width: 96px; }
@@ -123,7 +126,7 @@ onBeforeUnmount(() => { ++version; if (timer) clearInterval(timer); media?.remov
 /* Keep every record row visible; let the charts absorb the remaining height. */
 .factory-presentation { display: grid; grid-template-rows: minmax(240px, 1fr) max-content; flex: 1; min-height: 0; gap: 14px; }.factory-stage { display: grid; min-height: 0; }.factory-stage > .factory-charts { grid-area: 1 / 1; }.scene-fade-enter-active, .scene-fade-leave-active { transition: opacity 200ms ease, transform 200ms ease; }.scene-fade-enter-from { opacity: 0; transform: translateY(4px); }.scene-fade-leave-to { opacity: 0; }
 @media (min-width: 1101px) and (max-height: 800px) {
-  .factory-overview { padding: 12px 18px; gap: 10px; }.factory-heading > div:first-child { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }.factory-heading p { margin: 0; }.factory-heading h1 { font-size: 21px; line-height: 28px; }
+  .factory-overview { padding: 12px 18px; gap: 10px; }.factory-heading > .factory-heading-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }.factory-heading p { margin: 0; }.factory-heading h1 { font-size: 21px; line-height: 28px; }
   .factory-metrics { gap: 12px; }.factory-metric { padding: 10px 16px; }.factory-metric h2 { margin-bottom: 6px; line-height: 18px; }.factory-metric strong { font-size: 28px; }
   .factory-sections { padding: 3px; }.factory-sections button { padding-block: 4px; }.factory-presentation { grid-template-rows: minmax(210px, 1fr) max-content; gap: 10px; }
 }

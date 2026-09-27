@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+vi.mock('@/components/PageBackButton.vue', () => ({ default: { template: '<span />' } }))
 import { ElPagination, ElSelect } from 'element-plus'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'

@@ -40,7 +40,7 @@ beforeEach(() => {
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; vi.restoreAllMocks() })
 
 async function renderList(path = '/transfer-batches?status=pending') {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/transfer-batches', component: TransferBatchesPage }, { path: '/material-trace', component: { template: '<div />' } }] })
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/transfer-batches', component: TransferBatchesPage }, { path: '/material-trace', component: { template: '<div />' } }] })
   await router.push(path)
   wrapper = mount(TransferBatchesPage, {
     global: {

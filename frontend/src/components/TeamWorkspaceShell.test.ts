@@ -2,6 +2,7 @@
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import TeamWorkspaceShell from './TeamWorkspaceShell.vue'
+vi.mock('@/components/PageBackButton.vue', () => ({ default: { template: '<span />' } }))
 
 let wrapper: VueWrapper
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); vi.unstubAllGlobals() })

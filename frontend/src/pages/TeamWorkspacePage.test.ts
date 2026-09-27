@@ -46,7 +46,7 @@ beforeEach(() => {
 })
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); vi.useRealTimers() })
 async function render(path = '/team-workspaces/914', animate = false) {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/team-workspaces/:teamId', component: TeamWorkspacePage }, { path: '/transfer-batches', component: { template: '<div/>' } }] })
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/team-workspaces/:teamId', component: TeamWorkspacePage }, { path: '/transfer-batches', component: { template: '<div/>' } }] })
   await router.push(path)
   const page = animate ? { setup: () => () => h(Transition, { name: 'page-shift' }, () => h(TeamWorkspacePage)) } : TeamWorkspacePage
   wrapper = mount(page, { global: { plugins: [router], stubs: { transition: !animate, StockSourcePicker: true, TeamAnalyticsCharts: true, SerialMaterialDrawer: true, LedgerChart: true, MaterialDispatchDrawer: true, BarcodeCard: true, MaterialTransferDrawer: true, MaterialStockActionDialog: true, WarehouseReceiptDialog: true } } })

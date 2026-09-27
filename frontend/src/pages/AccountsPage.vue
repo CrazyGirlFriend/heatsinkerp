@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageBackButton from '@/components/PageBackButton.vue'
 import {
   CircleCheck,
   Delete,
@@ -290,6 +291,7 @@ onMounted(() => void loadData())
 
     <ElCard shadow="never" class="workspace-card">
       <div class="filter-bar">
+        <PageBackButton />
         <ElInput v-model="query" clearable class="search-input" placeholder="账号、姓名或班组" aria-label="搜索班组长">
           <template #prefix><ElIcon><Search /></ElIcon></template>
         </ElInput>
