@@ -304,6 +304,42 @@ describe('live team material stock page', () => {
     expect(wrapper.get('.stock-count').text()).toContain('1 个班组 · 0 种材质')
     expect(wrapper.get('.stock-updated').attributes('datetime')).toBe(data.as_of)
     expect(wrapper.get('.stock-wrap .stock-footer').text()).toBe('点击库存数字查看明细')
+    expect(wrapper.get('.stock-wrap').attributes('style')).toContain('--stock-material-count: 1')
+    expect(wrapper.findAll('colgroup col')).toHaveLength(2)
+  })
+  it('sizes the matrix from live axes without hiding columns or changing numeric precision', async () => {
+    const data = fixture()
+    data.stock.materials = Array.from({ length: 14 }, (_, index) => ({
+      name: `材质-${index}`,
+      quantity: 12345678,
+      weight: 1234567.891,
+    }))
+    data.stock.rows = Array.from({ length: 9 }, (_, index) => ({
+      ...data.stock.rows[0]!,
+      team_id: index + 1,
+      team_code: `TEAM-${index}`,
+      team_name: `班组-${index}`,
+      amounts: Object.fromEntries(
+        data.stock.materials.map((material) => [material.name, material]),
+      ),
+    }))
+    vi.mocked(factoryDashboardApi.get).mockResolvedValue(data)
+    await render()
+    expect(wrapper.get('.stock-wrap').attributes('style')).toContain('--stock-material-count: 14')
+    expect(wrapper.get('.stock-wrap').attributes('style')).toContain('--stock-row-count: 10')
+    expect(wrapper.findAll('colgroup col')).toHaveLength(16)
+    expect(wrapper.findAll('tbody tr')).toHaveLength(9)
+    expect(wrapper.get('tbody td button').text()).toBe('1,234,567.891')
+
+    data.stock.materials.push({ name: '新增材质', quantity: 0, weight: 0 })
+    data.stock.rows.push({ ...data.stock.rows[0]!, team_id: 10, team_code: 'TEAM-9' })
+    subscription.onData({ changed: true, directory_changed: true })
+    await vi.advanceTimersByTimeAsync(260)
+    expect(wrapper.get('.stock-wrap').attributes('style')).toContain('--stock-material-count: 15')
+    expect(wrapper.get('.stock-wrap').attributes('style')).toContain('--stock-row-count: 11')
+    expect(wrapper.findAll('colgroup col')).toHaveLength(17)
+    await wrapper.get('input[value="quantity"]').setValue(true)
+    expect(wrapper.get('tbody td button').text()).toBe('12,345,678')
   })
   it('updates live cells and open stock details without resetting the selected unit', async () => {
     await render()

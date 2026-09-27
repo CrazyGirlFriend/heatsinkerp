@@ -198,12 +198,31 @@ onBeforeUnmount(() => {
       <ElAlert v-if="warning" :title="warning" type="warning" :closable="false" show-icon />
       <StatePanel v-if="!report && error" state="error" :description="error" @retry="load" />
       <StatePanel v-else-if="!report" state="loading" title="正在读取班组材质库存" />
-      <div v-else class="stock-wrap" tabindex="0" role="region" aria-label="班组材质库存表">
+      <div
+        v-else
+        class="stock-wrap"
+        :style="{
+          '--stock-material-count': Math.max(1, report.stock.materials.length),
+          '--stock-row-count': report.stock.rows.length + 1,
+        }"
+        tabindex="0"
+        role="region"
+        aria-label="班组材质库存表"
+      >
         <table
           class="stock-table"
           :aria-label="`班组材质库存（${stockUnit === 'weight' ? 'kg' : '件'}）`"
           @mouseleave="activeMaterial = null"
         >
+          <colgroup>
+            <col class="stock-team-col" />
+            <col
+              v-for="material in report.stock.materials"
+              :key="material.name"
+              class="stock-material-col"
+            />
+            <col class="stock-total-col" />
+          </colgroup>
           <thead>
             <tr>
               <th scope="col">班组</th>
@@ -341,7 +360,7 @@ onBeforeUnmount(() => {
 .factory-stock-page {
   height: 100%;
   min-height: 0;
-  padding: 20px 24px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
 }
@@ -363,7 +382,7 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   flex-shrink: 0;
   gap: 20px;
-  padding: 30px 28px;
+  padding: 24px;
 }
 .stock-heading h1 {
   margin: 0;
@@ -416,10 +435,14 @@ onBeforeUnmount(() => {
   flex: 1;
 }
 .stock-wrap {
+  container-type: size;
+  --stock-team-width: 112px;
+  --stock-total-width: 128px;
+  --stock-header-height: 64px;
   flex: 1;
   min-width: 0;
   min-height: 0;
-  margin: 0 28px;
+  margin: 0 24px;
   overflow: auto;
 }
 .stock-wrap:focus-visible {
@@ -427,50 +450,75 @@ onBeforeUnmount(() => {
   outline-offset: -2px;
 }
 .stock-table {
+  --stock-material-width: calc(
+    (100cqw - var(--stock-team-width) - var(--stock-total-width) - 2px) /
+      var(--stock-material-count)
+  );
+  --stock-number-size: clamp(18px, calc(var(--stock-material-width) * 0.16), 22px);
+  --stock-row-height: clamp(
+    48px,
+    calc((100cqh - var(--stock-header-height) - 46px - 2px) / var(--stock-row-count)),
+    76px
+  );
   width: 100%;
+  min-width: calc(
+    var(--stock-team-width) + var(--stock-total-width) + var(--stock-material-count) * 96px
+  );
   border-collapse: separate;
   border-spacing: 0;
   font-variant-numeric: tabular-nums;
   color: var(--text);
   border: 1px solid var(--line);
 }
+.stock-team-col {
+  width: var(--stock-team-width);
+}
+.stock-total-col {
+  width: var(--stock-total-width);
+}
+.stock-material-col {
+  width: max(96px, var(--stock-material-width));
+}
 .stock-table th,
 .stock-table td {
-  height: 76px;
-  min-width: 160px;
-  padding: 12px 24px;
+  height: var(--stock-row-height);
+  padding: 6px 8px;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
   text-align: center;
   background: #fff;
 }
 .stock-table th {
-  font-size: 19px;
+  font-size: clamp(16px, calc(var(--stock-material-width) * 0.14), 19px);
   font-weight: 600;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
 }
 .stock-table td {
-  font-size: 22px;
-  line-height: 28px;
+  font-size: var(--stock-number-size);
+  line-height: 1.4;
 }
 .stock-table th:first-child {
   position: sticky;
   left: 0;
   z-index: 2;
-  min-width: 128px;
-  width: 128px;
+  min-width: var(--stock-team-width);
+  width: var(--stock-team-width);
 }
 .stock-table thead th {
   position: sticky;
   top: 0;
   z-index: 3;
-  height: 68px;
-  font-size: 18px;
+  height: var(--stock-header-height);
+  font-size: clamp(16px, calc(var(--stock-material-width) * 0.14), 18px);
   background: var(--table-header-bg, #edf2ee);
 }
 .stock-table thead th:first-child {
   z-index: 4;
 }
 .stock-table .sum-col {
+  min-width: var(--stock-total-width);
   position: sticky;
   right: 0;
   z-index: 2;
@@ -496,7 +544,6 @@ onBeforeUnmount(() => {
   color: var(--primary);
 }
 .stock-table tfoot > tr > * {
-  height: 80px;
   background: #edf5ef;
   color: var(--primary);
   font-weight: 600;
@@ -513,8 +560,8 @@ onBeforeUnmount(() => {
 .stock-table button {
   display: block;
   width: 100%;
-  min-height: 44px;
-  padding: 6px 0;
+  min-height: 34px;
+  padding: 4px 0;
   border: 0;
   background: none;
   color: inherit;
@@ -545,7 +592,8 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 20px 0 24px;
+  padding: 12px 0;
+  line-height: 20px;
   color: var(--muted);
   font-size: 14px;
 }
@@ -577,28 +625,12 @@ onBeforeUnmount(() => {
     flex-wrap: wrap;
   }
   .stock-wrap {
+    --stock-team-width: 96px;
+    --stock-total-width: 112px;
     margin-inline: 16px;
   }
   .stock-panel > .el-alert {
     margin-inline: 16px;
-  }
-  .stock-footer {
-    padding-block: 16px;
-  }
-  .stock-table th,
-  .stock-table td {
-    min-width: 136px;
-    padding-inline: 16px;
-  }
-  .stock-table th:first-child {
-    min-width: 96px;
-    width: 96px;
-  }
-  .stock-table .sum-col {
-    min-width: 100px;
-  }
-  .stock-table td {
-    font-size: 18px;
   }
 }
 @media (max-width: 640px) {
