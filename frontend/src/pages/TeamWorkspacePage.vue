@@ -258,7 +258,7 @@ async function loadView(refreshWarehouse: unknown = false, background = false) {
     if (currentTab === 'pending') { const result = await materialTransferApi.list({ ...params, team_id: id, direction: 'incoming', status: 'pending' }); if (current === version) { pending.value = result.items; total.value = result.total } }
     else if (currentTab === 'outgoing') { const result = await teamMaterialApi.dispatches(id, { ...params, material_type: materialType, next_team_id: isExternalEntryKind(queryText('entry_kind')) ? undefined : queryText('next_team_id') || undefined, status: dispatchStatus, entry_kind: dispatchKinds.find(kind => kind === queryText('entry_kind')) }); if (current === version) { outgoing.value = result.items; selectedPrintRows.value = []; total.value = result.total } }
     else if (currentTab === 'losses') { const result = await teamMaterialApi.losses(id, params); if (current === version) { losses.value = result.items; total.value = result.total } }
-    else if (currentTab === 'receipts' && isWarehouse.value) { const result = await teamMaterialApi.receipts(id, { ...params, material_type: materialType, receipt_source: receiptSourceDraft.value || undefined }); if (current === version) { receipts.value = result.items; total.value = result.total } }
+    else if (currentTab === 'receipts') { const result = await teamMaterialApi.receipts(id, { ...params, material_type: materialType, receipt_source: receiptSourceDraft.value || undefined }); if (current === version) { receipts.value = result.items; total.value = result.total } }
     if (current === version) loadError.value = ''
   } catch (error) { if (current === version) { if (background) syncError.value = '数据更新失败，保留上次结果，请刷新重试。'; else { pending.value = []; outgoing.value = []; losses.value = []; receipts.value = []; total.value = 0; loadError.value = error instanceof Error ? error.message : '物料记录加载失败' } } }
   await Promise.all([balanceRequest, ...refreshRequests])
@@ -347,7 +347,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                     <template #reference><ElButton :icon="Filter" :aria-expanded="listFiltersOpen">筛选<span v-if="activeListFilters.length" class="list-filter-count">{{ activeListFilters.length }}</span></ElButton></template>
                     <div class="list-extra-filters">
                       <label>物料类型<ElSelect v-model="materialDraft" aria-label="物料类型筛选" placeholder="全部类型" clearable @change="applyFilters()"><ElOption v-for="type in materialTypeOptions" :key="type.value" :value="type.value" :label="type.label" /></ElSelect></label>
-                      <label v-if="tab === 'receipts'">入库来源<ElSelect v-model="receiptSourceDraft" aria-label="入库来源筛选" placeholder="全部来源" clearable @change="applyFilters()"><ElOption value="external" label="外部来料（含退回）" /><ElOption value="internal" label="车间转入" /><ElOption value="return" label="外部退回" /></ElSelect></label>
+                      <label v-if="tab === 'receipts' && isWarehouse">入库来源<ElSelect v-model="receiptSourceDraft" aria-label="入库来源筛选" placeholder="全部来源" clearable @change="applyFilters()"><ElOption value="external" label="外部来料（含退回）" /><ElOption value="internal" label="车间转入" /><ElOption value="return" label="外部退回" /></ElSelect></label>
                       <template v-if="tab === 'outgoing'">
                         <label>出库方式<ElSelect v-model="kindDraft" aria-label="出库方式筛选" placeholder="全部方式" clearable @change="applyFilters()"><ElOption v-for="kind in dispatchKinds" :key="kind" :value="kind" :label="materialEntryLabel(kind)" /></ElSelect></label>
                         <label>出库状态<ElSelect v-model="statusDraft" aria-label="出库状态筛选" placeholder="全部状态" clearable @change="applyFilters()"><ElOption v-for="(label, value) in batchStatusLabels" :key="value" :value="value" :label="label" /></ElSelect></label>
@@ -384,10 +384,11 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                   <ElTableColumn label="操作" width="110" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="openIncoming(asTransfer(row))">{{ canWrite ? '核对接收' : '查看详情' }}</ElButton></template></ElTableColumn>
                 </ElTable>
                 <ElTable v-else-if="tab === 'receipts'" :data="receipts" class="business-table team-table single-line-table" row-key="id">
-                  <ElTableColumn prop="warehouse_location" label="仓位" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.warehouse_location || '未填写' }}</template></ElTableColumn>
+                  <ElTableColumn v-if="isWarehouse" prop="warehouse_location" label="仓位" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.warehouse_location || '未填写' }}</template></ElTableColumn>
                   <ElTableColumn label="批次号" min-width="190" show-overflow-tooltip><template #default="{ row }"><button class="batch-link" :title="row.batch_no" @click="openDetail(asTransfer(row))">{{ row.batch_no }}</button></template></ElTableColumn>
                   <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip><template #default="{ row }"><span class="record-serial"><span :title="row.serial_no">{{ row.serial_no }}</span><SerialUrgencyBadge :urgency="row.urgency" /></span></template></ElTableColumn>
-                  <ElTableColumn label="来源类别" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ receiptSourceLabel(asTransfer(row)) }}</template></ElTableColumn>
+                  <ElTableColumn label="入库时间" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ formatDateTime(row.received_at) }}</template></ElTableColumn>
+                  <ElTableColumn v-if="isWarehouse" label="来源类别" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ receiptSourceLabel(asTransfer(row)) }}</template></ElTableColumn>
                   <ElTableColumn label="来源" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ materialSourceLabel(asTransfer(row)) }}</template></ElTableColumn>
                   <ElTableColumn label="材质" min-width="130" show-overflow-tooltip><template #default="{ row }">{{ row.material_name || '—' }}</template></ElTableColumn>
                   <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.material_type) }}</template></ElTableColumn>
@@ -396,7 +397,6 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                   <ElTableColumn label="重量 (kg)" min-width="125" align="center" show-overflow-tooltip><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
                   <ElTableColumn label="状态" width="120"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" /></template></ElTableColumn>
                   <ElTableColumn label="接收人" min-width="100" show-overflow-tooltip><template #default="{ row }">{{ row.received_by || '—' }}</template></ElTableColumn>
-                  <ElTableColumn label="接收时间" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ formatDateTime(row.received_at) }}</template></ElTableColumn>
                   <ElTableColumn label="操作" width="100" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="openDetail(asTransfer(row))">查看入库单</ElButton></template></ElTableColumn>
                 </ElTable>
                 <ElTable v-else-if="tab === 'outgoing'" :data="outgoing" class="business-table team-table dispatch-table single-line-table" row-key="batch_no" @selection-change="selectedPrintRows = $event">

@@ -526,11 +526,43 @@ describe('warehouse intake workspace', () => {
     expect(wrapper.findAll('button').some(button => button.text() === '手工入库')).toBe(false)
     expect(wrapper.find('.team-table input[type=checkbox]').exists()).toBe(false)
   })
-  it('ignores warehouse-only tabs on the other seven workspaces', async () => {
-    await render('/team-workspaces/914?tab=receipts')
-    expect(wrapper.findAll('[role=tab]')).toHaveLength(0)
-    expect(teamMaterialApi.receipts).not.toHaveBeenCalled()
-    expect(wrapper.findAll('button').some(button => button.text() === '手工入库')).toBe(false)
+  it.each(teamWorkspaceProfiles)('shows received batches for $name without enabling workshop manual intake', async profile => {
+    const previous = state.directory.items
+    const warehouse = profile.code === 'FACTORY-WAREHOUSE'
+    state.directory.items = [{ id: 914, code: profile.code, name: profile.name, active: true, ...(warehouse ? { kind: 'warehouse' } : {}) }]
+    vi.mocked(teamMaterialApi.receipts).mockResolvedValue({ items: [source().transfer], total: 1, page: 1, page_size: 10 })
+    try {
+      await render('/team-workspaces/914?tab=receipts')
+      expect(teamMaterialApi.receipts).toHaveBeenCalledWith(914, expect.objectContaining({ page: 1, page_size: 10 }))
+      expect(wrapper.get('.team-workspace__navigation [aria-current=page]').text()).toBe('入库记录')
+      expect(wrapper.get('.team-table').text()).toContain('TL10')
+      const headings = wrapper.get('.team-table').findAll('thead th').map(cell => cell.text())
+      expect(headings).toContain('入库时间')
+      expect(headings.includes('仓位')).toBe(warehouse)
+      expect(headings.includes('来源类别')).toBe(warehouse)
+      expect(wrapper.findAll('button').some(button => button.text() === '新建入库')).toBe(warehouse)
+    } finally { state.directory.items = previous }
+  })
+  it('moves a confirmed incoming batch into receipts and refreshes new receipts without losing filters', async () => {
+    vi.useFakeTimers()
+    const router = await render('/team-workspaces/914?tab=pending')
+    const received = normalizeMaterialTransfer({ ...source().transfer, received_at: '2026-09-27T12:00:00Z', received_by: '签收人' })
+    vi.mocked(materialTransferApi.list).mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
+    vi.mocked(teamMaterialApi.overview).mockResolvedValue({ ...summary, pending_incoming: { quantity: 0, weight: 0, count: 0 } })
+    vi.mocked(teamMaterialApi.receipts).mockResolvedValue({ items: [received], total: 1, page: 1, page_size: 10 })
+    wrapper.getComponent(MaterialTransferDrawer).vm.$emit('changed'); await flushPromises()
+    expect(wrapper.text()).toContain('暂无来料待签收')
+    expect(wrapper.find('.team-workspace__pending').exists()).toBe(false)
+    await wrapper.get('.team-workspace__navigation').findAll('button').find(button => button.text() === '入库记录')!.trigger('click'); await flushPromises()
+    expect(wrapper.get('.team-table').text()).toContain(received.batch_no)
+    await router.replace('/team-workspaces/914?tab=receipts&query=SERIAL'); await flushPromises()
+    const newer = normalizeMaterialTransfer({ ...received, id: 99, batch_no: 'TL-NEW', received_at: '2026-09-28T12:00:00Z' })
+    vi.mocked(teamMaterialApi.receipts).mockResolvedValue({ items: [newer, received], total: 2, page: 1, page_size: 10 })
+    subscription.onData({ changed: true, team_ids: [914] })
+    await vi.advanceTimersByTimeAsync(110); await flushPromises()
+    expect(wrapper.findAll('.team-table .batch-link').map(button => button.text())).toEqual(['TL-NEW', received.batch_no])
+    expect(router.currentRoute.value.query).toEqual({ tab: 'receipts', query: 'SERIAL' })
+    expect(teamMaterialApi.receipts).toHaveBeenLastCalledWith(914, expect.objectContaining({ query: 'SERIAL' }))
   })
   it('discards a late receipt list after switching from warehouse to another team', async () => {
     let finish!: (value: Awaited<ReturnType<typeof teamMaterialApi.receipts>>) => void

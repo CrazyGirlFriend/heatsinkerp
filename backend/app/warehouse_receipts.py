@@ -1,4 +1,4 @@
-"""Warehouse-owned manual stock origins; no ERP or fabricated team handoff."""
+"""Warehouse manual stock origins and confirmed incoming ledgers for every team."""
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, OperationalError
@@ -108,7 +108,8 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
 
 
 def list_receipts(db, team_id, user, *, record_filters=None, query=None, material_type=None, receipt_source=None, page=1, page_size=20):
-    require_warehouse(stock.require_team(db, team_id))
+    stock.require_team(db, team_id)
+    # Receiving a batch creates its ledger entry; later stock depletion does not remove it.
     filters = [MaterialTransfer.next_team_id == team_id, MaterialTransfer.status == "received"]
     if receipt_source == "internal":
         filters.append(MaterialTransfer.entry_kind == "transfer")

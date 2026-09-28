@@ -15,7 +15,7 @@ export const teamWorkspaceSections = [
 export type TeamWorkspaceSection = typeof teamWorkspaceSections[number]['value']
 
 export function teamWorkspaceSectionsFor(warehouse: boolean, manageWarehouse = false) {
-  return teamWorkspaceSections.filter(section => section.value === 'warehouse' ? warehouse && manageWarehouse : warehouse || section.value !== 'receipts')
+  return teamWorkspaceSections.filter(section => section.value !== 'warehouse' || warehouse && manageWarehouse)
 }
 
 export function resolveTeamWorkspaceSection(query: LocationQuery, warehouse: boolean, manageWarehouse = false): TeamWorkspaceSection {
@@ -24,7 +24,7 @@ export function resolveTeamWorkspaceSection(query: LocationQuery, warehouse: boo
   const section = teamWorkspaceSectionsFor(warehouse, manageWarehouse).find(item => item.value === query.tab)
   if (section) return section.value
   if (query.direction === 'outgoing') return 'outgoing'
-  if (query.direction === 'incoming') return query.status === 'received' ? 'stock' : 'pending'
+  if (query.direction === 'incoming') return query.status === 'received' ? 'receipts' : 'pending'
   return 'stock'
 }
 

@@ -18,8 +18,8 @@ describe('eight official workspace profiles', () => {
 })
 
 describe('shared workspace navigation', () => {
-  it('keeps seven workshop entries and the extra warehouse receipt entry', () => {
-    expect(teamWorkspaceSectionsFor(false).map(item => item.label)).toEqual(['库存明细', '来料待签收', '出库记录', '丢失记录', '材质库存', '类型库存', '收发历史'])
+  it('offers receipt records to every team while keeping warehouse management scoped', () => {
+    expect(teamWorkspaceSectionsFor(false).map(item => item.label)).toEqual(['库存明细', '来料待签收', '入库记录', '出库记录', '丢失记录', '材质库存', '类型库存', '收发历史'])
     expect(teamWorkspaceSectionsFor(true).map(item => item.value)).toContain('receipts')
     expect(teamWorkspaceSectionsFor(true).map(item => item.value)).not.toContain('warehouse')
     expect(teamWorkspaceSectionsFor(true, true).map(item => item.value)).toContain('warehouse')
@@ -34,10 +34,10 @@ describe('shared workspace navigation', () => {
     expect(resolveTeamWorkspaceSection({ tab: 'materials' }, false)).toBe('materials')
     expect(resolveTeamWorkspaceSection({ tab: 'material-types' }, false)).toBe('material-types')
     expect(resolveTeamWorkspaceSection({ tab: 'serials' }, false)).toBe('stock')
-    expect(resolveTeamWorkspaceSection({ tab: 'receipts' }, false)).toBe('stock')
+    expect(resolveTeamWorkspaceSection({ tab: 'receipts' }, false)).toBe('receipts')
     expect(resolveTeamWorkspaceSection({ tab: 'receipts' }, true)).toBe('receipts')
     expect(resolveTeamWorkspaceSection({ direction: 'incoming' }, false)).toBe('pending')
-    expect(resolveTeamWorkspaceSection({ direction: 'incoming', status: 'received' }, false)).toBe('stock')
+    expect(resolveTeamWorkspaceSection({ direction: 'incoming', status: 'received' }, false)).toBe('receipts')
     expect(resolveTeamWorkspaceSection({ direction: 'outgoing' }, false)).toBe('outgoing')
     expect(resolveTeamWorkspaceSection({ tab: ['stock', 'pending'] }, false)).toBe('stock')
   })

@@ -37,7 +37,7 @@ def create_warehouse_receipt(payload: WarehouseReceiptCreate, team_id: int = Pat
 
 
 @router.get("/{team_id}/receipts", response_model=MaterialTransferList)
-def list_warehouse_receipts(record_filters: RecordFilters = Depends(), team_id: int = Path(ge=1), query: str | None = Query(default=None, max_length=160),
+def list_team_receipts(record_filters: RecordFilters = Depends(), team_id: int = Path(ge=1), query: str | None = Query(default=None, max_length=160),
                             material_type: str | None = Query(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN),
                             receipt_source: str | None = Query(default=None, pattern="^(external|internal|return)$"),
                             page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100),

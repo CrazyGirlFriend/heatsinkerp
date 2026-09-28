@@ -24,7 +24,7 @@ describe('workspace with in-page navigation', () => {
   })
   it('keeps actions inside the data toolbar and hides warehouse-only sections for other teams', async () => {
     wrapper = mount(TeamWorkspaceShell, { props: { title: '研磨', modelValue: 'stock' }, slots: { default: '<div><header><button>新建出库</button></header>库存数据</div>' } })
-    expect(wrapper.findAll('nav button').map(button => button.text())).toEqual(['库存明细', '来料待签收', '出库记录', '丢失记录', '材质库存', '类型库存', '收发历史'])
+    expect(wrapper.findAll('nav button').map(button => button.text())).toEqual(['库存明细', '来料待签收', '入库记录', '出库记录', '丢失记录', '材质库存', '类型库存', '收发历史'])
     await wrapper.findAll('nav button')[1]!.trigger('click')
     expect(wrapper.emitted('update:modelValue')).toEqual([['pending']])
     expect(wrapper.get('[role=region] header').text()).toBe('新建出库')

@@ -98,7 +98,7 @@ def test_only_the_bound_warehouse_leader_can_intake(client, warehouse):
     assert client.post(warehouse['url'], headers=warehouse['other_headers'], json=payload).status_code == 403
     other_url = f"/api/team-materials/{warehouse['other']['id']}/receipts"
     assert client.post(other_url, headers=warehouse['other_headers'], json=payload).status_code == 403
-    assert client.get(other_url).status_code == 403
+    assert client.get(other_url).status_code == 200
     with SessionLocal() as db:
         assert db.scalar(select(func.count(MaterialTransfer.id))) == 0
 
