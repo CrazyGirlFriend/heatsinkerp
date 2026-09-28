@@ -55,7 +55,7 @@ export const dispatchDocumentTitle = (kind?: MaterialEntryKind): string => kind 
 export const dispatchConfirmLabel = (kind?: MaterialEntryKind): string => isExternalEntryKind(kind) ? `确认整批${externalActionLabel(kind)}` : '确认整批接收'
 export interface MaterialPage<T> { items: T[]; total: number; page: number; page_size: number; as_of?: string }
 export type MaterialPageParams = import('./recordFilters').RecordFilterParams & { query?: string; serial_no?: string; page?: number; page_size?: number }
-export interface StockParams extends MaterialPageParams { material_type?: MaterialType; availability?: 'available' | 'all' | 'dispatchable'; location_status?: 'unassigned' }
+export interface StockParams extends MaterialPageParams { material_type?: MaterialType; availability?: 'available' | 'all' | 'dispatchable'; location_status?: 'unassigned'; source_ids?: string }
 export interface WarehouseReceiptParams extends MaterialPageParams { material_type?: MaterialType; receipt_source?: 'external' | 'internal' | 'return' }
 export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocumentFields> {
   serial_no: string

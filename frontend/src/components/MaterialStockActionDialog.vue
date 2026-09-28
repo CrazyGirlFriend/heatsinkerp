@@ -24,6 +24,7 @@ const saving = ref(false)
 const refreshing = ref(false)
 const errorMessage = ref('')
 const balanceNotice = ref('')
+const batchPurposeId = ref<number>()
 const quantityOpen = ref(false), quantitySource = ref<number | null>(null)
 let generation = 0
 let requestKey = ''
@@ -38,7 +39,11 @@ const externalOption = computed<ExternalEntryKind | null>(() => {
 })
 const external = computed(() => !isLoss.value && isExternalEntryKind(form.entryKind))
 const purposes = useTeamPurposes(() => props.modelValue && !isLoss.value && !external.value && form.nextTeamId ? Number(form.nextTeamId) : null)
-watch(() => [form.nextTeamId, form.entryKind], () => { lines.value.forEach(line => { line.purposeId = undefined; line.warehouseLocation = ''; line.warehouseLocationKey = '' }) })
+watch(() => [form.nextTeamId, form.entryKind], () => { batchPurposeId.value = undefined; lines.value.forEach(line => { line.purposeId = undefined; line.warehouseLocation = ''; line.warehouseLocationKey = '' }) })
+function applyBatchPurpose(value: number) {
+  if (busy.value || !canWrite.value || !purposes.items.value.some(item => item.active && item.id === value)) return
+  lines.value.forEach(line => { line.purposeId = value })
+}
 const actionLabel = computed(() => externalActionLabel(form.entryKind))
 const containsScrap = computed(() => lines.value.some(line => isScrapType(line.materialType) || isScrapType(line.source.transfer.material_type)))
 const destinations = computed(() => directory.items.filter(team => team.active && String(team.id) !== String(props.teamId) && (!containsScrap.value || team.kind === 'warehouse')))
@@ -158,6 +163,10 @@ async function submit() {
       <ElFormItem v-if="!isLoss && !external" label="接收班组" required class="destination-field">
         <ElSelect v-model="form.nextTeamId" aria-label="出库接收班组" placeholder="选择接收班组" filterable><ElOption v-for="team in destinations" :key="team.id" :value="team.id" :label="teamWorkspaceProfile(team.code)?.name || team.name" /></ElSelect>
       </ElFormItem>
+      <ElFormItem v-if="!isLoss && !external && lines.length > 1 && purposes.items.value.some(item => item.active)" label="统一接收业务" class="batch-purpose-field">
+        <ElSelect v-model="batchPurposeId" aria-label="统一接收业务" placeholder="选择一次，应用到全部物料" @change="applyBatchPurpose"><ElOption v-for="purpose in purposes.items.value.filter(item => item.active)" :key="purpose.id" :value="purpose.id" :label="purpose.name" /></ElSelect>
+        <span>逐条业务仍可单独调整</span>
+      </ElFormItem>
       <div class="source-lines">
         <article v-for="(line, index) in lines" :key="line.key" class="source-line">
           <header><div><strong>{{ line.source.transfer.material_name || '未填写材质' }}</strong><span>上一批次 {{ line.source.transfer.batch_no }}</span></div><small>来自 {{ line.source.transfer.source_team.name }}</small></header>
@@ -189,6 +198,9 @@ async function submit() {
 <style scoped>
 .action-intro { margin: 0 0 24px; color: var(--subtle); line-height: 1.8; }
 .destination-field { max-width: 370px; }
+.batch-purpose-field :deep(.el-form-item__content) { gap: 12px; }
+.batch-purpose-field .el-select { width: min(100%, 370px); }
+.batch-purpose-field span { color: var(--muted); font-size: 12px; }
 .source-lines { display: grid; gap: 14px; margin-bottom: 24px; max-height: 47vh; overflow-y: auto; padding: 1px; }
 .source-line { padding: 18px 20px 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--workspace-bg); }
 .source-line header { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }

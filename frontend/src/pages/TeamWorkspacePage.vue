@@ -196,6 +196,20 @@ async function dispatchWarehouseMaterial(batchNo: string) {
     await openAction('dispatch', [source])
   } catch (e) { showToast(e instanceof Error ? e.message : '读取库存失败', 'error') }
 }
+async function dispatchWarehouseBatches(sourceIds: number[]) {
+  if (!canWrite.value || !isWarehouse.value || openingDispatch.value || !sourceIds.length) return
+  const scope = teamKey.value, current = ++actionVersion
+  openingDispatch.value = true
+  try {
+    const ids = [...new Set(sourceIds)]
+    const result = await teamMaterialApi.stock(teamId.value, { source_ids: ids.join(','), availability: 'dispatchable', page_size: 100 })
+    if (current !== actionVersion || scope !== teamKey.value) return
+    const sources = ids.map(id => result.items.find(item => Number(item.transfer.id) === id))
+    if (sources.some(item => !item)) { showToast('部分物料已转出或库存已变化，请刷新后重新勾选', 'error'); void loadView(); return }
+    await openAction('dispatch', sources as StockBatch[])
+  } catch (e) { if (current === actionVersion && scope === teamKey.value) showToast(e instanceof Error ? e.message : '读取库存失败', 'error') }
+  finally { if (scope === teamKey.value) openingDispatch.value = false }
+}
 function openLossSource(loss: MaterialLoss) { selected.value = null; selectedBatchNo.value = loss.batch_no; drawerOpen.value = true }
 const selectedBatchNo = ref('')
 watch(selected, transfer => { if (transfer) selectedBatchNo.value = transfer.batch_no })
@@ -297,7 +311,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
       <StatePanel v-else-if="!scopeReady" state="error" :title="!validId ? '无效的班组编号' : directory.error ? '班组目录加载失败' : '未找到启用的班组'" description="请刷新班组目录，或从侧边栏选择已配置的班组。" @retry="directory.refreshTeamDirectory" />
       <template v-else>
         <ElAlert v-if="overview?.legacy_received_count" class="legacy-notice" type="info" :closable="false" :title="`另有 ${overview.legacy_received_count} 张历史已接收单未计入库存。`"><template #default>历史单据仍可在 <RouterLink :to="{ path: '/transfer-batches', query: { next_team_id: teamKey, status: 'received' } }">全局转料记录</RouterLink> 查看。</template></ElAlert>
-        <WarehouseManagement v-if="tab === 'warehouse'" :key="teamId" :team-id="teamId" :can-manage="canManageWarehouse" :can-dispatch="canWrite" :refresh-key="overview" @view="openWarehouseMaterial" @dispatch="dispatchWarehouseMaterial" />
+        <WarehouseManagement v-if="tab === 'warehouse'" :key="teamId" :team-id="teamId" :can-manage="canManageWarehouse" :can-dispatch="canWrite" :refresh-key="overview" @view="openWarehouseMaterial" @dispatch="dispatchWarehouseMaterial" @batch-dispatch="dispatchWarehouseBatches" />
         <TeamSerialHistory v-else-if="['overview', 'history'].includes(tab)" :key="teamId" :team-id="teamId"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamSerialHistory>
         <template v-else-if="['stock', 'materials', 'material-types'].includes(tab)">
           <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料库存" />

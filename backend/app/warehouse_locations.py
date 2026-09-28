@@ -187,9 +187,12 @@ def occupants(db, ids, *, locking=False):
             Transfer.status,
             placement.quantity,
             placement.weight,
+            func.coalesce(Balance.on_hand_quantity, 0).label("available_quantity"),
+            func.coalesce(Balance.on_hand_weight, 0).label("available_weight"),
         )
         .join(placement, placement.location_id == WarehouseLocation.id)
         .join(Transfer, Transfer.id == placement.transfer_id)
+        .outerjoin(Balance, Balance.transfer_id == Transfer.id)
         .where(
             WarehouseLocation.id.in_(ids),
             or_(placement.quantity > 0, placement.weight > 0),
@@ -228,7 +231,7 @@ def location_dict(location, rows):
         "status": state,
         "draft_locked": leased(location),
         "has_stock": any(row["status"] == "received" for row in rows),
-        "batches": [{**row, "weight": float(row["weight"])} for row in rows],
+        "batches": [{**row, "weight": float(row["weight"]), "available_weight": float(row["available_weight"])} for row in rows],
     }
 
 

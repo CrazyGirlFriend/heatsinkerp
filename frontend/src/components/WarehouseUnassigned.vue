@@ -1,18 +1,22 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElButton, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElPagination, ElSelect, ElTable, ElTableColumn } from 'element-plus'
+import { ElAlert, ElButton, ElCheckbox, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElPagination, ElSelect, ElTable, ElTableColumn } from 'element-plus'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { warehouseLocationApi, type WarehouseLocation } from '@/services/warehouseLocationApi'
 import type { StockBatch } from '@/types/teamMaterials'
-import { stockAvailable } from '@/utils/materialStock'
+import { dispatchableAmounts, stockAvailable } from '@/utils/materialStock'
+import { useBatchSelection } from '@/composables/useBatchSelection'
+import BatchSelectionBar from './BatchSelectionBar.vue'
 import { materialTypeLabel } from '@/types/materialTransfer'
 import { showToast } from '@/stores/toast'
 
 const props = defineProps<{ teamId: number; canDispatch?: boolean; refreshKey?: unknown }>()
-const emit = defineEmits<{ view: [batchNo: string]; dispatch: [batchNo: string]; changed: [] }>()
+const emit = defineEmits<{ view: [batchNo: string]; dispatch: [batchNo: string]; batchDispatch: [sourceIds: number[]]; changed: [] }>()
 const rows = ref<StockBatch[]>([]), total = ref(0), page = ref(1), query = ref(''), error = ref(''), loading = ref(false)
 const selected = ref<StockBatch | null>(null), slots = ref<WarehouseLocation[]>([]), locationId = ref<number>()
 const quantity = ref<number>(), weight = ref<number>(), saving = ref(false), formError = ref('')
+const { selected: checked, availableRows, checkedCount, allChecked, totals, toggle, toggleAll, reconcile } = useBatchSelection(rows, row => String(row.transfer.id), dispatchableAmounts)
+function batchDispatch() { if (props.canDispatch && checked.size && !loading.value && !error.value) emit('batchDispatch', [...checked.values()].map(row => Number(row.transfer.id))) }
 let generation = 0, slotGeneration = 0, disposed = false
 function asStock(row: unknown) { return row as StockBatch }
 async function load() {
@@ -21,7 +25,7 @@ async function load() {
   try {
     const result = await teamMaterialApi.stock(props.teamId, { availability: 'all', location_status: 'unassigned', query: query.value, page: page.value, page_size: 10 })
     if (current !== generation) return
-    rows.value = result.items; total.value = result.total; error.value = ''
+    rows.value = result.items; reconcile(result.items); total.value = result.total; error.value = ''
   } catch (e) { if (current === generation) error.value = e instanceof Error ? e.message : '未分配物料加载失败' }
   finally { if (current === generation) loading.value = false }
 }
@@ -49,6 +53,7 @@ async function assign() {
 }
 function search() { page.value = 1; void load() }
 watch(() => [props.teamId, props.refreshKey], () => { if (!selected.value) void load() }, { immediate: true })
+watch(() => [props.teamId, props.canDispatch], () => checked.clear())
 onBeforeUnmount(() => { disposed = true; ++generation; ++slotGeneration })
 </script>
 
@@ -56,7 +61,9 @@ onBeforeUnmount(() => { disposed = true; ++generation; ++slotGeneration })
   <section class="unassigned-stock">
     <div class="unassigned-tools"><ElInput v-model="query" aria-label="搜索未分配物料" placeholder="流水号、批次或材质" clearable @keyup.enter="search" @clear="search" /><ElButton :loading="loading" @click="search">查询</ElButton></div>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
+    <BatchSelectionBar v-if="canDispatch" :count="checked.size" :quantity="totals.quantity" :weight="totals.weight" :all-checked="allChecked" :partial="checkedCount > 0 && !allChecked" :disabled="loading || !availableRows.length || (checked.size >= 100 && !checkedCount)" @all="toggleAll" @clear="checked.clear()"><ElButton type="primary" :disabled="!checked.size || loading || !!error" @click="batchDispatch">批量出库</ElButton></BatchSelectionBar>
     <ElTable :data="rows" row-key="transfer.id" class="business-table" empty-text="没有未分配仓位的物料">
+      <ElTableColumn v-if="canDispatch" width="50"><template #default="{ row }"><ElCheckbox :aria-label="`选择未分配物料 ${row.transfer.batch_no}`" :model-value="checked.has(String(row.transfer.id))" :disabled="loading || !stockAvailable(asStock(row)) || (checked.size >= 100 && !checked.has(String(row.transfer.id)))" @change="toggle(asStock(row), $event)" /></template></ElTableColumn>
       <ElTableColumn label="批次号" min-width="200"><template #default="{ row }"><ElButton link type="primary" @click="emit('view', row.transfer.batch_no)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
       <ElTableColumn label="流水号" min-width="150" prop="transfer.serial_no" />
       <ElTableColumn label="材质" min-width="130" prop="transfer.material_name" />

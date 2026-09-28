@@ -475,6 +475,21 @@ describe('team workspace material ledger', () => {
 
 
 describe('warehouse intake workspace', () => {
+  it('revalidates selected warehouse batches in one exact query before opening bulk dispatch', async () => {
+    state.auth.currentUser.team_id = 901
+    await render('/team-workspaces/901?tab=warehouse')
+    wrapper.getComponent(WarehouseManagement).vm.$emit('batchDispatch', [11, 10, 11]); await flushPromises()
+    expect(teamMaterialApi.stock).toHaveBeenLastCalledWith(901, { source_ids: '11,10', availability: 'dispatchable', page_size: 100 })
+    expect(wrapper.getComponent(MaterialStockActionDialog).props('sources').map((item: StockBatch) => item.transfer.id)).toEqual([11, 10])
+    expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(true)
+  })
+  it('does not silently omit an exhausted warehouse batch from bulk dispatch', async () => {
+    state.auth.currentUser.team_id = 901
+    vi.mocked(teamMaterialApi.stock).mockResolvedValueOnce({ items: [source(10)], total: 1, page: 1, page_size: 100 })
+    await render('/team-workspaces/901?tab=warehouse')
+    wrapper.getComponent(WarehouseManagement).vm.$emit('batchDispatch', [10, 11]); await flushPromises()
+    expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(false)
+  })
   it.each(['warehouse', 'administrator'])('places warehouse management in the warehouse workspace for %s', async kind => {
     state.auth.currentUser.team_id = kind === 'warehouse' ? 901 : 914
     state.auth.isAdmin = kind === 'administrator'

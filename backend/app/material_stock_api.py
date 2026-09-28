@@ -65,10 +65,13 @@ def list_stock(record_filters: RecordFilters = Depends(), team_id: int = Path(ge
                material_type: str | None = Query(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN),
                availability: str = Query(default="available", pattern="^(available|dispatchable|all)$"),
                location_status: str | None = Query(default=None, pattern="^unassigned$"),
+               source_ids: str | None = Query(default=None, max_length=2000, pattern=r"^[1-9]\d{0,17}(,[1-9]\d{0,17}){0,99}$"),
                page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100),
                user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return stock.list_stock(db, team_id, user, record_filters=record_filters, query=query, serial_no=serial_no, material_type=material_type,
-                           availability=availability, location_status=location_status, page=page, page_size=page_size)
+                           availability=availability, location_status=location_status,
+                           source_ids=[int(value) for value in source_ids.split(",")] if source_ids else None,
+                           page=page, page_size=page_size)
 
 
 @router.post("/{team_id}/losses", status_code=201)

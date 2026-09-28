@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElPagination } from 'element-plus'
 import StockSourcePicker from './StockSourcePicker.vue'
+import BatchSelectionBar from './BatchSelectionBar.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import type { StockBatch } from '@/types/teamMaterials'
@@ -29,6 +30,7 @@ describe('stock selection for new outbound', () => {
     expect(cells[headings.indexOf('可出库重量 (kg)')]!.text()).toBe('1.234')
     expect(wrapper.find('.material-amount').exists()).toBe(false)
     await wrapper.get('label[aria-label="选择出库 TL1"] input').setValue(true)
+    expect(wrapper.getComponent(BatchSelectionBar).props()).toMatchObject({ count: 1, quantity: 0, weight: 1.234 })
     await nextButton().trigger('click')
     expect(wrapper.emitted('selected')?.[0]?.[0]).toEqual([row])
   })
@@ -85,7 +87,8 @@ describe('stock selection for new outbound', () => {
     vi.mocked(teamMaterialApi.stock).mockResolvedValueOnce({ items: [source(101)], total: 101, page: 2, page_size: 100 })
     wrapper.getComponent(ElPagination).vm.$emit('current-change', 2); await flushPromises()
     expect(wrapper.get('label[aria-label="选择出库 TL101"] input').attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('已选 100 / 100 批')
+    expect(wrapper.text()).toContain('已选 100 批')
+    expect(wrapper.text()).toContain('最多 100 批')
     await wrapper.findAll('button').find(button => button.text() === '清空')!.trigger('click')
     expect(nextButton().attributes('disabled')).toBeDefined()
     expect(wrapper.get('label[aria-label="选择出库 TL101"] input').attributes('disabled')).toBeUndefined()

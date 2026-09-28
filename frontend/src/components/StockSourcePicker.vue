@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import { ElButton, ElCheckbox, ElDialog, ElInput, ElPagination, ElTable, ElTableColumn } from 'element-plus'
 import { inventoryAmount } from '@/types/teamInventory'
@@ -11,24 +11,17 @@ import type { StockBatch } from '@/types/teamMaterials'
 import { materialTypeLabel } from '@/types/materialTransfer'
 import { dispatchableAmounts, stockAvailable } from '@/utils/materialStock'
 import { currentLocations } from '@/utils/warehousePlacement'
+import { useBatchSelection } from '@/composables/useBatchSelection'
+import BatchSelectionBar from './BatchSelectionBar.vue'
 
 const props = defineProps<{ teamId: number; groupId?: number; groupLabel?: string }>()
 const emit = defineEmits<{ close: []; selected: [sources: StockBatch[]] }>()
 const query = ref(''), appliedQuery = ref(''), page = ref(1), pageSize = ref(20)
 const rows = ref<StockBatch[]>([]), total = ref(0), loading = ref(false), error = ref('')
-const selected = ref(new Map<string, StockBatch>())
 const dates = ref({ from: '', to: '' }), urgentOnly = ref(false)
-const availableRows = computed(() => rows.value.filter(stockAvailable))
-const checkedCount = computed(() => availableRows.value.filter(row => selected.value.has(String(row.transfer.id))).length)
-const allChecked = computed(() => availableRows.value.length > 0 && checkedCount.value === availableRows.value.length)
+const { selected, availableRows, checkedCount, allChecked, totals, toggle, toggleAll, reconcile } = useBatchSelection(rows, row => String(row.transfer.id), dispatchableAmounts)
 let version = 0
 function asStock(row: unknown) { return row as StockBatch }
-function toggle(row: StockBatch, checked: string | number | boolean) {
-  const key = String(row.transfer.id)
-  if (!checked) selected.value.delete(key)
-  else if (stockAvailable(row) && selected.value.size < 100) selected.value.set(key, row)
-}
-function toggleAll(checked: string | number | boolean) { availableRows.value.forEach(row => toggle(row, checked)) }
 function search() { appliedQuery.value = query.value.trim(); page.value = 1; void load() }
 function paginate(value: number, size = pageSize.value) { page.value = value; pageSize.value = size; void load() }
 async function load() {
@@ -39,15 +32,12 @@ async function load() {
     const result = props.groupId ? await teamMaterialApi.inventorySources(props.teamId, props.groupId, { ...params, current_only: true }) : await teamMaterialApi.stock(props.teamId, { ...params, availability: 'dispatchable' })
     if (current !== version) return
     rows.value = result.items; total.value = result.total
-    for (const row of result.items) {
-      const key = String(row.transfer.id)
-      if (selected.value.has(key)) { if (stockAvailable(row)) selected.value.set(key, row); else selected.value.delete(key) }
-    }
+    reconcile(result.items)
   } catch (e) { if (current === version) error.value = e instanceof Error ? e.message : '库存加载失败，请重试' }
   finally { if (current === version) loading.value = false }
 }
-function proceed() { if (!loading.value && !error.value && selected.value.size) emit('selected', [...selected.value.values()]) }
-watch(() => [props.teamId, props.groupId], () => { selected.value.clear(); dates.value = { from: '', to: '' }; urgentOnly.value = false; page.value = 1; query.value = ''; appliedQuery.value = ''; void load() }, { immediate: true })
+function proceed() { if (!loading.value && !error.value && selected.size) emit('selected', [...selected.values()]) }
+watch(() => [props.teamId, props.groupId], () => { selected.clear(); dates.value = { from: '', to: '' }; urgentOnly.value = false; page.value = 1; query.value = ''; appliedQuery.value = ''; void load() }, { immediate: true })
 onBeforeUnmount(() => { ++version })
 </script>
 
@@ -58,8 +48,8 @@ onBeforeUnmount(() => { ++version })
       <ElInput v-model="query" :prefix-icon="Search" aria-label="出库库存搜索" placeholder="搜索流水号、批次、材质或仓位" clearable @keyup.enter="search" @clear="search" />
       <RecordDateFilter v-model="dates" label="接收日期" @update:model-value="search" /><ElCheckbox v-model="urgentOnly" @change="search">仅看加急</ElCheckbox>
       <ElButton @click="search">查询</ElButton>
-      <span>已选 {{ selected.size }} / 100 批</span><ElButton text :disabled="!selected.size" @click="selected.clear()">清空</ElButton>
     </div>
+    <BatchSelectionBar :count="selected.size" :quantity="totals.quantity" :weight="totals.weight" :all-checked="allChecked" :partial="checkedCount > 0 && !allChecked" :disabled="loading || !availableRows.length || (selected.size >= 100 && !checkedCount)" @all="toggleAll" @clear="selected.clear()" />
     <div class="picker-table">
       <StatePanel v-if="error" state="error" :description="error" @retry="load" />
       <StatePanel v-else-if="loading" state="loading" title="正在读取可用库存" />
@@ -79,7 +69,7 @@ onBeforeUnmount(() => { ++version })
       </ElTable>
     </div>
     <div class="picker-pagination"><span>共 {{ total }} 个来源批次</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[20, 50, 100]" :total="total" layout="sizes, prev, pager, next" @current-change="paginate($event)" @size-change="paginate(1, $event)" /></div>
-    <template #footer><ElButton @click="emit('close')">取消</ElButton><ElButton type="primary" :disabled="!selected.size || loading || !!error" @click="proceed">下一步：填写出库</ElButton></template>
+    <template #footer><span class="picker-batch-note">每条物料独立批次、独立条码，可合并打印</span><ElButton @click="emit('close')">取消</ElButton><ElButton type="primary" :disabled="!selected.size || loading || !!error" @click="proceed">下一步：填写出库</ElButton></template>
   </ElDialog>
 </template>
 
@@ -90,5 +80,6 @@ onBeforeUnmount(() => { ++version })
 .picker-toolbar > span { margin-left: auto; }.picker-toolbar :deep(.el-button + .el-button) { margin-left: 0; }
 .picker-toolbar > span, .picker-pagination > span { color: var(--muted); font-size: 12px; }
 .picker-table { height: min(52vh, 520px); }
+.picker-batch-note { float: left; color: var(--muted); font-size: 13px; line-height: 32px; }
 .picker-pagination { justify-content: space-between; padding-top: 12px; }.picker-pagination :deep(.el-pagination) { max-width: 100%; overflow-x: auto; }
 </style>

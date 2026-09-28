@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WarehouseUnassigned from './WarehouseUnassigned.vue'
+import BatchSelectionBar from './BatchSelectionBar.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { warehouseLocationApi, type WarehouseLocation } from '@/services/warehouseLocationApi'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
@@ -24,6 +25,13 @@ async function render(canDispatch = true) {
 async function click(text: string) { await wrapper.findAll('button').find(button => button.text() === text)!.trigger('click'); await flushPromises() }
 
 describe('unassigned warehouse stock', () => {
+  it('supports select-all and emits separate batch ids without mixing allocation amounts', async () => {
+    await render()
+    wrapper.getComponent(BatchSelectionBar).vm.$emit('all', true); await flushPromises()
+    expect(wrapper.getComponent(BatchSelectionBar).props()).toMatchObject({ count: 1, quantity: 80, weight: 8 })
+    await click('批量出库'); expect(wrapper.emitted('batchDispatch')?.[0]).toEqual([[8]])
+    await wrapper.setProps({ canDispatch: false }); expect(wrapper.findComponent(BatchSelectionBar).exists()).toBe(false)
+  })
   it('assigns only the returned portion, not the full lot balance', async () => {
     await render(); expect(teamMaterialApi.stock).toHaveBeenCalledWith(1, expect.objectContaining({ location_status: 'unassigned', availability: 'all' }))
     await click('安排仓位'); await click('确认安排')

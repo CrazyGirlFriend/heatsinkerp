@@ -4,7 +4,7 @@ export type WarehouseLocation = {
   id: number; team_id: number; name: string; active: boolean; version: number
   status: 'available' | 'locked' | 'occupied' | 'disabled'; has_stock: boolean
   draft_locked?: boolean
-  batches: { id: number; batch_no: string; serial_no: string; quantity: number; weight: number; status: string }[]
+  batches: { id: number; batch_no: string; serial_no: string; quantity: number; weight: number; status: string; available_quantity?: number; available_weight?: number }[]
 }
 export type WarehouseLease = { id: number; name: string; key: string; expires_at: string; hold_until: string }
 export const locationState = { available: '空闲', locked: '已锁定', occupied: '有料', disabled: '停用' }

@@ -416,11 +416,13 @@ def literal_query(query, columns):
     return or_(*(column.like(f"%{escaped}%", escape="!") for column in columns))
 
 
-def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=None, material_type=None, availability="available", location_status=None, page=1, page_size=20):
+def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=None, material_type=None, availability="available", location_status=None, source_ids=None, page=1, page_size=20):
     from .record_filters import RecordFilters
     team = require_team(db, team_id)
     stock = stock_table(team_id)
     filters = [stock.c.team_id == team_id]
+    if source_ids is not None:
+        filters.append(stock.c.transfer_id.in_(source_ids))
     if location_status == "unassigned":
         from .warehouse_placements import unassigned_predicate
         if team.code != WAREHOUSE_TEAM_CODE:

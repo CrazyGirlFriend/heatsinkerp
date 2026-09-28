@@ -33,6 +33,15 @@ async function submit() { await wrapper.findAll('button').find(button => /^(确�
 async function destination(id = 3) { wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', id); await flushPromises() }
 
 describe('source batch dispatch and loss drafts', () => {
+  it('applies one destination business to every selected batch and clears it when the team changes', async () => {
+    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([{ id: 31, team_id: 3, name: '业务1', active: true, version: 1 }])
+    await render(); await destination()
+    wrapper.findAllComponents(ElSelect).find(select => select.props('ariaLabel') === '统一接收业务')!.vm.$emit('change', 31)
+    await flushPromises(); await submit()
+    expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].lines.map(line => line.purpose_id)).toEqual([31, 31])
+    await destination(1)
+    expect(wrapper.findAllComponents(ElSelect).filter(select => /TL\d+接收业务/.test(select.props('ariaLabel') || '')).every(select => select.props('modelValue') === undefined)).toBe(true)
+  })
   it('warehouse transfers carry the original type and current position without processing controls', async () => {
     const row = source()
     row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
@@ -89,7 +98,7 @@ describe('source batch dispatch and loss drafts', () => {
     await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('请为每行物料选择')
-    const selects = wrapper.findAllComponents(ElSelect).filter(select => select.props('ariaLabel')?.endsWith('接收业务'))
+    const selects = wrapper.findAllComponents(ElSelect).filter(select => /TL\d+接收业务/.test(select.props('ariaLabel') || ''))
     selects[0]!.vm.$emit('update:modelValue', 31); selects[1]!.vm.$emit('update:modelValue', 32)
     await submit()
     expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].lines.map(line => line.purpose_id)).toEqual([31, 32])
