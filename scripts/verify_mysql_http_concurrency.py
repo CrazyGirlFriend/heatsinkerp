@@ -30,7 +30,7 @@ class Harness:
         from sqlalchemy import func, select
         from app.auth import hash_password
         from app.database import SessionLocal, engine
-        from app.models import MaterialTransfer, Team, User
+        from app.models import MaterialTransfer, Team, TeamPurpose, User
 
         if engine.dialect.name != "mysql" or engine.url.database != "heatsink_capacity_20260923":
             raise RuntimeError("Refusing a different database connection")
@@ -42,6 +42,9 @@ class Harness:
         with SessionLocal.begin() as db:
             self.teams = list(db.scalars(select(Team.id).where(Team.code.like("FACTORY-%")).order_by(Team.sort_order)))
             assert len(self.teams) == 8
+            self.receiving_purpose = db.scalar(select(TeamPurpose.id).where(
+                TeamPurpose.team_id == self.teams[1], TeamPurpose.active.is_(True)
+            ).order_by(TeamPurpose.id))
             self.initial_records = db.scalar(select(func.count()).select_from(MaterialTransfer))
             assert self.initial_records >= 433, "Expected the seeded disposable fixture"
             self.users = []
@@ -88,6 +91,7 @@ class Harness:
         payload = {"serial_no": self.key(name), "material_name": "铜钼 CuMo70",
                    "material_type": "semi_finished", "quantity": quantity,
                    "weight": str(Decimal(quantity) / 10), "notes": "隔离并发验证",
+                   "warehouse_location": "压测隔离仓位",
                    "idempotency_key": self.key(name)}
         return self.request(actor or self.warehouse[0], f"/api/team-materials/{self.teams[0]}/receipts", payload)[1]
 
@@ -95,6 +99,8 @@ class Harness:
         payload = {"next_team_id": self.teams[1], "idempotency_key": self.key(key),
                    "lines": [{"source_transfer_id": lot["id"], "quantity": quantity,
                               "weight": str(Decimal(quantity) / 10), "material_type": "semi_finished"}], **extra}
+        if self.receiving_purpose is not None:
+            payload["lines"] = [{"purpose_id": self.receiving_purpose, **line} for line in payload["lines"]]
         return self.request(actor, f"/api/team-materials/{self.teams[0]}/dispatches", payload, allowed=(201, 409))
 
     def loss(self, actor, lot, key, quantity=60):
@@ -120,12 +126,18 @@ class Harness:
     def balances(self):
         """Independent primitive ledger calculation; no stock_table/cache reuse."""
         from sqlalchemy import select
-        from app.models import MaterialLoss, MaterialTransfer as MT
+        from app.models import MaterialLoss, MaterialQuantityAdjustment, MaterialTransfer as MT
 
         with self.Session() as db:
             lots = {row.id: row for row in db.execute(select(MT.id, MT.next_team_id, MT.quantity, MT.weight)
                     .where(MT.status == "received", MT.stock_tracked.is_(True)))}
             remaining = {key: [row.quantity, row.weight] for key, row in lots.items()}
+            for source, before, after in db.execute(select(
+                MaterialQuantityAdjustment.source_transfer_id,
+                MaterialQuantityAdjustment.before_quantity,
+                MaterialQuantityAdjustment.after_quantity,
+            ).where(MaterialQuantityAdjustment.source_transfer_id.in_(lots))):
+                remaining[source][0] += after - before
             deductions = db.execute(select(MT.source_transfer_id, MT.quantity, MT.weight)
                 .where(MT.source_transfer_id.in_(lots), MT.status.in_(["pending", "received", "dispatched"]))).all()
             deductions += db.execute(select(MaterialLoss.source_transfer_id, MaterialLoss.quantity, MaterialLoss.weight)
@@ -144,15 +156,32 @@ class Harness:
         assert self.balances()[0][lot["id"]] == [quantity, Decimal(quantity) / 10]
 
     def reconcile(self):
+        from sqlalchemy import select
+        from app.models import MaterialTransfer as MT
+
         _, teams = self.balances()
+        owned = {team: list(values) for team, values in teams.items()}
+        with self.Session() as db:
+            for team, quantity, weight in db.execute(select(MT.source_team_id, MT.quantity, MT.weight)
+                    .where(MT.status == "pending", MT.source_transfer_id.is_not(None))):
+                values = owned.setdefault(team, [0, Decimal(0)])
+                values[0] += quantity
+                values[1] += weight
         for team in self.teams:
             actor = next(a for a in self.actors if a["team"] == team)
             totals = self.request(actor, f"/api/team-materials/{team}/overview")[1]["totals"]
             assert [totals["on_hand_quantity"], Decimal(str(totals["on_hand_weight"]))] == teams[team]
+            assert [totals["owned_quantity"], Decimal(str(totals["owned_weight"]))] == owned.get(team, [0, Decimal(0)])
         report = self.request(self.actors[0], "/api/factory-overview")[1]
         matrix = report["stock_matrix"]
-        assert matrix["total"]["quantity"] == sum(v[0] for v in teams.values())
-        assert Decimal(str(matrix["total"]["weight"])) == sum(v[1] for v in teams.values())
+        scope = [teams[row["team_id"]] for row in matrix["rows"] if row["team_id"] is not None]
+        assert matrix["total"]["quantity"] == sum(v[0] for v in scope)
+        assert Decimal(str(matrix["total"]["weight"])) == sum(v[1] for v in scope)
+        # The management matrix includes pending outbound still owned upstream;
+        # the older physical-stock analysis deliberately excludes it.
+        matrix = self.request(self.actors[0], "/api/factory-dashboard")[1]["stock"]
+        assert matrix["total"]["quantity"] == sum(v[0] for v in owned.values())
+        assert Decimal(str(matrix["total"]["weight"])) == sum(v[1] for v in owned.values())
         return matrix["total"]
 
     def close(self):

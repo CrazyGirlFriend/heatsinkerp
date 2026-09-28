@@ -131,7 +131,7 @@ class Observer:
         assert not self.thread.is_alive(), "SSE reader did not stop"
 
 
-def run(qa, duration):
+def run(qa, duration, write_interval=8):
     metrics = Measurements(duration)
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: metrics.fail("external_stop"))
@@ -148,7 +148,9 @@ def run(qa, duration):
             while not metrics.stop.is_set():
                 changes[index].clear()
                 team = actor["team"]
-                for view in ("overview", "inventory"):
+                if team is None:
+                    metrics.timed("query_factory_dashboard", lambda: qa.request(actor, "/api/factory-dashboard"))
+                for view in (() if team is None else ("overview", "inventory")):
                     query = f"?page={1 + iteration % 2}&page_size=10" if view == "inventory" else ""
                     metrics.timed("query_" + view, lambda view=view, query=query: qa.request(
                         actor, f"/api/team-materials/{team}/{view}{query}"))
@@ -179,7 +181,7 @@ def run(qa, duration):
                 with metrics.guard:
                     metrics.cycles += 1
                 iteration += 1
-                metrics.stop.wait(8)
+                metrics.stop.wait(write_interval)
         except Exception as exc:
             metrics.fail("write " + type(exc).__name__ + ": " + str(exc))
 
@@ -187,8 +189,8 @@ def run(qa, duration):
         for observer in observers:
             observer.thread.start()
         assert all(observer.ready.wait(timeout=10) for observer in observers), "SSE startup failed"
-        with ThreadPoolExecutor(max_workers=25) as pool:
-            jobs = [pool.submit(reader, i) for i in range(2, 25)]
+        with ThreadPoolExecutor(max_workers=27) as pool:
+            jobs = [pool.submit(reader, i) for i in range(25)]
             metrics.stop.wait(5)  # Warm reads and all SSE first frames are excluded.
             metrics.started = monotonic()
             jobs.extend(pool.submit(writer, lane) for lane in range(2))
@@ -211,6 +213,8 @@ def run(qa, duration):
         result = metrics.report()
         result["requested_steady_seconds"] = duration
         result["independent_accounts"] = len(qa.actors)
+        result["writer_lanes"] = 2
+        result["write_cycle_pause_seconds"] = write_interval
         result["starting_material_records"] = cycles_before
         result["sse_frames"] = [o.frames for o in observers]
         final = qa.reconcile()
@@ -238,11 +242,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--confirm-disposable", action="store_true", required=True)
     parser.add_argument("--seconds", type=int, choices=(60, 300), default=300)
+    parser.add_argument("--write-interval", type=int, choices=(2, 8), default=8)
     arguments = parser.parse_args()
     harness = Harness()
     try:
         print(json.dumps({"probe_pid": os.getpid(), "test": "isolated mixed HTTP/SSE",
                           "steady_seconds": arguments.seconds, "accounts": len(harness.actors)}), flush=True)
-        run(harness, arguments.seconds)
+        run(harness, arguments.seconds, arguments.write_interval)
     finally:
         harness.close()
