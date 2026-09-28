@@ -6,7 +6,7 @@ import pytest
 from app import factory_overview, material_analytics
 from app.database import SessionLocal
 from app.models import MaterialTransfer
-from test_external_outbound import outbound, dispatch
+from test_external_outbound import outbound, legacy_dispatch as dispatch
 
 
 def check_stock(client, setup, quantity, weight, pending_quantity, pending_weight):

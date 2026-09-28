@@ -255,14 +255,10 @@ def run():
     assert [row['status'] for row in raced] == [201, 201] and raced[0]['body'] == raced[1]['body'], raced
     results['duplicate_external'] = [row['status'] for row in raced]
     line = raced[0]['body']['items'][0]
-    payload = MaterialTransferConfirm(idempotency_key='confirm-external', expected_version=line['version'])
-    operation = lambda db: workflow.confirm_outbound(db, line['batch_no'], payload, users[2])
-    raced = race(operation, operation)
-    assert [row['status'] for row in raced] == [201, 201] and raced[0]['body'] == raced[1]['body'], raced
-    results['duplicate_external_confirmation'] = [row['status'] for row in raced]
-    assert raced[0]['body']['received_at'] is None and raced[0]['body']['dispatched_at'] is not None
+    assert line['status'] == 'dispatched' and line['locked']
+    assert line['received_at'] is None and line['dispatched_at'] == line['created_at']
     with SessionLocal() as db:
-        assert stock.list_dispatches(db, 2, users[2], status='dispatched', entry_kind='inspection_shipment')['total'] == 1
+        assert stock.list_dispatches(db, 2, users[2], status='dispatched', entry_kind='inspection_shipment', query='duplicate-external')['total'] == 1
         table = stock.stock_table(2)
         balance = db.execute(sa.select(table).where(table.c.transfer_id == lot['id'])).mappings().one()
         assert balance['available_quantity'] == balance['on_hand_quantity'] == 0
@@ -275,12 +271,12 @@ def run():
     raced = race(
         lambda db: workflow.confirm_outbound(db, line['batch_no'], MaterialTransferConfirm(idempotency_key='confirm-vs-void'), users[2]),
         lambda db: workflow.void_material_transfer(db, line['batch_no'], users[2]))
-    assert sorted(row['status'] for row in raced) == [201, 409], raced
-    results['external_confirm_vs_void'] = [row['status'] for row in raced]
+    assert [row['status'] for row in raced] == [409, 409], raced
+    results['completed_external_rejects_confirm_and_void'] = [row['status'] for row in raced]
     with SessionLocal.begin() as db:
         current = db.get(MaterialTransfer, line['id'])
         available = stock.available_locked(db, stock.lock_lot(db, lot['id'], 2))
-        assert available == ((100, Decimal('10.000')) if current.status == 'voided' else (0, Decimal('0.000')))
+        assert current.status == 'dispatched' and available == (0, Decimal('0.000'))
 
     with SessionLocal() as db:
         receipt = warehouse_receipts.create_receipt(db, 4, WarehouseReceiptCreate(serial_no='warehouse-exit', material_name='铜钼',
@@ -288,9 +284,7 @@ def run():
     with SessionLocal() as db:
         line = stock.create_dispatch(db, 4, stock.DispatchCreate(entry_kind='warehouse_outbound', external_destination='外部仓库',
             idempotency_key='warehouse-outbound', lines=[{'source_transfer_id': receipt['id'], 'quantity': 10, 'weight': 1}]), warehouse_user)['items'][0]
-    with SessionLocal() as db:
-        done = workflow.confirm_outbound(db, line['batch_no'], MaterialTransferConfirm(idempotency_key='warehouse-outbound-confirm'), warehouse_user)
-        assert done['status'] == 'dispatched' and done['next_team'] is None and not done['stock_tracked']
+    assert line['status'] == 'dispatched' and line['next_team'] is None and not line['stock_tracked']
     def batch(key, *, lots=None, external=False, reverse=False):
         lots = lots or [received(key+'-lot-1'), received(key+'-lot-2')]
         fields = {'entry_kind': 'inspection_shipment', 'external_destination': '整批客户'} if external else {'next_team_id': 3}
@@ -302,6 +296,15 @@ def run():
             assert set(created) == {'items'}
             assert len({item['batch_no'] for item in created['items']}) == len(created['items'])
             # Deliberately construct an OLD CK record for legacy API concurrency checks.
+            if external:
+                for item in created['items']:
+                    row = db.get(MaterialTransfer, item['id'])
+                    row.status = 'pending'
+                    row.dispatched_at = row.dispatched_by = row.dispatched_by_user_id = None
+                    event = row.history[0]
+                    event.action = 'created'
+                    event.changes = {**event.changes, 'status': {'before': None, 'after': 'pending'},
+                                    **{field: {'before': None, 'after': None} for field in ('dispatched_at', 'dispatched_by', 'dispatched_by_user_id')}}
             header = db.get(MaterialDispatch, db.get(MaterialTransfer, created['items'][0]['id']).dispatch_id)
             assert header.dispatch_no is None
             header.dispatch_no = f'CK-LEGACY-{header.id}'

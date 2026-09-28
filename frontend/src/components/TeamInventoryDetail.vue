@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { currentLocations } from '@/utils/warehousePlacement'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElButton, ElDescriptions, ElDescriptionsItem, ElDialog, ElPagination, ElTable, ElTableColumn, ElTag } from 'element-plus'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
@@ -86,7 +87,7 @@ onBeforeUnmount(() => { ++version })
         <header><h3>当前库存</h3><ElButton v-if="group && (Number(group.reserved_quantity) > 0 || Number(group.reserved_weight) > 0)" link type="primary" @click="emit('pending')">查看转出待确认批次</ElButton></header>
         <ElTable class="business-table warehouse-source-table" :data="rows" row-key="transfer.id" empty-text="暂无来源记录">
           <ElTableColumn label="来源批次号" min-width="205"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
-          <ElTableColumn v-if="rows.some(item => item.transfer.next_team.code === 'FACTORY-WAREHOUSE')" label="仓位" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.warehouse_location || '未填写' }}</template></ElTableColumn>
+          <ElTableColumn v-if="warehouse" label="当前仓位" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ currentLocations(asStock(row)) }}</template></ElTableColumn>
           <ElTableColumn label="库存件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.owned_quantity) }}</template></ElTableColumn>
           <ElTableColumn label="库存重量 (kg)" min-width="140" align="right"><template #default="{ row }">{{ inventoryAmount(row.owned_weight) }}</template></ElTableColumn>
           <ElTableColumn :label="`${availableLabel}件数`" min-width="120" align="right"><template #default="{ row }">{{ inventoryAmount(dispatchableAmounts(asStock(row)).quantity) }}</template></ElTableColumn>
@@ -98,7 +99,7 @@ onBeforeUnmount(() => { ++version })
           <ElTableColumn v-if="hasLoss" label="丢失件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.lost_quantity) }}</template></ElTableColumn>
           <ElTableColumn v-if="hasLoss" label="丢失重量 (kg)" min-width="140" align="right"><template #default="{ row }">{{ inventoryAmount(row.lost_weight) }}</template></ElTableColumn>
           <ElTableColumn label="接收时间" min-width="170"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>
-          <ElTableColumn label="操作" :width="canWrite ? 250 : 110" fixed="right"><template #default="{ row }"><div class="source-actions"><ElButton link type="primary" @click="openQuantity(asStock(row))">{{ canWrite && stockAvailable(asStock(row)) ? '加工件数变更' : '件数记录' }}</ElButton><template v-if="canWrite"><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('dispatch', asStock(row))">出库</ElButton><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('loss', asStock(row))">登记丢失</ElButton></template></div></template></ElTableColumn>
+          <ElTableColumn label="操作" :width="canWrite ? 250 : 110" fixed="right"><template #default="{ row }"><div class="source-actions"><ElButton link type="primary" @click="openQuantity(asStock(row))">{{ canWrite && !warehouse && stockAvailable(asStock(row)) ? '加工件数变更' : '件数记录' }}</ElButton><template v-if="canWrite"><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('dispatch', asStock(row))">出库</ElButton><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('loss', asStock(row))">登记丢失</ElButton></template></div></template></ElTableColumn>
         </ElTable>
         <footer><span>共 {{ total }} 个来源批次（含零库存）</span><ElPagination aria-label="当前库存分页" :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></footer>
       </section>
@@ -119,7 +120,7 @@ onBeforeUnmount(() => { ++version })
     </template>
   </ElDialog>
   <MaterialTransferDrawer v-model="batchOpen" :transfer="selected" :trace-scope="{ team_id: teamId, direction: 'all' }" @changed="changed" />
-  <QuantityAdjustmentDialog v-model="quantityOpen" :team-id="teamId" :source-id="quantitySource" :can-write="canWrite" @saved="changed" />
+  <QuantityAdjustmentDialog v-model="quantityOpen" :team-id="teamId" :source-id="quantitySource" :can-write="canWrite && !warehouse" @saved="changed" />
 </template>
 
 <style scoped>

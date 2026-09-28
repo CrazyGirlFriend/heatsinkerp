@@ -64,6 +64,24 @@ class WarehouseLocation(Base):
     __table_args__ = (UniqueConstraint("team_id", "name", name="uq_warehouse_location_name"),)
 
 
+class WarehousePlacement(Base):
+    """Actual material in a slot; historical document locations remain unchanged."""
+
+    __tablename__ = "warehouse_placements"
+    location_id: Mapped[int] = mapped_column(
+        ForeignKey("warehouse_locations.id", ondelete="RESTRICT"), primary_key=True
+    )
+    transfer_id: Mapped[int] = mapped_column(
+        ForeignKey("material_transfers.id", ondelete="CASCADE"), primary_key=True
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    __table_args__ = (
+        Index("ix_wp_transfer", "transfer_id"),
+        CheckConstraint("quantity >= 0 AND weight >= 0", name="ck_wp_nonnegative"),
+    )
+
+
 class TransferBatchNumberSequence(Base):
     """One locked counter row per UTC creation date."""
 

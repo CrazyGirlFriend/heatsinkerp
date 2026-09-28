@@ -70,7 +70,7 @@ def test_internal_pending_not_stock_and_outbound_immediately_deducts(client, war
     outgoing = dispatch(client, s, [{'source_transfer_id': good['group_id'], 'quantity': 10, 'weight': 1}],
                         idempotency_key='external', next_team_id=None, entry_kind='warehouse_outbound', external_destination='客户').json()
     good = inventory(client, s, receipt_source='internal', material_type='finished')['items'][0]
-    assert good['on_hand_quantity'] == 20 and good['reserved_quantity'] == 10
+    assert good['on_hand_quantity'] == 20 and good['reserved_quantity'] == 0
     assert confirm(client, s, outgoing, external=True).status_code == 200
     assert inventory(client, s, receipt_source='internal', material_type='finished')['items'][0]['on_hand_quantity'] == 20
     totals = client.get(base(s) + '/overview').json()['totals']

@@ -16,7 +16,12 @@ function balance(value: unknown): MaterialBalance {
   const raw = record(value)
   return Object.fromEntries([...balanceFields, ...ownershipFields, 'scrap', 'scrap_available'].flatMap(key => ['quantity', 'weight'].map(unit => [`${key}_${unit}`, numeric(raw[`${key}_${unit}`])]))) as MaterialBalance
 }
-function stock(value: unknown): StockBatch { return { ...balance(value), transfer: normalizeMaterialTransfer(record(value).transfer) } }
+function stock(value: unknown): StockBatch {
+  const raw = record(value)
+  return { ...balance(value), transfer: normalizeMaterialTransfer(raw.transfer),
+    ...(Array.isArray(raw.warehouse_positions) ? { warehouse_positions: raw.warehouse_positions.map(item => { const row = record(item); return { location_id: Number(row.location_id), name: String(row.name), quantity: Number(row.quantity), weight: Number(row.weight) } }),
+      physical_quantity: Number(raw.physical_quantity), physical_weight: Number(raw.physical_weight), unassigned_quantity: Number(raw.unassigned_quantity), unassigned_weight: Number(raw.unassigned_weight) } : {}) }
+}
 function loss(value: unknown): MaterialLoss {
   const raw = record(value)
   return { ...raw, quantity: Number(raw.quantity), weight: Number(raw.weight) } as unknown as MaterialLoss

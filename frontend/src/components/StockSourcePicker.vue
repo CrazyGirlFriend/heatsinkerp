@@ -10,6 +10,7 @@ import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { StockBatch } from '@/types/teamMaterials'
 import { materialTypeLabel } from '@/types/materialTransfer'
 import { dispatchableAmounts, stockAvailable } from '@/utils/materialStock'
+import { currentLocations } from '@/utils/warehousePlacement'
 
 const props = defineProps<{ teamId: number; groupId?: number; groupLabel?: string }>()
 const emit = defineEmits<{ close: []; selected: [sources: StockBatch[]] }>()
@@ -69,7 +70,7 @@ onBeforeUnmount(() => { ++version })
         </ElTableColumn>
         <ElTableColumn label="流水号" min-width="245" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.serial_no }}<SerialUrgencyBadge :urgency="row.transfer.urgency" /></template></ElTableColumn>
         <ElTableColumn label="来源批次" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.batch_no }}</template></ElTableColumn>
-        <ElTableColumn v-if="rows.some(item => item.transfer.next_team.code === 'FACTORY-WAREHOUSE')" label="仓位" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.warehouse_location || '未填写' }}</template></ElTableColumn>
+        <ElTableColumn v-if="rows.some(item => item.transfer.next_team.code === 'FACTORY-WAREHOUSE')" label="当前仓位" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ currentLocations(asStock(row)) }}</template></ElTableColumn>
         <ElTableColumn label="本班组业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.purpose_name || '未分类' }}</template></ElTableColumn>
         <ElTableColumn label="材质" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.material_name || '—' }}</template></ElTableColumn>
         <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.transfer.material_type) }}</template></ElTableColumn>

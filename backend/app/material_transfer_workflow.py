@@ -18,7 +18,7 @@ from .auth import actor_name
 from .batch_numbers import next_transfer_batch_number
 from .models import MaterialDispatch, MaterialTransfer, MaterialTransferEvent, Team, User, utcnow
 from .schemas import MaterialTransferDocumentFields, SCRAP_MATERIAL_TYPES
-from .team_constants import EXTERNAL_ENTRY_KINDS
+from .team_constants import EXTERNAL_ENTRY_KINDS, WAREHOUSE_TEAM_CODE
 
 
 DOCUMENT_FIELDS = tuple(MaterialTransferDocumentFields.model_fields)
@@ -371,6 +371,8 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
             raise HTTPException(422, "quantity or weight must be positive")
         if transfer.source_transfer_id is not None:
             from .material_stock import validate_available
+            if transfer.source_team_code == WAREHOUSE_TEAM_CODE and "material_type" in supplied and payload.material_type != transfer.stock_source.material_type:
+                raise HTTPException(422, "库房按原物料转出，不能更改物料类型")
             for field in ("serial_no", "material_name"):
                 if field in supplied and getattr(payload, field) != getattr(transfer, field):
                     raise HTTPException(422, "stock-linked transfers must retain their source serial number and material")

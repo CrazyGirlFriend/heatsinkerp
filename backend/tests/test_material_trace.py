@@ -5,7 +5,7 @@ from app.database import SessionLocal
 from app.models import MaterialTransfer
 from test_material_stock import stock_setup, dispatch, loss, receive_lot
 from test_team_business import initialize
-from test_external_outbound import outbound, dispatch as external_dispatch, confirm as external_confirm
+from test_external_outbound import outbound, legacy_dispatch as external_dispatch, confirm as external_confirm
 
 
 def trace(client, serial='000012'):

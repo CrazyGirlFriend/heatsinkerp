@@ -12,6 +12,7 @@ import { externalActionLabel, isExternalEntryKind, isScrapType, materialTypeLabe
 import type { CreateDispatch, DispatchKind, CreatedMaterialBatches, MaterialLoss, StockBatch } from '@/types/teamMaterials'
 import { amountError, dispatchableAmounts, materialRequestKey } from '@/utils/materialStock'
 import { useTeamPurposes } from '@/composables/useTeamPurposes'
+import { currentLocations } from '@/utils/warehousePlacement'
 
 const props = defineProps<{ modelValue: boolean; teamId: number; mode: 'dispatch' | 'loss'; sources: StockBatch[] }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [CreatedMaterialBatches | MaterialLoss]; balancesChanged: [] }>()
@@ -28,6 +29,7 @@ let generation = 0
 let requestKey = ''
 let fingerprint = ''
 const isLoss = computed(() => props.mode === 'loss')
+const sourceWarehouse = computed(() => props.sources.length > 0 && props.sources.every(source => source.transfer.next_team.code === 'FACTORY-WAREHOUSE'))
 const canWrite = computed(() => auth.isTeamAccount && auth.currentUser?.active !== false && String(auth.currentUser?.team_id) === String(props.teamId) && !auth.currentUserError)
 const externalOption = computed<ExternalEntryKind | null>(() => {
   const team = directory.items.find(team => team.active && Number(team.id) === props.teamId)
@@ -147,26 +149,25 @@ async function submit() {
 
 <template>
   <ElDialog :model-value="modelValue" :title="isLoss ? '登记物料丢失' : external ? `${sources.length > 1 ? '批量' : ''}${actionLabel}` : sources.length > 1 ? '批量出库' : '物料出库'" width="min(920px, 94vw)" class="stock-action-dialog" :close-on-click-modal="!busy" :close-on-press-escape="!busy" :show-close="!busy" @close="close">
-    <p class="action-intro">{{ isLoss ? '仅登记本班已接收物料的实际丢失。提交后减少库存，保留丢失记录。' : external ? `每行独立生成批次号，可合并打印。开单后减少可转出量，本班组确认${actionLabel}后扣减库存。` : '每行独立生成批次号，可合并打印。开单后减少可转出量，下序签收后转移库存。' }}</p>
+    <p class="action-intro">{{ isLoss ? '仅登记本班已接收物料的实际丢失。提交后减少库存，保留丢失记录。' : external ? `提交即完成${actionLabel}并扣减库存，每行独立生成批次号。` : '每行独立生成批次号，可合并打印。开单后减少可转出量，下序签收后转移库存。' }}</p>
     <ElForm label-position="top" :disabled="busy || !canWrite" @submit.prevent="submit">
       <ElFormItem v-if="!isLoss && externalOption" label="出库方式">
         <ElRadioGroup v-model="form.entryKind" aria-label="出库方式"><ElRadioButton value="transfer">内部转料</ElRadioButton><ElRadioButton :value="externalOption">{{ externalOption === 'warehouse_outbound' ? '对外出库' : '发货' }}</ElRadioButton></ElRadioGroup>
       </ElFormItem>
       <ElFormItem v-if="external" :label="`${actionLabel}去向`" required><ElInput v-model="form.externalDestination" :aria-label="`${actionLabel}去向`" maxlength="240" show-word-limit placeholder="填写客户、收货单位或实际去向" /></ElFormItem>
-      <div v-if="external" class="external-confirmation"><span>确认班组</span><strong>{{ directory.items.find(team => Number(team.id) === teamId)?.name }}</strong><small>创建后需本班组确认{{ actionLabel }}</small></div>
       <ElFormItem v-if="!isLoss && !external" label="接收班组" required class="destination-field">
         <ElSelect v-model="form.nextTeamId" aria-label="出库接收班组" placeholder="选择接收班组" filterable><ElOption v-for="team in destinations" :key="team.id" :value="team.id" :label="teamWorkspaceProfile(team.code)?.name || team.name" /></ElSelect>
       </ElFormItem>
       <div class="source-lines">
         <article v-for="(line, index) in lines" :key="line.key" class="source-line">
           <header><div><strong>{{ line.source.transfer.material_name || '未填写材质' }}</strong><span>上一批次 {{ line.source.transfer.batch_no }}</span></div><small>来自 {{ line.source.transfer.source_team.name }}</small></header>
-          <p class="source-identity">流水号 {{ line.source.transfer.serial_no }}<span>本班组业务 {{ line.source.transfer.purpose_name || '未分类' }}</span><span>原单批号 {{ line.source.transfer.source_batch_no || '未填写' }}</span><span v-if="line.source.transfer.next_team.code === 'FACTORY-WAREHOUSE'">仓位 {{ line.source.transfer.warehouse_location || '未填写' }}</span></p>
-          <div class="source-balance"><span>{{ isScrapType(line.source.transfer.material_type) ? '废料可处理的库存' : '本批可转出库存' }}</span><MaterialAmount :quantity="dispatchableAmounts(line.latest).quantity" :weight="dispatchableAmounts(line.latest).weight" /><ElButton link type="primary" :disabled="!line.latest" @click="fillAll(index)">全部填入</ElButton><ElButton v-if="!isLoss" link type="primary" :disabled="lines.length >= 100" @click="splitLine(index)">拆分物料</ElButton><ElButton v-if="!isLoss && lines.length > 1" link type="danger" @click="lines.splice(index, 1)">移除</ElButton></div>
-          <ElButton v-if="!isLoss" link type="primary" @click="openQuantity(line.source)">加工后件数变化？更新未转出件数</ElButton>
+          <p class="source-identity">流水号 {{ line.source.transfer.serial_no }}<span>本班组业务 {{ line.source.transfer.purpose_name || '未分类' }}</span><span>原单批号 {{ line.source.transfer.source_batch_no || '未填写' }}</span><span v-if="sourceWarehouse">当前仓位 {{ currentLocations(line.latest || line.source) }}</span></p>
+          <div class="source-balance"><span>{{ isScrapType(line.source.transfer.material_type) ? '废料可处理的库存' : '本批可转出库存' }}</span><MaterialAmount :quantity="dispatchableAmounts(line.latest).quantity" :weight="dispatchableAmounts(line.latest).weight" /><ElButton link type="primary" :disabled="!line.latest" @click="fillAll(index)">全部填入</ElButton><ElButton v-if="!isLoss && !sourceWarehouse" link type="primary" :disabled="lines.length >= 100" @click="splitLine(index)">拆分物料</ElButton><ElButton v-if="!isLoss && lines.length > 1" link type="danger" @click="lines.splice(index, 1)">移除</ElButton></div>
+          <ElButton v-if="!isLoss && !sourceWarehouse" link type="primary" @click="openQuantity(line.source)">加工后件数变化？更新未转出件数</ElButton>
           <div class="source-inputs">
             <ElFormItem :label="isLoss ? '丢失件数' : `${actionLabel}件数`" required><ElInputNumber v-model="line.quantity" :aria-label="`${line.source.transfer.batch_no}件数`" :min="0" :precision="0" controls-position="right" /><span class="amount-unit">件</span></ElFormItem>
             <ElFormItem :label="isLoss ? '丢失重量' : `${actionLabel}重量`" required><ElInputNumber v-model="line.weight" :aria-label="`${line.source.transfer.batch_no}重量`" :min="0" :precision="3" :step="0.1" controls-position="right" /><span class="amount-unit">kg</span></ElFormItem>
-            <ElFormItem v-if="!isLoss" :label="`${actionLabel}物料类型`" :required="warehouse"><ElSelect v-model="line.materialType" :aria-label="`${line.source.transfer.batch_no}物料类型`" :placeholder="materialTypeLabel(line.source.transfer.material_type)"><ElOption v-for="type in materialTypeOptions.filter(type => !isScrapType(line.source.transfer.material_type) || isScrapType(type.value))" :key="type.value" :label="type.label" :value="type.value" /></ElSelect></ElFormItem>
+            <ElFormItem v-if="!isLoss" :label="`${actionLabel}物料类型`" :required="warehouse"><span v-if="sourceWarehouse">{{ materialTypeLabel(line.source.transfer.material_type) }}</span><ElSelect v-else v-model="line.materialType" :aria-label="`${line.source.transfer.batch_no}物料类型`" :placeholder="materialTypeLabel(line.source.transfer.material_type)"><ElOption v-for="type in materialTypeOptions.filter(type => !isScrapType(line.source.transfer.material_type) || isScrapType(type.value))" :key="type.value" :label="type.label" :value="type.value" /></ElSelect></ElFormItem>
             <ElFormItem v-if="!isLoss && !external" label="下序接收业务" :required="purposes.items.value.length > 0"><ElSelect v-model="line.purposeId" :aria-label="`${line.source.transfer.batch_no}接收业务`" :loading="purposes.loading.value" :disabled="!form.nextTeamId || !purposes.items.value.length" :placeholder="!form.nextTeamId ? '先选择接收班组' : !purposes.items.value.length ? '接收班组尚未配置业务' : purposes.items.value.some(item => item.active) ? '选择接收业务' : '接收班组暂无启用业务'"><ElOption v-for="purpose in purposes.items.value.filter(item => item.active)" :key="purpose.id" :value="purpose.id" :label="purpose.name" /></ElSelect></ElFormItem>
             <ElFormItem v-if="!isLoss && warehouse" label="入库仓位"><WarehouseLocationSelect v-model="line.warehouseLocation" v-model:reservation-key="line.warehouseLocationKey" :team-id="Number(form.nextTeamId)" :active="modelValue" :disabled="busy || !canWrite" @busy-change="line.locationBusy = $event" /></ElFormItem>
           </div>
@@ -180,15 +181,12 @@ async function submit() {
     <ElAlert v-if="purposes.error.value" :title="purposes.error.value" type="error" :closable="false"><ElButton link @click="purposes.refresh">重新加载业务</ElButton></ElAlert>
     <p v-if="errorMessage" role="alert" class="stock-action-error">{{ errorMessage }}</p>
     <ElButton v-if="balanceNotice" link type="primary" :loading="refreshing" :disabled="saving" @click="refreshBalances">刷新库存</ElButton>
-    <template #footer><div class="action-footer"><div><span>{{ isLoss ? '本次丢失' : `共 ${lines.length} 条物料明细` }}</span><MaterialAmount :quantity="totalQuantity" :weight="totalWeight" /></div><div><ElButton :disabled="busy" @click="close">取消</ElButton><ElButton type="primary" :loading="saving" :disabled="busy || !canWrite || lines.some(line => !line.latest || line.locationBusy)" @click="submit">{{ isLoss ? '确认登记丢失' : external ? `生成${actionLabel}单` : '确认出库' }}</ElButton></div></div></template>
+    <template #footer><div class="action-footer"><div><span>{{ isLoss ? '本次丢失' : `共 ${lines.length} 条物料明细` }}</span><MaterialAmount :quantity="totalQuantity" :weight="totalWeight" /></div><div><ElButton :disabled="busy" @click="close">取消</ElButton><ElButton type="primary" :loading="saving" :disabled="busy || !canWrite || lines.some(line => !line.latest || line.locationBusy)" @click="submit">{{ isLoss ? '确认登记丢失' : external ? `提交${actionLabel}` : '确认出库' }}</ElButton></div></div></template>
   </ElDialog>
   <QuantityAdjustmentDialog v-model="quantityOpen" :team-id="teamId" :source-id="quantitySource" :can-write="canWrite" @saved="quantitySaved" />
 </template>
 
 <style scoped>
-.external-confirmation { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 22px; padding: 14px 16px; background: var(--surface-soft); border-radius: 10px; font-size: 13px; }
-.external-confirmation span, .external-confirmation small { color: var(--subtle); }
-.external-confirmation small { margin-left: auto; }
 .action-intro { margin: 0 0 24px; color: var(--subtle); line-height: 1.8; }
 .destination-field { max-width: 370px; }
 .source-lines { display: grid; gap: 14px; margin-bottom: 24px; max-height: 47vh; overflow-y: auto; padding: 1px; }

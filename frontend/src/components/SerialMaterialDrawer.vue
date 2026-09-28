@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { currentLocations } from '@/utils/warehousePlacement'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElButton, ElCheckbox, ElDescriptions, ElDescriptionsItem, ElDialog, ElPagination, ElTable, ElTableColumn, ElTabs, ElTabPane } from 'element-plus'
 import MaterialAmount from './MaterialAmount.vue'
@@ -116,7 +117,7 @@ onBeforeUnmount(() => { ++version })
             <template #default="{ row }"><ElCheckbox :aria-label="'选择 ' + row.transfer.batch_no" :model-value="selectedRows.some(item => item.transfer.id === row.transfer.id)" :disabled="!stockAvailable(asStock(row))" @change="toggle(asStock(row), $event)" /></template>
           </ElTableColumn>
           <ElTableColumn label="来源批次" min-width="170"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
-          <ElTableColumn v-if="stock.some(item => item.transfer.next_team.code === 'FACTORY-WAREHOUSE')" label="仓位" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.warehouse_location || '未填写' }}</template></ElTableColumn>
+          <ElTableColumn v-if="stock.some(item => item.transfer.next_team.code === 'FACTORY-WAREHOUSE')" label="当前仓位" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ currentLocations(asStock(row)) }}</template></ElTableColumn>
           <ElTableColumn label="材质" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.material_name || '—' }}</template></ElTableColumn>
           <ElTableColumn label="物料类型" min-width="110"><template #default="{ row }">{{ materialTypeLabel(row.transfer.material_type) }}</template></ElTableColumn>
           <ElTableColumn label="来源" min-width="140"><template #default="{ row }">{{ materialSourceLabel(row.transfer) }}</template></ElTableColumn>

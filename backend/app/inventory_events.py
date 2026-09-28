@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from .models import AuthSession, MaterialDispatch, MaterialLoss, MaterialQuantityAdjustment, MaterialTransfer, SerialUrgency, SerialDeliveryPlan, Team, User, TeamPurpose, OpeningStockSubmission, NotificationOutbox, utcnow
 from .observability import record
+from .models import WarehouseLocation
 
 
 @dataclass(frozen=True)
@@ -121,7 +122,7 @@ class InventoryEvents:
 
 inventory_events = InventoryEvents()
 outbox_wakeups = InventoryEvents()
-WATCHED = (MaterialTransfer, MaterialLoss, MaterialQuantityAdjustment, MaterialDispatch, SerialUrgency, SerialDeliveryPlan, Team, User, AuthSession, TeamPurpose, OpeningStockSubmission)
+WATCHED = (MaterialTransfer, MaterialLoss, MaterialQuantityAdjustment, MaterialDispatch, SerialUrgency, SerialDeliveryPlan, Team, User, AuthSession, TeamPurpose, OpeningStockSubmission, WarehouseLocation)
 PENDING = "inventory_changed_transactions"
 
 
@@ -145,6 +146,8 @@ def affected_teams(row):
 
 
 def change_for(row, db):
+    if isinstance(row, WarehouseLocation) and row not in db.new and not any(inspect(row).attrs[name].history.has_changes() for name in ("name", "active", "version")):
+        return InventoryChange()  # Lease heartbeats do not refresh inventory views.
     if isinstance(row, AuthSession):
         # A new login affects no existing connection. Revocations still wake the
         # matching connection immediately, without invalidating stock snapshots.

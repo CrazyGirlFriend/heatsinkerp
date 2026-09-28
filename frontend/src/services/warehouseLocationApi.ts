@@ -3,6 +3,7 @@ import { API_BASE, authorizationValue, httpRequest, HttpRequestError } from './h
 export type WarehouseLocation = {
   id: number; team_id: number; name: string; active: boolean; version: number
   status: 'available' | 'locked' | 'occupied' | 'disabled'; has_stock: boolean
+  draft_locked?: boolean
   batches: { id: number; batch_no: string; serial_no: string; quantity: number; weight: number; status: string }[]
 }
 export type WarehouseLease = { id: number; name: string; key: string; expires_at: string; hold_until: string }
@@ -20,6 +21,9 @@ export const warehouseLocationApi = {
   list(query = '', page = 1) { return request<{ items: WarehouseLocation[]; total: number; team_id: number }>(`/warehouse-locations?${new URLSearchParams({ query, page: String(page), page_size: '20' })}`) },
   save(payload: { name: string; active: boolean; expected_version?: number }, id?: number) {
     return request<WarehouseLocation>(`/warehouse-locations${id ? `/${id}` : ''}`, id ? 'PATCH' : 'POST', payload)
+  },
+  place(id: number, payload: { expected_version: number; source_transfer_id: number; quantity: number; weight: number }) {
+    return request<WarehouseLocation>(`/warehouse-locations/${id}/placement`, 'POST', payload)
   },
   reserve(id: number, key: string) { return request<WarehouseLease>(`/warehouse-locations/${id}/reservation`, 'POST', { key }) },
   async release(id: number, key: string, keepalive = false) {

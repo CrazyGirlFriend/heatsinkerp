@@ -90,15 +90,15 @@ def test_fully_pending_rows_remain_owned_but_cannot_be_issued_again_and_void_res
     assert client.get(inventory, params={'search_field': 'owned_quantity', 'query': '1.1'}).status_code == 422
 
 
-def test_external_pending_is_separate_and_confirmation_releases_ownership(client, warehouse):
+def test_external_submission_releases_ownership_without_a_pending_step(client, warehouse):
     s = warehouse
     origin = intake(client, s, weight=100).json()
     sent = dispatch(client, s, [{'source_transfer_id': origin['id'], 'quantity': 30, 'weight': 30}],
                     entry_kind='warehouse_outbound', next_team_id=None, external_destination='客户').json()
-    assert_amounts(totals(client, s), 100, 70, 0, 30)
+    assert_amounts(totals(client, s), 70, 70, 0)
     rows = client.get(base(s) + f"/inventory/{origin['id']}/pending-outbound").json()['items']
-    assert rows[0]['entry_kind'] == 'warehouse_outbound' and rows[0]['external_destination'] == '客户'
-    assert confirm(client, s, sent, external=True).status_code == 200
+    assert rows == []
+    assert sent['items'][0]['status'] == 'dispatched'
     assert_amounts(totals(client, s), 70, 70, 0)
 
 

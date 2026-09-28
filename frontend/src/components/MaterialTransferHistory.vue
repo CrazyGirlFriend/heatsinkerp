@@ -25,7 +25,7 @@ function actionLabel(action: keyof typeof actions): string {
   if (props.transfer.entry_kind === 'opening_stock' && action === 'stocked') return '初始库存登记'
   if (isExternalTransfer(props.transfer)) {
     const verb = externalActionLabel(props.transfer.entry_kind)
-    return action === 'created' ? `创建${verb}单` : action === 'updated' ? `修改${verb}单` : action === 'dispatched' ? `确认${verb}` : action === 'voided' ? `作废${verb}单` : actions[action]
+    return action === 'created' ? `创建${verb}单` : action === 'updated' ? `修改${verb}单` : action === 'dispatched' ? `完成${verb}` : action === 'voided' ? `作废${verb}单` : actions[action]
   }
   return actions[action]
 }

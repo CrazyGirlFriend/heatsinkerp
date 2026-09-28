@@ -21,13 +21,15 @@ FIELDS = {
         "id",
         "source_transfer_id",
         "next_team_id",
+        "source_team_id",
+        "warehouse_location",
         "status",
         "stock_tracked",
         "entry_kind",
         "quantity",
         "weight",
     ),
-    MaterialLoss: ("id", "source_transfer_id", "quantity", "weight"),
+    MaterialLoss: ("id", "source_transfer_id", "team_id", "quantity", "weight"),
     MaterialQuantityAdjustment: ("id", "source_transfer_id", "before_quantity", "after_quantity"),
 }
 PENDING = "stock_balance_flush_changes"
@@ -159,6 +161,8 @@ def apply_balances(db, *_):
                 raise RuntimeError(
                     f"Missing stock balance for lot {lot_id}; reconcile before writing"
                 )
+    from .warehouse_placements import apply_changes
+    apply_changes(connection, changes, FIELDS)
 
 
 @event.listens_for(Session, "after_soft_rollback")

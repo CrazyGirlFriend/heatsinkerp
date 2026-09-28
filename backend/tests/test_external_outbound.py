@@ -74,16 +74,21 @@ def dispatch(client, setup, **overrides):
         **overrides})
 
 
+def legacy_dispatch(client, setup, **overrides):
+    from legacy_external import pending_external_response
+    return pending_external_response(client, dispatch(client, setup, **overrides))
+
+
 def confirm(client, setup, line, **overrides):
     return client.post(f"/api/material-transfers/{line['batch_no']}/confirm-outbound", headers=setup['headers'],
                        json={'idempotency_key': 'confirm-'+line['batch_no'], 'expected_version': line['version'], **overrides})
 
 
-def test_external_outbound_submission_self_confirmation_and_no_phantom_receipt(client, outbound):
-    response = dispatch(client, outbound)
+def test_legacy_external_submission_self_confirmation_and_no_phantom_receipt(client, outbound):
+    response = legacy_dispatch(client, outbound)
     assert response.status_code == 201, response.text
     group = response.json()
-    assert dispatch(client, outbound).json() == group
+    assert legacy_dispatch(client, outbound).json() == group
     assert all(item['entry_kind'] == outbound['kind'] and item['next_team'] is None for item in group['items'])
     assert all(item['external_destination'] == '客户 A / 外部仓库' for item in group['items'])
     first, second = group['items']
@@ -123,11 +128,11 @@ def test_external_outbound_submission_self_confirmation_and_no_phantom_receipt(c
     detail = f"/api/material-transfers/{first['batch_no']}"
     assert client.patch(detail, headers=outbound['headers'], json={'quantity': 1}).status_code == 409
     assert client.delete(detail, headers=outbound['headers']).status_code == 409
-    assert dispatch(client, outbound, idempotency_key='too-much', lines=[{'source_transfer_id': outbound['lots'][0]['id'], 'quantity': 71, 'weight': 0}]).status_code == 409
+    assert legacy_dispatch(client, outbound, idempotency_key='too-much', lines=[{'source_transfer_id': outbound['lots'][0]['id'], 'quantity': 71, 'weight': 0}]).status_code == 409
 
 
 def test_external_authorization_no_internal_self_receipt_loophole(client, outbound):
-    line = dispatch(client, outbound).json()['items'][0]
+    line = legacy_dispatch(client, outbound).json()['items'][0]
     url = f"/api/material-transfers/{line['batch_no']}"
     for headers in ({}, outbound['other_headers']):
         assert client.post(url+'/confirm-outbound', headers=headers, json={'idempotency_key': 'denied'}).status_code == 403
@@ -137,14 +142,14 @@ def test_external_authorization_no_internal_self_receipt_loophole(client, outbou
         }).status_code == 403
     assert client.post(url+'/confirm', headers=outbound['headers'], json={'idempotency_key': 'not-a-receipt'}).status_code == 403
     other_kind = 'inspection_shipment' if outbound['kind'] == 'warehouse_outbound' else 'warehouse_outbound'
-    assert dispatch(client, outbound, entry_kind=other_kind, idempotency_key='wrong-kind').status_code == 403
+    assert legacy_dispatch(client, outbound, entry_kind=other_kind, idempotency_key='wrong-kind').status_code == 403
     assert client.post(f"/api/team-materials/{outbound['other']['id']}/dispatches", headers=outbound['other_headers'], json={
         'entry_kind': outbound['kind'], 'external_destination': '外部', 'idempotency_key': 'wrong-team',
         'lines': [{'source_transfer_id': outbound['lots'][0]['id'], 'quantity': 1, 'weight': 1}]}).status_code == 403
-    assert dispatch(client, outbound, entry_kind='transfer', next_team_id=outbound['team']['id'], external_destination=None).status_code == 409  # existing key mismatch
-    assert dispatch(client, outbound, entry_kind='transfer', next_team_id=outbound['team']['id'], external_destination=None, idempotency_key='self-internal').status_code == 422
+    assert legacy_dispatch(client, outbound, entry_kind='transfer', next_team_id=outbound['team']['id'], external_destination=None).status_code == 409  # existing key mismatch
+    assert legacy_dispatch(client, outbound, entry_kind='transfer', next_team_id=outbound['team']['id'], external_destination=None, idempotency_key='self-internal').status_code == 422
     # Ordinary internal dispatch still must be accepted by the next team.
-    response = dispatch(client, outbound, entry_kind='transfer', next_team_id=outbound['other']['id'], external_destination=None, idempotency_key='internal')
+    response = legacy_dispatch(client, outbound, entry_kind='transfer', next_team_id=outbound['other']['id'], external_destination=None, idempotency_key='internal')
     assert response.status_code == 201, response.text
     internal = response.json()['items'][0]
     assert confirm(client, outbound, internal).status_code == 403
@@ -153,7 +158,7 @@ def test_external_authorization_no_internal_self_receipt_loophole(client, outbou
 
 @pytest.mark.parametrize('disabled', ['account', 'team'])
 def test_disabled_outbound_actor_cannot_create_or_confirm_with_existing_token(client, outbound, disabled):
-    line = dispatch(client, outbound).json()['items'][0]
+    line = legacy_dispatch(client, outbound).json()['items'][0]
     actor = client.get('/api/auth/me', headers=outbound['headers']).json()
     before = client.get(outbound['url']+'/overview').json()['totals']
     # Isolated test data: even an already issued token must fail once disabled.
@@ -161,14 +166,14 @@ def test_disabled_outbound_actor_cannot_create_or_confirm_with_existing_token(cl
         target = db.get(User, actor['id']) if disabled == 'account' else db.get(Team, outbound['team']['id'])
         target.active = False
         db.commit()
-    assert dispatch(client, outbound, idempotency_key='disabled-create').status_code == 401
+    assert legacy_dispatch(client, outbound, idempotency_key='disabled-create').status_code == 401
     assert confirm(client, outbound, line).status_code == 401
     assert client.get(f"/api/material-transfers/{line['batch_no']}").json()['status'] == 'pending'
     assert client.get(outbound['url']+'/overview').json()['totals'] == before
 
 
 def test_pending_edit_version_void_and_key_collision_are_safe(client, outbound):
-    first, second = dispatch(client, outbound).json()['items']
+    first, second = legacy_dispatch(client, outbound).json()['items']
     url = f"/api/material-transfers/{first['batch_no']}"
     edit = client.patch(url, headers=outbound['headers'], json={'quantity': 31, 'weight': '3.100', 'material_type': 'finished', 'expected_version': first['version']})
     assert edit.status_code == 200, edit.text
@@ -189,14 +194,14 @@ def test_pending_edit_version_void_and_key_collision_are_safe(client, outbound):
 def test_external_validation_and_atomicity(client, outbound):
     for bad in ({'next_team_id': outbound['other']['id']}, {'external_destination': '  '}, {'external_destination': None},
                 {'external_destination': 'x'*241}, {'entry_kind': 'unknown'}, {'idempotency_key': '  '}):
-        assert dispatch(client, outbound, **bad).status_code == 422
+        assert legacy_dispatch(client, outbound, **bad).status_code == 422
     too_much = [{'source_transfer_id': lot['id'], 'quantity': 30 if i == 0 else 101, 'weight': 1} for i, lot in enumerate(outbound['lots'])]
-    assert dispatch(client, outbound, lines=too_much).status_code == 409
+    assert legacy_dispatch(client, outbound, lines=too_much).status_code == 409
     assert client.get(outbound['url']+'/dispatches').json()['total'] == 0
     with patch('app.material_stock.workflow._record_event', side_effect=RuntimeError('audit failed')):
-        assert dispatch(client, outbound).status_code == 500
+        assert legacy_dispatch(client, outbound).status_code == 500
     assert client.get(outbound['url']+'/dispatches').json()['total'] == 0
-    line = dispatch(client, outbound).json()['items'][0]
+    line = legacy_dispatch(client, outbound).json()['items'][0]
     with patch('app.material_transfer_workflow._record_event', side_effect=RuntimeError('audit failed')):
         assert confirm(client, outbound, line).status_code == 500
     assert client.get(f"/api/material-transfers/{line['batch_no']}").json()['status'] == 'pending'

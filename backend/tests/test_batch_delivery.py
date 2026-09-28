@@ -202,16 +202,9 @@ def test_two_origin_batches_keep_fifo_and_confirmed_shipment_dates(client, wareh
     sent = response.json()["items"][0]
     assert (
         sum(r["shipped"] for r in client.get("/api/factory-dashboard/deliveries").json()["items"])
-        == 0
+        == 30
     )
-    assert (
-        client.post(
-            f"/api/material-transfers/{sent['batch_no']}/confirm-outbound",
-            headers=warehouse["headers"],
-            json={"idempotency_key": "confirm-date"},
-        ).status_code
-        == 200
-    )
+    assert sent['status'] == 'dispatched'
     with SessionLocal() as db:
         db.get(MaterialTransfer, sent["id"]).dispatched_at = datetime(2026, 9, 25, 2)
         db.commit()

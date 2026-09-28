@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from app import factory_overview
 from app.database import SessionLocal
 from app.models import MaterialTransfer, Team
-from test_external_outbound import outbound, dispatch, confirm
+from test_external_outbound import outbound, dispatch
 from test_warehouse_receipts import warehouse, intake
 from test_material_stock import stock_setup, receive_lot
 
@@ -23,24 +23,22 @@ def test_factory_conservation_internal_not_inbound_and_batch_count_once(client, 
     pending = report(client)
     feed = next(row for row in pending['recent_batches'] if row['batch_no'] == group['items'][0]['batch_no'])
     assert feed['line_count'] == 1 and feed['quantity'] == 30 and feed['weight'] == 3
-    assert feed['status'] == 'pending' and feed['external_destination'] == group['items'][0]['external_destination']
+    assert feed['status'] == 'dispatched' and feed['external_destination'] == group['items'][0]['external_destination']
     assert feed['received_at'] is None
-    assert pending['pending'] == {'batches': 2, 'quantity': 60, 'weight': 6}
+    assert pending['pending'] == {'batches': 0, 'quantity': 0, 'weight': 0}
     assert pending['totals']['on_hand_quantity'] == 140
     kind = 'outbound' if outbound['kind'] == 'warehouse_outbound' else 'shipment'
     assert pending['period_totals'][kind]['quantity'] == 60
     assert pending['totals']['available_quantity'] == 140
-    assert sum(row['external']['quantity'] for row in pending['waiting_age']) == 60
+    assert sum(row['external']['quantity'] for row in pending['waiting_age']) == 0
     assert sum(row['internal']['quantity'] for row in pending['waiting_age']) == 0
-    for line in group['items']:
-        assert confirm(client, outbound, line).status_code == 200
     after = report(client)
     kind = 'outbound' if outbound['kind'] == 'warehouse_outbound' else 'shipment'
     assert after['period_totals'][kind]['quantity'] == 60
     assert after['totals']['on_hand_quantity'] == 140
     assert after['totals']['on_hand_weight'] == 14
     assert after['pending']['batches'] == 0
-    # External shipment confirmation is not a recipient's signed receipt.
+    # A submitted external shipment is not a recipient's signed receipt.
     assert all(row['received_at'] is None for row in after['recent_batches'] if row['batch_no'] in {line['batch_no'] for line in group['items']})
     assert after['period_totals']['inbound']['quantity'] == 200
     assert sum(team['balance']['on_hand_quantity'] for team in after['teams'] if team['balance']) == 140
@@ -147,7 +145,7 @@ def test_today_feed_includes_yesterdays_batches_received_or_shipped_today(client
     assert client.post(f"/api/material-transfers/{internal[0]['batch_no']}/confirm", headers=outbound['other_headers'],
         json={'idempotency_key': 'daily-receive'}).status_code == 200
     external = dispatch(client, outbound, idempotency_key='daily-external').json()['items']
-    assert confirm(client, outbound, external[0]).status_code == 200
+    assert external[0]['status'] == 'dispatched'
     now = datetime(2026, 9, 12, 12)
     monkeypatch.setattr(factory_overview, 'utcnow', lambda: now)
     with SessionLocal() as db:

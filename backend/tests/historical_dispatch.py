@@ -1,9 +1,11 @@
 """Explicit historical fixtures: the current API never issues CK identities."""
 from app.database import SessionLocal
 from app.models import MaterialDispatch, MaterialTransfer
+from legacy_external import pending_external_response
 
 
 def historical_response(client, response):
+    response = pending_external_response(client, response)
     if response.status_code != 201:
         return response
     data = response.json()

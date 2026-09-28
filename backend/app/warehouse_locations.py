@@ -4,7 +4,7 @@ from datetime import timedelta, timezone
 
 from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,7 @@ from .models import (
     Team,
     User,
     WarehouseLocation,
+    WarehousePlacement,
     utcnow,
 )
 from .models import (
@@ -26,6 +27,7 @@ from .models import (
 )
 from .observability import record
 from .team_constants import WAREHOUSE_TEAM_CODE
+from .material_stock import StockAmounts
 
 LEASE_SECONDS = 180
 DRAFT_SECONDS = 600
@@ -49,6 +51,84 @@ class LocationWrite(BaseModel):
 class LeaseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     key: str = Field(min_length=16, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class PlacementWrite(StockAmounts):
+    expected_version: int = Field(ge=1)
+
+
+def place_stock(db, location_id, payload, user):
+    from decimal import Decimal
+    from .material_stock import lock_lot, _db_conflict
+
+    try:
+        with db.begin():
+            team = warehouse(db)
+            # Same order as dispatch: source lot, then destination slot.
+            lot = lock_lot(db, payload.source_transfer_id, team.id)
+            location = lock_location(db, location_id)
+            if (
+                location.team_id != team.id
+                or not location.active
+                or location.version != payload.expected_version
+            ):
+                raise HTTPException(409, "仓位已改变，请刷新后重试")
+            require_free(db, location)
+            if leased(location):
+                raise HTTPException(409, "该仓位已被其他表单锁定")
+            balance = db.scalar(
+                select(Balance)
+                .where(Balance.transfer_id == lot.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            allocated = db.execute(
+                select(WarehousePlacement.quantity, WarehousePlacement.weight)
+                .where(WarehousePlacement.transfer_id == lot.id)
+                .with_for_update()
+            ).all()
+            free_q = (
+                balance.on_hand_quantity
+                + balance.reserved_quantity
+                - balance.in_transit_quantity
+                - sum(row.quantity for row in allocated)
+            )
+            free_w = (
+                balance.on_hand_weight
+                + balance.reserved_weight
+                - balance.in_transit_weight
+                - sum((row.weight for row in allocated), Decimal(0))
+            )
+            if payload.quantity > free_q or payload.weight > free_w:
+                raise HTTPException(409, "未分配仓位的库存已变化，请刷新后重试")
+            db.add(
+                WarehousePlacement(
+                    location_id=location.id,
+                    transfer_id=lot.id,
+                    quantity=payload.quantity,
+                    weight=payload.weight,
+                )
+            )
+            location.version += 1
+            db.add(
+                AdminAuditEvent(
+                    actor_user_id=user.id,
+                    actor=actor_name(user),
+                    target_type="warehouse_slot",
+                    target_id=location.id,
+                    action="placed",
+                    changes={
+                        "batch_no": lot.batch_no,
+                        "quantity": payload.quantity,
+                        "weight": float(payload.weight),
+                    },
+                )
+            )
+            db.flush()
+            return location_dict(location, occupants(db, [location.id]))
+    except (IntegrityError, OperationalError) as exc:
+        db.rollback()
+        _db_conflict(exc)
 
 
 def require_manager(user):
@@ -96,11 +176,8 @@ def lock_location(db, location_id):
 
 
 def occupants(db, ids, *, locking=False):
-    # Pending outgoing still occupies the origin until accepted/confirmed:
-    # voiding that outgoing must not restore stock into somebody else's slot.
-    quantity = func.coalesce(Balance.on_hand_quantity + Balance.reserved_quantity, 0)
-    weight = func.coalesce(Balance.on_hand_weight + Balance.reserved_weight, 0)
-    pending = Transfer.status == "pending"
+    # Historical document locations are not current physical placement.
+    placement = WarehousePlacement
     statement = (
         select(
             WarehouseLocation.id.label("location_id"),
@@ -108,20 +185,14 @@ def occupants(db, ids, *, locking=False):
             Transfer.batch_no,
             Transfer.serial_no,
             Transfer.status,
-            case((pending, Transfer.quantity), else_=quantity).label("quantity"),
-            case((pending, Transfer.weight), else_=weight).label("weight"),
+            placement.quantity,
+            placement.weight,
         )
-        .join(
-            Transfer,
-            and_(
-                Transfer.next_team_id == WarehouseLocation.team_id,
-                Transfer.warehouse_location == WarehouseLocation.name,
-            ),
-        )
-        .outerjoin(Balance, Balance.transfer_id == Transfer.id)
+        .join(placement, placement.location_id == WarehouseLocation.id)
+        .join(Transfer, Transfer.id == placement.transfer_id)
         .where(
             WarehouseLocation.id.in_(ids),
-            or_(pending, and_(Transfer.status == "received", or_(quantity > 0, weight > 0))),
+            or_(placement.quantity > 0, placement.weight > 0),
         )
         .order_by(Transfer.id)
     )
@@ -155,6 +226,7 @@ def location_dict(location, rows):
         "active": location.active,
         "version": location.version,
         "status": state,
+        "draft_locked": leased(location),
         "has_stock": any(row["status"] == "received" for row in rows),
         "batches": [{**row, "weight": float(row["weight"])} for row in rows],
     }
@@ -169,21 +241,9 @@ def list_locations(
     conditions = [WarehouseLocation.team_id == team.id]
     if available_only:
         busy = (
-            select(Transfer.id)
-            .outerjoin(Balance, Balance.transfer_id == Transfer.id)
+            select(WarehousePlacement.transfer_id)
             .where(
-                Transfer.next_team_id == WarehouseLocation.team_id,
-                Transfer.warehouse_location == WarehouseLocation.name,
-                or_(
-                    Transfer.status == "pending",
-                    and_(
-                        Transfer.status == "received",
-                        or_(
-                            Balance.on_hand_quantity + Balance.reserved_quantity > 0,
-                            Balance.on_hand_weight + Balance.reserved_weight > 0,
-                        ),
-                    ),
-                ),
+                WarehousePlacement.location_id == WarehouseLocation.id,
             )
             .exists()
         )
@@ -340,7 +400,8 @@ def save_location(db, payload, user, location_id=None):
             if location_id:
                 if payload.expected_version != location.version:
                     raise HTTPException(409, "仓位已被修改，请刷新后重试")
-                require_free(db, location)
+                if not payload.active:
+                    require_free(db, location)
                 if leased(location):
                     raise HTTPException(409, "仓位正在被填写中的单据使用，暂不能修改")
                 before = {"name": location.name, "active": location.active}
@@ -362,7 +423,7 @@ def save_location(db, payload, user, location_id=None):
                 )
             )
             record("warehouse.location_saved", location_id=location.id, user_id=user.id)
-            return location_dict(location, [])
+            return location_dict(location, occupants(db, [location.id]))
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(409, "仓位名称已存在") from exc
@@ -412,6 +473,17 @@ def claim(
     db: Session = Depends(get_db),
 ):
     return reserve(db, location_id, payload.key, user)
+
+
+@router.post("/{location_id}/placement")
+def assign(
+    location_id: int,
+    payload: PlacementWrite,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    require_manager(user)
+    return place_stock(db, location_id, payload, user)
 
 
 @router.delete("/{location_id}/reservation", status_code=204)

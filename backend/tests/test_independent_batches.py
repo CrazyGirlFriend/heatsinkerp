@@ -15,6 +15,14 @@ def test_split_materials_and_serials_create_independent_batches_and_replay_once(
     s = warehouse
     a = intake(client, s, serial_no='000012').json()
     b = intake(client, s, serial_no='000013', idempotency_key='second-origin').json()
+    # Type changes are processing, so this split belongs to the production
+    # team; warehouse only passes through each original material type.
+    incoming = dispatch(client, s, [
+        {'source_transfer_id': row['id'], 'quantity': row['quantity'], 'weight': row['weight']}
+        for row in (a, b)]).json()
+    assert confirm(client, s, incoming, workshop=True).status_code == 200
+    a, b = incoming['items']
+    s = {**s, 'team': s['other'], 'headers': s['other_headers'], 'other': s['team'], 'other_headers': s['headers']}
     payload = {'next_team_id': s['other']['id'], 'idempotency_key': 'independent-submit', 'lines': [
         {'source_transfer_id': a['id'], 'quantity': 20, 'weight': 2, 'material_type': 'semi_finished'},
         {'source_transfer_id': a['id'], 'quantity': 10, 'weight': 1, 'material_type': 'finished'},
@@ -30,7 +38,7 @@ def test_split_materials_and_serials_create_independent_batches_and_replay_once(
     assert all(row['barcode_payload'] == row['batch_no'] and row['dispatch_no'] is None for row in rows)
     assert [row['serial_no'] for row in rows] == ['000012', '000012', '000013']
     with SessionLocal() as db:
-        assert db.scalar(select(func.count(MaterialDispatch.id))) == 1
+        assert db.scalar(select(func.count(MaterialDispatch.id))) == 2
         assert db.scalar(select(func.count(MaterialDispatch.id)).where(MaterialDispatch.dispatch_no.is_not(None))) == 0
     # Receiving one batch does not confirm or lock another batch from the same submission.
     assert confirm(client, s, {'items': [rows[0]]}, workshop=True).status_code == 200

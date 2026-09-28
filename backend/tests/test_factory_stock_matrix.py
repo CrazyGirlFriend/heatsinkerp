@@ -3,7 +3,8 @@
 import pytest
 from app.database import SessionLocal
 from app.models import MaterialTransfer, Team
-from test_external_outbound import confirm, dispatch
+from test_external_outbound import confirm
+from test_external_outbound import legacy_dispatch as dispatch
 from test_external_outbound import outbound as outbound
 from test_factory_overview import report
 from test_warehouse_receipts import intake

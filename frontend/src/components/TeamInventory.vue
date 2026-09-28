@@ -86,6 +86,7 @@ const filters = computed<TeamInventoryParams>(() => {
   const params: Record<string, string | number | boolean> = { page: page.value, page_size: pageSize.value, availability: ['current', 'owned', 'all', 'available', 'scrap'].includes(text('availability')) ? text('availability') : 'owned' }
   for (const key of ['query', 'search_field', 'search_operator', 'serial_no', 'material_name', 'material_type', 'source_team_id', 'date_from', 'date_to', 'stock_age', 'waiting_age', 'waiting_direction', 'activity_day', 'activity_kind', 'flow_direction', 'peer', 'days']) if (text(key)) params[key] = text(key)
   if (props.warehouse && text('receipt_source')) params.receipt_source = text('receipt_source')
+  if (props.warehouse && text('location_status') === 'unassigned') params.location_status = 'unassigned'
   if (!props.warehouse && text('purpose_id')) params.purpose_id = Number(text('purpose_id'))
   if (text('source_team_id')) params.source_team_id = Number(text('source_team_id'))
   for (const key of ['urgent_only', 'has_loss']) if (text(key) === 'true') params[key] = true
@@ -93,6 +94,7 @@ const filters = computed<TeamInventoryParams>(() => {
 })
 const activeFilters = computed(() => {
   const chips: { key: keyof TeamInventoryParams; label: string }[] = []
+  if (props.warehouse && text('location_status')) chips.push({ key: 'location_status', label: '有未分配仓位的物料' })
   if (props.warehouse && text('receipt_source')) chips.push({ key: 'receipt_source', label: `来源：${warehouseSourceNames[text('receipt_source') as WarehouseSource] || text('receipt_source')}` })
   if (text('source_team_id')) chips.push({ key: 'source_team_id', label: `${props.warehouse ? '来源' : '上序'}：${sourceTeams.value.find(team => team.id === Number(text('source_team_id')))?.name || text('source_team_id')}` })
   if (text('material_type')) chips.push({ key: 'material_type', label: `类型：${text('material_type') === 'unknown' ? '未分类' : materialTypeLabel(text('material_type'))}` })
@@ -218,6 +220,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
             <label>分析条件<ElSelect :model-value="analysisChoice" aria-label="库存分析条件" placeholder="库存与流转条件" clearable @change="selectAnalysis"><ElOptionGroup label="库存停留"><ElOption v-for="[key, label] in ages" :key="key" :value="`age:${key}`" :label="`库存停留 ${label}`" /></ElOptionGroup><ElOptionGroup v-for="direction in ['incoming', 'outgoing']" :key="direction" :label="direction === 'incoming' ? '来料待签收' : '转出待确认'"><ElOption v-for="[key, label] in ages" :key="key" :value="`${direction}:${key}`" :label="`${direction === 'incoming' ? '来料待签收' : '转出待确认'} ${label}`" /></ElOptionGroup><ElOption value="loss" :label="`近${days}天有丢失记录`" /></ElSelect></label>
             <label>事件周期<ElSelect :model-value="days" aria-label="库存事件筛选周期" @change="apply({ ...draftFilters(), days: $event })"><ElOption :value="7" label="近7天" /><ElOption :value="30" label="近30天" /></ElSelect></label>
             <ElCheckbox :model-value="text('urgent_only') === 'true'" @change="apply({ ...draftFilters(), urgent_only: $event === true || undefined })">仅看加急</ElCheckbox>
+            <ElCheckbox v-if="warehouse" :model-value="text('location_status') === 'unassigned'" @change="apply({ ...draftFilters(), location_status: $event === true ? 'unassigned' : undefined })">有未分配仓位的物料</ElCheckbox>
           </div>
         </ElPopover>
         <div class="inventory-query-actions"><ElButton @click="search">查询</ElButton><ElButton text @click="apply({ page_size: pageSize }, '')">重置</ElButton></div>

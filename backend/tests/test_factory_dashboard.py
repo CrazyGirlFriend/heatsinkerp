@@ -7,7 +7,8 @@ import pytest
 from app.database import SessionLocal
 from app.models import MaterialTransfer, NotificationOutbox, SerialDeliveryPlan, Team
 from sqlalchemy import select
-from test_external_outbound import confirm, dispatch
+from test_external_outbound import confirm
+from test_external_outbound import legacy_dispatch as dispatch
 from test_external_outbound import outbound as outbound
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse

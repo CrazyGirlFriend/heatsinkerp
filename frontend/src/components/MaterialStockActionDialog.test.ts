@@ -33,6 +33,20 @@ async function submit() { await wrapper.findAll('button').find(button => /^(确�
 async function destination(id = 3) { wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', id); await flushPromises() }
 
 describe('source batch dispatch and loss drafts', () => {
+  it('warehouse transfers carry the original type and current position without processing controls', async () => {
+    const row = source()
+    row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
+    row.transfer.warehouse_location = '历史仓位'
+    row.warehouse_positions = []; row.unassigned_quantity = 100; row.unassigned_weight = 10
+    await render('dispatch', [row]); await destination()
+    expect(wrapper.text()).toContain('当前仓位 未分配仓位')
+    expect(wrapper.text()).not.toContain('历史仓位')
+    expect(wrapper.text()).not.toContain('加工后件数变化')
+    expect(wrapper.text()).not.toContain('拆分物料')
+    expect(wrapper.findAllComponents(ElSelect).some(select => String(select.attributes('aria-label')).includes('物料类型'))).toBe(false)
+    await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ lines: [expect.objectContaining({ material_type: 'semi_finished', source_transfer_id: 10 })] }))
+  })
   it('sends each incoming batch with its own selected location and lease key', async () => {
     await render(); await destination(1)
     const selectors = wrapper.findAllComponents(WarehouseLocationSelect)

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElPagination } from 'element-plus'
 import TeamInventoryDetail from './TeamInventoryDetail.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
+import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { warehouseFixture } from '@/testFixtures/teamInventory'
@@ -35,6 +36,14 @@ async function render(canWrite = true, warehouse = true) {
   } } }); await flushPromises()
 }
 describe('warehouse source detail', () => {
+  it('keeps warehouse quantity history read-only without a processing action', async () => {
+    await render()
+    expect(wrapper.text()).not.toContain('加工件数变更')
+    expect(wrapper.getComponent(QuantityAdjustmentDialog).props('canWrite')).toBe(false)
+    await wrapper.setProps({ warehouse: false })
+    expect(wrapper.text()).toContain('加工件数变更')
+    expect(wrapper.getComponent(QuantityAdjustmentDialog).props('canWrite')).toBe(true)
+  })
   it('separates stock, dispatchable, internal pending and external pending amounts', async () => {
     vi.mocked(teamMaterialApi.inventorySources).mockResolvedValue({ items: [{ ...source(11, 70), owned_quantity: 100, owned_weight: 10, in_transit_quantity: 20, in_transit_weight: 2, external_pending_quantity: 10, external_pending_weight: 1 }], total: 1, page: 1, page_size: 10 })
     await render()
@@ -100,7 +109,8 @@ describe('warehouse source detail', () => {
     expect(wrapper.text()).toContain('外部来料 · 供应商 A')
     expect(wrapper.text()).toContain('含零库存')
     expect(wrapper.text()).not.toContain('累计收发')
-    expect(wrapper.findAll('.warehouse-source-table tbody tr').map(row => row.findAll('td').slice(1, 3).map(cell => cell.text()))).toEqual([['5', '0.5'], ['0', '0']])
+    const headings = wrapper.findAll('.warehouse-source-table thead th').map(cell => cell.text())
+    expect(wrapper.findAll('.warehouse-source-table tbody tr').map(row => ['库存件数', '库存重量 (kg)'].map(label => row.findAll('td')[headings.indexOf(label)]!.text()))).toEqual([['5', '0.5'], ['0', '0']])
     const buttons = wrapper.findAll('button').filter(button => button.text() === '出库')
     expect(buttons[1]!.attributes('disabled')).toBeDefined()
     await buttons[0]!.trigger('click')

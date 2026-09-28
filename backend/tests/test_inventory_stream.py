@@ -145,7 +145,7 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
 
 
 @pytest.mark.parametrize('view', ['inventory'])
-def test_external_submission_and_confirmation_push_the_same_remaining_stock(client, outbound, view):
+def test_external_submission_pushes_completed_stock_in_one_step(client, outbound, view):
     async def run():
         token = client.headers['Authorization'].split(' ', 1)[1]
         stream = factory_stream.inventory_stream(LiveRequest(), HTTPAuthorizationCredentials(scheme='Bearer', credentials=token), view)
@@ -160,17 +160,11 @@ def test_external_submission_and_confirmation_push_the_same_remaining_stock(clie
             submitted = await snapshot()
             assert submitted['totals']['on_hand_quantity'] == submitted['totals']['available_quantity'] == 140
             assert submitted['totals']['on_hand_weight'] == submitted['totals']['available_weight'] == 14
-            assert submitted['totals']['reserved_quantity'] == 60
+            assert submitted['totals']['reserved_quantity'] == 0
             assert submitted['totals']['in_transit_quantity'] == 0
-            for index, item in enumerate(response.json()['items']):
-                url = '/api/material-transfers/' + item['batch_no']
-                response = await asyncio.to_thread(client.post, url + '/confirm-outbound', headers=outbound['headers'],
-                    json={'idempotency_key': 'stream-external-confirm-' + item['batch_no'], 'expected_version': item['version']})
-                assert response.status_code == 200, response.text
-                confirmed = await snapshot()
-                assert confirmed['totals']['on_hand_quantity'] == 140
-                assert confirmed['totals']['on_hand_weight'] == 14
-                assert confirmed['totals']['reserved_quantity'] == (30 if index == 0 else 0)
+            batches = {item['batch_no'] for item in response.json()['items']}
+            shipped = [row for row in submitted['recent_batches'] if row['batch_no'] in batches]
+            assert len(shipped) == 2 and all(row['status'] == 'dispatched' for row in shipped)
         finally:
             await stream.aclose()
         assert not inventory_events._subscribers
@@ -304,7 +298,7 @@ def test_local_midnight_updates_date_sensitive_views_without_periodic_inventory_
     asyncio.run(run())
 
 
-def test_inventory_and_ledger_streams_both_receive_external_confirmation(client, outbound):
+def test_inventory_and_ledger_streams_both_receive_completed_external_submission(client, outbound):
     async def run():
         token = client.headers['Authorization'].split(' ', 1)[1]
         credentials = HTTPAuthorizationCredentials(scheme='Bearer', credentials=token)
@@ -319,11 +313,7 @@ def test_inventory_and_ledger_streams_both_receive_external_confirmation(client,
             response = await asyncio.to_thread(dispatch, client, outbound)
             assert response.status_code == 201
             group = response.json()
-            assert (await asyncio.wait_for(snapshot(), 2))['totals']['on_hand_quantity'] == 140
             detail = group['items'][0]
-            response = await asyncio.to_thread(client.post, f"/api/material-transfers/{detail['batch_no']}/confirm-outbound",
-                headers=outbound['headers'], json={'expected_version': detail['version'], 'idempotency_key': 'pushed-confirm'})
-            assert response.status_code == 200, response.text
             report = await asyncio.wait_for(snapshot(), 2)
             assert report['totals']['on_hand_quantity'] == 140
             row = next(row for row in report['recent_batches'] if row['batch_no'] == detail['batch_no'])

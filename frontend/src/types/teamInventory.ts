@@ -89,6 +89,7 @@ export interface TeamInventoryParams extends Omit<SerialParams, 'availability' |
   availability?: 'current' | 'owned' | 'all' | 'available' | 'scrap'
   search_field?: WarehouseSearchField
   receipt_source?: WarehouseSource
+  location_status?: 'unassigned'
   source_team_id?: number
   /** 0 selects receipts without an assigned receiving business. */
   purpose_id?: number

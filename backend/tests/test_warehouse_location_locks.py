@@ -143,18 +143,18 @@ def test_managers_maintain_slots_but_cannot_edit_a_busy_slot(client, warehouse):
     assert claim(client, slot, warehouse["headers"]).status_code == 409
 
 
-def test_source_slot_stays_occupied_until_full_outgoing_is_confirmed(client, warehouse):
+def test_internal_outgoing_frees_slot_and_void_does_not_restore_old_position(client, warehouse):
     origin = intake(client, warehouse, **location(client, warehouse, "A-01")).json()
     slot = client.get("/api/warehouse-locations").json()["items"][0]
     outgoing = dispatch(client, warehouse, origin, "out")
-    assert state(client, slot)["status"] == "occupied"
+    assert state(client, slot)["status"] == "available"
     assert (
         client.delete(
             f"/api/material-transfers/{outgoing['batch_no']}", headers=warehouse["headers"]
         ).status_code
         == 204
     )
-    assert state(client, slot)["status"] == "occupied"
+    assert state(client, slot)["status"] == "available"
     outgoing = dispatch(client, warehouse, origin, "out-2")
     assert (
         client.post(
@@ -342,7 +342,7 @@ def test_direct_transfer_and_edit_require_a_lease_and_preserve_assigned_slot(cli
     )
 
 
-def test_all_split_outgoings_must_be_received_before_releasing_slot(client, warehouse):
+def test_all_split_outgoings_release_slot_before_either_is_received(client, warehouse):
     origin = intake(client, warehouse, **location(client, warehouse, "A-01")).json()
     slot = client.get("/api/warehouse-locations").json()["items"][0]
     response = client.post(
@@ -359,7 +359,7 @@ def test_all_split_outgoings_must_be_received_before_releasing_slot(client, ware
     )
     assert response.status_code == 201, response.text
     rows = response.json()["items"]
-    assert state(client, slot)["status"] == "occupied"
+    assert state(client, slot)["status"] == "available"
     assert (
         client.post(
             f"/api/material-transfers/{rows[0]['batch_no']}/confirm",
@@ -368,8 +368,7 @@ def test_all_split_outgoings_must_be_received_before_releasing_slot(client, ware
         ).status_code
         == 200
     )
-    assert state(client, slot)["status"] == "occupied"
-    assert claim(client, slot, warehouse["headers"]).status_code == 409
+    assert state(client, slot)["status"] == "available"
     assert (
         client.post(
             f"/api/material-transfers/{rows[1]['batch_no']}/confirm",

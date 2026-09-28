@@ -233,6 +233,8 @@ def create_dispatch(db, team_id, payload, user):
             for line in payload.lines:
                 lot = lots[line.source_transfer_id]
                 kind = line.material_type if "material_type" in line.model_fields_set else lot.material_type
+                if source.code == WAREHOUSE_TEAM_CODE and kind != lot.material_type:
+                    raise HTTPException(422, "库房按原物料转出，不能更改物料类型")
                 workflow.validate_material_route(lot.material_type, kind, target, payload.entry_kind, payload.notes)
                 if target is not None:
                     workflow._validate_warehouse_type(target, kind)
@@ -244,6 +246,11 @@ def create_dispatch(db, team_id, payload, user):
             purposes = {key: purpose_snapshot(db, target.id if target else None, key)
                         for key in dict.fromkeys(line.purpose_id for line in payload.lines)}
             batch_numbers = next_transfer_batch_numbers(db, len(payload.lines))
+            submitted_at = utcnow()
+            # External exits are final at submission; only internal handoffs wait for receipt.
+            completion = {"status": "dispatched", "dispatched_by": actor_name(user),
+                          "dispatched_by_user_id": user.id, "dispatched_at": submitted_at,
+                          "created_at": submitted_at, "updated_at": submitted_at} if external else {"status": "pending"}
             dispatch = MaterialDispatch(
                 dispatch_no=None, source_team_id=source.id,
                 **destination,
@@ -268,7 +275,7 @@ def create_dispatch(db, team_id, payload, user):
                     delivery_origin_id=lot.delivery_origin_id or lot.id,
                     source_team_id=source.id, source_team_code=source.code, source_team_name=source.name,
                     **destination,
-                    quantity=line.quantity, weight=line.weight, status="pending", notes=payload.notes,
+                    quantity=line.quantity, weight=line.weight, **completion, notes=payload.notes,
                     warehouse_location=location_name,
                     created_by=actor_name(user), created_by_user_id=user.id,
                     history=[],
@@ -280,19 +287,19 @@ def create_dispatch(db, team_id, payload, user):
             # Join in SQL so serial matching keeps the database's collation
             # (including MySQL's case/accent rules), not Python dict equality.
             persisted = {row.id: row for row in db.execute(select(
-                MaterialTransfer.id, MaterialTransfer.created_at, MaterialTransfer.updated_at, SerialUrgency
+                MaterialTransfer.id, MaterialTransfer.created_at, MaterialTransfer.updated_at, MaterialTransfer.dispatched_at, SerialUrgency
             ).select_from(MaterialTransfer).outerjoin(
                 SerialUrgency, MaterialTransfer.serial_no == SerialUrgency.serial_no
             ).where(MaterialTransfer.id.in_([item.id for item in items])))}
             for transfer in items:
                 # Keep database timestamp precision in both response and audit.
-                for field in ("created_at", "updated_at"):
+                for field in ("created_at", "updated_at", "dispatched_at"):
                     set_committed_value(transfer, field, getattr(persisted[transfer.id], field))
                 for field, value in (("urgency", persisted[transfer.id].SerialUrgency),
                                      ("stock_source", lots[transfer.source_transfer_id]),
                                      ("dispatch", dispatch), ("source_team", source), ("next_team", target)):
                     set_committed_value(transfer, field, value)
-                workflow._record_event(db, transfer, user, "created", flush=False)
+                workflow._record_event(db, transfer, user, "dispatched" if external else "created", flush=False)
             db.flush()
             # These rows were just created in our transaction; only replays need
             # the locking reread in dispatch_dict to observe concurrent changes.
@@ -409,11 +416,16 @@ def literal_query(query, columns):
     return or_(*(column.like(f"%{escaped}%", escape="!") for column in columns))
 
 
-def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=None, material_type=None, availability="available", page=1, page_size=20):
+def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=None, material_type=None, availability="available", location_status=None, page=1, page_size=20):
     from .record_filters import RecordFilters
     team = require_team(db, team_id)
     stock = stock_table(team_id)
     filters = [stock.c.team_id == team_id]
+    if location_status == "unassigned":
+        from .warehouse_placements import unassigned_predicate
+        if team.code != WAREHOUSE_TEAM_CODE:
+            raise HTTPException(422, "仅库房可以按仓位筛选")
+        filters.append(unassigned_predicate(stock))
     filters.extend((record_filters or RecordFilters()).predicates(stock.c.received_at, stock.c.serial_no))
     if serial_no is not None:
         filters.append(stock.c.serial_no == serial_no.strip())
@@ -426,15 +438,16 @@ def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=
     if query and query.strip():
         matches = literal_query(query, [stock.c.batch_no, stock.c.serial_no, stock.c.material_name, stock.c.source_batch_no])
         if team.code == WAREHOUSE_TEAM_CODE:
-            location_matches = select(MaterialTransfer.id).where(
-                MaterialTransfer.next_team_id == team_id,
-                literal_query(query, [MaterialTransfer.warehouse_location]))
+            from .models import WarehouseLocation, WarehousePlacement
+            location_matches = select(WarehousePlacement.transfer_id).join(WarehouseLocation).where(
+                WarehouseLocation.team_id == team_id, literal_query(query, [WarehouseLocation.name]))
             matches = or_(matches, stock.c.transfer_id.in_(location_matches))
         filters.append(matches)
     total = db.scalar(select(func.count()).select_from(stock).where(*filters)) or 0
     rows = db.execute(select(stock).where(*filters).order_by(stock.c.received_at.desc(), stock.c.transfer_id.desc()).offset((page-1)*page_size).limit(page_size)).mappings().all()
     transfers = {item.id: item for item in db.scalars(select(MaterialTransfer).options(*workflow.material_transfer_list_options()).where(MaterialTransfer.id.in_([row["transfer_id"] for row in rows]))).all()}
-    return {"items": [{"transfer": workflow.material_transfer_dict(transfers[row["transfer_id"]], user, include_history=False), **balance_dict(row)} for row in rows],
+    from .warehouse_placements import stock_positions
+    return {"items": stock_positions(db, [{"transfer": workflow.material_transfer_dict(transfers[row["transfer_id"]], user, include_history=False), **balance_dict(row)} for row in rows]),
             "total": total, "page": page, "page_size": page_size, "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
 
 

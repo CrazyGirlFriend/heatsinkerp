@@ -76,13 +76,13 @@ def test_internal_warehouse_receipt_sets_its_own_location_and_replay_is_checked(
     assert client.post(url, headers=warehouse['headers'], json={**payload, 'warehouse_location': 'B-03'}).status_code == 409
 
 
-def test_choices_only_offer_free_managed_slots_and_pending_outgoing_does_not_free_them(client, warehouse):
+def test_choices_offer_slot_freed_by_internal_outgoing(client, warehouse):
     base = f"/api/team-materials/{warehouse['team']['id']}/warehouse-locations"
     selected = location(client, warehouse, 'A-busy')
     origin = intake(client, warehouse, **selected).json()
     free = client.post('/api/warehouse-locations', json={'name': 'B-free'}).json()
     dispatch(client, warehouse, origin, 'all-pending')
-    assert [item['name'] for item in client.get(base).json()['items']] == ['B-free']
+    assert [item['name'] for item in client.get(base).json()['items']] == ['A-busy', 'B-free']
     assert client.get(base, params={'query': 'B-fr', 'limit': 1}).json()['items'][0]['id'] == free['id']
     assert client.get(base, params={'query': '%'}).json()['items'] == []
     assert intake(client, warehouse, idempotency_key='shared', **selected).status_code == 409

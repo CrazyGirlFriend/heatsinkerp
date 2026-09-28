@@ -1,7 +1,7 @@
 """Current ownership and dated dispatch history must not be conflated."""
 from test_material_stock import stock_setup, dispatch
 from test_team_business import initialize, history
-from test_external_outbound import outbound, dispatch as external_dispatch, confirm as external_confirm
+from test_external_outbound import outbound, legacy_dispatch as external_dispatch, confirm as external_confirm
 
 
 def test_pending_handoff_is_still_owned_and_confirmation_moves_it_once(client, stock_setup):

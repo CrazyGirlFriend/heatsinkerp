@@ -12,7 +12,12 @@ export interface TeamMaterialOverview {
   pending_incoming: { quantity: number | null; weight: number | null; count: number | null; batch_count?: number | null }
   legacy_received_count: number
 }
-export interface StockBatch extends MaterialBalance { transfer: MaterialTransfer }
+export interface StockBatch extends MaterialBalance {
+  transfer: MaterialTransfer
+  warehouse_positions?: { location_id: number; name: string; quantity: number; weight: number }[]
+  physical_quantity?: number; physical_weight?: number
+  unassigned_quantity?: number; unassigned_weight?: number
+}
 export interface QuantityAdjustment {
   id: number; source_transfer_id: number; before_quantity: number; after_quantity: number; delta_quantity: number
   weight: number; reason: string; created_by: string; created_at: string
@@ -50,7 +55,7 @@ export const dispatchDocumentTitle = (kind?: MaterialEntryKind): string => kind 
 export const dispatchConfirmLabel = (kind?: MaterialEntryKind): string => isExternalEntryKind(kind) ? `确认整批${externalActionLabel(kind)}` : '确认整批接收'
 export interface MaterialPage<T> { items: T[]; total: number; page: number; page_size: number; as_of?: string }
 export type MaterialPageParams = import('./recordFilters').RecordFilterParams & { query?: string; serial_no?: string; page?: number; page_size?: number }
-export interface StockParams extends MaterialPageParams { material_type?: MaterialType; availability?: 'available' | 'all' | 'dispatchable' }
+export interface StockParams extends MaterialPageParams { material_type?: MaterialType; availability?: 'available' | 'all' | 'dispatchable'; location_status?: 'unassigned' }
 export interface WarehouseReceiptParams extends MaterialPageParams { material_type?: MaterialType; receipt_source?: 'external' | 'internal' | 'return' }
 export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocumentFields> {
   serial_no: string

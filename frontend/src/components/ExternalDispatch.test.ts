@@ -47,6 +47,7 @@ async function confirm(label = '确认出库') { await wrapper.findAll('button')
 describe('external dispatch creation', () => {
   it.each([['warehouse_outbound', 1, '出库'], ['inspection_shipment', 8, '发货']] as const)('creates separate %s lines without a destination team', async (kind, teamId, verb) => {
     state.auth.currentUser.team_id = teamId
+    vi.mocked(teamMaterialApi.createDispatch).mockResolvedValue({ items: [record(kind, { status: 'dispatched', locked: true, allowed_actions: [] })] })
     await stockDialog(); await mode(kind); await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('请填写外部去向')
@@ -55,9 +56,12 @@ describe('external dispatch creation', () => {
     const [id, body] = vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]!
     expect(id).toBe(teamId); expect(body).toMatchObject({ entry_kind: kind, external_destination: '客户收货仓', lines: [{ source_transfer_id: 3 }, { source_transfer_id: 4 }] })
     expect(body).not.toHaveProperty('next_team_id')
-    expect(wrapper.text()).toContain(`创建后需本班组确认${verb}`)
-    expect(wrapper.text()).toContain(`开单后减少可转出量，本班组确认${verb}后扣减库存`)
-    expect(wrapper.text()).not.toContain('提交即扣减库存')
+    expect(wrapper.text()).toContain(`提交即完成${verb}并扣减库存`)
+    expect(wrapper.text()).not.toContain('创建后需本班组确认')
+    expect(wrapper.findAll('button').some(button => button.text() === `提交${verb}`)).toBe(true)
+    expect(materialTransferApi.confirmOutbound).not.toHaveBeenCalled()
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    expect(wrapper.emitted('saved')?.[0]?.[0]).toMatchObject({ items: [{ status: 'dispatched' }] })
     expect(wrapper.find('[aria-label="出库接收班组"]').exists()).toBe(false)
   })
   it('keeps ordinary production teams on internal transfers', async () => {
@@ -88,6 +92,14 @@ describe('external dispatch creation', () => {
 })
 
 describe('external document confirmation', () => {
+  it.each([['warehouse_outbound', 1, '出库'], ['inspection_shipment', 8, '发货']] as const)('shows newly submitted %s as completed without another confirmation', async (kind, teamId, verb) => {
+    state.auth.currentUser.team_id = teamId
+    await drawer(kind, { status: 'dispatched', locked: true, allowed_actions: [], dispatched_at: '2026-09-28T01:00:00Z', dispatched_by: '本班组账号' })
+    expect(wrapper.text()).toContain(`已${verb}`)
+    expect(wrapper.findAll('button').some(button => button.text() === `确认${verb}`)).toBe(false)
+    expect(wrapper.text()).not.toContain(`待${verb}`)
+    expect(materialTransferApi.confirmOutbound).not.toHaveBeenCalled()
+  })
   it('keeps the actual batch barcode and independent confirmation for historical rows', async () => {
     await drawer('warehouse_outbound', { dispatch_no: 'CK-EXTERNAL' })
     expect(wrapper.getComponent(BarcodeCard).props('value')).toBe('TL-EXTERNAL')

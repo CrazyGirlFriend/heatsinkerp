@@ -21,6 +21,9 @@ def dispatch(client, setup, lines, workshop=False, **extra):
 
 def confirm(client, setup, group, workshop=False, external=False):
     for item in group['items']:
+        if external and item['status'] == 'dispatched':
+            response = client.get('/api/material-transfers/' + item['batch_no'])
+            continue  # New external submissions already completed; no confirmation request.
         response = client.post('/api/material-transfers/' + item['batch_no'] + ('/confirm-outbound' if external else '/confirm'),
             headers=setup['other_headers' if workshop else 'headers'],
             json={'idempotency_key': 'receipt-' + item['batch_no'], 'expected_version': item['version']})
@@ -36,8 +39,7 @@ def test_external_sources_and_return_original_document_validation(client, wareho
     sent = dispatch(client, s, [{'source_transfer_id': origin['id'], 'quantity': 10, 'weight': 1}],
                     next_team_id=None, entry_kind='warehouse_outbound', external_destination='外委单位').json()
     params = dict(receipt_kind='return', external_source='外委单位', return_dispatch_no=sent['items'][0]['batch_no'], idempotency_key='return', quantity=5, weight=.5)
-    assert intake(client, s, **params).status_code == 422  # Still unconfirmed outbound.
-    assert confirm(client, s, sent, external=True).status_code == 200
+    assert sent['items'][0]['status'] == 'dispatched'
     assert intake(client, s, **{**params, 'serial_no': 'OTHER'}).status_code == 422
     assert intake(client, s, **{**params, 'external_source': None}).status_code == 422
     returned = intake(client, s, **params)
@@ -93,7 +95,7 @@ def test_scrap_is_not_production_stock_and_can_only_be_disposed_externally(clien
     response = dispatch(client, s, lines, next_team_id=None, entry_kind='warehouse_outbound', external_destination='回收单位', notes='废料处理')
     assert response.status_code == 201, response.text
     group = response.json()
-    assert client.patch('/api/material-transfers/' + group['items'][0]['batch_no'], headers=s['headers'], json={'material_type': 'finished'}).status_code == 422
+    assert client.patch('/api/material-transfers/' + group['items'][0]['batch_no'], headers=s['headers'], json={'material_type': 'finished'}).status_code == 409
     totals = client.get(base(s) + '/overview').json()['totals']
     assert totals['scrap_quantity'] == totals['scrap_available_quantity'] == 6 and totals['available_quantity'] == 0
     assert totals['on_hand_quantity'] == 6 and totals['on_hand_weight'] == .6

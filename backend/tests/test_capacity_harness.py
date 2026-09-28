@@ -46,6 +46,5 @@ def test_oracle_counts_processing_and_pending_without_double_counting(client, wa
     assert qa.reconcile()["quantity"] == 100
     external = dispatch(client, s, [{"source_transfer_id": lot["id"], "quantity": 10, "weight": 10}],
         next_team_id=None, entry_kind="warehouse_outbound", external_destination="隔离验证", idempotency_key="external").json()
-    assert qa.reconcile()["quantity"] == 100
-    assert confirm(client, s, external, external=True).status_code == 200
+    assert external['items'][0]['status'] == 'dispatched'
     assert qa.reconcile()["quantity"] == 90

@@ -33,6 +33,7 @@ class WarehouseInventoryFilters(SerialFilters):
     search_field: WarehouseSearchField = "all"
     availability: Literal["current", "owned", "all", "available", "scrap"] = "current"
     receipt_source: Literal["external", "return", "internal", "opening"] | None = None
+    location_status: Literal["unassigned"] | None = None
     source_team_id: int | None = Field(default=None, ge=1)
     purpose_id: int | None = Field(default=None, ge=0, description="本班组业务编号；0 表示未指定业务")
 
@@ -106,6 +107,15 @@ def list_inventory(db, team_id, filters):
     require_team(db, team_id)
     table = warehouse_groups(team_id, filters)
     conditions = [table.c.matches_date == 1]
+    if filters.location_status:
+        from .warehouse_placements import unassigned_predicate
+        from .team_constants import WAREHOUSE_TEAM_CODE
+        if require_team(db, team_id).code != WAREHOUSE_TEAM_CODE:
+            raise HTTPException(422, "仅库房可以按仓位筛选")
+        stock = stock_table(team_id)
+        matching = select(mt.id).join(stock, stock.c.transfer_id == mt.id).where(
+            *group_conditions(origin_columns(), table.c), unassigned_predicate(stock))
+        conditions.append(matching.exists())
     if filters.availability != "all":
         prefix = "on_hand" if filters.availability == "current" else "owned" if filters.availability == "owned" else "scrap" if filters.availability == "scrap" else "available"
         conditions.append(or_(table.c[prefix + "_quantity"] > 0, table.c[prefix + "_weight"] > 0))
@@ -163,7 +173,7 @@ def list_inventory(db, team_id, filters):
     # filters above constrain the displayed group quantities themselves.
     if any((filters.waiting_direction, filters.activity_day, filters.has_loss, filters.flow_direction)):
         serial = serial_table(team_id)
-        scope_filters = SerialFilters(**{**filters.model_dump(exclude={"receipt_source", "source_team_id", "purpose_id"}),
+        scope_filters = SerialFilters(**{**filters.model_dump(exclude={"receipt_source", "source_team_id", "purpose_id", "location_status"}),
             "query": None, "search_field": "all", "availability": "all", "material_type": None, "material_name": None,
             "date_from": None, "date_to": None, "stock_age": None})
         conditions.append(table.c.serial_no.in_(select(serial.c.serial_no).where(*serial_predicates(team_id, serial, scope_filters, utcnow()))))
@@ -200,7 +210,8 @@ def list_group_sources(db, team_id, group_id, user, *, page=1, page_size=20, cur
     statement = statement.where(*(record_filters or RecordFilters()).predicates(mt.received_at, mt.serial_no))
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
     rows = db.execute(statement.options(*material_transfer_list_options()).order_by(mt.received_at.desc(), mt.id.desc()).offset((page - 1) * page_size).limit(page_size)).unique().all()
-    return {"items": [{"transfer": material_transfer_dict(row[0], user, include_history=False), **balance_dict(row._mapping)} for row in rows],
+    from .warehouse_placements import stock_positions
+    return {"items": stock_positions(db, [{"transfer": material_transfer_dict(row[0], user, include_history=False), **balance_dict(row._mapping)} for row in rows]),
             "total": total, "page": page, "page_size": page_size,
             "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
 

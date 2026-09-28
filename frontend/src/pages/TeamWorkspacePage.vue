@@ -195,6 +195,18 @@ function closeDetails() { ++actionVersion; pickerOpen.value = false; openingDisp
 function openDetail(transfer: MaterialTransfer) { groupOpen.value = false; selected.value = transfer; drawerOpen.value = true }
 function openDispatch(code: string) { drawerOpen.value = false; selectedDispatchNo.value = code; groupOpen.value = true }
 function openIncoming(transfer: MaterialTransfer) { openDetail(transfer) }
+function openWarehouseMaterial(batchNo: string) { selected.value = null; selectedBatchNo.value = batchNo; drawerOpen.value = true }
+async function dispatchWarehouseMaterial(batchNo: string) {
+  if (!canWrite.value || !isWarehouse.value) return
+  const scope = teamKey.value, current = ++actionVersion
+  try {
+    const result = await teamMaterialApi.stock(teamId.value, { query: batchNo, availability: 'dispatchable', page_size: 100 })
+    if (current !== actionVersion || scope !== teamKey.value) return
+    const source = result.items.find(item => item.transfer.batch_no === batchNo)
+    if (!source) { showToast('该批物料暂无可转出库存，请刷新查看', 'error'); return }
+    await openAction('dispatch', [source])
+  } catch (e) { showToast(e instanceof Error ? e.message : '读取库存失败', 'error') }
+}
 function openLossSource(loss: MaterialLoss) { selected.value = null; selectedBatchNo.value = loss.batch_no; drawerOpen.value = true }
 const selectedBatchNo = ref('')
 watch(selected, transfer => { if (transfer) selectedBatchNo.value = transfer.batch_no })
@@ -219,7 +231,10 @@ async function openNewDispatch() {
   finally { if (current === actionVersion) openingDispatch.value = false }
 }
 function savedAction(result: CreatedMaterialBatches | MaterialLoss) {
-  showToast('items' in result ? `已生成 ${result.items.length} 个独立批次，每批一个条码` : `丢失记录 ${result.loss_no} 已登记`, 'success')
+  const first = 'items' in result ? result.items[0] : undefined
+  showToast(first && isExternalEntryKind(first.entry_kind) && first.status === 'dispatched'
+    ? `已完成${first.entry_kind === 'inspection_shipment' ? '发货' : '出库'}`
+    : 'items' in result ? `已生成 ${result.items.length} 个独立批次，每批一个条码` : `丢失记录 ${result.loss_no} 已登记`, 'success')
   void loadView()
   if ('items' in result) openPrint(result.items)
 }
@@ -321,7 +336,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
       <StatePanel v-else-if="!scopeReady" state="error" :title="!validId ? '无效的班组编号' : directory.error ? '班组目录加载失败' : '未找到启用的班组'" description="请刷新班组目录，或从侧边栏选择已配置的班组。" @retry="directory.refreshTeamDirectory" />
       <template v-else>
         <ElAlert v-if="overview?.legacy_received_count" class="legacy-notice" type="info" :closable="false" :title="`另有 ${overview.legacy_received_count} 张历史已接收单未计入库存。`"><template #default>历史单据仍可在 <RouterLink :to="{ path: '/transfer-batches', query: { next_team_id: teamKey, status: 'received' } }">全局转料记录</RouterLink> 查看。</template></ElAlert>
-        <WarehouseManagement v-if="tab === 'warehouse'" :can-manage="canManageWarehouse" />
+        <WarehouseManagement v-if="tab === 'warehouse'" :key="teamId" :team-id="teamId" :can-manage="canManageWarehouse" :can-dispatch="canWrite" :refresh-key="overview" @view="openWarehouseMaterial" @dispatch="dispatchWarehouseMaterial" />
         <TeamSerialHistory v-else-if="['overview', 'history'].includes(tab)" :key="teamId" :team-id="teamId"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamSerialHistory>
         <template v-else-if="['stock', 'materials', 'material-types'].includes(tab)">
           <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料库存" />

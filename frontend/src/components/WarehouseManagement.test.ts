@@ -7,7 +7,7 @@ vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
 const slot: WarehouseLocation = { id: 1, team_id: 1, name: 'A区-01', active: true, version: 3, status: 'available', has_stock: false, batches: [] }
 let wrapper: VueWrapper
 beforeEach(() => {
-  vi.spyOn(warehouseLocationApi, 'list').mockResolvedValue({ items: [slot, { ...slot, id: 2, name: 'A区-02', status: 'locked' }], total: 2, team_id: 1 })
+  vi.spyOn(warehouseLocationApi, 'list').mockResolvedValue({ items: [slot, { ...slot, id: 2, name: 'A区-02', status: 'locked', draft_locked: true }], total: 2, team_id: 1 })
   vi.spyOn(warehouseLocationApi, 'save').mockResolvedValue(slot)
 })
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
@@ -18,6 +18,16 @@ async function render(canManage = true) {
 async function click(text: string) { await wrapper.findAll('button').find(button => button.text() === text)!.trigger('click'); await flushPromises() }
 
 describe('warehouse management', () => {
+  it('allows renaming an occupied slot but disables deactivation and offers material shortcuts', async () => {
+    vi.mocked(warehouseLocationApi.list).mockResolvedValue({ items: [{ ...slot, status: 'occupied', has_stock: true, batches: [{ id: 8, batch_no: 'TL8', serial_no: 'S8', quantity: 4, weight: 1, status: 'received' }] }], total: 1, team_id: 1 })
+    await render(); await wrapper.setProps({ canDispatch: true })
+    await click('查看物料'); expect(wrapper.emitted('view')?.[0]).toEqual(['TL8'])
+    await click('转出'); expect(wrapper.emitted('dispatch')?.[0]).toEqual(['TL8'])
+    await click('编辑')
+    expect(wrapper.get('input[aria-label="启用仓位"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('input[aria-label="仓位名称"]').setValue('A区-新名称'); await click('保存')
+    expect(warehouseLocationApi.save).toHaveBeenCalledWith({ name: 'A区-新名称', active: true, expected_version: 3 }, 1)
+  })
   it('creates a named slot and refreshes its catalog', async () => {
     await render(); await click('新增仓位'); await click('保存')
     expect(warehouseLocationApi.save).not.toHaveBeenCalled()
