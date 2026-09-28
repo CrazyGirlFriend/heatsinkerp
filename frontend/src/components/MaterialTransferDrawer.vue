@@ -47,7 +47,8 @@ const props = withDefaults(defineProps<{
   traceScope?: Pick<MaterialTransferFilterParams, 'team_id' | 'direction'>
   showHistoryGroup?: boolean
   allowPrint?: boolean
-}>(), { batchNo: '', transfer: null, showHistoryGroup: true, allowPrint: true })
+  receiptOnly?: boolean
+}>(), { batchNo: '', transfer: null, showHistoryGroup: true, allowPrint: true, receiptOnly: false })
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -82,11 +83,15 @@ onBeforeUnmount(() => { ++requestVersion; ++actionVersion })
 watch([confirming, voiding, deliveryBusy], ([confirmBusy, voidBusy, deadlineBusy]) => emit('busyChange', confirmBusy || voidBusy || deadlineBusy), { flush: 'sync' })
 
 const effectiveBatchNo = computed(() => props.batchNo.trim() || props.transfer?.batch_no || '')
-const canEdit = computed(() => Boolean(current.value && !loadError.value && !loading.value && canEditMaterialTransfer(current.value)))
-const canVoid = computed(() => Boolean(current.value && !loadError.value && !loading.value && canVoidMaterialTransfer(current.value)))
-const canConfirm = computed(() => Boolean(current.value && !loadError.value && !loading.value && canConfirmMaterialTransfer(current.value)))
-const canConfirmExternal = computed(() => Boolean(current.value && !loadError.value && !loading.value && authStore.isTeamAccount && authStore.currentUser?.active !== false && !authStore.currentUserError && String(authStore.currentUser?.team_id) === String(current.value.source_team.id) && canConfirmOutbound(current.value)))
-const canReject = computed(() => Boolean(current.value?.version && current.value.status === 'pending' && current.value.allowed_actions.includes('reject') && !loadError.value && !loading.value && authStore.isTeamAccount && authStore.currentUser?.active !== false && !authStore.currentUserError && String(authStore.currentUser?.team_id) === String(current.value.next_team.id)))
+const teamActorReady = computed(() => authStore.isTeamAccount && authStore.currentUser?.team_id != null && authStore.currentUser?.active !== false && !authStore.currentUserError && !loadError.value && !loading.value)
+const isSource = computed(() => Boolean(teamActorReady.value && current.value && String(authStore.currentUser?.team_id) === String(current.value.source_team.id)))
+const isReceiver = computed(() => Boolean(teamActorReady.value && current.value && String(authStore.currentUser?.team_id) === String(current.value.next_team.id)))
+const canMaintainDelivery = computed(() => Boolean(!props.receiptOnly && teamActorReady.value && current.value?.can_edit_delivery && String(authStore.currentUser?.team_id) === String(current.value.source_team.id || current.value.next_team.id)))
+const canEdit = computed(() => Boolean(!props.receiptOnly && isSource.value && current.value && canEditMaterialTransfer(current.value)))
+const canVoid = computed(() => Boolean(!props.receiptOnly && isSource.value && current.value && canVoidMaterialTransfer(current.value)))
+const canConfirm = computed(() => Boolean(isReceiver.value && current.value && canConfirmMaterialTransfer(current.value)))
+const canConfirmExternal = computed(() => Boolean(!props.receiptOnly && isSource.value && current.value && canConfirmOutbound(current.value)))
+const canReject = computed(() => Boolean(isReceiver.value && current.value?.version && current.value.status === 'pending' && current.value.allowed_actions.includes('reject')))
 watch(effectiveBatchNo, () => { reviewNotice.value = '' })
 const tracePath = computed(() => {
   if (!current.value?.serial_no) return ''
@@ -182,6 +187,7 @@ async function confirmReceipt(): Promise<void> {
     return
   }
   if (epoch !== actionVersion || !props.modelValue) return
+  if (!canConfirm.value) { confirming.value = false; return }
   try {
     const confirmed = await materialTransferApi.confirm(transfer.batch_no, { idempotency_key: confirmKey || newIdempotencyKey(), ...materialTransferVersion(transfer), ...(warehouseReceiver.value ? { warehouse_location: transfer.warehouse_location || warehouseLocation.value.trim() || null, ...(warehouseLocationKey.value ? { warehouse_location_reservation_key: warehouseLocationKey.value } : {}) } : {}) })
     if (epoch !== actionVersion || !props.modelValue) return
@@ -267,6 +273,7 @@ async function voidTransfer(): Promise<void> {
     return
   }
   if (epoch !== actionVersion || !props.modelValue) return
+  if (!canVoid.value) { voiding.value = false; return }
   try {
     const voided = await materialTransferApi.void(transfer.batch_no)
     if (epoch !== actionVersion || !props.modelValue) return
@@ -303,7 +310,7 @@ async function groupChanged() {
 }
 
 watch(
-  () => [props.modelValue, effectiveBatchNo.value] as const,
+  () => [props.modelValue, effectiveBatchNo.value, props.receiptOnly] as const,
   ([open]) => {
     groupOpen.value = false
     ++actionVersion; confirming.value = false; voiding.value = false
@@ -333,7 +340,7 @@ watch(() => props.transfer, (transfer) => {
   current.value = { ...transfer, history: transfer.history?.length ? transfer.history : previous?.history ?? [], loss_records: transfer.loss_records?.length ? transfer.loss_records : previous?.loss_records ?? [] }
 })
 
-watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id ?? ''}:${authStore.isTeamAccount}`, () => {
+watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id ?? ''}:${authStore.isTeamAccount}:${authStore.currentUser?.active}:${authStore.currentUserError}`, () => {
   groupOpen.value = false
   ++requestVersion
   ++actionVersion; confirming.value = false; voiding.value = false
@@ -374,7 +381,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
         <ElButton v-if="canReject" type="warning" plain :disabled="confirming || voiding" @click="rejectTransfer">退回核对</ElButton>
         <ElButton v-if="canConfirm" type="primary" :icon="CircleCheck" :loading="confirming" :disabled="locationBusy" @click="confirmReceipt">确认签收</ElButton>
         <ElButton v-if="canConfirmExternal" type="primary" :icon="CircleCheck" :loading="confirming" @click="confirmExternal">确认{{ actionLabel }}</ElButton>
-        <ElButton v-if="current.can_edit_delivery && !loadError && !loading" :disabled="confirming || voiding" @click="deliveryOpen = true">维护交期</ElButton>
+        <ElButton v-if="canMaintainDelivery" :disabled="confirming || voiding" @click="deliveryOpen = true">维护交期</ElButton>
         <a v-if="current.delivery_origin_batch_no && current.delivery_origin_batch_no !== current.batch_no" :href="'/transfer-batches?batch_no=' + encodeURIComponent(current.delivery_origin_batch_no)">查看交期源单</a>
         <ElButton v-if="canEdit" type="primary" :icon="EditPen" :disabled="voiding" @click="editOpen = true">编辑</ElButton>
         <ElButton v-if="allowPrint" :icon="Printer" @click="printTransfer">{{ receipt ? '打印入库单' : external ? `打印${actionLabel}单` : '打印转料单' }}</ElButton>
@@ -383,7 +390,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
       <p class="permission-note" :title="stateMessage" aria-live="polite"><ElIcon><Lock /></ElIcon>{{ canConfirm ? '接收后本单将锁定。' : stateMessage }}</p>
     </template>
   </MaterialTransferDetailFrame>
-  <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="current?.dispatch_no || ''" :allow-print="allowPrint" @changed="groupChanged" @busy-change="emit('busyChange', $event)" />
+  <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="current?.dispatch_no || ''" :allow-print="allowPrint" :receipt-only="receiptOnly" @changed="groupChanged" @busy-change="emit('busyChange', $event)" />
   <MaterialDeliveryDialog v-model="deliveryOpen" :transfer="current" @saved="updateCurrent" @refreshed="updateCurrent" @busy="deliveryBusy = $event" />
   <MaterialTransferFormDialog v-model="editOpen" :transfer="current" @saved="updateCurrent" @refreshed="updateCurrent" />
   <Teleport to="body"><MaterialTransferPrintSheet v-if="current && printReady" :transfer="current" /></Teleport>

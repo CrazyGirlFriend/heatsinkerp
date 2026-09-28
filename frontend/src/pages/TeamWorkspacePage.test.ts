@@ -98,7 +98,7 @@ describe('team workspace material ledger', () => {
     }
     expect(table.find('.barcode-card').exists()).toBe(false)
     await table.get('.batch-link').trigger('click'); await flushPromises()
-    expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: 'TL10', allowPrint: tab !== 'pending' })
+    expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: 'TL10', allowPrint: tab !== 'pending', receiptOnly: tab === 'pending' })
     expect(wrapper.find('.team-list-layout--detail, .team-workspace--docked').exists()).toBe(false)
     expect(wrapper.getComponent(MaterialTransferDrawer).attributes('docked')).toBeUndefined()
     if (tab === 'outgoing') {
@@ -418,13 +418,14 @@ describe('team workspace material ledger', () => {
     expect(materialDispatchApi.get).toHaveBeenCalledWith('CK-GROUP')
     expect(wrapper.getComponent(MaterialDispatchDrawer).props('modelValue')).toBe(true)
     expect(wrapper.getComponent(MaterialDispatchDrawer).props('allowPrint')).toBe(false)
+    expect(wrapper.getComponent(MaterialDispatchDrawer).props('receiptOnly')).toBe(true)
   })
   it('opens each pending batch independently even when historically printed together', async () => {
     vi.mocked(materialTransferApi.list).mockResolvedValue({ items: [{ ...source().transfer, status: 'pending', dispatch_no: 'CK-PENDING' }], total: 1, page: 1, page_size: 10 })
     await render('/team-workspaces/914?tab=pending')
     await wrapper.findAll('button').find(button => button.text() === '核对接收')!.trigger('click'); await flushPromises()
     expect(wrapper.getComponent(MaterialDispatchDrawer).props('modelValue')).toBe(false)
-    expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: source().transfer.batch_no, allowPrint: false })
+    expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: source().transfer.batch_no, allowPrint: false, receiptOnly: true })
   })
   it('disables printing for a scanned pending receipt but keeps it for the same pending batch in outgoing records', async () => {
     const transfer = normalizeMaterialTransfer({ ...source().transfer, source_team: { id: 900, name: '检验' }, status: 'pending', locked: false })
@@ -433,12 +434,13 @@ describe('team workspace material ledger', () => {
     const router = await render('/team-workspaces/914?tab=pending')
     await wrapper.get('input[aria-label="扫描转料批次号"]').setValue(transfer.batch_no)
     await wrapper.get('input[aria-label="扫描转料批次号"]').trigger('keyup.enter'); await flushPromises()
-    expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, allowPrint: false })
+    expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, allowPrint: false, receiptOnly: true })
     state.auth.currentUser.team_id = 900
     await router.push('/team-workspaces/900?tab=outgoing'); await flushPromises()
     await wrapper.findAll('button').find(button => button.text() === '查看详情')!.trigger('click'); await flushPromises()
-    expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: transfer.batch_no, allowPrint: true })
+    expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: transfer.batch_no, allowPrint: true, receiptOnly: false })
     expect(wrapper.getComponent(MaterialDispatchDrawer).props('allowPrint')).toBe(true)
+    expect(wrapper.getComponent(MaterialDispatchDrawer).props('receiptOnly')).toBe(false)
   })
   it('does not issue global requests for invalid or absent team ids', async () => {
     await render('/team-workspaces/nope?tab=pending')

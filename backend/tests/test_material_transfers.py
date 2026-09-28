@@ -129,6 +129,13 @@ def test_permissions_whole_batch_confirmation_and_permanent_lock(client):
     )
     assert target_view.status_code == 200
     assert target_view.json()["allowed_actions"] == ["confirm"]
+    incoming = client.get(
+        "/api/material-transfers",
+        params={"team_id": setup["target"]["id"], "direction": "incoming", "status": "pending"},
+        headers=setup["target_headers"],
+    )
+    assert incoming.status_code == 200
+    assert incoming.json()["items"][0]["allowed_actions"] == ["confirm"]
     assert client.get(f"/api/material-transfers/{batch_no}").json()["allowed_actions"] == []
 
     assert client.patch(
@@ -139,6 +146,9 @@ def test_permissions_whole_batch_confirmation_and_permanent_lock(client):
     assert client.delete(
         f"/api/material-transfers/{batch_no}", headers=setup["target_headers"]
     ).status_code == 403
+    unchanged = client.get(f"/api/material-transfers/{batch_no}", headers=setup["target_headers"]).json()
+    for field in ("quantity", "weight", "status", "version", "history"):
+        assert unchanged[field] == target_view.json()[field]
     assert client.post(
         f"/api/material-transfers/{batch_no}/confirm",
         json={"idempotency_key": "wrong-source-confirm"},

@@ -44,6 +44,14 @@ async function base(type: string | null = 'finished') {
 async function submit() { await wrapper.get('form').trigger('submit'); await flushPromises() }
 
 describe('material transfer document form', () => {
+  it('cannot submit an incoming transfer even if its edit action flag is present', async () => {
+    await render(fixture({ source_team: { id: 3, name: '电镀', code: 'PLATE' }, next_team: { id: 2, name: '研磨', code: 'GRIND' } }))
+    expect(wrapper.findAll('button').find(button => button.text() === '保存修改')!.attributes('disabled')).toBeDefined()
+    await submit()
+    expect(materialTransferApi.update).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('无编辑权限')
+  })
+
   it('records a paired delivery requirement on the origin and never submits inherited values', async () => {
     await render(); await base()
     await wrapper.get('input[aria-label="要求发货日期"]').setValue('2026-10-01')

@@ -13,7 +13,7 @@ import { useAuthStore } from '@/stores/auth'
 import { materialDispatchApi } from '@/services/materialDispatchApi'
 import { materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import type { MaterialDispatchDocument } from '@/types/teamMaterials'
-const props = withDefaults(defineProps<{ modelValue: boolean; dispatchNo?: string; allowPrint?: boolean }>(), { dispatchNo: '', allowPrint: true })
+const props = withDefaults(defineProps<{ modelValue: boolean; dispatchNo?: string; allowPrint?: boolean; receiptOnly?: boolean }>(), { dispatchNo: '', allowPrint: true, receiptOnly: false })
 const emit = defineEmits<{ 'update:modelValue': [boolean]; changed: [MaterialDispatchDocument]; busyChange: [boolean] }>()
 const auth = useAuthStore()
 const current = ref<MaterialDispatchDocument | null>(null), loading = ref(false), error = ref('')
@@ -61,7 +61,7 @@ onBeforeUnmount(reset)
     </template>
     <template v-if="allowPrint" #footer><ElButton :disabled="!current || loading || !!error" @click="printOpen = true">合并打印</ElButton></template>
   </MaterialTransferDetailFrame>
-  <MaterialTransferDrawer v-if="selected" v-model="batchOpen" :transfer="selected" :batch-no="selected.batch_no" :show-history-group="false" :allow-print="allowPrint" @changed="changed" @busy-change="setBusy" />
+  <MaterialTransferDrawer v-if="selected" v-model="batchOpen" :transfer="selected" :batch-no="selected.batch_no" :show-history-group="false" :allow-print="allowPrint" :receipt-only="receiptOnly" @changed="changed" @busy-change="setBusy" />
   <MaterialBatchPrintDialog v-if="allowPrint" v-model="printOpen" :items="current?.items || []" />
 </template>
 <style scoped>

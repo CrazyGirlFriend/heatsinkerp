@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { reactive } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
@@ -13,7 +14,8 @@ vi.mock('@/composables/useLiveRefresh', async () => {
   return { useLiveRefresh: (refresh: () => Promise<void>, options: { busy: () => boolean }) => { live.refresh = refresh; live.busy = options.busy; return { message: ref(''), request: live.request } } }
 })
 
-vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isAdmin: false, isTeamAccount: true, currentUser: { team_id: 3 } }) }))
+const state = vi.hoisted(() => ({ auth: { isAdmin: false, isTeamAccount: true, currentUser: { id: 30, team_id: 3, active: true }, currentUserError: '' } }))
+vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
 vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => ({ items: [], loading: false, refreshTeamDirectory: vi.fn() }) }))
 
@@ -22,13 +24,14 @@ function fixture(overrides: Partial<MaterialTransfer> = {}) {
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  state.auth = reactive({ isAdmin: false, isTeamAccount: true, currentUser: { id: 30, team_id: 3, active: true }, currentUserError: '' })
   vi.spyOn(teamMaterialApi, 'warehouseLocations').mockResolvedValue({ items: [] })
   vi.spyOn(materialTransferApi, 'get').mockResolvedValue(fixture())
   vi.spyOn(materialTransferApi, 'confirm').mockResolvedValue(fixture({ status: 'received', locked: true, version: 5, allowed_actions: [] }))
   vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>)
 })
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
-async function render(props: { allowPrint?: boolean } = {}) {
+async function render(props: { allowPrint?: boolean; receiptOnly?: boolean } = {}) {
   wrapper = mount(MaterialTransferDrawer, { props: { modelValue: true, batchNo: 'TL20260906000001', ...props }, global: { stubs: {
     MaterialTransferDetailFrame: { template: '<div><slot name="header"/><slot/><slot name="footer"/></div>' },
     MaterialDispatchDrawer: true, MaterialTransferFormDialog: true, MaterialTransferPrintSheet: true, BarcodeCard: true, RouterLink: { props: ['to'], template: '<a :href="to"><slot/></a>' },
@@ -41,6 +44,50 @@ async function confirm() {
 }
 
 describe('material transfer receipt review', () => {
+  it('allows the receiver to sign, but never edit or void even if action flags are stale', async () => {
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ allowed_actions: ['edit', 'void', 'confirm'], can_edit_delivery: true }))
+    await render()
+    expect(wrapper.findAll('button').some(button => ['编辑', '作废', '维护交期'].includes(button.text()))).toBe(false)
+    await confirm()
+    expect(materialTransferApi.confirm).toHaveBeenCalledOnce()
+  })
+
+  it('keeps source-only actions in outbound review and excludes them from incoming review', async () => {
+    state.auth.currentUser.team_id = 2
+    vi.mocked(materialTransferApi.get).mockResolvedValue(fixture({ allowed_actions: ['edit', 'void', 'confirm'], can_edit_delivery: true }))
+    await render()
+    const buttons = () => wrapper.findAll('button').map(button => button.text())
+    expect(buttons()).toEqual(expect.arrayContaining(['编辑', '作废', '维护交期']))
+    expect(buttons()).not.toContain('确认签收')
+    await wrapper.setProps({ receiptOnly: true })
+    await flushPromises()
+    for (const label of ['编辑', '作废', '维护交期', '确认签收']) expect(buttons()).not.toContain(label)
+  })
+
+  it.each(['other-team', 'admin', 'inactive', 'auth-error'] as const)('blocks all transfer mutations for %s despite stale flags', async (actor) => {
+    if (actor === 'other-team') state.auth.currentUser.team_id = 99
+    if (actor === 'admin') { state.auth.isAdmin = true; state.auth.isTeamAccount = false }
+    if (actor === 'inactive') state.auth.currentUser.active = false
+    if (actor === 'auth-error') state.auth.currentUserError = '登录状态读取失败'
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ allowed_actions: ['edit', 'void', 'confirm', 'reject'], can_edit_delivery: true }))
+    await render()
+    expect(wrapper.findAll('button').some(button => ['编辑', '作废', '维护交期', '确认签收', '退回核对'].includes(button.text()))).toBe(false)
+  })
+
+  it('does not void after the source account becomes inactive while the prompt is open', async () => {
+    state.auth.currentUser.team_id = 2
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ allowed_actions: ['edit', 'void'] }))
+    const voidApi = vi.spyOn(materialTransferApi, 'void').mockResolvedValue(fixture({ status: 'voided', locked: true, allowed_actions: [] }))
+    let accept!: () => void
+    vi.mocked(ElMessageBox.confirm).mockReturnValueOnce(new Promise(resolve => { accept = () => resolve('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>) }))
+    await render()
+    await wrapper.findAll('button').find(button => button.text() === '作废')!.trigger('click')
+    state.auth.currentUser.active = false
+    accept()
+    await flushPromises()
+    expect(voidApi).not.toHaveBeenCalled()
+  })
+
   it('records a warehouse receipt location and protects the unsaved choice from live updates', async () => {
     vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ next_team: { id: '3', code: 'FACTORY-WAREHOUSE', name: '库房' } }))
     await render()
@@ -55,11 +102,11 @@ describe('material transfer receipt review', () => {
   })
   it('hides printing in receipt review, including historical groups, without removing receipt actions', async () => {
     vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ dispatch_no: 'CK-PENDING', allowed_actions: ['confirm', 'reject'] }))
-    await render({ allowPrint: false })
+    await render({ allowPrint: false, receiptOnly: true })
     expect(wrapper.findAll('button').some(button => button.text().includes('打印'))).toBe(false)
     expect(wrapper.findAll('button').some(button => button.text() === '退回核对')).toBe(true)
     await wrapper.findAll('button').find(button => button.text().includes('历史合并记录'))!.trigger('click')
-    expect(wrapper.getComponent({ name: 'MaterialDispatchDrawer' }).props()).toMatchObject({ modelValue: true, allowPrint: false })
+    expect(wrapper.getComponent({ name: 'MaterialDispatchDrawer' }).props()).toMatchObject({ modelValue: true, allowPrint: false, receiptOnly: true })
     await confirm()
     expect(materialTransferApi.confirm).toHaveBeenCalledOnce()
     expect(wrapper.findAll('button').some(button => button.text().includes('打印'))).toBe(false)
@@ -124,6 +171,13 @@ describe('material transfer receipt review', () => {
     expect(wrapper.findAll('button').some(button => ['确认签收', '编辑', '作废'].includes(button.text()))).toBe(false)
     expect(wrapper.findAll('button').some(button => button.text() === '打印入库单')).toBe(true)
     expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('外部来源未登记')
+  })
+  it('preserves source requirement maintenance for the warehouse that registered an external receipt', async () => {
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ entry_kind: 'warehouse_receipt', source_team: { id: '', code: '', name: '外部来料' }, status: 'received', locked: true, allowed_actions: [], can_edit_delivery: true }))
+    await render()
+    const buttons = wrapper.findAll('button').map(button => button.text())
+    expect(buttons).toContain('维护交期')
+    for (const label of ['编辑', '作废', '确认签收']) expect(buttons).not.toContain(label)
   })
   it('allows receipt of a legacy warehouse transfer with no material classification', async () => {
     vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ material_type: null, next_team: { id: 3, code: 'DEPOT', name: '库房', kind: 'warehouse' } }))

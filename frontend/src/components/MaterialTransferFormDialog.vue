@@ -70,9 +70,10 @@ const isEditing = computed(() => Boolean(props.transfer))
 const linkedSource = computed(() => Boolean(editingSnapshot.value?.source_transfer_id))
 const groupedDispatch = computed(() => Boolean(editingSnapshot.value?.dispatch_no))
 const sourceTeam = computed(() => editingSnapshot.value?.source_team ?? authStore.currentUser?.team ?? null)
-const editable = computed(() => !editingSnapshot.value || canEditMaterialTransfer(editingSnapshot.value))
+const teamActorReady = computed(() => authStore.isTeamAccount && authStore.currentUser?.team_id != null && authStore.currentUser?.active !== false && !authStore.currentUserError)
+const editable = computed(() => !editingSnapshot.value || (teamActorReady.value && String(authStore.currentUser?.team_id) === String(editingSnapshot.value.source_team.id) && canEditMaterialTransfer(editingSnapshot.value)))
 const sourceChanged = computed(() => !isEditing.value && String(openedSourceTeamId.value) !== String(authStore.currentUser?.team_id ?? null))
-const canSubmit = computed(() => authStore.isTeamAccount && Boolean(sourceTeam.value) && !sourceChanged.value && editable.value && !saving.value && !locationBusy.value && !refreshing.value && !refreshFailed.value)
+const canSubmit = computed(() => teamActorReady.value && Boolean(sourceTeam.value) && !sourceChanged.value && editable.value && !saving.value && !locationBusy.value && !refreshing.value && !refreshFailed.value)
 const destinationTeams = computed(() => {
   const sourceId = String(sourceTeam.value?.id ?? '')
   const items = teamStore.items.filter((team) => team.active && String(team.id) !== sourceId)
@@ -117,6 +118,7 @@ function validate(): boolean {
   const quantity = Number(form.quantity)
   const weight = Number(form.weight)
   if (!authStore.isTeamAccount) formError.value = '管理员仅可查看转料记录'
+  else if (!teamActorReady.value) formError.value = '当前账号不可操作，请重新登录后核对'
   else if (!sourceTeam.value) formError.value = '当前账号未绑定班组，请联系管理员'
   else if (sourceChanged.value) formError.value = '账号所属班组已变更，请关闭后重新新建转料'
   else if (!editable.value) formError.value = '此转料单已锁定或无编辑权限'
@@ -225,7 +227,7 @@ watch(() => props.modelValue, (open) => {
   resetForm()
   if (!teamStore.items.length && !teamStore.loading) void teamStore.refreshTeamDirectory()
 }, { immediate: true })
-watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id ?? ''}:${authStore.isTeamAccount}`, () => { ++formGeneration; saving.value = false; emit('update:modelValue', false) })
+watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id ?? ''}:${authStore.isTeamAccount}:${authStore.currentUser?.active}:${authStore.currentUserError}`, () => { ++formGeneration; saving.value = false; emit('update:modelValue', false) })
 onBeforeUnmount(() => { ++formGeneration })
 </script>
 
