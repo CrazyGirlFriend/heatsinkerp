@@ -67,7 +67,7 @@ describe('login form', () => {
     expect(router.currentRoute.value.path).toBe('/login')
     await wrapper.get('form').trigger('submit'); await flushPromises()
     expect(adminApi.login).toHaveBeenCalledTimes(2)
-    expect(router.currentRoute.value.path).toBe('/')
+    expect(router.currentRoute.value.path).toBe('/factory-analysis')
   })
 
   it('toggles password visibility without changing the entered value', async () => {
@@ -109,6 +109,13 @@ describe('login form', () => {
     const { wrapper, router } = await renderLogin({ redirect: '//external.example' })
     await fill(wrapper); await wrapper.get('form').trigger('submit'); await flushPromises()
     expect(transition).toHaveBeenCalledOnce()
-    expect(router.currentRoute.value.path).toBe('/team-workspaces/7')
+    expect(router.currentRoute.value.path).toBe('/factory-analysis')
+  })
+
+  it.each(['ADMIN', 'TEAM'] as const)('opens factory analysis after a %s login without a return destination', async role => {
+    vi.mocked(adminApi.login).mockResolvedValue({ ...session, user: { ...session.user, role, team_id: role === 'TEAM' ? 7 : null } })
+    const { wrapper, router } = await renderLogin()
+    await fill(wrapper); await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/factory-analysis')
   })
 })

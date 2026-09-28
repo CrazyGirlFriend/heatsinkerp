@@ -3,8 +3,8 @@ import { Hide, Lock, Right, User, View } from '@element-plus/icons-vue'
 import { ElButton, ElForm, ElFormItem, ElIcon, ElInput } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { authState, currentUser, isAuthenticated, login } from '@/stores/auth'
-import { defaultAuthenticatedPath, safeInternalRedirect } from '@/utils/navigation'
+import { authState, isAuthenticated, login } from '@/stores/auth'
+import { DEFAULT_LOGIN_PATH, safeInternalRedirect } from '@/utils/navigation'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,7 +17,7 @@ const validationMessage = ref('')
 const errorMessage = computed(() => validationMessage.value || authState.error)
 
 function safeRedirect(): string {
-  return safeInternalRedirect(route.query.redirect, defaultAuthenticatedPath(currentUser.value))
+  return safeInternalRedirect(route.query.redirect, DEFAULT_LOGIN_PATH)
 }
 
 async function handleSubmit(): Promise<void> {

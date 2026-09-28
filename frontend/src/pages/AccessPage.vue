@@ -4,7 +4,7 @@ import { computed, nextTick, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { accessState, checkSiteAccess, unlockSite } from '@/stores/access'
 import { isAuthenticated } from '@/stores/auth'
-import { safeInternalRedirect } from '@/utils/navigation'
+import { DEFAULT_LOGIN_PATH, safeInternalRedirect } from '@/utils/navigation'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,7 +19,7 @@ const errorMessage = computed(() => validationMessage.value || accessState.error
 const lockLabel = computed(() => accessState.status === 'error' ? '重新检查连接' : '解锁访问')
 
 async function continueToApp(): Promise<void> {
-  const destination = safeInternalRedirect(route.query.redirect)
+  const destination = safeInternalRedirect(route.query.redirect, DEFAULT_LOGIN_PATH)
   await router.replace(isAuthenticated.value ? destination : { path: '/login', query: { redirect: destination } })
 }
 

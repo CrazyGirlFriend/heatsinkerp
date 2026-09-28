@@ -43,18 +43,39 @@ afterEach(() => {
 })
 
 describe('phase-one routes', () => {
-  it('enters the refreshed bound team by default while retaining explicit safe destinations', async () => {
+  it('enters factory analysis by default while retaining explicit safe destinations and team permissions', async () => {
     authMocks.admin = false
     authMocks.user = { role: 'TEAM', team_id: 2 }
     authMocks.refresh.mockImplementationOnce(async () => { authMocks.user = { role: 'TEAM', team_id: 3 } })
     await router.push('/login')
-    expect(router.currentRoute.value.path).toBe('/team-workspaces/3')
+    expect(router.currentRoute.value.path).toBe('/factory-analysis')
     await router.push('/login?redirect=%2Fmaterial-trace%3Fserial_no%3DFLOW-1')
     expect(router.currentRoute.value.path).toBe('/team-workspaces/3')
     await router.push('/login?redirect=%2Ftransfer-batches%3Fserial_no%3DFLOW-1')
     expect(router.currentRoute.value.fullPath).toBe('/transfer-batches?serial_no=FLOW-1')
     await router.push('/login?redirect=https%3A%2F%2Fevil.example')
-    expect(router.currentRoute.value.path).toBe('/team-workspaces/3')
+    expect(router.currentRoute.value.path).toBe('/factory-analysis')
+  })
+
+  it('sends a fresh website visit through login to factory analysis', async () => {
+    authMocks.authenticated = false
+    await router.push('/')
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(router.currentRoute.value.query.redirect).toBe('/factory-analysis')
+    authMocks.authenticated = true
+    await router.push({ path: '/login', query: router.currentRoute.value.query, force: true })
+    expect(router.currentRoute.value.path).toBe('/factory-analysis')
+  })
+
+  it.each(['/team-workspaces/2?tab=outbound', '/factory-stock'])('retains an explicit protected destination %s through login', async path => {
+    authMocks.authenticated = false
+    await router.push(path)
+    const redirect = router.currentRoute.value.query.redirect
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(redirect).toBe(path === '/factory-stock' ? '/' : path)
+    authMocks.authenticated = true
+    await router.push({ path: '/login', query: router.currentRoute.value.query, force: true })
+    expect(router.currentRoute.value.fullPath).toBe(redirect)
   })
 
   it('opens the factory homepage for both roles and retains explicit team routes', async () => {

@@ -3,7 +3,7 @@ import LoginPage from '@/pages/LoginPage.vue'
 import AccessPage from '@/pages/AccessPage.vue'
 import { currentUser, isAdmin, isAuthenticated, refreshCurrentUser, restoreSession } from '@/stores/auth'
 import { canEnterSite, checkSiteAccess, SITE_ACCESS_REQUIRED_EVENT } from '@/stores/access'
-import { defaultAuthenticatedPath, safeInternalRedirect } from '@/utils/navigation'
+import { DEFAULT_LOGIN_PATH, defaultAuthenticatedPath, safeInternalRedirect } from '@/utils/navigation'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -72,11 +72,12 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   restoreSession()
   const unlocked = await checkSiteAccess()
-  let destination = safeInternalRedirect(to.name === 'login' || to.name === 'access' ? to.query.redirect : to.fullPath, '/')
+  let destination = safeInternalRedirect(to.name === 'login' || to.name === 'access' ? to.query.redirect : to.fullPath, DEFAULT_LOGIN_PATH)
+  if (!isAuthenticated.value && to.fullPath === '/' && !to.redirectedFrom) destination = DEFAULT_LOGIN_PATH
   if (!unlocked) return to.name === 'access' ? true : { path: '/access', query: { redirect: destination } }
   if (to.meta.public && isAuthenticated.value) {
     try { await refreshCurrentUser() } catch { /* The guarded destination retries account verification. */ }
-    destination = safeInternalRedirect(to.query.redirect, defaultAuthenticatedPath(currentUser.value))
+    destination = safeInternalRedirect(to.query.redirect, DEFAULT_LOGIN_PATH)
   }
   if (to.name === 'access') {
     return isAuthenticated.value ? destination : { path: '/login', query: { redirect: destination } }
@@ -85,7 +86,7 @@ router.beforeEach(async (to) => {
     return to.name === 'login' && isAuthenticated.value ? destination : true
   }
   if (!isAuthenticated.value) {
-    return { path: '/login', query: { redirect: to.fullPath } }
+    return { path: '/login', query: { redirect: destination } }
   }
   try {
     await refreshCurrentUser()
@@ -112,7 +113,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener(SITE_ACCESS_REQUIRED_EVENT, () => {
     const current = router.currentRoute.value
     if (current.name === 'access') return
-    const destination = safeInternalRedirect(current.name === 'login' ? current.query.redirect : current.fullPath)
+    const destination = safeInternalRedirect(current.name === 'login' ? current.query.redirect : current.fullPath, DEFAULT_LOGIN_PATH)
     void router.replace({ path: '/access', query: { redirect: destination } })
   })
 }

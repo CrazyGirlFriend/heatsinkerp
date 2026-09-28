@@ -1,6 +1,8 @@
 import type { Account } from '@/services/adminApi'
 import type { RouteLocationRaw, Router } from 'vue-router'
 
+export const DEFAULT_LOGIN_PATH = '/factory-analysis'
+
 export function defaultAuthenticatedPath(user: Pick<Account, 'role' | 'team_id'> | null | undefined): string {
   const teamId = Number(user?.team_id)
   return user?.role === 'TEAM' && Number.isSafeInteger(teamId) && teamId > 0 ? `/team-workspaces/${teamId}` : '/'

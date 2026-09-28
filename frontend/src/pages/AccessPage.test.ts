@@ -45,6 +45,7 @@ async function mountAccessPage(query: LocationQueryRaw = {}) {
     routes: [
       { path: '/access', name: 'access', component: AccessPage },
       { path: '/login', name: 'login', component: { template: '<div>Login</div>' } },
+      { path: '/factory-analysis', component: { template: '<div>Factory analysis</div>' } },
       { path: '/transfer-batches', name: 'transfer-batches', component: { template: '<div>Transfers</div>' } },
       { path: '/transfer-batches/scan', name: 'transfer-batch-scan', component: { template: '<div>Scan</div>' } },
     ],
@@ -127,7 +128,19 @@ describe('minimal site access page', () => {
     await wrapper.get('input[name="site-access-password"]').setValue('test-only-password')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/transfer-batches')
+    expect(router.currentRoute.value.path).toBe('/factory-analysis')
+  })
+
+  it('keeps factory analysis as the default through site unlock and account login', async () => {
+    accessAdapter
+      .mockImplementationOnce(adapterReply({ unlocked: true }))
+      .mockImplementationOnce(adapterReply({ enabled: true, unlocked: true }))
+    const { wrapper, router } = await mountAccessPage()
+    await expand(wrapper)
+    await wrapper.get('input[name="site-access-password"]').setValue('test-only-password')
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/login')
+    expect(router.currentRoute.value.query.redirect).toBe('/factory-analysis')
   })
 
   it('keeps the user on the gate and shows the server error for a wrong password', async () => {
