@@ -50,7 +50,8 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer) })
     <ElResult v-if="!canManage" icon="warning" title="仅库房账号和管理员可以设置仓位" />
     <template v-else>
       <ElCard shadow="never" class="warehouse-card">
-        <div class="warehouse-toolbar"><ElInput v-model="query" aria-label="搜索仓位" placeholder="搜索仓位" clearable :prefix-icon="Search" @keyup.enter="search" @clear="search" /><ElButton type="primary" @click="search">查询</ElButton><ElButton :icon="Refresh" :loading="loading" @click="load()">刷新</ElButton><ElButton class="warehouse-add" type="primary" :icon="Plus" @click="edit()">新增仓位</ElButton></div>
+        <header class="warehouse-heading"><h2>仓库管理</h2><ElButton class="warehouse-add" type="primary" :icon="Plus" @click="edit()">新增仓位</ElButton></header>
+        <div class="warehouse-toolbar"><ElInput v-model="query" aria-label="搜索仓位" placeholder="搜索仓位" clearable :prefix-icon="Search" @keyup.enter="search" @clear="search" /><ElButton type="primary" @click="search">查询</ElButton><ElButton class="warehouse-refresh" :icon="Refresh" :loading="loading" text aria-label="刷新仓位" title="刷新" @click="load()" /></div>
         <ElAlert v-if="error" :title="error" type="error" :closable="false" />
         <ElTable :data="rows" row-key="id" empty-text="暂无仓位，点击新增仓位开始设置" class="warehouse-table">
           <ElTableColumn type="expand" width="44"><template #default="{ row }"><ElTable :data="row.batches" empty-text="当前没有入库批次" size="small" class="warehouse-batches"><ElTableColumn prop="batch_no" label="批次号" min-width="190" /><ElTableColumn prop="serial_no" label="流水号" min-width="120" /><ElTableColumn prop="quantity" label="件数" align="right" /><ElTableColumn prop="weight" label="重量（kg）" align="right" /></ElTable></template></ElTableColumn>
@@ -73,16 +74,26 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer) })
 
 <style scoped>
 .warehouse-management { display: flex; flex-direction: column; flex: 1 0 auto; min-height: 0; }
-.warehouse-toolbar, .warehouse-footer { display: flex; align-items: center; gap: 12px; }
+.warehouse-heading, .warehouse-toolbar, .warehouse-footer { display: flex; align-items: center; gap: 12px; }
 .warehouse-footer { justify-content: space-between; }
 .warehouse-card { display: flex; flex-direction: column; flex: 1 0 auto; min-height: 0; border-color: var(--line); border-radius: 14px; }
 .warehouse-toolbar { flex-shrink: 0; margin-bottom: 20px; flex-wrap: wrap; }
 .warehouse-toolbar .el-input { max-width: 300px; }
 .warehouse-card :deep(.el-card__body) { flex: 1 0 auto; min-height: 0; display: flex; flex-direction: column; }
 .warehouse-table { flex: 1 0 auto; min-height: 0; }
-.warehouse-add { margin-left: auto; }
+.warehouse-heading { justify-content: space-between; flex-wrap: wrap; padding-bottom: 16px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.warehouse-heading h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.warehouse-heading .el-button, .warehouse-toolbar .el-button { height: 36px; margin-left: 0; }
+.warehouse-toolbar > .warehouse-refresh { width: 36px; margin-left: auto; padding: 0; }
 .warehouse-batches { padding: 8px 24px; }
 .warehouse-footer { flex-shrink: 0; margin-top: auto; padding-top: 20px; color: var(--subtle); font-size: 13px; }
 .warehouse-error { color: var(--danger); }
-@media (max-width: 600px) { .warehouse-toolbar .el-input { max-width: none; }.warehouse-footer { gap: 4px; flex-wrap: wrap; } }
+@media (max-width: 760px) {
+  .warehouse-card :deep(.el-card__body) { padding: 12px; }
+  .warehouse-toolbar .el-input { max-width: none; }
+  .warehouse-footer { gap: 4px; flex-wrap: wrap; overflow-x: auto; }
+  .warehouse-table :deep(.el-table-fixed-column--right) { position: relative !important; right: auto !important; }
+  .warehouse-table :deep(.el-table-fixed-column--right::before) { box-shadow: none; }
+  .warehouse-table :deep(.el-scrollbar__bar.is-horizontal) { opacity: 1; }
+}
 </style>

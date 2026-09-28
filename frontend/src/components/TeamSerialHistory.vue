@@ -57,10 +57,12 @@ if (serial.value) search()
   <section class="serial-history" aria-label="本班组流水号收发历史">
     <header class="history-header">
       <h2>本班组收发</h2>
-      <form class="history-search" @submit.prevent="search"><ElInput v-model="serial" :prefix-icon="Search" aria-label="历史流水号" placeholder="输入完整流水号" maxlength="80" clearable /><RecordDateFilter v-model="dates" label="收发日期" /><ElButton native-type="submit" type="primary" :loading="loading">查询</ElButton></form>
-      <div v-if="result?.found" class="history-total"><span>当前库存</span><strong>{{ num(totals.quantity) }} <small>件</small><i>/</i>{{ num(totals.weight) }} <small>kg</small></strong></div>
       <slot name="actions" />
     </header>
+    <div class="history-query-bar">
+      <form class="history-search" @submit.prevent="search"><ElInput v-model="serial" :prefix-icon="Search" aria-label="历史流水号" placeholder="输入完整流水号" maxlength="80" clearable /><RecordDateFilter v-model="dates" label="收发日期" /><ElButton native-type="submit" type="primary" :loading="loading">查询</ElButton></form>
+      <div v-if="result?.found" class="history-total"><span>当前库存</span><strong>{{ num(totals.quantity) }} <small>件</small><i>/</i>{{ num(totals.weight) }} <small>kg</small></strong></div>
+    </div>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="loading" state="loading" title="正在读取收发历史" />
     <StatePanel v-else-if="error" state="error" :description="error" @retry="search" />
@@ -78,14 +80,29 @@ if (serial.value) search()
 <style scoped>
 .serial-history { display: flex; flex: 1 0 auto; flex-direction: column; min-width: 0; color: #24324a; }
 .serial-history > :is(.history-prompt, .state-panel) { display: flex; flex: 1 0 auto; flex-direction: column; align-items: center; justify-content: center; min-height: 300px; margin: 0; padding: 32px 16px; border: 1px solid var(--line); border-radius: var(--card-radius); background: var(--surface); }
-.serial-history > .history-header { flex-shrink: 0; }
-.history-header { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 24px; margin-bottom: 18px; }
-.history-header h2 { margin: 0; font-size: 27px; font-weight: 600; letter-spacing: -.025em; white-space: nowrap; }
-.history-search { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
-.history-search > .el-input { width: 278px; }.history-search :deep(.el-input__wrapper), .history-search :deep(.el-button) { min-height: 42px; font-size: 15px; }
-.history-total { display: flex; align-items: center; gap: 12px; margin-left: auto; white-space: nowrap; }.history-total > span { color: #63728c; font-size: 13px; }.history-total strong { font-size: 21px; font-weight: 600; font-variant-numeric: tabular-nums; }.history-total small { font-size: 14px; font-weight: 400; }.history-total i { margin-inline: 10px; font-weight: 300; color: #b2bccb; font-style: normal; }
+.serial-history > :is(.history-header, .history-query-bar) { flex-shrink: 0; }
+.history-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; min-height: 68px; padding: 16px; border: 1px solid var(--line); border-radius: var(--card-radius) var(--card-radius) 0 0; background: var(--surface); }
+.history-header h2 { margin: 0; font-size: 16px; font-weight: 600; white-space: nowrap; }
+.history-query-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; padding: 14px 16px; margin-bottom: 14px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--card-radius) var(--card-radius); background: var(--surface); }
+.history-search { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.history-search > .el-input { width: 278px; }
+.history-search :deep(.el-input__wrapper), .history-search :deep(.el-button) { min-height: 36px; font-size: 14px; }
+.history-search :deep(.record-date-trigger) { min-width: 0; max-width: 280px; }
+.history-search :deep(.record-date-trigger > span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-search > .el-button { margin-left: 0; }
+.history-total { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-left: auto; }
+.history-total > span { color: var(--muted); font-size: 13px; }
+.history-total strong { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.history-total small { font-size: 13px; font-weight: 400; }
+.history-total i { margin-inline: 10px; font-weight: 300; color: var(--subtle); font-style: normal; }
 .history-note { margin: 0 0 12px; color: #77849b; font-size: 13px; }.serial-history > .el-alert { margin-bottom: 12px; }
 .history-prompt { padding: 90px 16px; text-align: center; color: #7c899f; font-size: 15px; }.history-prompt > svg { width: 42px; color: #9daac1; }.history-prompt h3 { color: #4c5d76; font-size: 22px; font-weight: 500; }
-@media(max-width: 1250px) { .history-header { gap: 12px; }.history-header h2 { font-size: 24px; }.history-search > .el-input { width: 230px; }.history-total { margin-left: 0; } }
-@media(max-width: 760px) { .history-search { width: 100%; }.history-search > .el-input { width: 100%; }.history-total { margin-left: auto; }.history-header h2 { font-size: 23px; } }
+@media(max-width: 760px) {
+  .history-header, .history-query-bar { padding: 12px; }
+  .history-header :deep(.workspace-actions) { width: 100%; }
+  .history-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; }
+  .history-search > .el-input { grid-column: 1 / -1; width: 100%; }
+  .history-search :deep(.record-date-trigger) { width: 100%; max-width: none; }
+  .history-total { margin-left: 0; }
+}
 </style>

@@ -327,13 +327,13 @@ describe('team workspace material ledger', () => {
   it.each(['serials', 'stock', 'outgoing', 'pending', 'receipts', 'losses', 'materials', 'material-types', 'overview', 'history'])('keeps %s actions grouped separately from team settings', async tab => {
     state.auth.currentUser.team_id = 901
     await render(`/team-workspaces/901?tab=${tab}`)
-    const toolbar = ['serials', 'stock'].includes(tab) ? '.inventory-heading' : ['overview', 'history'].includes(tab) ? '.history-header' : ['materials', 'material-types'].includes(tab) ? '.material-ledger header' : '.list-toolbar'
+    const toolbar = ['serials', 'stock'].includes(tab) ? '.inventory-heading' : ['overview', 'history'].includes(tab) ? '.history-header' : ['materials', 'material-types'].includes(tab) ? '.material-ledger header' : '.list-heading'
     const actions = wrapper.get(`${toolbar} .workspace-actions`)
     expect(actions.text()).toContain('新建入库')
     expect(actions.text()).toContain('新建出库')
     if (tab === 'pending') {
       expect(actions.text()).not.toContain('扫码查询')
-      expect(wrapper.get('.list-toolbar .scanner-inline').text()).toContain('查看来料')
+      expect(wrapper.get('.incoming-scan .scanner-inline').text()).toContain('查看来料')
     } else expect(actions.text()).not.toContain('扫码查询')
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(1)
     expect(wrapper.find('.team-workspace__settings [aria-label="班组设置"]').exists()).toBe(true)
@@ -354,14 +354,16 @@ describe('team workspace material ledger', () => {
     wrapper.getComponent(TeamInventory).vm.$emit('action', 'loss', [source()]); await flushPromises()
     expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(false)
   })
-  it('places search and scanning in one toolbar without removing date or urgency filters', async () => {
+  it('separates scanning and creation from record filters without removing date or urgency filters', async () => {
     vi.mocked(materialTransferApi.list).mockResolvedValue({ items: [normalizeMaterialTransfer({ ...source().transfer, status: 'pending', purpose_id: 31, purpose_name: '去毛刺' })], total: 1, page: 1, page_size: 10 })
     await render('/team-workspaces/914?tab=pending')
     expect(wrapper.get('.team-table').text()).toContain('去毛刺')
     expect(wrapper.get('[aria-label="班组设置"]').text()).toBe('班组设置')
-    const toolbar = wrapper.get('.list-toolbar--pending')
+    const toolbar = wrapper.get('.list-toolbar')
     expect(toolbar.find('input[aria-label="物料搜索"]').exists()).toBe(true)
-    expect(toolbar.find('input[aria-label="扫描转料批次号"]').exists()).toBe(true)
+    expect(toolbar.find('input[aria-label="扫描转料批次号"]').exists()).toBe(false)
+    expect(wrapper.find('.incoming-scan input[aria-label="扫描转料批次号"]').exists()).toBe(true)
+    expect(toolbar.find('.workspace-actions').exists()).toBe(false)
     expect(toolbar.findAll('button').filter(button => button.text() === '查询')).toHaveLength(1)
     expect(toolbar.find('.record-date-trigger').exists()).toBe(true)
     expect(toolbar.text()).toContain('仅看加急')
@@ -371,6 +373,23 @@ describe('team workspace material ledger', () => {
     await toolbar.get('input[aria-label="物料搜索"]').setValue('去毛刺')
     await toolbar.get('input[aria-label="物料搜索"]').trigger('keyup.enter'); await flushPromises()
     expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ query: '去毛刺', status: 'pending' }))
+  })
+  it('removes one applied record filter while retaining search, dates and the other filters', async () => {
+    const router = await render('/team-workspaces/914?tab=outgoing&query=YS-007&material_type=semi_finished&status=pending&date_from=2026-09-01&page=2')
+    const tag = wrapper.findAll('.list-active-filters .el-tag').find(tag => tag.text().includes('半成品'))!
+    await tag.get('.el-tag__close').trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({ tab: 'outgoing', query: 'YS-007', status: 'pending', date_from: '2026-09-01' })
+    expect(router.currentRoute.value.query.material_type).toBeUndefined()
+    expect(router.currentRoute.value.query.page).toBeUndefined()
+    expect(teamMaterialApi.dispatches).toHaveBeenLastCalledWith(914, expect.objectContaining({ query: 'YS-007', status: 'pending', material_type: undefined, page: 1 }))
+  })
+  it('resets record filters without leaving the current team or section', async () => {
+    const router = await render('/team-workspaces/914?tab=outgoing&query=YS-007&material_type=semi_finished&status=pending&urgent_only=true&date_from=2026-09-01&page=2')
+    await wrapper.get('.list-query-actions').findAll('button').find(button => button.text() === '重置')!.trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/914?tab=outgoing')
+    expect(wrapper.find('.list-active-filters').exists()).toBe(false)
+    expect((wrapper.get('input[aria-label="物料搜索"]').element as HTMLInputElement).value).toBe('')
+    expect(teamMaterialApi.dispatches).toHaveBeenLastCalledWith(914, expect.objectContaining({ query: undefined, material_type: undefined, status: undefined, urgent_only: undefined, date_from: undefined, page: 1 }))
   })
   it('scopes pending incoming records and rejects a scanned transfer addressed to another team', async () => {
     await render('/team-workspaces/914?tab=pending')

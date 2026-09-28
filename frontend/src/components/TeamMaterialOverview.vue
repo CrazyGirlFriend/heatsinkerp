@@ -44,7 +44,8 @@ const rows = computed(() => entries.value.slice((props.page - 1) * props.pageSiz
 <style scoped>
 .material-ledger { display: flex; flex: 1; flex-direction: column; min-height: 0; border: 1px solid var(--line); border-radius: 8px; background: #fff; overflow: hidden; }
 .material-ledger header, .material-ledger footer { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; }
-.material-ledger h2 { display: flex; align-items: center; gap: 12px; flex-shrink: 0; margin: 0; font-size: 14px; font-weight: 600; }
+.material-ledger header { min-height: 68px; padding-block: 16px; }
+.material-ledger h2 { display: flex; align-items: center; gap: 12px; flex-shrink: 0; margin: 0; font-size: 16px; font-weight: 600; }
 .material-ledger footer > span { font-size: 12px; font-weight: 400; color: var(--subtle); }
 .ledger-table { flex: 1; min-height: 0; }
 .material-ledger > .ledger-table--empty { display: flex; flex: 1 0 auto; flex-direction: column; min-height: 180px; }
@@ -52,5 +53,12 @@ const rows = computed(() => entries.value.slice((props.page - 1) * props.pageSiz
 .ledger-table--empty :deep(.el-scrollbar__view) { height: 100%; }
 .ledger-table :deep(.el-table__cell) { padding: 10px 0; }
 .material-ledger footer { margin-top: auto; border-top: 1px solid var(--line); flex-wrap: wrap; }
-@media (max-width: 760px) { .material-ledger header { flex-wrap: wrap; }.material-ledger footer { padding: 8px; } }
+@media (max-width: 760px) {
+  .material-ledger header { flex-wrap: wrap; padding-inline: 12px; }
+  .material-ledger header :deep(.workspace-actions) { width: 100%; }
+  .material-ledger footer { padding: 8px; overflow-x: auto; }
+  .ledger-table :deep(.el-table-fixed-column--left), .ledger-table :deep(.el-table-fixed-column--right) { position: relative !important; left: auto !important; right: auto !important; }
+  .ledger-table :deep(.el-table__cell::before) { box-shadow: none; }
+  .ledger-table :deep(.el-scrollbar__bar.is-horizontal) { opacity: 1; }
+}
 </style>

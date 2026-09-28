@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { FullScreen, Search, Setting } from '@element-plus/icons-vue'
-import { ElAlert, ElButton, ElCheckbox, ElInput, ElOption, ElPagination, ElPopover, ElSelect, ElTable, ElTableColumn, type InputInstance } from 'element-plus'
+import { Filter, FullScreen, Refresh, Search, Setting } from '@element-plus/icons-vue'
+import { ElAlert, ElButton, ElCheckbox, ElInput, ElOption, ElPagination, ElPopover, ElSelect, ElTable, ElTableColumn, ElTag, type InputInstance } from 'element-plus'
 import RecordDateFilter from '@/components/RecordDateFilter.vue'
 import SerialUrgencyBadge from '@/components/SerialUrgencyBadge.vue'
 import type { CalendarRange } from '@/types/recordFilters'
@@ -80,6 +80,26 @@ const statusDraft = ref<BatchStatus | ''>('')
 const nextTeamDraft = ref<string | number>('')
 const kindDraft = ref<DispatchKind | ''>('')
 const dispatchKinds = ['transfer', 'warehouse_outbound', 'inspection_shipment'] as const
+const listTitle = computed(() => ({ pending: '来料待签收', receipts: '入库记录', outgoing: '出库记录', losses: '丢失记录' })[tab.value as 'pending' | 'receipts' | 'outgoing' | 'losses'])
+const listFiltersOpen = ref(false)
+watch(tab, () => { listFiltersOpen.value = false })
+const activeListFilters = computed(() => [
+  { key: 'material_type', label: materialTypeLabel(queryText('material_type') as MaterialType) },
+  { key: 'receipt_source', label: ({ external: '外部来料（含退回）', internal: '车间转入', return: '外部退回' } as Record<string, string>)[queryText('receipt_source')] },
+  { key: 'entry_kind', label: materialEntryLabel(dispatchKinds.find(kind => kind === queryText('entry_kind'))) },
+  { key: 'status', label: batchStatusLabels[queryText('status') as BatchStatus] },
+  { key: 'next_team_id', label: directory.items.find(item => String(item.id) === queryText('next_team_id'))?.name },
+  ...(['receipts', 'outgoing'].includes(tab.value) ? [{ key: 'urgent_only', label: '仅看加急' }] : []),
+].filter(item => queryText(item.key) && (item.key !== 'urgent_only' || queryText(item.key) === 'true')))
+function removeListFilter(key: string) {
+  const query = { ...route.query }; delete query[key]; delete query.page
+  void router.replace({ path: route.path, query })
+}
+function resetListFilters() {
+  queryDraft.value = ''; dateDraft.value = { from: '', to: '' }; urgentDraft.value = false
+  materialDraft.value = ''; receiptSourceDraft.value = ''; kindDraft.value = ''; statusDraft.value = ''; nextTeamDraft.value = ''
+  applyFilters()
+}
 const overview = ref<TeamMaterialOverview | null>(null)
 const pendingCount = computed(() => scopeReady.value && overview.value && Number(overview.value.team_id) === teamId.value ? (isWarehouse.value ? overview.value.pending_incoming.batch_count ?? overview.value.pending_incoming.count : overview.value.pending_incoming.count) : null)
 const overviewError = ref('')
@@ -312,19 +332,38 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
         <template v-else>
           <div class="team-list-layout">
             <section class="team-list-panel">
-              <div class="list-toolbar" :class="{ 'list-toolbar--pending': tab === 'pending' }">
+              <header class="list-heading">
+                <div class="list-heading__title"><h2>{{ listTitle }}</h2><span v-if="!loading && !loadError">{{ total }} 条记录</span></div>
+                <div class="list-heading__actions">
+                  <ElButton v-if="tab === 'outgoing'" :disabled="!selectedPrintRows.length" @click="openPrint(selectedPrintRows)">合并打印<span v-if="selectedPrintRows.length">（{{ selectedPrintRows.length }}）</span></ElButton>
+                  <TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" />
+                </div>
+              </header>
+              <div class="list-toolbar">
                 <ElInput v-model="queryDraft" :prefix-icon="Search" :aria-label="`${tab === 'losses' ? '丢失记录' : '物料'}搜索`" clearable :placeholder="tab === 'outgoing' ? '搜索批次、流水号、业务或去向' : tab === 'losses' ? '搜索批次、流水号或材质' : '搜索批次、流水号、材质或业务'" @keyup.enter="applyFilters()" @clear="applyFilters()" />
-                <template v-if="tab === 'pending'"><ElButton @click="applyFilters()">查询</ElButton><div class="scanner-inline"><ElInput ref="scanner" v-model="scanValue" aria-label="扫描转料批次号" placeholder="扫码或输入批次号" @keyup.enter="scan" /><ElButton :icon="FullScreen" :loading="scanning" @click="scan">查看来料</ElButton></div></template>
-                <ElSelect v-if="['receipts', 'outgoing'].includes(tab)" v-model="materialDraft" aria-label="物料类型筛选" placeholder="全部类型" clearable @change="applyFilters()"><ElOption v-for="type in materialTypeOptions" :key="type.value" :value="type.value" :label="type.label" /></ElSelect>
-                <ElSelect v-if="tab === 'receipts'" v-model="receiptSourceDraft" aria-label="入库来源筛选" placeholder="全部来源" clearable @change="applyFilters()"><ElOption value="external" label="外部来料（含退回）" /><ElOption value="internal" label="车间转入" /><ElOption value="return" label="外部退回" /></ElSelect>
-                <ElSelect v-if="tab === 'outgoing'" v-model="kindDraft" aria-label="出库方式筛选" placeholder="全部方式" clearable @change="applyFilters()"><ElOption v-for="kind in dispatchKinds" :key="kind" :value="kind" :label="materialEntryLabel(kind)" /></ElSelect>
-                <ElSelect v-if="tab === 'outgoing'" v-model="statusDraft" aria-label="出库状态筛选" placeholder="全部状态" clearable @change="applyFilters()"><ElOption v-for="(label, value) in batchStatusLabels" :key="value" :value="value" :label="label" /></ElSelect>
-                <ElSelect v-if="tab === 'outgoing' && !isExternalEntryKind(kindDraft)" v-model="nextTeamDraft" aria-label="接收班组筛选" placeholder="全部接收班组" clearable filterable @change="applyFilters()"><ElOption v-for="item in directory.items.filter(item => item.active && String(item.id) !== teamKey)" :key="item.id" :value="String(item.id)" :label="teamWorkspaceProfile(item.code)?.name || item.name" /></ElSelect>
-                <RecordDateFilter v-model="dateDraft" :label="tab === 'receipts' ? '入库日期' : '登记日期'" @update:model-value="applyFilters()" />
-                <ElCheckbox v-model="urgentDraft" @change="applyFilters()">仅看加急</ElCheckbox>
-                <ElButton v-if="tab !== 'pending'" @click="applyFilters()">查询</ElButton>
-                <ElButton v-if="tab === 'outgoing'" :disabled="!selectedPrintRows.length" @click="openPrint(selectedPrintRows)">合并打印<span v-if="selectedPrintRows.length">（{{ selectedPrintRows.length }}）</span></ElButton>
-                <TeamWorkspaceActions v-bind="actionBindings" />
+                <div class="list-filter-controls">
+                  <RecordDateFilter v-model="dateDraft" :label="tab === 'receipts' ? '入库日期' : '登记日期'" @update:model-value="applyFilters()" />
+                  <ElPopover v-if="['receipts', 'outgoing'].includes(tab)" v-model:visible="listFiltersOpen" role="dialog" aria-label="记录筛选" trigger="click" placement="bottom-start" :width="320" popper-class="workspace-record-filters" :popper-options="{ modifiers: [{ name: 'preventOverflow', options: { altAxis: true, padding: 12 } }] }">
+                    <template #reference><ElButton :icon="Filter" :aria-expanded="listFiltersOpen">筛选<span v-if="activeListFilters.length" class="list-filter-count">{{ activeListFilters.length }}</span></ElButton></template>
+                    <div class="list-extra-filters">
+                      <label>物料类型<ElSelect v-model="materialDraft" aria-label="物料类型筛选" placeholder="全部类型" clearable @change="applyFilters()"><ElOption v-for="type in materialTypeOptions" :key="type.value" :value="type.value" :label="type.label" /></ElSelect></label>
+                      <label v-if="tab === 'receipts'">入库来源<ElSelect v-model="receiptSourceDraft" aria-label="入库来源筛选" placeholder="全部来源" clearable @change="applyFilters()"><ElOption value="external" label="外部来料（含退回）" /><ElOption value="internal" label="车间转入" /><ElOption value="return" label="外部退回" /></ElSelect></label>
+                      <template v-if="tab === 'outgoing'">
+                        <label>出库方式<ElSelect v-model="kindDraft" aria-label="出库方式筛选" placeholder="全部方式" clearable @change="applyFilters()"><ElOption v-for="kind in dispatchKinds" :key="kind" :value="kind" :label="materialEntryLabel(kind)" /></ElSelect></label>
+                        <label>出库状态<ElSelect v-model="statusDraft" aria-label="出库状态筛选" placeholder="全部状态" clearable @change="applyFilters()"><ElOption v-for="(label, value) in batchStatusLabels" :key="value" :value="value" :label="label" /></ElSelect></label>
+                        <label v-if="!isExternalEntryKind(kindDraft)">接收班组<ElSelect v-model="nextTeamDraft" aria-label="接收班组筛选" placeholder="全部接收班组" clearable filterable @change="applyFilters()"><ElOption v-for="item in directory.items.filter(item => item.active && String(item.id) !== teamKey)" :key="item.id" :value="String(item.id)" :label="teamWorkspaceProfile(item.code)?.name || item.name" /></ElSelect></label>
+                      </template>
+                      <ElCheckbox v-model="urgentDraft" @change="applyFilters()">仅看加急</ElCheckbox>
+                    </div>
+                  </ElPopover>
+                </div>
+                <ElCheckbox v-if="!['receipts', 'outgoing'].includes(tab)" v-model="urgentDraft" @change="applyFilters()">仅看加急</ElCheckbox>
+                <div class="list-query-actions"><ElButton type="primary" @click="applyFilters()">查询</ElButton><ElButton text @click="resetListFilters">重置</ElButton></div>
+                <ElButton class="list-refresh" :icon="Refresh" :loading="loading" text aria-label="刷新工作台" title="刷新" @click="loadView()" />
+              </div>
+              <div v-if="activeListFilters.length" class="list-active-filters"><ElTag v-for="filter in activeListFilters" :key="filter.key" closable @close="removeListFilter(filter.key)">{{ filter.label || queryText(filter.key) }}</ElTag></div>
+              <div v-if="tab === 'pending'" class="incoming-scan">
+                <span>扫码定位</span><div class="scanner-inline"><ElInput ref="scanner" v-model="scanValue" aria-label="扫描转料批次号" placeholder="扫码或输入批次号" @keyup.enter="scan" /><ElButton :icon="FullScreen" :loading="scanning" @click="scan">查看来料</ElButton></div>
               </div>
               <p v-if="tab === 'pending' && scanError" class="scanner-error" role="alert">{{ scanError }}</p>
               <StatePanel v-if="loading" state="loading" title="正在读取物料记录" />
@@ -413,17 +452,32 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 .legacy-notice a { color: var(--primary); }
 .team-list-layout { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-width: 0; min-height: 0; gap: 12px; }
 .team-list-panel { container-type: inline-size; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #fff; border: 1px solid var(--line); border-radius: var(--card-radius); overflow: hidden; }
-.list-toolbar, .scanner-error, .table-footer { flex-shrink: 0; }
-.list-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px 0; }
-.list-toolbar > .el-input { flex: 1 1 220px; max-width: 380px; }
-.list-toolbar > .el-select { width: 145px; }
-.list-toolbar--pending { flex-wrap: wrap; }
-.list-toolbar--pending > .el-input { flex: 1 1 180px; min-width: 160px; max-width: 240px; }
-.list-toolbar--pending > .el-button { margin-left: 0; }
-.list-toolbar--pending :deep(.record-date-trigger) { max-width: 280px; }
-.list-toolbar--pending :deep(.record-date-trigger > span) { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scanner-inline { display: flex; align-items: center; flex: 1 1 280px; min-width: 250px; max-width: 360px; gap: 8px; }
-.scanner-inline > .el-input { flex: 1; min-width: 130px; }
+.list-heading, .list-toolbar, .incoming-scan, .list-active-filters, .scanner-error, .table-footer { flex-shrink: 0; }
+.list-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; min-height: 68px; padding: 16px; border-bottom: 1px solid var(--line); }
+.list-heading__title { display: flex; align-items: baseline; gap: 12px; }
+.list-heading h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.list-heading__title > span { color: var(--muted); font-size: 13px; }
+.list-heading__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.list-heading__actions > .el-button { height: 36px; }
+.list-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 14px 16px; }
+.list-toolbar > .el-input { flex: 1 1 220px; min-width: 0; }
+.list-filter-controls, .list-query-actions { display: flex; align-items: center; gap: 8px; }
+.list-toolbar :deep(.record-date-trigger) { min-width: 0; max-width: 260px; }
+.list-toolbar :deep(.record-date-trigger > span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-toolbar :deep(.el-button + .el-button) { margin-left: 0; }
+.list-toolbar > .list-refresh { margin-left: auto; width: 36px; padding: 0; }
+.list-extra-filters { display: flex; flex-direction: column; gap: 14px; max-height: min(560px, 65dvh); overflow-y: auto; padding: 4px; }
+.list-extra-filters > label:not(.el-checkbox) { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 13px; }
+:global(.workspace-record-filters) { max-width: calc(100vw - 32px); }
+.list-filter-count { margin-left: 6px; color: var(--primary); font-variant-numeric: tabular-nums; }
+.list-active-filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 12px; }
+.list-active-filters :deep(.el-tag) { max-width: 100%; }
+.list-active-filters :deep(.el-tag__content) { overflow: hidden; text-overflow: ellipsis; }
+.incoming-scan { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 0 16px 14px; }
+.incoming-scan > span { color: var(--muted); font-size: 13px; }
+.scanner-inline { display: flex; align-items: center; flex: 0 1 380px; min-width: 0; gap: 8px; }
+.scanner-inline > .el-input { flex: 1; min-width: 0; }
+.scanner-inline > .el-button { margin-left: 0; height: 36px; }
 .scanner-error { margin: 0 12px 8px; font-size: 12px; color: var(--danger); }
 .team-table-scroll { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .team-table :deep(.el-checkbox) { height: 24px; }
@@ -436,6 +490,24 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 .row-actions .el-button + .el-button { margin-left: 0; }
 .table-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); }
 .table-footer > span { color: var(--subtle); font-size: 12px; }
-@container (max-width: 1040px) { .list-toolbar--pending { flex-wrap: wrap; }.scanner-inline { max-width: none; } }
-@media (max-width: 760px) { .list-toolbar > .el-input { flex-basis: 100%; max-width: none; }.list-toolbar--pending > .el-input { flex: 1 1 160px; }.list-toolbar > .el-select { flex: 1; min-width: 120px; }.table-footer { padding: 8px; overflow-x: auto; } }
+@container (max-width: 980px) { .list-toolbar > .el-input { flex-basis: 100%; } }
+@container (max-width: 560px) {
+  .list-heading__actions { width: 100%; }
+  .list-heading__actions :deep(.workspace-actions) { margin-left: 0; justify-content: flex-start; }
+  .list-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+  .list-toolbar > .el-input, .list-filter-controls { grid-column: 1 / -1; }
+  .list-filter-controls :deep(.record-date-trigger) { flex: 1; max-width: none; }
+  .list-toolbar > .el-checkbox { grid-column: 1 / -1; }
+  .list-query-actions { grid-column: 1; }
+  .list-toolbar > .list-refresh { grid-column: 2; }
+  .incoming-scan { gap: 8px; }
+  .scanner-inline { flex-basis: 100%; }
+}
+@media (max-width: 760px) {
+  .list-heading, .list-toolbar, .incoming-scan, .list-active-filters { padding-inline: 12px; }
+  .table-footer { padding: 8px; overflow-x: auto; }
+  .team-table :deep(.el-table-fixed-column--right) { position: relative !important; right: auto !important; }
+  .team-table :deep(.el-table-fixed-column--right::before) { box-shadow: none; }
+  .team-table :deep(.el-scrollbar__bar.is-horizontal) { opacity: 1; }
+}
 </style>
