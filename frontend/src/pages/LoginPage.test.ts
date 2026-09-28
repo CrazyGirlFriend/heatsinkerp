@@ -80,17 +80,6 @@ describe('login form', () => {
     expect(wrapper.get('#login-password').attributes('type')).toBe('password')
   })
 
-  it('shows the account session limit and stays on the login page', async () => {
-    const message = '该账号已在 2 个会话中登录，请先在其他浏览器或设备退出后再登录'
-    vi.mocked(adminApi.login).mockRejectedValue(new Error(message))
-    const { wrapper, router } = await renderLogin()
-    await fill(wrapper)
-    await wrapper.get('form').trigger('submit'); await flushPromises()
-    expect(wrapper.get('[role="alert"]').text()).toBe(message)
-    expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeUndefined()
-    expect(router.currentRoute.value.path).toBe('/login')
-  })
-
   it('keeps the internal return destination and skips motion for reduced-motion users', async () => {
     const transition = vi.fn()
     document.startViewTransition = transition

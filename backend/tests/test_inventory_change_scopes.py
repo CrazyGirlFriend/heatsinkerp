@@ -67,6 +67,26 @@ def test_other_logins_and_logouts_never_refresh_stock_but_own_logout_closes(clie
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("view", ["inventory", "inventory-changed"])
+def test_replaced_session_receives_logout_notification_without_inventory_refresh(client, monkeypatch, view):
+    async def run():
+        monkeypatch.setattr(factory_stream, "HEARTBEAT_SECONDS", 60)
+        stream = factory_stream.inventory_stream(LiveRequest(), credentials(client.headers), view)
+        try:
+            assert (await anext(stream)).startswith("event: " + view)
+            revision = inventory_events.revision
+            for _ in range(2):
+                response = await asyncio.to_thread(client.post, "/api/auth/login", json={"username": "admin", "password": "Admin123!"})
+                assert response.status_code == 200
+            assert (await asyncio.wait_for(anext(stream), 2)).startswith("event: auth-expired")
+            assert inventory_events.revision == revision
+            with pytest.raises(StopAsyncIteration):
+                await anext(stream)
+        finally:
+            await stream.aclose()
+    asyncio.run(run())
+
+
 def test_admin_account_changes_refresh_identity_without_invalidating_stock(client, warehouse, monkeypatch):
     publish = Mock(wraps=inventory_events.publish)
     monkeypatch.setattr(inventory_events, "publish", publish)

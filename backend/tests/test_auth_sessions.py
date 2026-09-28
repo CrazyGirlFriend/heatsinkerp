@@ -8,13 +8,11 @@ import httpx
 import pytest
 from sqlalchemy import func, select
 
-from app.auth import token_digest
+from app.auth import create_session, token_digest
 from app.database import SessionLocal
 from app.main import app
 from app.models import AuthSession, User, utcnow
 from test_material_transfers import _leader, _team
-
-LIMIT_MESSAGE = "该账号已在 2 个会话中登录，请先在其他浏览器或设备退出后再登录"
 
 
 def login(client, username="admin", password="Admin123!"):
@@ -40,34 +38,30 @@ def active_count(username="admin"):
 
 
 @pytest.mark.parametrize("role", ["ADMIN", "TEAM"])
-def test_third_login_is_rejected_without_displacing_existing_sessions(client, role):
+def test_third_login_replaces_only_the_oldest_session(client, role):
     username, password = "admin", "Admin123!"
     first = dict(client.headers)
     if role == "TEAM":
         team = _team(client, "SESSION-LIMIT", "会话测试")
         _, first = _leader(client, "session-leader", team["id"])
         username, password = "session-leader", "Leader123!"
-    sessions = [
-        first,
-        headers(login(client, username, password)),
-    ]
-    rejected = login(client, username, password)
-    assert rejected.status_code == 409
-    assert rejected.json() == {"detail": LIMIT_MESSAGE}
-    assert active_count(username) == 2
-    for session in sessions:
-        assert client.get("/api/auth/me", headers=session).status_code == 200
+    second = headers(login(client, username, password))
     assert login(client, username, "wrong").status_code == 401
+    assert client.get("/api/auth/me", headers=first).status_code == 200
+    third = headers(login(client, username, password))
+    assert active_count(username) == 2
+    assert client.get("/api/auth/me", headers=first).status_code == 401
+    for session in [second, third]:
+        assert client.get("/api/auth/me", headers=session).status_code == 200
 
 
 def test_logout_releases_one_slot_and_old_token_stays_invalid(client):
     second = headers(login(client))
-    assert login(client).status_code == 409
     assert client.post("/api/auth/logout", headers=second).status_code == 204
     assert client.get("/api/auth/me", headers=second).status_code == 401
     headers(login(client))
     assert active_count() == 2
-    assert login(client).status_code == 409
+    assert client.get("/api/auth/me").status_code == 200
 
 
 @pytest.mark.parametrize("released", ["expired", "revoked"])
@@ -87,15 +81,20 @@ def test_expired_or_revoked_session_does_not_occupy_a_slot(client, released):
     headers(login(client))
     assert active_count() == 2
     assert client.get("/api/auth/me", headers=second).status_code == 401
+    assert client.get("/api/auth/me").status_code == 200
 
 
 def test_limit_is_per_account_and_profile_reads_do_not_take_slots(client):
-    headers(login(client))
+    second = headers(login(client))
     team = _team(client, "SEPARATE-SESSION", "独立会话")
     _, other = _leader(client, "independent-leader", team["id"])
     assert client.get("/api/auth/me", headers=other).status_code == 200
     for _ in range(5):
         assert client.get("/api/auth/me").status_code == 200
+    headers(login(client))
+    assert client.get("/api/auth/me").status_code == 401
+    assert client.get("/api/auth/me", headers=second).status_code == 200
+    assert client.get("/api/auth/me", headers=other).status_code == 200
     assert active_count() == 2
     assert active_count("independent-leader") == 1
 
@@ -127,8 +126,59 @@ def test_simultaneous_logins_cannot_exceed_two(client, monkeypatch):
             )
 
     responses = asyncio.run(concurrent_logins())
-    assert sorted(response.status_code for response in responses) == [200, 409, 409, 409, 409, 409]
+    assert [response.status_code for response in responses] == [200] * 6
     assert active_count() == 2
+    assert client.get("/api/auth/me").status_code == 401
+    with SessionLocal() as db:
+        sessions = db.scalars(select(AuthSession).order_by(AuthSession.created_at.desc(), AuthSession.id.desc())).all()
+        assert all(session.revoked_at is None for session in sessions[:2])
+        assert all(session.revoked_at is not None for session in sessions[2:])
+        active_tokens = {session.token_hash for session in sessions[:2]}
     for response in responses:
-        if response.status_code == 200:
-            assert client.get("/api/auth/me", headers=headers(response)).status_code == 200
+        expected = 200 if token_digest(response.json()["access_token"]) in active_tokens else 401
+        assert client.get("/api/auth/me", headers=headers(response)).status_code == expected
+
+
+@pytest.mark.parametrize("same_time", [False, True])
+def test_oldest_is_by_login_time_with_id_as_tiebreaker(client, same_time):
+    first = dict(client.headers)
+    second = headers(login(client))
+    with SessionLocal() as db:
+        sessions = db.scalars(select(AuthSession).order_by(AuthSession.id)).all()
+        sessions[0].created_at = utcnow() - timedelta(minutes=1)
+        sessions[1].created_at = sessions[0].created_at - timedelta(minutes=0 if same_time else 1)
+        db.commit()
+    headers(login(client))
+    assert client.get("/api/auth/me", headers=first).status_code == (401 if same_time else 200)
+    assert client.get("/api/auth/me", headers=second).status_code == (200 if same_time else 401)
+
+
+def test_login_reduces_legacy_sessions_to_two(client):
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.username == "admin"))
+        now = utcnow()
+        for index in range(3):
+            db.add(AuthSession(user_id=user.id, token_hash=token_digest(f"legacy-{index}"),
+                               created_at=now - timedelta(minutes=index + 1), expires_at=now + timedelta(hours=1)))
+        db.commit()
+    new = headers(login(client))
+    assert active_count() == 2
+    assert client.get("/api/auth/me").status_code == 200
+    assert client.get("/api/auth/me", headers=new).status_code == 200
+
+
+def test_failed_login_transaction_does_not_revoke_existing_sessions(client, monkeypatch):
+    second = headers(login(client))
+
+    def fail_token(_size):
+        raise RuntimeError("test session creation failure")
+
+    monkeypatch.setattr("app.auth.secrets.token_urlsafe", fail_token)
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.username == "admin"))
+        with pytest.raises(RuntimeError, match="test session creation failure"):
+            create_session(db, user)
+        db.rollback()
+    assert active_count() == 2
+    assert client.get("/api/auth/me").status_code == 200
+    assert client.get("/api/auth/me", headers=second).status_code == 200

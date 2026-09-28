@@ -66,19 +66,19 @@ def create_session(db: Session, user: User) -> tuple[str, AuthSession]:
     now = utcnow()
     # A locking read sees newly committed sessions under MySQL REPEATABLE READ,
     # even when credential verification already opened an older read snapshot.
-    active_ids = db.scalars(
-        select(AuthSession.id).where(
+    active_sessions = db.scalars(
+        select(AuthSession).where(
             AuthSession.user_id == user.id,
             AuthSession.revoked_at.is_(None),
             AuthSession.expires_at > now,
-        ).limit(MAX_ACTIVE_SESSIONS).with_for_update()
+        ).order_by(AuthSession.created_at.desc(), AuthSession.id.desc()).with_for_update()
     ).all()
-    if len(active_ids) >= MAX_ACTIVE_SESSIONS:
-        record("auth.session_limit_reached", user_id=user.id, limit=MAX_ACTIVE_SESSIONS)
-        raise HTTPException(
-            status_code=409,
-            detail=f"该账号已在 {MAX_ACTIVE_SESSIONS} 个会话中登录，请先在其他浏览器或设备退出后再登录",
-        )
+    replaced = active_sessions[MAX_ACTIVE_SESSIONS - 1:]
+    for previous in replaced:
+        # ORM changes also notify the revoked clients through the existing outbox.
+        previous.revoked_at = now
+    if replaced:
+        record("auth.sessions_replaced", user_id=user.id, count=len(replaced))
     raw_token = secrets.token_urlsafe(32)
     auth_session = AuthSession(
         user=user,
