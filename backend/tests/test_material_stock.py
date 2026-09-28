@@ -205,6 +205,51 @@ def test_linked_edits_adjust_reservation_without_rewriting_identity(client, stoc
     assert totals(client, setup)["available_quantity"] == 90
 
 
+def test_pending_outbound_cannot_be_sent_again_even_while_still_owned(client, stock_setup):
+    setup = stock_setup
+    lot = receive_lot(client, setup)
+
+    def send(quantity, weight, key):
+        return dispatch(client, setup, [{"source_transfer_id": lot["id"],
+            "quantity": quantity, "weight": weight}], idempotency_key=key)
+
+    first = send(70, 7, "reserve-seventy").json()["items"][0]
+    state = totals(client, setup)
+    assert (state["owned_quantity"], state["owned_weight"]) == (100, 10)
+    assert (state["available_quantity"], state["available_weight"]) == (30, 3)
+    assert (state["reserved_quantity"], state["reserved_weight"]) == (70, 7)
+    assert send(31, 3, "exceed-pieces").status_code == 409
+    assert send(30, "3.001", "exceed-weight").status_code == 409
+    # Retrying a successful request is not a second deduction.
+    assert send(70, 7, "reserve-seventy").json()["items"][0]["id"] == first["id"]
+    second_response = send(30, 3, "reserve-remainder")
+    assert second_response.status_code == 201
+    second = second_response.json()["items"][0]
+    assert second["batch_no"] != first["batch_no"]
+    assert totals(client, setup)["owned_quantity"] == 100
+    assert totals(client, setup)["available_quantity"] == 0
+    assert totals(client, setup)["available_weight"] == 0
+    assert client.get(endpoint(setup, "stock"), params={"availability": "dispatchable"}).json()["total"] == 0
+    assert send(1, 0, "send-again-pieces").status_code == 409
+    assert send(0, "0.001", "send-again-weight").status_code == 409
+    # The receiver cannot forward a batch it has not signed for.
+    blocked = client.post(f"/api/team-materials/{setup['third']['id']}/dispatches",
+        headers=setup["third_headers"], json={"next_team_id": setup["stock_team_id"],
+        "idempotency_key": "forward-before-receipt", "lines": [
+            {"source_transfer_id": first["id"], "quantity": 1, "weight": "0.1"}]})
+    assert blocked.status_code == 409
+    assert client.delete(f"/api/material-transfers/{second['batch_no']}", headers=setup["stock_headers"]).status_code == 204
+    assert totals(client, setup)["available_quantity"] == 30
+    assert totals(client, setup)["available_weight"] == 3
+    assert totals(client, setup)["owned_quantity"] == 100
+    received = client.post(f"/api/material-transfers/{first['batch_no']}/confirm", headers=setup["third_headers"],
+        json={"idempotency_key": "receive-seventy"})
+    assert received.status_code == 200
+    state = totals(client, setup)
+    assert (state["owned_quantity"], state["owned_weight"]) == (30, 3)
+    assert (state["available_quantity"], state["available_weight"]) == (30, 3)
+
+
 def test_material_overview_filters_paging_dispatch_status_and_loss_details(client, stock_setup):
     setup = stock_setup
     lots = [receive_lot(client, setup, key=f"LITERAL%_{i}", material_name="铜钼" if i < 2 else None) for i in range(3)]
