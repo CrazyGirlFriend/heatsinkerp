@@ -1,6 +1,6 @@
 """Warehouse-owned manual stock origins; no ERP or fabricated team handoff."""
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from . import material_stock as stock
@@ -8,7 +8,7 @@ from . import material_transfer_workflow as workflow
 from .auth import actor_name
 from .record_filters import RecordFilters
 from .batch_numbers import next_transfer_batch_number
-from .models import MaterialDispatch, MaterialTransfer, Team, utcnow
+from .models import MaterialDispatch, MaterialStockBalance, MaterialTransfer, Team, utcnow
 from .team_constants import WAREHOUSE_TEAM_CODE
 
 
@@ -66,6 +66,7 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
                 batch_no=next_transfer_batch_number(db), entry_kind="warehouse_receipt",
                 receipt_kind=payload.receipt_kind, external_source=payload.external_source,
                 return_dispatch_no=payload.return_dispatch_no,
+                warehouse_location=payload.warehouse_location,
                 serial_no=payload.serial_no,
                 delivery_origin_id=delivery_origin_id,
                 **{field: getattr(payload, field) for field in workflow.DOCUMENT_FIELDS},
@@ -119,10 +120,26 @@ def list_receipts(db, team_id, user, *, record_filters=None, query=None, materia
     if query and query.strip():
         filters.append(stock.literal_query(query, [MaterialTransfer.batch_no, MaterialTransfer.serial_no,
                                                    MaterialTransfer.material_name, MaterialTransfer.source_batch_no,
-                                                   MaterialTransfer.external_source, MaterialTransfer.source_team_name, MaterialTransfer.return_dispatch_no, MaterialTransfer.purpose_name]))
+                                                   MaterialTransfer.external_source, MaterialTransfer.source_team_name, MaterialTransfer.return_dispatch_no, MaterialTransfer.purpose_name, MaterialTransfer.warehouse_location]))
     total = db.scalar(select(func.count(MaterialTransfer.id)).where(*filters)) or 0
     items = db.scalars(select(MaterialTransfer).options(*workflow.material_transfer_list_options()).where(*filters)
         .order_by(MaterialTransfer.received_at.desc(), MaterialTransfer.id.desc())
         .offset((page-1)*page_size).limit(page_size)).all()
     return {"items": [workflow.material_transfer_dict(item, user, include_history=False) for item in items],
             "total": total, "page": page, "page_size": page_size}
+
+
+def locations(db, team_id, *, query=None, limit=100):
+    require_warehouse(stock.require_team(db, team_id))
+    has_stock = func.max(case((or_(MaterialStockBalance.on_hand_quantity > 0,
+                                  MaterialStockBalance.on_hand_weight > 0), 1), else_=0))
+    filters = [MaterialTransfer.next_team_id == team_id, MaterialTransfer.status == "received",
+               MaterialTransfer.warehouse_location.is_not(None)]
+    if query and query.strip():
+        filters.append(stock.literal_query(query, [MaterialTransfer.warehouse_location]))
+    rows = db.execute(select(MaterialTransfer.warehouse_location, has_stock.label("has_stock"))
+        .outerjoin(MaterialStockBalance, MaterialStockBalance.transfer_id == MaterialTransfer.id)
+        .where(*filters).group_by(MaterialTransfer.warehouse_location)
+        .order_by(has_stock.desc(), func.max(MaterialTransfer.received_at).desc(), MaterialTransfer.warehouse_location)
+        .limit(limit)).all()
+    return {"items": [{"name": row.warehouse_location, "has_stock": bool(row.has_stock)} for row in rows]}

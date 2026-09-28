@@ -98,6 +98,7 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
     receipt_kind: raw.receipt_kind === 'external' || raw.receipt_kind === 'return' ? raw.receipt_kind : null,
     external_source: textValue(raw.external_source) || null,
     return_dispatch_no: textValue(raw.return_dispatch_no) || null,
+    warehouse_location: textValue(raw.warehouse_location) || null,
     rejection_reason: textValue(raw.rejection_reason) || null,
     dispatched_by: textValue(raw.dispatched_by_name, raw.dispatched_by, objectValue(raw.dispatched_by_user).display_name) || null,
     dispatched_by_user_id: optionalInteger(raw.dispatched_by_user_id, 1),

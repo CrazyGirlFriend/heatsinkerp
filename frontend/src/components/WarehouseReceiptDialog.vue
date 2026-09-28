@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElSelect, ElTabPane, ElTabs } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import MaterialDeliveryFields from './MaterialDeliveryFields.vue'
+import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { deliveryError } from '@/utils/materialDelivery'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
@@ -24,6 +25,7 @@ const recoveryBlocked = ref(false)
 const readonly = computed(() => !canWrite.value || saving.value || Boolean(attempt.value) || recoveryBlocked.value)
 const form = reactive({
   receiptKind: 'external' as 'external' | 'return', externalSource: '', returnDispatchNo: '',
+  warehouseLocation: '',
   serialNo: '', materialType: '' as MaterialType | '', quantity: 0 as number | undefined,
   deliveryDate: '', deliveryQuantity: undefined as number | undefined,
   weight: 0 as number | undefined, notes: '', finishedQuantity: undefined as number | undefined,
@@ -33,6 +35,7 @@ let generation = 0
 const storageKey = (scope: string) => `heatsink-flow.pending-warehouse-receipt.v1:${scope}`
 
 function fill(payload: CreateWarehouseReceipt | null = null) {
+  form.warehouseLocation = payload?.warehouse_location || ''
   form.receiptKind = payload?.receipt_kind || 'external'; form.externalSource = payload?.external_source || ''; form.returnDispatchNo = payload?.return_dispatch_no || ''
   form.serialNo = payload?.serial_no || ''; form.materialType = payload?.material_type || ''
   form.quantity = payload?.quantity ?? 0; form.weight = payload?.weight ?? 0; form.notes = payload?.notes || ''
@@ -60,6 +63,7 @@ function validate(): boolean {
   else if (form.serialNo.trim().length > 80) error.value = '流水号不能超过 80 个字符'
   else if (!form.document.material_name.trim()) error.value = '请输入材质'
   else if (!form.materialType) error.value = '请选择物料类型'
+  else if (form.warehouseLocation.length > 80) error.value = '仓位不能超过 80 个字符'
   else if (form.quantity == null || !Number.isInteger(form.quantity) || form.quantity < 0 || form.quantity > 2147483647) error.value = '入库件数须为 0 至 2147483647 的整数'
   else if (form.weight == null || !Number.isFinite(form.weight) || form.weight < 0 || form.weight > 99999999999.999 || Math.abs(form.weight * 1000 - Math.round(form.weight * 1000)) > 0.0001) error.value = '入库重量须为非负数，最多保留 3 位小数'
   else if (form.quantity === 0 && form.weight === 0) error.value = '入库件数和重量至少一项大于 0'
@@ -82,6 +86,7 @@ function payload(): CreateWarehouseReceipt {
     ...Object.fromEntries(materialDocumentTextFields.map(field => [field.key, form.document[field.key].trim() || null])),
     serial_no: form.serialNo.trim(), material_name: form.document.material_name.trim(), material_type: form.materialType as MaterialType,
     receipt_kind: form.receiptKind, external_source: form.externalSource.trim(), return_dispatch_no: form.receiptKind === 'return' ? form.returnDispatchNo.trim() || null : null,
+    warehouse_location: form.warehouseLocation.trim() || null,
     quantity: Number(form.quantity), weight: Number(form.weight), notes: form.notes.trim(), finished_quantity: form.finishedQuantity ?? null,
     ...(form.receiptKind === 'external' ? { delivery_date: form.deliveryDate || null, delivery_quantity: form.deliveryQuantity ?? null } : {}),
     idempotency_key: globalThis.crypto?.randomUUID?.() || `warehouse-receipt-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -140,7 +145,8 @@ onBeforeUnmount(() => { ++generation })
             <ElFormItem label="流水号" required><ElInput v-model="form.serialNo" aria-label="流水号" maxlength="80" :disabled="readonly" placeholder="填写物料流水号" /></ElFormItem>
             <MaterialDeliveryFields v-if="form.receiptKind === 'external'" v-model:date="form.deliveryDate" v-model:quantity="form.deliveryQuantity" :disabled="readonly" />
             <ElFormItem label="材质" required><ElInput v-model="form.document.material_name" aria-label="材质" maxlength="160" :disabled="readonly" placeholder="填写实际材质" /></ElFormItem>
-            <ElFormItem label="物料类型" required class="receipt-wide"><ElSelect v-model="form.materialType" aria-label="物料类型" placeholder="选择物料类型" :disabled="readonly"><ElOption v-for="item in materialTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></ElSelect></ElFormItem>
+            <ElFormItem label="物料类型" required><ElSelect v-model="form.materialType" aria-label="物料类型" placeholder="选择物料类型" :disabled="readonly"><ElOption v-for="item in materialTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></ElSelect></ElFormItem>
+            <ElFormItem label="入库仓位"><WarehouseLocationSelect v-model="form.warehouseLocation" :team-id="teamId" :disabled="readonly" /></ElFormItem>
             <ElFormItem label="入库件数" required><ElInputNumber v-model="form.quantity" aria-label="入库件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="readonly" /><span class="receipt-unit">件</span></ElFormItem>
             <ElFormItem label="入库重量" required><ElInputNumber v-model="form.weight" aria-label="入库重量" :min="0" :max="99999999999.999" :precision="3" :step="0.001" controls-position="right" :disabled="readonly" /><span class="receipt-unit">kg</span></ElFormItem>
           </div>

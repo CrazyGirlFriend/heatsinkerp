@@ -30,14 +30,14 @@ AUDITED_FIELDS = DOCUMENT_FIELDS + (
     "source_transfer_id", "dispatch_id", "stock_tracked", "entry_kind",
     "external_destination", "dispatched_by", "dispatched_at",
     "receipt_kind", "external_source", "return_dispatch_no", "rejection_reason",
-    "purpose_id", "purpose_name", "opening_stock_id",
+    "purpose_id", "purpose_name", "opening_stock_id", "warehouse_location",
 )
 
 
 def _creation_fingerprint(payload) -> str:
     # Preserve pre-upgrade idempotency hashes when optional fields are absent.
     value = payload.model_dump(mode="json", exclude={"idempotency_key"})
-    for field in ("receipt_kind", "external_source", "return_dispatch_no", "purpose_id"):
+    for field in ("receipt_kind", "external_source", "return_dispatch_no", "purpose_id", "warehouse_location"):
         if field not in payload.model_fields_set:
             value.pop(field, None)
     for field in DOCUMENT_FIELDS:
@@ -216,6 +216,7 @@ def material_transfer_dict(
         "receipt_kind": transfer.receipt_kind,
         "external_source": transfer.external_source,
         "return_dispatch_no": transfer.return_dispatch_no,
+        "warehouse_location": transfer.warehouse_location,
         "rejection_reason": transfer.rejection_reason,
         **{field: getattr(transfer, field) for field in DOCUMENT_FIELDS},
         **document(transfer, user),
@@ -428,15 +429,27 @@ def void_material_transfer(db, batch_no: str, user: User) -> None:
         _record_event(db, transfer, user, "voided", before)
 
 
+def _check_receipt_location(transfer, payload, *, replay=False):
+    from .team_constants import WAREHOUSE_TEAM_CODE
+    if "warehouse_location" not in payload.model_fields_set:
+        return
+    if transfer.next_team_code != WAREHOUSE_TEAM_CODE:
+        raise HTTPException(422, "仅库房接收时可填写仓位")
+    if replay and transfer.warehouse_location != payload.warehouse_location:
+        raise _conflict("同一接收请求的仓位不一致，请刷新单据")
+
+
 def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[str, Any]:
     try:
         with db.begin():
             transfer = _locked_transfer(db, batch_no)
             _assert_receiver(user, transfer)
+            _check_receipt_location(transfer, payload)
             if (
                 transfer.status == "received"
                 and transfer.receipt_idempotency_key == payload.idempotency_key
             ):
+                _check_receipt_location(transfer, payload, replay=True)
                 return material_transfer_dict(transfer, user)
             key_owner = db.scalar(
                 select(MaterialTransfer.id).where(
@@ -457,6 +470,8 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
             now = utcnow()
             transfer.status = "received"
             transfer.stock_tracked = True
+            if "warehouse_location" in payload.model_fields_set:
+                transfer.warehouse_location = payload.warehouse_location
             transfer.received_by = actor_name(user)
             transfer.received_by_user_id = user.id
             transfer.receipt_idempotency_key = payload.idempotency_key
@@ -478,6 +493,7 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
             and transfer.status == "received"
             and transfer.receipt_idempotency_key == payload.idempotency_key
         ):
+            _check_receipt_location(transfer, payload, replay=True)
             return material_transfer_dict(transfer, user)
         raise _conflict("duplicate receipt idempotency key") from exc
 
@@ -504,6 +520,8 @@ def reject_material_transfer(db, batch_no, payload, user):
 def confirm_outbound(db, batch_no: str, payload, user: User) -> dict[str, Any]:
     """Finalize external stock leaving the loop; never manufacture a receipt lot."""
     from .material_stock import require_outbound_actor, _db_conflict
+    if "warehouse_location" in payload.model_fields_set:
+        raise HTTPException(422, "对外出库确认不能填写入库仓位")
     try:
         with db.begin():
             transfer = _locked_transfer(db, batch_no)

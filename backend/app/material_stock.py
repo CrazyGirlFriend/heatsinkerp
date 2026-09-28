@@ -408,7 +408,7 @@ def literal_query(query, columns):
 
 def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=None, material_type=None, availability="available", page=1, page_size=20):
     from .record_filters import RecordFilters
-    require_team(db, team_id)
+    team = require_team(db, team_id)
     stock = stock_table(team_id)
     filters = [stock.c.team_id == team_id]
     filters.extend((record_filters or RecordFilters()).predicates(stock.c.received_at, stock.c.serial_no))
@@ -421,7 +421,13 @@ def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=
     if material_type:
         filters.append(stock.c.material_type == material_type)
     if query and query.strip():
-        filters.append(literal_query(query, [stock.c.batch_no, stock.c.serial_no, stock.c.material_name, stock.c.source_batch_no]))
+        matches = literal_query(query, [stock.c.batch_no, stock.c.serial_no, stock.c.material_name, stock.c.source_batch_no])
+        if team.code == WAREHOUSE_TEAM_CODE:
+            location_matches = select(MaterialTransfer.id).where(
+                MaterialTransfer.next_team_id == team_id,
+                literal_query(query, [MaterialTransfer.warehouse_location]))
+            matches = or_(matches, stock.c.transfer_id.in_(location_matches))
+        filters.append(matches)
     total = db.scalar(select(func.count()).select_from(stock).where(*filters)) or 0
     rows = db.execute(select(stock).where(*filters).order_by(stock.c.received_at.desc(), stock.c.transfer_id.desc()).offset((page-1)*page_size).limit(page_size)).mappings().all()
     transfers = {item.id: item for item in db.scalars(select(MaterialTransfer).options(*workflow.material_transfer_list_options()).where(MaterialTransfer.id.in_([row["transfer_id"] for row in rows]))).all()}

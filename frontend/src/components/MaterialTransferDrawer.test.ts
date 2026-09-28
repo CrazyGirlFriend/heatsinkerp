@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { ElMessageBox } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
+import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { MaterialTransferApiError, materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import type { MaterialTransfer } from '@/types/materialTransfer'
 const live = vi.hoisted(() => ({ refresh: async () => {}, busy: (): boolean => false, request: vi.fn() }))
@@ -38,6 +39,17 @@ async function confirm() {
 }
 
 describe('material transfer receipt review', () => {
+  it('records a warehouse receipt location and protects the unsaved choice from live updates', async () => {
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ next_team: { id: '3', code: 'FACTORY-WAREHOUSE', name: '库房' } }))
+    await render()
+    wrapper.getComponent(WarehouseLocationSelect).vm.$emit('update:modelValue', 'B区-02')
+    await flushPromises()
+    expect(live.busy()).toBe(true)
+    await confirm()
+    expect(materialTransferApi.confirm).toHaveBeenCalledWith('TL20260906000001', {
+      idempotency_key: expect.any(String), expected_version: 4, warehouse_location: 'B区-02',
+    })
+  })
   it('hides printing in receipt review, including historical groups, without removing receipt actions', async () => {
     vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ dispatch_no: 'CK-PENDING', allowed_actions: ['confirm', 'reject'] }))
     await render({ allowPrint: false })

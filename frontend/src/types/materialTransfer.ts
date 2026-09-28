@@ -96,6 +96,7 @@ export interface MaterialTransfer extends Partial<MaterialTransferDocumentFields
   receipt_kind?: 'external' | 'return' | null
   external_source?: string | null
   return_dispatch_no?: string | null
+  warehouse_location?: string | null
   rejection_reason?: string | null
   dispatched_by?: string | null
   dispatched_by_user_id?: EntityId | null
@@ -176,6 +177,7 @@ export type UpdateMaterialTransferPayload = Partial<Omit<CreateMaterialTransferP
 export interface ConfirmMaterialTransferPayload {
   idempotency_key: string
   expected_version?: number
+  warehouse_location?: string | null
 }
 
 export function materialTypeLabel(type: MaterialType | string | null | undefined): string {

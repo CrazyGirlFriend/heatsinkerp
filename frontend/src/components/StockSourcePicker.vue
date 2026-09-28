@@ -54,7 +54,7 @@ onBeforeUnmount(() => { ++version })
   <ElDialog :model-value="true" title="新建出库 · 选择库存物料" width="min(1040px, 94vw)" top="6vh" class="stock-source-picker" @close="emit('close')">
     <p v-if="groupLabel" class="picker-scope">{{ groupLabel }}</p>
     <div class="picker-toolbar">
-      <ElInput v-model="query" :prefix-icon="Search" aria-label="出库库存搜索" placeholder="搜索流水号、来源批次或材质" clearable @keyup.enter="search" @clear="search" />
+      <ElInput v-model="query" :prefix-icon="Search" aria-label="出库库存搜索" placeholder="搜索流水号、批次、材质或仓位" clearable @keyup.enter="search" @clear="search" />
       <RecordDateFilter v-model="dates" label="接收日期" @update:model-value="search" /><ElCheckbox v-model="urgentOnly" @change="search">仅看加急</ElCheckbox>
       <ElButton @click="search">查询</ElButton>
       <span>已选 {{ selected.size }} / 100 批</span><ElButton text :disabled="!selected.size" @click="selected.clear()">清空</ElButton>
@@ -69,6 +69,7 @@ onBeforeUnmount(() => { ++version })
         </ElTableColumn>
         <ElTableColumn label="流水号" min-width="245" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.serial_no }}<SerialUrgencyBadge :urgency="row.transfer.urgency" /></template></ElTableColumn>
         <ElTableColumn label="来源批次" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.batch_no }}</template></ElTableColumn>
+        <ElTableColumn v-if="rows.some(item => item.transfer.next_team.code === 'FACTORY-WAREHOUSE')" label="仓位" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.warehouse_location || '未填写' }}</template></ElTableColumn>
         <ElTableColumn label="本班组业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.purpose_name || '未分类' }}</template></ElTableColumn>
         <ElTableColumn label="材质" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.material_name || '—' }}</template></ElTableColumn>
         <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.transfer.material_type) }}</template></ElTableColumn>

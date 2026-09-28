@@ -2,6 +2,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
 import { ElInputNumber, ElSelect } from 'element-plus'
+import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WarehouseReceiptDialog from './WarehouseReceiptDialog.vue'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
@@ -40,6 +41,17 @@ async function fill() {
 async function submit() { await wrapper.get('form').trigger('submit'); await flushPromises() }
 
 describe('warehouse manual receipt', () => {
+  it('keeps a manually selected location in the persisted retry payload', async () => {
+    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(new TeamMaterialApiError('网络中断'))
+    await render(); await fill()
+    wrapper.getComponent(WarehouseLocationSelect).vm.$emit('update:modelValue', 'A区-03')
+    await submit()
+    const original = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
+    expect(original.warehouse_location).toBe('A区-03')
+    expect(wrapper.getComponent(WarehouseLocationSelect).props('disabled')).toBe(true)
+    wrapper.unmount(); await render(); await submit()
+    expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]).toEqual(original)
+  })
   it('saves the origin requirement together with the receipt and preserves it in an uncertain retry', async () => {
     vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(new TeamMaterialApiError('网络中断'))
     await render(); await fill()
@@ -68,7 +80,7 @@ describe('warehouse manual receipt', () => {
   it('creates a root receipt for the bound warehouse with no transfer destination or status fields', async () => {
     await render(); await fill()
     expect(wrapper.text()).toContain('清点后确认入库，立即增加库房库存，无需再次签收')
-    expect(wrapper.findAllComponents(ElSelect)).toHaveLength(2)
+    expect(wrapper.findAllComponents(ElSelect)).toHaveLength(3)
     expect(wrapper.text()).not.toContain('接收班组')
     await wrapper.get('input[aria-label="原单批号"]').setValue('RAW-91')
     await submit()

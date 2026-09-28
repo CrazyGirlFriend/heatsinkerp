@@ -63,6 +63,7 @@ export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocument
   receipt_kind?: 'external' | 'return'
   external_source?: string | null
   return_dispatch_no?: string | null
+  warehouse_location?: string | null
 }
 export interface DispatchParams extends MaterialPageParams { next_team_id?: string | number; status?: Exclude<DispatchStatus, 'partial'>; entry_kind?: DispatchKind; material_type?: MaterialType }
 export interface DispatchLine { source_transfer_id: number; quantity: number; weight: number; material_type?: MaterialType | null; purpose_id?: number | null }

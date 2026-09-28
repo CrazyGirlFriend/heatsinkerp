@@ -15,6 +15,7 @@ import MaterialTransferDocumentFields from '@/components/MaterialTransferDocumen
 import MaterialTransferHistory from '@/components/MaterialTransferHistory.vue'
 import MaterialTransferFormDialog from '@/components/MaterialTransferFormDialog.vue'
 import MaterialDeliveryDialog from './MaterialDeliveryDialog.vue'
+import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import MaterialTransferPrintSheet from '@/components/MaterialTransferPrintSheet.vue'
 import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
 import { isDispatchNumber } from '@/types/teamMaterials'
@@ -72,6 +73,8 @@ const editOpen = ref(false)
 const deliveryOpen = ref(false), deliveryBusy = ref(false)
 const printReady = ref(false)
 const reviewNotice = ref('')
+const warehouseLocation = ref('')
+const warehouseReceiver = computed(() => current.value?.next_team.code === 'FACTORY-WAREHOUSE')
 let requestVersion = 0
 let actionVersion = 0
 let confirmKey = ''
@@ -119,7 +122,7 @@ function newIdempotencyKey(): string {
   return globalThis.crypto?.randomUUID?.() || `confirm-transfer-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-const freezeLive = computed(() => loading.value || confirming.value || voiding.value || editOpen.value || deliveryOpen.value || printReady.value || groupOpen.value)
+const freezeLive = computed(() => loading.value || confirming.value || voiding.value || editOpen.value || deliveryOpen.value || printReady.value || groupOpen.value || (canConfirm.value && warehouseLocation.value !== (current.value?.warehouse_location || '')))
 const liveRefresh = useLiveRefresh(() => load(false, true), {
   enabled: () => props.modelValue && Boolean(effectiveBatchNo.value), busy: () => freezeLive.value,
 })
@@ -165,6 +168,7 @@ function updateCurrent(transfer: MaterialTransfer): void {
 async function confirmReceipt(): Promise<void> {
   const transfer = current.value
   if (!transfer || !canConfirm.value || confirming.value) return
+  if (warehouseReceiver.value && warehouseLocation.value.length > 80) { showToast('仓位不能超过 80 个字符', 'error'); return }
   const epoch = ++actionVersion
   confirming.value = true
   try {
@@ -179,7 +183,7 @@ async function confirmReceipt(): Promise<void> {
   }
   if (epoch !== actionVersion || !props.modelValue) return
   try {
-    const confirmed = await materialTransferApi.confirm(transfer.batch_no, { idempotency_key: confirmKey || newIdempotencyKey(), ...materialTransferVersion(transfer) })
+    const confirmed = await materialTransferApi.confirm(transfer.batch_no, { idempotency_key: confirmKey || newIdempotencyKey(), ...materialTransferVersion(transfer), ...(warehouseReceiver.value ? { warehouse_location: warehouseLocation.value.trim() || null } : {}) })
     if (epoch !== actionVersion || !props.modelValue) return
     current.value = confirmed
     emit('changed', confirmed)
@@ -309,6 +313,7 @@ watch(
       return
     }
     current.value = props.transfer || null
+    warehouseLocation.value = props.transfer?.warehouse_location || ''
     editOpen.value = false; deliveryOpen.value = false
     confirmKey = newIdempotencyKey()
     void load()
@@ -359,6 +364,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
       <ElAlert v-if="current.rejection_reason && current.status === 'pending'" type="warning" :closable="false" :title="'待上序修正：' + current.rejection_reason" />
       <div class="document-barcode"><BarcodeCard :value="current.batch_no" :entity-label="receipt ? '入库批次号' : '转料批次号'" compact /><ElButton v-if="grouped" link type="primary" @click="groupOpen = true">历史合并记录 · {{ current.dispatch_no }}</ElButton></div>
       <MaterialTransferDocumentFields :transfer="current" group="all"><template #serial><RouterLink :to="tracePath">{{ current.serial_no }}</RouterLink><SerialUrgencyBadge :urgency="current.urgency" /></template></MaterialTransferDocumentFields>
+      <section v-if="canConfirm && warehouseReceiver" class="receipt-location"><label>入库仓位</label><WarehouseLocationSelect v-model="warehouseLocation" :team-id="Number(current.next_team.id)" :disabled="confirming" /></section>
       <section class="document-records"><h3>{{ receipt ? '入库记录' : '流转记录' }}</h3><MaterialTransferHistory :transfer="current" /></section>
       <section v-if="current.loss_records?.length" class="document-records"><h3>来源批次丢失记录</h3><div class="document-table-scroll"><table class="loss-record-table business-document-table" aria-label="来源批次丢失记录"><thead><tr><th scope="col">记录号</th><th scope="col">件数</th><th scope="col">重量（kg）</th><th scope="col">原因</th><th scope="col">登记人 / 时间</th></tr></thead><tbody><tr v-for="loss in current.loss_records" :key="loss.id"><td>{{ loss.loss_no }}</td><td>{{ loss.quantity }}</td><td>{{ loss.weight }}</td><td class="table-prose">{{ loss.reason }}</td><td>{{ loss.created_by }}<br />{{ formatDateTime(loss.created_at) }}</td></tr></tbody></table></div></section>
     </div>
@@ -384,6 +390,9 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
 </template>
 
 <style scoped>
+.receipt-location { display: grid; grid-template-columns: 90px minmax(0, 460px); align-items: start; gap: 12px; padding: 18px 0; }
+.receipt-location > label { padding-top: 8px; color: var(--text); }
+@media (max-width: 560px) { .receipt-location { grid-template-columns: 1fr; } }
 :global(.outbound-confirmation .el-message-box__message p) { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.8; }
 .drawer-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; padding-right: 24px; }
 .drawer-heading > span:first-child { font-size: 22px; font-weight: 600; }

@@ -36,6 +36,14 @@ const transfer: MaterialTransfer = {
 }
 
 describe('material transfer print sheet', () => {
+  it('prints the recorded warehouse location in both copies', () => {
+    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, next_team: { id: 1, code: 'FACTORY-WAREHOUSE', name: '库房' }, warehouse_location: 'A区-01' } } })
+    for (const copy of wrapper.findAll('.material-transfer-print-copy')) {
+      expect(copy.text()).toContain('入库仓位')
+      expect(copy.text()).toContain('A区-01')
+    }
+    wrapper.unmount()
+  })
   it('places the receiving team and its historical purpose together in both copies', async () => {
     const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, next_team: { id: 8, code: 'FACTORY-QC', name: '检验' }, purpose_name: '去毛刺' } } })
     await flushPromises()

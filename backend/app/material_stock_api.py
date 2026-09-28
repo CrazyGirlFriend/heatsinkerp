@@ -51,6 +51,13 @@ def overview(team_id: int = Path(ge=1), _: User = Depends(get_current_user), db:
     return team_read_response(db, lambda session: stock.overview(session, team_id))
 
 
+@router.get("/{team_id}/warehouse-locations")
+def warehouse_locations(team_id: int = Path(ge=1), query: str | None = Query(default=None, max_length=80),
+                        limit: int = Query(default=100, ge=1, le=100),
+                        _: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return team_read_response(db, lambda session: warehouse_receipts.locations(session, team_id, query=query, limit=limit))
+
+
 @router.get("/{team_id}/stock")
 def list_stock(record_filters: RecordFilters = Depends(), team_id: int = Path(ge=1), query: str | None = Query(default=None, max_length=160),
                serial_no: str | None = Query(default=None, max_length=80),

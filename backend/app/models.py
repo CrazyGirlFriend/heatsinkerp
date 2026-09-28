@@ -213,6 +213,7 @@ class MaterialTransfer(Base):
             "ix_mt_team_serial_purpose", "next_team_id", "serial_no", "purpose_id", "received_at"
         ),
         Index("ix_mt_source_serial_created", "source_team_id", "serial_no", "created_at"),
+        Index("ix_mt_warehouse_location", "next_team_id", "warehouse_location"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -241,6 +242,7 @@ class MaterialTransfer(Base):
     receipt_kind: Mapped[str | None] = mapped_column(String(16))
     external_source: Mapped[str | None] = mapped_column(String(240))
     return_dispatch_no: Mapped[str | None] = mapped_column(String(40))
+    warehouse_location: Mapped[str | None] = mapped_column(String(80))
     rejection_reason: Mapped[str | None] = mapped_column(Text)
     material_type: Mapped[str | None] = mapped_column(String(32))
     source_batch_no: Mapped[str | None] = mapped_column(String(80))

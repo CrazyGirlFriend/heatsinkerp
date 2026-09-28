@@ -135,6 +135,12 @@ class WarehouseReceiptCreate(MaterialTransferDocumentFields):
     receipt_kind: Literal["external", "return"] = "external"
     external_source: str | None = Field(default=None, min_length=1, max_length=240)
     return_dispatch_no: str | None = Field(default=None, min_length=1, max_length=40)
+    warehouse_location: str | None = Field(default=None, max_length=80)
+
+    @field_validator("warehouse_location")
+    @classmethod
+    def normalize_location(cls, value):
+        return (value.strip() or None) if value is not None else None
 
     @field_validator("external_source", "return_dispatch_no")
     @classmethod
@@ -183,6 +189,12 @@ class MaterialTransferConfirm(APIModel):
 
     idempotency_key: str = Field(min_length=1, max_length=100)
     expected_version: int | None = Field(default=None, ge=1)
+    warehouse_location: str | None = Field(default=None, max_length=80)
+
+    @field_validator("warehouse_location")
+    @classmethod
+    def normalize_location(cls, value):
+        return (value.strip() or None) if value is not None else None
 
 
 class MaterialTransferReject(APIModel):
@@ -230,6 +242,7 @@ class MaterialTransferResponse(MaterialTransferDocumentFields):
     receipt_kind: str | None = None
     external_source: str | None = None
     return_dispatch_no: str | None = None
+    warehouse_location: str | None = None
     rejection_reason: str | None = None
     source_team_id: int | None
     source_team: MaterialTransferTeamSnapshot | None

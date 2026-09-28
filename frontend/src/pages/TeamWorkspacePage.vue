@@ -341,6 +341,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                   <ElTableColumn label="操作" width="110" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="openIncoming(asTransfer(row))">{{ canWrite ? '核对接收' : '查看详情' }}</ElButton></template></ElTableColumn>
                 </ElTable>
                 <ElTable v-else-if="tab === 'receipts'" :data="receipts" class="business-table team-table single-line-table" row-key="id">
+                  <ElTableColumn prop="warehouse_location" label="仓位" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.warehouse_location || '未填写' }}</template></ElTableColumn>
                   <ElTableColumn label="批次号" min-width="190" show-overflow-tooltip><template #default="{ row }"><button class="batch-link" :title="row.batch_no" @click="openDetail(asTransfer(row))">{{ row.batch_no }}</button></template></ElTableColumn>
                   <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip><template #default="{ row }"><span class="record-serial"><span :title="row.serial_no">{{ row.serial_no }}</span><SerialUrgencyBadge :urgency="row.urgency" /></span></template></ElTableColumn>
                   <ElTableColumn label="来源类别" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ receiptSourceLabel(asTransfer(row)) }}</template></ElTableColumn>
