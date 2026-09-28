@@ -1,3 +1,4 @@
+import type { WarehouseLocation } from './warehouseLocationApi'
 import { httpRequest, HttpRequestError, type HttpRequestOptions } from './httpClient'
 import type { TeamPurpose, OpeningLine, OpeningState, SerialHistory } from '@/types/teamBusiness'
 import { normalizeMaterialTransfer } from './materialTransferApi'
@@ -52,7 +53,7 @@ async function page<T>(url: string, normalize: (raw: unknown) => T): Promise<Mat
   return { items: raw.items.map(normalize), total: Number(raw.total), page: Number(raw.page), page_size: Number(raw.page_size), ...(typeof raw.as_of === 'string' ? { as_of: raw.as_of } : {}) }
 }
 export const teamMaterialApi = {
-  warehouseLocations(teamId: number, query = '') { return request<{ items: { name: string; has_stock: boolean }[] }>(path(teamId, 'warehouse-locations', { query })) },
+  warehouseLocations(teamId: number, query = '', selected = '') { return request<{ items: WarehouseLocation[] }>(path(teamId, 'warehouse-locations', { query, selected })) },
   quantityContext(teamId: number, sourceId: number, page = 1) { return request<QuantityAdjustmentContext>(path(teamId, `stock/${sourceId}/quantity-adjustments`, { page, page_size: 10 })) },
   changeQuantity(teamId: number, payload: CreateQuantityAdjustment) { return request<QuantityAdjustment>(path(teamId, 'quantity-adjustments'), { method: 'POST', body: payload }) },
   purposes(teamId: number) { return request<TeamPurpose[]>(path(teamId, 'purposes')) },

@@ -163,6 +163,8 @@ export interface MaterialTransferListResponse {
 export type MaterialTransferStatusCounts = Record<MaterialTransferStatus | 'all', number>
 
 export interface CreateMaterialTransferPayload extends Partial<MaterialTransferDocumentFields> {
+  warehouse_location?: string | null
+  warehouse_location_reservation_key?: string | null
   purpose_id?: number | null
   serial_no: string
   next_team_id: EntityId
@@ -175,6 +177,7 @@ export interface CreateMaterialTransferPayload extends Partial<MaterialTransferD
 export type UpdateMaterialTransferPayload = Partial<Omit<CreateMaterialTransferPayload, 'idempotency_key'>> & { expected_version?: number }
 
 export interface ConfirmMaterialTransferPayload {
+  warehouse_location_reservation_key?: string | null
   idempotency_key: string
   expected_version?: number
   warehouse_location?: string | null

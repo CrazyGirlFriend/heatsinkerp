@@ -20,6 +20,7 @@ import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/stores/toast'
 import { useTeamPurposes } from '@/composables/useTeamPurposes'
 import MaterialDeliveryFields from './MaterialDeliveryFields.vue'
+import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { deliveryError } from '@/utils/materialDelivery'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { canEditMaterialTransfer, externalActionLabel, isExternalTransfer, materialDocumentTextFields, materialTransferVersion, materialTypeOptions, type MaterialTransfer, type MaterialTransferTextField, type MaterialType } from '@/types/materialTransfer'
@@ -37,7 +38,7 @@ const emit = defineEmits<{
 
 const authStore = useAuthStore()
 const teamStore = useTeamDirectoryStore()
-const saving = ref(false)
+const saving = ref(false), locationBusy = ref(false)
 const formError = ref('')
 const activeTab = ref('handoff')
 const editingSnapshot = ref<MaterialTransfer | null>(null)
@@ -47,7 +48,7 @@ const createRequestKey = ref('')
 const createRequestFingerprint = ref('')
 const openedSourceTeamId = ref<string | number | null>(null)
 const form = reactive({
-  serialNo: '',
+  serialNo: '', warehouseLocation: '', warehouseLocationKey: '',
   deliveryDate: '',
   deliveryQuantity: undefined as number | undefined,
   nextTeamId: '' as string | number,
@@ -63,7 +64,7 @@ const form = reactive({
 let formGeneration = 0
 const external = computed(() => Boolean(editingSnapshot.value && isExternalTransfer(editingSnapshot.value)))
 const purposes = useTeamPurposes(() => props.modelValue && !external.value && form.nextTeamId ? Number(form.nextTeamId) : null)
-watch(() => form.nextTeamId, value => { if (String(value) !== String(editingSnapshot.value?.next_team.id)) form.purposeId = null })
+watch(() => form.nextTeamId, value => { if (String(value) !== String(editingSnapshot.value?.next_team.id)) { form.purposeId = null; form.warehouseLocation = ''; form.warehouseLocationKey = '' } })
 const actionLabel = computed(() => externalActionLabel(editingSnapshot.value?.entry_kind))
 const isEditing = computed(() => Boolean(props.transfer))
 const linkedSource = computed(() => Boolean(editingSnapshot.value?.source_transfer_id))
@@ -71,7 +72,7 @@ const groupedDispatch = computed(() => Boolean(editingSnapshot.value?.dispatch_n
 const sourceTeam = computed(() => editingSnapshot.value?.source_team ?? authStore.currentUser?.team ?? null)
 const editable = computed(() => !editingSnapshot.value || canEditMaterialTransfer(editingSnapshot.value))
 const sourceChanged = computed(() => !isEditing.value && String(openedSourceTeamId.value) !== String(authStore.currentUser?.team_id ?? null))
-const canSubmit = computed(() => authStore.isTeamAccount && Boolean(sourceTeam.value) && !sourceChanged.value && editable.value && !saving.value && !refreshing.value && !refreshFailed.value)
+const canSubmit = computed(() => authStore.isTeamAccount && Boolean(sourceTeam.value) && !sourceChanged.value && editable.value && !saving.value && !locationBusy.value && !refreshing.value && !refreshFailed.value)
 const destinationTeams = computed(() => {
   const sourceId = String(sourceTeam.value?.id ?? '')
   const items = teamStore.items.filter((team) => team.active && String(team.id) !== sourceId)
@@ -88,6 +89,7 @@ const notesLabel = computed(() => external.value ? `${actionLabel.value}说明` 
 function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
   openedSourceTeamId.value = authStore.currentUser?.team_id ?? null
   editingSnapshot.value = transfer
+  form.warehouseLocation = transfer?.warehouse_location || ''; form.warehouseLocationKey = ''
   form.serialNo = transfer?.serial_no ?? ''
   form.deliveryDate = transfer?.delivery_date ?? ''
   form.deliveryQuantity = transfer?.delivery_quantity ?? undefined
@@ -168,12 +170,13 @@ function idempotencyKey(): string {
 }
 
 async function submit(): Promise<void> {
-  if (!validate() || saving.value) return
+  if (!validate() || saving.value || locationBusy.value) return
   const epoch = formGeneration
   saving.value = true
   formError.value = ''
   const payload = {
     serial_no: form.serialNo.trim(),
+    ...(toWarehouse.value ? { warehouse_location: form.warehouseLocation || null, ...(form.warehouseLocationKey ? { warehouse_location_reservation_key: form.warehouseLocationKey } : {}) } : {}),
     ...(!linkedSource.value && !external.value ? { delivery_date: form.deliveryDate || null, delivery_quantity: form.deliveryQuantity ?? null } : {}),
     next_team_id: form.nextTeamId,
     ...(!external.value && (form.purposeId || editingSnapshot.value?.purpose_id) ? { purpose_id: form.purposeId } : {}),
@@ -305,6 +308,7 @@ onBeforeUnmount(() => { ++formGeneration })
         </ElFormItem>
       </div>
       <p class="quantity-hint">按实际件数、重量填写，至少一项大于 0。</p>
+      <ElFormItem v-if="toWarehouse" label="入库仓位"><strong v-if="editingSnapshot?.warehouse_location">{{ editingSnapshot.warehouse_location }}</strong><WarehouseLocationSelect v-else v-model="form.warehouseLocation" v-model:reservation-key="form.warehouseLocationKey" :team-id="Number(form.nextTeamId)" :active="modelValue" :disabled="saving || refreshing" @busy-change="locationBusy = $event" /></ElFormItem>
       <ElFormItem :label="notesLabel">
         <ElInput v-model="form.notes" :aria-label="notesLabel" type="textarea" :rows="2" maxlength="2000" show-word-limit :disabled="!canSubmit" :placeholder="toWarehouse ? '选填：说明当前物料情况或转回库房的原因' : '选填'" />
       </ElFormItem>

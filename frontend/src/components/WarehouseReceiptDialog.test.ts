@@ -16,6 +16,7 @@ vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => state.di
 const receipt = () => normalizeMaterialTransfer({ id: 51, batch_no: 'TL-RECEIPT', serial_no: 'QA-IN', entry_kind: 'warehouse_receipt', source_team: null, next_team: { id: 901, name: '库房', kind: 'warehouse' }, status: 'received', locked: true, stock_tracked: true })
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(teamMaterialApi, 'warehouseLocations').mockResolvedValue({ items: [] })
   sessionStorage.clear()
   state.auth = reactive({ isTeamAccount: true, currentUser: { id: 41, team_id: 901, active: true }, currentUserError: '', refreshCurrentUser: vi.fn().mockResolvedValue(undefined) })
   state.directory = reactive({ items: [{ id: 901, code: 'FACTORY-WAREHOUSE', kind: 'warehouse', name: '库房', active: true }], loaded: true, error: '', refreshTeamDirectory: vi.fn().mockResolvedValue(undefined) })
@@ -45,9 +46,11 @@ describe('warehouse manual receipt', () => {
     vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(new TeamMaterialApiError('网络中断'))
     await render(); await fill()
     wrapper.getComponent(WarehouseLocationSelect).vm.$emit('update:modelValue', 'A区-03')
+    wrapper.getComponent(WarehouseLocationSelect).vm.$emit('update:reservationKey', 'test-lease-key-for-intake')
     await submit()
     const original = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
     expect(original.warehouse_location).toBe('A区-03')
+    expect(original.warehouse_location_reservation_key).toBe('test-lease-key-for-intake')
     expect(wrapper.getComponent(WarehouseLocationSelect).props('disabled')).toBe(true)
     wrapper.unmount(); await render(); await submit()
     expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]).toEqual(original)

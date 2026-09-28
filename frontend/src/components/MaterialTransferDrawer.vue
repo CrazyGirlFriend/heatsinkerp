@@ -73,7 +73,7 @@ const editOpen = ref(false)
 const deliveryOpen = ref(false), deliveryBusy = ref(false)
 const printReady = ref(false)
 const reviewNotice = ref('')
-const warehouseLocation = ref('')
+const warehouseLocation = ref(''), warehouseLocationKey = ref(''), locationBusy = ref(false)
 const warehouseReceiver = computed(() => current.value?.next_team.code === 'FACTORY-WAREHOUSE')
 let requestVersion = 0
 let actionVersion = 0
@@ -167,7 +167,7 @@ function updateCurrent(transfer: MaterialTransfer): void {
 
 async function confirmReceipt(): Promise<void> {
   const transfer = current.value
-  if (!transfer || !canConfirm.value || confirming.value) return
+  if (!transfer || !canConfirm.value || confirming.value || locationBusy.value) return
   if (warehouseReceiver.value && warehouseLocation.value.length > 80) { showToast('仓位不能超过 80 个字符', 'error'); return }
   const epoch = ++actionVersion
   confirming.value = true
@@ -183,7 +183,7 @@ async function confirmReceipt(): Promise<void> {
   }
   if (epoch !== actionVersion || !props.modelValue) return
   try {
-    const confirmed = await materialTransferApi.confirm(transfer.batch_no, { idempotency_key: confirmKey || newIdempotencyKey(), ...materialTransferVersion(transfer), ...(warehouseReceiver.value ? { warehouse_location: warehouseLocation.value.trim() || null } : {}) })
+    const confirmed = await materialTransferApi.confirm(transfer.batch_no, { idempotency_key: confirmKey || newIdempotencyKey(), ...materialTransferVersion(transfer), ...(warehouseReceiver.value ? { warehouse_location: transfer.warehouse_location || warehouseLocation.value.trim() || null, ...(warehouseLocationKey.value ? { warehouse_location_reservation_key: warehouseLocationKey.value } : {}) } : {}) })
     if (epoch !== actionVersion || !props.modelValue) return
     current.value = confirmed
     emit('changed', confirmed)
@@ -313,7 +313,7 @@ watch(
       return
     }
     current.value = props.transfer || null
-    warehouseLocation.value = props.transfer?.warehouse_location || ''
+    warehouseLocation.value = props.transfer?.warehouse_location || ''; warehouseLocationKey.value = ''
     editOpen.value = false; deliveryOpen.value = false
     confirmKey = newIdempotencyKey()
     void load()
@@ -364,7 +364,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
       <ElAlert v-if="current.rejection_reason && current.status === 'pending'" type="warning" :closable="false" :title="'待上序修正：' + current.rejection_reason" />
       <div class="document-barcode"><BarcodeCard :value="current.batch_no" :entity-label="receipt ? '入库批次号' : '转料批次号'" compact /><ElButton v-if="grouped" link type="primary" @click="groupOpen = true">历史合并记录 · {{ current.dispatch_no }}</ElButton></div>
       <MaterialTransferDocumentFields :transfer="current" group="all"><template #serial><RouterLink :to="tracePath">{{ current.serial_no }}</RouterLink><SerialUrgencyBadge :urgency="current.urgency" /></template></MaterialTransferDocumentFields>
-      <section v-if="canConfirm && warehouseReceiver" class="receipt-location"><label>入库仓位</label><WarehouseLocationSelect v-model="warehouseLocation" :team-id="Number(current.next_team.id)" :disabled="confirming" /></section>
+      <section v-if="canConfirm && warehouseReceiver" class="receipt-location"><label>入库仓位</label><strong v-if="current.warehouse_location">{{ current.warehouse_location }}</strong><WarehouseLocationSelect v-else v-model="warehouseLocation" v-model:reservation-key="warehouseLocationKey" :team-id="Number(current.next_team.id)" :active="modelValue && !groupOpen" :disabled="confirming" @busy-change="locationBusy = $event" /></section>
       <section class="document-records"><h3>{{ receipt ? '入库记录' : '流转记录' }}</h3><MaterialTransferHistory :transfer="current" /></section>
       <section v-if="current.loss_records?.length" class="document-records"><h3>来源批次丢失记录</h3><div class="document-table-scroll"><table class="loss-record-table business-document-table" aria-label="来源批次丢失记录"><thead><tr><th scope="col">记录号</th><th scope="col">件数</th><th scope="col">重量（kg）</th><th scope="col">原因</th><th scope="col">登记人 / 时间</th></tr></thead><tbody><tr v-for="loss in current.loss_records" :key="loss.id"><td>{{ loss.loss_no }}</td><td>{{ loss.quantity }}</td><td>{{ loss.weight }}</td><td class="table-prose">{{ loss.reason }}</td><td>{{ loss.created_by }}<br />{{ formatDateTime(loss.created_at) }}</td></tr></tbody></table></div></section>
     </div>
@@ -372,7 +372,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
     <template v-if="current" #footer>
       <div class="drawer-footer">
         <ElButton v-if="canReject" type="warning" plain :disabled="confirming || voiding" @click="rejectTransfer">退回核对</ElButton>
-        <ElButton v-if="canConfirm" type="primary" :icon="CircleCheck" :loading="confirming" @click="confirmReceipt">确认接收</ElButton>
+        <ElButton v-if="canConfirm" type="primary" :icon="CircleCheck" :loading="confirming" :disabled="locationBusy" @click="confirmReceipt">确认接收</ElButton>
         <ElButton v-if="canConfirmExternal" type="primary" :icon="CircleCheck" :loading="confirming" @click="confirmExternal">确认{{ actionLabel }}</ElButton>
         <ElButton v-if="current.can_edit_delivery && !loadError && !loading" :disabled="confirming || voiding" @click="deliveryOpen = true">维护交期</ElButton>
         <a v-if="current.delivery_origin_batch_no && current.delivery_origin_batch_no !== current.batch_no" :href="'/transfer-batches?batch_no=' + encodeURIComponent(current.delivery_origin_batch_no)">查看交期源单</a>

@@ -18,6 +18,7 @@ from .opening_stock import router as opening_stock_router
 from .team_serial_history import router as serial_history_router
 from .notification_api import router as notification_router
 from .factory_dashboard import router as dashboard_router
+from .warehouse_locations import router as warehouse_locations_router
 
 router = APIRouter()
 router.include_router(admin_router)
@@ -36,3 +37,4 @@ router.include_router(opening_stock_router)
 router.include_router(serial_history_router)
 router.include_router(notification_router)
 router.include_router(dashboard_router)
+router.include_router(warehouse_locations_router)

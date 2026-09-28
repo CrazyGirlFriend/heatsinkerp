@@ -5,9 +5,9 @@ import PageBackButton from '@/components/PageBackButton.vue'
 import { teamWorkspaceSections, teamWorkspaceSectionsFor, type TeamWorkspaceSection } from '@/config/teamWorkspaces'
 import '@/styles/team-workspace.css'
 
-const props = defineProps<{ title: string; modelValue: string; warehouse?: boolean; pendingCount?: number | null }>()
+const props = defineProps<{ title: string; modelValue: string; warehouse?: boolean; manageWarehouse?: boolean; pendingCount?: number | null }>()
 const emit = defineEmits<{ 'update:modelValue': [value: TeamWorkspaceSection] }>()
-const sections = computed(() => teamWorkspaceSectionsFor(Boolean(props.warehouse)))
+const sections = computed(() => teamWorkspaceSectionsFor(Boolean(props.warehouse), Boolean(props.manageWarehouse)))
 const sectionLabel = computed(() => teamWorkspaceSections.find(section => section.value === props.modelValue)?.label || props.title)
 const navigation = ref<HTMLElement>()
 let observer: ResizeObserver | undefined

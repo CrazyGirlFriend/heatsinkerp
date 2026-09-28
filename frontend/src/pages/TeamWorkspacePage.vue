@@ -15,6 +15,7 @@ import TeamSerialHistory from '@/components/TeamSerialHistory.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
 import { inventoryAmount } from '@/types/teamInventory'
 import MaterialStockActionDialog from '@/components/MaterialStockActionDialog.vue'
+import WarehouseManagement from '@/components/WarehouseManagement.vue'
 import WarehouseReceiptDialog from '@/components/WarehouseReceiptDialog.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
 import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
@@ -48,10 +49,11 @@ const scopeReady = computed(() => validId.value && directory.loaded && !director
 const scopeLoading = computed(() => validId.value && !directory.error && (!directory.loaded || directory.loading) && !scopeReady.value)
 const canWrite = computed(() => scopeReady.value && auth.isTeamAccount && auth.currentUser?.active !== false && String(auth.currentUser?.team_id) === teamKey.value && !auth.currentUserError)
 const isWarehouse = computed(() => scopeReady.value && team.value?.code === 'FACTORY-WAREHOUSE' && team.value?.kind === 'warehouse')
+const canManageWarehouse = computed(() => isWarehouse.value && (auth.isAdmin || canWrite.value))
 const canReceive = computed(() => isWarehouse.value && canWrite.value && auth.currentUser?.active !== false)
 const title = computed(() => scopeReady.value ? profile.value?.name || team.value!.name : '班组工作台')
 const queryText = (key: string) => typeof route.query[key] === 'string' ? String(route.query[key]) : ''
-const tab = computed(() => resolveTeamWorkspaceSection(route.query, isWarehouse.value))
+const tab = computed(() => resolveTeamWorkspaceSection(route.query, isWarehouse.value, canManageWarehouse.value))
 function selectSection(section: TeamWorkspaceSection) {
   if (section !== tab.value) void router.push(teamWorkspaceSectionPath(teamKey.value, section))
 }
@@ -291,14 +293,15 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 </script>
 
 <template>
-  <TeamWorkspaceShell :title="title" :model-value="tab" :warehouse="isWarehouse" :pending-count="pendingCount" @update:model-value="selectSection">
+  <TeamWorkspaceShell :title="title" :model-value="tab" :warehouse="isWarehouse" :manage-warehouse="canManageWarehouse" :pending-count="pendingCount" @update:model-value="selectSection">
     <div class="team-material-content">
       <ElAlert v-if="syncError || syncState === 'reconnecting' || syncState === 'expired'" type="warning" :closable="false" :title="syncState === 'expired' ? '登录或访问凭证已失效，请重新验证。' : syncError || '实时连接中断，当前显示上次结果，正在重连。'" />
       <StatePanel v-if="scopeLoading" state="loading" title="正在读取班组信息" />
       <StatePanel v-else-if="!scopeReady" state="error" :title="!validId ? '无效的班组编号' : directory.error ? '班组目录加载失败' : '未找到启用的班组'" description="请刷新班组目录，或从侧边栏选择已配置的班组。" @retry="directory.refreshTeamDirectory" />
       <template v-else>
         <ElAlert v-if="overview?.legacy_received_count" class="legacy-notice" type="info" :closable="false" :title="`另有 ${overview.legacy_received_count} 张历史已接收单未计入库存。`"><template #default>历史单据仍可在 <RouterLink :to="{ path: '/transfer-batches', query: { next_team_id: teamKey, status: 'received' } }">全局转料记录</RouterLink> 查看。</template></ElAlert>
-        <TeamSerialHistory v-if="['overview', 'history'].includes(tab)" :key="teamId" :team-id="teamId"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamSerialHistory>
+        <WarehouseManagement v-if="tab === 'warehouse'" :can-manage="canManageWarehouse" />
+        <TeamSerialHistory v-else-if="['overview', 'history'].includes(tab)" :key="teamId" :team-id="teamId"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamSerialHistory>
         <template v-else-if="['stock', 'materials', 'material-types'].includes(tab)">
           <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料库存" />
           <StatePanel v-else-if="overviewError" state="error" :description="overviewError" @retry="loadView" />

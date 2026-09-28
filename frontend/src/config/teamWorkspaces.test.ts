@@ -21,6 +21,10 @@ describe('shared workspace navigation', () => {
   it('keeps seven workshop entries and the extra warehouse receipt entry', () => {
     expect(teamWorkspaceSectionsFor(false).map(item => item.label)).toEqual(['库存明细', '待接收', '出库记录', '丢失记录', '材质库存', '类型库存', '收发历史'])
     expect(teamWorkspaceSectionsFor(true).map(item => item.value)).toContain('receipts')
+    expect(teamWorkspaceSectionsFor(true).map(item => item.value)).not.toContain('warehouse')
+    expect(teamWorkspaceSectionsFor(true, true).map(item => item.value)).toContain('warehouse')
+    expect(resolveTeamWorkspaceSection({ tab: 'warehouse' }, true, true)).toBe('warehouse')
+    expect(resolveTeamWorkspaceSection({ tab: 'warehouse' }, false, true)).toBe('stock')
     expect(teamWorkspaceSectionPath(7, 'stock')).toBe('/team-workspaces/7')
     expect(teamWorkspaceSectionPath(7, 'pending')).toBe('/team-workspaces/7?tab=pending')
     expect(teamWorkspaceSectionPath(7, 'material-types')).toBe('/team-workspaces/7?tab=material-types')

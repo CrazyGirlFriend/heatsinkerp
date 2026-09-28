@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElRadioButton, ElRadioGroup, ElSelect } from 'element-plus'
 import MaterialAmount from './MaterialAmount.vue'
+import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
@@ -16,7 +17,7 @@ const props = defineProps<{ modelValue: boolean; teamId: number; mode: 'dispatch
 const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [CreatedMaterialBatches | MaterialLoss]; balancesChanged: [] }>()
 const auth = useAuthStore()
 const directory = useTeamDirectoryStore()
-const lines = ref<{ source: StockBatch; latest: StockBatch | null; quantity: number | undefined; weight: number | undefined; materialType: MaterialType | ''; purposeId?: number }[]>([])
+const lines = ref<{ key: string; warehouseLocation: string; warehouseLocationKey: string; locationBusy: boolean; source: StockBatch; latest: StockBatch | null; quantity: number | undefined; weight: number | undefined; materialType: MaterialType | ''; purposeId?: number }[]>([])
 const form = reactive({ nextTeamId: '' as string | number, entryKind: 'transfer' as DispatchKind, externalDestination: '', notes: '', reason: '' })
 const saving = ref(false)
 const refreshing = ref(false)
@@ -35,7 +36,7 @@ const externalOption = computed<ExternalEntryKind | null>(() => {
 })
 const external = computed(() => !isLoss.value && isExternalEntryKind(form.entryKind))
 const purposes = useTeamPurposes(() => props.modelValue && !isLoss.value && !external.value && form.nextTeamId ? Number(form.nextTeamId) : null)
-watch(() => [form.nextTeamId, form.entryKind], () => { lines.value.forEach(line => { line.purposeId = undefined }) })
+watch(() => [form.nextTeamId, form.entryKind], () => { lines.value.forEach(line => { line.purposeId = undefined; line.warehouseLocation = ''; line.warehouseLocationKey = '' }) })
 const actionLabel = computed(() => externalActionLabel(form.entryKind))
 const containsScrap = computed(() => lines.value.some(line => isScrapType(line.materialType) || isScrapType(line.source.transfer.material_type)))
 const destinations = computed(() => directory.items.filter(team => team.active && String(team.id) !== String(props.teamId) && (!containsScrap.value || team.kind === 'warehouse')))
@@ -65,7 +66,7 @@ function fillAll(index: number) {
 function splitLine(index: number) {
   const line = lines.value[index]
   if (!line || busy.value || lines.value.length >= 100) return
-  lines.value.splice(index + 1, 0, { ...line, quantity: undefined, weight: undefined })
+  lines.value.splice(index + 1, 0, { ...line, key: materialRequestKey(), warehouseLocation: '', warehouseLocationKey: '', locationBusy: false, quantity: undefined, weight: undefined })
 }
 watch([() => props.modelValue, () => props.teamId, () => props.mode], ([open]) => {
   ++generation
@@ -73,7 +74,7 @@ watch([() => props.modelValue, () => props.teamId, () => props.mode], ([open]) =
   refreshing.value = false
   quantityOpen.value = false
   if (!open) return
-  lines.value = (isLoss.value ? props.sources.slice(0, 1) : props.sources).map(source => ({ source, latest: source, quantity: isLoss.value ? undefined : dispatchableAmounts(source).quantity ?? undefined, weight: isLoss.value ? undefined : dispatchableAmounts(source).weight ?? undefined, materialType: source.transfer.material_type || '' }))
+  lines.value = (isLoss.value ? props.sources.slice(0, 1) : props.sources).map(source => ({ key: materialRequestKey(), warehouseLocation: '', warehouseLocationKey: '', locationBusy: false, source, latest: source, quantity: isLoss.value ? undefined : dispatchableAmounts(source).quantity ?? undefined, weight: isLoss.value ? undefined : dispatchableAmounts(source).weight ?? undefined, materialType: source.transfer.material_type || '' }))
   form.nextTeamId = ''; form.entryKind = 'transfer'; form.externalDestination = ''; form.notes = ''; form.reason = ''
   errorMessage.value = ''; balanceNotice.value = ''; requestKey = ''; fingerprint = ''
 }, { immediate: true })
@@ -94,7 +95,7 @@ async function refreshBalances() {
 }
 
 async function submit() {
-  if (busy.value) return
+  if (busy.value || lines.value.some(line => line.locationBusy)) return
   errorMessage.value = ''
   if (!canWrite.value) { errorMessage.value = '仅本班组账号可以操作物料'; return }
   if (!lines.value.length || lines.value.length > 100) { errorMessage.value = '请选择 1 至 100 个来源批次'; return }
@@ -122,7 +123,7 @@ async function submit() {
   const teamId = props.teamId
   const first = lines.value[0]!
   const lossBody = { source_transfer_id: Number(first.source.transfer.id), quantity: Number(first.quantity), weight: Number(first.weight), reason: form.reason.trim() }
-  const dispatchBody: Omit<CreateDispatch, 'idempotency_key'> = { ...(isExternalEntryKind(form.entryKind) ? { entry_kind: form.entryKind, external_destination: form.externalDestination.trim() } : { next_team_id: Number(form.nextTeamId) }), notes: form.notes.trim() || null, lines: lines.value.map(line => ({ source_transfer_id: Number(line.source.transfer.id), quantity: Number(line.quantity), weight: Number(line.weight), ...(!external.value && line.purposeId ? { purpose_id: line.purposeId } : {}), ...(line.materialType ? { material_type: line.materialType } : {}) })) }
+  const dispatchBody: Omit<CreateDispatch, 'idempotency_key'> = { ...(isExternalEntryKind(form.entryKind) ? { entry_kind: form.entryKind, external_destination: form.externalDestination.trim() } : { next_team_id: Number(form.nextTeamId) }), notes: form.notes.trim() || null, lines: lines.value.map(line => ({ ...(warehouse.value && line.warehouseLocation ? { warehouse_location: line.warehouseLocation, warehouse_location_reservation_key: line.warehouseLocationKey } : {}), source_transfer_id: Number(line.source.transfer.id), quantity: Number(line.quantity), weight: Number(line.weight), ...(!external.value && line.purposeId ? { purpose_id: line.purposeId } : {}), ...(line.materialType ? { material_type: line.materialType } : {}) })) }
   const nextFingerprint = JSON.stringify({ teamId, mode: props.mode, body: isLoss.value ? lossBody : dispatchBody })
   if (!requestKey || fingerprint !== nextFingerprint) { requestKey = materialRequestKey(); fingerprint = nextFingerprint }
   saving.value = true
@@ -157,7 +158,7 @@ async function submit() {
         <ElSelect v-model="form.nextTeamId" aria-label="出库接收班组" placeholder="选择接收班组" filterable><ElOption v-for="team in destinations" :key="team.id" :value="team.id" :label="teamWorkspaceProfile(team.code)?.name || team.name" /></ElSelect>
       </ElFormItem>
       <div class="source-lines">
-        <article v-for="(line, index) in lines" :key="index" class="source-line">
+        <article v-for="(line, index) in lines" :key="line.key" class="source-line">
           <header><div><strong>{{ line.source.transfer.material_name || '未填写材质' }}</strong><span>上一批次 {{ line.source.transfer.batch_no }}</span></div><small>来自 {{ line.source.transfer.source_team.name }}</small></header>
           <p class="source-identity">流水号 {{ line.source.transfer.serial_no }}<span>本班组业务 {{ line.source.transfer.purpose_name || '未分类' }}</span><span>原单批号 {{ line.source.transfer.source_batch_no || '未填写' }}</span><span v-if="line.source.transfer.next_team.code === 'FACTORY-WAREHOUSE'">仓位 {{ line.source.transfer.warehouse_location || '未填写' }}</span></p>
           <div class="source-balance"><span>{{ isScrapType(line.source.transfer.material_type) ? '废料可处理的库存' : '本批可转出库存' }}</span><MaterialAmount :quantity="dispatchableAmounts(line.latest).quantity" :weight="dispatchableAmounts(line.latest).weight" /><ElButton link type="primary" :disabled="!line.latest" @click="fillAll(index)">全部填入</ElButton><ElButton v-if="!isLoss" link type="primary" :disabled="lines.length >= 100" @click="splitLine(index)">拆分物料</ElButton><ElButton v-if="!isLoss && lines.length > 1" link type="danger" @click="lines.splice(index, 1)">移除</ElButton></div>
@@ -167,6 +168,7 @@ async function submit() {
             <ElFormItem :label="isLoss ? '丢失重量' : `${actionLabel}重量`" required><ElInputNumber v-model="line.weight" :aria-label="`${line.source.transfer.batch_no}重量`" :min="0" :precision="3" :step="0.1" controls-position="right" /><span class="amount-unit">kg</span></ElFormItem>
             <ElFormItem v-if="!isLoss" :label="`${actionLabel}物料类型`" :required="warehouse"><ElSelect v-model="line.materialType" :aria-label="`${line.source.transfer.batch_no}物料类型`" :placeholder="materialTypeLabel(line.source.transfer.material_type)"><ElOption v-for="type in materialTypeOptions.filter(type => !isScrapType(line.source.transfer.material_type) || isScrapType(type.value))" :key="type.value" :label="type.label" :value="type.value" /></ElSelect></ElFormItem>
             <ElFormItem v-if="!isLoss && !external" label="下序接收业务" :required="purposes.items.value.length > 0"><ElSelect v-model="line.purposeId" :aria-label="`${line.source.transfer.batch_no}接收业务`" :loading="purposes.loading.value" :disabled="!form.nextTeamId || !purposes.items.value.length" :placeholder="!form.nextTeamId ? '先选择接收班组' : !purposes.items.value.length ? '接收班组尚未配置业务' : purposes.items.value.some(item => item.active) ? '选择接收业务' : '接收班组暂无启用业务'"><ElOption v-for="purpose in purposes.items.value.filter(item => item.active)" :key="purpose.id" :value="purpose.id" :label="purpose.name" /></ElSelect></ElFormItem>
+            <ElFormItem v-if="!isLoss && warehouse" label="入库仓位"><WarehouseLocationSelect v-model="line.warehouseLocation" v-model:reservation-key="line.warehouseLocationKey" :team-id="Number(form.nextTeamId)" :active="modelValue" :disabled="busy || !canWrite" @busy-change="line.locationBusy = $event" /></ElFormItem>
           </div>
         </article>
       </div>
@@ -178,7 +180,7 @@ async function submit() {
     <ElAlert v-if="purposes.error.value" :title="purposes.error.value" type="error" :closable="false"><ElButton link @click="purposes.refresh">重新加载业务</ElButton></ElAlert>
     <p v-if="errorMessage" role="alert" class="stock-action-error">{{ errorMessage }}</p>
     <ElButton v-if="balanceNotice" link type="primary" :loading="refreshing" :disabled="saving" @click="refreshBalances">刷新库存</ElButton>
-    <template #footer><div class="action-footer"><div><span>{{ isLoss ? '本次丢失' : `共 ${lines.length} 条物料明细` }}</span><MaterialAmount :quantity="totalQuantity" :weight="totalWeight" /></div><div><ElButton :disabled="busy" @click="close">取消</ElButton><ElButton type="primary" :loading="saving" :disabled="busy || !canWrite || lines.some(line => !line.latest)" @click="submit">{{ isLoss ? '确认登记丢失' : external ? `生成${actionLabel}单` : '确认出库' }}</ElButton></div></div></template>
+    <template #footer><div class="action-footer"><div><span>{{ isLoss ? '本次丢失' : `共 ${lines.length} 条物料明细` }}</span><MaterialAmount :quantity="totalQuantity" :weight="totalWeight" /></div><div><ElButton :disabled="busy" @click="close">取消</ElButton><ElButton type="primary" :loading="saving" :disabled="busy || !canWrite || lines.some(line => !line.latest || line.locationBusy)" @click="submit">{{ isLoss ? '确认登记丢失' : external ? `生成${actionLabel}单` : '确认出库' }}</ElButton></div></div></template>
   </ElDialog>
   <QuantityAdjustmentDialog v-model="quantityOpen" :team-id="teamId" :source-id="quantitySource" :can-write="canWrite" @saved="quantitySaved" />
 </template>

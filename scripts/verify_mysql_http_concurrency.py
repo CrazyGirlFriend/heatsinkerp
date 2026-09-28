@@ -91,7 +91,6 @@ class Harness:
         payload = {"serial_no": self.key(name), "material_name": "铜钼 CuMo70",
                    "material_type": "semi_finished", "quantity": quantity,
                    "weight": str(Decimal(quantity) / 10), "notes": "隔离并发验证",
-                   "warehouse_location": "压测隔离仓位",
                    "idempotency_key": self.key(name)}
         return self.request(actor or self.warehouse[0], f"/api/team-materials/{self.teams[0]}/receipts", payload)[1]
 

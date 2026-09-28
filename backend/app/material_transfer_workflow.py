@@ -37,7 +37,7 @@ AUDITED_FIELDS = DOCUMENT_FIELDS + (
 def _creation_fingerprint(payload) -> str:
     # Preserve pre-upgrade idempotency hashes when optional fields are absent.
     value = payload.model_dump(mode="json", exclude={"idempotency_key"})
-    for field in ("receipt_kind", "external_source", "return_dispatch_no", "purpose_id", "warehouse_location"):
+    for field in ("receipt_kind", "external_source", "return_dispatch_no", "purpose_id", "warehouse_location", "warehouse_location_reservation_key"):
         if field not in payload.model_fields_set:
             value.pop(field, None)
     for field in DOCUMENT_FIELDS:
@@ -296,10 +296,13 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
                 raise HTTPException(422, "source and target teams must be different")
             _validate_warehouse_type(target, payload.material_type)
             validate_material_route(None, payload.material_type, target, "transfer", payload.notes)
+            from .warehouse_locations import consume
+            location_name = consume(db, target, payload, user)
             transfer = MaterialTransfer(
                 batch_no=next_transfer_batch_number(db),
                 **purpose_snapshot(db, target.id, payload.purpose_id),
                 serial_no=payload.serial_no,
+                warehouse_location=location_name,
                 **{field: getattr(payload, field) for field in DOCUMENT_FIELDS},
                 source_team_id=source.id,
                 source_team_code=source.code,
@@ -376,6 +379,8 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
             validate_available(db, transfer.stock_source, quantity, weight, exclude_transfer_id=transfer.id)
         target = transfer.next_team
         if "next_team_id" in supplied:
+            if transfer.warehouse_location and payload.next_team_id != transfer.next_team_id:
+                raise HTTPException(409, "该单据已锁定仓位，请作废后重新选择接收班组")
             target = _active_target(db, payload.next_team_id)
             if target.id == transfer.source_team_id:
                 raise HTTPException(422, "source and target teams must be different")
@@ -398,6 +403,12 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
             if payload.purpose_id != transfer.purpose_id or before["next_team_id"] != transfer.next_team_id:
                 purpose = purpose_snapshot(db, target.id if target else None, payload.purpose_id)
                 transfer.purpose_id, transfer.purpose_name = purpose["purpose_id"], purpose["purpose_name"]
+        if "warehouse_location" in supplied:
+            if transfer.warehouse_location and payload.warehouse_location != transfer.warehouse_location:
+                raise _conflict("转料单已锁定仓位，请作废后重新选择")
+            if not transfer.warehouse_location:
+                from .warehouse_locations import consume
+                transfer.warehouse_location = consume(db, target, payload, user)
         for field in ("serial_no", "quantity", "weight", "notes", *DOCUMENT_FIELDS):
             if field in supplied:
                 setattr(transfer, field, getattr(payload, field))
@@ -468,10 +479,15 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
                 transfer.material_type, transfer.next_team, transfer.entry_kind, transfer.notes)
             before = _snapshot(transfer)
             now = utcnow()
+            if "warehouse_location" in payload.model_fields_set:
+                if transfer.warehouse_location:
+                    if payload.warehouse_location != transfer.warehouse_location:
+                        raise _conflict("转料单已锁定仓位，不能在签收时更换")
+                elif payload.warehouse_location:
+                    from .warehouse_locations import consume
+                    transfer.warehouse_location = consume(db, transfer.next_team, payload, user)
             transfer.status = "received"
             transfer.stock_tracked = True
-            if "warehouse_location" in payload.model_fields_set:
-                transfer.warehouse_location = payload.warehouse_location
             transfer.received_by = actor_name(user)
             transfer.received_by_user_id = user.id
             transfer.receipt_idempotency_key = payload.idempotency_key

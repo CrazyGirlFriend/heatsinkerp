@@ -17,7 +17,7 @@ const directory = useTeamDirectoryStore()
 const warehouse = computed(() => directory.items.find(team => Number(team.id) === props.teamId && team.active && team.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse'))
 const canWrite = computed(() => Boolean(warehouse.value) && directory.loaded && !directory.error && auth.isTeamAccount && auth.currentUser?.active !== false && auth.currentUser?.id != null && Number(auth.currentUser.team_id) === props.teamId && !auth.currentUserError)
 const identity = computed(() => `${auth.currentUser?.id ?? ''}:${props.teamId}`)
-const saving = ref(false)
+const saving = ref(false), locationBusy = ref(false)
 const error = ref('')
 const activeTab = ref('receipt')
 const attempt = ref<CreateWarehouseReceipt | null>(null)
@@ -25,7 +25,7 @@ const recoveryBlocked = ref(false)
 const readonly = computed(() => !canWrite.value || saving.value || Boolean(attempt.value) || recoveryBlocked.value)
 const form = reactive({
   receiptKind: 'external' as 'external' | 'return', externalSource: '', returnDispatchNo: '',
-  warehouseLocation: '',
+  warehouseLocation: '', warehouseLocationKey: '',
   serialNo: '', materialType: '' as MaterialType | '', quantity: 0 as number | undefined,
   deliveryDate: '', deliveryQuantity: undefined as number | undefined,
   weight: 0 as number | undefined, notes: '', finishedQuantity: undefined as number | undefined,
@@ -36,6 +36,7 @@ const storageKey = (scope: string) => `heatsink-flow.pending-warehouse-receipt.v
 
 function fill(payload: CreateWarehouseReceipt | null = null) {
   form.warehouseLocation = payload?.warehouse_location || ''
+  form.warehouseLocationKey = payload?.warehouse_location_reservation_key || ''
   form.receiptKind = payload?.receipt_kind || 'external'; form.externalSource = payload?.external_source || ''; form.returnDispatchNo = payload?.return_dispatch_no || ''
   form.serialNo = payload?.serial_no || ''; form.materialType = payload?.material_type || ''
   form.quantity = payload?.quantity ?? 0; form.weight = payload?.weight ?? 0; form.notes = payload?.notes || ''
@@ -87,13 +88,14 @@ function payload(): CreateWarehouseReceipt {
     serial_no: form.serialNo.trim(), material_name: form.document.material_name.trim(), material_type: form.materialType as MaterialType,
     receipt_kind: form.receiptKind, external_source: form.externalSource.trim(), return_dispatch_no: form.receiptKind === 'return' ? form.returnDispatchNo.trim() || null : null,
     warehouse_location: form.warehouseLocation.trim() || null,
+    ...(form.warehouseLocationKey ? { warehouse_location_reservation_key: form.warehouseLocationKey } : {}),
     quantity: Number(form.quantity), weight: Number(form.weight), notes: form.notes.trim(), finished_quantity: form.finishedQuantity ?? null,
     ...(form.receiptKind === 'external' ? { delivery_date: form.deliveryDate || null, delivery_quantity: form.deliveryQuantity ?? null } : {}),
     idempotency_key: globalThis.crypto?.randomUUID?.() || `warehouse-receipt-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   }
 }
 async function submit() {
-  if (saving.value || recoveryBlocked.value || !canWrite.value || (!attempt.value && !validate())) return
+  if (locationBusy.value || saving.value || recoveryBlocked.value || !canWrite.value || (!attempt.value && !validate())) return
   const scope = identity.value, teamId = props.teamId, current = ++generation
   saving.value = true; error.value = ''
   try {
@@ -114,10 +116,10 @@ async function submit() {
       emit('saved', saved)
       emit('update:modelValue', false)
     } catch (failure) {
-      const definitive = failure instanceof TeamMaterialApiError && [400, 403, 404, 422].includes(failure.status)
+      const definitive = failure instanceof TeamMaterialApiError && ([400, 403, 404, 422].includes(failure.status) || failure.status === 409 && failure.message.includes('仓位'))
       if (definitive) sessionStorage.removeItem(storageKey(scope))
       if (current !== generation || scope !== identity.value || !props.modelValue) return
-      if (definitive) attempt.value = null
+      if (definitive) { attempt.value = null; if (failure.message.includes('仓位')) { form.warehouseLocation = ''; form.warehouseLocationKey = '' } }
       error.value = failure instanceof Error ? failure.message : '入库提交失败，请重试核对'
     }
   } catch (failure) {
@@ -146,7 +148,7 @@ onBeforeUnmount(() => { ++generation })
             <MaterialDeliveryFields v-if="form.receiptKind === 'external'" v-model:date="form.deliveryDate" v-model:quantity="form.deliveryQuantity" :disabled="readonly" />
             <ElFormItem label="材质" required><ElInput v-model="form.document.material_name" aria-label="材质" maxlength="160" :disabled="readonly" placeholder="填写实际材质" /></ElFormItem>
             <ElFormItem label="物料类型" required><ElSelect v-model="form.materialType" aria-label="物料类型" placeholder="选择物料类型" :disabled="readonly"><ElOption v-for="item in materialTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></ElSelect></ElFormItem>
-            <ElFormItem label="入库仓位"><WarehouseLocationSelect v-model="form.warehouseLocation" :team-id="teamId" :disabled="readonly" /></ElFormItem>
+            <ElFormItem label="入库仓位"><WarehouseLocationSelect v-model="form.warehouseLocation" v-model:reservation-key="form.warehouseLocationKey" :team-id="teamId" :active="modelValue" :disabled="readonly" @busy-change="locationBusy = $event" /></ElFormItem>
             <ElFormItem label="入库件数" required><ElInputNumber v-model="form.quantity" aria-label="入库件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="readonly" /><span class="receipt-unit">件</span></ElFormItem>
             <ElFormItem label="入库重量" required><ElInputNumber v-model="form.weight" aria-label="入库重量" :min="0" :max="99999999999.999" :precision="3" :step="0.001" controls-position="right" :disabled="readonly" /><span class="receipt-unit">kg</span></ElFormItem>
           </div>
@@ -162,7 +164,7 @@ onBeforeUnmount(() => { ++generation })
       </ElTabs>
       <p v-if="error" class="receipt-error" role="alert">{{ error }}</p>
     </ElForm>
-    <template #footer><ElButton :disabled="saving" @click="close">{{ attempt ? '稍后核对' : '取消' }}</ElButton><ElButton type="primary" :loading="saving" :disabled="!canWrite || saving || recoveryBlocked" @click="submit">{{ attempt ? '重试核对入库' : '确认入库' }}</ElButton></template>
+    <template #footer><ElButton :disabled="saving" @click="close">{{ attempt ? '稍后核对' : '取消' }}</ElButton><ElButton type="primary" :loading="saving" :disabled="!canWrite || saving || recoveryBlocked || locationBusy" @click="submit">{{ attempt ? '重试核对入库' : '确认入库' }}</ElButton></template>
   </ElDialog>
 </template>
 

@@ -14,7 +14,7 @@ from test_material_transfers import _team, _leader
 def test_only_supported_business_routes_are_registered(client):
     paths = set(app.openapi()["paths"])
     supported_prefixes = ("/api/access/", "/api/auth/", "/api/health", "/api/teams",
-                          "/api/team-directory", "/api/accounts", "/api/users",
+                          "/api/team-directory", "/api/warehouse-locations", "/api/accounts", "/api/users",
                           "/api/material-transfers", "/api/material-trace", "/api/material-dispatches", "/api/team-materials/",
                           "/api/factory-dashboard", "/api/factory-overview", "/api/serial-urgency", "/api/main-system/", "/api/notifications/")
     assert all(path.startswith(supported_prefixes) for path in paths), paths

@@ -18,11 +18,12 @@ import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
 import MaterialStockActionDialog from '@/components/MaterialStockActionDialog.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
 import WarehouseReceiptDialog from '@/components/WarehouseReceiptDialog.vue'
+import WarehouseManagement from '@/components/WarehouseManagement.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import * as inventoryStream from '@/services/inventoryStream'
 import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import type { StockBatch, TeamMaterialOverview } from '@/types/teamMaterials'
-const state = vi.hoisted(() => ({ auth: { isTeamAccount: true, currentUser: { id: 41, team_id: 914, active: true }, currentUserError: '', refreshCurrentUser: vi.fn() }, directory: { items: [{ id: 914, code: 'FACTORY-ROLL', name: '扎板', active: true }, { id: 900, code: 'FACTORY-QC', name: '检验', active: true }, { id: 901, code: 'FACTORY-WAREHOUSE', name: '库房', kind: 'warehouse', active: true }], loaded: true, loading: false, error: '', refreshTeamDirectory: vi.fn() } }))
+const state = vi.hoisted(() => ({ auth: { isAdmin: false, isTeamAccount: true, currentUser: { id: 41, team_id: 914, active: true }, currentUserError: '', refreshCurrentUser: vi.fn() }, directory: { items: [{ id: 914, code: 'FACTORY-ROLL', name: '扎板', active: true }, { id: 900, code: 'FACTORY-QC', name: '检验', active: true }, { id: 901, code: 'FACTORY-WAREHOUSE', name: '库房', kind: 'warehouse', active: true }], loaded: true, loading: false, error: '', refreshTeamDirectory: vi.fn() } }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => state.directory }))
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
@@ -34,7 +35,7 @@ beforeEach(() => {
   vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
   stopStream = vi.fn()
   vi.spyOn(inventoryStream, 'subscribeInventoryChanges').mockImplementation(callbacks => { subscription = callbacks; return stopStream })
-  state.auth = reactive({ isTeamAccount: true, currentUser: { id: 41, team_id: 914, active: true }, currentUserError: '', refreshCurrentUser: vi.fn().mockResolvedValue(undefined) })
+  state.auth = reactive({ isAdmin: false, isTeamAccount: true, currentUser: { id: 41, team_id: 914, active: true }, currentUserError: '', refreshCurrentUser: vi.fn().mockResolvedValue(undefined) })
   state.directory = reactive({ ...state.directory, loaded: true, loading: false, error: '' })
   vi.spyOn(teamMaterialApi, 'overview').mockImplementation(async () => ({ ...summary }))
   vi.spyOn(teamMaterialApi, 'analytics').mockResolvedValue(analyticsFixture())
@@ -51,7 +52,7 @@ async function render(path = '/team-workspaces/914', animate = false) {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/team-workspaces/:teamId', component: TeamWorkspacePage }, { path: '/transfer-batches', component: { template: '<div/>' } }] })
   await router.push(path)
   const page = animate ? { setup: () => () => h(Transition, { name: 'page-shift' }, () => h(TeamWorkspacePage)) } : TeamWorkspacePage
-  wrapper = mount(page, { global: { plugins: [router], stubs: { transition: !animate, StockSourcePicker: true, TeamAnalyticsCharts: true, SerialMaterialDrawer: true, LedgerChart: true, MaterialDispatchDrawer: true, BarcodeCard: true, MaterialTransferDrawer: true, MaterialStockActionDialog: true, WarehouseReceiptDialog: true } } })
+  wrapper = mount(page, { global: { plugins: [router], stubs: { transition: !animate, StockSourcePicker: true, TeamAnalyticsCharts: true, SerialMaterialDrawer: true, LedgerChart: true, MaterialDispatchDrawer: true, BarcodeCard: true, MaterialTransferDrawer: true, MaterialStockActionDialog: true, WarehouseReceiptDialog: true, WarehouseManagement: true } } })
   await flushPromises()
   return router
 }
@@ -335,7 +336,7 @@ describe('team workspace material ledger', () => {
       expect(wrapper.get('.list-toolbar .scanner-inline').text()).toContain('查看来料')
     } else expect(actions.text()).not.toContain('扫码查询')
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(1)
-    expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(8)
+    expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(9)
     expect(wrapper.find('.team-workspace__heading').exists()).toBe(false)
   })
   it.each(['administrator', 'other-team', 'inactive'])('does not expose creation for %s accounts', async kind => {
@@ -447,6 +448,24 @@ describe('team workspace material ledger', () => {
 
 
 describe('warehouse intake workspace', () => {
+  it.each(['warehouse', 'administrator'])('places warehouse management in the warehouse workspace for %s', async kind => {
+    state.auth.currentUser.team_id = kind === 'warehouse' ? 901 : 914
+    state.auth.isAdmin = kind === 'administrator'
+    state.auth.isTeamAccount = kind === 'warehouse'
+    const router = await render('/team-workspaces/901')
+    await wrapper.get('.team-workspace__navigation').findAll('button').find(button => button.text() === '仓库管理')!.trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.query.tab).toBe('warehouse')
+    expect(wrapper.getComponent(WarehouseManagement).props('canManage')).toBe(true)
+    await router.push('/team-workspaces/914?tab=warehouse'); await flushPromises()
+    expect(wrapper.findComponent(WarehouseManagement).exists()).toBe(false)
+    expect(wrapper.get('.team-workspace__navigation').text()).not.toContain('仓库管理')
+  })
+  it('does not expose warehouse management to another team even through a direct tab URL', async () => {
+    await render('/team-workspaces/901?tab=warehouse')
+    expect(wrapper.findComponent(WarehouseManagement).exists()).toBe(false)
+    expect(wrapper.get('.team-workspace__navigation').text()).not.toContain('仓库管理')
+    expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
+  })
   it('filters external batches and opens only the selected batch', async () => {
     state.auth.currentUser.team_id = 901
     const line = normalizeMaterialTransfer({ id: 77, batch_no: 'TL-EXTERNAL', entry_kind: 'warehouse_outbound', external_destination: '外部客户', source_team: { id: 901, name: '库房' }, next_team: null, status: 'pending', allowed_actions: ['confirm_outbound'] })

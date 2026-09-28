@@ -22,7 +22,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 from .auth import actor_name
 from .batch_numbers import next_transfer_batch_numbers
 from .models import MaterialDispatch, MaterialLoss, MaterialStockBalance, MaterialTransfer, SerialUrgency, Team, utcnow
-from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, SCRAP_MATERIAL_TYPES
+from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, SCRAP_MATERIAL_TYPES, WarehouseLocationChoice
 from .team_constants import EXTERNAL_ENTRY_KINDS, WAREHOUSE_TEAM_CODE, INSPECTION_TEAM_CODE
 from . import material_transfer_workflow as workflow
 
@@ -52,7 +52,7 @@ class LossCreate(StockAmounts):
         return value.strip()
 
 
-class DispatchLine(StockAmounts):
+class DispatchLine(StockAmounts, WarehouseLocationChoice):
     material_type: str | None = Field(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN)
     purpose_id: int | None = Field(default=None, ge=1)
 
@@ -254,6 +254,8 @@ def create_dispatch(db, team_id, payload, user):
             db.flush()
             items = []
             for line, batch_no in zip(payload.lines, batch_numbers, strict=True):
+                from .warehouse_locations import consume
+                location_name = consume(db, target, line, user)
                 lot = lots[line.source_transfer_id]
                 fields = {field: getattr(lot, field) for field in workflow.DOCUMENT_FIELDS}
                 # A split inherits its origin's live requirement, never a second planned quantity.
@@ -267,6 +269,7 @@ def create_dispatch(db, team_id, payload, user):
                     source_team_id=source.id, source_team_code=source.code, source_team_name=source.name,
                     **destination,
                     quantity=line.quantity, weight=line.weight, status="pending", notes=payload.notes,
+                    warehouse_location=location_name,
                     created_by=actor_name(user), created_by_user_id=user.id,
                     history=[],
                 )

@@ -20,7 +20,8 @@ const router = useRouter()
 const breadcrumb = computed(() => {
   if (route.path.startsWith('/team-workspaces/')) {
     const team = teamDirectory.items.find(item => String(item.id) === String(route.params.teamId))
-    const section = resolveTeamWorkspaceSection(route.query, team?.code === 'FACTORY-WAREHOUSE' && team?.kind === 'warehouse')
+    const managesWarehouse = currentUser.value?.role === 'ADMIN' || currentUser.value?.role === 'TEAM' && currentUser.value.active && String(currentUser.value.team_id) === String(team?.id)
+    const section = resolveTeamWorkspaceSection(route.query, team?.code === 'FACTORY-WAREHOUSE' && team?.kind === 'warehouse', managesWarehouse)
     return ['班组工作台', teamWorkspaceProfile(team?.code)?.name || team?.name || '班组', teamWorkspaceSections.find(item => item.value === section)!.label]
   }
   const title = String(route.meta.title || '物料流转')

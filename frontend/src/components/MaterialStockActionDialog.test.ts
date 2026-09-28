@@ -4,6 +4,7 @@ import { reactive } from 'vue'
 import { ElInputNumber, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialStockActionDialog from './MaterialStockActionDialog.vue'
+import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
@@ -16,6 +17,7 @@ function source(id = 10, type: 'semi_finished' | null = 'semi_finished'): StockB
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(teamMaterialApi, 'warehouseLocations').mockResolvedValue({ items: [] })
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([])
   state.auth = reactive({ isTeamAccount: true, currentUser: { team_id: 2 }, currentUserError: '', refreshCurrentUser: vi.fn().mockResolvedValue(undefined) })
   vi.spyOn(teamMaterialApi, 'createDispatch').mockResolvedValue({ dispatch_no: 'CK1', line_count: 2 } as MaterialDispatch)
@@ -31,6 +33,26 @@ async function submit() { await wrapper.findAll('button').find(button => /^(ç¡®è
 async function destination(id = 3) { wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', id); await flushPromises() }
 
 describe('source batch dispatch and loss drafts', () => {
+  it('sends each incoming batch with its own selected location and lease key', async () => {
+    await render(); await destination(1)
+    const selectors = wrapper.findAllComponents(WarehouseLocationSelect)
+    expect(selectors).toHaveLength(2)
+    selectors[0]!.vm.$emit('update:modelValue', 'A-01')
+    selectors[0]!.vm.$emit('update:reservationKey', 'first-selected-location-key')
+    selectors[1]!.vm.$emit('update:modelValue', 'A-02')
+    selectors[1]!.vm.$emit('update:reservationKey', 'second-selected-location-key')
+    selectors[0]!.vm.$emit('busyChange', true)
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    selectors[0]!.vm.$emit('busyChange', false)
+    await flushPromises()
+    await submit()
+    expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].lines).toEqual([
+      expect.objectContaining({ warehouse_location: 'A-01', warehouse_location_reservation_key: 'first-selected-location-key' }),
+      expect.objectContaining({ warehouse_location: 'A-02', warehouse_location_reservation_key: 'second-selected-location-key' }),
+    ])
+  })
+
   it('refreshes all split-source balances after processing without overwriting the dispatch draft', async () => {
     vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({ source_transfer_id: 10, batch_no: 'TL10', quantity: 100, weight: 10, revision: 0, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
     await render('dispatch', [source()]); await destination()

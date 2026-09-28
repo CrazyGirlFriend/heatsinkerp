@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { MaterialTransferApiError, materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
+import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { MaterialTransfer } from '@/types/materialTransfer'
 const live = vi.hoisted(() => ({ refresh: async () => {}, busy: (): boolean => false, request: vi.fn() }))
 vi.mock('@/composables/useLiveRefresh', async () => {
@@ -21,6 +22,7 @@ function fixture(overrides: Partial<MaterialTransfer> = {}) {
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(teamMaterialApi, 'warehouseLocations').mockResolvedValue({ items: [] })
   vi.spyOn(materialTransferApi, 'get').mockResolvedValue(fixture())
   vi.spyOn(materialTransferApi, 'confirm').mockResolvedValue(fixture({ status: 'received', locked: true, version: 5, allowed_actions: [] }))
   vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>)
@@ -43,11 +45,12 @@ describe('material transfer receipt review', () => {
     vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ next_team: { id: '3', code: 'FACTORY-WAREHOUSE', name: '库房' } }))
     await render()
     wrapper.getComponent(WarehouseLocationSelect).vm.$emit('update:modelValue', 'B区-02')
+    wrapper.getComponent(WarehouseLocationSelect).vm.$emit('update:reservationKey', 'test-lease-key-for-confirm')
     await flushPromises()
     expect(live.busy()).toBe(true)
     await confirm()
     expect(materialTransferApi.confirm).toHaveBeenCalledWith('TL20260906000001', {
-      idempotency_key: expect.any(String), expected_version: 4, warehouse_location: 'B区-02',
+      idempotency_key: expect.any(String), expected_version: 4, warehouse_location: 'B区-02', warehouse_location_reservation_key: 'test-lease-key-for-confirm',
     })
   })
   it('hides printing in receipt review, including historical groups, without removing receipt actions', async () => {

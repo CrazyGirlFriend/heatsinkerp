@@ -42,6 +42,28 @@ class MainSystemConfiguration(Base):
     __table_args__ = (CheckConstraint("id = 1", name="ck_main_system_configuration_singleton"),)
 
 
+class WarehouseLocation(Base):
+    """Managed warehouse slots; a short draft lease becomes a material document."""
+
+    __tablename__ = "warehouse_locations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    reservation_key: Mapped[str | None] = mapped_column(String(100), unique=True)
+    reserved_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    reserved_until: Mapped[datetime | None] = mapped_column(DateTime)
+    reserved_deadline: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utcnow, onupdate=utcnow
+    )
+    __table_args__ = (UniqueConstraint("team_id", "name", name="uq_warehouse_location_name"),)
+
+
 class TransferBatchNumberSequence(Base):
     """One locked counter row per UTC creation date."""
 

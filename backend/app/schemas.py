@@ -64,7 +64,23 @@ class MaterialTransferDocumentFields(MaterialDocumentFields):
         return value
 
 
-class MaterialTransferCreate(MaterialTransferDocumentFields):
+class WarehouseLocationChoice(APIModel):
+    warehouse_location: str | None = Field(default=None, max_length=80)
+    warehouse_location_reservation_key: str | None = Field(default=None, min_length=16, max_length=100)
+
+    @field_validator("warehouse_location")
+    @classmethod
+    def normalize_location(cls, value):
+        return (value.strip() or None) if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_location_key(self):
+        if self.warehouse_location_reservation_key and not self.warehouse_location:
+            raise ValueError("请选择仓位或清除仓位锁")
+        return self
+
+
+class MaterialTransferCreate(MaterialTransferDocumentFields, WarehouseLocationChoice):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
 
     serial_no: str = Field(min_length=1, max_length=80)
@@ -90,7 +106,7 @@ class MaterialTransferCreate(MaterialTransferDocumentFields):
         return value
 
 
-class MaterialTransferUpdate(MaterialTransferDocumentFields):
+class MaterialTransferUpdate(MaterialTransferDocumentFields, WarehouseLocationChoice):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
 
     serial_no: str | None = Field(default=None, min_length=1, max_length=80)
@@ -121,7 +137,7 @@ class MaterialTransferUpdate(MaterialTransferDocumentFields):
         return self
 
 
-class WarehouseReceiptCreate(MaterialTransferDocumentFields):
+class WarehouseReceiptCreate(MaterialTransferDocumentFields, WarehouseLocationChoice):
     """Explicit stock origin; never impersonate an upstream team or ERP event."""
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
@@ -135,12 +151,6 @@ class WarehouseReceiptCreate(MaterialTransferDocumentFields):
     receipt_kind: Literal["external", "return"] = "external"
     external_source: str | None = Field(default=None, min_length=1, max_length=240)
     return_dispatch_no: str | None = Field(default=None, min_length=1, max_length=40)
-    warehouse_location: str | None = Field(default=None, max_length=80)
-
-    @field_validator("warehouse_location")
-    @classmethod
-    def normalize_location(cls, value):
-        return (value.strip() or None) if value is not None else None
 
     @field_validator("external_source", "return_dispatch_no")
     @classmethod
@@ -184,17 +194,11 @@ class MaterialDeliveryUpdate(APIModel):
         return self
 
 
-class MaterialTransferConfirm(APIModel):
+class MaterialTransferConfirm(WarehouseLocationChoice):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
 
     idempotency_key: str = Field(min_length=1, max_length=100)
     expected_version: int | None = Field(default=None, ge=1)
-    warehouse_location: str | None = Field(default=None, max_length=80)
-
-    @field_validator("warehouse_location")
-    @classmethod
-    def normalize_location(cls, value):
-        return (value.strip() or None) if value is not None else None
 
 
 class MaterialTransferReject(APIModel):

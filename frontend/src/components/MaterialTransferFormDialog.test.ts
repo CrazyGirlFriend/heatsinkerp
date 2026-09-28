@@ -16,6 +16,7 @@ function fixture(overrides: Partial<MaterialTransfer> = {}): MaterialTransfer {
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(teamMaterialApi, 'warehouseLocations').mockResolvedValue({ items: [] })
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([])
   vi.spyOn(materialTransferApi, 'create').mockResolvedValue(fixture())
   vi.spyOn(materialTransferApi, 'update').mockResolvedValue(fixture({ version: 7 }))

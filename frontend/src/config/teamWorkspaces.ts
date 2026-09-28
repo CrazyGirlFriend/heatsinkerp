@@ -10,17 +10,18 @@ export const teamWorkspaceSections = [
   { value: 'materials', label: '材质库存' },
   { value: 'material-types', label: '类型库存' },
   { value: 'history', label: '收发历史' },
+  { value: 'warehouse', label: '仓库管理' },
 ] as const
 export type TeamWorkspaceSection = typeof teamWorkspaceSections[number]['value']
 
-export function teamWorkspaceSectionsFor(warehouse: boolean) {
-  return teamWorkspaceSections.filter(section => warehouse || section.value !== 'receipts')
+export function teamWorkspaceSectionsFor(warehouse: boolean, manageWarehouse = false) {
+  return teamWorkspaceSections.filter(section => section.value === 'warehouse' ? warehouse && manageWarehouse : warehouse || section.value !== 'receipts')
 }
 
-export function resolveTeamWorkspaceSection(query: LocationQuery, warehouse: boolean): TeamWorkspaceSection {
+export function resolveTeamWorkspaceSection(query: LocationQuery, warehouse: boolean, manageWarehouse = false): TeamWorkspaceSection {
   if (query.tab === 'serials') return 'stock'
   if (query.tab === 'overview') return 'history'
-  const section = teamWorkspaceSectionsFor(warehouse).find(item => item.value === query.tab)
+  const section = teamWorkspaceSectionsFor(warehouse, manageWarehouse).find(item => item.value === query.tab)
   if (section) return section.value
   if (query.direction === 'outgoing') return 'outgoing'
   if (query.direction === 'incoming') return query.status === 'received' ? 'stock' : 'pending'
