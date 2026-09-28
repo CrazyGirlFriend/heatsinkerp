@@ -1,11 +1,24 @@
+import pytest
 from sqlalchemy import select
 
-from app.database import SessionLocal
-from app.models import MaterialTransfer, Team, User, TransferBatchNumberSequence
+from app.database import SessionLocal, engine
+from app.models import MaterialTransfer, Team, User, TransferBatchNumberSequence, WarehouseLocation, WarehousePlacement
 from app.material_stock import overview, list_stock, list_dispatches, list_losses
 from app.reset_business_data import business_counts, reset_business_data
 from app.seed_team_material_showcase import seed_team_material_showcase, DEMO_USERS, summary
 from app.legacy_models import Product, WorkOrder, Operation, ProductRouteOperation
+
+
+@pytest.fixture(autouse=True)
+def restore_foreign_key_mode():
+    # A failed reset assertion must not poison the next test's drop/create cycle.
+    with engine.connect() as connection:
+        previous = connection.exec_driver_sql("PRAGMA foreign_keys").scalar()
+    try:
+        yield
+    finally:
+        with engine.connect() as connection:
+            connection.exec_driver_sql(f"PRAGMA foreign_keys={int(previous)}")
 
 
 def test_eight_team_showcase_and_reset_preserve_identity_and_counters(client):
@@ -43,6 +56,12 @@ def test_eight_team_showcase_and_reset_preserve_identity_and_counters(client):
         rerun = seed_team_material_showcase(db, "")
         assert rerun["skipped"]
         assert summary(db) == before
+        lot = db.scalar(select(MaterialTransfer).where(MaterialTransfer.entry_kind == "warehouse_receipt").order_by(MaterialTransfer.id))
+        location = WarehouseLocation(team_id=lot.next_team_id, name="RESET-A")
+        db.add(location)
+        db.flush()
+        db.add(WarehousePlacement(location_id=location.id, transfer_id=lot.id, quantity=1, weight="0.100"))
+        locations_before = [(row.id, row.name) for row in db.scalars(select(WarehouseLocation).order_by(WarehouseLocation.id))]
         users_before = [(u.id, u.username, u.team_id, u.password_hash) for u in db.scalars(select(User).order_by(User.id))]
         teams_before = [(t.id, t.code, t.name) for t in db.scalars(select(Team).order_by(Team.id))]
         counters = list(db.execute(select(TransferBatchNumberSequence.sequence_date, TransferBatchNumberSequence.last_value)))
@@ -55,7 +74,9 @@ def test_eight_team_showcase_and_reset_preserve_identity_and_counters(client):
         for model in (Product, WorkOrder, Operation, ProductRouteOperation):
             assert len(db.scalars(select(model)).all()) == 1
         assert deleted["material_transfers"] == before["material_transfers"]
+        assert deleted["warehouse_placements"] == 1
         assert all(count == 0 for count in business_counts(db).values())
+        assert [(row.id, row.name) for row in db.scalars(select(WarehouseLocation).order_by(WarehouseLocation.id))] == locations_before
         assert [(u.id, u.username, u.team_id, u.password_hash) for u in db.scalars(select(User).order_by(User.id))] == users_before
         assert [(t.id, t.code, t.name) for t in db.scalars(select(Team).order_by(Team.id))] == teams_before
         assert list(db.execute(select(TransferBatchNumberSequence.sequence_date, TransferBatchNumberSequence.last_value))) == counters
