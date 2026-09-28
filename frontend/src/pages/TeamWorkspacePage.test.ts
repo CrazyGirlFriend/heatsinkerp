@@ -64,7 +64,9 @@ describe('team workspace material ledger', () => {
       await render('/team-workspaces/914?tab=stock')
       expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, expect.objectContaining({ availability: 'owned' }))
       expect(wrapper.get('.warehouse-table').findAll('.inventory-balance').map(cell => cell.text())).toEqual(['100', '10'])
-      expect(wrapper.get('.inventory-row-actions').findAll('button').find(button => button.text() === '出库')!.attributes('disabled')).toBeDefined()
+      expect(wrapper.get('.inventory-row-actions').findAll('button').some(button => button.text() === '出库')).toBe(false)
+      expect(wrapper.get('.inventory-row-actions').text()).toContain('查看转出')
+      expect(wrapper.get('.warehouse-table').text()).toContain('全部待签收')
     } finally { state.directory.items = previous }
   })
   it.each(['pending', 'receipts', 'outgoing', 'losses'])('keeps %s record fields in separate single-line cells and preserves batch details', async tab => {
@@ -262,6 +264,14 @@ describe('team workspace material ledger', () => {
     expect(router.currentRoute.value.fullPath).toBe(path)
     wrapper.getComponent(MaterialStockActionDialog).vm.$emit('saved', dispatchFixture()); await flushPromises()
     expect(wrapper.getComponent(MaterialBatchPrintDialog).props()).toMatchObject({ modelValue: true, items: dispatchFixture().items })
+  })
+  it('opens this team’s pending outbound records from the empty stock picker', async () => {
+    const router = await render('/team-workspaces/914?tab=stock&query=AL&page=2')
+    await wrapper.findAll('button').find(button => button.text() === '新建出库')!.trigger('click'); await flushPromises()
+    wrapper.getComponent(StockSourcePicker).vm.$emit('outbound'); await flushPromises()
+    expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
+    expect(router.currentRoute.value.query).toEqual({ tab: 'outgoing', status: 'pending' })
+    expect(teamMaterialApi.dispatches).toHaveBeenLastCalledWith(914, expect.objectContaining({ status: 'pending', page: 1 }))
   })
   it('closes the picker on navigation and ignores a late permission refresh after cancellation', async () => {
     const router = await render()

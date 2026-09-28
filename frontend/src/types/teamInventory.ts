@@ -41,6 +41,16 @@ export function inventoryDispatchable(row: TeamInventoryRow) {
   return { quantity: row[`${prefix}_quantity`], weight: row[`${prefix}_weight`] }
 }
 export const inventoryCanDispatch = (row: TeamInventoryRow) => Object.values(inventoryDispatchable(row)).some(value => value != null && value > 0)
+export const inventoryHasPending = (row: TeamInventoryRow) => [row.reserved_quantity, row.reserved_weight, row.in_transit_quantity, row.in_transit_weight, row.external_pending_quantity, row.external_pending_weight].some(value => value != null && value > 0)
+export function inventoryStockStatus(row: TeamInventoryRow) {
+  const available = inventoryCanDispatch(row)
+  if (inventoryHasPending(row)) {
+    const external = (row.external_pending_quantity ?? 0) > 0 || (row.external_pending_weight ?? 0) > 0
+    return `${available ? '部分' : '全部'}${external ? '待确认' : '待签收'}`
+  }
+  if (available) return isScrapType(row.material_type || null) ? '可处理' : '可出库'
+  return Object.values(inventoryDispatchable(row)).some(value => value == null) ? '库存待核对' : '暂无库存'
+}
 const extraKeys = ['customer_code', 'product_code', 'finished_specification', 'finished_quantity', 'lost_quantity', 'lost_weight', 'urgency', 'last_activity_at'] as const
 const balanceKeys = ['available_quantity', 'available_weight', 'pending_outgoing_quantity', 'pending_outgoing_weight', 'scrap_quantity', 'scrap_weight'] as const
 function extraBalance(row: TeamInventoryRow, key: typeof balanceKeys[number]) {
@@ -61,6 +71,7 @@ export const warehouseColumns = [
   { key: 'source', label: '来源', width: 120, defaultVisible: true, format: warehouseSourceLabel },
   { key: 'owned_quantity', label: '库存件数', width: 140, defaultVisible: true, numeric: true, format: (row: TeamInventoryRow) => amount(row.owned_quantity) },
   { key: 'owned_weight', label: '库存重量 (kg)', width: 170, defaultVisible: true, numeric: true, format: (row: TeamInventoryRow) => amount(row.owned_weight) },
+  { key: 'stock_status', label: '库存状态', width: 150, defaultVisible: true, format: inventoryStockStatus },
   { key: 'dispatchable_quantity', label: '可转出件数', width: 150, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(inventoryDispatchable(row).quantity) },
   { key: 'dispatchable_weight', label: '可转出重量 (kg)', width: 180, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(inventoryDispatchable(row).weight) },
   { key: 'in_transit_quantity', label: '待签收件数', width: 150, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(row.in_transit_quantity) },
@@ -82,7 +93,7 @@ export const warehouseLegacyColumnKeys = {
   pending_transfer: ['in_transit_quantity', 'in_transit_weight'],
 } satisfies Record<string, WarehouseColumnKey[]>
 export const warehouseSerialColumn = { key: 'serial_no', label: '流水号', width: 170, format: (row: TeamInventoryRow) => row.serial_no } as const
-export const warehouseSearchColumns = [warehouseSerialColumn, ...warehouseColumns.filter(column => !['material_type', 'dispatchable_quantity', 'dispatchable_weight', 'in_transit_quantity', 'in_transit_weight'].includes(column.key))]
+export const warehouseSearchColumns = [warehouseSerialColumn, ...warehouseColumns.filter(column => !['material_type', 'stock_status', 'dispatchable_quantity', 'dispatchable_weight', 'in_transit_quantity', 'in_transit_weight'].includes(column.key))]
 export type WarehouseSearchField = 'all' | typeof warehouseSearchColumns[number]['key']
 export const warehouseSearchKind = (field: WarehouseSearchField) => field === 'urgency' ? 'status' : field === 'last_activity_at' ? 'date' : warehouseColumns.some(column => column.key === field && 'numeric' in column) ? 'number' : 'text'
 export interface TeamInventoryParams extends Omit<SerialParams, 'availability' | 'search_field'> {

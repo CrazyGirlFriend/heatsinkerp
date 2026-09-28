@@ -422,7 +422,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
       </template>
     </div>
     <template #dialogs>
-      <StockSourcePicker v-if="pickerOpen && canWrite" :team-id="teamId" @close="closeDetails" @selected="openAction('dispatch', $event)" />
+      <StockSourcePicker v-if="pickerOpen && canWrite" :team-id="teamId" @close="closeDetails" @selected="openAction('dispatch', $event)" @outbound="closeDetails(); router.push({ path: route.path, query: { tab: 'outgoing', status: 'pending' } })" />
       <WarehouseReceiptDialog v-model="receiptOpen" :team-id="teamId" @saved="savedReceipt" />
       <MaterialStockActionDialog v-model="actionOpen" :team-id="teamId" :mode="actionMode" :sources="actionSources" @saved="savedAction" @balances-changed="loadView" />
       <MaterialBatchPrintDialog v-model="printOpen" :items="printRows" />

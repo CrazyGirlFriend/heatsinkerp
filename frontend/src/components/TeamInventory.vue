@@ -16,7 +16,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialTypeLabel, materialTypeOptions, isScrapType as isScrapMaterialType } from '@/types/materialTransfer'
-import { warehouseColumns, warehouseLegacyColumnKeys, warehouseSearchColumns, warehouseSearchKind, warehouseSerialColumn, inventorySourceLabel, warehouseSourceNames, inventoryAmount, inventoryDispatchable, inventoryCanDispatch, type WarehouseColumnKey, type TeamInventoryParams, type TeamInventoryRow, type WarehouseSearchField, type WarehouseSource } from '@/types/teamInventory'
+import { warehouseColumns, warehouseLegacyColumnKeys, warehouseSearchColumns, warehouseSearchKind, warehouseSerialColumn, inventorySourceLabel, warehouseSourceNames, inventoryAmount, inventoryDispatchable, inventoryCanDispatch, inventoryHasPending, type WarehouseColumnKey, type TeamInventoryParams, type TeamInventoryRow, type WarehouseSearchField, type WarehouseSource } from '@/types/teamInventory'
 import type { InventoryColumnChoice } from '@/types/inventoryColumns'
 import type { CalendarRange } from '@/types/recordFilters'
 import type { StockBatch, TeamMaterialOverview } from '@/types/teamMaterials'
@@ -77,6 +77,7 @@ const visibleColumns = computed(() => {
   return searchedColumn.value ? [searchedColumn.value, ...saved.filter(column => column.key !== searchedColumn.value!.key)] : saved
 })
 const separateSpecification = computed(() => visibleColumns.value.some(column => column.key === 'transfer_specification'))
+const actionWidth = computed(() => rows.value.some(row => inventoryHasPending(row) && props.canWrite && inventoryCanDispatch(row)) ? 205 : rows.value.some(inventoryHasPending) ? 160 : props.canWrite ? 120 : 88)
 function ownershipHint(row: TeamInventoryRow) {
   const available = inventoryDispatchable(row)
   const external = Number(row.external_pending_quantity) > 0 || Number(row.external_pending_weight) > 0
@@ -243,6 +244,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
           <div v-if="column.key === 'serial_no'" class="inventory-inline inventory-serial"><ElButton class="serial-number-link" :title="row.serial_no" link type="primary" @click="openSerial(row)"><strong>{{ row.serial_no }}</strong></ElButton><SerialUrgencyBadge :urgency="row.urgency" /><ElTooltip v-if="canManageUrgency" :content="row.urgency?.urgent ? '取消加急' : '标记加急'" placement="top"><ElButton class="warehouse-urgency-action" link type="primary" :icon="row.urgency?.urgent ? Close : Flag" :aria-label="row.urgency?.urgent ? '取消加急' : '标记加急'" @click="flag(row)" /></ElTooltip></div>
           <ElTooltip v-else-if="column.key === 'material_name'" :content="`规格：${row.transfer_specification}`" :disabled="!row.transfer_specification || separateSpecification" :trigger="['hover', 'focus']" placement="top"><span class="inventory-material" :tabindex="row.transfer_specification && !separateSpecification ? 0 : undefined">{{ row.material_name || '—' }}</span></ElTooltip>
           <ElTag v-else-if="column.key === 'material_type'" effect="light" :type="isScrapMaterialType(row.material_type) ? 'warning' : row.material_type === 'finished' ? 'success' : 'primary'">{{ column.format(asRow(row)) }}</ElTag>
+          <ElTooltip v-else-if="column.key === 'stock_status'" :content="ownershipHint(asRow(row))" :trigger="['hover', 'focus']" popper-class="inventory-balance-tooltip" placement="top"><ElTag :type="inventoryHasPending(asRow(row)) ? 'warning' : inventoryCanDispatch(asRow(row)) ? 'success' : 'info'" effect="light" tabindex="0">{{ column.format(asRow(row)) }}</ElTag></ElTooltip>
           <div v-else-if="column.key === 'source' && warehouse" class="inventory-inline"><span class="inventory-source-name">{{ row.receipt_source === 'opening' ? '初始库存' : row.source_name || '—' }}</span></div>
           <span v-else-if="column.key === 'dispatchable_quantity' || column.key === 'dispatchable_weight'" :title="isScrapMaterialType(row.material_type) ? '废料可处理的库存' : '正常料可转出的库存'">{{ column.format(asRow(row)) }}</span>
           <template v-else-if="column.key === 'in_transit_quantity' || column.key === 'in_transit_weight'">
@@ -256,7 +258,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
           <span v-else>{{ column.format(asRow(row)) }}</span>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="操作" :width="canWrite ? 120 : 88" align="center" fixed="right"><template #default="{ row }"><div class="inventory-row-actions"><ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton><ElButton v-if="canWrite" link type="primary" :disabled="!inventoryCanDispatch(asRow(row))" @click="picker = asRow(row)">出库</ElButton></div></template></ElTableColumn>
+      <ElTableColumn label="操作" :width="actionWidth" align="center" fixed="right"><template #default="{ row }"><div class="inventory-row-actions"><ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton><ElButton v-if="canWrite && inventoryCanDispatch(asRow(row))" link type="primary" @click="picker = asRow(row)">出库</ElButton><ElButton v-if="inventoryHasPending(asRow(row))" link type="primary" @click="pending = asRow(row)">查看转出</ElButton></div></template></ElTableColumn>
     </ElTable>
     <footer v-if="!error"><span>共 {{ total }} 条库存记录<small v-if="asOf" class="inventory-as-of">系统记录 · {{ formatDateTime(asOf) }}</small></span><ElPagination background :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="paginate($event)" @size-change="paginate(1, $event)" /></footer>
     <TeamInventoryDetail :team-id="teamId" :group="detail" :warehouse="warehouse" :can-write="canWrite" @close="detail = null" @changed="emit('changed')" @action="action" @pending="pending = detail" />
