@@ -81,7 +81,7 @@ describe('login form', () => {
   })
 
   it('shows the account session limit and stays on the login page', async () => {
-    const message = '该账号已在 3 个会话中登录，请先在其他浏览器或设备退出后再登录'
+    const message = '该账号已在 2 个会话中登录，请先在其他浏览器或设备退出后再登录'
     vi.mocked(adminApi.login).mockRejectedValue(new Error(message))
     const { wrapper, router } = await renderLogin()
     await fill(wrapper)

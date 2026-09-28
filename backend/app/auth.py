@@ -20,7 +20,7 @@ from .observability import record
 
 
 PBKDF2_ITERATIONS = 310_000
-MAX_ACTIVE_SESSIONS = 3
+MAX_ACTIVE_SESSIONS = 2
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -77,7 +77,7 @@ def create_session(db: Session, user: User) -> tuple[str, AuthSession]:
         record("auth.session_limit_reached", user_id=user.id, limit=MAX_ACTIVE_SESSIONS)
         raise HTTPException(
             status_code=409,
-            detail="该账号已在 3 个会话中登录，请先在其他浏览器或设备退出后再登录",
+            detail=f"该账号已在 {MAX_ACTIVE_SESSIONS} 个会话中登录，请先在其他浏览器或设备退出后再登录",
         )
     raw_token = secrets.token_urlsafe(32)
     auth_session = AuthSession(
