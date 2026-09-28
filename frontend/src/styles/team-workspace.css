@@ -25,7 +25,7 @@
 }
 .team-workspace :is(.serial-toolbar, .list-toolbar) .el-checkbox { height: var(--workspace-control-height); margin-right: 0; }
 .team-workspace :is(.serial-toolbar, .list-toolbar) .el-checkbox__label { font-size: 14px; font-weight: 400; color: var(--workspace-muted); }
-.team-workspace .workspace-actions > .el-button:last-child { width: var(--workspace-control-height); padding: 0; }
+.team-workspace .workspace-actions > .workspace-refresh { width: var(--workspace-control-height); padding: 0; }
 
 .team-workspace :is(.serial-table, .team-table, .ledger-table) {
   font-size: var(--workspace-body-size);

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { FullScreen, Plus, Refresh, Setting } from '@element-plus/icons-vue'
+import { FullScreen, Plus, Refresh } from '@element-plus/icons-vue'
 import { ElButton } from 'element-plus'
-withDefaults(defineProps<{ canWrite: boolean; canReceive: boolean; openingReceipt: boolean; openingDispatch: boolean; loading: boolean; showScan?: boolean; warehouse?: boolean }>(), { showScan: true })
-const emit = defineEmits<{ dispatch: []; receipt: []; scan: []; refresh: []; settings: [] }>()
+withDefaults(defineProps<{ canWrite: boolean; canReceive: boolean; openingReceipt: boolean; openingDispatch: boolean; loading: boolean; showScan?: boolean; showRefresh?: boolean; warehouse?: boolean }>(), { showScan: true, showRefresh: true })
+const emit = defineEmits<{ dispatch: []; receipt: []; scan: []; refresh: [] }>()
 </script>
 
 <template>
@@ -10,8 +10,7 @@ const emit = defineEmits<{ dispatch: []; receipt: []; scan: []; refresh: []; set
     <ElButton v-if="canReceive" :type="warehouse ? 'primary' : 'default'" :icon="warehouse ? Plus : undefined" :loading="openingReceipt" @click="emit('receipt')">{{ warehouse ? '新建入库' : '手工入库' }}</ElButton>
     <ElButton v-if="canWrite" :type="warehouse ? 'default' : 'primary'" :icon="Plus" :loading="openingDispatch" @click="emit('dispatch')">新建出库</ElButton>
     <ElButton v-if="showScan" :icon="FullScreen" @click="emit('scan')">扫码查询</ElButton>
-    <ElButton v-if="canWrite" :icon="Setting" text aria-label="班组设置" title="班组设置" @click="emit('settings')">班组设置</ElButton>
-    <ElButton :icon="Refresh" :loading="loading" text aria-label="刷新工作台" title="刷新" @click="emit('refresh')" />
+    <ElButton v-if="showRefresh" class="workspace-refresh" :icon="Refresh" :loading="loading" text aria-label="刷新工作台" title="刷新" @click="emit('refresh')" />
   </div>
 </template>
 

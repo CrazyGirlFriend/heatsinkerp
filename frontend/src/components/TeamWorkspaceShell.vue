@@ -40,6 +40,7 @@ onBeforeUnmount(() => observer?.disconnect())
         {{ section.label }}<span v-if="section.value === 'pending' && pendingCount" class="team-workspace__pending">{{ pendingCount }}</span>
       </ElButton>
     </nav>
+    <div v-if="$slots.settings" class="team-workspace__settings"><slot name="settings" /></div>
     </div>
     <div id="workspace-panel" class="team-workspace__content" role="region" aria-labelledby="workspace-page-heading"><slot /></div>
     <slot name="dialogs" />
@@ -49,6 +50,8 @@ onBeforeUnmount(() => observer?.disconnect())
 <style scoped>
 .team-workspace { gap: 0; padding: 20px 24px; background: var(--workspace-bg); }
 .team-workspace__navigation-row { display: flex; flex: 0 0 auto; gap: 8px; min-width: 0; margin-bottom: 12px; }
+.team-workspace__settings { display: flex; flex: 0 0 auto; align-items: center; }
+.team-workspace__settings :deep(.el-button) { height: 36px; margin: 0; padding-inline: 10px; color: var(--muted); font-size: 14px; }
 .team-workspace__navigation { display: flex; flex: 1; gap: 4px; min-width: 0; padding: 6px; overflow-x: auto; border: 1px solid #d6e1d9; border-radius: 10px; background: #e9efeb; scrollbar-width: thin; }
 .team-workspace__section.el-button { flex: 0 0 auto; height: 40px; margin: 0; padding: 0 16px; border-radius: 6px; color: var(--text); background: transparent; font-size: 16px; font-weight: 500; transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
 .team-workspace__section.el-button:not(.is-current):hover { background: rgb(255 255 255 / 75%); }
@@ -61,5 +64,7 @@ onBeforeUnmount(() => observer?.disconnect())
 }
 @media (max-width: 760px) {
   .team-workspace { padding: 12px; }
+  .team-workspace__navigation-row { flex-wrap: wrap; }
+  .team-workspace__settings { margin-left: auto; }
 }
 </style>

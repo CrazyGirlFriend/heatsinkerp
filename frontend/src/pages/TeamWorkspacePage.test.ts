@@ -306,7 +306,7 @@ describe('team workspace material ledger', () => {
     expect(wrapper.find('.workspace-balance-strip').exists()).toBe(false)
     expect(wrapper.get('h1').classes()).toContain('sr-only')
     expect(wrapper.get('.team-workspace__navigation [aria-current=page]').text()).toBe('库存明细')
-    expect(wrapper.get('.serial-toolbar .workspace-actions').text()).toContain('新建出库')
+    expect(wrapper.get('.inventory-heading .workspace-actions').text()).toContain('新建出库')
     expect(wrapper.text()).toContain('2 张历史已接收单')
     expect(wrapper.find('a[href*="next_team_id=914"]').exists()).toBe(true)
     expect(materialTransferApi.list).not.toHaveBeenCalled()
@@ -324,10 +324,10 @@ describe('team workspace material ledger', () => {
     wrapper.getComponent(TeamInventory).vm.$emit('changed'); await flushPromises()
     expect(teamMaterialApi.overview).toHaveBeenCalledWith(914)
   })
-  it.each(['serials', 'stock', 'outgoing', 'pending', 'receipts', 'losses', 'materials', 'material-types', 'overview', 'history'])('merges workspace actions into the %s toolbar without duplicating query controls', async tab => {
+  it.each(['serials', 'stock', 'outgoing', 'pending', 'receipts', 'losses', 'materials', 'material-types', 'overview', 'history'])('keeps %s actions grouped separately from team settings', async tab => {
     state.auth.currentUser.team_id = 901
     await render(`/team-workspaces/901?tab=${tab}`)
-    const toolbar = ['serials', 'stock'].includes(tab) ? '.serial-toolbar' : ['overview', 'history'].includes(tab) ? '.history-header' : ['materials', 'material-types'].includes(tab) ? '.material-ledger header' : '.list-toolbar'
+    const toolbar = ['serials', 'stock'].includes(tab) ? '.inventory-heading' : ['overview', 'history'].includes(tab) ? '.history-header' : ['materials', 'material-types'].includes(tab) ? '.material-ledger header' : '.list-toolbar'
     const actions = wrapper.get(`${toolbar} .workspace-actions`)
     expect(actions.text()).toContain('新建入库')
     expect(actions.text()).toContain('新建出库')
@@ -336,11 +336,13 @@ describe('team workspace material ledger', () => {
       expect(wrapper.get('.list-toolbar .scanner-inline').text()).toContain('查看来料')
     } else expect(actions.text()).not.toContain('扫码查询')
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(1)
+    expect(wrapper.find('.team-workspace__settings [aria-label="班组设置"]').exists()).toBe(true)
+    expect(actions.find('[aria-label="班组设置"]').exists()).toBe(false)
     expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(9)
     expect(wrapper.find('.team-workspace__heading').exists()).toBe(false)
   })
   it.each(['administrator', 'other-team', 'inactive'])('does not expose creation for %s accounts', async kind => {
-    if (kind === 'administrator') state.auth.isTeamAccount = false
+    if (kind === 'administrator') { state.auth.isTeamAccount = false; state.auth.isAdmin = true }
     if (kind === 'other-team') state.auth.currentUser.team_id = 900
     if (kind === 'inactive') state.auth.currentUser.active = false
     await render()

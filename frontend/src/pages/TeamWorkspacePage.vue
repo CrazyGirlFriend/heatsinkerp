@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { FullScreen, Search } from '@element-plus/icons-vue'
+import { FullScreen, Search, Setting } from '@element-plus/icons-vue'
 import { ElAlert, ElButton, ElCheckbox, ElInput, ElOption, ElPagination, ElPopover, ElSelect, ElTable, ElTableColumn, type InputInstance } from 'element-plus'
 import RecordDateFilter from '@/components/RecordDateFilter.vue'
 import SerialUrgencyBadge from '@/components/SerialUrgencyBadge.vue'
@@ -112,7 +112,7 @@ const scanValue = ref('')
 const scanError = ref('')
 const scanning = ref(false)
 const traceScope = computed(() => ({ team_id: teamId.value, direction: 'all' as const }))
-const actionBindings = computed(() => ({ canWrite: canWrite.value, canReceive: canReceive.value, openingReceipt: openingReceipt.value, openingDispatch: openingDispatch.value, loading: loading.value, warehouse: isWarehouse.value, showScan: !isWarehouse.value && tab.value !== 'pending', onDispatch: openNewDispatch, onReceipt: openReceipt, onScan: focusScan, onRefresh: loadView, onSettings: () => { businessOpen.value = true } }))
+const actionBindings = computed(() => ({ canWrite: canWrite.value, canReceive: canReceive.value, openingReceipt: openingReceipt.value, openingDispatch: openingDispatch.value, loading: loading.value, warehouse: isWarehouse.value, showScan: !isWarehouse.value && tab.value !== 'pending', onDispatch: openNewDispatch, onReceipt: openReceipt, onScan: focusScan, onRefresh: loadView }))
 let version = 0
 let actionVersion = 0
 let scanVersion = 0
@@ -294,6 +294,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 
 <template>
   <TeamWorkspaceShell :title="title" :model-value="tab" :warehouse="isWarehouse" :manage-warehouse="canManageWarehouse" :pending-count="pendingCount" @update:model-value="selectSection">
+    <template v-if="canWrite" #settings><ElButton :icon="Setting" text aria-label="班组设置" @click="businessOpen = true">班组设置</ElButton></template>
     <div class="team-material-content">
       <ElAlert v-if="syncError || syncState === 'reconnecting' || syncState === 'expired'" type="warning" :closable="false" :title="syncState === 'expired' ? '登录或访问凭证已失效，请重新验证。' : syncError || '实时连接中断，当前显示上次结果，正在重连。'" />
       <StatePanel v-if="scopeLoading" state="loading" title="正在读取班组信息" />
@@ -305,7 +306,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
         <template v-else-if="['stock', 'materials', 'material-types'].includes(tab)">
           <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料库存" />
           <StatePanel v-else-if="overviewError" state="error" :description="overviewError" @retry="loadView" />
-          <TeamInventory v-else-if="overview && tab === 'stock'" :key="teamId" :team-id="teamId" :warehouse="isWarehouse" :overview="overview" :can-write="canWrite" @changed="loadView" @action="openAction"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamInventory>
+          <TeamInventory v-else-if="overview && tab === 'stock'" :key="teamId" :team-id="teamId" :warehouse="isWarehouse" :overview="overview" :can-write="canWrite" @refresh="loadView" @changed="loadView" @action="openAction"><template #actions><TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" /></template></TeamInventory>
           <TeamMaterialOverviewPanel v-else-if="overview" :key="tab" :overview="overview" :kind="tab === 'material-types' ? 'type' : 'material'" :page="page" :page-size="pageSize" @filter="openSummaryDetail" @paginate="paginateSummary"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamMaterialOverviewPanel>
         </template>
         <template v-else>

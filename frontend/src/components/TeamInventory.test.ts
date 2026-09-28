@@ -35,6 +35,26 @@ const select = (label: string) => wrapper.findAllComponents(ElSelect).find(item 
 async function submit(term: string) { await wrapper.get('input[aria-label="库存明细搜索"]').setValue(term); await wrapper.get('input[aria-label="库存明细搜索"]').trigger('keyup.enter'); await flushPromises() }
 
 describe('warehouse grouped stock', () => {
+  it.each([true, false])('shows applied hidden filters and clears only the selected condition (warehouse=%s)', async warehouse => {
+    const path = `/team-workspaces/901?tab=stock&material_type=finished&material_name=材料1&source_team_id=8&page=2${warehouse ? '&receipt_source=internal' : '&purpose_id=0'}`
+    const router = await render(path, false, warehouse)
+    expect(wrapper.get('[aria-label="已选筛选条件"]').text()).toContain('类型：成品')
+    expect(wrapper.get('[aria-label="已选筛选条件"]').text()).toContain('材质：材料1')
+    const tags = () => wrapper.findAllComponents(ElTag).filter(tag => tag.element.closest('.inventory-active-filters'))
+    tags().find(tag => tag.text().includes('类型：成品'))!.vm.$emit('close', new MouseEvent('click')); await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({ material_name: '材料1', source_team_id: '8', page: '1' })
+    expect(router.currentRoute.value.query.material_type).toBeUndefined()
+    if (warehouse) {
+      tags().find(tag => tag.text().startsWith('来源：车间转入'))!.vm.$emit('close', new MouseEvent('click')); await flushPromises()
+      expect(router.currentRoute.value.query.receipt_source).toBeUndefined()
+      expect(router.currentRoute.value.query.source_team_id).toBeUndefined()
+    } else {
+      tags().find(tag => tag.text() === '业务：未指定业务')!.vm.$emit('close', new MouseEvent('click')); await flushPromises()
+      expect(router.currentRoute.value.query.purpose_id).toBeUndefined()
+      expect(router.currentRoute.value.query.source_team_id).toBe('8')
+    }
+    expect(router.currentRoute.value.query.material_name).toBe('材料1')
+  })
   it('filters workshops by configured business and retains the exact choice across pagination and dates', async () => {
     vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
       { id: 11, team_id: 901, name: '检验', active: true, version: 1 },
