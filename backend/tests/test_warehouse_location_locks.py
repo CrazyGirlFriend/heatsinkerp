@@ -8,7 +8,7 @@ from uuid import uuid4
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
-from app.models import MaterialTransfer, WarehouseLocation, utcnow
+from app.models import AdminAuditEvent, MaterialTransfer, WarehouseLocation, utcnow
 from test_warehouse_receipts import warehouse, intake  # noqa: F401
 from test_warehouse_locations import dispatch, location
 
@@ -100,6 +100,15 @@ def test_warehouse_account_can_maintain_its_slots(client, warehouse):
     edited = client.patch(url, headers=headers, json={"name": "库房-02", "expected_version": 1})
     assert edited.status_code == 200, edited.text
     assert edited.json()["name"] == "库房-02"
+    with SessionLocal() as db:
+        audit = db.scalars(
+            select(AdminAuditEvent).where(AdminAuditEvent.target_type == "warehouse_slot")
+        ).all()
+        assert [row.action for row in audit] == ["created", "updated"]
+        assert all(
+            len(row.target_type) <= AdminAuditEvent.__table__.c.target_type.type.length
+            for row in audit
+        )
     assert (
         client.patch(
             url,

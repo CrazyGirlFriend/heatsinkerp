@@ -352,7 +352,7 @@ def save_location(db, payload, user, location_id=None):
                 AdminAuditEvent(
                     actor_user_id=user.id,
                     actor=actor_name(user),
-                    target_type="warehouse_location",
+                    target_type="warehouse_slot",
                     target_id=location.id,
                     action="updated" if location_id else "created",
                     changes={
