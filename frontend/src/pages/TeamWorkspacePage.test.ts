@@ -7,9 +7,8 @@ import TeamWorkspacePage from './TeamWorkspacePage.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
 import TeamSerialHistory from '@/components/TeamSerialHistory.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
-import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
+import MaterialReceiptScanner from '@/components/MaterialReceiptScanner.vue'
 import MaterialBatchPrintDialog from '@/components/MaterialBatchPrintDialog.vue'
-import { materialDispatchApi } from '@/services/materialDispatchApi'
 import { dispatchFixture } from '@/testFixtures/materialDispatch'
 import { ElPagination } from 'element-plus'
 import { analyticsFixture } from '@/testFixtures/materialAnalytics'
@@ -332,9 +331,9 @@ describe('team workspace material ledger', () => {
     expect(actions.text()).toContain('新建入库')
     expect(actions.text()).toContain('新建出库')
     if (tab === 'pending') {
-      expect(actions.text()).not.toContain('扫码查询')
-      expect(wrapper.get('.incoming-scan .scanner-inline').text()).toContain('查看来料')
-    } else expect(actions.text()).not.toContain('扫码查询')
+      expect(actions.text()).not.toContain('扫码入库')
+      expect(wrapper.get('.incoming-scan .scanner-inline').text()).toContain('入库')
+    } else expect(actions.text()).toContain('扫码入库')
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(1)
     expect(wrapper.find('.team-workspace__settings [aria-label="班组设置"]').exists()).toBe(true)
     expect(actions.find('[aria-label="班组设置"]').exists()).toBe(false)
@@ -424,42 +423,47 @@ describe('team workspace material ledger', () => {
     expect(wrapper.get('.team-workspace').attributes('aria-label')).toBe('检验工作台')
     expect(wrapper.find('.team-table input[type=checkbox]').exists()).toBe(false)
   })
-  it('opens a combined print after creation and keeps historical CK lookup compatible', async () => {
+  it('opens a combined print after creation but requires each batch barcode for direct receiving', async () => {
     await render('/team-workspaces/914?tab=stock')
     wrapper.getComponent(MaterialStockActionDialog).vm.$emit('saved', dispatchFixture())
     await flushPromises()
     expect(wrapper.getComponent(MaterialBatchPrintDialog).props()).toMatchObject({ modelValue: true, items: dispatchFixture().items })
     wrapper.unmount()
     await render('/team-workspaces/914?tab=pending')
-    vi.spyOn(materialDispatchApi, 'get').mockResolvedValue(dispatchFixture(25, 'transfer', { next_team: { id: 914, code: 'FACTORY-ROLL', name: '轧制' } }))
     await wrapper.get('input[aria-label="扫描转料批次号"]').setValue('CK-GROUP')
     await wrapper.get('input[aria-label="扫描转料批次号"]').trigger('keyup.enter'); await flushPromises()
-    expect(materialDispatchApi.get).toHaveBeenCalledWith('CK-GROUP')
-    expect(wrapper.getComponent(MaterialDispatchDrawer).props('modelValue')).toBe(true)
-    expect(wrapper.getComponent(MaterialDispatchDrawer).props('allowPrint')).toBe(false)
-    expect(wrapper.getComponent(MaterialDispatchDrawer).props('receiptOnly')).toBe(true)
+    expect(wrapper.text()).toContain('请扫描每批物料的独立条码')
+    expect(wrapper.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
   })
   it('opens each pending batch independently even when historically printed together', async () => {
     vi.mocked(materialTransferApi.list).mockResolvedValue({ items: [{ ...source().transfer, status: 'pending', dispatch_no: 'CK-PENDING' }], total: 1, page: 1, page_size: 10 })
     await render('/team-workspaces/914?tab=pending')
     await wrapper.findAll('button').find(button => button.text() === '核对接收')!.trigger('click'); await flushPromises()
-    expect(wrapper.getComponent(MaterialDispatchDrawer).props('modelValue')).toBe(false)
     expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: source().transfer.batch_no, allowPrint: false, receiptOnly: true })
   })
-  it('disables printing for a scanned pending receipt but keeps it for the same pending batch in outgoing records', async () => {
-    const transfer = normalizeMaterialTransfer({ ...source().transfer, source_team: { id: 900, name: '检验' }, status: 'pending', locked: false })
+  it('scans directly into stock and refreshes the pending list without opening details', async () => {
+    const transfer = normalizeMaterialTransfer({ ...source().transfer, source_team: { id: 900, name: '检验' }, status: 'pending', locked: false, version: 1, allowed_actions: ['confirm'] })
     vi.spyOn(materialTransferApi, 'get').mockResolvedValue(transfer)
+    vi.spyOn(materialTransferApi, 'confirm').mockResolvedValue({ ...transfer, status: 'received', locked: true })
     vi.mocked(teamMaterialApi.dispatches).mockResolvedValue({ items: [transfer], total: 1, page: 1, page_size: 10 })
     const router = await render('/team-workspaces/914?tab=pending')
     await wrapper.get('input[aria-label="扫描转料批次号"]').setValue(transfer.batch_no)
     await wrapper.get('input[aria-label="扫描转料批次号"]').trigger('keyup.enter'); await flushPromises()
-    expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, allowPrint: false, receiptOnly: true })
+    expect(wrapper.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
+    expect(materialTransferApi.confirm).toHaveBeenCalledWith(transfer.batch_no, { expected_version: 1, idempotency_key: expect.any(String) })
+    expect(wrapper.text()).toContain('已入库')
+    expect(materialTransferApi.list).toHaveBeenCalledTimes(2)
     state.auth.currentUser.team_id = 900
     await router.push('/team-workspaces/900?tab=outgoing'); await flushPromises()
     await wrapper.findAll('button').find(button => button.text() === '查看详情')!.trigger('click'); await flushPromises()
     expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: transfer.batch_no, allowPrint: true, receiptOnly: false })
-    expect(wrapper.getComponent(MaterialDispatchDrawer).props('allowPrint')).toBe(true)
-    expect(wrapper.getComponent(MaterialDispatchDrawer).props('receiptOnly')).toBe(false)
+  })
+  it('opens the receiving scanner from stock and restricts it to the current team account', async () => {
+    await render('/team-workspaces/914?tab=stock')
+    await wrapper.findAll('button').find(button => button.text() === '扫码入库')!.trigger('click'); await flushPromises()
+    expect(wrapper.getComponent(MaterialReceiptScanner).props('teamId')).toBe(914)
+    state.auth.isTeamAccount = false; state.auth.isAdmin = true; await flushPromises()
+    expect(wrapper.findComponent(MaterialReceiptScanner).exists()).toBe(false)
   })
   it('does not issue global requests for invalid or absent team ids', async () => {
     await render('/team-workspaces/nope?tab=pending')

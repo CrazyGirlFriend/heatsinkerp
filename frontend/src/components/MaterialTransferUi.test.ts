@@ -28,23 +28,16 @@ describe('pure material transfer interface', () => {
     expect(drawerSource).not.toContain('<ElInputNumber')
   })
 
-  it('keeps scanning inside the Element Plus transfer list and retains serial tracing', () => {
+  it('keeps the transfer list for ordinary queries and retains serial tracing', () => {
     expect(listSource).toContain('class="page workspace-page transfers-page reading-workspace"')
     expect(listSource).toContain('<ElTable v-else')
     expect(listSource).not.toContain('height="100%"')
-    expect(listSource).toContain('aria-label="扫码查询"')
+    expect(listSource).not.toContain('aria-label="扫码查询"')
     expect(traceSource).toContain('class="page workspace-page material-trace-page reading-workspace"')
     expect(traceSource).toContain('<SerialBatchGraph')
     for (const source of [listSource, traceSource, drawerSource, formSource]) {
       expect(source).not.toContain("from '@ant-design/icons-vue'")
     }
-  })
-
-  it('supports HID Code 128 scanning without intercepting form entry', () => {
-    expect(listSource).toContain('isEditableTarget(event.target)')
-    expect(listSource).toContain("event.key === 'Enter'")
-    expect(listSource).toContain('/^(?:TL|CK)[A-Z0-9-]{4,}$/')
-    expect(listSource).toContain('materialTransferApi.get(batchNo)')
   })
 
   it('traces only a serial-number handoff chain and reports the current state', () => {

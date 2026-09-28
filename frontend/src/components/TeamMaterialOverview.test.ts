@@ -14,9 +14,9 @@ const overview = (count = 25): Overview => ({
 afterEach(() => wrapper?.unmount())
 describe('compact material classification', () => {
   it('keeps actions with the material table and removes duplicate charts and summaries', async () => {
-    wrapper = mount(TeamMaterialOverview, { props: { overview: overview() }, slots: { actions: '<button>手工入库</button><button>扫码查询</button>' } }); await flushPromises()
+    wrapper = mount(TeamMaterialOverview, { props: { overview: overview() }, slots: { actions: '<button>手工入库</button><button>扫码入库</button>' } }); await flushPromises()
     expect(wrapper.get('.material-ledger header').text()).toContain('手工入库')
-    expect(wrapper.get('.material-ledger header').text()).toContain('扫码查询')
+    expect(wrapper.get('.material-ledger header').text()).toContain('扫码入库')
     expect(wrapper.find('.material-chart').exists()).toBe(false)
     expect(wrapper.find('.balance-cards').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('材质库存分布')

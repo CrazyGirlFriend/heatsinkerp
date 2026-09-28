@@ -3,7 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ElPagination, ElPopover, ElSelect } from 'element-plus'
+import { ElPagination, ElSelect } from 'element-plus'
 import TransferBatchesPage from './TransferBatchesPage.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
 import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
@@ -11,6 +11,7 @@ import { materialDispatchApi } from '@/services/materialDispatchApi'
 import { dispatchFixture } from '@/testFixtures/materialDispatch'
 import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { appPinia } from '@/stores/access'
+import { showToast } from '@/stores/toast'
 const live = vi.hoisted(() => ({ refresh: async () => {} }))
 const state = vi.hoisted(() => ({ auth: { isAdmin: true, isTeamAccount: false, currentUser: { id: 1, team_id: null as number | null } } }))
 vi.mock('@/composables/useLiveRefresh', async () => {
@@ -53,7 +54,7 @@ async function renderList(path = '/transfer-batches?status=pending') {
 }
 
 describe('transfer list refresh continuity', () => {
-  it('discards a late barcode lookup after the account changes', async () => {
+  it('discards a late batch link lookup after the account changes', async () => {
     let finish!: (value: Awaited<ReturnType<typeof materialDispatchApi.get>>) => void
     vi.spyOn(materialDispatchApi, 'get').mockReturnValue(new Promise(resolve => { finish = resolve }))
     const page = await renderList('/transfer-batches?batch_no=CK-GROUP')
@@ -156,53 +157,49 @@ describe('transfer list refresh continuity', () => {
     await flushPromises()
   }
 
-  it('opens a CK from the list page keyboard scanner without replacing field filters', async () => {
+  it('does not intercept scanner input or open documents from F2 on the records page', async () => {
     const page = await renderList('/transfer-batches?query=001440&search_mode=exact&search_field=customer_code')
     vi.spyOn(materialDispatchApi, 'get').mockResolvedValue(dispatchFixture())
     vi.spyOn(materialTransferApi, 'get').mockResolvedValue(transfer)
-    for (const key of [...'CK-GROUP', 'Enter']) window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+    vi.spyOn(materialTransferApi, 'confirm').mockResolvedValue(transfer)
+    for (const code of ['CK-GROUP', 'TL000001']) for (const suffix of ['Enter', 'Tab']) {
+      for (const key of [...code, suffix]) window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+    }
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }))
     await flushPromises()
-    expect(materialDispatchApi.get).toHaveBeenCalledWith('CK-GROUP'); expect(materialTransferApi.get).not.toHaveBeenCalled()
-    expect(page.getComponent(MaterialDispatchDrawer).props()).toMatchObject({ modelValue: true, dispatchNo: 'CK-GROUP' })
+    expect(materialDispatchApi.get).not.toHaveBeenCalled()
+    expect(materialTransferApi.get).not.toHaveBeenCalled()
+    expect(materialTransferApi.confirm).not.toHaveBeenCalled()
+    expect(page.getComponent(MaterialDispatchDrawer).props('modelValue')).toBe(false)
+    expect(page.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
+    expect(page.find('[aria-label="扫码查询"]').exists()).toBe(false)
+    expect(document.querySelector('.transfer-scan-popover')).toBeNull()
     expect(page.vm.$route.query).toMatchObject({ query: '001440', search_mode: 'exact', search_field: 'customer_code' })
   })
 
   it('opens the retained batch link without replacing list filters', async () => {
     vi.spyOn(materialTransferApi, 'get').mockResolvedValue(transfer)
-    const page = await renderList('/transfer-batches?scan=1&batch_no=tl000001&status=pending&query=0001')
+    const page = await renderList('/transfer-batches?batch_no=tl000001&status=pending&query=0001')
     expect(materialTransferApi.get).toHaveBeenCalledWith('TL000001')
     expect(page.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, transfer })
     expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'pending', query: '0001' }))
   })
 
-  it('keeps historical grouped scan links usable inside the list page', async () => {
+  it('keeps ordinary historical group links usable inside the list page', async () => {
     vi.spyOn(materialDispatchApi, 'get').mockResolvedValue(dispatchFixture())
     vi.spyOn(materialTransferApi, 'get').mockResolvedValue(transfer)
-    const page = await renderList('/transfer-batches?scan=1&batch_no=CK-GROUP')
+    const page = await renderList('/transfer-batches?batch_no=CK-GROUP')
     expect(materialDispatchApi.get).toHaveBeenCalledWith('CK-GROUP')
     expect(materialTransferApi.get).not.toHaveBeenCalled()
     expect(page.getComponent(MaterialDispatchDrawer).props()).toMatchObject({ modelValue: true, dispatchNo: 'CK-GROUP' })
   })
 
-  it('opens the scanner from its old entry or F2 without starting a query', async () => {
-    vi.spyOn(materialTransferApi, 'get').mockResolvedValue(transfer)
-    const page = await renderList('/transfer-batches?scan=1')
-    const popover = page.findAllComponents(ElPopover).find(item => item.props('popperClass') === 'transfer-scan-popover')!
-    expect(popover.props('visible')).toBe(true)
-    expect(materialTransferApi.get).not.toHaveBeenCalled()
-    popover.vm.$emit('update:visible', false); await flushPromises()
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }))
-    await flushPromises()
-    expect(popover.props('visible')).toBe(true)
-  })
-
-  it('keeps a failed legacy barcode visible for correction', async () => {
+  it('reports a missing linked batch without opening a scanner or document', async () => {
     vi.spyOn(materialTransferApi, 'get').mockRejectedValue(new Error('未找到批次'))
-    const page = await renderList('/transfer-batches?scan=1&batch_no=TL-MISSING')
+    const page = await renderList('/transfer-batches?batch_no=TL-MISSING')
     expect(page.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
-    const popover = page.findAllComponents(ElPopover).find(item => item.props('popperClass') === 'transfer-scan-popover')!
-    expect(popover.props('visible')).toBe(true)
-    expect(document.body.textContent).toContain('未找到批次')
+    expect(showToast).toHaveBeenCalledWith('未找到批次', 'error')
+    expect(page.find('[aria-label="扫码查询"]').exists()).toBe(false)
   })
 
   it('restores the same field, mode and material type for list and status totals from a shared URL', async () => {

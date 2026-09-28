@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import PageBackButton from '@/components/PageBackButton.vue'
-import { FullScreen, ArrowDown, CircleCheck, Clock, Collection, Plus, Refresh, Remove, Search } from '@element-plus/icons-vue'
+import { ArrowDown, CircleCheck, Clock, Collection, Plus, Refresh, Remove, Search } from '@element-plus/icons-vue'
 import {
   ElButton,
   ElCard,
@@ -14,9 +14,8 @@ import {
   ElSkeleton,
   ElTable,
   ElTableColumn,
-  type InputInstance,
 } from 'element-plus'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
 import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
@@ -104,22 +103,13 @@ const searchPlaceholder = computed(() => searchFieldDraft.value !== 'all'
   ? `搜索${materialSearchFields.find(option => option.value === searchFieldDraft.value)?.label}`
   : searchModeDraft.value === 'contains' ? '搜索编号、材质、班组或转料人' : '搜索批次号、流水号、原单批号、编号、客户代码或材质')
 const hasFilters = computed(() => Boolean(dateDraft.value.from || dateDraft.value.to || urgentDraft.value || queryDraft.value || sourceTeamDraft.value !== '' || nextTeamDraft.value !== '' || statusDraft.value !== 'all' || searchModeDraft.value !== 'contains' || searchFieldDraft.value !== 'all' || materialTypeDraft.value))
-const scanInput = ref<InputInstance>()
-const scanValue = ref('')
-const scanPanelOpen = ref(false)
-function focusScanner(): void { void nextTick(() => scanInput.value?.focus()) }
-const scanning = ref(false)
-const scanError = ref('')
 const drawerOpen = ref(false)
 const groupOpen = ref(false)
 const selectedDispatchNo = ref('')
-const anyDetailOpen = computed(() => drawerOpen.value || groupOpen.value)
 const selected = ref<MaterialTransfer | null>(null)
 const createOpen = ref(false)
 let requestVersion = 0
-let scanVersion = 0
-let hidBuffer = ''
-let hidLastKeyAt = 0
+let linkedBatchVersion = 0
 let disposed = false
 
 const hasRows = computed(() => rows.value.length > 0)
@@ -272,7 +262,7 @@ function setPageSize(next: number): void {
 function clearWorkspace(): void {
   ++requestVersion
   ++countsVersion
-  ++scanVersion
+  ++linkedBatchVersion
   rows.value = []
   total.value = 0
   statusCounts.value = null
@@ -282,10 +272,6 @@ function clearWorkspace(): void {
   selectedDispatchNo.value = ''
   createOpen.value = false
   detailBusy.value = false
-  scanning.value = false
-  scanValue.value = ''
-  scanError.value = ''
-  scanPanelOpen.value = false
   errorMessage.value = ''
 }
 
@@ -313,89 +299,35 @@ function openDetail(transfer: MaterialTransfer): void {
   drawerOpen.value = true
 }
 
-async function scan(raw?: string): Promise<void> {
-  const batchNo = (raw ?? scanValue.value).trim().toUpperCase()
-  if (!batchNo || scanning.value || detailBusy.value) return
-  const version = ++scanVersion
-  scanning.value = true
-  scanError.value = ''
+async function openLinkedBatch(batchNo: string): Promise<void> {
+  if (detailBusy.value) return
+  const version = ++linkedBatchVersion
   try {
     if (isDispatchNumber(batchNo)) {
       const group = await materialDispatchApi.get(batchNo)
-      if (disposed || version !== scanVersion) return
+      if (disposed || version !== linkedBatchVersion) return
       selectedDispatchNo.value = group.dispatch_no; drawerOpen.value = false; groupOpen.value = true
-      scanValue.value = ''; scanPanelOpen.value = false
-      showToast(`已读取历史合并记录，共 ${group.line_count} 个批次`, 'success')
       return
     }
     const transfer = await materialTransferApi.get(batchNo)
-    if (disposed || version !== scanVersion) return
+    if (disposed || version !== linkedBatchVersion) return
     selected.value = transfer
     groupOpen.value = false
     drawerOpen.value = true
-    scanValue.value = ''
-    scanPanelOpen.value = false
-    showToast(`已读取转料单 ${transfer.batch_no}`, 'success')
   } catch (error) {
-    if (disposed || version !== scanVersion) return
-    scanError.value = error instanceof MaterialTransferApiError && error.status === 404
+    if (disposed || version !== linkedBatchVersion) return
+    const message = error instanceof MaterialTransferApiError && error.status === 404
       ? `未找到转料单 ${batchNo}`
       : error instanceof Error ? error.message : '转料单查询失败'
-    showToast(scanError.value, 'error')
-  } finally {
-    if (!disposed && version === scanVersion) {
-      scanning.value = false
-      await nextTick()
-      if (!anyDetailOpen.value) scanInput.value?.focus()
-    }
+    showToast(message, 'error')
   }
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
-}
-
-watch([() => route.query.batch_no, () => route.query.scan], ([batchNo, scanner]) => {
-  if (typeof batchNo === 'string' && batchNo.trim()) {
-    scanPanelOpen.value = true
-    scanValue.value = batchNo
-    void scan(batchNo)
-  } else if (scanner === '1') {
-    scanPanelOpen.value = true
-    focusScanner()
-  }
+// Dashboard batch links still open documents; only the receiving page listens to scanners.
+watch(() => route.query.batch_no, batchNo => {
+  ++linkedBatchVersion
+  if (typeof batchNo === 'string' && batchNo.trim()) void openLinkedBatch(batchNo.trim().toUpperCase())
 }, { immediate: true })
-
-function handleHidKeydown(event: KeyboardEvent): void {
-  if (anyDetailOpen.value || createOpen.value || isEditableTarget(event.target) || event.ctrlKey || event.metaKey || event.altKey) return
-  if (event.key === 'F2') {
-    event.preventDefault()
-    scanPanelOpen.value = true
-    focusScanner()
-    return
-  }
-  const now = Date.now()
-  if (event.key === 'Enter' || event.key === 'Tab') {
-    const code = hidBuffer.toUpperCase()
-    const isScannerInput = Boolean(code) && now - hidLastKeyAt <= 180 && /^(?:TL|CK)[A-Z0-9-]{4,}$/.test(code)
-    hidBuffer = ''
-    hidLastKeyAt = 0
-    if (isScannerInput) {
-      event.preventDefault()
-      scanValue.value = code
-      void scan(code)
-    }
-    return
-  }
-  if (event.key.length !== 1 || !/^[\x21-\x7e]$/.test(event.key)) {
-    hidBuffer = ''
-    hidLastKeyAt = 0
-    return
-  }
-  if (hidLastKeyAt && now - hidLastKeyAt > 180) hidBuffer = ''
-  hidBuffer = `${hidBuffer}${event.key}`.slice(-64)
-  hidLastKeyAt = now
-}
 
 function updateTransfer(transfer: MaterialTransfer): void {
   const index = rows.value.findIndex((item) => item.batch_no === transfer.batch_no)
@@ -415,7 +347,6 @@ function handleCreated(transfer: MaterialTransfer): void {
 }
 
 onMounted(() => {
-  window.addEventListener('keydown', handleHidKeydown)
   if (!teamStore.items.length) void teamStore.refreshTeamDirectory()
   void loadRows()
   void loadCounts()
@@ -424,8 +355,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   disposed = true
   ++requestVersion
-  ++scanVersion
-  window.removeEventListener('keydown', handleHidKeydown)
+  ++linkedBatchVersion
 })
 </script>
 
@@ -444,16 +374,6 @@ onBeforeUnmount(() => {
         <button v-if="!countsLoading && !statusCounts" class="counts-retry" type="button" aria-label="重试加载状态数量" title="重试加载状态数量" @click="loadCounts()"><ElIcon><Refresh /></ElIcon></button>
       </div>
         <div class="heading-actions">
-          <ElPopover v-model:visible="scanPanelOpen" trigger="click" placement="bottom-end" :width="400" popper-class="transfer-scan-popover" @show="focusScanner">
-            <template #reference><ElButton class="scan-trigger" :icon="FullScreen" aria-label="扫码查询" title="扫码查询 · F2">扫码查询</ElButton></template>
-            <div class="scan-popover-content">
-              <strong>批次查询</strong>
-              <ElInput ref="scanInput" v-model="scanValue" clearable autocomplete="off" aria-label="转料批次号" placeholder="扫描或输入批次号" :disabled="scanning" @keyup.enter="scan()">
-                <template #append><ElButton :icon="Search" :loading="scanning" :disabled="!scanValue.trim()" @click="scan()">查询</ElButton></template>
-              </ElInput>
-              <p v-if="scanError" class="scan-error" role="alert">{{ scanError }}</p>
-            </div>
-          </ElPopover>
           <ElButton v-if="canCreate" type="primary" :icon="Plus" @click="openCreate">新建转料</ElButton>
         </div>
       </div>
@@ -561,12 +481,6 @@ onBeforeUnmount(() => {
 .team-filter-fields label { color: var(--subtle); font-size: 13px; }
 .reset-filters { width: 30px; padding: 0; color: var(--subtle); }
 .search-action { width: 26px; height: 26px; padding: 0; color: var(--subtle); }
-.scan-trigger { color: var(--text); }
-.scan-popover-content { padding: 4px; }
-.scan-popover-content > strong { color: var(--text); font-size: 15px; }
-.scan-popover-content > .el-input { margin-top: 12px; }
-.scan-popover-content p { color: var(--subtle); font-size: 13px; }
-.scan-popover-content .scan-error { color: var(--danger); }
 .table-pane { flex: 1; min-height: 0; overflow: hidden; }
 .table-skeleton { padding: 24px; }
 .table-skeleton :deep(.el-skeleton__p) { height: 24px; margin-top: 24px; }

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { Filter, FullScreen, Refresh, Search, Setting } from '@element-plus/icons-vue'
-import { ElAlert, ElButton, ElCheckbox, ElInput, ElOption, ElPagination, ElPopover, ElSelect, ElTable, ElTableColumn, ElTag, type InputInstance } from 'element-plus'
+import { Filter, Refresh, Search, Setting } from '@element-plus/icons-vue'
+import { ElAlert, ElButton, ElCheckbox, ElInput, ElOption, ElPagination, ElPopover, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus'
 import RecordDateFilter from '@/components/RecordDateFilter.vue'
 import SerialUrgencyBadge from '@/components/SerialUrgencyBadge.vue'
 import type { CalendarRange } from '@/types/recordFilters'
@@ -18,10 +18,9 @@ import MaterialStockActionDialog from '@/components/MaterialStockActionDialog.vu
 import WarehouseManagement from '@/components/WarehouseManagement.vue'
 import WarehouseReceiptDialog from '@/components/WarehouseReceiptDialog.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
-import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
+import MaterialReceiptScanner from '@/components/MaterialReceiptScanner.vue'
 import MaterialBatchPrintDialog from '@/components/MaterialBatchPrintDialog.vue'
 import BarcodeCard from '@/components/BarcodeCard.vue'
-import { materialDispatchApi } from '@/services/materialDispatchApi'
 import MaterialTransferStatus from '@/components/MaterialTransferStatus.vue'
 import StatePanel from '@/components/StatePanel.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -33,7 +32,7 @@ import type { InventoryConnection } from '@/services/inventoryStream'
 import { shouldRefreshInventory, subscribeSharedInventoryChanges as subscribeInventoryChanges } from '@/services/inventoryChanges'
 import { materialTransferApi } from '@/services/materialTransferApi'
 import { isExternalEntryKind, materialEntryLabel, materialSourceLabel, materialPurposeLabel, receiptSourceLabel, materialTypeOptions, materialTypeLabel, type MaterialTransfer, type MaterialType } from '@/types/materialTransfer'
-import { isDispatchNumber, dispatchStatusLabels, type DispatchKind, type DispatchStatus, type TeamMaterialOverview, type StockBatch, type CreatedMaterialBatches, type MaterialLoss } from '@/types/teamMaterials'
+import { dispatchStatusLabels, type DispatchKind, type DispatchStatus, type TeamMaterialOverview, type StockBatch, type CreatedMaterialBatches, type MaterialLoss } from '@/types/teamMaterials'
 import { formatDateTime } from '@/utils/format'
 
 const route = useRoute()
@@ -119,25 +118,16 @@ const loading = ref(false)
 const loadError = ref('')
 const selected = ref<MaterialTransfer | null>(null)
 const drawerOpen = ref(false)
-const groupOpen = ref(false)
-const selectedDispatchNo = ref('')
-const detailOpen = computed(() => drawerOpen.value || groupOpen.value)
 const actionOpen = ref(false)
 const pickerOpen = ref(false)
 const openingDispatch = ref(false)
 const actionMode = ref<'dispatch' | 'loss'>('dispatch')
 const actionSources = ref<StockBatch[]>([])
-const scanner = ref<InputInstance>()
-const scanValue = ref('')
-const scanError = ref('')
-const scanning = ref(false)
+const scanner = ref<InstanceType<typeof MaterialReceiptScanner>>()
 const traceScope = computed(() => ({ team_id: teamId.value, direction: 'all' as const }))
-const actionBindings = computed(() => ({ canWrite: canWrite.value, canReceive: canReceive.value, openingReceipt: openingReceipt.value, openingDispatch: openingDispatch.value, loading: loading.value, warehouse: isWarehouse.value, showScan: !isWarehouse.value && tab.value !== 'pending', onDispatch: openNewDispatch, onReceipt: openReceipt, onScan: focusScan, onRefresh: loadView }))
+const actionBindings = computed(() => ({ canWrite: canWrite.value, canReceive: canReceive.value, openingReceipt: openingReceipt.value, openingDispatch: openingDispatch.value, loading: loading.value, warehouse: isWarehouse.value, showScan: canWrite.value && tab.value !== 'pending', onDispatch: openNewDispatch, onReceipt: openReceipt, onScan: focusScan, onRefresh: loadView }))
 let version = 0
 let actionVersion = 0
-let scanVersion = 0
-let hid = ''
-let hidTime = 0
 const syncState = ref<InventoryConnection>('connecting'), syncError = ref('')
 let unsubscribe: (() => void) | undefined, streamVersion = 0
 let refreshQueued = false, refreshing = false, disposed = false
@@ -191,9 +181,8 @@ function asLoss(row: unknown) { return row as MaterialLoss }
 function applyFilters(nextPage = 1, size = pageSize.value) {
   void router.replace({ path: route.path, query: { tab: tab.value, ...(tab.value === 'receipts' && receiptSourceDraft.value ? { receipt_source: receiptSourceDraft.value } : {}), ...(dateDraft.value.from ? { date_from: dateDraft.value.from } : {}), ...(dateDraft.value.to ? { date_to: dateDraft.value.to } : {}), ...(urgentDraft.value ? { urgent_only: 'true' } : {}), ...(queryDraft.value.trim() ? { query: queryDraft.value.trim() } : {}), ...(['receipts', 'outgoing'].includes(tab.value) && materialDraft.value ? { material_type: materialDraft.value } : {}), ...(tab.value === 'outgoing' ? { ...(kindDraft.value ? { entry_kind: kindDraft.value } : {}), ...(statusDraft.value ? { status: statusDraft.value } : {}), ...(!isExternalEntryKind(kindDraft.value) && nextTeamDraft.value ? { next_team_id: String(nextTeamDraft.value) } : {}) } : {}), ...(nextPage > 1 ? { page: String(nextPage) } : {}), ...(size !== 10 ? { page_size: String(size) } : {}) } })
 }
-function closeDetails() { ++actionVersion; pickerOpen.value = false; openingDispatch.value = false; drawerOpen.value = false; groupOpen.value = false; selectedDispatchNo.value = '';  selected.value = null; actionOpen.value = false; receiptOpen.value = false; actionSources.value = []; ++scanVersion; scanning.value = false; scanError.value = '' }
-function openDetail(transfer: MaterialTransfer) { groupOpen.value = false; selected.value = transfer; drawerOpen.value = true }
-function openDispatch(code: string) { drawerOpen.value = false; selectedDispatchNo.value = code; groupOpen.value = true }
+function closeDetails() { ++actionVersion; pickerOpen.value = false; openingDispatch.value = false; drawerOpen.value = false; selected.value = null; actionOpen.value = false; receiptOpen.value = false; actionSources.value = [] }
+function openDetail(transfer: MaterialTransfer) { selected.value = transfer; drawerOpen.value = true }
 function openIncoming(transfer: MaterialTransfer) { openDetail(transfer) }
 function openWarehouseMaterial(batchNo: string) { selected.value = null; selectedBatchNo.value = batchNo; drawerOpen.value = true }
 async function dispatchWarehouseMaterial(batchNo: string) {
@@ -290,41 +279,13 @@ watch([() => ['overview', 'stock', 'materials', 'material-types'].includes(tab.v
 }, { immediate: true })
 watch(() => `${auth.currentUser?.id ?? ''}:${auth.currentUser?.team_id ?? ''}:${auth.currentUser?.active}:${auth.isTeamAccount}`, () => { closeDetails(); void loadView() })
 
-async function scan() {
-  const code = scanValue.value.trim()
-  if (!code || scanning.value || !scopeReady.value) return
-  const current = ++scanVersion
-  scanning.value = true; scanError.value = ''
-  try {
-    if (isDispatchNumber(code)) {
-      const group = await materialDispatchApi.get(code)
-      if (current !== scanVersion) return
-      if (![group.source_team.id, group.next_team.id].some(id => String(id) === teamKey.value)) { scanError.value = '此出库批次与当前工作台不符。'; return }
-      openDispatch(group.dispatch_no); scanValue.value = ''; return
-    }
-    const transfer = await materialTransferApi.get(code)
-    if (current !== scanVersion) return
-    if (String(isExternalEntryKind(transfer.entry_kind) ? transfer.source_team.id : transfer.next_team.id) !== teamKey.value) { scanError.value = '这张单据的接收班组与当前工作台不符，外部出库请到出库班组查看。'; return }
-    openIncoming(transfer); scanValue.value = ''
-  } catch (error) { if (current === scanVersion) scanError.value = error instanceof Error ? error.message : '未找到转料单' }
-  finally { if (current === scanVersion) scanning.value = false }
-}
 async function focusScan() { if (tab.value !== 'pending') await router.replace({ path: route.path, query: { tab: 'pending' } }); await nextTick(); scanner.value?.focus() }
-function handleScanKey(event: KeyboardEvent) {
-  if (tab.value !== 'pending' || detailOpen.value || actionOpen.value || event.ctrlKey || event.altKey || event.metaKey || (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable=true],[role=dialog]'))) return
-  const now = Date.now()
-  if (now - hidTime > 100) hid = ''
-  hidTime = now
-  if (event.key === 'Enter') { if (hid.length >= 6) { event.preventDefault(); scanValue.value = hid; void scan() } hid = '' }
-  else if (event.key.length === 1) hid += event.key
-}
 onMounted(() => {
   if (!directory.loaded && !directory.loading) void directory.refreshTeamDirectory()
-  document.addEventListener('keydown', handleScanKey)
   document.addEventListener('visibilitychange', syncVisibility)
   if (!document.hidden) connectChanges()
 })
-onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clearTimeout(refreshTimer); ++version; ++scanVersion; ++actionVersion; document.removeEventListener('keydown', handleScanKey); document.removeEventListener('visibilitychange', syncVisibility) })
+onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clearTimeout(refreshTimer); ++version; ++actionVersion; document.removeEventListener('visibilitychange', syncVisibility) })
 </script>
 
 <template>
@@ -377,10 +338,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                 <ElButton class="list-refresh" :icon="Refresh" :loading="loading" text aria-label="刷新工作台" title="刷新" @click="loadView()" />
               </div>
               <div v-if="activeListFilters.length" class="list-active-filters"><ElTag v-for="filter in activeListFilters" :key="filter.key" closable @close="removeListFilter(filter.key)">{{ filter.label || queryText(filter.key) }}</ElTag></div>
-              <div v-if="tab === 'pending'" class="incoming-scan">
-                <span>扫码定位</span><div class="scanner-inline"><ElInput ref="scanner" v-model="scanValue" aria-label="扫描转料批次号" placeholder="扫码或输入批次号" @keyup.enter="scan" /><ElButton :icon="FullScreen" :loading="scanning" @click="scan">查看来料</ElButton></div>
-              </div>
-              <p v-if="tab === 'pending' && scanError" class="scanner-error" role="alert">{{ scanError }}</p>
+              <MaterialReceiptScanner v-if="tab === 'pending' && canWrite" :key="teamId" ref="scanner" :team-id="teamId" :paused="drawerOpen || actionOpen || pickerOpen || receiptOpen || businessOpen || printOpen" @received="loadView(true, true)" />
               <StatePanel v-if="loading" state="loading" title="正在读取物料记录" />
               <StatePanel v-else-if="loadError" state="error" :description="loadError" @retry="loadView" />
               <StatePanel v-else-if="!total" state="empty" :title="tab === 'pending' ? '暂无来料待签收' : tab === 'outgoing' ? '暂无出库记录' : tab === 'receipts' ? '暂无入库记录' : '暂无丢失记录'" description="可以调整搜索条件或刷新记录。" />
@@ -444,7 +402,6 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
               </div>
               <footer v-if="!loading && !loadError" class="table-footer"><span>共 {{ total }} 条记录</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[10, 20, 50, 100]" :total="total" layout="sizes, prev, pager, next" @current-change="applyFilters($event)" @size-change="applyFilters(1, $event)" /></footer>
             </section>
-            <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="selectedDispatchNo" :allow-print="tab !== 'pending'" :receipt-only="tab === 'pending'" @changed="loadView" />
             <MaterialTransferDrawer v-model="drawerOpen" :transfer="selected" :batch-no="selectedBatchNo" :trace-scope="traceScope" :allow-print="tab !== 'pending'" :receipt-only="tab === 'pending'" @changed="loadView" />
           </div>
         </template>
@@ -454,7 +411,6 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
       <StockSourcePicker v-if="pickerOpen && canWrite" :team-id="teamId" @close="closeDetails" @selected="openAction('dispatch', $event)" />
       <WarehouseReceiptDialog v-model="receiptOpen" :team-id="teamId" @saved="savedReceipt" />
       <MaterialStockActionDialog v-model="actionOpen" :team-id="teamId" :mode="actionMode" :sources="actionSources" @saved="savedAction" @balances-changed="loadView" />
-      <MaterialDispatchDrawer v-if="['overview', 'stock', 'materials'].includes(tab)" v-model="groupOpen" :dispatch-no="selectedDispatchNo" @changed="loadView" />
       <MaterialBatchPrintDialog v-model="printOpen" :items="printRows" />
       <TeamBusinessDialog v-if="businessOpen && canWrite" :key="teamId" v-model="businessOpen" :team-id="teamId" @changed="businessChanged" @stocked="openPrint" />
     </template>
@@ -467,7 +423,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 .legacy-notice a { color: var(--primary); }
 .team-list-layout { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-width: 0; min-height: 0; gap: 12px; }
 .team-list-panel { container-type: inline-size; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #fff; border: 1px solid var(--line); border-radius: var(--card-radius); overflow: hidden; }
-.list-heading, .list-toolbar, .incoming-scan, .list-active-filters, .scanner-error, .table-footer { flex-shrink: 0; }
+.list-heading, .list-toolbar, .list-active-filters, .table-footer { flex-shrink: 0; }
 .list-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; min-height: 68px; padding: 16px; border-bottom: 1px solid var(--line); }
 .list-heading__title { display: flex; align-items: baseline; gap: 12px; }
 .list-heading h2 { margin: 0; font-size: 16px; font-weight: 600; }
@@ -488,12 +444,6 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 .list-active-filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 12px; }
 .list-active-filters :deep(.el-tag) { max-width: 100%; }
 .list-active-filters :deep(.el-tag__content) { overflow: hidden; text-overflow: ellipsis; }
-.incoming-scan { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 0 16px 14px; }
-.incoming-scan > span { color: var(--muted); font-size: 13px; }
-.scanner-inline { display: flex; align-items: center; flex: 0 1 380px; min-width: 0; gap: 8px; }
-.scanner-inline > .el-input { flex: 1; min-width: 0; }
-.scanner-inline > .el-button { margin-left: 0; height: 36px; }
-.scanner-error { margin: 0 12px 8px; font-size: 12px; color: var(--danger); }
 .team-table-scroll { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .team-table :deep(.el-checkbox) { height: 24px; }
 .record-serial { display: flex; align-items: center; justify-content: center; min-width: 0; white-space: nowrap; }
@@ -515,11 +465,9 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
   .list-toolbar > .el-checkbox { grid-column: 1 / -1; }
   .list-query-actions { grid-column: 1; }
   .list-toolbar > .list-refresh { grid-column: 2; }
-  .incoming-scan { gap: 8px; }
-  .scanner-inline { flex-basis: 100%; }
 }
 @media (max-width: 760px) {
-  .list-heading, .list-toolbar, .incoming-scan, .list-active-filters { padding-inline: 12px; }
+  .list-heading, .list-toolbar, .list-active-filters { padding-inline: 12px; }
   .table-footer { padding: 8px; overflow-x: auto; }
   .team-table :deep(.el-table-fixed-column--right) { position: relative !important; right: auto !important; }
   .team-table :deep(.el-table-fixed-column--right::before) { box-shadow: none; }

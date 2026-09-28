@@ -9,7 +9,7 @@ const emit = defineEmits<{ dispatch: []; receipt: []; scan: []; refresh: [] }>()
   <div class="workspace-actions" role="group" aria-label="班组操作">
     <ElButton v-if="canReceive" :type="warehouse ? 'primary' : 'default'" :icon="warehouse ? Plus : undefined" :loading="openingReceipt" @click="emit('receipt')">{{ warehouse ? '新建入库' : '手工入库' }}</ElButton>
     <ElButton v-if="canWrite" :type="warehouse ? 'default' : 'primary'" :icon="Plus" :loading="openingDispatch" @click="emit('dispatch')">新建出库</ElButton>
-    <ElButton v-if="showScan" :icon="FullScreen" @click="emit('scan')">扫码查询</ElButton>
+    <ElButton v-if="canWrite && showScan" :icon="FullScreen" @click="emit('scan')">扫码入库</ElButton>
     <ElButton v-if="showRefresh" class="workspace-refresh" :icon="Refresh" :loading="loading" text aria-label="刷新工作台" title="刷新" @click="emit('refresh')" />
   </div>
 </template>

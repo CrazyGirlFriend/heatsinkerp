@@ -171,5 +171,4 @@
   .page-shift-leave-active { transition: none !important; }
 }
 
-.transfer-scan-popover.el-popper { max-width: calc(100vw - 32px); padding: 20px; }
 @media (max-width: 560px) { .el-dialog { padding: 20px; } .el-message-box { max-width: calc(100vw - 32px); } .el-pagination { --el-pagination-button-width: 28px; } }

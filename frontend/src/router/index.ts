@@ -96,6 +96,16 @@ router.beforeEach(async (to) => {
       return { path: '/login', query: { redirect: to.fullPath } }
     }
   }
+  if (to.name === 'transfer-batches' && to.query.scan === '1') {
+    const user = currentUser.value
+    const teamId = Number(user?.team_id)
+    // Old scanner bookmarks only navigate. Never sign a batch from a URL.
+    if (user?.role === 'TEAM' && user.active !== false && Number.isSafeInteger(teamId) && teamId > 0) {
+      return { path: `/team-workspaces/${teamId}`, query: { tab: 'pending' }, replace: true }
+    }
+    const { scan: _scan, ...query } = to.query
+    return { path: '/transfer-batches', query, hash: to.hash, replace: true }
+  }
   if (to.name === 'material-trace' && to.query.team_id !== undefined) {
     const id = Number(to.query.team_id)
     if (!Number.isSafeInteger(id) || id < 1) return { path: defaultAuthenticatedPath(currentUser.value) }

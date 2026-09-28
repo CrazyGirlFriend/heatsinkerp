@@ -109,16 +109,42 @@ describe('phase-one routes', () => {
     expect(router.currentRoute.value.path).toBe('/transfer-batches')
   })
 
-  it.each(['/scan', '/transfer-batches/scan'])('merges legacy scan route %s while preserving batch and filters', async (path) => {
+  it.each(['/scan', '/transfer-batches/scan'])('returns administrators from old scanner route %s to ordinary records', async (path) => {
     await router.push(path + '?batch_no=TL001&status=pending#batch')
     expect(router.currentRoute.value.path).toBe('/transfer-batches')
-    expect(router.currentRoute.value.query).toEqual({ batch_no: 'TL001', status: 'pending', scan: '1' })
+    expect(router.currentRoute.value.query).toEqual({ batch_no: 'TL001', status: 'pending' })
     expect(router.currentRoute.value.hash).toBe('#batch')
   })
 
-  it('opens the scanner from a bookmarked scan page without a batch number', async () => {
-    await router.push('/transfer-batches/scan')
-    expect(router.currentRoute.value.fullPath).toBe('/transfer-batches?scan=1')
+  it.each(['/scan', '/transfer-batches/scan', '/transfer-batches?scan=1'])('routes team scanner bookmark %s to its own pending receipts without submitting URL batches', async path => {
+    authMocks.admin = false
+    authMocks.user = { role: 'TEAM', team_id: 2 }
+    await router.push(`${path}${path.includes('?') ? '&' : '?'}batch_no=TL001&team_id=999&next_team_id=999&status=received`)
+    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/2?tab=pending')
+  })
+
+  it('resolves the receiving team after refreshing the account identity', async () => {
+    authMocks.admin = false
+    authMocks.user = { role: 'TEAM', team_id: 2 }
+    authMocks.refresh.mockImplementationOnce(async () => { authMocks.user = { role: 'TEAM', team_id: 3 } })
+    await router.push('/scan')
+    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/3?tab=pending')
+  })
+
+  it('retains login protection before redirecting a scanner bookmark to receiving', async () => {
+    authMocks.authenticated = false
+    await router.push('/scan?batch_no=TL001')
+    expect(router.currentRoute.value.path).toBe('/login')
+    const redirect = router.currentRoute.value.query.redirect
+    authMocks.authenticated = true; authMocks.admin = false; authMocks.user = { role: 'TEAM', team_id: 2 }
+    await router.push({ path: '/login', query: { redirect }, force: true })
+    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/2?tab=pending')
+  })
+
+  it('does not create a receiving target for an unbound team account', async () => {
+    authMocks.admin = false; authMocks.user = { role: 'TEAM', team_id: null }
+    await router.push('/scan')
+    expect(router.currentRoute.value.fullPath).toBe('/transfer-batches')
   })
 
   it('returns a team leader from administrator settings to transfer records', async () => {
