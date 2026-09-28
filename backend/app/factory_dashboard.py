@@ -192,7 +192,9 @@ def ownership(db):
 
     # There is no separate material master: effective documents supply the
     # vocabulary. Keep a grade's column after its balance reaches zero.
-    names = set(db.scalars(select(material_name(mt.material_name)).where(mt.status != "voided").distinct()))
+    names = set(
+        db.scalars(select(material_name(mt.material_name)).where(mt.status != "voided").distinct())
+    )
     names.update(r["material"] for r in rows)
     by_material, by_team, by_cell = defaultdict(list), defaultdict(list), defaultdict(list)
     for row in rows:
@@ -205,10 +207,7 @@ def ownership(db):
         "rows": [
             {
                 **t,
-                "amounts": {
-                    m["name"]: total(by_cell[t["team_id"], m["name"]])
-                    for m in materials
-                },
+                "amounts": {m["name"]: total(by_cell[t["team_id"], m["name"]]) for m in materials},
                 "total": total(by_team[t["team_id"]]),
             }
             for t in teams
