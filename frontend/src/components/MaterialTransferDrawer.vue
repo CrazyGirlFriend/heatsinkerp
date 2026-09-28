@@ -109,7 +109,7 @@ const stateMessage = computed(() => {
   if (external.value && current.value.status === 'pending') return `由${current.value.source_team.name}确认实际${actionLabel.value}，确认后扣减库存`
   if (current.value.status === 'received') return '接收已确认，转料内容已锁定'
   if (current.value.status === 'voided') return '该转料单已作废'
-  if (canConfirm.value) return '整单确认接收：无需重新录入数量或重量，请核对后确认。'
+  if (canConfirm.value) return '整单确认签收：无需重新录入数量或重量，请核对后确认。'
   if (canEdit.value || canVoid.value) return '接收确认前，转出方可以修改或作废'
   return '当前账号仅可查看此转料单'
 })
@@ -174,8 +174,8 @@ async function confirmReceipt(): Promise<void> {
   try {
     await ElMessageBox.confirm(
       `确认已收到 ${numberText(transfer.quantity, '件')}、${numberText(transfer.weight, 'kg')}？确认后转出方不能修改。`,
-      '确认接收',
-      { type: 'warning', confirmButtonText: '确认接收', cancelButtonText: '取消' },
+      '确认签收',
+      { type: 'warning', confirmButtonText: '确认签收', cancelButtonText: '取消' },
     )
   } catch {
     if (epoch === actionVersion) confirming.value = false
@@ -189,7 +189,7 @@ async function confirmReceipt(): Promise<void> {
     emit('changed', confirmed)
     emit('confirmed', confirmed)
     reviewNotice.value = ''
-    showToast(`转料单 ${confirmed.batch_no} 已确认接收`, 'success')
+    showToast(`转料单 ${confirmed.batch_no} 已确认签收`, 'success')
   } catch (error) {
     if (epoch !== actionVersion || !props.modelValue) return
     const message = error instanceof MaterialTransferApiError ? error.message : error instanceof Error ? error.message : '接收确认失败'
@@ -372,7 +372,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
     <template v-if="current" #footer>
       <div class="drawer-footer">
         <ElButton v-if="canReject" type="warning" plain :disabled="confirming || voiding" @click="rejectTransfer">退回核对</ElButton>
-        <ElButton v-if="canConfirm" type="primary" :icon="CircleCheck" :loading="confirming" :disabled="locationBusy" @click="confirmReceipt">确认接收</ElButton>
+        <ElButton v-if="canConfirm" type="primary" :icon="CircleCheck" :loading="confirming" :disabled="locationBusy" @click="confirmReceipt">确认签收</ElButton>
         <ElButton v-if="canConfirmExternal" type="primary" :icon="CircleCheck" :loading="confirming" @click="confirmExternal">确认{{ actionLabel }}</ElButton>
         <ElButton v-if="current.can_edit_delivery && !loadError && !loading" :disabled="confirming || voiding" @click="deliveryOpen = true">维护交期</ElButton>
         <a v-if="current.delivery_origin_batch_no && current.delivery_origin_batch_no !== current.batch_no" :href="'/transfer-batches?batch_no=' + encodeURIComponent(current.delivery_origin_batch_no)">查看交期源单</a>

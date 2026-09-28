@@ -9,7 +9,7 @@ afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); vi.unstubAllGlobals(
 describe('workspace with in-page navigation', () => {
   it('retains the reading layout and selects each warehouse section without large headings', async () => {
     wrapper = mount(TeamWorkspaceShell, { props: { title: '库房', modelValue: 'stock', warehouse: true } })
-    for (const [modelValue, label] of [['stock', '库存明细'], ['pending', '待接收'], ['receipts', '入库记录'], ['outgoing', '出库记录'], ['losses', '丢失记录'], ['materials', '材质库存'], ['material-types', '类型库存'], ['history', '收发历史']]) {
+    for (const [modelValue, label] of [['stock', '库存明细'], ['pending', '来料待签收'], ['receipts', '入库记录'], ['outgoing', '出库记录'], ['losses', '丢失记录'], ['materials', '材质库存'], ['material-types', '类型库存'], ['history', '收发历史']]) {
       await wrapper.setProps({ modelValue })
       expect(wrapper.classes()).toContain('team-workspace--reading')
       expect(wrapper.classes('team-workspace--materials')).toBe(['materials', 'material-types'].includes(modelValue!))
@@ -24,7 +24,7 @@ describe('workspace with in-page navigation', () => {
   })
   it('keeps actions inside the data toolbar and hides warehouse-only sections for other teams', async () => {
     wrapper = mount(TeamWorkspaceShell, { props: { title: '研磨', modelValue: 'stock' }, slots: { default: '<div><header><button>新建出库</button></header>库存数据</div>' } })
-    expect(wrapper.findAll('nav button').map(button => button.text())).toEqual(['库存明细', '待接收', '出库记录', '丢失记录', '材质库存', '类型库存', '收发历史'])
+    expect(wrapper.findAll('nav button').map(button => button.text())).toEqual(['库存明细', '来料待签收', '出库记录', '丢失记录', '材质库存', '类型库存', '收发历史'])
     await wrapper.findAll('nav button')[1]!.trigger('click')
     expect(wrapper.emitted('update:modelValue')).toEqual([['pending']])
     expect(wrapper.get('[role=region] header').text()).toBe('新建出库')
@@ -35,7 +35,7 @@ describe('workspace with in-page navigation', () => {
     const input = wrapper.get('input').element
     expect(wrapper.get('.team-workspace__pending').text()).toBe('23')
     await wrapper.setProps({ pendingCount: 24, modelValue: 'pending' })
-    expect(wrapper.get('nav [aria-current=page]').text()).toBe('待接收24')
+    expect(wrapper.get('nav [aria-current=page]').text()).toBe('来料待签收24')
     expect(wrapper.get('input').element).toBe(input)
     for (const pendingCount of [0, null]) {
       await wrapper.setProps({ pendingCount })

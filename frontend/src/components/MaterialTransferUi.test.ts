@@ -20,7 +20,7 @@ describe('pure material transfer interface', () => {
   })
 
   it('gives the target one whole-batch confirmation action with no receiving inputs', () => {
-    expect(drawerSource).toContain('整单确认接收')
+    expect(drawerSource).toContain('整单确认签收')
     expect(drawerSource).toContain('无需重新录入数量或重量')
     expect(drawerSource).toContain('确认后转出方不能修改')
     expect(drawerSource).not.toContain('received_quantity')

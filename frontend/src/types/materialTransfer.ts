@@ -228,7 +228,7 @@ export function materialTransferStatusLabel(status: MaterialTransferStatus | str
   if (status === 'dispatched') return `已${externalActionLabel(entryKind)}`
   if (status === 'received' && entryKind === 'warehouse_receipt') return '已入库'
   const labels: Record<string, string> = {
-    pending: '待接收',
+    pending: '待签收',
     received: '已接收',
     voided: '已作废',
   }

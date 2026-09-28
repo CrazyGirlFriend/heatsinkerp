@@ -73,7 +73,7 @@ describe('application navigation shell', () => {
     const { wrapper, router } = await renderApp(false)
     await router.push('/team-workspaces/1?tab=pending'); await flushPromises()
     expect(wrapper.find('.topbar').exists()).toBe(false)
-    expect(wrapper.get('#main-content').attributes('aria-label')).toBe('轧制 · 待接收')
+    expect(wrapper.get('#main-content').attributes('aria-label')).toBe('轧制 · 来料待签收')
     expect(wrapper.get('.factory-nav [aria-current=page]').attributes('aria-label')).toBe('轧制工作台')
     await router.push('/team-workspaces/1?tab=history'); await flushPromises()
     expect(wrapper.get('#main-content').attributes('aria-label')).toBe('轧制 · 收发历史')

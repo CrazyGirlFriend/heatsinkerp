@@ -36,7 +36,7 @@ async function render(props: { allowPrint?: boolean } = {}) {
   await flushPromises()
 }
 async function confirm() {
-  await wrapper.findAll('button').find(button => button.text() === '确认接收')!.trigger('click')
+  await wrapper.findAll('button').find(button => button.text() === '确认签收')!.trigger('click')
   await flushPromises()
 }
 
@@ -100,7 +100,7 @@ describe('material transfer receipt review', () => {
     const reading = live.refresh()
     let cancel!: (reason: string) => void
     vi.mocked(ElMessageBox.confirm).mockReturnValueOnce(new Promise((_resolve, reject) => { cancel = reject }))
-    await wrapper.findAll('button').find(button => button.text() === '确认接收')!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === '确认签收')!.trigger('click')
     expect(live.busy()).toBe(true)
     finish(fixture({ quantity: 99, version: 6 })); await reading; await flushPromises()
     expect(wrapper.text()).toContain('77 件')
@@ -121,7 +121,7 @@ describe('material transfer receipt review', () => {
     await render()
     expect(wrapper.text()).toContain('入库来源'); expect(wrapper.text()).toContain('已入库')
     expect(wrapper.text()).toContain('登记人'); expect(wrapper.text()).toContain('手工入库已完成')
-    expect(wrapper.findAll('button').some(button => ['确认接收', '编辑', '作废'].includes(button.text()))).toBe(false)
+    expect(wrapper.findAll('button').some(button => ['确认签收', '编辑', '作废'].includes(button.text()))).toBe(false)
     expect(wrapper.findAll('button').some(button => button.text() === '打印入库单')).toBe(true)
     expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('外部来源未登记')
   })
@@ -149,11 +149,11 @@ describe('material transfer receipt review', () => {
     expect(wrapper.text()).toContain('132 件')
     expect(wrapper.text()).toContain('技术要求\n完整第二行')
     expect(wrapper.find('input[type="number"]').exists()).toBe(false)
-    expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('待接收')
+    expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('待签收')
     await confirm()
     expect(materialTransferApi.confirm).toHaveBeenCalledWith('TL20260906000001', { idempotency_key: expect.any(String), expected_version: 4 })
     expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('已接收')
-    expect(wrapper.findAll('button').some(button => ['编辑', '作废', '确认接收'].includes(button.text()))).toBe(false)
+    expect(wrapper.findAll('button').some(button => ['编辑', '作废', '确认签收'].includes(button.text()))).toBe(false)
   })
 
   it('refreshes a conflicting receipt, shows the changed document and waits for a second confirmation', async () => {
@@ -164,7 +164,7 @@ describe('material transfer receipt review', () => {
     expect(materialTransferApi.confirm).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('更新后的材质')
     expect(wrapper.text()).toContain('请重新核对最新内容后接收')
-    expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('待接收')
+    expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('待签收')
     await confirm()
     expect(materialTransferApi.confirm).toHaveBeenLastCalledWith('TL20260906000001', { idempotency_key: expect.any(String), expected_version: 5 })
   })
@@ -174,9 +174,9 @@ describe('material transfer receipt review', () => {
     vi.mocked(materialTransferApi.confirm).mockRejectedValueOnce(new MaterialTransferApiError('单据已更新', 409))
     vi.mocked(materialTransferApi.get).mockRejectedValueOnce(new Error('offline'))
     await confirm()
-    expect(wrapper.findAll('button').some(button => button.text() === '确认接收')).toBe(false)
+    expect(wrapper.findAll('button').some(button => button.text() === '确认签收')).toBe(false)
     expect(wrapper.findAll('button').some(button => button.text() === '重新读取')).toBe(true)
-    expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('待接收')
+    expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('待签收')
   })
 
   it('does not invent a version for old responses and renders real history only', async () => {

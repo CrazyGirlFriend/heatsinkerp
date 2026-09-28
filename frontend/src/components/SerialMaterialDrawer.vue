@@ -78,7 +78,7 @@ onBeforeUnmount(() => { ++version })
       <template v-if="summary">
         <ElDescriptions :column="3" border>
           <ElDescriptionsItem v-for="[key, label] in meta" :key="key" :label="label">{{ field(key) }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="待接收"><MaterialAmount :quantity="summary.pending_incoming_quantity" :weight="summary.pending_incoming_weight" /></ElDescriptionsItem>
+          <ElDescriptionsItem label="来料待签收"><MaterialAmount :quantity="summary.pending_incoming_quantity" :weight="summary.pending_incoming_weight" /></ElDescriptionsItem>
           <ElDescriptionsItem label="累计丢失"><MaterialAmount :quantity="summary.lost_quantity" :weight="summary.lost_weight" /></ElDescriptionsItem>
           <ElDescriptionsItem label="最近更新">{{ formatDateTime(summary.last_activity_at) }}</ElDescriptionsItem>
         </ElDescriptions>

@@ -9,7 +9,7 @@ describe('transfer status perspective', () => {
     try {
       expect(wrapper.text()).toBe('转出待签收')
       await wrapper.setProps({ status: 'received' }); expect(wrapper.text()).toBe('已签收')
-      await wrapper.setProps({ status: 'pending', outgoing: false }); expect(wrapper.text()).toBe('待接收')
+      await wrapper.setProps({ status: 'pending', outgoing: false }); expect(wrapper.text()).toBe('待签收')
       await wrapper.setProps({ entryKind: 'warehouse_outbound', outgoing: true }); expect(wrapper.text()).toBe('待出库')
     } finally { wrapper.unmount() }
   })

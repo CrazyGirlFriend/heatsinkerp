@@ -102,7 +102,7 @@ describe('external document confirmation', () => {
     await drawer(kind)
     expect(wrapper.text()).toContain(`待${verb}`)
     expect(wrapper.text()).not.toContain(`待${verb}确认`)
-    expect(wrapper.findAll('button').some(button => button.text() === '确认接收')).toBe(false)
+    expect(wrapper.findAll('button').some(button => button.text() === '确认签收')).toBe(false)
     await confirm(`确认${verb}`)
     expect(ElMessageBox.confirm).toHaveBeenCalledWith(expect.stringContaining('外部收货单位'), `确认${verb}`, expect.any(Object))
     expect(ElMessageBox.confirm).toHaveBeenCalledWith(expect.stringContaining('确认后扣减本班组库存'), `确认${verb}`, expect.any(Object))

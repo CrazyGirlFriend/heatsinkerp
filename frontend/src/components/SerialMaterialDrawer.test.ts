@@ -27,7 +27,7 @@ it.each(['incoming', 'outgoing'])('separates all %s record fields inside serial 
     await flushPromises()
     wrapper.getComponent({ name: 'ElTabs' }).vm.$emit('update:modelValue', tab); await flushPromises()
     expect(wrapper.findAll('.serial-record-table thead th').map(cell => cell.text())).toEqual(['交接批次', '材质', '规格', '来源', '去向', '件数', '重量 (kg)', '状态', '登记人', '登记时间'])
-    expect(wrapper.get('.serial-record-table tbody tr').findAll('td').map(cell => cell.text())).toEqual(['TL-12', '铜钼', '10 × 20', '库房', '研磨', '2', '1.234', '待接收', '张师傅', formatDateTime(transfer.transferred_at)])
+    expect(wrapper.get('.serial-record-table tbody tr').findAll('td').map(cell => cell.text())).toEqual(['TL-12', '铜钼', '10 × 20', '库房', '研磨', '2', '1.234', '待签收', '张师傅', formatDateTime(transfer.transferred_at)])
     expect(wrapper.find('.serial-record-table .material-amount, .serial-record-table small').exists()).toBe(false)
   } finally { wrapper.unmount() }
 })
@@ -79,7 +79,7 @@ it('keeps incoming and lost amounts separate from current stock and preserves li
     expect(teamMaterialApi.stock).toHaveBeenCalledWith(914, expect.objectContaining({ page_size: 10 }))
     expect(wrapper.getComponent(ElPagination).props('pageSizes')).toEqual([10, 20, 50, 100])
     const fields = wrapper.get('.el-descriptions')
-    expect(fields.text()).toContain('待接收')
+    expect(fields.text()).toContain('来料待签收')
     expect(fields.text()).toContain('累计丢失')
     expect(fields.findAllComponents(MaterialAmount).map((item: VueWrapper) => item.props())).toMatchObject([
       { quantity: summary.pending_incoming_quantity, weight: summary.pending_incoming_weight },

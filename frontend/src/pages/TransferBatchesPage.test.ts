@@ -104,7 +104,7 @@ describe('transfer list refresh continuity', () => {
     expect(tableRows.map(row => row.get('.transfer-source-cell').text())).toEqual(['库房手工入库', '电镀', '库房', '检验'])
     expect(tableRows.map(row => row.get('.transfer-destination-cell').text())).toEqual(['库房', '检验', '外协收料单位', '客户收货仓'])
     expect(tableRows.map(row => row.get('.transfer-purpose-cell').text())).toEqual(['未指定', '去毛刺', '—', '—'])
-    expect(tableRows.map(row => row.get('.transfer-status-cell').text())).toEqual(['已入库', '待接收', '待出库', '已发货'])
+    expect(tableRows.map(row => row.get('.transfer-status-cell').text())).toEqual(['已入库', '待签收', '待出库', '已发货'])
     expect(page.find('.transfer-flow, .receipt-flow, .flow-track').exists()).toBe(false)
     const mobileRows = page.findAll('.mobile-transfer-parties')
     expect(mobileRows.map(row => row.findAll('small').map(label => label.text()))).toEqual(Array.from({ length: 4 }, () => ['来源', '去向', '接收业务']))

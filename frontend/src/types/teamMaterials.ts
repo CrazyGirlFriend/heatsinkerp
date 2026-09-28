@@ -76,5 +76,5 @@ export interface CreateLoss { source_transfer_id: number; quantity: number; weig
 export const dispatchStatusLabels: Record<DispatchStatus, string> = { pending: '待确认', partial: '部分完成', received: '已接收', dispatched: '已出库 / 发货', voided: '已作废' }
 export function dispatchStatusLabel(status: DispatchStatus, kind?: MaterialEntryKind): string {
   if (isExternalEntryKind(kind)) return status === 'pending' ? `待${externalActionLabel(kind)}确认` : status === 'partial' ? `部分${externalActionLabel(kind)}` : status === 'dispatched' ? `已${externalActionLabel(kind)}` : dispatchStatusLabels[status]
-  return status === 'pending' ? '待接收' : status === 'partial' ? '部分接收' : dispatchStatusLabels[status]
+  return status === 'pending' ? '待签收' : status === 'partial' ? '部分接收' : dispatchStatusLabels[status]
 }

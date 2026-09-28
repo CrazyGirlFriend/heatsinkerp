@@ -19,7 +19,7 @@ describe('eight official workspace profiles', () => {
 
 describe('shared workspace navigation', () => {
   it('keeps seven workshop entries and the extra warehouse receipt entry', () => {
-    expect(teamWorkspaceSectionsFor(false).map(item => item.label)).toEqual(['库存明细', '待接收', '出库记录', '丢失记录', '材质库存', '类型库存', '收发历史'])
+    expect(teamWorkspaceSectionsFor(false).map(item => item.label)).toEqual(['库存明细', '来料待签收', '出库记录', '丢失记录', '材质库存', '类型库存', '收发历史'])
     expect(teamWorkspaceSectionsFor(true).map(item => item.value)).toContain('receipts')
     expect(teamWorkspaceSectionsFor(true).map(item => item.value)).not.toContain('warehouse')
     expect(teamWorkspaceSectionsFor(true, true).map(item => item.value)).toContain('warehouse')

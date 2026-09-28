@@ -328,7 +328,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
               <p v-if="tab === 'pending' && scanError" class="scanner-error" role="alert">{{ scanError }}</p>
               <StatePanel v-if="loading" state="loading" title="正在读取物料记录" />
               <StatePanel v-else-if="loadError" state="error" :description="loadError" @retry="loadView" />
-              <StatePanel v-else-if="!total" state="empty" :title="tab === 'pending' ? '暂无待接收来料' : tab === 'outgoing' ? '暂无出库记录' : tab === 'receipts' ? '暂无入库记录' : '暂无丢失记录'" description="可以调整搜索条件或刷新记录。" />
+              <StatePanel v-else-if="!total" state="empty" :title="tab === 'pending' ? '暂无来料待签收' : tab === 'outgoing' ? '暂无出库记录' : tab === 'receipts' ? '暂无入库记录' : '暂无丢失记录'" description="可以调整搜索条件或刷新记录。" />
               <div v-else class="team-table-scroll">
                 <ElTable v-if="tab === 'pending'" :data="pending" class="business-table team-table single-line-table" row-key="id">
                   <ElTableColumn label="批次号" min-width="190" show-overflow-tooltip><template #default="{ row }"><button class="batch-link" :title="row.batch_no" @click="openIncoming(asTransfer(row))">{{ row.batch_no }}</button></template></ElTableColumn>

@@ -8,7 +8,7 @@ afterEach(() => wrapper?.unmount())
 async function render(busy = false) {
   wrapper = mount(MaterialTransferDetailFrame, {
     props: { modelValue: true, busy },
-    slots: { header: '<h2>批次详情</h2>', default: '<p>原单资料</p>', footer: '<button>确认接收</button>' },
+    slots: { header: '<h2>批次详情</h2>', default: '<p>原单资料</p>', footer: '<button>确认签收</button>' },
     global: { stubs: { teleport: true } },
   })
   await flushPromises()
@@ -19,7 +19,7 @@ describe('centered material detail frame', () => {
   it('uses a centered modal with original header, document and footer rather than a side panel', async () => {
     const dialog = await render()
     expect(dialog.props()).toMatchObject({ alignCenter: true, appendToBody: true, modal: true, lockScroll: true, width: 'min(1080px, calc(100vw - 32px))' })
-    for (const text of ['批次详情', '原单资料', '确认接收']) expect(wrapper.text()).toContain(text)
+    for (const text of ['批次详情', '原单资料', '确认签收']) expect(wrapper.text()).toContain(text)
     expect(wrapper.find('aside, .el-drawer').exists()).toBe(false)
     dialog.vm.$emit('update:modelValue', false)
     expect(wrapper.emitted('close')).toHaveLength(1)

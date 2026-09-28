@@ -103,7 +103,7 @@ async function submitOpening() {
       <ElAlert v-else-if="opening?.has_stock_history" title="本班组已有库存记录，不能重复登记初始库存。" type="warning" :closable="false" />
       <ElAlert v-else-if="!opening?.enabled" title="请系统管理员在“班组管理”中开启初始库存录入权限。" type="info" :closable="false" />
       <template v-if="opening?.can_submit">
-        <p class="settings-note">登记启用系统前已在本班组的物料。每行独立批次；仅确认后计入库存，不产生下序待接收。</p>
+        <p class="settings-note">登记启用系统前已在本班组的物料。每行独立批次；仅确认后计入库存，不产生下序的待签收来料。</p>
         <div class="opening-lines">
           <article v-for="(line, index) in lines" :key="index" class="opening-line">
             <header><strong>物料 {{ index + 1 }}</strong><ElButton v-if="lines.length > 1" text type="danger" :disabled="saving" @click="lines.splice(index, 1)">移除</ElButton></header>

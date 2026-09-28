@@ -60,7 +60,7 @@ const cards = computed(() => {
     { key: 'types', title: '物料类型分布', hint: '未转出库存构成', empty: !materialTypes.value.some(row => row[metric] > 0),
       option: { ...common.value, tooltip: { ...common.value.tooltip, trigger: 'item', renderMode: 'html', appendTo: 'body', confine: false, position: natureTooltipPosition, className: 'factory-nature-tooltip', textStyle: { fontSize: 12 }, padding: [8, 10] }, legend: { show: false }, series: [{ type: 'pie', radius: ['55%', '86%'], center: ['50%', '50%'], label: { show: false }, itemStyle: { borderColor: '#fff', borderWidth: 2 }, data: materialTypes.value.map(row => ({ name: row.name, value: row[metric], itemStyle: { color: row.color } })) }] } },
     { key: 'waiting', title: '待交接时长', hint: '每笔转料只统计一次', empty: !d.waiting_age.some(row => row.internal[metric] || row.external[metric]),
-      option: plot(['<1天', '1–3天', '3–7天', '≥7天'], [bar('内部待接收', d.waiting_age.map(row => row.internal[metric]), 'waiting'), bar('对外待确认', d.waiting_age.map(row => row.external[metric]), 'waiting')]) },
+      option: plot(['<1天', '1–3天', '3–7天', '≥7天'], [bar('内部待签收', d.waiting_age.map(row => row.internal[metric]), 'waiting'), bar('对外待确认', d.waiting_age.map(row => row.external[metric]), 'waiting')]) },
     { key: 'loss', title: '丢失趋势', hint: `近${d.days}天 ${format(d.period_totals.loss[metric])} ${unit.value} · 不含转废`, empty: !d.trend.some(row => row.loss[metric] > 0),
       option: plot(labels, [{ ...line('丢失', d.trend.map(row => row.loss[metric])), itemStyle: { color: colors.value[3] }, lineStyle: { color: colors.value[3], width: 2.5 }, areaStyle: { color: colors.value[3], opacity: .08 } }], false, false) },
     rank('serial', '流水号库存排行'), rank('material', '材质库存排行'),

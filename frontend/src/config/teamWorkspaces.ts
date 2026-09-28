@@ -3,7 +3,7 @@ import type { LocationQuery } from 'vue-router'
 
 export const teamWorkspaceSections = [
   { value: 'stock', label: '库存明细' },
-  { value: 'pending', label: '待接收' },
+  { value: 'pending', label: '来料待签收' },
   { value: 'receipts', label: '入库记录' },
   { value: 'outgoing', label: '出库记录' },
   { value: 'losses', label: '丢失记录' },

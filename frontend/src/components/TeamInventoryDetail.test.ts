@@ -60,7 +60,7 @@ describe('warehouse source detail', () => {
     const cells = table.findAll('tbody tr').map(row => row.findAll('td').map(cell => cell.text()))
     expect(cells[0]?.slice(0, 7)).toEqual(['TL11', '入库', '—', '供应商 A', '100', '10', '已入库'])
     expect(cells[1]?.slice(0, 7)).toEqual(['TL21', '转出', 'TL11', '轧制', '60', '6', '已接收'])
-    expect(cells[2]?.slice(0, 7)).toEqual(['TL22', '转出', 'TL11', '轧制', '20', '2', '待接收'])
+    expect(cells[2]?.slice(0, 7)).toEqual(['TL22', '转出', 'TL11', '轧制', '20', '2', '待签收'])
     await table.findAll('button').find(button => button.text() === 'TL22')!.trigger('click')
     expect(wrapper.getComponent(MaterialTransferDrawer).props('transfer')?.id).toBe(22)
     await table.findAll('button').find(button => button.text() === 'TL21')!.trigger('click')
