@@ -93,7 +93,7 @@
 | 转料记录 | 194 | 155.0 | 504.8 |
 | 仓位选项 | 195 | 149.7 | 213.1 |
 
-当前发布目录：`/opt/heatsinkrep/releases/20260928T041819Z`，`/opt/heatsinkrep/current` 已指向此目录。迁移前演示库备份在 `/opt/heatsinkrep/backups/pre-warehouse-20260928T041819Z/database.sql.gz`，包括此次新演示数据，不是旧物料数据集。
+当前唯一发布目录：`/opt/heatsinkrep/releases/20260928T041819Z`，`/opt/heatsinkrep/current` 已指向此目录。按已确认的保留策略，最终仅保留 `/opt/heatsinkrep/backups/demo-ready-20260928T041819Z/` 一份完整备份，包含新演示数据、0022 仓位字段及 674 条示例仓位，不是旧物料数据集。`database.sql.gz` 的 SHA256 为 `947e39a5d3c1f9db5ce5756f5eb2595c7cc92c4645c772b585ec58ba7c25f274`；同目录保留配置及校验文件。此前发布目录和备份已清理，质量验证报告保留。
 
 ## 证据
 
