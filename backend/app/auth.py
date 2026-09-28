@@ -9,16 +9,18 @@ from datetime import timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .database import get_db
 from .models import AuthSession, User, utcnow
+from .observability import record
 
 
 PBKDF2_ITERATIONS = 310_000
+MAX_ACTIVE_SESSIONS = 3
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -57,11 +59,31 @@ def token_digest(token: str) -> str:
 
 
 def create_session(db: Session, user: User) -> tuple[str, AuthSession]:
+    # Serialize session issuance per account, including SQLite. The no-op write
+    # holds the account lock until the login transaction commits or rolls back.
+    users = User.__table__
+    db.execute(update(users).where(users.c.id == user.id).values(updated_at=users.c.updated_at))
+    now = utcnow()
+    # A locking read sees newly committed sessions under MySQL REPEATABLE READ,
+    # even when credential verification already opened an older read snapshot.
+    active_ids = db.scalars(
+        select(AuthSession.id).where(
+            AuthSession.user_id == user.id,
+            AuthSession.revoked_at.is_(None),
+            AuthSession.expires_at > now,
+        ).limit(MAX_ACTIVE_SESSIONS).with_for_update()
+    ).all()
+    if len(active_ids) >= MAX_ACTIVE_SESSIONS:
+        record("auth.session_limit_reached", user_id=user.id, limit=MAX_ACTIVE_SESSIONS)
+        raise HTTPException(
+            status_code=409,
+            detail="该账号已在 3 个会话中登录，请先在其他浏览器或设备退出后再登录",
+        )
     raw_token = secrets.token_urlsafe(32)
     auth_session = AuthSession(
         user=user,
         token_hash=token_digest(raw_token),
-        expires_at=utcnow() + timedelta(hours=settings.session_ttl_hours),
+        expires_at=now + timedelta(hours=settings.session_ttl_hours),
     )
     db.add(auth_session)
     db.flush()
