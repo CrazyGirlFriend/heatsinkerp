@@ -124,7 +124,8 @@ def test_weight_only_waste_return_and_partial_receipt_do_not_create_factory_inpu
     supplied = dispatch(client, s, [{'source_transfer_id': origin['id'], 'quantity': 0, 'weight': 100}]).json()
     assert confirm(client, s, supplied, workshop=True).status_code == 200
     returned = dispatch(client, s, [
-        {'source_transfer_id': supplied['items'][0]['id'], 'quantity': 0, 'weight': 30, 'material_type': kind},
+        {'source_transfer_id': supplied['items'][0]['id'], 'quantity': 0, 'weight': 30, 'material_type': kind,
+         **({'sludge_gross_weight': 100, 'sludge_content_percent': 30} if kind == 'sludge' else {})},
         {'source_transfer_id': supplied['items'][0]['id'], 'quantity': 0, 'weight': 20, 'material_type': 'semi_finished'},
     ], workshop=True, notes='按流水号称重回库').json()
     assert len({row['batch_no'] for row in returned['items']}) == 2

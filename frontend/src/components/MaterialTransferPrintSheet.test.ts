@@ -36,6 +36,14 @@ const transfer: MaterialTransfer = {
 }
 
 describe('material transfer print sheet', () => {
+  it('prints actual sludge, percentage and accounting kg in both copies', () => {
+    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, material_type: 'sludge', weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30 } } })
+    for (const copy of wrapper.findAll('.material-transfer-print-copy')) {
+      expect(copy.text()).toContain('废泥实重'); expect(copy.text()).toContain('有效材料占比'); expect(copy.text()).toContain('折算重量')
+      expect(copy.text()).toContain('10 kg'); expect(copy.text()).toContain('30%'); expect(copy.text()).toContain('3 kg')
+    }
+    wrapper.unmount()
+  })
   it('prints the recorded warehouse location in both copies', () => {
     const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, next_team: { id: 1, code: 'FACTORY-WAREHOUSE', name: '库房' }, warehouse_location: 'A区-01' } } })
     for (const copy of wrapper.findAll('.material-transfer-print-copy')) {

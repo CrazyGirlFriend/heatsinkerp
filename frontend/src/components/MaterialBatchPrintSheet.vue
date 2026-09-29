@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { sludgeSummary } from '@/utils/sludgeWeight'
 import { computed } from 'vue'
 import BarcodeCard from './BarcodeCard.vue'
 import { materialDocumentTextFields, materialTypeLabel, materialTransferStatusLabel, materialSourceLabel, materialPurposeLabel, isExternalEntryKind, type MaterialTransfer } from '@/types/materialTransfer'
@@ -8,6 +9,7 @@ const opening = computed(() => props.items.length > 0 && props.items.every(item 
 const totals = computed(() => props.items.filter(item => item.status !== 'voided').reduce((sum, item) => ({ quantity: sum.quantity + item.quantity, weight: Math.round((sum.weight + item.weight) * 1000) / 1000 }), { quantity: 0, weight: 0 }))
 function details(item: MaterialTransfer) {
   return [...materialDocumentTextFields.filter(field => item[field.key]).map(field => `${field.label}：${item[field.key]}`),
+    ...(item.material_type === 'sludge' ? [sludgeSummary(item)] : []),
     ...(item.delivery_date ? [`要求发货日期：${item.delivery_date}`, `应发成品件数：${item.delivery_quantity}`, `交期源头批次：${item.delivery_origin_batch_no || item.batch_no}`] : []),
     ...(item.finished_quantity != null ? [`成品件数：${item.finished_quantity}`] : []),
     ...(item.notes ? [`说明：${item.notes}`] : [])].join('；')
@@ -17,6 +19,7 @@ function details(item: MaterialTransfer) {
 <template>
   <article class="material-batches-print-sheet" aria-label="多批次转料打印单">
     <header><h1>{{ opening ? '初始库存登记单' : '物料流转单' }}</h1><span>共 {{ items.length }} 个独立批次</span></header>
+    <p v-if="items.some(item => item.material_type === 'sludge')">重量合计使用折算重量；废泥实重与占比见各批次说明。</p>
     <table aria-label="批次转料明细">
       <colgroup><col style="width: 31%" /><col style="width: 14%" /><col style="width: 16%" /><col style="width: 12%" /><col style="width: 9%" /><col style="width: 8%" /><col style="width: 10%" /></colgroup>
       <thead><tr><th>批次条码 / 流水号</th><th>材质 / 类型</th><th>{{ opening ? '来源 / 登记班组' : '来源 / 去向' }}</th><th>接收业务</th><th>状态</th><th>件数</th><th>重量 kg</th></tr></thead>

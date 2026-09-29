@@ -8,7 +8,9 @@ const events = computed(() => [...(props.transfer.history ?? [])].sort((left, ri
 const actions = { created: '创建转料单', updated: '修改转料单', received: '确认签收', voided: '作废转料单', stocked: '手工入库已完成', dispatched: '确认出库', rejected: '库房退回核对', quantity_changed: '加工件数变更' }
 const labels: Record<string, string> = {
   warehouse_location: '入库仓位',
+  sludge_gross_weight: '废泥实重（kg）', sludge_content_percent: '有效材料占比（%）',
   stock_quantity: '未转出件数', reason: '加工说明',
+  outbound_batches: '关联出库批次',
   receipt_kind: '入库来源类别', external_source: '外部来源单位', return_dispatch_no: '原出库批次', rejection_reason: '退回核对原因',
   main_system_schema_version: '主系统接口版本', main_system_revision: '主系统资料版本',
   main_system_updated_at: '主系统资料更新时间', main_system_snapshot_hash: '主系统资料校验值',
@@ -29,7 +31,8 @@ function actionLabel(action: keyof typeof actions): string {
   }
   return actions[action]
 }
-function fieldLabel(field: string): string {
+function fieldLabel(field: string, clearance = false): string {
+  if (field === 'reason' && clearance) return '清零原因'
   const purposeLabels: Record<string, string> = { purpose_id: '接收业务编号', purpose_name: '接收业务', opening_stock_id: '初始库存登记编号' }
   if (purposeLabels[field]) return purposeLabels[field]
   if (props.transfer.entry_kind === 'opening_stock') {
@@ -60,6 +63,7 @@ function valueText(field: string, value: unknown): string {
   if (field === 'next_team_id' && String(value) === String(props.transfer.next_team.id)) return props.transfer.next_team.name
   if (field.endsWith('_team_id')) return `班组 ${value}`
   if (typeof value === 'boolean') return value ? '是' : '否'
+  if (field === 'outbound_batches' && Array.isArray(value)) return value.join('、')
   return typeof value === 'object' ? JSON.stringify(value) : String(value)
 }
 </script>
@@ -70,8 +74,8 @@ function valueText(field: string, value: unknown): string {
       <thead><tr><th scope="col">时间</th><th scope="col">操作人</th><th scope="col">操作</th><th scope="col">变更内容</th></tr></thead>
       <tbody><tr v-for="event in events" :key="event.id">
         <td><time :datetime="event.occurred_at">{{ formatDateTime(event.occurred_at) }}</time></td>
-        <td>{{ event.actor || '—' }}</td><td>{{ actionLabel(event.action) }}</td>
-        <td class="table-prose"><details v-if="Object.keys(event.changes).length"><summary>查看 {{ Object.keys(event.changes).length }} 项变更</summary><dl><div v-for="(change, field) in event.changes" :key="field"><dt>{{ fieldLabel(field) }}</dt><dd><span class="history-before">{{ valueText(field, change.before) }}</span><span aria-label="变更为"> → </span><span>{{ valueText(field, change.after) }}</span></dd></div></dl></details><span v-else>—</span></td>
+        <td>{{ event.actor || '—' }}</td><td>{{ event.action === 'quantity_changed' && event.changes.outbound_batches ? '出库余数清零' : actionLabel(event.action) }}</td>
+        <td class="table-prose"><details v-if="Object.keys(event.changes).length"><summary>查看 {{ Object.keys(event.changes).length }} 项变更</summary><dl><div v-for="(change, field) in event.changes" :key="field"><dt>{{ fieldLabel(field, !!event.changes.outbound_batches) }}</dt><dd><span class="history-before">{{ valueText(field, change.before) }}</span><span aria-label="变更为"> → </span><span>{{ valueText(field, change.after) }}</span></dd></div></dl></details><span v-else>—</span></td>
       </tr></tbody>
     </table>
   </div>

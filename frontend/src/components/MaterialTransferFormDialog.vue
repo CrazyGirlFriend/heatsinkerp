@@ -16,6 +16,12 @@ import {
 } from 'element-plus'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { MaterialTransferApiError, materialTransferApi } from '@/services/materialTransferApi'
+import { teamMaterialApi } from '@/services/teamMaterialApi'
+import { outboundRemainder } from '@/utils/materialStock'
+import type { OutboundQuantityClearance as Clearance } from '@/types/materialTransfer'
+import OutboundQuantityClearance from './OutboundQuantityClearance.vue'
+import SludgeWeightFields from './SludgeWeightFields.vue'
+import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/stores/toast'
 import { useTeamPurposes } from '@/composables/useTeamPurposes'
@@ -44,6 +50,8 @@ const activeTab = ref('handoff')
 const editingSnapshot = ref<MaterialTransfer | null>(null)
 const refreshFailed = ref(false)
 const refreshing = ref(false)
+const clearance = ref<{ batchNo: string; quantity: number; availableQuantity: number; availableWeight: number } | null>(null)
+const clearanceReason = ref('')
 const createRequestKey = ref('')
 const createRequestFingerprint = ref('')
 const openedSourceTeamId = ref<string | number | null>(null)
@@ -55,6 +63,7 @@ const form = reactive({
   purposeId: null as number | null,
   quantity: undefined as number | undefined,
   weight: undefined as number | undefined,
+  gross: undefined as number | undefined, percent: undefined as number | undefined,
   notes: '',
   materialType: '' as MaterialType | '',
   finishedQuantity: undefined as number | undefined,
@@ -63,6 +72,7 @@ const form = reactive({
 
 let formGeneration = 0
 const external = computed(() => Boolean(editingSnapshot.value && isExternalTransfer(editingSnapshot.value)))
+const useSludge = computed(() => form.materialType === 'sludge' && !(editingSnapshot.value?.material_type === 'sludge' && editingSnapshot.value.sludge_content_percent == null))
 const purposes = useTeamPurposes(() => props.modelValue && !external.value && form.nextTeamId ? Number(form.nextTeamId) : null)
 watch(() => form.nextTeamId, value => { if (String(value) !== String(editingSnapshot.value?.next_team.id)) { form.purposeId = null; form.warehouseLocation = ''; form.warehouseLocationKey = '' } })
 const actionLabel = computed(() => externalActionLabel(editingSnapshot.value?.entry_kind))
@@ -88,6 +98,7 @@ const toWarehouse = computed(() => destination.value?.kind === 'warehouse')
 const notesLabel = computed(() => external.value ? `${actionLabel.value}说明` : toWarehouse.value ? '入库说明' : '备注')
 
 function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
+  clearance.value = null; clearanceReason.value = ''
   openedSourceTeamId.value = authStore.currentUser?.team_id ?? null
   editingSnapshot.value = transfer
   form.warehouseLocation = transfer?.warehouse_location || ''; form.warehouseLocationKey = ''
@@ -98,6 +109,7 @@ function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
   form.purposeId = transfer?.purpose_id ?? null
   form.quantity = transfer?.quantity
   form.weight = transfer?.weight
+  form.gross = transfer?.sludge_gross_weight ?? undefined; form.percent = transfer?.sludge_content_percent ?? undefined
   form.notes = transfer?.notes ?? ''
   form.materialType = transfer?.material_type ?? ''
   form.finishedQuantity = transfer?.finished_quantity ?? undefined
@@ -108,6 +120,7 @@ function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
   createRequestKey.value = ''
   createRequestFingerprint.value = ''
 }
+watch(() => [form.quantity, form.weight], () => { clearance.value = null; clearanceReason.value = '' })
 
 function close(): void {
   if (!saving.value && !refreshing.value) emit('update:modelValue', false)
@@ -122,6 +135,7 @@ function validate(): boolean {
   else if (!sourceTeam.value) formError.value = '当前账号未绑定班组，请联系管理员'
   else if (sourceChanged.value) formError.value = '账号所属班组已变更，请关闭后重新新建转料'
   else if (!editable.value) formError.value = '此转料单已锁定或无编辑权限'
+  else if (useSludge.value && !sludgeWeight(form.gross, form.percent)) formError.value = '请填写废泥实重和有效材料占比，折算重量须达到 0.001 kg'
   else if (refreshFailed.value) formError.value = '请先重新读取最新单据'
   else if ((!isEditing.value || toWarehouse.value) && !form.materialType) formError.value = toWarehouse.value ? '转入库房前请选择物料类型' : '请选择物料类型'
   else if (!serialNo) formError.value = '请输入流水号'
@@ -184,6 +198,7 @@ async function submit(): Promise<void> {
     ...(!external.value && (form.purposeId || editingSnapshot.value?.purpose_id) ? { purpose_id: form.purposeId } : {}),
     quantity: Number(form.quantity),
     weight: Number(form.weight),
+    ...(useSludge.value || editingSnapshot.value?.sludge_content_percent != null ? sludgePayload(form.materialType, form.gross, form.percent) : {}),
     notes: form.notes.trim() || null,
     material_type: form.materialType || null,
     finished_quantity: form.finishedQuantity ?? null,
@@ -198,13 +213,34 @@ async function submit(): Promise<void> {
     createRequestFingerprint.value = requestFingerprint
   }
   try {
+    let quantityClearance: Clearance | undefined
+    const snapshot = editingSnapshot.value
+    if (snapshot?.source_transfer_id && (payload.quantity !== snapshot.quantity || payload.weight !== snapshot.weight)) {
+      const context = await teamMaterialApi.quantityContext(Number(snapshot.source_team.id), Number(snapshot.source_transfer_id))
+      if (epoch !== formGeneration || !props.modelValue) return
+      const availableQuantity = context.quantity + snapshot.quantity
+      const availableWeight = Math.round((context.weight + snapshot.weight) * 1000) / 1000
+      const remaining = outboundRemainder(payload.quantity, payload.weight, availableQuantity, availableWeight)
+      if (remaining > 0) {
+        if (!clearance.value || clearance.value.quantity !== remaining || clearance.value.availableQuantity !== availableQuantity || clearance.value.availableWeight !== availableWeight) {
+          clearance.value = { batchNo: context.batch_no, quantity: remaining, availableQuantity, availableWeight }
+          clearanceReason.value = ''
+        }
+        if (!clearanceReason.value.trim() || clearanceReason.value.trim().length > 2000) {
+          activeTab.value = 'handoff'
+          formError.value = `重量将全部转出，请填写剩余 ${remaining} 件的清零原因后再次提交。`
+          return
+        }
+        quantityClearance = { source_transfer_id: Number(snapshot.source_transfer_id), quantity: remaining, reason: clearanceReason.value.trim() }
+      } else { clearance.value = null; clearanceReason.value = '' }
+    }
     if (external.value) {
       await authStore.refreshCurrentUser()
       if (epoch !== formGeneration || !props.modelValue) return
       if (!authStore.isTeamAccount || String(authStore.currentUser?.team_id) !== String(editingSnapshot.value?.source_team.id)) { formError.value = '账号所属班组已变更，请关闭后重新操作'; return }
     }
     const saved = editingSnapshot.value
-      ? await materialTransferApi.update(editingSnapshot.value.batch_no, { ...(external.value ? { quantity: payload.quantity, weight: payload.weight, notes: payload.notes } : { ...payload, ...(linkedSource.value ? { serial_no: undefined, material_name: undefined } : {}), ...(groupedDispatch.value ? { next_team_id: undefined } : {}) }), ...materialTransferVersion(editingSnapshot.value) })
+      ? await materialTransferApi.update(editingSnapshot.value.batch_no, { ...(external.value ? { quantity: payload.quantity, weight: payload.weight, notes: payload.notes, ...(useSludge.value ? sludgePayload(form.materialType, form.gross, form.percent) : {}) } : { ...payload, ...(linkedSource.value ? { serial_no: undefined, material_name: undefined } : {}), ...(groupedDispatch.value ? { next_team_id: undefined } : {}) }), ...materialTransferVersion(editingSnapshot.value), ...(quantityClearance ? { quantity_clearance: quantityClearance } : {}) })
       : await materialTransferApi.create({ ...payload, idempotency_key: createRequestKey.value })
     if (epoch !== formGeneration || !props.modelValue) return
     createRequestKey.value = ''
@@ -268,7 +304,7 @@ onBeforeUnmount(() => { ++formGeneration })
       <ElTabPane label="交接信息" name="handoff">
       <div class="document-grid">
       <ElFormItem label="物料类型" :required="!isEditing || toWarehouse">
-        <ElSelect v-model="form.materialType" aria-label="物料类型" placeholder="请选择物料类型" :disabled="!canSubmit || external" :clearable="isEditing">
+        <ElSelect v-model="form.materialType" aria-label="物料类型" placeholder="请选择物料类型" :disabled="!canSubmit || external || editingSnapshot?.sludge_percent_locked" :clearable="isEditing">
           <ElOption v-for="option in materialTypeOptions" :key="option.value" :label="option.label" :value="option.value" />
         </ElSelect>
       </ElFormItem>
@@ -304,12 +340,14 @@ onBeforeUnmount(() => { ++formGeneration })
           <ElInputNumber v-model="form.quantity" :aria-label="external ? `${actionLabel}件数` : '转料件数'" :min="0" :max="2147483647" :step="1" :precision="0" controls-position="right" :disabled="!canSubmit" />
           <span class="unit-suffix">件</span>
         </ElFormItem>
-        <ElFormItem :label="external ? `${actionLabel}重量` : '转料重量'" required>
+        <ElFormItem v-if="!useSludge" :label="external ? `${actionLabel}重量` : '转料重量'" required>
           <ElInputNumber v-model="form.weight" :aria-label="external ? `${actionLabel}重量` : '转料重量'" :min="0" :max="99999999999.999" :step="0.1" :precision="3" controls-position="right" :disabled="!canSubmit" />
           <span class="unit-suffix">kg</span>
         </ElFormItem>
       </div>
-      <p class="quantity-hint">按实际件数、重量填写，至少一项大于 0。</p>
+      <SludgeWeightFields v-if="useSludge" v-model:gross="form.gross" v-model:percent="form.percent" :locked="editingSnapshot?.sludge_percent_locked" :disabled="!canSubmit" @update:weight="form.weight = $event" />
+      <p v-else-if="form.materialType === 'sludge'" class="quantity-hint">历史废泥未记录比例，沿用原账重，不自动折算。</p>
+      <p class="quantity-hint">{{ useSludge ? '废泥按实重与有效材料占比折算；仅按重量交接时，件数填 0。' : '按实际件数、重量填写，至少一项大于 0。' }}</p>
       <ElFormItem v-if="toWarehouse" label="入库仓位"><strong v-if="editingSnapshot?.warehouse_location">{{ editingSnapshot.warehouse_location }}</strong><WarehouseLocationSelect v-else v-model="form.warehouseLocation" v-model:reservation-key="form.warehouseLocationKey" :team-id="Number(form.nextTeamId)" :active="modelValue" :disabled="saving || refreshing" @busy-change="locationBusy = $event" /></ElFormItem>
       <ElFormItem :label="notesLabel">
         <ElInput v-model="form.notes" :aria-label="notesLabel" type="textarea" :rows="2" maxlength="2000" show-word-limit :disabled="!canSubmit" :placeholder="toWarehouse ? '选填：说明当前物料情况或转回库房的原因' : '选填'" />
@@ -336,6 +374,7 @@ onBeforeUnmount(() => { ++formGeneration })
         </div>
       </ElTabPane>
       </ElTabs>
+      <OutboundQuantityClearance v-if="clearance" v-model:reason="clearanceReason" :batch-no="clearance.batchNo" :quantity="clearance.quantity" :disabled="!canSubmit" />
       <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
       <ElButton v-if="refreshFailed" :loading="refreshing" @click="refreshAfterConflict">重新读取</ElButton>
     </ElForm>

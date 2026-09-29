@@ -1,6 +1,6 @@
-import type { MaterialTransfer, MaterialType, MaterialEntryKind } from './materialTransfer'
+import type { MaterialTransfer, MaterialType, MaterialEntryKind, SludgeMeasurement } from './materialTransfer'
 export interface TeamPurpose { id: number; team_id: number; name: string; active: boolean; version: number }
-export interface OpeningLine {
+export interface OpeningLine extends SludgeMeasurement {
   serial_no: string; material_name: string; material_type: MaterialType | ''; transfer_specification: string
   quantity: number | undefined; weight: number | undefined; notes?: string | null; purpose_id?: number | null
 }

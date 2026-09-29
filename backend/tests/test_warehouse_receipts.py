@@ -228,7 +228,7 @@ def test_intake_dispatch_loss_receipt_and_return_keep_source_and_balances(client
 
 
 def test_intake_list_filters_pagination_and_weight_only_stock(client, warehouse):
-    first = intake(client, warehouse, quantity=0, weight='2.125', material_type='sludge', material_name='铜_泥%').json()
+    first = intake(client, warehouse, quantity=0, weight='2.125', material_type='sludge', material_name='铜_泥%', sludge_gross_weight='2.125', sludge_content_percent=100).json()
     assert first['quantity'] == 0 and first['weight'] == 2.125
     second = intake(client, warehouse, idempotency_key='intake-2', serial_no='WH-2').json()
     response = client.get(warehouse['url'], params={'query': '_泥%', 'material_type': 'sludge'}).json()

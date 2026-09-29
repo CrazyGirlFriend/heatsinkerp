@@ -10,6 +10,36 @@ from .material_transfer_workflow import _utc
 from .models import MaterialQuantityAdjustment as Adjustment, MaterialStockBalance as Balance, MaterialTransfer, MaterialTransferEvent, utcnow
 
 
+def validate_outbound_clearance(lot, quantity, weight, available, clearance):
+    """Require explicit consent for precisely the remainder of a final-weight exit."""
+    available_quantity, available_weight = available
+    remaining = available_quantity - quantity
+    needed = available_weight > 0 and weight == available_weight and remaining > 0
+    if needed and clearance is None:
+        raise HTTPException(422, f"批次 {lot.batch_no} 的重量将全部转出，还剩 {remaining} 件；请填写剩余件数清零原因后提交")
+    if clearance is not None and (not needed or clearance.source_transfer_id != lot.id or clearance.quantity != remaining):
+        raise HTTPException(409, "待清零件数或库存已变化，请刷新后重新核对并填写清零原因")
+
+
+def record_outbound_clearance(db, lot, clearance, user, operation_key, batches):
+    """Called after outbound flush, inside the same locked transaction, never a loss."""
+    balance = db.scalar(select(Balance).where(Balance.transfer_id == lot.id)
+        .with_for_update().execution_options(populate_existing=True))
+    if balance.on_hand_weight != 0 or balance.on_hand_quantity != clearance.quantity:
+        raise HTTPException(409, "剩余库存已变化，请刷新后重新核对清零件数")
+    row = Adjustment(source_transfer_id=lot.id, team_id=lot.next_team_id,
+        before_quantity=balance.on_hand_quantity, after_quantity=0, weight_snapshot=0,
+        stock_revision_before=balance.revision, reason=clearance.reason,
+        idempotency_key=f"outbound-clear:{operation_key}", request_hash=stock.fingerprint(clearance),
+        created_by=actor_name(user), created_by_user_id=user.id, created_at=utcnow())
+    db.add(row)
+    db.add(MaterialTransferEvent(transfer_id=lot.id, action="quantity_changed", actor=actor_name(user),
+        actor_user_id=user.id, occurred_at=row.created_at,
+        changes={"stock_quantity": {"before": row.before_quantity, "after": 0},
+                 "reason": {"before": None, "after": row.reason},
+                 "outbound_batches": {"before": None, "after": batches}}))
+
+
 class AdjustmentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_transfer_id: int = Field(ge=1)

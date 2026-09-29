@@ -8,6 +8,7 @@ import { materialTransferApi } from '@/services/materialTransferApi'
 import { canConfirmMaterialTransfer, materialTransferVersion, type MaterialTransfer } from '@/types/materialTransfer'
 import { isDispatchNumber } from '@/types/teamMaterials'
 import { inventoryAmount } from '@/types/teamInventory'
+import { sludgeSummary } from '@/utils/sludgeWeight'
 
 const props = defineProps<{ teamId: number; paused?: boolean }>()
 const emit = defineEmits<{ received: [transfer: MaterialTransfer] }>()
@@ -52,7 +53,7 @@ async function receiveNext() {
     // Keep the existing reserved location. A blank location stays unassigned.
     const received = await materialTransferApi.confirm(code, { idempotency_key: key, ...materialTransferVersion(transfer) })
     if (!active()) return
-    report(`${code} 已入库 · ${inventoryAmount(received.quantity)} 件 / ${inventoryAmount(received.weight)} kg`, 'success')
+    report(`${code} 已入库 · ${inventoryAmount(received.quantity)} 件 / ${received.material_type === 'sludge' ? sludgeSummary(received) : `${inventoryAmount(received.weight)} kg`}`, 'success')
     emit('received', received)
   } catch (error) {
     if (active()) report(`${code}：${error instanceof Error ? error.message : '入库失败，请重新扫码'}`, 'error')

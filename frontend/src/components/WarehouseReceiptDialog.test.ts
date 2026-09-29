@@ -42,6 +42,16 @@ async function fill() {
 async function submit() { await wrapper.get('form').trigger('submit'); await flushPromises() }
 
 describe('warehouse manual receipt', () => {
+  it('keeps measured sludge and percentage in a retried receipt without double conversion', async () => {
+    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(new TeamMaterialApiError('网络中断'))
+    await render(); await fill()
+    wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'sludge'); await flushPromises()
+    await amount('废泥实重', 10); await amount('有效材料占比', 30); await submit()
+    const original = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
+    expect(original).toMatchObject({ material_type: 'sludge', weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30 })
+    wrapper.unmount(); await render(); await submit()
+    expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]).toEqual(original)
+  })
   it('keeps a manually selected location in the persisted retry payload', async () => {
     vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(new TeamMaterialApiError('网络中断'))
     await render(); await fill()

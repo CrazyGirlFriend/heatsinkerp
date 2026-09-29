@@ -1,4 +1,4 @@
-import { externalActionLabel, isExternalEntryKind, type ExternalEntryKind, type MaterialEntryKind, type MaterialTransfer, type MaterialTransferDocumentFields, type MaterialTransferTeam, type MaterialType } from './materialTransfer'
+import { externalActionLabel, isExternalEntryKind, type ExternalEntryKind, type MaterialEntryKind, type MaterialTransfer, type MaterialTransferDocumentFields, type MaterialTransferTeam, type MaterialType, type SludgeMeasurement } from './materialTransfer'
 
 export const balanceFields = ['received', 'dispatched', 'reserved', 'in_transit', 'lost', 'on_hand', 'available'] as const
 export const ownershipFields = ['owned', 'external_pending'] as const
@@ -14,6 +14,7 @@ export interface TeamMaterialOverview {
 }
 export interface StockBatch extends MaterialBalance {
   transfer: MaterialTransfer
+  sludge_available_gross_weight?: number
   warehouse_positions?: { location_id: number; name: string; quantity: number; weight: number }[]
   physical_quantity?: number; physical_weight?: number
   unassigned_quantity?: number; unassigned_weight?: number
@@ -57,7 +58,7 @@ export interface MaterialPage<T> { items: T[]; total: number; page: number; page
 export type MaterialPageParams = import('./recordFilters').RecordFilterParams & { query?: string; serial_no?: string; page?: number; page_size?: number }
 export interface StockParams extends MaterialPageParams { material_type?: MaterialType; availability?: 'available' | 'all' | 'dispatchable'; location_status?: 'unassigned'; source_ids?: string }
 export interface WarehouseReceiptParams extends MaterialPageParams { material_type?: MaterialType; receipt_source?: 'external' | 'internal' | 'return' }
-export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocumentFields> {
+export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement {
   serial_no: string
   material_name: string
   material_type: MaterialType
@@ -72,8 +73,8 @@ export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocument
   warehouse_location_reservation_key?: string | null
 }
 export interface DispatchParams extends MaterialPageParams { next_team_id?: string | number; status?: Exclude<DispatchStatus, 'partial'>; entry_kind?: DispatchKind; material_type?: MaterialType }
-export interface DispatchLine { warehouse_location?: string | null; warehouse_location_reservation_key?: string | null; source_transfer_id: number; quantity: number; weight: number; material_type?: MaterialType | null; purpose_id?: number | null }
-export type CreateDispatch = { notes?: string | null; idempotency_key: string; lines: DispatchLine[] } & (
+export interface DispatchLine extends SludgeMeasurement { warehouse_location?: string | null; warehouse_location_reservation_key?: string | null; source_transfer_id: number; quantity: number; weight: number; material_type?: MaterialType | null; purpose_id?: number | null }
+export type CreateDispatch = { notes?: string | null; idempotency_key: string; lines: DispatchLine[]; quantity_clearances?: import('./materialTransfer').OutboundQuantityClearance[] } & (
   { entry_kind?: 'transfer'; next_team_id: number; external_destination?: never }
   | { entry_kind: ExternalEntryKind; next_team_id?: null; external_destination: string }
 )

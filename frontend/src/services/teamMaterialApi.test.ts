@@ -89,10 +89,11 @@ describe('team material API contract', () => {
     expect(result.pending_incoming).toEqual({ count: 0, quantity: null, weight: 0 })
   })
   it('keeps stock filters and linked transfer identity, and rejects invalid team ids', async () => {
-    data = { items: [{ transfer: { id: 19, batch_no: 'TL19', source_transfer_id: 8, source_transfer_batch_no: 'TL8', stock_tracked: true, dispatch_no: 'CK3' }, available_quantity: '8', available_weight: '0.333' }], total: 1, page: 2, page_size: 10 }
+    data = { items: [{ transfer: { id: 19, batch_no: 'TL19', source_transfer_id: 8, source_transfer_batch_no: 'TL8', stock_tracked: true, dispatch_no: 'CK3', material_type: 'sludge', sludge_gross_weight: '1.005', sludge_content_percent: '10', sludge_percent_locked: true }, sludge_available_gross_weight: '1.005', available_quantity: '8', available_weight: '0.333' }], total: 1, page: 2, page_size: 10 }
     const result = await teamMaterialApi.stock(914, { query: '铜 钼', material_type: 'sludge', availability: 'all', page: 2, page_size: 10 })
     expect(requests[0]!.url).toBe('/team-materials/914/stock?query=%E9%93%9C+%E9%92%BC&material_type=sludge&availability=all&page=2&page_size=10')
     expect(result.items[0]).toMatchObject({ available_quantity: 8, available_weight: 0.333, transfer: { source_transfer_id: 8, stock_tracked: true, dispatch_no: 'CK3' } })
+    expect(result.items[0]).toMatchObject({ sludge_available_gross_weight: 1.005, transfer: { sludge_gross_weight: 1.005, sludge_content_percent: 10, sludge_percent_locked: true } })
     expect(() => teamMaterialApi.stock(0)).toThrow('无效的班组编号')
   })
   it('passes idempotency and untouched source lines atomically and retains conflict status', async () => {

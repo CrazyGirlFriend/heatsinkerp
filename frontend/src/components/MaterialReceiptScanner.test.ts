@@ -33,6 +33,11 @@ function hid(code: string, target: EventTarget = document) {
   for (const key of [...code, 'Enter']) target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
 }
 describe('scan directly into receiving inventory', () => {
+  it('distinguishes received sludge gross kg from the accounted material kg', async () => {
+    vi.mocked(materialTransferApi.confirm).mockResolvedValue({ ...received(), material_type: 'sludge', quantity: 0, weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30 })
+    render(); await scan()
+    expect(wrapper.text()).toContain('废泥实重：10 kg；有效材料占比：30%；折算重量：3 kg')
+  })
   it('receives on Enter, shows actual amounts and stays ready for the next scan', async () => {
     render(); await scan(' tl000001 ')
     expect(materialTransferApi.confirm).toHaveBeenCalledWith('TL000001', { expected_version: 3, idempotency_key: expect.any(String) })

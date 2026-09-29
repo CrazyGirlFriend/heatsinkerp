@@ -10,7 +10,8 @@ from .auth import actor_name, get_current_user
 from .batch_numbers import next_transfer_batch_number
 from .database import get_db
 from .models import Team, MaterialTransfer, OpeningStockSubmission, User, utcnow
-from .schemas import MaterialTransferDocumentFields
+from .schemas import MaterialTransferDocumentFields, SludgeMeasurement
+from .material_weight import sludge_measurement
 from . import material_stock as stock
 from . import material_transfer_workflow as workflow
 from .team_business import purpose_snapshot
@@ -20,7 +21,7 @@ from .async_api import AsyncAPIRouter as APIRouter
 router = APIRouter(prefix="/api/team-materials", tags=["opening stock"])
 
 
-class OpeningLine(MaterialTransferDocumentFields):
+class OpeningLine(MaterialTransferDocumentFields, SludgeMeasurement):
     model_config = ConfigDict(extra="forbid")
     serial_no: str = Field(min_length=1, max_length=80)
     material_name: str = Field(min_length=1, max_length=160)
@@ -99,12 +100,14 @@ def create(payload: OpeningCreate, team_id: int = Path(ge=1), user: User = Depen
             db.flush()
             now = utcnow()
             for line in payload.lines:
+                measured = sludge_measurement(line.material_type, line.weight, line.sludge_gross_weight, line.sludge_content_percent)
                 purpose = purpose_snapshot(db, team_id, line.purpose_id, required=False)
                 transfer = MaterialTransfer(batch_no=next_transfer_batch_number(db), entry_kind="opening_stock",
                     opening_stock_id=submission.id, serial_no=line.serial_no,
                     **{field: getattr(line, field) for field in workflow.DOCUMENT_FIELDS}, **purpose,
                     next_team_id=team.id, next_team_code=team.code, next_team_name=team.name,
                     quantity=line.quantity, weight=line.weight, notes=line.notes, status="received", stock_tracked=True,
+                    **measured,
                     created_by=actor_name(user), created_by_user_id=user.id, received_by=actor_name(user), received_by_user_id=user.id,
                     created_at=now, updated_at=now, received_at=now)
                 db.add(transfer)

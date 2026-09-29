@@ -85,7 +85,9 @@ export interface MaterialTransferTeam {
   kind?: TeamKind
 }
 
-export interface MaterialTransfer extends Partial<MaterialTransferDocumentFields> {
+export interface SludgeMeasurement { sludge_gross_weight?: number | null; sludge_content_percent?: number | null }
+export interface MaterialTransfer extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement {
+  sludge_percent_locked?: boolean
   delivery_origin_batch_no?: string | null
   can_edit_delivery?: boolean
   purpose_id?: number | null
@@ -162,7 +164,7 @@ export interface MaterialTransferListResponse {
 
 export type MaterialTransferStatusCounts = Record<MaterialTransferStatus | 'all', number>
 
-export interface CreateMaterialTransferPayload extends Partial<MaterialTransferDocumentFields> {
+export interface CreateMaterialTransferPayload extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement {
   warehouse_location?: string | null
   warehouse_location_reservation_key?: string | null
   purpose_id?: number | null
@@ -174,7 +176,8 @@ export interface CreateMaterialTransferPayload extends Partial<MaterialTransferD
   idempotency_key?: string
 }
 
-export type UpdateMaterialTransferPayload = Partial<Omit<CreateMaterialTransferPayload, 'idempotency_key'>> & { expected_version?: number }
+export interface OutboundQuantityClearance { source_transfer_id: number; quantity: number; reason: string }
+export type UpdateMaterialTransferPayload = Partial<Omit<CreateMaterialTransferPayload, 'idempotency_key'>> & { expected_version?: number; quantity_clearance?: OutboundQuantityClearance }
 
 export interface ConfirmMaterialTransferPayload {
   warehouse_location_reservation_key?: string | null

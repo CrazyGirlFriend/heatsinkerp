@@ -80,7 +80,12 @@ class WarehouseLocationChoice(APIModel):
         return self
 
 
-class MaterialTransferCreate(MaterialTransferDocumentFields, WarehouseLocationChoice):
+class SludgeMeasurement(BaseModel):
+    sludge_gross_weight: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=3)
+    sludge_content_percent: Decimal | None = Field(default=None, gt=0, le=100, max_digits=5, decimal_places=2)
+
+
+class MaterialTransferCreate(MaterialTransferDocumentFields, WarehouseLocationChoice, SludgeMeasurement):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
 
     serial_no: str = Field(min_length=1, max_length=80)
@@ -106,7 +111,21 @@ class MaterialTransferCreate(MaterialTransferDocumentFields, WarehouseLocationCh
         return value
 
 
-class MaterialTransferUpdate(MaterialTransferDocumentFields, WarehouseLocationChoice):
+class OutboundQuantityClearance(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_transfer_id: int = Field(ge=1)
+    quantity: int = Field(gt=0, le=2_147_483_647)
+    reason: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value):
+        if not value.strip():
+            raise ValueError("请填写剩余件数清零原因")
+        return value.strip()
+
+
+class MaterialTransferUpdate(MaterialTransferDocumentFields, WarehouseLocationChoice, SludgeMeasurement):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
 
     serial_no: str | None = Field(default=None, min_length=1, max_length=80)
@@ -116,6 +135,7 @@ class MaterialTransferUpdate(MaterialTransferDocumentFields, WarehouseLocationCh
     weight: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=3)
     notes: str | None = Field(default=None, max_length=2000)
     expected_version: int | None = Field(default=None, ge=1)
+    quantity_clearance: OutboundQuantityClearance | None = None
 
     @field_validator("serial_no")
     @classmethod
@@ -137,7 +157,7 @@ class MaterialTransferUpdate(MaterialTransferDocumentFields, WarehouseLocationCh
         return self
 
 
-class WarehouseReceiptCreate(MaterialTransferDocumentFields, WarehouseLocationChoice):
+class WarehouseReceiptCreate(MaterialTransferDocumentFields, WarehouseLocationChoice, SludgeMeasurement):
     """Explicit stock origin; never impersonate an upstream team or ERP event."""
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
@@ -230,7 +250,10 @@ class MaterialTransferEventResponse(APIModel):
     changes: dict[str, dict[str, Any]]
 
 
-class MaterialTransferResponse(MaterialTransferDocumentFields):
+class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement):
+    sludge_gross_weight: float | None = None
+    sludge_content_percent: float | None = None
+    sludge_percent_locked: bool = False
     delivery_origin_batch_no: str | None = None
     can_edit_delivery: bool = False
     urgency: dict | None = None

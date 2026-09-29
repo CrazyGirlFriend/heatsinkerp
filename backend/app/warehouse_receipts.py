@@ -10,6 +10,7 @@ from .record_filters import RecordFilters
 from .batch_numbers import next_transfer_batch_number
 from .models import MaterialDispatch, MaterialTransfer, Team, utcnow
 from .team_constants import WAREHOUSE_TEAM_CODE
+from .material_weight import sludge_measurement
 
 
 def require_warehouse(team):
@@ -62,6 +63,7 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
                 if len(origins) == 1:
                     delivery_origin_id = origins.pop()
             from .warehouse_locations import consume
+            measured = sludge_measurement(payload.material_type, payload.weight, payload.sludge_gross_weight, payload.sludge_content_percent)
             location_name = consume(db, team, payload, user)
             now = utcnow()
             receipt = MaterialTransfer(
@@ -75,6 +77,7 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
                 source_team_id=None, source_team_code=None, source_team_name=None,
                 next_team_id=team.id, next_team_code=team.code, next_team_name=team.name,
                 quantity=payload.quantity, weight=payload.weight, notes=payload.notes,
+                **measured,
                 status="received", stock_tracked=True, version=1,
                 idempotency_key=payload.idempotency_key, request_hash=request_hash,
                 created_by=actor_name(user), created_by_user_id=user.id,

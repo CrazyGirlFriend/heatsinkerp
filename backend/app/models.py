@@ -203,6 +203,12 @@ class MaterialTransfer(Base):
         ),
         CheckConstraint("quantity >= 0", name="ck_material_transfers_quantity_nonnegative"),
         CheckConstraint("weight >= 0", name="ck_material_transfers_weight_nonnegative"),
+        CheckConstraint(
+            "(sludge_gross_weight IS NULL AND sludge_content_percent IS NULL) OR "
+            "(material_type IS NOT NULL AND material_type = 'sludge' AND sludge_gross_weight IS NOT NULL AND sludge_content_percent IS NOT NULL "
+            "AND sludge_gross_weight > 0 AND sludge_content_percent > 0 AND sludge_content_percent <= 100)",
+            name="ck_mt_sludge_measurement",
+        ),
         CheckConstraint("quantity > 0 OR weight > 0", name="ck_material_transfers_nonempty"),
         CheckConstraint(
             "finished_quantity IS NULL OR finished_quantity >= 0",
@@ -284,6 +290,9 @@ class MaterialTransfer(Base):
     return_dispatch_no: Mapped[str | None] = mapped_column(String(40))
     warehouse_location: Mapped[str | None] = mapped_column(String(80))
     rejection_reason: Mapped[str | None] = mapped_column(Text)
+    # weight is accounted material mass; these retain the original sludge measurement.
+    sludge_gross_weight: Mapped[Decimal | None] = mapped_column(Numeric(14, 3))
+    sludge_content_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     material_type: Mapped[str | None] = mapped_column(String(32))
     source_batch_no: Mapped[str | None] = mapped_column(String(80))
     material_name: Mapped[str | None] = mapped_column(String(160))

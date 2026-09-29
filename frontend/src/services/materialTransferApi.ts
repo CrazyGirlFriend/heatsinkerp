@@ -91,6 +91,9 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
   const documentText = Object.fromEntries(materialDocumentTextFields.map(field => [field.key, textValue(raw[field.key]) || null])) as Pick<MaterialTransferDocumentFields, typeof materialDocumentTextFields[number]['key']>
   return {
     ...documentText,
+    sludge_gross_weight: raw.sludge_gross_weight == null ? null : numberValue(raw.sludge_gross_weight),
+    sludge_content_percent: raw.sludge_content_percent == null ? null : numberValue(raw.sludge_content_percent),
+    sludge_percent_locked: raw.sludge_percent_locked === true,
     entry_kind: raw.entry_kind === 'opening_stock' || raw.entry_kind === 'warehouse_receipt' || isExternalEntryKind(String(raw.entry_kind)) ? raw.entry_kind as MaterialTransfer['entry_kind'] : 'transfer',
     purpose_id: optionalInteger(raw.purpose_id, 1),
     purpose_name: textValue(raw.purpose_name) || null,

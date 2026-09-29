@@ -5,7 +5,7 @@ from asyncio import to_thread
 from decimal import Decimal
 
 from fastapi import Depends, HTTPException, Path, Query, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,14 +14,14 @@ from .auth import get_current_user
 from .database import get_db
 from .models import MaterialTransfer, User
 from .main_system_configuration import settings_from_db
-from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, MaterialTransferResponse, WarehouseReceiptCreate
+from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, MaterialTransferResponse, WarehouseReceiptCreate, SludgeMeasurement
 
 from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/main-system", tags=["main system serial materials"])
 
 
-class MainSystemReceiptCreate(BaseModel):
+class MainSystemReceiptCreate(SludgeMeasurement):
     model_config = ConfigDict(extra="forbid")
     serial_no: str = Field(min_length=1, max_length=80)
     expected_snapshot_hash: str = Field(pattern="^[a-f0-9]{64}$")
@@ -64,6 +64,9 @@ async def receive_from_main_system(payload: MainSystemReceiptCreate, team_id: in
     warehouse_receipts.require_warehouse(material_stock.require_actor(user, team_id))
     values = {"operation": "main-system-receipt-v1", "team_id": team_id,
               **payload.model_dump(mode="json", exclude={"idempotency_key"})}
+    for field in ("sludge_gross_weight", "sludge_content_percent"):
+        if values[field] is None:
+            values.pop(field)
     request_hash = hashlib.sha256(json.dumps(values, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     def replay(session):
         prior = session.scalar(select(MaterialTransfer).where(MaterialTransfer.idempotency_key == payload.idempotency_key))

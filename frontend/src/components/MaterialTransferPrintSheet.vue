@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { sludgeFields } from '@/utils/sludgeWeight'
 import BarcodeCard from '@/components/BarcodeCard.vue'
 import { computed } from 'vue'
 import type { MaterialTransfer } from '@/types/materialTransfer'
@@ -29,7 +30,8 @@ const fields = computed(() => {
     { label: '成品规格', value: transfer.finished_specification || '—' },
     { label: '转料规格', value: transfer.transfer_specification || '—' },
     { label: receipt.value ? '入库件数' : external.value ? `${verb.value}件数` : '转料件数', value: `${transfer.quantity} 件` },
-    { label: receipt.value ? '入库重量' : external.value ? `${verb.value}重量` : '转料重量', value: `${transfer.weight} kg` },
+    { label: transfer.sludge_content_percent != null ? '折算重量' : receipt.value ? '入库重量' : external.value ? `${verb.value}重量` : '转料重量', value: `${transfer.weight} kg` },
+    ...sludgeFields(transfer),
     { label: '成品件数', value: transfer.finished_quantity == null ? '—' : `${transfer.finished_quantity} 件` },
     ...(transfer.delivery_date ? [{ label: '要求发货日期', value: transfer.delivery_date }, { label: '应发成品件数', value: `${transfer.delivery_quantity} 件` }] : []),
     ...(isWarehouseReceipt(transfer) ? [{ label: '入库来源类别', value: receiptSourceLabel(transfer) }, { label: '原出库批次', value: transfer.return_dispatch_no || '未关联' }] : []),

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { sludgeSummary } from '@/utils/sludgeWeight'
 import { CircleCheck, Delete, EditPen, Lock, Printer } from '@element-plus/icons-vue'
 import {
   ElAlert,
@@ -178,7 +179,7 @@ async function confirmReceipt(): Promise<void> {
   confirming.value = true
   try {
     await ElMessageBox.confirm(
-      `确认已收到 ${numberText(transfer.quantity, '件')}、${numberText(transfer.weight, 'kg')}？确认后转出方不能修改。`,
+      `确认已收到 ${numberText(transfer.quantity, '件')}、${transfer.material_type === 'sludge' ? sludgeSummary(transfer) : numberText(transfer.weight, 'kg')}？确认后转出方不能修改。`,
       '确认签收',
       { type: 'warning', confirmButtonText: '确认签收', cancelButtonText: '取消' },
     )

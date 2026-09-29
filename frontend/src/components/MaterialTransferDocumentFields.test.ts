@@ -5,6 +5,13 @@ import MaterialTransferDocumentFields from './MaterialTransferDocumentFields.vue
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 
 describe('transfer destination fields', () => {
+  it('shows actual sludge, percentage and accounting kg separately', () => {
+    const wrapper = mount(MaterialTransferDocumentFields, { props: { group: 'all', transfer: normalizeMaterialTransfer({ material_type: 'sludge', quantity: 0, weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30 }) } })
+    const cells = wrapper.findAll('th').map(th => th.text())
+    expect(cells).toContain('废泥实重'); expect(cells).toContain('有效材料占比'); expect(cells).toContain('折算重量')
+    expect(wrapper.text()).toContain('10 kg'); expect(wrapper.text()).toContain('30%'); expect(wrapper.text()).toContain('3 kg')
+    wrapper.unmount()
+  })
   it.each(['去毛刺', '检验', '发货', null])('pairs the receiving team with the batch purpose %s', purpose_name => {
     const wrapper = mount(MaterialTransferDocumentFields, { props: { group: 'all', transfer: normalizeMaterialTransfer({
       batch_no: 'BATCH-QC', serial_no: '000012', source_team: { id: 7, name: '电镀' }, next_team: { id: 8, name: '检验' }, purpose_name,

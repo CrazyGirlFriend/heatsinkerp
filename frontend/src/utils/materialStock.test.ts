@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { amountError, stockAvailable } from './materialStock'
+import { amountError, stockAvailable, outboundRemainder } from './materialStock'
 import type { StockBatch } from '@/types/teamMaterials'
 
 const stock = { available_quantity: 10, available_weight: 1.005, transfer: { material_type: 'semi_finished' } } as StockBatch
 describe('independent stock quantity and weight limits', () => {
+  it('requires clearance only when a measured weight is exhausted with pieces remaining', () => {
+    expect(outboundRemainder(80, 10, 100, 10)).toBe(20)
+    expect(outboundRemainder(0, 1.005, 10, 1.005)).toBe(10)
+    expect(outboundRemainder(8, .1 + .2, 10, .3)).toBe(2)
+    for (const [q, w, freeQ, freeW] of [[80, 8, 100, 10], [100, 10, 100, 10], [0, 10, 0, 10], [8, 0, 10, 0]]) expect(outboundRemainder(q, w, freeQ!, freeW!)).toBe(0)
+    expect(outboundRemainder(8, 10, null, 10)).toBe(0)
+  })
   it('uses the separate scrap pool for disposal without treating it as normal stock', () => {
     const scrap = { ...stock, available_quantity: 0, available_weight: 0, scrap_available_quantity: 3, scrap_available_weight: .5, transfer: { material_type: 'waste' } } as StockBatch
     expect(stockAvailable(scrap)).toBe(true)

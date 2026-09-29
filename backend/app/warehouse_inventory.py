@@ -211,7 +211,8 @@ def list_group_sources(db, team_id, group_id, user, *, page=1, page_size=20, cur
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
     rows = db.execute(statement.options(*material_transfer_list_options()).order_by(mt.received_at.desc(), mt.id.desc()).offset((page - 1) * page_size).limit(page_size)).unique().all()
     from .warehouse_placements import stock_positions
-    return {"items": stock_positions(db, [{"transfer": material_transfer_dict(row[0], user, include_history=False), **balance_dict(row._mapping)} for row in rows]),
+    from .material_weight import stock_sludge_measurements
+    return {"items": stock_positions(db, stock_sludge_measurements(db, [{"transfer": material_transfer_dict(row[0], user, include_history=False), **balance_dict(row._mapping)} for row in rows])),
             "total": total, "page": page, "page_size": page_size,
             "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
 

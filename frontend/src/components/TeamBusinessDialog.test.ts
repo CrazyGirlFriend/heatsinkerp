@@ -25,6 +25,16 @@ async function render(initialTab = 'opening') {
 async function click(text: string) { await wrapper.findAll('button').find(button => button.text() === text)!.trigger('click'); await flushPromises() }
 
 describe('team business settings', () => {
+  it('posts measured sludge opening stock in effective kg', async () => {
+    await render()
+    await wrapper.get('input[aria-label="第1行流水号"]').setValue('000012')
+    await wrapper.get('input[aria-label="第1行材质"]').setValue('铜钼')
+    wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'sludge'); await flushPromises()
+    const inputs = wrapper.findAllComponents(ElInputNumber)
+    ;[0, 10, 30].forEach((value, i) => inputs[i]!.vm.$emit('update:modelValue', value))
+    await flushPromises(); await click('确认初始库存登记')
+    expect(teamMaterialApi.createOpening).toHaveBeenCalledWith(2, [expect.objectContaining({ quantity: 0, weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30 })], expect.any(String))
+  })
   it('rejects a blank existing name without taking the separate new-business draft', async () => {
     await render('purposes')
     await wrapper.get('input[aria-label="新增业务名称"]').setValue('去毛刺')

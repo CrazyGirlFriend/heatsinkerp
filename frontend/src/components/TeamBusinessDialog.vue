@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SludgeWeightFields from './SludgeWeightFields.vue'
+import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElDialog, ElInput, ElInputNumber, ElOption, ElSelect, ElSwitch, ElTabs, ElTabPane, ElMessageBox } from 'element-plus'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
@@ -62,8 +64,9 @@ async function savePurpose(item?: TeamPurpose) {
 async function submitOpening() {
   if (saving.value || loading.value || !opening.value?.can_submit) return
   error.value = ''
+  if (lines.value.some(line => line.material_type === 'sludge' && !sludgeWeight(line.sludge_gross_weight, line.sludge_content_percent))) { error.value = '请填写废泥实重和有效材料占比，折算重量须达到 0.001 kg'; return }
   if (lines.value.some(line => !line.serial_no.trim() || !line.material_name.trim() || !line.material_type || !Number.isInteger(line.quantity) || Number(line.quantity) < 0 || line.weight == null || !Number.isFinite(line.weight) || line.weight < 0 || (!line.quantity && !line.weight))) { error.value = '请逐行填写流水号、材质、类型及有效件数和重量；至少一项大于零'; return }
-  const body = lines.value.map(line => ({ ...line, purpose_id: line.purpose_id || null, serial_no: line.serial_no.trim(), material_name: line.material_name.trim() }))
+  const body = lines.value.map(line => ({ ...line, ...sludgePayload(line.material_type, line.sludge_gross_weight, line.sludge_content_percent), purpose_id: line.purpose_id || null, serial_no: line.serial_no.trim(), material_name: line.material_name.trim() }))
   const current = epoch
   try { await ElMessageBox.confirm(`将这 ${body.length} 行物料计入本班组库存。只能登记一次，确认后不能直接修改数量。`, '确认初始库存登记', { confirmButtonText: '确认登记', cancelButtonText: '返回核对', type: 'warning' }) }
   catch { return }
@@ -113,7 +116,8 @@ async function submitOpening() {
               <label>规格<ElInput v-model="line.transfer_specification" aria-label="规格" maxlength="240" :disabled="saving" /></label>
               <label>物料类型<ElSelect v-model="line.material_type" :aria-label="`第${index + 1}行物料类型`" :disabled="saving"><ElOption v-for="option in materialTypeOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect></label>
               <label>件数<ElInputNumber v-model="line.quantity" :aria-label="`第${index + 1}行件数`" :min="0" :precision="0" :disabled="saving" controls-position="right" /></label>
-              <label>重量（kg）<ElInputNumber v-model="line.weight" :aria-label="`第${index + 1}行重量`" :min="0" :precision="3" :disabled="saving" controls-position="right" /></label>
+              <label v-if="line.material_type !== 'sludge'">重量（kg）<ElInputNumber v-model="line.weight" :aria-label="`第${index + 1}行重量`" :min="0" :precision="3" :disabled="saving" controls-position="right" /></label>
+              <SludgeWeightFields v-else v-model:gross="line.sludge_gross_weight" v-model:percent="line.sludge_content_percent" :label="`第${index + 1}行`" :disabled="saving" @update:weight="line.weight = $event" />
               <label>本班组业务<ElSelect v-model="line.purpose_id" aria-label="初始库存业务" clearable placeholder="未分类" :disabled="saving"><ElOption v-for="item in purposes.filter(item => item.active)" :key="item.id" :value="item.id" :label="item.name" /></ElSelect></label>
               <label>备注<ElInput v-model="line.notes" aria-label="初始库存备注" maxlength="2000" :disabled="saving" /></label>
             </div>

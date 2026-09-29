@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SludgeWeightFields from './SludgeWeightFields.vue'
+import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElSelect, ElTabPane, ElTabs } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -24,6 +26,7 @@ const attempt = ref<CreateWarehouseReceipt | null>(null)
 const recoveryBlocked = ref(false)
 const readonly = computed(() => !canWrite.value || saving.value || Boolean(attempt.value) || recoveryBlocked.value)
 const form = reactive({
+  gross: undefined as number | undefined, percent: undefined as number | undefined,
   receiptKind: 'external' as 'external' | 'return', externalSource: '', returnDispatchNo: '',
   warehouseLocation: '', warehouseLocationKey: '',
   serialNo: '', materialType: '' as MaterialType | '', quantity: 0 as number | undefined,
@@ -40,6 +43,7 @@ function fill(payload: CreateWarehouseReceipt | null = null) {
   form.receiptKind = payload?.receipt_kind || 'external'; form.externalSource = payload?.external_source || ''; form.returnDispatchNo = payload?.return_dispatch_no || ''
   form.serialNo = payload?.serial_no || ''; form.materialType = payload?.material_type || ''
   form.quantity = payload?.quantity ?? 0; form.weight = payload?.weight ?? 0; form.notes = payload?.notes || ''
+  form.gross = payload?.sludge_gross_weight ?? undefined; form.percent = payload?.sludge_content_percent ?? undefined
   form.finishedQuantity = payload?.finished_quantity ?? undefined
   form.deliveryDate = payload?.delivery_date || ''; form.deliveryQuantity = payload?.delivery_quantity ?? undefined
   materialDocumentTextFields.forEach(field => { form.document[field.key] = payload?.[field.key] || '' })
@@ -64,6 +68,7 @@ function validate(): boolean {
   else if (form.serialNo.trim().length > 80) error.value = '流水号不能超过 80 个字符'
   else if (!form.document.material_name.trim()) error.value = '请输入材质'
   else if (!form.materialType) error.value = '请选择物料类型'
+  else if (form.materialType === 'sludge' && !sludgeWeight(form.gross, form.percent)) error.value = '请填写废泥实重和有效材料占比，折算重量须达到 0.001 kg'
   else if (form.warehouseLocation.length > 80) error.value = '仓位不能超过 80 个字符'
   else if (form.quantity == null || !Number.isInteger(form.quantity) || form.quantity < 0 || form.quantity > 2147483647) error.value = '入库件数须为 0 至 2147483647 的整数'
   else if (form.weight == null || !Number.isFinite(form.weight) || form.weight < 0 || form.weight > 99999999999.999 || Math.abs(form.weight * 1000 - Math.round(form.weight * 1000)) > 0.0001) error.value = '入库重量须为非负数，最多保留 3 位小数'
@@ -90,6 +95,7 @@ function payload(): CreateWarehouseReceipt {
     warehouse_location: form.warehouseLocation.trim() || null,
     ...(form.warehouseLocationKey ? { warehouse_location_reservation_key: form.warehouseLocationKey } : {}),
     quantity: Number(form.quantity), weight: Number(form.weight), notes: form.notes.trim(), finished_quantity: form.finishedQuantity ?? null,
+    ...(form.materialType === 'sludge' ? sludgePayload(form.materialType, form.gross, form.percent) : {}),
     ...(form.receiptKind === 'external' ? { delivery_date: form.deliveryDate || null, delivery_quantity: form.deliveryQuantity ?? null } : {}),
     idempotency_key: globalThis.crypto?.randomUUID?.() || `warehouse-receipt-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   }
@@ -150,9 +156,10 @@ onBeforeUnmount(() => { ++generation })
             <ElFormItem label="物料类型" required><ElSelect v-model="form.materialType" aria-label="物料类型" placeholder="选择物料类型" :disabled="readonly"><ElOption v-for="item in materialTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></ElSelect></ElFormItem>
             <ElFormItem label="入库仓位"><WarehouseLocationSelect v-model="form.warehouseLocation" v-model:reservation-key="form.warehouseLocationKey" :team-id="teamId" :active="modelValue" :disabled="readonly" @busy-change="locationBusy = $event" /></ElFormItem>
             <ElFormItem label="入库件数" required><ElInputNumber v-model="form.quantity" aria-label="入库件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="readonly" /><span class="receipt-unit">件</span></ElFormItem>
-            <ElFormItem label="入库重量" required><ElInputNumber v-model="form.weight" aria-label="入库重量" :min="0" :max="99999999999.999" :precision="3" :step="0.001" controls-position="right" :disabled="readonly" /><span class="receipt-unit">kg</span></ElFormItem>
+            <ElFormItem v-if="form.materialType !== 'sludge'" label="入库重量" required><ElInputNumber v-model="form.weight" aria-label="入库重量" :min="0" :max="99999999999.999" :precision="3" :step="0.001" controls-position="right" :disabled="readonly" /><span class="receipt-unit">kg</span></ElFormItem>
+            <SludgeWeightFields v-else v-model:gross="form.gross" v-model:percent="form.percent" :disabled="readonly" @update:weight="form.weight = $event" />
           </div>
-          <p class="receipt-hint">件数和重量至少填写一项，另一项可填 0。</p>
+          <p class="receipt-hint">{{ form.materialType === 'sludge' ? '废泥按实重与有效材料占比折算；仅按重量交接时，件数填 0。' : '件数和重量至少填写一项，另一项可填 0。' }}</p>
           <ElFormItem label="入库说明" required><ElInput v-model="form.notes" aria-label="入库说明" type="textarea" :rows="3" maxlength="2000" show-word-limit :disabled="readonly" placeholder="说明来料来源及本次入库情况" /></ElFormItem>
         </ElTabPane>
         <ElTabPane label="物料明细与补充信息" name="document">

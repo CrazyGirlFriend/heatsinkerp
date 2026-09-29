@@ -22,7 +22,8 @@ from sqlalchemy.orm.attributes import set_committed_value
 from .auth import actor_name
 from .batch_numbers import next_transfer_batch_numbers
 from .models import MaterialDispatch, MaterialLoss, MaterialStockBalance, MaterialTransfer, SerialUrgency, Team, utcnow
-from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, SCRAP_MATERIAL_TYPES, WarehouseLocationChoice
+from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, SCRAP_MATERIAL_TYPES, OutboundQuantityClearance, WarehouseLocationChoice, SludgeMeasurement
+from .material_weight import sludge_measurement, validate_sludge_available, stock_sludge_measurements
 from .team_constants import EXTERNAL_ENTRY_KINDS, WAREHOUSE_TEAM_CODE, INSPECTION_TEAM_CODE
 from . import material_transfer_workflow as workflow
 
@@ -52,7 +53,7 @@ class LossCreate(StockAmounts):
         return value.strip()
 
 
-class DispatchLine(StockAmounts, WarehouseLocationChoice):
+class DispatchLine(StockAmounts, WarehouseLocationChoice, SludgeMeasurement):
     material_type: str | None = Field(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN)
     purpose_id: int | None = Field(default=None, ge=1)
 
@@ -65,6 +66,7 @@ class DispatchCreate(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
     idempotency_key: str = Field(min_length=1, max_length=100)
     lines: list[DispatchLine] = Field(min_length=1, max_length=100)
+    quantity_clearances: list[OutboundQuantityClearance] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="after")
     def validate_destination(self):
@@ -149,6 +151,7 @@ def validate_available(db, lot, quantity, weight, exclude_transfer_id=None):
         raise HTTPException(409, f"本次提交超过上一批次的剩余可转重量，请调整重量或重新选择批次。（上一批次 {lot.batch_no}，剩余 {available_weight} kg）")
     if quantity > available_quantity:
         raise HTTPException(409, "insufficient available stock; refresh the batch balance and review amounts")
+    return available_quantity, available_weight
 
 
 def _db_conflict(exc):
@@ -202,6 +205,7 @@ def create_loss(db, team_id, payload, user):
 
 def create_dispatch(db, team_id, payload, user):
     from .team_business import purpose_snapshot
+    from .quantity_adjustments import validate_outbound_clearance, record_outbound_clearance
     source = require_actor(user, team_id)
     external = payload.entry_kind in EXTERNAL_ENTRY_KINDS
     if external:
@@ -227,17 +231,26 @@ def create_dispatch(db, team_id, payload, user):
             target = None if external else workflow._active_target(db, payload.next_team_id)
             if target is not None and target.id == source.id:
                 raise HTTPException(422, "source and target teams must be different")
+            clearances = {item.source_transfer_id: item for item in payload.quantity_clearances}
+            if len(clearances) != len(payload.quantity_clearances) or clearances.keys() - lots.keys():
+                raise HTTPException(422, "每个来源批次只能填写一次清零原因，且必须属于本次出库")
             for source_id, lot in lots.items():
                 portions = [line for line in payload.lines if line.source_transfer_id == source_id]
-                validate_available(db, lot, sum(line.quantity for line in portions), sum((line.weight for line in portions), Decimal(0)))
+                quantity, weight = sum(line.quantity for line in portions), sum((line.weight for line in portions), Decimal(0))
+                available = validate_available(db, lot, quantity, weight)
+                validate_outbound_clearance(lot, quantity, weight, available, clearances.get(source_id))
             for line in payload.lines:
                 lot = lots[line.source_transfer_id]
                 kind = line.material_type if "material_type" in line.model_fields_set else lot.material_type
+                sludge_measurement(kind, line.weight, line.sludge_gross_weight, line.sludge_content_percent, source=lot)
                 if source.code == WAREHOUSE_TEAM_CODE and kind != lot.material_type:
                     raise HTTPException(422, "库房按原物料转出，不能更改物料类型")
                 workflow.validate_material_route(lot.material_type, kind, target, payload.entry_kind, payload.notes)
                 if target is not None:
                     workflow._validate_warehouse_type(target, kind)
+            for source_id, lot in lots.items():
+                if lot.sludge_content_percent is not None:
+                    validate_sludge_available(db, lot, sum(line.sludge_gross_weight for line in payload.lines if line.source_transfer_id == source_id))
             destination = {"next_team_id": target.id if target else None,
                            "next_team_code": target.code if target else None,
                            "next_team_name": target.name if target else None,
@@ -276,6 +289,7 @@ def create_dispatch(db, team_id, payload, user):
                     source_team_id=source.id, source_team_code=source.code, source_team_name=source.name,
                     **destination,
                     quantity=line.quantity, weight=line.weight, **completion, notes=payload.notes,
+                    sludge_gross_weight=line.sludge_gross_weight, sludge_content_percent=line.sludge_content_percent,
                     warehouse_location=location_name,
                     created_by=actor_name(user), created_by_user_id=user.id,
                     history=[],
@@ -284,6 +298,11 @@ def create_dispatch(db, team_id, payload, user):
                 items.append(transfer)
             # Flush the whole set so repeated sources receive one balance delta.
             db.flush()
+            for source_id, clearance in clearances.items():
+                record_outbound_clearance(db, lots[source_id], clearance, user,
+                    f"dispatch:{dispatch.id}:{source_id}", [item.batch_no for item in items if item.source_transfer_id == source_id])
+            if clearances:
+                db.flush()
             # Join in SQL so serial matching keeps the database's collation
             # (including MySQL's case/accent rules), not Python dict equality.
             persisted = {row.id: row for row in db.execute(select(
@@ -449,7 +468,7 @@ def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=
     rows = db.execute(select(stock).where(*filters).order_by(stock.c.received_at.desc(), stock.c.transfer_id.desc()).offset((page-1)*page_size).limit(page_size)).mappings().all()
     transfers = {item.id: item for item in db.scalars(select(MaterialTransfer).options(*workflow.material_transfer_list_options()).where(MaterialTransfer.id.in_([row["transfer_id"] for row in rows]))).all()}
     from .warehouse_placements import stock_positions
-    return {"items": stock_positions(db, [{"transfer": workflow.material_transfer_dict(transfers[row["transfer_id"]], user, include_history=False), **balance_dict(row)} for row in rows]),
+    return {"items": stock_positions(db, stock_sludge_measurements(db, [{"transfer": workflow.material_transfer_dict(transfers[row["transfer_id"]], user, include_history=False), **balance_dict(row)} for row in rows])),
             "total": total, "page": page, "page_size": page_size, "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
 
 

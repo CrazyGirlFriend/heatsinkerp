@@ -6,6 +6,14 @@ import BarcodeCard from './BarcodeCard.vue'
 import { dispatchFixture } from '@/testFixtures/materialDispatch'
 
 describe('independent batch co-printing', () => {
+  it('totals effective kg while retaining gross sludge and percentage by batch', () => {
+    const items = dispatchFixture(1).items
+    Object.assign(items[0]!, { material_type: 'sludge', quantity: 0, weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30 })
+    const wrapper = mount(MaterialBatchPrintSheet, { props: { items }, global: { stubs: { BarcodeCard: true } } })
+    expect(wrapper.text()).toContain('废泥实重：10 kg；有效材料占比：30%；折算重量：3 kg')
+    expect(wrapper.get('tfoot').findAll('td').map(td => td.text())).toEqual(['0', '3'])
+    wrapper.unmount()
+  })
   it('gives each batch its own purpose column alongside the destination, without repeating it in notes', () => {
     const items = dispatchFixture(4).items
     const purposes = ['去毛刺', '检验', null, '旧来源业务']

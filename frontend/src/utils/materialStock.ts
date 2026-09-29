@@ -11,6 +11,10 @@ export function stockAvailable(stock: StockBatch): boolean {
   const { quantity, weight } = dispatchableAmounts(stock)
   return quantity !== null && weight !== null && (quantity > 0 || weight > 0)
 }
+export function outboundRemainder(quantity: number | undefined, weight: number | undefined, availableQuantity: number | null, availableWeight: number | null): number {
+  if (quantity == null || weight == null || availableQuantity == null || availableWeight == null || !Number.isInteger(quantity) || quantity < 0 || weight <= 0) return 0
+  return availableWeight > 0 && Math.round(weight * 1000) === Math.round(availableWeight * 1000) ? Math.max(0, availableQuantity - quantity) : 0
+}
 export function amountError(quantity: number | undefined, weight: number | undefined, stock: StockBatch | null): string {
   const free = dispatchableAmounts(stock)
   if (free.quantity === null || free.weight === null) return '请先刷新该批次的可转出库存'

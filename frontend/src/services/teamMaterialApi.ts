@@ -19,6 +19,7 @@ function balance(value: unknown): MaterialBalance {
 function stock(value: unknown): StockBatch {
   const raw = record(value)
   return { ...balance(value), transfer: normalizeMaterialTransfer(raw.transfer),
+    ...(numeric(raw.sludge_available_gross_weight) != null ? { sludge_available_gross_weight: Number(raw.sludge_available_gross_weight) } : {}),
     ...(Array.isArray(raw.warehouse_positions) ? { warehouse_positions: raw.warehouse_positions.map(item => { const row = record(item); return { location_id: Number(row.location_id), name: String(row.name), quantity: Number(row.quantity), weight: Number(row.weight) } }),
       physical_quantity: Number(raw.physical_quantity), physical_weight: Number(raw.physical_weight), unassigned_quantity: Number(raw.unassigned_quantity), unassigned_weight: Number(raw.unassigned_weight) } : {}) }
 }

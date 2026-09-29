@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { sludgeFields } from '@/utils/sludgeWeight'
 import { computed } from 'vue'
 import MaterialDocumentTable, { type DocumentField } from './MaterialDocumentTable.vue'
 import { externalActionLabel, isExternalTransfer, isWarehouseReceipt, materialSourceLabel, materialPurposeLabel, receiptSourceLabel, materialDocumentTextFields, materialTransferNotesLabel, materialTransferStatusLabel, materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
@@ -26,7 +27,8 @@ const fields = computed<DocumentField[]>(() => {
     { label: '上一批次', value: t.source_transfer_batch_no || '—' },
     ...(t.delivery_origin_batch_no && t.delivery_origin_batch_no !== t.batch_no ? [{ label: '交期源头批次', value: t.delivery_origin_batch_no }] : []),
     { label: receipt ? '入库件数' : external ? `${verb}件数` : '转料件数', value: `${t.quantity} ${t.quantity_unit}` },
-    { label: receipt ? '入库重量' : external ? `${verb}重量` : '转料重量', value: `${t.weight} ${t.weight_unit}` },
+    { label: t.sludge_content_percent != null ? '折算重量' : receipt ? '入库重量' : external ? `${verb}重量` : '转料重量', value: `${t.weight} ${t.weight_unit}` },
+    ...sludgeFields(t),
     ...material,
     ...(isWarehouseReceipt(t) ? [{ label: '入库来源类别', value: receiptSourceLabel(t) }, { label: '原出库批次', value: t.return_dispatch_no || '未关联' }] : []),
     ...(t.rejection_reason ? [{ label: '退回核对原因', value: t.rejection_reason, fullWidth: true }] : []),

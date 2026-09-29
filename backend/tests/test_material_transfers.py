@@ -386,6 +386,7 @@ def test_all_material_types_and_independent_counts_weight_validation(client):
     warehouse = client.post('/api/teams', json={'code': 'FACTORY-WAREHOUSE', 'name': '库房', 'kind': 'warehouse'}).json()
     for material_type in ("raw_material", "finished", "semi_finished", "finished_surplus", "semi_finished_surplus", "defective", "waste", "sludge", "scrap_chips"):
         response = _create(client, setup, material_type=material_type,
+                           **({'sludge_gross_weight': '1.235', 'sludge_content_percent': 100} if material_type == 'sludge' else {}),
                            quantity=0, weight="1.235", idempotency_key=material_type, next_team_id=warehouse['id'], notes='分类回库')
         assert response.status_code == 201, response.text
         assert response.json()["material_type"] == material_type

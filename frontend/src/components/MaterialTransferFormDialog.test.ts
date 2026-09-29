@@ -18,6 +18,7 @@ let wrapper: VueWrapper
 beforeEach(() => {
   vi.spyOn(teamMaterialApi, 'warehouseLocations').mockResolvedValue({ items: [] })
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([])
+  vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({ source_transfer_id: 12, batch_no: 'TL-SOURCE', quantity: 100, weight: 10, revision: 1, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
   vi.spyOn(materialTransferApi, 'create').mockResolvedValue(fixture())
   vi.spyOn(materialTransferApi, 'update').mockResolvedValue(fixture({ version: 7 }))
   vi.spyOn(materialTransferApi, 'get').mockResolvedValue(fixture({ version: 7 }))
@@ -39,11 +40,49 @@ async function base(type: string | null = 'finished') {
   selects[1]!.vm.$emit('update:modelValue', 3)
   await wrapper.get('input[aria-label="流水号"]').setValue('HS-NEW')
   await number('转料件数', 0)
-  await number('转料重量', 8.25)
+  if (type === 'sludge') { await number('废泥实重', 16.5); await number('有效材料占比', 50) }
+  else await number('转料重量', 8.25)
 }
 async function submit() { await wrapper.get('form').trigger('submit'); await flushPromises() }
 
 describe('material transfer document form', () => {
+  it('submits actual sludge measurement and derived weight, never the wet weight as inventory', async () => {
+    await render(); await base('sludge'); await submit()
+    expect(materialTransferApi.create).toHaveBeenCalledWith(expect.objectContaining({ weight: 8.25, sludge_gross_weight: 16.5, sludge_content_percent: 50 }))
+  })
+  it('recalculates edits and locks the percentage inherited from a sludge source', async () => {
+    await render(fixture({ material_type: 'sludge', weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30 }))
+    await number('有效材料占比', 20); await submit()
+    expect(materialTransferApi.update).toHaveBeenCalledWith('TL20260906000001', expect.objectContaining({ weight: 2, sludge_gross_weight: 10, sludge_content_percent: 20 }))
+    wrapper.unmount()
+    await render(fixture({ material_type: 'sludge', weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30, sludge_percent_locked: true }))
+    expect(wrapper.get('input[aria-label="有效材料占比"]').attributes('disabled')).toBeDefined()
+    await number('废泥实重', 5); await submit()
+    expect(materialTransferApi.update).toHaveBeenLastCalledWith('TL20260906000001', expect.objectContaining({ weight: 1.5, sludge_gross_weight: 5, sludge_content_percent: 30 }))
+  })
+  it('requires a fresh reason when editing the last weighted shipment and clears the prompt after changes', async () => {
+    vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({ source_transfer_id: 12, batch_no: 'TL-SOURCE', quantity: 20, weight: 2, revision: 1, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
+    await render(fixture({ source_transfer_id: 12, quantity: 80, weight: 8 }))
+    await number('转料重量', 10); await submit()
+    expect(materialTransferApi.update).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('剩余 20 件将清零')
+    await wrapper.get('textarea[aria-label="TL-SOURCE清零原因"]').setValue('最后一批重量全部转出，核对余数清零')
+    await submit()
+    expect(materialTransferApi.update).toHaveBeenCalledWith('TL20260906000001', expect.objectContaining({ weight: 10, quantity: 80, quantity_clearance: { source_transfer_id: 12, quantity: 20, reason: '最后一批重量全部转出，核对余数清零' } }))
+    await number('转料重量', 9)
+    expect(wrapper.find('[aria-label="剩余件数清零"]').exists()).toBe(false)
+  })
+  it('never clears a changed balance based on an earlier consent', async () => {
+    vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({ source_transfer_id: 12, batch_no: 'TL-SOURCE', quantity: 20, weight: 2, revision: 1, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
+    await render(fixture({ source_transfer_id: 12, quantity: 80, weight: 8 }))
+    await number('转料重量', 10); await submit()
+    await wrapper.get('textarea[aria-label="TL-SOURCE清零原因"]').setValue('原先确认的 20 件')
+    vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({ source_transfer_id: 12, batch_no: 'TL-SOURCE', quantity: 30, weight: 2, revision: 2, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
+    await submit()
+    expect(materialTransferApi.update).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('剩余 30 件')
+    expect((wrapper.get('textarea[aria-label="TL-SOURCE清零原因"]').element as HTMLTextAreaElement).value).toBe('')
+  })
   it('cannot submit an incoming transfer even if its edit action flag is present', async () => {
     await render(fixture({ source_team: { id: 3, name: '电镀', code: 'PLATE' }, next_team: { id: 2, name: '研磨', code: 'GRIND' } }))
     expect(wrapper.findAll('button').find(button => button.text() === '保存修改')!.attributes('disabled')).toBeDefined()
@@ -122,7 +161,7 @@ describe('material transfer document form', () => {
     expect(wrapper.findAllComponents(ElSelect)[0]!.props('modelValue')).toBe('')
     await base(null); await submit()
     expect(wrapper.get('[role="alert"]').text()).toContain('请选择物料类型')
-    wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'sludge')
+    wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'semi_finished')
     await number('转料重量', 0); await submit()
     expect(wrapper.get('[role="alert"]').text()).toContain('至少一项大于 0')
     await number('转料件数', undefined); await number('转料重量', 5); await submit()

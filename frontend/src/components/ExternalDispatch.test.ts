@@ -26,6 +26,7 @@ beforeEach(() => {
   state.directory = reactive({ ...state.directory, items: [{ id: 1, name: '库房', code: 'FACTORY-WAREHOUSE', kind: 'warehouse', active: true }, { id: 8, name: '检验', code: 'FACTORY-QC', kind: 'production', active: true }, { id: 2, name: '轧制', code: 'FACTORY-ROLL', kind: 'production', active: true }], error: '', refreshTeamDirectory: vi.fn().mockResolvedValue(undefined) })
   vi.spyOn(teamMaterialApi, 'createDispatch').mockResolvedValue({ dispatch_no: 'CK-EXTERNAL', entry_kind: 'warehouse_outbound', line_count: 2, items: [record()] } as MaterialDispatch)
   vi.spyOn(teamMaterialApi, 'refreshSource').mockImplementation(async (_id, row) => ({ ...row, available_quantity: 5, available_weight: 0.5 }))
+  vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({ source_transfer_id: 3, batch_no: 'TL-ROOT', quantity: 10, weight: 0.995, revision: 1, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
   vi.spyOn(materialTransferApi, 'get').mockResolvedValue(record())
   vi.spyOn(materialTransferApi, 'confirmOutbound').mockResolvedValue(record('warehouse_outbound', { status: 'dispatched', locked: true, allowed_actions: [], dispatched_by: '库管', dispatched_at: '2026-09-07T01:00:00Z' }))
   vi.spyOn(materialTransferApi, 'confirm').mockResolvedValue(record())
