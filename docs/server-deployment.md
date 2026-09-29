@@ -1,5 +1,7 @@
 # 服务器部署
 
+日常从 Mac 命令行发布请看 [命令行发布脚本](command-line-deployment.md)：`bash scripts/deploy.sh` 预览，确认后添加 `--apply`。脚本只升级现有安装，保留库存、配置与备份。
+
 换服务器或首次安装请看 [新服务器部署与整套系统迁移](server-migration.md)。本页保留当前服务器布局与历史发布记录，不要将历史版本号直接当作新迁移的运行版本。
 
 当前异步/MQ 版本包含 RabbitMQ 和数据库迁移，不能按旧版“仅换源码”操作。配置、升级顺序及消息备份见 [异步接口与消息队列](async-notifications.md)。
