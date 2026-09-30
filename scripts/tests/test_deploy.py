@@ -3,8 +3,10 @@ import gzip
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -265,6 +267,39 @@ class DeploymentTests(unittest.TestCase):
 
 
 class LauncherTests(unittest.TestCase):
+    def fake_transport(self, directory):
+        # No real Git/SSH/SCP is used by --apply tests; no private key is read.
+        stub = f"#!{sys.executable}\n" + '''import json
+import os
+from pathlib import Path
+import sys
+
+tool = Path(sys.argv[0]).name
+args = sys.argv[1:]
+if tool == "git":
+    if args[:1] == ["-C"]:
+        args = args[2:]
+    if args == ["rev-parse", "--show-toplevel"]:
+        print(os.environ["DEPLOY_TEST_REPO"])
+    elif args == ["rev-parse", "HEAD"]:
+        print("a" * 40)
+    elif args[:1] == ["archive"]:
+        print("mock archive")
+    elif args[:1] == ["show"]:
+        print("# mock server script")
+else:
+    with open(os.environ["DEPLOY_TEST_CALLS"], "a") as output:
+        output.write(json.dumps({"tool": tool, "args": args}) + "\\n")
+    if tool == "ssh" and args[-1].startswith("umask 077;"):
+        print("/tmp/heatsink-upload.test1234")
+'''
+        for name in ("git", "ssh", "scp"):
+            command = directory / name
+            command.write_text(stub)
+            command.chmod(0o700)
+        return dict(os.environ, PATH=str(directory) + ":" + os.environ["PATH"],
+                    DEPLOY_TEST_REPO=str(directory), DEPLOY_TEST_CALLS=str(directory / "calls.jsonl"))
+
     def test_preview_and_help_do_not_contact_server(self):
         # Fail loudly if either command were accidentally called.
         with tempfile.TemporaryDirectory() as directory:
@@ -273,13 +308,56 @@ class LauncherTests(unittest.TestCase):
                 command = directory / name
                 command.write_text("#!/bin/sh\necho unexpected-network-call >&2\nexit 99\n")
                 command.chmod(0o700)
-            import os
             env = dict(os.environ, PATH=str(directory) + ":" + os.environ["PATH"])
             for args in ([], ["--help"]):
                 result = subprocess.run(["bash", str(SCRIPT.with_name("deploy.sh")), *args], env=env,
                                         text=True, capture_output=True, timeout=10)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertNotIn("unexpected-network-call", result.stderr)
+                if not args:
+                    self.assertIn(f"密钥：{Path.home() / 'Desktop' / 'developer.pem'}", result.stdout)
+
+    def test_identity_override_is_used_by_all_ssh_and_scp_calls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            key = directory / "custom key.pem"
+            key.write_text("not a real private key")
+            env = self.fake_transport(directory)
+            result = subprocess.run(["bash", str(SCRIPT.with_name("deploy.sh")), "--apply", "--identity", str(key)],
+                                    env=env, text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(f"密钥：{key}", result.stdout)
+            self.assertNotIn("not a real private key", result.stdout + result.stderr)
+            calls = [json.loads(line) for line in (directory / "calls.jsonl").read_text().splitlines()]
+            self.assertEqual([call["tool"] for call in calls], ["ssh", "scp", "ssh", "ssh"])
+            for call in calls:
+                self.assertEqual(call["args"][call["args"].index("-i") + 1], str(key))
+                self.assertIn("IdentitiesOnly=yes", call["args"])
+                if call["tool"] == "scp":
+                    self.assertNotIn(str(key), call["args"][-3:])
+
+    def test_missing_identity_stops_before_connecting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            key = directory / "missing.pem"
+            env = self.fake_transport(directory)
+            result = subprocess.run(["bash", str(SCRIPT.with_name("deploy.sh")), "--apply", "--identity", str(key)],
+                                    env=env, text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("找不到或无法读取私钥", result.stderr)
+            self.assertIn(str(key), result.stderr)
+            self.assertFalse((directory / "calls.jsonl").exists())
+
+    def test_preview_with_missing_identity_still_does_not_connect(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            key = directory / "missing.pem"
+            env = self.fake_transport(directory)
+            result = subprocess.run(["bash", str(SCRIPT.with_name("deploy.sh")), "--identity", str(key)],
+                                    env=env, text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(f"密钥：{key}", result.stdout)
+            self.assertFalse((directory / "calls.jsonl").exists())
 
     def test_rejects_invalid_host_and_port(self):
         for args in (["--host", "-oProxyCommand=bad"], ["--port", "0"], ["--port", "65536"]):

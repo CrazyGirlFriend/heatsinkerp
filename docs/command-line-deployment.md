@@ -12,19 +12,21 @@
 bash scripts/deploy.sh
 ```
 
-确认后发布：
+默认使用当前 Mac 用户桌面的 `developer.pem`（本机为 `/Users/zhangsen/Desktop/developer.pem`）。预览会显示实际密钥路径，只显示路径，不读取或输出私钥内容。
+
+确认后发布，无需每次填写私钥参数：
 
 ```bash
 bash scripts/deploy.sh --apply
 ```
 
-需要指定私钥时，把示例路径换成自己的文件；不要把密码写进命令：
+需要换一把私钥时，用 `--identity` 覆盖默认值；不要把密码写进命令：
 
 ```bash
 bash scripts/deploy.sh --apply --identity /Users/你的用户名/.ssh/你的私钥
 ```
 
-脚本沿用 SSH 配置/已加载的密钥。带口令的私钥请先用 `ssh-add` 加载。首次连接须先正常 SSH 登录，核实并保存服务器指纹；脚本不会跳过主机校验。其他已有同布局环境可用 `--host 用户@服务器 --port 22`，执行前认真核对预览目标。
+SSH 和 SCP 都显式指定同一把私钥，并启用 `IdentitiesOnly=yes`；不会因忘传参数退回尝试无关的默认密钥。私钥仅用于本机认证，不上传、不写进仓库。正式发布时若文件不存在或不可读，脚本会在连接服务器前停止并提示路径；预览不要求密钥存在。带口令的私钥请先用 `ssh-add "$HOME/Desktop/developer.pem"` 加载（更换密钥时改成对应路径）。首次连接须先正常 SSH 登录，核实并保存服务器指纹；脚本不会跳过主机校验。其他已有同布局环境可用 `--host 用户@服务器 --port 22 --identity /你的私钥路径`，执行前认真核对预览目标。
 
 ## 执行前提
 
@@ -60,8 +62,8 @@ bash scripts/deploy.sh --apply --identity /Users/你的用户名/.ssh/你的私�
 发布中终端会显示阶段，详细日志在服务器受限目录。查看日志（将 `<版本>` 换成终端输出）：
 
 ```bash
-ssh ubuntu@122.200.93.68 'sudo tail -n 100 /opt/heatsinkrep/releases/<版本>/deploy.log'
-ssh ubuntu@122.200.93.68 'sudo cat /opt/heatsinkrep/releases/<版本>/result.json'
+ssh -i "$HOME/Desktop/developer.pem" -o IdentitiesOnly=yes ubuntu@122.200.93.68 'sudo tail -n 100 /opt/heatsinkrep/releases/<版本>/deploy.log'
+ssh -i "$HOME/Desktop/developer.pem" -o IdentitiesOnly=yes ubuntu@122.200.93.68 'sudo cat /opt/heatsinkrep/releases/<版本>/result.json'
 ```
 
 - 构建失败：旧应用不停止。
