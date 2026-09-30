@@ -84,6 +84,7 @@ if ssh_run "sudo -n python3 '$upload/deploy_server.py' --apply --archive '$uploa
   ssh_run "rm -f -- '$upload/source.tar.gz' '$upload/deploy_server.py'; rmdir -- '$upload'" || true
   printf '发布完成。服务器记录：/opt/heatsinkrep/releases/%s/result.json\n' "$tag"
 else
-  echo "发布未确认成功。请检查 /opt/heatsinkrep/releases/$tag/，上传文件保留在 $upload。" >&2
+  deploy_exit=$?
+  printf '发布未确认成功（SSH 退出码 %s）。请检查 /opt/heatsinkrep/releases/%s/，上传文件保留在 %s。\n' "$deploy_exit" "$tag" "$upload" >&2
   exit 1
 fi

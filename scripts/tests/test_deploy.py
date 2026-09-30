@@ -292,6 +292,11 @@ else:
         output.write(json.dumps({"tool": tool, "args": args}) + "\\n")
     if tool == "ssh" and args[-1].startswith("umask 077;"):
         print("/tmp/heatsink-upload.test1234")
+    if tool == "ssh" and args[-1].startswith("sudo -n python3 "):
+        exit_code = int(os.environ.get("DEPLOY_TEST_REMOTE_EXIT", "0"))
+        if exit_code:
+            print("simulated remote failure", file=sys.stderr)
+            sys.exit(exit_code)
 '''
         for name in ("git", "ssh", "scp"):
             command = directory / name
@@ -347,6 +352,23 @@ else:
             self.assertIn("找不到或无法读取私钥", result.stderr)
             self.assertIn(str(key), result.stderr)
             self.assertFalse((directory / "calls.jsonl").exists())
+
+    def test_remote_failure_reports_status_and_upload_path_without_shell_error(self):
+        for shell in ("bash", "/bin/bash"):
+            for exit_code in (1, 255):
+                with self.subTest(shell=shell, exit_code=exit_code), tempfile.TemporaryDirectory() as directory:
+                    directory = Path(directory)
+                    key = directory / "test.pem"
+                    key.write_text("not a real private key")
+                    env = dict(self.fake_transport(directory), DEPLOY_TEST_REMOTE_EXIT=str(exit_code))
+                    result = subprocess.run([shell, str(SCRIPT.with_name("deploy.sh")), "--apply", "--identity", str(key)],
+                                            env=env, text=True, capture_output=True, timeout=10)
+                    self.assertEqual(result.returncode, 1)
+                    self.assertIn(f"SSH 退出码 {exit_code}", result.stderr)
+                    self.assertIn("上传文件保留在 /tmp/heatsink-upload.test1234。", result.stderr)
+                    self.assertNotIn("unbound variable", result.stderr)
+                    calls = [json.loads(line) for line in (directory / "calls.jsonl").read_text().splitlines()]
+                    self.assertEqual([call["tool"] for call in calls], ["ssh", "scp", "ssh"])
 
     def test_preview_with_missing_identity_still_does_not_connect(self):
         with tempfile.TemporaryDirectory() as directory:
