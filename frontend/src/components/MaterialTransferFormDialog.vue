@@ -16,10 +16,6 @@ import {
 } from 'element-plus'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { MaterialTransferApiError, materialTransferApi } from '@/services/materialTransferApi'
-import { teamMaterialApi } from '@/services/teamMaterialApi'
-import { outboundRemainder } from '@/utils/materialStock'
-import type { OutboundQuantityClearance as Clearance } from '@/types/materialTransfer'
-import OutboundQuantityClearance from './OutboundQuantityClearance.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { useAuthStore } from '@/stores/auth'
@@ -50,8 +46,6 @@ const activeTab = ref('handoff')
 const editingSnapshot = ref<MaterialTransfer | null>(null)
 const refreshFailed = ref(false)
 const refreshing = ref(false)
-const clearance = ref<{ batchNo: string; quantity: number; availableQuantity: number; availableWeight: number } | null>(null)
-const clearanceReason = ref('')
 const createRequestKey = ref('')
 const createRequestFingerprint = ref('')
 const openedSourceTeamId = ref<string | number | null>(null)
@@ -98,7 +92,6 @@ const toWarehouse = computed(() => destination.value?.kind === 'warehouse')
 const notesLabel = computed(() => external.value ? `${actionLabel.value}说明` : toWarehouse.value ? '入库说明' : '备注')
 
 function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
-  clearance.value = null; clearanceReason.value = ''
   openedSourceTeamId.value = authStore.currentUser?.team_id ?? null
   editingSnapshot.value = transfer
   form.warehouseLocation = transfer?.warehouse_location || ''; form.warehouseLocationKey = ''
@@ -120,7 +113,6 @@ function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
   createRequestKey.value = ''
   createRequestFingerprint.value = ''
 }
-watch(() => [form.quantity, form.weight], () => { clearance.value = null; clearanceReason.value = '' })
 
 function close(): void {
   if (!saving.value && !refreshing.value) emit('update:modelValue', false)
@@ -213,34 +205,13 @@ async function submit(): Promise<void> {
     createRequestFingerprint.value = requestFingerprint
   }
   try {
-    let quantityClearance: Clearance | undefined
-    const snapshot = editingSnapshot.value
-    if (snapshot?.source_transfer_id && (payload.quantity !== snapshot.quantity || payload.weight !== snapshot.weight)) {
-      const context = await teamMaterialApi.quantityContext(Number(snapshot.source_team.id), Number(snapshot.source_transfer_id))
-      if (epoch !== formGeneration || !props.modelValue) return
-      const availableQuantity = context.quantity + snapshot.quantity
-      const availableWeight = Math.round((context.weight + snapshot.weight) * 1000) / 1000
-      const remaining = outboundRemainder(payload.quantity, payload.weight, availableQuantity, availableWeight)
-      if (remaining > 0) {
-        if (!clearance.value || clearance.value.quantity !== remaining || clearance.value.availableQuantity !== availableQuantity || clearance.value.availableWeight !== availableWeight) {
-          clearance.value = { batchNo: context.batch_no, quantity: remaining, availableQuantity, availableWeight }
-          clearanceReason.value = ''
-        }
-        if (!clearanceReason.value.trim() || clearanceReason.value.trim().length > 2000) {
-          activeTab.value = 'handoff'
-          formError.value = `重量将全部转出，请填写剩余 ${remaining} 件的清零原因后再次提交。`
-          return
-        }
-        quantityClearance = { source_transfer_id: Number(snapshot.source_transfer_id), quantity: remaining, reason: clearanceReason.value.trim() }
-      } else { clearance.value = null; clearanceReason.value = '' }
-    }
     if (external.value) {
       await authStore.refreshCurrentUser()
       if (epoch !== formGeneration || !props.modelValue) return
       if (!authStore.isTeamAccount || String(authStore.currentUser?.team_id) !== String(editingSnapshot.value?.source_team.id)) { formError.value = '账号所属班组已变更，请关闭后重新操作'; return }
     }
     const saved = editingSnapshot.value
-      ? await materialTransferApi.update(editingSnapshot.value.batch_no, { ...(external.value ? { quantity: payload.quantity, weight: payload.weight, notes: payload.notes, ...(useSludge.value ? sludgePayload(form.materialType, form.gross, form.percent) : {}) } : { ...payload, ...(linkedSource.value ? { serial_no: undefined, material_name: undefined } : {}), ...(groupedDispatch.value ? { next_team_id: undefined } : {}) }), ...materialTransferVersion(editingSnapshot.value), ...(quantityClearance ? { quantity_clearance: quantityClearance } : {}) })
+      ? await materialTransferApi.update(editingSnapshot.value.batch_no, { ...(external.value ? { quantity: payload.quantity, weight: payload.weight, notes: payload.notes, ...(useSludge.value ? sludgePayload(form.materialType, form.gross, form.percent) : {}) } : { ...payload, ...(linkedSource.value ? { serial_no: undefined, material_name: undefined } : {}), ...(groupedDispatch.value ? { next_team_id: undefined } : {}) }), ...materialTransferVersion(editingSnapshot.value) })
       : await materialTransferApi.create({ ...payload, idempotency_key: createRequestKey.value })
     if (epoch !== formGeneration || !props.modelValue) return
     createRequestKey.value = ''
@@ -374,7 +345,6 @@ onBeforeUnmount(() => { ++formGeneration })
         </div>
       </ElTabPane>
       </ElTabs>
-      <OutboundQuantityClearance v-if="clearance" v-model:reason="clearanceReason" :batch-no="clearance.batchNo" :quantity="clearance.quantity" :disabled="!canSubmit" />
       <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
       <ElButton v-if="refreshFailed" :loading="refreshing" @click="refreshAfterConflict">重新读取</ElButton>
     </ElForm>

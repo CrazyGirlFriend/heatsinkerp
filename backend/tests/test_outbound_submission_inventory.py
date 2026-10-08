@@ -49,7 +49,9 @@ def test_external_submission_edit_void_and_confirmation_agree_across_views(clien
     check_stock(client, outbound, 169, 16.875, 31, 3.125)
     too_much = dispatch(client, outbound, idempotency_key='overdraw',
                         lines=[{'source_transfer_id': outbound['lots'][0]['id'], 'quantity': 70, 'weight': 0}])
-    assert too_much.status_code == 409
+    assert too_much.status_code == 201, too_much.text
+    check_stock(client, outbound, 99, 16.875, 101, 3.125)
+    assert client.delete('/api/material-transfers/' + too_much.json()['items'][0]['batch_no'], headers=outbound['headers']).status_code == 204
     check_stock(client, outbound, 169, 16.875, 31, 3.125)
 
     url = '/api/material-transfers/' + first['batch_no']

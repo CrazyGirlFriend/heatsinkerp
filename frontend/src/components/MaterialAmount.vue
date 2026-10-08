@@ -6,9 +6,10 @@ function amount(value: number | null | undefined) {
 </script>
 
 <template>
-  <span class="material-amount" :class="{ 'material-amount--prominent': prominent }">
+  <span class="material-amount" :class="{ 'material-amount--prominent': prominent, 'material-amount--shortage': (quantity ?? 0) < 0 || (weight ?? 0) < 0 }">
     <span><strong>{{ amount(quantity) }}</strong><small>件</small></span>
     <span><strong>{{ amount(weight) }}</strong><small>kg</small></span>
+    <small v-if="(quantity ?? 0) < 0 || (weight ?? 0) < 0" class="shortage-label">账面缺口</small>
   </span>
 </template>
 
@@ -19,4 +20,5 @@ function amount(value: number | null | undefined) {
 .material-amount small { color: var(--subtle); font-size: 12px; }
 .material-amount--prominent strong { font-size: 27px; font-weight: 600; letter-spacing: -.7px; }
 .material-amount--prominent { gap: 6px 24px; }
+.material-amount--shortage strong, .material-amount--shortage .shortage-label { color: var(--el-color-danger); }
 </style>

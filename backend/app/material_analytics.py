@@ -183,15 +183,15 @@ def serial_predicates(team_id, table, filters, now):
             MaterialLoss.team_id == team_id, *calendar.dates(MaterialLoss.created_at))
         result.append(table.c.serial_no.in_(matches.union(loss_matches)))
     if filters.availability == "available":
-        result.append(or_(table.c.available_quantity > 0, table.c.available_weight > 0))
+        result.append(or_(table.c.available_quantity != 0, table.c.available_weight != 0, table.c.shortage_quantity > 0, table.c.shortage_weight > 0))
     elif filters.availability == "scrap":
-        result.append(or_(table.c.scrap_quantity > 0, table.c.scrap_weight > 0))
+        result.append(or_(table.c.scrap_quantity != 0, table.c.scrap_weight != 0))
     if filters.serial_no:
         result.append(table.c.serial_no == filters.serial_no.strip())
     if filters.query and filters.query.strip():
         result.append(serial_search_predicate(team_id, table, filters))
     stock = stock_table(team_id)
-    remaining = or_(stock.c.on_hand_quantity > 0, stock.c.on_hand_weight > 0)
+    remaining = or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0)
     if filters.material_type or filters.material_name or filters.stock_age:
         conditions = [remaining]
         if filters.material_type:
@@ -263,7 +263,7 @@ def analytics(db, team_id, days=30, metric="weight"):
     now = utcnow()
     dates, start, end = period(days, now)
     stock = stock_table(team_id)
-    remaining = or_(stock.c.on_hand_quantity > 0, stock.c.on_hand_weight > 0)
+    remaining = or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0)
     trend = {}
     peers = {}
     for direction in ("incoming", "outgoing"):

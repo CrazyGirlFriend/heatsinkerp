@@ -55,6 +55,18 @@ const warehouse = computed(() => !external.value && destinations.value.find(team
 const totalQuantity = computed(() => lines.value.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0))
 const totalWeight = computed(() => Math.round(lines.value.reduce((sum, line) => sum + (Number(line.weight) || 0), 0) * 1000) / 1000)
 const busy = computed(() => saving.value || refreshing.value || quantityOpen.value)
+const shortageNotice = computed(() => {
+  if (isLoss.value) return ''
+  return lines.value.flatMap((line, index) => {
+    if (lines.value.slice(0, index).some(other => other.source.transfer.id === line.source.transfer.id)) return []
+    const same = lines.value.filter(other => other.source.transfer.id === line.source.transfer.id)
+    if (same.some(other => amountError(other.quantity, other.weight, other.latest))) return []
+    const free = dispatchableAmounts(line.latest)
+    const quantity = Math.max(0, same.reduce((sum, other) => sum + Number(other.quantity), 0) - Number(free.quantity))
+    const weight = Math.max(0, Math.round((same.reduce((sum, other) => sum + Number(other.weight), 0) - Number(free.weight)) * 1000) / 1000)
+    return quantity || weight ? [`${line.source.transfer.batch_no}：提交后账面缺口 ${quantity} 件 / ${weight} kg`] : []
+  }).join('；')
+})
 const clearanceReasons = reactive<Record<string, string>>({})
 const clearances = computed(() => isLoss.value ? [] : lines.value.flatMap((line, index) => {
   const id = Number(line.source.transfer.id)
@@ -138,18 +150,18 @@ async function submit() {
   if (!isLoss.value && containsScrap.value && external.value && form.entryKind !== 'warehouse_outbound') { errorMessage.value = '废料只能转库房处理，不能按成品发货'; return }
   for (const line of lines.value) {
     if (converted(line) && !sludgeWeight(line.gross, line.percent)) { errorMessage.value = '请填写废泥实重和有效材料占比，折算重量须达到 0.001 kg'; return }
-    const error = amountError(line.quantity, line.weight, line.latest)
+    const error = amountError(line.quantity, line.weight, line.latest, isLoss.value)
     if (error) { errorMessage.value = `${line.source.transfer.batch_no}：${error}`; return }
     if (!isLoss.value && warehouse.value && !line.materialType) { errorMessage.value = `${line.source.transfer.batch_no}：转入库房前请选择物料类型`; return }
     if (!isLoss.value && isScrapType(line.source.transfer.material_type) && !isScrapType(line.materialType)) { errorMessage.value = '废料不能直接改为正常物料出库'; return }
   }
   for (const line of lines.value) {
     const sameSource = lines.value.filter(other => other.source.transfer.id === line.source.transfer.id)
-    const error = amountError(sameSource.reduce((sum, other) => sum + Number(other.quantity), 0), Math.round(sameSource.reduce((sum, other) => sum + Number(other.weight), 0) * 1000) / 1000, line.latest)
+    const error = amountError(sameSource.reduce((sum, other) => sum + Number(other.quantity), 0), Math.round(sameSource.reduce((sum, other) => sum + Number(other.weight), 0) * 1000) / 1000, line.latest, isLoss.value)
     if (error) { errorMessage.value = `上一批次 ${line.source.transfer.batch_no}：${error}`; return }
   }
   for (const item of clearances.value) {
-    if (!clearanceReasons[item.id]?.trim() || clearanceReasons[item.id]!.trim().length > 2000) { errorMessage.value = `批次 ${item.batchNo}：请填写剩余 ${item.quantity} 件的清零原因，最多 2000 个字符`; return }
+    if ((clearanceReasons[item.id]?.trim().length ?? 0) > 2000) { errorMessage.value = `批次 ${item.batchNo}：请填写剩余 ${item.quantity} 件的清零原因，最多 2000 个字符`; return }
   }
   const current = generation
   const teamId = props.teamId
@@ -157,7 +169,7 @@ async function submit() {
   const lossBody = { source_transfer_id: Number(first.source.transfer.id), quantity: Number(first.quantity), weight: Number(first.weight), reason: form.reason.trim() }
   const dispatchBody: Omit<CreateDispatch, 'idempotency_key'> = { ...(isExternalEntryKind(form.entryKind) ? { entry_kind: form.entryKind, external_destination: form.externalDestination.trim() } : { next_team_id: Number(form.nextTeamId) }), notes: form.notes.trim() || null, lines: lines.value.map(line => ({ ...(warehouse.value && line.warehouseLocation ? { warehouse_location: line.warehouseLocation, warehouse_location_reservation_key: line.warehouseLocationKey } : {}), source_transfer_id: Number(line.source.transfer.id), quantity: Number(line.quantity), weight: Number(line.weight), ...(!external.value && line.purposeId ? { purpose_id: line.purposeId } : {}), ...(line.materialType ? { material_type: line.materialType } : {}) })) }
   dispatchBody.lines.forEach((body, index) => { const line = lines.value[index]!; if (converted(line)) Object.assign(body, sludgePayload(line.materialType, line.gross, line.percent)) })
-  if (clearances.value.length) dispatchBody.quantity_clearances = clearances.value.map(item => ({ source_transfer_id: item.id, quantity: item.quantity, reason: clearanceReasons[item.id]!.trim() }))
+  if (clearances.value.length) dispatchBody.quantity_clearances = clearances.value.filter(item => clearanceReasons[item.id]?.trim()).map(item => ({ source_transfer_id: item.id, quantity: item.quantity, reason: clearanceReasons[item.id]!.trim() }))
   const nextFingerprint = JSON.stringify({ teamId, mode: props.mode, body: isLoss.value ? lossBody : dispatchBody })
   if (!requestKey || fingerprint !== nextFingerprint) { requestKey = materialRequestKey(); fingerprint = nextFingerprint }
   saving.value = true
@@ -198,7 +210,7 @@ async function submit() {
         <article v-for="(line, index) in lines" :key="line.key" class="source-line">
           <header><div><strong>{{ line.source.transfer.material_name || '未填写材质' }}</strong><span>上一批次 {{ line.source.transfer.batch_no }}</span></div><small>来自 {{ line.source.transfer.source_team.name }}</small></header>
           <p class="source-identity">流水号 {{ line.source.transfer.serial_no }}<span>本班组业务 {{ line.source.transfer.purpose_name || '未分类' }}</span><span>原单批号 {{ line.source.transfer.source_batch_no || '未填写' }}</span><span v-if="sourceWarehouse">当前仓位 {{ currentLocations(line.latest || line.source) }}</span></p>
-          <div class="source-balance"><span>{{ isScrapType(line.source.transfer.material_type) ? '废料可处理的库存' : '本批可转出库存' }}</span><MaterialAmount :quantity="dispatchableAmounts(line.latest).quantity" :weight="dispatchableAmounts(line.latest).weight" /><ElButton link type="primary" :disabled="!line.latest" @click="fillAll(index)">全部填入</ElButton><ElButton v-if="!isLoss && !sourceWarehouse" link type="primary" :disabled="lines.length >= 100" @click="splitLine(index)">拆分物料</ElButton><ElButton v-if="!isLoss && lines.length > 1" link type="danger" @click="lines.splice(index, 1)">移除</ElButton></div>
+          <div class="source-balance"><span>{{ isScrapType(line.source.transfer.material_type) ? '废料可处理的库存' : '本批账面库存' }}</span><MaterialAmount :quantity="dispatchableAmounts(line.latest).quantity" :weight="dispatchableAmounts(line.latest).weight" /><ElButton link type="primary" :disabled="!line.latest" @click="fillAll(index)">全部填入</ElButton><ElButton v-if="!isLoss && !sourceWarehouse" link type="primary" :disabled="lines.length >= 100" @click="splitLine(index)">拆分物料</ElButton><ElButton v-if="!isLoss && lines.length > 1" link type="danger" @click="lines.splice(index, 1)">移除</ElButton></div>
           <ElButton v-if="!isLoss && !sourceWarehouse" link type="primary" @click="openQuantity(line.source)">加工后件数变化？更新未转出件数</ElButton>
           <div class="source-inputs">
             <ElFormItem :label="isLoss ? '丢失件数' : `${actionLabel}件数`" required><ElInputNumber v-model="line.quantity" :aria-label="`${line.source.transfer.batch_no}件数`" :min="0" :precision="0" controls-position="right" /><span class="amount-unit">件</span></ElFormItem>
@@ -216,6 +228,7 @@ async function submit() {
       <ElFormItem v-if="isLoss" label="丢失原因" required><ElInput v-model="form.reason" aria-label="丢失原因" type="textarea" :rows="3" maxlength="2000" show-word-limit placeholder="填写实际情况和原因" /></ElFormItem>
       <ElFormItem v-else :label="external ? `${actionLabel}说明` : warehouse ? '入库说明' : '出库说明'" :required="containsScrap"><ElInput v-model="form.notes" :aria-label="external ? `${actionLabel}说明` : '出库说明'" type="textarea" :rows="2" maxlength="2000" show-word-limit :placeholder="containsScrap ? '填写转废或废料处理原因' : '选填'" /></ElFormItem>
     </ElForm>
+    <ElAlert v-if="shortageNotice" :title="shortageNotice" type="warning" :closable="false" show-icon />
     <ElAlert v-if="balanceNotice" :title="balanceNotice" type="warning" :closable="false" show-icon />
     <ElAlert v-if="!isLoss && !external && purposes.items.value.length && !purposes.items.value.some(item => item.active)" title="接收班组暂无启用业务，请联系该班组在工作台中启用。" type="warning" :closable="false" />
     <ElAlert v-if="purposes.error.value" :title="purposes.error.value" type="error" :closable="false"><ElButton link @click="purposes.refresh">重新加载业务</ElButton></ElAlert>

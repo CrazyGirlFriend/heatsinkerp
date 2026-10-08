@@ -14,7 +14,7 @@ const record = (value: unknown): Raw => value && typeof value === 'object' ? val
 const numeric = (value: unknown): number | null => (typeof value === 'string' && value.trim() || typeof value === 'number') && Number.isFinite(Number(value)) ? Number(value) : null
 function balance(value: unknown): MaterialBalance {
   const raw = record(value)
-  return Object.fromEntries([...balanceFields, ...ownershipFields, 'scrap', 'scrap_available'].flatMap(key => ['quantity', 'weight'].map(unit => [`${key}_${unit}`, numeric(raw[`${key}_${unit}`])]))) as MaterialBalance
+  return Object.fromEntries([...balanceFields, ...ownershipFields, 'scrap', 'scrap_available', 'shortage'].flatMap(key => ['quantity', 'weight'].map(unit => [`${key}_${unit}`, numeric(raw[`${key}_${unit}`])]))) as MaterialBalance
 }
 function stock(value: unknown): StockBatch {
   const raw = record(value)

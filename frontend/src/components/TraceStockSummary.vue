@@ -49,14 +49,14 @@ const rows = computed(() => props.teams.map((name, index) => ({ name,
 </script>
 
 <template>
-  <aside class="trace-stock-summary" :class="{ compact }" aria-label="流水号当前库存">
+  <aside class="trace-stock-summary" :class="{ compact, 'has-gap': trace.shortage && (trace.shortage.quantity > 0 || trace.shortage.weight > 0) }" aria-label="流水号当前库存">
     <header class="stock-heading"><h2>当前正常料库存</h2><div class="stock-unit" role="group" aria-label="库存单位"><button type="button" :aria-pressed="metric === 'quantity'" @click="emit('update:metric', 'quantity')">件数</button><button type="button" :aria-pressed="metric === 'weight'" @click="emit('update:metric', 'weight')">重量</button></div></header>
     <div class="stock-rows">
       <div v-for="row in rows" :key="row.name" class="stock-row" :class="{ 'stock-row--external': row.external }" :style="{ top: `${row.top}%`, height: `${10000 / teams.length / (range.end - range.start)}%` }" :data-team="row.name">
         <span class="stock-team">{{ row.name }}</span>
         <span v-if="row.external || !available" class="stock-unavailable">—</span>
         <ElPopover v-else-if="row.amount.natures.length" trigger="click" placement="left" :width="280" :append-to="appendTo" :title="`${row.name}库存`">
-          <template #reference><button class="stock-value" type="button" :aria-label="`${row.name}库存 ${num(row.amount[metric])} ${unit}，查看物料类型`"><strong>{{ num(row.amount[metric]) }}</strong><small>{{ unit }}</small></button></template>
+          <template #reference><button class="stock-value" :class="{ 'stock-value--shortage': row.amount[metric] < 0 }" type="button" :aria-label="`${row.name}库存 ${num(row.amount[metric])} ${unit}，查看物料类型`"><strong>{{ num(row.amount[metric]) }}</strong><small>{{ unit }}</small></button></template>
           <div class="stock-breakdown"><div v-for="nature in row.amount.natures" :key="nature.name"><span>{{ nature.name }}</span><b>{{ num(nature[metric]) }} {{ unit }}</b></div></div>
         </ElPopover>
         <span v-else class="stock-zero">0 <small>{{ unit }}</small></span>
@@ -68,6 +68,7 @@ const rows = computed(() => props.teams.map((name, index) => ({ name,
         <template #reference><button type="button" class="stock-waste" :disabled="!stock.waste.length" aria-label="查看废料分类与存放班组"><span>废料另计 <i v-if="stock.waste.length">›</i></span><b>{{ available ? num(stock.scrap.weight) : '—' }} <small v-if="available">kg</small></b></button></template>
         <div class="stock-breakdown stock-waste-details"><section v-for="nature in stock.waste" :key="nature.name"><header><b>{{ nature.name }}</b><b>{{ num(nature.weight) }} kg</b></header><div v-for="team in nature.teams" :key="team.name"><span>{{ team.name }}</span><span>{{ num(team.weight) }} kg<template v-if="team.quantity"> · {{ num(team.quantity) }} 件</template></span></div></section></div>
       </ElPopover>
+      <div v-if="trace.shortage && (trace.shortage.quantity > 0 || trace.shortage.weight > 0)" class="stock-gap"><span>账面缺口</span><b>{{ num(trace.shortage[metric]) }} <small>{{ unit }}</small></b></div>
       <div class="stock-shipped"><span>成品已发货</span><b>{{ num(stock.shipped[metric]) }} <small>{{ unit }}</small></b></div>
     </footer>
   </aside>
@@ -93,4 +94,6 @@ button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
   .stock-totals { position: static; height: auto; margin-top: 8px; }.stock-totals > div, .stock-waste { min-height: 22px; }
 }
 @media (max-width: 1100px) { .compact { width: auto; flex-basis: auto; }.compact .stock-heading { height: auto; }.compact .stock-totals { height: auto; }.compact .stock-rows { position: static; } }
+.stock-value--shortage, .stock-gap { color: var(--el-color-danger); }
+.compact.has-gap .stock-totals { gap: 3px; padding-top: 8px; padding-bottom: 6px; }
 </style>

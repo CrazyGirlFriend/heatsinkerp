@@ -23,7 +23,7 @@ from .auth import actor_name
 from .batch_numbers import next_transfer_batch_numbers
 from .models import MaterialDispatch, MaterialLoss, MaterialStockBalance, MaterialTransfer, SerialUrgency, Team, utcnow
 from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, SCRAP_MATERIAL_TYPES, OutboundQuantityClearance, WarehouseLocationChoice, SludgeMeasurement
-from .material_weight import sludge_measurement, validate_sludge_available, stock_sludge_measurements
+from .material_weight import sludge_measurement, stock_sludge_measurements
 from .team_constants import EXTERNAL_ENTRY_KINDS, WAREHOUSE_TEAM_CODE, INSPECTION_TEAM_CODE
 from . import material_transfer_workflow as workflow
 
@@ -234,11 +234,13 @@ def create_dispatch(db, team_id, payload, user):
             clearances = {item.source_transfer_id: item for item in payload.quantity_clearances}
             if len(clearances) != len(payload.quantity_clearances) or clearances.keys() - lots.keys():
                 raise HTTPException(422, "每个来源批次只能填写一次清零原因，且必须属于本次出库")
+            stock_after = {}
             for source_id, lot in lots.items():
                 portions = [line for line in payload.lines if line.source_transfer_id == source_id]
                 quantity, weight = sum(line.quantity for line in portions), sum((line.weight for line in portions), Decimal(0))
-                available = validate_available(db, lot, quantity, weight)
+                available = available_locked(db, lot)
                 validate_outbound_clearance(lot, quantity, weight, available, clearances.get(source_id))
+                stock_after[source_id] = (available[0] - quantity - (clearances[source_id].quantity if source_id in clearances else 0), available[1] - weight)
             for line in payload.lines:
                 lot = lots[line.source_transfer_id]
                 kind = line.material_type if "material_type" in line.model_fields_set else lot.material_type
@@ -248,9 +250,6 @@ def create_dispatch(db, team_id, payload, user):
                 workflow.validate_material_route(lot.material_type, kind, target, payload.entry_kind, payload.notes)
                 if target is not None:
                     workflow._validate_warehouse_type(target, kind)
-            for source_id, lot in lots.items():
-                if lot.sludge_content_percent is not None:
-                    validate_sludge_available(db, lot, sum(line.sludge_gross_weight for line in payload.lines if line.source_transfer_id == source_id))
             destination = {"next_team_id": target.id if target else None,
                            "next_team_code": target.code if target else None,
                            "next_team_name": target.name if target else None,
@@ -318,7 +317,7 @@ def create_dispatch(db, team_id, payload, user):
                                      ("stock_source", lots[transfer.source_transfer_id]),
                                      ("dispatch", dispatch), ("source_team", source), ("next_team", target)):
                     set_committed_value(transfer, field, value)
-                workflow._record_event(db, transfer, user, "dispatched" if external else "created", flush=False)
+                workflow._record_event(db, transfer, user, "dispatched" if external else "created", flush=False, stock_after=stock_after[transfer.source_transfer_id])
             db.flush()
             # These rows were just created in our transaction; only replays need
             # the locking reread in dispatch_dict to observe concurrent changes.
@@ -354,7 +353,7 @@ def dispatch_dict(db, dispatch, user, *, items=None, include_history=False):
             # Keep the locking query confined to transfer rows. Load scalar
             # response relationships in batches, without locking joined teams
             # or recursively following the source's own history/relationships.
-            selectinload(MaterialTransfer.stock_source).load_only(MaterialTransfer.batch_no).raiseload("*"),
+            selectinload(MaterialTransfer.stock_source).load_only(MaterialTransfer.batch_no, MaterialTransfer.sludge_content_percent).raiseload("*"),
             selectinload(MaterialTransfer.delivery_origin).load_only(
                 MaterialTransfer.batch_no, MaterialTransfer.delivery_date, MaterialTransfer.delivery_quantity
             ).raiseload("*"),
@@ -407,6 +406,7 @@ def stock_table(team_id=None):
     columns = {name: getattr(balance, name) for name in AMOUNTS}
     for amount in ("quantity", "weight"):
         free = columns[f"on_hand_{amount}"]
+        columns[f"shortage_{amount}"] = case((free < 0, -free), else_=0)
         columns[f"owned_{amount}"] = free + columns[f"reserved_{amount}"]
         columns[f"external_pending_{amount}"] = columns[f"reserved_{amount}"] - columns[f"in_transit_{amount}"]
         scrap = MaterialTransfer.material_type.in_(SCRAP_MATERIAL_TYPES)
@@ -423,7 +423,7 @@ def stock_table(team_id=None):
     ).subquery()
 
 
-BALANCE_KEYS = tuple(f"{prefix}_{amount}" for prefix in ("received", "dispatched", "reserved", "in_transit", "lost", "on_hand", "available", "scrap", "scrap_available", "owned", "external_pending") for amount in ("quantity", "weight"))
+BALANCE_KEYS = tuple(f"{prefix}_{amount}" for prefix in ("received", "dispatched", "reserved", "in_transit", "lost", "on_hand", "available", "scrap", "scrap_available", "owned", "external_pending", "shortage") for amount in ("quantity", "weight"))
 
 
 def balance_dict(row):
@@ -451,9 +451,8 @@ def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=
     if serial_no is not None:
         filters.append(stock.c.serial_no == serial_no.strip())
     if availability == "available":
-        filters.append(or_(stock.c.available_quantity > 0, stock.c.available_weight > 0))
-    elif availability == "dispatchable":
-        filters.append(or_(stock.c.available_quantity > 0, stock.c.available_weight > 0, stock.c.scrap_available_quantity > 0, stock.c.scrap_available_weight > 0))
+        filters.append(or_(stock.c.available_quantity != 0, stock.c.available_weight != 0))
+    # Outbound selection includes all received lots, even exhausted or overdrawn ones.
     if material_type:
         filters.append(stock.c.material_type == material_type)
     if query and query.strip():

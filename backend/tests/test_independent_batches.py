@@ -76,7 +76,7 @@ def test_scrap_receipt_and_outbound_filters_keep_exhausted_zero_piece_batches(cl
     assert client.get(base(s) + '/outbound-batches', params={**filters, 'query': '%'}).json()['total'] == 0
     assert client.get(base(s) + '/outbound-batches', params={'material_type': 'invalid'}).status_code == 422
     assert client.get(base(s) + '/receipts', params={'material_type': 'scrap_chips'}).json()['total'] == 1
-    assert client.get(base(s) + '/stock', params={'availability': 'dispatchable', 'material_type': 'scrap_chips'}).json()['total'] == 0
+    assert client.get(base(s) + '/stock', params={'availability': 'dispatchable', 'material_type': 'scrap_chips'}).json()['total'] == 1
 
 
 def test_historical_ck_scan_keeps_identifiers_but_current_outbound_lists_each_batch(client, warehouse):

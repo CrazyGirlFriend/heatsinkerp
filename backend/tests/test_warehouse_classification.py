@@ -60,8 +60,8 @@ def test_split_one_source_into_good_and_scrap_without_double_deduction(client, w
     lines = [{'source_transfer_id': source['id'], 'quantity': 30, 'weight': 3, 'material_type': 'semi_finished'},
              {'source_transfer_id': source['id'], 'quantity': 20, 'weight': 2, 'material_type': 'scrap_chips'}]
     assert dispatch(client, s, lines, workshop=True).status_code == 422  # Scrap reason required.
-    excessive = [{**lines[0], 'quantity': 31}, lines[1]]
-    assert dispatch(client, s, excessive, workshop=True, notes='废屑回收').status_code == 409
+    invalid = [lines[0], {**lines[1], 'source_transfer_id': 999999}]
+    assert dispatch(client, s, invalid, workshop=True, notes='废屑回收').status_code == 404
     assert client.get(base(s, True) + '/overview').json()['totals']['available_quantity'] == 50
     response = dispatch(client, s, lines, workshop=True, notes='废屑回收')
     assert response.status_code == 201, response.text
@@ -69,8 +69,13 @@ def test_split_one_source_into_good_and_scrap_without_double_deduction(client, w
     assert len(group['items']) == 2 and sum(item['quantity'] for item in group['items']) == 50
     assert dispatch(client, s, lines, workshop=True, notes='废屑回收').json() == group
     assert client.get(base(s, True) + '/overview').json()['totals']['on_hand_quantity'] == 0
-    # Editing one split cannot consume its sibling's reserved stock.
-    assert client.patch('/api/material-transfers/' + group['items'][0]['batch_no'], headers=s['other_headers'], json={'quantity': 31}).status_code == 409
+    # Split edits retain sibling reservations and may produce a signed gap.
+    url = '/api/material-transfers/' + group['items'][0]['batch_no']
+    assert client.patch(url, headers=s['other_headers'], json={'quantity': 31}).status_code == 200
+    assert client.get(base(s, True) + '/overview').json()['totals']['on_hand_quantity'] == -1
+    restored = client.patch(url, headers=s['other_headers'], json={'quantity': 30})
+    assert restored.status_code == 200, restored.text
+    group['items'][0] = restored.json()
     received = confirm(client, s, group)
     assert received.status_code == 200, received.text
     totals = client.get(base(s) + '/overview').json()['totals']

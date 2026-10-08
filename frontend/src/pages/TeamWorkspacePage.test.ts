@@ -64,7 +64,7 @@ describe('team workspace material ledger', () => {
       await render('/team-workspaces/914?tab=stock')
       expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, expect.objectContaining({ availability: 'owned' }))
       expect(wrapper.get('.warehouse-table').findAll('.inventory-balance').map(cell => cell.text())).toEqual(['100', '10'])
-      expect(wrapper.get('.inventory-row-actions').findAll('button').some(button => button.text() === '出库')).toBe(false)
+      expect(wrapper.get('.inventory-row-actions').findAll('button').some(button => button.text() === '出库')).toBe(true)
       expect(wrapper.get('.inventory-row-actions').text()).toContain('在途转出')
       expect(wrapper.get('.warehouse-table').text()).toContain('全部待签收')
     } finally { state.directory.items = previous }

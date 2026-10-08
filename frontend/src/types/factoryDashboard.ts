@@ -33,7 +33,7 @@ export interface TeamYield {
   input_weight: number
   output_weight: number
   rate: number | null
-  status: 'complete' | 'in_progress'
+  status: 'complete' | 'in_progress' | 'needs_review'
 }
 export interface Installment {
   label: string

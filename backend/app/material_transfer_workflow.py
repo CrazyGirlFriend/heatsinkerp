@@ -19,7 +19,7 @@ from .batch_numbers import next_transfer_batch_number
 from .models import MaterialDispatch, MaterialTransfer, MaterialTransferEvent, Team, User, utcnow
 from .schemas import MaterialTransferDocumentFields, SCRAP_MATERIAL_TYPES
 from .team_constants import EXTERNAL_ENTRY_KINDS, WAREHOUSE_TEAM_CODE
-from .material_weight import SLUDGE_FIELDS, sludge_measurement, validate_sludge_available
+from .material_weight import SLUDGE_FIELDS, sludge_measurement
 
 
 DOCUMENT_FIELDS = tuple(MaterialTransferDocumentFields.model_fields)
@@ -61,13 +61,22 @@ def _snapshot(transfer: MaterialTransfer) -> dict[str, Any]:
     return result
 
 
-def _record_event(db, transfer, user, action, before=None, *, flush=True) -> None:
+def _record_event(db, transfer, user, action, before=None, *, flush=True, stock_after=None) -> None:
     previous = before or {}
     changes = {
         field: {"before": previous.get(field), "after": value}
         for field, value in _snapshot(transfer).items()
         if previous.get(field) != value
     }
+    if transfer.source_transfer_id is not None and action in {"created", "updated", "voided", "dispatched"}:
+        from .material_stock import available_locked
+        quantity, weight = stock_after if stock_after is not None else available_locked(db, transfer.stock_source)
+        changes.update({
+            "stock_quantity": {"before": None, "after": quantity},
+            "stock_weight": {"before": None, "after": float(weight)},
+            "shortage_quantity": {"before": None, "after": max(0, -quantity)},
+            "shortage_weight": {"before": None, "after": float(max(0, -weight))},
+        })
     transfer.history.append(MaterialTransferEvent(
         action=action, actor=actor_name(user), actor_user_id=user.id,
         occurred_at=transfer.updated_at, changes=changes,
@@ -373,7 +382,7 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
         quantity = payload.quantity if "quantity" in supplied else transfer.quantity
         weight = payload.weight if "weight" in supplied else transfer.weight
         material_type = payload.material_type if "material_type" in supplied else transfer.material_type
-        measured = sludge_measurement(material_type, weight,
+        sludge_measurement(material_type, weight,
             *(getattr(payload, field) if field in supplied else getattr(transfer, field) for field in SLUDGE_FIELDS),
             source=transfer.stock_source if transfer.source_transfer_id else None,
             legacy=transfer.material_type == "sludge" and transfer.sludge_content_percent is None)
@@ -384,7 +393,7 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
         if clearance is not None and (not transfer.source_transfer_id or not amounts_changed):
             raise HTTPException(422, "剩余件数清零必须随来源批次的最后一次出库修改一起提交")
         if transfer.source_transfer_id is not None:
-            from .material_stock import validate_available
+            from .material_stock import available_locked
             from .quantity_adjustments import validate_outbound_clearance, record_outbound_clearance
             if transfer.source_team_code == WAREHOUSE_TEAM_CODE and "material_type" in supplied and payload.material_type != transfer.stock_source.material_type:
                 raise HTTPException(422, "库房按原物料转出，不能更改物料类型")
@@ -393,8 +402,7 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
                     raise HTTPException(422, "stock-linked transfers must retain their source serial number and material")
             if "next_team_id" in supplied and payload.next_team_id != transfer.next_team_id:
                 raise HTTPException(422, "a stock-linked batch's destination cannot be changed; void this batch and recreate")
-            available = validate_available(db, transfer.stock_source, quantity, weight, exclude_transfer_id=transfer.id)
-            validate_sludge_available(db, transfer.stock_source, measured["sludge_gross_weight"], exclude_transfer_id=transfer.id)
+            available = available_locked(db, transfer.stock_source, exclude_transfer_id=transfer.id)
             if amounts_changed:
                 validate_outbound_clearance(transfer.stock_source, quantity, weight, available, clearance)
         target = transfer.next_team

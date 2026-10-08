@@ -65,7 +65,7 @@ def origin_columns():
 
 def warehouse_groups(team_id, filters):
     stock = stock_table(team_id)
-    remaining = or_(stock.c.on_hand_quantity > 0, stock.c.on_hand_weight > 0)
+    remaining = or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0)
     origins = origin_columns()
     moves = select(mt.source_transfer_id.label("lot_id"), func.max(mt.updated_at).label("at")).where(
         mt.source_team_id == team_id, mt.source_transfer_id.is_not(None)).group_by(mt.source_transfer_id).subquery()
@@ -118,7 +118,7 @@ def list_inventory(db, team_id, filters):
         conditions.append(matching.exists())
     if filters.availability != "all":
         prefix = "on_hand" if filters.availability == "current" else "owned" if filters.availability == "owned" else "scrap" if filters.availability == "scrap" else "available"
-        conditions.append(or_(table.c[prefix + "_quantity"] > 0, table.c[prefix + "_weight"] > 0))
+        conditions.append(or_(table.c[prefix + "_quantity"] != 0, table.c[prefix + "_weight"] != 0, table.c.shortage_quantity > 0, table.c.shortage_weight > 0))
     for key in ("serial_no", "material_name", "material_type", "receipt_source", "source_team_id"):
         value = getattr(filters, key)
         if value is not None:
@@ -204,7 +204,7 @@ def list_group_sources(db, team_id, group_id, user, *, page=1, page_size=20, cur
     stock = stock_table(team_id)
     statement = select(mt, stock).join(stock, stock.c.transfer_id == mt.id).where(*group_conditions(origins, anchor))
     if current_only:
-        statement = statement.where(or_(stock.c.on_hand_quantity > 0, stock.c.on_hand_weight > 0))
+        statement = statement.where(or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0))
     if query and query.strip():
         statement = statement.where(literal_query(query, [mt.batch_no, mt.serial_no, mt.material_name, mt.source_batch_no]))
     statement = statement.where(*(record_filters or RecordFilters()).predicates(mt.received_at, mt.serial_no))

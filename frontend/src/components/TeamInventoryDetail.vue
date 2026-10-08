@@ -11,7 +11,7 @@ import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { isScrapType, materialTypeLabel, materialTransferStatusLabel, materialTransferStatusTone, type MaterialTransfer } from '@/types/materialTransfer'
 import { inventorySourceLabel, inventoryAmount, type TeamInventoryRow } from '@/types/teamInventory'
 import type { StockBatch } from '@/types/teamMaterials'
-import { dispatchableAmounts, stockAvailable } from '@/utils/materialStock'
+import { dispatchableAmounts, stockAvailable, stockSelectable } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
 
 const props = defineProps<{ teamId: number; group: TeamInventoryRow | null; canWrite?: boolean; warehouse?: boolean }>()
@@ -48,7 +48,7 @@ async function load(background = false) {
   finally { if (current === version) loading.value = false }
 }
 function open(transfer: MaterialTransfer) { selected.value = transfer; batchOpen.value = true }
-function action(mode: 'dispatch' | 'loss', row: StockBatch) { if (props.canWrite && !loading.value && !error.value && stockAvailable(row)) emit('action', mode, [row]) }
+function action(mode: 'dispatch' | 'loss', row: StockBatch) { if (props.canWrite && !loading.value && !error.value && (mode === 'loss' ? stockAvailable(row) : stockSelectable(row))) emit('action', mode, [row]) }
 function asStock(row: unknown) { return row as StockBatch }
 function asTransfer(row: unknown) { return row as MaterialTransfer }
 function incoming(row: MaterialTransfer) { return Number(row.next_team.id) === props.teamId }
@@ -99,7 +99,7 @@ onBeforeUnmount(() => { ++version })
           <ElTableColumn v-if="hasLoss" label="丢失件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.lost_quantity) }}</template></ElTableColumn>
           <ElTableColumn v-if="hasLoss" label="丢失重量 (kg)" min-width="140" align="right"><template #default="{ row }">{{ inventoryAmount(row.lost_weight) }}</template></ElTableColumn>
           <ElTableColumn label="接收时间" min-width="170"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>
-          <ElTableColumn label="操作" :width="canWrite ? 250 : 110" fixed="right"><template #default="{ row }"><div class="source-actions"><ElButton link type="primary" @click="openQuantity(asStock(row))">{{ canWrite && !warehouse && stockAvailable(asStock(row)) ? '加工件数变更' : '件数记录' }}</ElButton><template v-if="canWrite"><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('dispatch', asStock(row))">出库</ElButton><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('loss', asStock(row))">登记丢失</ElButton></template></div></template></ElTableColumn>
+          <ElTableColumn label="操作" :width="canWrite ? 250 : 110" fixed="right"><template #default="{ row }"><div class="source-actions"><ElButton link type="primary" @click="openQuantity(asStock(row))">{{ canWrite && !warehouse && stockAvailable(asStock(row)) ? '加工件数变更' : '件数记录' }}</ElButton><template v-if="canWrite"><ElButton link type="primary" :disabled="!stockSelectable(asStock(row))" @click="action('dispatch', asStock(row))">出库</ElButton><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('loss', asStock(row))">登记丢失</ElButton></template></div></template></ElTableColumn>
         </ElTable>
         <footer><span>共 {{ total }} 个来源批次（含零库存）</span><ElPagination aria-label="当前库存分页" :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></footer>
       </section>

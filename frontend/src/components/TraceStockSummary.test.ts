@@ -73,3 +73,11 @@ it('distinguishes an unavailable older response from a verified zero balance', a
   await page.setProps({ trace: { ...trace, holdings: [] } })
   expect(page.get('.stock-total').text()).toBe('正常料合计0 件')
 })
+
+it('shows a book shortage separately from signed current normal stock', () => {
+  const data = { ...trace, shortage: { quantity: 20, weight: 2 }, holdings: [{ team_id: 1, team_code: 'FACTORY-WAREHOUSE', team_name: '库房', material_types: [{ material_type: 'finished', quantity: -20, weight: -2 }] }] }
+  wrapper = mount(TraceStockSummary, { props: { trace: data, teams: ['库房'], metric: 'weight', range: { start: 0, end: 100 } } })
+  expect(wrapper.get('.stock-gap').text()).toContain('账面缺口2 kg')
+  expect(wrapper.get('.stock-value--shortage').text()).toContain('-2')
+  expect(wrapper.get('.stock-total').text()).toContain('-2')
+})

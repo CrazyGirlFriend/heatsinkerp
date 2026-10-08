@@ -16,7 +16,7 @@ const fontSize = computed(() => 14)
 const format = (value: number) => new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)
 const natureColors = ['#58986f', '#79a9ce', '#c6a15c', '#9c91b5', '#86b2a4', '#bd8979', '#899baf', '#aea68d', '#86a5ad']
 const natureOrder = (key: string) => { const index = materialTypeOptions.findIndex(option => option.value === key); return index < 0 ? materialTypeOptions.length : index }
-const materialTypes = computed(() => props.data.material_types.filter(row => row.quantity > 0 || row.weight > 0).sort((a, b) => natureOrder(a.key) - natureOrder(b.key)).map((row, index) => ({
+const materialTypes = computed(() => props.data.material_types.filter(row => row.quantity !== 0 || row.weight !== 0).sort((a, b) => natureOrder(a.key) - natureOrder(b.key)).map((row, index) => ({
   ...row, name: row.key === 'unknown' ? '未填写性质' : materialTypeLabel(row.key), color: natureColors[index % natureColors.length],
 })))
 function natureTooltipPosition(_point: number[], _params: unknown, _dom: unknown, _rect: unknown, size: { contentSize: number[]; viewSize: number[] }) {
@@ -31,7 +31,7 @@ const common = computed(() => ({ color: colors.value, textStyle: { fontFamily: '
   legend: { top: 0, right: 0, itemWidth: 9, itemHeight: 9, textStyle: { fontSize: fontSize.value, color: ink.value } } }))
 function plot(labels: string[], series: object[], horizontal = false, legend = true): EChartsCoreOption {
   const category = { type: 'category', data: labels, inverse: horizontal, axisTick: { show: false }, axisLine: { show: false }, axisLabel: { fontSize: fontSize.value, color: ink.value, hideOverlap: true, ...(horizontal ? { width: 130, overflow: 'truncate' } : {}) } }
-  const numeric = { type: 'value', min: 0, splitNumber: 3, axisLabel: { fontSize: fontSize.value, color: ink.value }, splitLine: { lineStyle: { color: '#edf0f6' } } }
+  const numeric = { type: 'value', splitNumber: 3, axisLabel: { fontSize: fontSize.value, color: ink.value }, splitLine: { lineStyle: { color: '#edf0f6' } } }
   return { ...common.value, legend: { ...common.value.legend, show: legend }, grid: { left: 8, right: 10, top: legend ? 34 : 12, bottom: 8, outerBoundsMode: 'same', outerBoundsContain: 'axisLabel' },
     xAxis: horizontal ? numeric : category, yAxis: horizontal ? category : numeric, series }
 }
@@ -53,12 +53,12 @@ const cards = computed(() => {
       option }
   }
   const all = [
-    { key: 'teams', title: '班组库存分布', hint: '未转出库存 · 点击查看班组', empty: !d.teams.some(team => team.balance && (team.balance[`on_hand_${metric}`] || 0) > 0),
+    { key: 'teams', title: '班组库存分布', hint: '未转出库存 · 点击查看班组', empty: !d.teams.some(team => team.balance && (team.balance[`on_hand_${metric}`] || 0) !== 0),
       option: plot(d.teams.map(team => team.name + (!team.balance ? '（未配置）' : !team.active ? '（停用）' : '')), [bar('未转出库存', d.teams.map(team => team.balance?.[`on_hand_${metric}`] ?? null))], true, false) },
     { key: 'flow', title: '全厂对外收发', hint: `近${d.days}天 · 内部转料不计入`, empty: !d.trend.some(row => row.inbound[metric] || row.outbound[metric] || row.shipment[metric]),
       option: plot(labels, [line('库房入库', d.trend.map(row => row.inbound[metric])), line('库房对外出库', d.trend.map(row => row.outbound[metric])), line('检验发货', d.trend.map(row => row.shipment[metric]))]) },
     { key: 'types', title: '物料类型分布', hint: '未转出库存构成', empty: !materialTypes.value.some(row => row[metric] > 0),
-      option: { ...common.value, tooltip: { ...common.value.tooltip, trigger: 'item', renderMode: 'html', appendTo: 'body', confine: false, position: natureTooltipPosition, className: 'factory-nature-tooltip', textStyle: { fontSize: 12 }, padding: [8, 10] }, legend: { show: false }, series: [{ type: 'pie', radius: ['55%', '86%'], center: ['50%', '50%'], label: { show: false }, itemStyle: { borderColor: '#fff', borderWidth: 2 }, data: materialTypes.value.map(row => ({ name: row.name, value: row[metric], itemStyle: { color: row.color } })) }] } },
+      option: { ...common.value, tooltip: { ...common.value.tooltip, trigger: 'item', renderMode: 'html', appendTo: 'body', confine: false, position: natureTooltipPosition, className: 'factory-nature-tooltip', textStyle: { fontSize: 12 }, padding: [8, 10] }, legend: { show: false }, series: [{ type: 'pie', radius: ['55%', '86%'], center: ['50%', '50%'], label: { show: false }, itemStyle: { borderColor: '#fff', borderWidth: 2 }, data: materialTypes.value.filter(row => row[metric] >= 0).map(row => ({ name: row.name, value: row[metric], itemStyle: { color: row.color } })) }] } },
     { key: 'waiting', title: '待交接时长', hint: '每笔转料只统计一次', empty: !d.waiting_age.some(row => row.internal[metric] || row.external[metric]),
       option: plot(['<1天', '1–3天', '3–7天', '≥7天'], [bar('内部待签收', d.waiting_age.map(row => row.internal[metric]), 'waiting'), bar('对外待确认', d.waiting_age.map(row => row.external[metric]), 'waiting')]) },
     { key: 'loss', title: '丢失趋势', hint: `近${d.days}天 ${format(d.period_totals.loss[metric])} ${unit.value} · 不含转废`, empty: !d.trend.some(row => row.loss[metric] > 0),
@@ -81,7 +81,7 @@ function pick(key: string, index: number) { const team = props.data.teams[index]
         <div v-if="card.key === 'types' && materialTypes.length" class="nature-table-scroll" tabindex="0" role="region" aria-label="物料类型库存明细">
         <table class="nature-table">
           <thead><tr><th scope="col">性质</th><th scope="col">{{ metric === 'weight' ? '重量 (kg)' : '件数' }}</th></tr></thead>
-          <tbody><tr v-for="row in materialTypes" :key="row.key"><th scope="row"><i :style="{ background: row.color }" aria-hidden="true" />{{ row.name }}</th><td>{{ format(row[metric]) }}</td></tr></tbody>
+          <tbody><tr v-for="row in materialTypes" :key="row.key"><th scope="row"><i :style="{ background: row.color }" aria-hidden="true" />{{ row.name }}</th><td :class="{ 'nature-shortage': row[metric] < 0 }">{{ format(row[metric]) }}<small v-if="row[metric] < 0"> 账面缺口</small></td></tr></tbody>
         </table>
         </div>
       </div>
@@ -111,4 +111,5 @@ function pick(key: string, index: number) { const team = props.data.teams[index]
 @media (min-width: 1101px) and (max-height: 800px) { .factory-charts { gap: 12px; }.factory-chart { padding: 12px 16px 10px; }.factory-chart header { margin-bottom: 8px; } }
 @media (max-width: 1100px) { .factory-charts { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: 300px; height: auto; }.factory-chart { grid-column: span 1; }.factory-charts:not([data-scene="stock"]) .factory-chart:last-child { grid-column: 1 / -1; }.factory-charts[data-scene="stock"] { grid-auto-rows: 310px; } }
 @media (max-width: 640px) { .factory-charts { grid-template-columns: minmax(0, 1fr); grid-auto-rows: 280px; }.factory-chart { padding: 16px 14px 12px; }.factory-charts[data-scene="stock"] { grid-auto-rows: 300px; } }
+.nature-shortage { color: var(--el-color-danger); }
 </style>

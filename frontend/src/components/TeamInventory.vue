@@ -244,7 +244,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
           <div v-if="column.key === 'serial_no'" class="inventory-inline inventory-serial"><ElButton class="serial-number-link" :title="row.serial_no" link type="primary" @click="openSerial(row)"><strong>{{ row.serial_no }}</strong></ElButton><SerialUrgencyBadge :urgency="row.urgency" /><ElTooltip v-if="canManageUrgency" :content="row.urgency?.urgent ? '取消加急' : '标记加急'" placement="top"><ElButton class="warehouse-urgency-action" link type="primary" :icon="row.urgency?.urgent ? Close : Flag" :aria-label="row.urgency?.urgent ? '取消加急' : '标记加急'" @click="flag(row)" /></ElTooltip></div>
           <ElTooltip v-else-if="column.key === 'material_name'" :content="`规格：${row.transfer_specification}`" :disabled="!row.transfer_specification || separateSpecification" :trigger="['hover', 'focus']" placement="top"><span class="inventory-material" :tabindex="row.transfer_specification && !separateSpecification ? 0 : undefined">{{ row.material_name || '—' }}</span></ElTooltip>
           <ElTag v-else-if="column.key === 'material_type'" effect="light" :type="isScrapMaterialType(row.material_type) ? 'warning' : row.material_type === 'finished' ? 'success' : 'primary'">{{ column.format(asRow(row)) }}</ElTag>
-          <ElTooltip v-else-if="column.key === 'stock_status'" :content="ownershipHint(asRow(row))" :trigger="['hover', 'focus']" popper-class="inventory-balance-tooltip" placement="top"><ElTag :type="inventoryHasPending(asRow(row)) ? 'warning' : inventoryCanDispatch(asRow(row)) ? 'success' : 'info'" effect="light" tabindex="0">{{ column.format(asRow(row)) }}</ElTag></ElTooltip>
+          <ElTooltip v-else-if="column.key === 'stock_status'" :content="ownershipHint(asRow(row))" :trigger="['hover', 'focus']" popper-class="inventory-balance-tooltip" placement="top"><ElTag :type="column.format(asRow(row)) === '账面缺口' ? 'danger' : inventoryHasPending(asRow(row)) ? 'warning' : inventoryCanDispatch(asRow(row)) ? 'success' : 'info'" effect="light" tabindex="0">{{ column.format(asRow(row)) }}</ElTag></ElTooltip>
           <div v-else-if="column.key === 'source' && warehouse" class="inventory-inline"><span class="inventory-source-name">{{ row.receipt_source === 'opening' ? '初始库存' : row.source_name || '—' }}</span></div>
           <span v-else-if="column.key === 'dispatchable_quantity' || column.key === 'dispatchable_weight'" :title="isScrapMaterialType(row.material_type) ? '废料可处理的库存' : '正常料可转出的库存'">{{ column.format(asRow(row)) }}</span>
           <template v-else-if="column.key === 'in_transit_quantity' || column.key === 'in_transit_weight'">
@@ -252,7 +252,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
             <span v-else>{{ column.format(asRow(row)) }}</span>
           </template>
           <ElTooltip v-else-if="column.key === 'owned_quantity' || column.key === 'owned_weight' || column.key === 'on_hand_quantity' || column.key === 'on_hand_weight'" :content="column.key.startsWith('owned_') ? ownershipHint(asRow(row)) : '尚未转出的库存，不含已转出待确认的物料'" :trigger="['hover', 'focus']" popper-class="inventory-balance-tooltip" placement="top">
-            <span class="inventory-balance" :data-field="column.key" tabindex="0"><strong>{{ column.format(asRow(row)) }}</strong></span>
+            <span class="inventory-balance" :class="{ 'inventory-balance--shortage': column.format(asRow(row)).startsWith('-') }" :data-field="column.key" tabindex="0"><strong>{{ column.format(asRow(row)) }}</strong></span>
           </ElTooltip>
           <span v-else-if="column.key === 'purpose_name'">{{ row.purpose_name || '—' }}</span>
           <span v-else>{{ column.format(asRow(row)) }}</span>
@@ -343,4 +343,5 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
   .warehouse-table :deep(.el-table-fixed-column--right::before) { box-shadow: none; }
   .warehouse-table :deep(.el-scrollbar__bar.is-horizontal) { opacity: 1; }
 }
+.inventory-balance--shortage strong { color: var(--el-color-danger); }
 </style>

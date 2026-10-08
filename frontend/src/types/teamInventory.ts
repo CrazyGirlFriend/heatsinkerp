@@ -40,10 +40,11 @@ export function inventoryDispatchable(row: TeamInventoryRow) {
   const prefix = isScrapType(row.material_type || null) ? 'scrap_available' : 'available'
   return { quantity: row[`${prefix}_quantity`], weight: row[`${prefix}_weight`] }
 }
-export const inventoryCanDispatch = (row: TeamInventoryRow) => Object.values(inventoryDispatchable(row)).some(value => value != null && value > 0)
+export const inventoryCanDispatch = (row: TeamInventoryRow) => row.batch_count > 0 && Object.values(inventoryDispatchable(row)).every(value => value != null)
 export const inventoryHasPending = (row: TeamInventoryRow) => [row.reserved_quantity, row.reserved_weight, row.in_transit_quantity, row.in_transit_weight, row.external_pending_quantity, row.external_pending_weight].some(value => value != null && value > 0)
 export function inventoryStockStatus(row: TeamInventoryRow) {
-  const available = inventoryCanDispatch(row)
+  if ((row.shortage_quantity ?? 0) > 0 || (row.shortage_weight ?? 0) > 0 || (row.on_hand_quantity ?? 0) < 0 || (row.on_hand_weight ?? 0) < 0) return '账面缺口'
+  const available = Object.values(inventoryDispatchable(row)).some(value => value != null && value > 0)
   if (inventoryHasPending(row)) {
     const external = (row.external_pending_quantity ?? 0) > 0 || (row.external_pending_weight ?? 0) > 0
     return `${available ? '部分' : '全部'}${external ? '待确认' : '待签收'}`
@@ -71,6 +72,8 @@ export const warehouseColumns = [
   { key: 'source', label: '来源', width: 120, defaultVisible: true, format: warehouseSourceLabel },
   { key: 'owned_quantity', label: '库存件数', width: 140, defaultVisible: true, numeric: true, format: (row: TeamInventoryRow) => amount(row.owned_quantity) },
   { key: 'owned_weight', label: '库存重量 (kg)', width: 170, defaultVisible: true, numeric: true, format: (row: TeamInventoryRow) => amount(row.owned_weight) },
+  { key: 'shortage_quantity', label: '账面缺口件数', width: 150, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(row.shortage_quantity) },
+  { key: 'shortage_weight', label: '账面缺口重量 (kg)', width: 180, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(row.shortage_weight) },
   { key: 'stock_status', label: '库存状态', width: 150, defaultVisible: true, format: inventoryStockStatus },
   { key: 'dispatchable_quantity', label: '可转出件数', width: 150, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(inventoryDispatchable(row).quantity) },
   { key: 'dispatchable_weight', label: '可转出重量 (kg)', width: 180, defaultVisible: false, numeric: true, format: (row: TeamInventoryRow) => amount(inventoryDispatchable(row).weight) },

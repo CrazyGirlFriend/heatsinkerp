@@ -426,7 +426,7 @@ class MaterialStockBalance(Base):
         Index("ix_msb_team_lot", "team_id", "transfer_id"),
         *(
             CheckConstraint(f"{prefix}_{amount} >= 0", name=f"ck_msb_{prefix}_{amount}")
-            for prefix in ("received", "on_hand", "reserved", "in_transit", "dispatched", "lost")
+            for prefix in ("received", "reserved", "in_transit", "dispatched", "lost")
             for amount in ("quantity", "weight")
         ),
         *(
@@ -528,9 +528,8 @@ class MaterialQuantityAdjustment(Base):
 
     __tablename__ = "material_quantity_adjustments"
     __table_args__ = (
-        CheckConstraint("before_quantity >= 0 AND after_quantity >= 0", name="ck_mqa_quantities"),
+        CheckConstraint("after_quantity >= 0", name="ck_mqa_quantities"),
         CheckConstraint("before_quantity != after_quantity", name="ck_mqa_changed"),
-        CheckConstraint("weight_snapshot >= 0", name="ck_mqa_weight"),
         Index("ix_mqa_lot_created", "source_transfer_id", "created_at", "id"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

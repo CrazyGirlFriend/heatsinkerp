@@ -2,7 +2,7 @@ import { externalActionLabel, isExternalEntryKind, type ExternalEntryKind, type 
 
 export const balanceFields = ['received', 'dispatched', 'reserved', 'in_transit', 'lost', 'on_hand', 'available'] as const
 export const ownershipFields = ['owned', 'external_pending'] as const
-export type MaterialBalance = Record<`${typeof balanceFields[number]}_${'quantity' | 'weight'}`, number | null> & Partial<Record<`${'scrap' | 'scrap_available' | typeof ownershipFields[number]}_${'quantity' | 'weight'}`, number | null>>
+export type MaterialBalance = Record<`${typeof balanceFields[number]}_${'quantity' | 'weight'}`, number | null> & Partial<Record<`${'scrap' | 'scrap_available' | 'shortage' | typeof ownershipFields[number]}_${'quantity' | 'weight'}`, number | null>>
 export interface TeamMaterialOverview {
   team_id: number
   as_of?: string

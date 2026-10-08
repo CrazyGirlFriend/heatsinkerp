@@ -11,12 +11,10 @@ from .models import MaterialQuantityAdjustment as Adjustment, MaterialStockBalan
 
 
 def validate_outbound_clearance(lot, quantity, weight, available, clearance):
-    """Require explicit consent for precisely the remainder of a final-weight exit."""
+    """Only an explicitly requested clearance changes the remaining piece count."""
     available_quantity, available_weight = available
     remaining = available_quantity - quantity
     needed = available_weight > 0 and weight == available_weight and remaining > 0
-    if needed and clearance is None:
-        raise HTTPException(422, f"批次 {lot.batch_no} 的重量将全部转出，还剩 {remaining} 件；请填写剩余件数清零原因后提交")
     if clearance is not None and (not needed or clearance.source_transfer_id != lot.id or clearance.quantity != remaining):
         raise HTTPException(409, "待清零件数或库存已变化，请刷新后重新核对并填写清零原因")
 
@@ -114,7 +112,7 @@ def create(db, team_id, payload, user):
                 raise HTTPException(422, "件数未发生变化")
             # Count changes are not a substitute for loss reporting. A zero
             # count is permitted only while a measured weight remains.
-            if payload.quantity == 0 and balance.on_hand_weight == 0:
+            if payload.quantity == 0 and balance.on_hand_weight == 0 and balance.on_hand_quantity > 0:
                 raise HTTPException(422, "无重量物料清零请登记丢失或出库")
             row = Adjustment(source_transfer_id=lot.id, team_id=team_id,
                 before_quantity=balance.on_hand_quantity, after_quantity=payload.quantity,

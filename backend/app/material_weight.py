@@ -37,27 +37,7 @@ def sludge_measurement(material_type, weight, gross, percent, *, source=None, le
 def remaining_sludge_gross(gross, percent, transferred, lost_weight):
     # Losses are entered in accounted kg. Never reconstruct the original gross
     # from rounded accounted kg: e.g. 1.005 kg at 10% is recorded as 0.101 kg.
-    return max(Decimal(0), gross - transferred - lost_weight * 100 / percent).quantize(Decimal(".001"), rounding=ROUND_DOWN)
-
-
-def validate_sludge_available(db, source, gross, exclude_transfer_id=None):
-    """The caller already holds the source lock shared by all stock mutations."""
-    if source.sludge_content_percent is None or gross is None:
-        return
-    from sqlalchemy import select
-    from .models import MaterialTransfer, MaterialStockBalance
-    query = select(MaterialTransfer.sludge_gross_weight).where(
-        MaterialTransfer.source_transfer_id == source.id,
-        MaterialTransfer.status.in_(["pending", "received", "dispatched"]))
-    if exclude_transfer_id is not None:
-        query = query.where(MaterialTransfer.id != exclude_transfer_id)
-    # Current reads, not an older REPEATABLE READ snapshot after a lock wait.
-    transferred = sum((value or Decimal(0) for value in db.scalars(query.with_for_update())), Decimal(0))
-    lost = db.scalar(select(MaterialStockBalance.lost_weight).where(
-        MaterialStockBalance.transfer_id == source.id).with_for_update())
-    available = remaining_sludge_gross(source.sludge_gross_weight, source.sludge_content_percent, transferred, lost)
-    if gross > available:
-        raise HTTPException(409, f"废泥实重超过本批剩余可转实重 {available} kg，请刷新后核对")
+    return (gross - transferred - lost_weight * 100 / percent).quantize(Decimal(".001"), rounding=ROUND_DOWN)
 
 
 def stock_sludge_measurements(db, items):

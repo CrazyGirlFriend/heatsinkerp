@@ -66,8 +66,10 @@ def test_final_material_weight_can_clear_pieces_with_a_reason(client, warehouse)
     assert confirm(client, s, sent, workshop=True).status_code == 200
     source = sent["items"][0]
     data = line(source)
-    response = dispatch(client, s, [data], workshop=True, notes="废泥回库")
-    assert response.status_code == 422 and "清零原因" in response.text
+    response = dispatch(client, s, [data], workshop=True, notes="废泥回库", idempotency_key="without-clearance")
+    assert response.status_code == 201
+    assert stock(client, s, True)["on_hand_quantity"] == 100
+    assert client.delete(f"/api/material-transfers/{response.json()['items'][0]['batch_no']}", headers=s["other_headers"]).status_code == 204
     response = dispatch(client, s, [data], workshop=True, notes="废泥回库",
         quantity_clearances=[{"source_transfer_id": source["id"], "quantity": 100, "reason": "全部加工为废泥，按重量交接"}])
     assert response.status_code == 201, response.text
@@ -129,7 +131,7 @@ def test_receipt_decimal_rounding_and_legacy_unconverted_stock(client, warehouse
     assert result.json()["items"][0]["sludge_content_percent"] is None
 
 
-def test_measured_sludge_partial_exits_keep_gross_and_net_limits(client, warehouse):
+def test_measured_sludge_excess_exits_keep_gross_and_signed_book_stock(client, warehouse):
     s = warehouse
     receipt = intake(client, s, quantity=0, weight=10, material_type="sludge", sludge_gross_weight=20, sludge_content_percent=50).json()
     external = dict(entry_kind="warehouse_outbound", next_team_id=None, external_destination="回收单位", notes="废泥处理")
@@ -141,26 +143,27 @@ def test_measured_sludge_partial_exits_keep_gross_and_net_limits(client, warehou
     assert items[0]["sludge_available_gross_weight"] == 14
     assert items[0]["scrap_available_weight"] == 7
     result = dispatch(client, s, [line(receipt, gross=8, percent=50, weight=4), line(receipt, gross=8, percent=50, weight=4)], **external, idempotency_key="over-limit")
-    assert result.status_code == 409 and "剩余可转重量" in result.text
-    assert stock(client, s)["owned_weight"] == 7
+    assert result.status_code == 201, result.text
+    assert stock(client, s)["owned_weight"] == -1
     last = dispatch(client, s, [line(receipt, gross=14, percent=50, weight=7)], **external, idempotency_key="last-sludge")
     assert last.status_code == 201, last.text
-    assert stock(client, s)["owned_weight"] == 0
-    assert dispatch(client, s, first, **external, idempotency_key="duplicate-new-request").status_code == 409
+    assert stock(client, s)["owned_weight"] == -8
+    assert dispatch(client, s, first, **external, idempotency_key="duplicate-new-request").status_code == 201
+    assert stock(client, s)["owned_weight"] == -11
 
 
-def test_rounding_cannot_ship_more_actual_sludge_than_received(client, warehouse):
+def test_rounding_preserves_actual_sludge_gap_separately_from_book_weight(client, warehouse):
     s = warehouse
     receipt = intake(client, s, quantity=0, weight=".101", material_type="sludge", sludge_gross_weight="1.005", sludge_content_percent=10).json()
     external = dict(entry_kind="warehouse_outbound", next_team_id=None, external_destination="回收单位", notes="废泥处理")
     # Both values round to .101 accounted kg; only 1.005 actual kg exists.
     response = dispatch(client, s, [line(receipt, gross="1.009", percent=10, weight=".101")], **external)
-    assert response.status_code == 409 and "实重" in response.text
+    assert response.status_code == 201, response.text
     rows = client.get(base(s) + "/stock?availability=all").json()["items"]
-    assert rows[0]["sludge_available_gross_weight"] == 1.005
+    assert rows[0]["sludge_available_gross_weight"] == -.004
     sources = client.get(base(s) + f'/inventory/{receipt["id"]}/sources').json()["items"]
-    assert sources[0]["sludge_available_gross_weight"] == 1.005
-    assert dispatch(client, s, [line(receipt, gross="1.005", percent=10, weight=".101")], **external).status_code == 201
+    assert sources[0]["sludge_available_gross_weight"] == -.004
+    assert dispatch(client, s, [line(receipt, gross="1.005", percent=10, weight=".101")], **external, idempotency_key="second-gross").status_code == 201
 
 
 def test_sludge_opening_stock_uses_accounted_weight(client):

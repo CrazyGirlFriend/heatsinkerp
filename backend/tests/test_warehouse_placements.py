@@ -43,7 +43,7 @@ def test_reused_slot_survives_void_of_old_batch_and_can_assign_return_elsewhere(
     assert stock(client, warehouse, source)["on_hand_quantity"] == 0
     assert stock(client, warehouse, source)["owned_quantity"] == 100
     assert stock(client, warehouse, source)["warehouse_positions"] == []
-    blocked = client.post(
+    excess = client.post(
         f"/api/team-materials/{warehouse['team']['id']}/outbound-batches",
         headers=warehouse["headers"],
         json={
@@ -52,7 +52,9 @@ def test_reused_slot_survives_void_of_old_batch_and_can_assign_return_elsewhere(
             "lines": [{"source_transfer_id": source["id"], "quantity": 1, "weight": 0.1}],
         },
     )
-    assert blocked.status_code == 409
+    assert excess.status_code == 201, excess.text
+    assert stock(client, warehouse, source)['on_hand_quantity'] == -1
+    assert client.delete('/api/material-transfers/' + excess.json()['items'][0]['batch_no'], headers=warehouse['headers']).status_code == 204
     new = intake(
         client,
         warehouse,

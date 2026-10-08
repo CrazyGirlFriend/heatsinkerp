@@ -62,7 +62,7 @@ def stock_matrix(db: Session, teams: list[dict]) -> dict:
             )
             .where(
                 stock.c.team_id.in_([team["id"] for team in teams if team["id"] is not None]),
-                or_(stock.c.on_hand_quantity > 0, stock.c.on_hand_weight > 0),
+                or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0),
             )
             .group_by(stock.c.team_id, name)
             .order_by(name, stock.c.team_id)
@@ -192,7 +192,7 @@ def factory_overview(db: Session, days: int = 30) -> dict:
     ids = [team.id for team in configured.values()]
     stock = stock_table()
     in_scope = stock.c.team_id.in_(ids)
-    remaining = or_(stock.c.on_hand_quantity > 0, stock.c.on_hand_weight > 0)
+    remaining = or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0)
     stock_rows = list(
         db.execute(
             select(

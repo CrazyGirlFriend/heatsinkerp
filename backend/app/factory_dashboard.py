@@ -171,8 +171,17 @@ def ownership(db):
                 func.sum(quantity).label("quantity"),
                 func.sum(weight).label("weight"),
                 func.min(stock.c.received_at).label("oldest_at"),
+                func.sum(stock.c.shortage_quantity).label("shortage_quantity"),
+                func.sum(stock.c.shortage_weight).label("shortage_weight"),
             )
-            .where(or_(quantity > 0, weight > 0))
+            .where(
+                or_(
+                    quantity != 0,
+                    weight != 0,
+                    stock.c.shortage_quantity > 0,
+                    stock.c.shortage_weight > 0,
+                )
+            )
             .group_by(stock.c.team_id, stock.c.serial_no, name)
         ).mappings()
     )
@@ -254,12 +263,14 @@ def yields(db, owned):
         .group_by(mt.serial_no, name)
     ).mappings()
     remaining = {r["serial_no"] for r in owned}
+    shortages = {r["serial_no"] for r in owned if r["shortage_quantity"] or r["shortage_weight"]}
     result = []
     for row in rows:
         source, output = float(row["input_weight"]), float(row["output_weight"])
         status = (
             "needs_review"
-            if row["returns"]
+            if row["serial_no"] in shortages
+            or row["returns"]
             or row["opening"]
             or row["untracked"]
             or source <= 0
@@ -314,6 +325,8 @@ def get_team_yields(
             select(
                 stock.c.team_id,
                 func.sum(stock.c.received_weight).label("input_weight"),
+                func.sum(stock.c.shortage_quantity).label("shortage_quantity"),
+                func.sum(stock.c.shortage_weight).label("shortage_weight"),
                 func.sum(stock.c.on_hand_weight + stock.c.reserved_weight).label(
                     "remaining_weight"
                 ),
@@ -350,10 +363,17 @@ def get_team_yields(
                 "output_weight": float(output.get(r["team_id"], 0)),
                 "rate": round(float(output.get(r["team_id"], 0) / r["input_weight"]) * 100, 2)
                 if r["input_weight"] > 0
+                and not r["shortage_quantity"]
+                and not r["shortage_weight"]
+                and output.get(r["team_id"], 0) <= r["input_weight"]
                 and not r["remaining_weight"]
                 and not r["remaining_quantity"]
                 else None,
-                "status": "in_progress"
+                "status": "needs_review"
+                if r["shortage_quantity"]
+                or r["shortage_weight"]
+                or output.get(r["team_id"], 0) > r["input_weight"]
+                else "in_progress"
                 if r["remaining_weight"] or r["remaining_quantity"]
                 else "complete",
             }
@@ -376,7 +396,9 @@ def get_stock_detail(
         stock.c.on_hand_quantity + stock.c.reserved_quantity,
         stock.c.on_hand_weight + stock.c.reserved_weight,
     )
-    predicates = [or_(quantity > 0, weight > 0)]
+    predicates = [
+        or_(quantity != 0, weight != 0, stock.c.shortage_quantity > 0, stock.c.shortage_weight > 0)
+    ]
     if team_id is not None:
         predicates.append(stock.c.team_id == team_id)
     if material:

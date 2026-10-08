@@ -39,7 +39,8 @@ const warning = computed(() => {
   if (!report.value) return ''
   const missing = report.value.teams.filter(team => !team.id).map(team => team.name)
   const inactive = report.value.teams.filter(team => team.id && !team.active).map(team => team.name)
-  return [missing.length ? `未配置：${missing.join('、')}，汇总范围不完整` : '', inactive.length ? `停用班组仍保留库存：${inactive.join('、')}` : '', report.value.legacy_received_count ? `${report.value.legacy_received_count} 条历史接收未纳入库存` : ''].filter(Boolean).join('；')
+  const gap = report.value.totals
+  return [(gap.shortage_quantity ?? 0) > 0 || (gap.shortage_weight ?? 0) > 0 ? `账面缺口 ${number(gap.shortage_quantity)} 件 / ${number(gap.shortage_weight)} kg` : '', missing.length ? `未配置：${missing.join('、')}，汇总范围不完整` : '', inactive.length ? `停用班组仍保留库存：${inactive.join('、')}` : '', report.value.legacy_received_count ? `${report.value.legacy_received_count} 条历史接收未纳入库存` : ''].filter(Boolean).join('；')
 })
 const metrics = computed(() => {
   const d = report.value

@@ -1,8 +1,8 @@
 import { computed, shallowReactive, type Ref } from 'vue'
 
-export function useBatchSelection<T>(rows: Ref<T[]>, id: (row: T) => string, amounts: (row: T) => { quantity: number | null; weight: number | null }) {
+export function useBatchSelection<T>(rows: Ref<T[]>, id: (row: T) => string, amounts: (row: T) => { quantity: number | null; weight: number | null }, selectable?: (row: T) => boolean) {
   const selected = shallowReactive(new Map<string, T>())
-  const available = (row: T) => { const value = amounts(row); return value.quantity !== null && value.weight !== null && (value.quantity > 0 || value.weight > 0) }
+  const available = (row: T) => { if (selectable) return selectable(row); const value = amounts(row); return value.quantity !== null && value.weight !== null && (value.quantity > 0 || value.weight > 0) }
   const availableRows = computed(() => rows.value.filter(available))
   const checkedCount = computed(() => availableRows.value.filter(row => selected.has(id(row))).length)
   const allChecked = computed(() => availableRows.value.length > 0 && checkedCount.value === availableRows.value.length)

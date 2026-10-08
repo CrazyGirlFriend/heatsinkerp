@@ -119,8 +119,8 @@ def test_stock_idempotency_atomic_failure_and_permission_checks(client, stock_se
     first = receive_lot(client, setup)
     second = receive_lot(client, setup, key="lot-2", quantity=5, weight="0.500")
     invalid = [{"source_transfer_id": first["id"], "quantity": 50, "weight": 5},
-               {"source_transfer_id": second["id"], "quantity": 6, "weight": "0.100"}]
-    assert dispatch(client, setup, invalid).status_code == 409
+               {"source_transfer_id": second["id"] + 9999, "quantity": 6, "weight": "0.100"}]
+    assert dispatch(client, setup, invalid).status_code == 404
     assert totals(client, setup)["reserved_quantity"] == 0
     with SessionLocal() as db:
         assert db.scalar(select(func.count(MaterialDispatch.id))) == 0
@@ -131,7 +131,6 @@ def test_stock_idempotency_atomic_failure_and_permission_checks(client, stock_se
     retried = dispatch(client, setup, lines)
     assert retried.json() == created.json()
     assert dispatch(client, setup, [{**lines[0], "quantity": 61}]).status_code == 409
-    assert dispatch(client, setup, lines, idempotency_key="overspend").status_code == 409
     lost = loss(client, setup, first)
     assert lost.status_code == 201 and loss(client, setup, first).json() == lost.json()
     assert loss(client, setup, first, reason="不同原因").status_code == 409
@@ -149,40 +148,21 @@ def test_stock_idempotency_atomic_failure_and_permission_checks(client, stock_se
 
 
 @pytest.mark.parametrize("separate_requests", [False, True])
-def test_source_weight_limit_accumulates_all_pending_splits(client, stock_setup, separate_requests):
+def test_signed_weight_accumulates_all_pending_splits(client, stock_setup, separate_requests):
     setup = stock_setup
     lot = receive_lot(client, setup, quantity=0, weight="100.000")
-
     def portion(weight):
         return {"source_transfer_id": lot["id"], "quantity": 0, "weight": weight}
-
-    # The same source cannot exceed its weight within one request either.
-    excessive = dispatch(client, setup, [portion("60.000"), portion("40.001")],
-                         idempotency_key="excessive-split")
-    assert excessive.status_code == 409, excessive.text
-    assert totals(client, setup)["available_weight"] == 100
-    assert totals(client, setup)["reserved_weight"] == 0
-
-    groups = [[portion("30.000")], [portion("50.000")]] if separate_requests else [
-        [portion("30.000"), portion("50.000")]
-    ]
+    groups = [[portion("60.000")], [portion("40.001")]] if separate_requests else [[portion("60.000"), portion("40.001")]]
     for index, lines in enumerate(groups):
-        response = dispatch(client, setup, lines, idempotency_key=f"split-{index}")
-        assert response.status_code == 201, response.text
-        assert all(item["status"] == "pending" for item in response.json()["items"])
-    assert totals(client, setup)["available_weight"] == 20
-    assert totals(client, setup)["reserved_weight"] == 80
-
-    # Pending receipts already reserve weight; only the remaining 20 kg can leave.
-    excess = dispatch(client, setup, [portion("20.001")], idempotency_key="exceeds-remainder")
-    assert excess.status_code == 409, excess.text
-    assert "本次提交超过上一批次的剩余可转重量" in excess.json()["detail"]
-    assert lot["batch_no"] in excess.json()["detail"]
-    exact = dispatch(client, setup, [portion("20.000")], idempotency_key="exact-remainder")
-    assert exact.status_code == 201, exact.text
-    assert totals(client, setup)["available_weight"] == 0
-    assert totals(client, setup)["reserved_weight"] == 100
-    assert dispatch(client, setup, [portion("0.001")], idempotency_key="exhausted").status_code == 409
+        result = dispatch(client, setup, lines, idempotency_key=f"split-{index}")
+        assert result.status_code == 201, result.text
+        assert dispatch(client, setup, lines, idempotency_key=f"split-{index}").json() == result.json()
+    state = totals(client, setup)
+    assert state["available_weight"] == -.001 and state["shortage_weight"] == .001
+    assert state["reserved_weight"] == 100.001 and state["owned_weight"] == 100
+    assert dispatch(client, setup, [portion(".001")], idempotency_key="overdrawn-again").status_code == 201
+    assert totals(client, setup)["available_weight"] == -.002
 
 
 def test_linked_edits_adjust_reservation_without_rewriting_identity(client, stock_setup):
@@ -191,8 +171,6 @@ def test_linked_edits_adjust_reservation_without_rewriting_identity(client, stoc
     created = dispatch(client, setup, [{"source_transfer_id": lot["id"], "quantity": 80, "weight": 8}]).json()["items"][0]
     assert loss(client, setup, lot, quantity=10, weight=1).status_code == 201
     url = f"/api/material-transfers/{created['batch_no']}"
-    for payload in ({"quantity": 91}, {"weight": "9.001"}):
-        assert client.patch(url, json=payload, headers=setup["stock_headers"]).status_code == 409
     for payload in ({"serial_no": "OTHER"}, {"material_name": "其他材质"}, {"next_team_id": setup["source"]["id"]}):
         assert client.patch(url, json=payload, headers=setup["stock_headers"]).status_code == 422
     updated = client.patch(url, json={"quantity": 70, "weight": "7.000", "expected_version": 1}, headers=setup["stock_headers"])
@@ -205,7 +183,7 @@ def test_linked_edits_adjust_reservation_without_rewriting_identity(client, stoc
     assert totals(client, setup)["available_quantity"] == 90
 
 
-def test_pending_outbound_cannot_be_sent_again_even_while_still_owned(client, stock_setup):
+def test_pending_outbound_can_exceed_book_stock_but_cannot_be_forwarded_before_receipt(client, stock_setup):
     setup = stock_setup
     lot = receive_lot(client, setup)
 
@@ -218,8 +196,10 @@ def test_pending_outbound_cannot_be_sent_again_even_while_still_owned(client, st
     assert (state["owned_quantity"], state["owned_weight"]) == (100, 10)
     assert (state["available_quantity"], state["available_weight"]) == (30, 3)
     assert (state["reserved_quantity"], state["reserved_weight"]) == (70, 7)
-    assert send(31, 3, "exceed-pieces").status_code == 409
-    assert send(30, "3.001", "exceed-weight").status_code == 409
+    for quantity, weight, key in ((31, 3, "exceed-pieces"), (30, "3.001", "exceed-weight")):
+        excess = send(quantity, weight, key)
+        assert excess.status_code == 201
+        assert client.delete(f"/api/material-transfers/{excess.json()['items'][0]['batch_no']}", headers=setup["stock_headers"]).status_code == 204
     # Retrying a successful request is not a second deduction.
     assert send(70, 7, "reserve-seventy").json()["items"][0]["id"] == first["id"]
     second_response = send(30, 3, "reserve-remainder")
@@ -229,9 +209,7 @@ def test_pending_outbound_cannot_be_sent_again_even_while_still_owned(client, st
     assert totals(client, setup)["owned_quantity"] == 100
     assert totals(client, setup)["available_quantity"] == 0
     assert totals(client, setup)["available_weight"] == 0
-    assert client.get(endpoint(setup, "stock"), params={"availability": "dispatchable"}).json()["total"] == 0
-    assert send(1, 0, "send-again-pieces").status_code == 409
-    assert send(0, "0.001", "send-again-weight").status_code == 409
+    assert client.get(endpoint(setup, "stock"), params={"availability": "dispatchable"}).json()["total"] == 1
     # The receiver cannot forward a batch it has not signed for.
     blocked = client.post(f"/api/team-materials/{setup['third']['id']}/dispatches",
         headers=setup["third_headers"], json={"next_team_id": setup["stock_team_id"],
@@ -282,7 +260,7 @@ def test_stock_validation_and_atomic_rollback_on_audit_failure(client, stock_set
     valid = {"source_transfer_id": lot["id"], "quantity": 1, "weight": "0.100"}
     for changes in ({"quantity": -1}, {"weight": "0.0001"}, {"quantity": 0, "weight": 0}, {"quantity": 1.5}, {"source_transfer_id": 0}):
         assert dispatch(client, setup, [{**valid, **changes}]).status_code == 422
-    assert dispatch(client, setup, [{**valid, 'quantity': lot['quantity']}, valid]).status_code == 409
+    assert dispatch(client, setup, [valid, {**valid, 'source_transfer_id': 999999}]).status_code == 404
     assert dispatch(client, setup, []).status_code == 422
     assert loss(client, setup, lot, reason="   ").status_code == 422
     assert client.get("/api/team-materials/0/overview").status_code == 422

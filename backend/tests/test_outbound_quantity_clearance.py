@@ -21,12 +21,14 @@ def adjustments():
         return db.scalar(select(func.count()).select_from(MaterialQuantityAdjustment))
 
 
-def test_last_weight_requires_reason_and_clears_only_on_hand_count(client, stock_setup):
+def test_last_weight_clearance_is_optional_and_changes_only_on_hand_count(client, stock_setup):
     s = stock_setup
     lot = receive_lot(client, s)
     lines = [{"source_transfer_id": lot["id"], "quantity": 80, "weight": 10}]
-    rejected = dispatch(client, s, lines)
-    assert rejected.status_code == 422 and "还剩 20 件" in rejected.text
+    uncorrected = dispatch(client, s, lines, idempotency_key="without-clearance")
+    assert uncorrected.status_code == 201
+    assert totals(client, s)["on_hand_quantity"] == 20
+    assert client.delete(f"/api/material-transfers/{uncorrected.json()['items'][0]['batch_no']}", headers=s["stock_headers"]).status_code == 204
     assert totals(client, s)["on_hand_quantity"] == 100
     assert adjustments() == 0
     assert dispatch(client, s, lines, quantity_clearances=[clearance(lot, reason="  ")]).status_code == 422
@@ -76,8 +78,8 @@ def test_split_lines_clear_once_per_source_and_atomic_failures(client, stock_set
         assert dispatch(client, s, lines, quantity_clearances=data).status_code in (409, 422)
         assert totals(client, s)["on_hand_quantity"] == 100 and adjustments() == 0
     other = receive_lot(client, s, key="second-clearance")
-    invalid = lines + [{"source_transfer_id": other["id"], "quantity": 101, "weight": 1}]
-    assert dispatch(client, s, invalid, quantity_clearances=[clearance(lot)]).status_code == 409
+    invalid = lines + [{"source_transfer_id": other["id"] + 9999, "quantity": 101, "weight": 1}]
+    assert dispatch(client, s, invalid, quantity_clearances=[clearance(lot)]).status_code == 404
     assert adjustments() == 0
     response = dispatch(client, s, lines, quantity_clearances=[clearance(lot)])
     assert response.status_code == 201, response.text
@@ -104,7 +106,6 @@ def test_edit_final_weight_requires_reason_and_rechecks_expected_remainder(clien
     sent = dispatch(client, s, [{"source_transfer_id": lot["id"], "quantity": 80, "weight": 8}]).json()["items"][0]
     url = f"/api/material-transfers/{sent['batch_no']}"
     body = {"weight": 10, "expected_version": sent["version"]}
-    assert client.patch(url, headers=s["stock_headers"], json=body).status_code == 422
     assert client.patch(url, headers=s["stock_headers"], json={**body, "quantity_clearance": clearance(lot, 10)}).status_code == 409
     changed = client.patch(url, headers=s["stock_headers"], json={**body, "quantity_clearance": clearance(lot)})
     assert changed.status_code == 200, changed.text
@@ -112,7 +113,6 @@ def test_edit_final_weight_requires_reason_and_rechecks_expected_remainder(clien
     assert client.patch(url, headers=s["stock_headers"], json={**body, "quantity_clearance": clearance(lot)}).status_code == 409
     # Editing the quantity again does not leave a fresh zero-weight count behind.
     body = {"quantity": 70, "expected_version": changed.json()["version"]}
-    assert client.patch(url, headers=s["stock_headers"], json=body).status_code == 422
     again = client.patch(url, headers=s["stock_headers"], json={**body, "quantity_clearance": clearance(lot, 10)})
     assert again.status_code == 200, again.text
     assert totals(client, s)["reserved_quantity"] == 70 and adjustments() == 2

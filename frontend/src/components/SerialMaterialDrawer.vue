@@ -16,25 +16,25 @@ import { materialSourceLabel, materialTypeLabel, type MaterialTransfer } from '@
 import type { MaterialLoss, StockBatch } from '@/types/teamMaterials'
 import type { SerialMetaField, SerialSummary } from '@/types/materialAnalytics'
 import { formatDateTime } from '@/utils/format'
-import { stockAvailable } from '@/utils/materialStock'
+import { stockAvailable, stockSelectable } from '@/utils/materialStock'
 const props = defineProps<{ modelValue: boolean; teamId: number; serialNo: string; canWrite?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; changed: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]] }>()
 const tab = ref('stock'), page = ref(1), pageSize = ref(10)
 const summary = ref<SerialSummary | null>(null), stock = ref<StockBatch[]>([]), records = ref<MaterialTransfer[]>([]), losses = ref<MaterialLoss[]>([])
 const loading = ref(false), error = ref(''), total = ref(0)
 const checked = ref<string[]>([])
-const availableRows = computed(() => stock.value.filter(stockAvailable))
+const availableRows = computed(() => stock.value.filter(stockSelectable))
 const selectedRows = computed(() => availableRows.value.filter(row => checked.value.includes(String(row.transfer.id))))
 const allChecked = computed(() => availableRows.value.length > 0 && selectedRows.value.length === availableRows.value.length)
 function asStock(row: unknown) { return row as StockBatch }
 function asTransfer(row: unknown) { return row as MaterialTransfer }
 function toggle(row: StockBatch, value: string | number | boolean) {
   const id = String(row.transfer.id)
-  checked.value = value && stockAvailable(row) ? [...new Set([...checked.value, id])] : checked.value.filter(key => key !== id)
+  checked.value = value && stockSelectable(row) ? [...new Set([...checked.value, id])] : checked.value.filter(key => key !== id)
 }
 function toggleAll(value: string | number | boolean) { checked.value = value ? availableRows.value.map(row => String(row.transfer.id)) : [] }
 function action(mode: 'dispatch' | 'loss', sources: StockBatch[]) {
-  if (!props.canWrite || loading.value || error.value || !sources.length || sources.some(row => !stockAvailable(row))) return
+  if (!props.canWrite || loading.value || error.value || !sources.length || sources.some(row => !(mode === 'loss' ? stockAvailable(row) : stockSelectable(row)))) return
   emit('action', mode, sources)
 }
 const selected = ref<MaterialTransfer | null>(null), batchNo = ref(''), batchOpen = ref(false)
@@ -114,7 +114,7 @@ onBeforeUnmount(() => { ++version })
         <ElTable class="business-table" v-if="tab === 'stock'" :data="stock" stripe size="small" empty-text="暂无已接收来源批次">
           <ElTableColumn v-if="canWrite" width="44" class-name="stock-selection-column">
             <template #header><ElCheckbox aria-label="选择本页可用批次" :model-value="allChecked" :indeterminate="selectedRows.length > 0 && !allChecked" :disabled="!availableRows.length" @change="toggleAll" /></template>
-            <template #default="{ row }"><ElCheckbox :aria-label="'选择 ' + row.transfer.batch_no" :model-value="selectedRows.some(item => item.transfer.id === row.transfer.id)" :disabled="!stockAvailable(asStock(row))" @change="toggle(asStock(row), $event)" /></template>
+            <template #default="{ row }"><ElCheckbox :aria-label="'选择 ' + row.transfer.batch_no" :model-value="selectedRows.some(item => item.transfer.id === row.transfer.id)" :disabled="!stockSelectable(asStock(row))" @change="toggle(asStock(row), $event)" /></template>
           </ElTableColumn>
           <ElTableColumn label="来源批次" min-width="170"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
           <ElTableColumn v-if="stock.some(item => item.transfer.next_team.code === 'FACTORY-WAREHOUSE')" label="当前仓位" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ currentLocations(asStock(row)) }}</template></ElTableColumn>
@@ -130,7 +130,7 @@ onBeforeUnmount(() => { ++version })
           <ElTableColumn label="待确认件数" min-width="125" align="center"><template #default="{ row }">{{ inventoryAmount(row.reserved_quantity) }}</template></ElTableColumn>
           <ElTableColumn label="待确认重量 (kg)" min-width="155" align="center"><template #default="{ row }">{{ inventoryAmount(row.reserved_weight) }}</template></ElTableColumn>
           <ElTableColumn label="接收时间" min-width="145"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>
-          <ElTableColumn v-if="canWrite" label="操作" width="160" fixed="right"><template #default="{ row }"><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('dispatch', [asStock(row)])">出库</ElButton><ElButton link :disabled="!stockAvailable(asStock(row))" @click="action('loss', [asStock(row)])">登记丢失</ElButton></template></ElTableColumn>
+          <ElTableColumn v-if="canWrite" label="操作" width="160" fixed="right"><template #default="{ row }"><ElButton link type="primary" :disabled="!stockSelectable(asStock(row))" @click="action('dispatch', [asStock(row)])">出库</ElButton><ElButton link :disabled="!stockAvailable(asStock(row))" @click="action('loss', [asStock(row)])">登记丢失</ElButton></template></ElTableColumn>
         </ElTable>
         <ElTable class="business-table" v-else-if="tab === 'losses'" :data="losses" stripe size="small" empty-text="暂无丢失记录">
           <ElTableColumn prop="loss_no" label="记录编号" min-width="200" /><ElTableColumn label="丢失件数" min-width="115" align="center"><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>

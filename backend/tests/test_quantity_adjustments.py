@@ -60,7 +60,9 @@ def test_idempotency_stale_version_and_weight_and_quantity_bounds(client, wareho
     assert change(client, s, lot, 120, revision=0, key="stale").status_code == 409
     assert change(client, s, lot, 100, key="same").status_code == 422
     for q, w in [(101, 50), (20, 101)]:
-        assert dispatch(client, s, [{"source_transfer_id": lot["id"], "quantity": q, "weight": w}]).status_code == 409
+        excess = dispatch(client, s, [{"source_transfer_id": lot["id"], "quantity": q, "weight": w}], idempotency_key=f'excess-{q}')
+        assert excess.status_code == 201, excess.text
+        assert client.delete('/api/material-transfers/' + excess.json()['items'][0]['batch_no'], headers=s['headers']).status_code == 204
     out = dispatch(client, s, [{"source_transfer_id": lot["id"], "quantity": 100, "weight": 100}]).json()
     assert change(client, s, lot, 20, key="exhausted").status_code == 409
     assert client.delete('/api/material-transfers/' + out['items'][0]['batch_no'], headers=s['headers']).status_code == 204

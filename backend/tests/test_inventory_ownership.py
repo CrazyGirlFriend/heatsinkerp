@@ -66,7 +66,7 @@ def test_ownership_stays_with_sender_until_receipt_in_every_balance_view(client,
     assert client.get(base(s) + f"/inventory/{origin['id']}/pending-outbound").json()['total'] == 0
 
 
-def test_fully_pending_rows_remain_owned_but_cannot_be_issued_again_and_void_restores_stock(client, warehouse):
+def test_fully_pending_rows_remain_selectable_and_void_restores_signed_stock(client, warehouse):
     s = warehouse
     origin = intake(client, s, weight=100).json()
     lines = [{'source_transfer_id': origin['id'], 'quantity': 100, 'weight': 100}]
@@ -74,12 +74,15 @@ def test_fully_pending_rows_remain_owned_but_cannot_be_issued_again_and_void_res
     inventory = base(s) + '/inventory'
     for availability in ('current', 'available'):
         assert client.get(inventory, params={'availability': availability}).json()['total'] == 0
-    assert client.get(base(s) + '/stock?availability=dispatchable').json()['total'] == 0
+    assert client.get(base(s) + '/stock?availability=dispatchable').json()['total'] == 1
     result = client.get(inventory, params={'availability': 'owned', 'page_size': 1}).json()
     assert result['total'] == 1
     assert_amounts(result['items'][0], 100, 0, 100)
     datetime.fromisoformat(result['as_of'])
-    assert dispatch(client, s, lines, idempotency_key='second-issue').status_code == 409
+    second = dispatch(client, s, lines, idempotency_key='second-issue')
+    assert second.status_code == 201, second.text
+    assert_amounts(totals(client, s), 100, -100, 200)
+    assert client.delete('/api/material-transfers/' + second.json()['items'][0]['batch_no'], headers=s['headers']).status_code == 204
     assert client.delete('/api/material-transfers/' + item['batch_no'], headers=s['headers']).status_code == 204
     assert_amounts(totals(client, s), 100, 100, 0)
     for field in ('owned_quantity', 'owned_weight', 'external_pending_weight', 'in_transit_quantity'):

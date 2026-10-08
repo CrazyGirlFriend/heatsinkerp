@@ -35,6 +35,7 @@ const rows = computed(() => entries.value.slice((props.page - 1) * props.pageSiz
       <ElTableColumn v-if="isMaterial" label="确认转出重量 (kg)" min-width="175" align="center"><template #default="{ row }">{{ inventoryAmount(row.dispatched_weight) }}</template></ElTableColumn>
       <ElTableColumn v-if="isMaterial" label="累计丢失件数" min-width="145" align="center"><template #default="{ row }">{{ inventoryAmount(row.lost_quantity) }}</template></ElTableColumn>
       <ElTableColumn v-if="isMaterial" label="累计丢失重量 (kg)" min-width="175" align="center"><template #default="{ row }">{{ inventoryAmount(row.lost_weight) }}</template></ElTableColumn>
+      <ElTableColumn v-if="entries.some(item => (item.shortage_quantity ?? 0) > 0 || (item.shortage_weight ?? 0) > 0)" label="账面缺口" min-width="170" align="center"><template #default="{ row }"><span class="stock-shortage">{{ inventoryAmount(row.shortage_quantity) }} 件 / {{ inventoryAmount(row.shortage_weight) }} kg</span></template></ElTableColumn>
       <ElTableColumn label="操作" width="110" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="emit('filter', row.key)">查看详情</ElButton></template></ElTableColumn>
     </ElTable>
     <footer><span>共 {{ entries.length }} 种{{ isMaterial ? '材质' : '物料类型' }}</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[10, 20, 50, 100]" :total="entries.length" layout="sizes, prev, pager, next" @current-change="emit('paginate', $event, pageSize)" @size-change="emit('paginate', 1, $event)" /></footer>
@@ -61,4 +62,5 @@ const rows = computed(() => entries.value.slice((props.page - 1) * props.pageSiz
   .ledger-table :deep(.el-table__cell::before) { box-shadow: none; }
   .ledger-table :deep(.el-scrollbar__bar.is-horizontal) { opacity: 1; }
 }
+.stock-shortage { color: var(--el-color-danger); }
 </style>

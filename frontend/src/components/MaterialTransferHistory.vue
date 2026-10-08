@@ -9,7 +9,7 @@ const actions = { created: '创建转料单', updated: '修改转料单', receiv
 const labels: Record<string, string> = {
   warehouse_location: '入库仓位',
   sludge_gross_weight: '废泥实重（kg）', sludge_content_percent: '有效材料占比（%）',
-  stock_quantity: '未转出件数', reason: '加工说明',
+  stock_quantity: '未转出件数', stock_weight: '未转出重量', shortage_quantity: '账面缺口件数', shortage_weight: '账面缺口重量', reason: '加工说明',
   outbound_batches: '关联出库批次',
   receipt_kind: '入库来源类别', external_source: '外部来源单位', return_dispatch_no: '原出库批次', rejection_reason: '退回核对原因',
   main_system_schema_version: '主系统接口版本', main_system_revision: '主系统资料版本',
@@ -57,8 +57,8 @@ function valueText(field: string, value: unknown): string {
   if (field === 'receipt_kind') return value === 'return' ? '外部退回' : '外部来料'
   if (field === 'status') return materialTransferStatusLabel(String(value), props.transfer.entry_kind)
   if (field.endsWith('_at')) return formatDateTime(String(value))
-  if (field === 'delivery_quantity' || field === 'quantity' || field === 'finished_quantity' || field === 'stock_quantity') return `${value} 件`
-  if (field === 'weight') return `${value} kg`
+  if (field === 'delivery_quantity' || field === 'quantity' || field === 'finished_quantity' || field === 'stock_quantity' || field === 'shortage_quantity') return `${value} 件`
+  if (field === 'weight' || field === 'stock_weight' || field === 'shortage_weight') return `${value} kg`
   if (field === 'source_team_id' && String(value) === String(props.transfer.source_team.id)) return props.transfer.source_team.name
   if (field === 'next_team_id' && String(value) === String(props.transfer.next_team.id)) return props.transfer.next_team.name
   if (field.endsWith('_team_id')) return `班组 ${value}`

@@ -62,7 +62,7 @@ def test_manual_intake_is_a_locked_stock_origin_not_a_self_transfer(client, ware
     assert client.get(base+'/stock').json()['items'][0]['transfer']['id'] == receipt['id']
 
 
-def test_downstream_limit_uses_its_remaining_receipt_not_the_larger_warehouse_origin(client, warehouse):
+def test_downstream_excess_uses_received_lot_link_and_signed_balance(client, warehouse):
     origin = intake(client, warehouse, quantity=0, weight='100.000').json()
     response = client.post(warehouse['url'].replace('/receipts', '/dispatches'), headers=warehouse['headers'], json={
         'next_team_id': warehouse['other']['id'], 'idempotency_key': 'send-sixty',
@@ -81,10 +81,11 @@ def test_downstream_limit_uses_its_remaining_receipt_not_the_larger_warehouse_or
         })
 
     assert send(40, 'send-forty').status_code == 201
-    rejected = send('20.001', 'excessive-remainder')
-    assert rejected.status_code == 409
-    assert previous['batch_no'] in rejected.json()['detail']
-    assert '请调整重量或重新选择批次' in rejected.json()['detail']
+    excess = send('20.001', 'excessive-remainder')
+    assert excess.status_code == 201
+    balance = client.get(url.replace('/dispatches', '/overview')).json()['totals']
+    assert balance['on_hand_weight'] == -.001 and balance['shortage_weight'] == .001
+    assert client.delete(f"/api/material-transfers/{excess.json()['items'][0]['batch_no']}", headers=warehouse['other_headers']).status_code == 204
     accepted = send(20, 'send-twenty')
     assert accepted.status_code == 201, accepted.text
     assert accepted.json()['items'][0]['source_transfer_batch_no'] == previous['batch_no']

@@ -79,6 +79,8 @@ def serial_trace(db, serial_no, user):
 
     return {
         'serial_no': serial_no, 'items': items,
+        'shortage': {'quantity': sum(row['shortage_quantity'] for row in balances.values()),
+                     'weight': float(sum((row['shortage_weight'] for row in balances.values()), Decimal(0)))},
         'observed_at': datetime.now(timezone.utc).isoformat(),
         'totals': {key: amounts(value) for key, value in buckets.items()},
         'positions': [amounts(value) for value in positions.values()],

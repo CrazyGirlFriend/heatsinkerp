@@ -78,10 +78,10 @@ describe('external dispatch creation', () => {
     expect(teamMaterialApi.refreshSource).toHaveBeenCalledTimes(2)
     expect((wrapper.get('input[aria-label="出库去向"]').element as HTMLInputElement).value).toBe('外部仓库')
     expect(wrapper.getComponent(ElRadioGroup).props('modelValue')).toBe('warehouse_outbound')
-    await submit(); expect(teamMaterialApi.createDispatch).toHaveBeenCalledTimes(1)
+    await submit(); expect(teamMaterialApi.createDispatch).toHaveBeenCalledTimes(2)
     wrapper.findAllComponents(ElInputNumber).forEach(input => input.vm.$emit('update:modelValue', 0))
     wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 1); wrapper.findAllComponents(ElInputNumber)[2]!.vm.$emit('update:modelValue', 1)
-    await submit(); expect(teamMaterialApi.createDispatch).toHaveBeenCalledTimes(2)
+    await submit(); expect(teamMaterialApi.createDispatch).toHaveBeenCalledTimes(3)
   })
   it('reuses an uncertain create request and makes no write after account rebinding', async () => {
     vi.mocked(teamMaterialApi.createDispatch).mockRejectedValue(new TeamMaterialApiError('网络错误'))

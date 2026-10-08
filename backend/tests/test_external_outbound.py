@@ -128,7 +128,9 @@ def test_legacy_external_submission_self_confirmation_and_no_phantom_receipt(cli
     detail = f"/api/material-transfers/{first['batch_no']}"
     assert client.patch(detail, headers=outbound['headers'], json={'quantity': 1}).status_code == 409
     assert client.delete(detail, headers=outbound['headers']).status_code == 409
-    assert legacy_dispatch(client, outbound, idempotency_key='too-much', lines=[{'source_transfer_id': outbound['lots'][0]['id'], 'quantity': 71, 'weight': 0}]).status_code == 409
+    excess = legacy_dispatch(client, outbound, idempotency_key='too-much', lines=[{'source_transfer_id': outbound['lots'][0]['id'], 'quantity': 71, 'weight': 0}])
+    assert excess.status_code == 201
+    assert client.delete(f"/api/material-transfers/{excess.json()['items'][0]['batch_no']}", headers=outbound['headers']).status_code == 204
 
 
 def test_external_authorization_no_internal_self_receipt_loophole(client, outbound):
@@ -195,8 +197,8 @@ def test_external_validation_and_atomicity(client, outbound):
     for bad in ({'next_team_id': outbound['other']['id']}, {'external_destination': '  '}, {'external_destination': None},
                 {'external_destination': 'x'*241}, {'entry_kind': 'unknown'}, {'idempotency_key': '  '}):
         assert legacy_dispatch(client, outbound, **bad).status_code == 422
-    too_much = [{'source_transfer_id': lot['id'], 'quantity': 30 if i == 0 else 101, 'weight': 1} for i, lot in enumerate(outbound['lots'])]
-    assert legacy_dispatch(client, outbound, lines=too_much).status_code == 409
+    too_much = [{'source_transfer_id': lot['id'] if i == 0 else lot['id'] + 9999, 'quantity': 30 if i == 0 else 101, 'weight': 1} for i, lot in enumerate(outbound['lots'])]
+    assert legacy_dispatch(client, outbound, lines=too_much).status_code == 404
     assert client.get(outbound['url']+'/dispatches').json()['total'] == 0
     with patch('app.material_stock.workflow._record_event', side_effect=RuntimeError('audit failed')):
         assert legacy_dispatch(client, outbound).status_code == 500

@@ -103,7 +103,7 @@ describe('warehouse source detail', () => {
     await wrapper.findAll('button').find(button => button.text() === '登记丢失')!.trigger('click')
     expect(wrapper.emitted('action')).toEqual([['loss', [source(11, 5)]]])
   })
-  it('pages only the selected source group and shows exhausted history without allowing another outbound', async () => {
+  it('pages only the selected source group and allows selecting exhausted source batches', async () => {
     await render()
     expect(teamMaterialApi.inventorySources).toHaveBeenLastCalledWith(1, 11, { page: 1, page_size: 10 })
     expect(wrapper.text()).toContain('外部来料 · 供应商 A')
@@ -112,7 +112,7 @@ describe('warehouse source detail', () => {
     const headings = wrapper.findAll('.warehouse-source-table thead th').map(cell => cell.text())
     expect(wrapper.findAll('.warehouse-source-table tbody tr').map(row => ['库存件数', '库存重量 (kg)'].map(label => row.findAll('td')[headings.indexOf(label)]!.text()))).toEqual([['5', '0.5'], ['0', '0']])
     const buttons = wrapper.findAll('button').filter(button => button.text() === '出库')
-    expect(buttons[1]!.attributes('disabled')).toBeDefined()
+    expect(buttons[1]!.attributes('disabled')).toBeUndefined()
     await buttons[0]!.trigger('click')
     expect(wrapper.emitted('action')).toEqual([['dispatch', [source(11, 5)]]])
     wrapper.findAllComponents(ElPagination)[0]!.vm.$emit('current-change', 2); await flushPromises()
