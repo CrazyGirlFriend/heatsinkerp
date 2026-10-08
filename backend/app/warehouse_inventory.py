@@ -19,6 +19,7 @@ from .material_transfer_workflow import material_transfer_dict, material_transfe
 from .models import MaterialLoss, MaterialTransfer, User, utcnow
 from .record_filters import RecordFilters, day_bounds, urgent_serials
 from .serial_urgency import urgency_dict, urgency_map
+from .schemas import SCRAP_MATERIAL_TYPES
 from .warehouse_receipts import require_warehouse
 from .async_read_response import team_read_response
 
@@ -119,6 +120,9 @@ def list_inventory(db, team_id, filters):
     if filters.availability != "all":
         prefix = "on_hand" if filters.availability == "current" else "owned" if filters.availability == "owned" else "scrap" if filters.availability == "scrap" else "available"
         conditions.append(or_(table.c[prefix + "_quantity"] != 0, table.c[prefix + "_weight"] != 0, table.c.shortage_quantity > 0, table.c.shortage_weight > 0))
+        if filters.availability in ("available", "scrap"):
+            scrap = table.c.material_type.in_(SCRAP_MATERIAL_TYPES)
+            conditions.append(scrap if filters.availability == "scrap" else ~scrap)
     for key in ("serial_no", "material_name", "material_type", "receipt_source", "source_team_id"):
         value = getattr(filters, key)
         if value is not None:

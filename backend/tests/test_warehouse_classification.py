@@ -154,3 +154,24 @@ def test_provenance_migration_preserves_old_rows_and_can_repeat():
         assert {'receipt_kind', 'external_source', 'return_dispatch_no', 'rejection_reason'} <= {c['name'] for c in inspect(conn).get_columns('material_transfers')}
         assert conn.exec_driver_sql('SELECT * FROM material_transfers').one() == (1, 'EXISTING', None, None, None, None)
     engine.dispose()
+
+
+def test_signed_gaps_preserve_normal_and_scrap_filters_even_when_totals_cancel(client, warehouse):
+    s = warehouse
+    normal = intake(client, s, serial_no='NORMAL', quantity=10, weight=1, idempotency_key='normal').json()
+    scrap = intake(client, s, serial_no='SCRAP', quantity=0, weight=2, material_type='scrap_chips', idempotency_key='scrap').json()
+    sent = dispatch(client, s, [
+        {'source_transfer_id': normal['id'], 'quantity': 20, 'weight': 2},
+        {'source_transfer_id': scrap['id'], 'quantity': 0, 'weight': 3},
+    ], entry_kind='warehouse_outbound', next_team_id=None, external_destination='客户', notes='实际出库')
+    assert sent.status_code == 201, sent.text
+    assert intake(client, s, serial_no='NORMAL', quantity=10, weight=1, idempotency_key='offset-normal').status_code == 201
+    assert intake(client, s, serial_no='SCRAP', quantity=0, weight=1, material_type='scrap_chips', idempotency_key='offset-scrap').status_code == 201
+    for availability, serial in [('available', 'NORMAL'), ('scrap', 'SCRAP')]:
+        for resource in ('inventory', 'serials'):
+            result = client.get(base(s) + '/' + resource, params={'availability': availability})
+            assert result.status_code == 200, result.text
+            assert result.json()['total'] == 1
+            row = result.json()['items'][0]
+            assert row['serial_no'] == serial and row['on_hand_weight'] == 0
+            assert row['shortage_weight'] == 1

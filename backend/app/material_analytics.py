@@ -170,6 +170,7 @@ def serial_table(team_id):
 
 def serial_predicates(team_id, table, filters, now):
     result = []
+    stock = stock_table(team_id)
     if filters.urgent_only:
         result.append(table.c.serial_no.in_(urgent_serials()))
     if filters.date_from or filters.date_to or (filters.activity_day and not filters.activity_kind):
@@ -182,15 +183,15 @@ def serial_predicates(team_id, table, filters, now):
         loss_matches = select(mt.serial_no).join(MaterialLoss, MaterialLoss.source_transfer_id == mt.id).where(
             MaterialLoss.team_id == team_id, *calendar.dates(MaterialLoss.created_at))
         result.append(table.c.serial_no.in_(matches.union(loss_matches)))
-    if filters.availability == "available":
-        result.append(or_(table.c.available_quantity != 0, table.c.available_weight != 0, table.c.shortage_quantity > 0, table.c.shortage_weight > 0))
-    elif filters.availability == "scrap":
-        result.append(or_(table.c.scrap_quantity != 0, table.c.scrap_weight != 0))
+    if filters.availability != "all":
+        prefix = filters.availability
+        # Match individual lots so positive stock cannot hide another lot's gap.
+        result.append(table.c.serial_no.in_(select(stock.c.serial_no).where(or_(
+            stock.c[prefix + "_quantity"] != 0, stock.c[prefix + "_weight"] != 0))))
     if filters.serial_no:
         result.append(table.c.serial_no == filters.serial_no.strip())
     if filters.query and filters.query.strip():
         result.append(serial_search_predicate(team_id, table, filters))
-    stock = stock_table(team_id)
     remaining = or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0)
     if filters.material_type or filters.material_name or filters.stock_age:
         conditions = [remaining]
