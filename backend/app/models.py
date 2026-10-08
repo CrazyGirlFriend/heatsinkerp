@@ -166,7 +166,7 @@ class TeamSettingEvent(Base):
 class OpeningStockSubmission(Base):
     __tablename__ = "opening_stock_submissions"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"), unique=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"), index=True)
     idempotency_key: Mapped[str] = mapped_column(String(100), unique=True)
     request_hash: Mapped[str] = mapped_column(String(64))
     created_by: Mapped[str] = mapped_column(String(80))

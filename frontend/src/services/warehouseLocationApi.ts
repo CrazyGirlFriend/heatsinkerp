@@ -4,8 +4,10 @@ export type WarehouseLocation = {
   id: number; team_id: number; name: string; active: boolean; version: number
   status: 'available' | 'locked' | 'occupied' | 'disabled'; has_stock: boolean
   draft_locked?: boolean
-  batches: { id: number; batch_no: string; serial_no: string; quantity: number; weight: number; status: string; available_quantity?: number; available_weight?: number }[]
+  batches: { id: number; batch_no: string; serial_no: string; material_name?: string; material_type?: string; quantity: number; weight: number; status: string; available_quantity?: number; available_weight?: number }[]
 }
+export type WarehouseMaterial = { serial_no: string; material_name: string; material_type: string }
+export type WarehouseLeaseGroup = Map<number, { key: string; material: string; owners: Set<symbol>; slot: WarehouseLocation }>
 export type WarehouseLease = { id: number; name: string; key: string; expires_at: string; hold_until: string }
 export const locationState = { available: '空闲', locked: '已锁定', occupied: '有料', disabled: '停用' }
 
@@ -25,7 +27,7 @@ export const warehouseLocationApi = {
   place(id: number, payload: { expected_version: number; source_transfer_id: number; quantity: number; weight: number }) {
     return request<WarehouseLocation>(`/warehouse-locations/${id}/placement`, 'POST', payload)
   },
-  reserve(id: number, key: string) { return request<WarehouseLease>(`/warehouse-locations/${id}/reservation`, 'POST', { key }) },
+  reserve(id: number, key: string, material?: WarehouseMaterial) { return request<WarehouseLease>(`/warehouse-locations/${id}/reservation`, 'POST', { key, ...material }) },
   async release(id: number, key: string, keepalive = false) {
     const path = `/warehouse-locations/${id}/reservation`
     if (!keepalive) return request<void>(path, 'DELETE', { key })

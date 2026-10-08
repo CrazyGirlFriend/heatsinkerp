@@ -16,7 +16,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 
 from .auth import actor_name
 from .batch_numbers import next_transfer_batch_number
-from .models import MaterialDispatch, MaterialTransfer, MaterialTransferEvent, Team, User, utcnow
+from .models import MaterialDispatch, MaterialTransfer, MaterialTransferEvent, Team, User, WarehousePlacement, utcnow
 from .schemas import MaterialTransferDocumentFields, SCRAP_MATERIAL_TYPES
 from .team_constants import EXTERNAL_ENTRY_KINDS, WAREHOUSE_TEAM_CODE
 from .material_weight import SLUDGE_FIELDS, sludge_measurement
@@ -436,7 +436,18 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
                 raise _conflict("转料单已锁定仓位，请作废后重新选择")
             if not transfer.warehouse_location:
                 from .warehouse_locations import consume
-                transfer.warehouse_location = consume(db, target, payload, user)
+                identity = tuple(getattr(payload, field) if field in supplied else getattr(transfer, field)
+                                 for field in ("serial_no", "material_name", "material_type"))
+                transfer.warehouse_location = consume(db, target, payload, user, identity=identity)
+        if transfer.warehouse_location and supplied.intersection({"serial_no", "material_name", "material_type"}):
+            from .warehouse_locations import lock_location, require_compatible
+            identity = tuple(getattr(payload, field) if field in supplied else getattr(transfer, field)
+                             for field in ("serial_no", "material_name", "material_type"))
+            # Document names are historical; renamed slots retain their actual placement IDs.
+            location_ids = db.scalars(select(WarehousePlacement.location_id).where(
+                WarehousePlacement.transfer_id == transfer.id).order_by(WarehousePlacement.location_id)).all()
+            for location_id in location_ids:
+                require_compatible(db, lock_location(db, location_id), identity, exclude_transfer_id=transfer.id)
         for field in ("serial_no", "quantity", "weight", "notes", *DOCUMENT_FIELDS, *SLUDGE_FIELDS):
             if field in supplied:
                 setattr(transfer, field, getattr(payload, field))
@@ -517,7 +528,8 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
                         raise _conflict("转料单已锁定仓位，不能在签收时更换")
                 elif payload.warehouse_location:
                     from .warehouse_locations import consume
-                    transfer.warehouse_location = consume(db, transfer.next_team, payload, user)
+                    from .warehouse_locations import material_identity
+                    transfer.warehouse_location = consume(db, transfer.next_team, payload, user, identity=material_identity(transfer))
             transfer.status = "received"
             transfer.stock_tracked = True
             transfer.received_by = actor_name(user)

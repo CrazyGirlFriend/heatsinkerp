@@ -1,10 +1,10 @@
-"""One receiving batch per managed slot, with renewable locks while forms are open."""
+"""Compatible batches share managed slots; open forms retain exclusive draft locks."""
 
 from datetime import timedelta, timezone
 
 from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
@@ -51,6 +51,14 @@ class LocationWrite(BaseModel):
 class LeaseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     key: str = Field(min_length=16, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+    serial_no: str | None = Field(default=None, min_length=1, max_length=80)
+    material_name: str | None = Field(default=None, min_length=1, max_length=160)
+    material_type: str | None = Field(default=None, min_length=1, max_length=40)
+
+
+def material_identity(value):
+    return tuple((getattr(value, field, None) or "").strip()
+                 for field in ("serial_no", "material_name", "material_type"))
 
 
 class PlacementWrite(StockAmounts):
@@ -73,7 +81,7 @@ def place_stock(db, location_id, payload, user):
                 or location.version != payload.expected_version
             ):
                 raise HTTPException(409, "仓位已改变，请刷新后重试")
-            require_free(db, location)
+            require_compatible(db, location, material_identity(lot))
             if leased(location):
                 raise HTTPException(409, "该仓位已被其他表单锁定")
             balance = db.scalar(
@@ -101,14 +109,13 @@ def place_stock(db, location_id, payload, user):
             )
             if payload.quantity > free_q or payload.weight > free_w:
                 raise HTTPException(409, "未分配仓位的库存已变化，请刷新后重试")
-            db.add(
-                WarehousePlacement(
-                    location_id=location.id,
-                    transfer_id=lot.id,
-                    quantity=payload.quantity,
-                    weight=payload.weight,
-                )
-            )
+            placement = db.get(WarehousePlacement, (location.id, lot.id))
+            if placement:
+                placement.quantity += payload.quantity
+                placement.weight += payload.weight
+            else:
+                db.add(WarehousePlacement(location_id=location.id, transfer_id=lot.id,
+                                          quantity=payload.quantity, weight=payload.weight))
             location.version += 1
             db.add(
                 AdminAuditEvent(
@@ -184,6 +191,8 @@ def occupants(db, ids, *, locking=False):
             Transfer.id,
             Transfer.batch_no,
             Transfer.serial_no,
+            Transfer.material_name,
+            Transfer.material_type,
             Transfer.status,
             placement.quantity,
             placement.weight,
@@ -236,23 +245,32 @@ def location_dict(location, rows):
 
 
 def list_locations(
-    db, team_id=None, *, query=None, page=1, page_size=100, available_only=False, selected=None
+    db, team_id=None, *, query=None, page=1, page_size=100, available_only=False, selected=None,
+    identity=None,
 ):
     from .material_stock import literal_query
 
     team = warehouse(db, team_id)
     conditions = [WarehouseLocation.team_id == team.id]
+    busy = select(WarehousePlacement.transfer_id).where(
+        WarehousePlacement.location_id == WarehouseLocation.id,
+        or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0),
+    ).exists()
     if available_only:
-        busy = (
-            select(WarehousePlacement.transfer_id)
-            .where(
+        compatible = ~busy
+        if identity and all(identity):
+            mismatch = select(WarehousePlacement.transfer_id).join(
+                Transfer, Transfer.id == WarehousePlacement.transfer_id,
+            ).where(
                 WarehousePlacement.location_id == WarehouseLocation.id,
-            )
-            .exists()
-        )
+                or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0),
+                or_(*(getattr(Transfer, field).is_distinct_from(value)
+                      for field, value in zip(("serial_no", "material_name", "material_type"), identity))),
+            ).exists()
+            compatible = ~mismatch
         free = and_(
             WarehouseLocation.active.is_(True),
-            ~busy,
+            compatible,
             or_(
                 WarehouseLocation.reserved_until.is_(None),
                 WarehouseLocation.reserved_until <= utcnow(),
@@ -262,10 +280,13 @@ def list_locations(
     if query and query.strip():
         conditions.append(literal_query(query, [WarehouseLocation.name]))
     total = db.scalar(select(func.count()).select_from(WarehouseLocation).where(*conditions))
+    order = [WarehouseLocation.name]
+    if identity and all(identity):
+        order.insert(0, case((busy, 0), else_=1))
     locations = db.scalars(
         select(WarehouseLocation)
         .where(*conditions)
-        .order_by(WarehouseLocation.name)
+        .order_by(*order)
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
@@ -283,14 +304,22 @@ def list_locations(
 
 
 def require_free(db, location):
+    require_compatible(db, location, None)
+
+
+def require_compatible(db, location, identity, *, exclude_transfer_id=None):
     try:
-        rows = occupants(db, [location.id], locking=True)
+        rows = [row for row in occupants(db, [location.id], locking=True)
+                if row['id'] != exclude_transfer_id]
     except OperationalError as exc:
         from .material_stock import _db_conflict
 
         _db_conflict(exc)
-    if rows:
-        raise HTTPException(409, "该仓位已被其他单据占用，请重新选择空仓位")
+    if rows and (not identity or not all(identity) or any(
+        tuple((row[field] or "").strip() for field in ("serial_no", "material_name", "material_type")) != identity
+        for row in rows
+    )):
+        raise HTTPException(409, "该仓位已有不同流水号、材质或类型的物料，请重新选择仓位")
 
 
 def clear_lease(location):
@@ -300,7 +329,7 @@ def clear_lease(location):
     location.reserved_deadline = None
 
 
-def reserve(db, location_id, key, user):
+def reserve(db, location_id, key, user, identity=None):
     from .material_stock import _db_conflict
     from .material_transfer_workflow import _require_team_actor
 
@@ -311,7 +340,7 @@ def reserve(db, location_id, key, user):
             team = warehouse(db, location.team_id)
             if not team.active or not location.active:
                 raise HTTPException(409, "该仓位已停用，请重新选择")
-            require_free(db, location)
+            require_compatible(db, location, identity)
             same = location.reservation_key == key and location.reserved_by_user_id == user.id
             if leased(location) and not same:
                 raise HTTPException(409, "该仓位已被其他表单锁定，请重新选择空仓位")
@@ -358,7 +387,7 @@ def release(db, location_id, key, user):
         _db_conflict(exc)
 
 
-def consume(db, team, payload, user):
+def consume(db, team, payload, user, *, identity=None, consumed=None):
     """Replace a live form lease with a document in the caller's transaction."""
     name = payload.warehouse_location
     key = payload.warehouse_location_reservation_key
@@ -378,7 +407,13 @@ def consume(db, team, payload, user):
     location = lock_location(db, location_id)
     if not location.active or location.name != name:
         raise HTTPException(409, "仓位已改变，请重新选择")
-    require_free(db, location)
+    identity = identity or material_identity(payload)
+    require_compatible(db, location, identity)
+    # Only lines in this single atomic dispatch may reuse the consumed form lock.
+    if consumed is not None and location.id in consumed:
+        if consumed[location.id] != (key, identity):
+            raise HTTPException(409, "同一仓位只能存放相同流水号、材质和类型的物料")
+        return location.name
     if (
         not leased(location)
         or location.reservation_key != key
@@ -386,6 +421,8 @@ def consume(db, team, payload, user):
     ):
         raise HTTPException(409, "仓位选择已失效，请重新选择空仓位后提交")
     clear_lease(location)
+    if consumed is not None:
+        consumed[location.id] = (key, identity)
     db.flush([location])
     return location.name
 
@@ -475,7 +512,7 @@ def claim(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return reserve(db, location_id, payload.key, user)
+    return reserve(db, location_id, payload.key, user, material_identity(payload))
 
 
 @router.post("/{location_id}/placement")

@@ -228,22 +228,21 @@ def test_saved_transfer_retains_lock_through_receipt_and_void_releases(client, w
     assert location(client, warehouse, "A-02")
 
 
-def test_duplicate_slot_in_bulk_rolls_back_every_row_and_preserves_form_lock(client, warehouse):
+def test_compatible_bulk_lines_share_one_form_lock_and_preserve_independent_batches(client, warehouse):
     source = production_source(client, warehouse)
     selected = location(client, warehouse, "A-01", headers=warehouse["other_headers"])
     with SessionLocal() as db:
         before = db.scalar(select(func.count(MaterialTransfer.id)))
-    assert (
-        return_rows(client, warehouse, source, "duplicate-slot", selected, count=2).status_code
-        == 409
-    )
+    response = return_rows(client, warehouse, source, "shared-slot", selected, count=2)
+    assert response.status_code == 201, response.text
+    assert len({row['batch_no'] for row in response.json()['items']}) == 2
     with SessionLocal() as db:
-        assert db.scalar(select(func.count(MaterialTransfer.id))) == before
-        assert (
-            db.scalar(select(WarehouseLocation.reservation_key))
-            == selected["warehouse_location_reservation_key"]
-        )
-    assert return_rows(client, warehouse, source, "valid-one", selected).status_code == 201
+        assert db.scalar(select(func.count(MaterialTransfer.id))) == before + 2
+        assert db.scalar(select(WarehouseLocation.reservation_key)) is None
+    row = client.get('/api/warehouse-locations').json()['items'][0]
+    assert len(row['batches']) == 2
+    assert sum(batch['quantity'] for batch in row['batches']) == 20
+    assert return_rows(client, warehouse, source, "stale-key", selected).status_code == 409
 
 
 def test_simultaneous_forms_only_one_claims_slot(client, warehouse):

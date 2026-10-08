@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElCheckbox, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElPagination, ElSelect, ElTable, ElTableColumn } from 'element-plus'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { warehouseLocationApi, type WarehouseLocation } from '@/services/warehouseLocationApi'
@@ -14,6 +14,8 @@ const props = defineProps<{ teamId: number; canDispatch?: boolean; refreshKey?: 
 const emit = defineEmits<{ view: [batchNo: string]; dispatch: [batchNo: string]; batchDispatch: [sourceIds: number[]]; changed: [] }>()
 const rows = ref<StockBatch[]>([]), total = ref(0), page = ref(1), query = ref(''), error = ref(''), loading = ref(false)
 const selected = ref<StockBatch | null>(null), slots = ref<WarehouseLocation[]>([]), locationId = ref<number>()
+const currentSlot = computed(() => slots.value.find(slot => slot.id === locationId.value))
+const slotAmount = (key: 'quantity' | 'weight') => (currentSlot.value?.batches.filter(batch => batch.status === 'received').reduce((sum, batch) => sum + batch[key], 0) || 0).toLocaleString('zh-CN', { maximumFractionDigits: 3 })
 const quantity = ref<number>(), weight = ref<number>(), saving = ref(false), formError = ref('')
 const { selected: checked, availableRows, checkedCount, allChecked, totals, toggle, toggleAll, reconcile } = useBatchSelection(rows, row => String(row.transfer.id), dispatchableAmounts)
 function batchDispatch() { if (props.canDispatch && checked.size && !loading.value && !error.value) emit('batchDispatch', [...checked.values()].map(row => Number(row.transfer.id))) }
@@ -31,7 +33,14 @@ async function load() {
 }
 async function findSlots(query = '') {
   const current = ++slotGeneration
-  try { const result = await teamMaterialApi.warehouseLocations(props.teamId, query); if (current === slotGeneration) slots.value = result.items.filter(row => row.status === 'available') }
+  const stock = selected.value?.transfer
+  if (!stock) return
+  try {
+    const result = await teamMaterialApi.warehouseLocations(props.teamId, query, '', { serial_no: stock.serial_no, material_name: stock.material_name || '', material_type: stock.material_type || '' })
+    if (current !== slotGeneration) return
+    slots.value = result.items.filter(row => row.active && !row.draft_locked)
+    if (!query && !locationId.value) locationId.value = slots.value[0]?.id
+  }
   catch (e) { if (current === slotGeneration) formError.value = e instanceof Error ? e.message : '空闲仓位加载失败' }
 }
 function open(row: StockBatch) {
@@ -41,7 +50,7 @@ function open(row: StockBatch) {
 async function assign() {
   const row = selected.value, slot = slots.value.find(item => item.id === locationId.value)
   if (!row || saving.value) return
-  if (!slot) { formError.value = '请选择空闲仓位'; return }
+  if (!slot) { formError.value = '请选择可用仓位'; return }
   if (quantity.value === undefined || weight.value === undefined || quantity.value < 0 || weight.value < 0 || quantity.value + weight.value <= 0) { formError.value = '请填写要放入仓位的件数和重量，不能同时为零'; return }
   saving.value = true; formError.value = ''
   try {
@@ -75,7 +84,8 @@ onBeforeUnmount(() => { disposed = true; ++generation; ++slotGeneration })
     <footer><span>共 {{ total }} 批</span><ElPagination v-model:current-page="page" :page-size="10" :total="total" layout="prev, pager, next" @current-change="load" /></footer>
     <ElDialog :model-value="!!selected" title="安排仓位" width="min(480px, 94vw)" :close-on-click-modal="!saving" :show-close="!saving" :close-on-press-escape="!saving" @update:model-value="!$event && (selected = null)">
       <ElForm label-position="top"><p>{{ selected?.transfer.batch_no }}</p>
-        <ElFormItem label="空闲仓位" required><ElSelect v-model="locationId" filterable remote :remote-method="findSlots" aria-label="选择空闲仓位" placeholder="选择或搜索空闲仓位" :disabled="saving"><ElOption v-for="slot in slots" :key="slot.id" :value="slot.id" :label="slot.name" /></ElSelect></ElFormItem>
+        <ElFormItem label="仓位" required><ElSelect v-model="locationId" filterable remote :remote-method="findSlots" aria-label="选择空闲仓位" placeholder="选择或搜索仓位" :disabled="saving"><ElOption v-for="slot in slots" :key="slot.id" :value="slot.id" :label="slot.name" /></ElSelect></ElFormItem>
+        <p v-if="currentSlot?.batches.length">当前库存 {{ slotAmount('quantity') }} 件 · {{ slotAmount('weight') }} kg · {{ currentSlot.batches.length }} 批</p>
         <ElFormItem label="件数" required><ElInputNumber v-model="quantity" :min="0" :max="selected?.unassigned_quantity" :precision="0" :disabled="saving" aria-label="安排仓位件数" /></ElFormItem>
         <ElFormItem label="重量（kg）" required><ElInputNumber v-model="weight" :min="0" :max="selected?.unassigned_weight" :precision="3" :disabled="saving" aria-label="安排仓位重量" /></ElFormItem>
         <ElAlert v-if="formError" :title="formError" type="error" :closable="false" />

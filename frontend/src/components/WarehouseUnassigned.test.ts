@@ -34,9 +34,10 @@ describe('unassigned warehouse stock', () => {
   })
   it('assigns only the returned portion, not the full lot balance', async () => {
     await render(); expect(teamMaterialApi.stock).toHaveBeenCalledWith(1, expect.objectContaining({ location_status: 'unassigned', availability: 'all' }))
-    await click('安排仓位'); await click('确认安排')
+    await click('安排仓位')
+    expect(wrapper.getComponent(ElSelect).props('modelValue')).toBe(7)
     expect(warehouseLocationApi.place).not.toHaveBeenCalled()
-    wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 7); await flushPromises(); await click('确认安排')
+    await click('确认安排')
     expect(warehouseLocationApi.place).toHaveBeenCalledWith(7, { source_transfer_id: 8, expected_version: 3, quantity: 10, weight: 1 })
     expect(wrapper.emitted('changed')).toHaveLength(1)
   })

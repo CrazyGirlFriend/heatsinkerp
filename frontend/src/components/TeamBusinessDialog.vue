@@ -68,7 +68,7 @@ async function submitOpening() {
   if (lines.value.some(line => !line.serial_no.trim() || !line.material_name.trim() || !line.material_type || !Number.isInteger(line.quantity) || Number(line.quantity) < 0 || line.weight == null || !Number.isFinite(line.weight) || line.weight < 0 || (!line.quantity && !line.weight))) { error.value = '请逐行填写流水号、材质、类型及有效件数和重量；至少一项大于零'; return }
   const body = lines.value.map(line => ({ ...line, ...sludgePayload(line.material_type, line.sludge_gross_weight, line.sludge_content_percent), purpose_id: line.purpose_id || null, serial_no: line.serial_no.trim(), material_name: line.material_name.trim() }))
   const current = epoch
-  try { await ElMessageBox.confirm(`将这 ${body.length} 行物料计入本班组库存。只能登记一次，确认后不能直接修改数量。`, '确认初始库存登记', { confirmButtonText: '确认登记', cancelButtonText: '返回核对', type: 'warning' }) }
+  try { await ElMessageBox.confirm(`将这 ${body.length} 行物料累加到本班组库存，每行生成独立批次。`, '确认初始库存登记', { confirmButtonText: '确认登记', cancelButtonText: '返回核对', type: 'warning' }) }
   catch { return }
   if (current !== epoch || !props.modelValue || saving.value) return
   const fingerprint = JSON.stringify(body)
@@ -78,8 +78,8 @@ async function submitOpening() {
     const rows = await teamMaterialApi.createOpening(props.teamId, body, requestKey)
     if (current !== epoch) return
     try { localStorage.removeItem(key()) } catch { /* The committed receipt remains authoritative. */ }
-    lines.value = [blank()]; emit('changed'); emit('stocked', rows); await load()
-    showToast('初始库存已登记，录入权限已关闭', 'success')
+    requestKey = ''; lastBody = ''; lines.value = [blank()]; emit('changed'); emit('stocked', rows); await load()
+    showToast('库存已登记', 'success')
   } catch (e) { if (current === epoch) error.value = e instanceof Error ? e.message : '登记失败，草稿已保留' }
   finally { saving.value = false }
 }
@@ -102,11 +102,9 @@ async function submitOpening() {
       <p v-if="!purposes.length" class="settings-note">尚未配置时，新单暂归“未分类”；配置后，上序新开单必须选择启用的业务。</p>
     </section>
     <section v-else class="opening-settings">
-      <ElAlert v-if="opening?.completed" title="本班组已登记初始库存，不能重复登记。" type="success" :closable="false" />
-      <ElAlert v-else-if="opening?.has_stock_history" title="本班组已有库存记录，不能重复登记初始库存。" type="warning" :closable="false" />
-      <ElAlert v-else-if="!opening?.enabled" title="请系统管理员在“班组管理”中开启初始库存录入权限。" type="info" :closable="false" />
+      <ElAlert v-if="!opening?.enabled" title="请系统管理员在“班组管理”中开启初始库存录入权限。" type="info" :closable="false" />
       <template v-if="opening?.can_submit">
-        <p class="settings-note">登记启用系统前已在本班组的物料。每行独立批次；仅确认后计入库存，不产生下序的待签收来料。</p>
+        <p class="settings-note">每次提交累加库存，每行生成独立批次。</p>
         <div class="opening-lines">
           <article v-for="(line, index) in lines" :key="index" class="opening-line">
             <header><strong>物料 {{ index + 1 }}</strong><ElButton v-if="lines.length > 1" text type="danger" :disabled="saving" @click="lines.splice(index, 1)">移除</ElButton></header>

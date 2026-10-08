@@ -161,11 +161,11 @@ def test_opening_is_an_immutable_independent_origin_and_idempotent(client, stock
     assert lot['stock_tracked'] and lot['locked'] and lot['allowed_actions'] == []
     assert [event['action'] for event in lot['history']] == ['stocked']
     endpoint = url(s, suffix='opening-stock')
-    state = client.get(endpoint).json()
-    assert state['completed'] and not state['enabled'] and not state['can_submit']
+    state = client.get(endpoint, headers=s['target_headers']).json()
+    assert state['completed'] and state['enabled'] and state['can_submit']
     assert client.post(endpoint, headers=s['target_headers'], json=open_payload()).json()['items'] == [lot]
     assert client.post(endpoint, headers=s['target_headers'], json=open_payload(quantity=99)).status_code == 409
-    assert client.put(endpoint+'/authorization', json={'enabled': True}).status_code == 409
+    assert client.put(endpoint+'/authorization', json={'enabled': True}).status_code == 200
     batch = '/api/material-transfers/' + lot['batch_no']
     assert client.patch(batch, headers=s['target_headers'], json={'quantity': 200}).status_code == 403
     assert client.delete(batch, headers=s['target_headers']).status_code == 403
@@ -201,14 +201,28 @@ def test_invalid_opening_line_never_posts(client, stock_setup, invalid):
     assert client.post(url(s, suffix='opening-stock'), headers=s['target_headers'], json=open_payload(**invalid)).status_code == 422
 
 
-def test_existing_stock_cannot_be_initialized_twice_even_if_grant_precedes_receipt(client, stock_setup):
+def test_continuous_permission_adds_stock_until_revoked_and_retries_never_add_twice(client, stock_setup):
     s = stock_setup
     endpoint = url(s, suffix='opening-stock')
     assert client.put(endpoint+'/authorization', json={'enabled': True}).status_code == 200
     receive_lot(client, s)
-    assert client.post(endpoint, headers=s['target_headers'], json=open_payload()).status_code == 409
-    assert client.put(endpoint+'/authorization', json={'enabled': True}).status_code == 409
-    assert totals(client, s)['on_hand_quantity'] == 100
+    first = client.post(endpoint, headers=s['target_headers'], json=open_payload())
+    assert first.status_code == 201, first.text
+    body = {**open_payload(), 'idempotency_key': 'second'}
+    second = client.post(endpoint, headers=s['target_headers'], json=body)
+    assert second.status_code == 201, second.text
+    assert first.json()['items'][0]['batch_no'] != second.json()['items'][0]['batch_no']
+    assert totals(client, s)['on_hand_quantity'] == 300
+    state = client.get(endpoint, headers=s['target_headers']).json()
+    assert state['enabled'] and state['can_submit'] and len(state['items']) == 2
+    assert client.put(endpoint+'/authorization', json={'enabled': False}).status_code == 200
+    assert not client.get(endpoint, headers=s['target_headers']).json()['can_submit']
+    assert client.post(endpoint, headers=s['target_headers'], json={**body, 'idempotency_key': 'third'}).status_code == 403
+    assert client.post(endpoint, headers=s['target_headers'], json=body).json() == second.json()
+    assert totals(client, s)['on_hand_quantity'] == 300
+    assert client.put(endpoint+'/authorization', json={'enabled': True}).status_code == 200
+    assert client.post(endpoint, headers=s['target_headers'], json={**body, 'idempotency_key': 'third'}).status_code == 201
+    assert totals(client, s)['on_hand_quantity'] == 400
 
 
 def test_history_uses_received_purpose_and_reconciles_pending_edits_void_loss(client, stock_setup):
@@ -363,4 +377,24 @@ def test_opening_migration_preserves_existing_batches_and_is_repeatable(tmp_path
         conn.exec_driver_sql("INSERT INTO material_transfers (id,batch_no,serial_no,entry_kind,next_team_id,next_team_code,next_team_name,status,stock_tracked) VALUES (2,'TL-NEW','000002','opening_stock',2,'B','下序','received',1)")
         assert conn.exec_driver_sql('PRAGMA foreign_key_check').all() == []
         assert 'ix_mt_team_serial_purpose' in {i['name'] for i in inspect(conn).get_indexes('material_transfers')}
+    engine.dispose()
+
+
+def test_continuous_entry_migration_preserves_old_origins_and_idempotency(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'continuous.sqlite'}")
+    new = migration('20261008_0027_continuous_stock_entry.py')
+    with engine.begin() as conn:
+        conn.exec_driver_sql('CREATE TABLE teams (id INTEGER PRIMARY KEY)')
+        conn.exec_driver_sql('INSERT INTO teams VALUES (1)')
+        conn.exec_driver_sql('CREATE TABLE opening_stock_submissions (id INTEGER PRIMARY KEY, team_id INTEGER NOT NULL UNIQUE REFERENCES teams(id), idempotency_key TEXT NOT NULL UNIQUE)')
+        conn.exec_driver_sql('CREATE TABLE material_transfers (id INTEGER PRIMARY KEY, opening_stock_id INTEGER REFERENCES opening_stock_submissions(id))')
+        conn.exec_driver_sql("INSERT INTO opening_stock_submissions VALUES (1, 1, 'old')")
+        conn.exec_driver_sql('INSERT INTO material_transfers VALUES (1, 1)')
+        with Operations.context(MigrationContext.configure(conn)):
+            new.upgrade(); new.upgrade()
+        assert conn.exec_driver_sql('SELECT * FROM opening_stock_submissions').all() == [(1, 1, 'old')]
+        assert conn.exec_driver_sql('SELECT * FROM material_transfers').all() == [(1, 1)]
+        conn.exec_driver_sql("INSERT INTO opening_stock_submissions VALUES (2, 1, 'new')")
+        assert {tuple(c['column_names']) for c in inspect(conn).get_unique_constraints('opening_stock_submissions')} == {('idempotency_key',)}
+        assert conn.exec_driver_sql('PRAGMA foreign_key_check').all() == []
     engine.dispose()

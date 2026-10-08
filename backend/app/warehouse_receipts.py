@@ -135,6 +135,6 @@ def list_receipts(db, team_id, user, *, record_filters=None, query=None, materia
             "total": total, "page": page, "page_size": page_size}
 
 
-def locations(db, team_id, *, query=None, limit=100, selected=None):
+def locations(db, team_id, *, query=None, limit=100, selected=None, identity=None):
     from .warehouse_locations import list_locations
-    return list_locations(db, team_id, query=query, page_size=limit, available_only=True, selected=selected)
+    return list_locations(db, team_id, query=query, page_size=limit, available_only=True, selected=selected, identity=identity)

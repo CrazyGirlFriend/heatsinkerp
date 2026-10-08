@@ -7,6 +7,7 @@ import { locationState, warehouseLocationApi, type WarehouseLocation } from '@/s
 import WarehouseUnassigned from './WarehouseUnassigned.vue'
 import BatchSelectionBar from './BatchSelectionBar.vue'
 import { useBatchSelection } from '@/composables/useBatchSelection'
+import { materialTypeLabel } from '@/types/materialTransfer'
 
 const props = defineProps<{ canManage: boolean; canDispatch?: boolean; teamId?: number; refreshKey?: unknown }>()
 const emit = defineEmits<{ view: [batchNo: string]; dispatch: [batchNo: string]; batchDispatch: [sourceIds: number[]] }>()
@@ -57,7 +58,7 @@ async function save() {
   } catch (failure) { if (!disposed) formError.value = failure instanceof Error ? failure.message : '保存失败' }
   finally { saving.value = false }
 }
-const amount = (row: WarehouseLocation, key: 'quantity' | 'weight') => row.batches.length ? row.batches.reduce((sum, batch) => sum + batch[key], 0).toLocaleString('zh-CN', { maximumFractionDigits: 3 }) : '—'
+const amount = (row: WarehouseLocation, key: 'quantity' | 'weight') => row.batches.length ? row.batches.filter(batch => batch.status === 'received').reduce((sum, batch) => sum + batch[key], 0).toLocaleString('zh-CN', { maximumFractionDigits: 3 }) : '—'
 watch(() => props.canManage, value => { if (!value) { ++version; rows.value = []; selected.clear(); editorOpen.value = false } })
 watch(() => [props.teamId, props.canDispatch, section.value], () => selected.clear())
 watch(() => props.refreshKey, () => { void load(true) })
@@ -81,10 +82,12 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer) })
           <ElTableColumn v-if="canDispatch" width="50"><template #default="{ row }"><ElCheckbox :aria-label="`选择仓位 ${row.name}`" :model-value="row.batches.length > 0 && row.batches.every((batch: Batch) => selected.has(String(batch.id)))" :disabled="loading || !row.batches.some((batch: Batch) => selectable(batch))" @change="row.batches.forEach((batch: Batch) => toggle(batch, $event))" /></template></ElTableColumn>
           <ElTableColumn prop="name" label="仓位" min-width="160" />
           <ElTableColumn label="状态" min-width="100"><template #default="{ row }"><ElTag :type="row.status === 'available' ? 'success' : row.status === 'locked' ? 'warning' : 'info'" effect="light">{{ locationState[row.status as keyof typeof locationState] }}</ElTag></template></ElTableColumn>
-          <ElTableColumn label="批次号" min-width="200"><template #default="{ row }"><ElPopover v-if="row.batches.length > 1" trigger="click" :width="270"><template #reference><ElButton link type="warning">历史共用 · {{ row.batches.length }} 批</ElButton></template><div class="legacy-batches"><ElButton v-for="batch in row.batches" :key="batch.id" link type="primary" @click="emit('view', batch.batch_no)">{{ batch.batch_no }}</ElButton></div></ElPopover><template v-else>{{ row.batches[0]?.batch_no || '—' }}</template></template></ElTableColumn>
-          <ElTableColumn label="流水号" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ row.batches.map((batch: Batch) => batch.serial_no).join('、') || '—' }}</template></ElTableColumn>
-          <ElTableColumn label="件数" align="right" min-width="100"><template #default="{ row }">{{ amount(row as WarehouseLocation, 'quantity') }}</template></ElTableColumn>
-          <ElTableColumn label="重量（kg）" align="right" min-width="130"><template #default="{ row }">{{ amount(row as WarehouseLocation, 'weight') }}</template></ElTableColumn>
+          <ElTableColumn label="批次号" min-width="200"><template #default="{ row }"><ElPopover v-if="row.batches.length > 1" trigger="click" :width="'min(560px, 90vw)'"><template #reference><ElButton link type="warning">{{ row.batches.length }} 批</ElButton></template><ElTable :data="row.batches" size="small" max-height="300"><ElTableColumn label="批次号" min-width="200"><template #default="{ row: batch }"><ElButton link type="primary" @click="emit('view', batch.batch_no)">{{ batch.batch_no }}</ElButton></template></ElTableColumn><ElTableColumn prop="quantity" label="件数" align="right" /><ElTableColumn prop="weight" label="重量（kg）" align="right" /><ElTableColumn label="状态"><template #default="{ row: batch }">{{ batch.status === 'received' ? '在库' : '待签收' }}</template></ElTableColumn></ElTable></ElPopover><template v-else>{{ row.batches[0]?.batch_no || '—' }}</template></template></ElTableColumn>
+          <ElTableColumn label="流水号" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ [...new Set(row.batches.map((batch: Batch) => batch.serial_no))].join('、') || '—' }}</template></ElTableColumn>
+          <ElTableColumn label="材质" min-width="120"><template #default="{ row }">{{ [...new Set(row.batches.map((batch: Batch) => batch.material_name))].filter(Boolean).join('、') || '—' }}</template></ElTableColumn>
+          <ElTableColumn label="类型" min-width="120"><template #default="{ row }">{{ [...new Set(row.batches.map((batch: Batch) => materialTypeLabel(batch.material_type)))].join('、') || '—' }}</template></ElTableColumn>
+          <ElTableColumn label="库存件数" align="right" min-width="100"><template #default="{ row }">{{ amount(row as WarehouseLocation, 'quantity') }}</template></ElTableColumn>
+          <ElTableColumn label="库存重量（kg）" align="right" min-width="130"><template #default="{ row }">{{ amount(row as WarehouseLocation, 'weight') }}</template></ElTableColumn>
           <ElTableColumn label="操作" :width="canDispatch ? 210 : 155" fixed="right"><template #default="{ row }"><ElButton v-if="row.batches.length === 1" link type="primary" @click="emit('view', row.batches[0].batch_no)">查看物料</ElButton><ElButton v-if="canDispatch && row.batches.length === 1 && row.has_stock" link type="primary" :disabled="!available(row.batches[0])" @click="emit('dispatch', row.batches[0].batch_no)">转出</ElButton><ElButton link type="primary" :disabled="row.draft_locked" :title="row.draft_locked ? '入库表单正在选择此仓位，暂不能修改' : '编辑仓位名称'" @click="edit(row as WarehouseLocation)">编辑</ElButton></template></ElTableColumn>
         </ElTable>
         <footer class="warehouse-footer"><span>共 {{ total }} 个仓位</span><ElPagination v-model:current-page="page" :page-size="20" :total="total" layout="prev, pager, next" @current-change="load()" /></footer>
@@ -113,8 +116,6 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer) })
 .warehouse-heading h2 { margin: 0; font-size: 16px; font-weight: 600; }
 .warehouse-heading .el-button, .warehouse-toolbar .el-button { height: 36px; margin-left: 0; }
 .warehouse-toolbar > .warehouse-refresh { width: 36px; margin-left: auto; padding: 0; }
-.legacy-batches { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
-.legacy-batches .el-button { margin-left: 0; }
 .warehouse-footer { flex-shrink: 0; margin-top: auto; padding-top: 20px; color: var(--subtle); font-size: 13px; }
 .warehouse-error { color: var(--danger); }
 @media (max-width: 760px) {

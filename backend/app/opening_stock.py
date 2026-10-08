@@ -1,4 +1,4 @@
-"""One authorized, atomic initialization per team; never overwrite balances."""
+"""Authorized, atomic inventory entries; each submission adds independent lots."""
 from decimal import Decimal
 from fastapi import Depends, HTTPException, Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -67,13 +67,14 @@ def result(db, submission, user):
 @router.get("/{team_id}/opening-stock")
 def state(team_id: int = Path(ge=1), user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     team = stock.require_team(db, team_id)
-    submission = db.scalar(select(OpeningStockSubmission).where(OpeningStockSubmission.team_id == team_id))
+    submission = db.scalar(select(OpeningStockSubmission.id).where(OpeningStockSubmission.team_id == team_id).limit(1))
     has_stock_history = db.scalar(select(MaterialTransfer.id).where(MaterialTransfer.next_team_id == team_id,
         MaterialTransfer.status == "received", MaterialTransfer.stock_tracked.is_(True)).limit(1)) is not None
     return {"enabled": team.opening_stock_enabled, "completed": submission is not None,
             "has_stock_history": has_stock_history,
-            "can_submit": user.role == "TEAM" and user.team_id == team_id and team.active and team.opening_stock_enabled and not submission and not has_stock_history,
-            "items": result(db, submission, user)["items"] if submission else []}
+            "can_submit": user.role == "TEAM" and user.team_id == team_id and team.active and team.opening_stock_enabled,
+            "items": [workflow.material_transfer_dict(row, user) for row in db.scalars(select(MaterialTransfer).where(
+                MaterialTransfer.next_team_id == team_id, MaterialTransfer.opening_stock_id.is_not(None)).order_by(MaterialTransfer.id))] if submission else []}
 
 
 @router.post("/{team_id}/opening-stock", status_code=201)
@@ -89,11 +90,6 @@ def create(payload: OpeningCreate, team_id: int = Path(ge=1), user: User = Depen
                 return result(db, prior, user)
             if not team.active or not team.opening_stock_enabled:
                 raise HTTPException(403, "管理员尚未开启本班组的初始库存录入权限")
-            if db.scalar(select(OpeningStockSubmission.id).where(OpeningStockSubmission.team_id == team_id)):
-                raise HTTPException(409, "本班组已完成初始库存登记，不能重复提交")
-            if db.scalar(select(MaterialTransfer.id).where(MaterialTransfer.next_team_id == team_id,
-                MaterialTransfer.status == "received", MaterialTransfer.stock_tracked.is_(True)).limit(1)):
-                raise HTTPException(409, "本班组已有库存记录，不能重复登记初始库存")
             submission = OpeningStockSubmission(team_id=team_id, idempotency_key=payload.idempotency_key,
                 request_hash=request_hash, created_by=actor_name(user))
             db.add(submission)
@@ -114,7 +110,6 @@ def create(payload: OpeningCreate, team_id: int = Path(ge=1), user: User = Depen
                 db.flush()
                 db.refresh(transfer, attribute_names=["created_at", "updated_at", "received_at"])
                 workflow._record_event(db, transfer, user, "stocked")
-            team.opening_stock_enabled = False
             response = result(db, submission, user)
         return response
     except (IntegrityError, OperationalError) as exc:

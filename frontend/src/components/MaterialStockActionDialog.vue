@@ -15,10 +15,12 @@ import { externalActionLabel, isExternalEntryKind, isScrapType, materialTypeLabe
 import type { CreateDispatch, DispatchKind, CreatedMaterialBatches, MaterialLoss, StockBatch } from '@/types/teamMaterials'
 import { amountError, dispatchableAmounts, materialRequestKey, outboundRemainder } from '@/utils/materialStock'
 import { useTeamPurposes } from '@/composables/useTeamPurposes'
+import type { WarehouseLeaseGroup } from '@/services/warehouseLocationApi'
 import { currentLocations } from '@/utils/warehousePlacement'
 
 const props = defineProps<{ modelValue: boolean; teamId: number; mode: 'dispatch' | 'loss'; sources: StockBatch[] }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [CreatedMaterialBatches | MaterialLoss]; balancesChanged: [] }>()
+const locationLeases: WarehouseLeaseGroup = new Map()
 const auth = useAuthStore()
 const directory = useTeamDirectoryStore()
 const lines = ref<{ key: string; warehouseLocation: string; warehouseLocationKey: string; locationBusy: boolean; source: StockBatch; latest: StockBatch | null; quantity: number | undefined; weight: number | undefined; gross?: number; percent?: number; materialType: MaterialType | ''; purposeId?: number }[]>([])
@@ -220,7 +222,7 @@ async function submit() {
             <p v-else-if="isLoss && line.materialType === 'sludge'" class="amount-unit">丢失重量按有效材料计算，不填废泥实重。</p>
             <ElFormItem v-if="!isLoss" :label="`${actionLabel}物料类型`" :required="warehouse"><span v-if="sourceWarehouse || line.source.transfer.material_type === 'sludge'">{{ materialTypeLabel(line.source.transfer.material_type) }}</span><ElSelect v-else v-model="line.materialType" :aria-label="`${line.source.transfer.batch_no}物料类型`" :placeholder="materialTypeLabel(line.source.transfer.material_type)"><ElOption v-for="type in materialTypeOptions.filter(type => !isScrapType(line.source.transfer.material_type) || isScrapType(type.value))" :key="type.value" :label="type.label" :value="type.value" /></ElSelect></ElFormItem>
             <ElFormItem v-if="!isLoss && !external" label="下序接收业务" :required="purposes.items.value.length > 0"><ElSelect v-model="line.purposeId" :aria-label="`${line.source.transfer.batch_no}接收业务`" :loading="purposes.loading.value" :disabled="!form.nextTeamId || !purposes.items.value.length" :placeholder="!form.nextTeamId ? '先选择接收班组' : !purposes.items.value.length ? '接收班组尚未配置业务' : purposes.items.value.some(item => item.active) ? '选择接收业务' : '接收班组暂无启用业务'"><ElOption v-for="purpose in purposes.items.value.filter(item => item.active)" :key="purpose.id" :value="purpose.id" :label="purpose.name" /></ElSelect></ElFormItem>
-            <ElFormItem v-if="!isLoss && warehouse" label="入库仓位"><WarehouseLocationSelect v-model="line.warehouseLocation" v-model:reservation-key="line.warehouseLocationKey" :team-id="Number(form.nextTeamId)" :active="modelValue" :disabled="busy || !canWrite" @busy-change="line.locationBusy = $event" /></ElFormItem>
+            <ElFormItem v-if="!isLoss && warehouse" label="入库仓位"><WarehouseLocationSelect v-model="line.warehouseLocation" v-model:reservation-key="line.warehouseLocationKey" :team-id="Number(form.nextTeamId)" :serial-no="line.source.transfer.serial_no" :material-name="line.source.transfer.material_name || ''" :material-type="line.materialType" :lease-group="locationLeases" :active="modelValue" :disabled="busy || !canWrite" @busy-change="line.locationBusy = $event" /></ElFormItem>
           </div>
         </article>
       </div>

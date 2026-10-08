@@ -30,7 +30,7 @@ async function save() {
   <ElDialog :model-value="modelValue" :title="`${team?.name || ''} · 初始库存授权`" width="min(520px, 94vw)" :show-close="!saving" :close-on-click-modal="!saving" :close-on-press-escape="!saving" @close="emit('update:modelValue', false)">
     <p v-if="loading">正在读取授权状态…</p>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <template v-if="state"><p>授权后，本班组长可在“班组设置 → 初始库存”中录入启用系统前的库存。</p><ElAlert v-if="state.completed || state.has_stock_history" :title="state.completed ? '已登记初始库存，不能重复登记。' : '已有库存记录，不能重复登记初始库存。'" type="info" :closable="false" /><ElSwitch v-model="enabled" aria-label="允许录入初始库存" active-text="允许录入初始库存" :disabled="saving || state.completed || state.has_stock_history || !team?.active" /><p>确认登记后自动关闭权限。不会清空或覆盖现有数据。</p></template>
+    <template v-if="state"><p>开启后，本班组长可以多次提交库存，关闭后停止录入。</p><ElSwitch v-model="enabled" aria-label="允许录入初始库存" active-text="允许录入初始库存" :disabled="saving || !team?.active" /><p>每次提交累加库存，并保留独立批次记录。</p></template>
     <template #footer><ElButton :disabled="saving" @click="emit('update:modelValue', false)">取消</ElButton><ElButton type="primary" :disabled="!state || loading" :loading="saving" @click="save">保存授权</ElButton></template>
   </ElDialog>
 </template>

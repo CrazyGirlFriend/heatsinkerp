@@ -21,9 +21,11 @@ describe('administrator opening-stock authorization', () => {
     expect(teamMaterialApi.authorizeOpening).toHaveBeenCalledWith(3, true)
     expect(wrapper.emitted('saved')).toHaveLength(1)
   })
-  it('prevents enabling initialization for a team with posted history', async () => {
+  it('allows ongoing permission for a team with posted history', async () => {
     await render(true)
-    expect(wrapper.getComponent(ElSwitch).props('disabled')).toBe(true)
-    expect(wrapper.text()).toContain('已有库存记录，不能重复登记初始库存')
+    expect(wrapper.getComponent(ElSwitch).props('disabled')).toBe(false)
+    wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', true)
+    await wrapper.findAll('button').find(button => button.text() === '保存授权')!.trigger('click'); await flushPromises()
+    expect(teamMaterialApi.authorizeOpening).toHaveBeenCalledWith(3, true)
   })
 })

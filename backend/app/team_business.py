@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from .auth import actor_name, get_current_user, require_admin
 from .database import get_db
-from .models import Team, TeamPurpose, TeamSettingEvent, OpeningStockSubmission, MaterialTransfer, User, utcnow
+from .models import Team, TeamPurpose, TeamSettingEvent, User, utcnow
 from .material_stock import require_actor, require_team
 
 from .async_api import AsyncAPIRouter as APIRouter
@@ -108,11 +108,8 @@ def authorize_opening(payload: OpeningAuthorization, team_id: int = Path(ge=1), 
         team = db.scalar(select(Team).where(Team.id == team_id).with_for_update().execution_options(populate_existing=True))
         if team is None:
             raise HTTPException(404, "未找到班组")
-        if payload.enabled and (not team.active or db.scalar(select(OpeningStockSubmission.id).where(OpeningStockSubmission.team_id == team_id))):
-            raise HTTPException(409, "班组已完成初始库存登记或已停用，不能再次开启")
-        if payload.enabled and db.scalar(select(MaterialTransfer.id).where(MaterialTransfer.next_team_id == team_id,
-            MaterialTransfer.status == "received", MaterialTransfer.stock_tracked.is_(True)).limit(1)) is not None:
-            raise HTTPException(409, "班组已有库存记录，不能重复登记初始库存")
+        if payload.enabled and not team.active:
+            raise HTTPException(409, "班组已停用，不能开启库存录入")
         before = team.opening_stock_enabled
         team.opening_stock_enabled = payload.enabled
         if before != payload.enabled:

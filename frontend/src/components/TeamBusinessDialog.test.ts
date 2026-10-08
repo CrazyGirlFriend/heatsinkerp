@@ -55,11 +55,30 @@ describe('team business settings', () => {
     expect(wrapper.getComponent(ElSwitch).props('modelValue')).toBe(false)
     expect(wrapper.text()).toContain('业务配置已变化')
   })
-  it('does not offer posting without administrator authorization or after existing stock', async () => {
+  it('does not offer posting without administrator authorization', async () => {
     vi.mocked(teamMaterialApi.openingState).mockResolvedValue({ ...allowed, enabled: false, can_submit: false })
     await render(); expect(wrapper.text()).toContain('请系统管理员')
     expect(wrapper.text()).not.toContain('确认初始库存登记')
     expect(teamMaterialApi.createOpening).not.toHaveBeenCalled()
+  })
+  it('allows repeated identical entries after history with distinct keys and keeps the form open', async () => {
+    vi.mocked(teamMaterialApi.openingState).mockResolvedValue({ ...allowed, completed: true, has_stock_history: true })
+    await render()
+    for (let i = 0; i < 2; i++) {
+      await wrapper.get('input[aria-label="第1行流水号"]').setValue('000012')
+      await wrapper.get('input[aria-label="第1行材质"]').setValue('材料1')
+      wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'semi_finished')
+      wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 100)
+      wrapper.findAllComponents(ElInputNumber)[1]!.vm.$emit('update:modelValue', 10)
+      await flushPromises(); await click('确认初始库存登记')
+    }
+    const calls = vi.mocked(teamMaterialApi.createOpening).mock.calls
+    expect(calls).toHaveLength(2)
+    expect(calls[0]![1]).toEqual(calls[1]![1])
+    expect(calls[0]![2]).not.toBe(calls[1]![2])
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(wrapper.emitted('stocked')).toHaveLength(2)
+    expect(wrapper.text()).toContain('确认初始库存登记')
   })
   it('posts leading-zero stock once after confirmation, preserving local drafts on failure', async () => {
     await render()

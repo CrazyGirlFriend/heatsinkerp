@@ -319,7 +319,7 @@ onBeforeUnmount(() => { ++formGeneration })
       <SludgeWeightFields v-if="useSludge" v-model:gross="form.gross" v-model:percent="form.percent" :locked="editingSnapshot?.sludge_percent_locked" :disabled="!canSubmit" @update:weight="form.weight = $event" />
       <p v-else-if="form.materialType === 'sludge'" class="quantity-hint">历史废泥未记录比例，沿用原账重，不自动折算。</p>
       <p class="quantity-hint">{{ useSludge ? '废泥按实重与有效材料占比折算；仅按重量交接时，件数填 0。' : '按实际件数、重量填写，至少一项大于 0。' }}</p>
-      <ElFormItem v-if="toWarehouse" label="入库仓位"><strong v-if="editingSnapshot?.warehouse_location">{{ editingSnapshot.warehouse_location }}</strong><WarehouseLocationSelect v-else v-model="form.warehouseLocation" v-model:reservation-key="form.warehouseLocationKey" :team-id="Number(form.nextTeamId)" :active="modelValue" :disabled="saving || refreshing" @busy-change="locationBusy = $event" /></ElFormItem>
+      <ElFormItem v-if="toWarehouse" label="入库仓位"><strong v-if="editingSnapshot?.warehouse_location">{{ editingSnapshot.warehouse_location }}</strong><WarehouseLocationSelect v-else v-model="form.warehouseLocation" v-model:reservation-key="form.warehouseLocationKey" :team-id="Number(form.nextTeamId)" :serial-no="form.serialNo" :material-name="form.document.material_name" :material-type="form.materialType" :active="modelValue" :disabled="saving || refreshing" @busy-change="locationBusy = $event" /></ElFormItem>
       <ElFormItem :label="notesLabel">
         <ElInput v-model="form.notes" :aria-label="notesLabel" type="textarea" :rows="2" maxlength="2000" show-word-limit :disabled="!canSubmit" :placeholder="toWarehouse ? '选填：说明当前物料情况或转回库房的原因' : '选填'" />
       </ElFormItem>

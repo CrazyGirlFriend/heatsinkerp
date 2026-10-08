@@ -272,10 +272,13 @@ def create_dispatch(db, team_id, payload, user):
             db.add(dispatch)
             db.flush()
             items = []
+            consumed_locations = {}
             for line, batch_no in zip(payload.lines, batch_numbers, strict=True):
                 from .warehouse_locations import consume
-                location_name = consume(db, target, line, user)
                 lot = lots[line.source_transfer_id]
+                kind = line.material_type if "material_type" in line.model_fields_set else lot.material_type
+                location_name = consume(db, target, line, user,
+                    identity=(lot.serial_no, lot.material_name, kind), consumed=consumed_locations)
                 fields = {field: getattr(lot, field) for field in workflow.DOCUMENT_FIELDS}
                 # A split inherits its origin's live requirement, never a second planned quantity.
                 fields.update(delivery_date=None, delivery_quantity=None)
