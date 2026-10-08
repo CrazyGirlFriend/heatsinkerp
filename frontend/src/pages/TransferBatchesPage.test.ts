@@ -97,7 +97,7 @@ describe('transfer list refresh continuity', () => {
     vi.mocked(materialTransferApi.list).mockResolvedValue({ ...result, items, total: items.length })
     const page = await renderList('/transfer-batches')
     const headings = page.findAll('.el-table__header th .cell').map(cell => cell.text())
-    expect(headings).toEqual(['批次号', '流水号', '材质', '来源', '去向', '接收业务', '数量', '重量', '状态', '转出时间'])
+    expect(headings).toEqual(['流水号', '转出时间', '材质', '来源', '去向', '接收业务', '数量', '重量', '状态', '批次号'])
     expect(page.findAll('.el-table__header th.el-table__cell').every(cell => cell.classes().includes('is-center'))).toBe(true)
     expect(page.getComponent({ name: 'ElTable' }).props('border')).toBe(true)
     const tableRows = page.findAll('.el-table__body .el-table__row')

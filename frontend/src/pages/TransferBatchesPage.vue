@@ -408,10 +408,8 @@ onBeforeUnmount(() => {
           <StatePanel v-else-if="errorMessage" state="error" :description="errorMessage" @retry="loadRows" />
           <StatePanel v-else-if="!hasRows" state="empty" title="暂无转料记录" description="请调整筛选条件。"><ElButton v-if="canCreate" type="primary" plain :icon="Plus" @click="openCreate">新建转料</ElButton></StatePanel>
           <ElTable v-else :data="rows" class="business-table transfer-table" border row-key="batch_no" :current-row-key="drawerOpen ? selected?.batch_no : undefined" highlight-current-row @row-click="openDetail">
-            <ElTableColumn label="批次号" min-width="210" align="center" show-overflow-tooltip>
-              <template #default="{ row }"><ElButton text class="batch-link" :aria-label="'查看转料单 ' + row.batch_no" @click.stop="openDetail(asTransfer(row))">{{ row.batch_no }}</ElButton></template>
-            </ElTableColumn>
             <ElTableColumn label="流水号" min-width="220" align="center" show-overflow-tooltip><template #default="{ row }"><div class="transfer-serial"><RouterLink class="serial-number" :to="traceLink(row.serial_no)" @click.stop>{{ row.serial_no }}</RouterLink><SerialUrgencyBadge :urgency="row.urgency" @click.stop /></div></template></ElTableColumn>
+            <ElTableColumn label="转出时间" min-width="180" align="center"><template #default="{ row }"><time class="transfer-time" :title="formatDateTime(row.transferred_at)">{{ formatDateTime(row.transferred_at) }}</time></template></ElTableColumn>
             <ElTableColumn label="材质" min-width="150" align="center" show-overflow-tooltip prop="material_name" />
             <ElTableColumn label="来源" min-width="156" align="center" class-name="transfer-source-cell" show-overflow-tooltip><template #default="{ row }">{{ isWarehouseReceipt(asTransfer(row)) ? '库房手工入库' : row.source_team.name }}</template></ElTableColumn>
             <ElTableColumn label="去向" min-width="110" align="center" class-name="transfer-destination-cell" show-overflow-tooltip prop="next_team.name" />
@@ -419,14 +417,17 @@ onBeforeUnmount(() => {
             <ElTableColumn label="数量" min-width="120" align="center" class-name="transfer-quantity-cell"><template #default="{ row }">{{ numberText(row.quantity, row.quantity_unit) }}</template></ElTableColumn>
             <ElTableColumn label="重量" min-width="140" align="center" class-name="transfer-weight-cell"><template #default="{ row }">{{ numberText(row.weight, row.weight_unit) }}</template></ElTableColumn>
             <ElTableColumn label="状态" min-width="140" align="center" class-name="transfer-status-cell"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" plain /></template></ElTableColumn>
-            <ElTableColumn label="转出时间" min-width="180" align="center"><template #default="{ row }"><time class="transfer-time" :title="formatDateTime(row.transferred_at)">{{ formatDateTime(row.transferred_at) }}</time></template></ElTableColumn>
+            <ElTableColumn label="批次号" min-width="210" align="center" show-overflow-tooltip>
+              <template #default="{ row }"><ElButton text class="batch-link" :aria-label="'查看转料单 ' + row.batch_no" @click.stop="openDetail(asTransfer(row))">{{ row.batch_no }}</ElButton></template>
+            </ElTableColumn>
           </ElTable>
           <div v-if="hasRows" class="transfer-mobile-list">
             <ElButton v-for="transfer in rows" :key="transfer.batch_no" text class="transfer-mobile-row" @click="openDetail(transfer)">
-              <span class="mobile-row-head"><strong>{{ transfer.batch_no }}</strong><MaterialTransferStatus :status="transfer.status" :entry-kind="transfer.entry_kind" plain /></span>
+              <span class="mobile-row-head"><strong>{{ transfer.serial_no }}</strong><MaterialTransferStatus :status="transfer.status" :entry-kind="transfer.entry_kind" plain /></span>
+              <time class="transfer-time" :title="formatDateTime(transfer.transferred_at)">{{ formatDateTime(transfer.transferred_at) }}</time>
               <span class="mobile-transfer-parties"><span><small>来源</small><span>{{ isWarehouseReceipt(transfer) ? '库房手工入库' : transfer.source_team.name }}</span></span><span><small>去向</small><span>{{ transfer.next_team.name }}</span></span><span><small>接收业务</small><span>{{ materialPurposeLabel(transfer) }}</span></span></span>
               <span class="mobile-material-brief">{{ materialTypeLabel(transfer.material_type) }}<template v-if="transfer.material_name"> · {{ transfer.material_name }}</template></span>
-              <span class="mobile-row-meta"><span>{{ numberText(transfer.quantity, transfer.quantity_unit) }} · {{ numberText(transfer.weight, transfer.weight_unit) }}</span><span>{{ transfer.serial_no }}</span></span>
+              <span class="mobile-row-meta"><span>{{ numberText(transfer.quantity, transfer.quantity_unit) }} · {{ numberText(transfer.weight, transfer.weight_unit) }}</span><span>{{ transfer.batch_no }}</span></span>
             </ElButton>
           </div>
         </div>
