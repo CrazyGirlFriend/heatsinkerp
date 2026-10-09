@@ -166,15 +166,20 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer); clearT
           <footer class="warehouse-footer"><span aria-live="polite">共 {{ total }} 个仓位</span><div><span>{{ pageSize }} 个/页</span><ElPagination v-model:current-page="page" :page-size="pageSize" :total="total" layout="prev, pager, next" @current-change="load()" /></div></footer>
         </template>
       </ElCard>
-      <ElDialog v-model="detailOpen" :title="(detail?.name || '') + ' · 仓位明细'" width="min(760px, 94vw)" class="warehouse-detail-dialog">
+      <ElDialog v-model="detailOpen" :title="(detail?.name || '') + ' · 仓位明细'" width="min(760px, 94vw)" class="warehouse-detail-dialog" align-center>
+        <template #header><div class="warehouse-detail-title"><span class="el-dialog__title">{{ detail?.name }} · 仓位明细</span><ElTag v-if="detail" :type="detail.draft_locked ? 'warning' : stocked(detail) ? 'success' : 'info'">{{ stateLabel(detail) }}</ElTag></div></template>
         <template v-if="detail">
           <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-          <div class="warehouse-detail-heading"><div v-if="detail.batches.length" class="warehouse-detail-identity"><strong>{{ detailIdentity.serial }}</strong><span>{{ detailIdentity.material }}</span><ElTag effect="light">{{ detailIdentity.type }}</ElTag></div><ElTag :type="detail.draft_locked ? 'warning' : 'info'">{{ stateLabel(detail) }}</ElTag></div>
           <ElAlert v-if="detail.draft_locked" title="入库表单正在选择此仓位，暂不能修改" type="warning" :closable="false" />
           <template v-if="detail.batches.length">
-            <div class="warehouse-detail-totals"><div><small>库存件数</small><strong>{{ amount(detail, 'quantity') }}</strong></div><div><small>库存重量（kg）</small><strong>{{ amount(detail, 'weight') }}</strong></div></div>
-            <nav class="warehouse-detail-tabs" aria-label="批次状态"><ElButton text :class="{ 'is-current': detailTab === 'received' }" :aria-pressed="detailTab === 'received'" @click="detailTab = 'received'">在库批次 {{ received(detail).length }}</ElButton><ElButton text :class="{ 'is-current': detailTab === 'pending' }" :aria-pressed="detailTab === 'pending'" @click="detailTab = 'pending'">待签收 {{ pending(detail).length }}</ElButton></nav>
-            <BatchSelectionBar v-if="canDispatch && detailTab === 'received'" :count="selected.size" :quantity="totals.quantity" :weight="totals.weight" :all-checked="allChecked" :partial="checkedCount > 0 && !allChecked" :disabled="loading || !!error || !availableRows.length || (selected.size >= 100 && !checkedCount)" @all="toggleAll" @clear="selected.clear()"><ElButton type="primary" :disabled="!selected.size || loading || !!error" @click="batchDispatch">批量出库</ElButton></BatchSelectionBar>
+            <div class="warehouse-detail-summary">
+              <div class="warehouse-detail-identity"><strong>{{ detailIdentity.serial }}</strong><div><span>{{ detailIdentity.material }}</span><ElTag effect="light">{{ detailIdentity.type }}</ElTag></div></div>
+              <div class="warehouse-detail-totals"><div><small>库存件数</small><strong>{{ amount(detail, 'quantity') }}</strong></div><div><small>库存重量（kg）</small><strong>{{ amount(detail, 'weight') }}</strong></div></div>
+            </div>
+            <div class="warehouse-detail-controls">
+              <nav class="warehouse-detail-tabs" aria-label="批次状态"><ElButton text :class="{ 'is-current': detailTab === 'received' }" :aria-pressed="detailTab === 'received'" @click="detailTab = 'received'">在库批次 {{ received(detail).length }}</ElButton><ElButton text :class="{ 'is-current': detailTab === 'pending' }" :aria-pressed="detailTab === 'pending'" @click="detailTab = 'pending'">待签收 {{ pending(detail).length }}</ElButton></nav>
+              <BatchSelectionBar v-if="canDispatch && detailTab === 'received'" class="warehouse-detail-selection" :class="{ 'is-empty': !selected.size }" :count="selected.size" :quantity="totals.quantity" :weight="totals.weight" :all-checked="allChecked" :partial="checkedCount > 0 && !allChecked" :disabled="loading || !!error || !availableRows.length || (selected.size >= 100 && !checkedCount)" @all="toggleAll" @clear="selected.clear()"><ElButton type="primary" :disabled="!selected.size || loading || !!error" @click="batchDispatch">批量出库</ElButton></BatchSelectionBar>
+            </div>
             <ElTable :data="detailBatches" row-key="id" empty-text="暂无批次" class="warehouse-detail-table" max-height="360">
               <ElTableColumn v-if="canDispatch && detailTab === 'received'" width="44"><template #default="{ row: batch }"><ElCheckbox :aria-label="'选择批次 ' + batch.batch_no" :model-value="selected.has(String(batch.id))" :disabled="loading || !selectable(batch as Batch) || !!error" @change="toggle(batch as Batch, $event)" /></template></ElTableColumn>
               <ElTableColumn label="批次号" min-width="190"><template #default="{ row: batch }"><ElButton link type="primary" @click="view(batch as Batch)">{{ batch.batch_no }}</ElButton></template></ElTableColumn>
@@ -228,16 +233,27 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer); clearT
 .warehouse-slot-markers .el-icon { width: 15px; height: 15px; padding: 1px; border-radius: 3px; background: rgb(255 255 255 / 55%); font-size: 12px; }
 .warehouse-footer { justify-content: space-between; flex-shrink: 0; margin-top: auto; padding-top: 24px; color: var(--muted); font-size: 12px; }
 .warehouse-footer > div { gap: 16px; }
-.warehouse-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-.warehouse-detail-identity { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; color: var(--muted); }
-.warehouse-detail-identity strong { color: var(--text); font-size: 17px; font-weight: 500; }
-.warehouse-detail-totals { display: flex; gap: 40px; padding-block: 8px 22px; font-variant-numeric: tabular-nums; }
-.warehouse-detail-totals small { display: block; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
-.warehouse-detail-totals strong { font-size: 27px; color: var(--primary); font-weight: 500; }
-.warehouse-detail-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
-.warehouse-detail-tabs .el-button { position: relative; margin: 0; padding: 10px 0 14px; height: auto; border-radius: 0; }
+.warehouse-detail-title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.warehouse-detail-summary { display: flex; align-items: center; gap: 24px; padding: 16px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--workspace-bg); }
+.warehouse-detail-identity { flex: 1; min-width: 0; color: var(--muted); }
+.warehouse-detail-identity strong { display: block; margin-bottom: 6px; color: var(--text); font-size: 19px; font-weight: 550; overflow-wrap: anywhere; }
+.warehouse-detail-identity > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; overflow-wrap: anywhere; }
+.warehouse-detail-identity .el-tag { height: auto; min-height: 24px; white-space: normal; }
+.warehouse-detail-totals { display: flex; flex: 0 0 auto; gap: 24px; padding-left: 24px; border-left: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.warehouse-detail-totals small { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.warehouse-detail-totals strong { font-size: 24px; line-height: 1.25; color: var(--primary); font-weight: 550; }
+.warehouse-detail-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.warehouse-detail-tabs { display: flex; flex: 0 0 auto; gap: 16px; }
+.warehouse-detail-tabs .el-button { position: relative; margin: 0; padding: 10px 0; height: auto; border-radius: 0; }
 .warehouse-detail-tabs .is-current { color: var(--primary); }
 .warehouse-detail-tabs .is-current::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--primary); }
+.warehouse-detail-selection { flex: 1; gap: 8px; margin: 0; padding: 0; border: 0; background: transparent; }
+.warehouse-detail-selection :deep(.batch-selection-hint) { display: none; }
+.warehouse-detail-selection :deep(.batch-amount) { padding-left: 8px; }
+.warehouse-detail-selection :deep(.batch-selection-total) { font-size: 12px; }
+.warehouse-detail-selection :deep(.el-checkbox__label) { padding-left: 6px; font-size: 12px; }
+.warehouse-detail-selection :deep(.el-button--primary) { margin-left: auto; }
+.warehouse-detail-selection.is-empty :deep(.batch-selection-total), .warehouse-detail-selection.is-empty :deep(.el-button.is-text) { display: none; }
 .warehouse-detail-table { font-variant-numeric: tabular-nums; }
 .warehouse-error { color: var(--danger); }
 @container (max-width: 1100px) { .warehouse-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
@@ -251,8 +267,15 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer); clearT
   .warehouse-legend { gap: 10px 14px; }
   .warehouse-footer { flex-wrap: wrap; gap: 12px; }
   .warehouse-footer > div { gap: 8px; flex-wrap: wrap; }
-  .warehouse-detail-totals { gap: 25px; }
   .warehouse-detail-table :deep(.el-scrollbar__bar.is-horizontal) { opacity: 1; }
+}
+@media (max-width: 560px) {
+  .warehouse-detail-summary { flex-wrap: wrap; gap: 14px; padding: 12px; }
+  .warehouse-detail-identity { flex-basis: 100%; }
+  .warehouse-detail-totals { width: 100%; gap: 24px; padding: 12px 0 0; border-left: 0; border-top: 1px solid var(--line); }
+  .warehouse-detail-totals > div { flex: 1; min-width: 0; }
+  .warehouse-detail-totals strong { font-size: 22px; overflow-wrap: anywhere; }
+  .warehouse-detail-selection { flex-basis: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .warehouse-slot { transition: none; } .warehouse-slot:not(:disabled):hover { transform: none; } }
 </style>
