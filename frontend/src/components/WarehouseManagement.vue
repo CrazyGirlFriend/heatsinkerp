@@ -165,7 +165,7 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer); clearT
             </button>
             <ElEmpty v-if="!rows.length" class="warehouse-empty" :description="loading ? '正在加载仓位' : '没有符合条件的仓位'" :image-size="64" />
           </div>
-          <footer class="warehouse-footer"><span aria-live="polite">共 {{ total }} 个仓位</span><div><span>{{ pageSize }} 个/页</span><ElPagination v-model:current-page="page" :page-size="pageSize" :total="total" layout="prev, pager, next" @current-change="load()" /></div></footer>
+          <footer class="warehouse-footer"><span aria-live="polite">共 {{ total }} 个仓位</span><div><span>{{ pageSize }} 个/页</span><ElPagination v-model:current-page="page" :page-size="pageSize" :total="total" :pager-count="5" layout="prev, pager, next" @current-change="load()" /></div></footer>
         </template>
       </ElCard>
       <ElDialog v-model="detailOpen" :title="(detail?.name || '') + ' · 仓位明细'" width="min(760px, 94vw)" class="warehouse-detail-dialog" align-center>
@@ -221,7 +221,8 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer); clearT
 .pending { color: #56899f; }
 .draft { color: #a28249; }
 .disabled { color: #8b9890; }
-.warehouse-grid { --slot-height: 70px; display: grid; flex: 1; min-height: 0; grid-template-columns: repeat(10, minmax(0, 1fr)); grid-template-rows: repeat(var(--warehouse-rows), minmax(var(--slot-height), 1fr)); gap: 12px 10px; }
+.warehouse-grid { --slot-height: 70px; display: grid; flex: 1; min-height: var(--slot-height); grid-template-columns: repeat(10, minmax(0, 1fr)); grid-template-rows: repeat(var(--warehouse-rows), minmax(var(--slot-height), 1fr)); gap: 12px 10px; }
+.warehouse-card:has(.warehouse-grid) :deep(.el-card__body) { overflow-y: auto; }
 .warehouse-empty { grid-column: 1 / -1; grid-row: 1 / -1; }
 .warehouse-slot { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 70px; padding: 15px 7px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--muted); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color var(--motion-fast) ease, transform var(--motion-fast) ease; }
 .warehouse-slot.is-stocked { background: #d8ebdf; border-color: #d8ebdf; color: #34784b; }
@@ -272,12 +273,19 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer); clearT
   .warehouse-detail-table :deep(.el-scrollbar__bar.is-horizontal) { opacity: 1; }
 }
 @media (max-width: 560px) {
+  .warehouse-footer { padding-top: 12px; gap: 8px; }
+  .warehouse-footer > div { display: contents; }
+  .warehouse-footer :deep(.el-pagination) { flex-basis: 100%; justify-content: center; }
   .warehouse-detail-summary { flex-wrap: wrap; gap: 14px; padding: 12px; }
   .warehouse-detail-identity { flex-basis: 100%; }
   .warehouse-detail-totals { width: 100%; gap: 24px; padding: 12px 0 0; border-left: 0; border-top: 1px solid var(--line); }
   .warehouse-detail-totals > div { flex: 1; min-width: 0; }
   .warehouse-detail-totals strong { font-size: 22px; overflow-wrap: anywhere; }
   .warehouse-detail-selection { flex-basis: 100%; }
+}
+@media (max-height: 650px) {
+  .warehouse-toolbar, .warehouse-legend { margin-bottom: 12px; }
+  .warehouse-footer { padding-top: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .warehouse-slot { transition: none; } .warehouse-slot:not(:disabled):hover { transform: none; } }
 </style>
