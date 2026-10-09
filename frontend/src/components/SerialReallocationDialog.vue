@@ -9,7 +9,7 @@ import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamCanReallocate } from '@/config/teamWorkspaces'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { StockBatch, CreateSerialReallocation } from '@/types/teamMaterials'
-import { materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
+import { isWeightOnlyType, materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import { amountError, dispatchableAmounts, materialRequestKey } from '@/utils/materialStock'
 import { sludgePayload } from '@/utils/sludgeWeight'
 import { inventoryAmount } from '@/types/teamInventory'
@@ -20,6 +20,7 @@ const auth = useAuthStore(), directory = useTeamDirectoryStore()
 const team = computed(() => directory.items.find(item => Number(item.id) === props.teamId))
 const canWrite = computed(() => auth.isTeamAccount && auth.currentUser?.active !== false && !auth.currentUserError && Number(auth.currentUser?.team_id) === props.teamId && team.value?.active && teamCanReallocate(team.value))
 const warehouse = computed(() => team.value?.kind === 'warehouse')
+const weightOnly = computed(() => isWeightOnlyType(props.source?.transfer.material_type))
 const measured = computed(() => props.source?.transfer.material_type === 'sludge' && props.source.transfer.sludge_content_percent != null)
 const form = reactive({ serial: '', quantity: undefined as number | undefined, weight: undefined as number | undefined, gross: undefined as number | undefined, percent: undefined as number | undefined, reason: '', location: '', locationKey: '' })
 const saving = ref(false), locationBusy = ref(false), error = ref('')
@@ -40,10 +41,10 @@ async function submit() {
   if (!form.serial.trim() || form.serial.trim().length > 80) { error.value = '请填写目标流水号，最多 80 个字符'; return }
   if (form.serial.trim() === props.source.transfer.serial_no) { error.value = '目标流水号不能与当前流水号相同'; return }
   if (form.reason.trim().length > 2000) { error.value = '转投原因不能超过 2000 个字符'; return }
-  const invalid = amountError(form.quantity, form.weight, props.source)
+  const invalid = amountError(weightOnly.value ? 0 : form.quantity, form.weight, props.source)
   if (invalid) { error.value = invalid; return }
   const body: Omit<CreateSerialReallocation, 'idempotency_key'> = {
-    source_transfer_id: Number(props.source.transfer.id), serial_no: form.serial.trim(), quantity: Number(form.quantity), weight: Number(form.weight), reason: form.reason.trim(),
+    source_transfer_id: Number(props.source.transfer.id), serial_no: form.serial.trim(), quantity: weightOnly.value ? 0 : Number(form.quantity), weight: Number(form.weight), reason: form.reason.trim(),
     ...(form.location ? { warehouse_location: form.location, warehouse_location_reservation_key: form.locationKey } : {}),
     ...(measured.value ? sludgePayload('sludge', form.gross, form.percent) : {}),
   }
@@ -67,12 +68,12 @@ async function submit() {
   <ElDialog :model-value="modelValue" title="流水号转投" width="min(620px, calc(100vw - 32px))" align-center append-to-body :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving" @close="close">
     <div v-if="source" class="reallocation-source">
       <header><strong>{{ source.transfer.serial_no }}</strong><span>{{ source.transfer.material_name || '—' }}</span><ElTag effect="light">{{ materialTypeLabel(source.transfer.material_type) }}</ElTag></header>
-      <div><span>{{ source.transfer.batch_no }}</span><span>{{ inventoryAmount(dispatchableAmounts(source).quantity) }} 件 · {{ inventoryAmount(dispatchableAmounts(source).weight) }} kg</span></div>
+      <div><span>{{ source.transfer.batch_no }}</span><span><template v-if="!weightOnly">{{ inventoryAmount(dispatchableAmounts(source).quantity) }} 件 · </template>{{ inventoryAmount(dispatchableAmounts(source).weight) }} kg</span></div>
     </div>
     <ElForm label-position="top" :disabled="saving || !canWrite" @submit.prevent="submit">
       <ElFormItem label="目标流水号" required><MaterialInput field="serial_no" label="转投目标流水号" :disabled="saving || !canWrite || !modelValue" v-model="form.serial" aria-label="转投目标流水号" :maxlength="80" placeholder="填写转投后的流水号" /></ElFormItem>
       <div class="reallocation-amounts dialog-form-grid">
-        <ElFormItem label="转投件数" required><ElInputNumber v-model="form.quantity" aria-label="转投件数" :min="0" :precision="0" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
+        <ElFormItem v-if="!weightOnly" label="转投件数" required><ElInputNumber v-model="form.quantity" aria-label="转投件数" :min="0" :precision="0" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
         <ElFormItem v-if="!measured" label="转投重量" required><ElInputNumber v-model="form.weight" aria-label="转投重量" :min="0" :precision="3" controls-position="right"><template #suffix><span class="dialog-input-unit">kg</span></template></ElInputNumber></ElFormItem>
       </div>
       <SludgeWeightFields v-if="measured" v-model:gross="form.gross" v-model:percent="form.percent" label="转投" locked :disabled="saving || !canWrite" @update:weight="form.weight = $event" />

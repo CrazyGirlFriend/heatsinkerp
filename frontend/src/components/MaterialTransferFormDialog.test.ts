@@ -40,7 +40,7 @@ async function base(type: string | null = 'finished') {
   if (type !== null) selects[0]!.vm.$emit('update:modelValue', type)
   selects[1]!.vm.$emit('update:modelValue', 3)
   await wrapper.get('input[aria-label="流水号"]').setValue('HS-NEW')
-  await number('转料件数', 0)
+  if (!['sludge', 'scrap_chips'].includes(type || '')) await number('转料件数', 0)
   if (type === 'sludge') { await number('废泥实重', 16.5); await number('有效材料占比', 50) }
   else await number('转料重量', 8.25)
 }
@@ -135,14 +135,15 @@ describe('material transfer document form', () => {
     expect(materialTransferApi.update).toHaveBeenCalledWith('TL20260906000001', expect.objectContaining({ material_type: 'semi_finished', next_team_id: 1, notes: null }))
   })
 
-  it.each(materialTypeOptions)('creates $label with independent weight and quantity', async ({ value }) => {
+  it.each(materialTypeOptions)('creates $label with the appropriate measurement fields', async ({ value }) => {
     await render()
     await base(value)
-    await number('成品件数', 0)
+    const weightOnly = ['sludge', 'scrap_chips'].includes(value)
+    if (!weightOnly) await number('成品件数', 0)
     await wrapper.get('input[aria-label="原单批号"]').setValue('RAW-001')
     await wrapper.get('input[aria-label="客户代码"]').setValue('001440')
     await submit()
-    expect(materialTransferApi.create).toHaveBeenCalledWith(expect.objectContaining({ material_type: value, quantity: 0, weight: 8.25, finished_quantity: 0, source_batch_no: 'RAW-001', customer_code: '001440' }))
+    expect(materialTransferApi.create).toHaveBeenCalledWith(expect.objectContaining({ material_type: value, quantity: 0, weight: 8.25, finished_quantity: weightOnly ? null : 0, source_batch_no: 'RAW-001', customer_code: '001440' }))
     expect(vi.mocked(materialTransferApi.create).mock.calls[0]![0]).not.toHaveProperty('batch_no')
   })
 
@@ -208,4 +209,17 @@ describe('material transfer document form', () => {
     expect(materialTransferApi.update).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('已锁定')
   })
+})
+
+it('hides piece fields after converting a countable transfer and never submits the old pieces', async () => {
+  await render(); await base(); await number('转料件数', 80); await number('成品件数', 75)
+  wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'scrap_chips'); await flushPromises()
+  expect(wrapper.find('input[aria-label="转料件数"]').exists()).toBe(false)
+  expect(wrapper.find('input[aria-label="成品件数"]').exists()).toBe(false)
+  expect(wrapper.find('input[aria-label="应发成品件数"]').exists()).toBe(false)
+  await number('转料重量', 0); await submit()
+  expect(materialTransferApi.create).not.toHaveBeenCalled()
+  expect(wrapper.text()).toContain('大于 0 的转料重量')
+  await number('转料重量', 2); await submit()
+  expect(materialTransferApi.create).toHaveBeenCalledWith(expect.objectContaining({ quantity: 0, weight: 2, finished_quantity: null, delivery_quantity: null }))
 })

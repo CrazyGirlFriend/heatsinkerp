@@ -23,7 +23,7 @@ from .auth import actor_name
 from .batch_numbers import next_transfer_batch_numbers
 from .models import MaterialDispatch, MaterialLoss, MaterialStockBalance, MaterialTransfer, SerialUrgency, Team, utcnow
 from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, SCRAP_MATERIAL_TYPES, OutboundQuantityClearance, WarehouseLocationChoice, SludgeMeasurement
-from .material_weight import sludge_measurement, stock_sludge_measurements
+from .material_weight import validate_material_amounts, sludge_measurement, stock_sludge_measurements
 from .team_constants import EXTERNAL_ENTRY_KINDS, WAREHOUSE_TEAM_CODE, INSPECTION_TEAM_CODE
 from . import material_transfer_workflow as workflow
 
@@ -180,6 +180,7 @@ def create_loss(db, team_id, payload, user):
             if prior is not None:
                 _replay(prior, user, request_hash, "team_id")
                 return workflow.material_loss_dict(prior)
+            validate_material_amounts(lot.material_type, payload.quantity, payload.weight)
             validate_available(db, lot, payload.quantity, payload.weight)
             loss = MaterialLoss(
                 loss_no="LS" + uuid4().hex[:24].upper(), source_transfer_id=lot.id, team_id=team_id,
@@ -242,6 +243,7 @@ def create_dispatch(db, team_id, payload, user):
             for line in payload.lines:
                 lot = lots[line.source_transfer_id]
                 kind = line.material_type if "material_type" in line.model_fields_set else lot.material_type
+                validate_material_amounts(kind, line.quantity, line.weight)
                 sludge_measurement(kind, line.weight, line.sludge_gross_weight, line.sludge_content_percent, source=lot)
                 if source.code == WAREHOUSE_TEAM_CODE and kind != lot.material_type:
                     raise HTTPException(422, "库房按原物料转出，不能更改物料类型")

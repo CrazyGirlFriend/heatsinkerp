@@ -17,7 +17,7 @@ import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { deliveryError } from '@/utils/materialDelivery'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
-import { materialDocumentTextFields, materialTypeOptions, type MaterialTransfer, type MaterialTransferTextField, type MaterialType } from '@/types/materialTransfer'
+import { materialDocumentTextFields, isWeightOnlyType, materialTypeOptions, type MaterialTransfer, type MaterialTransferTextField, type MaterialType } from '@/types/materialTransfer'
 import type { CreateWarehouseReceipt } from '@/types/teamMaterials'
 
 const props = defineProps<{ modelValue: boolean; teamId: number }>()
@@ -55,6 +55,8 @@ const form = reactive({
   weight: 0 as number | undefined, notes: '', finishedQuantity: undefined as number | undefined,
   document: Object.fromEntries(materialDocumentTextFields.map(field => [field.key, ''])) as Record<MaterialTransferTextField, string>,
 })
+const weightOnly = computed(() => isWeightOnlyType(form.materialType))
+const enteredQuantity = computed(() => weightOnly.value ? 0 : form.quantity)
 const autofill = useMaterialAutofill(() => form.serialNo, form.document)
 const specificationValidity = reactive<Record<string, boolean>>({ finished_specification: true, transfer_specification: true })
 const suggestionFields = ['material_name', 'customer_code', 'product_code', 'part_no', 'outsourced_unit']
@@ -96,21 +98,22 @@ function validate(): boolean {
   else if (!form.materialType) error.value = '请选择物料类型'
   else if (form.materialType === 'sludge' && !sludgeWeight(form.gross, form.percent)) error.value = '请填写废泥实重和有效材料占比，折算重量须达到 0.001 kg'
   else if (form.warehouseLocation.length > 80) error.value = '仓位不能超过 80 个字符'
-  else if (form.quantity == null || !Number.isInteger(form.quantity) || form.quantity < 0 || form.quantity > 2147483647) error.value = '入库件数须为 0 至 2147483647 的整数'
+  else if (enteredQuantity.value == null || !Number.isInteger(enteredQuantity.value) || enteredQuantity.value < 0 || enteredQuantity.value > 2147483647) error.value = '入库件数须为 0 至 2147483647 的整数'
   else if (form.weight == null || !Number.isFinite(form.weight) || form.weight < 0 || form.weight > 99999999999.999 || Math.abs(form.weight * 1000 - Math.round(form.weight * 1000)) > 0.0001) error.value = '入库重量须为非负数，最多保留 3 位小数'
-  else if (form.quantity === 0 && form.weight === 0) error.value = '入库件数和重量至少一项大于 0'
+  else if (weightOnly.value && !form.weight) error.value = '请填写大于 0 的入库重量'
+  else if (enteredQuantity.value === 0 && form.weight === 0) error.value = '入库件数和重量至少一项大于 0'
   else if (form.notes.trim().length > 2000) error.value = '入库说明不能超过 2000 个字符'
   else error.value = ''
   activeTab.value = /实重|占比|件数|重量|仓位/.test(error.value) ? 'amount' : error.value.startsWith('入库说明') ? 'notes' : 'receipt'
   if (error.value) { validationPage.value = formPage.value; return false }
-  if (form.receiptKind === 'external') {
+  if (form.receiptKind === 'external' && !weightOnly.value) {
     error.value = deliveryError(form.deliveryDate, form.deliveryQuantity)
     if (error.value) { activeTab.value = 'amount'; validationPage.value = formPage.value; return false }
   }
   if (Object.values(specificationValidity).includes(false)) { error.value = '请填完整规格尺寸'; activeTab.value = 'specification'; validationPage.value = formPage.value; return false }
   const invalid = materialDocumentTextFields.find(field => form.document[field.key].trim().length > field.maxLength)
   if (invalid) { error.value = `${invalid.label}不能超过 ${invalid.maxLength} 个字符`; activeTab.value = invalid.key === 'material_name' ? 'receipt' : documentPages.find(page => page.fields.some(field => field.key === invalid.key))!.name }
-  else if (form.finishedQuantity != null && (!Number.isInteger(form.finishedQuantity) || form.finishedQuantity < 0 || form.finishedQuantity > 2147483647)) { error.value = '成品件数须为有效的非负整数'; activeTab.value = 'document' }
+  else if (!weightOnly.value && form.finishedQuantity != null && (!Number.isInteger(form.finishedQuantity) || form.finishedQuantity < 0 || form.finishedQuantity > 2147483647)) { error.value = '成品件数须为有效的非负整数'; activeTab.value = 'document' }
   if (error.value) validationPage.value = formPage.value
   return !error.value
 }
@@ -121,9 +124,9 @@ function payload(): CreateWarehouseReceipt {
     receipt_kind: form.receiptKind, external_source: form.externalSource.trim(), return_dispatch_no: form.receiptKind === 'return' ? form.returnDispatchNo.trim() || null : null,
     warehouse_location: form.warehouseLocation.trim() || null,
     ...(form.warehouseLocationKey ? { warehouse_location_reservation_key: form.warehouseLocationKey } : {}),
-    quantity: Number(form.quantity), weight: Number(form.weight), notes: form.notes.trim(), finished_quantity: form.finishedQuantity ?? null,
+    quantity: Number(enteredQuantity.value), weight: Number(form.weight), notes: form.notes.trim(), finished_quantity: weightOnly.value ? null : form.finishedQuantity ?? null,
     ...(form.materialType === 'sludge' ? sludgePayload(form.materialType, form.gross, form.percent) : {}),
-    ...(form.receiptKind === 'external' ? { delivery_date: form.deliveryDate || null, delivery_quantity: form.deliveryQuantity ?? null } : {}),
+    ...(form.receiptKind === 'external' ? { delivery_date: weightOnly.value ? null : form.deliveryDate || null, delivery_quantity: weightOnly.value ? null : form.deliveryQuantity ?? null } : {}),
     idempotency_key: globalThis.crypto?.randomUUID?.() || `warehouse-receipt-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   }
 }
@@ -184,20 +187,20 @@ onBeforeUnmount(() => { ++generation })
           </div>
         </ElTabPane>
         <ElTabPane label="数量与交期" name="amount">
-          <MaterialDeliveryFields v-if="form.receiptKind === 'external'" v-model:date="form.deliveryDate" v-model:quantity="form.deliveryQuantity" :disabled="readonly" />
+          <MaterialDeliveryFields v-if="form.receiptKind === 'external' && !weightOnly" v-model:date="form.deliveryDate" v-model:quantity="form.deliveryQuantity" :disabled="readonly" />
           <div class="receipt-grid dialog-form-grid">
-            <ElFormItem label="入库件数" required><ElInputNumber v-model="form.quantity" aria-label="入库件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="readonly"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
+            <ElFormItem v-if="!weightOnly" label="入库件数" required><ElInputNumber v-model="form.quantity" aria-label="入库件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="readonly"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
             <ElFormItem v-if="form.materialType !== 'sludge'" label="入库重量" required><ElInputNumber v-model="form.weight" aria-label="入库重量" :min="0" :max="99999999999.999" :precision="3" :step="0.001" controls-position="right" :disabled="readonly"><template #suffix><span class="dialog-input-unit">kg</span></template></ElInputNumber></ElFormItem>
             <SludgeWeightFields v-else v-model:gross="form.gross" v-model:percent="form.percent" :disabled="readonly" @update:weight="form.weight = $event" />
             <ElFormItem label="入库仓位" class="dialog-field-wide"><WarehouseLocationSelect v-model="form.warehouseLocation" v-model:reservation-key="form.warehouseLocationKey" :team-id="teamId" :serial-no="form.serialNo" :material-name="form.document.material_name" :material-type="form.materialType" :active="modelValue" :disabled="readonly" @busy-change="locationBusy = $event" /></ElFormItem>
           </div>
-          <p class="receipt-hint">{{ form.materialType === 'sludge' ? '废泥按实重与有效材料占比折算；仅按重量交接时，件数填 0。' : '件数和重量至少填写一项，另一项可填 0。' }}</p>
+          <p class="receipt-hint">{{ form.materialType === 'sludge' ? '废泥按实重与有效材料占比折算。' : weightOnly ? '只按重量计量。' : '件数和重量至少填写一项，另一项可填 0。' }}</p>
 
         </ElTabPane>
         <ElTabPane v-for="page in documentPages" :key="page.name" :label="page.label" :name="page.name">
           <div class="receipt-grid dialog-form-grid">
             <ElFormItem v-for="field in page.fields" :key="field.key" :label="field.label" :class="{ 'dialog-field-wide': field.multiline || specificationKeys.includes(field.key) }"><template #label>{{ field.label }}<AutofillBadge :source="autofill.source(field.key)" /></template><SpecificationInput v-if="specificationKeys.includes(field.key)" v-model="form.document[field.key]" :label="field.label" :disabled="readonly" @validity-change="specificationValidity[field.key] = $event" /><MaterialInput v-else-if="suggestionFields.includes(field.key)" v-model="form.document[field.key]" :field="field.key as MaterialInputField" :label="field.label" :maxlength="field.maxLength" :disabled="readonly" /><ElInput v-else v-model="form.document[field.key]" :aria-label="field.label" :type="field.multiline ? 'textarea' : 'text'" :rows="2" :maxlength="field.maxLength" :show-word-limit="field.multiline" :disabled="readonly" placeholder="选填" /></ElFormItem>
-            <ElFormItem v-if="page.name === 'document'" label="成品件数"><ElInputNumber v-model="form.finishedQuantity" aria-label="成品件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="readonly" placeholder="选填"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
+            <ElFormItem v-if="page.name === 'document' && !weightOnly" label="成品件数"><ElInputNumber v-model="form.finishedQuantity" aria-label="成品件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="readonly" placeholder="选填"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
           </div>
           <template v-if="page.name === 'notes'">
           <ElFormItem label="入库说明"><ElInput v-model="form.notes" aria-label="入库说明" type="textarea" :rows="3" maxlength="2000" show-word-limit :disabled="readonly" placeholder="选填：说明来料来源及本次入库情况" /></ElFormItem>

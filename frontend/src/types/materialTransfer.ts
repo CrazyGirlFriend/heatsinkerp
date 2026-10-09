@@ -19,6 +19,7 @@ export const materialTypeOptions = [
 ] as const
 export type MaterialType = typeof materialTypeOptions[number]['value']
 export const isScrapType = (type?: string | null) => ['defective', 'waste', 'sludge', 'scrap_chips'].includes(type || '')
+export const isWeightOnlyType = (type?: string | null) => ['sludge', 'scrap_chips'].includes(type || '')
 export function receiptSourceLabel(transfer: MaterialTransfer): string {
   if (transfer.entry_kind === 'serial_reallocation') return '转投入库'
   if (transfer.entry_kind === 'opening_stock') return '初始库存'

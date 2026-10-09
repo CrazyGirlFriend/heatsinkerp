@@ -4,6 +4,18 @@ from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from fastapi import HTTPException
 
 SLUDGE_FIELDS = ("sludge_gross_weight", "sludge_content_percent")
+WEIGHT_ONLY_TYPES = ("sludge", "scrap_chips")
+
+
+def validate_material_amounts(material_type, quantity, weight, *, existing=None):
+    if material_type not in WEIGHT_ONLY_TYPES:
+        return
+    # Existing counts remain auditable; edits cannot introduce or increase them.
+    legacy_count = existing is not None and material_type == existing.material_type and quantity == existing.quantity
+    if quantity != 0 and not legacy_count:
+        raise HTTPException(422, "废泥、废屑只按重量计量，件数须为 0")
+    if weight <= 0 and not (legacy_count and weight == existing.weight):
+        raise HTTPException(422, "废泥、废屑的重量须大于 0")
 
 
 def sludge_measurement(material_type, weight, gross, percent, *, source=None, legacy=False):

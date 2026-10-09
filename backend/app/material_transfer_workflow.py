@@ -19,7 +19,7 @@ from .batch_numbers import next_transfer_batch_number
 from .models import MaterialDispatch, MaterialTransfer, MaterialTransferEvent, Team, User, WarehousePlacement, utcnow
 from .schemas import MaterialTransferDocumentFields, SCRAP_MATERIAL_TYPES
 from .team_constants import EXTERNAL_ENTRY_KINDS, WAREHOUSE_TEAM_CODE
-from .material_weight import SLUDGE_FIELDS, sludge_measurement
+from .material_weight import SLUDGE_FIELDS, validate_material_amounts, sludge_measurement
 
 
 DOCUMENT_FIELDS = tuple(MaterialTransferDocumentFields.model_fields)
@@ -307,6 +307,7 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
                 raise HTTPException(422, "source and target teams must be different")
             _validate_warehouse_type(target, payload.material_type)
             validate_material_route(None, payload.material_type, target, "transfer", payload.notes)
+            validate_material_amounts(payload.material_type, payload.quantity, payload.weight)
             measured = sludge_measurement(payload.material_type, payload.weight, payload.sludge_gross_weight, payload.sludge_content_percent)
             from .warehouse_locations import consume
             location_name = consume(db, target, payload, user)
@@ -381,6 +382,7 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
         quantity = payload.quantity if "quantity" in supplied else transfer.quantity
         weight = payload.weight if "weight" in supplied else transfer.weight
         material_type = payload.material_type if "material_type" in supplied else transfer.material_type
+        validate_material_amounts(material_type, quantity, weight, existing=transfer)
         sludge_measurement(material_type, weight,
             *(getattr(payload, field) if field in supplied else getattr(transfer, field) for field in SLUDGE_FIELDS),
             source=transfer.stock_source if transfer.source_transfer_id else None,

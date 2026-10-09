@@ -11,7 +11,7 @@ from .batch_numbers import next_transfer_batch_number
 from .database import get_db
 from .models import Team, MaterialTransfer, OpeningStockSubmission, User, utcnow
 from .schemas import MaterialTransferDocumentFields, SludgeMeasurement
-from .material_weight import sludge_measurement
+from .material_weight import validate_material_amounts, sludge_measurement
 from . import material_stock as stock
 from . import material_transfer_workflow as workflow
 from .team_business import purpose_snapshot
@@ -96,6 +96,7 @@ def create(payload: OpeningCreate, team_id: int = Path(ge=1), user: User = Depen
             db.flush()
             now = utcnow()
             for line in payload.lines:
+                validate_material_amounts(line.material_type, line.quantity, line.weight)
                 measured = sludge_measurement(line.material_type, line.weight, line.sludge_gross_weight, line.sludge_content_percent)
                 purpose = purpose_snapshot(db, team_id, line.purpose_id, required=False)
                 transfer = MaterialTransfer(batch_no=next_transfer_batch_number(db), entry_kind="opening_stock",

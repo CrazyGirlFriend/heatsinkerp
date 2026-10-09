@@ -61,7 +61,7 @@ describe('team business settings', () => {
     await wrapper.get('input[aria-label="第1行材质"]').setValue('铜钼')
     wrapper.findAllComponents(ElSelect).find(item => item.find('input[aria-label="第1行物料类型"]').exists())!.vm.$emit('update:modelValue', 'sludge'); await flushPromises()
     const inputs = wrapper.findAllComponents(ElInputNumber)
-    ;[0, 10, 30].forEach((value, i) => inputs[i]!.vm.$emit('update:modelValue', value))
+    ;[10, 30].forEach((value, i) => inputs[i]!.vm.$emit('update:modelValue', value))
     await flushPromises(); await click('确认初始库存登记')
     expect(teamMaterialApi.createOpening).toHaveBeenCalledWith(2, [expect.objectContaining({ quantity: 0, weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30 })], expect.any(String))
   })
@@ -149,4 +149,12 @@ describe('team business settings', () => {
     await click('新增业务')
     expect(teamMaterialApi.savePurpose).toHaveBeenLastCalledWith(2, { name: '发货', active: true }, undefined)
   })
+})
+
+it('registers weight-only opening stock without requesting or retaining pieces from the draft', async () => {
+  localStorage.setItem('heatsink.opening-draft.v1:41:2', JSON.stringify([{ serial_no: 'YS-1', material_name: '材料1', material_type: 'scrap_chips', quantity: 50, weight: 3 }]))
+  await render()
+  expect(wrapper.find('input[aria-label="第1行件数"]').exists()).toBe(false)
+  await click('确认初始库存登记')
+  expect(teamMaterialApi.createOpening).toHaveBeenCalledWith(2, [expect.objectContaining({ quantity: 0, weight: 3 })], expect.any(String))
 })

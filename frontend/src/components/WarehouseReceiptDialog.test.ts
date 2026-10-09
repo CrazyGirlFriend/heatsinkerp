@@ -202,3 +202,16 @@ describe('warehouse manual receipt', () => {
     expect(sessionStorage.length).toBe(0)
   })
 })
+
+it('replaces old piece fields with weight-only intake and rejects an empty weight', async () => {
+  await render(); await fill(); await amount('入库件数', 50); await amount('成品件数', 40)
+  wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'scrap_chips'); await flushPromises()
+  expect(wrapper.find('input[aria-label="入库件数"]').exists()).toBe(false)
+  expect(wrapper.find('input[aria-label="成品件数"]').exists()).toBe(false)
+  expect(wrapper.find('input[aria-label="应发成品件数"]').exists()).toBe(false)
+  await amount('入库重量', 0); await submit()
+  expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+  expect(wrapper.text()).toContain('大于 0 的入库重量')
+  await amount('入库重量', 5); await submit()
+  expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(901, expect.objectContaining({ quantity: 0, weight: 5, finished_quantity: null }))
+})

@@ -33,7 +33,7 @@ import MaterialDeliveryFields from './MaterialDeliveryFields.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { deliveryError } from '@/utils/materialDelivery'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
-import { canEditMaterialTransfer, externalActionLabel, isExternalTransfer, materialDocumentTextFields, materialTransferVersion, materialTypeOptions, type MaterialTransfer, type MaterialTransferTextField, type MaterialType } from '@/types/materialTransfer'
+import { canEditMaterialTransfer, externalActionLabel, isWeightOnlyType, isExternalTransfer, materialDocumentTextFields, materialTransferVersion, materialTypeOptions, type MaterialTransfer, type MaterialTransferTextField, type MaterialType } from '@/types/materialTransfer'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -90,6 +90,9 @@ const specificationValidity = reactive<Record<string, boolean>>({ finished_speci
 const suggestionFields = ['material_name', 'customer_code', 'product_code', 'part_no', 'outsourced_unit']
 let formGeneration = 0
 const external = computed(() => Boolean(editingSnapshot.value && isExternalTransfer(editingSnapshot.value)))
+const weightOnly = computed(() => isWeightOnlyType(form.materialType))
+const retainedWeightOnly = computed(() => weightOnly.value && editingSnapshot.value?.material_type === form.materialType)
+const enteredQuantity = computed(() => weightOnly.value ? retainedWeightOnly.value ? editingSnapshot.value?.quantity ?? 0 : 0 : form.quantity)
 const useSludge = computed(() => form.materialType === 'sludge' && !(editingSnapshot.value?.material_type === 'sludge' && editingSnapshot.value.sludge_content_percent == null))
 const purposes = useTeamPurposes(() => props.modelValue && !external.value && form.nextTeamId ? Number(form.nextTeamId) : null)
 watch(() => form.nextTeamId, value => { if (String(value) !== String(editingSnapshot.value?.next_team.id)) { form.purposeId = null; form.warehouseLocation = ''; form.warehouseLocationKey = '' } })
@@ -146,7 +149,7 @@ function close(): void {
 function validate(): boolean {
   validationPage.value = null
   const serialNo = form.serialNo.trim()
-  const quantity = Number(form.quantity)
+  const quantity = Number(enteredQuantity.value)
   const weight = Number(form.weight)
   if (!authStore.isTeamAccount) formError.value = '管理员仅可查看转料记录'
   else if (!teamActorReady.value) formError.value = '当前账号不可操作，请重新登录后核对'
@@ -162,17 +165,18 @@ function validate(): boolean {
   else if (!external.value && (purposes.loading.value || purposes.error.value)) formError.value = purposes.error.value || '请等待业务加载完成'
   else if (!external.value && purposes.items.value.length && form.purposeId !== editingSnapshot.value?.purpose_id && !purposes.items.value.some(item => item.active && item.id === form.purposeId)) formError.value = '请选择下序班组的接收业务'
   else if (!external.value && String(form.nextTeamId) === String(sourceTeam.value.id)) formError.value = '接收班组不能与转出班组相同'
-  else if (form.quantity == null || !Number.isInteger(quantity) || quantity < 0 || quantity > 2147483647) formError.value = '转料件数须为 0 至 2147483647 的整数'
+  else if (enteredQuantity.value == null || !Number.isInteger(quantity) || quantity < 0 || quantity > 2147483647) formError.value = '转料件数须为 0 至 2147483647 的整数'
   else if (form.weight == null || !Number.isFinite(weight) || weight < 0 || weight > 99999999999.999) formError.value = '请输入有效的非负转料重量'
+  else if (weightOnly.value && weight <= 0) formError.value = '请填写大于 0 的转料重量'
   else if (quantity === 0 && weight === 0) formError.value = '转料件数和重量至少一项大于 0'
   else if (form.notes.trim().length > 2000) formError.value = `${notesLabel.value}不能超过 2000 个字符`
   else formError.value = ''
   if (formError.value) { activeTab.value = /实重|占比|件数|重量/.test(formError.value) ? 'amount' : formError.value.startsWith(notesLabel.value) ? 'notes' : 'handoff'; validationPage.value = formPage.value; return false }
-  if (!linkedSource.value && !external.value) {
+  if (!linkedSource.value && !external.value && !weightOnly.value) {
     formError.value = deliveryError(form.deliveryDate, form.deliveryQuantity)
     if (formError.value) { activeTab.value = 'amount'; validationPage.value = formPage.value; return false }
   }
-  if (form.finishedQuantity != null && (!Number.isInteger(form.finishedQuantity) || form.finishedQuantity < 0 || form.finishedQuantity > 2147483647)) {
+  if (!weightOnly.value && form.finishedQuantity != null && (!Number.isInteger(form.finishedQuantity) || form.finishedQuantity < 0 || form.finishedQuantity > 2147483647)) {
     formError.value = '成品件数须为非负整数，不能超过 2147483647'
     activeTab.value = 'document'
   }
@@ -213,15 +217,15 @@ async function submit(): Promise<void> {
   const payload = {
     serial_no: form.serialNo.trim(),
     ...(toWarehouse.value ? { warehouse_location: form.warehouseLocation || null, ...(form.warehouseLocationKey ? { warehouse_location_reservation_key: form.warehouseLocationKey } : {}) } : {}),
-    ...(!linkedSource.value && !external.value ? { delivery_date: form.deliveryDate || null, delivery_quantity: form.deliveryQuantity ?? null } : {}),
+    ...(!linkedSource.value && !external.value ? { delivery_date: weightOnly.value ? retainedWeightOnly.value ? editingSnapshot.value?.delivery_date ?? null : null : form.deliveryDate || null, delivery_quantity: weightOnly.value ? retainedWeightOnly.value ? editingSnapshot.value?.delivery_quantity ?? null : null : form.deliveryQuantity ?? null } : {}),
     next_team_id: form.nextTeamId,
     ...(!external.value && (form.purposeId || editingSnapshot.value?.purpose_id) ? { purpose_id: form.purposeId } : {}),
-    quantity: Number(form.quantity),
+    quantity: Number(enteredQuantity.value),
     weight: Number(form.weight),
     ...(useSludge.value || editingSnapshot.value?.sludge_content_percent != null ? sludgePayload(form.materialType, form.gross, form.percent) : {}),
     notes: form.notes.trim() || null,
     material_type: form.materialType || null,
-    finished_quantity: form.finishedQuantity ?? null,
+    finished_quantity: weightOnly.value ? retainedWeightOnly.value ? editingSnapshot.value?.finished_quantity ?? null : null : form.finishedQuantity ?? null,
     ...Object.fromEntries(materialDocumentTextFields.map(field => [field.key, form.document[field.key].trim() || null])),
   }
   const requestFingerprint = JSON.stringify(payload)
@@ -336,10 +340,10 @@ onBeforeUnmount(() => { ++formGeneration })
       </div>
       </ElTabPane>
       <ElTabPane label="数量与交期" name="amount">
-      <MaterialDeliveryFields v-if="!external" v-model:date="form.deliveryDate" v-model:quantity="form.deliveryQuantity" :disabled="!canSubmit || linkedSource" />
+      <MaterialDeliveryFields v-if="!external && !weightOnly" v-model:date="form.deliveryDate" v-model:quantity="form.deliveryQuantity" :disabled="!canSubmit || linkedSource" />
       <p v-if="linkedSource && form.deliveryDate" class="delivery-origin">交期沿用源头批次 {{ editingSnapshot?.delivery_origin_batch_no }}</p>
       <div class="quantity-grid dialog-form-grid">
-        <ElFormItem :label="external ? `${actionLabel}件数` : '转料件数'" required>
+        <ElFormItem v-if="!weightOnly" :label="external ? `${actionLabel}件数` : '转料件数'" required>
           <ElInputNumber v-model="form.quantity" :aria-label="external ? `${actionLabel}件数` : '转料件数'" :min="0" :max="2147483647" :step="1" :precision="0" controls-position="right" :disabled="!canSubmit"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber>
         </ElFormItem>
         <ElFormItem v-if="!useSludge" :label="external ? `${actionLabel}重量` : '转料重量'" required>
@@ -348,7 +352,7 @@ onBeforeUnmount(() => { ++formGeneration })
       </div>
       <SludgeWeightFields v-if="useSludge" v-model:gross="form.gross" v-model:percent="form.percent" :locked="editingSnapshot?.sludge_percent_locked" :disabled="!canSubmit" @update:weight="form.weight = $event" />
       <p v-else-if="form.materialType === 'sludge'" class="quantity-hint">历史废泥未记录比例，沿用原账重，不自动折算。</p>
-      <p class="quantity-hint">{{ useSludge ? '废泥按实重与有效材料占比折算；仅按重量交接时，件数填 0。' : '按实际件数、重量填写，至少一项大于 0。' }}</p>
+      <p class="quantity-hint">{{ useSludge ? '废泥按实重与有效材料占比折算。' : weightOnly ? '只按重量计量。' : '按实际件数、重量填写，至少一项大于 0。' }}</p>
       <ElFormItem v-if="toWarehouse" label="入库仓位"><strong v-if="editingSnapshot?.warehouse_location">{{ editingSnapshot.warehouse_location }}</strong><WarehouseLocationSelect v-else v-model="form.warehouseLocation" v-model:reservation-key="form.warehouseLocationKey" :team-id="Number(form.nextTeamId)" :serial-no="form.serialNo" :material-name="form.document.material_name" :material-type="form.materialType" :active="modelValue" :disabled="saving || refreshing" @busy-change="locationBusy = $event" /></ElFormItem>
       </ElTabPane>
       <ElTabPane v-for="page in documentPages" :key="page.name" :label="page.label" :name="page.name">
@@ -359,7 +363,7 @@ onBeforeUnmount(() => { ++formGeneration })
             <MaterialInput v-else-if="suggestionFields.includes(field.key)" v-model="form.document[field.key]" :field="field.key as MaterialInputField" :label="field.label" :maxlength="field.maxLength" :disabled="!canSubmit || external || (linkedSource && field.key === 'material_name')" />
             <ElInput v-else v-model="form.document[field.key]" :aria-label="field.label" :type="field.multiline ? 'textarea' : 'text'" :rows="2" :maxlength="field.maxLength" :show-word-limit="field.multiline" :disabled="!canSubmit || external" placeholder="选填" />
           </ElFormItem>
-          <ElFormItem v-if="page.name === 'document'" label="成品件数"><ElInputNumber v-model="form.finishedQuantity" aria-label="成品件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="!canSubmit || external" placeholder="选填"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
+          <ElFormItem v-if="page.name === 'document' && !weightOnly" label="成品件数"><ElInputNumber v-model="form.finishedQuantity" aria-label="成品件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="!canSubmit || external" placeholder="选填"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
         </div>
         <template v-if="page.name === 'notes'">
       <ElFormItem :label="notesLabel">

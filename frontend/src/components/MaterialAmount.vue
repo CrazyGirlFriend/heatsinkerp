@@ -1,5 +1,5 @@
 <script setup lang="ts">
-withDefaults(defineProps<{ quantity?: number | null; weight?: number | null; prominent?: boolean }>(), { prominent: false })
+withDefaults(defineProps<{ quantity?: number | null; weight?: number | null; prominent?: boolean; weightOnly?: boolean }>(), { prominent: false })
 function amount(value: number | null | undefined) {
   return value == null || !Number.isFinite(value) ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)
 }
@@ -7,7 +7,7 @@ function amount(value: number | null | undefined) {
 
 <template>
   <span class="material-amount" :class="{ 'material-amount--prominent': prominent, 'material-amount--shortage': (quantity ?? 0) < 0 || (weight ?? 0) < 0 }">
-    <span><strong>{{ amount(quantity) }}</strong><small>件</small></span>
+    <span v-if="!weightOnly"><strong>{{ amount(quantity) }}</strong><small>件</small></span>
     <span><strong>{{ amount(weight) }}</strong><small>kg</small></span>
     <small v-if="(quantity ?? 0) < 0 || (weight ?? 0) < 0" class="shortage-label">账面缺口</small>
   </span>

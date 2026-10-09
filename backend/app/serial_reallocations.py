@@ -12,7 +12,7 @@ from . import material_stock as stock
 from . import material_transfer_workflow as workflow
 from .auth import actor_name
 from .batch_numbers import next_transfer_batch_number
-from .material_weight import sludge_measurement
+from .material_weight import validate_material_amounts, sludge_measurement
 from .models import MaterialTransfer, Team, utcnow
 from .record_filters import RecordFilters
 from .schemas import SludgeMeasurement, WarehouseLocationChoice
@@ -115,6 +115,7 @@ def create(db, team_id, payload, user):
                 raise HTTPException(422, "目标流水号不能与当前流水号相同")
             # Follow the existing signed-stock policy; this operation adds no amount cap.
             stock.available_locked(db, lot)
+            validate_material_amounts(lot.material_type, payload.quantity, payload.weight)
             measured = sludge_measurement(
                 lot.material_type,
                 payload.weight,

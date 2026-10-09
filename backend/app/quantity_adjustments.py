@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, OperationalError
+from .material_weight import WEIGHT_ONLY_TYPES
 
 from .auth import actor_name
 from . import material_stock as stock
@@ -107,6 +108,8 @@ def create(db, team_id, payload, user):
             row = prior()
             if row is not None:
                 return replay(row)
+            if lot.material_type in WEIGHT_ONLY_TYPES:
+                raise HTTPException(422, "废泥、废屑只按重量计量，不能修改加工件数")
             balance = db.scalar(select(Balance).where(Balance.transfer_id == lot.id)
                 .with_for_update().execution_options(populate_existing=True))
             if balance is None or balance.revision != payload.expected_revision:

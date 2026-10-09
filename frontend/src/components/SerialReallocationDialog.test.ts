@@ -103,3 +103,11 @@ it('retains the source sludge ratio and sends effective weight with the measured
   await gross.setValue('5'); await gross.trigger('change'); await submit()
   expect(teamMaterialApi.reallocate).toHaveBeenCalledWith(2, expect.objectContaining({ quantity: 0, weight: 1, sludge_gross_weight: 5, sludge_content_percent: 20 }))
 })
+
+it('does not expose a piece input when reallocating chips', async () => {
+  const row = source(); row.transfer.material_type = 'scrap_chips'; row.scrap_available_quantity = 0; row.scrap_available_weight = 3
+  await render(row); await fill()
+  expect(wrapper.find('input[aria-label="转投件数"]').exists()).toBe(false)
+  await submit()
+  expect(teamMaterialApi.reallocate).toHaveBeenCalledWith(2, expect.objectContaining({ quantity: 0, weight: 3 }))
+})
