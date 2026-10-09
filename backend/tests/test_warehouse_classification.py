@@ -2,11 +2,14 @@
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from sqlalchemy import create_engine, inspect
 
 from test_warehouse_receipts import warehouse, intake
+from historical_dispatch import historical_response
 
 
 def base(setup, workshop=False):
@@ -59,15 +62,15 @@ def test_split_one_source_into_good_and_scrap_without_double_deduction(client, w
     source = sent['items'][0]
     lines = [{'source_transfer_id': source['id'], 'quantity': 30, 'weight': 3, 'material_type': 'semi_finished'},
              {'source_transfer_id': source['id'], 'quantity': 20, 'weight': 2, 'material_type': 'scrap_chips'}]
-    assert dispatch(client, s, lines, workshop=True).status_code == 422  # Scrap reason required.
+    assert dispatch(client, s, lines, workshop=True, notes="x" * 2001).status_code == 422
     invalid = [lines[0], {**lines[1], 'source_transfer_id': 999999}]
     assert dispatch(client, s, invalid, workshop=True, notes='废屑回收').status_code == 404
     assert client.get(base(s, True) + '/overview').json()['totals']['available_quantity'] == 50
-    response = dispatch(client, s, lines, workshop=True, notes='废屑回收')
+    response = dispatch(client, s, lines, workshop=True)
     assert response.status_code == 201, response.text
     group = response.json()
     assert len(group['items']) == 2 and sum(item['quantity'] for item in group['items']) == 50
-    assert dispatch(client, s, lines, workshop=True, notes='废屑回收').json() == group
+    assert dispatch(client, s, lines, workshop=True).json() == group
     assert client.get(base(s, True) + '/overview').json()['totals']['on_hand_quantity'] == 0
     # Split edits retain sibling reservations and may produce a signed gap.
     url = '/api/material-transfers/' + group['items'][0]['batch_no']
@@ -108,15 +111,18 @@ def test_scrap_is_not_production_stock_and_can_only_be_disposed_externally(clien
     assert client.get(base(s) + '/overview').json()['totals']['scrap_quantity'] == 6
 
 
-def test_warehouse_review_requires_source_correction_before_receipt(client, warehouse):
+@pytest.mark.parametrize("reason", [None, "", "   ", "请补充物料说明"])
+def test_warehouse_review_requires_source_correction_before_receipt(client, warehouse, reason):
     s = warehouse
     origin = intake(client, s).json()
     sent = dispatch(client, s, [{'source_transfer_id': origin['id'], 'quantity': 20, 'weight': 2}]).json()
     assert confirm(client, s, sent, workshop=True).status_code == 200
-    group = dispatch(client, s, [{'source_transfer_id': sent['items'][0]['id'], 'quantity': 10, 'weight': 1}], workshop=True).json()
+    group = historical_response(client, dispatch(client, s, [{'source_transfer_id': sent['items'][0]['id'], 'quantity': 10, 'weight': 1}], workshop=True)).json()
     line = group['items'][0]
     url = '/api/material-transfers/' + line['batch_no']
-    review = {'reason': '请补充物料说明', 'expected_version': line['version']}
+    review = {'expected_version': line['version']}
+    if reason is not None:
+        review['reason'] = reason
     assert client.post(url + '/reject', json=review).status_code == 403
     assert client.post(url + '/reject', headers=s['other_headers'], json=review).status_code == 403
     rejected = client.post(url + '/reject', headers=s['headers'], json=review)
@@ -127,11 +133,14 @@ def test_warehouse_review_requires_source_correction_before_receipt(client, ware
     assert client.post(url + '/confirm', headers=s['headers'], json={'idempotency_key': 'blocked'}).status_code == 409
     current = client.get(url, headers=s['headers']).json()
     assert 'confirm' not in current['allowed_actions']
+    group_url = '/api/material-dispatches/' + group['dispatch_no']
+    assert 'confirm' not in client.get(group_url, headers=s['headers']).json()['allowed_actions']
+    assert client.post(group_url + '/confirm', headers=s['headers'], json={'idempotency_key': 'blocked-group', 'expected_revision': client.get(group_url, headers=s['headers']).json()['revision']}).status_code == 409
     assert confirm(client, s, {'items': [current]}).status_code == 409
     assert client.patch(url, headers=s['headers'], json={'notes': '库房修改'}).status_code == 403
     # A no-op cannot clear the review flag.
     unchanged = client.patch(url, headers=s['other_headers'], json={'quantity': 10}).json()
-    assert unchanged['rejection_reason'] == review['reason']
+    assert unchanged['rejection_reason'] == (reason or '').strip()
     corrected = client.patch(url, headers=s['other_headers'], json={'notes': '半成品回库，规格已核对', 'expected_version': rejected.json()['version']})
     assert corrected.status_code == 200 and corrected.json()['rejection_reason'] is None
     current = client.get(url, headers=s['headers']).json()

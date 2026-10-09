@@ -83,6 +83,7 @@ export const teamMaterialApi = {
   receipts(teamId: number, params: WarehouseReceiptParams = {}) { return page(path(teamId, 'receipts', params), normalizeMaterialTransfer) },
   async createReceipt(teamId: number, payload: CreateWarehouseReceipt) { return normalizeMaterialTransfer(await request(path(teamId, 'receipts'), { method: 'POST', body: payload })) },
   async reallocate(teamId: number, payload: CreateSerialReallocation) { return normalizeMaterialTransfer(await request(path(teamId, 'serial-reallocations'), { method: 'POST', body: payload })) },
+  reallocations(teamId: number, params: MaterialPageParams & { material_type?: import('@/types/materialTransfer').MaterialType } = {}) { return page(path(teamId, 'serial-reallocations', params), normalizeMaterialTransfer) },
   losses(teamId: number, params: MaterialPageParams = {}) { return page(path(teamId, 'losses', params), loss) },
   dispatches(teamId: number, params: DispatchParams = {}) { return page(path(teamId, 'outbound-batches', params), normalizeMaterialTransfer) },
   async createLoss(teamId: number, payload: CreateLoss) { return loss(await request(path(teamId, 'losses'), { method: 'POST', body: payload })) },

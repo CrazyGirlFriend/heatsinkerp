@@ -115,13 +115,11 @@ class OutboundQuantityClearance(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_transfer_id: int = Field(ge=1)
     quantity: int = Field(gt=0, le=2_147_483_647)
-    reason: str = Field(min_length=1, max_length=2000)
+    reason: str = Field(default="", max_length=2000)
 
     @field_validator("reason")
     @classmethod
-    def nonblank_reason(cls, value):
-        if not value.strip():
-            raise ValueError("请填写剩余件数清零原因")
+    def normalize_reason(cls, value):
         return value.strip()
 
 
@@ -229,13 +227,11 @@ class MaterialTransferConfirm(WarehouseLocationChoice):
 class MaterialTransferReject(APIModel):
     model_config = ConfigDict(extra="forbid")
     expected_version: int = Field(ge=1)
-    reason: str = Field(min_length=1, max_length=2000)
+    reason: str = Field(default="", max_length=2000)
 
     @field_validator("reason")
     @classmethod
-    def nonblank(cls, value):
-        if not value.strip():
-            raise ValueError("请填写退回核对原因")
+    def normalize_reason(cls, value):
         return value.strip()
 
 

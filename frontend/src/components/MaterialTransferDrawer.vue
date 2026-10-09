@@ -248,7 +248,7 @@ async function rejectTransfer() {
   const active = () => epoch === actionVersion && props.modelValue && effectiveBatchNo.value === transfer.batch_no
   confirming.value = true
   try {
-    const { value } = await ElMessageBox.prompt('填写需上序修正的内容，修正后才能接收。', '退回核对', { inputType: 'textarea', inputValue: transfer.rejection_reason || '', inputValidator: value => !!value?.trim() && value.trim().length <= 2000 || '请填写 1 至 2000 字的原因', confirmButtonText: '退回核对', cancelButtonText: '取消' })
+    const { value } = await ElMessageBox.prompt('退回原因选填，上序修正后才能接收。', '退回核对', { inputType: 'textarea', inputValue: transfer.rejection_reason || '', inputValidator: value => (value?.trim().length ?? 0) <= 2000 || '原因不能超过 2000 个字符', confirmButtonText: '退回核对', cancelButtonText: '取消' })
     if (!active()) return
     await authStore.refreshCurrentUser()
     if (!active() || !canReject.value) return
@@ -369,7 +369,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
       <ElAlert v-if="loadError" type="warning" :closable="false" title="最新数据刷新失败，当前显示上次加载结果" show-icon />
       <ElButton v-if="loadError" :loading="loading" @click="load">重新读取</ElButton>
       <ElAlert v-if="reviewNotice" class="review-notice" type="warning" :closable="false" :title="reviewNotice" show-icon />
-      <ElAlert v-if="current.rejection_reason && current.status === 'pending'" type="warning" :closable="false" :title="'待上序修正：' + current.rejection_reason" />
+      <ElAlert v-if="current.rejection_reason != null && current.status === 'pending'" type="warning" :closable="false" :title="current.rejection_reason ? '待上序修正：' + current.rejection_reason : '已退回核对，待上序修正'" />
       <div class="document-barcode"><BarcodeCard :value="current.batch_no" :entity-label="receipt ? '入库批次号' : '转料批次号'" compact /><ElButton v-if="grouped" link type="primary" @click="groupOpen = true">历史合并记录 · {{ current.dispatch_no }}</ElButton></div>
       <MaterialTransferDocumentFields :transfer="current" group="all"><template #serial><RouterLink :to="tracePath">{{ current.serial_no }}</RouterLink><SerialUrgencyBadge :urgency="current.urgency" /></template></MaterialTransferDocumentFields>
       <section v-if="canConfirm && warehouseReceiver" class="receipt-location"><label>入库仓位</label><strong v-if="current.warehouse_location">{{ current.warehouse_location }}</strong><WarehouseLocationSelect v-else v-model="warehouseLocation" v-model:reservation-key="warehouseLocationKey" :team-id="Number(current.next_team.id)" :serial-no="current.serial_no" :material-name="current.material_name || ''" :material-type="current.material_type || ''" :active="modelValue && !groupOpen" :disabled="confirming" @busy-change="locationBusy = $event" /></section>

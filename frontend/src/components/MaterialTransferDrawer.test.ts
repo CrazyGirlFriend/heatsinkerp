@@ -14,7 +14,7 @@ vi.mock('@/composables/useLiveRefresh', async () => {
   return { useLiveRefresh: (refresh: () => Promise<void>, options: { busy: () => boolean }) => { live.refresh = refresh; live.busy = options.busy; return { message: ref(''), request: live.request } } }
 })
 
-const state = vi.hoisted(() => ({ auth: { isAdmin: false, isTeamAccount: true, currentUser: { id: 30, team_id: 3, active: true }, currentUserError: '' } }))
+const state = vi.hoisted(() => ({ auth: { isAdmin: false, isTeamAccount: true, currentUser: { id: 30, team_id: 3, active: true }, currentUserError: '', refreshCurrentUser: vi.fn().mockResolvedValue(undefined) } }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
 vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => ({ items: [], loading: false, refreshTeamDirectory: vi.fn() }) }))
@@ -24,7 +24,7 @@ function fixture(overrides: Partial<MaterialTransfer> = {}) {
 }
 let wrapper: VueWrapper
 beforeEach(() => {
-  state.auth = reactive({ isAdmin: false, isTeamAccount: true, currentUser: { id: 30, team_id: 3, active: true }, currentUserError: '' })
+  state.auth = reactive({ isAdmin: false, isTeamAccount: true, currentUser: { id: 30, team_id: 3, active: true }, currentUserError: '', refreshCurrentUser: vi.fn().mockResolvedValue(undefined) })
   vi.spyOn(teamMaterialApi, 'warehouseLocations').mockResolvedValue({ items: [] })
   vi.spyOn(materialTransferApi, 'get').mockResolvedValue(fixture())
   vi.spyOn(materialTransferApi, 'confirm').mockResolvedValue(fixture({ status: 'received', locked: true, version: 5, allowed_actions: [] }))
@@ -112,6 +112,18 @@ describe('material transfer receipt review', () => {
     expect(wrapper.findAll('button').some(button => button.text().includes('打印'))).toBe(false)
   })
 
+  it('returns a receipt for correction without a reason and keeps the pending-review notice', async () => {
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ next_team: { id: '3', code: 'FACTORY-WAREHOUSE', name: '库房' }, allowed_actions: ['reject', 'confirm'] }))
+    const reject = vi.spyOn(materialTransferApi, 'reject').mockResolvedValue(fixture({ rejection_reason: '', allowed_actions: ['reject'] }))
+    vi.spyOn(ElMessageBox, 'prompt').mockResolvedValue({ value: '', action: 'confirm' } as Awaited<ReturnType<typeof ElMessageBox.prompt>>)
+    await render()
+    await wrapper.findAll('button').find(button => button.text() === '退回核对')!.trigger('click'); await flushPromises()
+    expect(reject).toHaveBeenCalledWith('TL20260906000001', '', 4)
+    const options = vi.mocked(ElMessageBox.prompt).mock.calls[0]![2]!
+    expect((options.inputValidator as (value: string) => boolean)('')).toBe(true)
+    expect(wrapper.text()).toContain('已退回核对，待上序修正')
+    expect(wrapper.findAll('button').some(button => button.text() === '确认签收')).toBe(false)
+  })
   it('keeps pending outbound documents printable by default', async () => {
     vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ source_team: { id: 3, code: 'FACTORY-PLATE', name: '电镀' }, next_team: { id: 4, code: 'FACTORY-QC', name: '检验' }, allowed_actions: ['edit', 'void'] }))
     const print = vi.spyOn(window, 'print').mockImplementation(() => {})

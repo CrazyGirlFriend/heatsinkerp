@@ -47,17 +47,24 @@ describe('processing piece adjustment', () => {
     await click('保存件数')
     expect(vi.mocked(teamMaterialApi.changeQuantity).mock.calls[1]![1].expected_revision).toBe(3)
   })
-  it('retries uncertain writes with the same key and validates reason and unchanged count', async () => {
+  it('retries uncertain writes with the same key and validates description length and unchanged count', async () => {
     await render(); await click('保存件数')
     expect(wrapper.text()).toContain('件数未发生变化')
     wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 100)
+    await wrapper.get('textarea').setValue('x'.repeat(2001))
     await click('保存件数')
-    expect(wrapper.text()).toContain('请填写加工说明')
+    expect(wrapper.text()).toContain('加工说明不能超过')
     await edit()
     vi.mocked(teamMaterialApi.changeQuantity).mockRejectedValue(new Error('网络错误'))
     await click('保存件数'); await click('保存件数')
     const calls = vi.mocked(teamMaterialApi.changeQuantity).mock.calls
     expect(calls[0]![1].idempotency_key).toBe(calls[1]![1].idempotency_key)
+  })
+  it('saves a quantity change with an empty optional description', async () => {
+    await render()
+    wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 20)
+    await click('保存件数')
+    expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(2, expect.objectContaining({ quantity: 20, reason: '' }))
   })
   it('provides read-only history and blocks foreign-team writes', async () => {
     await render(false)

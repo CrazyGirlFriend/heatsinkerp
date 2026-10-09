@@ -31,7 +31,7 @@ def test_last_weight_clearance_is_optional_and_changes_only_on_hand_count(client
     assert client.delete(f"/api/material-transfers/{uncorrected.json()['items'][0]['batch_no']}", headers=s["stock_headers"]).status_code == 204
     assert totals(client, s)["on_hand_quantity"] == 100
     assert adjustments() == 0
-    assert dispatch(client, s, lines, quantity_clearances=[clearance(lot, reason="  ")]).status_code == 422
+    assert dispatch(client, s, lines, quantity_clearances=[clearance(lot, reason="x" * 2001)]).status_code == 422
     created = dispatch(client, s, lines, quantity_clearances=[clearance(lot)])
     assert created.status_code == 201, created.text
     assert dispatch(client, s, lines, quantity_clearances=[clearance(lot)]).json() == created.json()
@@ -100,7 +100,7 @@ def test_pending_other_batch_survives_and_void_restores_only_real_shipment(clien
     assert adjustments() == 1
 
 
-def test_edit_final_weight_requires_reason_and_rechecks_expected_remainder(client, stock_setup):
+def test_edit_final_weight_clearance_rechecks_expected_remainder(client, stock_setup):
     s = stock_setup
     lot = receive_lot(client, s)
     sent = dispatch(client, s, [{"source_transfer_id": lot["id"], "quantity": 80, "weight": 8}]).json()["items"][0]
@@ -203,3 +203,18 @@ def test_failure_after_recording_clearance_rolls_back_entire_submission(client, 
         assert db.scalar(select(func.count()).select_from(NotificationOutbox)) == notification_count
     assert dispatch(client, s, [{"source_transfer_id": lot["id"], "quantity": 80, "weight": 10}],
                     quantity_clearances=[clearance(lot)]).status_code == 201
+
+
+@pytest.mark.parametrize("reason", [None, "", "   "])
+def test_explicit_remaining_piece_clearance_accepts_empty_reason(client, stock_setup, reason):
+    lot = receive_lot(client, stock_setup)
+    item = {"source_transfer_id": lot["id"], "quantity": 20}
+    if reason is not None:
+        item["reason"] = reason
+    lines = [{"source_transfer_id": lot["id"], "quantity": 80, "weight": 10}]
+    response = dispatch(client, stock_setup, lines, quantity_clearances=[item])
+    assert response.status_code == 201, response.text
+    assert totals(client, stock_setup)["on_hand_quantity"] == 0
+    with SessionLocal() as db:
+        row = db.scalar(select(MaterialQuantityAdjustment))
+        assert row.reason == "" and row.after_quantity - row.before_quantity == -20

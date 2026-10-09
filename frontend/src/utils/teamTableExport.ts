@@ -76,6 +76,24 @@ export function transferExportFields(
   ]
 }
 
+export const reallocationExportFields: TableExportField<MaterialTransfer>[] = [
+  { key: 'source_serial_no', label: '原流水号', value: (row) => row.source_serial_no },
+  { key: 'serial_no', label: '目标流水号', value: (row) => row.serial_no },
+  { key: 'transferred_at', label: '转投时间', value: (row) => formatDateTime(row.transferred_at) },
+  { key: 'material_name', label: '材质', value: (row) => row.material_name },
+  { key: 'material_type', label: '物料类型', value: (row) => materialTypeLabel(row.material_type) },
+  { key: 'quantity', label: '件数', value: (row) => row.quantity },
+  { key: 'weight', label: '重量 (kg)', value: (row) => row.weight },
+  { key: 'transferred_by', label: '操作人', value: (row) => row.transferred_by },
+  { key: 'notes', label: '原因', value: (row) => row.notes },
+  {
+    key: 'source_transfer_batch_no',
+    label: '来源批次号',
+    value: (row) => row.source_transfer_batch_no,
+  },
+  { key: 'batch_no', label: '转投批次号', value: (row) => row.batch_no },
+]
+
 export const lossExportFields: TableExportField<MaterialLoss>[] = [
   { key: 'loss_no', label: '丢失记录号', value: (row) => row.loss_no },
   { key: 'batch_no', label: '来源批次号', value: (row) => row.batch_no },

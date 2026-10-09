@@ -18,6 +18,16 @@ from .async_api import AsyncAPIRouter as APIRouter
 router = APIRouter(prefix="/api/team-materials", tags=["team material stock"])
 
 
+@router.get("/{team_id}/serial-reallocations", response_model=MaterialTransferList)
+def list_serial_reallocations(record_filters: RecordFilters = Depends(), team_id: int = Path(ge=1),
+                             query: str | None = Query(default=None, max_length=160),
+                             material_type: str | None = Query(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN),
+                             page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100),
+                             user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return team_read_response(db, lambda session: serial_reallocations.list_records(session, team_id, user,
+        record_filters=record_filters, query=query, material_type=material_type, page=page, page_size=page_size))
+
+
 @router.post("/{team_id}/serial-reallocations", status_code=201, response_model=MaterialTransferResponse)
 def reallocate_serial(payload: serial_reallocations.ReallocationCreate, team_id: int = Path(ge=1),
                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):

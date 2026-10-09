@@ -42,14 +42,12 @@ class StockAmounts(BaseModel):
 
 
 class LossCreate(StockAmounts):
-    reason: str = Field(min_length=1, max_length=2000)
+    reason: str = Field(default="", max_length=2000)
     idempotency_key: str = Field(min_length=1, max_length=100)
 
     @field_validator("reason")
     @classmethod
-    def reason_required(cls, value):
-        if not value.strip():
-            raise ValueError("reason cannot be blank")
+    def normalize_reason(cls, value):
         return value.strip()
 
 

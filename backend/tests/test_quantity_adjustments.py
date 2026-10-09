@@ -84,7 +84,7 @@ def test_only_bound_team_may_change_and_weight_only_stock_allowed(client, wareho
         "quantity": 10, "expected_revision": 0, "reason": "切割", "idempotency_key": "admin"}).status_code == 403
     assert change(client, s, lot, 10).status_code == 201
     assert change(client, s, lot, 0, key="weight-only").status_code == 201
-    assert change(client, s, lot, 9, key="blank", reason=" ").status_code == 422
+    assert change(client, s, lot, 9, key="overlong", reason="x" * 2001).status_code == 422
     assert change(client, s, lot, 9, key="forged-weight", weight=200).status_code == 422
 
 
@@ -179,3 +179,17 @@ def test_piece_changes_notify_once_and_rollback_atomically(client, warehouse, mo
     messages = pending_rows()
     assert len(messages) == 1
     assert messages[0].payload["team_ids"] == [s["team"]["id"]]
+
+
+@pytest.mark.parametrize("reason", [None, "", "   "])
+def test_piece_change_can_be_saved_without_description(client, warehouse, reason):
+    lot = intake(client, warehouse, quantity=10, weight=100).json()
+    body = {"source_transfer_id": lot["id"], "quantity": 20, "expected_revision": 0, "idempotency_key": "optional-adjustment"}
+    if reason is not None:
+        body["reason"] = reason
+    response = client.post(base(warehouse) + "/quantity-adjustments", headers=warehouse["headers"], json=body)
+    assert response.status_code == 201, response.text
+    assert response.json()["reason"] == ""
+    with SessionLocal() as db:
+        balance = db.get(MaterialStockBalance, lot["id"])
+        assert balance.on_hand_quantity == 20 and balance.on_hand_weight == 100

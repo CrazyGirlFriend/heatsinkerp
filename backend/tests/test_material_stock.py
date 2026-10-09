@@ -262,7 +262,7 @@ def test_stock_validation_and_atomic_rollback_on_audit_failure(client, stock_set
         assert dispatch(client, setup, [{**valid, **changes}]).status_code == 422
     assert dispatch(client, setup, [valid, {**valid, 'source_transfer_id': 999999}]).status_code == 404
     assert dispatch(client, setup, []).status_code == 422
-    assert loss(client, setup, lot, reason="   ").status_code == 422
+    assert loss(client, setup, lot, reason="x" * 2001).status_code == 422
     assert client.get("/api/team-materials/0/overview").status_code == 422
     assert client.get("/api/team-materials/999999/overview").status_code == 404
     assert client.get(endpoint(setup, "stock"), params={"page_size": 101}).status_code == 422
@@ -362,3 +362,16 @@ def test_stock_migration_preserves_historical_rows_and_adds_constraints(tmp_path
         with pytest.raises(RuntimeError, match="backup"):
             stock_migration.downgrade()
     engine.dispose()
+
+
+@pytest.mark.parametrize("reason", [None, "", "   "])
+def test_loss_can_be_recorded_without_reason(client, stock_setup, reason):
+    lot = receive_lot(client, stock_setup)
+    body = {"source_transfer_id": lot["id"], "quantity": 1, "weight": "0.100", "idempotency_key": "optional-loss"}
+    if reason is not None:
+        body["reason"] = reason
+    result = client.post(endpoint(stock_setup, "losses"), headers=stock_setup["stock_headers"], json=body)
+    assert result.status_code == 201, result.text
+    assert result.json()["reason"] == ""
+    assert totals(client, stock_setup)["lost_quantity"] == 1
+    assert client.post(endpoint(stock_setup, "losses"), headers=stock_setup["stock_headers"], json=body).json() == result.json()

@@ -4,8 +4,9 @@ from types import SimpleNamespace
 
 from fastapi import HTTPException
 from pydantic import Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.orm import aliased
 
 from . import material_stock as stock
 from . import material_transfer_workflow as workflow
@@ -13,6 +14,7 @@ from .auth import actor_name
 from .batch_numbers import next_transfer_batch_number
 from .material_weight import sludge_measurement
 from .models import MaterialTransfer, Team, utcnow
+from .record_filters import RecordFilters
 from .schemas import SludgeMeasurement, WarehouseLocationChoice
 from .team_constants import REALLOCATION_TEAM_CODES, WAREHOUSE_TEAM_CODE
 
@@ -43,6 +45,33 @@ def require_team(team):
     ):
         raise HTTPException(403, "仅库房、检验和电镀班组可以转投本班组库存")
     return team
+
+
+def list_records(
+    db, team_id, user, *, record_filters=None, query=None, material_type=None, page=1,
+    page_size=20,
+):
+    stock.require_team(db, team_id)
+    mt, origin = MaterialTransfer, aliased(MaterialTransfer)
+    filters = [mt.entry_kind == "serial_reallocation", mt.source_team_id == team_id]
+    filters += (record_filters or RecordFilters()).predicates(mt.created_at, mt.serial_no)
+    if query and query.strip():
+        filters.append(stock.literal_query(
+            query, [origin.serial_no, mt.serial_no, origin.batch_no, mt.batch_no, mt.material_name],
+        ))
+    if material_type:
+        filters.append(mt.material_type == material_type)
+    statement = select(mt).join(origin, origin.id == mt.source_transfer_id).where(*filters)
+    total = db.scalar(select(func.count()).select_from(statement.subquery()))
+    items = db.scalars(
+        statement.options(*workflow.material_transfer_list_options())
+        .order_by(mt.created_at.desc(), mt.id.desc())
+        .offset((page - 1) * page_size).limit(page_size)
+    ).all()
+    return {
+        "items": [workflow.material_transfer_dict(item, user, include_history=False) for item in items],
+        "total": total, "page": page, "page_size": page_size,
+    }
 
 
 def replay(prior, user, request_hash):

@@ -102,7 +102,7 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
     external_source: textValue(raw.external_source) || null,
     return_dispatch_no: textValue(raw.return_dispatch_no) || null,
     warehouse_location: textValue(raw.warehouse_location) || null,
-    rejection_reason: textValue(raw.rejection_reason) || null,
+    rejection_reason: raw.rejection_reason == null ? null : textValue(raw.rejection_reason),
     dispatched_by: textValue(raw.dispatched_by_name, raw.dispatched_by, objectValue(raw.dispatched_by_user).display_name) || null,
     dispatched_by_user_id: optionalInteger(raw.dispatched_by_user_id, 1),
     dispatched_at: textValue(raw.dispatched_at) || null,

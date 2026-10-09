@@ -37,7 +37,7 @@ async function save() {
   error.value = ''
   if (!Number.isSafeInteger(quantity.value) || quantity.value! < 0 || quantity.value! > 2147483647) { error.value = '请填写有效的加工后件数'; return }
   if (quantity.value === snapshot.value.quantity) { error.value = '件数未发生变化'; return }
-  if (!reason.value.trim()) { error.value = '请填写加工说明'; return }
+  if (reason.value.trim().length > 2000) { error.value = '加工说明不能超过 2000 个字符'; return }
   const body = { source_transfer_id: props.sourceId, quantity: quantity.value!, expected_revision: snapshot.value.revision, reason: reason.value.trim() }
   const nextFingerprint = JSON.stringify(body)
   if (fingerprint !== nextFingerprint || !requestKey) { requestKey = materialRequestKey(); fingerprint = nextFingerprint }
@@ -76,7 +76,7 @@ onBeforeUnmount(() => { ++generation })
       <ElForm v-if="editable && hasStock" label-position="top" :disabled="saving || loading" @submit.prevent="save">
         <p class="quantity-note">只修改本批未转出的件数，重量、原签收单和已转出件数不变。保存后立即生效，取消出库不会撤销本次修改。</p>
         <ElFormItem label="加工后未转出件数" required><ElInputNumber v-model="quantity" aria-label="加工后未转出件数" :min="0" :max="2147483647" :precision="0" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
-        <ElFormItem label="加工说明" required><ElInput v-model="reason" type="textarea" aria-label="加工说明" :rows="2" maxlength="2000" show-word-limit placeholder="例如：10 块板材切割为 100 件" /></ElFormItem>
+        <ElFormItem label="加工说明（选填）"><ElInput v-model="reason" type="textarea" aria-label="加工说明" :rows="2" maxlength="2000" show-word-limit placeholder="选填，例如：10 块板材切割为 100 件" /></ElFormItem>
       </ElForm>
       <p v-else-if="editable" class="quantity-note">本批没有未转出的库存，不能修改件数。</p>
       <h3 class="quantity-history-title">变更记录</h3>

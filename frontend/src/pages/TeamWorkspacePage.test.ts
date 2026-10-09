@@ -49,6 +49,7 @@ beforeEach(() => {
   vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({ items: [source(), source(11)], total: 2, page: 1, page_size: 10 })
   vi.spyOn(teamMaterialApi, 'dispatches').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
   vi.spyOn(teamMaterialApi, 'receipts').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
+  vi.spyOn(teamMaterialApi, 'reallocations').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
   vi.spyOn(teamMaterialApi, 'losses').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
   vi.spyOn(materialTransferApi, 'list').mockResolvedValue({ items: [normalizeMaterialTransfer({ ...source().transfer, status: 'pending', locked: false })], total: 1, page: 1, page_size: 10 })
 })
@@ -62,17 +63,17 @@ async function render(path = '/team-workspaces/914', animate = false) {
   return router
 }
 describe('team workspace material ledger', () => {
-  it.each(['pending', 'receipts', 'outgoing', 'losses'])('exports %s with the same filters and team scope, closing on navigation', async tab => {
+  it.each(['pending', 'receipts', 'outgoing', 'reallocations', 'losses'])('exports %s with the same filters and team scope, closing on navigation', async tab => {
     const router = await render(`/team-workspaces/901?tab=${tab}&query=000A&date_from=2026-09-01&date_to=2026-09-30&urgent_only=true&material_type=finished&receipt_source=internal&entry_kind=transfer&status=received&next_team_id=900`)
     await wrapper.get('.team-workspace__export').trigger('click'); await flushPromises()
     const data = wrapper.getComponent(TableExportDialog).props('source')!
-    expect(data.title).toContain(tab === 'pending' ? '来料待签收' : tab === 'receipts' ? '入库记录' : tab === 'outgoing' ? '出库记录' : '丢失记录')
-    const method = tab === 'pending' ? materialTransferApi.list : tab === 'receipts' ? teamMaterialApi.receipts : tab === 'outgoing' ? teamMaterialApi.dispatches : teamMaterialApi.losses
+    expect(data.title).toContain(tab === 'pending' ? '来料待签收' : tab === 'receipts' ? '入库记录' : tab === 'outgoing' ? '出库记录' : tab === 'reallocations' ? '转投记录' : '丢失记录')
+    const method = tab === 'pending' ? materialTransferApi.list : tab === 'receipts' ? teamMaterialApi.receipts : tab === 'outgoing' ? teamMaterialApi.dispatches : tab === 'reallocations' ? teamMaterialApi.reallocations : teamMaterialApi.losses
     vi.mocked(method).mockClear()
     await data.load(new AbortController().signal, vi.fn())
     const filters = { query: '000A', date_from: '2026-09-01', date_to: '2026-09-30', urgent_only: true, page: 1, page_size: 100 }
     if (tab === 'pending') expect(method).toHaveBeenCalledWith(expect.objectContaining({ ...filters, team_id: 901, direction: 'incoming', status: 'pending' }))
-    else expect(method).toHaveBeenCalledWith(901, expect.objectContaining({ ...filters, ...(tab === 'receipts' ? { material_type: 'finished', receipt_source: 'internal' } : tab === 'outgoing' ? { material_type: 'finished', entry_kind: 'transfer', status: 'received', next_team_id: '900' } : {}) }))
+    else expect(method).toHaveBeenCalledWith(901, expect.objectContaining({ ...filters, ...(tab === 'receipts' ? { material_type: 'finished', receipt_source: 'internal' } : tab === 'outgoing' ? { material_type: 'finished', entry_kind: 'transfer', status: 'received', next_team_id: '900' } : tab === 'reallocations' ? { material_type: 'finished' } : {}) }))
     await router.push('/team-workspaces/914?tab=stock'); await flushPromises()
     expect(wrapper.getComponent(TableExportDialog).props('source')).toBeNull()
   })
@@ -92,6 +93,28 @@ describe('team workspace material ledger', () => {
     }
     await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
     expect(wrapper.getComponent(TeamMaterialOverviewPanel).props('fullscreen')).toBe(false)
+  })
+  it.each([true, false])('shows searchable reallocation records and details in fullscreen for administrator=%s', async admin => {
+    state.auth.isAdmin = admin; state.auth.isTeamAccount = !admin
+    const row = normalizeMaterialTransfer({ id: 30, entry_kind: 'serial_reallocation', source_serial_no: '000A', serial_no: '000B', source_transfer_batch_no: 'TL001', batch_no: 'TL002', quantity: 12, weight: 1.5, notes: null, transferred_by: '库房班组长', transferred_at: '2026-10-09T08:00:00Z' })
+    vi.mocked(teamMaterialApi.reallocations).mockResolvedValue({ items: [row], total: 21, page: 1, page_size: 10 })
+    const router = await render('/team-workspaces/901?tab=reallocations&query=000A&material_type=semi_finished')
+    expect(teamMaterialApi.reallocations).toHaveBeenCalledWith(901, expect.objectContaining({ query: '000A', material_type: 'semi_finished' }))
+    expect(wrapper.get('h1').text()).toBe('转投记录')
+    const table = wrapper.get('.team-table')
+    expect(table.text()).toContain('000A'); expect(table.text()).toContain('000B')
+    await wrapper.findAll('button').find(button => button.text() === 'TL001')!.trigger('click'); await flushPromises()
+    expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: 'TL001' })
+    await wrapper.findAll('button').find(button => button.text() === '查看详情')!.trigger('click'); await flushPromises()
+    expect(wrapper.getComponent(MaterialTransferDrawer).props('transfer')).toMatchObject({ id: 30, serial_no: '000B' })
+    await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+    expect(wrapper.get('.team-workspace').classes()).toContain('team-workspace--fullscreen')
+    expect(wrapper.find('input[aria-label="转投记录搜索"]').exists()).toBe(true)
+    wrapper.getComponent(ElPagination).vm.$emit('current-change', 2); await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({ tab: 'reallocations', query: '000A', page: '2', material_type: 'semi_finished' })
+    await router.push('/team-workspaces/914?tab=reallocations'); await flushPromises()
+    expect(wrapper.text()).not.toContain('转投记录')
+    expect(wrapper.get('h1').text()).toBe('库存明细')
   })
   it('opens reallocation only for designated own-team stock and refreshes inventory after saving', async () => {
     const previous = state.directory.items
@@ -413,7 +436,7 @@ describe('team workspace material ledger', () => {
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(1)
     expect(wrapper.find('.team-workspace__settings [aria-label="班组设置"]').exists()).toBe(true)
     expect(actions.find('[aria-label="班组设置"]').exists()).toBe(false)
-    expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(9)
+    expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(10)
     expect(wrapper.find('.team-workspace__heading').exists()).toBe(false)
   })
   it.each(['administrator', 'other-team', 'inactive'])('does not expose creation for %s accounts', async kind => {

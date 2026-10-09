@@ -16,7 +16,7 @@ def validate_outbound_clearance(lot, quantity, weight, available, clearance):
     remaining = available_quantity - quantity
     needed = available_weight > 0 and weight == available_weight and remaining > 0
     if clearance is not None and (not needed or clearance.source_transfer_id != lot.id or clearance.quantity != remaining):
-        raise HTTPException(409, "待清零件数或库存已变化，请刷新后重新核对并填写清零原因")
+        raise HTTPException(409, "待清零件数或库存已变化，请刷新后重新核对")
 
 
 def record_outbound_clearance(db, lot, clearance, user, operation_key, batches):
@@ -43,14 +43,19 @@ class AdjustmentCreate(BaseModel):
     source_transfer_id: int = Field(ge=1)
     quantity: int = Field(ge=0, le=2_147_483_647)
     expected_revision: int = Field(ge=0)
-    reason: str = Field(min_length=1, max_length=2000)
+    reason: str = Field(default="", max_length=2000)
     idempotency_key: str = Field(min_length=1, max_length=100)
 
-    @field_validator("reason", "idempotency_key")
+    @field_validator("idempotency_key")
     @classmethod
     def nonblank(cls, value):
         if not value.strip():
             raise ValueError("value cannot be blank")
+        return value.strip()
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value):
         return value.strip()
 
 

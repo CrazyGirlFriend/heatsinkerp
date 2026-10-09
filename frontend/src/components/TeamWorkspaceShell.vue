@@ -6,13 +6,13 @@ import PageBackButton from '@/components/PageBackButton.vue'
 import { teamWorkspaceSections, teamWorkspaceSectionsFor, type TeamWorkspaceSection } from '@/config/teamWorkspaces'
 import '@/styles/team-workspace.css'
 
-const props = defineProps<{ title: string; modelValue: string; warehouse?: boolean; manageWarehouse?: boolean; pendingCount?: number | null; exportable?: boolean }>()
+const props = defineProps<{ title: string; modelValue: string; warehouse?: boolean; manageWarehouse?: boolean; reallocations?: boolean; pendingCount?: number | null; exportable?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: TeamWorkspaceSection]; 'fullscreen-change': [value: boolean]; export: [] }>()
-const sections = computed(() => teamWorkspaceSectionsFor(Boolean(props.warehouse), Boolean(props.manageWarehouse)))
+const sections = computed(() => teamWorkspaceSectionsFor(Boolean(props.warehouse), Boolean(props.manageWarehouse), Boolean(props.reallocations)))
 const sectionLabel = computed(() => teamWorkspaceSections.find(section => section.value === props.modelValue)?.label || props.title)
 const navigation = ref<HTMLElement>()
 const fullscreen = ref(false), fullscreenBusy = ref(false)
-const canFullscreen = computed(() => ['stock', 'pending', 'receipts', 'outgoing', 'losses', 'materials', 'material-types'].includes(props.modelValue))
+const canFullscreen = computed(() => ['stock', 'pending', 'receipts', 'outgoing', 'reallocations', 'losses', 'materials', 'material-types'].includes(props.modelValue))
 let ownsFullscreen = false, disposed = false
 function exitFullscreen() {
   fullscreen.value = false

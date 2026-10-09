@@ -179,7 +179,7 @@ export interface CreateMaterialTransferPayload extends Partial<MaterialTransferD
   idempotency_key?: string
 }
 
-export interface OutboundQuantityClearance { source_transfer_id: number; quantity: number; reason: string }
+export interface OutboundQuantityClearance { source_transfer_id: number; quantity: number; reason?: string }
 export type UpdateMaterialTransferPayload = Partial<Omit<CreateMaterialTransferPayload, 'idempotency_key'>> & { expected_version?: number; quantity_clearance?: OutboundQuantityClearance }
 
 export interface ConfirmMaterialTransferPayload {

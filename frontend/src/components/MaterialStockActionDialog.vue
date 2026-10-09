@@ -78,6 +78,7 @@ const shortageNotice = computed(() => {
   }).join('；')
 })
 const clearanceReasons = reactive<Record<string, string>>({})
+const clearanceSelected = reactive<Record<string, boolean>>({})
 const clearances = computed(() => isLoss.value ? [] : lines.value.flatMap((line, index) => {
   const id = Number(line.source.transfer.id)
   if (lines.value.slice(0, index).some(other => Number(other.source.transfer.id) === id)) return []
@@ -87,7 +88,7 @@ const clearances = computed(() => isLoss.value ? [] : lines.value.flatMap((line,
   const quantity = outboundRemainder(sameSource.reduce((sum, item) => sum + Number(item.quantity), 0), sameSource.reduce((sum, item) => sum + Number(item.weight), 0), free.quantity, free.weight)
   return quantity > 0 ? [{ id, batchNo: line.source.transfer.batch_no, quantity, availableQuantity: free.quantity, availableWeight: free.weight }] : []
 }))
-watch(() => JSON.stringify(clearances.value), () => { Object.keys(clearanceReasons).forEach(key => delete clearanceReasons[key]) })
+watch(() => JSON.stringify(clearances.value), () => { Object.keys(clearanceReasons).forEach(key => delete clearanceReasons[key]); Object.keys(clearanceSelected).forEach(key => delete clearanceSelected[key]) })
 function openQuantity(source: StockBatch) {
   if (!canWrite.value || busy.value) return
   quantitySource.value = Number(source.transfer.id); quantityOpen.value = true
@@ -128,6 +129,7 @@ watch([() => props.modelValue, () => props.teamId, () => props.mode], ([open]) =
   lines.value.forEach((line, index) => { line.percent = line.source.transfer.sludge_content_percent ?? undefined; if (!isLoss.value) fillAll(index) })
   formPage.value = 0; validationPage.value = null
   form.nextTeamId = ''; form.entryKind = 'transfer'; form.externalDestination = ''; form.notes = ''; form.reason = ''
+  Object.keys(clearanceReasons).forEach(key => delete clearanceReasons[key]); Object.keys(clearanceSelected).forEach(key => delete clearanceSelected[key])
   errorMessage.value = ''; balanceNotice.value = ''; requestKey = ''; fingerprint = ''
 }, { immediate: true })
 watch(() => `${auth.currentUser?.id ?? ''}:${auth.currentUser?.team_id ?? ''}:${auth.isTeamAccount}`, () => { ++generation; emit('update:modelValue', false) })
@@ -158,9 +160,8 @@ async function submit() {
   if (!isLoss.value && !external.value && !destinations.value.some(team => String(team.id) === String(form.nextTeamId))) { errorMessage.value = '请选择一个启用的接收班组'; validationPage.value = formPage.value; return }
   if (!isLoss.value && !external.value && (purposes.loading.value || purposes.error.value)) { errorMessage.value = purposes.error.value || '请等待下序业务加载完成'; validationPage.value = formPage.value; return }
   if (!isLoss.value && !external.value && purposes.items.value.length && lines.value.some(line => !purposes.items.value.some(item => item.active && item.id === line.purposeId))) { formPage.value = 1 + lines.value.findIndex(line => !purposes.items.value.some(item => item.active && item.id === line.purposeId)); errorMessage.value = '请为每行物料选择下序班组的接收业务'; validationPage.value = formPage.value; return }
-  if (isLoss.value && (!form.reason.trim() || form.reason.trim().length > 2000)) { formPage.value = lines.value.length + 1; errorMessage.value = '请填写丢失原因，最多 2000 个字符'; validationPage.value = formPage.value; return }
+  if (isLoss.value && form.reason.trim().length > 2000) { formPage.value = lines.value.length + 1; errorMessage.value = '丢失原因不能超过 2000 个字符'; validationPage.value = formPage.value; return }
   if (form.notes.trim().length > 2000) { formPage.value = lines.value.length + 1; errorMessage.value = '说明不能超过 2000 个字符'; validationPage.value = formPage.value; return }
-  if (!isLoss.value && containsScrap.value && !form.notes.trim()) { formPage.value = lines.value.length + 1; errorMessage.value = '请填写转废或废料处理原因'; validationPage.value = formPage.value; return }
   if (!isLoss.value && containsScrap.value && external.value && form.entryKind !== 'warehouse_outbound') { errorMessage.value = '废料只能转库房处理，不能按成品发货'; validationPage.value = formPage.value; return }
   for (const [index, line] of lines.value.entries()) {
     if (converted(line) && !sludgeWeight(line.gross, line.percent)) { formPage.value = index + 1; errorMessage.value = '请填写废泥实重和有效材料占比，折算重量须达到 0.001 kg'; validationPage.value = formPage.value; return }
@@ -175,7 +176,7 @@ async function submit() {
     if (error) { formPage.value = index + 1; errorMessage.value = `上一批次 ${line.source.transfer.batch_no}：${error}`; validationPage.value = formPage.value; return }
   }
   for (const item of clearances.value) {
-    if ((clearanceReasons[item.id]?.trim().length ?? 0) > 2000) { formPage.value = 1 + lines.value.findIndex(line => line.source.transfer.id === item.id); errorMessage.value = `批次 ${item.batchNo}：请填写剩余 ${item.quantity} 件的清零原因，最多 2000 个字符`; validationPage.value = formPage.value; return }
+    if (clearanceSelected[item.id] && (clearanceReasons[item.id]?.trim().length ?? 0) > 2000) { formPage.value = 1 + lines.value.findIndex(line => line.source.transfer.id === item.id); errorMessage.value = `批次 ${item.batchNo}：清零原因不能超过 2000 个字符`; validationPage.value = formPage.value; return }
   }
   const current = generation
   const teamId = props.teamId
@@ -183,7 +184,7 @@ async function submit() {
   const lossBody = { source_transfer_id: Number(first.source.transfer.id), quantity: Number(first.quantity), weight: Number(first.weight), reason: form.reason.trim() }
   const dispatchBody: Omit<CreateDispatch, 'idempotency_key'> = { ...(isExternalEntryKind(form.entryKind) ? { entry_kind: form.entryKind, external_destination: form.externalDestination.trim() } : { next_team_id: Number(form.nextTeamId) }), notes: form.notes.trim() || null, lines: lines.value.map(line => ({ ...(warehouse.value && line.warehouseLocation ? { warehouse_location: line.warehouseLocation, warehouse_location_reservation_key: line.warehouseLocationKey } : {}), source_transfer_id: Number(line.source.transfer.id), quantity: Number(line.quantity), weight: Number(line.weight), ...(!external.value && line.purposeId ? { purpose_id: line.purposeId } : {}), ...(line.materialType ? { material_type: line.materialType } : {}) })) }
   dispatchBody.lines.forEach((body, index) => { const line = lines.value[index]!; if (converted(line)) Object.assign(body, sludgePayload(line.materialType, line.gross, line.percent)) })
-  if (clearances.value.length) dispatchBody.quantity_clearances = clearances.value.filter(item => clearanceReasons[item.id]?.trim()).map(item => ({ source_transfer_id: item.id, quantity: item.quantity, reason: clearanceReasons[item.id]!.trim() }))
+  if (clearances.value.length) dispatchBody.quantity_clearances = clearances.value.filter(item => clearanceSelected[item.id]).map(item => ({ source_transfer_id: item.id, quantity: item.quantity, reason: clearanceReasons[item.id]?.trim() || '' }))
   const nextFingerprint = JSON.stringify({ teamId, mode: props.mode, body: isLoss.value ? lossBody : dispatchBody })
   if (!requestKey || fingerprint !== nextFingerprint) { requestKey = materialRequestKey(); fingerprint = nextFingerprint }
   saving.value = true
@@ -241,13 +242,13 @@ async function submit() {
             <ElFormItem v-if="!isLoss && !external" label="下序接收业务" :required="purposes.items.value.length > 0"><ElSelect v-model="line.purposeId" :aria-label="`${line.source.transfer.batch_no}接收业务`" :loading="purposes.loading.value" :disabled="!form.nextTeamId || !purposes.items.value.length" :placeholder="!form.nextTeamId ? '先选择接收班组' : !purposes.items.value.length ? '接收班组尚未配置业务' : purposes.items.value.some(item => item.active) ? '选择接收业务' : '接收班组暂无启用业务'"><ElOption v-for="purpose in purposes.items.value.filter(item => item.active)" :key="purpose.id" :value="purpose.id" :label="purpose.name" /></ElSelect></ElFormItem>
             <ElFormItem v-if="!isLoss && warehouse" label="入库仓位" class="dialog-field-wide"><WarehouseLocationSelect v-model="line.warehouseLocation" v-model:reservation-key="line.warehouseLocationKey" :team-id="Number(form.nextTeamId)" :serial-no="line.source.transfer.serial_no" :material-name="line.source.transfer.material_name || ''" :material-type="line.materialType" :lease-group="locationLeases" :active="modelValue" :disabled="busy || !canWrite" @busy-change="line.locationBusy = $event" /></ElFormItem>
           </div>
-      <OutboundQuantityClearance v-for="item in clearances.filter(item => item.id === line.source.transfer.id && lines.findIndex(candidate => candidate.source.transfer.id === item.id) === index)" :key="item.id" :batch-no="item.batchNo" :quantity="item.quantity" :reason="clearanceReasons[item.id] || ''" :disabled="busy || !canWrite" @update:reason="clearanceReasons[item.id] = $event" />
+      <OutboundQuantityClearance v-for="item in clearances.filter(item => item.id === line.source.transfer.id && lines.findIndex(candidate => candidate.source.transfer.id === item.id) === index)" :key="item.id" :batch-no="item.batchNo" :quantity="item.quantity" :enabled="!!clearanceSelected[item.id]" :reason="clearanceReasons[item.id] || ''" :disabled="busy || !canWrite" @update:enabled="clearanceSelected[item.id] = $event" @update:reason="clearanceReasons[item.id] = $event" />
         </article>
       </div>
       <section v-show="isLoss || formPage === lines.length + 1">
       <h3 class="form-section-title">{{ isLoss ? '丢失说明' : '出库说明' }}</h3>
-      <ElFormItem v-if="isLoss" label="丢失原因" required><ElInput v-model="form.reason" aria-label="丢失原因" type="textarea" :rows="3" maxlength="2000" show-word-limit placeholder="填写实际情况和原因" /></ElFormItem>
-      <ElFormItem v-else :label="containsScrap ? '废料处理原因' : external ? `${actionLabel}说明` : warehouse ? '入库说明' : '出库说明'" :required="containsScrap"><ElInput v-model="form.notes" :aria-label="external ? `${actionLabel}说明` : '出库说明'" type="textarea" :rows="2" maxlength="2000" show-word-limit :placeholder="containsScrap ? '填写转废或废料处理原因' : '选填'" /></ElFormItem>
+      <ElFormItem v-if="isLoss" label="丢失原因（选填）"><ElInput v-model="form.reason" aria-label="丢失原因" type="textarea" :rows="3" maxlength="2000" show-word-limit placeholder="选填：填写实际情况和原因" /></ElFormItem>
+      <ElFormItem v-else :label="containsScrap ? '废料处理原因（选填）' : external ? `${actionLabel}说明` : warehouse ? '入库说明' : '出库说明'"><ElInput v-model="form.notes" :aria-label="external ? `${actionLabel}说明` : '出库说明'" type="textarea" :rows="2" maxlength="2000" show-word-limit placeholder="选填" /></ElFormItem>
       </section>
     </ElForm>
     <ElAlert v-if="shortageNotice" :title="shortageNotice" type="warning" :closable="false" show-icon />

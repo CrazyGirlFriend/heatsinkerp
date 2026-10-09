@@ -29,6 +29,12 @@ describe('shared workspace navigation', () => {
     expect(teamWorkspaceSectionPath(7, 'pending')).toBe('/team-workspaces/7?tab=pending')
     expect(teamWorkspaceSectionPath(7, 'material-types')).toBe('/team-workspaces/7?tab=material-types')
   })
+  it('exposes reallocation records only in designated workspaces', () => {
+    expect(teamWorkspaceSectionsFor(true, true, true).map(item => item.value)).toContain('reallocations')
+    expect(teamWorkspaceSectionsFor(false, false, false).map(item => item.value)).not.toContain('reallocations')
+    expect(resolveTeamWorkspaceSection({ tab: 'reallocations' }, false, false, true)).toBe('reallocations')
+    expect(resolveTeamWorkspaceSection({ tab: 'reallocations' }, false)).toBe('stock')
+  })
   it('uses the same selected section for legacy links, filters and unsupported tabs', () => {
     expect(resolveTeamWorkspaceSection({ tab: 'overview' }, false)).toBe('history')
     expect(resolveTeamWorkspaceSection({ tab: 'materials' }, false)).toBe('materials')

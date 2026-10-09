@@ -131,8 +131,6 @@ def validate_material_route(source_type, material_type, target, entry_kind, note
     if result_scrap:
         if entry_kind != "warehouse_outbound" and (target is None or target.kind != "warehouse"):
             raise HTTPException(422, "废料只能转入库房或由库房办理对外处理")
-        if not (notes or "").strip():
-            raise HTTPException(422, "请填写转废或废料处理原因")
 
 
 def _locked_transfer(db, batch_no: str) -> MaterialTransfer:
@@ -174,7 +172,7 @@ def material_transfer_allowed_actions(
     if user.team_id == transfer.source_team_id:
         return ["edit", "void", "confirm_outbound"] if transfer.entry_kind in EXTERNAL_ENTRY_KINDS else ["edit", "void"]
     if user.team_id == transfer.next_team_id:
-        return (["reject"] if transfer.next_team and transfer.next_team.kind == "warehouse" else []) if transfer.rejection_reason else ["confirm", *(["reject"] if transfer.next_team and transfer.next_team.kind == "warehouse" else [])]
+        return (["reject"] if transfer.next_team and transfer.next_team.kind == "warehouse" else []) if transfer.rejection_reason is not None else ["confirm", *(["reject"] if transfer.next_team and transfer.next_team.kind == "warehouse" else [])]
     return []
 
 
@@ -516,7 +514,7 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
             if transfer.status != "pending":
                 raise _conflict("only a pending transfer can be confirmed")
             _assert_version(transfer, payload)
-            if transfer.rejection_reason:
+            if transfer.rejection_reason is not None:
                 raise _conflict("该明细已退回核对，须上序修改后再接收")
             _active_target(db, transfer.next_team_id)  # Serialize initial stock and first receipt.
             validate_material_route(transfer.stock_source.material_type if transfer.source_transfer_id else None,
@@ -569,6 +567,7 @@ def reject_material_transfer(db, batch_no, payload, user):
             return material_transfer_dict(transfer, user)
         _assert_version(transfer, payload)
         before = _snapshot(transfer)
+        # None means no correction request; an empty reason still marks a return.
         transfer.rejection_reason = payload.reason
         transfer.version += 1
         transfer.updated_at = utcnow()

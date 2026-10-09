@@ -14,7 +14,7 @@ import { currentUser, isAuthenticated, logout, refreshCurrentUser } from '@/stor
 import { teamDirectory, refreshTeamDirectory } from '@/stores/teamDirectory'
 import { appPinia, canEnterSite } from '@/stores/access'
 import { useSidebarStore } from '@/stores/sidebar'
-import { resolveTeamWorkspaceSection, teamWorkspaceProfile, teamWorkspaceSections } from '@/config/teamWorkspaces'
+import { resolveTeamWorkspaceSection, teamWorkspaceProfile, teamWorkspaceSections, teamCanReallocate } from '@/config/teamWorkspaces'
 
 const teamLabel = computed(() => currentUser.value?.role === 'ADMIN' ? '系统管理员' : teamDirectory.items.find(team => String(team.id) === String(currentUser.value?.team_id))?.name || currentUser.value?.team?.name || '未配置班组')
 const route = useRoute()
@@ -23,7 +23,7 @@ const breadcrumb = computed(() => {
   if (route.path.startsWith('/team-workspaces/')) {
     const team = teamDirectory.items.find(item => String(item.id) === String(route.params.teamId))
     const managesWarehouse = currentUser.value?.role === 'ADMIN' || currentUser.value?.role === 'TEAM' && currentUser.value.active && String(currentUser.value.team_id) === String(team?.id)
-    const section = resolveTeamWorkspaceSection(route.query, team?.code === 'FACTORY-WAREHOUSE' && team?.kind === 'warehouse', managesWarehouse)
+    const section = resolveTeamWorkspaceSection(route.query, team?.code === 'FACTORY-WAREHOUSE' && team?.kind === 'warehouse', managesWarehouse, teamCanReallocate(team))
     return ['班组工作台', team?.name || teamWorkspaceProfile(team?.code)?.name || '班组', teamWorkspaceSections.find(item => item.value === section)!.label]
   }
   const title = String(route.meta.title || '物料流转')

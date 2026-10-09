@@ -343,3 +343,31 @@ def test_reallocation_chains_remain_traceable_and_do_not_make_a_shortage_origin_
     rates = client.get("/api/factory-dashboard/yields").json()["items"]
     assert {row["serial_no"] for row in rates} == {"000A", "000B", "000C"}
     assert all(row["status"] == "needs_review" and row["rate"] is None for row in rates)
+
+def test_records_list_preserves_provenance_filters_order_and_team_scope(client, warehouse):
+    from datetime import datetime
+    lot = intake(client, warehouse, serial_no="A%_001", quantity=100, weight=20).json()
+    first = reallocate(client, warehouse, lot, serial_no="B001", idempotency_key="record-1").json()
+    second = reallocate(client, warehouse, lot, serial_no="C001", idempotency_key="record-2", reason="").json()
+    with SessionLocal() as db:
+        for item in (first, second):
+            db.get(MaterialTransfer, item["id"]).created_at = datetime(2026, 10, 8, 8)
+        db.commit()
+    url = f"/api/team-materials/{warehouse['team']['id']}/serial-reallocations"
+    page = client.get(url, params={"page_size": 1}).json()
+    assert page["total"] == 2 and page["items"][0]["id"] == second["id"]
+    assert page["items"][0]["source_serial_no"] == lot["serial_no"]
+    assert page["items"][0]["source_transfer_batch_no"] == lot["batch_no"]
+    assert page["items"][0]["notes"] in (None, "")
+    assert client.get(url, params={"page_size": 1, "page": 2}).json()["items"][0]["id"] == first["id"]
+    for query, total in [("A%_", 2), (lot["batch_no"], 2), (first["batch_no"], 1), ("B001", 1), ("C001", 1), ("不存在", 0)]:
+        assert client.get(url, params={"query": query}).json()["total"] == total
+    assert client.get(url, params={"material_type": lot["material_type"], "date_from": "2026-10-08", "date_to": "2026-10-08"}).json()["total"] == 2
+    assert client.get(url, params={"material_type": "finished"}).json()["total"] == 0
+    assert client.get(url, params={"date_to": "2026-10-07"}).json()["total"] == 0
+    assert client.get(url, params={"date_from": "2026-10-09", "date_to": "2026-10-08"}).status_code == 422
+    assert client.get(url, params={"page_size": 101}).status_code == 422
+    assert client.get(url, headers={"Authorization": ""}).status_code == 401
+    assert client.get(url, headers=warehouse["headers"]).json()["total"] == 2
+    assert client.get(f"/api/team-materials/{warehouse['other']['id']}/serial-reallocations").json()["total"] == 0
+    assert client.get("/api/team-materials/999999/serial-reallocations").status_code == 404
