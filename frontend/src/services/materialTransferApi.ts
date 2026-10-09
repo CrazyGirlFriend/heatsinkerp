@@ -71,7 +71,7 @@ function normalizeHistory(value: unknown): MaterialTransferHistoryEntry[] {
   return value.flatMap(item => {
     const event = objectValue(item)
     const id = optionalInteger(event.id, 1)
-    if (id === null || !['created', 'updated', 'received', 'voided', 'stocked', 'dispatched', 'rejected', 'quantity_changed'].includes(String(event.action))) return []
+    if (id === null || !['created', 'updated', 'received', 'voided', 'stocked', 'dispatched', 'rejected', 'quantity_changed', 'reallocated'].includes(String(event.action))) return []
     const changes: MaterialTransferHistoryEntry['changes'] = {}
     Object.entries(objectValue(event.changes)).forEach(([field, change]) => {
       const values = objectValue(change)
@@ -94,7 +94,7 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
     sludge_gross_weight: raw.sludge_gross_weight == null ? null : numberValue(raw.sludge_gross_weight),
     sludge_content_percent: raw.sludge_content_percent == null ? null : numberValue(raw.sludge_content_percent),
     sludge_percent_locked: raw.sludge_percent_locked === true,
-    entry_kind: raw.entry_kind === 'opening_stock' || raw.entry_kind === 'warehouse_receipt' || isExternalEntryKind(String(raw.entry_kind)) ? raw.entry_kind as MaterialTransfer['entry_kind'] : 'transfer',
+    entry_kind: raw.entry_kind === 'opening_stock' || raw.entry_kind === 'warehouse_receipt' || raw.entry_kind === 'serial_reallocation' || isExternalEntryKind(String(raw.entry_kind)) ? raw.entry_kind as MaterialTransfer['entry_kind'] : 'transfer',
     purpose_id: optionalInteger(raw.purpose_id, 1),
     purpose_name: textValue(raw.purpose_name) || null,
     external_destination: textValue(raw.external_destination) || null,
@@ -116,6 +116,7 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
     history: normalizeHistory(raw.history),
     source_transfer_id: optionalInteger(raw.source_transfer_id, 1),
     source_transfer_batch_no: textValue(raw.source_transfer_batch_no) || null,
+    source_serial_no: textValue(raw.source_serial_no) || null,
     dispatch_no: textValue(raw.dispatch_no) || null,
     stock_tracked: raw.stock_tracked === true,
     loss_records: Array.isArray(raw.loss_records) ? raw.loss_records.map(item => { const loss = objectValue(item); return { ...loss, quantity: numberValue(loss.quantity), weight: numberValue(loss.weight) } as NonNullable<MaterialTransfer['loss_records']>[number] }) : [],
@@ -212,7 +213,7 @@ function queryString(params: MaterialTransferListParams): string {
 export const materialTransferApi = {
   async trace(serialNo: string): Promise<MaterialTrace> {
     const result = await request<MaterialTrace>(`/material-trace?${new URLSearchParams({ serial_no: serialNo.trim() })}`)
-    return { ...result, items: result.items.map(item => ({ ...normalizeMaterialTransfer(item), on_hand_quantity: item.on_hand_quantity, on_hand_weight: item.on_hand_weight, owned_quantity: item.owned_quantity, owned_weight: item.owned_weight })) }
+    return { ...result, reallocations: result.reallocations?.map(normalizeMaterialTransfer), items: result.items.map(item => ({ ...normalizeMaterialTransfer(item), on_hand_quantity: item.on_hand_quantity, on_hand_weight: item.on_hand_weight, owned_quantity: item.owned_quantity, owned_weight: item.owned_weight })) }
   },
   async counts(params: MaterialTransferFilterParams = {}): Promise<MaterialTransferStatusCounts> {
     const statuses = ['pending', 'received', 'voided', 'dispatched'] as const

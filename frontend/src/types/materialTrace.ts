@@ -12,6 +12,7 @@ export interface TraceHolding {
   material_types: Array<TraceAmount & { material_type: string | null }>
 }
 export interface MaterialTrace {
+  reallocations?: MaterialTransfer[]
   shortage?: TraceAmount
   serial_no: string
   observed_at?: string

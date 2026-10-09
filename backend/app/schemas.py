@@ -301,6 +301,7 @@ class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement
     stock_tracked: bool = False
     source_transfer_id: int | None = None
     source_transfer_batch_no: str | None = None
+    source_serial_no: str | None = None
     dispatch_no: str | None = None
     loss_records: list[dict[str, Any]] = Field(default_factory=list)
     history: list[MaterialTransferEventResponse] = Field(default_factory=list)

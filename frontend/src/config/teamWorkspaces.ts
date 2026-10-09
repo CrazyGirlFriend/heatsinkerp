@@ -48,6 +48,11 @@ export function teamWorkspaceProfile(code: string | null | undefined) {
   return teamWorkspaceProfiles.find(profile => profile.code === code)
 }
 
+export function teamCanReallocate(team?: Pick<Team, 'code' | 'kind'>) {
+  return team?.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse'
+    || ['FACTORY-QC', 'FACTORY-PLATE'].includes(team?.code || '') && team?.kind === 'production'
+}
+
 export function configuredTeamWorkspaces(teams: readonly Team[]) {
   return teamWorkspaceProfiles.map(profile => ({ profile, team: teams.find(team => team.active && team.code === profile.code) }))
 }

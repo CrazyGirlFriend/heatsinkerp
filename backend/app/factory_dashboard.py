@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import Depends, HTTPException, Query
 from sqlalchemy import and_, case, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from .async_api import AsyncAPIRouter
 from .auth import get_current_user
@@ -226,6 +226,28 @@ def ownership(db):
     return matrix, rows
 
 
+def reallocation_weights(db):
+    source = aliased(MaterialTransfer)
+    return (
+        db.execute(
+            select(
+                source.serial_no.label("source_serial"),
+                mt.serial_no.label("target_serial"),
+                mt.next_team_id.label("team_id"),
+                material_name(mt.material_name).label("material"),
+                func.sum(mt.weight).label("weight"),
+            )
+            .join(source, source.id == mt.source_transfer_id)
+            .where(mt.entry_kind == "serial_reallocation", mt.status == "received")
+            .group_by(
+                source.serial_no, mt.serial_no, mt.next_team_id, material_name(mt.material_name)
+            )
+        )
+        .mappings()
+        .all()
+    )
+
+
 def yields(db, owned):
     name = material_name(mt.material_name)
     incoming = and_(
@@ -236,44 +258,68 @@ def yields(db, owned):
     returned = and_(
         mt.entry_kind == "warehouse_receipt", mt.receipt_kind == "return", mt.status == "received"
     )
-    rows = db.execute(
-        select(
-            mt.serial_no,
-            name.label("material"),
-            func.sum(case((incoming, mt.weight), else_=0)).label("input_weight"),
-            func.sum(case((finished_shipments(), mt.weight), else_=0)).label("output_weight"),
-            func.sum(case((returned, 1), else_=0)).label("returns"),
-            func.sum(case((mt.entry_kind == "opening_stock", 1), else_=0)).label("opening"),
-            func.sum(
-                case(
-                    (
-                        and_(
-                            mt.entry_kind == "transfer",
-                            mt.status == "received",
-                            mt.stock_tracked.is_(False),
+    rows = list(
+        db.execute(
+            select(
+                mt.serial_no,
+                name.label("material"),
+                func.sum(case((incoming, mt.weight), else_=0)).label("input_weight"),
+                func.sum(case((finished_shipments(), mt.weight), else_=0)).label("output_weight"),
+                func.sum(case((returned, 1), else_=0)).label("returns"),
+                func.sum(case((mt.entry_kind == "opening_stock", 1), else_=0)).label("opening"),
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                mt.entry_kind == "transfer",
+                                mt.status == "received",
+                                mt.stock_tracked.is_(False),
+                            ),
+                            1,
                         ),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ).label("untracked"),
-            func.sum(case((mt.status == "pending", 1), else_=0)).label("pending"),
-        )
-        .where(mt.status != "voided")
-        .group_by(mt.serial_no, name)
-    ).mappings()
+                        else_=0,
+                    )
+                ).label("untracked"),
+                func.sum(case((mt.status == "pending", 1), else_=0)).label("pending"),
+            )
+            .where(mt.status != "voided")
+            .group_by(mt.serial_no, name)
+        ).mappings()
+    )
+    assigned_in, assigned_out = defaultdict(Decimal), defaultdict(Decimal)
+    assignments = reallocation_weights(db)
+    for item in assignments:
+        assigned_in[(item["target_serial"], item["material"])] += item["weight"]
+        assigned_out[(item["source_serial"], item["material"])] += item["weight"]
     remaining = {r["serial_no"] for r in owned}
     shortages = {r["serial_no"] for r in owned if r["shortage_quantity"] or r["shortage_weight"]}
+    uncertain = {
+        row["serial_no"]
+        for row in rows
+        if row["returns"]
+        or row["opening"]
+        or row["untracked"]
+        or (not row["input_weight"] and not assigned_in[(row["serial_no"], row["material"])])
+    } | shortages
+    # Reassigning a historical/unknown input cannot make its origin measurable.
+    for _ in assignments:
+        propagated = {
+            item["target_serial"] for item in assignments if item["source_serial"] in uncertain
+        }
+        if propagated <= uncertain:
+            break
+        uncertain.update(propagated)
     result = []
     for row in rows:
-        source, output = float(row["input_weight"]), float(row["output_weight"])
+        key = (row["serial_no"], row["material"])
+        source = float(row["input_weight"] + assigned_in[key] - assigned_out[key])
+        output = float(row["output_weight"])
         status = (
             "needs_review"
             if row["serial_no"] in shortages
-            or row["returns"]
-            or row["opening"]
-            or row["untracked"]
-            or source <= 0
+            or row["serial_no"] in uncertain
+            or source < 0
+            or (source == 0 and not assigned_out[key])
             or output > source
             else "in_progress"
             if row["serial_no"] in remaining or row["pending"]
@@ -285,7 +331,11 @@ def yields(db, owned):
                 "material": row["material"],
                 "input_weight": source,
                 "output_weight": output,
-                "rate": round(output / source * 100, 2) if status == "complete" else None,
+                "reallocated_in_weight": float(assigned_in[key]),
+                "reallocated_out_weight": float(assigned_out[key]),
+                "rate": round(output / source * 100, 2)
+                if status == "complete" and source > 0
+                else None,
                 "status": status,
             }
         )
@@ -353,6 +403,13 @@ def get_team_yields(
             .group_by(mt.source_team_id)
         ).all()
     )
+    assigned_out = defaultdict(Decimal)
+    for item in reallocation_weights(db):
+        if item["source_serial"] == serial_no and (not material or item["material"] == material):
+            assigned_out[item["team_id"]] += item["weight"]
+    incoming = [
+        {**r, "input_weight": r["input_weight"] - assigned_out[r["team_id"]]} for r in incoming
+    ]
     teams = {t.id: t.name for t in db.scalars(select(Team))}
     return {
         "items": [
@@ -360,6 +417,7 @@ def get_team_yields(
                 "team_id": r["team_id"],
                 "team_name": teams.get(r["team_id"], "历史班组"),
                 "input_weight": float(r["input_weight"]),
+                "reallocated_out_weight": float(assigned_out[r["team_id"]]),
                 "output_weight": float(output.get(r["team_id"], 0)),
                 "rate": round(float(output.get(r["team_id"], 0) / r["input_weight"]) * 100, 2)
                 if r["input_weight"] > 0

@@ -18,6 +18,7 @@ import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
 import MaterialStockActionDialog from '@/components/MaterialStockActionDialog.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
 import WarehouseReceiptDialog from '@/components/WarehouseReceiptDialog.vue'
+import SerialReallocationDialog from '@/components/SerialReallocationDialog.vue'
 import WarehouseManagement from '@/components/WarehouseManagement.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import * as inventoryStream from '@/services/inventoryStream'
@@ -52,11 +53,32 @@ async function render(path = '/team-workspaces/914', animate = false) {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/team-workspaces/:teamId', component: TeamWorkspacePage }, { path: '/transfer-batches', component: { template: '<div/>' } }] })
   await router.push(path)
   const page = animate ? { setup: () => () => h(Transition, { name: 'page-shift' }, () => h(TeamWorkspacePage)) } : TeamWorkspacePage
-  wrapper = mount(page, { global: { plugins: [router], stubs: { transition: !animate, StockSourcePicker: true, TeamAnalyticsCharts: true, SerialMaterialDrawer: true, LedgerChart: true, MaterialDispatchDrawer: true, BarcodeCard: true, MaterialTransferDrawer: true, MaterialStockActionDialog: true, WarehouseReceiptDialog: true, WarehouseManagement: true } } })
+  wrapper = mount(page, { global: { plugins: [router], stubs: { transition: !animate, StockSourcePicker: true, TeamAnalyticsCharts: true, SerialMaterialDrawer: true, LedgerChart: true, MaterialDispatchDrawer: true, BarcodeCard: true, MaterialTransferDrawer: true, MaterialStockActionDialog: true, SerialReallocationDialog: true, WarehouseReceiptDialog: true, WarehouseManagement: true } } })
   await flushPromises()
   return router
 }
 describe('team workspace material ledger', () => {
+  it('opens reallocation only for designated own-team stock and refreshes inventory after saving', async () => {
+    const previous = state.directory.items
+    try {
+      state.directory.items = [{ id: 914, code: 'FACTORY-PLATE', name: '电镀', kind: 'production', active: true }]
+      const router = await render('/team-workspaces/914?tab=stock&query=000A')
+      expect(wrapper.getComponent(TeamInventory).props('canReallocate')).toBe(true)
+      wrapper.getComponent(TeamInventory).vm.$emit('reallocate', source()); await flushPromises()
+      const dialog = wrapper.getComponent(SerialReallocationDialog)
+      expect(dialog.props()).toMatchObject({ modelValue: true, teamId: 914, source: source() })
+      vi.mocked(teamMaterialApi.overview).mockClear()
+      dialog.vm.$emit('saved', normalizeMaterialTransfer({ serial_no: '000B', source_serial_no: 'SERIAL10' })); await flushPromises()
+      expect(router.currentRoute.value.query).toEqual({})
+      expect(teamMaterialApi.overview).toHaveBeenCalled()
+      expect(wrapper.findComponent(SerialReallocationDialog).exists()).toBe(false)
+      expect(wrapper.findComponent(MaterialBatchPrintDialog).props('modelValue')).toBe(false)
+      state.auth.isAdmin = true; state.auth.isTeamAccount = false; await flushPromises()
+      expect(wrapper.getComponent(TeamInventory).props('canReallocate')).toBe(false)
+      wrapper.getComponent(TeamInventory).vm.$emit('reallocate', source()); await flushPromises()
+      expect(wrapper.findComponent(SerialReallocationDialog).exists()).toBe(false)
+    } finally { state.directory.items = previous }
+  })
   it.each(teamWorkspaceProfiles)('uses the same pending-inclusive stock for $name', async profile => {
     const previous = state.directory.items
     state.directory.items = [{ id: 914, code: profile.code, name: profile.name, active: true, ...(profile.code === 'FACTORY-WAREHOUSE' ? { kind: 'warehouse' } : {}) }]

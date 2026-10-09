@@ -19,6 +19,19 @@ function batch(id: number, parent: number | null = null, team = 1): TraceBatch {
 }
 
 describe('ECharts flow preview data', () => {
+  it('deducts A reallocation at its real time and treats B as a new intake in the same team', () => {
+    const first = { ...batch(1), quantity: 100, weight: 10, on_hand_quantity: 70, on_hand_weight: 7, next_team: { id: 1, name: '库房', code: 'FACTORY-WAREHOUSE' }, received_at: '2026-09-19T00:00:00Z' }
+    const target = { ...batch(2, 1), entry_kind: 'serial_reallocation' as const, source_serial_no: '000012', serial_no: '000B', source_team: first.next_team, next_team: first.next_team, quantity: 30, weight: 3, on_hand_quantity: 30, on_hand_weight: 3, transferred_at: '2026-09-20T00:00:00Z', received_at: '2026-09-20T00:00:00Z' }
+    const end = '2026-09-21T00:00:00Z'
+    const a = traceFlowModel([first], end, [target]).byId.get('1')!
+    expect(a.residenceIssue).toBe(false)
+    expect(a.stays.map(stay => [stay.quantity, stay.weight, stay.current])).toEqual([[100, 10, false], [70, 7, true]])
+    expect(a.stays[0]!.end).toBe(traceTimestamp(target.transferred_at))
+    const b = traceFlowModel([target], end, [target]).byId.get('2')!
+    expect(b).toMatchObject({ intake: true, detached: false, residenceIssue: false })
+    expect(b.sourceLane).toBe(b.targetLane)
+    expect(b.stays).toMatchObject([{ quantity: 30, weight: 3, current: true }])
+  })
   it('conserves both measures at each purpose and counts pending outbound as transferred, not stock', () => {
     const model = teamFlowModel(history())
     for (const node of model.nodes.filter(node => node.depth === 1)) {

@@ -28,6 +28,22 @@ async function render(path: string) {
   await flushPromises()
   return { page: wrapper, router }
 }
+it('shows A/B reallocation records and can follow the related serial without calling it a warehouse intake', async () => {
+  const target = normalizeMaterialTransfer({ id: 201, batch_no: 'ALLOC-B', entry_kind: 'serial_reallocation', serial_no: '000B', source_serial_no: '000A', source_transfer_id: 101, source_transfer_batch_no: 'INTAKE-A', source_team: { id: 8, code: 'FACTORY-QC', name: '检验' }, next_team: { id: 8, code: 'FACTORY-QC', name: '检验' }, quantity: 30, weight: 3, status: 'received', received_at: '2026-09-20T00:00:00Z', created_at: '2026-09-20T00:00:00Z', stock_tracked: true })
+  vi.spyOn(materialTransferApi, 'trace').mockResolvedValue({ ...snapshot.trace, serial_no: '000B', observed_at: '2026-09-21T00:00:00Z', items: [{ ...target, on_hand_quantity: 30, on_hand_weight: 3 }], reallocations: [target] })
+  const { page, router } = await render('/material-trace?serial_no=000B')
+  expect(page.text()).toContain('000A 转投入')
+  expect(page.get('.origin-input').text()).toContain('3')
+  expect(page.get('.origin-input').text()).toContain('流入物料')
+  await page.findAll('button').find(button => button.text() === '转投记录 1')!.trigger('click'); await flushPromises()
+  const dialog = document.body.querySelector('.el-dialog')!
+  expect(dialog.textContent).toContain('INTAKE-A')
+  expect(dialog.textContent).toContain('ALLOC-B')
+  const serialButton = [...dialog.querySelectorAll('button')].find(button => button.textContent?.trim() === '000A')!
+  serialButton.click(); await flushPromises()
+  expect(router.currentRoute.value.query.serial_no).toBe('000A')
+  expect(materialTransferApi.trace).toHaveBeenLastCalledWith('000A')
+})
 it('filters a complete intake family and keeps its source distinct from the previous batch', async () => {
   const items = snapshot.trace.items.map(item => ({ ...normalizeMaterialTransfer(item), on_hand_quantity: item.on_hand_quantity, on_hand_weight: item.on_hand_weight }))
   const seed = items[0]!

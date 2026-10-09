@@ -2,8 +2,8 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy import or_, select
+from sqlalchemy.orm import aliased, selectinload
 
 from . import material_transfer_workflow as workflow
 from .material_stock import stock_table
@@ -18,6 +18,11 @@ def serial_trace(db, serial_no, user):
         MaterialTransfer.created_at, MaterialTransfer.id
     )).all()
     stock = stock_table()
+    source = aliased(MaterialTransfer)
+    reallocations = db.scalars(select(MaterialTransfer).join(source, source.id == MaterialTransfer.source_transfer_id).where(
+        MaterialTransfer.entry_kind == "serial_reallocation",
+        or_(MaterialTransfer.serial_no == serial_no, source.serial_no == serial_no)
+    ).options(*workflow.material_transfer_list_options()).order_by(MaterialTransfer.created_at.desc(), MaterialTransfer.id.desc())).all()
     balances = {row['transfer_id']: row for row in db.execute(
         select(stock).where(stock.c.serial_no == serial_no)
     ).mappings()}
@@ -79,6 +84,7 @@ def serial_trace(db, serial_no, user):
 
     return {
         'serial_no': serial_no, 'items': items,
+        'reallocations': [workflow.material_transfer_dict(row, user, include_history=False) for row in reallocations],
         'shortage': {'quantity': sum(row['shortage_quantity'] for row in balances.values()),
                      'weight': float(sum((row['shortage_weight'] for row in balances.values()), Decimal(0)))},
         'observed_at': datetime.now(timezone.utc).isoformat(),

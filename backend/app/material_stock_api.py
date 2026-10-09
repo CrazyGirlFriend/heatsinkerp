@@ -10,11 +10,18 @@ from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, WarehouseReceiptCreate, Mater
 from . import material_stock as stock
 from . import warehouse_receipts
 from . import quantity_adjustments
+from . import serial_reallocations
 from .async_read_response import team_read_response
 
 from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/team-materials", tags=["team material stock"])
+
+
+@router.post("/{team_id}/serial-reallocations", status_code=201, response_model=MaterialTransferResponse)
+def reallocate_serial(payload: serial_reallocations.ReallocationCreate, team_id: int = Path(ge=1),
+                      user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return serial_reallocations.create(db, team_id, payload, user)
 
 
 @router.post("/{team_id}/quantity-adjustments", status_code=201)

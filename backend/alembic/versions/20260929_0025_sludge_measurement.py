@@ -9,13 +9,20 @@ depends_on = None
 
 
 def upgrade():
+    inspector = sa.inspect(op.get_bind())
+    columns = {item["name"] for item in inspector.get_columns("material_transfers")}
+    checks = {item["name"] for item in inspector.get_check_constraints("material_transfers")}
+    # The historical baseline creates current metadata for a new installation.
     with op.batch_alter_table("material_transfers") as batch:
-        batch.add_column(sa.Column("sludge_gross_weight", sa.Numeric(14, 3), nullable=True))
-        batch.add_column(sa.Column("sludge_content_percent", sa.Numeric(5, 2), nullable=True))
-        batch.create_check_constraint("ck_mt_sludge_measurement",
-            "(sludge_gross_weight IS NULL AND sludge_content_percent IS NULL) OR "
-            "(material_type IS NOT NULL AND material_type = 'sludge' AND sludge_gross_weight IS NOT NULL AND sludge_content_percent IS NOT NULL "
-            "AND sludge_gross_weight > 0 AND sludge_content_percent > 0 AND sludge_content_percent <= 100)")
+        if "sludge_gross_weight" not in columns:
+            batch.add_column(sa.Column("sludge_gross_weight", sa.Numeric(14, 3), nullable=True))
+        if "sludge_content_percent" not in columns:
+            batch.add_column(sa.Column("sludge_content_percent", sa.Numeric(5, 2), nullable=True))
+        if "ck_mt_sludge_measurement" not in checks:
+            batch.create_check_constraint("ck_mt_sludge_measurement",
+                "(sludge_gross_weight IS NULL AND sludge_content_percent IS NULL) OR "
+                "(material_type IS NOT NULL AND material_type = 'sludge' AND sludge_gross_weight IS NOT NULL AND sludge_content_percent IS NOT NULL "
+                "AND sludge_gross_weight > 0 AND sludge_content_percent > 0 AND sludge_content_percent <= 100)")
 
 
 def downgrade():

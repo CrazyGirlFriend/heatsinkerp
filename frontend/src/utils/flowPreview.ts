@@ -1,7 +1,7 @@
 import type { EChartsOption, CustomSeriesOption, SankeySeriesOption, CustomSeriesRenderItemReturn, XAxisComponentOption } from 'echarts'
 import type { SerialHistory, SerialHistoryFlow } from '@/types/teamBusiness'
 import type { TraceBatch } from '@/types/materialTrace'
-import { isExternalTransfer, isScrapType, materialTypeLabel, materialTransferStatusLabel } from '@/types/materialTransfer'
+import { isExternalTransfer, isScrapType, materialTypeLabel, materialTransferStatusLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import { historyNumber as num, purposePalette } from './serialHistoryChart'
 import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
 
@@ -176,7 +176,7 @@ function residence(node: PathNode, outgoing: TraceBatch[], closing: number): { s
   return { stays: issue ? [] : stays, issue }
 }
 
-export function traceFlowModel(items: TraceBatch[], observedAt?: string | null) {
+export function traceFlowModel(items: TraceBatch[], observedAt?: string | null, reallocations: MaterialTransfer[] = []) {
   const rows = [...items].sort((a, b) => (traceTimestamp(a.transferred_at) ?? Infinity) - (traceTimestamp(b.transferred_at) ?? Infinity) || Number(a.id) - Number(b.id))
   const teams: string[] = teamWorkspaceProfiles.map(profile => profile.name)
   const teamLane = (team: TraceBatch['next_team'], external = false) => {
@@ -196,7 +196,7 @@ export function traceFlowModel(items: TraceBatch[], observedAt?: string | null) 
   const nodes: PathNode[] = []
   function visit(batch: TraceBatch, depth: number): PathNode {
     const descendants = (children.get(String(batch.id)) || []).map(child => visit(child, depth + 1))
-    const intake = batch.entry_kind === 'warehouse_receipt' || batch.entry_kind === 'opening_stock'
+    const intake = batch.entry_kind === 'warehouse_receipt' || batch.entry_kind === 'opening_stock' || batch.entry_kind === 'serial_reallocation'
     const startedAt = traceTimestamp(intake ? batch.received_at || batch.transferred_at : batch.transferred_at)
     const recordedEnd = intake ? startedAt : batch.status === 'received' ? traceTimestamp(batch.received_at) : batch.status === 'dispatched' ? traceTimestamp(batch.dispatched_at) : null
     const reversed = startedAt !== null && recordedEnd !== null && recordedEnd < startedAt
@@ -231,7 +231,9 @@ export function traceFlowModel(items: TraceBatch[], observedAt?: string | null) 
   ].filter((at): at is number => at !== null))
   const closing = traceTimestamp(observedAt) ?? (times.length ? Math.max(...times) : null)
   if (closing !== null) for (const node of nodes) {
-    const result = residence(node, children.get(String(node.batch.id)) || [], closing)
+    const reassigned = reallocations.filter(row => String(row.source_transfer_id) === String(node.batch.id) && !ids.has(String(row.id)))
+      .map(row => ({ ...row, on_hand_quantity: null, on_hand_weight: null }))
+    const result = residence(node, [...(children.get(String(node.batch.id)) || []), ...reassigned], closing)
     node.stays = result.stays; node.residenceIssue = result.issue
   }
   // Concurrent received lots get separate tracks INSIDE the same team lane.
@@ -438,7 +440,7 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, metric
       const item = (Array.isArray(params) ? params[0] : params)!
       const interval = item.seriesId === 'residence-bars' ? residences[item.dataIndex] : undefined
       const node = interval?.node || model.nodes[item.dataIndex]!, batch = node.batch, stay = interval?.stay
-      if (originColors) return chainTooltip(`${batch.batch_no}\n${node.intake ? batch.entry_kind === 'opening_stock' ? '初始库存登记' : '库房入库' : `${batch.source_team.name} → ${batch.next_team.name}`}\n${materialTypeLabel(batch.material_type)} · ${metricLabel(stay || batch, metric)}\n${stay ? '在库停留' : materialTransferStatusLabel(batch.status, batch.entry_kind)} · 点击查看详情`)
+      if (originColors) return chainTooltip(`${batch.batch_no}\n${node.intake ? batch.entry_kind === 'serial_reallocation' ? `${batch.source_serial_no || '原流水号'} 转投入 · ${batch.next_team.name}` : batch.entry_kind === 'opening_stock' ? '初始库存登记' : '库房入库' : `${batch.source_team.name} → ${batch.next_team.name}`}\n${materialTypeLabel(batch.material_type)} · ${metricLabel(stay || batch, metric)}\n${stay ? '在库停留' : materialTransferStatusLabel(batch.status, batch.entry_kind)} · 点击查看详情`)
       const balance = batch.on_hand_quantity == null || batch.on_hand_weight == null ? '' : `\n未转出库存 ${amountLabel({ quantity: batch.on_hand_quantity, weight: batch.on_hand_weight })}`
       if (stay) return chainTooltip(`${batch.batch_no}\n${batch.next_team.name} · 在库停留\n这段时间的未转出库存 ${amountLabel(stay)}\n${traceTime(stay.start)}\n至 ${traceTime(stay.end)}\n累计停留 ${traceDuration(node.finishedAt, stay.end)}${balance}`)
       return chainTooltip(`${batch.batch_no}\n${batch.source_team.name} → ${batch.next_team.name}\n${amountLabel(batch)}\n${node.intake ? '入库' : '转出'} ${traceTime(node.startedAt)}${node.intake ? '' : `\n${isExternalTransfer(batch) ? '对外确认' : '接收'} ${traceTime(node.finishedAt)}`}\n接收业务 ${batch.purpose_name || '未分类'} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}${balance}${batch.notes ? `\n备注 ${batch.notes}` : ''}${node.timingIssue ? '\n时间记录不完整或异常' : ''}${node.residenceIssue ? '\n历史收发记录与库存对不上，暂不显示停留时间' : ''}`)

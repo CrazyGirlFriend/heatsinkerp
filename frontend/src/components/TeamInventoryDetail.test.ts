@@ -36,6 +36,21 @@ async function render(canWrite = true, warehouse = true) {
   } } }); await flushPromises()
 }
 describe('warehouse source detail', () => {
+  it('opens reallocation for authorized stock and distinguishes same-team A outflow from B intake', async () => {
+    await render()
+    expect(wrapper.findAll('button').filter(button => button.text() === '转投')).toHaveLength(0)
+    await wrapper.setProps({ canReallocate: true })
+    await wrapper.findAll('button').find(button => button.text() === '转投')!.trigger('click')
+    expect(wrapper.emitted('reallocate')).toEqual([[source(11, 5)]])
+    const row = normalizeMaterialTransfer({ ...movement(22, 'received'), entry_kind: 'serial_reallocation', serial_no: 'B', source_serial_no: '000128', next_team: { id: 1, name: '库房' } })
+    vi.mocked(teamMaterialApi.inventoryMovements).mockResolvedValue({ items: [row], total: 1, page: 1, page_size: 10 })
+    await live.refresh(); await flushPromises()
+    expect(wrapper.text()).toContain('转投出')
+    await wrapper.setProps({ group: { ...warehouseFixture(), serial_no: 'B' } }); await flushPromises()
+    expect(wrapper.text()).toContain('转投入')
+    expect(wrapper.text()).toContain('000128')
+    expect(wrapper.text()).toContain('TL11')
+  })
   it('keeps warehouse quantity history read-only without a processing action', async () => {
     await render()
     expect(wrapper.text()).not.toContain('加工件数变更')

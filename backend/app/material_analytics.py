@@ -131,7 +131,7 @@ def scope(team_id):
 
 def flow(team_id, direction):
     if direction == "incoming":
-        return mt.received_at, and_(mt.next_team_id == team_id, mt.status == "received")
+        return mt.received_at, and_(mt.next_team_id == team_id, mt.status == "received", mt.entry_kind != "serial_reallocation")
     column, predicate = outgoing_flow()
     return column, and_(mt.source_team_id == team_id, predicate)
 

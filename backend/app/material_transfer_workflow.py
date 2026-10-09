@@ -68,7 +68,7 @@ def _record_event(db, transfer, user, action, before=None, *, flush=True, stock_
         for field, value in _snapshot(transfer).items()
         if previous.get(field) != value
     }
-    if transfer.source_transfer_id is not None and action in {"created", "updated", "voided", "dispatched"}:
+    if transfer.source_transfer_id is not None and action in {"created", "updated", "voided", "dispatched", "reallocated"}:
         from .material_stock import available_locked
         quantity, weight = stock_after if stock_after is not None else available_locked(db, transfer.stock_source)
         changes.update({
@@ -199,7 +199,7 @@ def material_transfer_list_options():
         joinedload(MaterialTransfer.delivery_origin).load_only(
             MaterialTransfer.batch_no, MaterialTransfer.delivery_date, MaterialTransfer.delivery_quantity
         ).raiseload("*"),
-        joinedload(MaterialTransfer.stock_source).load_only(MaterialTransfer.batch_no, MaterialTransfer.sludge_content_percent).raiseload("*"),
+        joinedload(MaterialTransfer.stock_source).load_only(MaterialTransfer.batch_no, MaterialTransfer.serial_no, MaterialTransfer.sludge_content_percent).raiseload("*"),
         joinedload(MaterialTransfer.dispatch).load_only(MaterialDispatch.dispatch_no),
         raiseload(MaterialTransfer.history),
         raiseload(MaterialTransfer.losses),
@@ -234,6 +234,7 @@ def material_transfer_dict(
         "stock_tracked": transfer.stock_tracked,
         "source_transfer_id": transfer.source_transfer_id,
         "source_transfer_batch_no": transfer.stock_source.batch_no if transfer.source_transfer_id else None,
+        "source_serial_no": transfer.stock_source.serial_no if transfer.entry_kind == "serial_reallocation" and transfer.source_transfer_id else None,
         "dispatch_no": transfer.dispatch.dispatch_no if transfer.dispatch_id else None,
         "loss_records": [material_loss_dict(loss) for loss in transfer.losses] if include_history else [],
         "history": [

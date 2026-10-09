@@ -524,7 +524,7 @@ def list_losses(db, team_id, *, record_filters=None, query=None, serial_no=None,
 def list_outbound_batches(db, team_id, user, *, record_filters, query=None, next_team_id=None, status=None, entry_kind=None, material_type=None, page=1, page_size=20):
     require_team(db, team_id)
     mt = MaterialTransfer
-    filters = [mt.source_team_id == team_id, mt.entry_kind != "warehouse_receipt",
+    filters = [mt.source_team_id == team_id, ~mt.entry_kind.in_(["warehouse_receipt", "serial_reallocation"]),
                *record_filters.predicates(mt.created_at, mt.serial_no)]
     for column, value in ((mt.next_team_id, next_team_id), (mt.status, status), (mt.entry_kind, entry_kind), (mt.material_type, material_type)):
         if value is not None:
@@ -558,7 +558,7 @@ def list_dispatches(db, team_id, user, *, record_filters=None, query=None, next_
         MaterialDispatch.id, MaterialDispatch.dispatch_no, MaterialDispatch.created_at, MaterialDispatch.next_team_id)
     singles = select(literal(None).label("group_id"), mt.id.label("single_id"), mt.batch_no.label("dispatch_no"),
         mt.created_at.label("created_at"), mt.next_team_id.label("next_team_id"), mt.status.label("status")
-    ).outerjoin(MaterialDispatch, mt.dispatch_id == MaterialDispatch.id).where(mt.source_team_id == team_id, MaterialDispatch.dispatch_no.is_(None))
+    ).outerjoin(MaterialDispatch, mt.dispatch_id == MaterialDispatch.id).where(mt.source_team_id == team_id, mt.entry_kind != "serial_reallocation", MaterialDispatch.dispatch_no.is_(None))
     if entry_kind:
         grouped = grouped.where(MaterialDispatch.entry_kind == entry_kind)
         singles = singles.where(mt.entry_kind == entry_kind)

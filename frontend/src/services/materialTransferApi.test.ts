@@ -69,6 +69,14 @@ beforeEach(() => {
 afterEach(() => { httpClient.defaults.adapter = originalAdapter })
 
 describe('material transfer API', () => {
+  it('preserves cross-serial links and the reallocation audit in record and trace responses', async () => {
+    const row = rawTransfer({ entry_kind: 'serial_reallocation', serial_no: '000B', source_serial_no: '000A', source_transfer_id: 5, source_transfer_batch_no: 'TL5', status: 'received', history: [{ id: 18, action: 'reallocated', actor: '检验', occurred_at: '2026-09-07T01:00:00Z', changes: {} }] })
+    expect(normalizeMaterialTransfer(row)).toMatchObject({ entry_kind: 'serial_reallocation', source_serial_no: '000A', history: [{ action: 'reallocated' }] })
+    responder = () => ({ data: { serial_no: '000A', items: [], reallocations: [row], positions: [], untracked_count: 0, totals: {} } })
+    const trace = await materialTransferApi.trace('000A')
+    expect(trace.items).toEqual([])
+    expect(trace.reallocations).toMatchObject([{ serial_no: '000B', source_serial_no: '000A', source_transfer_batch_no: 'TL5' }])
+  })
   it('loads a complete exact-serial trace and keeps unaccounted balances null', async () => {
     responder = () => ({ data: { serial_no: '000012', items: [rawTransfer({ serial_no: '000012', source_transfer_id: 5, on_hand_quantity: null, on_hand_weight: null })], positions: [], untracked_count: 0, totals: {} } })
     const result = await materialTransferApi.trace(' 000012 ')

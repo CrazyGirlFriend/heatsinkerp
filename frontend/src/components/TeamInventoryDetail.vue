@@ -14,8 +14,8 @@ import type { StockBatch } from '@/types/teamMaterials'
 import { dispatchableAmounts, stockAvailable, stockSelectable } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
 
-const props = defineProps<{ teamId: number; group: TeamInventoryRow | null; canWrite?: boolean; warehouse?: boolean }>()
-const emit = defineEmits<{ close: []; changed: []; pending: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]] }>()
+const props = defineProps<{ teamId: number; group: TeamInventoryRow | null; canWrite?: boolean; canReallocate?: boolean; warehouse?: boolean }>()
+const emit = defineEmits<{ close: []; changed: []; pending: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]; reallocate: [source: StockBatch] }>()
 const rows = ref<StockBatch[]>([]), total = ref(0), page = ref(1), pageSize = ref(10)
 const movements = ref<MaterialTransfer[]>([]), movementTotal = ref(0), movementPage = ref(1), movementPageSize = ref(10)
 const loading = ref(false), error = ref('')
@@ -51,12 +51,14 @@ function open(transfer: MaterialTransfer) { selected.value = transfer; batchOpen
 function action(mode: 'dispatch' | 'loss', row: StockBatch) { if (props.canWrite && !loading.value && !error.value && (mode === 'loss' ? stockAvailable(row) : stockSelectable(row))) emit('action', mode, [row]) }
 function asStock(row: unknown) { return row as StockBatch }
 function asTransfer(row: unknown) { return row as MaterialTransfer }
-function incoming(row: MaterialTransfer) { return Number(row.next_team.id) === props.teamId }
+function incoming(row: MaterialTransfer) { return row.entry_kind === 'serial_reallocation' ? row.serial_no === props.group?.serial_no : Number(row.next_team.id) === props.teamId }
 function movementLabel(row: MaterialTransfer) {
+  if (row.entry_kind === 'serial_reallocation') return incoming(row) ? '转投入' : '转投出'
   if (incoming(row)) return row.entry_kind === 'opening_stock' ? '初始库存登记' : row.entry_kind === 'warehouse_receipt' ? '入库' : '收料'
   return row.entry_kind === 'inspection_shipment' ? '发货' : row.entry_kind === 'warehouse_outbound' ? '对外出库' : '转出'
 }
 function counterpart(row: MaterialTransfer) {
+  if (row.entry_kind === 'serial_reallocation') return incoming(row) ? row.source_serial_no || '—' : row.serial_no
   if (!incoming(row)) return row.external_destination || row.next_team.name || '—'
   return row.entry_kind === 'opening_stock' ? '初始库存' : row.external_source || row.source_team.name || '—'
 }
@@ -99,7 +101,7 @@ onBeforeUnmount(() => { ++version })
           <ElTableColumn v-if="hasLoss" label="丢失件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.lost_quantity) }}</template></ElTableColumn>
           <ElTableColumn v-if="hasLoss" label="丢失重量 (kg)" min-width="140" align="right"><template #default="{ row }">{{ inventoryAmount(row.lost_weight) }}</template></ElTableColumn>
           <ElTableColumn label="接收时间" min-width="170"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>
-          <ElTableColumn label="操作" :width="canWrite ? 250 : 110" fixed="right"><template #default="{ row }"><div class="source-actions"><ElButton link type="primary" @click="openQuantity(asStock(row))">{{ canWrite && !warehouse && stockAvailable(asStock(row)) ? '加工件数变更' : '件数记录' }}</ElButton><template v-if="canWrite"><ElButton link type="primary" :disabled="!stockSelectable(asStock(row))" @click="action('dispatch', asStock(row))">出库</ElButton><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('loss', asStock(row))">登记丢失</ElButton></template></div></template></ElTableColumn>
+          <ElTableColumn label="操作" :width="canWrite ? canReallocate ? 310 : 250 : 110" fixed="right"><template #default="{ row }"><div class="source-actions"><ElButton link type="primary" @click="openQuantity(asStock(row))">{{ canWrite && !warehouse && stockAvailable(asStock(row)) ? '加工件数变更' : '件数记录' }}</ElButton><template v-if="canWrite"><ElButton link type="primary" :disabled="!stockSelectable(asStock(row))" @click="action('dispatch', asStock(row))">出库</ElButton><ElButton v-if="canReallocate" link type="primary" :disabled="!stockSelectable(asStock(row))" @click="emit('reallocate', asStock(row))">转投</ElButton><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('loss', asStock(row))">登记丢失</ElButton></template></div></template></ElTableColumn>
         </ElTable>
         <footer><span>共 {{ total }} 个来源批次（含零库存）</span><ElPagination aria-label="当前库存分页" :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></footer>
       </section>
@@ -108,7 +110,7 @@ onBeforeUnmount(() => { ++version })
         <ElTable class="business-table warehouse-movement-table" :data="movements" row-key="id" empty-text="暂无收发记录">
           <ElTableColumn label="批次号" min-width="205"><template #default="{ row }"><ElButton link type="primary" @click="open(asTransfer(row))">{{ row.batch_no }}</ElButton></template></ElTableColumn>
           <ElTableColumn label="业务" min-width="95"><template #default="{ row }">{{ movementLabel(asTransfer(row)) }}</template></ElTableColumn>
-          <ElTableColumn label="来源批次号" min-width="205"><template #default="{ row }">{{ incoming(asTransfer(row)) ? '—' : row.source_transfer_batch_no || '—' }}</template></ElTableColumn>
+          <ElTableColumn label="来源批次号" min-width="205"><template #default="{ row }">{{ incoming(asTransfer(row)) && row.entry_kind !== 'serial_reallocation' ? '—' : row.source_transfer_batch_no || '—' }}</template></ElTableColumn>
           <ElTableColumn label="来源 / 去向" min-width="120"><template #default="{ row }">{{ counterpart(asTransfer(row)) }}</template></ElTableColumn>
           <ElTableColumn label="件数" min-width="85" align="right"><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
           <ElTableColumn label="重量 (kg)" min-width="115" align="right"><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>

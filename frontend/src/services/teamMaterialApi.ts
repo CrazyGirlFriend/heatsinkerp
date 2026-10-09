@@ -2,7 +2,7 @@ import type { WarehouseLocation } from './warehouseLocationApi'
 import { httpRequest, HttpRequestError, type HttpRequestOptions } from './httpClient'
 import type { TeamPurpose, OpeningLine, OpeningState, SerialHistory } from '@/types/teamBusiness'
 import { normalizeMaterialTransfer } from './materialTransferApi'
-import type { CreateWarehouseReceipt, WarehouseReceiptParams, CreatedMaterialBatches } from '@/types/teamMaterials'
+import type { CreateWarehouseReceipt, WarehouseReceiptParams, CreatedMaterialBatches, CreateSerialReallocation } from '@/types/teamMaterials'
 import type { QuantityAdjustment, QuantityAdjustmentContext, CreateQuantityAdjustment } from '@/types/teamMaterials'
 import { isExternalEntryKind } from '@/types/materialTransfer'
 import type { MaterialAnalytics, Metric, SerialParams, SerialSummary } from '@/types/materialAnalytics'
@@ -82,6 +82,7 @@ export const teamMaterialApi = {
   stock(teamId: number, params: StockParams = {}) { return page(path(teamId, 'stock', params), stock) },
   receipts(teamId: number, params: WarehouseReceiptParams = {}) { return page(path(teamId, 'receipts', params), normalizeMaterialTransfer) },
   async createReceipt(teamId: number, payload: CreateWarehouseReceipt) { return normalizeMaterialTransfer(await request(path(teamId, 'receipts'), { method: 'POST', body: payload })) },
+  async reallocate(teamId: number, payload: CreateSerialReallocation) { return normalizeMaterialTransfer(await request(path(teamId, 'serial-reallocations'), { method: 'POST', body: payload })) },
   losses(teamId: number, params: MaterialPageParams = {}) { return page(path(teamId, 'losses', params), loss) },
   dispatches(teamId: number, params: DispatchParams = {}) { return page(path(teamId, 'outbound-batches', params), normalizeMaterialTransfer) },
   async createLoss(teamId: number, payload: CreateLoss) { return loss(await request(path(teamId, 'losses'), { method: 'POST', body: payload })) },

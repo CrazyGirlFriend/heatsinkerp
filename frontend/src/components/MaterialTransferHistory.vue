@@ -5,8 +5,9 @@ import { formatDateTime } from '@/utils/format'
 
 const props = defineProps<{ transfer: MaterialTransfer }>()
 const events = computed(() => [...(props.transfer.history ?? [])].sort((left, right) => right.id - left.id))
-const actions = { created: '创建转料单', updated: '修改转料单', received: '确认签收', voided: '作废转料单', stocked: '手工入库已完成', dispatched: '确认出库', rejected: '库房退回核对', quantity_changed: '加工件数变更' }
+const actions = { created: '创建转料单', updated: '修改转料单', received: '确认签收', voided: '作废转料单', stocked: '手工入库已完成', dispatched: '确认出库', rejected: '库房退回核对', quantity_changed: '加工件数变更', reallocated: '流水号转投' }
 const labels: Record<string, string> = {
+  source_serial_no: '原流水号', source_transfer_batch_no: '来源批次',
   warehouse_location: '入库仓位',
   sludge_gross_weight: '废泥实重（kg）', sludge_content_percent: '有效材料占比（%）',
   stock_quantity: '未转出件数', stock_weight: '未转出重量', shortage_quantity: '账面缺口件数', shortage_weight: '账面缺口重量', reason: '加工说明',

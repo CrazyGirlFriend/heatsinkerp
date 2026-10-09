@@ -24,8 +24,8 @@ import type { TeamPurpose } from '@/types/teamBusiness'
 import type { AgeBand } from '@/types/materialAnalytics'
 import { formatDateTime } from '@/utils/format'
 
-const props = defineProps<{ teamId: number; overview: TeamMaterialOverview; canWrite?: boolean; warehouse?: boolean }>()
-const emit = defineEmits<{ changed: []; refresh: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]] }>()
+const props = defineProps<{ teamId: number; overview: TeamMaterialOverview; canWrite?: boolean; canReallocate?: boolean; warehouse?: boolean }>()
+const emit = defineEmits<{ changed: []; refresh: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]; reallocate: [source: StockBatch] }>()
 const route = useRoute(), router = useRouter(), auth = useAuthStore(), directory = useTeamDirectoryStore()
 const text = (key: string) => typeof route.query[key] === 'string' ? String(route.query[key]) : ''
 const summarySection = computed(() => ['materials', 'material-types'].includes(text('summary')) ? text('summary') : '')
@@ -175,6 +175,7 @@ function asRow(row: unknown) { return row as TeamInventoryRow }
 function openSerial(value: unknown) { serialNo.value = asRow(value).serial_no; serialOpen.value = true }
 function flag(value: unknown) { urgencySerial.value = asRow(value).serial_no; urgencyOpen.value = true }
 function action(mode: 'dispatch' | 'loss', sources: StockBatch[]) { if (props.canWrite) { picker.value = detail.value = null; serialOpen.value = false; emit('action', mode, sources) } }
+function reallocate(source: StockBatch) { if (props.canWrite && props.canReallocate) { detail.value = null; emit('reallocate', source) } }
 function resetDetails() { detail.value = picker.value = pending.value = null; serialOpen.value = urgencyOpen.value = false }
 watch([() => props.teamId, filters], () => {
   queryDraft.value = text('query'); sourceDraft.value = text('receipt_source') as WarehouseSource | ''; typeDraft.value = text('material_type'); materialDraft.value = text('material_name')
@@ -261,7 +262,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
       <ElTableColumn label="操作" :width="actionWidth" align="center" fixed="right"><template #default="{ row }"><div class="inventory-row-actions"><ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton><ElButton v-if="canWrite && inventoryCanDispatch(asRow(row))" link type="primary" @click="picker = asRow(row)">出库</ElButton><ElButton v-if="inventoryHasPending(asRow(row))" link type="primary" @click="pending = asRow(row)">{{ Number(row.external_pending_quantity) > 0 || Number(row.external_pending_weight) > 0 ? '查看转出' : '在途转出' }}</ElButton></div></template></ElTableColumn>
     </ElTable>
     <footer v-if="!error"><span>共 {{ total }} 条库存记录<small v-if="asOf" class="inventory-as-of">系统记录 · {{ formatDateTime(asOf) }}</small></span><ElPagination background :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="paginate($event)" @size-change="paginate(1, $event)" /></footer>
-    <TeamInventoryDetail :team-id="teamId" :group="detail" :warehouse="warehouse" :can-write="canWrite" @close="detail = null" @changed="emit('changed')" @action="action" @pending="pending = detail" />
+    <TeamInventoryDetail :team-id="teamId" :group="detail" :warehouse="warehouse" :can-write="canWrite" :can-reallocate="canReallocate" @reallocate="reallocate" @close="detail = null" @changed="emit('changed')" @action="action" @pending="pending = detail" />
     <InventoryPendingDialog v-if="pending" :team-id="teamId" :group="pending" @close="pending = null" @changed="load(true); emit('changed')" />
     <StockSourcePicker v-if="picker && canWrite" :team-id="teamId" :group-id="picker.group_id" :group-label="[picker.serial_no, materialTypeLabel(picker.material_type || null), picker.purpose_name, sourceLabel(picker)].filter(Boolean).join(' · ')" @close="picker = null" @selected="action('dispatch', $event)" />
     <SerialMaterialDrawer v-model="serialOpen" :team-id="teamId" :serial-no="serialNo" :can-write="canWrite" @changed="emit('changed')" @action="action" />

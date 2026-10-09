@@ -13,6 +13,7 @@ import TeamMaterialOverviewPanel from '@/components/TeamMaterialOverview.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
 import TeamSerialHistory from '@/components/TeamSerialHistory.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
+import SerialReallocationDialog from '@/components/SerialReallocationDialog.vue'
 import { inventoryAmount } from '@/types/teamInventory'
 import MaterialStockActionDialog from '@/components/MaterialStockActionDialog.vue'
 import WarehouseManagement from '@/components/WarehouseManagement.vue'
@@ -26,7 +27,7 @@ import StatePanel from '@/components/StatePanel.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { showToast } from '@/stores/toast'
-import { resolveTeamWorkspaceSection, teamWorkspaceProfile, teamWorkspaceSectionPath, type TeamWorkspaceSection } from '@/config/teamWorkspaces'
+import { resolveTeamWorkspaceSection, teamWorkspaceProfile, teamWorkspaceSectionPath, teamCanReallocate, type TeamWorkspaceSection } from '@/config/teamWorkspaces'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { InventoryConnection } from '@/services/inventoryStream'
 import { shouldRefreshInventory, subscribeSharedInventoryChanges as subscribeInventoryChanges } from '@/services/inventoryChanges'
@@ -47,6 +48,7 @@ const profile = computed(() => teamWorkspaceProfile(team.value?.code))
 const scopeReady = computed(() => validId.value && directory.loaded && !directory.error && Boolean(team.value?.active))
 const scopeLoading = computed(() => validId.value && !directory.error && (!directory.loaded || directory.loading) && !scopeReady.value)
 const canWrite = computed(() => scopeReady.value && auth.isTeamAccount && auth.currentUser?.active !== false && String(auth.currentUser?.team_id) === teamKey.value && !auth.currentUserError)
+const canReallocate = computed(() => canWrite.value && teamCanReallocate(team.value))
 const isWarehouse = computed(() => scopeReady.value && team.value?.code === 'FACTORY-WAREHOUSE' && team.value?.kind === 'warehouse')
 const canManageWarehouse = computed(() => isWarehouse.value && (auth.isAdmin || canWrite.value))
 const canReceive = computed(() => isWarehouse.value && canWrite.value && auth.currentUser?.active !== false)
@@ -125,6 +127,7 @@ const loadError = ref('')
 const selected = ref<MaterialTransfer | null>(null)
 const drawerOpen = ref(false)
 const actionOpen = ref(false)
+const reallocationOpen = ref(false), reallocationSource = ref<StockBatch | null>(null)
 const pickerOpen = ref(false)
 const openingDispatch = ref(false)
 const actionMode = ref<'dispatch' | 'loss'>('dispatch')
@@ -187,7 +190,7 @@ function asLoss(row: unknown) { return row as MaterialLoss }
 function applyFilters(nextPage = 1, size = pageSize.value) {
   void router.replace({ path: route.path, query: { tab: tab.value, ...(tab.value === 'receipts' && receiptSourceDraft.value ? { receipt_source: receiptSourceDraft.value } : {}), ...(dateDraft.value.from ? { date_from: dateDraft.value.from } : {}), ...(dateDraft.value.to ? { date_to: dateDraft.value.to } : {}), ...(urgentDraft.value ? { urgent_only: 'true' } : {}), ...(queryDraft.value.trim() ? { query: queryDraft.value.trim() } : {}), ...(['receipts', 'outgoing'].includes(tab.value) && materialDraft.value ? { material_type: materialDraft.value } : {}), ...(tab.value === 'outgoing' ? { ...(kindDraft.value ? { entry_kind: kindDraft.value } : {}), ...(statusDraft.value ? { status: statusDraft.value } : {}), ...(!isExternalEntryKind(kindDraft.value) && nextTeamDraft.value ? { next_team_id: String(nextTeamDraft.value) } : {}) } : {}), ...(nextPage > 1 ? { page: String(nextPage) } : {}), ...(size !== 10 ? { page_size: String(size) } : {}) } })
 }
-function closeDetails() { ++actionVersion; pickerOpen.value = false; openingDispatch.value = false; drawerOpen.value = false; selected.value = null; actionOpen.value = false; receiptOpen.value = false; actionSources.value = [] }
+function closeDetails() { ++actionVersion; pickerOpen.value = false; openingDispatch.value = false; drawerOpen.value = false; selected.value = null; actionOpen.value = false; reallocationOpen.value = false; reallocationSource.value = null; receiptOpen.value = false; actionSources.value = [] }
 function openDetail(transfer: MaterialTransfer) { selected.value = transfer; drawerOpen.value = true }
 function openIncoming(transfer: MaterialTransfer) { openDetail(transfer) }
 function openWarehouseMaterial(batchNo: string) { selected.value = null; selectedBatchNo.value = batchNo; drawerOpen.value = true }
@@ -227,6 +230,17 @@ async function openAction(mode: 'dispatch' | 'loss', sources: StockBatch[]) {
   if (current !== actionVersion || scope !== teamKey.value || !canWrite.value || !sources.length) return
   pickerOpen.value = false
   actionMode.value = mode; actionSources.value = sources; actionOpen.value = true
+}
+async function openReallocation(source: StockBatch) {
+  const current = ++actionVersion, scope = teamKey.value
+  try { await auth.refreshCurrentUser() } catch { showToast('账号信息刷新失败，请重试', 'error'); return }
+  if (current !== actionVersion || scope !== teamKey.value || !canReallocate.value) return
+  reallocationSource.value = source; reallocationOpen.value = true
+}
+async function savedReallocation(item: MaterialTransfer) {
+  showToast(`已从 ${item.source_serial_no} 转投至 ${item.serial_no}`, 'success')
+  reallocationOpen.value = false; reallocationSource.value = null
+  await openingStocked()
 }
 async function openNewDispatch() {
   if (!canWrite.value || openingDispatch.value) return
@@ -322,7 +336,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
         <template v-else-if="['stock', 'materials', 'material-types'].includes(tab)">
           <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料库存" />
           <StatePanel v-else-if="overviewError" state="error" :description="overviewError" @retry="loadView" />
-          <TeamInventory v-else-if="overview && tab === 'stock'" :key="teamId" :team-id="teamId" :warehouse="isWarehouse" :overview="overview" :can-write="canWrite" @refresh="loadView" @changed="loadView" @action="openAction"><template #actions><TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" /></template></TeamInventory>
+          <TeamInventory v-else-if="overview && tab === 'stock'" :key="teamId" :team-id="teamId" :warehouse="isWarehouse" :overview="overview" :can-write="canWrite" :can-reallocate="canReallocate" @reallocate="openReallocation" @refresh="loadView" @changed="loadView" @action="openAction"><template #actions><TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" /></template></TeamInventory>
           <TeamMaterialOverviewPanel v-else-if="overview" :key="tab" :overview="overview" :kind="tab === 'material-types' ? 'type' : 'material'" :page="page" :page-size="pageSize" @filter="openSummaryDetail" @paginate="paginateSummary"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamMaterialOverviewPanel>
         </template>
         <template v-else>
@@ -358,7 +372,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                 <ElButton class="list-refresh" :icon="Refresh" :loading="loading" text aria-label="刷新工作台" title="刷新" @click="loadView()" />
               </div>
               <div v-if="activeListFilters.length" class="list-active-filters"><ElTag v-for="filter in activeListFilters" :key="filter.key" closable @close="removeListFilter(filter.key)">{{ filter.label || queryText(filter.key) }}</ElTag></div>
-              <MaterialReceiptScanner v-if="tab === 'pending' && canWrite" :key="teamId" ref="scanner" :team-id="teamId" :paused="drawerOpen || actionOpen || pickerOpen || receiptOpen || businessOpen || printOpen" @received="loadView(true, true)" />
+              <MaterialReceiptScanner v-if="tab === 'pending' && canWrite" :key="teamId" ref="scanner" :team-id="teamId" :paused="drawerOpen || actionOpen || reallocationOpen || pickerOpen || receiptOpen || businessOpen || printOpen" @received="loadView(true, true)" />
               <StatePanel v-if="loading" state="loading" title="正在读取物料记录" />
               <StatePanel v-else-if="loadError" state="error" :description="loadError" @retry="loadView" />
               <StatePanel v-else-if="!total" state="empty" :title="tab === 'pending' ? '暂无来料待签收' : tab === 'outgoing' ? '暂无出库记录' : tab === 'receipts' ? '暂无入库记录' : '暂无丢失记录'" description="可以调整搜索条件或刷新记录。" />
@@ -430,6 +444,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
     <template #dialogs>
       <StockSourcePicker v-if="pickerOpen && canWrite" :team-id="teamId" @close="closeDetails" @selected="openAction('dispatch', $event)" @outbound="closeDetails(); router.push({ path: route.path, query: { tab: 'outgoing', status: 'pending' } })" />
       <WarehouseReceiptDialog v-model="receiptOpen" :team-id="teamId" @saved="savedReceipt" />
+      <SerialReallocationDialog v-if="reallocationSource" v-model="reallocationOpen" :team-id="teamId" :source="reallocationSource" @saved="savedReallocation" />
       <MaterialStockActionDialog v-model="actionOpen" :team-id="teamId" :mode="actionMode" :sources="actionSources" @saved="savedAction" @balances-changed="loadView" />
       <MaterialBatchPrintDialog v-model="printOpen" :items="printRows" />
       <TeamBusinessDialog v-if="businessOpen && canWrite" :key="teamId" v-model="businessOpen" :team-id="teamId" @changed="businessChanged" @stocked="openingStocked" />

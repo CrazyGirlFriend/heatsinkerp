@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Close, FullScreen, InfoFilled, Pointer, Rank, RefreshRight, ScaleToOriginal, Search, VideoPause, VideoPlay, ZoomIn, ZoomOut } from '@element-plus/icons-vue'
-import { ElAlert, ElButton, ElDrawer, ElIcon, ElInput, ElOption, ElPopover, ElSelect, ElTooltip } from 'element-plus'
+import { ElAlert, ElButton, ElDialog, ElDrawer, ElIcon, ElInput, ElOption, ElPagination, ElPopover, ElSelect, ElTable, ElTableColumn, ElTooltip } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import FlowPreviewCanvas from '@/components/FlowPreviewCanvas.vue'
@@ -31,6 +31,8 @@ const serialDraft = ref(''), teamDraft = ref(Number(currentUser.value?.team_id) 
 const serial = ref(''), teamId = ref(1), history = ref<SerialHistory | null>(null), trace = ref<MaterialTrace | null>(null)
 const loading = ref(false), error = ref(''), metric = ref<FlowMetric>('weight'), motion = ref(true), replay = ref(0)
 const selected = ref<FlowSelection | null>(null), selectedId = ref(''), drawerOpen = ref(false), batchNo = ref('')
+const reallocationsOpen = ref(false), reallocationsPage = ref(1)
+const reallocations = computed(() => trace.value?.reallocations || [])
 const chart = ref<InstanceType<typeof FlowPreviewCanvas>>()
 const pageRoot = ref<HTMLElement>(), fullscreen = ref(false), zoomLevel = ref(100)
 const interaction = ref<FlowInteraction>('select')
@@ -41,9 +43,10 @@ const originId = ref('all')
 const origins = computed(() => traceOrigins(trace.value?.items || []))
 const activeOrigin = computed(() => origins.value.groups.find(group => group.id === originId.value))
 const scopedTrace = computed(() => trace.value && activeOrigin.value ? traceOriginScope(trace.value, activeOrigin.value.items) : trace.value)
-const chainModel = computed(() => traceFlowModel(scopedTrace.value?.items || [], trace.value?.observed_at))
+const chainModel = computed(() => traceFlowModel(scopedTrace.value?.items || [], trace.value?.observed_at, reallocations.value))
 const visibleOrigins = computed(() => activeOrigin.value ? [activeOrigin.value] : origins.value.groups)
-const originInput = computed(() => visibleOrigins.value.filter(group => group.batch.entry_kind === 'warehouse_receipt').reduce((sum, group) => sum + group.batch[metric.value], 0))
+const originInput = computed(() => visibleOrigins.value.filter(group => ['warehouse_receipt', 'serial_reallocation'].includes(group.batch.entry_kind || '')).reduce((sum, group) => sum + group.batch[metric.value], 0))
+const hasReallocatedOrigin = computed(() => visibleOrigins.value.some(group => group.batch.entry_kind === 'serial_reallocation'))
 async function changeOrigin(id: string) {
   originId.value = id; selectedId.value = ''; teamRange.value = { start: 0, end: 100 }
   await nextTick(); chart.value?.zoom(0)
@@ -123,6 +126,7 @@ function canvasShortcut(event: KeyboardEvent) {
   if (key === 'escape') clearSelection()
 }
 function openBatch(code: string) { if (example.value) return; batchNo.value = code; drawerOpen.value = true }
+function openRelatedSerial(value: string) { reallocationsOpen.value = false; void router.replace({ path: route.path, query: { serial_no: value } }) }
 async function toggleFullscreen() {
   try {
     if (document.fullscreenElement === pageRoot.value) await document.exitFullscreen()
@@ -134,6 +138,7 @@ onMounted(() => document.addEventListener('fullscreenchange', updateFullscreen))
 const live = useLiveRefresh(() => load(true), { teamId: () => mode.value === 'team' ? teamId.value : undefined, enabled: () => Boolean(serial.value) && !example.value, busy: () => loading.value || Boolean(selected.value) || drawerOpen.value })
 watch(() => [route.path, route.params.view, route.query.serial_no, route.query.team_id, route.query.sample], () => {
   ++epoch; loading.value = false; error.value = ''; selected.value = null; selectedId.value = ''; originId.value = 'all'; drawerOpen.value = false
+  reallocationsOpen.value = false; reallocationsPage.value = 1
   history.value = null; trace.value = null
   serial.value = example.value ? purposeSnapshot.history.serial_no : typeof route.query.serial_no === 'string' ? route.query.serial_no.trim() : ''; serialDraft.value = serial.value
   const id = example.value ? 8 : Number(route.query.team_id || currentUser.value?.team_id || 1)
@@ -153,6 +158,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
       <div class="chain-actions">
         <span v-if="chainModel.closing !== null" class="chain-asof" :title="`截至 ${traceTime(chainModel.closing)}（北京时间）`">{{ traceTime(chainModel.closing).slice(0, 10) }}</span>
         <span v-if="hasData" class="batch-count">{{ trace?.items.length }} 批次</span>
+        <ElButton v-if="reallocations.length" text type="primary" @click="reallocationsOpen = true">转投记录 {{ reallocations.length }}</ElButton>
         <span v-if="example" class="sample-label">演示数据 · 非实时</span>
         <ElButton v-if="route.path !== '/material-trace'" class="sample-toggle" text @click="switchData">{{ example ? '业务数据' : '演示数据' }}</ElButton>
         <ElButton v-if="serial && !example" class="header-icon" :icon="RefreshRight" :loading="loading" aria-label="刷新数据" title="刷新数据" text @click="load()" />
@@ -180,7 +186,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
       <section v-else-if="hasData && !loading" class="flow-workspace">
         <div class="origin-filter">
           <label>来源批次</label><ElSelect class="origin-select" aria-label="筛选来源入库批次" :append-to="pageRoot" :model-value="originId" filterable @change="changeOrigin"><ElOption value="all" :label="`全部来源批次（${origins.groups.length} 批）`" /><ElOption v-for="group in origins.groups" :key="group.id" :value="group.id" :label="`${group.name} · ${group.batch.batch_no}`" /></ElSelect>
-          <span class="origin-input">{{ activeOrigin?.batch.entry_kind === 'warehouse_receipt' || !activeOrigin ? '入库' : '起点物料' }} <strong>{{ num(activeOrigin && activeOrigin.batch.entry_kind !== 'warehouse_receipt' ? activeOrigin.batch[metric] : originInput) }}</strong> {{ metric === 'weight' ? 'kg' : '件' }}</span>
+          <span class="origin-input">{{ hasReallocatedOrigin ? '流入物料' : activeOrigin?.batch.entry_kind === 'warehouse_receipt' || !activeOrigin ? '入库' : '起点物料' }} <strong>{{ num(activeOrigin && activeOrigin.batch.entry_kind !== 'warehouse_receipt' ? activeOrigin.batch[metric] : originInput) }}</strong> {{ metric === 'weight' ? 'kg' : '件' }}</span>
         </div>
         <header class="chart-toolbar">
           <div class="chain-legends"><strong class="path-heading">流转路径 <small>{{ chainModel.nodes.length }} 笔记录</small></strong><div class="purpose-legend"><span v-for="group in visibleOrigins" :key="group.id" :title="group.batch.batch_no"><i :style="{ background: group.color }" />{{ group.name }}</span></div><div class="mark-legend" aria-label="图形说明"><span><i class="stay-mark" />在库停留</span><span><i class="departure-mark" />转出</span><span><i class="receipt-mark" />签收</span><span><i class="pending-mark" />待确认</span><span><i class="waste-mark" />废料</span></div></div>
@@ -223,6 +229,20 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
         <p class="selection-label">{{ selected.batches.length }} 个关联批次{{ example ? ' · 演示数据，不打开业务单据' : '' }}</p><div class="selection-batches"><button v-for="row in selectionRows" :key="row.code" :disabled="example" @click="openBatch(row.code)"><b>{{ row.code }}</b><span v-if="row.amount">{{ amountLabel(row.amount) }}<em>{{ row.status }}</em></span><small v-if="row.at">{{ formatDateTime(row.at) }}</small><small v-else>查看原始批次</small></button></div>
       </div>
     </ElDrawer>
+    <ElDialog v-model="reallocationsOpen" title="流水号转投记录" width="min(1180px, calc(100vw - 32px))" align-center append-to-body>
+      <ElTable :data="reallocations.slice((reallocationsPage - 1) * 10, reallocationsPage * 10)" class="business-table" row-key="id">
+        <ElTableColumn label="原流水号" min-width="120"><template #default="{ row }"><ElButton link type="primary" @click="openRelatedSerial(row.source_serial_no)">{{ row.source_serial_no }}</ElButton></template></ElTableColumn>
+        <ElTableColumn label="目标流水号" min-width="120"><template #default="{ row }"><ElButton link type="primary" @click="openRelatedSerial(row.serial_no)">{{ row.serial_no }}</ElButton></template></ElTableColumn>
+        <ElTableColumn label="班组" min-width="85"><template #default="{ row }">{{ row.next_team.name }}</template></ElTableColumn>
+        <ElTableColumn label="来源批次" min-width="205"><template #default="{ row }"><ElButton link type="primary" @click="openBatch(row.source_transfer_batch_no)">{{ row.source_transfer_batch_no }}</ElButton></template></ElTableColumn>
+        <ElTableColumn label="转投批次" min-width="205"><template #default="{ row }"><ElButton link type="primary" @click="openBatch(row.batch_no)">{{ row.batch_no }}</ElButton></template></ElTableColumn>
+        <ElTableColumn label="件数" min-width="80" align="right"><template #default="{ row }">{{ num(row.quantity) }}</template></ElTableColumn>
+        <ElTableColumn label="重量 (kg)" min-width="110" align="right"><template #default="{ row }">{{ num(row.weight) }}</template></ElTableColumn>
+        <ElTableColumn label="转投时间" min-width="170"><template #default="{ row }">{{ formatDateTime(row.transferred_at) }}</template></ElTableColumn>
+        <ElTableColumn prop="notes" label="原因" min-width="140" show-overflow-tooltip />
+      </ElTable>
+      <ElPagination v-if="reallocations.length > 10" v-model:current-page="reallocationsPage" :total="reallocations.length" :page-size="10" layout="prev, pager, next" />
+    </ElDialog>
     <MaterialTransferDrawer v-if="mode === 'team' || drawerOpen" v-model="drawerOpen" :batch-no="batchNo" @changed="live.request" />
   </div>
 </template>

@@ -18,7 +18,7 @@ export function traceOrigins(items: TraceBatch[]) {
   const roots = [...new Map([...originById.values()].map(item => [String(item.id), item])).values()]
     .sort((a, b) => a.transferred_at.localeCompare(b.transferred_at) || Number(a.id) - Number(b.id))
   const groups = roots.map((batch, index) => ({ id: String(batch.id), batch, color: palette[index % palette.length]!,
-    name: batch.entry_kind === 'warehouse_receipt' ? `入库批次 ${index + 1}` : batch.entry_kind === 'opening_stock' ? '初始库存' : '历史起点',
+    name: batch.entry_kind === 'warehouse_receipt' ? `入库批次 ${index + 1}` : batch.entry_kind === 'opening_stock' ? '初始库存' : batch.entry_kind === 'serial_reallocation' ? `${batch.source_serial_no || '其他流水号'} 转投入` : '历史起点',
     items: items.filter(item => originById.get(String(item.id)) === batch),
   }))
   return { groups, originById, colors: new Map(items.map(item => [String(item.id), groups.find(group => group.batch === originById.get(String(item.id)))!.color])) }
