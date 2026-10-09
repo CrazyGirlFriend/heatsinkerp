@@ -1,6 +1,7 @@
 """Compatible batches share managed slots; open forms retain exclusive draft locks."""
 
 from datetime import timedelta, timezone
+from typing import Literal
 
 from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -194,6 +195,8 @@ def occupants(db, ids, *, locking=False):
             Transfer.material_name,
             Transfer.material_type,
             Transfer.status,
+            Transfer.created_at,
+            Transfer.received_at,
             placement.quantity,
             placement.weight,
             func.coalesce(Balance.on_hand_quantity, 0).label("available_quantity"),
@@ -240,13 +243,19 @@ def location_dict(location, rows):
         "status": state,
         "draft_locked": leased(location),
         "has_stock": any(row["status"] == "received" for row in rows),
-        "batches": [{**row, "weight": float(row["weight"]), "available_weight": float(row["available_weight"])} for row in rows],
+        "batches": [{
+            **row,
+            "weight": float(row["weight"]),
+            "available_weight": float(row["available_weight"]),
+            **{key: row[key].replace(tzinfo=timezone.utc).isoformat() if row[key] else None
+               for key in ("created_at", "received_at")},
+        } for row in rows],
     }
 
 
 def list_locations(
     db, team_id=None, *, query=None, page=1, page_size=100, available_only=False, selected=None,
-    identity=None,
+    identity=None, state=None,
 ):
     from .material_stock import literal_query
 
@@ -278,7 +287,32 @@ def list_locations(
         )
         conditions.append(or_(free, WarehouseLocation.name == selected) if selected else free)
     if query and query.strip():
-        conditions.append(literal_query(query, [WarehouseLocation.name]))
+        material_match = select(WarehousePlacement.transfer_id).join(
+            Transfer, Transfer.id == WarehousePlacement.transfer_id,
+        ).where(
+            WarehousePlacement.location_id == WarehouseLocation.id,
+            or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0),
+            literal_query(query, [Transfer.serial_no, Transfer.material_name, Transfer.batch_no]),
+        ).exists()
+        name_match = literal_query(query, [WarehouseLocation.name])
+        conditions.append(name_match if available_only else or_(name_match, material_match))
+    if state:
+        # Filter before pagination; pending documents and form leases are distinct markers.
+        draft = and_(WarehouseLocation.reservation_key.is_not(None), WarehouseLocation.reserved_until > utcnow())
+        stock = select(WarehousePlacement.transfer_id).join(
+            Transfer, Transfer.id == WarehousePlacement.transfer_id,
+        ).where(
+            WarehousePlacement.location_id == WarehouseLocation.id,
+            or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0),
+            Transfer.status == ("pending" if state == "pending" else "received"),
+        ).exists()
+        conditions.append({
+            "occupied": stock,
+            "available": and_(WarehouseLocation.active.is_(True), ~busy, ~func.coalesce(draft, False)),
+            "pending": stock,
+            "draft": draft,
+            "disabled": WarehouseLocation.active.is_(False),
+        }[state])
     total = db.scalar(select(func.count()).select_from(WarehouseLocation).where(*conditions))
     order = [WarehouseLocation.name]
     if identity and all(identity):
@@ -477,13 +511,14 @@ def save_location(db, payload, user, location_id=None):
 @router.get("")
 def catalog(
     query: str | None = Query(default=None, max_length=80),
+    state: Literal["occupied", "available", "pending", "draft", "disabled"] | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     require_manager(user)
-    return list_locations(db, query=query, page=page, page_size=page_size)
+    return list_locations(db, query=query, page=page, page_size=page_size, state=state)
 
 
 @router.post("", status_code=201)
