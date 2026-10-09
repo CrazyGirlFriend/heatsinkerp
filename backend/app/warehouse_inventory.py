@@ -157,7 +157,7 @@ def list_inventory(db, team_id, filters):
                 conditions.append(False)
             else:
                 if field.endswith("_weight"):
-                    column = func.round(column, 3)
+                    column = func.round(column, 6)
                 value = Decimal(term)
                 predicate = column >= value if filters.search_operator == "gte" else column <= value if filters.search_operator == "lte" else column == value
                 conditions.append(select(mt.id).where(*matching_sources, predicate).exists() if field == "finished_quantity" else predicate)

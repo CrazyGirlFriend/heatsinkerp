@@ -119,7 +119,7 @@ def test_disabled_warehouse_actor_cannot_intake_with_existing_token(client, ware
 @pytest.mark.parametrize('invalid', [
     {'serial_no': '  '}, {'material_name': '  '}, {'material_type': None},
     {'quantity': 0, 'weight': 0}, {'quantity': -1}, {'quantity': 1.5},
-    {'weight': '1.1234'}, {'notes': 'x' * 2001}, {'idempotency_key': '  '},
+    {'weight': '1.1234567'}, {'notes': 'x' * 2001}, {'idempotency_key': '  '},
     {'next_team_id': 1}, {'source_team_id': 1}, {'entry_kind': 'transfer'}, {'status': 'pending'},
 ])
 def test_invalid_or_forged_intake_does_not_add_stock(client, warehouse, invalid):

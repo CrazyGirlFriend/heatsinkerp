@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WeightInput from './WeightInput.vue'
 import FormPageNav from './FormPageNav.vue'
 import FormValidationNotice from './FormValidationNotice.vue'
 import OpeningMaterialFields from './OpeningMaterialFields.vue'
@@ -77,7 +78,7 @@ async function submitOpening() {
   if (lines.value.some(line => invalidSpecifications.has(line))) { linePage.value = lines.value.findIndex(line => invalidSpecifications.has(line)); openingStep.value = 'specification'; error.value = '请填完整规格尺寸'; validationPage.value = openingPage.value; return }
   if (saving.value || loading.value || !opening.value?.can_submit) return
   error.value = ''
-  if (lines.value.some(line => line.material_type === 'sludge' && !sludgeWeight(line.sludge_gross_weight, line.sludge_content_percent))) { linePage.value = lines.value.findIndex(line => line.material_type === 'sludge' && !sludgeWeight(line.sludge_gross_weight, line.sludge_content_percent)); openingStep.value = 'amount'; error.value = '请填写废泥实重和有效材料占比，折算重量须达到 0.001 kg'; validationPage.value = openingPage.value; return }
+  if (lines.value.some(line => line.material_type === 'sludge' && !sludgeWeight(line.sludge_gross_weight, line.sludge_content_percent))) { linePage.value = lines.value.findIndex(line => line.material_type === 'sludge' && !sludgeWeight(line.sludge_gross_weight, line.sludge_content_percent)); openingStep.value = 'amount'; error.value = '请填写废泥实重和有效材料占比，折算重量须达到 0.000001 kg'; validationPage.value = openingPage.value; return }
   const invalidLine = lines.value.findIndex(line => !line.serial_no.trim() || !line.material_name.trim() || !line.material_type || !Number.isInteger(enteredQuantity(line)) || Number(enteredQuantity(line)) < 0 || line.weight == null || !Number.isFinite(line.weight) || line.weight < 0 || (!enteredQuantity(line) && !line.weight))
   if (invalidLine !== -1) { linePage.value = invalidLine; openingStep.value = !lines.value[invalidLine]!.serial_no.trim() || !lines.value[invalidLine]!.material_name.trim() ? 'material' : 'amount'; const line = lines.value[invalidLine]!; error.value = !line.serial_no.trim() ? '请输入流水号' : !line.material_name.trim() ? '请输入材质' : !line.material_type ? '请选择物料类型' : !Number.isInteger(enteredQuantity(line)) || Number(enteredQuantity(line)) < 0 ? '请填写有效件数，可填 0' : line.weight == null || !Number.isFinite(line.weight) || line.weight < 0 ? '请填写有效重量，可填 0' : '件数和重量至少一项大于 0'; validationPage.value = openingPage.value; return }
   const body = lines.value.map(line => ({ ...line, quantity: enteredQuantity(line), ...sludgePayload(line.material_type, line.sludge_gross_weight, line.sludge_content_percent), purpose_id: line.purpose_id || null, serial_no: line.serial_no.trim(), material_name: line.material_name.trim() }))
@@ -133,7 +134,7 @@ async function submitOpening() {
               <div class="dialog-field"><span class="dialog-field-label is-required">物料类型</span><ElSelect v-model="line.material_type" :aria-label="`第${index + 1}行物料类型`" :disabled="saving"><ElOption v-for="option in materialTypeOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect></div>
               <div class="dialog-field"><span class="dialog-field-label">本班组业务</span><ElSelect v-model="line.purpose_id" aria-label="初始库存业务" clearable placeholder="未分类" :disabled="saving"><ElOption v-for="item in purposes.filter(item => item.active)" :key="item.id" :value="item.id" :label="item.name" /></ElSelect></div>
               <div v-if="!isWeightOnlyType(line.material_type)" class="dialog-field"><span class="dialog-field-label is-required">件数</span><ElInputNumber v-model="line.quantity" :aria-label="`第${index + 1}行件数`" :min="0" :precision="0" :disabled="saving" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></div>
-              <div class="dialog-field" v-if="line.material_type !== 'sludge'"><span class="dialog-field-label is-required">重量</span><ElInputNumber v-model="line.weight" :aria-label="`第${index + 1}行重量`" :min="0" :precision="3" :disabled="saving" controls-position="right"><template #suffix><span class="dialog-input-unit">kg</span></template></ElInputNumber></div>
+              <div class="dialog-field" v-if="line.material_type !== 'sludge'"><span class="dialog-field-label is-required">重量</span><WeightInput v-model="line.weight" :ariaLabel="`第${index + 1}行重量`" :disabled="saving" /></div>
               <SludgeWeightFields v-else v-model:gross="line.sludge_gross_weight" v-model:percent="line.sludge_content_percent" :label="`第${index + 1}行`" :disabled="saving" @update:weight="line.weight = $event" />
               </div>
             </ElForm>

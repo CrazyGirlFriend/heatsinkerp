@@ -69,8 +69,8 @@ class SerialFilters(RecordFilters):
                 raise ValueError("数值须在 0 至 1000000000000000 之间")
             if self.search_field.endswith("quantity") and number != number.to_integral_value():
                 raise ValueError("件数须为整数")
-            if self.search_field.endswith("weight") and number != number.quantize(Decimal("0.001")):
-                raise ValueError("重量最多保留三位小数")
+            if self.search_field.endswith("weight") and number != number.quantize(Decimal("0.000001")):
+                raise ValueError("重量最多保留六位小数")
         elif self.search_operator != "eq":
             raise ValueError("只有数值字段支持大小比较")
         elif self.search_field == "urgency" and term not in ("urgent", "normal"):
@@ -102,7 +102,7 @@ def serial_search_predicate(team_id, table, filters):
         return and_(table.c.last_activity_at >= start, table.c.last_activity_at < end)
     column = mt.finished_quantity if field == "finished_quantity" else table.c[field]
     if field.endswith("weight"):
-        column = func.round(column, 3)
+        column = func.round(column, 6)
     value = Decimal(term)
     predicate = column >= value if filters.search_operator == "gte" else column <= value if filters.search_operator == "lte" else column == value
     if field == "finished_quantity":

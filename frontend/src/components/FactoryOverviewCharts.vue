@@ -13,7 +13,7 @@ const unit = computed(() => props.metric === 'weight' ? 'kg' : '件')
 const colors = computed(() => ['#58986f', '#79a9ce', '#c6a15c', '#a6afb6'])
 const ink = computed(() => '#64726a')
 const fontSize = computed(() => 14)
-const format = (value: number) => new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)
+const format = (value: number) => new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(value)
 const natureColors = ['#58986f', '#79a9ce', '#c6a15c', '#9c91b5', '#86b2a4', '#bd8979', '#899baf', '#aea68d', '#86a5ad']
 const natureOrder = (key: string) => { const index = materialTypeOptions.findIndex(option => option.value === key); return index < 0 ? materialTypeOptions.length : index }
 const materialTypes = computed(() => props.data.material_types.filter(row => row.quantity !== 0 || row.weight !== 0).sort((a, b) => natureOrder(a.key) - natureOrder(b.key)).map((row, index) => ({
@@ -81,7 +81,7 @@ function pick(key: string, index: number) { const team = props.data.teams[index]
         <div v-if="card.key === 'types' && materialTypes.length" class="nature-table-scroll" tabindex="0" role="region" aria-label="物料类型库存明细">
         <table class="nature-table">
           <thead><tr><th scope="col">性质</th><th scope="col">{{ metric === 'weight' ? '重量 (kg)' : '件数' }}</th></tr></thead>
-          <tbody><tr v-for="row in materialTypes" :key="row.key"><th scope="row"><i :style="{ background: row.color }" aria-hidden="true" />{{ row.name }}</th><td :class="{ 'nature-shortage': row[metric] < 0 }">{{ format(row[metric]) }}<small v-if="row[metric] < 0"> 账面缺口</small></td></tr></tbody>
+          <tbody><tr v-for="row in materialTypes" :key="row.key"><th scope="row"><i :style="{ background: row.color }" aria-hidden="true" />{{ row.name }}</th><td :class="{ 'nature-shortage': metric === 'weight' && row.weight < 0 }">{{ format(row[metric]) }}<small v-if="metric === 'weight' && row.weight < 0"> 重量差异</small></td></tr></tbody>
         </table>
         </div>
       </div>

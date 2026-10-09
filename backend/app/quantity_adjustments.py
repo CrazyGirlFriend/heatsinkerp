@@ -1,9 +1,10 @@
 """Audited piece-count changes on available stock, serialized with all deductions."""
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from .material_weight import WEIGHT_ONLY_TYPES
+from .schemas import ProcessingQuantity
 
 from .auth import actor_name
 from . import material_stock as stock
@@ -39,12 +40,7 @@ def record_outbound_clearance(db, lot, clearance, user, operation_key, batches):
                  "outbound_batches": {"before": None, "after": batches}}))
 
 
-class AdjustmentCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    source_transfer_id: int = Field(ge=1)
-    quantity: int = Field(ge=0, le=2_147_483_647)
-    expected_revision: int = Field(ge=0)
-    reason: str = Field(default="", max_length=2000)
+class AdjustmentCreate(ProcessingQuantity):
     idempotency_key: str = Field(min_length=1, max_length=100)
 
     @field_validator("idempotency_key")
@@ -52,11 +48,6 @@ class AdjustmentCreate(BaseModel):
     def nonblank(cls, value):
         if not value.strip():
             raise ValueError("value cannot be blank")
-        return value.strip()
-
-    @field_validator("reason")
-    @classmethod
-    def normalize_reason(cls, value):
         return value.strip()
 
 
@@ -87,6 +78,36 @@ def context(db, team_id, lot_id, page=1, page_size=10):
             "total": total, "page": page, "page_size": page_size}
 
 
+def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
+    """Recount only untransferred stock inside the caller's locked transaction."""
+    if lot.material_type in WEIGHT_ONLY_TYPES:
+        raise HTTPException(422, "废泥、废屑只按重量计量，不能修改加工件数")
+    balance = db.scalar(select(Balance).where(Balance.transfer_id == lot.id)
+        .with_for_update().execution_options(populate_existing=True))
+    if balance is None or balance.revision != payload.expected_revision:
+        raise HTTPException(409, "库存已变化，请刷新后重新核对件数")
+    if balance.on_hand_quantity == 0 and balance.on_hand_weight == 0:
+        raise HTTPException(409, "本批已无在库物料，不能增加件数")
+    if payload.quantity == balance.on_hand_quantity:
+        raise HTTPException(422, "件数未发生变化")
+    # Count changes are not a substitute for loss reporting. A zero
+    # count is permitted only while a measured weight remains.
+    if payload.quantity == 0 and balance.on_hand_weight == 0 and balance.on_hand_quantity > 0:
+        raise HTTPException(422, "无重量物料清零请登记丢失或出库")
+    row = Adjustment(source_transfer_id=lot.id, team_id=lot.next_team_id,
+        before_quantity=balance.on_hand_quantity, after_quantity=payload.quantity,
+        weight_snapshot=balance.on_hand_weight, stock_revision_before=balance.revision,
+        reason=payload.reason, idempotency_key=operation_key, request_hash=request_hash,
+        created_by=actor_name(user), created_by_user_id=user.id, created_at=utcnow())
+    db.add(row)
+    db.add(MaterialTransferEvent(transfer_id=lot.id, action="quantity_changed",
+        actor=actor_name(user), actor_user_id=user.id, occurred_at=row.created_at,
+        changes={"stock_quantity": {"before": row.before_quantity, "after": row.after_quantity},
+                 "reason": {"before": None, "after": row.reason}}))
+    db.flush()
+    return row
+
+
 def create(db, team_id, payload, user):
     stock.require_actor(user, team_id)
     request_hash = stock.fingerprint(payload)
@@ -108,31 +129,7 @@ def create(db, team_id, payload, user):
             row = prior()
             if row is not None:
                 return replay(row)
-            if lot.material_type in WEIGHT_ONLY_TYPES:
-                raise HTTPException(422, "废泥、废屑只按重量计量，不能修改加工件数")
-            balance = db.scalar(select(Balance).where(Balance.transfer_id == lot.id)
-                .with_for_update().execution_options(populate_existing=True))
-            if balance is None or balance.revision != payload.expected_revision:
-                raise HTTPException(409, "库存已变化，请刷新后重新核对件数")
-            if balance.on_hand_quantity == 0 and balance.on_hand_weight == 0:
-                raise HTTPException(409, "本批已无在库物料，不能增加件数")
-            if payload.quantity == balance.on_hand_quantity:
-                raise HTTPException(422, "件数未发生变化")
-            # Count changes are not a substitute for loss reporting. A zero
-            # count is permitted only while a measured weight remains.
-            if payload.quantity == 0 and balance.on_hand_weight == 0 and balance.on_hand_quantity > 0:
-                raise HTTPException(422, "无重量物料清零请登记丢失或出库")
-            row = Adjustment(source_transfer_id=lot.id, team_id=team_id,
-                before_quantity=balance.on_hand_quantity, after_quantity=payload.quantity,
-                weight_snapshot=balance.on_hand_weight, stock_revision_before=balance.revision,
-                reason=payload.reason, idempotency_key=payload.idempotency_key, request_hash=request_hash,
-                created_by=actor_name(user), created_by_user_id=user.id, created_at=utcnow())
-            db.add(row)
-            db.add(MaterialTransferEvent(transfer_id=lot.id, action="quantity_changed",
-                actor=actor_name(user), actor_user_id=user.id, occurred_at=row.created_at,
-                changes={"stock_quantity": {"before": row.before_quantity, "after": row.after_quantity},
-                         "reason": {"before": None, "after": row.reason}}))
-            db.flush()
+            row = record_quantity_change(db, lot, payload, user, payload.idempotency_key, request_hash)
             # MySQL persists DateTime at second precision; first response and
             # idempotent replay must both use the stored timestamp.
             db.refresh(row)

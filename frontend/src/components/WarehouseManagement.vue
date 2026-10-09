@@ -26,7 +26,7 @@ const detail = computed(() => rows.value.find(row => row.id === detailId.value))
 const received = (row: WarehouseLocation) => row.batches.filter(batch => batch.status === 'received')
 const pending = (row: WarehouseLocation) => row.batches.filter(batch => batch.status === 'pending')
 const stocked = (row: WarehouseLocation) => received(row).some(batch => batch.quantity > 0 || batch.weight > 0)
-const amount = (row: WarehouseLocation, key: 'quantity' | 'weight') => received(row).reduce((sum, batch) => sum + batch[key], 0).toLocaleString('zh-CN', { maximumFractionDigits: 3 })
+const amount = (row: WarehouseLocation, key: 'quantity' | 'weight') => received(row).reduce((sum, batch) => sum + batch[key], 0).toLocaleString('zh-CN', { maximumFractionDigits: 6 })
 const detailBatches = computed(() => detail.value ? (detailTab.value === 'received' ? received(detail.value) : pending(detail.value)) : [])
 const detailIdentity = computed(() => {
   const batches = detail.value?.batches || []

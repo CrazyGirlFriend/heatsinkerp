@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WeightInput from './WeightInput.vue'
 import FormPageNav from './FormPageNav.vue'
 import FormValidationNotice from './FormValidationNotice.vue'
 import MaterialInput from './MaterialInput.vue'
@@ -156,7 +157,7 @@ function validate(): boolean {
   else if (!sourceTeam.value) formError.value = '当前账号未绑定班组，请联系管理员'
   else if (sourceChanged.value) formError.value = '账号所属班组已变更，请关闭后重新新建转料'
   else if (!editable.value) formError.value = '此转料单已锁定或无编辑权限'
-  else if (useSludge.value && !sludgeWeight(form.gross, form.percent)) formError.value = '请填写废泥实重和有效材料占比，折算重量须达到 0.001 kg'
+  else if (useSludge.value && !sludgeWeight(form.gross, form.percent)) formError.value = '请填写废泥实重和有效材料占比，折算重量须达到 0.000001 kg'
   else if (refreshFailed.value) formError.value = '请先重新读取最新单据'
   else if ((!isEditing.value || toWarehouse.value) && !form.materialType) formError.value = toWarehouse.value ? '转入库房前请选择物料类型' : '请选择物料类型'
   else if (!serialNo) formError.value = '请输入流水号'
@@ -347,10 +348,10 @@ onBeforeUnmount(() => { ++formGeneration })
           <ElInputNumber v-model="form.quantity" :aria-label="external ? `${actionLabel}件数` : '转料件数'" :min="0" :max="2147483647" :step="1" :precision="0" controls-position="right" :disabled="!canSubmit"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber>
         </ElFormItem>
         <ElFormItem v-if="!useSludge" :label="external ? `${actionLabel}重量` : '转料重量'" required>
-          <ElInputNumber v-model="form.weight" :aria-label="external ? `${actionLabel}重量` : '转料重量'" :min="0" :max="99999999999.999" :step="0.1" :precision="3" controls-position="right" :disabled="!canSubmit"><template #suffix><span class="dialog-input-unit">kg</span></template></ElInputNumber>
+          <WeightInput v-model="form.weight" :ariaLabel="external ? `${actionLabel}重量` : '转料重量'" :max="99999999999.999" :disabled="!canSubmit" />
         </ElFormItem>
       </div>
-      <SludgeWeightFields v-if="useSludge" v-model:gross="form.gross" v-model:percent="form.percent" :locked="editingSnapshot?.sludge_percent_locked" :disabled="!canSubmit" @update:weight="form.weight = $event" />
+      <SludgeWeightFields :existing="editingSnapshot || undefined" v-if="useSludge" v-model:gross="form.gross" v-model:percent="form.percent" :locked="editingSnapshot?.sludge_percent_locked" :disabled="!canSubmit" @update:weight="form.weight = $event" />
       <p v-else-if="form.materialType === 'sludge'" class="quantity-hint">历史废泥未记录比例，沿用原账重，不自动折算。</p>
       <p class="quantity-hint">{{ useSludge ? '废泥按实重与有效材料占比折算。' : weightOnly ? '只按重量计量。' : '按实际件数、重量填写，至少一项大于 0。' }}</p>
       <ElFormItem v-if="toWarehouse" label="入库仓位"><strong v-if="editingSnapshot?.warehouse_location">{{ editingSnapshot.warehouse_location }}</strong><WarehouseLocationSelect v-else v-model="form.warehouseLocation" v-model:reservation-key="form.warehouseLocationKey" :team-id="Number(form.nextTeamId)" :serial-no="form.serialNo" :material-name="form.document.material_name" :material-type="form.materialType" :active="modelValue" :disabled="saving || refreshing" @busy-change="locationBusy = $event" /></ElFormItem>

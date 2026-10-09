@@ -48,11 +48,11 @@ def test_workshop_children_keep_changed_nature_and_exclude_other_source_groups(c
     lot = received['items'][0]
     split = dispatch(client, s, [
         {'source_transfer_id': lot['id'], 'quantity': 30, 'weight': 3, 'material_type': 'finished'},
-        {'source_transfer_id': lot['id'], 'quantity': 20, 'weight': 2, 'material_type': 'scrap_chips'},
-    ], workshop=True, notes='废屑回收').json()
+        {'source_transfer_id': lot['id'], 'quantity': 20, 'weight': 2, 'material_type': 'waste'},
+    ], workshop=True, notes='废料回收').json()
     rows = movements(client, s, lot['id'], workshop=True)['items']
     assert {row['id'] for row in rows} == {lot['id'], *(row['id'] for row in split['items'])}
-    assert {row['material_type'] for row in rows} == {'semi_finished', 'finished', 'scrap_chips'}
+    assert {row['material_type'] for row in rows} == {'semi_finished', 'finished', 'waste'}
     assert client.get(base(s) + f"/inventory/{lot['id']}/movements").status_code == 404
     assert client.get(base(s, True) + f"/inventory/{origin['id']}/movements").status_code == 404
     assert client.get(base(s) + f"/inventory/{origin['id']}/movements", params={'page_size': 101}).status_code == 422

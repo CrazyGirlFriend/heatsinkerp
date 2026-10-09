@@ -2,9 +2,12 @@ import type { MaterialTransfer, SludgeMeasurement } from '@/types/materialTransf
 
 export function sludgeWeight(gross?: number | null, percent?: number | null): number | undefined {
   if (gross == null || percent == null || !Number.isFinite(gross) || !Number.isFinite(percent) || gross <= 0 || gross > 99999999999.999 || percent <= 0 || percent > 100) return undefined
-  const grams = Math.round(gross * 1000), hundredths = Math.round(percent * 100)
-  if (Math.abs(gross * 1000 - grams) > .0001 || Math.abs(percent * 100 - hundredths) > .0001) return undefined
-  return Number((BigInt(grams) * BigInt(hundredths) + 5000n) / 10000n) / 1000
+  const scaled = gross * 1000000, hundredths = Math.round(percent * 100)
+  if (Math.abs(scaled - Math.round(scaled)) > .0001 || Math.abs(percent * 100 - hundredths) > .0001) return undefined
+  const [whole, fraction = ''] = gross.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 6 }).split('.')
+  const milligrams = BigInt(whole!) * 1000000n + BigInt(fraction.padEnd(6, '0'))
+  const result = ((milligrams * BigInt(hundredths) + 5000n) / 10000n).toString().padStart(7, '0')
+  return Number(`${result.slice(0, -6)}.${result.slice(-6)}`)
 }
 
 export function sludgePayload(type: string | null | undefined, gross?: number | null, percent?: number | null): SludgeMeasurement {

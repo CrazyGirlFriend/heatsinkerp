@@ -1,7 +1,7 @@
 import type { SerialMetaField, SerialSummary } from './materialAnalytics'
 import { formatDateTime } from '@/utils/format'
 
-const amount = (value: number | null | undefined) => value == null ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)
+const amount = (value: number | null | undefined) => value == null ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(value)
 const meta = (row: SerialSummary, key: SerialMetaField, multiple = '各批不同') => row[`${key}_count`] > 1 ? multiple : row[key] ?? '—'
 
 // Only serial-level attributes and totals belong here. Batch numbers, peers and

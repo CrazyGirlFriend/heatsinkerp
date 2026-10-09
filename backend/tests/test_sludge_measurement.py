@@ -113,17 +113,17 @@ def test_invalid_measurement_never_creates_stock(client, warehouse, overrides):
 
 def test_receipt_decimal_rounding_and_legacy_unconverted_stock(client, warehouse):
     s = warehouse
-    receipt = intake(client, s, quantity=0, weight="0.101", material_type="sludge", sludge_gross_weight="1.005", sludge_content_percent=10)
+    receipt = intake(client, s, quantity=0, weight="0.1005", material_type="sludge", sludge_gross_weight="1.005", sludge_content_percent=10)
     assert receipt.status_code == 201, receipt.text
-    assert stock(client, s)["owned_weight"] == .101
-    assert intake(client, s, quantity=0, weight="0.101", material_type="sludge", sludge_gross_weight="1.005", sludge_content_percent=10).json() == receipt.json()
+    assert stock(client, s)["owned_weight"] == .1005
+    assert intake(client, s, quantity=0, weight="0.1005", material_type="sludge", sludge_gross_weight="1.005", sludge_content_percent=10).json() == receipt.json()
     # Simulate a pre-upgrade row: missing means unknown, never a guessed 100%.
     with SessionLocal() as db:
         row = db.get(MaterialTransfer, receipt.json()["id"])
         row.sludge_gross_weight = row.sludge_content_percent = None
         db.commit()
     legacy = client.get("/api/material-transfers/" + receipt.json()["batch_no"]).json()
-    assert legacy["sludge_content_percent"] is None and legacy["weight"] == .101
+    assert legacy["sludge_content_percent"] is None and legacy["weight"] == .1005
     payload = dict(entry_kind="warehouse_outbound", next_team_id=None, external_destination="回收单位", notes="历史废泥处理", idempotency_key="legacy")
     assert dispatch(client, s, [line(legacy, gross="1.005", percent=10, weight=".101")], **payload).status_code == 422
     result = dispatch(client, s, [{"source_transfer_id": legacy["id"], "quantity": 0, "weight": ".101"}], **payload)
@@ -152,18 +152,38 @@ def test_measured_sludge_excess_exits_keep_gross_and_signed_book_stock(client, w
     assert stock(client, s)["owned_weight"] == -11
 
 
+def test_legacy_rounded_measurement_survives_metadata_edit_until_measurement_changes(client, warehouse):
+    s = warehouse
+    origin = intake(client, s, quantity=0, weight=1).json()
+    sent = dispatch(client, s, [{"source_transfer_id": origin["id"], "quantity": 0, "weight": 1}]).json()
+    assert confirm(client, s, sent, workshop=True).status_code == 200
+    receipt = dispatch(client, s, [line(sent["items"][0], gross="1.005", percent=10, weight=".1005")], workshop=True).json()["items"][0]
+    with SessionLocal.begin() as db:
+        db.get(MaterialTransfer, receipt["id"]).weight = Decimal(".101")
+    url = "/api/material-transfers/" + receipt["batch_no"]
+    edited = client.patch(url, headers=s["other_headers"], json={"notes": "补充历史转料说明"})
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["weight"] == .101
+    assert stock(client, s, True)["on_hand_weight"] == .899
+    assert client.patch(url, headers=s["other_headers"], json={"sludge_gross_weight": "1.006"}).status_code == 422
+    measured = client.patch(url, headers=s["other_headers"], json={"sludge_gross_weight": "1.006", "weight": ".1006"})
+    assert measured.status_code == 200, measured.text
+    assert measured.json()["weight"] == .1006
+    assert stock(client, s, True)["on_hand_weight"] == .8994
+
+
 def test_rounding_preserves_actual_sludge_gap_separately_from_book_weight(client, warehouse):
     s = warehouse
-    receipt = intake(client, s, quantity=0, weight=".101", material_type="sludge", sludge_gross_weight="1.005", sludge_content_percent=10).json()
+    receipt = intake(client, s, quantity=0, weight=".1005", material_type="sludge", sludge_gross_weight="1.005", sludge_content_percent=10).json()
     external = dict(entry_kind="warehouse_outbound", next_team_id=None, external_destination="回收单位", notes="废泥处理")
-    # Both values round to .101 accounted kg; only 1.005 actual kg exists.
-    response = dispatch(client, s, [line(receipt, gross="1.009", percent=10, weight=".101")], **external)
+    # Preserve both the actual and accounted difference at the new precision.
+    response = dispatch(client, s, [line(receipt, gross="1.009", percent=10, weight=".1009")], **external)
     assert response.status_code == 201, response.text
     rows = client.get(base(s) + "/stock?availability=all").json()["items"]
     assert rows[0]["sludge_available_gross_weight"] == -.004
     sources = client.get(base(s) + f'/inventory/{receipt["id"]}/sources').json()["items"]
     assert sources[0]["sludge_available_gross_weight"] == -.004
-    assert dispatch(client, s, [line(receipt, gross="1.005", percent=10, weight=".101")], **external, idempotency_key="second-gross").status_code == 201
+    assert dispatch(client, s, [line(receipt, gross="1.005", percent=10, weight=".1005")], **external, idempotency_key="second-gross").status_code == 201
 
 
 def test_sludge_opening_stock_uses_accounted_weight(client):

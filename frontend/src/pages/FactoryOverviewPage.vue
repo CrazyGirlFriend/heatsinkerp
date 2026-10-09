@@ -34,7 +34,7 @@ const motion = computed(() => !reduced.value && !hidden.value && !error.value)
 function syncVisibility() { hidden.value = document.hidden }
 function syncMotion() { reduced.value = Boolean(media?.matches) }
 const unit = computed(() => metric.value === 'weight' ? 'kg' : '件')
-const number = (value: number | null | undefined) => value == null ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)
+const number = (value: number | null | undefined) => value == null ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(value)
 const warning = computed(() => {
   if (!report.value) return ''
   const missing = report.value.teams.filter(team => !team.id).map(team => team.name)

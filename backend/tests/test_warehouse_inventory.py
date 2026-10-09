@@ -56,8 +56,8 @@ def test_internal_pending_not_stock_and_outbound_immediately_deducts(client, war
     assert confirm(client, s, sent, workshop=True).status_code == 200
     returned = dispatch(client, s, [
         {'source_transfer_id': sent['items'][0]['id'], 'quantity': 30, 'weight': 3, 'material_type': 'finished'},
-        {'source_transfer_id': sent['items'][0]['id'], 'quantity': 20, 'weight': 2, 'material_type': 'scrap_chips'},
-    ], workshop=True, notes='废屑回库').json()
+        {'source_transfer_id': sent['items'][0]['id'], 'quantity': 20, 'weight': 2, 'material_type': 'waste'},
+    ], workshop=True, notes='废料回库').json()
     assert inventory(client, s, receipt_source='internal')['total'] == 0
     pending = client.get(base(s) + '/overview').json()['pending_incoming']
     assert pending['count'] == 2 and pending['batch_count'] == 2
@@ -131,7 +131,7 @@ def test_conflicting_customer_metadata_is_searchable_but_not_silently_chosen(cli
 @pytest.mark.parametrize('params', [
     {'search_field': 'on_hand_quantity', 'query': '1.2'},
     {'search_field': 'on_hand_weight', 'query': 'NaN'},
-    {'search_field': 'on_hand_weight', 'query': '1.2345'},
+    {'search_field': 'on_hand_weight', 'query': '1.2345678'},
     {'search_field': 'source', 'query': 'A', 'search_operator': 'gte'},
     {'date_from': '2026-09-02', 'date_to': '2026-09-01'},
     {'receipt_source': 'forged'}, {'page_size': 101},

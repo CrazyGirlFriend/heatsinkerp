@@ -398,7 +398,7 @@ def test_all_material_types_and_independent_counts_weight_validation(client):
     assert client.get(url).json()["quantity"] == 8
     for i, invalid in enumerate((
         {"quantity": 0, "weight": 0}, {"material_type": "invented"},
-        {"finished_quantity": -1}, {"finished_quantity": 1.2}, {"weight": "1.0001"},
+        {"finished_quantity": -1}, {"finished_quantity": 1.2}, {"weight": "1.0000001"},
         {"customer_code": "X" * 81}, {"technical_requirements": "X" * 4001},
         {"source_team_id": setup["third"]["id"]}, {"version": 5},
         {"history": [{"action": "received"}]},

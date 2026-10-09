@@ -61,10 +61,10 @@ def test_split_one_source_into_good_and_scrap_without_double_deduction(client, w
     assert confirm(client, s, sent, workshop=True).status_code == 200
     source = sent['items'][0]
     lines = [{'source_transfer_id': source['id'], 'quantity': 30, 'weight': 3, 'material_type': 'semi_finished'},
-             {'source_transfer_id': source['id'], 'quantity': 20, 'weight': 2, 'material_type': 'scrap_chips'}]
+             {'source_transfer_id': source['id'], 'quantity': 20, 'weight': 2, 'material_type': 'waste'}]
     assert dispatch(client, s, lines, workshop=True, notes="x" * 2001).status_code == 422
     invalid = [lines[0], {**lines[1], 'source_transfer_id': 999999}]
-    assert dispatch(client, s, invalid, workshop=True, notes='废屑回收').status_code == 404
+    assert dispatch(client, s, invalid, workshop=True, notes='废料回收').status_code == 404
     assert client.get(base(s, True) + '/overview').json()['totals']['available_quantity'] == 50
     response = dispatch(client, s, lines, workshop=True)
     assert response.status_code == 201, response.text
@@ -88,7 +88,7 @@ def test_split_one_source_into_good_and_scrap_without_double_deduction(client, w
     assert serials['total'] == 1 and serials['items'][0]['scrap_quantity'] == 20
     assert client.get(base(s) + '/serials', params={'search_field': 'scrap_quantity', 'query': '20'}).json()['total'] == 1
     assert client.get(s['url'], params={'receipt_source': 'internal'}).json()['total'] == 2
-    assert client.get(s['url'], params={'material_type': 'scrap_chips'}).json()['total'] == 1
+    assert client.get(s['url'], params={'material_type': 'waste'}).json()['total'] == 1
     assert client.get(s['url'], params={'query': '轧制'}).json()['total'] == 2
 
 

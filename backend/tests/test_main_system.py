@@ -203,7 +203,7 @@ def test_schema_requires_every_document_key():
 
 
 @pytest.mark.parametrize('changed', [
-    {'quantity':-1}, {'quantity':1.5}, {'quantity':0,'weight':0}, {'weight':'1.2345'},
+        {'quantity':-1}, {'quantity':1.5}, {'quantity':0,'weight':0}, {'weight':'1.2345678'},
     {'notes':'x'*2001}, {'expected_snapshot_hash':'wrong'}, {'next_team_id':3},
 ])
 def test_invalid_intake_never_calls_main_system(client, warehouse, upstream, changed):

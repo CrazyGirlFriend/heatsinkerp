@@ -143,7 +143,7 @@ function clearFilterDrafts() {
 }
 
 function numberText(value: number, unit: string): string {
-  return `${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)} ${unit}`
+  return `${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(value)} ${unit}`
 }
 
 function asTransfer(row: unknown): MaterialTransfer {

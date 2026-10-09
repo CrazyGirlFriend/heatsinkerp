@@ -18,7 +18,9 @@ def validate_material_amounts(material_type, quantity, weight, *, existing=None)
         raise HTTPException(422, "废泥、废屑的重量须大于 0")
 
 
-def sludge_measurement(material_type, weight, gross, percent, *, source=None, legacy=False):
+def sludge_measurement(material_type, weight, gross, percent, *, source=None, legacy=False, existing=None):
+    if existing is not None and material_type == existing.material_type == "sludge" and (weight, gross, percent) == (existing.weight, existing.sludge_gross_weight, existing.sludge_content_percent):
+        return dict(zip(SLUDGE_FIELDS, (gross, percent)))
     if source is not None and source.material_type == "sludge":
         if material_type != "sludge":
             raise HTTPException(422, "废泥转料须保留原物料类型和有效材料占比")
@@ -38,9 +40,9 @@ def sludge_measurement(material_type, weight, gross, percent, *, source=None, le
             raise HTTPException(422, "请填写废泥实重和有效材料占比")
         if gross <= 0 or not 0 < percent <= 100:
             raise HTTPException(422, "废泥实重须大于零，有效材料占比须大于 0% 且不超过 100%")
-        calculated = (gross * percent / Decimal(100)).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+        calculated = (gross * percent / Decimal(100)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
         if calculated <= 0:
-            raise HTTPException(422, "折算重量不足 0.001 kg，请核对废泥实重和比例")
+            raise HTTPException(422, "折算重量不足 0.000001 kg，请核对废泥实重和比例")
         if weight != calculated:
             raise HTTPException(422, f"废泥折算重量应为 {calculated} kg，请核对实重和比例")
     return dict(zip(SLUDGE_FIELDS, (gross, percent)))
@@ -49,7 +51,7 @@ def sludge_measurement(material_type, weight, gross, percent, *, source=None, le
 def remaining_sludge_gross(gross, percent, transferred, lost_weight):
     # Losses are entered in accounted kg. Never reconstruct the original gross
     # from rounded accounted kg: e.g. 1.005 kg at 10% is recorded as 0.101 kg.
-    return (gross - transferred - lost_weight * 100 / percent).quantize(Decimal(".001"), rounding=ROUND_DOWN)
+    return (gross - transferred - lost_weight * 100 / percent).quantize(Decimal(".000001"), rounding=ROUND_DOWN)
 
 
 def stock_sludge_measurements(db, items):

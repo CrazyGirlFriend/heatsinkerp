@@ -5,12 +5,12 @@ import { sludgeFields, sludgePayload, sludgeSummary, sludgeWeight } from './slud
 describe('sludge accounting weight', () => {
   it('uses material percentage, with the same decimal rounding as the backend', () => {
     expect(sludgeWeight(10, 30)).toBe(3)
-    expect(sludgeWeight(1.005, 10)).toBe(.101)
-    expect(sludgeWeight(12.345, 33.33)).toBe(4.115)
+    expect(sludgeWeight(1.005, 10)).toBe(.1005)
+    expect(sludgeWeight(12.345, 33.33)).toBe(4.114589)
     expect(sludgeWeight(99999999999.999, 100)).toBe(99999999999.999)
-    expect(sludgeWeight(.001, 1)).toBe(0)
+    expect(sludgeWeight(.001, 1)).toBe(.00001)
   })
-  it.each([[null, 30], [10, null], [0, 30], [10, 0], [10, 101], [1.0001, 30], [10, 3.333], [Infinity, 100]])('rejects invalid measurement %s / %s', (gross, percent) => {
+  it.each([[null, 30], [10, null], [0, 30], [10, 0], [10, 101], [1.0000001, 30], [10, 3.333], [Infinity, 100]])('rejects invalid measurement %s / %s', (gross, percent) => {
     expect(sludgeWeight(gross, percent)).toBeUndefined()
   })
   it('does not invent missing historical measurements or percentages', () => {

@@ -74,7 +74,7 @@ export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocument
 }
 export interface DispatchParams extends MaterialPageParams { next_team_id?: string | number; status?: Exclude<DispatchStatus, 'partial'>; entry_kind?: DispatchKind; material_type?: MaterialType }
 export interface DispatchLine extends SludgeMeasurement { warehouse_location?: string | null; warehouse_location_reservation_key?: string | null; source_transfer_id: number; quantity: number; weight: number; material_type?: MaterialType | null; purpose_id?: number | null }
-export type CreateDispatch = { notes?: string | null; idempotency_key: string; lines: DispatchLine[]; quantity_clearances?: import('./materialTransfer').OutboundQuantityClearance[] } & (
+export type CreateDispatch = { notes?: string | null; idempotency_key: string; lines: DispatchLine[]; quantity_adjustments?: Omit<CreateQuantityAdjustment, 'idempotency_key'>[]; quantity_clearances?: import('./materialTransfer').OutboundQuantityClearance[] } & (
   { entry_kind?: 'transfer'; next_team_id: number; external_destination?: never }
   | { entry_kind: ExternalEntryKind; next_team_id?: null; external_destination: string }
 )

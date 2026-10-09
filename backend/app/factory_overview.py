@@ -263,7 +263,7 @@ def factory_overview(db: Session, days: int = 30) -> dict:
         for code, name, _, _ in MATERIAL_TEAMS
     ]
     totals = {
-        key: round(sum(row[key] for row in balances.values()), 3)
+        key: round(sum(row[key] for row in balances.values()), 6)
         if key.endswith("weight")
         else sum(row[key] for row in balances.values())
         for key in BALANCE_KEYS
@@ -390,7 +390,7 @@ def factory_overview(db: Session, days: int = 30) -> dict:
     zero = {"quantity": 0, "weight": 0}
     period_totals = {
         key: {
-            unit: round(sum(row[unit] for row in values.values()), 3)
+            unit: round(sum(row[unit] for row in values.values()), 6)
             if unit == "weight"
             else sum(row[unit] for row in values.values())
             for unit in zero

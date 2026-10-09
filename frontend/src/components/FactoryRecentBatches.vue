@@ -19,7 +19,7 @@ function advance() {
 function focusOut(event: FocusEvent) {
   focused.value = (event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)
 }
-const format = (value: number) => new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)
+const format = (value: number) => new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(value)
 const label = (row: FactoryRecentBatch) => row.entry_kind === 'warehouse_receipt' ? '已入库' : dispatchStatusLabel(row.status, row.entry_kind)
 </script>
 <template>

@@ -5,7 +5,6 @@ import { ElInputNumber, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialStockActionDialog from './MaterialStockActionDialog.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
-import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import type { MaterialDispatch, MaterialLoss, StockBatch } from '@/types/teamMaterials'
@@ -77,9 +76,9 @@ describe('source batch dispatch and loss drafts', () => {
     row.sludge_available_gross_weight = 1.005
     await render('dispatch', [row]); await destination(1)
     expect(wrapper.get('input[aria-label="TL10有效材料占比"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('input[aria-label="TL10废泥实重"]').element).toHaveProperty('value', '1.005')
+    expect(wrapper.get('input[aria-label="TL10废泥实重"]').element).toHaveProperty('value', '1.005000')
     await wrapper.get('textarea').setValue('废泥回库'); await submit()
-    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ lines: [expect.objectContaining({ weight: .101, sludge_gross_weight: 1.005, sludge_content_percent: 10 })] }))
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ lines: [expect.objectContaining({ weight: .1005, sludge_gross_weight: 1.005, sludge_content_percent: 10 })] }))
   })
   it('keeps leftover pieces unless the optional clearance is explicitly requested', async () => {
     await render('dispatch', [source()]); await destination()
@@ -153,7 +152,7 @@ describe('source batch dispatch and loss drafts', () => {
     await render('dispatch', [row]); await destination()
     expect(wrapper.text()).toContain('当前仓位 未分配仓位')
     expect(wrapper.text()).not.toContain('历史仓位')
-    expect(wrapper.text()).not.toContain('加工后件数变化')
+    expect(wrapper.text()).not.toContain('登记加工后件数')
     expect(wrapper.text()).not.toContain('拆分物料')
     expect(wrapper.findAllComponents(ElSelect).some(select => String(select.attributes('aria-label')).includes('物料类型'))).toBe(false)
     await submit()
@@ -179,21 +178,48 @@ describe('source batch dispatch and loss drafts', () => {
     ])
   })
 
-  it('refreshes all split-source balances after processing without overwriting the dispatch draft', async () => {
-    vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({ source_transfer_id: 10, batch_no: 'TL10', quantity: 100, weight: 10, revision: 0, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
+  it('stages a processing count with outbound without a separate mutation', async () => {
+    vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({ source_transfer_id: 10, batch_no: 'TL10', quantity: 100, weight: 10, revision: 7, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
+    const change = vi.spyOn(teamMaterialApi, 'changeQuantity')
     await render('dispatch', [source()]); await destination()
     const inputs = wrapper.findAllComponents(ElInputNumber)
     inputs[0]!.vm.$emit('update:modelValue', 3); inputs[1]!.vm.$emit('update:modelValue', .3)
-    await wrapper.findAll('button').find(button => button.text() === '加工后件数变化？更新未转出件数')!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === '登记加工后件数')!.trigger('click')
     await flushPromises()
-    expect(wrapper.getComponent(QuantityAdjustmentDialog).props('sourceId')).toBe(10)
-    wrapper.getComponent(QuantityAdjustmentDialog).vm.$emit('saved', {})
-    await flushPromises()
-    expect(inputs[0]!.props('modelValue')).toBe(3)
-    expect(inputs[1]!.props('modelValue')).toBe(.3)
-    expect(wrapper.text()).toContain('加工件数已更新')
+    wrapper.findAllComponents(ElInputNumber).find(input => input.props('ariaLabel')?.endsWith('加工后未转出件数'))!.vm.$emit('update:modelValue', 120)
     await submit()
-    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ next_team_id: 3, lines: [{ source_transfer_id: 10, quantity: 3, weight: .3, material_type: 'semi_finished' }] }))
+    expect(change).not.toHaveBeenCalled()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ quantity_adjustments: [{ source_transfer_id: 10, quantity: 120, expected_revision: 7, reason: '' }], lines: [{ source_transfer_id: 10, quantity: 3, weight: .3, material_type: 'semi_finished' }] }))
+  })
+  it('discards a staged recount when outbound is canceled and opens an enabled field after loading', async () => {
+    let resolve!: (value: Awaited<ReturnType<typeof teamMaterialApi.quantityContext>>) => void
+    vi.spyOn(teamMaterialApi, 'quantityContext').mockReturnValue(new Promise(done => { resolve = done }))
+    const change = vi.spyOn(teamMaterialApi, 'changeQuantity')
+    await render('dispatch', [source()]); await destination()
+    await wrapper.findAll('button').find(button => button.text() === '登记加工后件数')!.trigger('click')
+    expect(wrapper.find('input[aria-label="TL10加工后未转出件数"]').exists()).toBe(false)
+    resolve({ source_transfer_id: 10, batch_no: 'TL10', quantity: 100, weight: 10, revision: 7, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
+    await flushPromises()
+    const field = wrapper.get('input[aria-label="TL10加工后未转出件数"]')
+    expect(field.attributes('disabled')).toBeUndefined()
+    expect(field.attributes('aria-disabled')).not.toBe('true')
+    await field.setValue('120'); await field.trigger('change')
+    await wrapper.findAll('button').find(button => button.text() === '取消')!.trigger('click')
+    expect(change).not.toHaveBeenCalled()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    await wrapper.setProps({ modelValue: false }); await wrapper.setProps({ modelValue: true })
+    expect(wrapper.find('input[aria-label="TL10加工后未转出件数"]').exists()).toBe(false)
+  })
+  it('removes the recount draft when its last outbound line is removed', async () => {
+    vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({ source_transfer_id: 10, batch_no: 'TL10', quantity: 100, weight: 10, revision: 7, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
+    await render(); await destination()
+    await wrapper.findAll('button').find(button => button.text() === '登记加工后件数')!.trigger('click')
+    await flushPromises()
+    wrapper.findAllComponents(ElInputNumber).find(input => input.props('ariaLabel')?.endsWith('加工后未转出件数'))!.vm.$emit('update:modelValue', 120)
+    await wrapper.findAll('button').find(button => button.text() === '移除')!.trigger('click')
+    await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ lines: [{ source_transfer_id: 11, quantity: 100, weight: 10, material_type: 'semi_finished' }] }))
+    expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].quantity_adjustments).toBeUndefined()
   })
   it('requires a destination purpose per batch and clears choices when the destination changes', async () => {
     vi.mocked(teamMaterialApi.purposes).mockResolvedValue([{ id: 31, team_id: 3, name: '检验', active: true, version: 1 }, { id: 32, team_id: 3, name: '去毛刺', active: true, version: 1 }])
@@ -229,7 +255,7 @@ describe('source batch dispatch and loss drafts', () => {
     ;[80, 8, 21, 2.001].forEach((value, i) => inputs[i]!.vm.$emit('update:modelValue', value))
     wrapper.findAllComponents(ElSelect).filter(select => select.props('ariaLabel')?.endsWith('物料类型'))[1]!.vm.$emit('update:modelValue', 'waste')
     await wrapper.get('textarea').setValue('加工废料回库'); await flushPromises()
-    expect(wrapper.text()).toContain('提交后账面缺口 1 件 / 0.001 kg')
+    expect(wrapper.text()).toContain('本次转出比账面剩余多 0.001 kg')
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ next_team_id: 1, lines: [
       { source_transfer_id: 10, quantity: 80, weight: 8, material_type: 'semi_finished' },
@@ -261,7 +287,7 @@ describe('source batch dispatch and loss drafts', () => {
     expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(100)
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledTimes(2)
-    expect(wrapper.text()).toContain('账面缺口')
+    expect(wrapper.text()).toContain('仅记录重量差异')
     wrapper.findAllComponents(ElInputNumber).forEach(input => input.vm.$emit('update:modelValue', 0.0))
     wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 1)
     wrapper.findAllComponents(ElInputNumber)[2]!.vm.$emit('update:modelValue', 1)
@@ -304,7 +330,7 @@ it('converts a countable source to chips without sending its piece quantity', as
   await render('dispatch', [source()]); await destination(1)
   wrapper.findAllComponents(ElSelect).find(item => item.props('ariaLabel') === 'TL10物料类型')!.vm.$emit('update:modelValue', 'scrap_chips'); await flushPromises()
   expect(wrapper.find('input[aria-label="TL10件数"]').exists()).toBe(false)
-  expect(wrapper.text()).not.toContain('加工后件数变化')
+  expect(wrapper.text()).not.toContain('登记加工后件数')
   await submit()
   expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ lines: [expect.objectContaining({ quantity: 0, weight: 10, material_type: 'scrap_chips' })], quantity_clearances: [] }))
 })

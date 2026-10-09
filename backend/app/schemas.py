@@ -11,6 +11,19 @@ DIRECT_MATERIAL_TYPE_PATTERN = (
 SCRAP_MATERIAL_TYPES = ("defective", "waste", "sludge", "scrap_chips")
 
 
+class ProcessingQuantity(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_transfer_id: int = Field(ge=1)
+    quantity: int = Field(ge=0, le=2_147_483_647)
+    expected_revision: int = Field(ge=0)
+    reason: str = Field(default="", max_length=2000)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value):
+        return value.strip()
+
+
 class APIModel(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -81,7 +94,7 @@ class WarehouseLocationChoice(APIModel):
 
 
 class SludgeMeasurement(BaseModel):
-    sludge_gross_weight: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=3)
+    sludge_gross_weight: Decimal | None = Field(default=None, gt=0, max_digits=17, decimal_places=6)
     sludge_content_percent: Decimal | None = Field(default=None, gt=0, le=100, max_digits=5, decimal_places=2)
 
 
@@ -92,7 +105,7 @@ class MaterialTransferCreate(MaterialTransferDocumentFields, WarehouseLocationCh
     next_team_id: int = Field(ge=1)
     purpose_id: int | None = Field(default=None, ge=1)
     quantity: int = Field(ge=0, le=2_147_483_647)
-    weight: Decimal = Field(ge=0, max_digits=14, decimal_places=3)
+    weight: Decimal = Field(ge=0, max_digits=17, decimal_places=6)
     notes: str | None = Field(default=None, max_length=2000)
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=100)
 
@@ -130,7 +143,7 @@ class MaterialTransferUpdate(MaterialTransferDocumentFields, WarehouseLocationCh
     next_team_id: int | None = Field(default=None, ge=1)
     purpose_id: int | None = Field(default=None, ge=1)
     quantity: int | None = Field(default=None, ge=0, le=2_147_483_647)
-    weight: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=3)
+    weight: Decimal | None = Field(default=None, ge=0, max_digits=17, decimal_places=6)
     notes: str | None = Field(default=None, max_length=2000)
     expected_version: int | None = Field(default=None, ge=1)
     quantity_clearance: OutboundQuantityClearance | None = None
@@ -163,7 +176,7 @@ class WarehouseReceiptCreate(MaterialTransferDocumentFields, WarehouseLocationCh
     material_name: str = Field(min_length=1, max_length=160)
     material_type: str = Field(pattern=DIRECT_MATERIAL_TYPE_PATTERN)
     quantity: int = Field(ge=0, le=2_147_483_647)
-    weight: Decimal = Field(ge=0, max_digits=14, decimal_places=3)
+    weight: Decimal = Field(ge=0, max_digits=17, decimal_places=6)
     notes: str = Field(default="", max_length=2000)
     idempotency_key: str = Field(min_length=1, max_length=100)
     receipt_kind: Literal["external", "return"] = "external"

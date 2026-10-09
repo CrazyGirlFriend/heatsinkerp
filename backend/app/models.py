@@ -75,7 +75,7 @@ class WarehousePlacement(Base):
         ForeignKey("material_transfers.id", ondelete="CASCADE"), primary_key=True
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    weight: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
     __table_args__ = (
         Index("ix_wp_transfer", "transfer_id"),
         CheckConstraint("quantity >= 0 AND weight >= 0", name="ck_wp_nonnegative"),
@@ -293,7 +293,7 @@ class MaterialTransfer(Base):
     warehouse_location: Mapped[str | None] = mapped_column(String(80))
     rejection_reason: Mapped[str | None] = mapped_column(Text)
     # weight is accounted material mass; these retain the original sludge measurement.
-    sludge_gross_weight: Mapped[Decimal | None] = mapped_column(Numeric(14, 3))
+    sludge_gross_weight: Mapped[Decimal | None] = mapped_column(Numeric(17, 6))
     sludge_content_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     material_type: Mapped[str | None] = mapped_column(String(32))
     source_batch_no: Mapped[str | None] = mapped_column(String(80))
@@ -347,7 +347,7 @@ class MaterialTransfer(Base):
     next_team_code: Mapped[str | None] = mapped_column(String(64))
     next_team_name: Mapped[str | None] = mapped_column(String(120))
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    weight: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="pending", server_default="pending", index=True
     )
@@ -408,21 +408,21 @@ class MaterialStockBalance(Base):
     )
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
     received_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    received_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    received_weight: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
     adjusted_quantity: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     on_hand_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    on_hand_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    on_hand_weight: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
     reserved_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    reserved_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    reserved_weight: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
     in_transit_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    in_transit_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    in_transit_weight: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
     dispatched_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    dispatched_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    dispatched_weight: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
     lost_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    lost_weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    lost_weight: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     __table_args__ = (
         Index("ix_msb_team_lot", "team_id", "transfer_id"),
@@ -433,10 +433,10 @@ class MaterialStockBalance(Base):
         ),
         *(
             CheckConstraint(
-                f"round(received_{amount}{' + adjusted_quantity' if amount == 'quantity' else ''}, 3) = round(on_hand_{amount} + reserved_{amount} + dispatched_{amount} + lost_{amount}, 3)",
+                f"round(received_{amount}{' + adjusted_quantity' if amount == 'quantity' else ''}, {precision}) = round(on_hand_{amount} + reserved_{amount} + dispatched_{amount} + lost_{amount}, {precision})",
                 name=f"ck_msb_reconcile_{amount}",
             )
-            for amount in ("quantity", "weight")
+            for amount, precision in (("quantity", 3), ("weight", 6))
         ),
         *(
             CheckConstraint(
@@ -511,7 +511,7 @@ class MaterialLoss(Base):
         ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    weight: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    weight: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -541,7 +541,7 @@ class MaterialQuantityAdjustment(Base):
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
     before_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     after_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    weight_snapshot: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
+    weight_snapshot: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
     stock_revision_before: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)

@@ -204,7 +204,7 @@ def stock_positions(db, items):
         for unit in ("quantity", "weight"):
             physical = item["on_hand_" + unit] + item["external_pending_" + unit]
             item["physical_" + unit] = physical
-            item["unassigned_" + unit] = round(max(0, physical - sum(row[unit] for row in rows)), 3)
+            item["unassigned_" + unit] = round(max(0, physical - sum(row[unit] for row in rows)), 6)
     return items
 
 

@@ -10,7 +10,7 @@ const labels: Record<string, string> = {
   source_serial_no: '原流水号', source_transfer_batch_no: '来源批次',
   warehouse_location: '入库仓位',
   sludge_gross_weight: '废泥实重（kg）', sludge_content_percent: '有效材料占比（%）',
-  stock_quantity: '未转出件数', stock_weight: '未转出重量', shortage_quantity: '账面缺口件数', shortage_weight: '账面缺口重量', reason: '加工说明',
+  stock_quantity: '未转出件数', stock_weight: '未转出重量', shortage_quantity: '件数变动差值', shortage_weight: '重量差异', reason: '加工说明',
   outbound_batches: '关联出库批次',
   receipt_kind: '入库来源类别', external_source: '外部来源单位', return_dispatch_no: '原出库批次', rejection_reason: '退回核对原因',
   main_system_schema_version: '主系统接口版本', main_system_revision: '主系统资料版本',

@@ -13,7 +13,7 @@ const unit = computed(() => props.metric === 'weight' ? 'kg' : '件')
 const available = computed(() => props.trace.holdings !== undefined)
 const add = (total: TraceAmount, amount: TraceAmount) => {
   total.quantity += amount.quantity
-  total.weight = Math.round((total.weight + amount.weight) * 1000) / 1000
+  total.weight = Math.round((total.weight + amount.weight) * 1000000) / 1000000
 }
 const stock = computed(() => {
   const teams = new Map<string, { quantity: number; weight: number; natures: Array<TraceAmount & { name: string }> }>()
@@ -49,7 +49,7 @@ const rows = computed(() => props.teams.map((name, index) => ({ name,
 </script>
 
 <template>
-  <aside class="trace-stock-summary" :class="{ compact, 'has-gap': trace.shortage && (trace.shortage.quantity > 0 || trace.shortage.weight > 0) }" aria-label="流水号当前库存">
+  <aside class="trace-stock-summary" :class="{ compact, 'has-gap': metric === 'weight' && trace.shortage && trace.shortage.weight > 0 }" aria-label="流水号当前库存">
     <header class="stock-heading"><h2>当前正常料库存</h2><div class="stock-unit" role="group" aria-label="库存单位"><button type="button" :aria-pressed="metric === 'quantity'" @click="emit('update:metric', 'quantity')">件数</button><button type="button" :aria-pressed="metric === 'weight'" @click="emit('update:metric', 'weight')">重量</button></div></header>
     <div class="stock-rows">
       <div v-for="row in rows" :key="row.name" class="stock-row" :class="{ 'stock-row--external': row.external }" :style="{ top: `${row.top}%`, height: `${10000 / teams.length / (range.end - range.start)}%` }" :data-team="row.name">
@@ -68,7 +68,7 @@ const rows = computed(() => props.teams.map((name, index) => ({ name,
         <template #reference><button type="button" class="stock-waste" :disabled="!stock.waste.length" aria-label="查看废料分类与存放班组"><span>废料另计 <i v-if="stock.waste.length">›</i></span><b>{{ available ? num(stock.scrap.weight) : '—' }} <small v-if="available">kg</small></b></button></template>
         <div class="stock-breakdown stock-waste-details"><section v-for="nature in stock.waste" :key="nature.name"><header><b>{{ nature.name }}</b><b>{{ num(nature.weight) }} kg</b></header><div v-for="team in nature.teams" :key="team.name"><span>{{ team.name }}</span><span>{{ num(team.weight) }} kg<template v-if="team.quantity"> · {{ num(team.quantity) }} 件</template></span></div></section></div>
       </ElPopover>
-      <div v-if="trace.shortage && (trace.shortage.quantity > 0 || trace.shortage.weight > 0)" class="stock-gap"><span>账面缺口</span><b>{{ num(trace.shortage[metric]) }} <small>{{ unit }}</small></b></div>
+      <div v-if="metric === 'weight' && trace.shortage && trace.shortage.weight > 0" class="stock-gap"><span>重量差异</span><b>{{ num(trace.shortage[metric]) }} <small>{{ unit }}</small></b></div>
       <div class="stock-shipped"><span>成品已发货</span><b>{{ num(stock.shipped[metric]) }} <small>{{ unit }}</small></b></div>
     </footer>
   </aside>

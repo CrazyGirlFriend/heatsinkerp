@@ -258,7 +258,7 @@ def test_stock_validation_and_atomic_rollback_on_audit_failure(client, stock_set
     setup = stock_setup
     lot = receive_lot(client, setup)
     valid = {"source_transfer_id": lot["id"], "quantity": 1, "weight": "0.100"}
-    for changes in ({"quantity": -1}, {"weight": "0.0001"}, {"quantity": 0, "weight": 0}, {"quantity": 1.5}, {"source_transfer_id": 0}):
+    for changes in ({"quantity": -1}, {"weight": "0.0000001"}, {"quantity": 0, "weight": 0}, {"quantity": 1.5}, {"source_transfer_id": 0}):
         assert dispatch(client, setup, [{**valid, **changes}]).status_code == 422
     assert dispatch(client, setup, [valid, {**valid, 'source_transfer_id': 999999}]).status_code == 404
     assert dispatch(client, setup, []).status_code == 422

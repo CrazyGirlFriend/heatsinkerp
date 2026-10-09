@@ -386,7 +386,7 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
         sludge_measurement(material_type, weight,
             *(getattr(payload, field) if field in supplied else getattr(transfer, field) for field in SLUDGE_FIELDS),
             source=transfer.stock_source if transfer.source_transfer_id else None,
-            legacy=transfer.material_type == "sludge" and transfer.sludge_content_percent is None)
+            legacy=transfer.material_type == "sludge" and transfer.sludge_content_percent is None, existing=transfer)
         if quantity == 0 and weight == 0:
             raise HTTPException(422, "quantity or weight must be positive")
         amounts_changed = quantity != transfer.quantity or weight != transfer.weight

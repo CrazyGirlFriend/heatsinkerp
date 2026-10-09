@@ -46,7 +46,7 @@ def material_name(column):
 
 
 def amount(quantity=0, weight=0):
-    return {"quantity": int(quantity or 0), "weight": round(float(weight or 0), 3)}
+    return {"quantity": int(quantity or 0), "weight": round(float(weight or 0), 6)}
 
 
 def serial_index():
@@ -292,7 +292,7 @@ def yields(db, owned):
         assigned_in[(item["target_serial"], item["material"])] += item["weight"]
         assigned_out[(item["source_serial"], item["material"])] += item["weight"]
     remaining = {r["serial_no"] for r in owned}
-    shortages = {r["serial_no"] for r in owned if r["shortage_quantity"] or r["shortage_weight"]}
+    shortages = {r["serial_no"] for r in owned if r["shortage_weight"]}
     uncertain = {
         row["serial_no"]
         for row in rows
@@ -421,16 +421,13 @@ def get_team_yields(
                 "output_weight": float(output.get(r["team_id"], 0)),
                 "rate": round(float(output.get(r["team_id"], 0) / r["input_weight"]) * 100, 2)
                 if r["input_weight"] > 0
-                and not r["shortage_quantity"]
                 and not r["shortage_weight"]
                 and output.get(r["team_id"], 0) <= r["input_weight"]
                 and not r["remaining_weight"]
                 and not r["remaining_quantity"]
                 else None,
                 "status": "needs_review"
-                if r["shortage_quantity"]
-                or r["shortage_weight"]
-                or output.get(r["team_id"], 0) > r["input_weight"]
+                if r["shortage_weight"] or output.get(r["team_id"], 0) > r["input_weight"]
                 else "in_progress"
                 if r["remaining_weight"] or r["remaining_quantity"]
                 else "complete",
@@ -625,8 +622,8 @@ def get_dashboard(db: Session = Depends(get_db)):
         materials.append(
             {
                 "material": name,
-                "input_weight": round(source, 3),
-                "output_weight": round(output, 3),
+                "input_weight": round(source, 6),
+                "output_weight": round(output, 6),
                 "rate": round(output / source * 100, 2) if source else None,
                 "completed_count": len(closed),
                 "active_count": len(rows) - len(closed),

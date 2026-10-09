@@ -27,7 +27,7 @@ class OpeningLine(MaterialTransferDocumentFields, SludgeMeasurement):
     material_name: str = Field(min_length=1, max_length=160)
     purpose_id: int | None = Field(default=None, ge=1)
     quantity: int = Field(ge=0, le=2_147_483_647)
-    weight: Decimal = Field(ge=0, max_digits=14, decimal_places=3)
+    weight: Decimal = Field(ge=0, max_digits=17, decimal_places=6)
     notes: str | None = Field(default=None, max_length=2000)
 
     @field_validator("serial_no")

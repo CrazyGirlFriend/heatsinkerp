@@ -15,7 +15,7 @@ const materialKey = computed(() => JSON.stringify(material.value))
 const owner = Symbol('warehouse-line')
 const selectedStock = computed(() => items.value.find(item => item.name === props.modelValue))
 const currentStock = computed(() => selectedStock.value?.batches.filter(batch => batch.status === 'received') || [])
-const amount = (value: number) => value.toLocaleString('zh-CN', { maximumFractionDigits: 3 })
+const amount = (value: number) => value.toLocaleString('zh-CN', { maximumFractionDigits: 6 })
 const currentQuantity = computed(() => amount(currentStock.value.reduce((sum, batch) => sum + batch.quantity, 0)))
 const currentWeight = computed(() => amount(currentStock.value.reduce((sum, batch) => sum + batch.weight, 0)))
 let defaultAttempted = false

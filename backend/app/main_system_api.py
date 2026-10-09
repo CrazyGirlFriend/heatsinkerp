@@ -27,7 +27,7 @@ class MainSystemReceiptCreate(SludgeMeasurement):
     expected_snapshot_hash: str = Field(pattern="^[a-f0-9]{64}$")
     material_type: str = Field(pattern=DIRECT_MATERIAL_TYPE_PATTERN)
     quantity: int = Field(ge=0, le=2_147_483_647)
-    weight: Decimal = Field(ge=0, max_digits=14, decimal_places=3)
+    weight: Decimal = Field(ge=0, max_digits=17, decimal_places=6)
     notes: str = Field(default="", max_length=2000)
     idempotency_key: str = Field(min_length=1, max_length=100)
 

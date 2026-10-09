@@ -1,15 +1,15 @@
 <script setup lang="ts">
 withDefaults(defineProps<{ quantity?: number | null; weight?: number | null; prominent?: boolean; weightOnly?: boolean }>(), { prominent: false })
 function amount(value: number | null | undefined) {
-  return value == null || !Number.isFinite(value) ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)
+  return value == null || !Number.isFinite(value) ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(value)
 }
 </script>
 
 <template>
-  <span class="material-amount" :class="{ 'material-amount--prominent': prominent, 'material-amount--shortage': (quantity ?? 0) < 0 || (weight ?? 0) < 0 }">
+  <span class="material-amount" :class="{ 'material-amount--prominent': prominent, 'material-amount--shortage': (weight ?? 0) < 0 }">
     <span v-if="!weightOnly"><strong>{{ amount(quantity) }}</strong><small>件</small></span>
     <span><strong>{{ amount(weight) }}</strong><small>kg</small></span>
-    <small v-if="(quantity ?? 0) < 0 || (weight ?? 0) < 0" class="shortage-label">账面缺口</small>
+    <small v-if="(weight ?? 0) < 0" class="shortage-label">重量差异</small>
   </span>
 </template>
 

@@ -143,7 +143,7 @@ def apply_balances(db, *_):
             )
             continue
         values = {
-            name: func.round(table.c[name] + value, 3)
+            name: func.round(table.c[name] + value, 6)
             if name.endswith("weight")
             else table.c[name] + value
             for name, value in delta.items()

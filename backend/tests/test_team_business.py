@@ -194,7 +194,7 @@ def test_opening_atomic_failure_does_not_consume_permission_or_numbers(client, s
 
 
 @pytest.mark.parametrize('invalid', [{'serial_no': ' '}, {'material_name': ' '}, {'material_type': None},
-    {'quantity': -1}, {'quantity': 1.5}, {'quantity': 0, 'weight': 0}, {'weight': '1.0001'}, {'status': 'pending'}])
+    {'quantity': -1}, {'quantity': 1.5}, {'quantity': 0, 'weight': 0}, {'weight': '1.0000001'}, {'status': 'pending'}])
 def test_invalid_opening_line_never_posts(client, stock_setup, invalid):
     s = stock_setup
     assert client.post(url(s, suffix='opening-stock'), headers=s['target_headers'], json=open_payload(**invalid)).status_code == 422

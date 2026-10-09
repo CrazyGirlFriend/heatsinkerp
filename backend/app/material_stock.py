@@ -22,7 +22,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 from .auth import actor_name
 from .batch_numbers import next_transfer_batch_numbers
 from .models import MaterialDispatch, MaterialLoss, MaterialStockBalance, MaterialTransfer, SerialUrgency, Team, utcnow
-from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, SCRAP_MATERIAL_TYPES, OutboundQuantityClearance, WarehouseLocationChoice, SludgeMeasurement
+from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, SCRAP_MATERIAL_TYPES, OutboundQuantityClearance, ProcessingQuantity, WarehouseLocationChoice, SludgeMeasurement
 from .material_weight import validate_material_amounts, sludge_measurement, stock_sludge_measurements
 from .team_constants import EXTERNAL_ENTRY_KINDS, WAREHOUSE_TEAM_CODE, INSPECTION_TEAM_CODE
 from . import material_transfer_workflow as workflow
@@ -32,7 +32,7 @@ class StockAmounts(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_transfer_id: int = Field(ge=1)
     quantity: int = Field(ge=0, le=2_147_483_647)
-    weight: Decimal = Field(ge=0, max_digits=14, decimal_places=3)
+    weight: Decimal = Field(ge=0, max_digits=17, decimal_places=6)
 
     @model_validator(mode="after")
     def nonempty(self):
@@ -65,6 +65,7 @@ class DispatchCreate(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=100)
     lines: list[DispatchLine] = Field(min_length=1, max_length=100)
     quantity_clearances: list[OutboundQuantityClearance] = Field(default_factory=list, max_length=100)
+    quantity_adjustments: list[ProcessingQuantity] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="after")
     def validate_destination(self):
@@ -204,7 +205,7 @@ def create_loss(db, team_id, payload, user):
 
 def create_dispatch(db, team_id, payload, user):
     from .team_business import purpose_snapshot
-    from .quantity_adjustments import validate_outbound_clearance, record_outbound_clearance
+    from .quantity_adjustments import validate_outbound_clearance, record_outbound_clearance, record_quantity_change
     source = require_actor(user, team_id)
     external = payload.entry_kind in EXTERNAL_ENTRY_KINDS
     if external:
@@ -233,6 +234,14 @@ def create_dispatch(db, team_id, payload, user):
             clearances = {item.source_transfer_id: item for item in payload.quantity_clearances}
             if len(clearances) != len(payload.quantity_clearances) or clearances.keys() - lots.keys():
                 raise HTTPException(422, "每个来源批次只能填写一次清零原因，且必须属于本次出库")
+            adjustments = {item.source_transfer_id: item for item in payload.quantity_adjustments}
+            if len(adjustments) != len(payload.quantity_adjustments) or adjustments.keys() - lots.keys():
+                raise HTTPException(422, "每个来源批次只能登记一次加工件数，且必须属于本次出库")
+            for source_id, adjustment in adjustments.items():
+                if source.code == WAREHOUSE_TEAM_CODE:
+                    raise HTTPException(422, "库房不登记加工件数")
+                record_quantity_change(db, lots[source_id], adjustment, user,
+                    "dispatch-count:" + hashlib.sha256(f"{payload.idempotency_key}:{source_id}".encode()).hexdigest(), fingerprint(adjustment))
             stock_after = {}
             for source_id, lot in lots.items():
                 portions = [line for line in payload.lines if line.source_transfer_id == source_id]
@@ -430,7 +439,7 @@ BALANCE_KEYS = tuple(f"{prefix}_{amount}" for prefix in ("received", "dispatched
 
 
 def balance_dict(row):
-    return {key: round(float(row[key] or 0), 3) if key.endswith("weight") else int(row[key] or 0) for key in BALANCE_KEYS}
+    return {key: round(float(row[key] or 0), 6) if key.endswith("weight") else int(row[key] or 0) for key in BALANCE_KEYS}
 
 
 def literal_query(query, columns):

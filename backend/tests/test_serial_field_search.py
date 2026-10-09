@@ -81,7 +81,7 @@ def test_status_and_latest_activity_date_use_serial_state_and_factory_timezone(c
 @pytest.mark.parametrize("params", [
     {"search_field": "available_quantity", "query": "1.5"},
     {"search_field": "available_quantity", "query": "-1"},
-    {"search_field": "available_weight", "query": "0.0001"},
+    {"search_field": "available_weight", "query": "0.0000001"},
     {"search_field": "available_weight", "query": "NaN"},
     {"search_field": "available_weight", "query": "Infinity"},
     {"search_field": "available_weight", "query": "1e100"},

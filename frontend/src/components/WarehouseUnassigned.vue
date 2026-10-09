@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WeightInput from './WeightInput.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElCheckbox, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElPagination, ElSelect, ElTable, ElTableColumn } from 'element-plus'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
@@ -15,7 +16,7 @@ const emit = defineEmits<{ view: [batchNo: string]; dispatch: [batchNo: string];
 const rows = ref<StockBatch[]>([]), total = ref(0), page = ref(1), query = ref(''), error = ref(''), loading = ref(false)
 const selected = ref<StockBatch | null>(null), slots = ref<WarehouseLocation[]>([]), locationId = ref<number>()
 const currentSlot = computed(() => slots.value.find(slot => slot.id === locationId.value))
-const slotAmount = (key: 'quantity' | 'weight') => (currentSlot.value?.batches.filter(batch => batch.status === 'received').reduce((sum, batch) => sum + batch[key], 0) || 0).toLocaleString('zh-CN', { maximumFractionDigits: 3 })
+const slotAmount = (key: 'quantity' | 'weight') => (currentSlot.value?.batches.filter(batch => batch.status === 'received').reduce((sum, batch) => sum + batch[key], 0) || 0).toLocaleString('zh-CN', { maximumFractionDigits: 6 })
 const quantity = ref<number>(), weight = ref<number>(), saving = ref(false), formError = ref('')
 const { selected: checked, availableRows, checkedCount, allChecked, totals, toggle, toggleAll, reconcile } = useBatchSelection(rows, row => String(row.transfer.id), dispatchableAmounts)
 function batchDispatch() { if (props.canDispatch && checked.size && !loading.value && !error.value) emit('batchDispatch', [...checked.values()].map(row => Number(row.transfer.id))) }
@@ -88,7 +89,7 @@ onBeforeUnmount(() => { disposed = true; ++generation; ++slotGeneration })
         <p v-if="currentSlot?.batches.length">当前库存 {{ slotAmount('quantity') }} 件 · {{ slotAmount('weight') }} kg · {{ currentSlot.batches.length }} 批</p>
         <div class="dialog-form-grid">
         <ElFormItem label="件数" required><ElInputNumber v-model="quantity" :min="0" :max="selected?.unassigned_quantity" :precision="0" :disabled="saving" aria-label="安排仓位件数" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
-        <ElFormItem label="重量" required><ElInputNumber v-model="weight" :min="0" :max="selected?.unassigned_weight" :precision="3" :disabled="saving" aria-label="安排仓位重量" controls-position="right"><template #suffix><span class="dialog-input-unit">kg</span></template></ElInputNumber></ElFormItem>
+        <ElFormItem label="重量" required><WeightInput v-model="weight" :max="selected?.unassigned_weight" :disabled="saving" ariaLabel="安排仓位重量" /></ElFormItem>
         </div>
         <ElAlert v-if="formError" :title="formError" type="error" :closable="false" />
       </ElForm>

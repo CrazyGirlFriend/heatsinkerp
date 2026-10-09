@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WeightInput from './WeightInput.vue'
 import FormPageNav from './FormPageNav.vue'
 import FormValidationNotice from './FormValidationNotice.vue'
 import MaterialInput from './MaterialInput.vue'
@@ -96,10 +97,10 @@ function validate(): boolean {
   else if (form.serialNo.trim().length > 80) error.value = '流水号不能超过 80 个字符'
   else if (!form.document.material_name.trim()) error.value = '请输入材质'
   else if (!form.materialType) error.value = '请选择物料类型'
-  else if (form.materialType === 'sludge' && !sludgeWeight(form.gross, form.percent)) error.value = '请填写废泥实重和有效材料占比，折算重量须达到 0.001 kg'
+  else if (form.materialType === 'sludge' && !sludgeWeight(form.gross, form.percent)) error.value = '请填写废泥实重和有效材料占比，折算重量须达到 0.000001 kg'
   else if (form.warehouseLocation.length > 80) error.value = '仓位不能超过 80 个字符'
   else if (enteredQuantity.value == null || !Number.isInteger(enteredQuantity.value) || enteredQuantity.value < 0 || enteredQuantity.value > 2147483647) error.value = '入库件数须为 0 至 2147483647 的整数'
-  else if (form.weight == null || !Number.isFinite(form.weight) || form.weight < 0 || form.weight > 99999999999.999 || Math.abs(form.weight * 1000 - Math.round(form.weight * 1000)) > 0.0001) error.value = '入库重量须为非负数，最多保留 3 位小数'
+  else if (form.weight == null || !Number.isFinite(form.weight) || form.weight < 0 || form.weight > 99999999999.999 || Math.abs(form.weight * 1000000 - Math.round(form.weight * 1000000)) > 0.0001) error.value = '入库重量须为非负数，最多保留 6 位小数'
   else if (weightOnly.value && !form.weight) error.value = '请填写大于 0 的入库重量'
   else if (enteredQuantity.value === 0 && form.weight === 0) error.value = '入库件数和重量至少一项大于 0'
   else if (form.notes.trim().length > 2000) error.value = '入库说明不能超过 2000 个字符'
@@ -190,7 +191,7 @@ onBeforeUnmount(() => { ++generation })
           <MaterialDeliveryFields v-if="form.receiptKind === 'external' && !weightOnly" v-model:date="form.deliveryDate" v-model:quantity="form.deliveryQuantity" :disabled="readonly" />
           <div class="receipt-grid dialog-form-grid">
             <ElFormItem v-if="!weightOnly" label="入库件数" required><ElInputNumber v-model="form.quantity" aria-label="入库件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="readonly"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
-            <ElFormItem v-if="form.materialType !== 'sludge'" label="入库重量" required><ElInputNumber v-model="form.weight" aria-label="入库重量" :min="0" :max="99999999999.999" :precision="3" :step="0.001" controls-position="right" :disabled="readonly"><template #suffix><span class="dialog-input-unit">kg</span></template></ElInputNumber></ElFormItem>
+            <ElFormItem v-if="form.materialType !== 'sludge'" label="入库重量" required><WeightInput v-model="form.weight" ariaLabel="入库重量" :max="99999999999.999" :disabled="readonly" /></ElFormItem>
             <SludgeWeightFields v-else v-model:gross="form.gross" v-model:percent="form.percent" :disabled="readonly" @update:weight="form.weight = $event" />
             <ElFormItem label="入库仓位" class="dialog-field-wide"><WarehouseLocationSelect v-model="form.warehouseLocation" v-model:reservation-key="form.warehouseLocationKey" :team-id="teamId" :serial-no="form.serialNo" :material-name="form.document.material_name" :material-type="form.materialType" :active="modelValue" :disabled="readonly" @busy-change="locationBusy = $event" /></ElFormItem>
           </div>
