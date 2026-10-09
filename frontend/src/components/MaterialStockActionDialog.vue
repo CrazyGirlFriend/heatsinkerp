@@ -41,6 +41,7 @@ const errorMessage = ref('')
 const balanceNotice = ref('')
 const batchPurposeId = ref<number>()
 const processing = reactive<Record<number, { quantity?: number; original?: number; revision?: number; reason: string; loading: boolean; error: string }>>({})
+const weightToleranceKg = 1
 let generation = 0
 let requestKey = ''
 let fingerprint = ''
@@ -76,7 +77,7 @@ const weightNotice = computed(() => isLoss.value ? '' : lines.value.flatMap((lin
   const same = lines.value.filter(other => other.source.transfer.id === line.source.transfer.id)
   if (same.some(other => amountError(enteredQuantity(other), other.weight, other.latest))) return []
   const difference = Math.round((same.reduce((sum, other) => sum + Number(other.weight), 0) - Number(dispatchableAmounts(line.latest).weight)) * 1000000) / 1000000
-  return difference > 0 ? [`${line.source.transfer.batch_no}：本次转出比账面剩余多 ${difference} kg，仅记录重量差异，不计为损耗`] : []
+  return difference > 0 ? [`${line.source.transfer.batch_no}：本次转出比账面剩余多 ${difference} kg，${difference <= weightToleranceKg ? `在允许的 ${weightToleranceKg} kg 误差范围内` : `超过允许的 ${weightToleranceKg} kg 误差，请核对，仍可提交`}；仅记录重量差异，不计为损耗`] : []
 }).join('；'))
 const clearanceReasons = reactive<Record<string, string>>({})
 const clearanceSelected = reactive<Record<string, boolean>>({})

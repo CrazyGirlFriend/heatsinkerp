@@ -256,11 +256,36 @@ describe('source batch dispatch and loss drafts', () => {
     wrapper.findAllComponents(ElSelect).filter(select => select.props('ariaLabel')?.endsWith('物料类型'))[1]!.vm.$emit('update:modelValue', 'waste')
     await wrapper.get('textarea').setValue('加工废料回库'); await flushPromises()
     expect(wrapper.text()).toContain('本次转出比账面剩余多 0.001 kg')
+    expect(wrapper.text()).toContain('在允许的 1 kg 误差范围内')
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ next_team_id: 1, lines: [
       { source_transfer_id: 10, quantity: 80, weight: 8, material_type: 'semi_finished' },
       { source_transfer_id: 10, quantity: 21, weight: 2.001, material_type: 'waste' },
     ] }))
+  })
+  it.each([1, 1.000001])('warns for a cumulative per-source difference of %s kg without blocking', async (difference) => {
+    await render('dispatch', [source()]); await destination()
+    await wrapper.findAll('button').find(button => button.text() === '拆分物料')!.trigger('click')
+    await flushPromises()
+    const inputs = wrapper.findAllComponents(ElInputNumber)
+    ;[50, 5, 50, 5 + difference].forEach((value, index) => inputs[index]!.vm.$emit('update:modelValue', value))
+    await flushPromises()
+    expect(wrapper.text()).toContain(difference <= 1 ? '在允许的 1 kg 误差范围内' : '超过允许的 1 kg 误差，请核对，仍可提交')
+    await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalled()
+  })
+  it('includes an earlier weight difference when the same source is used again', async () => {
+    const row = source()
+    row.available_quantity = 0; row.available_weight = -.6
+    vi.mocked(teamMaterialApi.refreshSource).mockResolvedValue(row)
+    await render('dispatch', [row]); await destination()
+    const inputs = wrapper.findAllComponents(ElInputNumber)
+    inputs[0]!.vm.$emit('update:modelValue', 0); inputs[1]!.vm.$emit('update:modelValue', .5)
+    await flushPromises()
+    expect(wrapper.text()).toContain('本次转出比账面剩余多 1.1 kg')
+    expect(wrapper.text()).toContain('超过允许的 1 kg 误差，请核对，仍可提交')
+    await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ lines: [expect.objectContaining({ quantity: 0, weight: .5 })] }))
   })
   it('allows optional scrap reasons but excludes production destinations', async () => {
     await render('dispatch', [source()]); await destination(3)

@@ -5,6 +5,7 @@ from fastapi import HTTPException
 
 SLUDGE_FIELDS = ("sludge_gross_weight", "sludge_content_percent")
 WEIGHT_ONLY_TYPES = ("sludge", "scrap_chips")
+MATERIAL_WEIGHT_TOLERANCE = Decimal("1")  # Allowed cumulative difference per source batch, kg.
 
 
 def validate_material_amounts(material_type, quantity, weight, *, existing=None):

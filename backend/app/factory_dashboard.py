@@ -19,6 +19,7 @@ from .auth import get_current_user
 from .config import settings
 from .database import get_db
 from .material_stock import literal_query, stock_table
+from .material_weight import MATERIAL_WEIGHT_TOLERANCE
 from .models import MaterialTransfer, SerialDeliveryPlan, Team, utcnow
 from .record_filters import day_bounds
 from .schemas import SCRAP_MATERIAL_TYPES
@@ -173,6 +174,10 @@ def ownership(db):
                 func.min(stock.c.received_at).label("oldest_at"),
                 func.sum(stock.c.shortage_quantity).label("shortage_quantity"),
                 func.sum(stock.c.shortage_weight).label("shortage_weight"),
+                func.max(stock.c.shortage_weight).label("max_shortage_weight"),
+                func.sum(case((or_(quantity > 0, weight > 0), 1), else_=0)).label(
+                    "remaining_count"
+                ),
             )
             .where(
                 or_(
@@ -291,8 +296,13 @@ def yields(db, owned):
     for item in assignments:
         assigned_in[(item["target_serial"], item["material"])] += item["weight"]
         assigned_out[(item["source_serial"], item["material"])] += item["weight"]
-    remaining = {r["serial_no"] for r in owned}
-    shortages = {r["serial_no"] for r in owned if r["shortage_weight"]}
+    remaining = {r["serial_no"] for r in owned if r["remaining_count"]}
+    shortages = {
+        r["serial_no"] for r in owned if r["max_shortage_weight"] > MATERIAL_WEIGHT_TOLERANCE
+    }
+    differences = defaultdict(Decimal)
+    for item in owned:
+        differences[(item["serial_no"], item["material"])] += item["shortage_weight"]
     uncertain = {
         row["serial_no"]
         for row in rows
@@ -312,7 +322,8 @@ def yields(db, owned):
     result = []
     for row in rows:
         key = (row["serial_no"], row["material"])
-        source = float(row["input_weight"] + assigned_in[key] - assigned_out[key])
+        source_weight = row["input_weight"] + assigned_in[key] - assigned_out[key]
+        source = float(source_weight)
         output = float(row["output_weight"])
         status = (
             "needs_review"
@@ -320,7 +331,7 @@ def yields(db, owned):
             or row["serial_no"] in uncertain
             or source < 0
             or (source == 0 and not assigned_out[key])
-            or output > source
+            or row["output_weight"] > source_weight + differences[key]
             else "in_progress"
             if row["serial_no"] in remaining or row["pending"]
             else "complete"
@@ -377,12 +388,25 @@ def get_team_yields(
                 func.sum(stock.c.received_weight).label("input_weight"),
                 func.sum(stock.c.shortage_quantity).label("shortage_quantity"),
                 func.sum(stock.c.shortage_weight).label("shortage_weight"),
-                func.sum(stock.c.on_hand_weight + stock.c.reserved_weight).label(
-                    "remaining_weight"
-                ),
-                func.sum(stock.c.on_hand_quantity + stock.c.reserved_quantity).label(
-                    "remaining_quantity"
-                ),
+                func.max(stock.c.shortage_weight).label("max_shortage_weight"),
+                func.sum(
+                    case(
+                        (
+                            stock.c.on_hand_weight + stock.c.reserved_weight > 0,
+                            stock.c.on_hand_weight + stock.c.reserved_weight,
+                        ),
+                        else_=0,
+                    )
+                ).label("remaining_weight"),
+                func.sum(
+                    case(
+                        (
+                            stock.c.on_hand_quantity + stock.c.reserved_quantity > 0,
+                            stock.c.on_hand_quantity + stock.c.reserved_quantity,
+                        ),
+                        else_=0,
+                    )
+                ).label("remaining_quantity"),
             )
             .where(*predicates)
             .group_by(stock.c.team_id)
@@ -421,13 +445,14 @@ def get_team_yields(
                 "output_weight": float(output.get(r["team_id"], 0)),
                 "rate": round(float(output.get(r["team_id"], 0) / r["input_weight"]) * 100, 2)
                 if r["input_weight"] > 0
-                and not r["shortage_weight"]
-                and output.get(r["team_id"], 0) <= r["input_weight"]
+                and r["max_shortage_weight"] <= MATERIAL_WEIGHT_TOLERANCE
+                and output.get(r["team_id"], 0) <= r["input_weight"] + r["shortage_weight"]
                 and not r["remaining_weight"]
                 and not r["remaining_quantity"]
                 else None,
                 "status": "needs_review"
-                if r["shortage_weight"] or output.get(r["team_id"], 0) > r["input_weight"]
+                if r["max_shortage_weight"] > MATERIAL_WEIGHT_TOLERANCE
+                or output.get(r["team_id"], 0) > r["input_weight"] + r["shortage_weight"]
                 else "in_progress"
                 if r["remaining_weight"] or r["remaining_quantity"]
                 else "complete",
