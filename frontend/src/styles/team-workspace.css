@@ -78,3 +78,32 @@
 .team-workspace.team-workspace--reading :is(.warehouse-table, .team-table, .ledger-table) .el-scrollbar__view { height: 100%; }
 .team-workspace.team-workspace--reading :is(.warehouse-inventory > footer, .material-ledger > footer, .table-footer) { flex-shrink: 0; margin-top: auto; }
 .team-workspace--reading .serial-table .el-table__body .el-table__cell { height: 52px; padding-block: 10px; }
+
+/* Bound the table body so its header and pagination stay visible in fullscreen. */
+.team-workspace.reading-workspace.team-workspace--reading.team-workspace--fullscreen {
+  --workspace-body-size: 16px;
+  --workspace-number-size: 16px;
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  max-height: none;
+  padding: 16px 20px;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+.team-workspace.team-workspace--reading.team-workspace--fullscreen :is(.team-workspace__content, .team-material-content, .warehouse-inventory, .material-ledger, .team-list-layout, .team-table-scroll) {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.team-workspace.team-workspace--reading.team-workspace--fullscreen .team-list-layout { grid-template-rows: minmax(0, 1fr); }
+.team-workspace.team-workspace--reading.team-workspace--fullscreen :is(.warehouse-table, .team-table, .ledger-table, .state-panel) { flex: 1; min-height: 0; }
+.team-workspace.team-workspace--reading.team-workspace--fullscreen :is(.warehouse-table, .team-table, .ledger-table) { --business-table-font: var(--workspace-body-size); }
+.team-workspace.team-workspace--reading.team-workspace--fullscreen :is(.warehouse-table, .team-table, .ledger-table) .el-table__inner-wrapper { flex: 1; min-height: 0; }
+.team-workspace.team-workspace--reading.team-workspace--fullscreen :is(.warehouse-inventory > header, .serial-toolbar, .inventory-active-filters, .warehouse-search-context, .warehouse-inventory > .el-alert, .team-material-content > .el-alert, .material-ledger > header, .list-heading, .list-toolbar, .list-active-filters, .receipt-scanner) { display: none; }
+@media (max-width: 760px) {
+  .team-workspace.reading-workspace.team-workspace--reading.team-workspace--fullscreen { --workspace-body-size: 14px; --workspace-number-size: 14px; padding: 12px; }
+}

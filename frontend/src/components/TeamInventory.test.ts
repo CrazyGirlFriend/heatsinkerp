@@ -4,6 +4,7 @@ import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElCheckbox, ElDatePicker, ElOption, ElPagination, ElSelect, ElTag, ElTooltip } from 'element-plus'
+import FilterDialog from './FilterDialog.vue'
 import TeamInventory from './TeamInventory.vue'
 import TeamInventoryDetail from './TeamInventoryDetail.vue'
 import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
@@ -27,33 +28,52 @@ async function render(path = '/team-workspaces/901?tab=stock', canWrite = true, 
   await router.push(path)
   wrapper = mount(TeamInventory, { props: { teamId: 901, overview: overview(), canWrite, warehouse }, global: { plugins: [router, createPinia()], stubs: { TeamInventoryDetail: true, SerialMaterialDrawer: true, StockSourcePicker: true, SerialUrgencyDialog: true, InventoryPendingDialog: true } } })
   await flushPromises()
+  wrapper.getComponent(FilterDialog).vm.$emit('update:modelValue', true)
+  await flushPromises()
   return router
 }
+async function applyModal() { wrapper.getComponent(FilterDialog).vm.$emit('apply'); await flushPromises() }
 const headers = () => wrapper.findAll('thead th').map(item => item.text())
 const hints = () => wrapper.findAllComponents(ElTooltip).map(item => item.props('content')).join('\n')
 const select = (label: string) => wrapper.findAllComponents(ElSelect).find(item => item.find(`input[aria-label="${label}"]`).exists())!
 async function submit(term: string) { await wrapper.get('input[aria-label="库存明细搜索"]').setValue(term); await wrapper.get('input[aria-label="库存明细搜索"]').trigger('keyup.enter'); await flushPromises() }
 
 describe('warehouse grouped stock', () => {
-  it.each([true, false])('shows applied hidden filters and clears only the selected condition (warehouse=%s)', async warehouse => {
-    const path = `/team-workspaces/901?tab=stock&material_type=finished&material_name=材料1&source_team_id=8&page=2${warehouse ? '&receipt_source=internal' : '&purpose_id=0'}`
-    const router = await render(path, false, warehouse)
-    expect(wrapper.get('[aria-label="已选筛选条件"]').text()).toContain('类型：成品')
-    expect(wrapper.get('[aria-label="已选筛选条件"]').text()).toContain('材质：材料1')
-    const tags = () => wrapper.findAllComponents(ElTag).filter(tag => tag.element.closest('.inventory-active-filters'))
-    tags().find(tag => tag.text().includes('类型：成品'))!.vm.$emit('close', new MouseEvent('click')); await flushPromises()
+  it('exports every page with the applied filters, visible defaults and repeated serial values', async () => {
+    await render('/team-workspaces/901?tab=stock&page=2&material_name=材料1&receipt_source=internal&urgent_only=true', false)
+    const source = (wrapper.vm as unknown as { exportSource: () => import('@/utils/tableExport').TableExportSource }).exportSource()
+    expect(source.fields.filter(field => field.selected).map(field => field.key)).toContain('owned_weight')
+    vi.mocked(teamMaterialApi.teamInventory).mockImplementation(async (_id, params) => ({ items: params?.page === 1 ? data() : [warehouseFixture({ group_id: 14 })], total: 4, page: params!.page!, page_size: 100 }))
+    const result = await source.load(new AbortController().signal, vi.fn())
+    expect(result).toHaveLength(4)
+    expect(result[0]).toMatchObject({ serial_no: data()[0]!.serial_no, owned_weight: data()[0]!.owned_weight })
+    expect(result[1]!.serial_no).toBe(data()[1]!.serial_no)
+    expect(result[1]!.source).toBe('车间转入 · 检验')
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ page: 2, page_size: 100, material_name: '材料1', receipt_source: 'internal', urgent_only: true }))
+  })
+  it('changes only table layout when expanding, preserving filters and pagination without fetching again', async () => {
+    const router = await render('/team-workspaces/901?tab=stock&page=2&material_name=材料1', false)
+    const table = wrapper.getComponent({ name: 'ElTable' }).element
+    const calls = vi.mocked(teamMaterialApi.teamInventory).mock.calls.length
+    await wrapper.setProps({ fullscreen: true })
+    expect(wrapper.getComponent({ name: 'ElTable' }).props()).toMatchObject({ height: '100%', flexible: true })
+    expect(wrapper.getComponent({ name: 'ElTable' }).element).toBe(table)
+    expect(wrapper.getComponent(ElPagination).props('currentPage')).toBe(2)
+    expect(router.currentRoute.value.query).toMatchObject({ material_name: '材料1', page: '2' })
+    await wrapper.setProps({ fullscreen: false })
+    expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBeUndefined()
+    expect(teamMaterialApi.teamInventory).toHaveBeenCalledTimes(calls)
+  })
+  it.each([true, false])('keeps filters inside the dialog and applies changes only on confirmation (warehouse=%s)', async warehouse => {
+    const router = await render(`/team-workspaces/901?tab=stock&material_type=finished&material_name=材料1&source_team_id=8&page=2${warehouse ? '&receipt_source=internal' : '&purpose_id=0'}`, false, warehouse)
+    const before = vi.mocked(teamMaterialApi.teamInventory).mock.calls.length
+    expect(wrapper.find('.inventory-active-filters').exists()).toBe(false)
+    select('库存物料类型筛选').vm.$emit('update:modelValue', '')
+    await flushPromises()
+    expect(teamMaterialApi.teamInventory).toHaveBeenCalledTimes(before)
+    await applyModal()
     expect(router.currentRoute.value.query).toMatchObject({ material_name: '材料1', source_team_id: '8', page: '1' })
     expect(router.currentRoute.value.query.material_type).toBeUndefined()
-    if (warehouse) {
-      tags().find(tag => tag.text().startsWith('来源：车间转入'))!.vm.$emit('close', new MouseEvent('click')); await flushPromises()
-      expect(router.currentRoute.value.query.receipt_source).toBeUndefined()
-      expect(router.currentRoute.value.query.source_team_id).toBeUndefined()
-    } else {
-      tags().find(tag => tag.text() === '业务：未指定业务')!.vm.$emit('close', new MouseEvent('click')); await flushPromises()
-      expect(router.currentRoute.value.query.purpose_id).toBeUndefined()
-      expect(router.currentRoute.value.query.source_team_id).toBe('8')
-    }
-    expect(router.currentRoute.value.query.material_name).toBe('材料1')
   })
   it('filters workshops by configured business and retains the exact choice across pagination and dates', async () => {
     vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
@@ -66,13 +86,13 @@ describe('warehouse grouped stock', () => {
     expect(business.findAllComponents(ElOption).map(option => option.props('label'))).toEqual(['未指定业务', '检验', '去毛刺（已停用）'])
     select('库存上序班组筛选').vm.$emit('update:modelValue', 1)
     select('库存物料类型筛选').vm.$emit('update:modelValue', 'semi_finished')
-    business.vm.$emit('update:modelValue', 12); business.vm.$emit('change', 12); await flushPromises()
+    business.vm.$emit('update:modelValue', 12); business.vm.$emit('change', 12); await applyModal()
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ purpose_id: 12, source_team_id: 1, material_type: 'semi_finished', page: 1 }))
     wrapper.getComponent(ElPagination).vm.$emit('current-change', 2); await flushPromises()
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ purpose_id: 12, page: 2 }))
-    wrapper.getComponent(RecordDateFilter).vm.$emit('update:modelValue', { from: '2026-09-28', to: '2026-09-28' }); await flushPromises()
+    wrapper.getComponent(RecordDateFilter).vm.$emit('update:modelValue', { from: '2026-09-28', to: '2026-09-28' }); await applyModal()
     expect(router.currentRoute.value.query).toMatchObject({ purpose_id: '12', page: '1', date_from: '2026-09-28', date_to: '2026-09-28' })
-    await wrapper.findAll('button').find(button => button.text() === '重置')!.trigger('click'); await flushPromises()
+    wrapper.getComponent(FilterDialog).vm.$emit('reset'); await applyModal()
     expect(select('库存本组业务筛选').props('modelValue')).toBeUndefined()
     expect(vi.mocked(teamMaterialApi.teamInventory).mock.lastCall?.[1]).not.toHaveProperty('purpose_id')
   })
@@ -81,7 +101,7 @@ describe('warehouse grouped stock', () => {
     expect(select('库存本组业务筛选').props('modelValue')).toBe(0)
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ purpose_id: 0, material_type: 'finished' }))
     select('库存本组业务筛选').vm.$emit('update:modelValue', '')
-    select('库存本组业务筛选').vm.$emit('change', ''); await flushPromises()
+    select('库存本组业务筛选').vm.$emit('change', ''); await applyModal()
     expect(router.currentRoute.value.query.purpose_id).toBeUndefined()
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ material_type: 'finished' }))
   })
@@ -288,15 +308,25 @@ describe('warehouse grouped stock', () => {
     const router = await render('/team-workspaces/901?tab=stock&stock_age=ge7&filter_label=库存停留：7天及以上&page_size=20&activity_day=2026-09-12', true, false)
     expect(wrapper.text()).toContain('库存停留：7天及以上')
     expect(wrapper.getComponent(RecordDateFilter).props('modelValue')).toEqual({ from: '2026-09-12', to: '2026-09-12' })
-    wrapper.getComponent(RecordDateFilter).vm.$emit('update:modelValue', { from: '2026-09-15', to: '2026-09-15' }); await flushPromises()
-    wrapper.getComponent(ElCheckbox).vm.$emit('change', true); await flushPromises()
+    wrapper.getComponent(RecordDateFilter).vm.$emit('update:modelValue', { from: '2026-09-15', to: '2026-09-15' }); await applyModal()
+    wrapper.getComponent(ElCheckbox).vm.$emit('update:modelValue', true); await applyModal()
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ stock_age: 'ge7', date_from: '2026-09-15', date_to: '2026-09-15', urgent_only: true, page_size: 20 }))
     expect(router.currentRoute.value.query.activity_day).toBeUndefined()
-    wrapper.findAllComponents(ElTag).find(tag => tag.text().includes('库存停留'))!.vm.$emit('close', new MouseEvent('click')); await flushPromises()
+    select('库存分析条件').vm.$emit('update:modelValue', ''); await applyModal()
     expect(router.currentRoute.value.query.stock_age).toBeUndefined()
     expect(router.currentRoute.value.query.date_from).toBe('2026-09-15')
-    await wrapper.findAll('button').find(button => button.text() === '重置')!.trigger('click'); await flushPromises()
+    wrapper.getComponent(FilterDialog).vm.$emit('reset'); await applyModal()
     expect(router.currentRoute.value.query).toEqual({ tab: 'stock', page_size: '20' })
+  })
+  it('keeps an unsubmitted search when resetting and cancelling the filter dialog', async () => {
+    const router = await render('/team-workspaces/901?tab=stock&material_type=finished')
+    await wrapper.get('input[aria-label="库存明细搜索"]').setValue('YS-017')
+    const dialog = wrapper.getComponent(FilterDialog)
+    dialog.vm.$emit('open'); await flushPromises()
+    dialog.vm.$emit('reset'); await flushPromises()
+    dialog.vm.$emit('cancel'); dialog.vm.$emit('update:modelValue', false); await flushPromises()
+    expect(router.currentRoute.value.query.material_type).toBe('finished')
+    expect(wrapper.get('input[aria-label="库存明细搜索"]').element).toHaveProperty('value', 'YS-017')
   })
   it('searches zero balances, three-decimal weights, urgency and dates with safe clearing', async () => {
     await render(undefined, true, false)
@@ -351,7 +381,7 @@ describe('warehouse grouped stock', () => {
     select('库存来源筛选').vm.$emit('update:modelValue', 'internal')
     select('库存物料类型筛选').vm.$emit('update:modelValue', 'finished'); await flushPromises()
     await submit('000128')
-    wrapper.getComponent(RecordDateFilter).vm.$emit('update:modelValue', { from: '2026-09-17', to: '2026-09-17' }); await flushPromises()
+    wrapper.getComponent(RecordDateFilter).vm.$emit('update:modelValue', { from: '2026-09-17', to: '2026-09-17' }); await applyModal()
     wrapper.getComponent(ElPagination).vm.$emit('current-change', 2); await flushPromises()
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ receipt_source: 'internal', material_type: 'finished', query: '000128', date_from: '2026-09-17', date_to: '2026-09-17', page: 2 }))
     expect(router.currentRoute.value.query.receipt_source).toBe('internal')
@@ -384,7 +414,7 @@ describe('warehouse grouped stock', () => {
     await render('/team-workspaces/901?tab=stock&search_field=customer_code&query=C01')
     expect(headers()[0]).toBe('客户编号')
     const choices = warehouseColumns.map(column => ({ key: column.key, visible: column.key === 'source' || column.key === 'on_hand_weight' })).reverse()
-    wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', choices); await flushPromises()
+    wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', choices); await applyModal()
     expect(headers()).toEqual(['客户编号', '流水号', '未转出重量 (kg)', '来源', '操作'])
     wrapper.findAllComponents(ElTag).find(item => item.text().includes('首列显示'))!.vm.$emit('close', new MouseEvent('click')); await flushPromises()
     expect(headers()).toEqual(['流水号', '未转出重量 (kg)', '来源', '操作'])

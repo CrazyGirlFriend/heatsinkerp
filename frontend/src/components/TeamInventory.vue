@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Close, Filter, Flag, Refresh, Search } from '@element-plus/icons-vue'
-import { ElAlert, ElButton, ElCheckbox, ElDatePicker, ElInput, ElOption, ElOptionGroup, ElPagination, ElPopover, ElSelect, ElTable, ElTableColumn, ElTag, ElTooltip } from 'element-plus'
+import { Close, Flag, Refresh, Search } from '@element-plus/icons-vue'
+import { ElAlert, ElButton, ElCheckbox, ElDatePicker, ElInput, ElOption, ElOptionGroup, ElPagination, ElSelect, ElTable, ElTableColumn, ElTag, ElTooltip } from 'element-plus'
+import FilterDialog from './FilterDialog.vue'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
 import InventoryPendingDialog from './InventoryPendingDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
@@ -23,8 +24,9 @@ import type { StockBatch, TeamMaterialOverview } from '@/types/teamMaterials'
 import type { TeamPurpose } from '@/types/teamBusiness'
 import type { AgeBand } from '@/types/materialAnalytics'
 import { formatDateTime } from '@/utils/format'
+import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 
-const props = defineProps<{ teamId: number; overview: TeamMaterialOverview; canWrite?: boolean; canReallocate?: boolean; warehouse?: boolean }>()
+const props = defineProps<{ teamId: number; overview: TeamMaterialOverview; canWrite?: boolean; canReallocate?: boolean; warehouse?: boolean; fullscreen?: boolean }>()
 const emit = defineEmits<{ changed: []; refresh: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]; reallocate: [source: StockBatch] }>()
 const route = useRoute(), router = useRouter(), auth = useAuthStore(), directory = useTeamDirectoryStore()
 const text = (key: string) => typeof route.query[key] === 'string' ? String(route.query[key]) : ''
@@ -54,7 +56,9 @@ async function loadPurposes() {
     if (current === purposeVersion) purposesError.value = '本组业务选项加载失败，请重试。'
   } finally { if (current === purposeVersion) purposesLoading.value = false }
 }
-const filtersOpen = ref(false)
+const filtersOpen = ref(false), filterResetRequested = ref(false)
+const dateDraft = ref<CalendarRange>({ from: '', to: '' }), urgentDraft = ref(false), locationDraft = ref(false), analysisDraft = ref(''), daysDraft = ref<7 | 30>(30)
+const filterCount = computed(() => activeFilters.value.length + Number(Boolean(dates.value.from || dates.value.to)) + Number(Boolean(analysisChoice.value)))
 const searchKind = computed(() => warehouseSearchKind(fieldDraft.value))
 const days = computed<7 | 30>(() => text('days') === '7' ? 7 : 30)
 const ages: [AgeBand, string][] = [['lt1', '不足1天'], ['1_3', '1–3天'], ['3_7', '3–7天'], ['ge7', '7天及以上']]
@@ -93,6 +97,19 @@ const filters = computed<TeamInventoryParams>(() => {
   for (const key of ['urgent_only', 'has_loss']) if (text(key) === 'true') params[key] = true
   return params as TeamInventoryParams
 })
+function exportSource() {
+  const id = props.teamId, params = { ...filters.value }
+  const fields = [warehouseSerialColumn, ...columns.value.filter(column => !column.key.startsWith('shortage_'))].map(column => ({ key: column.key, label: column.label,
+    selected: visibleColumns.value.some(item => item.key === column.key),
+    value: (row: TeamInventoryRow) => {
+      const value = column.format(row)
+      if (value === '—') return null
+      const numeric = 'numeric' in column && column.numeric ? Number(value.replaceAll(',', '')) : NaN
+      return Number.isFinite(numeric) ? numeric : value
+    } }))
+  return tableExportSource('库存明细', total.value, fields, (signal, progress) => loadExportPages((page, pageSize) => teamMaterialApi.teamInventory(id, { ...params, page, page_size: pageSize }), signal, progress))
+}
+defineExpose({ exportSource })
 const activeFilters = computed(() => {
   const chips: { key: keyof TeamInventoryParams; label: string }[] = []
   if (props.warehouse && text('location_status')) chips.push({ key: 'location_status', label: '有未分配仓位的物料' })
@@ -106,9 +123,6 @@ const activeFilters = computed(() => {
   if (text('urgent_only') === 'true') chips.push({ key: 'urgent_only', label: '仅看加急' })
   return chips
 })
-function removeFilter(key: keyof TeamInventoryParams) {
-  apply({ ...filters.value, [key]: undefined, ...(key === 'receipt_source' ? { source_team_id: undefined } : {}), page: 1 })
-}
 function apply(params: TeamInventoryParams = {}, label = text('filter_label')) {
   void router.replace({ path: route.path, query: { tab: 'stock', ...(summarySection.value ? { summary: summarySection.value, ...(text('summary_page') ? { summary_page: text('summary_page') } : {}), ...(text('summary_page_size') ? { summary_page_size: text('summary_page_size') } : {}) } : {}), ...(label ? { filter_label: label } : {}), ...Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)])) } })
 }
@@ -122,7 +136,7 @@ function selectAnalysis(value: string) {
     flow_direction: undefined, peer: undefined }, '')
 }
 function draftFilters(): TeamInventoryParams {
-  return { ...filters.value, page: 1, query: queryDraft.value.trim() || undefined, search_field: queryDraft.value.trim() && fieldDraft.value !== 'all' ? fieldDraft.value : undefined,
+  return { ...(filterResetRequested.value ? { page_size: pageSize.value } : filters.value), page: 1, query: queryDraft.value.trim() || undefined, search_field: queryDraft.value.trim() && fieldDraft.value !== 'all' ? fieldDraft.value : undefined,
     search_operator: queryDraft.value.trim() && searchKind.value === 'number' ? operatorDraft.value : undefined,
     receipt_source: props.warehouse ? sourceDraft.value || undefined : undefined, source_team_id: !props.warehouse || sourceDraft.value === 'internal' ? sourceTeamDraft.value : undefined,
     purpose_id: !props.warehouse && typeof purposeDraft.value === 'number' ? purposeDraft.value : undefined,
@@ -139,7 +153,25 @@ function validSearch() {
   return true
 }
 function search() { if (validSearch()) apply(draftFilters()) }
-function selectDate(value: CalendarRange) { if (validSearch()) apply({ ...draftFilters(), activity_day: undefined, activity_kind: undefined, date_from: value.from || undefined, date_to: value.to || undefined }) }
+function applyDialogFilters() {
+  if (!validSearch()) return
+  const [kind, age] = analysisDraft.value.split(':')
+  const params: TeamInventoryParams = { ...draftFilters(), date_from: dateDraft.value.from || undefined, date_to: dateDraft.value.to || undefined,
+    activity_day: undefined, activity_kind: undefined, urgent_only: urgentDraft.value || undefined,
+    location_status: props.warehouse && locationDraft.value ? 'unassigned' : undefined, days: daysDraft.value === 7 ? 7 : undefined,
+    stock_age: kind === 'age' ? age as AgeBand : undefined,
+    waiting_direction: kind === 'incoming' || kind === 'outgoing' ? kind : undefined,
+    waiting_age: kind === 'incoming' || kind === 'outgoing' ? age as AgeBand : undefined, has_loss: kind === 'loss' || undefined }
+  if (filterResetRequested.value) { delete params.page; if (params.availability === 'owned') delete params.availability }
+  apply(params, '')
+  filtersOpen.value = false
+}
+function resetDialogFilters() {
+  filterResetRequested.value = true; daysDraft.value = 30
+  sourceDraft.value = ''; sourceTeamDraft.value = undefined; typeDraft.value = ''; materialDraft.value = ''; purposeDraft.value = undefined
+  availabilityDraft.value = 'owned'; fieldDraft.value = 'all'; operatorDraft.value = 'eq'; queryDraft.value = ''; inputError.value = ''
+  dateDraft.value = { from: '', to: '' }; urgentDraft.value = locationDraft.value = false; analysisDraft.value = ''
+}
 function paginate(value: number, size = pageSize.value) { apply({ ...filters.value, page: value, page_size: size }) }
 let version = 0
 async function load(background = false) {
@@ -177,12 +209,25 @@ function flag(value: unknown) { urgencySerial.value = asRow(value).serial_no; ur
 function action(mode: 'dispatch' | 'loss', sources: StockBatch[]) { if (props.canWrite) { picker.value = detail.value = null; serialOpen.value = false; emit('action', mode, sources) } }
 function reallocate(source: StockBatch) { if (props.canWrite && props.canReallocate) { detail.value = null; emit('reallocate', source) } }
 function resetDetails() { detail.value = picker.value = pending.value = null; serialOpen.value = urgencyOpen.value = false }
-watch([() => props.teamId, filters], () => {
+const searchBeforeFilters = ref({ query: '', field: 'all' as WarehouseSearchField, operator: 'eq' as 'eq' | 'gte' | 'lte' })
+function openFilters() {
+  searchBeforeFilters.value = { query: queryDraft.value, field: fieldDraft.value, operator: operatorDraft.value }
+  syncFilterDrafts()
+  restoreSearchDraft()
+}
+function restoreSearchDraft() { queryDraft.value = searchBeforeFilters.value.query; fieldDraft.value = searchBeforeFilters.value.field; operatorDraft.value = searchBeforeFilters.value.operator }
+function cancelFilters() { syncFilterDrafts(); restoreSearchDraft() }
+function syncFilterDrafts() {
+  filterResetRequested.value = false
   queryDraft.value = text('query'); sourceDraft.value = text('receipt_source') as WarehouseSource | ''; typeDraft.value = text('material_type'); materialDraft.value = text('material_name')
   fieldDraft.value = warehouseSearchColumns.some(column => column.key === text('search_field')) ? text('search_field') as WarehouseSearchField : 'all'
   operatorDraft.value = text('search_operator') === 'gte' ? 'gte' : text('search_operator') === 'lte' ? 'lte' : 'eq'
   availabilityDraft.value = filters.value.availability; sourceTeamDraft.value = Number(text('source_team_id')) || undefined; inputError.value = ''
   purposeDraft.value = filters.value.purpose_id
+  dateDraft.value = { ...dates.value }; urgentDraft.value = text('urgent_only') === 'true'; locationDraft.value = text('location_status') === 'unassigned'; analysisDraft.value = analysisChoice.value; daysDraft.value = days.value
+}
+watch([() => props.teamId, filters], () => {
+  syncFilterDrafts()
   void load()
 }, { immediate: true })
 watch([() => props.teamId, () => props.warehouse], () => { purposes.value = []; void loadPurposes() }, { immediate: true })
@@ -207,39 +252,39 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
         <ElInput v-else v-model="queryDraft" :prefix-icon="searchKind === 'text' ? Search : undefined" aria-label="库存明细搜索" :placeholder="fieldDraft === 'all' ? '流水号、材质、业务或来源' : `搜索${searchColumns.find(column => column.key === fieldDraft)?.label}`" clearable @keyup.enter="search" @clear="search" />
       </div>
       <div class="inventory-filter-controls">
-        <RecordDateFilter :model-value="dates" label="流转日期" @update:model-value="selectDate" />
-        <ElPopover v-model:visible="filtersOpen" trigger="click" placement="bottom-end" :width="340" :popper-options="{ modifiers: [{ name: 'preventOverflow', options: { altAxis: true, padding: 12 } }] }" popper-class="inventory-filters-popover">
-          <template #reference><ElButton :icon="Filter" :aria-expanded="filtersOpen" aria-label="库存筛选">筛选<span v-if="activeFilters.length" class="inventory-filter-count">{{ activeFilters.length }}</span></ElButton></template>
-          <div class="warehouse-extra-filters">
+        <FilterDialog v-model="filtersOpen" title="库存筛选" :count="filterCount" @open="openFilters" @cancel="cancelFilters" @apply="applyDialogFilters" @reset="resetDialogFilters">
+          <div class="filter-fields">
             <label>搜索字段<ElSelect v-model="fieldDraft" aria-label="库存搜索字段" filterable @change="queryDraft = ''; operatorDraft = 'eq'; inputError = ''"><ElOption value="all" label="综合搜索" /><ElOption v-for="column in searchColumns" :key="column.key" :value="column.key" :label="column.label" /></ElSelect></label>
-            <label v-if="warehouse">来源<ElSelect v-model="sourceDraft" class="warehouse-source-filter" aria-label="库存来源筛选" placeholder="全部来源" clearable @change="search"><ElOption v-for="(label, value) in warehouseSourceNames" :key="value" :value="value" :label="label" /></ElSelect></label>
-            <label v-else>上序班组<ElSelect v-model="sourceTeamDraft" class="warehouse-source-filter" aria-label="库存上序班组筛选" placeholder="全部上序" clearable filterable @change="search"><ElOption v-for="team in sourceTeams" :key="team.id" :value="team.id" :label="team.name" /></ElSelect></label>
-            <label>物料类型<ElSelect v-model="typeDraft" class="warehouse-type-filter" aria-label="库存物料类型筛选" placeholder="全部类型" clearable @change="search"><ElOption v-for="item in materialTypeOptions" :key="item.value" :value="item.value" :label="item.label" /><ElOption value="unknown" label="未分类" /></ElSelect></label>
-            <label v-if="!warehouse">本组业务<ElSelect v-model="purposeDraft" class="inventory-purpose-filter" aria-label="库存本组业务筛选" placeholder="全部本组业务" clearable filterable :loading="purposesLoading" @change="search"><ElOption :value="0" label="未指定业务" /><ElOption v-for="purpose in purposes" :key="purpose.id" :value="purpose.id" :label="`${purpose.name}${purpose.active ? '' : '（已停用）'}`" /></ElSelect></label>
-            <label>材质<ElSelect v-model="materialDraft" aria-label="库存材质筛选" clearable filterable placeholder="全部材质" @change="search"><ElOption v-for="item in overview.materials" :key="item.material_name || '未填写材质'" :value="item.material_name || '未填写材质'" :label="item.material_name || '未填写材质'" /></ElSelect></label>
-            <label>库存范围<ElSelect v-model="availabilityDraft" aria-label="库存范围" @change="search"><ElOption value="owned" label="本班组库存（含转出待确认）" /><ElOption value="current" label="有未转出库存" /><ElOption value="available" label="正常料可转出" /><ElOption value="scrap" label="废料可处理" /><ElOption value="all" label="全部（含零库存）" /></ElSelect></label>
-            <label v-if="warehouse && sourceDraft === 'internal'">来源班组<ElSelect v-model="sourceTeamDraft" aria-label="库房来源班组" clearable @change="search"><ElOption v-for="team in sourceTeams" :key="team.id" :value="team.id" :label="team.name" /></ElSelect></label>
-            <label>分析条件<ElSelect :model-value="analysisChoice" aria-label="库存分析条件" placeholder="库存与流转条件" clearable @change="selectAnalysis"><ElOptionGroup label="库存停留"><ElOption v-for="[key, label] in ages" :key="key" :value="`age:${key}`" :label="`库存停留 ${label}`" /></ElOptionGroup><ElOptionGroup v-for="direction in ['incoming', 'outgoing']" :key="direction" :label="direction === 'incoming' ? '来料待签收' : '转出待确认'"><ElOption v-for="[key, label] in ages" :key="key" :value="`${direction}:${key}`" :label="`${direction === 'incoming' ? '来料待签收' : '转出待确认'} ${label}`" /></ElOptionGroup><ElOption value="loss" :label="`近${days}天有丢失记录`" /></ElSelect></label>
-            <label>事件周期<ElSelect :model-value="days" aria-label="库存事件筛选周期" @change="apply({ ...draftFilters(), days: $event })"><ElOption :value="7" label="近7天" /><ElOption :value="30" label="近30天" /></ElSelect></label>
-            <ElCheckbox :model-value="text('urgent_only') === 'true'" @change="apply({ ...draftFilters(), urgent_only: $event === true || undefined })">仅看加急</ElCheckbox>
-            <ElCheckbox v-if="warehouse" :model-value="text('location_status') === 'unassigned'" @change="apply({ ...draftFilters(), location_status: $event === true ? 'unassigned' : undefined })">有未分配仓位的物料</ElCheckbox>
-          </div>
-        </ElPopover>
-        <div class="inventory-query-actions"><ElButton @click="search">查询</ElButton><ElButton text @click="apply({ page_size: pageSize }, '')">重置</ElButton></div>
+            <label class="filter-wide">搜索内容<ElInput v-model="queryDraft" aria-label="库存筛选搜索内容" clearable placeholder="输入要查询的内容" /></label>
+            <label v-if="warehouse">来源<ElSelect v-model="sourceDraft" class="warehouse-source-filter" aria-label="库存来源筛选" placeholder="全部来源" clearable><ElOption v-for="(label, value) in warehouseSourceNames" :key="value" :value="value" :label="label" /></ElSelect></label>
+            <label v-else>上序班组<ElSelect v-model="sourceTeamDraft" class="warehouse-source-filter" aria-label="库存上序班组筛选" placeholder="全部上序" clearable filterable><ElOption v-for="team in sourceTeams" :key="team.id" :value="team.id" :label="team.name" /></ElSelect></label>
+            <label>物料类型<ElSelect v-model="typeDraft" class="warehouse-type-filter" aria-label="库存物料类型筛选" placeholder="全部类型" clearable><ElOption v-for="item in materialTypeOptions" :key="item.value" :value="item.value" :label="item.label" /><ElOption value="unknown" label="未分类" /></ElSelect></label>
+            <label v-if="!warehouse">本组业务<ElSelect v-model="purposeDraft" class="inventory-purpose-filter" aria-label="库存本组业务筛选" placeholder="全部本组业务" clearable filterable :loading="purposesLoading"><ElOption :value="0" label="未指定业务" /><ElOption v-for="purpose in purposes" :key="purpose.id" :value="purpose.id" :label="`${purpose.name}${purpose.active ? '' : '（已停用）'}`" /></ElSelect></label>
+            <label>材质<ElSelect v-model="materialDraft" aria-label="库存材质筛选" clearable filterable placeholder="全部材质"><ElOption v-for="item in overview.materials" :key="item.material_name || '未填写材质'" :value="item.material_name || '未填写材质'" :label="item.material_name || '未填写材质'" /></ElSelect></label>
+            <label>库存范围<ElSelect v-model="availabilityDraft" aria-label="库存范围"><ElOption value="owned" label="本班组库存（含转出待确认）" /><ElOption value="current" label="有未转出库存" /><ElOption value="available" label="正常料可转出" /><ElOption value="scrap" label="废料可处理" /><ElOption value="all" label="全部（含零库存）" /></ElSelect></label>
+            <label v-if="warehouse && sourceDraft === 'internal'">来源班组<ElSelect v-model="sourceTeamDraft" aria-label="库房来源班组" clearable><ElOption v-for="team in sourceTeams" :key="team.id" :value="team.id" :label="team.name" /></ElSelect></label>
+            <label>分析条件<ElSelect v-model="analysisDraft" aria-label="库存分析条件" placeholder="库存与流转条件" clearable ><ElOptionGroup label="库存停留"><ElOption v-for="[key, label] in ages" :key="key" :value="`age:${key}`" :label="`库存停留 ${label}`" /></ElOptionGroup><ElOptionGroup v-for="direction in ['incoming', 'outgoing']" :key="direction" :label="direction === 'incoming' ? '来料待签收' : '转出待确认'"><ElOption v-for="[key, label] in ages" :key="key" :value="`${direction}:${key}`" :label="`${direction === 'incoming' ? '来料待签收' : '转出待确认'} ${label}`" /></ElOptionGroup><ElOption value="loss" :label="`近${daysDraft}天有丢失记录`" /></ElSelect></label>
+            <label>事件周期<ElSelect v-model="daysDraft" aria-label="库存事件筛选周期"><ElOption :value="7" label="近7天" /><ElOption :value="30" label="近30天" /></ElSelect></label>
+            <ElCheckbox v-model="urgentDraft">仅看加急</ElCheckbox>
+            <ElCheckbox v-if="warehouse" v-model="locationDraft">有未分配仓位的物料</ElCheckbox>
+            <label>流转日期<RecordDateFilter v-model="dateDraft" label="流转日期" /></label>
+            <ElAlert v-if="inputError" :title="inputError" type="warning" :closable="false" class="filter-wide" />
+          </div>        </FilterDialog>
+        <div class="inventory-query-actions"><ElButton @click="search">查询</ElButton></div>
       </div>
       <div class="inventory-table-tools" role="group" aria-label="表格工具">
         <InventoryColumnSettings :storage-key="storageKey" :columns="columns" :legacy-keys="warehouseLegacyColumnKeys" @change="columnChoices = $event" />
         <ElButton :icon="Refresh" :loading="loading" text aria-label="刷新工作台" title="刷新" @click="emit('refresh')" />
       </div>
     </div>
-    <div v-if="activeFilters.length" class="inventory-active-filters" aria-label="已选筛选条件"><ElTag v-for="item in activeFilters" :key="item.key" closable @close="removeFilter(item.key)">{{ item.label }}</ElTag></div>
+
     <ElAlert v-if="inputError" :title="inputError" type="warning" :closable="false" />
     <ElAlert v-if="!warehouse && purposesError" type="warning" :closable="false"><span>{{ purposesError }}</span><ElButton link type="primary" @click="loadPurposes">重试</ElButton></ElAlert>
     <div v-if="analysisLabel" class="warehouse-search-context"><ElTag closable @close="selectAnalysis('')">{{ analysisLabel }}</ElTag><span v-if="!text('stock_age')"> 符合条件流水号的分类库存</span></div>
     <div v-if="searchedColumn" class="warehouse-search-context"><ElTag closable @close="apply({ ...filters, query: undefined, search_field: undefined, search_operator: undefined, page: 1 })">按{{ searchedColumn.label }}查询 · 首列显示</ElTag></div>
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存" />
-    <ElTable v-else class="business-table serial-table warehouse-table" :data="rows" row-key="group_id" :span-method="span" :row-class-name="rowClass" empty-text="暂无符合条件的库存">
+    <ElTable v-else class="business-table serial-table warehouse-table" :data="rows" :height="fullscreen ? '100%' : undefined" :flexible="fullscreen" row-key="group_id" :span-method="span" :row-class-name="rowClass" empty-text="暂无符合条件的库存">
       <ElTableColumn v-for="column in visibleColumns" :key="column.key" :prop="column.key" :label="column.label" :min-width="column.width" align="center" show-overflow-tooltip :label-class-name="column.key === searchedColumn?.key ? 'searched-column' : ''" :class-name="['serial_no', 'material_name'].includes(column.key) ? 'warehouse-group-cell' : ''">
         <template #default="{ row }">
           <div v-if="column.key === 'serial_no'" class="inventory-inline inventory-serial"><ElButton class="serial-number-link" :title="row.serial_no" link type="primary" @click="openSerial(row)"><strong>{{ row.serial_no }}</strong></ElButton><SerialUrgencyBadge :urgency="row.urgency" /><ElTooltip v-if="canManageUrgency" :content="row.urgency?.urgent ? '取消加急' : '标记加急'" placement="top"><ElButton class="warehouse-urgency-action" link type="primary" :icon="row.urgency?.urgent ? Close : Flag" :aria-label="row.urgency?.urgent ? '取消加急' : '标记加急'" @click="flag(row)" /></ElTooltip></div>
@@ -259,7 +304,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
           <span v-else>{{ column.format(asRow(row)) }}</span>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="操作" :width="actionWidth" align="center" fixed="right"><template #default="{ row }"><div class="inventory-row-actions"><ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton><ElButton v-if="canWrite && inventoryCanDispatch(asRow(row))" link type="primary" @click="picker = asRow(row)">出库</ElButton><ElButton v-if="inventoryHasPending(asRow(row))" link type="primary" @click="pending = asRow(row)">{{ Number(row.external_pending_quantity) > 0 || Number(row.external_pending_weight) > 0 ? '查看转出' : '在途转出' }}</ElButton></div></template></ElTableColumn>
+      <ElTableColumn label="操作" :width="actionWidth" align="center" fixed="right"><template #default="{ row }"><div class="inventory-row-actions"><ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton><ElButton v-if="canWrite && inventoryCanDispatch(asRow(row))" link class="action-warm" @click="picker = asRow(row)">出库</ElButton><ElButton v-if="inventoryHasPending(asRow(row))" link type="primary" @click="pending = asRow(row)">{{ Number(row.external_pending_quantity) > 0 || Number(row.external_pending_weight) > 0 ? '查看转出' : '在途转出' }}</ElButton></div></template></ElTableColumn>
     </ElTable>
     <footer v-if="!error"><span>共 {{ total }} 条库存记录<small v-if="asOf" class="inventory-as-of">系统记录 · {{ formatDateTime(asOf) }}</small></span><ElPagination background :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="paginate($event)" @size-change="paginate(1, $event)" /></footer>
     <TeamInventoryDetail :team-id="teamId" :group="detail" :warehouse="warehouse" :can-write="canWrite" :can-reallocate="canReallocate" @reallocate="reallocate" @close="detail = null" @changed="emit('changed')" @action="action" @pending="pending = detail" />
@@ -289,13 +334,6 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
 .warehouse-toolbar :deep(.record-date-trigger > span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .warehouse-toolbar :deep(.el-button + .el-button) { margin-left: 0; }
 .inventory-table-tools > .el-button { width: 36px; padding: 0; }
-.warehouse-extra-filters { display: flex; flex-direction: column; gap: 14px; max-height: min(560px, 65dvh); overflow-y: auto; padding: 4px; }
-.warehouse-extra-filters label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 13px; }
-:global(.inventory-filters-popover) { max-width: calc(100vw - 32px); }
-.inventory-filter-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; margin-left: 6px; padding: 0 4px; border-radius: 4px; background: var(--table-header-bg); color: var(--primary); font-size: 12px; }
-.inventory-active-filters { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 12px; }
-.inventory-active-filters :deep(.el-tag) { max-width: 100%; }
-.inventory-active-filters :deep(.el-tag__content) { overflow: hidden; text-overflow: ellipsis; }
 .warehouse-search-context { padding-bottom: 12px; }
 .warehouse-table { --business-table-font: 14px; --business-table-padding: 11px; font-variant-numeric: tabular-nums; }
 .warehouse-table.el-table.business-table :deep(th.el-table__cell) { height: 44px; }
@@ -321,20 +359,18 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
 .inventory-serial :deep(.serial-urgency-badge) { flex-shrink: 0; margin-left: 0; }
 .warehouse-inventory > footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 56px; padding: 14px 12px; border-top: 1px solid var(--line); }
 .warehouse-inventory > footer > span { color: var(--muted); font-size: 14px; }
-@container (max-width: 980px) {
+@container (max-width: 680px) {
   .warehouse-search { flex-basis: 100%; }
   .inventory-filter-controls { flex: 1; }
 }
 @container (max-width: 560px) {
   .inventory-heading { align-items: flex-start; gap: 10px; }
   .inventory-heading :deep(.workspace-actions) { width: 100%; margin-left: 0; justify-content: flex-start; }
-  .warehouse-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
-  .warehouse-search { grid-column: 1 / -1; }
-  .inventory-filter-controls { display: contents; }
-  .inventory-filter-controls :deep(.record-date-trigger) { grid-column: 1; width: 100%; max-width: none; }
-  .inventory-filter-controls > .el-button { grid-column: 2; justify-self: end; }
-  .inventory-query-actions { grid-column: 1; }
-  .inventory-table-tools { grid-column: 2; margin-left: 0; padding-left: 0; border-left: 0; }
+  .warehouse-toolbar { display: flex; gap: 8px; }
+  .warehouse-search { flex-basis: 100%; min-width: 0; }
+  .inventory-filter-controls { display: flex; flex: 0 0 auto; flex-wrap: nowrap; }
+  .inventory-query-actions { flex: 0 0 auto; }
+  .inventory-table-tools { margin-left: auto; padding-left: 0; border-left: 0; }
 }
 @media (max-width: 760px) {
   .warehouse-inventory { padding-inline: 12px; }
@@ -345,4 +381,6 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
   .warehouse-table :deep(.el-scrollbar__bar.is-horizontal) { opacity: 1; }
 }
 .inventory-balance--shortage strong { color: var(--el-color-danger); }
+.inventory-heading__title > span { padding: 2px 7px; border-radius: 5px; background: var(--surface-soft); font-size: 12px; }
+.warehouse-toolbar { background: #fafcfb; border-bottom: 1px solid var(--line); }
 </style>

@@ -13,6 +13,8 @@ vi.mock('@/composables/useLiveRefresh', async () => {
 vi.mock('@/stores/teamDirectory', () => ({ refreshTeamDirectory: mocks.refresh }))
 
 import TeamsPage from './TeamsPage.vue'
+import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
+import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { adminApi, type Team } from '@/services/adminApi'
 import { authState, clearSession } from '@/stores/auth'
 
@@ -35,6 +37,22 @@ async function mountTeams() {
 }
 
 describe('team management directory ordering', () => {
+  it('offers administrators business settings and preserves a team description while editing', async () => {
+    vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([])
+    const opening = vi.spyOn(teamMaterialApi, 'openingState')
+    vi.mocked(adminApi.listTeams).mockResolvedValue([{ ...team, description: '原说明' }])
+    const update = vi.spyOn(adminApi, 'updateTeam').mockResolvedValue({ ...team, description: '修改说明' })
+    const wrapper = await mountTeams()
+    await wrapper.get('tbody tr').findAll('button').find(button => button.text() === '业务设置')!.trigger('click'); await flushPromises()
+    expect(wrapper.getComponent(TeamBusinessDialog).props()).toMatchObject({ businessOnly: true, teamId: 7 })
+    expect(opening).not.toHaveBeenCalled()
+    wrapper.getComponent(TeamBusinessDialog).vm.$emit('update:modelValue', false); await flushPromises()
+    await wrapper.get('tbody tr').findAll('button').find(button => button.text().includes('编辑'))!.trigger('click')
+    expect(wrapper.get('textarea[aria-label="班组说明"]').element).toHaveProperty('value', '原说明')
+    await wrapper.get('textarea[aria-label="班组说明"]').setValue('修改说明')
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(update).toHaveBeenCalledWith(7, expect.objectContaining({ description: '修改说明' }))
+  })
   it('does not let a delayed background response overwrite a just-saved team', async () => {
     const wrapper = await mountTeams()
     let finish!: (teams: Team[]) => void

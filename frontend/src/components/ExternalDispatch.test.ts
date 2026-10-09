@@ -17,6 +17,7 @@ const state = vi.hoisted(() => ({ auth: { isTeamAccount: true, isAdmin: false, c
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => state.directory }))
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
+vi.mock('@/services/materialInputApi', () => ({ materialSuggestions: vi.fn().mockResolvedValue([]) }))
 const dialogStub = { template: '<div><slot name="header"/><slot/><slot name="footer"/></div>' }
 const record = (kind: ExternalEntryKind = 'warehouse_outbound', extra: Record<string, unknown> = {}) => normalizeMaterialTransfer({ id: 20, batch_no: 'TL-EXTERNAL', serial_no: 'QA-EXTERNAL', material_name: '铜钼', material_type: 'semi_finished', source_team: { id: kind === 'warehouse_outbound' ? 1 : 8, name: kind === 'warehouse_outbound' ? '库房' : '检验' }, next_team: null, next_team_id: null, entry_kind: kind, external_destination: '外部收货单位', quantity: 10, weight: 1.005, status: 'pending', locked: false, version: 4, allowed_actions: ['edit', 'void', 'confirm_outbound'], source_transfer_id: 3, source_transfer_batch_no: 'TL-ROOT', dispatch_no: null, ...extra })
 const source = (id = 3): StockBatch => ({ transfer: normalizeMaterialTransfer({ id, batch_no: `TL-ROOT-${id}`, serial_no: 'QA-EXTERNAL', material_name: '铜钼', material_type: 'semi_finished', source_team: null, next_team: { id: state.auth.currentUser.team_id, name: '本班组' }, quantity: 20, weight: 2, status: 'received', stock_tracked: true }), available_quantity: 20, available_weight: 2 } as StockBatch)

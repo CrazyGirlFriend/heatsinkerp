@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FilterDialog from './FilterDialog.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElCard, ElCheckbox, ElDialog, ElEmpty, ElForm, ElFormItem, ElIcon, ElInput, ElOption, ElPagination, ElSelect, ElSwitch, ElTable, ElTableColumn, ElTag, ElResult } from 'element-plus'
 import { Clock, Lock, Plus, Refresh, Search, CircleClose } from '@element-plus/icons-vue'
@@ -98,6 +99,7 @@ async function load(background = false) {
   } catch (failure) { if (current === version) error.value = failure instanceof Error ? failure.message : '仓位加载失败' }
   finally { if (current === version) loading.value = false }
 }
+const filtersOpen = ref(false)
 function search() { appliedQuery.value = query.value; appliedFilter.value = filter.value; page.value = 1; void load() }
 function reset() { query.value = ''; filter.value = undefined; search() }
 function edit(row: WarehouseLocation | null = null) {
@@ -142,7 +144,7 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer); clearT
         <div class="warehouse-toolbar">
           <template v-if="section === 'locations'">
             <ElInput v-model="query" aria-label="搜索仓位" placeholder="仓位、流水号或材质" clearable :prefix-icon="Search" maxlength="80" @keyup.enter="search" @clear="search" />
-            <ElSelect v-model="filter" aria-label="仓位状态" placeholder="全部状态" clearable><ElOption label="有料" value="occupied" /><ElOption label="空闲" value="available" /><ElOption label="待签收" value="pending" /><ElOption label="填写中" value="draft" /><ElOption label="停用" value="disabled" /></ElSelect>
+            <FilterDialog v-model="filtersOpen" title="仓位筛选" :count="appliedFilter ? 1 : 0" @open="filter = appliedFilter" @cancel="filter = appliedFilter" @apply="search(); filtersOpen = false" @reset="filter = undefined"><label>仓位状态<ElSelect v-model="filter" aria-label="仓位状态" placeholder="全部状态" clearable><ElOption label="有料" value="occupied" /><ElOption label="空闲" value="available" /><ElOption label="待签收" value="pending" /><ElOption label="填写中" value="draft" /><ElOption label="停用" value="disabled" /></ElSelect></label></FilterDialog>
             <ElButton type="primary" @click="search">查询</ElButton><ElButton text @click="reset">重置</ElButton>
           </template>
           <div class="warehouse-actions">

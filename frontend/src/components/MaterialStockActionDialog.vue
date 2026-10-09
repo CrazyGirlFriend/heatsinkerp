@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MaterialInput from './MaterialInput.vue'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElRadioButton, ElRadioGroup, ElSelect } from 'element-plus'
 import MaterialAmount from './MaterialAmount.vue'
@@ -200,7 +201,7 @@ async function submit() {
       <ElFormItem v-if="!isLoss && externalOption" label="出库方式">
         <ElRadioGroup v-model="form.entryKind" aria-label="出库方式"><ElRadioButton value="transfer">内部转料</ElRadioButton><ElRadioButton :value="externalOption">{{ externalOption === 'warehouse_outbound' ? '对外出库' : '发货' }}</ElRadioButton></ElRadioGroup>
       </ElFormItem>
-      <ElFormItem v-if="external" :label="`${actionLabel}去向`" required><ElInput v-model="form.externalDestination" :aria-label="`${actionLabel}去向`" maxlength="240" show-word-limit placeholder="填写客户、收货单位或实际去向" /></ElFormItem>
+      <ElFormItem v-if="external" :label="`${actionLabel}去向`" required><MaterialInput field="external_source" :label="`${actionLabel}去向`" v-model="form.externalDestination" :disabled="saving || !modelValue" :maxlength="240" placeholder="填写客户、收货单位或实际去向" /></ElFormItem>
       <ElFormItem v-if="!isLoss && !external" label="接收班组" required class="destination-field">
         <ElSelect v-model="form.nextTeamId" aria-label="出库接收班组" placeholder="选择接收班组" filterable><ElOption v-for="team in destinations" :key="team.id" :value="team.id" :label="teamWorkspaceProfile(team.code)?.name || team.name" /></ElSelect>
       </ElFormItem>

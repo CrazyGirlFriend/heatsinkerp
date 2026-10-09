@@ -22,6 +22,7 @@ export interface Account {
   id: EntityId
   username: string
   display_name: string
+  avatar_key?: string
   role: UserRole
   team_id: EntityId | null
   team: Team | null
@@ -69,6 +70,7 @@ export type UpdateTeamPayload = Partial<CreateTeamPayload>
 export interface CreateAccountPayload {
   username: string
   display_name: string
+  avatar_key?: string
   password: string
   role: UserRole
   team_id: EntityId | null
@@ -78,6 +80,7 @@ export interface CreateAccountPayload {
 export interface UpdateAccountPayload {
   username?: string
   display_name?: string
+  avatar_key?: string
   password?: string
   role?: UserRole
   team_id?: EntityId | null
@@ -167,6 +170,7 @@ export function normalizeAccount(value: unknown): Account {
     id: (raw.id as EntityId | undefined) ?? stringValue(raw.username, raw.account),
     username: stringValue(raw.username, raw.account, raw.login_name),
     display_name: stringValue(raw.display_name, raw.displayName, raw.full_name, raw.name, raw.username),
+    avatar_key: stringValue(raw.avatar_key),
     role,
     team_id: role === 'TEAM' && rawTeamId !== undefined && rawTeamId !== null ? (rawTeamId as EntityId) : null,
     team,
@@ -278,6 +282,10 @@ export const adminApi = {
     const result = await request<unknown>('/auth/me')
     const raw = objectValue(result)
     return normalizeAccount(raw.user ?? raw.account ?? result)
+  },
+
+  async updateProfile(payload: { display_name: string; avatar_key: string }): Promise<Account> {
+    return normalizeAccount(await request('/auth/me', { method: 'PATCH', body: JSON.stringify(payload) }))
   },
 
   async logout(): Promise<void> {

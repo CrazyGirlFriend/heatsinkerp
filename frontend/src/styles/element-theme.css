@@ -1,11 +1,11 @@
 :root {
   --el-color-primary: var(--primary);
-  --el-color-primary-light-3: #70a082;
-  --el-color-primary-light-5: #99bea5;
-  --el-color-primary-light-7: #c2d8c9;
-  --el-color-primary-light-8: #d6e5db;
-  --el-color-primary-light-9: #edf5ef;
-  --el-color-primary-dark-2: #28643d;
+  --el-color-primary-light-3: #6da497;
+  --el-color-primary-light-5: #97bfb5;
+  --el-color-primary-light-7: #c0dcd3;
+  --el-color-primary-light-8: #d5e9e2;
+  --el-color-primary-light-9: #edf6f3;
+  --el-color-primary-dark-2: #246453;
   --el-color-success: #23825b;
   --el-color-warning: #b9660b;
   --el-color-warning-light-3: #b98e59;
@@ -172,3 +172,12 @@
 }
 
 @media (max-width: 560px) { .el-dialog { padding: 20px; } .el-message-box { max-width: calc(100vw - 32px); } .el-pagination { --el-pagination-button-width: 28px; } }
+
+/* Secondary actions have distinct, consistent roles alongside the teal primary. */
+.el-button.action-warm { --el-button-text-color: var(--action-warm); --el-button-bg-color: var(--action-warm-soft); --el-button-border-color: #edd5bf; --el-button-hover-text-color: #7e3e11; --el-button-hover-bg-color: #ffead6; --el-button-hover-border-color: #dcba98; --el-button-active-bg-color: #ffe1c2; }
+.el-button.action-cool { --el-button-text-color: var(--action-cool); --el-button-bg-color: var(--action-cool-soft); --el-button-border-color: #d6e0e9; --el-button-hover-text-color: #334d66; --el-button-hover-bg-color: #e5edf4; --el-button-hover-border-color: #b9cbdc; }
+.el-button.action-warm.is-link { color: var(--action-warm); background: transparent; border: 0; }
+.el-button:not(.is-link):not(.is-text) { transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
+@media (hover: hover) { .el-button:not(.is-link):not(.is-text):not(:disabled):hover { box-shadow: 0 3px 8px rgb(39 70 59 / 10%); transform: translateY(-1px); } }
+.el-button:not(.is-link):not(.is-text):not(:disabled):active { transform: translateY(0); box-shadow: none; }
+@media (prefers-reduced-motion: reduce) { .el-button { transition: none !important; transform: none !important; } }

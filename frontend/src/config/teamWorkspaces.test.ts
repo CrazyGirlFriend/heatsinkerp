@@ -9,7 +9,7 @@ describe('eight official workspace profiles', () => {
       { id: 800, code: 'FACTORY-ANNEAL', name: '退火', active: false },
       { id: 900, code: 'FACTORY-QC', name: '检验', active: true, sort_order: 0 },
     ])
-    expect(entries.map(entry => entry.profile.name)).toEqual(['库房', '轧制', '退火', '研磨', '线切割', '雕刻', '电镀', '检验'])
+    expect(entries.map(entry => entry.profile.name)).toEqual(['库房', '旧扎板名称', '退火', '研磨', '线切割', '雕刻', '电镀', '检验'])
     expect(entries[1]!.team?.id).toBe(914)
     expect(entries[2]!.team).toBeUndefined()
     expect(entries[7]!.team?.id).toBe(900)

@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WarehouseManagement from './WarehouseManagement.vue'
 import BatchSelectionBar from './BatchSelectionBar.vue'
+import FilterDialog from './FilterDialog.vue'
 import { ElPagination, ElSelect } from 'element-plus'
 import { warehouseLocationApi, type WarehouseLocation } from '@/services/warehouseLocationApi'
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
@@ -124,7 +125,8 @@ describe('warehouse management', () => {
   it('queries all slots by status and search rather than filtering only the current page', async () => {
     await render(); await nextPage()
     await wrapper.get('input[aria-label="搜索仓位"]').setValue(' 材料1 ')
-    wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 'pending'); await click('查询')
+    wrapper.getComponent(FilterDialog).vm.$emit('open'); wrapper.getComponent(FilterDialog).vm.$emit('update:modelValue', true); await flushPromises()
+    wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 'pending'); wrapper.getComponent(FilterDialog).vm.$emit('apply'); await flushPromises()
     expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('材料1', 1, 50, 'pending')
     await click('重置')
     expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 1, 50, undefined)

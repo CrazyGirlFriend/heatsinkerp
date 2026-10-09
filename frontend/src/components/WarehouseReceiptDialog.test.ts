@@ -5,12 +5,14 @@ import { ElInputNumber, ElSelect } from 'element-plus'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WarehouseReceiptDialog from './WarehouseReceiptDialog.vue'
+import MaterialInput from './MaterialInput.vue'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 const state = vi.hoisted(() => ({
   auth: { isTeamAccount: true, currentUser: { id: 41, team_id: 901, active: true }, currentUserError: '', refreshCurrentUser: vi.fn() },
   directory: { items: [{ id: 901, code: 'FACTORY-WAREHOUSE', kind: 'warehouse', name: '库房', active: true }], loaded: true, error: '', refreshTeamDirectory: vi.fn() },
 }))
+vi.mock('@/services/materialInputApi', () => ({ materialSuggestions: vi.fn().mockResolvedValue([]) }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => state.directory }))
 const receipt = () => normalizeMaterialTransfer({ id: 51, batch_no: 'TL-RECEIPT', serial_no: 'QA-IN', entry_kind: 'warehouse_receipt', source_team: null, next_team: { id: 901, name: '库房', kind: 'warehouse' }, status: 'received', locked: true, stock_tracked: true })
@@ -42,6 +44,27 @@ async function fill() {
 async function submit() { await wrapper.get('form').trigger('submit'); await flushPromises() }
 
 describe('warehouse manual receipt', () => {
+  it('marks selected metadata, preserves manual edits and keeps receipt amounts independent', async () => {
+    await render()
+    await wrapper.get('input[aria-label="流水号"]').setValue('YS-007')
+    const serial = wrapper.findAllComponents(MaterialInput).find(item => item.props('field') === 'serial_no')!
+    serial.vm.$emit('selected', { value: 'YS-007', source_batch_no: 'TL-7', details: { material_name: '材料2', customer_code: 'C-7', finished_specification: '100 × 80 × 5 mm' } })
+    await flushPromises()
+    expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '材料2')
+    expect(wrapper.text()).toContain('已带入')
+    expect(wrapper.findAllComponents(ElInputNumber).find(item => item.find('input[aria-label="入库件数"]').exists())!.props('modelValue')).toBe(0)
+    await wrapper.get('input[aria-label="材质"]').setValue('手填材料')
+    serial.vm.$emit('selected', { value: 'YS-007', source_batch_no: 'TL-8', details: { material_name: '材料3', customer_code: 'C-8', finished_specification: '100 × 80 × 5 mm' } })
+    await flushPromises()
+    expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '手填材料')
+    await wrapper.get('input[aria-label="外部来源单位"]').setValue('供应商')
+    wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'semi_finished')
+    await amount('入库件数', 3); await amount('入库重量', 1.5)
+    await wrapper.get('textarea[aria-label="入库说明"]').setValue('实物到货')
+    await submit()
+    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(901, expect.objectContaining({ serial_no: 'YS-007', material_name: '手填材料', customer_code: 'C-8', finished_specification: '100 × 80 × 5 mm', quantity: 3, weight: 1.5 }))
+  })
+
   it('keeps measured sludge and percentage in a retried receipt without double conversion', async () => {
     vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(new TeamMaterialApiError('网络中断'))
     await render(); await fill()
@@ -93,7 +116,7 @@ describe('warehouse manual receipt', () => {
   it('creates a root receipt for the bound warehouse with no transfer destination or status fields', async () => {
     await render(); await fill()
     expect(wrapper.text()).toContain('清点后确认入库，立即增加库房库存，无需再次签收')
-    expect(wrapper.findAllComponents(ElSelect)).toHaveLength(3)
+    expect(wrapper.findAllComponents(ElSelect)).toHaveLength(5)
     expect(wrapper.text()).not.toContain('接收班组')
     await wrapper.get('input[aria-label="原单批号"]').setValue('RAW-91')
     await submit()

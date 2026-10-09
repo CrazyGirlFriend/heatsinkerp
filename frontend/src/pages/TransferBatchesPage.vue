@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import FilterDialog from '@/components/FilterDialog.vue'
 import PageBackButton from '@/components/PageBackButton.vue'
-import { ArrowDown, CircleCheck, Clock, Collection, Plus, Refresh, Remove, Search } from '@element-plus/icons-vue'
+import { CircleCheck, Clock, Collection, Plus, Refresh, Remove, Search } from '@element-plus/icons-vue'
 import {
   ElButton,
   ElCard,
@@ -9,7 +10,6 @@ import {
   ElLoading,
   ElOption,
   ElPagination,
-  ElPopover,
   ElSelect,
   ElSkeleton,
   ElTable,
@@ -102,7 +102,7 @@ const filterParams = computed<MaterialTransferFilterParams>(() => ({
 const searchPlaceholder = computed(() => searchFieldDraft.value !== 'all'
   ? `搜索${materialSearchFields.find(option => option.value === searchFieldDraft.value)?.label}`
   : searchModeDraft.value === 'contains' ? '搜索编号、材质、班组或转料人' : '搜索批次号、流水号、原单批号、编号、客户代码或材质')
-const hasFilters = computed(() => Boolean(dateDraft.value.from || dateDraft.value.to || urgentDraft.value || queryDraft.value || sourceTeamDraft.value !== '' || nextTeamDraft.value !== '' || statusDraft.value !== 'all' || searchModeDraft.value !== 'contains' || searchFieldDraft.value !== 'all' || materialTypeDraft.value))
+
 const drawerOpen = ref(false)
 const groupOpen = ref(false)
 const selectedDispatchNo = ref('')
@@ -127,7 +127,20 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
   void loadCounts()
 })
 const detailBusy = ref(false)
-const teamFilterLabel = computed(() => sourceTeamDraft.value !== '' || nextTeamDraft.value !== '' ? '班组筛选 · 已设置' : '全部班组')
+const filtersOpen = ref(false)
+const appliedFilterCount = computed(() => [dates.value.from || dates.value.to, urgentOnly.value, sourceTeamId.value, nextTeamId.value, materialType.value, status.value !== 'all', searchMode.value !== 'contains', searchField.value !== 'all'].filter(Boolean).length)
+const queryBeforeFilters = ref('')
+function openFilters() { queryBeforeFilters.value = queryDraft.value; syncFilterDrafts() }
+function cancelFilters() { syncFilterDrafts(); queryDraft.value = queryBeforeFilters.value }
+function syncFilterDrafts() {
+  dateDraft.value = { ...dates.value }; urgentDraft.value = urgentOnly.value; sourceTeamDraft.value = sourceTeamId.value; nextTeamDraft.value = nextTeamId.value
+  searchModeDraft.value = searchMode.value; searchFieldDraft.value = searchField.value; materialTypeDraft.value = materialType.value; statusDraft.value = status.value
+}
+function applyDialogFilters() { applyFilters(); filtersOpen.value = false }
+function clearFilterDrafts() {
+  dateDraft.value = { from: '', to: '' }; urgentDraft.value = false; sourceTeamDraft.value = nextTeamDraft.value = ''
+  searchModeDraft.value = 'contains'; searchFieldDraft.value = 'all'; materialTypeDraft.value = ''; statusDraft.value = 'all'; queryDraft.value = ''
+}
 
 function numberText(value: number, unit: string): string {
   return `${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value)} ${unit}`
@@ -158,10 +171,7 @@ async function loadCounts(background = false): Promise<void> {
   }
 }
 
-function selectStatus(value: TransferStatusValue | 'all'): void {
-  statusDraft.value = value
-  applyFilters()
-}
+
 
 watch(filterParams, () => {
   statusCounts.value = null
@@ -234,17 +244,7 @@ function applyFilters(): void {
   void loadRows()
 }
 
-function resetFilters(): void {
-  dateDraft.value = { from: '', to: '' }; urgentDraft.value = false
-  queryDraft.value = ''
-  statusDraft.value = 'all'
-  sourceTeamDraft.value = ''
-  nextTeamDraft.value = ''
-  searchModeDraft.value = 'contains'
-  searchFieldDraft.value = 'all'
-  materialTypeDraft.value = ''
-  applyFilters()
-}
+
 
 function setPage(next: number): void {
   page.value = next
@@ -366,13 +366,7 @@ onBeforeUnmount(() => {
       <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
       <div class="status-toolbar">
       <PageBackButton />
-      <div class="status-overview" role="group" aria-label="按转料状态筛选" :aria-busy="countsLoading">
-        <button v-for="option in statusOptions" :key="option.value" type="button" class="status-filter" :class="[`status-filter--${option.value}`, { 'is-selected': statusDraft === option.value }]" :aria-label="option.label === '全部' ? '全部转料' : option.label" :aria-pressed="statusDraft === option.value" @click="selectStatus(option.value)">
-          <ElIcon class="status-filter__icon"><component :is="option.icon" /></ElIcon>
-          <span class="status-filter__copy"><span>{{ option.label }}</span><strong>{{ statusCounts?.[option.value] ?? '—' }}</strong></span>
-        </button>
-        <button v-if="!countsLoading && !statusCounts" class="counts-retry" type="button" aria-label="重试加载状态数量" title="重试加载状态数量" @click="loadCounts()"><ElIcon><Refresh /></ElIcon></button>
-      </div>
+      <h2 class="transfer-heading" style="margin: 0; font-size: 18px; font-weight: 600;">转料记录</h2>
         <div class="heading-actions">
           <ElButton v-if="canCreate" type="primary" :icon="Plus" @click="openCreate">新建转料</ElButton>
         </div>
@@ -380,28 +374,25 @@ onBeforeUnmount(() => {
       <ElCard class="transfers-card" shadow="never">
         <form class="filter-bar" @submit.prevent="applyFilters">
           <div class="search-fields">
-          <ElSelect v-model="searchFieldDraft" class="search-field-select" aria-label="搜索字段" @change="applyFilters"><ElOption v-for="field in materialSearchFields" :key="field.value" :value="field.value" :label="field.value === 'all' && searchModeDraft !== 'contains' ? '全部编号与材质' : field.label" /></ElSelect>
           <ElInput v-model="queryDraft" clearable :placeholder="searchPlaceholder" aria-label="搜索转料记录" @clear="applyFilters">
             <template #prefix><ElIcon><Search /></ElIcon></template>
             <template #suffix><ElButton v-if="queryDraft" class="search-action" text :icon="Search" aria-label="搜索" native-type="submit" /></template>
           </ElInput>
-          <ElSelect v-model="searchModeDraft" class="search-mode-select" aria-label="搜索方式" @change="applyFilters"><ElOption v-for="mode in materialSearchModes" :key="mode.value" :label="mode.label" :value="mode.value" /></ElSelect>
           </div>
           <div class="filter-options">
-          <RecordDateFilter v-model="dateDraft" @update:model-value="applyFilters" /><ElCheckbox v-model="urgentDraft" @change="applyFilters">仅看加急</ElCheckbox>
-          <ElSelect v-model="materialTypeDraft" clearable class="material-type-filter" placeholder="全部物料类型" aria-label="筛选物料类型" @change="applyFilters"><ElOption v-for="type in materialTypeOptions" :key="type.value" :label="type.label" :value="type.value" /></ElSelect>
-          <ElPopover trigger="click" placement="bottom-start" :width="320">
-            <template #reference><ElButton class="team-filter-trigger" :class="{ 'is-filtered': sourceTeamDraft !== '' || nextTeamDraft !== '' }" text aria-label="筛选班组">{{ teamFilterLabel }}<ElIcon><ArrowDown /></ElIcon></ElButton></template>
-            <div class="team-filter-fields">
-              <label>转出班组</label>
-              <ElSelect v-model="sourceTeamDraft" clearable filterable placeholder="全部转出班组" aria-label="转出班组" @change="applyFilters"><ElOption v-for="team in teamStore.items" :key="team.id" :label="team.name" :value="team.id" /></ElSelect>
-              <label>接收班组</label>
-              <ElSelect v-model="nextTeamDraft" clearable filterable placeholder="全部接收班组" aria-label="接收班组" @change="applyFilters"><ElOption v-for="team in teamStore.items" :key="team.id" :label="team.name" :value="team.id" /></ElSelect>
-            </div>
-          </ElPopover>
-          <ElButton v-if="hasFilters" class="reset-filters" text :icon="Refresh" aria-label="重置" title="重置筛选" @click="resetFilters" />
+            <FilterDialog v-model="filtersOpen" title="转料记录筛选" :count="appliedFilterCount" @open="openFilters" @cancel="cancelFilters" @apply="applyDialogFilters" @reset="clearFilterDrafts">
+              <label class="filter-wide">搜索内容<ElInput v-model="queryDraft" aria-label="转料筛选搜索内容" clearable placeholder="输入流水号、批次号等" /></label>
+              <label>搜索字段<ElSelect v-model="searchFieldDraft" aria-label="搜索字段"><ElOption v-for="field in materialSearchFields" :key="field.value" :value="field.value" :label="field.label" /></ElSelect></label>
+              <label>搜索方式<ElSelect v-model="searchModeDraft" aria-label="搜索方式"><ElOption v-for="mode in materialSearchModes" :key="mode.value" :label="mode.label" :value="mode.value" /></ElSelect></label>
+              <label>登记日期<RecordDateFilter v-model="dateDraft" /></label>
+              <label>状态<ElSelect v-model="statusDraft" aria-label="转料状态"><ElOption v-for="option in statusOptions" :key="option.value" :value="option.value" :label="`${option.label}（${statusCounts?.[option.value] ?? '—'}）`" /></ElSelect><ElButton v-if="!countsLoading && !statusCounts" text @click="loadCounts()">重试加载状态数量</ElButton></label>
+              <label>物料类型<ElSelect v-model="materialTypeDraft" clearable placeholder="全部物料类型" aria-label="筛选物料类型"><ElOption v-for="type in materialTypeOptions" :key="type.value" :label="type.label" :value="type.value" /></ElSelect></label>
+              <label>转出班组<ElSelect v-model="sourceTeamDraft" clearable filterable placeholder="全部转出班组" aria-label="转出班组"><ElOption v-for="team in teamStore.items" :key="team.id" :label="team.name" :value="team.id" /></ElSelect></label>
+              <label>接收班组<ElSelect v-model="nextTeamDraft" clearable filterable placeholder="全部接收班组" aria-label="接收班组"><ElOption v-for="team in teamStore.items" :key="team.id" :label="team.name" :value="team.id" /></ElSelect></label>
+              <ElCheckbox v-model="urgentDraft">仅看加急</ElCheckbox>
+            </FilterDialog>
+            <ElButton native-type="submit">查询</ElButton><ElButton :icon="Refresh" text aria-label="刷新转料记录" @click="liveRefresh.request" />
           </div>
-          <p v-if="searchModeDraft !== 'contains'" class="search-scope-hint">{{ searchModeDraft === 'exact' ? '完整内容相同才匹配' : '从内容开头匹配' }}<template v-if="searchFieldDraft === 'all'"> · 范围：批次号、流水号、原单批号、编号、客户代码、材质</template></p>
         </form>
         <div v-loading="loading && hasRows" class="table-pane" :aria-busy="loading" element-loading-text="正在更新记录" element-loading-background="rgba(255, 255, 255, 0.72)">
           <ElSkeleton v-if="loading && !hasRows" class="table-skeleton" :rows="8" animated aria-label="正在加载转料记录" />
@@ -444,43 +435,16 @@ onBeforeUnmount(() => {
 .mobile-material-brief { display: block; color: var(--muted); font-size: 12px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .transfers-page { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); padding: 20px 24px; gap: 16px 0; background: var(--workspace-bg); }
 .status-toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
-.status-toolbar .status-overview { flex: 1; min-width: 0; padding-bottom: 0; border-bottom: 0; }
-.status-toolbar .heading-actions { padding-bottom: 8px; }
-.heading-actions { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }
-.heading-actions :deep(.el-button) { height: 32px; margin: 0; padding-inline: 12px; font-size: 14px; }
-.transfers-main { container: workspace / inline-size; display: flex; grid-column: 1; grid-row: 1; min-width: 0; min-height: 0; flex-direction: column; gap: 10px; }
-.status-overview { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); flex-shrink: 0; min-height: 44px; padding: 0 18px; border: 1px solid var(--panel-line); border-radius: 8px; background: var(--surface); box-shadow: var(--panel-shadow); }
-.status-filter { position: relative; display: flex; align-items: center; justify-content: center; gap: 16px; min-width: 0; padding: 8px; border: 0; border-radius: 8px; color: var(--text); background: transparent; transition: background-color var(--motion-fast) ease; }
-.status-filter + .status-filter::before { position: absolute; top: 25%; bottom: 25%; left: 0; width: 1px; background: var(--line); content: ''; }
-.status-filter.is-selected::after { position: absolute; bottom: 0; left: 14%; right: 14%; height: 3px; background: var(--primary); content: ''; }
-.status-filter:hover { background: var(--surface-soft); }
-.status-filter:focus-visible { outline-offset: -4px; }
-.status-filter__icon { display: none; }
-.status-filter--pending .status-filter__icon { display: none; }
-.status-filter--received .status-filter__icon, .status-filter--dispatched .status-filter__icon { display: none; }
-.status-filter--voided .status-filter__icon { display: none; }
-.status-filter__copy { display: flex; align-items: center; gap: 8px; text-align: left; line-height: 1.4; white-space: nowrap; }
-.status-filter__copy > span { font-size: 14px; }
-.status-filter__copy strong { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.counts-retry { position: absolute; right: 4px; top: 4px; display: grid; place-items: center; width: 24px; height: 24px; border: 0; background: transparent; color: var(--subtle); }
+.status-toolbar h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.heading-actions { display: flex; gap: 8px; margin-left: auto; align-items: center; }
 .transfers-card { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--panel-line); border-radius: var(--card-radius); box-shadow: var(--panel-shadow); }
 .transfers-card :deep(.el-card__body) { display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; padding: 0; flex-direction: column; }
 .filter-bar { display: flex; flex-wrap: wrap; align-items: center; flex: 0 0 auto; min-height: 60px; padding: 12px; gap: 8px 12px; border-bottom: 1px solid var(--line-light); }
 .search-fields { display: flex; align-items: center; gap: 4px; flex: 1 1 470px; min-width: 0; }
 .search-fields > .el-input { flex: 1; min-width: 0; }
-.search-field-select { flex: 0 0 145px; }
-.search-mode-select { flex: 0 0 114px; }
 .filter-options { display: flex; align-items: center; gap: 4px; }
-.material-type-filter { width: 140px; }
-.search-scope-hint { flex-basis: 100%; margin: 0; padding: 2px 8px; color: var(--subtle); font-size: 12px; line-height: 1.5; }
 .filter-bar :deep(.el-input__prefix-inner) { margin-right: 8px; font-size: 18px; }
 .filter-bar > .el-button { margin: 0; }
-.team-filter-trigger { flex-shrink: 0; color: var(--subtle); font-size: 14px; }
-.team-filter-trigger > :deep(span) { display: flex; gap: 8px; }
-.team-filter-trigger.is-filtered { color: var(--primary); background: var(--surface-soft); }
-.team-filter-fields { display: grid; padding: 8px; gap: 10px; }
-.team-filter-fields label { color: var(--subtle); font-size: 13px; }
-.reset-filters { width: 30px; padding: 0; color: var(--subtle); }
 .search-action { width: 26px; height: 26px; padding: 0; color: var(--subtle); }
 .table-pane { flex: 1; min-height: 0; overflow: hidden; }
 .table-skeleton { padding: 24px; }
@@ -501,14 +465,8 @@ onBeforeUnmount(() => {
 .serial-number:hover { color: var(--primary); text-decoration: underline; }
 .pagination-bar { display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto; min-height: 56px; padding: 12px 16px; gap: 12px; border-top: 1px solid var(--line-light); color: var(--subtle); font-size: 13px; }
 .transfer-mobile-list { display: none; }
-@container workspace (max-width: 820px) {
-  .status-overview { padding-inline: 6px; }
-  .status-filter { gap: 9px; }
-  .status-filter__icon { display: none; }
-}
 @container workspace (max-width: 760px) {
   .status-toolbar { flex-wrap: wrap; gap: 8px; }
-  .status-toolbar .status-overview { flex-basis: 100%; }
   .status-toolbar .heading-actions { margin-left: auto; }
   .transfer-table { display: none; }
   .table-pane { overflow-y: auto; }
@@ -524,18 +482,8 @@ onBeforeUnmount(() => {
   .pagination-bar { flex-wrap: wrap; padding-inline: 4px; }
 }
 @container workspace (max-width: 480px) {
-  .status-overview { min-height: 44px; padding-inline: 2px; }
-  .status-filter { gap: 0; padding: 12px 3px; }
-  .status-filter__icon { display: none; }
-  .status-filter__copy { text-align: center; }
-  .status-filter__copy strong { font-size: 22px; }
-  .status-filter__copy > span { font-size: 11px; white-space: normal; }
-  .search-fields { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 4px; }
-  .search-fields > .el-input { grid-column: 1 / -1; grid-row: 2; }
-  .search-field-select, .search-mode-select { width: 100%; }
+  .search-fields { flex-basis: 100%; }
   .filter-options { width: 100%; }
-  .filter-options .reset-filters { margin-left: auto; }
-  .team-filter-trigger { padding-inline: 6px; font-size: 12px; }
 }
 @media (max-width: 1100px) {
   .transfers-page { padding: 14px; gap: 10px 0; }

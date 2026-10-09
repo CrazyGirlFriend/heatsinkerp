@@ -10,6 +10,7 @@ import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { StockBatch } from '@/types/teamMaterials'
 
 const state = vi.hoisted(() => ({ auth: { isTeamAccount: true, currentUser: { id: 41, team_id: 2, active: true }, currentUserError: '', refreshCurrentUser: vi.fn() }, team: { id: 2, name: '检验', code: 'FACTORY-QC', kind: 'production', active: true } }))
+vi.mock('@/services/materialInputApi', () => ({ materialSuggestions: vi.fn().mockResolvedValue([]) }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => ({ items: [state.team] }) }))
 const source = (): StockBatch => ({ transfer: normalizeMaterialTransfer({ id: 10, batch_no: 'TL10', serial_no: '000A', material_name: '材料1', material_type: 'finished', next_team: { id: 2, name: '检验' }, status: 'received' }), available_quantity: 100, available_weight: 20 } as StockBatch)

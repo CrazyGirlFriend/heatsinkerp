@@ -26,7 +26,11 @@
     "app/factory_dashboard.py",
     "tests/test_factory_dashboard.py",
     "alembic/versions/20260926_0019_delivery_plans.py",
-    "tests/test_delivery_plan_migration.py"
+    "tests/test_delivery_plan_migration.py",
+    "alembic/versions/20261009_0029_user_avatar.py",
+    "app/material_input.py",
+    "tests/test_material_input.py",
+    "tests/test_user_profiles.py"
   ],
   "frontend": [
     "src/main.ts",
@@ -45,6 +49,26 @@
     "src/components/FactoryShippingAnalysis.vue",
     "src/services/factoryDashboardApi.ts",
     "src/types/factoryDashboard.ts",
-    "src/utils/factoryDashboard.ts"
+    "src/utils/factoryDashboard.ts",
+    "src/components/AccountAvatar.vue",
+    "src/components/AutofillBadge.vue",
+    "src/components/AvatarPicker.vue",
+    "src/components/FilterDialog.vue",
+    "src/components/MaterialInput.test.ts",
+    "src/components/MaterialInput.vue",
+    "src/components/OpeningMaterialFields.vue",
+    "src/components/ProfileDialog.test.ts",
+    "src/components/ProfileDialog.vue",
+    "src/components/SpecificationInput.test.ts",
+    "src/components/SpecificationInput.vue",
+    "src/components/TableExportDialog.test.ts",
+    "src/components/TableExportDialog.vue",
+    "src/composables/useMaterialAutofill.test.ts",
+    "src/composables/useMaterialAutofill.ts",
+    "src/config/avatars.ts",
+    "src/services/materialInputApi.ts",
+    "src/utils/tableExport.test.ts",
+    "src/utils/tableExport.ts",
+    "src/utils/teamTableExport.ts"
   ]
 }

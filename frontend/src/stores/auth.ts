@@ -170,6 +170,19 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function updateProfile(payload: { display_name: string; avatar_key: string }): Promise<Account | null> {
+    const token = session.value?.access_token
+    if (!token) return null
+    const user = await adminApi.updateProfile(payload)
+    if (session.value?.access_token !== token || String(session.value.user.id) !== String(user.id)) return null
+    // Discard any profile read started before this completed save.
+    ++profileRequestVersion
+    session.value = { ...session.value, user }
+    currentUserError.value = ''
+    persistSession(session.value)
+    return user
+  }
+
   return {
     session,
     initialized,
@@ -187,6 +200,7 @@ export const useAuthStore = defineStore('auth', () => {
     clearSession,
     restoreSession,
     refreshCurrentUser,
+    updateProfile,
   }
 })
 

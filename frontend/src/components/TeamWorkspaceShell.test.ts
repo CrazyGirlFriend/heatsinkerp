@@ -1,11 +1,24 @@
 // @vitest-environment jsdom
-import { mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import TeamWorkspaceShell from './TeamWorkspaceShell.vue'
 vi.mock('@/components/PageBackButton.vue', () => ({ default: { template: '<span />' } }))
 
 let wrapper: VueWrapper
-afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+afterEach(() => {
+  wrapper?.unmount(); vi.restoreAllMocks(); vi.unstubAllGlobals()
+  for (const key of ['fullscreenElement', 'exitFullscreen']) Reflect.deleteProperty(document, key)
+  Reflect.deleteProperty(document.documentElement, 'requestFullscreen')
+})
+function nativeFullscreen() {
+  let element: Element | null = null
+  const change = (value: Element | null) => { element = value; document.dispatchEvent(new Event('fullscreenchange')) }
+  const request = vi.fn(async () => { change(document.documentElement) })
+  const exit = vi.fn(async () => { change(null) })
+  Object.defineProperties(document, { fullscreenElement: { configurable: true, get: () => element }, exitFullscreen: { configurable: true, value: exit } })
+  Object.defineProperty(document.documentElement, 'requestFullscreen', { configurable: true, value: request })
+  return { change, request, exit }
+}
 describe('workspace with in-page navigation', () => {
   it('retains the reading layout and selects each warehouse section without large headings', async () => {
     wrapper = mount(TeamWorkspaceShell, { props: { title: '库房', modelValue: 'stock', warehouse: true } })
@@ -66,5 +79,75 @@ describe('workspace with in-page navigation', () => {
     expect(observe).toHaveBeenCalledWith(nav)
     wrapper.unmount()
     expect(disconnect).toHaveBeenCalledOnce()
+  })
+  it('expands the document with its dialogs and preserves the data region on entry and exit', async () => {
+    const native = nativeFullscreen()
+    wrapper = mount(TeamWorkspaceShell, { props: { title: '研磨', modelValue: 'stock' }, slots: { default: '<input value="未提交内容" />' } })
+    const input = wrapper.get('input').element
+    await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+    expect(native.request).toHaveBeenCalledOnce()
+    expect(document.fullscreenElement).toBe(document.documentElement)
+    expect(wrapper.classes()).toContain('team-workspace--fullscreen')
+    expect(wrapper.get('.team-workspace__team').text()).toBe('研磨 · 库存明细')
+    expect(wrapper.get('nav').attributes('style')).toContain('display: none')
+    expect(wrapper.get('.team-workspace__fullscreen').attributes('aria-pressed')).toBe('true')
+    await wrapper.setProps({ modelValue: 'materials' })
+    expect(wrapper.classes('team-workspace--fullscreen')).toBe(true)
+    expect(wrapper.get('.team-workspace__team').text()).toBe('研磨 · 材质库存')
+    await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+    expect(native.exit).toHaveBeenCalledOnce()
+    expect(wrapper.get('input').element).toBe(input)
+    expect(wrapper.get('nav').attributes('style') || '').not.toContain('display: none')
+    expect(wrapper.emitted('fullscreen-change')).toEqual([[true], [false]])
+  })
+  it('uses a viewport fallback when native fullscreen fails and exits with Escape', async () => {
+    const native = nativeFullscreen()
+    native.request.mockRejectedValue(new Error('Unavailable'))
+    wrapper = mount(TeamWorkspaceShell, { props: { title: '检验', modelValue: 'material-types' } })
+    await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+    expect(wrapper.classes('team-workspace--fullscreen')).toBe(true)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); await flushPromises()
+    expect(wrapper.classes('team-workspace--fullscreen')).toBe(false)
+    expect(native.exit).not.toHaveBeenCalled()
+  })
+  it('follows browser fullscreen exit and leaves fullscreen on team or non-table navigation', async () => {
+    const native = nativeFullscreen()
+    wrapper = mount(TeamWorkspaceShell, { props: { title: '库房', modelValue: 'stock', warehouse: true, manageWarehouse: true } })
+    await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+    native.change(null); await flushPromises()
+    expect(wrapper.classes('team-workspace--fullscreen')).toBe(false)
+    await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+    await wrapper.setProps({ title: '检验' })
+    expect(native.exit).toHaveBeenCalledOnce()
+    for (const modelValue of ['history', 'warehouse']) {
+      await wrapper.setProps({ modelValue: 'stock' })
+      await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+      await wrapper.setProps({ modelValue })
+      expect(wrapper.classes('team-workspace--fullscreen')).toBe(false)
+      expect(wrapper.find('.team-workspace__fullscreen').exists()).toBe(false)
+    }
+  })
+  it('closes a late fullscreen request after unmount and prevents duplicate requests', async () => {
+    const native = nativeFullscreen()
+    let resolve = () => undefined as void
+    native.request.mockImplementation(() => new Promise<void>(done => { resolve = () => { native.change(document.documentElement); done() } }))
+    wrapper = mount(TeamWorkspaceShell, { props: { title: '库房', modelValue: 'stock' } })
+    await wrapper.get('.team-workspace__fullscreen').trigger('click')
+    await wrapper.get('.team-workspace__fullscreen').trigger('click')
+    expect(native.request).toHaveBeenCalledOnce()
+    expect(wrapper.get('.team-workspace__fullscreen').attributes('disabled')).toBeDefined()
+    wrapper.unmount(); resolve(); await flushPromises()
+    expect(native.exit).toHaveBeenCalledOnce()
+    expect(document.fullscreenElement).toBeNull()
+  })
+  it('does not exit another component’s native fullscreen', async () => {
+    const native = nativeFullscreen()
+    const unrelated = document.createElement('video'); native.change(unrelated)
+    wrapper = mount(TeamWorkspaceShell, { props: { title: '库房', modelValue: 'stock' } })
+    await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+    wrapper.unmount()
+    expect(native.request).not.toHaveBeenCalled()
+    expect(native.exit).not.toHaveBeenCalled()
+    expect(document.fullscreenElement).toBe(unrelated)
   })
 })

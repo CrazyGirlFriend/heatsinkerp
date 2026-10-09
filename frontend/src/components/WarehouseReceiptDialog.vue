@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import MaterialInput from './MaterialInput.vue'
+import SpecificationInput from './SpecificationInput.vue'
+import AutofillBadge from './AutofillBadge.vue'
+import { useMaterialAutofill } from '@/composables/useMaterialAutofill'
+import type { MaterialInputField } from '@/services/materialInputApi'
+
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
@@ -24,7 +30,7 @@ const error = ref('')
 const activeTab = ref('receipt')
 const attempt = ref<CreateWarehouseReceipt | null>(null)
 const recoveryBlocked = ref(false)
-const readonly = computed(() => !canWrite.value || saving.value || Boolean(attempt.value) || recoveryBlocked.value)
+const readonly = computed(() => !props.modelValue || !canWrite.value || saving.value || Boolean(attempt.value) || recoveryBlocked.value)
 const form = reactive({
   gross: undefined as number | undefined, percent: undefined as number | undefined,
   receiptKind: 'external' as 'external' | 'return', externalSource: '', returnDispatchNo: '',
@@ -34,10 +40,14 @@ const form = reactive({
   weight: 0 as number | undefined, notes: '', finishedQuantity: undefined as number | undefined,
   document: Object.fromEntries(materialDocumentTextFields.map(field => [field.key, ''])) as Record<MaterialTransferTextField, string>,
 })
+const autofill = useMaterialAutofill(() => form.serialNo, form.document)
+const specificationValidity = reactive<Record<string, boolean>>({ finished_specification: true, transfer_specification: true })
+const suggestionFields = ['material_name', 'customer_code', 'product_code', 'part_no', 'outsourced_unit']
 let generation = 0
 const storageKey = (scope: string) => `heatsink-flow.pending-warehouse-receipt.v1:${scope}`
 
 function fill(payload: CreateWarehouseReceipt | null = null) {
+  autofill.reset(); specificationValidity.finished_specification = specificationValidity.transfer_specification = true
   form.warehouseLocation = payload?.warehouse_location || ''
   form.warehouseLocationKey = payload?.warehouse_location_reservation_key || ''
   form.receiptKind = payload?.receipt_kind || 'external'; form.externalSource = payload?.external_source || ''; form.returnDispatchNo = payload?.return_dispatch_no || ''
@@ -82,6 +92,7 @@ function validate(): boolean {
     error.value = deliveryError(form.deliveryDate, form.deliveryQuantity)
     if (error.value) return false
   }
+  if (Object.values(specificationValidity).includes(false)) { error.value = '请填完整规格尺寸'; activeTab.value = 'document'; return false }
   const invalid = materialDocumentTextFields.find(field => form.document[field.key].trim().length > field.maxLength)
   if (invalid) { error.value = `${invalid.label}不能超过 ${invalid.maxLength} 个字符`; activeTab.value = invalid.key === 'material_name' ? 'receipt' : 'document' }
   else if (form.finishedQuantity != null && (!Number.isInteger(form.finishedQuantity) || form.finishedQuantity < 0 || form.finishedQuantity > 2147483647)) { error.value = '成品件数须为有效的非负整数'; activeTab.value = 'document' }
@@ -148,11 +159,11 @@ onBeforeUnmount(() => { ++generation })
         <ElTabPane label="入库信息" name="receipt">
           <div class="receipt-grid">
             <ElFormItem label="入库来源" required><ElSelect v-model="form.receiptKind" aria-label="入库来源" :disabled="readonly"><ElOption value="external" label="外部来料" /><ElOption value="return" label="外部退回" /></ElSelect></ElFormItem>
-            <ElFormItem label="外部来源单位" required><ElInput v-model="form.externalSource" aria-label="外部来源单位" maxlength="240" :disabled="readonly" placeholder="供应商、外委单位或退回单位" /></ElFormItem>
+            <ElFormItem label="外部来源单位" required><MaterialInput v-model="form.externalSource" field="external_source" label="外部来源单位" :maxlength="240" :disabled="readonly" placeholder="供应商、外委单位或退回单位" /></ElFormItem>
             <ElFormItem v-if="form.receiptKind === 'return'" label="原出库批次" class="receipt-wide"><ElInput v-model="form.returnDispatchNo" aria-label="原出库批次" maxlength="40" :disabled="readonly" placeholder="选填已确认的出库批次号；流水号沿用原号" /></ElFormItem>
-            <ElFormItem label="流水号" required><ElInput v-model="form.serialNo" aria-label="流水号" maxlength="80" :disabled="readonly" placeholder="填写物料流水号" /></ElFormItem>
+            <ElFormItem label="流水号" required><MaterialInput v-model="form.serialNo" field="serial_no" label="流水号" :maxlength="80" :disabled="readonly" placeholder="输入或选择流水号" @selected="autofill.select" /></ElFormItem>
             <MaterialDeliveryFields v-if="form.receiptKind === 'external'" v-model:date="form.deliveryDate" v-model:quantity="form.deliveryQuantity" :disabled="readonly" />
-            <ElFormItem label="材质" required><ElInput v-model="form.document.material_name" aria-label="材质" maxlength="160" :disabled="readonly" placeholder="填写实际材质" /></ElFormItem>
+            <ElFormItem label="材质" required><template #label>材质<AutofillBadge :source="autofill.source('material_name')" /></template><MaterialInput v-model="form.document.material_name" field="material_name" label="材质" :disabled="readonly" placeholder="输入或选择材质" /></ElFormItem>
             <ElFormItem label="物料类型" required><ElSelect v-model="form.materialType" aria-label="物料类型" placeholder="选择物料类型" :disabled="readonly"><ElOption v-for="item in materialTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></ElSelect></ElFormItem>
             <ElFormItem label="入库仓位"><WarehouseLocationSelect v-model="form.warehouseLocation" v-model:reservation-key="form.warehouseLocationKey" :team-id="teamId" :serial-no="form.serialNo" :material-name="form.document.material_name" :material-type="form.materialType" :active="modelValue" :disabled="readonly" @busy-change="locationBusy = $event" /></ElFormItem>
             <ElFormItem label="入库件数" required><ElInputNumber v-model="form.quantity" aria-label="入库件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="readonly" /><span class="receipt-unit">件</span></ElFormItem>
@@ -164,7 +175,7 @@ onBeforeUnmount(() => { ++generation })
         </ElTabPane>
         <ElTabPane label="物料明细与补充信息" name="document">
           <div class="receipt-grid">
-            <ElFormItem v-for="field in materialDocumentTextFields.filter(item => item.key !== 'material_name')" :key="field.key" :label="field.label" :class="{ 'receipt-wide': field.multiline }"><ElInput v-model="form.document[field.key]" :aria-label="field.label" :type="field.multiline ? 'textarea' : 'text'" :rows="2" :maxlength="field.maxLength" :disabled="readonly" placeholder="选填" /></ElFormItem>
+            <ElFormItem v-for="field in materialDocumentTextFields.filter(item => item.key !== 'material_name')" :key="field.key" :label="field.label" :class="{ 'receipt-wide': field.multiline }"><template #label>{{ field.label }}<AutofillBadge :source="autofill.source(field.key)" /></template><SpecificationInput v-if="['finished_specification', 'transfer_specification'].includes(field.key)" v-model="form.document[field.key]" :label="field.label" :disabled="readonly" @validity-change="specificationValidity[field.key] = $event" /><MaterialInput v-else-if="suggestionFields.includes(field.key)" v-model="form.document[field.key]" :field="field.key as MaterialInputField" :label="field.label" :maxlength="field.maxLength" :disabled="readonly" /><ElInput v-else v-model="form.document[field.key]" :aria-label="field.label" :type="field.multiline ? 'textarea' : 'text'" :rows="2" :maxlength="field.maxLength" :disabled="readonly" placeholder="选填" /></ElFormItem>
             <ElFormItem label="成品件数"><ElInputNumber v-model="form.finishedQuantity" aria-label="成品件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="readonly" placeholder="选填" /></ElFormItem>
           </div>
         </ElTabPane>

@@ -6,6 +6,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import FactorySidebar from '@/components/FactorySidebar.vue'
+import AccountAvatar from '@/components/AccountAvatar.vue'
+import ProfileDialog from '@/components/ProfileDialog.vue'
 import AccessPage from '@/pages/AccessPage.vue'
 import LoginPage from '@/pages/LoginPage.vue'
 import { currentUser, isAuthenticated, logout, refreshCurrentUser } from '@/stores/auth'
@@ -22,7 +24,7 @@ const breadcrumb = computed(() => {
     const team = teamDirectory.items.find(item => String(item.id) === String(route.params.teamId))
     const managesWarehouse = currentUser.value?.role === 'ADMIN' || currentUser.value?.role === 'TEAM' && currentUser.value.active && String(currentUser.value.team_id) === String(team?.id)
     const section = resolveTeamWorkspaceSection(route.query, team?.code === 'FACTORY-WAREHOUSE' && team?.kind === 'warehouse', managesWarehouse)
-    return ['班组工作台', teamWorkspaceProfile(team?.code)?.name || team?.name || '班组', teamWorkspaceSections.find(item => item.value === section)!.label]
+    return ['班组工作台', team?.name || teamWorkspaceProfile(team?.code)?.name || '班组', teamWorkspaceSections.find(item => item.value === section)!.label]
   }
   const title = String(route.meta.title || '物料流转')
   if (route.path === '/factory-analysis') return ['全厂总览', title]
@@ -31,6 +33,7 @@ const breadcrumb = computed(() => {
   return [title]
 })
 const mobileMenuOpen = ref(false)
+const profileOpen = ref(false)
 const { compact: compactSidebar } = storeToRefs(useSidebarStore(appPinia))
 const sidebarElement = ref<HTMLElement | null>(null)
 const mobileMenuButton = ref<HTMLButtonElement | null>(null)
@@ -125,6 +128,7 @@ async function signOut(): Promise<void> {
 
 function handleUserCommand(command: string | number | object): void {
   if (command === 'logout') void signOut()
+  if (command === 'profile') { mobileMenuOpen.value = false; profileOpen.value = true }
 }
 
 </script>
@@ -160,13 +164,14 @@ function handleUserCommand(command: string | number | object): void {
           <div class="sidebar__account">
             <ElDropdown placement="top-start" trigger="click" :teleported="false" popper-class="factory-account-menu" @command="handleUserCommand">
               <button class="sidebar__user" type="button" :title="userLabel" :aria-label="`${userLabel}，打开账户菜单`">
-                <ElIcon><User /></ElIcon>
+                <AccountAvatar :avatar-key="currentUser?.avatar_key" :name="currentUser?.display_name || currentUser?.username" :size="28" />
                 <span v-if="!sidebarCompact" class="sidebar__user-label">{{ currentUser?.display_name || currentUser?.username }}</span>
                 <ElIcon v-if="!sidebarCompact" class="sidebar__chevron"><ArrowDown /></ElIcon>
               </button>
               <template #dropdown>
                 <ElDropdownMenu>
                   <ElDropdownItem disabled>{{ teamLabel }}</ElDropdownItem>
+                  <ElDropdownItem command="profile"><ElIcon><User /></ElIcon>个人信息</ElDropdownItem>
                   <ElDropdownItem command="logout"><ElIcon><SwitchButton /></ElIcon>退出登录</ElDropdownItem>
                 </ElDropdownMenu>
               </template>
@@ -187,6 +192,7 @@ function handleUserCommand(command: string | number | object): void {
           </Transition>
         </RouterView>
       </main>
+      <ProfileDialog v-model="profileOpen" />
     </div>
   </ElConfigProvider>
 </template>

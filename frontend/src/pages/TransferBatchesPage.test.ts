@@ -4,6 +4,8 @@ import { reactive } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElPagination, ElSelect } from 'element-plus'
+import FilterDialog from '@/components/FilterDialog.vue'
+import { ElOption } from 'element-plus'
 import TransferBatchesPage from './TransferBatchesPage.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
 import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
@@ -50,7 +52,15 @@ async function renderList(path = '/transfer-batches?status=pending') {
     },
   })
   await flushPromises()
+  wrapper.getComponent(FilterDialog).vm.$emit('update:modelValue', true)
+  await flushPromises()
   return wrapper
+}
+
+function statusCount(page: VueWrapper, value: string) {
+  const select = page.findAllComponents(ElSelect).find(item => item.find('input[aria-label="转料状态"]').exists())!
+  const option = select.findAllComponents(ElOption).find(item => item.props('value') === value)!
+  return String(option.props('label')).match(/（(.*)）$/)![1]
 }
 
 describe('transfer list refresh continuity', () => {
@@ -153,7 +163,7 @@ describe('transfer list refresh continuity', () => {
   async function choose(page: VueWrapper, label: string, value: string) {
     const select = page.findAllComponents(ElSelect).find(component => component.props('ariaLabel') === label)!
     select.vm.$emit('update:modelValue', value)
-    select.vm.$emit('change', value)
+    page.getComponent(FilterDialog).vm.$emit('apply')
     await flushPromises()
   }
 
@@ -229,15 +239,14 @@ describe('transfer list refresh continuity', () => {
   it('applies explicit search choices to both scopes, resets the page and clears every filter on reset', async () => {
     const page = await renderList('/transfer-batches?query=AL%_&page=3&source_team_id=1')
     await choose(page, '搜索方式', 'prefix')
-    expect(page.text()).toContain('从内容开头匹配')
-    expect(page.text()).toContain('客户代码、材质')
+    expect(page.vm.$route.query.search_mode).toBe('prefix')
     await choose(page, '搜索字段', 'material_name')
     await choose(page, '筛选物料类型', 'sludge')
     const scope = { query: 'AL%_', search_mode: 'prefix', search_field: 'material_name', material_type: 'sludge', source_team_id: '1' }
     expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ ...scope, page: 1 }))
     expect(materialTransferApi.counts).toHaveBeenLastCalledWith(expect.objectContaining(scope))
     expect(page.vm.$route.query).toMatchObject({ query: 'AL%_', search_mode: 'prefix', search_field: 'material_name', material_type: 'sludge' })
-    await page.get('button[aria-label="重置"]').trigger('click')
+    page.getComponent(FilterDialog).vm.$emit('reset'); page.getComponent(FilterDialog).vm.$emit('apply')
     await flushPromises()
     expect(materialTransferApi.counts).toHaveBeenLastCalledWith({ query: undefined, search_mode: 'contains', search_field: 'all', material_type: undefined, source_team_id: undefined, next_team_id: undefined })
     expect(page.vm.$route.query).toEqual({})
@@ -286,20 +295,20 @@ describe('transfer list refresh continuity', () => {
     expect(page.text()).toContain('共 0 条')
     expect(page.text()).not.toContain('FLOW-001')
     expect(page.text()).toContain('暂无转料记录')
-    expect(page.get('.status-filter--pending strong').text()).toBe('11')
-    expect(page.get('.status-filter--received strong').text()).toBe('15')
+    expect(statusCount(page, 'pending')).toBe('11')
+    expect(statusCount(page, 'received')).toBe('15')
   })
 
   it('keeps totals for all matching records when selecting a status, rather than counting the current page', async () => {
     const page = await renderList()
-    expect(page.get('.status-filter--all strong').text()).toBe('28')
-    expect(page.get('.status-filter--pending strong').text()).toBe('12')
-    await page.get('.status-filter--received').trigger('click')
+    expect(statusCount(page, 'all')).toBe('28')
+    expect(statusCount(page, 'pending')).toBe('12')
+    await choose(page, '转料状态', 'received')
     await flushPromises()
     expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'received', page: 1 }))
     expect(materialTransferApi.counts).toHaveBeenCalledTimes(1)
-    expect(page.get('.status-filter--received').attributes('aria-pressed')).toBe('true')
-    expect(page.get('.status-filter--all strong').text()).toBe('28')
+    expect(page.vm.$route.query.status).toBe('received')
+    expect(statusCount(page, 'all')).toBe('28')
   })
 
   it('does not replace the current search totals with a late response for a previous search', async () => {
@@ -321,7 +330,7 @@ describe('transfer list refresh continuity', () => {
     await flushPromises()
     finishOld({ all: 18, pending: 9, received: 7, voided: 2, dispatched: 0 })
     await flushPromises()
-    expect(page.get('.status-filter--all strong').text()).toBe('7')
-    expect(page.get('.status-filter--pending strong').text()).toBe('3')
+    expect(statusCount(page, 'all')).toBe('7')
+    expect(statusCount(page, 'pending')).toBe('3')
   })
 })

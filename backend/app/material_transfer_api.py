@@ -19,6 +19,18 @@ from .async_api import AsyncAPIRouter as APIRouter
 router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
 
 
+@router.get("/material-input-suggestions", tags=["material transfers"])
+def material_input_suggestions(
+    field: str = Query(pattern="^(serial_no|material_name|customer_code|product_code|part_no|external_source|outsourced_unit)$"),
+    query: str = Query(default="", max_length=160),
+    limit: int = Query(default=10, ge=1, le=20),
+    db: Session = Depends(get_db),
+) -> dict:
+    from .material_input import input_suggestions
+
+    return input_suggestions(db, field, query, limit)
+
+
 @router.get("/material-trace", tags=["material transfers"])
 def get_serial_trace(
     serial_no: str = Query(min_length=1, max_length=80),

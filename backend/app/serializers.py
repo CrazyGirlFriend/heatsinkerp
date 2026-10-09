@@ -30,6 +30,7 @@ def user_dict(user: User) -> dict[str, Any]:
         "id": user.id,
         "username": user.username,
         "display_name": user.display_name,
+        "avatar_key": user.avatar_key,
         "role": user.role,
         "team_id": user.team_id,
         "team_code": user.team.code if user.team else None,

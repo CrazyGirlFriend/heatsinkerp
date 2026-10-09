@@ -10,6 +10,7 @@ import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import type { MaterialDispatch, MaterialLoss, StockBatch } from '@/types/teamMaterials'
 const state = vi.hoisted(() => ({ auth: { isTeamAccount: true, currentUser: { team_id: 2 }, currentUserError: '', refreshCurrentUser: vi.fn() } }))
+vi.mock('@/services/materialInputApi', () => ({ materialSuggestions: vi.fn().mockResolvedValue([]) }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => ({ items: [{ id: 2, name: '轧制', active: true }, { id: 3, name: '退火', active: true }, { id: 1, name: '库房', kind: 'warehouse', active: true }] }) }))
 function source(id = 10, type: 'semi_finished' | null = 'semi_finished'): StockBatch {

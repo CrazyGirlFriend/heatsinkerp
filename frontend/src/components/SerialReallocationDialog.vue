@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MaterialInput from './MaterialInput.vue'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElButton, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElTag } from 'element-plus'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
@@ -69,7 +70,7 @@ async function submit() {
       <div><span>{{ source.transfer.batch_no }}</span><span>{{ inventoryAmount(dispatchableAmounts(source).quantity) }} 件 · {{ inventoryAmount(dispatchableAmounts(source).weight) }} kg</span></div>
     </div>
     <ElForm label-position="top" :disabled="saving || !canWrite" @submit.prevent="submit">
-      <ElFormItem label="目标流水号" required><ElInput v-model="form.serial" aria-label="转投目标流水号" maxlength="80" placeholder="填写转投后的流水号" /></ElFormItem>
+      <ElFormItem label="目标流水号" required><MaterialInput field="serial_no" label="转投目标流水号" :disabled="saving || !canWrite || !modelValue" v-model="form.serial" aria-label="转投目标流水号" :maxlength="80" placeholder="填写转投后的流水号" /></ElFormItem>
       <div class="reallocation-amounts">
         <ElFormItem label="转投件数" required><ElInputNumber v-model="form.quantity" aria-label="转投件数" :min="0" :precision="0" controls-position="right" /><span>件</span></ElFormItem>
         <ElFormItem v-if="!measured" label="转投重量" required><ElInputNumber v-model="form.weight" aria-label="转投重量" :min="0" :precision="3" controls-position="right" /><span>kg</span></ElFormItem>

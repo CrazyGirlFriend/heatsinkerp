@@ -65,6 +65,15 @@ function buttonByText(wrapper: VueWrapper, text: string) {
 }
 
 describe('team leader management workspace', () => {
+  it('lets the administrator choose an avatar when editing a team leader', async () => {
+    const update = vi.spyOn(adminApi, 'updateAccount').mockResolvedValue({ ...leader, avatar_key: 'portrait-6' })
+    const wrapper = await mountPage()
+    await buttonByText(wrapper, '编辑')!.trigger('click')
+    await wrapper.get('[aria-label="头像 6"]').trigger('click')
+    await buttonByText(wrapper, '保存修改')!.trigger('click'); await flushPromises()
+    expect(update).toHaveBeenCalledWith(leader.id, expect.objectContaining({ avatar_key: 'portrait-6', display_name: leader.display_name }))
+    expect(wrapper.find('tbody .account-avatar svg').exists()).toBe(true)
+  })
   it('preserves paging and an unsaved account while synchronizing existing accounts', async () => {
     const leaders = Array.from({ length: 25 }, (_, i) => ({ ...leader, id: i + 10, username: `leader${i}` }))
     vi.mocked(adminApi.listAccounts).mockResolvedValue(leaders)

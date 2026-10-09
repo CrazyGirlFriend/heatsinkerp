@@ -355,13 +355,37 @@ class TeamResponse(APIModel):
     updated_at: datetime
 
 
+AvatarKey = Literal["", "portrait-1", "portrait-2", "portrait-3", "portrait-4", "portrait-5", "portrait-6", "portrait-7", "portrait-8"]
+
+
+class ProfileUpdate(APIModel):
+    """Self-service fields only; account permissions are never writable here."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    display_name: str | None = Field(default=None, min_length=1, max_length=80)
+    avatar_key: AvatarKey | None = None
+
+    @field_validator("display_name", "avatar_key")
+    @classmethod
+    def reject_null(cls, value):
+        if value is None:
+            raise ValueError("个人资料不能为空")
+        return value
+
+
 class UserCreate(APIModel):
     username: str = Field(min_length=1, max_length=64)
     display_name: str = Field(min_length=1, max_length=80)
+    avatar_key: AvatarKey = ""
     password: str = Field(min_length=8, max_length=200)
     role: str = Field(pattern="^(ADMIN|TEAM)$")
     team_id: int | None = Field(default=None, ge=1)
     active: bool = True
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def trim_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
 
     @model_validator(mode="after")
     def validate_team_role(self) -> UserCreate:
@@ -372,16 +396,25 @@ class UserCreate(APIModel):
 
 class UserUpdate(APIModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=80)
+    avatar_key: AvatarKey | None = None
     password: str | None = Field(default=None, min_length=8, max_length=200)
     role: str | None = Field(default=None, pattern="^(ADMIN|TEAM)$")
     team_id: int | None = Field(default=None, ge=1)
     active: bool | None = None
+
+    @field_validator("display_name", "avatar_key", mode="before")
+    @classmethod
+    def normalize_profile(cls, value):
+        if value is None:
+            raise ValueError("个人资料不能为空")
+        return value.strip() if isinstance(value, str) else value
 
 
 class UserResponse(APIModel):
     id: int
     username: str
     display_name: str
+    avatar_key: str = ""
     role: str
     team_id: int | None
     team_code: str | None

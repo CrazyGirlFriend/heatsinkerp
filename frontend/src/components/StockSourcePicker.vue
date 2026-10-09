@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FilterDialog from './FilterDialog.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import { ElButton, ElCheckbox, ElDialog, ElInput, ElPagination, ElTable, ElTableColumn } from 'element-plus'
@@ -19,6 +20,10 @@ const emit = defineEmits<{ close: []; selected: [sources: StockBatch[]]; outboun
 const query = ref(''), appliedQuery = ref(''), page = ref(1), pageSize = ref(20)
 const rows = ref<StockBatch[]>([]), total = ref(0), loading = ref(false), error = ref('')
 const dates = ref({ from: '', to: '' }), urgentOnly = ref(false)
+const filterOpen = ref(false), dateDraft = ref({ from: '', to: '' }), urgentDraft = ref(false)
+const filterCount = computed(() => Number(Boolean(dates.value.from || dates.value.to)) + Number(urgentOnly.value))
+function syncFilters() { dateDraft.value = { ...dates.value }; urgentDraft.value = urgentOnly.value }
+function applyFilters() { dates.value = { ...dateDraft.value }; urgentOnly.value = urgentDraft.value; filterOpen.value = false; search() }
 const filtered = computed(() => !!(appliedQuery.value || dates.value.from || dates.value.to || urgentOnly.value))
 const emptyTitle = computed(() => filtered.value ? '没有符合筛选条件的来源批次' : '暂无来源批次')
 const { selected, availableRows, checkedCount, allChecked, totals, toggle, toggleAll, reconcile } = useBatchSelection(rows, row => String(row.transfer.id), dispatchableAmounts, stockSelectable)
@@ -48,7 +53,7 @@ onBeforeUnmount(() => { ++version })
     <p v-if="groupLabel" class="picker-scope">{{ groupLabel }}</p>
     <div class="picker-toolbar">
       <ElInput v-model="query" :prefix-icon="Search" aria-label="出库库存搜索" placeholder="搜索流水号、批次、材质或仓位" clearable @keyup.enter="search" @clear="search" />
-      <RecordDateFilter v-model="dates" label="接收日期" @update:model-value="search" /><ElCheckbox v-model="urgentOnly" @change="search">仅看加急</ElCheckbox>
+      <FilterDialog v-model="filterOpen" title="来源批次筛选" :count="filterCount" @open="syncFilters" @cancel="syncFilters" @apply="applyFilters" @reset="dateDraft = { from: '', to: '' }; urgentDraft = false"><label>接收日期<RecordDateFilter v-model="dateDraft" label="接收日期" /></label><ElCheckbox v-model="urgentDraft">仅看加急</ElCheckbox></FilterDialog>
       <ElButton @click="search">查询</ElButton>
     </div>
     <BatchSelectionBar :count="selected.size" :quantity="totals.quantity" :weight="totals.weight" :all-checked="allChecked" :partial="checkedCount > 0 && !allChecked" :disabled="loading || !availableRows.length || (selected.size >= 100 && !checkedCount)" @all="toggleAll" @clear="selected.clear()" />

@@ -38,7 +38,7 @@ def active_count(username="admin"):
 
 
 @pytest.mark.parametrize("role", ["ADMIN", "TEAM"])
-def test_third_login_replaces_only_the_oldest_session(client, role):
+def test_fourth_login_replaces_only_the_oldest_session(client, role):
     username, password = "admin", "Admin123!"
     first = dict(client.headers)
     if role == "TEAM":
@@ -49,9 +49,13 @@ def test_third_login_replaces_only_the_oldest_session(client, role):
     assert login(client, username, "wrong").status_code == 401
     assert client.get("/api/auth/me", headers=first).status_code == 200
     third = headers(login(client, username, password))
-    assert active_count(username) == 2
+    assert active_count(username) == 3
+    for session in [first, second, third]:
+        assert client.get("/api/auth/me", headers=session).status_code == 200
+    fourth = headers(login(client, username, password))
+    assert active_count(username) == 3
     assert client.get("/api/auth/me", headers=first).status_code == 401
-    for session in [second, third]:
+    for session in [second, third, fourth]:
         assert client.get("/api/auth/me", headers=session).status_code == 200
 
 
@@ -92,14 +96,16 @@ def test_limit_is_per_account_and_profile_reads_do_not_take_slots(client):
     for _ in range(5):
         assert client.get("/api/auth/me").status_code == 200
     headers(login(client))
+    assert client.get("/api/auth/me").status_code == 200
+    headers(login(client))
     assert client.get("/api/auth/me").status_code == 401
     assert client.get("/api/auth/me", headers=second).status_code == 200
     assert client.get("/api/auth/me", headers=other).status_code == 200
-    assert active_count() == 2
+    assert active_count() == 3
     assert active_count("independent-leader") == 1
 
 
-def test_simultaneous_logins_cannot_exceed_two(client, monkeypatch):
+def test_simultaneous_logins_cannot_exceed_three(client, monkeypatch):
     from app import auth_api
 
     barrier = Barrier(6)
@@ -127,13 +133,13 @@ def test_simultaneous_logins_cannot_exceed_two(client, monkeypatch):
 
     responses = asyncio.run(concurrent_logins())
     assert [response.status_code for response in responses] == [200] * 6
-    assert active_count() == 2
+    assert active_count() == 3
     assert client.get("/api/auth/me").status_code == 401
     with SessionLocal() as db:
         sessions = db.scalars(select(AuthSession).order_by(AuthSession.created_at.desc(), AuthSession.id.desc())).all()
-        assert all(session.revoked_at is None for session in sessions[:2])
-        assert all(session.revoked_at is not None for session in sessions[2:])
-        active_tokens = {session.token_hash for session in sessions[:2]}
+        assert all(session.revoked_at is None for session in sessions[:3])
+        assert all(session.revoked_at is not None for session in sessions[3:])
+        active_tokens = {session.token_hash for session in sessions[:3]}
     for response in responses:
         expected = 200 if token_digest(response.json()["access_token"]) in active_tokens else 401
         assert client.get("/api/auth/me", headers=headers(response)).status_code == expected
@@ -143,6 +149,7 @@ def test_simultaneous_logins_cannot_exceed_two(client, monkeypatch):
 def test_oldest_is_by_login_time_with_id_as_tiebreaker(client, same_time):
     first = dict(client.headers)
     second = headers(login(client))
+    third = headers(login(client))
     with SessionLocal() as db:
         sessions = db.scalars(select(AuthSession).order_by(AuthSession.id)).all()
         sessions[0].created_at = utcnow() - timedelta(minutes=1)
@@ -151,9 +158,10 @@ def test_oldest_is_by_login_time_with_id_as_tiebreaker(client, same_time):
     headers(login(client))
     assert client.get("/api/auth/me", headers=first).status_code == (401 if same_time else 200)
     assert client.get("/api/auth/me", headers=second).status_code == (200 if same_time else 401)
+    assert client.get("/api/auth/me", headers=third).status_code == 200
 
 
-def test_login_reduces_legacy_sessions_to_two(client):
+def test_login_reduces_legacy_sessions_to_three(client):
     with SessionLocal() as db:
         user = db.scalar(select(User).where(User.username == "admin"))
         now = utcnow()
@@ -162,7 +170,7 @@ def test_login_reduces_legacy_sessions_to_two(client):
                                created_at=now - timedelta(minutes=index + 1), expires_at=now + timedelta(hours=1)))
         db.commit()
     new = headers(login(client))
-    assert active_count() == 2
+    assert active_count() == 3
     assert client.get("/api/auth/me").status_code == 200
     assert client.get("/api/auth/me", headers=new).status_code == 200
 

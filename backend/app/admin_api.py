@@ -228,6 +228,7 @@ def _create_user(payload, admin, db, password_hash):
     user = User(
         username=payload.username,
         display_name=payload.display_name,
+        avatar_key=payload.avatar_key,
         password_hash=password_hash,
         role=payload.role,
         team=team,
@@ -314,6 +315,8 @@ def _update_user(user_id, payload, admin, db, password_hash):
     team = _validated_team(db, final_role, final_team_id)
     if "display_name" in supplied:
         user.display_name = payload.display_name
+    if "avatar_key" in supplied:
+        user.avatar_key = payload.avatar_key
     if "role" in supplied:
         user.role = payload.role
     if "team_id" in supplied or "role" in supplied:

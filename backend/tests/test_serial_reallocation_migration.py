@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 def test_fresh_database_reaches_reallocation_revision(tmp_path):
     database = tmp_path / "fresh.sqlite"
     result = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", "20261009_0028"],
         cwd=Path(__file__).parents[1],
         env={**os.environ, "DATABASE_URL": f"sqlite:///{database}"},
         capture_output=True,

@@ -59,10 +59,13 @@ def list_purposes(team_id: int = Path(ge=1), _: User = Depends(get_current_user)
 
 
 def save_purpose(db, team_id, user, payload, purpose_id=None):
-    require_actor(user, team_id)
+    if user.role != "ADMIN":
+        require_actor(user, team_id)
     try:
         with db.begin():
             team = db.scalar(select(Team).where(Team.id == team_id).with_for_update().execution_options(populate_existing=True))
+            if team is None:
+                raise HTTPException(404, "未找到班组")
             if not team.active:
                 raise HTTPException(403, "班组已停用")
             row = None if purpose_id is None else db.scalar(select(TeamPurpose).where(TeamPurpose.id == purpose_id).with_for_update())

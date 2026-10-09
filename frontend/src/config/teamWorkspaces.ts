@@ -54,5 +54,8 @@ export function teamCanReallocate(team?: Pick<Team, 'code' | 'kind'>) {
 }
 
 export function configuredTeamWorkspaces(teams: readonly Team[]) {
-  return teamWorkspaceProfiles.map(profile => ({ profile, team: teams.find(team => team.active && team.code === profile.code) }))
+  return teamWorkspaceProfiles.map(profile => {
+    const team = teams.find(team => team.active && team.code === profile.code)
+    return { profile: { ...profile, name: team?.name || profile.name }, team }
+  })
 }

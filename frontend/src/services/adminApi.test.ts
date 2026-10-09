@@ -20,6 +20,13 @@ beforeEach(() => {
 afterEach(() => { httpClient.defaults.adapter = originalAdapter; localStorage.clear() })
 
 describe('current authentication and team administration API', () => {
+  it('updates the authenticated profile and retains its selected avatar on reads', async () => {
+    data = { id: 7, username: 'leader', display_name: '班组长', role: 'TEAM', team_id: 2, avatar_key: 'portrait-4' }
+    expect(await adminApi.updateProfile({ display_name: '班组长', avatar_key: 'portrait-4' })).toMatchObject({ avatar_key: 'portrait-4' })
+    expect(requests[0]).toMatchObject({ url: '/auth/me', method: 'patch' })
+    expect(JSON.parse(requests[0]!.data)).toEqual({ display_name: '班组长', avatar_key: 'portrait-4' })
+    expect(await adminApi.currentUser()).toMatchObject({ avatar_key: 'portrait-4' })
+  })
   it('logs in through the server and propagates service failure without creating a demo session', async () => {
     data = { access_token: 'server-token', token_type: 'Bearer', user: { id: 1, username: 'admin', role: 'ADMIN', active: true } }
     const session = await adminApi.login({ username: 'admin', password: 'test-password' })

@@ -10,12 +10,13 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from .admin_audit import audit, snapshot
 from .async_api import AsyncAPIRouter as APIRouter
 from .auth import AuthContext, create_session, get_auth_context, verify_password
 from .database import get_db
 from .models import User, utcnow
 from .observability import record
-from .schemas import HealthResponse, LoginRequest, LoginResponse, UserResponse
+from .schemas import HealthResponse, LoginRequest, LoginResponse, ProfileUpdate, UserResponse
 from .serializers import user_dict
 
 router = APIRouter(prefix="/api")
@@ -54,6 +55,28 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> di
 @router.get("/auth/me", response_model=UserResponse, tags=["authentication"])
 def auth_me(context: AuthContext = Depends(get_auth_context)) -> dict:
     return user_dict(context.user)
+
+
+@router.patch("/auth/me", response_model=UserResponse, tags=["authentication"])
+def update_profile(
+    payload: ProfileUpdate,
+    context: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    # Resolve the target exclusively from the authenticated session.
+    user = db.scalar(
+        select(User)
+        .where(User.id == context.user.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    before = snapshot(user)
+    for field in payload.model_fields_set:
+        setattr(user, field, getattr(payload, field))
+    audit(db, user, user, "updated", before)
+    db.commit()
+    db.refresh(user)
+    return user_dict(user)
 
 
 @router.post("/auth/logout", status_code=204, tags=["authentication"])

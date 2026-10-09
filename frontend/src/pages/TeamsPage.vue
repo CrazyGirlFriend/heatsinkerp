@@ -27,6 +27,7 @@ import {
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import LiveRefreshNotice from '@/components/LiveRefreshNotice.vue'
 import OpeningAuthorizationDialog from '@/components/OpeningAuthorizationDialog.vue'
+import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { adminApi, type EntityId, type Team, type TeamKind } from '@/services/adminApi'
 import { isAdmin, refreshCurrentUser } from '@/stores/auth'
@@ -38,6 +39,7 @@ type StatusFilter = 'all' | 'active' | 'inactive'
 interface TeamForm {
   code: string
   name: string
+  description: string
   active: boolean
   sort_order: number
   kind: TeamKind
@@ -51,12 +53,14 @@ const errorMessage = ref('')
 const query = ref('')
 const status = ref<StatusFilter>('all')
 const editorOpen = ref(false)
+const businessTeam = ref<Team | null>(null), businessOpen = ref(false)
 const authorizationOpen = ref(false), authorizationTeam = ref<Team | null>(null)
 const editingId = ref<EntityId | null>(null)
+const editingWarehouse = computed(() => editingId.value !== null && teams.value.some(team => String(team.id) === String(editingId.value) && isWarehouse(team)))
 const formError = ref('')
 const codeInput = ref<InputInstance | null>(null)
 const nameInput = ref<InputInstance | null>(null)
-const form = reactive<TeamForm>({ code: '', name: '', active: true, sort_order: 0, kind: 'production' })
+const form = reactive<TeamForm>({ code: '', name: '', description: '', active: true, sort_order: 0, kind: 'production' })
 
 const filteredTeams = computed(() => {
   const needle = query.value.trim().toLowerCase()
@@ -107,11 +111,12 @@ const liveRefresh = useLiveRefresh(async () => { await refreshCurrentUser(); awa
   enabled: () => isAdmin.value,
   busy: () => loading.value || saving.value || deletingId.value !== null,
 })
-watch(isAdmin, value => { if (!value) { ++requestVersion; teams.value = []; editorOpen.value = false } })
+watch(isAdmin, value => { if (!value) { ++requestVersion; teams.value = []; editorOpen.value = false; businessOpen.value = false } })
 
 function resetForm(): void {
   form.code = ''
   form.name = ''
+  form.description = ''
   form.active = true
   form.sort_order = teams.value.length ? Math.min(1000000, Math.max(...teams.value.map((team) => team.sort_order ?? 0)) + 10) : 10
   form.kind = 'production'
@@ -128,6 +133,7 @@ function openEdit(team: Team): void {
   editingId.value = team.id
   form.code = team.code
   form.name = team.name
+  form.description = team.description || ''
   form.active = team.active
   form.sort_order = team.sort_order ?? 0
   form.kind = team.kind ?? 'production'
@@ -158,6 +164,7 @@ async function submitForm(): Promise<void> {
   const payload = {
     code: form.code.trim().toUpperCase(),
     name: form.name.trim(),
+    description: form.description.trim() || null,
     active: form.active,
     sort_order: form.sort_order,
     kind: form.kind,
@@ -310,12 +317,13 @@ onMounted(() => void loadTeams())
           <ElTableColumn label="状态" width="100">
             <template #default="{ row }"><ElTag :type="row.active ? 'success' : 'info'" effect="plain">{{ row.active ? '启用' : '停用' }}</ElTag></template>
           </ElTableColumn>
-          <ElTableColumn label="操作" width="360" align="center">
+          <ElTableColumn label="操作" width="440" align="center">
             <template #default="{ row }">
               <ElButton link type="primary" @click="authorizationTeam = asTeam(row); authorizationOpen = true">初始库存录入</ElButton>
+              <ElButton link type="primary" :disabled="!row.active" @click="businessTeam = asTeam(row); businessOpen = true">业务设置</ElButton>
+              <ElButton link type="primary" :icon="EditPen" @click="openEdit(asTeam(row))">编辑</ElButton>
               <template v-if="isWarehouse(asTeam(row))"><ElTag type="info" effect="plain">系统项</ElTag></template>
               <template v-else>
-                <ElButton link type="primary" :icon="EditPen" @click="openEdit(asTeam(row))">编辑</ElButton>
                 <ElButton link :type="row.active ? 'warning' : 'success'" :icon="row.active ? SwitchButton : CircleCheck" @click="toggleTeam(asTeam(row))">{{ row.active ? '停用' : '启用' }}</ElButton>
                 <ElButton link type="danger" :icon="Delete" :loading="String(deletingId) === String(row.id)" @click="deleteTeam(asTeam(row))">删除</ElButton>
               </template>
@@ -327,6 +335,7 @@ onMounted(() => void loadTeams())
     </ElCard>
 
     <OpeningAuthorizationDialog v-model="authorizationOpen" :team="authorizationTeam" @saved="loadTeams(); refreshTeamDirectory()" />
+    <TeamBusinessDialog v-if="businessOpen && businessTeam && isAdmin" :key="businessTeam.id" v-model="businessOpen" :team-id="Number(businessTeam.id)" :team-name="businessTeam.name" business-only />
     <ElDialog
       v-model="editorOpen"
       class="editor-modal"
@@ -341,20 +350,21 @@ onMounted(() => void loadTeams())
       <ElForm :model="form" label-position="top" @submit.prevent="submitForm">
         <div class="form-grid">
           <ElFormItem label="班组编码" required>
-            <ElInput ref="codeInput" v-model="form.code" maxlength="32" autocomplete="off" placeholder="请输入班组编码" aria-label="班组编码" />
+            <ElInput ref="codeInput" v-model="form.code" :disabled="editingWarehouse" maxlength="32" autocomplete="off" placeholder="请输入班组编码" aria-label="班组编码" />
           </ElFormItem>
           <ElFormItem label="班组名称" required>
-            <ElInput ref="nameInput" v-model="form.name" maxlength="80" autocomplete="off" placeholder="请输入班组名称" aria-label="班组名称" />
+            <ElInput ref="nameInput" v-model="form.name" :disabled="editingWarehouse" maxlength="80" autocomplete="off" placeholder="请输入班组名称" aria-label="班组名称" />
           </ElFormItem>
           <ElFormItem label="显示顺序">
             <ElInputNumber v-model="form.sort_order" class="full-width" :min="0" :max="1000000" :step="10" controls-position="right" aria-label="显示顺序" />
           </ElFormItem>
           <ElFormItem class="field-wide" label="班组状态">
             <div class="switch-row">
-              <ElSwitch v-model="form.active" inline-prompt active-text="启" inactive-text="停" aria-label="启用班组" />
+              <ElSwitch v-model="form.active" :disabled="editingWarehouse" inline-prompt active-text="启" inactive-text="停" aria-label="启用班组" />
               <span>{{ form.active ? '可接收转料、绑定账号' : '不再分配新业务' }}</span>
             </div>
           </ElFormItem>
+          <ElFormItem class="field-wide" label="班组说明"><ElInput v-model="form.description" type="textarea" :rows="3" maxlength="240" aria-label="班组说明" /></ElFormItem>
         </div>
         <ElAlert v-if="formError" :title="formError" type="error" show-icon :closable="false" />
         <button class="dialog-submit-proxy" type="submit" tabindex="-1" aria-hidden="true" />

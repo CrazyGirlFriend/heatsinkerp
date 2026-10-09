@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import PageBackButton from '@/components/PageBackButton.vue'
+import AccountAvatar from '@/components/AccountAvatar.vue'
+import AvatarPicker from '@/components/AvatarPicker.vue'
 import {
   CircleCheck,
   Delete,
@@ -51,6 +53,7 @@ type StatusFilter = 'all' | 'active' | 'inactive'
 interface LeaderForm {
   username: string
   display_name: string
+  avatar_key: string
   password: string
   team_id: EntityId | null
   active: boolean
@@ -73,6 +76,7 @@ const displayNameInput = ref<InputInstance | null>(null)
 const form = reactive<LeaderForm>({
   username: '',
   display_name: '',
+  avatar_key: '',
   password: '',
   team_id: null,
   active: true,
@@ -138,6 +142,7 @@ watch(isAdmin, value => { if (!value) { ++requestVersion; accounts.value = []; t
 function resetForm(): void {
   form.username = ''
   form.display_name = ''
+  form.avatar_key = ''
   form.password = ''
   form.team_id = null
   form.active = true
@@ -155,6 +160,7 @@ function openEdit(account: Account): void {
   editingId.value = account.id
   form.username = account.username
   form.display_name = account.display_name
+  form.avatar_key = account.avatar_key || ''
   form.password = ''
   form.team_id = account.team_id
   form.active = account.active
@@ -189,6 +195,7 @@ async function submitForm(): Promise<void> {
       const payload: CreateAccountPayload = {
         username: form.username.trim(),
         display_name: form.display_name.trim(),
+        avatar_key: form.avatar_key,
         password: form.password,
         role: 'TEAM',
         team_id: form.team_id,
@@ -201,6 +208,7 @@ async function submitForm(): Promise<void> {
     } else {
       const updated = await adminApi.updateAccount(editingId.value, {
         display_name: form.display_name.trim(),
+        avatar_key: form.avatar_key,
         role: 'TEAM',
         team_id: form.team_id,
         active: form.active,
@@ -331,7 +339,7 @@ onMounted(() => void loadData())
               </div>
             </template>
           </ElTableColumn>
-          <ElTableColumn prop="display_name" label="班组长" min-width="150" show-overflow-tooltip />
+          <ElTableColumn label="班组长" min-width="150" show-overflow-tooltip><template #default="{ row }"><span class="account-cell"><AccountAvatar :avatar-key="row.avatar_key" :name="row.display_name" :size="30" /><strong>{{ row.display_name }}</strong></span></template></ElTableColumn>
           <ElTableColumn label="所属班组" min-width="170" show-overflow-tooltip>
             <template #default="{ row }">{{ row.team?.name || '未绑定' }}</template>
           </ElTableColumn>
@@ -365,6 +373,7 @@ onMounted(() => void loadData())
     >
       <ElForm :model="form" label-position="top" @submit.prevent="submitForm">
         <div class="form-grid">
+          <ElFormItem class="field-wide" label="头像"><AvatarPicker v-model="form.avatar_key" :name="form.display_name" :disabled="saving" /></ElFormItem>
           <ElFormItem label="登录账号" required>
             <ElInput ref="usernameInput" v-model="form.username" maxlength="64" autocomplete="off" placeholder="例如 roll_leader" :disabled="editingId !== null">
               <template #prefix><ElIcon><User /></ElIcon></template>

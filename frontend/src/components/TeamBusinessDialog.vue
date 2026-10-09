@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import OpeningMaterialFields from './OpeningMaterialFields.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { onBeforeUnmount, ref, watch } from 'vue'
@@ -10,12 +11,13 @@ import type { OpeningLine, OpeningState, TeamPurpose } from '@/types/teamBusines
 import { materialRequestKey } from '@/utils/materialStock'
 import { showToast } from '@/stores/toast'
 
-const props = defineProps<{ modelValue: boolean; teamId: number; initialTab?: string }>()
+const props = defineProps<{ modelValue: boolean; teamId: number; initialTab?: string; businessOnly?: boolean; teamName?: string }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; changed: []; stocked: [MaterialTransfer[]] }>()
 const auth = useAuthStore()
 const tab = ref('purposes'), loading = ref(false), saving = ref(false), error = ref('')
 const purposes = ref<TeamPurpose[]>([]), newName = ref(''), opening = ref<OpeningState | null>(null)
 const lines = ref<OpeningLine[]>([])
+const invalidSpecifications = new Set<OpeningLine>()
 let epoch = 0, requestKey = '', lastBody = ''
 const key = () => `heatsink.opening-draft.v1:${auth.currentUser?.id}:${props.teamId}`
 function blank(): OpeningLine { return { serial_no: '', material_name: '', material_type: '', transfer_specification: '', quantity: undefined, weight: undefined, notes: '' } }
@@ -24,7 +26,7 @@ async function load() {
   const current = ++epoch
   loading.value = true; error.value = ''
   try {
-    const [options, state] = await Promise.all([teamMaterialApi.purposes(props.teamId), teamMaterialApi.openingState(props.teamId)])
+    const [options, state] = await Promise.all([teamMaterialApi.purposes(props.teamId), props.businessOnly ? Promise.resolve(null) : teamMaterialApi.openingState(props.teamId)])
     if (current !== epoch) return
     purposes.value = options; opening.value = state
   } catch (e) { if (current === epoch) error.value = e instanceof Error ? e.message : '班组设置加载失败' }
@@ -33,8 +35,8 @@ async function load() {
 watch(() => [props.modelValue, props.teamId], () => {
   ++epoch
   if (!props.modelValue) return
-  tab.value = props.initialTab || 'purposes'; newName.value = ''; requestKey = ''; lastBody = ''; opening.value = null
-  lines.value = [blank()]
+  tab.value = props.businessOnly ? 'purposes' : props.initialTab || 'purposes'; newName.value = ''; requestKey = ''; lastBody = ''; opening.value = null
+  invalidSpecifications.clear(); lines.value = [blank()]
   try {
     const draft = JSON.parse(localStorage.getItem(key()) || 'null')
     if (Array.isArray(draft) && draft.length && draft.length <= 100 && draft.every(line => line && typeof line.serial_no === 'string' && typeof line.material_name === 'string')) lines.value = draft.map(line => ({ ...blank(), ...line }))
@@ -62,6 +64,7 @@ async function savePurpose(item?: TeamPurpose) {
   finally { saving.value = false }
 }
 async function submitOpening() {
+  if (lines.value.some(line => invalidSpecifications.has(line))) { error.value = '请填完整规格尺寸'; return }
   if (saving.value || loading.value || !opening.value?.can_submit) return
   error.value = ''
   if (lines.value.some(line => line.material_type === 'sludge' && !sludgeWeight(line.sludge_gross_weight, line.sludge_content_percent))) { error.value = '请填写废泥实重和有效材料占比，折算重量须达到 0.001 kg'; return }
@@ -86,8 +89,8 @@ async function submitOpening() {
 </script>
 
 <template>
-  <ElDialog :model-value="modelValue" title="班组设置" width="min(1080px, 96vw)" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving" @close="close">
-    <ElTabs v-model="tab"><ElTabPane name="purposes" label="本组业务" /><ElTabPane name="opening" label="初始库存" /></ElTabs>
+  <ElDialog :model-value="modelValue" :title="businessOnly ? teamName ? `${teamName} · 业务设置` : '班组业务设置' : '班组设置'" :width="businessOnly ? 'min(760px, 94vw)' : 'min(1080px, 96vw)'" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving" @close="close">
+    <ElTabs v-if="!businessOnly" v-model="tab"><ElTabPane name="purposes" label="本组业务" /><ElTabPane name="opening" label="初始库存" /></ElTabs>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <p v-if="loading">正在读取班组设置…</p>
     <section v-else-if="tab === 'purposes'" class="purpose-settings">
@@ -101,7 +104,7 @@ async function submitOpening() {
       <div class="purpose-editor"><ElInput v-model="newName" aria-label="新增业务名称" placeholder="例如：检验、去毛刺" maxlength="80" :disabled="saving" @keyup.enter="savePurpose()" /><ElButton type="primary" :loading="saving" @click="savePurpose()">新增业务</ElButton></div>
       <p v-if="!purposes.length" class="settings-note">尚未配置时，新单暂归“未分类”；配置后，上序新开单必须选择启用的业务。</p>
     </section>
-    <section v-else class="opening-settings">
+    <section v-else-if="!businessOnly" class="opening-settings">
       <ElAlert v-if="!opening?.enabled" title="请系统管理员在“班组管理”中开启初始库存录入权限。" type="info" :closable="false" />
       <template v-if="opening?.can_submit">
         <p class="settings-note">每次提交累加库存，每行生成独立批次。</p>
@@ -109,9 +112,7 @@ async function submitOpening() {
           <article v-for="(line, index) in lines" :key="index" class="opening-line">
             <header><strong>物料 {{ index + 1 }}</strong><ElButton v-if="lines.length > 1" text type="danger" :disabled="saving" @click="lines.splice(index, 1)">移除</ElButton></header>
             <div class="opening-fields">
-              <label>流水号<ElInput v-model="line.serial_no" :aria-label="`第${index + 1}行流水号`" maxlength="80" :disabled="saving" /></label>
-              <label>材质<ElInput v-model="line.material_name" :aria-label="`第${index + 1}行材质`" maxlength="160" :disabled="saving" /></label>
-              <label>规格<ElInput v-model="line.transfer_specification" aria-label="规格" maxlength="240" :disabled="saving" /></label>
+              <OpeningMaterialFields :key="index" :line="line" :index="index" :disabled="saving || !modelValue" @update="Object.assign(line, $event)" @validity-change="$event ? invalidSpecifications.delete(line) : invalidSpecifications.add(line)" />
               <label>物料类型<ElSelect v-model="line.material_type" :aria-label="`第${index + 1}行物料类型`" :disabled="saving"><ElOption v-for="option in materialTypeOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect></label>
               <label>件数<ElInputNumber v-model="line.quantity" :aria-label="`第${index + 1}行件数`" :min="0" :precision="0" :disabled="saving" controls-position="right" /></label>
               <label v-if="line.material_type !== 'sludge'">重量（kg）<ElInputNumber v-model="line.weight" :aria-label="`第${index + 1}行重量`" :min="0" :precision="3" :disabled="saving" controls-position="right" /></label>
@@ -135,8 +136,9 @@ async function submitOpening() {
 .purpose-editor :deep(.el-input) { flex: 1; }.purpose-editor :deep(.el-switch) { flex-shrink: 0; }
 .opening-lines { display: grid; gap: 20px; }.opening-line { border-top: 1px solid var(--line); padding-block: 12px 20px; }
 .opening-line header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.opening-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.opening-fields { display: grid; align-items: start; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .opening-fields label { display: grid; gap: 8px; font-size: 15px; color: var(--text); }.opening-fields :deep(.el-input-number) { width: 100%; }
 .opening-actions { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 20px; border-top: 1px solid var(--line); }
 @media(max-width:700px) { .opening-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }.purpose-editor { gap: 8px; } }
+@media(max-width:480px) { .opening-fields { grid-template-columns: minmax(0, 1fr); } }
 </style>

@@ -7,6 +7,7 @@ import { MaterialTransferApiError, materialTransferApi, normalizeMaterialTransfe
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialDocumentTextFields, materialTypeOptions, type MaterialTransfer } from '@/types/materialTransfer'
 
+vi.mock('@/services/materialInputApi', () => ({ materialSuggestions: vi.fn().mockResolvedValue([]) }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isTeamAccount: true, currentUser: { team_id: 2, team: { id: 2, name: '研磨' } } }) }))
 vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => ({ items: [{ id: 2, name: '研磨', active: true }, { id: 3, name: '电镀', active: true }, { id: 1, name: '中央收发站', kind: 'warehouse', active: true }], loading: false, refreshTeamDirectory: vi.fn() }) }))
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))

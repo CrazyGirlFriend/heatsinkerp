@@ -3,8 +3,11 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { h, reactive, Transition } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import FilterDialog from '@/components/FilterDialog.vue'
+import { ElCheckbox, ElSelect } from 'element-plus'
 import TeamWorkspacePage from './TeamWorkspacePage.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
+import TeamMaterialOverviewPanel from '@/components/TeamMaterialOverview.vue'
 import TeamSerialHistory from '@/components/TeamSerialHistory.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
@@ -20,6 +23,7 @@ import StockSourcePicker from '@/components/StockSourcePicker.vue'
 import WarehouseReceiptDialog from '@/components/WarehouseReceiptDialog.vue'
 import SerialReallocationDialog from '@/components/SerialReallocationDialog.vue'
 import WarehouseManagement from '@/components/WarehouseManagement.vue'
+import TableExportDialog from '@/components/TableExportDialog.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import * as inventoryStream from '@/services/inventoryStream'
 import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
@@ -58,6 +62,37 @@ async function render(path = '/team-workspaces/914', animate = false) {
   return router
 }
 describe('team workspace material ledger', () => {
+  it.each(['pending', 'receipts', 'outgoing', 'losses'])('exports %s with the same filters and team scope, closing on navigation', async tab => {
+    const router = await render(`/team-workspaces/901?tab=${tab}&query=000A&date_from=2026-09-01&date_to=2026-09-30&urgent_only=true&material_type=finished&receipt_source=internal&entry_kind=transfer&status=received&next_team_id=900`)
+    await wrapper.get('.team-workspace__export').trigger('click'); await flushPromises()
+    const data = wrapper.getComponent(TableExportDialog).props('source')!
+    expect(data.title).toContain(tab === 'pending' ? '来料待签收' : tab === 'receipts' ? '入库记录' : tab === 'outgoing' ? '出库记录' : '丢失记录')
+    const method = tab === 'pending' ? materialTransferApi.list : tab === 'receipts' ? teamMaterialApi.receipts : tab === 'outgoing' ? teamMaterialApi.dispatches : teamMaterialApi.losses
+    vi.mocked(method).mockClear()
+    await data.load(new AbortController().signal, vi.fn())
+    const filters = { query: '000A', date_from: '2026-09-01', date_to: '2026-09-30', urgent_only: true, page: 1, page_size: 100 }
+    if (tab === 'pending') expect(method).toHaveBeenCalledWith(expect.objectContaining({ ...filters, team_id: 901, direction: 'incoming', status: 'pending' }))
+    else expect(method).toHaveBeenCalledWith(901, expect.objectContaining({ ...filters, ...(tab === 'receipts' ? { material_type: 'finished', receipt_source: 'internal' } : tab === 'outgoing' ? { material_type: 'finished', entry_kind: 'transfer', status: 'received', next_team_id: '900' } : {}) }))
+    await router.push('/team-workspaces/914?tab=stock'); await flushPromises()
+    expect(wrapper.getComponent(TableExportDialog).props('source')).toBeNull()
+  })
+  it.each([true, false])('retains permissions and filters in fullscreen for team account=%s', async teamAccount => {
+    state.auth.isTeamAccount = teamAccount; state.auth.isAdmin = !teamAccount
+    const router = await render('/team-workspaces/914?tab=stock&page=2&material_name=材料1')
+    const inventory = wrapper.getComponent(TeamInventory).element
+    const calls = vi.mocked(teamMaterialApi.overview).mock.calls.length
+    await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+    expect(wrapper.getComponent(TeamInventory).props()).toMatchObject({ fullscreen: true, canWrite: teamAccount })
+    expect(wrapper.getComponent(TeamInventory).element).toBe(inventory)
+    expect(router.currentRoute.value.query).toEqual({ tab: 'stock', page: '2', material_name: '材料1' })
+    expect(teamMaterialApi.overview).toHaveBeenCalledTimes(calls)
+    for (const tab of ['materials', 'material-types']) {
+      await router.push(`/team-workspaces/914?tab=${tab}`); await flushPromises()
+      expect(wrapper.getComponent(TeamMaterialOverviewPanel).props('fullscreen')).toBe(true)
+    }
+    await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+    expect(wrapper.getComponent(TeamMaterialOverviewPanel).props('fullscreen')).toBe(false)
+  })
   it('opens reallocation only for designated own-team stock and refreshes inventory after saving', async () => {
     const previous = state.directory.items
     try {
@@ -120,6 +155,14 @@ describe('team workspace material ledger', () => {
       expect(cells[headings.indexOf('接收业务')]!.text()).toBe('去毛刺')
       if (tab === 'outgoing') expect(headings.indexOf('接收业务')).toBe(headings.indexOf('下序 / 去向') + 1)
     }
+    const instance = wrapper.getComponent({ name: 'ElTable' }).element
+    await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+    expect(wrapper.getComponent({ name: 'ElTable' }).props()).toMatchObject({ height: '100%', flexible: true })
+    expect(wrapper.getComponent({ name: 'ElTable' }).element).toBe(instance)
+    if (tab === 'pending' && wrapper.findComponent(MaterialReceiptScanner).exists()) expect(wrapper.getComponent(MaterialReceiptScanner).props('paused')).toBe(true)
+    await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+    expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBeUndefined()
+    if (tab === 'pending' && wrapper.findComponent(MaterialReceiptScanner).exists()) expect(wrapper.getComponent(MaterialReceiptScanner).props('paused')).toBe(false)
     expect(table.find('.barcode-card').exists()).toBe(false)
     await table.get('.batch-link').trigger('click'); await flushPromises()
     expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: 'TL10', allowPrint: tab !== 'pending', receiptOnly: tab === 'pending' })
@@ -380,7 +423,7 @@ describe('team workspace material ledger', () => {
     await render()
     expect(wrapper.findAll('button').some(button => button.text() === '新建出库')).toBe(false)
     expect(wrapper.text()).not.toContain('仅查看')
-    expect(wrapper.find('[aria-label="班组设置"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="班组设置"]').exists()).toBe(kind === 'administrator')
     expect(wrapper.find('.serial-toolbar [aria-label="刷新工作台"]').exists()).toBe(true)
     expect(wrapper.getComponent(TeamInventory).props('canWrite')).toBe(false)
     wrapper.getComponent(TeamInventory).vm.$emit('action', 'loss', [source()]); await flushPromises()
@@ -397,8 +440,11 @@ describe('team workspace material ledger', () => {
     expect(wrapper.find('.incoming-scan input[aria-label="扫描转料批次号"]').exists()).toBe(true)
     expect(toolbar.find('.workspace-actions').exists()).toBe(false)
     expect(toolbar.findAll('button').filter(button => button.text() === '查询')).toHaveLength(1)
-    expect(toolbar.find('.record-date-trigger').exists()).toBe(true)
-    expect(toolbar.text()).toContain('仅看加急')
+    expect(toolbar.find('.record-date-trigger').exists()).toBe(false)
+    const filters = wrapper.getComponent(FilterDialog)
+    filters.vm.$emit('open'); filters.vm.$emit('update:modelValue', true); await flushPromises()
+    expect(wrapper.findAllComponents(ElCheckbox).some(item => item.text().includes('仅看加急'))).toBe(true)
+    filters.vm.$emit('cancel'); filters.vm.$emit('update:modelValue', false); await flushPromises()
     expect(wrapper.find('.scanner-bar').exists()).toBe(false)
     expect(wrapper.find('.scanner-error').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('扫码后核对整批明细')
@@ -408,8 +454,11 @@ describe('team workspace material ledger', () => {
   })
   it('removes one applied record filter while retaining search, dates and the other filters', async () => {
     const router = await render('/team-workspaces/914?tab=outgoing&query=YS-007&material_type=semi_finished&status=pending&date_from=2026-09-01&page=2')
-    const tag = wrapper.findAll('.list-active-filters .el-tag').find(tag => tag.text().includes('半成品'))!
-    await tag.get('.el-tag__close').trigger('click'); await flushPromises()
+    const filters = wrapper.getComponent(FilterDialog)
+    filters.vm.$emit('open'); filters.vm.$emit('update:modelValue', true); await flushPromises()
+    const select = filters.findAllComponents(ElSelect).find(item => item.find('input[aria-label="物料类型筛选"]').exists())!
+    select.vm.$emit('update:modelValue', '')
+    filters.vm.$emit('apply'); await flushPromises()
     expect(router.currentRoute.value.query).toMatchObject({ tab: 'outgoing', query: 'YS-007', status: 'pending', date_from: '2026-09-01' })
     expect(router.currentRoute.value.query.material_type).toBeUndefined()
     expect(router.currentRoute.value.query.page).toBeUndefined()
@@ -417,7 +466,7 @@ describe('team workspace material ledger', () => {
   })
   it('resets record filters without leaving the current team or section', async () => {
     const router = await render('/team-workspaces/914?tab=outgoing&query=YS-007&material_type=semi_finished&status=pending&urgent_only=true&date_from=2026-09-01&page=2')
-    await wrapper.get('.list-query-actions').findAll('button').find(button => button.text() === '重置')!.trigger('click'); await flushPromises()
+    wrapper.getComponent(FilterDialog).vm.$emit('reset'); wrapper.getComponent(FilterDialog).vm.$emit('apply'); await flushPromises()
     expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/914?tab=outgoing')
     expect(wrapper.find('.list-active-filters').exists()).toBe(false)
     expect((wrapper.get('input[aria-label="物料搜索"]').element as HTMLInputElement).value).toBe('')

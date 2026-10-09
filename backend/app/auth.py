@@ -20,7 +20,7 @@ from .observability import record
 
 
 PBKDF2_ITERATIONS = 310_000
-MAX_ACTIVE_SESSIONS = 2
+MAX_ACTIVE_SESSIONS = 3
 bearer_scheme = HTTPBearer(auto_error=False)
 
 

@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import MaterialInput from './MaterialInput.vue'
+import SpecificationInput from './SpecificationInput.vue'
+import AutofillBadge from './AutofillBadge.vue'
+import { useMaterialAutofill } from '@/composables/useMaterialAutofill'
+import type { MaterialInputField } from '@/services/materialInputApi'
+
 import { ArrowRight, DocumentAdd, EditPen } from '@element-plus/icons-vue'
 import {
   ElAlert,
@@ -64,6 +70,9 @@ const form = reactive({
   document: Object.fromEntries(materialDocumentTextFields.map(field => [field.key, ''])) as Record<MaterialTransferTextField, string>,
 })
 
+const autofill = useMaterialAutofill(() => form.serialNo, form.document)
+const specificationValidity = reactive<Record<string, boolean>>({ finished_specification: true, transfer_specification: true })
+const suggestionFields = ['material_name', 'customer_code', 'product_code', 'part_no', 'outsourced_unit']
 let formGeneration = 0
 const external = computed(() => Boolean(editingSnapshot.value && isExternalTransfer(editingSnapshot.value)))
 const useSludge = computed(() => form.materialType === 'sludge' && !(editingSnapshot.value?.material_type === 'sludge' && editingSnapshot.value.sludge_content_percent == null))
@@ -77,7 +86,7 @@ const sourceTeam = computed(() => editingSnapshot.value?.source_team ?? authStor
 const teamActorReady = computed(() => authStore.isTeamAccount && authStore.currentUser?.team_id != null && authStore.currentUser?.active !== false && !authStore.currentUserError)
 const editable = computed(() => !editingSnapshot.value || (teamActorReady.value && String(authStore.currentUser?.team_id) === String(editingSnapshot.value.source_team.id) && canEditMaterialTransfer(editingSnapshot.value)))
 const sourceChanged = computed(() => !isEditing.value && String(openedSourceTeamId.value) !== String(authStore.currentUser?.team_id ?? null))
-const canSubmit = computed(() => teamActorReady.value && Boolean(sourceTeam.value) && !sourceChanged.value && editable.value && !saving.value && !locationBusy.value && !refreshing.value && !refreshFailed.value)
+const canSubmit = computed(() => props.modelValue && teamActorReady.value && Boolean(sourceTeam.value) && !sourceChanged.value && editable.value && !saving.value && !locationBusy.value && !refreshing.value && !refreshFailed.value)
 const destinationTeams = computed(() => {
   const sourceId = String(sourceTeam.value?.id ?? '')
   const items = teamStore.items.filter((team) => team.active && String(team.id) !== sourceId)
@@ -92,6 +101,7 @@ const toWarehouse = computed(() => destination.value?.kind === 'warehouse')
 const notesLabel = computed(() => external.value ? `${actionLabel.value}说明` : toWarehouse.value ? '入库说明' : '备注')
 
 function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
+  autofill.reset(); specificationValidity.finished_specification = specificationValidity.transfer_specification = true
   openedSourceTeamId.value = authStore.currentUser?.team_id ?? null
   editingSnapshot.value = transfer
   form.warehouseLocation = transfer?.warehouse_location || ''; form.warehouseLocationKey = ''
@@ -150,6 +160,7 @@ function validate(): boolean {
     formError.value = '成品件数须为非负整数，不能超过 2147483647'
     activeTab.value = 'document'
   }
+  if (!external.value && Object.values(specificationValidity).includes(false)) { formError.value = '请填完整规格尺寸'; activeTab.value = 'document'; return false }
   const invalidField = materialDocumentTextFields.find(field => form.document[field.key].trim().length > field.maxLength)
   if (invalidField) {
     formError.value = `${invalidField.label}不能超过 ${invalidField.maxLength} 个字符`
@@ -302,7 +313,7 @@ onBeforeUnmount(() => { ++formGeneration })
       </ElFormItem>
       </div>
       <ElFormItem label="流水号" required>
-        <ElInput v-model="form.serialNo" aria-label="流水号" maxlength="80" show-word-limit clearable :disabled="!canSubmit || linkedSource || external" placeholder="输入工件流水号" />
+        <MaterialInput v-model="form.serialNo" field="serial_no" label="流水号" :maxlength="80" :disabled="!canSubmit || linkedSource || external" placeholder="输入或选择流水号" @selected="autofill.select" />
       </ElFormItem>
       <MaterialDeliveryFields v-if="!external" v-model:date="form.deliveryDate" v-model:quantity="form.deliveryQuantity" :disabled="!canSubmit || linkedSource" />
       <p v-if="linkedSource && form.deliveryDate" class="delivery-origin">交期沿用源头批次 {{ editingSnapshot?.delivery_origin_batch_no }}</p>
@@ -327,12 +338,16 @@ onBeforeUnmount(() => { ++formGeneration })
       <ElTabPane label="物料明细" name="document">
         <div class="document-grid">
           <ElFormItem v-for="field in materialDocumentTextFields.filter(item => item.group === 'basic' && !item.multiline)" :key="field.key" :label="field.label">
-            <ElInput v-model="form.document[field.key]" :aria-label="field.label" :maxlength="field.maxLength" :disabled="!canSubmit || external || (linkedSource && field.key === 'material_name')" placeholder="选填" />
+            <template #label>{{ field.label }}<AutofillBadge :source="autofill.source(field.key)" /></template>
+            <SpecificationInput v-if="['finished_specification', 'transfer_specification'].includes(field.key)" v-model="form.document[field.key]" :label="field.label" :disabled="!canSubmit || external" @validity-change="specificationValidity[field.key] = $event" />
+            <MaterialInput v-else-if="suggestionFields.includes(field.key)" v-model="form.document[field.key]" :field="field.key as MaterialInputField" :label="field.label" :maxlength="field.maxLength" :disabled="!canSubmit || external || (linkedSource && field.key === 'material_name')" />
+            <ElInput v-else v-model="form.document[field.key]" :aria-label="field.label" :maxlength="field.maxLength" :disabled="!canSubmit || external" placeholder="选填" />
           </ElFormItem>
           <ElFormItem label="成品件数">
             <ElInputNumber v-model="form.finishedQuantity" aria-label="成品件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="!canSubmit || external" placeholder="选填" />
           </ElFormItem>
           <ElFormItem v-for="field in materialDocumentTextFields.filter(item => item.group === 'basic' && item.multiline)" :key="field.key" :label="field.label" class="document-wide">
+            <template #label>{{ field.label }}<AutofillBadge :source="autofill.source(field.key)" /></template>
             <ElInput v-model="form.document[field.key]" :aria-label="field.label" type="textarea" :rows="3" :maxlength="field.maxLength" show-word-limit :disabled="!canSubmit || external" placeholder="选填" />
           </ElFormItem>
         </div>
@@ -340,7 +355,9 @@ onBeforeUnmount(() => { ++formGeneration })
       <ElTabPane label="补充信息" name="extra">
         <div class="document-grid">
           <ElFormItem v-for="field in materialDocumentTextFields.filter(item => item.group === 'extra')" :key="field.key" :label="field.label" :class="{ 'document-wide': field.multiline }">
-            <ElInput v-model="form.document[field.key]" :aria-label="field.label" :type="field.multiline ? 'textarea' : 'text'" :rows="3" :maxlength="field.maxLength" :show-word-limit="field.multiline" :disabled="!canSubmit || external" placeholder="选填" />
+            <template #label>{{ field.label }}<AutofillBadge :source="autofill.source(field.key)" /></template>
+            <MaterialInput v-if="suggestionFields.includes(field.key)" v-model="form.document[field.key]" :field="field.key as MaterialInputField" :label="field.label" :maxlength="field.maxLength" :disabled="!canSubmit || external" />
+            <ElInput v-else v-model="form.document[field.key]" :aria-label="field.label" :type="field.multiline ? 'textarea' : 'text'" :rows="3" :maxlength="field.maxLength" :show-word-limit="field.multiline" :disabled="!canSubmit || external" placeholder="选填" />
           </ElFormItem>
         </div>
       </ElTabPane>

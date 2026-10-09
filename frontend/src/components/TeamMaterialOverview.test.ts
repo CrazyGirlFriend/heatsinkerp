@@ -13,6 +13,19 @@ const overview = (count = 25): Overview => ({
 })
 afterEach(() => wrapper?.unmount())
 describe('compact material classification', () => {
+  it('exports all summary rows across pages with numeric amounts and type names', async () => {
+    const data = overview(25)
+    data.material_types = [{ ...data.materials[0]!, material_type: 'semi_finished' }]
+    wrapper = mount(TeamMaterialOverview, { props: { overview: data, page: 2 } })
+    const source = () => (wrapper.vm as unknown as { exportSource: () => import('@/utils/tableExport').TableExportSource }).exportSource()
+    const result = await source().load(new AbortController().signal, () => undefined)
+    expect(result).toHaveLength(25)
+    expect(result[0]).toMatchObject({ label: '材质 1', owned_weight: 1.2 })
+    expect(source().fields.some(field => field.label === '操作')).toBe(false)
+    await wrapper.setProps({ kind: 'type' })
+    expect(await source().load(new AbortController().signal, () => undefined)).toEqual([expect.objectContaining({ label: '半成品' })])
+    expect(source().fields.some(field => field.key === 'received_weight')).toBe(false)
+  })
   it('keeps actions with the material table and removes duplicate charts and summaries', async () => {
     wrapper = mount(TeamMaterialOverview, { props: { overview: overview() }, slots: { actions: '<button>手工入库</button><button>扫码入库</button>' } }); await flushPromises()
     expect(wrapper.get('.material-ledger header').text()).toContain('手工入库')
@@ -36,6 +49,13 @@ describe('compact material classification', () => {
     pager.vm.$emit('current-change', 2); await flushPromises()
     expect(wrapper.emitted('paginate')?.at(-1)).toEqual([2, 10])
     await wrapper.setProps({ page: 2 })
+    const table = wrapper.getComponent({ name: 'ElTable' }).element
+    await wrapper.setProps({ fullscreen: true })
+    expect(wrapper.getComponent({ name: 'ElTable' }).props()).toMatchObject({ height: '100%', flexible: true })
+    expect(wrapper.getComponent({ name: 'ElTable' }).element).toBe(table)
+    expect(pager.props('currentPage')).toBe(2)
+    await wrapper.setProps({ fullscreen: false })
+    expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBeUndefined()
     expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(10)
     expect(wrapper.get('.el-table__body .el-table__row').text()).toContain('材质 11')
     pager.vm.$emit('size-change', 50); await flushPromises()

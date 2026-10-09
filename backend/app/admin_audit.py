@@ -11,7 +11,7 @@ from .observability import request_id
 
 def snapshot(target: Team | User) -> dict:
     fields = (
-        ("username", "display_name", "role", "team_id", "active")
+        ("username", "display_name", "avatar_key", "role", "team_id", "active")
         if isinstance(target, User)
         else ("code", "name", "description", "active", "sort_order", "kind")
     )

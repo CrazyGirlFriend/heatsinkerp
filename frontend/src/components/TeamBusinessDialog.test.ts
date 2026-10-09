@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TeamBusinessDialog from './TeamBusinessDialog.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 
+vi.mock('@/services/materialInputApi', () => ({ materialSuggestions: vi.fn().mockResolvedValue([]) }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ currentUser: { id: 41, team_id: 2 } }) }))
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
 let wrapper: VueWrapper
@@ -25,11 +26,22 @@ async function render(initialTab = 'opening') {
 async function click(text: string) { await wrapper.findAll('button').find(button => button.text() === text)!.trigger('click'); await flushPromises() }
 
 describe('team business settings', () => {
+  it('opens business-only settings without reading or exposing opening stock', async () => {
+    wrapper = mount(TeamBusinessDialog, { props: { modelValue: true, teamId: 2, businessOnly: true, initialTab: 'opening' }, global: { stubs: { ElDialog: { template: '<div><slot /></div>' } } } })
+    await flushPromises()
+    expect(teamMaterialApi.purposes).toHaveBeenCalledWith(2)
+    expect(teamMaterialApi.openingState).not.toHaveBeenCalled()
+    expect(wrapper.find('[aria-label="业务名称 1"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('初始库存')
+    await wrapper.get('input[aria-label="业务名称 1"]').setValue('新业务')
+    await click('保存')
+    expect(teamMaterialApi.savePurpose).toHaveBeenCalledWith(2, { name: '新业务', active: true, expected_version: 1 }, 1)
+  })
   it('posts measured sludge opening stock in effective kg', async () => {
     await render()
     await wrapper.get('input[aria-label="第1行流水号"]').setValue('000012')
     await wrapper.get('input[aria-label="第1行材质"]').setValue('铜钼')
-    wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'sludge'); await flushPromises()
+    wrapper.findAllComponents(ElSelect).find(item => item.find('input[aria-label="第1行物料类型"]').exists())!.vm.$emit('update:modelValue', 'sludge'); await flushPromises()
     const inputs = wrapper.findAllComponents(ElInputNumber)
     ;[0, 10, 30].forEach((value, i) => inputs[i]!.vm.$emit('update:modelValue', value))
     await flushPromises(); await click('确认初始库存登记')
@@ -68,7 +80,7 @@ describe('team business settings', () => {
       if (i) { await wrapper.setProps({ modelValue: false }); await wrapper.setProps({ modelValue: true }); await flushPromises() }
       await wrapper.get('input[aria-label="第1行流水号"]').setValue('000012')
       await wrapper.get('input[aria-label="第1行材质"]').setValue('材料1')
-      wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'semi_finished')
+      wrapper.findAllComponents(ElSelect).find(item => item.find('input[aria-label="第1行物料类型"]').exists())!.vm.$emit('update:modelValue', 'semi_finished')
       wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 100)
       wrapper.findAllComponents(ElInputNumber)[1]!.vm.$emit('update:modelValue', 10)
       await flushPromises(); await click('确认初始库存登记')
@@ -84,7 +96,7 @@ describe('team business settings', () => {
     await render()
     await wrapper.get('input[aria-label="第1行流水号"]').setValue('000012')
     await wrapper.get('input[aria-label="第1行材质"]').setValue('铜钼')
-    wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'semi_finished')
+    wrapper.findAllComponents(ElSelect).find(item => item.find('input[aria-label="第1行物料类型"]').exists())!.vm.$emit('update:modelValue', 'semi_finished')
     wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 100)
     wrapper.findAllComponents(ElInputNumber)[1]!.vm.$emit('update:modelValue', 10.125)
     await click('保存本机草稿')

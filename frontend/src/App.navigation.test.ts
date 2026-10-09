@@ -22,7 +22,7 @@ const accessAdapter: AxiosAdapter = async (config: InternalAxiosRequestConfig): 
 beforeEach(async () => {
   clearSession()
   localStorage.clear()
-  mocks.list.mockReset().mockResolvedValue([{ id: 1, code: 'FACTORY-ROLL', name: '扎板', active: true }])
+  mocks.list.mockReset().mockResolvedValue([{ id: 1, code: 'FACTORY-ROLL', name: '轧制', active: true }])
   accessHttpClient.defaults.adapter = accessAdapter
   await checkSiteAccess(true)
   authState.session = { access_token: 'navigation-account', token_type: 'Bearer', user: { id: 1, username: 'test', display_name: '测试', role: 'ADMIN', team_id: null, team: null, active: true } }
@@ -163,11 +163,13 @@ describe('application navigation shell', () => {
   it('keeps the account menu and logout accessible in the sidebar', async () => {
     const { wrapper } = await renderApp(false)
     const user = wrapper.get('#factory-sidebar .sidebar__user')
-    expect(user.text()).toBe('测试')
+    expect(user.get('.sidebar__user-label').text()).toBe('测试')
     expect(user.attributes('aria-label')).toContain('系统管理员')
     await user.trigger('click'); await flushPromises()
     expect(wrapper.get('#factory-sidebar .factory-account-menu').text()).toContain('退出登录')
     expect(wrapper.get('#factory-sidebar .factory-account-menu').text()).toContain('系统管理员')
+    await wrapper.get('#factory-sidebar .factory-account-menu').findAll('[role="menuitem"]').find(item => item.text() === '个人信息')!.trigger('click'); await flushPromises()
+    expect(wrapper.find('input[aria-label="姓名"]').exists()).toBe(true)
   })
 
   it('keeps all phase-one destinations available in desktop compact mode', async () => {

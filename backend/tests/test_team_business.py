@@ -44,8 +44,7 @@ def initialize(client, s, **overrides):
 
 def test_purposes_are_team_owned_versioned_unique_and_audited(client):
     s = _setup_three_teams(client)
-    for headers in ({}, s['source_headers']):
-        assert client.post(url(s), headers=headers, json={'name': '检验'}).status_code == 403
+    assert client.post(url(s), headers=s['source_headers'], json={'name': '检验'}).status_code == 403
     assert client.post(url(s), headers=s['target_headers'], json={'name': '  '}).status_code == 422
     p = purpose(client, s)
     assert client.post(url(s), headers=s['target_headers'], json={'name': ' 检验 '}).status_code == 409

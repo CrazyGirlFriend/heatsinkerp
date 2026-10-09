@@ -199,7 +199,7 @@ describe('two-level team navigation', () => {
     expect(teams.findAllComponents(ElSubMenu)).toHaveLength(0)
     expect(teams.findAllComponents(ElMenuItem).filter(item => !item.props('disabled')).map(item => item.props('index'))).toEqual(['/team-workspaces/8', '/team-workspaces/7'])
     expect(wrapper.findAll('.factory-nav__missing')).toHaveLength(6)
-    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制工作台')
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('扎板工作台')
     await router.push('/transfer-batches?scan=1'); await nextTick()
     expect(wrapper.findAll('[aria-current="page"]')).toHaveLength(1)
     expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('转料记录')
