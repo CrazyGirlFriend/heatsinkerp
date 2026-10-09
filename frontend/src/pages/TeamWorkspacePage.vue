@@ -112,6 +112,12 @@ const receipts = ref<MaterialTransfer[]>([])
 const receiptOpen = ref(false)
 const businessOpen = ref(false)
 function businessChanged() { void directory.refreshTeamDirectory(); void loadView() }
+async function openingStocked() {
+  const alreadyInStock = tab.value === 'stock'
+  businessOpen.value = false
+  await router.replace(teamWorkspaceSectionPath(teamKey.value, 'stock'))
+  if (alreadyInStock) await loadView()
+}
 const openingReceipt = ref(false)
 const total = ref(0)
 const loading = ref(false)
@@ -426,7 +432,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
       <WarehouseReceiptDialog v-model="receiptOpen" :team-id="teamId" @saved="savedReceipt" />
       <MaterialStockActionDialog v-model="actionOpen" :team-id="teamId" :mode="actionMode" :sources="actionSources" @saved="savedAction" @balances-changed="loadView" />
       <MaterialBatchPrintDialog v-model="printOpen" :items="printRows" />
-      <TeamBusinessDialog v-if="businessOpen && canWrite" :key="teamId" v-model="businessOpen" :team-id="teamId" @changed="businessChanged" @stocked="openPrint" />
+      <TeamBusinessDialog v-if="businessOpen && canWrite" :key="teamId" v-model="businessOpen" :team-id="teamId" @changed="businessChanged" @stocked="openingStocked" />
     </template>
   </TeamWorkspaceShell>
 </template>

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TeamWorkspacePage from './TeamWorkspacePage.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
 import TeamSerialHistory from '@/components/TeamSerialHistory.vue'
+import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
 import MaterialReceiptScanner from '@/components/MaterialReceiptScanner.vue'
 import MaterialBatchPrintDialog from '@/components/MaterialBatchPrintDialog.vue'
@@ -444,6 +445,26 @@ describe('team workspace material ledger', () => {
     await wrapper.get('input[aria-label="扫描转料批次号"]').trigger('keyup.enter'); await flushPromises()
     expect(wrapper.text()).toContain('请扫描每批物料的独立条码')
     expect(wrapper.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
+  })
+  it.each([
+    ['/team-workspaces/914?tab=history', 914],
+    ['/team-workspaces/901?tab=warehouse', 901],
+    ['/team-workspaces/914', 914],
+    ['/team-workspaces/914?tab=stock&query=OLD&material_type=sludge&page=2', 914],
+  ])('returns to refreshed inventory without printing after own-stock entry from %s', async (path, id) => {
+    state.auth.currentUser.team_id = Number(id)
+    vi.spyOn(teamMaterialApi, 'openingState').mockResolvedValue({ enabled: true, completed: false, has_stock_history: false, can_submit: true, items: [] })
+    const router = await render(String(path))
+    await wrapper.get('button[aria-label="班组设置"]').trigger('click'); await flushPromises()
+    const inventoryCalls = vi.mocked(teamMaterialApi.teamInventory).mock.calls.length
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [warehouseFixture({ serial_no: 'OPENING-001' })], total: 1, page: 1, page_size: 10 })
+    wrapper.getComponent(TeamBusinessDialog).vm.$emit('stocked', [source().transfer]); await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe(`/team-workspaces/${id}`)
+    expect(wrapper.findComponent(TeamBusinessDialog).exists()).toBe(false)
+    expect(wrapper.getComponent(MaterialBatchPrintDialog).props('modelValue')).toBe(false)
+    expect(vi.mocked(teamMaterialApi.teamInventory).mock.calls.length).toBeGreaterThan(inventoryCalls)
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(Number(id), { availability: 'owned', page: 1, page_size: 10 })
+    expect(wrapper.text()).toContain('OPENING-001')
   })
   it('opens each pending batch independently even when historically printed together', async () => {
     vi.mocked(materialTransferApi.list).mockResolvedValue({ items: [{ ...source().transfer, status: 'pending', dispatch_no: 'CK-PENDING' }], total: 1, page: 1, page_size: 10 })

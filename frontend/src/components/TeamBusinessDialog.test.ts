@@ -61,10 +61,11 @@ describe('team business settings', () => {
     expect(wrapper.text()).not.toContain('确认初始库存登记')
     expect(teamMaterialApi.createOpening).not.toHaveBeenCalled()
   })
-  it('allows repeated identical entries after history with distinct keys and keeps the form open', async () => {
+  it('closes after success and allows repeated identical entries after reopening with distinct keys', async () => {
     vi.mocked(teamMaterialApi.openingState).mockResolvedValue({ ...allowed, completed: true, has_stock_history: true })
     await render()
     for (let i = 0; i < 2; i++) {
+      if (i) { await wrapper.setProps({ modelValue: false }); await wrapper.setProps({ modelValue: true }); await flushPromises() }
       await wrapper.get('input[aria-label="第1行流水号"]').setValue('000012')
       await wrapper.get('input[aria-label="第1行材质"]').setValue('材料1')
       wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'semi_finished')
@@ -76,9 +77,8 @@ describe('team business settings', () => {
     expect(calls).toHaveLength(2)
     expect(calls[0]![1]).toEqual(calls[1]![1])
     expect(calls[0]![2]).not.toBe(calls[1]![2])
-    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(wrapper.emitted('update:modelValue')).toEqual([[false], [false]])
     expect(wrapper.emitted('stocked')).toHaveLength(2)
-    expect(wrapper.text()).toContain('确认初始库存登记')
   })
   it('posts leading-zero stock once after confirmation, preserving local drafts on failure', async () => {
     await render()
@@ -90,13 +90,17 @@ describe('team business settings', () => {
     await click('保存本机草稿')
     expect(localStorage.getItem('heatsink.opening-draft.v1:41:2')).toContain('000012')
     vi.mocked(teamMaterialApi.createOpening).mockRejectedValueOnce(new Error('网络错误'))
-    await click('确认初始库存登记'); await click('确认初始库存登记')
+    await click('确认初始库存登记')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(localStorage.getItem('heatsink.opening-draft.v1:41:2')).toContain('000012')
+    await click('确认初始库存登记')
     const calls = vi.mocked(teamMaterialApi.createOpening).mock.calls
     expect(calls).toHaveLength(2)
     expect(calls[0]![0]).toBe(2)
     expect(calls[0]![1][0]).toMatchObject({ serial_no: '000012', quantity: 100, weight: 10.125, material_type: 'semi_finished', purpose_id: null })
     expect(calls[0]![2]).toBe(calls[1]![2])
     expect(wrapper.emitted('stocked')).toHaveLength(1)
+    expect(wrapper.emitted('update:modelValue')).toEqual([[false]])
     expect(localStorage.getItem('heatsink.opening-draft.v1:41:2')).toBeNull()
   })
   it('validates empty stock and restores only this account/team draft', async () => {

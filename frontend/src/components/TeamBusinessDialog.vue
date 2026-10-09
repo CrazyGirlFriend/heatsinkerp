@@ -78,7 +78,7 @@ async function submitOpening() {
     const rows = await teamMaterialApi.createOpening(props.teamId, body, requestKey)
     if (current !== epoch) return
     try { localStorage.removeItem(key()) } catch { /* The committed receipt remains authoritative. */ }
-    requestKey = ''; lastBody = ''; lines.value = [blank()]; emit('changed'); emit('stocked', rows); await load()
+    requestKey = ''; lastBody = ''; lines.value = [blank()]; emit('update:modelValue', false); emit('stocked', rows)
     showToast('库存已登记', 'success')
   } catch (e) { if (current === epoch) error.value = e instanceof Error ? e.message : '登记失败，草稿已保留' }
   finally { saving.value = false }
