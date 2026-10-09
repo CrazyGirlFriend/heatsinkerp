@@ -31,7 +31,7 @@ onBeforeUnmount(() => observer?.disconnect())
 </script>
 
 <template>
-  <section class="page workspace-page team-workspace reading-workspace team-workspace--reading" :class="{ 'team-workspace--materials': ['materials', 'material-types'].includes(modelValue) }" :aria-label="title + '工作台'">
+  <section class="page workspace-page team-workspace reading-workspace team-workspace--reading" :class="{ 'team-workspace--materials': ['materials', 'material-types'].includes(modelValue), 'team-workspace--warehouse': modelValue === 'warehouse' }" :aria-label="title + '工作台'">
     <h1 id="workspace-page-heading" class="sr-only">{{ sectionLabel }}</h1>
     <div class="team-workspace__navigation-row">
     <PageBackButton />

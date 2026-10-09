@@ -63,6 +63,8 @@
 
 .team-workspace.team-workspace--reading { overflow-y: auto; scrollbar-gutter: stable; }
 .team-workspace.team-workspace--reading :is(.team-workspace__content, .team-material-content) { flex: 1 0 auto; overflow: visible; }
+.team-workspace.team-workspace--warehouse:has(.warehouse-grid) { overflow: hidden; }
+.team-workspace.team-workspace--warehouse:has(.warehouse-grid) :is(.team-workspace__content, .team-material-content) { flex: 1; min-height: 0; overflow: hidden; }
 
 /* Fill short lists without stretching rows or replacing whole-page scrolling. */
 .team-workspace.team-workspace--reading :is(.warehouse-inventory, .material-ledger, .team-list-layout) { flex: 1 0 auto; }

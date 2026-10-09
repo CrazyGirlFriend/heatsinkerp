@@ -14,7 +14,7 @@ beforeEach(() => {
   vi.spyOn(warehouseLocationApi, 'list').mockResolvedValue({ items: [slot, { ...slot, id: 2, name: 'A区-02', status: 'locked', draft_locked: true }], total: 2, team_id: 1 })
   vi.spyOn(warehouseLocationApi, 'save').mockResolvedValue(slot)
 })
-afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
+afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers() })
 async function render(canManage = true, canDispatch = false) {
   wrapper = mount(WarehouseManagement, { props: { canManage, canDispatch }, global: { stubs: { PageBackButton: true, ElDialog: { props: ['modelValue'], template: '<div v-if="modelValue"><slot/><slot name="footer"/></div>' } } } })
   await flushPromises()
@@ -27,7 +27,7 @@ async function nextPage() {
 }
 
 describe('warehouse management', () => {
-  it('requests 50 slots per page and keeps material details inside the popup', async () => {
+  it('uses the initial capacity before measurement and keeps material details inside the popup', async () => {
     const items = Array.from({ length: 50 }, (_, index) => occupied(index + 1))
     vi.mocked(warehouseLocationApi.list).mockResolvedValueOnce({ items, total: 51, team_id: 1 })
     await render()
@@ -45,6 +45,29 @@ describe('warehouse management', () => {
     expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 2, 50, undefined)
     expect(wrapper.findAll('.warehouse-slot')).toHaveLength(1)
     expect(wrapper.find('.warehouse-detail-totals').exists()).toBe(false)
+  })
+  it('fits pagination to the available grid and resets the page after a screen resize', async () => {
+    let height = 600, columns = 10, notify = () => {}
+    const disconnect = vi.fn()
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(private callback: () => void) {}
+      observe(element: Element) { if (element.classList.contains('warehouse-grid')) notify = this.callback }
+      disconnect = disconnect
+    })
+    const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('warehouse-grid') ? height : clientHeight?.get?.call(this) || 0 })
+    const computedStyle = window.getComputedStyle.bind(window)
+    vi.spyOn(window, 'getComputedStyle').mockImplementation(element => element.classList.contains('warehouse-grid') ? { gridTemplateColumns: Array(columns).fill('100px').join(' '), rowGap: '12px', getPropertyValue: () => '70px' } as unknown as CSSStyleDeclaration : computedStyle(element))
+    await render()
+    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 1, 70, undefined)
+    await nextPage()
+    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 2, 70, undefined)
+    vi.useFakeTimers(); height = 320; columns = 4; notify()
+    await vi.advanceTimersByTimeAsync(160); await flushPromises()
+    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 1, 16, undefined)
+    expect(wrapper.getComponent(ElPagination).props('pageSize')).toBe(16)
+    wrapper.unmount()
+    expect(disconnect).toHaveBeenCalled()
   })
   it('colors physical inventory and distinguishes pending, draft and disabled slots', async () => {
     const waiting = { ...batch(3, 20, 2), status: 'pending', received_at: null }

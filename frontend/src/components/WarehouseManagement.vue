@@ -12,7 +12,7 @@ import { formatDateTime } from '@/utils/format'
 
 const props = defineProps<{ canManage: boolean; canDispatch?: boolean; teamId?: number; refreshKey?: unknown }>()
 const emit = defineEmits<{ view: [batchNo: string]; dispatch: [batchNo: string]; batchDispatch: [sourceIds: number[]] }>()
-const PAGE_SIZE = 50
+const pageSize = ref(50), gridRows = ref(5), grid = ref<HTMLElement>()
 type Batch = WarehouseLocation['batches'][number]
 const section = ref<'locations' | 'unassigned'>('locations')
 const rows = ref<WarehouseLocation[]>([]), total = ref(0), page = ref(1)
@@ -66,12 +66,27 @@ function cardLabel(row: WarehouseLocation) {
 }
 let version = 0, disposed = false
 let timer: ReturnType<typeof setInterval> | undefined
+let resizeObserver: ResizeObserver | undefined, resizeTimer: ReturnType<typeof setTimeout> | undefined
+function fitGrid() {
+  if (!grid.value || disposed || !props.canManage || section.value !== 'locations') return false
+  const height = grid.value.clientHeight
+  if (!height) return false
+  const style = getComputedStyle(grid.value), columns = style.gridTemplateColumns.split(' ').length
+  const gap = parseFloat(style.rowGap) || 0, minimum = parseFloat(style.getPropertyValue('--slot-height')) || 70
+  // Keep cards compact and request only the slots that fit the available area.
+  gridRows.value = Math.max(1, Math.min(Math.floor((height + gap) / (minimum + gap)), Math.floor(100 / columns)))
+  const size = columns * gridRows.value
+  if (size === pageSize.value) return false
+  pageSize.value = size; page.value = 1; void load()
+  return true
+}
+watch(grid, element => { resizeObserver?.disconnect(); if (element) { resizeObserver?.observe(element); fitGrid() } }, { flush: 'post' })
 async function load(background = false) {
   if (!props.canManage || disposed || background && (loading.value || saving.value || editorOpen.value || section.value !== 'locations' || document.hidden)) return
   const current = ++version
   if (!background) loading.value = true
   try {
-    const data = await warehouseLocationApi.list(appliedQuery.value.trim(), page.value, PAGE_SIZE, appliedFilter.value)
+    const data = await warehouseLocationApi.list(appliedQuery.value.trim(), page.value, pageSize.value, appliedFilter.value)
     if (current !== version) return
     const nextIds = new Set(data.items.map(row => row.id))
     // Keep other pages selected, but drop batches removed from a refreshed slot.
@@ -108,8 +123,15 @@ watch(() => props.canManage, value => {
 })
 watch(() => [props.teamId, props.canDispatch, section.value], () => { selected.clear(); detailOpen.value = false })
 watch(() => props.refreshKey, () => { void load(true) })
-onMounted(() => { void load(); timer = setInterval(() => void load(true), 10_000) })
-onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer) })
+onMounted(() => {
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(fitGrid, 150) })
+    if (grid.value) resizeObserver.observe(grid.value)
+  }
+  if (!fitGrid()) void load()
+  timer = setInterval(() => void load(true), 10_000)
+})
+onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer); clearTimeout(resizeTimer); resizeObserver?.disconnect() })
 </script>
 
 <template>
@@ -134,14 +156,14 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer) })
         <template v-else>
           <ElAlert v-if="error" :title="error" type="error" :closable="false" />
           <div class="warehouse-legend" aria-label="仓位状态图例"><span><i class="warehouse-swatch stocked" aria-hidden="true" />有料</span><span><i class="warehouse-swatch" aria-hidden="true" />空仓</span><span class="pending"><ElIcon aria-hidden="true"><Clock /></ElIcon>待签收</span><span class="draft"><ElIcon aria-hidden="true"><Lock /></ElIcon>填写中</span><span class="disabled"><ElIcon aria-hidden="true"><CircleClose /></ElIcon>停用</span></div>
-          <div v-if="rows.length" class="warehouse-grid" role="group" aria-label="仓位卡片" :aria-busy="loading">
+          <div ref="grid" class="warehouse-grid" role="group" aria-label="仓位卡片" :aria-busy="loading" :style="{ '--warehouse-rows': gridRows }">
             <button v-for="row in rows" :key="row.id" type="button" class="warehouse-slot" :class="{ 'is-stocked': stocked(row), 'is-disabled': !row.active }" :disabled="loading || !!error" :aria-label="cardLabel(row)" aria-haspopup="dialog" :aria-expanded="detailOpen && detailId === row.id" :title="row.name" @click="openDetail(row)">
               <span class="warehouse-slot-name">{{ row.name }}</span>
               <span class="warehouse-slot-markers" aria-hidden="true"><ElIcon v-if="!row.active" class="disabled"><CircleClose /></ElIcon><template v-else><ElIcon v-if="pending(row).length" class="pending"><Clock /></ElIcon><ElIcon v-if="row.draft_locked" class="draft"><Lock /></ElIcon></template></span>
             </button>
+            <ElEmpty v-if="!rows.length" class="warehouse-empty" :description="loading ? '正在加载仓位' : '没有符合条件的仓位'" :image-size="64" />
           </div>
-          <ElEmpty v-else :description="loading ? '正在加载仓位' : '没有符合条件的仓位'" :image-size="64" />
-          <footer class="warehouse-footer"><span aria-live="polite">共 {{ total }} 个仓位</span><div><span>50 个/页</span><ElPagination v-model:current-page="page" :page-size="PAGE_SIZE" :total="total" layout="prev, pager, next" @current-change="load()" /></div></footer>
+          <footer class="warehouse-footer"><span aria-live="polite">共 {{ total }} 个仓位</span><div><span>{{ pageSize }} 个/页</span><ElPagination v-model:current-page="page" :page-size="pageSize" :total="total" layout="prev, pager, next" @current-change="load()" /></div></footer>
         </template>
       </ElCard>
       <ElDialog v-model="detailOpen" :title="(detail?.name || '') + ' · 仓位明细'" width="min(760px, 94vw)" class="warehouse-detail-dialog">
@@ -175,9 +197,9 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer) })
 </template>
 
 <style scoped>
-.warehouse-management { display: flex; flex-direction: column; flex: 1 0 auto; min-height: 0; min-width: 0; }
-.warehouse-card { display: flex; flex-direction: column; flex: 1 0 auto; min-height: 0; border-color: var(--line); border-radius: 14px; container-type: inline-size; }
-.warehouse-card :deep(.el-card__body) { flex: 1 0 auto; min-height: 0; display: flex; flex-direction: column; }
+.warehouse-management { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.warehouse-card { display: flex; flex-direction: column; flex: 1; min-height: 0; border-color: var(--line); border-radius: 14px; container-type: inline-size; }
+.warehouse-card :deep(.el-card__body) { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .warehouse-toolbar, .warehouse-actions, .warehouse-footer, .warehouse-footer > div { display: flex; align-items: center; gap: 10px; }
 .warehouse-toolbar { flex-wrap: wrap; margin-bottom: 18px; }
 .warehouse-toolbar > .el-input { flex: 1 1 190px; max-width: 270px; }
@@ -192,7 +214,8 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer) })
 .pending { color: #56899f; }
 .draft { color: #a28249; }
 .disabled { color: #8b9890; }
-.warehouse-grid { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 12px 10px; }
+.warehouse-grid { --slot-height: 70px; display: grid; flex: 1; min-height: 0; grid-template-columns: repeat(10, minmax(0, 1fr)); grid-template-rows: repeat(var(--warehouse-rows), minmax(var(--slot-height), 1fr)); gap: 12px 10px; }
+.warehouse-empty { grid-column: 1 / -1; grid-row: 1 / -1; }
 .warehouse-slot { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 70px; padding: 15px 7px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--muted); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color var(--motion-fast) ease, transform var(--motion-fast) ease; }
 .warehouse-slot.is-stocked { background: #d8ebdf; border-color: #d8ebdf; color: #34784b; }
 .warehouse-slot:not(:disabled):hover { background: #f2f7f3; transform: translateY(-1px); }
@@ -217,9 +240,10 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer) })
 .warehouse-detail-tabs .is-current::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--primary); }
 .warehouse-detail-table { font-variant-numeric: tabular-nums; }
 .warehouse-error { color: var(--danger); }
-@container (max-width: 840px) { .warehouse-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
-@container (max-width: 600px) { .warehouse-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } .warehouse-slot { min-height: 66px; } }
-@container (max-width: 390px) { .warehouse-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; } }
+@container (max-width: 1100px) { .warehouse-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
+@container (max-width: 840px) { .warehouse-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@container (max-width: 600px) { .warehouse-grid { --slot-height: 66px; grid-template-columns: repeat(5, minmax(0, 1fr)); } .warehouse-slot { min-height: 66px; } }
+@container (max-width: 390px) { .warehouse-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; } }
 @media (max-width: 760px) {
   .warehouse-card :deep(.el-card__body) { padding: 12px; }
   .warehouse-toolbar > .el-input { max-width: none; }
