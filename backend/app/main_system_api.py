@@ -28,14 +28,19 @@ class MainSystemReceiptCreate(SludgeMeasurement):
     material_type: str = Field(pattern=DIRECT_MATERIAL_TYPE_PATTERN)
     quantity: int = Field(ge=0, le=2_147_483_647)
     weight: Decimal = Field(ge=0, max_digits=14, decimal_places=3)
-    notes: str = Field(min_length=1, max_length=2000)
+    notes: str = Field(default="", max_length=2000)
     idempotency_key: str = Field(min_length=1, max_length=100)
 
-    @field_validator("serial_no", "notes", "idempotency_key")
+    @field_validator("serial_no", "idempotency_key")
     @classmethod
     def nonblank(cls, value):
         if not value.strip():
             raise ValueError("required text cannot be blank")
+        return value.strip()
+
+    @field_validator("notes")
+    @classmethod
+    def normalize_notes(cls, value):
         return value.strip()
 
     @model_validator(mode="after")

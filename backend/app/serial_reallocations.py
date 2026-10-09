@@ -19,14 +19,19 @@ from .team_constants import REALLOCATION_TEAM_CODES, WAREHOUSE_TEAM_CODE
 
 class ReallocationCreate(stock.StockAmounts, WarehouseLocationChoice, SludgeMeasurement):
     serial_no: str = Field(min_length=1, max_length=80)
-    reason: str = Field(min_length=1, max_length=2000)
+    reason: str = Field(default="", max_length=2000)
     idempotency_key: str = Field(min_length=1, max_length=100)
 
-    @field_validator("serial_no", "reason", "idempotency_key")
+    @field_validator("serial_no", "idempotency_key")
     @classmethod
     def nonblank(cls, value):
         if not value.strip():
             raise ValueError("value cannot be blank")
+        return value.strip()
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value):
         return value.strip()
 
 

@@ -204,7 +204,7 @@ def test_schema_requires_every_document_key():
 
 @pytest.mark.parametrize('changed', [
     {'quantity':-1}, {'quantity':1.5}, {'quantity':0,'weight':0}, {'weight':'1.2345'},
-    {'notes':'  '}, {'expected_snapshot_hash':'wrong'}, {'next_team_id':3},
+    {'notes':'x'*2001}, {'expected_snapshot_hash':'wrong'}, {'next_team_id':3},
 ])
 def test_invalid_intake_never_calls_main_system(client, warehouse, upstream, changed):
     payload = receipt_payload(client)
@@ -213,3 +213,20 @@ def test_invalid_intake_never_calls_main_system(client, warehouse, upstream, cha
     assert client.post(url, headers=warehouse['headers'], json={**payload,**changed}).status_code == 422
     assert not upstream.open.called
     assert client.get(warehouse['url']).json()['total'] == 0
+
+
+@pytest.mark.parametrize('notes', [None, '', '   ', '  实物清点入库  '])
+def test_main_system_intake_notes_are_optional(client, warehouse, upstream, notes):
+    payload = receipt_payload(client)
+    if notes is None:
+        payload.pop('notes')
+    else:
+        payload['notes'] = notes
+    url = f"/api/main-system/warehouses/{warehouse['team']['id']}/receipts"
+    response = client.post(url, headers=warehouse['headers'], json=payload)
+    assert response.status_code == 201, response.text
+    assert response.json()['notes'] == (notes or '').strip()
+    assert response.json()['status'] == 'received'
+    upstream.open.side_effect = TimeoutError()
+    repeated = client.post(url, headers=warehouse['headers'], json=payload)
+    assert repeated.status_code == 201 and repeated.json() == response.json()

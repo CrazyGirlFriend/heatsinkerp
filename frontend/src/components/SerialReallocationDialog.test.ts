@@ -32,13 +32,11 @@ async function fill(serial = '000B') {
 }
 async function submit() { await wrapper.findAll('button').find(button => button.text() === '确认转投')!.trigger('click'); await flushPromises() }
 
-it('validates the target and reason, preserves leading zeroes, and retains the existing no-cap policy', async () => {
+it('validates the target, preserves leading zeroes, and retains the existing no-cap policy', async () => {
   await render(); await submit()
   expect(wrapper.get('[role="alert"]').text()).toContain('目标流水号')
   await fill('000A'); await submit()
   expect(wrapper.get('[role="alert"]').text()).toContain('不能与当前流水号相同')
-  await fill(); await wrapper.get('textarea').setValue(' '); await submit()
-  expect(teamMaterialApi.reallocate).not.toHaveBeenCalled()
   await fill(' 000B ')
   const numbers = wrapper.findAllComponents(ElInputNumber)
   numbers[0]!.vm.$emit('update:modelValue', 130); numbers[1]!.vm.$emit('update:modelValue', 21)
@@ -46,6 +44,16 @@ it('validates the target and reason, preserves leading zeroes, and retains the e
   expect(teamMaterialApi.reallocate).toHaveBeenCalledWith(2, expect.objectContaining({ source_transfer_id: 10, serial_no: '000B', quantity: 130, weight: 21, reason: '订单物料调整' }))
   expect(wrapper.emitted('saved')?.[0]?.[0]).toMatchObject({ serial_no: '000B', source_serial_no: '000A' })
   expect(wrapper.emitted('update:modelValue')).toContainEqual([false])
+})
+
+it.each(['', '   '])('submits with an optional blank reason (%j)', async reason => {
+  await render()
+  await wrapper.get('input[aria-label="转投目标流水号"]').setValue('000B')
+  await wrapper.get('textarea[aria-label="转投原因"]').setValue(reason)
+  expect(wrapper.get('textarea[aria-label="转投原因"]').element.closest('.el-form-item')?.classList.contains('is-required')).toBe(false)
+  await submit()
+  expect(teamMaterialApi.reallocate).toHaveBeenCalledWith(2, expect.objectContaining({ serial_no: '000B', reason: '' }))
+  expect(wrapper.emitted('saved')).toHaveLength(1)
 })
 
 it('keeps the same idempotency key for a failed retry and prevents duplicate in-flight submissions', async () => {

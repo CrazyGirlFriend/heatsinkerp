@@ -79,7 +79,7 @@ export type CreateDispatch = { notes?: string | null; idempotency_key: string; l
   | { entry_kind: ExternalEntryKind; next_team_id?: null; external_destination: string }
 )
 export interface CreateLoss { source_transfer_id: number; quantity: number; weight: number; reason: string; idempotency_key: string }
-export interface CreateSerialReallocation extends CreateLoss, SludgeMeasurement { serial_no: string; warehouse_location?: string | null; warehouse_location_reservation_key?: string | null }
+export interface CreateSerialReallocation extends Omit<CreateLoss, 'reason'>, SludgeMeasurement { serial_no: string; reason?: string; warehouse_location?: string | null; warehouse_location_reservation_key?: string | null }
 export const dispatchStatusLabels: Record<DispatchStatus, string> = { pending: '待确认', partial: '部分完成', received: '已接收', dispatched: '已出库 / 发货', voided: '已作废' }
 export function dispatchStatusLabel(status: DispatchStatus, kind?: MaterialEntryKind): string {
   if (isExternalEntryKind(kind)) return status === 'pending' ? `待${externalActionLabel(kind)}确认` : status === 'partial' ? `部分${externalActionLabel(kind)}` : status === 'dispatched' ? `已${externalActionLabel(kind)}` : dispatchStatusLabels[status]

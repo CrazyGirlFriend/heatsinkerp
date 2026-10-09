@@ -39,7 +39,7 @@ async function submit() {
   if (!canWrite.value) { error.value = '仅库房、检验和电镀的本班组账号可以转投'; return }
   if (!form.serial.trim() || form.serial.trim().length > 80) { error.value = '请填写目标流水号，最多 80 个字符'; return }
   if (form.serial.trim() === props.source.transfer.serial_no) { error.value = '目标流水号不能与当前流水号相同'; return }
-  if (!form.reason.trim() || form.reason.trim().length > 2000) { error.value = '请填写转投原因，最多 2000 个字符'; return }
+  if (form.reason.trim().length > 2000) { error.value = '转投原因不能超过 2000 个字符'; return }
   const invalid = amountError(form.quantity, form.weight, props.source)
   if (invalid) { error.value = invalid; return }
   const body: Omit<CreateSerialReallocation, 'idempotency_key'> = {
@@ -77,7 +77,7 @@ async function submit() {
       </div>
       <SludgeWeightFields v-if="measured" v-model:gross="form.gross" v-model:percent="form.percent" label="转投" locked :disabled="saving || !canWrite" @update:weight="form.weight = $event" />
       <ElFormItem v-if="warehouse" label="目标仓位"><WarehouseLocationSelect v-model="form.location" v-model:reservation-key="form.locationKey" :team-id="teamId" :serial-no="form.serial.trim()" :material-name="source?.transfer.material_name || ''" :material-type="source?.transfer.material_type || ''" :active="modelValue && !!form.serial.trim()" :disabled="saving || !canWrite || !form.serial.trim()" @busy-change="locationBusy = $event" /></ElFormItem>
-      <ElFormItem label="转投原因" required><ElInput v-model="form.reason" aria-label="转投原因" type="textarea" :rows="2" maxlength="2000" placeholder="填写本次转投原因" /></ElFormItem>
+      <ElFormItem label="转投原因（选填）"><ElInput v-model="form.reason" aria-label="转投原因" type="textarea" :rows="2" maxlength="2000" placeholder="选填：说明本次转投原因" /></ElFormItem>
     </ElForm>
     <p v-if="error" role="alert" class="reallocation-error">{{ error }}</p>
     <template #footer><ElButton :disabled="saving" @click="close">取消</ElButton><ElButton type="primary" :loading="saving" :disabled="saving || locationBusy || !canWrite" @click="submit">确认转投</ElButton></template>

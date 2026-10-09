@@ -175,7 +175,7 @@ def test_permissions_invalid_targets_and_signed_amount_policy(client, warehouse)
         {"serial_no": "   "},
         {"quantity": -1},
         {"quantity": 0, "weight": 0},
-        {"reason": " "},
+        {"reason": "x" * 2001},
         {"material_type": "finished"},
     ):
         assert reallocate(client, warehouse, lot, **invalid).status_code == 422
@@ -184,6 +184,26 @@ def test_permissions_invalid_targets_and_signed_amount_policy(client, warehouse)
     assert result.status_code == 201, result.text
     with SessionLocal() as db:
         assert db.get(MaterialStockBalance, lot["id"]).on_hand_quantity == -1
+
+
+@pytest.mark.parametrize("reason", [None, "", "   ", "  转投另一订单  "])
+def test_reallocation_reason_is_optional_and_preserves_written_notes(client, warehouse, reason):
+    lot = intake(client, warehouse).json()
+    body = {
+        "source_transfer_id": lot["id"],
+        "serial_no": "000B",
+        "quantity": 30,
+        "weight": 6,
+        "idempotency_key": "optional-reallocation-reason",
+    }
+    if reason is not None:
+        body["reason"] = reason
+    url = f"/api/team-materials/{warehouse['team']['id']}/serial-reallocations"
+    result = client.post(url, headers=warehouse["headers"], json=body)
+    assert result.status_code == 201, result.text
+    assert result.json()["notes"] == (reason or "").strip()
+    assert result.json()["source_transfer_id"] == lot["id"]
+    assert client.post(url, headers=warehouse["headers"], json=body).json() == result.json()
 
 
 def test_reallocated_finished_shipments_use_target_serial_input_without_inflating_purchase(
