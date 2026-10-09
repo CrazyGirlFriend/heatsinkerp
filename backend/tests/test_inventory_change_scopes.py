@@ -78,6 +78,9 @@ def test_replaced_session_receives_logout_notification_without_inventory_refresh
             for _ in range(2):
                 response = await asyncio.to_thread(client.post, "/api/auth/login", json={"username": "admin", "password": "Admin123!"})
                 assert response.status_code == 200
+            assert (await asyncio.to_thread(client.get, "/api/auth/me")).status_code == 200
+            response = await asyncio.to_thread(client.post, "/api/auth/login", json={"username": "admin", "password": "Admin123!"})
+            assert response.status_code == 200
             assert (await asyncio.wait_for(anext(stream), 2)).startswith("event: auth-expired")
             assert inventory_events.revision == revision
             with pytest.raises(StopAsyncIteration):

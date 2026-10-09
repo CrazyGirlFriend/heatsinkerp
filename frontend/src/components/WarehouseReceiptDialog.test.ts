@@ -129,15 +129,20 @@ describe('warehouse manual receipt', () => {
     expect(wrapper.emitted('saved')).toEqual([[receipt()]])
     expect(sessionStorage.length).toBe(0)
   })
-  it('requires material, explanation, and a positive amount and rejects excessive decimal precision', async () => {
+  it('requires material and a positive amount and rejects excessive decimal precision', async () => {
     await render(); await fill()
     await wrapper.get('input[aria-label="材质"]').setValue(' '); await submit(); expect(wrapper.text()).toContain('请输入材质')
     await wrapper.get('input[aria-label="材质"]').setValue('铜钼')
-    await wrapper.get('textarea[aria-label="入库说明"]').setValue(' '); await submit(); expect(wrapper.text()).toContain('请填写入库说明')
-    await wrapper.get('textarea[aria-label="入库说明"]').setValue('到货')
     await amount('入库重量', 0); await submit(); expect(wrapper.text()).toContain('至少一项大于 0')
     await amount('入库重量', 0.0005); await submit(); expect(wrapper.text()).toContain('最多保留 3 位小数')
     expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+  })
+  it('accepts an empty optional intake explanation', async () => {
+    await render(); await fill()
+    await wrapper.get('textarea[aria-label="入库说明"]').setValue(' ')
+    await submit()
+    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(901, expect.objectContaining({ notes: '' }))
+    expect(wrapper.text()).not.toContain('请填写入库说明')
   })
   it.each(['admin', 'other-team', 'inactive', 'inactive-account', 'wrong-code', 'wrong-kind'])('blocks %s from creating a warehouse receipt', async kind => {
     if (kind === 'admin') state.auth.isTeamAccount = false

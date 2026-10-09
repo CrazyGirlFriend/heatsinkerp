@@ -129,6 +129,11 @@ watch(valid, (value) => emit('validity-change', value), { immediate: true })
   flex: 1;
   min-width: 0;
 }
+.specification-dimensions i {
+  margin-right: auto;
+  color: var(--el-color-danger);
+  font-style: normal;
+}
 .specification-dimensions label > span {
   display: flex;
   justify-content: space-between;

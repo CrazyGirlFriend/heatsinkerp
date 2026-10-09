@@ -95,6 +95,80 @@
 .el-dialog__headerbtn { width: 48px; height: 48px; top: 12px; right: 12px; }
 .el-dialog__title { font-size: 20px; font-weight: 550; }
 .el-form-item__label { color: var(--el-text-color-regular); }
+
+/* Dialog forms share field sizing; complex inputs span the entire grid. */
+.el-dialog {
+  --el-component-size: 40px;
+  max-width: calc(100vw - 32px);
+}
+.dialog-form-grid,
+.el-dialog .form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  column-gap: 20px;
+  min-width: 0;
+}
+.dialog-field-wide { grid-column: 1 / -1; }
+.dialog-field { display: flex; flex-direction: column; min-width: 0; gap: 8px; margin-bottom: 20px; }
+.dialog-field-label { display: flex; align-items: center; gap: 6px; min-height: 24px; color: var(--muted); line-height: 24px; }
+.dialog-field-label.is-required::before { content: '*'; color: var(--el-color-danger); }
+.dialog-field :is(.el-input, .el-select, .el-input-number) { width: 100%; min-width: 0; }
+.el-dialog .el-form-item { min-width: 0; margin-bottom: 20px; }
+.el-dialog .el-form--label-top .el-form-item__label {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  height: auto;
+  min-height: 24px;
+  margin-bottom: 8px;
+  line-height: 24px;
+}
+.el-dialog .el-form-item__content { min-width: 0; align-items: flex-start; }
+.el-dialog .el-form-item__content > :is(.el-input, .el-select, .el-input-number, .el-autocomplete) {
+  width: 100%;
+  min-width: 0;
+}
+.el-dialog :is(.el-input__wrapper, .el-select__wrapper) {
+  min-height: 40px;
+  box-sizing: border-box;
+}
+.dialog-input-unit { color: var(--subtle); font-size: 12px; white-space: nowrap; }
+.el-dialog .autofill-badge { margin-left: 0; }
+.dialog-field-hint {
+  flex-basis: 100%;
+  margin: 6px 0 0;
+  color: var(--subtle);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.dialog-readonly {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  width: 100%;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--el-border-radius-base);
+  background: var(--surface-soft);
+  box-sizing: border-box;
+}
+.el-dialog__body { overscroll-behavior: contain; }
+.el-dialog__footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.el-dialog__footer > .el-button { margin-left: 0; }
+@media (max-width: 560px) {
+  .dialog-form-grid, .el-dialog .form-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px), (max-height: 800px) {
+  .el-dialog { max-height: calc(100dvh - 32px); margin-block: 16px; padding: 16px; }
+  .el-dialog__body { padding-block: 16px; }
+  .el-dialog .el-form-item, .el-dialog .dialog-field { margin-bottom: 14px; }
+  .el-dialog .el-form--label-top .el-form-item__label { margin-bottom: 6px; }
+  .el-dialog__footer { padding-top: 12px; }
+  .el-dialog__title { font-size: 18px; }
+}
 .el-message-box { padding: 24px; border-radius: 10px; }
 .el-message-box__btns { padding-top: 24px; }
 
@@ -171,7 +245,7 @@
   .page-shift-leave-active { transition: none !important; }
 }
 
-@media (max-width: 560px) { .el-dialog { padding: 20px; } .el-message-box { max-width: calc(100vw - 32px); } .el-pagination { --el-pagination-button-width: 28px; } }
+@media (max-width: 560px) { .el-message-box { max-width: calc(100vw - 32px); } .el-pagination { --el-pagination-button-width: 28px; } }
 
 /* Secondary actions have distinct, consistent roles alongside the teal primary. */
 .el-button.action-warm { --el-button-text-color: var(--action-warm); --el-button-bg-color: var(--action-warm-soft); --el-button-border-color: #edd5bf; --el-button-hover-text-color: #7e3e11; --el-button-hover-bg-color: #ffead6; --el-button-hover-border-color: #dcba98; --el-button-active-bg-color: #ffe1c2; }

@@ -2,6 +2,8 @@
 import PageBackButton from '@/components/PageBackButton.vue'
 import AccountAvatar from '@/components/AccountAvatar.vue'
 import AvatarPicker from '@/components/AvatarPicker.vue'
+import FormPageNav from '@/components/FormPageNav.vue'
+import FormValidationNotice from '@/components/FormValidationNotice.vue'
 import {
   CircleCheck,
   Delete,
@@ -13,7 +15,6 @@ import {
   User,
 } from '@element-plus/icons-vue'
 import {
-  ElAlert,
   ElButton,
   ElCard,
   ElDialog,
@@ -32,6 +33,8 @@ import {
   ElTable,
   ElTableColumn,
   ElTag,
+  ElTabs,
+  ElTabPane,
   type InputInstance,
 } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
@@ -68,7 +71,8 @@ const errorMessage = ref('')
 const query = ref('')
 const statusFilter = ref<StatusFilter>('all')
 const teamFilter = ref<string>('all')
-const editorOpen = ref(false)
+const editorOpen = ref(false), editorTab = ref('account')
+const editorPage = computed({ get: () => editorTab.value === 'account' ? 0 : 1, set: page => { editorTab.value = page ? 'avatar' : 'account' } })
 const editingId = ref<EntityId | null>(null)
 const formError = ref('')
 const usernameInput = ref<InputInstance | null>(null)
@@ -140,6 +144,7 @@ const liveRefresh = useLiveRefresh(async () => { await refreshCurrentUser(); awa
 watch(isAdmin, value => { if (!value) { ++requestVersion; accounts.value = []; teams.value = []; editorOpen.value = false } })
 
 function resetForm(): void {
+  editorTab.value = 'account'
   form.username = ''
   form.display_name = ''
   form.avatar_key = ''
@@ -164,7 +169,7 @@ function openEdit(account: Account): void {
   form.password = ''
   form.team_id = account.team_id
   form.active = account.active
-  formError.value = ''
+  formError.value = ''; editorTab.value = 'account'
   editorOpen.value = true
 }
 
@@ -182,6 +187,7 @@ function validateForm(): boolean {
   else if (editingId.value !== null && form.password && form.password.length < 8) formError.value = '新密码至少为 8 位'
   else if (!teams.value.some((team) => team.active && String(team.id) === String(form.team_id))) formError.value = '请选择有效班组'
   else formError.value = ''
+  if (formError.value) editorTab.value = 'account'
   return !formError.value
 }
 
@@ -371,9 +377,11 @@ onMounted(() => void loadData())
       :show-close="!saving"
       @opened="focusEditor"
     >
+      <FormValidationNotice :message="formError" :page="0" label="账号资料" @locate="editorPage = 0" />
       <ElForm :model="form" label-position="top" @submit.prevent="submitForm">
+        <ElTabs v-model="editorTab">
+        <ElTabPane label="账号资料" name="account" :disabled="saving">
         <div class="form-grid">
-          <ElFormItem class="field-wide" label="头像"><AvatarPicker v-model="form.avatar_key" :name="form.display_name" :disabled="saving" /></ElFormItem>
           <ElFormItem label="登录账号" required>
             <ElInput ref="usernameInput" v-model="form.username" maxlength="64" autocomplete="off" placeholder="例如 roll_leader" :disabled="editingId !== null">
               <template #prefix><ElIcon><User /></ElIcon></template>
@@ -382,15 +390,16 @@ onMounted(() => void loadData())
           <ElFormItem label="班组长姓名" required>
             <ElInput ref="displayNameInput" v-model="form.display_name" maxlength="80" autocomplete="off" placeholder="请输入姓名" />
           </ElFormItem>
-          <ElFormItem class="field-wide" label="所属班组" required>
+          <ElFormItem label="所属班组" required>
             <ElSelect v-model="form.team_id" class="full-width" filterable aria-label="所属班组" placeholder="请选择班组">
               <ElOption v-for="team in selectableTeams" :key="team.id" :value="team.id" :label="team.name" />
             </ElSelect>
           </ElFormItem>
-          <ElFormItem class="field-wide" :label="editingId === null ? '初始密码' : '重置密码（留空则不修改）'" :required="editingId === null">
+          <ElFormItem :label="editingId === null ? '初始密码' : '重置密码'" :required="editingId === null">
             <ElInput v-model="form.password" type="password" show-password minlength="8" maxlength="128" autocomplete="new-password" placeholder="至少 8 位">
               <template #prefix><ElIcon><Key /></ElIcon></template>
             </ElInput>
+            <p v-if="editingId !== null" class="dialog-field-hint">留空则保留原密码</p>
           </ElFormItem>
           <ElFormItem class="field-wide" label="账号状态">
             <div class="switch-row">
@@ -399,10 +408,13 @@ onMounted(() => void loadData())
             </div>
           </ElFormItem>
         </div>
-        <ElAlert v-if="formError" :title="formError" type="error" show-icon :closable="false" />
+        </ElTabPane>
+        <ElTabPane label="头像" name="avatar" :disabled="saving"><ElFormItem label="头像"><AvatarPicker v-model="form.avatar_key" :name="form.display_name" :disabled="saving" /></ElFormItem></ElTabPane>
+        </ElTabs>
         <button class="dialog-submit-proxy" type="submit" tabindex="-1" aria-hidden="true" />
       </ElForm>
       <template #footer>
+        <FormPageNav v-model="editorPage" :total="2" :disabled="saving" />
         <ElButton :disabled="saving" @click="editorOpen = false">取消</ElButton>
         <ElButton type="primary" :loading="saving" :icon="CircleCheck" @click="submitForm">{{ editingId !== null ? '保存修改' : '创建账号' }}</ElButton>
       </template>

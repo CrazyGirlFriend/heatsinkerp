@@ -20,14 +20,32 @@ beforeEach(() => {
 })
 afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); localStorage.clear() })
 async function render(initialTab = 'opening') {
-  wrapper = mount(TeamBusinessDialog, { props: { modelValue: true, teamId: 2, initialTab }, global: { stubs: { ElDialog: { template: '<div><slot /></div>' } } } })
+  wrapper = mount(TeamBusinessDialog, { props: { modelValue: true, teamId: 2, initialTab }, global: { stubs: { ElDialog: { template: '<div><slot /><slot name="footer" /></div>' } } } })
   await flushPromises()
 }
 async function click(text: string) { await wrapper.findAll('button').find(button => button.text() === text)!.trigger('click'); await flushPromises() }
 
 describe('team business settings', () => {
+  it('preserves every batch while paging and returns to an invalid hidden batch on submit', async () => {
+    await render()
+    await wrapper.get('input[aria-label="第1行流水号"]').setValue('000017')
+    await click('增加物料')
+    expect(wrapper.get('nav[aria-label="表单分页"]').text()).toContain('4 / 6')
+    await wrapper.get('input[aria-label="第2行流水号"]').setValue('000018')
+    await click('上一页'); await click('上一页'); await click('上一页')
+    expect(wrapper.get('input[aria-label="第1行流水号"]').element).toHaveProperty('value', '000017')
+    await click('下一页'); await click('下一页'); await click('下一页')
+    expect(wrapper.get('input[aria-label="第2行流水号"]').element).toHaveProperty('value', '000018')
+    await click('确认初始库存登记')
+    expect(wrapper.get('nav[aria-label="表单分页"]').text()).toContain('1 / 6')
+    expect(teamMaterialApi.createOpening).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('请输入材质')
+    expect(wrapper.text()).toContain('第 1 页 · 物料 1 · 物料资料')
+    await click('下一页'); await click('前往补填')
+    expect(wrapper.get('nav[aria-label="表单分页"]').text()).toContain('1 / 6')
+  })
   it('opens business-only settings without reading or exposing opening stock', async () => {
-    wrapper = mount(TeamBusinessDialog, { props: { modelValue: true, teamId: 2, businessOnly: true, initialTab: 'opening' }, global: { stubs: { ElDialog: { template: '<div><slot /></div>' } } } })
+    wrapper = mount(TeamBusinessDialog, { props: { modelValue: true, teamId: 2, businessOnly: true, initialTab: 'opening' }, global: { stubs: { ElDialog: { template: '<div><slot /><slot name="footer" /></div>' } } } })
     await flushPromises()
     expect(teamMaterialApi.purposes).toHaveBeenCalledWith(2)
     expect(teamMaterialApi.openingState).not.toHaveBeenCalled()
@@ -118,7 +136,7 @@ describe('team business settings', () => {
   it('validates empty stock and restores only this account/team draft', async () => {
     localStorage.setItem('heatsink.opening-draft.v1:41:3', JSON.stringify([{ serial_no: 'FOREIGN', material_name: '铜' }]))
     await render(); await click('确认初始库存登记')
-    expect(wrapper.text()).toContain('请逐行填写')
+    expect(wrapper.text()).toContain('请输入流水号')
     expect(teamMaterialApi.createOpening).not.toHaveBeenCalled()
     expect(wrapper.text()).not.toContain('FOREIGN')
   })

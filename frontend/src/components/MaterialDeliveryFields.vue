@@ -6,8 +6,8 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
 </script>
 
 <template>
-  <div class="delivery-fields">
-    <ElFormItem label="要求发货日期"
+  <div class="delivery-fields dialog-form-grid dialog-field-wide">
+    <ElFormItem label="要求发货日期" :required="quantity != null"
       ><ElInput
         v-model="date"
         type="date"
@@ -16,7 +16,7 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
         max="2100-12-31"
         :disabled="disabled"
     /></ElFormItem>
-    <ElFormItem label="应发成品件数"
+    <ElFormItem label="应发成品件数" :required="Boolean(date)"
       ><ElInputNumber
         v-model="quantity"
         aria-label="应发成品件数"
@@ -25,23 +25,14 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
         :precision="0"
         controls-position="right"
         :disabled="disabled"
-    /></ElFormItem>
+        ><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber
+      ></ElFormItem
+    >
   </div>
 </template>
 
 <style scoped>
-.delivery-fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 20px;
-  grid-column: 1 / -1;
-}
 .delivery-fields :deep(.el-input-number) {
   width: 100%;
-}
-@media (max-width: 560px) {
-  .delivery-fields {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

@@ -71,9 +71,9 @@ async function submit() {
     </div>
     <ElForm label-position="top" :disabled="saving || !canWrite" @submit.prevent="submit">
       <ElFormItem label="目标流水号" required><MaterialInput field="serial_no" label="转投目标流水号" :disabled="saving || !canWrite || !modelValue" v-model="form.serial" aria-label="转投目标流水号" :maxlength="80" placeholder="填写转投后的流水号" /></ElFormItem>
-      <div class="reallocation-amounts">
-        <ElFormItem label="转投件数" required><ElInputNumber v-model="form.quantity" aria-label="转投件数" :min="0" :precision="0" controls-position="right" /><span>件</span></ElFormItem>
-        <ElFormItem v-if="!measured" label="转投重量" required><ElInputNumber v-model="form.weight" aria-label="转投重量" :min="0" :precision="3" controls-position="right" /><span>kg</span></ElFormItem>
+      <div class="reallocation-amounts dialog-form-grid">
+        <ElFormItem label="转投件数" required><ElInputNumber v-model="form.quantity" aria-label="转投件数" :min="0" :precision="0" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
+        <ElFormItem v-if="!measured" label="转投重量" required><ElInputNumber v-model="form.weight" aria-label="转投重量" :min="0" :precision="3" controls-position="right"><template #suffix><span class="dialog-input-unit">kg</span></template></ElInputNumber></ElFormItem>
       </div>
       <SludgeWeightFields v-if="measured" v-model:gross="form.gross" v-model:percent="form.percent" label="转投" locked :disabled="saving || !canWrite" @update:weight="form.weight = $event" />
       <ElFormItem v-if="warehouse" label="目标仓位"><WarehouseLocationSelect v-model="form.location" v-model:reservation-key="form.locationKey" :team-id="teamId" :serial-no="form.serial.trim()" :material-name="source?.transfer.material_name || ''" :material-type="source?.transfer.material_type || ''" :active="modelValue && !!form.serial.trim()" :disabled="saving || !canWrite || !form.serial.trim()" @busy-change="locationBusy = $event" /></ElFormItem>
@@ -89,7 +89,5 @@ async function submit() {
 .reallocation-source header, .reallocation-source > div { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .reallocation-source header strong { font-size: 18px; color: var(--text); }.reallocation-source header span { color: var(--subtle); }
 .reallocation-source > div { justify-content: space-between; margin-top: 12px; color: var(--subtle); font-size: 13px; }
-.reallocation-amounts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }.reallocation-amounts :deep(.el-form-item__content) { flex-wrap: nowrap; gap: 8px; }.reallocation-amounts :deep(.el-input-number) { width: 100%; }
 .reallocation-error { color: var(--danger); margin: 12px 0 0; }
-@media (max-width: 480px) { .reallocation-amounts { grid-template-columns: 1fr; gap: 0; } }
 </style>

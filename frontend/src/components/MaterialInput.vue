@@ -23,12 +23,33 @@ const emit = defineEmits<{
 }>()
 const failed = ref(false)
 let generation = 0
+let enteredSerial: string | null = null
+function update(value: unknown) {
+  const text = String(value)
+  enteredSerial = props.field === 'serial_no' ? text.trim() : null
+  emit('update:modelValue', text)
+}
+function select(item: MaterialSuggestion) {
+  enteredSerial = null
+  emit('selected', item)
+}
 async function suggestions(query: string, callback: (items: MaterialSuggestion[]) => void) {
   const current = ++generation
   failed.value = false
   try {
     const items = await materialSuggestions(props.field, query)
-    if (current === generation && !props.disabled) callback(items)
+    if (current === generation && !props.disabled) {
+      callback(items)
+      if (
+        props.field === 'serial_no' &&
+        enteredSerial &&
+        enteredSerial === query.trim() &&
+        query.trim() === props.modelValue.trim()
+      ) {
+        const exact = items.find((item) => item.value === enteredSerial)
+        if (exact) select(exact)
+      }
+    }
   } catch {
     if (current === generation) {
       failed.value = true
@@ -60,8 +81,8 @@ onBeforeUnmount(() => {
       clearable
       fit-input-width
       popper-class="material-suggestions"
-      @update:model-value="emit('update:modelValue', String($event))"
-      @select="emit('selected', $event as MaterialSuggestion)"
+      @update:model-value="update"
+      @select="select($event as MaterialSuggestion)"
     >
       <template #default="{ item }"
         ><div class="material-suggestion">

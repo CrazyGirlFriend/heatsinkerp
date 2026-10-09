@@ -119,12 +119,24 @@ def test_disabled_warehouse_actor_cannot_intake_with_existing_token(client, ware
 @pytest.mark.parametrize('invalid', [
     {'serial_no': '  '}, {'material_name': '  '}, {'material_type': None},
     {'quantity': 0, 'weight': 0}, {'quantity': -1}, {'quantity': 1.5},
-    {'weight': '1.1234'}, {'notes': '  '}, {'idempotency_key': '  '},
+    {'weight': '1.1234'}, {'notes': 'x' * 2001}, {'idempotency_key': '  '},
     {'next_team_id': 1}, {'source_team_id': 1}, {'entry_kind': 'transfer'}, {'status': 'pending'},
 ])
 def test_invalid_or_forged_intake_does_not_add_stock(client, warehouse, invalid):
     assert intake(client, warehouse, **invalid).status_code == 422
     assert client.get(warehouse['url']).json()['total'] == 0
+
+
+@pytest.mark.parametrize('notes', ['', '  ', None])
+def test_intake_allows_optional_notes(client, warehouse, notes):
+    payload = {'serial_no': 'WH-OPTIONAL', 'material_name': '材料1', 'material_type': 'semi_finished',
+               'quantity': 10, 'weight': 2, 'idempotency_key': 'optional-notes'}
+    if notes is not None:
+        payload['notes'] = notes
+    response = client.post(warehouse['url'], headers=warehouse['headers'], json=payload)
+    assert response.status_code == 201, response.text
+    assert response.json()['notes'] == ''
+    assert client.get(warehouse['url'].replace('/receipts', '/overview')).json()['totals']['available_weight'] == 2
 
 
 def test_intake_retry_is_idempotent_and_different_payload_conflicts(client, warehouse):

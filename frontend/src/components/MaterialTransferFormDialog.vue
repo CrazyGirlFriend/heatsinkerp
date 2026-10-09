@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormPageNav from './FormPageNav.vue'
+import FormValidationNotice from './FormValidationNotice.vue'
 import MaterialInput from './MaterialInput.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import AutofillBadge from './AutofillBadge.vue'
@@ -48,7 +50,20 @@ const authStore = useAuthStore()
 const teamStore = useTeamDirectoryStore()
 const saving = ref(false), locationBusy = ref(false)
 const formError = ref('')
+const validationPage = ref<number | null>(null)
 const activeTab = ref('handoff')
+const specificationKeys = ['finished_specification', 'transfer_specification']
+const documentPages = [
+  { name: 'document', label: '物料资料', fields: materialDocumentTextFields.filter(field => field.group === 'basic' && !field.multiline && !specificationKeys.includes(field.key)) },
+  { name: 'specification', label: '规格要求', fields: materialDocumentTextFields.filter(field => specificationKeys.includes(field.key) || field.key === 'technical_requirements') },
+  { name: 'extra', label: '补充资料', fields: materialDocumentTextFields.filter(field => ['product_code', 'part_no', 'material_shape', 'outsourced_unit'].includes(field.key)) },
+  { name: 'category', label: '业务分类', fields: materialDocumentTextFields.filter(field => ['purpose_category', 'category_level3', 'order_category'].includes(field.key)) },
+  { name: 'notes', label: '说明', fields: materialDocumentTextFields.filter(field => field.group === 'extra' && field.multiline) },
+]
+const pageLabels = ['交接信息', '数量与交期', ...documentPages.map(page => page.label)]
+const formPages = ['handoff', 'amount', ...documentPages.map(page => page.name)]
+const formPage = computed({ get: () => formPages.indexOf(activeTab.value), set: page => { activeTab.value = formPages[page]! } })
+
 const editingSnapshot = ref<MaterialTransfer | null>(null)
 const refreshFailed = ref(false)
 const refreshing = ref(false)
@@ -117,7 +132,7 @@ function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
   form.materialType = transfer?.material_type ?? ''
   form.finishedQuantity = transfer?.finished_quantity ?? undefined
   materialDocumentTextFields.forEach(field => { form.document[field.key] = transfer?.[field.key] ?? '' })
-  activeTab.value = 'handoff'
+  activeTab.value = 'handoff'; validationPage.value = null
   refreshFailed.value = false
   formError.value = ''
   createRequestKey.value = ''
@@ -129,6 +144,7 @@ function close(): void {
 }
 
 function validate(): boolean {
+  validationPage.value = null
   const serialNo = form.serialNo.trim()
   const quantity = Number(form.quantity)
   const weight = Number(form.weight)
@@ -151,21 +167,22 @@ function validate(): boolean {
   else if (quantity === 0 && weight === 0) formError.value = '转料件数和重量至少一项大于 0'
   else if (form.notes.trim().length > 2000) formError.value = `${notesLabel.value}不能超过 2000 个字符`
   else formError.value = ''
-  if (formError.value) { activeTab.value = 'handoff'; return false }
+  if (formError.value) { activeTab.value = /实重|占比|件数|重量/.test(formError.value) ? 'amount' : formError.value.startsWith(notesLabel.value) ? 'notes' : 'handoff'; validationPage.value = formPage.value; return false }
   if (!linkedSource.value && !external.value) {
     formError.value = deliveryError(form.deliveryDate, form.deliveryQuantity)
-    if (formError.value) { activeTab.value = 'handoff'; return false }
+    if (formError.value) { activeTab.value = 'amount'; validationPage.value = formPage.value; return false }
   }
   if (form.finishedQuantity != null && (!Number.isInteger(form.finishedQuantity) || form.finishedQuantity < 0 || form.finishedQuantity > 2147483647)) {
     formError.value = '成品件数须为非负整数，不能超过 2147483647'
     activeTab.value = 'document'
   }
-  if (!external.value && Object.values(specificationValidity).includes(false)) { formError.value = '请填完整规格尺寸'; activeTab.value = 'document'; return false }
+  if (!external.value && Object.values(specificationValidity).includes(false)) { formError.value = '请填完整规格尺寸'; activeTab.value = 'specification'; validationPage.value = formPage.value; return false }
   const invalidField = materialDocumentTextFields.find(field => form.document[field.key].trim().length > field.maxLength)
   if (invalidField) {
     formError.value = `${invalidField.label}不能超过 ${invalidField.maxLength} 个字符`
-    activeTab.value = invalidField.group === 'basic' ? 'document' : 'extra'
+    activeTab.value = documentPages.find(page => page.fields.some(field => field.key === invalidField.key))!.name
   }
+  if (formError.value) validationPage.value = formPage.value
   return !formError.value
 }
 
@@ -267,13 +284,14 @@ onBeforeUnmount(() => { ++formGeneration })
       </div>
     </template>
 
+    <FormValidationNotice :message="formError" :page="validationPage" :label="validationPage == null ? '' : pageLabels[validationPage]" @locate="validationPage != null && (formPage = validationPage)" />
     <ElAlert v-if="!authStore.isTeamAccount" type="info" :closable="false" title="管理员仅可查看转料记录" show-icon />
     <ElAlert v-else-if="!sourceTeam" type="error" :closable="false" title="当前账号未绑定班组" show-icon />
     <ElAlert v-else-if="!editable" type="info" :closable="false" title="此转料单已锁定或无编辑权限" show-icon />
     <ElAlert v-else-if="sourceChanged" type="warning" :closable="false" title="账号所属班组已变更，请关闭后重新新建转料" show-icon />
     <ElAlert v-if="linkedSource" type="info" :closable="false" :title="`上一批次 ${editingSnapshot?.source_transfer_batch_no || '已关联'} · 流水号与材质继承自来料`" />
 
-    <div v-if="sourceTeam" class="handoff-preview" aria-label="转料方向">
+    <div v-if="sourceTeam" v-show="activeTab === 'handoff'" class="handoff-preview" aria-label="转料方向">
       <div><span>转出班组</span><strong>{{ sourceTeam.name }}</strong><small>由当前账号自动确定</small></div>
       <ElIcon><ArrowRight /></ElIcon>
       <div v-if="external"><span>{{ actionLabel }}去向</span><strong>{{ editingSnapshot?.external_destination }}</strong><small>由本班组确认</small></div>
@@ -284,7 +302,11 @@ onBeforeUnmount(() => { ++formGeneration })
     <ElForm class="transfer-form" label-position="top" @submit.prevent="submit">
       <ElTabs v-model="activeTab">
       <ElTabPane label="交接信息" name="handoff">
-      <div class="document-grid">
+      <div class="document-grid dialog-form-grid">
+      <ElFormItem label="流水号" required>
+        <MaterialInput v-model="form.serialNo" field="serial_no" label="流水号" :maxlength="80" :disabled="!canSubmit || linkedSource || external" placeholder="输入或选择流水号" @selected="autofill.select" />
+      </ElFormItem>
+
       <ElFormItem label="物料类型" :required="!isEditing || toWarehouse">
         <ElSelect v-model="form.materialType" aria-label="物料类型" placeholder="请选择物料类型" :disabled="!canSubmit || external || editingSnapshot?.sludge_percent_locked" :clearable="isEditing">
           <ElOption v-for="option in materialTypeOptions" :key="option.value" :label="option.label" :value="option.value" />
@@ -308,65 +330,49 @@ onBeforeUnmount(() => { ++formGeneration })
           <ElOption v-for="purpose in purposes.items.value.filter(item => item.active)" :key="purpose.id" :value="purpose.id" :label="purpose.name" />
           <ElOption v-if="editingSnapshot?.purpose_id && String(form.nextTeamId) === String(editingSnapshot.next_team.id) && !purposes.items.value.some(item => item.active && item.id === editingSnapshot?.purpose_id)" :value="editingSnapshot.purpose_id" :label="`${editingSnapshot.purpose_name}（原单业务）`" />
         </ElSelect>
-        <p v-if="purposes.items.value.length && !purposes.items.value.some(item => item.active)">接收班组暂无启用业务，新转料前需由该班组在工作台中启用。</p>
+        <p class="dialog-field-hint" v-if="purposes.items.value.length && !purposes.items.value.some(item => item.active)">接收班组暂无启用业务，新转料前需由该班组在工作台中启用。</p>
         <ElButton v-if="purposes.error.value" link type="danger" @click="purposes.refresh">业务加载失败，点击重试</ElButton>
       </ElFormItem>
       </div>
-      <ElFormItem label="流水号" required>
-        <MaterialInput v-model="form.serialNo" field="serial_no" label="流水号" :maxlength="80" :disabled="!canSubmit || linkedSource || external" placeholder="输入或选择流水号" @selected="autofill.select" />
-      </ElFormItem>
+      </ElTabPane>
+      <ElTabPane label="数量与交期" name="amount">
       <MaterialDeliveryFields v-if="!external" v-model:date="form.deliveryDate" v-model:quantity="form.deliveryQuantity" :disabled="!canSubmit || linkedSource" />
       <p v-if="linkedSource && form.deliveryDate" class="delivery-origin">交期沿用源头批次 {{ editingSnapshot?.delivery_origin_batch_no }}</p>
-      <div class="quantity-grid">
+      <div class="quantity-grid dialog-form-grid">
         <ElFormItem :label="external ? `${actionLabel}件数` : '转料件数'" required>
-          <ElInputNumber v-model="form.quantity" :aria-label="external ? `${actionLabel}件数` : '转料件数'" :min="0" :max="2147483647" :step="1" :precision="0" controls-position="right" :disabled="!canSubmit" />
-          <span class="unit-suffix">件</span>
+          <ElInputNumber v-model="form.quantity" :aria-label="external ? `${actionLabel}件数` : '转料件数'" :min="0" :max="2147483647" :step="1" :precision="0" controls-position="right" :disabled="!canSubmit"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber>
         </ElFormItem>
         <ElFormItem v-if="!useSludge" :label="external ? `${actionLabel}重量` : '转料重量'" required>
-          <ElInputNumber v-model="form.weight" :aria-label="external ? `${actionLabel}重量` : '转料重量'" :min="0" :max="99999999999.999" :step="0.1" :precision="3" controls-position="right" :disabled="!canSubmit" />
-          <span class="unit-suffix">kg</span>
+          <ElInputNumber v-model="form.weight" :aria-label="external ? `${actionLabel}重量` : '转料重量'" :min="0" :max="99999999999.999" :step="0.1" :precision="3" controls-position="right" :disabled="!canSubmit"><template #suffix><span class="dialog-input-unit">kg</span></template></ElInputNumber>
         </ElFormItem>
       </div>
       <SludgeWeightFields v-if="useSludge" v-model:gross="form.gross" v-model:percent="form.percent" :locked="editingSnapshot?.sludge_percent_locked" :disabled="!canSubmit" @update:weight="form.weight = $event" />
       <p v-else-if="form.materialType === 'sludge'" class="quantity-hint">历史废泥未记录比例，沿用原账重，不自动折算。</p>
       <p class="quantity-hint">{{ useSludge ? '废泥按实重与有效材料占比折算；仅按重量交接时，件数填 0。' : '按实际件数、重量填写，至少一项大于 0。' }}</p>
       <ElFormItem v-if="toWarehouse" label="入库仓位"><strong v-if="editingSnapshot?.warehouse_location">{{ editingSnapshot.warehouse_location }}</strong><WarehouseLocationSelect v-else v-model="form.warehouseLocation" v-model:reservation-key="form.warehouseLocationKey" :team-id="Number(form.nextTeamId)" :serial-no="form.serialNo" :material-name="form.document.material_name" :material-type="form.materialType" :active="modelValue" :disabled="saving || refreshing" @busy-change="locationBusy = $event" /></ElFormItem>
+      </ElTabPane>
+      <ElTabPane v-for="page in documentPages" :key="page.name" :label="page.label" :name="page.name">
+        <div class="document-grid dialog-form-grid">
+          <ElFormItem v-for="field in page.fields" :key="field.key" :label="field.label" :class="{ 'dialog-field-wide': field.multiline || specificationKeys.includes(field.key) }">
+            <template #label>{{ field.label }}<AutofillBadge :source="autofill.source(field.key)" /></template>
+            <SpecificationInput v-if="specificationKeys.includes(field.key)" v-model="form.document[field.key]" :label="field.label" :disabled="!canSubmit || external" @validity-change="specificationValidity[field.key] = $event" />
+            <MaterialInput v-else-if="suggestionFields.includes(field.key)" v-model="form.document[field.key]" :field="field.key as MaterialInputField" :label="field.label" :maxlength="field.maxLength" :disabled="!canSubmit || external || (linkedSource && field.key === 'material_name')" />
+            <ElInput v-else v-model="form.document[field.key]" :aria-label="field.label" :type="field.multiline ? 'textarea' : 'text'" :rows="2" :maxlength="field.maxLength" :show-word-limit="field.multiline" :disabled="!canSubmit || external" placeholder="选填" />
+          </ElFormItem>
+          <ElFormItem v-if="page.name === 'document'" label="成品件数"><ElInputNumber v-model="form.finishedQuantity" aria-label="成品件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="!canSubmit || external" placeholder="选填"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
+        </div>
+        <template v-if="page.name === 'notes'">
       <ElFormItem :label="notesLabel">
         <ElInput v-model="form.notes" :aria-label="notesLabel" type="textarea" :rows="2" maxlength="2000" show-word-limit :disabled="!canSubmit" :placeholder="toWarehouse ? '选填：说明当前物料情况或转回库房的原因' : '选填'" />
       </ElFormItem>
-      </ElTabPane>
-      <ElTabPane label="物料明细" name="document">
-        <div class="document-grid">
-          <ElFormItem v-for="field in materialDocumentTextFields.filter(item => item.group === 'basic' && !item.multiline)" :key="field.key" :label="field.label">
-            <template #label>{{ field.label }}<AutofillBadge :source="autofill.source(field.key)" /></template>
-            <SpecificationInput v-if="['finished_specification', 'transfer_specification'].includes(field.key)" v-model="form.document[field.key]" :label="field.label" :disabled="!canSubmit || external" @validity-change="specificationValidity[field.key] = $event" />
-            <MaterialInput v-else-if="suggestionFields.includes(field.key)" v-model="form.document[field.key]" :field="field.key as MaterialInputField" :label="field.label" :maxlength="field.maxLength" :disabled="!canSubmit || external || (linkedSource && field.key === 'material_name')" />
-            <ElInput v-else v-model="form.document[field.key]" :aria-label="field.label" :maxlength="field.maxLength" :disabled="!canSubmit || external" placeholder="选填" />
-          </ElFormItem>
-          <ElFormItem label="成品件数">
-            <ElInputNumber v-model="form.finishedQuantity" aria-label="成品件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="!canSubmit || external" placeholder="选填" />
-          </ElFormItem>
-          <ElFormItem v-for="field in materialDocumentTextFields.filter(item => item.group === 'basic' && item.multiline)" :key="field.key" :label="field.label" class="document-wide">
-            <template #label>{{ field.label }}<AutofillBadge :source="autofill.source(field.key)" /></template>
-            <ElInput v-model="form.document[field.key]" :aria-label="field.label" type="textarea" :rows="3" :maxlength="field.maxLength" show-word-limit :disabled="!canSubmit || external" placeholder="选填" />
-          </ElFormItem>
-        </div>
-      </ElTabPane>
-      <ElTabPane label="补充信息" name="extra">
-        <div class="document-grid">
-          <ElFormItem v-for="field in materialDocumentTextFields.filter(item => item.group === 'extra')" :key="field.key" :label="field.label" :class="{ 'document-wide': field.multiline }">
-            <template #label>{{ field.label }}<AutofillBadge :source="autofill.source(field.key)" /></template>
-            <MaterialInput v-if="suggestionFields.includes(field.key)" v-model="form.document[field.key]" :field="field.key as MaterialInputField" :label="field.label" :maxlength="field.maxLength" :disabled="!canSubmit || external" />
-            <ElInput v-else v-model="form.document[field.key]" :aria-label="field.label" :type="field.multiline ? 'textarea' : 'text'" :rows="3" :maxlength="field.maxLength" :show-word-limit="field.multiline" :disabled="!canSubmit || external" placeholder="选填" />
-          </ElFormItem>
-        </div>
+        </template>
       </ElTabPane>
       </ElTabs>
-      <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
       <ElButton v-if="refreshFailed" :loading="refreshing" @click="refreshAfterConflict">重新读取</ElButton>
     </ElForm>
 
     <template #footer>
+      <FormPageNav v-model="formPage" :total="formPages.length" :disabled="saving || refreshing" />
       <ElButton :disabled="saving" @click="close">取消</ElButton>
       <ElButton type="primary" :loading="saving" :disabled="!canSubmit" @click="submit">{{ isEditing ? '保存修改' : '生成转料单' }}</ElButton>
     </template>
@@ -385,22 +391,9 @@ onBeforeUnmount(() => { ++formGeneration })
 .handoff-preview strong { overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
 .handoff-preview > .el-icon { justify-self: center; color: var(--subtle); }
 .transfer-form { margin-top: 0; }
-.quantity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.document-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
-.document-grid :deep(.el-select), .document-grid :deep(.el-input-number) { width: 100%; }
-.document-wide { grid-column: 1 / -1; }
 .quantity-hint { margin: -5px 0 18px; color: var(--subtle); font-size: 12px; }
-.quantity-grid :deep(.el-input-number) { width: calc(100% - 42px); }
-.quantity-grid :deep(.el-form-item__content) { flex-wrap: nowrap; }
-.unit-suffix { display: grid; width: 42px; height: 40px; place-items: center; border: 1px solid var(--el-border-color); border-left: 0; border-radius: 0 4px 4px 0; color: var(--muted); background: var(--workspace-bg); }
-.form-error { margin: -2px 0 0; color: var(--danger); font-size: 13px; }
 @media (max-width: 560px) {
-  .quantity-grid, .document-grid { grid-template-columns: 1fr; gap: 0; }
   .handoff-preview { padding-inline: 12px; }
 }
-:global(.material-transfer-form-dialog) { display: flex; max-height: min(86dvh, 720px); margin-block: 7dvh !important; flex-direction: column; }
-:global(.material-transfer-form-dialog .el-dialog__header),
-:global(.material-transfer-form-dialog .el-dialog__footer) { flex: 0 0 auto; }
-:global(.material-transfer-form-dialog .el-dialog__body) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 @media (prefers-reduced-motion: reduce) { .form-heading > .el-icon { transition: none; } }
 </style>

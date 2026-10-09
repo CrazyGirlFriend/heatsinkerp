@@ -86,8 +86,10 @@ onBeforeUnmount(() => { disposed = true; ++generation; ++slotGeneration })
       <ElForm label-position="top"><p>{{ selected?.transfer.batch_no }}</p>
         <ElFormItem label="仓位" required><ElSelect v-model="locationId" filterable remote :remote-method="findSlots" aria-label="选择空闲仓位" placeholder="选择或搜索仓位" :disabled="saving"><ElOption v-for="slot in slots" :key="slot.id" :value="slot.id" :label="slot.name" /></ElSelect></ElFormItem>
         <p v-if="currentSlot?.batches.length">当前库存 {{ slotAmount('quantity') }} 件 · {{ slotAmount('weight') }} kg · {{ currentSlot.batches.length }} 批</p>
-        <ElFormItem label="件数" required><ElInputNumber v-model="quantity" :min="0" :max="selected?.unassigned_quantity" :precision="0" :disabled="saving" aria-label="安排仓位件数" /></ElFormItem>
-        <ElFormItem label="重量（kg）" required><ElInputNumber v-model="weight" :min="0" :max="selected?.unassigned_weight" :precision="3" :disabled="saving" aria-label="安排仓位重量" /></ElFormItem>
+        <div class="dialog-form-grid">
+        <ElFormItem label="件数" required><ElInputNumber v-model="quantity" :min="0" :max="selected?.unassigned_quantity" :precision="0" :disabled="saving" aria-label="安排仓位件数" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
+        <ElFormItem label="重量" required><ElInputNumber v-model="weight" :min="0" :max="selected?.unassigned_weight" :precision="3" :disabled="saving" aria-label="安排仓位重量" controls-position="right"><template #suffix><span class="dialog-input-unit">kg</span></template></ElInputNumber></ElFormItem>
+        </div>
         <ElAlert v-if="formError" :title="formError" type="error" :closable="false" />
       </ElForm>
       <template #footer><ElButton :disabled="saving" @click="selected = null">取消</ElButton><ElButton type="primary" :loading="saving" @click="assign">确认安排</ElButton></template>

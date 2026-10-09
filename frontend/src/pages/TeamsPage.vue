@@ -358,7 +358,7 @@ onMounted(() => void loadTeams())
           <ElFormItem label="显示顺序">
             <ElInputNumber v-model="form.sort_order" class="full-width" :min="0" :max="1000000" :step="10" controls-position="right" aria-label="显示顺序" />
           </ElFormItem>
-          <ElFormItem class="field-wide" label="班组状态">
+          <ElFormItem label="班组状态">
             <div class="switch-row">
               <ElSwitch v-model="form.active" :disabled="editingWarehouse" inline-prompt active-text="启" inactive-text="停" aria-label="启用班组" />
               <span>{{ form.active ? '可接收转料、绑定账号' : '不再分配新业务' }}</span>

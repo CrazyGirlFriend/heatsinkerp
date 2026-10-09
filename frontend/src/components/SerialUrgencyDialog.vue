@@ -35,7 +35,7 @@ watch(() => [props.modelValue, props.serialNo], () => { if (props.modelValue && 
 onBeforeUnmount(() => { ++version })
 </script>
 <template>
-  <ElDialog :model-value="modelValue" :title="state?.urgent ? '取消加急' : '标记加急'" width="420px" :close-on-click-modal="false" :show-close="!busy" :close-on-press-escape="!busy" @update:model-value="emit('update:modelValue', $event)">
+  <ElDialog :model-value="modelValue" :title="state?.urgent ? '取消加急' : '标记加急'" width="min(420px, calc(100vw - 32px))" :close-on-click-modal="false" :show-close="!busy" :close-on-press-escape="!busy" @update:model-value="emit('update:modelValue', $event)">
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
     <ElForm label-position="top" @submit.prevent="save"><ElFormItem label="流水号"><strong>{{ serialNo }}</strong></ElFormItem><ElFormItem v-if="!state?.urgent" label="加急原因（选填）"><ElInput v-model="reason" type="textarea" :rows="3" maxlength="500" show-word-limit :disabled="busy || !state" placeholder="填写加急原因" /></ElFormItem><p v-else>取消后，关联班组和批次将不再显示加急标记。</p></ElForm>
     <template #footer><ElButton :disabled="busy" @click="emit('update:modelValue', false)">返回</ElButton><ElButton v-if="!state && !busy" @click="load">重试</ElButton><ElButton type="primary" :loading="busy" :disabled="!canManage || !state" @click="save">{{ state?.urgent ? '确认取消加急' : '确认加急' }}</ElButton></template>

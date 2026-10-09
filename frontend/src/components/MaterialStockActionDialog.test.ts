@@ -34,6 +34,26 @@ async function submit() { await wrapper.findAll('button').find(button => /^(确�
 async function destination(id = 3) { wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', id); await flushPromises() }
 
 describe('source batch dispatch and loss drafts', () => {
+  it('keeps quantities across pages and reveals an invalid batch before submitting all lines', async () => {
+    await render(); await destination()
+    wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 60)
+    await wrapper.findAll('button').find(button => button.text() === '下一页')!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === '下一页')!.trigger('click')
+    expect(wrapper.get('nav[aria-label="表单分页"]').text()).toContain('3 / 4')
+    wrapper.findAllComponents(ElInputNumber)[2]!.vm.$emit('update:modelValue', undefined)
+    await wrapper.findAll('button').find(button => button.text() === '上一页')!.trigger('click')
+    expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(60)
+    await submit()
+    expect(wrapper.get('nav[aria-label="表单分页"]').text()).toContain('3 / 4')
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('第 3 页 · 物料 2 · TL11')
+    await wrapper.findAll('button').find(button => button.text() === '上一页')!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === '前往补填')!.trigger('click')
+    expect(wrapper.get('nav[aria-label="表单分页"]').text()).toContain('3 / 4')
+    wrapper.findAllComponents(ElInputNumber)[2]!.vm.$emit('update:modelValue', 90)
+    await flushPromises(); await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ lines: [expect.objectContaining({ quantity: 60 }), expect.objectContaining({ quantity: 90 })] }))
+  })
   it('converts newly produced sludge and clears remaining pieces only on the final material kg', async () => {
     await render('dispatch', [source()]); await destination(1)
     wrapper.findAllComponents(ElSelect).find(item => item.props('ariaLabel') === 'TL10物料类型')!.vm.$emit('update:modelValue', 'sludge')

@@ -6,7 +6,12 @@ import AutofillBadge from './AutofillBadge.vue'
 import { useMaterialAutofill } from '@/composables/useMaterialAutofill'
 import type { OpeningLine } from '@/types/teamBusiness'
 import type { MaterialSuggestion } from '@/services/materialInputApi'
-const props = defineProps<{ line: OpeningLine; index: number; disabled?: boolean }>()
+const props = defineProps<{
+  line: OpeningLine
+  index: number
+  disabled?: boolean
+  section?: 'material' | 'specification'
+}>()
 const emit = defineEmits<{
   'validity-change': [valid: boolean]
   update: [value: Pick<OpeningLine, 'serial_no' | 'material_name' | 'transfer_specification'>]
@@ -36,45 +41,35 @@ function select(item: MaterialSuggestion) {
 }
 </script>
 <template>
-  <label
-    >流水号<MaterialInput
+  <div v-show="section !== 'specification'" class="dialog-field">
+    <span class="dialog-field-label is-required">流水号</span
+    ><MaterialInput
       v-model="form.serial_no"
       field="serial_no"
       :label="`第${index + 1}行流水号`"
       :maxlength="80"
       :disabled="disabled"
       @selected="select"
-  /></label>
-  <label
-    ><span>材质<AutofillBadge :source="autofill.source('material_name')" /></span
+    />
+  </div>
+  <div v-show="section !== 'specification'" class="dialog-field">
+    <span class="dialog-field-label is-required"
+      >材质<AutofillBadge :source="autofill.source('material_name')" /></span
     ><MaterialInput
       v-model="form.material_name"
       field="material_name"
       :label="`第${index + 1}行材质`"
       :disabled="disabled"
-  /></label>
-  <label
-    >规格<SpecificationInput
+    />
+  </div>
+  <div v-show="!section || section === 'specification'" class="dialog-field dialog-field-wide">
+    <span class="dialog-field-label">规格</span
+    ><SpecificationInput
       :key="generation"
       v-model="form.transfer_specification"
       label="规格"
       :disabled="disabled"
       @validity-change="emit('validity-change', $event)"
-  /></label>
+    />
+  </div>
 </template>
-
-<style scoped>
-label {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  font-size: 15px;
-  color: var(--text);
-}
-label > span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-</style>

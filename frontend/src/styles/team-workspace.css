@@ -94,16 +94,18 @@
   overflow: hidden;
   scrollbar-gutter: auto;
 }
-.team-workspace.team-workspace--reading.team-workspace--fullscreen :is(.team-workspace__content, .team-material-content, .warehouse-inventory, .material-ledger, .team-list-layout, .team-table-scroll) {
+.team-workspace.team-workspace--reading.team-workspace--fullscreen :is(.team-workspace__content, .team-material-content, .warehouse-inventory, .material-ledger, .team-list-layout, .team-list-panel, .team-table-scroll) {
   flex: 1;
   min-height: 0;
   overflow: hidden;
 }
-.team-workspace.team-workspace--reading.team-workspace--fullscreen .team-list-layout { grid-template-rows: minmax(0, 1fr); }
+.team-workspace.team-workspace--reading.team-workspace--fullscreen .team-list-layout { grid-template-rows: minmax(0, 1fr); align-items: stretch; }
 .team-workspace.team-workspace--reading.team-workspace--fullscreen :is(.warehouse-table, .team-table, .ledger-table, .state-panel) { flex: 1; min-height: 0; }
 .team-workspace.team-workspace--reading.team-workspace--fullscreen :is(.warehouse-table, .team-table, .ledger-table) { --business-table-font: var(--workspace-body-size); }
 .team-workspace.team-workspace--reading.team-workspace--fullscreen :is(.warehouse-table, .team-table, .ledger-table) .el-table__inner-wrapper { flex: 1; min-height: 0; }
-.team-workspace.team-workspace--reading.team-workspace--fullscreen :is(.warehouse-inventory > header, .serial-toolbar, .inventory-active-filters, .warehouse-search-context, .warehouse-inventory > .el-alert, .team-material-content > .el-alert, .material-ledger > header, .list-heading, .list-toolbar, .list-active-filters, .receipt-scanner) { display: none; }
+.team-workspace.team-workspace--reading.team-workspace--fullscreen :is(.warehouse-inventory > header, .inventory-active-filters, .warehouse-search-context, .warehouse-inventory > .el-alert, .team-material-content > .el-alert, .material-ledger > header, .list-heading, .list-active-filters, .receipt-scanner) { display: none; }
+.team-workspace.team-workspace--reading.team-workspace--fullscreen :is(.serial-toolbar, .list-toolbar) { flex-shrink: 0; }
+.team-workspace.team-workspace--reading.team-workspace--fullscreen .list-toolbar { display: flex; }
 @media (max-width: 760px) {
   .team-workspace.reading-workspace.team-workspace--reading.team-workspace--fullscreen { --workspace-body-size: 14px; --workspace-number-size: 14px; padding: 12px; }
 }

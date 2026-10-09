@@ -1,9 +1,9 @@
-"""Suggestions keep distinct serial profiles and never copy batch quantities."""
+"""Suggestions identify each serial once and never copy batch quantities."""
 
 from test_material_transfers import _create, _setup_three_teams
 
 
-def test_serial_suggestions_group_duplicates_and_keep_alternatives(client):
+def test_serial_suggestions_use_latest_profile_without_duplicate_serials(client):
     setup = _setup_three_teams(client)
     for key, name, spec in [
         ("a", "材料1", "100 × 80 × 5 mm"),
@@ -14,6 +14,7 @@ def test_serial_suggestions_group_duplicates_and_keep_alternatives(client):
             client, setup, idempotency_key=key, material_name=name, finished_specification=spec
         )
         assert response.status_code == 201, response.text
+    latest_batch = response.json()["batch_no"]
     response = client.get(
         "/api/material-input-suggestions",
         params={"field": "serial_no", "query": "SERIAL"},
@@ -21,14 +22,25 @@ def test_serial_suggestions_group_duplicates_and_keep_alternatives(client):
     )
     assert response.status_code == 200, response.text
     items = response.json()["items"]
-    assert len(items) == 2
-    assert {item["details"]["material_name"] for item in items} == {"材料1", "材料2"}
+    assert len(items) == 1
+    assert items[0]["details"]["material_name"] == "材料1"
+    assert items[0]["source_batch_no"] == latest_batch
     assert all(item["value"] == "SERIAL-001" and item["source_batch_no"] for item in items)
     assert all(
         not {"quantity", "weight", "delivery_date", "source_transfer_id", "material_type"}
         & item["details"].keys()
         for item in items
     )
+
+
+def test_exact_serial_is_not_hidden_by_newer_similar_values(client):
+    setup = _setup_three_teams(client)
+    for index, serial in enumerate(["YS-007", "YS-007-1", "YS-007-2"]):
+        response = _create(client, setup, idempotency_key=f"exact-{index}", serial_no=serial)
+        assert response.status_code == 201, response.text
+    response = client.get("/api/material-input-suggestions?field=serial_no&query=YS-007&limit=1")
+    assert response.status_code == 200, response.text
+    assert [item["value"] for item in response.json()["items"]] == ["YS-007"]
 
 
 def test_suggestions_escape_wildcards_exclude_voided_and_bound_results(client):

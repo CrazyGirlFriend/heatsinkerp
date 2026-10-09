@@ -166,7 +166,7 @@ class WarehouseReceiptCreate(MaterialTransferDocumentFields, WarehouseLocationCh
     material_type: str = Field(pattern=DIRECT_MATERIAL_TYPE_PATTERN)
     quantity: int = Field(ge=0, le=2_147_483_647)
     weight: Decimal = Field(ge=0, max_digits=14, decimal_places=3)
-    notes: str = Field(min_length=1, max_length=2000)
+    notes: str = Field(default="", max_length=2000)
     idempotency_key: str = Field(min_length=1, max_length=100)
     receipt_kind: Literal["external", "return"] = "external"
     external_source: str | None = Field(default=None, min_length=1, max_length=240)
@@ -179,11 +179,16 @@ class WarehouseReceiptCreate(MaterialTransferDocumentFields, WarehouseLocationCh
             raise ValueError("来源或关联出库单不能为空白")
         return value.strip() if value is not None else None
 
-    @field_validator("serial_no", "notes", "idempotency_key")
+    @field_validator("serial_no", "idempotency_key")
     @classmethod
     def nonblank_text(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("required text cannot be blank")
+        return value.strip()
+
+    @field_validator("notes")
+    @classmethod
+    def normalize_notes(cls, value: str) -> str:
         return value.strip()
 
     @model_validator(mode="after")
