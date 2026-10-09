@@ -126,3 +126,121 @@ describe('own profile editing', () => {
     expect(authState.currentUser).toMatchObject({ display_name: '已保存', avatar_key: '' })
   })
 })
+
+async function openPassword() {
+  await wrapper.get('#tab-password').trigger('click')
+  await flushPromises()
+}
+async function fillPasswords(
+  oldPassword = 'Current123!',
+  newPassword = 'Changed123!',
+  confirmation = newPassword,
+) {
+  await wrapper.get('input[aria-label="旧密码"]').setValue(oldPassword)
+  await wrapper.get('input[aria-label="新密码"]').setValue(newPassword)
+  await wrapper.get('input[aria-label="确认新密码"]').setValue(confirmation)
+}
+async function changePassword() {
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === '确认修改')!
+    .trigger('click')
+  await flushPromises()
+}
+
+describe('own password changes', () => {
+  it.each(['ADMIN', 'TEAM'] as const)(
+    'changes the %s password separately from the profile and logs out',
+    async (role) => {
+      authState.session!.user.role = role
+      const update = vi.spyOn(adminApi, 'updateProfile')
+      const change = vi.spyOn(adminApi, 'changePassword').mockResolvedValue(undefined)
+      await render()
+      await openPassword()
+      await fillPasswords('Current123!', ' New password 123! ')
+      await changePassword()
+      expect(change).toHaveBeenCalledOnce()
+      expect(change).toHaveBeenCalledWith({
+        old_password: 'Current123!',
+        new_password: ' New password 123! ',
+      })
+      expect(update).not.toHaveBeenCalled()
+      expect(authState.session).toBeNull()
+      expect(localStorage.getItem(AUTH_SESSION_STORAGE_KEY)).toBeNull()
+      expect(wrapper.emitted('update:modelValue')).toContainEqual([false])
+    },
+  )
+
+  it.each([
+    ['', 'Changed123!', 'Changed123!', '请输入旧密码'],
+    ['Current123!', 'short', 'short', '新密码至少为 8 位'],
+    ['Current123!', 'Current123!', 'Current123!', '新密码不能与旧密码相同'],
+    ['Current123!', 'Changed123!', 'Different123!', '两次输入的新密码不一致'],
+  ])(
+    'rejects invalid fields before sending a request (%s)',
+    async (old, password, confirmation, message) => {
+      const change = vi.spyOn(adminApi, 'changePassword')
+      await render()
+      await openPassword()
+      await fillPasswords(old, password, confirmation)
+      await changePassword()
+      expect(wrapper.text()).toContain(message)
+      expect(change).not.toHaveBeenCalled()
+      expect(authState.session?.access_token).toBe('profile-token')
+    },
+  )
+
+  it('keeps the session after an incorrect old password and permits a retry', async () => {
+    const change = vi
+      .spyOn(adminApi, 'changePassword')
+      .mockRejectedValueOnce(new Error('旧密码不正确'))
+      .mockResolvedValueOnce(undefined)
+    await render()
+    await openPassword()
+    await fillPasswords()
+    await changePassword()
+    expect(wrapper.text()).toContain('旧密码不正确')
+    expect(authState.session?.access_token).toBe('profile-token')
+    await wrapper.get('input[aria-label="旧密码"]').setValue('Correct123!')
+    await changePassword()
+    expect(change).toHaveBeenCalledTimes(2)
+    expect(authState.session).toBeNull()
+  })
+
+  it('clears passwords on tab changes and closing, without persisting credentials', async () => {
+    await render()
+    await openPassword()
+    await fillPasswords()
+    expect(localStorage.getItem(AUTH_SESSION_STORAGE_KEY)).toBeNull()
+    await wrapper.get('#tab-profile').trigger('click')
+    await flushPromises()
+    await openPassword()
+    expect(wrapper.get('input[aria-label="旧密码"]').element).toHaveProperty('value', '')
+    await fillPasswords()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '取消')!
+      .trigger('click')
+    expect(wrapper.get('input[aria-label="旧密码"]').element).toHaveProperty('value', '')
+  })
+
+  it('prevents duplicate submission and does not log out a later login', async () => {
+    let resolve!: () => void
+    const change = vi.spyOn(adminApi, 'changePassword').mockReturnValue(
+      new Promise((done) => {
+        resolve = done
+      }),
+    )
+    await render()
+    await openPassword()
+    await fillPasswords()
+    await changePassword()
+    await changePassword()
+    expect(change).toHaveBeenCalledOnce()
+    authState.session = { access_token: 'another-session', token_type: 'Bearer', user }
+    await flushPromises()
+    resolve()
+    await flushPromises()
+    expect(authState.session?.access_token).toBe('another-session')
+  })
+})

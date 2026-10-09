@@ -20,6 +20,17 @@ beforeEach(() => {
 afterEach(() => { httpClient.defaults.adapter = originalAdapter; localStorage.clear() })
 
 describe('current authentication and team administration API', () => {
+  it('changes a password through the self endpoint and retains login on an incorrect old password', async () => {
+    localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify({ access_token: 'account-token' }))
+    status = 422; data = { detail: '旧密码不正确' }
+    await expect(adminApi.changePassword({ old_password: 'wrong-password', new_password: 'Changed123!' })).rejects.toMatchObject({ status: 422, message: '旧密码不正确' })
+    expect(localStorage.getItem(AUTH_SESSION_STORAGE_KEY)).not.toBeNull()
+    status = 204; data = undefined
+    await expect(adminApi.changePassword({ old_password: 'Current123!', new_password: 'Changed123!' })).resolves.toBeUndefined()
+    expect(requests[1]).toMatchObject({ url: '/auth/change-password', method: 'post' })
+    expect(requests[1]!.headers.get('Authorization')).toBe('Bearer account-token')
+    expect(JSON.parse(requests[1]!.data)).toEqual({ old_password: 'Current123!', new_password: 'Changed123!' })
+  })
   it('updates the authenticated profile and retains its selected avatar on reads', async () => {
     data = { id: 7, username: 'leader', display_name: '班组长', role: 'TEAM', team_id: 2, avatar_key: 'portrait-4' }
     expect(await adminApi.updateProfile({ display_name: '班组长', avatar_key: 'portrait-4' })).toMatchObject({ avatar_key: 'portrait-4' })

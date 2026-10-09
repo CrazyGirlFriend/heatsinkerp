@@ -52,7 +52,10 @@ app = FastAPI(
 
 @app.exception_handler(RequestValidationError)
 async def safe_configuration_validation(request, exc):
-    if request.url.path.startswith("/api/main-system/configuration"):
+    if (
+        request.url.path.startswith("/api/main-system/configuration")
+        or request.url.path == "/api/auth/change-password"
+    ):
         # Pydantic normally echoes invalid input, which could contain a token.
         return JSONResponse(
             status_code=422,

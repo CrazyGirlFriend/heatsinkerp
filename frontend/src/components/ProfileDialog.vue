@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import {
   ElAlert,
   ElButton,
@@ -7,6 +7,8 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
+  ElTabPane,
+  ElTabs,
   type InputInstance,
 } from 'element-plus'
 import AccountAvatar from './AccountAvatar.vue'
@@ -23,10 +25,30 @@ const name = ref(''),
   error = ref(''),
   saving = ref(false)
 const nameInput = ref<InputInstance>()
+const mode = ref<'profile' | 'password'>('profile')
+const oldPassword = ref(''),
+  newPassword = ref(''),
+  confirmPassword = ref('')
+const oldPasswordInput = ref<InputInstance>()
+function clearPasswords() {
+  oldPassword.value = newPassword.value = confirmPassword.value = ''
+}
+function focusForm() {
+  if (mode.value === 'password') oldPasswordInput.value?.focus()
+  else nameInput.value?.focus()
+}
+watch(mode, async () => {
+  clearPasswords()
+  error.value = ''
+  await nextTick()
+  focusForm()
+})
 watch(
   () => props.modelValue,
   (open) => {
+    clearPasswords()
     if (!open) return
+    mode.value = 'profile'
     name.value = auth.currentUser?.display_name || ''
     avatar.value = auth.currentUser?.avatar_key || ''
     error.value = ''
@@ -35,13 +57,23 @@ watch(
 )
 watch(
   () => auth.session?.access_token,
-  () => emit('update:modelValue', false),
+  () => {
+    clearPasswords()
+    emit('update:modelValue', false)
+  },
 )
 function close() {
-  if (!saving.value) emit('update:modelValue', false)
+  if (!saving.value) {
+    clearPasswords()
+    emit('update:modelValue', false)
+  }
 }
 async function save() {
   if (saving.value || !auth.currentUser) return
+  if (mode.value === 'password') {
+    await savePassword()
+    return
+  }
   if (!name.value.trim()) {
     error.value = '请输入姓名'
     return
@@ -62,6 +94,29 @@ async function save() {
     saving.value = false
   }
 }
+async function savePassword() {
+  if (!oldPassword.value) error.value = '请输入旧密码'
+  else if (newPassword.value.length < 8) error.value = '新密码至少为 8 位'
+  else if (newPassword.value.length > 200) error.value = '新密码最多为 200 位'
+  else if (newPassword.value === oldPassword.value) error.value = '新密码不能与旧密码相同'
+  else if (confirmPassword.value !== newPassword.value) error.value = '两次输入的新密码不一致'
+  else error.value = ''
+  if (error.value) return
+  saving.value = true
+  try {
+    const changed = await auth.changePassword({
+      old_password: oldPassword.value,
+      new_password: newPassword.value,
+    })
+    if (!changed) return
+    clearPasswords()
+    showToast('密码已修改，请重新登录', 'success')
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '密码修改失败'
+  } finally {
+    saving.value = false
+  }
+}
 </script>
 
 <template>
@@ -75,7 +130,7 @@ async function save() {
     :close-on-press-escape="!saving"
     :show-close="!saving"
     @close="close"
-    @opened="nameInput?.focus()"
+    @opened="focusForm"
   >
     <div class="profile-scroll">
       <div class="profile-identity">
@@ -85,25 +140,82 @@ async function save() {
           ><span>{{ auth.isAdmin ? '系统管理员' : auth.currentUser?.team?.name || '班组长' }}</span>
         </div>
       </div>
+      <ElTabs v-model="mode" class="profile-tabs">
+        <ElTabPane label="个人资料" name="profile" :disabled="saving" />
+        <ElTabPane label="修改密码" name="password" :disabled="saving" />
+      </ElTabs>
       <ElForm label-position="top" @submit.prevent="save">
-        <ElFormItem label="姓名" required
-          ><ElInput
-            ref="nameInput"
-            v-model="name"
-            aria-label="姓名"
-            maxlength="80"
-            :disabled="saving"
-        /></ElFormItem>
-        <ElFormItem label="头像"
-          ><AvatarPicker v-model="avatar" :name="name" :disabled="saving"
-        /></ElFormItem>
+        <template v-if="mode === 'profile'">
+          <ElFormItem label="姓名" required
+            ><ElInput
+              ref="nameInput"
+              v-model="name"
+              aria-label="姓名"
+              maxlength="80"
+              :disabled="saving"
+          /></ElFormItem>
+          <ElFormItem label="头像"
+            ><AvatarPicker v-model="avatar" :name="name" :disabled="saving"
+          /></ElFormItem>
+        </template>
+        <template v-else>
+          <p class="password-notice">修改后需重新登录。</p>
+          <input
+            class="sr-only"
+            type="text"
+            name="username"
+            :value="auth.currentUser?.username"
+            autocomplete="username"
+            readonly
+            tabindex="-1"
+            aria-hidden="true"
+          />
+          <ElFormItem label="旧密码" required>
+            <ElInput
+              ref="oldPasswordInput"
+              v-model="oldPassword"
+              aria-label="旧密码"
+              type="password"
+              show-password
+              maxlength="200"
+              autocomplete="current-password"
+              :disabled="saving"
+            />
+          </ElFormItem>
+          <ElFormItem label="新密码" required>
+            <ElInput
+              v-model="newPassword"
+              aria-label="新密码"
+              type="password"
+              show-password
+              maxlength="200"
+              autocomplete="new-password"
+              placeholder="至少 8 位"
+              :disabled="saving"
+            />
+          </ElFormItem>
+          <ElFormItem label="确认新密码" required>
+            <ElInput
+              v-model="confirmPassword"
+              aria-label="确认新密码"
+              type="password"
+              show-password
+              maxlength="200"
+              autocomplete="new-password"
+              placeholder="再次输入新密码"
+              :disabled="saving"
+            />
+          </ElFormItem>
+        </template>
         <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
         <button class="dialog-submit-proxy" type="submit" tabindex="-1" aria-hidden="true" />
       </ElForm>
     </div>
     <template #footer
       ><ElButton :disabled="saving" @click="close">取消</ElButton
-      ><ElButton type="primary" :loading="saving" @click="save">保存修改</ElButton></template
+      ><ElButton type="primary" :loading="saving" @click="save">{{
+        mode === 'password' ? '确认修改' : '保存修改'
+      }}</ElButton></template
     >
   </ElDialog>
 </template>
@@ -133,6 +245,14 @@ async function save() {
   text-overflow: ellipsis;
 }
 .profile-identity span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.profile-tabs :deep(.el-tabs__header) {
+  margin-bottom: 20px;
+}
+.password-notice {
+  margin: 0 0 18px;
   color: var(--muted);
   font-size: 13px;
 }

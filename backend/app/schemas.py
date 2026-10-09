@@ -324,6 +324,12 @@ class LoginRequest(APIModel):
     password: str = Field(min_length=1, max_length=200)
 
 
+class PasswordChangeRequest(APIModel):
+    model_config = ConfigDict(extra="forbid")
+    old_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=8, max_length=200)
+
+
 class TeamCreate(APIModel):
     code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=120)

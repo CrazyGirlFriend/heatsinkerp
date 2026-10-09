@@ -44,6 +44,11 @@ export interface LoginPayload {
   password: string
 }
 
+export interface PasswordChangePayload {
+  old_password: string
+  new_password: string
+}
+
 export interface TeamListParams {
   query?: string
   active?: boolean
@@ -286,6 +291,10 @@ export const adminApi = {
 
   async updateProfile(payload: { display_name: string; avatar_key: string }): Promise<Account> {
     return normalizeAccount(await request('/auth/me', { method: 'PATCH', body: JSON.stringify(payload) }))
+  },
+
+  async changePassword(payload: PasswordChangePayload): Promise<void> {
+    await request('/auth/change-password', { method: 'POST', body: JSON.stringify(payload) })
   },
 
   async logout(): Promise<void> {

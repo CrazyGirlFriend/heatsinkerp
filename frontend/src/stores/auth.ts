@@ -7,6 +7,7 @@ import {
   type Account,
   type AuthSession,
   type LoginPayload,
+  type PasswordChangePayload,
   type UserRole,
 } from '@/services/adminApi'
 import { appPinia } from '@/stores/access'
@@ -183,6 +184,16 @@ export const useAuthStore = defineStore('auth', () => {
     return user
   }
 
+  async function changePassword(payload: PasswordChangePayload): Promise<boolean> {
+    const token = session.value?.access_token
+    if (!token) return false
+    await adminApi.changePassword(payload)
+    // A late response must not log out a different, newly signed-in account.
+    if (session.value && session.value.access_token !== token) return false
+    clearSession()
+    return true
+  }
+
   return {
     session,
     initialized,
@@ -201,6 +212,7 @@ export const useAuthStore = defineStore('auth', () => {
     restoreSession,
     refreshCurrentUser,
     updateProfile,
+    changePassword,
   }
 })
 

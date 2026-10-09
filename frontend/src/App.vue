@@ -110,6 +110,7 @@ watch(
 )
 
 watch(isAuthenticated, (authenticated) => {
+  if (!authenticated) profileOpen.value = false
   if (!authenticated && canEnterSite.value && !['login', 'access'].includes(String(route.name))) void router.replace('/login')
 })
 

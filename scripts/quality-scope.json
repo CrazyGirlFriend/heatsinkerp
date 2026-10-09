@@ -30,7 +30,8 @@
     "alembic/versions/20261009_0029_user_avatar.py",
     "app/material_input.py",
     "tests/test_material_input.py",
-    "tests/test_user_profiles.py"
+    "tests/test_user_profiles.py",
+    "tests/test_password_change.py"
   ],
   "frontend": [
     "src/main.ts",

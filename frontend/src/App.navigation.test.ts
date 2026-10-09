@@ -10,6 +10,7 @@ vi.mock('@/services/teamDirectoryApi', () => ({ teamDirectoryApi: { listTeamDire
 
 import App from './App.vue'
 import FactorySidebar from '@/components/FactorySidebar.vue'
+import ProfileDialog from '@/components/ProfileDialog.vue'
 import { accessHttpClient, checkSiteAccess } from '@/stores/access'
 import { authState, clearSession } from '@/stores/auth'
 
@@ -69,6 +70,17 @@ async function renderApp(mobile: boolean) {
 }
 
 describe('application navigation shell', () => {
+  it('does not reopen a previous profile dialog after logout and a new login', async () => {
+    const { wrapper, router } = await renderApp(false)
+    await wrapper.get('.sidebar__user').trigger('click'); await flushPromises()
+    await wrapper.get('#factory-sidebar .factory-account-menu').findAll('[role="menuitem"]').find(item => item.text() === '个人信息')!.trigger('click'); await flushPromises()
+    expect(wrapper.getComponent(ProfileDialog).props('modelValue')).toBe(true)
+    const previous = authState.session!
+    clearSession(); await flushPromises()
+    authState.session = { ...previous, access_token: 'new-login' }
+    await router.push('/transfer-batches'); await flushPromises()
+    expect(wrapper.getComponent(ProfileDialog).props('modelValue')).toBe(false)
+  })
   it('labels the current workspace section while keeping the team selected in the sidebar', async () => {
     const { wrapper, router } = await renderApp(false)
     await router.push('/team-workspaces/1?tab=pending'); await flushPromises()
