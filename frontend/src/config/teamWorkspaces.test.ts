@@ -18,7 +18,7 @@ describe('eight official workspace profiles', () => {
 })
 
 describe('shared workspace navigation', () => {
-  it('exposes cutting processing records only when that capability is enabled', () => {
+  it('exposes processing records only when that capability is enabled', () => {
     expect(teamWorkspaceSectionsFor(false, false, false, true).map(item => item.value)).toContain('processing')
     expect(teamWorkspaceSectionsFor(false).map(item => item.value)).not.toContain('processing')
     expect(resolveTeamWorkspaceSection({ tab: 'processing' }, false, false, false, true)).toBe('processing')

@@ -59,7 +59,7 @@ const canManageBusiness = computed(() => scopeReady.value && (auth.isAdmin || ca
 const canReallocate = computed(() => canWrite.value && teamCanReallocate(team.value))
 const isWarehouse = computed(() => scopeReady.value && team.value?.code === 'FACTORY-WAREHOUSE' && team.value?.kind === 'warehouse')
 const canManageWarehouse = computed(() => isWarehouse.value && (auth.isAdmin || canWrite.value))
-const hasProcessing = computed(() => scopeReady.value && team.value?.code === 'FACTORY-WIRE' && team.value?.kind === 'production')
+const hasProcessing = computed(() => scopeReady.value && ['FACTORY-ROLL', 'FACTORY-WIRE', 'FACTORY-ENGRAVE'].includes(team.value?.code || '') && team.value?.kind === 'production')
 const canReceive = computed(() => isWarehouse.value && canWrite.value && auth.currentUser?.active !== false)
 const title = computed(() => scopeReady.value ? team.value!.name || profile.value?.name || '班组' : '班组工作台')
 const queryText = (key: string) => typeof route.query[key] === 'string' ? String(route.query[key]) : ''

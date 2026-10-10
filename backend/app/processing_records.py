@@ -53,14 +53,14 @@ def annotate_sources(db, team_id, items):
     return items
 
 
-def require_cutting_team(db, team_id):
+def require_processing_team(db, team_id):
     team = stock.require_team(db, team_id)
-    if team.code != "FACTORY-WIRE" or team.kind != "production":
-        raise HTTPException(422, "当前加工登记页面用于线切割班组")
+    if team.code not in ("FACTORY-ROLL", "FACTORY-WIRE", "FACTORY-ENGRAVE") or team.kind != "production":
+        raise HTTPException(422, "当前加工登记页面用于轧制、线切割和雕刻班组")
 
 
 def list_sources(db, team_id, user, *, group_id=None, query=None, page=1, page_size=20):
-    require_cutting_team(db, team_id)
+    require_processing_team(db, team_id)
     balance = stock.stock_table(team_id)
     conditions = [~func.coalesce(balance.c.material_type, "").in_(SCRAP_MATERIAL_TYPES),
                   or_(balance.c.on_hand_quantity > 0, balance.c.on_hand_weight > 0)]
@@ -84,7 +84,7 @@ def list_sources(db, team_id, user, *, group_id=None, query=None, page=1, page_s
 
 
 def list_records(db, team_id, *, record_filters=None, query=None, page=1, page_size=20):
-    require_cutting_team(db, team_id)
+    require_processing_team(db, team_id)
     balance = stock.stock_table(team_id)
     registered = registered_lots(team_id)
     conditions = [Adjustment.team_id == team_id, ~Adjustment.idempotency_key.like("outbound-clear:%"),

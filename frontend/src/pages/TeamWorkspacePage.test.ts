@@ -66,10 +66,14 @@ async function render(path = '/team-workspaces/914', animate = false) {
   return router
 }
 describe('team workspace material ledger', () => {
-  it.each([true, false])('scopes processing registration to the cutting team with write permission=%s', async canWrite => {
+  it.each([
+    ['FACTORY-ROLL', '轧制', true], ['FACTORY-ROLL', '轧制', false],
+    ['FACTORY-WIRE', '线切割', true], ['FACTORY-WIRE', '线切割', false],
+    ['FACTORY-ENGRAVE', '雕刻', true], ['FACTORY-ENGRAVE', '雕刻', false],
+  ] as const)('scopes processing registration to %s (%s) with write permission=%s', async (code, name, canWrite) => {
     const previous = state.directory.items
     try {
-      state.directory.items = [{ id: 914, code: 'FACTORY-WIRE', name: '线切割', kind: 'production', active: true }]
+      state.directory.items = [{ id: 914, code, name, kind: 'production', active: true }]
       state.auth.isTeamAccount = canWrite; state.auth.isAdmin = !canWrite
       vi.spyOn(teamMaterialApi, 'processingRecords').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
       vi.spyOn(teamMaterialApi, 'processingSources').mockResolvedValue({ items: [source()], total: 1, page: 1, page_size: 10 })
@@ -92,7 +96,7 @@ describe('team workspace material ledger', () => {
       expect(wrapper.getComponent(QuantityAdjustmentDialog).props('modelValue')).toBe(false)
       await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
       expect(wrapper.getComponent(TeamProcessingRecords).props('fullscreen')).toBe(true)
-      state.directory.items = previous
+      state.directory.items = [{ id: 914, code: 'FACTORY-ANNEAL', name: '退火', kind: 'production', active: true }]
       await router.push('/team-workspaces/914?tab=processing'); await flushPromises()
       expect(wrapper.findComponent(TeamProcessingRecords).exists()).toBe(false)
       expect(wrapper.getComponent(TeamInventory).props('processing')).toBe(false)
