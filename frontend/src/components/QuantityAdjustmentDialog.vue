@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElButton, ElDescriptions, ElDescriptionsItem, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElPagination, ElTable, ElTableColumn } from 'element-plus'
+import { ElAlert, ElButton, ElDescriptions, ElDescriptionsItem, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElSelect, ElPagination, ElTable, ElTableColumn } from 'element-plus'
+import SpecificationInput from './SpecificationInput.vue'
+import { processingProgressLabels } from '@/types/materialProcessing'
 import { useAuthStore } from '@/stores/auth'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import type { QuantityAdjustment, QuantityAdjustmentContext } from '@/types/teamMaterials'
@@ -14,6 +16,7 @@ const auth = useAuthStore()
 const snapshot = ref<QuantityAdjustmentContext | null>(null)
 const records = ref<QuantityAdjustment[]>([]), total = ref(0), page = ref(1)
 const quantity = ref<number | undefined>(), reason = ref(''), error = ref('')
+const progress = ref<'partial' | 'complete'>('partial'), specification = ref(''), specificationValid = ref(true), submitted = ref(false)
 const loading = ref(false), saving = ref(false), conflict = ref(false)
 const editable = computed(() => props.canWrite && auth.isTeamAccount && auth.currentUser?.active !== false && !auth.currentUserError && Number(auth.currentUser?.team_id) === props.teamId)
 const hasStock = computed(() => !!snapshot.value && (snapshot.value.quantity > 0 || snapshot.value.weight > 0))
@@ -26,7 +29,7 @@ async function load(refreshSnapshot = false) {
   try {
     const result = await teamMaterialApi.quantityContext(props.teamId, props.sourceId, page.value)
     if (current !== generation) return
-    if (!snapshot.value) quantity.value = result.quantity
+    if (!snapshot.value) { quantity.value = result.quantity; progress.value = result.processing_status || 'partial'; specification.value = result.transfer_specification || '' }
     if (!snapshot.value || refreshSnapshot) { snapshot.value = result; conflict.value = false }
     records.value = result.items; total.value = result.total
   } catch (e) { if (current === generation) error.value = e instanceof Error ? e.message : '件数记录读取失败' }
@@ -36,10 +39,12 @@ function close() { if (!saving.value) emit('update:modelValue', false) }
 async function save() {
   if (!editable.value || loading.value || saving.value || conflict.value || !snapshot.value || props.sourceId == null) return
   error.value = ''
+  submitted.value = true
+  if (props.processing && !specificationValid.value) return
   if (!Number.isSafeInteger(quantity.value) || quantity.value! < 0 || quantity.value! > 2147483647) { error.value = '请填写有效的加工后件数'; return }
-  if (quantity.value === snapshot.value.quantity) { error.value = '件数未发生变化'; return }
+  if (!props.processing && quantity.value === snapshot.value.quantity) { error.value = '件数未发生变化'; return }
   if (reason.value.trim().length > 2000) { error.value = '加工说明不能超过 2000 个字符'; return }
-  const body = { source_transfer_id: props.sourceId, quantity: quantity.value!, expected_revision: snapshot.value.revision, reason: reason.value.trim() }
+  const body = { source_transfer_id: props.sourceId, quantity: quantity.value!, expected_revision: snapshot.value.revision, reason: reason.value.trim(), ...(props.processing ? { processing_status: progress.value, transfer_specification: specification.value.trim() } : {}) }
   const nextFingerprint = JSON.stringify(body)
   if (fingerprint !== nextFingerprint || !requestKey) { requestKey = materialRequestKey(); fingerprint = nextFingerprint }
   const current = generation
@@ -57,6 +62,7 @@ async function save() {
 watch(() => [props.modelValue, props.teamId, props.sourceId], () => {
   ++generation; snapshot.value = null; records.value = []; total.value = 0; page.value = 1
   quantity.value = undefined; reason.value = error.value = requestKey = fingerprint = ''
+  progress.value = 'partial'; specification.value = ''; specificationValid.value = true; submitted.value = false
   loading.value = saving.value = conflict.value = false
   if (props.modelValue) void load()
 }, { immediate: true })
@@ -75,18 +81,25 @@ onBeforeUnmount(() => { ++generation })
         <ElDescriptionsItem label="来源批次" :span="2">{{ snapshot.batch_no }}</ElDescriptionsItem>
         <ElDescriptionsItem label="未转出件数">{{ snapshot.quantity }} 件</ElDescriptionsItem>
         <ElDescriptionsItem label="未转出重量">{{ snapshot.weight }} kg</ElDescriptionsItem>
+        <ElDescriptionsItem v-if="processing" label="当前实际尺寸" :span="2">{{ snapshot.transfer_specification || '—' }}</ElDescriptionsItem>
       </ElDescriptions>
       <ElForm v-if="editable && hasStock" label-position="top" :disabled="saving || loading" @submit.prevent="save">
-        <p class="quantity-note">{{ processing ? '登记后记为“已登记加工、未转出”。物料类型与重量沿用现有库存；废料单独转料登记。' : '只修改本批未转出的件数，重量、原签收单和已转出件数不变。保存后立即生效，取消出库不会撤销本次修改。' }}</p>
-        <ElFormItem label="加工后未转出件数" required><ElInputNumber v-model="quantity" aria-label="加工后未转出件数" :min="0" :max="2147483647" :precision="0" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
+        <p v-if="!processing" class="quantity-note">只修改本批未转出的件数，重量、原签收单和已转出件数不变。保存后立即生效，取消出库不会撤销本次修改。</p>
+        <div class="dialog-form-grid">
+        <ElFormItem label="加工后本批未转出总件数" required :class="{ 'is-error': submitted && !Number.isSafeInteger(quantity) }"><ElInputNumber v-model="quantity" aria-label="加工后未转出件数" :min="0" :max="2147483647" :precision="0" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
+        <ElFormItem v-if="processing" label="本批加工进度" required><ElSelect v-model="progress" aria-label="本批加工进度"><ElOption v-for="(label, value) in processingProgressLabels" :key="value" :value="value" :label="label" /></ElSelect></ElFormItem>
+        <ElFormItem v-if="processing" label="加工后实际尺寸（选填）" class="dialog-field-wide" :class="{ 'is-error': submitted && !specificationValid }"><SpecificationInput v-model="specification" label="加工后实际尺寸" @validity-change="specificationValid = $event" /></ElFormItem>
         <ElFormItem label="加工说明（选填）"><ElInput v-model="reason" type="textarea" aria-label="加工说明" :rows="2" maxlength="2000" show-word-limit placeholder="选填，例如：10 块板材切割为 100 件" /></ElFormItem>
+        </div>
       </ElForm>
       <p v-else-if="editable" class="quantity-note">本批没有未转出的库存，不能修改件数。</p>
-      <h3 class="quantity-history-title">{{ processing ? '本批登记记录' : '变更记录' }}</h3>
+      <h3 class="quantity-history-title">本批操作记录</h3>
       <ElTable :data="records" class="business-table" empty-text="暂无件数变更" aria-label="件数变更记录">
+        <ElTableColumn label="操作" min-width="135" align="center"><template #default="{ row }">{{ row.operation_kind === 'outbound_clearance' ? '出库余件清零' : row.processing_status ? processingProgressLabels[row.processing_status as 'partial' | 'complete'] : '件数变更' }}</template></ElTableColumn>
         <ElTableColumn label="时间 / 操作人" min-width="160" align="center"><template #default="{ row }">{{ formatDateTime(row.created_at) }}<br>{{ row.created_by }}</template></ElTableColumn>
         <ElTableColumn label="变更前 → 变更后" min-width="140" align="center"><template #default="{ row }">{{ row.before_quantity }} → {{ row.after_quantity }} 件</template></ElTableColumn>
         <ElTableColumn prop="reason" label="加工说明" min-width="220" align="center" />
+        <ElTableColumn v-if="processing" label="登记后尺寸" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ row.after_specification || '—' }}</template></ElTableColumn>
       </ElTable>
       <ElPagination v-if="total > 10" :current-page="page" :page-size="10" :total="total" :disabled="loading || saving" layout="prev, pager, next" @current-change="page = $event; load()" />
     </template>

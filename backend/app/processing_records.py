@@ -14,9 +14,11 @@ from .schemas import SCRAP_MATERIAL_TYPES
 
 def registered_lots(team_id):
     # Clearing a leftover piece count on outbound is not a processing operation.
-    return select(Adjustment.source_transfer_id.label("lot_id"), func.max(Adjustment.id).label("latest_id")).where(
+    latest = select(Adjustment.source_transfer_id.label("lot_id"), func.max(Adjustment.id).label("latest_id")).where(
         Adjustment.team_id == team_id, ~Adjustment.idempotency_key.like("outbound-clear:%")
     ).group_by(Adjustment.source_transfer_id).subquery()
+    return select(latest, Adjustment.processing_status, Adjustment.after_specification).join(
+        Adjustment, Adjustment.id == latest.c.latest_id).subquery()
 
 
 def summary_columns(balance, registered):
@@ -28,14 +30,16 @@ def summary_columns(balance, registered):
         columns.append(func.sum(case((current, 1), else_=0)).label(f"processing_{name}_batch_count"))
         for amount in ("quantity", "weight"):
             columns.append(func.sum(case((current, balance.c[f"on_hand_{amount}"]), else_=0)).label(f"processing_{name}_{amount}"))
+    for progress in ("partial", "complete"):
+        columns.append(func.sum(case((remaining & applicable & (registered.c.processing_status == progress), 1), else_=0)).label(f"processing_{progress}_batch_count"))
     return columns
 
 
-def state(material_type, quantity, weight, pending_quantity, pending_weight, registered):
+def state(material_type, quantity, weight, pending_quantity, pending_weight, registered, progress=None):
     if material_type in SCRAP_MATERIAL_TYPES:
         return "not_applicable"
     if quantity > 0 or weight > 0:
-        return "registered" if registered else "unregistered"
+        return progress or ("registered" if registered else "unregistered")
     if pending_quantity > 0 or pending_weight > 0:
         return "pending"
     return "cleared"
@@ -46,10 +50,12 @@ def annotate_sources(db, team_id, items):
     if not ids:
         return items
     registered = registered_lots(team_id)
-    latest = set(db.scalars(select(registered.c.lot_id).where(registered.c.lot_id.in_(ids))).all())
+    latest = {row.lot_id: row for row in db.execute(select(registered).where(registered.c.lot_id.in_(ids)))}
     for item in items:
+        record = latest.get(item["transfer"]["id"])
         item["processing_state"] = state(item["transfer"]["material_type"], item["on_hand_quantity"], item["on_hand_weight"],
-            item["in_transit_quantity"], item["in_transit_weight"], item["transfer"]["id"] in latest)
+            item["in_transit_quantity"], item["in_transit_weight"], record is not None, record.processing_status if record else None)
+        item["current_specification"] = record.after_specification if record and record.after_specification is not None else item["transfer"]["transfer_specification"]
     return items
 
 
@@ -94,7 +100,7 @@ def list_records(db, team_id, *, record_filters=None, query=None, page=1, page_s
         conditions.append(stock.literal_query(query, [Transfer.serial_no, Transfer.batch_no, Transfer.material_name, Adjustment.created_by, Adjustment.reason]))
     statement = select(Adjustment, Transfer.serial_no, Transfer.batch_no, Transfer.material_name, Transfer.material_type,
         Transfer.purpose_name, balance.c.on_hand_quantity, balance.c.on_hand_weight, balance.c.in_transit_quantity,
-        balance.c.in_transit_weight, registered.c.latest_id).join(Transfer, Transfer.id == Adjustment.source_transfer_id).join(
+        balance.c.in_transit_weight, registered.c.latest_id, registered.c.processing_status.label("current_processing_status")).join(Transfer, Transfer.id == Adjustment.source_transfer_id).join(
         balance, balance.c.transfer_id == Transfer.id).join(registered, registered.c.lot_id == Transfer.id).where(*conditions)
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
     rows = db.execute(statement.order_by(Adjustment.created_at.desc(), Adjustment.id.desc())
@@ -106,5 +112,5 @@ def list_records(db, team_id, *, record_filters=None, query=None, page=1, page_s
             "on_hand_quantity": current["on_hand_quantity"], "on_hand_weight": float(current["on_hand_weight"]),
             "in_transit_quantity": current["in_transit_quantity"], "in_transit_weight": float(current["in_transit_weight"]),
             "processing_state": state(current["material_type"], current["on_hand_quantity"], current["on_hand_weight"],
-                current["in_transit_quantity"], current["in_transit_weight"], True)})
+                current["in_transit_quantity"], current["in_transit_weight"], True, current["current_processing_status"])})
     return {"items": items, "total": total, "page": page, "page_size": page_size, "as_of": _utc(utcnow())}

@@ -531,7 +531,10 @@ class MaterialQuantityAdjustment(Base):
     __tablename__ = "material_quantity_adjustments"
     __table_args__ = (
         CheckConstraint("after_quantity >= 0", name="ck_mqa_quantities"),
-        CheckConstraint("before_quantity != after_quantity", name="ck_mqa_changed"),
+        CheckConstraint(
+            "before_quantity != after_quantity OR processing_status IS NOT NULL OR coalesce(before_specification, '') != coalesce(after_specification, '')",
+            name="ck_mqa_changed",
+        ),
         Index("ix_mqa_lot_created", "source_transfer_id", "created_at", "id"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -541,6 +544,9 @@ class MaterialQuantityAdjustment(Base):
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
     before_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     after_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    processing_status: Mapped[str | None] = mapped_column(String(20))
+    before_specification: Mapped[str | None] = mapped_column(String(240))
+    after_specification: Mapped[str | None] = mapped_column(String(240))
     weight_snapshot: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
     stock_revision_before: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)

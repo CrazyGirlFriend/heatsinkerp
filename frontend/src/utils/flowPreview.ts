@@ -4,6 +4,7 @@ import type { TraceBatch } from '@/types/materialTrace'
 import { isExternalTransfer, isScrapType, materialTypeLabel, materialTransferStatusLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import { historyNumber as num, purposePalette } from './serialHistoryChart'
 import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
+import { processingProgressLabels } from '@/types/materialProcessing'
 
 export type FlowMetric = 'quantity' | 'weight'
 export type FlowInteraction = 'select' | 'pan'
@@ -166,12 +167,13 @@ function residence(node: PathNode, outgoing: TraceBatch[], closing: number): { s
   const stays: ResidenceSegment[] = []
   let start = received, quantity = lot.quantity, weight = lot.weight
   for (const [at, delta] of [...changes].sort((a, b) => a[0] - b[0])) {
-    if (at > start && hasAmount(quantity, weight)) stays.push({ start, end: at, quantity, weight, current: false })
+    if (at > start && hasAmount(quantity, weight)) stays.push({ start, end: at, quantity: Math.max(0, quantity), weight: Math.max(0, weight), current: false })
     quantity += delta.quantity; weight = roundWeight(weight + delta.weight); start = at
-    if (quantity < 0 || weight < -.000001) issue = true
   }
   if (quantity !== lot.on_hand_quantity || Math.abs(weight - lot.on_hand_weight) > .000001) issue = true
-  if (hasAmount(quantity, weight) && closing >= start) stays.push({ start, end: closing, quantity, weight, current: true })
+  if (hasAmount(quantity, weight) && closing >= start) stays.push({ start, end: closing, quantity: Math.max(0, quantity), weight: Math.max(0, weight), current: true })
+  // Measured overdraw is allowed. Reconcile signed ledger values above, but
+  // retain actual positive history instead of removing the entire residence.
   // Do not depict a fabricated historical balance when the ledger cannot reconcile.
   return { stays: issue ? [] : stays, issue }
 }
@@ -419,6 +421,36 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, metric
       return { type: 'group', children }
     },
   }
+  const processingEvents = model.nodes.flatMap(node => (node.batch.history || [])
+    .filter(event => event.action === 'quantity_changed' && !event.changes.outbound_batches && event.changes.stock_quantity)
+    .flatMap(event => {
+      const at = traceTimestamp(event.occurred_at)
+      return at !== null && node.finishedAt !== null && at >= node.finishedAt && (model.closing === null || at <= model.closing) ? [{ node, event, at }] : []
+    }))
+  const processingSeries: CustomSeriesOption = {
+    id: 'processing-events', name: '加工登记', type: 'custom', z: 5, clip: true, silent: interaction === 'pan',
+    encode: { x: 0, y: 1 },
+    data: processingEvents.map(({ node, event, at }) => ({ id: `processing:${event.id}`, batchId: String(node.batch.id), value: [at, node.targetLane + node.targetOffset] })),
+    renderItem(params, api) {
+      const { node, event, at } = processingEvents[params.dataIndex]!
+      const [x, y] = api.coord([at, node.targetLane + node.targetOffset]) as [number, number]
+      const selected = selectedId === String(node.batch.id), faded = related && !related.has(String(node.batch.id))
+      const color = colorFor(node.batch), opacity = faded ? .16 : 1
+      const pieces = event.changes.stock_quantity!
+      const text = pieces.before === pieces.after ? `加工 ${num(Number(pieces.after))} 件` : `加工 ${num(Number(pieces.before))} → ${num(Number(pieces.after))} 件`
+      const grid = params.coordSys as unknown as { x: number; y: number; width: number; height: number }
+      if (x < grid.x || x > grid.x + grid.width || y < grid.y || y > grid.y + grid.height) return
+      const children: NonNullable<Extract<CustomSeriesRenderItemReturn, { type: 'group' }>['children']> = [{ name: 'processing-marker', type: 'polygon', shape: { points: [[x, y - 7], [x + 7, y], [x, y + 7], [x - 7, y]] }, style: { fill: '#fff', stroke: color, lineWidth: 2, opacity } }]
+      const laneHeight = Math.abs(api.coord([at, node.targetLane + node.targetOffset + 1])[1]! - y)
+      const labelWidth = Array.from(text).length * 8 + 8, labelX = Math.max(grid.x, Math.min(x + 10, grid.x + grid.width - labelWidth)), labelY = y + 12
+      const labels = (params.context.labels ||= []) as Array<{ x: number; y: number; width: number }>
+      if (!faded && (selected || processingEvents.length <= 8) && laneHeight / node.trackCount >= 46 && labelY + 20 <= grid.y + grid.height && !labels.some(box => labelX < box.x + box.width + 8 && labelX + labelWidth + 8 > box.x && Math.abs(box.y - labelY) < 20)) {
+        labels.push({ x: labelX, y: labelY, width: labelWidth })
+        children.push({ name: 'processing-label', type: 'text', silent: true, style: { x: labelX, y: labelY, text, font: `500 12px ${font}`, fill: color, backgroundColor: '#fffffff2', padding: [2, 4], opacity } })
+      }
+      return { type: 'group', children }
+    },
+  }
   series.z = 3
   const minSpan = Math.min(.05, 100 / Math.max(1, model.span))
   const timeAxis: XAxisComponentOption = { type: model.span < 1000 ? 'value' : 'time', min: model.extent?.[0], max: model.extent?.[1], minInterval: visibleSpan > 3 * 86400000 ? 86400000 : 1, splitNumber: 10, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: originColors ? '#77887f' : '#68718e', fontSize: originColors ? 12 : 14, lineHeight: 21, margin: 16, hideOverlap: true, formatter: axisTime }, splitLine: { show: true, lineStyle: { color: originColors ? '#e4ece7' : '#dedced', type: 'dashed' } } }
@@ -438,14 +470,22 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, metric
     ],
     tooltip: { ...tooltip, renderMode: 'html', show: interaction === 'select', triggerOn: 'mousemove', enterable: true, hideDelay: 150, borderRadius: 8, shadowColor: '#2421391f', borderColor: '#e0daf1', textStyle: { color: '#30304f', fontFamily: font, fontSize: 15, lineHeight: 26 }, formatter: params => {
       const item = (Array.isArray(params) ? params[0] : params)!
+      const processing = item.seriesId === 'processing-events' ? processingEvents[item.dataIndex] : undefined
+      if (processing) {
+        const { node, event, at } = processing, pieces = event.changes.stock_quantity!
+        const progress = event.changes.processing_status?.after as keyof typeof processingProgressLabels | undefined
+        return chainTooltip(`${node.batch.batch_no}\n${node.batch.next_team.name} · 加工登记\n加工 ${num(Number(pieces.before))} → ${num(Number(pieces.after))} 件${progress ? `\n${processingProgressLabels[progress] || '进度未标明'}` : ''}${event.changes.transfer_specification ? `\n实际尺寸 ${event.changes.transfer_specification.after || '未填写'}` : ''}\n${traceTime(at)} · ${event.actor}${event.changes.reason?.after ? `\n${event.changes.reason.after}` : ''}`)
+      }
       const interval = item.seriesId === 'residence-bars' ? residences[item.dataIndex] : undefined
       const node = interval?.node || model.nodes[item.dataIndex]!, batch = node.batch, stay = interval?.stay
-      if (originColors) return chainTooltip(`${batch.batch_no}\n${node.intake ? batch.entry_kind === 'serial_reallocation' ? `${batch.source_serial_no || '原流水号'} 转投入 · ${batch.next_team.name}` : batch.entry_kind === 'opening_stock' ? '初始库存登记' : '库房入库' : `${batch.source_team.name} → ${batch.next_team.name}`}\n${materialTypeLabel(batch.material_type)} · ${metricLabel(stay || batch, metric)}\n${stay ? '在库停留' : materialTransferStatusLabel(batch.status, batch.entry_kind)} · 点击查看详情`)
-      const balance = batch.on_hand_quantity == null || batch.on_hand_weight == null ? '' : `\n未转出库存 ${amountLabel({ quantity: batch.on_hand_quantity, weight: batch.on_hand_weight })}`
-      if (stay) return chainTooltip(`${batch.batch_no}\n${batch.next_team.name} · 在库停留\n这段时间的未转出库存 ${amountLabel(stay)}\n${traceTime(stay.start)}\n至 ${traceTime(stay.end)}\n累计停留 ${traceDuration(node.finishedAt, stay.end)}${balance}`)
-      return chainTooltip(`${batch.batch_no}\n${batch.source_team.name} → ${batch.next_team.name}\n${amountLabel(batch)}\n${node.intake ? '入库' : '转出'} ${traceTime(node.startedAt)}${node.intake ? '' : `\n${isExternalTransfer(batch) ? '对外确认' : '接收'} ${traceTime(node.finishedAt)}`}\n接收业务 ${batch.purpose_name || '未分类'} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}${balance}${batch.notes ? `\n备注 ${batch.notes}` : ''}${node.timingIssue ? '\n时间记录不完整或异常' : ''}${node.residenceIssue ? '\n历史收发记录与库存对不上，暂不显示停留时间' : ''}`)
+      const difference = Math.max(0, -(batch.on_hand_weight || 0))
+      const variance = difference ? `\n重量差异 ${num(difference)} kg · ${difference <= 1 ? '在 1 kg 允许误差内' : '超过 1 kg，请核对'}` : ''
+      if (originColors) return chainTooltip(`${batch.batch_no}\n${node.intake ? batch.entry_kind === 'serial_reallocation' ? `${batch.source_serial_no || '原流水号'} 转投入 · ${batch.next_team.name}` : batch.entry_kind === 'opening_stock' ? '初始库存登记' : '库房入库' : `${batch.source_team.name} → ${batch.next_team.name}`}\n${materialTypeLabel(batch.material_type)} · ${metricLabel(stay || batch, metric)}\n${stay ? '在库停留' : materialTransferStatusLabel(batch.status, batch.entry_kind)} · 点击查看详情${variance}`)
+      const balance = batch.on_hand_quantity == null || batch.on_hand_weight == null ? '' : `\n未转出库存 ${amountLabel({ quantity: Math.max(0, batch.on_hand_quantity), weight: Math.max(0, batch.on_hand_weight) })}`
+      if (stay) return chainTooltip(`${batch.batch_no}\n${batch.next_team.name} · 在库停留\n这段时间的未转出库存 ${amountLabel(stay)}\n${traceTime(stay.start)}\n至 ${traceTime(stay.end)}\n累计停留 ${traceDuration(node.finishedAt, stay.end)}${balance}${variance}`)
+      return chainTooltip(`${batch.batch_no}\n${batch.source_team.name} → ${batch.next_team.name}\n${amountLabel(batch)}\n${node.intake ? '入库' : '转出'} ${traceTime(node.startedAt)}${node.intake ? '' : `\n${isExternalTransfer(batch) ? '对外确认' : '接收'} ${traceTime(node.finishedAt)}`}\n接收业务 ${batch.purpose_name || '未分类'} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}${balance}${variance}${batch.notes ? `\n备注 ${batch.notes}` : ''}${node.timingIssue ? '\n时间记录不完整或异常' : ''}${node.residenceIssue ? '\n历史收发记录与库存对不上，暂不显示停留时间' : ''}`)
     } },
-    series: [series, lanes, residenceSeries],
+    series: [series, lanes, residenceSeries, processingSeries],
   }
 }
 

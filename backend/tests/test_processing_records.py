@@ -111,6 +111,8 @@ def test_outbound_clearance_is_not_a_processing_record_and_scope_is_checked(clie
     url = base(s, True)
     records = client.get(url + "/processing-records").json()
     assert records["total"] == 1 and records["items"][0]["after_quantity"] == 2
+    history = client.get(f"{url}/stock/{lot['id']}/quantity-adjustments").json()["items"]
+    assert [row["operation_kind"] for row in history] == ["outbound_clearance", "processing"]
     assert client.get(base(s) + "/processing-records").status_code == 422
     unsupported = _team(client, "FACTORY-ANNEAL", "退火")
     for suffix in ("processing-stock", "processing-records"):
@@ -118,3 +120,53 @@ def test_outbound_clearance_is_not_a_processing_record_and_scope_is_checked(clie
     assert client.get(url + "/processing-stock", params={"group_id": 99999}).status_code == 404
     assert client.get(url + "/processing-stock", params={"page_size": 101}).status_code == 422
     assert client.get(url + "/processing-records", headers={"Authorization": ""}).status_code == 401
+
+
+def test_unchanged_piece_count_can_register_partial_then_complete_processing(client, processing):
+    s = processing
+    lot = receive(client, s)
+    url = base(s, True)
+    partial = change(client, s, lot, 1, workshop=True, processing_status="partial", transfer_specification="20 × 10 × 2 mm")
+    assert partial.status_code == 201, partial.text
+    assert partial.json()["delta_quantity"] == 0 and partial.json()["processing_status"] == "partial"
+    assert change(client, s, lot, 1, workshop=True, revision=0, processing_status="partial", transfer_specification="20 × 10 × 2 mm").json() == partial.json()
+    context = client.get(f"{url}/stock/{lot['id']}/quantity-adjustments").json()
+    assert context["revision"] == 1 and context["weight"] == 100
+    assert context["transfer_specification"] == "20 × 10 × 2 mm"
+    assert client.get(url + "/processing-stock").json()["items"][0]["processing_state"] == "partial"
+    assert change(client, s, lot, 1, workshop=True, revision=0, key="stale-complete", processing_status="complete").status_code == 409
+    complete = change(client, s, lot, 1, workshop=True, key="complete", processing_status="complete")
+    assert complete.status_code == 201, complete.text
+    group = client.get(url + "/inventory").json()["items"][0]
+    assert group["processing_partial_batch_count"] == 0 and group["processing_complete_batch_count"] == 1
+    detail = client.get(f"{url}/inventory/{group['group_id']}/sources").json()["items"][0]
+    assert detail["processing_state"] == "complete" and detail["current_specification"] == "20 × 10 × 2 mm"
+    records = client.get(url + "/processing-records").json()["items"]
+    assert [row["processing_status"] for row in records] == ["complete", "partial"]
+    assert all(row["processing_state"] == "complete" for row in records)
+    original = client.get("/api/material-transfers/" + lot["batch_no"]).json()
+    assert original["quantity"] == 1 and original["transfer_specification"] is None
+    assert any(event["changes"].get("processing_status", {}).get("after") == "complete" for event in original["history"])
+
+
+def test_dispatch_inherits_processing_dimensions_and_allows_each_split_its_actual_size(client, processing):
+    s = processing
+    lot = receive(client, s)
+    registered = change(client, s, lot, 20, workshop=True, processing_status="complete", transfer_specification="20 × 10 × 2 mm")
+    assert registered.status_code == 201, registered.text
+    outgoing = dispatch(client, s, [
+        {"source_transfer_id": lot["id"], "quantity": 8, "weight": 40},
+        {"source_transfer_id": lot["id"], "quantity": 12, "weight": 60, "transfer_specification": " 10 × 10 × 2 mm "},
+    ], workshop=True)
+    assert outgoing.status_code == 201, outgoing.text
+    assert [row["transfer_specification"] for row in outgoing.json()["items"]] == ["20 × 10 × 2 mm", "10 × 10 × 2 mm"]
+    assert all(row["source_transfer_id"] == lot["id"] for row in outgoing.json()["items"])
+    assert confirm(client, s, outgoing.json()).status_code == 200
+    original = client.get("/api/material-transfers/" + lot["batch_no"]).json()
+    assert original["quantity"] == 1 and original["transfer_specification"] is None
+
+
+def test_progress_registration_rejects_unsupported_teams_and_invalid_progress(client, warehouse):
+    lot = intake(client, warehouse, quantity=10, weight=100).json()
+    assert change(client, warehouse, lot, 10, processing_status="complete").status_code == 422
+    assert change(client, warehouse, lot, 10, processing_status="invalid").status_code == 422

@@ -10,7 +10,7 @@ describe('processing stock meaning', () => {
       processing_registered_quantity: 12, processing_registered_weight: 60,
       processing_unregistered_quantity: 0, processing_unregistered_weight: 0,
     } } })
-    expect(wrapper.text()).toContain('已登记加工 · 未转出')
+    expect(wrapper.text()).toContain('有加工记录 · 进度未标明')
     expect(wrapper.text()).toContain('未转出 12 件')
     expect(wrapper.text()).not.toContain('成品')
     wrapper.unmount()
@@ -20,13 +20,13 @@ describe('processing stock meaning', () => {
       processing_registered_batch_count: 1, processing_unregistered_batch_count: 1,
       processing_registered_quantity: 12, processing_unregistered_quantity: 1,
     } } })
-    expect(wrapper.text()).toContain('部分已登记加工')
+    expect(wrapper.text()).toContain('部分批次有加工记录')
     wrapper.unmount()
     const scrap = mount(ProcessingStockStatus, { props: { materialType: 'scrap_chips', summary: {} } })
     expect(scrap.text()).toBe('废料另计')
     scrap.unmount()
   })
-  it.each([['unregistered', '未登记加工'], ['pending', '已转出 · 待签收'], ['cleared', '无未转出库存']] as const)('uses the actual stock state %s', (state, label) => {
+  it.each([['partial', '部分加工'], ['complete', '本批加工完成'], ['unregistered', '未登记加工'], ['pending', '已转出 · 待签收'], ['cleared', '无未转出库存']] as const)('uses the actual stock state %s', (state, label) => {
     const wrapper = mount(ProcessingStockStatus, { props: { state } })
     expect(wrapper.text()).toBe(label)
     wrapper.unmount()

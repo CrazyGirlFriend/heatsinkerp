@@ -1,12 +1,14 @@
 import type { MaterialType } from './materialTransfer'
 import type { QuantityAdjustment } from './teamMaterials'
 
-export type ProcessingState = 'registered' | 'unregistered' | 'pending' | 'cleared' | 'not_applicable'
+export type ProcessingState = 'registered' | 'partial' | 'complete' | 'unregistered' | 'pending' | 'cleared' | 'not_applicable'
+export const processingProgressLabels = { partial: '部分加工', complete: '本批加工完成' } as const
 export const processingStateLabels: Record<ProcessingState, string> = {
-  registered: '已登记加工 · 未转出', unregistered: '未登记加工', pending: '已转出 · 待签收', cleared: '无未转出库存', not_applicable: '废料另计',
+  registered: '有加工记录 · 进度未标明', partial: '部分加工', complete: '本批加工完成', unregistered: '未登记加工', pending: '已转出 · 待签收', cleared: '无未转出库存', not_applicable: '废料另计',
 }
 export interface ProcessingSummary {
   processing_registered_batch_count?: number; processing_unregistered_batch_count?: number
+  processing_partial_batch_count?: number; processing_complete_batch_count?: number
   processing_registered_quantity?: number; processing_registered_weight?: number
   processing_unregistered_quantity?: number; processing_unregistered_weight?: number
 }

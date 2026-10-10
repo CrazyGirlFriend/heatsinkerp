@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
-import { ElInputNumber } from 'element-plus'
+import { ElInputNumber, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
@@ -33,11 +33,24 @@ describe('processing piece adjustment', () => {
     await render()
     await wrapper.setProps({ processing: true })
     expect(wrapper.text()).toContain('半成品')
-    expect(wrapper.text()).toContain('已登记加工、未转出')
+    expect(wrapper.text()).toContain('本批加工进度')
     wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 20)
     await click('保存加工登记')
     expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(2, expect.objectContaining({ source_transfer_id: 10, quantity: 20 }))
     expect(wrapper.emitted('saved')).toHaveLength(1)
+  })
+  it('records unchanged pieces with explicit progress and the actual specification', async () => {
+    vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({ ...context(), transfer_specification: 'old' })
+    await render(); await wrapper.setProps({ processing: true })
+    wrapper.findAllComponents(ElSelect).find(select => select.props('ariaLabel') === '本批加工进度')!.vm.$emit('update:modelValue', 'complete')
+    await click('保存加工登记')
+    expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(2, expect.objectContaining({ quantity: 10, processing_status: 'complete', transfer_specification: 'old' }))
+  })
+  it('labels outbound count clearance separately from processing history', async () => {
+    vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({ ...context(), items: [{ id: 3, source_transfer_id: 10, before_quantity: 2, after_quantity: 0, delta_quantity: -2, weight: 0, reason: '', created_by: '班组长', created_at: '2026-09-27T00:00:00Z', operation_kind: 'outbound_clearance' }], total: 1 })
+    await render(false); await wrapper.setProps({ processing: true })
+    expect(wrapper.text()).toContain('出库余件清零')
+    expect(wrapper.text()).toContain('本批操作记录')
   })
   it('saves a guarded piece change with no editable weight or receipt rewrite', async () => {
     await render(); await edit(); await click('保存件数')

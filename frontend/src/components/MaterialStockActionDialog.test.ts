@@ -5,6 +5,7 @@ import { ElInputNumber, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialStockActionDialog from './MaterialStockActionDialog.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
+import SpecificationInput from './SpecificationInput.vue'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import type { MaterialDispatch, MaterialLoss, StockBatch } from '@/types/teamMaterials'
@@ -33,6 +34,46 @@ async function submit() { await wrapper.findAll('button').find(button => /^(确�
 async function destination(id = 3) { wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', id); await flushPromises() }
 
 describe('source batch dispatch and loss drafts', () => {
+  it('lets each outbound line carry a changed actual specification while defaults inherit on the server', async () => {
+    const row = source(); row.current_specification = '20 × 10 × 2 mm'
+    await render('dispatch', [row]); await destination()
+    expect(wrapper.getComponent(SpecificationInput).props('modelValue')).toBe('20 × 10 × 2 mm')
+    await submit()
+    expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].lines[0]).not.toHaveProperty('transfer_specification')
+    vi.mocked(teamMaterialApi.createDispatch).mockClear()
+    wrapper.getComponent(SpecificationInput).vm.$emit('update:modelValue', '10 × 10 × 2 mm')
+    await submit()
+    expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].lines[0]).toHaveProperty('transfer_specification', '10 × 10 × 2 mm')
+  })
+  it('submits an unchanged processing count with a partial progress registration atomically with outbound', async () => {
+    const row = source(); row.transfer.next_team = { id: '2', name: '轧制', code: 'FACTORY-ROLL' }
+    vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({ source_transfer_id: 10, batch_no: 'TL10', quantity: 100, weight: 10, revision: 7, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
+    await render('dispatch', [row]); await destination()
+    await wrapper.findAll('button').find(button => button.text() === '登记加工后件数')!.trigger('click'); await flushPromises()
+    await submit()
+    expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].quantity_adjustments).toEqual([{ source_transfer_id: 10, quantity: 100, expected_revision: 7, reason: '', processing_status: 'partial' }])
+  })
+  it('refreshes inherited specifications after conflict without overwriting an edited line', async () => {
+    const first = source(), second = source(11)
+    first.current_specification = second.current_specification = '20 × 10 × 2 mm'
+    vi.mocked(teamMaterialApi.refreshSource).mockImplementation(async (_id, row) => ({ ...row, current_specification: '15 × 10 × 2 mm' }))
+    vi.mocked(teamMaterialApi.createDispatch).mockRejectedValueOnce(new TeamMaterialApiError('库存已变化', 409))
+    await render('dispatch', [first, second]); await destination()
+    wrapper.findAllComponents(SpecificationInput)[1]!.vm.$emit('update:modelValue', '10 × 10 × 2 mm')
+    await submit()
+    expect(wrapper.findAllComponents(SpecificationInput).map(input => input.props('modelValue'))).toEqual(['15 × 10 × 2 mm', '10 × 10 × 2 mm'])
+    await submit()
+    const lines = vi.mocked(teamMaterialApi.createDispatch).mock.calls[1]![1].lines
+    expect(lines[0]).not.toHaveProperty('transfer_specification')
+    expect(lines[1]).toHaveProperty('transfer_specification', '10 × 10 × 2 mm')
+  })
+  it('does not validate hidden dimensions after switching outbound to weight-only scrap', async () => {
+    await render('dispatch', [source()]); await destination(1)
+    wrapper.getComponent(SpecificationInput).vm.$emit('validity-change', false)
+    wrapper.findAllComponents(ElSelect).find(item => item.props('ariaLabel') === 'TL10物料类型')!.vm.$emit('update:modelValue', 'scrap_chips')
+    await flushPromises(); await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ lines: [expect.objectContaining({ quantity: 0, weight: 10, material_type: 'scrap_chips' })] }))
+  })
   it('keeps quantities across pages and reveals an invalid batch before submitting all lines', async () => {
     await render(); await destination()
     wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 60)

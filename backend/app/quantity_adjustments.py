@@ -56,12 +56,24 @@ def record_dict(row):
             "before_quantity": row.before_quantity, "after_quantity": row.after_quantity,
             "delta_quantity": row.after_quantity - row.before_quantity,
             "weight": float(row.weight_snapshot), "reason": row.reason,
+            "operation_kind": "outbound_clearance" if row.idempotency_key.startswith("outbound-clear:") else "processing",
+            "processing_status": row.processing_status, "before_specification": row.before_specification,
+            "after_specification": row.after_specification,
             "created_by": row.created_by, "created_at": _utc(row.created_at)}
+
+
+def latest_records(db, lot_ids):
+    """Use the latest processing snapshot; outbound clearance carries no progress."""
+    latest = select(Adjustment.source_transfer_id, func.max(Adjustment.id).label("id")).where(
+        Adjustment.source_transfer_id.in_(lot_ids), ~Adjustment.idempotency_key.like("outbound-clear:%")
+    ).group_by(Adjustment.source_transfer_id).subquery()
+    return {row.source_transfer_id: row for row in db.scalars(select(Adjustment).join(latest, latest.c.id == Adjustment.id))}
 
 
 def context(db, team_id, lot_id, page=1, page_size=10):
     lot = db.execute(select(MaterialTransfer.id, MaterialTransfer.batch_no, MaterialTransfer.serial_no,
-        MaterialTransfer.material_name, MaterialTransfer.material_type, MaterialTransfer.purpose_name).where(
+        MaterialTransfer.material_name, MaterialTransfer.material_type, MaterialTransfer.purpose_name,
+        MaterialTransfer.transfer_specification).where(
         MaterialTransfer.id == lot_id, MaterialTransfer.next_team_id == team_id,
         MaterialTransfer.status == "received", MaterialTransfer.stock_tracked.is_(True))).one_or_none()
     if lot is None:
@@ -73,9 +85,12 @@ def context(db, team_id, lot_id, page=1, page_size=10):
     total = db.scalar(select(func.count()).select_from(Adjustment).where(where))
     rows = db.scalars(select(Adjustment).where(where).order_by(Adjustment.id.desc())
         .offset((page - 1) * page_size).limit(page_size)).all()
+    latest = latest_records(db, [lot_id]).get(lot_id)
     return {"source_transfer_id": lot_id, "batch_no": lot.batch_no, "serial_no": lot.serial_no,
             "material_name": lot.material_name, "material_type": lot.material_type, "purpose_name": lot.purpose_name,
             "quantity": balance.on_hand_quantity, "weight": float(balance.on_hand_weight),
+            "processing_status": latest.processing_status if latest else None,
+            "transfer_specification": latest.after_specification if latest and latest.after_specification is not None else lot.transfer_specification,
             "revision": balance.revision, "as_of": _utc(utcnow()), "items": [record_dict(row) for row in rows],
             "total": total, "page": page, "page_size": page_size}
 
@@ -90,7 +105,14 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         raise HTTPException(409, "库存已变化，请刷新后重新核对件数")
     if balance.on_hand_quantity == 0 and balance.on_hand_weight == 0:
         raise HTTPException(409, "本批已无在库物料，不能增加件数")
-    if payload.quantity == balance.on_hand_quantity:
+    latest = latest_records(db, [lot.id]).get(lot.id)
+    before_specification = latest.after_specification if latest and latest.after_specification is not None else lot.transfer_specification
+    after_specification = payload.transfer_specification if payload.transfer_specification is not None else before_specification
+    status = payload.processing_status or (latest.processing_status if latest else None)
+    if payload.processing_status is not None:
+        from .processing_records import require_processing_team
+        require_processing_team(db, lot.next_team_id)
+    if payload.quantity == balance.on_hand_quantity and payload.processing_status is None and after_specification == before_specification:
         raise HTTPException(422, "件数未发生变化")
     # Count changes are not a substitute for loss reporting. A zero
     # count is permitted only while a measured weight remains.
@@ -98,6 +120,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         raise HTTPException(422, "无重量物料清零请登记丢失或出库")
     row = Adjustment(source_transfer_id=lot.id, team_id=lot.next_team_id,
         before_quantity=balance.on_hand_quantity, after_quantity=payload.quantity,
+        processing_status=status, before_specification=before_specification or "", after_specification=after_specification or "",
         weight_snapshot=balance.on_hand_weight, stock_revision_before=balance.revision,
         reason=payload.reason, idempotency_key=operation_key, request_hash=request_hash,
         created_by=actor_name(user), created_by_user_id=user.id, created_at=utcnow())
@@ -105,6 +128,8 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     db.add(MaterialTransferEvent(transfer_id=lot.id, action="quantity_changed",
         actor=actor_name(user), actor_user_id=user.id, occurred_at=row.created_at,
         changes={"stock_quantity": {"before": row.before_quantity, "after": row.after_quantity},
+                 **({"processing_status": {"before": latest.processing_status if latest else None, "after": status}} if status else {}),
+                 **({"transfer_specification": {"before": before_specification, "after": after_specification}} if after_specification != before_specification else {}),
                  "reason": {"before": None, "after": row.reason}}))
     db.flush()
     return row

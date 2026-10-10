@@ -209,7 +209,7 @@ def list_group_sources(db, team_id, group_id, user, *, page=1, page_size=20, cur
         raise HTTPException(404, "未找到该班组的库存来源")
     stock = stock_table(team_id)
     registered = registered_lots(team_id)
-    statement = select(mt, stock, registered.c.latest_id).join(stock, stock.c.transfer_id == mt.id).outerjoin(
+    statement = select(mt, stock, registered.c.latest_id, registered.c.processing_status, registered.c.after_specification).join(stock, stock.c.transfer_id == mt.id).outerjoin(
         registered, registered.c.lot_id == mt.id).where(*group_conditions(origins, anchor))
     if current_only:
         statement = statement.where(or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0))
@@ -224,7 +224,8 @@ def list_group_sources(db, team_id, group_id, user, *, page=1, page_size=20, cur
     for row in rows:
         item = {"transfer": material_transfer_dict(row[0], user, include_history=False), **balance_dict(row._mapping)}
         item["processing_state"] = processing_state(item["transfer"]["material_type"], item["on_hand_quantity"],
-            item["on_hand_weight"], item["in_transit_quantity"], item["in_transit_weight"], row.latest_id is not None)
+            item["on_hand_weight"], item["in_transit_quantity"], item["in_transit_weight"], row.latest_id is not None, row.processing_status)
+        item["current_specification"] = row.after_specification if row.after_specification is not None else item["transfer"]["transfer_specification"]
         items.append(item)
     return {"items": stock_positions(db, stock_sludge_measurements(db, items)),
             "total": total, "page": page, "page_size": page_size,

@@ -121,6 +121,7 @@ it('shows a single SVG time canvas with both units and hover details instead of 
   const { page } = await render('/flow-preview/chain?sample=purposes')
   const canvas = page.getComponent(FlowPreviewCanvas)
   expect(canvas.props('renderer')).toBe('svg')
+  expect(page.get('[aria-label="图形说明"]').text()).toContain('加工登记')
   expect(page.find('.metric-strip').exists()).toBe(false)
   expect(page.find('.chart-caption').exists()).toBe(false)
   expect(canvas.props('label')).toContain('滚轮缩放，H键平移，V键选择')

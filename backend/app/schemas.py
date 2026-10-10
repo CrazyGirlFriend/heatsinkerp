@@ -17,6 +17,13 @@ class ProcessingQuantity(BaseModel):
     quantity: int = Field(ge=0, le=2_147_483_647)
     expected_revision: int = Field(ge=0)
     reason: str = Field(default="", max_length=2000)
+    processing_status: Literal["partial", "complete"] | None = None
+    transfer_specification: str | None = Field(default=None, max_length=240)
+
+    @field_validator("transfer_specification")
+    @classmethod
+    def normalize_processing_specification(cls, value):
+        return value.strip() if value is not None else None
 
     @field_validator("reason")
     @classmethod

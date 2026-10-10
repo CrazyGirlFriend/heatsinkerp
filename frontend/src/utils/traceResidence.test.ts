@@ -21,6 +21,44 @@ function event(id: number, action: MaterialTransferHistoryEntry['action'], day: 
 }
 
 describe('full-chain residence from committed stock history', () => {
+  it.each([.5, 1, 2])('retains valid residence with an allowed measured overdraw of %s kg', excess => {
+    const root = lot(1, { quantity: 10, weight: 100, on_hand_quantity: 0, on_hand_weight: -excess })
+    const child = lot(2, { quantity: 10, weight: 100 + excess, transferred_at: at(12), received_at: at(13), on_hand_quantity: 10, on_hand_weight: 100 + excess })
+    const model = traceFlowModel([root, child], at(17)), node = model.byId.get('1')!
+    expect(node.residenceIssue).toBe(false)
+    expect(node.stays).toEqual([{ start: stamp(10), end: stamp(12), quantity: 10, weight: 100, current: false }])
+    expect(node.batch.on_hand_weight).toBe(-excess)
+    const tooltip = traceFlowOption(model, 'weight', '', false, 'select', 100, new Map()).tooltip as { formatter: (params: unknown) => string }
+    expect(tooltip.formatter({ dataIndex: 0, seriesId: 'residence-bars' })).toContain(excess <= 1 ? '在 1 kg 允许误差内' : '超过 1 kg，请核对')
+    const plainTooltip = traceFlowOption(model, 'weight').tooltip as { formatter: (params: unknown) => string }
+    expect(plainTooltip.formatter({ dataIndex: 0 })).toContain('未转出库存 0 件 / 0 kg')
+    expect(plainTooltip.formatter({ dataIndex: 0 })).toContain(`重量差异 ${excess} kg`)
+  })
+  it('does not remove real history when unregistered piece expansion creates a negative count', () => {
+    const root = lot(1, { quantity: 1, weight: 100, on_hand_quantity: -19, on_hand_weight: 0 })
+    const child = lot(2, { quantity: 20, weight: 100, transferred_at: at(12), received_at: at(13), on_hand_quantity: 20, on_hand_weight: 100 })
+    const node = traceFlowModel([root, child], at(17)).byId.get('1')!
+    expect(node.residenceIssue).toBe(false)
+    expect(node.stays.map(stay => [stay.quantity, stay.weight])).toEqual([[1, 100]])
+  })
+  it('shows processing markers for count changes and unchanged partial progress, excluding outbound clearance', () => {
+    const root = lot(1, { quantity: 1, weight: 100, on_hand_quantity: 20, on_hand_weight: 100, history: [
+      { id: 10, action: 'quantity_changed', actor: '操作人', occurred_at: at(11), changes: { stock_quantity: { before: 1, after: 20 }, processing_status: { before: null, after: 'partial' }, transfer_specification: { before: null, after: '20 × 10 × 2 mm' } } },
+      { id: 11, action: 'quantity_changed', actor: '操作人', occurred_at: at(12), changes: { stock_quantity: { before: 20, after: 20 }, processing_status: { before: 'partial', after: 'complete' } } },
+      { id: 12, action: 'quantity_changed', actor: '操作人', occurred_at: at(13), changes: { stock_quantity: { before: 20, after: 20 }, outbound_batches: { before: null, after: ['TL-2'] } } },
+    ] })
+    const option = traceFlowOption(traceFlowModel([root], at(17)), 'quantity')
+    const series = option.series as Array<{ id: string; data: unknown[] }>
+    expect(series.find(item => item.id === 'processing-events')?.data).toEqual([
+      expect.objectContaining({ batchId: '1', value: [stamp(11), expect.any(Number)] }),
+      expect.objectContaining({ batchId: '1', value: [stamp(12), expect.any(Number)] }),
+    ])
+    const tooltip = option.tooltip as { formatter: (params: unknown) => string }
+    expect(tooltip.formatter({ dataIndex: 0, seriesId: 'processing-events' })).toContain('加工 1 → 20 件')
+    expect(tooltip.formatter({ dataIndex: 0, seriesId: 'processing-events' })).toContain('部分加工')
+    expect(tooltip.formatter({ dataIndex: 0, seriesId: 'processing-events' })).toContain('20 × 10 × 2 mm')
+    expect(tooltip.formatter({ dataIndex: 1, seriesId: 'processing-events' })).toContain('本批加工完成')
+  })
   it('includes processing piece changes in residence, without inventing incoming weight', () => {
     const root = lot(1, { quantity: 10, weight: 100, on_hand_quantity: 40, on_hand_weight: 43,
       history: [{ id: 10, action: 'quantity_changed', actor: '测试', occurred_at: at(11), changes: { stock_quantity: { before: 10, after: 100 } } }] })

@@ -16,7 +16,7 @@ import { materialTypeLabel } from '@/types/materialTransfer'
 import { inventoryAmount } from '@/types/teamInventory'
 import TableExportButton from './TableExportButton.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
-import { processingStateLabels } from '@/types/materialProcessing'
+import { processingStateLabels, processingProgressLabels } from '@/types/materialProcessing'
 import { formatDateTime } from '@/utils/format'
 
 const props = defineProps<{ teamId: number; canWrite?: boolean; fullscreen?: boolean; refreshKey?: unknown }>()
@@ -60,6 +60,8 @@ function exportSource() {
     { key: 'created_at', label: '登记时间', value: row => formatDateTime(row.created_at) },
     { key: 'before_quantity', label: '加工前件数', value: row => row.before_quantity },
     { key: 'after_quantity', label: '加工后件数', value: row => row.after_quantity },
+    { key: 'processing_status', label: '登记时进度', value: row => row.processing_status ? processingProgressLabels[row.processing_status] : '未标明' },
+    { key: 'after_specification', label: '登记后实际尺寸', value: row => row.after_specification || '' },
     { key: 'on_hand_quantity', label: '当前未转出件数', value: row => row.on_hand_quantity },
     { key: 'on_hand_weight', label: '当前未转出重量 (kg)', value: row => row.on_hand_weight },
     { key: 'processing_state', label: '当前状态', value: row => processingStateLabels[row.processing_state] },
@@ -93,6 +95,8 @@ onBeforeUnmount(() => { ++generation })
       <ElTableColumn label="当前未转出件数" min-width="145" align="right"><template #default="{ row }">{{ inventoryAmount(row.on_hand_quantity) }}</template></ElTableColumn>
       <ElTableColumn label="当前未转出重量 (kg)" min-width="185" align="right"><template #default="{ row }">{{ inventoryAmount(row.on_hand_weight) }}</template></ElTableColumn>
       <ElTableColumn label="当前状态" min-width="185" align="center"><template #default="{ row }"><ProcessingStockStatus :state="row.processing_state" :material-type="row.material_type" /></template></ElTableColumn>
+      <ElTableColumn label="登记时进度" min-width="145"><template #default="{ row }">{{ row.processing_status ? processingProgressLabels[row.processing_status as 'partial' | 'complete'] : '未标明' }}</template></ElTableColumn>
+      <ElTableColumn prop="after_specification" label="登记后实际尺寸" min-width="180" show-overflow-tooltip />
       <ElTableColumn prop="created_by" label="登记人" min-width="110" show-overflow-tooltip />
       <ElTableColumn prop="reason" label="加工说明" min-width="170" show-overflow-tooltip />
       <ElTableColumn prop="batch_no" label="来源批次号" min-width="205" show-overflow-tooltip />

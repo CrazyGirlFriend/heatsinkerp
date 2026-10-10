@@ -45,7 +45,7 @@ describe('warehouse grouped stock', () => {
     await wrapper.setProps({ processing: true })
     expect(headers().filter(label => label === '加工状态')).toHaveLength(1)
     expect(headers()).not.toContain('库存状态')
-    expect(wrapper.text()).toContain('已登记加工 · 未转出')
+    expect(wrapper.text()).toContain('有加工记录 · 进度未标明')
     expect(wrapper.text()).toContain('未转出 12 件')
     await wrapper.findAll('button').find(button => button.text() === '加工登记')!.trigger('click')
     expect(wrapper.emitted('process')).toEqual([[11]])

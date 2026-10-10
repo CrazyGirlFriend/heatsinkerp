@@ -115,9 +115,11 @@ def apply_balances(db, *_):
     if not changes:
         return
     deltas = defaultdict(lambda: {name: 0 for name in (*AMOUNTS, "adjusted_quantity")})
-    created, removed, teams = {}, set(), {}
+    created, removed, teams, recounted = {}, set(), {}, set()
     for row, before, deleted in changes:
         model = type(row)
+        if model is MaterialQuantityAdjustment:
+            recounted.add(row.source_transfer_id)
         after = None if deleted else {name: getattr(row, name) for name in FIELDS[model]}
         contribute(deltas, model, before, -1)
         contribute(deltas, model, after, 1)
@@ -151,7 +153,7 @@ def apply_balances(db, *_):
         }
         if lot_id in teams:
             values["team_id"] = teams[lot_id]
-        if values:
+        if values or lot_id in recounted:
             result = connection.execute(
                 update(table)
                 .where(table.c.transfer_id == lot_id)

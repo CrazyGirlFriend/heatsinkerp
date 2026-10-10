@@ -9,6 +9,8 @@ import MaterialAmount from './MaterialAmount.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import OutboundQuantityClearance from './OutboundQuantityClearance.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
+import SpecificationInput from './SpecificationInput.vue'
+import { processingProgressLabels } from '@/types/materialProcessing'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
@@ -26,7 +28,7 @@ const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [CreatedMateri
 const locationLeases: WarehouseLeaseGroup = new Map()
 const auth = useAuthStore()
 const directory = useTeamDirectoryStore()
-const lines = ref<{ key: string; warehouseLocation: string; warehouseLocationKey: string; locationBusy: boolean; source: StockBatch; latest: StockBatch | null; quantity: number | undefined; weight: number | undefined; gross?: number; percent?: number; materialType: MaterialType | ''; purposeId?: number }[]>([])
+const lines = ref<{ key: string; warehouseLocation: string; warehouseLocationKey: string; locationBusy: boolean; source: StockBatch; latest: StockBatch | null; quantity: number | undefined; weight: number | undefined; gross?: number; percent?: number; materialType: MaterialType | ''; purposeId?: number; specification: string; originalSpecification: string; specificationValid: boolean }[]>([])
 const formPage = ref(0)
 const validationPage = ref<number | null>(null)
 const pageLabels = computed(() => ['收发信息', ...lines.value.map((line, index) => `物料 ${index + 1} · ${line.source.transfer.batch_no}`), '说明'])
@@ -40,13 +42,14 @@ const refreshing = ref(false)
 const errorMessage = ref('')
 const balanceNotice = ref('')
 const batchPurposeId = ref<number>()
-const processing = reactive<Record<number, { quantity?: number; original?: number; revision?: number; reason: string; loading: boolean; error: string }>>({})
+const processing = reactive<Record<number, { quantity?: number; original?: number; revision?: number; reason: string; status?: 'partial' | 'complete'; loading: boolean; error: string }>>({})
 const weightToleranceKg = 1
 let generation = 0
 let requestKey = ''
 let fingerprint = ''
 const isLoss = computed(() => props.mode === 'loss')
 const sourceWarehouse = computed(() => props.sources.length > 0 && props.sources.every(source => source.transfer.next_team.code === 'FACTORY-WAREHOUSE'))
+const processingTeam = computed(() => props.sources.every(source => ['FACTORY-ROLL', 'FACTORY-WIRE', 'FACTORY-ENGRAVE'].includes(source.transfer.next_team.code)))
 const canWrite = computed(() => auth.isTeamAccount && auth.currentUser?.active !== false && String(auth.currentUser?.team_id) === String(props.teamId) && !auth.currentUserError)
 const externalOption = computed<ExternalEntryKind | null>(() => {
   const team = directory.items.find(team => team.active && Number(team.id) === props.teamId)
@@ -101,6 +104,8 @@ async function loadProcessing(source: StockBatch) {
     if (current !== generation || !props.modelValue || processing[id] !== draft) return
     draft.quantity ??= context.quantity
     draft.original = context.quantity; draft.revision = context.revision
+    if (processingTeam.value) draft.status ??= context.processing_status || 'partial'
+    lines.value.filter(line => line.source.transfer.id === source.transfer.id).forEach(line => { if (line.specification === line.originalSpecification) line.specification = line.originalSpecification = context.transfer_specification || '' })
   } catch (e) { if (current === generation) { draft.revision = undefined; draft.error = e instanceof Error ? e.message : '件数读取失败' } }
   finally { if (current === generation) draft.loading = false }
 }
@@ -136,7 +141,7 @@ watch([() => props.modelValue, () => props.teamId, () => props.mode], ([open]) =
   refreshing.value = false
   Object.keys(processing).forEach(key => delete processing[Number(key)])
   if (!open) return
-  lines.value = (isLoss.value ? props.sources.slice(0, 1) : props.sources).map(source => ({ key: materialRequestKey(), warehouseLocation: '', warehouseLocationKey: '', locationBusy: false, source, latest: source, quantity: isLoss.value ? undefined : dispatchableAmounts(source).quantity ?? undefined, weight: isLoss.value ? undefined : dispatchableAmounts(source).weight ?? undefined, materialType: source.transfer.material_type || '' }))
+  lines.value = (isLoss.value ? props.sources.slice(0, 1) : props.sources).map(source => ({ key: materialRequestKey(), warehouseLocation: '', warehouseLocationKey: '', locationBusy: false, source, latest: source, quantity: isLoss.value ? undefined : dispatchableAmounts(source).quantity ?? undefined, weight: isLoss.value ? undefined : dispatchableAmounts(source).weight ?? undefined, materialType: source.transfer.material_type || '', specification: source.current_specification ?? source.transfer.transfer_specification ?? '', originalSpecification: source.current_specification ?? source.transfer.transfer_specification ?? '', specificationValid: true }))
   lines.value.forEach((line, index) => { line.percent = line.source.transfer.sludge_content_percent ?? undefined; if (!isLoss.value) fillAll(index) })
   formPage.value = 0; validationPage.value = null
   form.nextTeamId = ''; form.entryKind = 'transfer'; form.externalDestination = ''; form.notes = ''; form.reason = ''
@@ -153,7 +158,11 @@ async function refreshBalances() {
   refreshing.value = true
   const results = await Promise.allSettled(lines.value.map(line => teamMaterialApi.refreshSource(teamId, line.source)))
   if (current !== generation || !props.modelValue) return
-  results.forEach((result, index) => { lines.value[index]!.latest = result.status === 'fulfilled' ? result.value : null })
+  results.forEach((result, index) => {
+    const line = lines.value[index]!
+    line.latest = result.status === 'fulfilled' ? result.value : null
+    if (line.latest && line.specification === line.originalSpecification) line.specification = line.originalSpecification = line.latest.current_specification ?? line.latest.transfer.transfer_specification ?? ''
+  })
   await Promise.all(lines.value.filter((line, index) => processing[Number(line.source.transfer.id)] && lines.value.findIndex(other => other.source.transfer.id === line.source.transfer.id) === index).map(line => loadProcessing(line.source)))
   if (current !== generation || !props.modelValue) return
   refreshing.value = false
@@ -177,6 +186,7 @@ async function submit() {
   if (form.notes.trim().length > 2000) { formPage.value = lines.value.length + 1; errorMessage.value = '说明不能超过 2000 个字符'; validationPage.value = formPage.value; return }
   if (!isLoss.value && containsScrap.value && external.value && form.entryKind !== 'warehouse_outbound') { errorMessage.value = '废料只能转库房处理，不能按成品发货'; validationPage.value = formPage.value; return }
   for (const [index, line] of lines.value.entries()) {
+    if (!isLoss.value && !isScrapType(line.materialType) && !line.specificationValid) { formPage.value = index + 1; validationPage.value = formPage.value; errorMessage.value = '请补全实际尺寸'; return }
     if (converted(line) && !sludgeWeight(line.gross, line.percent)) { formPage.value = index + 1; errorMessage.value = '请填写废泥实重和有效材料占比，折算重量须达到 0.000001 kg'; validationPage.value = formPage.value; return }
     const error = amountError(enteredQuantity(line), line.weight, line.latest, isLoss.value)
     if (error) { formPage.value = index + 1; errorMessage.value = `${line.source.transfer.batch_no}：${error}`; validationPage.value = formPage.value; return }
@@ -191,7 +201,7 @@ async function submit() {
   for (const item of clearances.value) {
     if (clearanceSelected[item.id] && (clearanceReasons[item.id]?.trim().length ?? 0) > 2000) { formPage.value = 1 + lines.value.findIndex(line => line.source.transfer.id === item.id); errorMessage.value = `批次 ${item.batchNo}：清零原因不能超过 2000 个字符`; validationPage.value = formPage.value; return }
   }
-  const quantityUpdates = Object.entries(processing).filter(([id, draft]) => lines.value.some(line => Number(line.source.transfer.id) === Number(id)) && draft.quantity !== draft.original)
+  const quantityUpdates = Object.entries(processing).filter(([id, draft]) => lines.value.some(line => Number(line.source.transfer.id) === Number(id)) && (draft.status || draft.quantity !== draft.original))
   for (const [id, draft] of quantityUpdates) {
     if (draft.error || draft.revision == null || !Number.isSafeInteger(draft.quantity) || draft.quantity! < 0 || draft.quantity! > 2147483647 || draft.reason.trim().length > 2000) {
       formPage.value = 1 + lines.value.findIndex(line => Number(line.source.transfer.id) === Number(id))
@@ -202,10 +212,10 @@ async function submit() {
   const teamId = props.teamId
   const first = lines.value[0]!
   const lossBody = { source_transfer_id: Number(first.source.transfer.id), quantity: Number(enteredQuantity(first)), weight: Number(first.weight), reason: form.reason.trim() }
-  const dispatchBody: Omit<CreateDispatch, 'idempotency_key'> = { ...(isExternalEntryKind(form.entryKind) ? { entry_kind: form.entryKind, external_destination: form.externalDestination.trim() } : { next_team_id: Number(form.nextTeamId) }), notes: form.notes.trim() || null, lines: lines.value.map(line => ({ ...(warehouse.value && line.warehouseLocation ? { warehouse_location: line.warehouseLocation, warehouse_location_reservation_key: line.warehouseLocationKey } : {}), source_transfer_id: Number(line.source.transfer.id), quantity: Number(enteredQuantity(line)), weight: Number(line.weight), ...(!external.value && line.purposeId ? { purpose_id: line.purposeId } : {}), ...(line.materialType ? { material_type: line.materialType } : {}) })) }
+  const dispatchBody: Omit<CreateDispatch, 'idempotency_key'> = { ...(isExternalEntryKind(form.entryKind) ? { entry_kind: form.entryKind, external_destination: form.externalDestination.trim() } : { next_team_id: Number(form.nextTeamId) }), notes: form.notes.trim() || null, lines: lines.value.map(line => ({ ...(warehouse.value && line.warehouseLocation ? { warehouse_location: line.warehouseLocation, warehouse_location_reservation_key: line.warehouseLocationKey } : {}), source_transfer_id: Number(line.source.transfer.id), quantity: Number(enteredQuantity(line)), weight: Number(line.weight), ...(line.specification !== line.originalSpecification ? { transfer_specification: line.specification.trim() } : {}), ...(!external.value && line.purposeId ? { purpose_id: line.purposeId } : {}), ...(line.materialType ? { material_type: line.materialType } : {}) })) }
   dispatchBody.lines.forEach((body, index) => { const line = lines.value[index]!; if (converted(line)) Object.assign(body, sludgePayload(line.materialType, line.gross, line.percent)) })
   if (clearances.value.length) dispatchBody.quantity_clearances = clearances.value.filter(item => clearanceSelected[item.id]).map(item => ({ source_transfer_id: item.id, quantity: item.quantity, reason: clearanceReasons[item.id]?.trim() || '' }))
-  if (quantityUpdates.length) dispatchBody.quantity_adjustments = quantityUpdates.map(([id, draft]) => ({ source_transfer_id: Number(id), quantity: draft.quantity!, expected_revision: draft.revision!, reason: draft.reason.trim() }))
+  if (quantityUpdates.length) dispatchBody.quantity_adjustments = quantityUpdates.map(([id, draft]) => ({ source_transfer_id: Number(id), quantity: draft.quantity!, expected_revision: draft.revision!, reason: draft.reason.trim(), ...(draft.status ? { processing_status: draft.status } : {}) }))
   const nextFingerprint = JSON.stringify({ teamId, mode: props.mode, body: isLoss.value ? lossBody : dispatchBody })
   if (!requestKey || fingerprint !== nextFingerprint) { requestKey = materialRequestKey(); fingerprint = nextFingerprint }
   saving.value = true
@@ -257,6 +267,7 @@ async function submit() {
             <div v-else class="processing-count dialog-form-grid">
               <p v-if="processing[Number(line.source.transfer.id)]!.loading" class="dialog-field-hint dialog-field-wide" role="status">正在读取加工件数…</p>
               <ElFormItem v-else label="加工后未转出件数" required><ElInputNumber v-model="processing[Number(line.source.transfer.id)]!.quantity" :aria-label="`${line.source.transfer.batch_no}加工后未转出件数`" :min="0" :max="2147483647" :precision="0" controls-position="right" /></ElFormItem>
+              <ElFormItem v-if="processingTeam && !processing[Number(line.source.transfer.id)]!.loading" label="本批加工进度" required><ElSelect v-model="processing[Number(line.source.transfer.id)]!.status" :aria-label="`${line.source.transfer.batch_no}本批加工进度`"><ElOption v-for="(label, value) in processingProgressLabels" :key="value" :value="value" :label="label" /></ElSelect></ElFormItem>
               <ElFormItem label="加工说明（选填）"><ElInput v-model="processing[Number(line.source.transfer.id)]!.reason" maxlength="2000" placeholder="例如：1 块切成 20 件" /></ElFormItem>
               <p class="dialog-field-hint dialog-field-wide">仅登记尚未转出的实际件数，与本次出库一起保存。<ElButton link @click="delete processing[Number(line.source.transfer.id)]">取消登记</ElButton></p>
               <ElAlert v-if="processing[Number(line.source.transfer.id)]!.error" :title="processing[Number(line.source.transfer.id)]!.error" type="error" class="dialog-field-wide" :closable="false"><ElButton link @click="loadProcessing(line.source)">重新读取</ElButton></ElAlert>
@@ -269,6 +280,7 @@ async function submit() {
             <p v-else-if="line.materialType === 'sludge' && line.source.transfer.sludge_content_percent == null" class="dialog-field-hint dialog-field-wide">历史废泥未记录比例，沿用原账重，不自动折算。</p>
             <p v-else-if="isLoss && line.materialType === 'sludge'" class="dialog-field-hint dialog-field-wide">丢失重量按有效材料计算，不填废泥实重。</p>
             <ElFormItem v-if="!isLoss" :label="`${actionLabel}物料类型`" :required="warehouse"><span class="dialog-readonly" v-if="sourceWarehouse || line.source.transfer.material_type === 'sludge'">{{ materialTypeLabel(line.source.transfer.material_type) }}</span><ElSelect v-else v-model="line.materialType" :aria-label="`${line.source.transfer.batch_no}物料类型`" :placeholder="materialTypeLabel(line.source.transfer.material_type)"><ElOption v-for="type in materialTypeOptions.filter(type => !isScrapType(line.source.transfer.material_type) || isScrapType(type.value))" :key="type.value" :label="type.label" :value="type.value" /></ElSelect></ElFormItem>
+            <ElFormItem v-if="!isLoss && !isScrapType(line.materialType)" label="本次转出实际尺寸（选填）" class="dialog-field-wide" :class="{ 'is-error': validationPage === index + 1 && !line.specificationValid }"><SpecificationInput v-model="line.specification" :label="`${line.source.transfer.batch_no}实际尺寸`" @validity-change="line.specificationValid = $event" /></ElFormItem>
             <ElFormItem v-if="!isLoss && !external" label="下序接收业务" :required="purposes.items.value.length > 0"><ElSelect v-model="line.purposeId" :aria-label="`${line.source.transfer.batch_no}接收业务`" :loading="purposes.loading.value" :disabled="!form.nextTeamId || !purposes.items.value.length" :placeholder="!form.nextTeamId ? '先选择接收班组' : !purposes.items.value.length ? '接收班组尚未配置业务' : purposes.items.value.some(item => item.active) ? '选择接收业务' : '接收班组暂无启用业务'"><ElOption v-for="purpose in purposes.items.value.filter(item => item.active)" :key="purpose.id" :value="purpose.id" :label="purpose.name" /></ElSelect></ElFormItem>
             <ElFormItem v-if="!isLoss && warehouse" label="入库仓位" class="dialog-field-wide"><WarehouseLocationSelect v-model="line.warehouseLocation" v-model:reservation-key="line.warehouseLocationKey" :team-id="Number(form.nextTeamId)" :serial-no="line.source.transfer.serial_no" :material-name="line.source.transfer.material_name || ''" :material-type="line.materialType" :lease-group="locationLeases" :active="modelValue" :disabled="busy || !canWrite" @busy-change="line.locationBusy = $event" /></ElFormItem>
           </div>

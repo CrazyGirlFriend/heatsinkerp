@@ -15,6 +15,7 @@ export interface TeamMaterialOverview {
 export interface StockBatch extends MaterialBalance {
   transfer: MaterialTransfer
   processing_state?: import('./materialProcessing').ProcessingState
+  current_specification?: string | null
   sludge_available_gross_weight?: number
   warehouse_positions?: { location_id: number; name: string; quantity: number; weight: number }[]
   physical_quantity?: number; physical_weight?: number
@@ -23,13 +24,18 @@ export interface StockBatch extends MaterialBalance {
 export interface QuantityAdjustment {
   id: number; source_transfer_id: number; before_quantity: number; after_quantity: number; delta_quantity: number
   weight: number; reason: string; created_by: string; created_at: string
+  operation_kind?: 'processing' | 'outbound_clearance'
+  processing_status?: 'partial' | 'complete' | null
+  before_specification?: string | null; after_specification?: string | null
 }
 export interface QuantityAdjustmentContext extends MaterialPage<QuantityAdjustment> {
   source_transfer_id: number; batch_no: string; quantity: number; weight: number; revision: number; as_of: string
   serial_no?: string; material_name?: string | null; material_type?: MaterialType | null; purpose_name?: string | null
+  processing_status?: 'partial' | 'complete' | null; transfer_specification?: string | null
 }
 export interface CreateQuantityAdjustment {
   source_transfer_id: number; quantity: number; expected_revision: number; reason?: string; idempotency_key: string
+  processing_status?: 'partial' | 'complete'; transfer_specification?: string | null
 }
 export interface MaterialLoss {
   urgency?: import('./recordFilters').SerialUrgency
@@ -75,7 +81,7 @@ export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocument
   warehouse_location_reservation_key?: string | null
 }
 export interface DispatchParams extends MaterialPageParams { next_team_id?: string | number; status?: Exclude<DispatchStatus, 'partial'>; entry_kind?: DispatchKind; material_type?: MaterialType }
-export interface DispatchLine extends SludgeMeasurement { warehouse_location?: string | null; warehouse_location_reservation_key?: string | null; source_transfer_id: number; quantity: number; weight: number; material_type?: MaterialType | null; purpose_id?: number | null }
+export interface DispatchLine extends SludgeMeasurement { warehouse_location?: string | null; warehouse_location_reservation_key?: string | null; source_transfer_id: number; quantity: number; weight: number; material_type?: MaterialType | null; purpose_id?: number | null; transfer_specification?: string | null }
 export type CreateDispatch = { notes?: string | null; idempotency_key: string; lines: DispatchLine[]; quantity_adjustments?: Omit<CreateQuantityAdjustment, 'idempotency_key'>[]; quantity_clearances?: import('./materialTransfer').OutboundQuantityClearance[] } & (
   { entry_kind?: 'transfer'; next_team_id: number; external_destination?: never }
   | { entry_kind: ExternalEntryKind; next_team_id?: null; external_destination: string }

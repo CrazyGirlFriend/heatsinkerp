@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { externalActionLabel, isExternalTransfer, materialEntryLabel, materialDocumentTextFields, materialTransferNotesLabel, materialTransferStatusLabel, materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
+import { processingProgressLabels } from '@/types/materialProcessing'
 
 const props = defineProps<{ transfer: MaterialTransfer }>()
 const events = computed(() => [...(props.transfer.history ?? [])].sort((left, right) => right.id - left.id))
@@ -11,7 +12,7 @@ const labels: Record<string, string> = {
   warehouse_location: '入库仓位',
   sludge_gross_weight: '废泥实重（kg）', sludge_content_percent: '有效材料占比（%）',
   stock_quantity: '未转出件数', stock_weight: '未转出重量', shortage_quantity: '件数变动差值', shortage_weight: '重量差异', reason: '加工说明',
-  outbound_batches: '关联出库批次',
+  outbound_batches: '关联出库批次', processing_status: '本批加工进度',
   receipt_kind: '入库来源类别', external_source: '外部来源单位', return_dispatch_no: '原出库批次', rejection_reason: '退回核对原因',
   main_system_schema_version: '主系统接口版本', main_system_revision: '主系统资料版本',
   main_system_updated_at: '主系统资料更新时间', main_system_snapshot_hash: '主系统资料校验值',
@@ -55,6 +56,7 @@ function valueText(field: string, value: unknown): string {
   if (value == null || value === '') return '—'
   if (field === 'entry_kind') return materialEntryLabel(String(value) as MaterialTransfer['entry_kind'])
   if (field === 'material_type') return materialTypeLabel(String(value))
+  if (field === 'processing_status') return processingProgressLabels[value as keyof typeof processingProgressLabels] || '未标明'
   if (field === 'receipt_kind') return value === 'return' ? '外部退回' : '外部来料'
   if (field === 'status') return materialTransferStatusLabel(String(value), props.transfer.entry_kind)
   if (field.endsWith('_at')) return formatDateTime(String(value))
@@ -75,7 +77,7 @@ function valueText(field: string, value: unknown): string {
       <thead><tr><th scope="col">时间</th><th scope="col">操作人</th><th scope="col">操作</th><th scope="col">变更内容</th></tr></thead>
       <tbody><tr v-for="event in events" :key="event.id">
         <td><time :datetime="event.occurred_at">{{ formatDateTime(event.occurred_at) }}</time></td>
-        <td>{{ event.actor || '—' }}</td><td>{{ event.action === 'quantity_changed' && event.changes.outbound_batches ? '出库余数清零' : actionLabel(event.action) }}</td>
+        <td>{{ event.actor || '—' }}</td><td>{{ event.action === 'quantity_changed' && event.changes.outbound_batches ? '出库余数清零' : event.action === 'quantity_changed' && event.changes.processing_status ? '加工登记' : actionLabel(event.action) }}</td>
         <td class="table-prose"><details v-if="Object.keys(event.changes).length"><summary>查看 {{ Object.keys(event.changes).length }} 项变更</summary><dl><div v-for="(change, field) in event.changes" :key="field"><dt>{{ fieldLabel(field, !!event.changes.outbound_batches) }}</dt><dd><span class="history-before">{{ valueText(field, change.before) }}</span><span aria-label="变更为"> → </span><span>{{ valueText(field, change.after) }}</span></dd></div></dl></details><span v-else>—</span></td>
       </tr></tbody>
     </table>

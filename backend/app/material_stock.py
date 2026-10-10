@@ -54,6 +54,12 @@ class LossCreate(StockAmounts):
 class DispatchLine(StockAmounts, WarehouseLocationChoice, SludgeMeasurement):
     material_type: str | None = Field(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN)
     purpose_id: int | None = Field(default=None, ge=1)
+    transfer_specification: str | None = Field(default=None, max_length=240)
+
+    @field_validator("transfer_specification")
+    @classmethod
+    def normalize_specification(cls, value):
+        return value.strip() if value is not None else None
 
 
 class DispatchCreate(BaseModel):
@@ -205,7 +211,7 @@ def create_loss(db, team_id, payload, user):
 
 def create_dispatch(db, team_id, payload, user):
     from .team_business import purpose_snapshot
-    from .quantity_adjustments import validate_outbound_clearance, record_outbound_clearance, record_quantity_change
+    from .quantity_adjustments import validate_outbound_clearance, record_outbound_clearance, record_quantity_change, latest_records
     source = require_actor(user, team_id)
     external = payload.entry_kind in EXTERNAL_ENTRY_KINDS
     if external:
@@ -267,6 +273,7 @@ def create_dispatch(db, team_id, payload, user):
             purposes = {key: purpose_snapshot(db, target.id if target else None, key)
                         for key in dict.fromkeys(line.purpose_id for line in payload.lines)}
             batch_numbers = next_transfer_batch_numbers(db, len(payload.lines))
+            processing = latest_records(db, lots)
             submitted_at = utcnow()
             # External exits are final at submission; only internal handoffs wait for receipt.
             completion = {"status": "dispatched", "dispatched_by": actor_name(user),
@@ -289,6 +296,11 @@ def create_dispatch(db, team_id, payload, user):
                 location_name = consume(db, target, line, user,
                     identity=(lot.serial_no, lot.material_name, kind), consumed=consumed_locations)
                 fields = {field: getattr(lot, field) for field in workflow.DOCUMENT_FIELDS}
+                record = processing.get(lot.id)
+                if record and record.after_specification is not None:
+                    fields["transfer_specification"] = record.after_specification or None
+                if "transfer_specification" in line.model_fields_set:
+                    fields["transfer_specification"] = line.transfer_specification or None
                 # A split inherits its origin's live requirement, never a second planned quantity.
                 fields.update(delivery_date=None, delivery_quantity=None)
                 if "material_type" in line.model_fields_set:

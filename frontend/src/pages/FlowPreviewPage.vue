@@ -173,7 +173,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
         <ElButton v-if="embedded" class="chain-fullscreen" :icon="FullScreen" :aria-pressed="fullscreen" @click="toggleFullscreen">{{ fullscreen ? '退出全屏' : '全屏查看' }}</ElButton>
         <ElPopover trigger="click" title="画布说明" :width="320" :append-to="pageRoot">
           <template #reference><ElButton class="header-icon" :icon="InfoFilled" aria-label="画布说明" title="画布说明" text /></template>
-          <div class="canvas-help"><p>滚轮缩放 · H 平移 · V 选择 · 双击还原</p><p>颜色区分入库批次，浅色横条表示在库停留。点击节点，在图下方查看收发详情。</p><p>空心点为转出，实心点为接收；金色虚线表示待确认，物料仍计入转出班组库存。</p><p v-if="chainModel.extent">{{ traceTime(chainModel.first) }}<br>至 {{ traceTime(chainModel.last) }}（北京时间）</p><p v-if="timeIssues">{{ timeIssues }} 个批次时间异常，仅显示有效时间点。</p><p v-if="residenceIssues">{{ residenceIssues }} 个批次历史收发记录与库存对不上，暂不显示停留时间。</p><p v-if="untracked">{{ untracked }} 个历史批次未计入库存。</p><p v-if="colors.some(entry => entry.name === '未分类')">未登记接收业务的历史批次标为“未分类”。</p><p v-if="example">演示数据，不影响库存。</p></div>
+          <div class="canvas-help"><p>滚轮缩放 · H 平移 · V 选择 · 双击还原</p><p>颜色区分入库批次，浅色横条表示在库停留。点击节点，在图下方查看收发详情。</p><p>空心点为转出，实心点为接收，菱形为加工登记；金色虚线表示待确认，物料仍计入转出班组库存。</p><p v-if="chainModel.extent">{{ traceTime(chainModel.first) }}<br>至 {{ traceTime(chainModel.last) }}（北京时间）</p><p v-if="timeIssues">{{ timeIssues }} 个批次时间异常，仅显示有效时间点。</p><p v-if="residenceIssues">{{ residenceIssues }} 个批次历史收发记录与库存对不上，暂不显示停留时间。</p><p v-if="untracked">{{ untracked }} 个历史批次未计入库存。</p><p v-if="colors.some(entry => entry.name === '未分类')">未登记接收业务的历史批次标为“未分类”。</p><p v-if="example">演示数据，不影响库存。</p></div>
         </ElPopover>
       </div>
     </header>
@@ -197,7 +197,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
           <span class="origin-input">{{ hasReallocatedOrigin ? '流入物料' : activeOrigin?.batch.entry_kind === 'warehouse_receipt' || !activeOrigin ? '入库' : '起点物料' }} <strong>{{ num(activeOrigin && activeOrigin.batch.entry_kind !== 'warehouse_receipt' ? activeOrigin.batch[metric] : originInput) }}</strong> {{ metric === 'weight' ? 'kg' : '件' }}</span>
         </div>
         <header class="chart-toolbar">
-          <div class="chain-legends"><strong class="path-heading">流转路径 <small>{{ chainModel.nodes.length }} 笔记录</small></strong><div class="purpose-legend"><span v-for="group in visibleOrigins" :key="group.id" :title="group.batch.batch_no"><i :style="{ background: group.color }" />{{ group.name }}</span></div><div class="mark-legend" aria-label="图形说明"><span><i class="stay-mark" />在库停留</span><span><i class="departure-mark" />转出</span><span><i class="receipt-mark" />签收</span><span><i class="pending-mark" />待确认</span><span><i class="waste-mark" />废料</span></div></div>
+          <div class="chain-legends"><strong class="path-heading">流转路径 <small>{{ chainModel.nodes.length }} 笔记录</small></strong><div class="purpose-legend"><span v-for="group in visibleOrigins" :key="group.id" :title="group.batch.batch_no"><i :style="{ background: group.color }" />{{ group.name }}</span></div><div class="mark-legend" aria-label="图形说明"><span><i class="stay-mark" />在库停留</span><span><i class="departure-mark" />转出</span><span><i class="receipt-mark" />签收</span><span><i class="processing-mark" />加工登记</span><span><i class="pending-mark" />待确认</span><span><i class="waste-mark" />废料</span></div></div>
           <div class="chart-tools"><span v-if="timeIssues" class="data-warning">时间异常 {{ timeIssues }}</span><span v-if="residenceIssues" class="data-warning">历史不完整 {{ residenceIssues }}</span><span v-if="untracked" class="data-warning">未计入库存 {{ untracked }}</span><ElSelect class="detail-select" placeholder="选择转料批次" aria-label="选择图形明细" filterable :append-to="pageRoot" :model-value="selectedId || undefined" @change="chooseDetail"><ElOption v-for="option in detailOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect></div>
         </header>
         <div class="chain-flow-region">
@@ -280,9 +280,10 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
 .chain-page .flow-workspace { display: flex; flex-direction: column; flex: 1; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
 .chain-page .chart-toolbar { flex-shrink: 0; background: #fff; padding: 10px 0; min-height: 48px; border: 0; align-items: flex-start; }
 .chain-legends { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding: 8px 0; }
-.mark-legend { display: flex; gap: 24px; padding-right: 24px; border-right: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+.mark-legend { display: flex; flex-wrap: wrap; gap: 24px; padding-right: 24px; border-right: 1px solid var(--line); color: var(--muted); font-size: 14px; }
 .mark-legend span { display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
 .mark-legend i { box-sizing: border-box; width: 14px; height: 14px; border: 2px solid #926de2; border-radius: 50%; }
+.mark-legend .processing-mark { width: 10px; height: 10px; border-color: #52866b; border-radius: 0; transform: rotate(45deg); }
 .mark-legend .stay-mark { width: 32px; border: 0; border-radius: 8px; background: #d9d1f5; }.mark-legend .receipt-mark { background: #926de2; }
 .chain-page .purpose-legend { color: var(--muted); font-size: 14px; gap: 22px; }
 .chain-page .purpose-legend i { width: 22px; height: 4px; border-radius: 3px; }

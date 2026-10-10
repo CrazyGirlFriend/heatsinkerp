@@ -32,7 +32,7 @@ describe('cutting processing records', () => {
     expect(wrapper.text()).toContain('加工前件数')
     expect(wrapper.text()).toContain('加工后件数')
     expect(wrapper.text()).toContain('当前未转出件数')
-    expect(wrapper.text()).toContain('已登记加工 · 未转出')
+    expect(wrapper.text()).toContain('有加工记录 · 进度未标明')
     const headings = wrapper.findAll('thead th').map(cell => cell.text())
     const cells = wrapper.find('tbody tr').findAll('td')
     expect(['加工前件数', '加工后件数', '当前未转出件数'].map(label => cells[headings.indexOf(label)]!.text())).toEqual(['1', '20', '12'])
