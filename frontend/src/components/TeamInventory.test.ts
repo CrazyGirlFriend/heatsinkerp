@@ -39,6 +39,17 @@ const select = (label: string) => wrapper.findAllComponents(ElSelect).find(item 
 async function submit(term: string) { await wrapper.get('input[aria-label="库存明细搜索"]').setValue(term); await wrapper.get('input[aria-label="库存明细搜索"]').trigger('keyup.enter'); await flushPromises() }
 
 describe('warehouse grouped stock', () => {
+  it('shows cutting status beside actual stock without adding a duplicate status column', async () => {
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [warehouseFixture({ material_type: 'semi_finished', owned_quantity: 12, on_hand_quantity: 12, processing_registered_batch_count: 1, processing_unregistered_batch_count: 0, processing_registered_quantity: 12, processing_registered_weight: 60 })], total: 1, page: 1, page_size: 10 })
+    await render('/team-workspaces/901?tab=stock', true, false)
+    await wrapper.setProps({ processing: true })
+    expect(headers().filter(label => label === '加工状态')).toHaveLength(1)
+    expect(headers()).not.toContain('库存状态')
+    expect(wrapper.text()).toContain('已登记加工 · 未转出')
+    expect(wrapper.text()).toContain('未转出 12 件')
+    await wrapper.findAll('button').find(button => button.text() === '加工登记')!.trigger('click')
+    expect(wrapper.emitted('process')).toEqual([[11]])
+  })
   it('exports every page with the applied filters, visible defaults and repeated serial values', async () => {
     await render('/team-workspaces/901?tab=stock&page=2&material_name=材料1&receipt_source=internal&urgent_only=true', false)
     const source = (wrapper.vm as unknown as { exportSource: () => import('@/utils/tableExport').TableExportSource }).exportSource()

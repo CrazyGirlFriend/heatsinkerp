@@ -14,6 +14,7 @@ export interface TeamMaterialOverview {
 }
 export interface StockBatch extends MaterialBalance {
   transfer: MaterialTransfer
+  processing_state?: import('./materialProcessing').ProcessingState
   sludge_available_gross_weight?: number
   warehouse_positions?: { location_id: number; name: string; quantity: number; weight: number }[]
   physical_quantity?: number; physical_weight?: number
@@ -25,6 +26,7 @@ export interface QuantityAdjustment {
 }
 export interface QuantityAdjustmentContext extends MaterialPage<QuantityAdjustment> {
   source_transfer_id: number; batch_no: string; quantity: number; weight: number; revision: number; as_of: string
+  serial_no?: string; material_name?: string | null; material_type?: MaterialType | null; purpose_name?: string | null
 }
 export interface CreateQuantityAdjustment {
   source_transfer_id: number; quantity: number; expected_revision: number; reason?: string; idempotency_key: string

@@ -12,7 +12,6 @@ describe('pure material transfer interface', () => {
     expect(formSource).toContain('转料件数')
     expect(formSource).toContain('转料重量')
     expect(formSource).toContain('备注')
-    expect(formSource).toContain('当前账号自动确定')
     expect(formSource).toContain('物料类型')
     expect(formSource).not.toMatch(/工单号|工艺路线|报工/)
     expect(formSource).toContain('createRequestFingerprint.value !== requestFingerprint')

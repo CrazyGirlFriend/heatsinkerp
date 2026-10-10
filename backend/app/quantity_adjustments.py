@@ -60,7 +60,8 @@ def record_dict(row):
 
 
 def context(db, team_id, lot_id, page=1, page_size=10):
-    lot = db.execute(select(MaterialTransfer.id, MaterialTransfer.batch_no).where(
+    lot = db.execute(select(MaterialTransfer.id, MaterialTransfer.batch_no, MaterialTransfer.serial_no,
+        MaterialTransfer.material_name, MaterialTransfer.material_type, MaterialTransfer.purpose_name).where(
         MaterialTransfer.id == lot_id, MaterialTransfer.next_team_id == team_id,
         MaterialTransfer.status == "received", MaterialTransfer.stock_tracked.is_(True))).one_or_none()
     if lot is None:
@@ -72,7 +73,8 @@ def context(db, team_id, lot_id, page=1, page_size=10):
     total = db.scalar(select(func.count()).select_from(Adjustment).where(where))
     rows = db.scalars(select(Adjustment).where(where).order_by(Adjustment.id.desc())
         .offset((page - 1) * page_size).limit(page_size)).all()
-    return {"source_transfer_id": lot_id, "batch_no": lot.batch_no,
+    return {"source_transfer_id": lot_id, "batch_no": lot.batch_no, "serial_no": lot.serial_no,
+            "material_name": lot.material_name, "material_type": lot.material_type, "purpose_name": lot.purpose_name,
             "quantity": balance.on_hand_quantity, "weight": float(balance.on_hand_weight),
             "revision": balance.revision, "as_of": _utc(utcnow()), "items": [record_dict(row) for row in rows],
             "total": total, "page": page, "page_size": page_size}

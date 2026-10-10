@@ -22,6 +22,7 @@ from .serial_urgency import urgency_dict, urgency_map
 from .schemas import SCRAP_MATERIAL_TYPES
 from .warehouse_receipts import require_warehouse
 from .async_read_response import team_read_response
+from .processing_records import registered_lots, summary_columns, state as processing_state
 
 from .async_api import AsyncAPIRouter as APIRouter
 
@@ -66,6 +67,7 @@ def origin_columns():
 
 def warehouse_groups(team_id, filters):
     stock = stock_table(team_id)
+    registered = registered_lots(team_id)
     remaining = or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0)
     origins = origin_columns()
     moves = select(mt.source_transfer_id.label("lot_id"), func.max(mt.updated_at).label("at")).where(
@@ -95,9 +97,9 @@ def warehouse_groups(team_id, filters):
         func.min(case((remaining, mt.received_at), else_=None)).label("oldest_received_at"),
         func.max(case((origins["receipt_source"] == "internal", mt.source_team_name), else_=origins["external_source"])).label("source_name"),
         func.max(recent).label("last_activity_at"), func.max(case((matching_dates, 1), else_=0)).label("matches_date"),
-        *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS), *meta
+        *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS), *summary_columns(stock, registered), *meta
     ).select_from(stock).join(mt, mt.id == stock.c.transfer_id).outerjoin(moves, moves.c.lot_id == mt.id).outerjoin(
-        losses, losses.c.lot_id == mt.id).group_by(*origins.values()).subquery()
+        losses, losses.c.lot_id == mt.id).outerjoin(registered, registered.c.lot_id == mt.id).group_by(*origins.values()).subquery()
 
 
 def group_conditions(table, anchor):
@@ -206,7 +208,9 @@ def list_group_sources(db, team_id, group_id, user, *, page=1, page_size=20, cur
     if anchor is None:
         raise HTTPException(404, "未找到该班组的库存来源")
     stock = stock_table(team_id)
-    statement = select(mt, stock).join(stock, stock.c.transfer_id == mt.id).where(*group_conditions(origins, anchor))
+    registered = registered_lots(team_id)
+    statement = select(mt, stock, registered.c.latest_id).join(stock, stock.c.transfer_id == mt.id).outerjoin(
+        registered, registered.c.lot_id == mt.id).where(*group_conditions(origins, anchor))
     if current_only:
         statement = statement.where(or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0))
     if query and query.strip():
@@ -216,7 +220,13 @@ def list_group_sources(db, team_id, group_id, user, *, page=1, page_size=20, cur
     rows = db.execute(statement.options(*material_transfer_list_options()).order_by(mt.received_at.desc(), mt.id.desc()).offset((page - 1) * page_size).limit(page_size)).unique().all()
     from .warehouse_placements import stock_positions
     from .material_weight import stock_sludge_measurements
-    return {"items": stock_positions(db, stock_sludge_measurements(db, [{"transfer": material_transfer_dict(row[0], user, include_history=False), **balance_dict(row._mapping)} for row in rows])),
+    items = []
+    for row in rows:
+        item = {"transfer": material_transfer_dict(row[0], user, include_history=False), **balance_dict(row._mapping)}
+        item["processing_state"] = processing_state(item["transfer"]["material_type"], item["on_hand_quantity"],
+            item["on_hand_weight"], item["in_transit_quantity"], item["in_transit_weight"], row.latest_id is not None)
+        items.append(item)
+    return {"items": stock_positions(db, stock_sludge_measurements(db, items)),
             "total": total, "page": page, "page_size": page_size,
             "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
 

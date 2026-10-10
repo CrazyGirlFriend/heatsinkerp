@@ -4,6 +4,7 @@ import type { TeamPurpose, OpeningLine, OpeningState, SerialHistory } from '@/ty
 import { normalizeMaterialTransfer } from './materialTransferApi'
 import type { CreateWarehouseReceipt, WarehouseReceiptParams, CreatedMaterialBatches, CreateSerialReallocation } from '@/types/teamMaterials'
 import type { QuantityAdjustment, QuantityAdjustmentContext, CreateQuantityAdjustment } from '@/types/teamMaterials'
+import type { ProcessingRecord } from '@/types/materialProcessing'
 import { isExternalEntryKind } from '@/types/materialTransfer'
 import type { MaterialAnalytics, Metric, SerialParams, SerialSummary } from '@/types/materialAnalytics'
 import type { WarehouseGroupParams, TeamInventoryParams, TeamInventoryRow } from '@/types/teamInventory'
@@ -19,6 +20,7 @@ function balance(value: unknown): MaterialBalance {
 function stock(value: unknown): StockBatch {
   const raw = record(value)
   return { ...balance(value), transfer: normalizeMaterialTransfer(raw.transfer),
+    ...(typeof raw.processing_state === 'string' ? { processing_state: raw.processing_state as StockBatch['processing_state'] } : {}),
     ...(numeric(raw.sludge_available_gross_weight) != null ? { sludge_available_gross_weight: Number(raw.sludge_available_gross_weight) } : {}),
     ...(Array.isArray(raw.warehouse_positions) ? { warehouse_positions: raw.warehouse_positions.map(item => { const row = record(item); return { location_id: Number(row.location_id), name: String(row.name), quantity: Number(row.quantity), weight: Number(row.weight) } }),
       physical_quantity: Number(raw.physical_quantity), physical_weight: Number(raw.physical_weight), unassigned_quantity: Number(raw.unassigned_quantity), unassigned_weight: Number(raw.unassigned_weight) } : {}) }
@@ -62,6 +64,8 @@ export const teamMaterialApi = {
   warehouseLocations(teamId: number, query = '', selected = '', material?: import('./warehouseLocationApi').WarehouseMaterial) { return request<{ items: WarehouseLocation[] }>(path(teamId, 'warehouse-locations', { query, selected, ...material })) },
   quantityContext(teamId: number, sourceId: number, page = 1) { return request<QuantityAdjustmentContext>(path(teamId, `stock/${sourceId}/quantity-adjustments`, { page, page_size: 10 })) },
   changeQuantity(teamId: number, payload: CreateQuantityAdjustment) { return request<QuantityAdjustment>(path(teamId, 'quantity-adjustments'), { method: 'POST', body: payload }) },
+  processingRecords(teamId: number, params: MaterialPageParams = {}) { return request<MaterialPage<ProcessingRecord>>(path(teamId, 'processing-records', params)) },
+  processingSources(teamId: number, params: { group_id?: number; query?: string; page?: number; page_size?: number } = {}) { return page(path(teamId, 'processing-stock', params), stock) },
   purposes(teamId: number) { return request<TeamPurpose[]>(path(teamId, 'purposes')) },
   savePurpose(teamId: number, payload: { name: string; active: boolean; expected_version?: number }, id?: number) { return request<TeamPurpose>(path(teamId, id ? `purposes/${id}` : 'purposes'), { method: id ? 'PATCH' : 'POST', body: payload }) },
   authorizeOpening(teamId: number, enabled: boolean) { return request(path(teamId, 'opening-stock/authorization'), { method: 'PUT', body: { enabled } }) },

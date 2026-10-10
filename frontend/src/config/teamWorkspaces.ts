@@ -5,6 +5,7 @@ export const teamWorkspaceSections = [
   { value: 'stock', label: '库存明细' },
   { value: 'pending', label: '来料待签收' },
   { value: 'receipts', label: '入库记录' },
+  { value: 'processing', label: '加工记录' },
   { value: 'outgoing', label: '出库记录' },
   { value: 'reallocations', label: '转投记录' },
   { value: 'losses', label: '丢失记录' },
@@ -15,14 +16,14 @@ export const teamWorkspaceSections = [
 ] as const
 export type TeamWorkspaceSection = typeof teamWorkspaceSections[number]['value']
 
-export function teamWorkspaceSectionsFor(warehouse: boolean, manageWarehouse = false, reallocations = false) {
-  return teamWorkspaceSections.filter(section => (section.value !== 'warehouse' || warehouse && manageWarehouse) && (section.value !== 'reallocations' || reallocations))
+export function teamWorkspaceSectionsFor(warehouse: boolean, manageWarehouse = false, reallocations = false, processing = false) {
+  return teamWorkspaceSections.filter(section => (section.value !== 'warehouse' || warehouse && manageWarehouse) && (section.value !== 'reallocations' || reallocations) && (section.value !== 'processing' || processing))
 }
 
-export function resolveTeamWorkspaceSection(query: LocationQuery, warehouse: boolean, manageWarehouse = false, reallocations = false): TeamWorkspaceSection {
+export function resolveTeamWorkspaceSection(query: LocationQuery, warehouse: boolean, manageWarehouse = false, reallocations = false, processing = false): TeamWorkspaceSection {
   if (query.tab === 'serials') return 'stock'
   if (query.tab === 'overview') return 'history'
-  const section = teamWorkspaceSectionsFor(warehouse, manageWarehouse, reallocations).find(item => item.value === query.tab)
+  const section = teamWorkspaceSectionsFor(warehouse, manageWarehouse, reallocations, processing).find(item => item.value === query.tab)
   if (section) return section.value
   if (query.direction === 'outgoing') return 'outgoing'
   if (query.direction === 'incoming') return query.status === 'received' ? 'receipts' : 'pending'

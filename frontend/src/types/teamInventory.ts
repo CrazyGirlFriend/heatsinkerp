@@ -1,11 +1,12 @@
 import type { MaterialBalance, MaterialPageParams } from './teamMaterials'
+import type { ProcessingSummary } from './materialProcessing'
 import type { SerialSummary, SerialParams } from './materialAnalytics'
 import { inventoryColumns } from './inventoryColumns'
 import { isScrapType, materialTypeLabel, type MaterialType } from './materialTransfer'
 import { formatDateTime } from '@/utils/format'
 
 export type WarehouseSource = 'external' | 'return' | 'internal' | 'opening'
-export interface TeamInventoryRow extends MaterialBalance {
+export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary {
   group_id: number
   batch_count: number
   current_batch_count: number

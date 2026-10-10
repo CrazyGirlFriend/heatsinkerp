@@ -12,6 +12,9 @@ import TeamWorkspaceActions from '@/components/TeamWorkspaceActions.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
 import TeamMaterialOverviewPanel from '@/components/TeamMaterialOverview.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
+import TeamProcessingRecords from '@/components/TeamProcessingRecords.vue'
+import ProcessingBatchPicker from '@/components/ProcessingBatchPicker.vue'
+import QuantityAdjustmentDialog from '@/components/QuantityAdjustmentDialog.vue'
 import TeamSerialHistory from '@/components/TeamSerialHistory.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
 import SerialReallocationDialog from '@/components/SerialReallocationDialog.vue'
@@ -56,10 +59,11 @@ const canManageBusiness = computed(() => scopeReady.value && (auth.isAdmin || ca
 const canReallocate = computed(() => canWrite.value && teamCanReallocate(team.value))
 const isWarehouse = computed(() => scopeReady.value && team.value?.code === 'FACTORY-WAREHOUSE' && team.value?.kind === 'warehouse')
 const canManageWarehouse = computed(() => isWarehouse.value && (auth.isAdmin || canWrite.value))
+const hasProcessing = computed(() => scopeReady.value && team.value?.code === 'FACTORY-WIRE' && team.value?.kind === 'production')
 const canReceive = computed(() => isWarehouse.value && canWrite.value && auth.currentUser?.active !== false)
 const title = computed(() => scopeReady.value ? team.value!.name || profile.value?.name || '班组' : '班组工作台')
 const queryText = (key: string) => typeof route.query[key] === 'string' ? String(route.query[key]) : ''
-const tab = computed(() => resolveTeamWorkspaceSection(route.query, isWarehouse.value, canManageWarehouse.value, teamCanReallocate(team.value)))
+const tab = computed(() => resolveTeamWorkspaceSection(route.query, isWarehouse.value, canManageWarehouse.value, teamCanReallocate(team.value), hasProcessing.value))
 const fullscreen = ref(false)
 const inventoryPanel = ref<InstanceType<typeof TeamInventory>>()
 const summaryPanel = ref<InstanceType<typeof TeamMaterialOverviewPanel>>()
@@ -153,6 +157,17 @@ const receipts = ref<MaterialTransfer[]>([])
 const reallocations = ref<MaterialTransfer[]>([])
 const receiptOpen = ref(false)
 const businessOpen = ref(false)
+const processingPickerOpen = ref(false), processingGroupId = ref<number | undefined>()
+const processingOpen = ref(false), processingSourceId = ref<number | null>(null)
+function openProcessing(groupId?: number) {
+  if (!canWrite.value || !hasProcessing.value) return
+  processingGroupId.value = groupId; processingPickerOpen.value = true
+}
+function selectProcessingSource(sourceId: number) {
+  if (!canWrite.value || !hasProcessing.value) return
+  processingPickerOpen.value = false; processingSourceId.value = sourceId; processingOpen.value = true
+}
+function processingSaved() { showToast('加工件数已登记，库存已更新', 'success'); void loadView() }
 function businessChanged() { void directory.refreshTeamDirectory(); void loadView() }
 async function openingStocked() {
   const alreadyInStock = tab.value === 'stock'
@@ -230,7 +245,7 @@ function asLoss(row: unknown) { return row as MaterialLoss }
 function applyFilters(nextPage = 1, size = pageSize.value) {
   void router.replace({ path: route.path, query: { tab: tab.value, ...(tab.value === 'receipts' && receiptSourceDraft.value ? { receipt_source: receiptSourceDraft.value } : {}), ...(dateDraft.value.from ? { date_from: dateDraft.value.from } : {}), ...(dateDraft.value.to ? { date_to: dateDraft.value.to } : {}), ...(urgentDraft.value ? { urgent_only: 'true' } : {}), ...(queryDraft.value.trim() ? { query: queryDraft.value.trim() } : {}), ...(['receipts', 'outgoing', 'reallocations'].includes(tab.value) && materialDraft.value ? { material_type: materialDraft.value } : {}), ...(tab.value === 'outgoing' ? { ...(kindDraft.value ? { entry_kind: kindDraft.value } : {}), ...(statusDraft.value ? { status: statusDraft.value } : {}), ...(!isExternalEntryKind(kindDraft.value) && nextTeamDraft.value ? { next_team_id: String(nextTeamDraft.value) } : {}) } : {}), ...(nextPage > 1 ? { page: String(nextPage) } : {}), ...(size !== 10 ? { page_size: String(size) } : {}) } })
 }
-function closeDetails() { ++actionVersion; pickerOpen.value = false; openingDispatch.value = false; drawerOpen.value = false; selected.value = null; actionOpen.value = false; reallocationOpen.value = false; reallocationSource.value = null; receiptOpen.value = false; actionSources.value = [] }
+function closeDetails() { ++actionVersion; pickerOpen.value = false; openingDispatch.value = false; drawerOpen.value = false; selected.value = null; actionOpen.value = false; reallocationOpen.value = false; reallocationSource.value = null; receiptOpen.value = false; actionSources.value = []; processingPickerOpen.value = processingOpen.value = false; processingSourceId.value = null }
 function openDetail(transfer: MaterialTransfer) { selected.value = transfer; drawerOpen.value = true }
 function openIncoming(transfer: MaterialTransfer) { openDetail(transfer) }
 function openWarehouseMaterial(batchNo: string) { selected.value = null; selectedBatchNo.value = batchNo; drawerOpen.value = true }
@@ -365,7 +380,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 </script>
 
 <template>
-  <TeamWorkspaceShell :title="title" :model-value="tab" :warehouse="isWarehouse" :manage-warehouse="canManageWarehouse" :reallocations="teamCanReallocate(team)" :pending-count="pendingCount" :exportable="exportable" @export="openExport" @update:model-value="selectSection" @fullscreen-change="fullscreen = $event">
+  <TeamWorkspaceShell :title="title" :model-value="tab" :warehouse="isWarehouse" :manage-warehouse="canManageWarehouse" :reallocations="teamCanReallocate(team)" :processing="hasProcessing" :pending-count="pendingCount" :exportable="exportable" @export="openExport" @update:model-value="selectSection" @fullscreen-change="fullscreen = $event">
     <template v-if="canManageBusiness" #settings><ElButton :icon="Setting" text aria-label="班组设置" @click="businessOpen = true">班组设置</ElButton></template>
     <template v-if="syncError || syncState === 'reconnecting' || syncState === 'expired'" #fullscreen-status><span role="status" :title="syncState === 'expired' ? '登录或访问凭证已失效，请重新验证。' : syncError || '实时连接中断，当前显示上次结果，正在重连。'">{{ syncState === 'expired' ? '登录失效' : '连接中断' }}</span></template>
     <div class="team-material-content">
@@ -375,11 +390,12 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
       <template v-else>
         <ElAlert v-if="overview?.legacy_received_count" v-show="!fullscreen" class="legacy-notice" type="info" :closable="false" :title="`另有 ${overview.legacy_received_count} 张历史已接收单未计入库存。`"><template #default>历史单据仍可在 <RouterLink :to="{ path: '/transfer-batches', query: { next_team_id: teamKey, status: 'received' } }">全局转料记录</RouterLink> 查看。</template></ElAlert>
         <WarehouseManagement v-if="tab === 'warehouse'" :key="teamId" :team-id="teamId" :can-manage="canManageWarehouse" :can-dispatch="canWrite" :refresh-key="overview" @view="openWarehouseMaterial" @dispatch="dispatchWarehouseMaterial" @batch-dispatch="dispatchWarehouseBatches" />
+        <TeamProcessingRecords v-else-if="tab === 'processing'" :key="teamId" :team-id="teamId" :can-write="canWrite" :fullscreen="fullscreen" :refresh-key="overview" @register="openProcessing()" />
         <TeamSerialHistory v-else-if="['overview', 'history'].includes(tab)" :key="teamId" :team-id="teamId"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamSerialHistory>
         <template v-else-if="['stock', 'materials', 'material-types'].includes(tab)">
           <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料库存" />
           <StatePanel v-else-if="overviewError" state="error" :description="overviewError" @retry="loadView" />
-          <TeamInventory v-else-if="overview && tab === 'stock'" :key="teamId" ref="inventoryPanel" :team-id="teamId" :warehouse="isWarehouse" :overview="overview" :can-write="canWrite" :can-reallocate="canReallocate" :fullscreen="fullscreen" @reallocate="openReallocation" @refresh="loadView" @changed="loadView" @action="openAction"><template #actions><TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" /></template></TeamInventory>
+          <TeamInventory v-else-if="overview && tab === 'stock'" :key="teamId" ref="inventoryPanel" :team-id="teamId" :warehouse="isWarehouse" :overview="overview" :can-write="canWrite" :can-reallocate="canReallocate" :fullscreen="fullscreen" :processing="hasProcessing" @process="openProcessing" @reallocate="openReallocation" @refresh="loadView" @changed="loadView" @action="openAction"><template #actions><TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" /></template></TeamInventory>
           <TeamMaterialOverviewPanel v-else-if="overview" :key="tab" ref="summaryPanel" :overview="overview" :kind="tab === 'material-types' ? 'type' : 'material'" :page="page" :page-size="pageSize" :fullscreen="fullscreen" @filter="openSummaryDetail" @paginate="paginateSummary"><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template></TeamMaterialOverviewPanel>
         </template>
         <template v-else>
@@ -496,6 +512,8 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
       </template>
     </div>
     <template #dialogs>
+      <ProcessingBatchPicker v-if="processingPickerOpen && canWrite && hasProcessing" :team-id="teamId" :group-id="processingGroupId" @close="processingPickerOpen = false" @selected="selectProcessingSource" />
+      <QuantityAdjustmentDialog v-if="hasProcessing" v-model="processingOpen" :team-id="teamId" :source-id="processingSourceId" :can-write="canWrite" processing @saved="processingSaved" />
       <TableExportDialog :source="exportSource" @close="exportSource = null" />
       <StockSourcePicker v-if="pickerOpen && canWrite" :team-id="teamId" @close="closeDetails" @selected="openAction('dispatch', $event)" @outbound="closeDetails(); router.push({ path: route.path, query: { tab: 'outgoing', status: 'pending' } })" />
       <WarehouseReceiptDialog v-model="receiptOpen" :team-id="teamId" @saved="savedReceipt" />

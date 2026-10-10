@@ -6,8 +6,9 @@ import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialAp
 import type { QuantityAdjustment, QuantityAdjustmentContext } from '@/types/teamMaterials'
 import { materialRequestKey } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
+import { materialTypeLabel } from '@/types/materialTransfer'
 
-const props = defineProps<{ modelValue: boolean; teamId: number; sourceId: number | null; canWrite?: boolean }>()
+const props = defineProps<{ modelValue: boolean; teamId: number; sourceId: number | null; canWrite?: boolean; processing?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [QuantityAdjustment] }>()
 const auth = useAuthStore()
 const snapshot = ref<QuantityAdjustmentContext | null>(null)
@@ -64,22 +65,24 @@ onBeforeUnmount(() => { ++generation })
 </script>
 
 <template>
-  <ElDialog :model-value="modelValue" :title="editable ? '加工件数变更' : '件数变更记录'" width="min(780px, 94vw)" append-to-body :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving" @close="close">
+  <ElDialog :model-value="modelValue" :title="processing ? editable ? '加工登记' : '加工记录' : editable ? '加工件数变更' : '件数变更记录'" width="min(780px, 94vw)" align-center append-to-body class="processing-registration-dialog" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving" @close="close">
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <div v-if="loading" role="status" class="quantity-loading">正在读取件数记录…</div>
     <template v-if="snapshot">
       <ElDescriptions :column="2" border class="quantity-summary">
+        <ElDescriptionsItem v-if="processing" label="流水号">{{ snapshot.serial_no || '—' }}</ElDescriptionsItem>
+        <ElDescriptionsItem v-if="processing" label="物料类型">{{ materialTypeLabel(snapshot.material_type || null) }}</ElDescriptionsItem>
         <ElDescriptionsItem label="来源批次" :span="2">{{ snapshot.batch_no }}</ElDescriptionsItem>
         <ElDescriptionsItem label="未转出件数">{{ snapshot.quantity }} 件</ElDescriptionsItem>
         <ElDescriptionsItem label="未转出重量">{{ snapshot.weight }} kg</ElDescriptionsItem>
       </ElDescriptions>
       <ElForm v-if="editable && hasStock" label-position="top" :disabled="saving || loading" @submit.prevent="save">
-        <p class="quantity-note">只修改本批未转出的件数，重量、原签收单和已转出件数不变。保存后立即生效，取消出库不会撤销本次修改。</p>
+        <p class="quantity-note">{{ processing ? '登记后记为“已登记加工、未转出”。物料类型与重量沿用现有库存；废料单独转料登记。' : '只修改本批未转出的件数，重量、原签收单和已转出件数不变。保存后立即生效，取消出库不会撤销本次修改。' }}</p>
         <ElFormItem label="加工后未转出件数" required><ElInputNumber v-model="quantity" aria-label="加工后未转出件数" :min="0" :max="2147483647" :precision="0" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
         <ElFormItem label="加工说明（选填）"><ElInput v-model="reason" type="textarea" aria-label="加工说明" :rows="2" maxlength="2000" show-word-limit placeholder="选填，例如：10 块板材切割为 100 件" /></ElFormItem>
       </ElForm>
       <p v-else-if="editable" class="quantity-note">本批没有未转出的库存，不能修改件数。</p>
-      <h3 class="quantity-history-title">变更记录</h3>
+      <h3 class="quantity-history-title">{{ processing ? '本批登记记录' : '变更记录' }}</h3>
       <ElTable :data="records" class="business-table" empty-text="暂无件数变更" aria-label="件数变更记录">
         <ElTableColumn label="时间 / 操作人" min-width="160" align="center"><template #default="{ row }">{{ formatDateTime(row.created_at) }}<br>{{ row.created_by }}</template></ElTableColumn>
         <ElTableColumn label="变更前 → 变更后" min-width="140" align="center"><template #default="{ row }">{{ row.before_quantity }} → {{ row.after_quantity }} 件</template></ElTableColumn>
@@ -90,7 +93,7 @@ onBeforeUnmount(() => { ++generation })
     <template #footer>
       <ElButton :disabled="saving" @click="close">关闭</ElButton>
       <ElButton v-if="conflict || (!snapshot && error)" :disabled="loading || saving" @click="load(true)">刷新并核对</ElButton>
-      <ElButton v-if="editable" type="primary" :loading="saving" :disabled="loading || conflict || !hasStock" @click="save">保存件数</ElButton>
+      <ElButton v-if="editable" type="primary" :loading="saving" :disabled="loading || conflict || !hasStock" @click="save">{{ processing ? '保存加工登记' : '保存件数' }}</ElButton>
     </template>
   </ElDialog>
 </template>
@@ -101,4 +104,14 @@ onBeforeUnmount(() => { ++generation })
 .quantity-history-title { margin: 24px 0 12px; font-size: 16px; font-weight: 600; }
 .quantity-loading { padding: 12px 0; color: var(--muted); }
 .el-pagination { justify-content: flex-end; margin-top: 12px; }
+</style>
+
+<style>
+.processing-registration-dialog { display: flex; flex-direction: column; max-height: calc(100dvh - 32px); }
+.processing-registration-dialog .el-dialog__body { min-height: 0; overflow: auto; }
+.processing-registration-dialog .el-input-number { width: 100%; }
+@media (max-width: 600px) {
+  .processing-registration-dialog .el-descriptions__label { width: 80px; }
+  .processing-registration-dialog .el-descriptions__content { overflow-wrap: anywhere; }
+}
 </style>

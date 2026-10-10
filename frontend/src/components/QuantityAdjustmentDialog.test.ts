@@ -28,6 +28,17 @@ async function edit() {
 }
 
 describe('processing piece adjustment', () => {
+  it('registers actual remaining pieces with an explicit material type and processing state', async () => {
+    vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({ ...context(), quantity: 1, serial_no: 'YS-007', material_type: 'semi_finished' })
+    await render()
+    await wrapper.setProps({ processing: true })
+    expect(wrapper.text()).toContain('半成品')
+    expect(wrapper.text()).toContain('已登记加工、未转出')
+    wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 20)
+    await click('保存加工登记')
+    expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(2, expect.objectContaining({ source_transfer_id: 10, quantity: 20 }))
+    expect(wrapper.emitted('saved')).toHaveLength(1)
+  })
   it('saves a guarded piece change with no editable weight or receipt rewrite', async () => {
     await render(); await edit(); await click('保存件数')
     expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(2, { source_transfer_id: 10, quantity: 100, expected_revision: 0, reason: '切割为100件', idempotency_key: expect.any(String) })

@@ -18,6 +18,12 @@ describe('eight official workspace profiles', () => {
 })
 
 describe('shared workspace navigation', () => {
+  it('exposes cutting processing records only when that capability is enabled', () => {
+    expect(teamWorkspaceSectionsFor(false, false, false, true).map(item => item.value)).toContain('processing')
+    expect(teamWorkspaceSectionsFor(false).map(item => item.value)).not.toContain('processing')
+    expect(resolveTeamWorkspaceSection({ tab: 'processing' }, false, false, false, true)).toBe('processing')
+    expect(resolveTeamWorkspaceSection({ tab: 'processing' }, false)).toBe('stock')
+  })
   it('offers receipt records to every team while keeping warehouse management scoped', () => {
     expect(teamWorkspaceSectionsFor(false).map(item => item.label)).toEqual(['库存明细', '来料待签收', '入库记录', '出库记录', '丢失记录', '材质库存', '类型库存', '收发历史'])
     expect(teamWorkspaceSectionsFor(true).map(item => item.value)).toContain('receipts')

@@ -7,6 +7,9 @@ import FilterDialog from '@/components/FilterDialog.vue'
 import { ElCheckbox, ElSelect } from 'element-plus'
 import TeamWorkspacePage from './TeamWorkspacePage.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
+import TeamProcessingRecords from '@/components/TeamProcessingRecords.vue'
+import ProcessingBatchPicker from '@/components/ProcessingBatchPicker.vue'
+import QuantityAdjustmentDialog from '@/components/QuantityAdjustmentDialog.vue'
 import TeamMaterialOverviewPanel from '@/components/TeamMaterialOverview.vue'
 import TeamSerialHistory from '@/components/TeamSerialHistory.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
@@ -63,6 +66,38 @@ async function render(path = '/team-workspaces/914', animate = false) {
   return router
 }
 describe('team workspace material ledger', () => {
+  it.each([true, false])('scopes processing registration to the cutting team with write permission=%s', async canWrite => {
+    const previous = state.directory.items
+    try {
+      state.directory.items = [{ id: 914, code: 'FACTORY-WIRE', name: '线切割', kind: 'production', active: true }]
+      state.auth.isTeamAccount = canWrite; state.auth.isAdmin = !canWrite
+      vi.spyOn(teamMaterialApi, 'processingRecords').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
+      vi.spyOn(teamMaterialApi, 'processingSources').mockResolvedValue({ items: [source()], total: 1, page: 1, page_size: 10 })
+      vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({ source_transfer_id: 10, batch_no: 'TL10', serial_no: 'YS-007', material_type: 'semi_finished', quantity: 1, weight: 100, revision: 0, as_of: '2026-10-09T00:00:00Z', items: [], total: 0, page: 1, page_size: 10 })
+      const router = await render('/team-workspaces/914?tab=stock')
+      expect(wrapper.getComponent(TeamInventory).props('processing')).toBe(true)
+      wrapper.getComponent(TeamInventory).vm.$emit('process', 10); await flushPromises()
+      expect(wrapper.findComponent(ProcessingBatchPicker).exists()).toBe(canWrite)
+      if (canWrite) {
+        expect(wrapper.getComponent(ProcessingBatchPicker).props()).toMatchObject({ teamId: 914, groupId: 10 })
+        wrapper.getComponent(ProcessingBatchPicker).vm.$emit('selected', 10); await flushPromises()
+        const dialog = wrapper.findAllComponents(QuantityAdjustmentDialog).find(component => component.props('modelValue'))!
+        expect(dialog.props()).toMatchObject({ modelValue: true, processing: true, sourceId: 10, canWrite: true })
+        vi.mocked(teamMaterialApi.overview).mockClear()
+        dialog.vm.$emit('saved', { id: 1 }); await flushPromises()
+        expect(teamMaterialApi.overview).toHaveBeenCalledWith(914)
+      }
+      await router.push('/team-workspaces/914?tab=processing'); await flushPromises()
+      expect(wrapper.getComponent(TeamProcessingRecords).props()).toMatchObject({ teamId: 914, canWrite })
+      expect(wrapper.getComponent(QuantityAdjustmentDialog).props('modelValue')).toBe(false)
+      await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+      expect(wrapper.getComponent(TeamProcessingRecords).props('fullscreen')).toBe(true)
+      state.directory.items = previous
+      await router.push('/team-workspaces/914?tab=processing'); await flushPromises()
+      expect(wrapper.findComponent(TeamProcessingRecords).exists()).toBe(false)
+      expect(wrapper.getComponent(TeamInventory).props('processing')).toBe(false)
+    } finally { state.directory.items = previous }
+  })
   it.each(['pending', 'receipts', 'outgoing', 'reallocations', 'losses'])('exports %s with the same filters and team scope, closing on navigation', async tab => {
     const router = await render(`/team-workspaces/901?tab=${tab}&query=000A&date_from=2026-09-01&date_to=2026-09-30&urgent_only=true&material_type=finished&receipt_source=internal&entry_kind=transfer&status=received&next_team_id=900`)
     await wrapper.get('.team-workspace__export').trigger('click'); await flushPromises()

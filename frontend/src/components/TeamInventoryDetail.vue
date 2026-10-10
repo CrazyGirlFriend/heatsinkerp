@@ -7,6 +7,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElButton, ElDescriptions, ElDescriptionsItem, ElDialog, ElPagination, ElTable, ElTableColumn, ElTag } from 'element-plus'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
+import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import StatePanel from './StatePanel.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
@@ -17,7 +18,7 @@ import type { StockBatch } from '@/types/teamMaterials'
 import { dispatchableAmounts, stockAvailable, stockSelectable } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
 
-const props = defineProps<{ teamId: number; group: TeamInventoryRow | null; canWrite?: boolean; canReallocate?: boolean; warehouse?: boolean }>()
+const props = defineProps<{ teamId: number; group: TeamInventoryRow | null; canWrite?: boolean; canReallocate?: boolean; warehouse?: boolean; processing?: boolean }>()
 const emit = defineEmits<{ close: []; changed: []; pending: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]; reallocate: [source: StockBatch] }>()
 const rows = ref<StockBatch[]>([]), total = ref(0), page = ref(1), pageSize = ref(10)
 const movements = ref<MaterialTransfer[]>([]), movementTotal = ref(0), movementPage = ref(1), movementPageSize = ref(10)
@@ -123,7 +124,8 @@ onBeforeUnmount(() => { ++version })
           <ElTableColumn v-if="hasLoss" label="丢失件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.lost_quantity) }}</template></ElTableColumn>
           <ElTableColumn v-if="hasLoss" label="丢失重量 (kg)" min-width="140" align="right"><template #default="{ row }">{{ inventoryAmount(row.lost_weight) }}</template></ElTableColumn>
           <ElTableColumn label="接收时间" min-width="170"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>
-          <ElTableColumn label="操作" :width="canWrite ? canReallocate ? 310 : 250 : 110" fixed="right"><template #default="{ row }"><div class="source-actions"><ElButton v-if="!isWeightOnlyType(row.transfer.material_type)" link type="primary" @click="openQuantity(asStock(row))">{{ canWrite && !warehouse && stockAvailable(asStock(row)) ? '加工件数变更' : '件数记录' }}</ElButton><template v-if="canWrite"><ElButton link type="primary" :disabled="!stockSelectable(asStock(row))" @click="action('dispatch', asStock(row))">出库</ElButton><ElButton v-if="canReallocate" link type="primary" :disabled="!stockSelectable(asStock(row))" @click="emit('reallocate', asStock(row))">转投</ElButton><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('loss', asStock(row))">登记丢失</ElButton></template></div></template></ElTableColumn>
+          <ElTableColumn v-if="processing" label="加工状态" min-width="185" align="center"><template #default="{ row }"><ProcessingStockStatus :state="row.processing_state" :material-type="row.transfer.material_type" /></template></ElTableColumn>
+          <ElTableColumn label="操作" :width="canWrite ? canReallocate ? 310 : 250 : 110" fixed="right"><template #default="{ row }"><div class="source-actions"><ElButton v-if="!isWeightOnlyType(row.transfer.material_type)" link type="primary" @click="openQuantity(asStock(row))">{{ canWrite && !warehouse && stockAvailable(asStock(row)) ? processing ? '加工登记' : '加工件数变更' : processing ? '加工记录' : '件数记录' }}</ElButton><template v-if="canWrite"><ElButton link type="primary" :disabled="!stockSelectable(asStock(row))" @click="action('dispatch', asStock(row))">出库</ElButton><ElButton v-if="canReallocate" link type="primary" :disabled="!stockSelectable(asStock(row))" @click="emit('reallocate', asStock(row))">转投</ElButton><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('loss', asStock(row))">登记丢失</ElButton></template></div></template></ElTableColumn>
         </ElTable>
         <footer><span>共 {{ total }} 个来源批次（含零库存）</span><ElPagination aria-label="当前库存分页" :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></footer>
       </section>
@@ -144,7 +146,7 @@ onBeforeUnmount(() => { ++version })
     </template>
   </ElDialog>
   <MaterialTransferDrawer v-model="batchOpen" :transfer="selected" :trace-scope="{ team_id: teamId, direction: 'all' }" @changed="changed" />
-  <QuantityAdjustmentDialog v-model="quantityOpen" :team-id="teamId" :source-id="quantitySource" :can-write="canWrite && !warehouse" @saved="changed" />
+  <QuantityAdjustmentDialog v-model="quantityOpen" :team-id="teamId" :source-id="quantitySource" :can-write="canWrite && !warehouse" :processing="processing" @saved="changed" />
 </template>
 
 <style scoped>

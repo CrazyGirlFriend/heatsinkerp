@@ -10,12 +10,31 @@ from .schemas import DIRECT_MATERIAL_TYPE_PATTERN, WarehouseReceiptCreate, Mater
 from . import material_stock as stock
 from . import warehouse_receipts
 from . import quantity_adjustments
+from . import processing_records
 from . import serial_reallocations
 from .async_read_response import team_read_response
 
 from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/team-materials", tags=["team material stock"])
+
+
+@router.get("/{team_id}/processing-records")
+def list_processing_records(record_filters: RecordFilters = Depends(), team_id: int = Path(ge=1),
+                            query: str | None = Query(default=None, max_length=160),
+                            page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100),
+                            _: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return team_read_response(db, lambda session: processing_records.list_records(session, team_id,
+        record_filters=record_filters, query=query, page=page, page_size=page_size))
+
+
+@router.get("/{team_id}/processing-stock")
+def processing_sources(team_id: int = Path(ge=1), group_id: int | None = Query(default=None, ge=1),
+                       query: str | None = Query(default=None, max_length=160),
+                       page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100),
+                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return team_read_response(db, lambda session: processing_records.list_sources(session, team_id, user,
+        group_id=group_id, query=query, page=page, page_size=page_size))
 
 
 @router.get("/{team_id}/serial-reallocations", response_model=MaterialTransferList)

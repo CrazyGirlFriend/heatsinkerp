@@ -118,3 +118,30 @@ final result: passed
 - 本次浏览器实测为桌面 Chrome 及其响应式视口，未实测实体手机浏览器。
 
 final result: common viewport checks passed; ultrawide layout and high-density background need improvement
+
+# 转料单单页布局验证（2026-10-10）
+
+本轮只调整 `MaterialTransferFormDialog.vue`，用实际组件制作预览；其他弹框和另一个任务的加工登记改动不在本轮范围内。
+
+- 参考：用户手绘线框 `codex-clipboard-df437c36-1e4d-4ba7-a74f-efaef9e196b7.png`，1652 × 1228。左侧框表示分组标题，右侧两列表示字段；图片中的聊天内容和描框颜色不属于产品内容。
+- 预览：`http://127.0.0.1:15416/`，使用隔离的接口示例，不写实际业务数据。
+- 同尺寸参考与最终实现已一起打开比对；证据：`output/playwright/single-page-dialog-20261010/dialog-1652-final.png`。最终正常状态和漏填状态：`dialog-final.png`、`dialog-required-errors.png`。
+
+## 五项检查
+
+1. 字体：沿用系统字体栈；标题 20px、分组 14px、字段标签 13px。标签与控件对齐，自动带入标记不挤压必填星号。
+2. 布局：转料信息、物料资料、规格工艺、补充说明直接展示，不再分页；桌面为左侧分组标题及两列字段，900px 以下单列字段，560px 以下标签在控件上方。标题和提交区固定，正文按视口高度滚动。
+3. 颜色：沿用灰绿与青色主题。按用户最新要求，漏填只用原控件红边框表示，不增加红色标签、字段错误文字、错误数量或汇总提示；补填后红框自动消失。
+4. 图像：无新增图片或视觉资产，使用实际 Vue / Element Plus 控件。
+5. 文案：保留业务字段、现有自动带入和仓位倒计时反馈；移除本轮额外添加的校验解释。服务端失败与权限异常仍使用现有提示。
+
+## 交互与适配
+
+- 必填项提交后同时标红并聚焦第一个遗漏控件，阻止无效请求；交期成对校验、废泥测量校验、来源权限与重复提交保护保持原行为。
+- 发现并修复末尾输入框被底部提交区遮挡：收紧桌面控件与行距，正文底部保留 20px。完整示例在 1440 × 900 时正文高度与内容高度均为 729px，无需滚动。
+- 最终复测 1440 × 900、1280 × 720、390 × 844、320 × 568；均无横向溢出，提交区在视口内，滚到末尾并点击输入后最后控件完整可见，距提交区 20px。短屏和手机仍需要正文滚动。证据：`output/single-page-dialog-20261010/responsive-final.log`。
+- Chrome 实测漏填的 5 个控件具有红色边框，标签保持正常颜色，额外错误消息节点数量为 0；补填后恢复。证据：`required-fields-browser-final.log`。
+- 当前相关 50 项测试、修改文件 ESLint、TypeScript / 生产构建、`git diff --check` 通过。构建保留现有较大分块提示。证据：`tests-final.log`、`lint-final.log`、`build-final.log`。
+- 一个独立 Chrome 自动化会话顺序复用；未使用 Codex 内置浏览器。完成后关闭会话，所属进程均已退出，仅保留本地预览服务。证据：`cleanup-final.json`。
+
+final result: passed for this dialog and tested Chrome viewports; release status is recorded in docs/server-deployment.md
