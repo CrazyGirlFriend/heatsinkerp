@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDialogValidation } from '@/composables/useDialogValidation'
 import TableExportButton from './TableExportButton.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 import FilterDialog from './FilterDialog.vue'
@@ -120,15 +121,18 @@ async function load(background = false) {
 const filtersOpen = ref(false)
 function search() { appliedQuery.value = query.value; appliedFilter.value = filter.value; page.value = 1; void load() }
 function reset() { query.value = ''; filter.value = undefined; search() }
+const validation = useDialogValidation((): Record<string, string> => form.name.trim() ? {} : { name: '请填写仓位名称' })
+const { formRef, fieldErrors } = validation
 function edit(row: WarehouseLocation | null = null) {
   if (!props.canManage || row?.draft_locked) return
   detailOpen.value = false
   editing.value = row; form.name = row?.name || ''; form.active = row?.active ?? true
-  formError.value = ''; editorOpen.value = true
+  formError.value = ''; validation.reset(); editorOpen.value = true
 }
 async function save() {
   if (saving.value || !props.canManage) return
-  if (!form.name.trim()) { formError.value = '请填写仓位名称'; return }
+  formError.value = ''
+  if (!validation.validate()) return
   saving.value = true; formError.value = ''
   try {
     await warehouseLocationApi.save({ name: form.name.trim(), active: form.active, ...(editing.value ? { expected_version: editing.value.version } : {}) }, editing.value?.id)
@@ -214,7 +218,7 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer); clearT
         <template #footer><ElButton :disabled="!detail || detail.draft_locked" @click="detail && edit(detail)">编辑仓位</ElButton><ElButton type="primary" @click="detailOpen = false">关闭</ElButton></template>
       </ElDialog>
       <ElDialog v-model="editorOpen" :title="editingTitle" width="min(440px, 94vw)" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving">
-        <ElForm label-position="top" @submit.prevent="save"><ElFormItem label="仓位名称" required><ElInput v-model="form.name" aria-label="仓位名称" placeholder="例如：A区-01" maxlength="80" :disabled="saving" /></ElFormItem><ElFormItem label="启用"><ElSwitch v-model="form.active" aria-label="启用仓位" :disabled="saving || !!editing?.batches.length" /><span v-if="editing?.batches.length">有料时可改名，不能停用</span></ElFormItem><p v-if="formError" class="warehouse-error" role="alert">{{ formError }}</p></ElForm>
+        <ElForm ref="formRef" label-position="top" :show-message="false" @submit.prevent="save"><ElFormItem label="仓位名称" :error="fieldErrors.name" required><ElInput v-model="form.name" aria-label="仓位名称" placeholder="例如：A区-01" maxlength="80" :disabled="saving" /></ElFormItem><ElFormItem label="启用"><ElSwitch v-model="form.active" aria-label="启用仓位" :disabled="saving || !!editing?.batches.length" /><span v-if="editing?.batches.length">有料时可改名，不能停用</span></ElFormItem><p v-if="formError" class="warehouse-error" role="alert">{{ formError }}</p></ElForm>
         <template #footer><ElButton :disabled="saving" @click="editorOpen = false">取消</ElButton><ElButton type="primary" :loading="saving" @click="save">保存</ElButton></template>
       </ElDialog>
     </template>

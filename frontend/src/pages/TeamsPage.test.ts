@@ -146,7 +146,7 @@ describe('team management directory ordering', () => {
     await wrapper.get('tbody tr').findAll('button').find((button) => button.text().includes('编辑'))!.trigger('click')
     await wrapper.get('input[aria-label="显示顺序"]').setValue('1.5')
     await wrapper.get('form').trigger('submit')
-    expect(wrapper.get('[role="alert"]').text()).toContain('显示顺序必须')
+    expect(wrapper.get('input[aria-label="显示顺序"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
     expect(update).not.toHaveBeenCalled()
   })
 

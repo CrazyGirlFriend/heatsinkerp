@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
+import { useDialogValidation } from '@/composables/useDialogValidation'
 import {
   ElAlert,
   ElButton,
@@ -30,6 +31,24 @@ const oldPassword = ref(''),
   newPassword = ref(''),
   confirmPassword = ref('')
 const oldPasswordInput = ref<InputInstance>()
+const validation = useDialogValidation(() => {
+  const issues: Record<string, string> = {}
+  if (mode.value === 'profile') {
+    if (!name.value.trim()) issues.name = '请输入姓名'
+  } else {
+    if (!oldPassword.value) issues.oldPassword = '请输入旧密码'
+    if (
+      newPassword.value.length < 8 ||
+      newPassword.value.length > 200 ||
+      newPassword.value === oldPassword.value
+    )
+      issues.newPassword = '请填写有效的新密码'
+    if (!confirmPassword.value || confirmPassword.value !== newPassword.value)
+      issues.confirmPassword = '请确认新密码'
+  }
+  return issues
+})
+const { formRef, fieldErrors } = validation
 function clearPasswords() {
   oldPassword.value = newPassword.value = confirmPassword.value = ''
 }
@@ -38,6 +57,7 @@ function focusForm() {
   else nameInput.value?.focus()
 }
 watch(mode, async () => {
+  validation.reset()
   clearPasswords()
   error.value = ''
   await nextTick()
@@ -48,6 +68,7 @@ watch(
   (open) => {
     clearPasswords()
     if (!open) return
+    validation.reset()
     mode.value = 'profile'
     name.value = auth.currentUser?.display_name || ''
     avatar.value = auth.currentUser?.avatar_key || ''
@@ -70,12 +91,10 @@ function close() {
 }
 async function save() {
   if (saving.value || !auth.currentUser) return
+  error.value = ''
+  if (!validation.validate()) return
   if (mode.value === 'password') {
     await savePassword()
-    return
-  }
-  if (!name.value.trim()) {
-    error.value = '请输入姓名'
     return
   }
   saving.value = true
@@ -95,13 +114,6 @@ async function save() {
   }
 }
 async function savePassword() {
-  if (!oldPassword.value) error.value = '请输入旧密码'
-  else if (newPassword.value.length < 8) error.value = '新密码至少为 8 位'
-  else if (newPassword.value.length > 200) error.value = '新密码最多为 200 位'
-  else if (newPassword.value === oldPassword.value) error.value = '新密码不能与旧密码相同'
-  else if (confirmPassword.value !== newPassword.value) error.value = '两次输入的新密码不一致'
-  else error.value = ''
-  if (error.value) return
   saving.value = true
   try {
     const changed = await auth.changePassword({
@@ -144,9 +156,9 @@ async function savePassword() {
         <ElTabPane label="个人资料" name="profile" :disabled="saving" />
         <ElTabPane label="修改密码" name="password" :disabled="saving" />
       </ElTabs>
-      <ElForm label-position="top" @submit.prevent="save">
+      <ElForm ref="formRef" label-position="top" :show-message="false" @submit.prevent="save">
         <template v-if="mode === 'profile'">
-          <ElFormItem label="姓名" required
+          <ElFormItem label="姓名" :error="fieldErrors.name" required
             ><ElInput
               ref="nameInput"
               v-model="name"
@@ -170,7 +182,7 @@ async function savePassword() {
             tabindex="-1"
             aria-hidden="true"
           />
-          <ElFormItem label="旧密码" required>
+          <ElFormItem label="旧密码" :error="fieldErrors.oldPassword" required>
             <ElInput
               ref="oldPasswordInput"
               v-model="oldPassword"
@@ -182,7 +194,7 @@ async function savePassword() {
               :disabled="saving"
             />
           </ElFormItem>
-          <ElFormItem label="新密码" required>
+          <ElFormItem label="新密码" :error="fieldErrors.newPassword" required>
             <ElInput
               v-model="newPassword"
               aria-label="新密码"
@@ -194,7 +206,7 @@ async function savePassword() {
               :disabled="saving"
             />
           </ElFormItem>
-          <ElFormItem label="确认新密码" required>
+          <ElFormItem label="确认新密码" :error="fieldErrors.confirmPassword" required>
             <ElInput
               v-model="confirmPassword"
               aria-label="确认新密码"

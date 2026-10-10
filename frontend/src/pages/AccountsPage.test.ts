@@ -66,6 +66,17 @@ function buttonByText(wrapper: VueWrapper, text: string) {
 }
 
 describe('team leader management workspace', () => {
+  it('shows account fields and avatar together and marks missing inputs directly', async () => {
+    const create = vi.spyOn(adminApi, 'createAccount')
+    const wrapper = await mountPage()
+    await wrapper.findAll('button').find(button => button.text().includes('新增班组长'))!.trigger('click')
+    expect(wrapper.find('nav[aria-label="表单分页"]').exists()).toBe(false)
+    expect(wrapper.get('[aria-label="参考头像"]').isVisible()).toBe(true)
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(wrapper.findAll('.el-form-item.is-error')).toHaveLength(4)
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(create).not.toHaveBeenCalled()
+  })
   it('exports every matching account with chosen public fields and no password data', async () => {
     vi.mocked(adminApi.listAccounts).mockResolvedValue([
       systemAdmin,

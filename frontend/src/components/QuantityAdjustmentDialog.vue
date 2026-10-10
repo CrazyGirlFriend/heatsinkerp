@@ -41,9 +41,9 @@ async function save() {
   error.value = ''
   submitted.value = true
   if (props.processing && !specificationValid.value) return
-  if (!Number.isSafeInteger(quantity.value) || quantity.value! < 0 || quantity.value! > 2147483647) { error.value = '请填写有效的加工后件数'; return }
+  if (!Number.isSafeInteger(quantity.value) || quantity.value! < 0 || quantity.value! > 2147483647 || props.processing && !progress.value) return
   if (!props.processing && quantity.value === snapshot.value.quantity) { error.value = '件数未发生变化'; return }
-  if (reason.value.trim().length > 2000) { error.value = '加工说明不能超过 2000 个字符'; return }
+  if (reason.value.trim().length > 2000) return
   const body = { source_transfer_id: props.sourceId, quantity: quantity.value!, expected_revision: snapshot.value.revision, reason: reason.value.trim(), ...(props.processing ? { processing_status: progress.value, transfer_specification: specification.value.trim() } : {}) }
   const nextFingerprint = JSON.stringify(body)
   if (fingerprint !== nextFingerprint || !requestKey) { requestKey = materialRequestKey(); fingerprint = nextFingerprint }
@@ -83,13 +83,13 @@ onBeforeUnmount(() => { ++generation })
         <ElDescriptionsItem label="未转出重量">{{ snapshot.weight }} kg</ElDescriptionsItem>
         <ElDescriptionsItem v-if="processing" label="当前实际尺寸" :span="2">{{ snapshot.transfer_specification || '—' }}</ElDescriptionsItem>
       </ElDescriptions>
-      <ElForm v-if="editable && hasStock" label-position="top" :disabled="saving || loading" @submit.prevent="save">
+      <ElForm v-if="editable && hasStock" label-position="top" :show-message="false" :disabled="saving || loading" @submit.prevent="save">
         <p v-if="!processing" class="quantity-note">只修改本批未转出的件数，重量、原签收单和已转出件数不变。保存后立即生效，取消出库不会撤销本次修改。</p>
         <div class="dialog-form-grid">
-        <ElFormItem label="加工后本批未转出总件数" required :class="{ 'is-error': submitted && !Number.isSafeInteger(quantity) }"><ElInputNumber v-model="quantity" aria-label="加工后未转出件数" :min="0" :max="2147483647" :precision="0" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
-        <ElFormItem v-if="processing" label="本批加工进度" required><ElSelect v-model="progress" aria-label="本批加工进度"><ElOption v-for="(label, value) in processingProgressLabels" :key="value" :value="value" :label="label" /></ElSelect></ElFormItem>
+        <ElFormItem label="加工后本批未转出总件数" required :class="{ 'is-error': submitted && (!Number.isSafeInteger(quantity) || quantity! < 0 || quantity! > 2147483647) }"><ElInputNumber v-model="quantity" aria-label="加工后未转出件数" :min="0" :max="2147483647" :precision="0" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
+        <ElFormItem v-if="processing" label="本批加工进度" required :class="{ 'is-error': submitted && !progress }"><ElSelect v-model="progress" aria-label="本批加工进度"><ElOption v-for="(label, value) in processingProgressLabels" :key="value" :value="value" :label="label" /></ElSelect></ElFormItem>
         <ElFormItem v-if="processing" label="加工后实际尺寸（选填）" class="dialog-field-wide" :class="{ 'is-error': submitted && !specificationValid }"><SpecificationInput v-model="specification" label="加工后实际尺寸" @validity-change="specificationValid = $event" /></ElFormItem>
-        <ElFormItem label="加工说明（选填）"><ElInput v-model="reason" type="textarea" aria-label="加工说明" :rows="2" maxlength="2000" show-word-limit placeholder="选填，例如：10 块板材切割为 100 件" /></ElFormItem>
+        <ElFormItem label="加工说明（选填）" :class="{ 'is-error': submitted && reason.trim().length > 2000 }"><ElInput v-model="reason" type="textarea" aria-label="加工说明" :rows="2" maxlength="2000" show-word-limit placeholder="选填，例如：10 块板材切割为 100 件" /></ElFormItem>
         </div>
       </ElForm>
       <p v-else-if="editable" class="quantity-note">本批没有未转出的库存，不能修改件数。</p>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDialogValidation } from '@/composables/useDialogValidation'
 import TableExportButton from './TableExportButton.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 import WeightInput from './WeightInput.vue'
@@ -59,18 +60,27 @@ async function findSlots(query = '') {
   }
   catch (e) { if (current === slotGeneration) formError.value = e instanceof Error ? e.message : '空闲仓位加载失败' }
 }
+const validation = useDialogValidation(() => {
+  const issues: Record<string, string> = {}
+  if (!slots.value.some(slot => slot.id === locationId.value)) issues.location = '请选择可用仓位'
+  if (quantity.value === undefined || quantity.value < 0) issues.quantity = '请填写有效件数'
+  if (weight.value === undefined || weight.value < 0) issues.weight = '请填写有效重量'
+  if (quantity.value === 0 && weight.value === 0) issues.quantity = issues.weight = '不能同时为零'
+  return issues
+})
+const { formRef, fieldErrors } = validation
 function open(row: StockBatch) {
-  selected.value = row; locationId.value = undefined; slots.value = []; formError.value = ''
+  validation.reset(); selected.value = row; locationId.value = undefined; slots.value = []; formError.value = ''
   quantity.value = row.unassigned_quantity; weight.value = row.unassigned_weight; void findSlots()
 }
 async function assign() {
   const row = selected.value, slot = slots.value.find(item => item.id === locationId.value)
   if (!row || saving.value) return
-  if (!slot) { formError.value = '请选择可用仓位'; return }
-  if (quantity.value === undefined || weight.value === undefined || quantity.value < 0 || weight.value < 0 || quantity.value + weight.value <= 0) { formError.value = '请填写要放入仓位的件数和重量，不能同时为零'; return }
+  formError.value = ''
+  if (!validation.validate() || !slot) return
   saving.value = true; formError.value = ''
   try {
-    await warehouseLocationApi.place(slot.id, { source_transfer_id: Number(row.transfer.id), expected_version: slot.version, quantity: quantity.value, weight: weight.value })
+    await warehouseLocationApi.place(slot.id, { source_transfer_id: Number(row.transfer.id), expected_version: slot.version, quantity: quantity.value!, weight: weight.value! })
     if (disposed) return
     selected.value = null; showToast('仓位已安排', 'success'); emit('changed'); await load()
   } catch (e) { if (!disposed) formError.value = e instanceof Error ? e.message : '安排仓位失败' }
@@ -99,12 +109,12 @@ onBeforeUnmount(() => { disposed = true; ++generation; ++slotGeneration })
     </ElTable>
     <footer><span>共 {{ total }} 批</span><ElPagination v-model:current-page="page" :page-size="10" :total="total" layout="prev, pager, next" @current-change="load" /></footer>
     <ElDialog :model-value="!!selected" title="安排仓位" width="min(480px, 94vw)" :close-on-click-modal="!saving" :show-close="!saving" :close-on-press-escape="!saving" @update:model-value="!$event && (selected = null)">
-      <ElForm label-position="top"><p>{{ selected?.transfer.batch_no }}</p>
-        <ElFormItem label="仓位" required><ElSelect v-model="locationId" filterable remote :remote-method="findSlots" aria-label="选择空闲仓位" placeholder="选择或搜索仓位" :disabled="saving"><ElOption v-for="slot in slots" :key="slot.id" :value="slot.id" :label="slot.name" /></ElSelect></ElFormItem>
+      <ElForm ref="formRef" label-position="top" :show-message="false"><p>{{ selected?.transfer.batch_no }}</p>
+        <ElFormItem label="仓位" :error="fieldErrors.location" required><ElSelect v-model="locationId" filterable remote :remote-method="findSlots" aria-label="选择空闲仓位" placeholder="选择或搜索仓位" :disabled="saving"><ElOption v-for="slot in slots" :key="slot.id" :value="slot.id" :label="slot.name" /></ElSelect></ElFormItem>
         <p v-if="currentSlot?.batches.length">当前库存 {{ slotAmount('quantity') }} 件 · {{ slotAmount('weight') }} kg · {{ currentSlot.batches.length }} 批</p>
         <div class="dialog-form-grid">
-        <ElFormItem label="件数" required><ElInputNumber v-model="quantity" :min="0" :max="selected?.unassigned_quantity" :precision="0" :disabled="saving" aria-label="安排仓位件数" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
-        <ElFormItem label="重量" required><WeightInput v-model="weight" :max="selected?.unassigned_weight" :disabled="saving" ariaLabel="安排仓位重量" /></ElFormItem>
+        <ElFormItem label="件数" :error="fieldErrors.quantity" required><ElInputNumber v-model="quantity" :min="0" :max="selected?.unassigned_quantity" :precision="0" :disabled="saving" aria-label="安排仓位件数" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
+        <ElFormItem label="重量" :error="fieldErrors.weight" required><WeightInput v-model="weight" :max="selected?.unassigned_weight" :disabled="saving" ariaLabel="安排仓位重量" /></ElFormItem>
         </div>
         <ElAlert v-if="formError" :title="formError" type="error" :closable="false" />
       </ElForm>

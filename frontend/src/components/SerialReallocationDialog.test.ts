@@ -32,11 +32,19 @@ async function fill(serial = '000B') {
 }
 async function submit() { await wrapper.findAll('button').find(button => button.text() === '确认转投')!.trigger('click'); await flushPromises() }
 
+it('keeps an unreadable balance as an operational error without marking filled fields', async () => {
+  const row = source(); row.available_weight = null
+  await render(row); await fill(); await submit()
+  expect(teamMaterialApi.reallocate).not.toHaveBeenCalled()
+  expect(wrapper.get('[role="alert"]').text()).toContain('请先刷新该批次的可转出库存')
+  expect(wrapper.find('.is-error').exists()).toBe(false)
+})
+
 it('validates the target, preserves leading zeroes, and retains the existing no-cap policy', async () => {
   await render(); await submit()
-  expect(wrapper.get('[role="alert"]').text()).toContain('目标流水号')
+  expect(wrapper.get('input[aria-label="转投目标流水号"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
   await fill('000A'); await submit()
-  expect(wrapper.get('[role="alert"]').text()).toContain('不能与当前流水号相同')
+  expect(wrapper.get('input[aria-label="转投目标流水号"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
   await fill(' 000B ')
   const numbers = wrapper.findAllComponents(ElInputNumber)
   numbers[0]!.vm.$emit('update:modelValue', 130); numbers[1]!.vm.$emit('update:modelValue', 21)

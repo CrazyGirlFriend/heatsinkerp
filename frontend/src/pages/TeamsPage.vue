@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDialogValidation } from '@/composables/useDialogValidation'
 import TableExportButton from '@/components/TableExportButton.vue'
 import { tableExportSource } from '@/utils/tableExport'
 import PageBackButton from '@/components/PageBackButton.vue'
@@ -159,18 +160,19 @@ function focusEditor(): void {
   else nameInput.value?.focus()
 }
 
-function validateForm(): boolean {
-  if (!form.code.trim()) formError.value = '请输入班组编码'
-  else if (!form.name.trim()) formError.value = '请输入班组名称'
-  else if (form.code.trim().length > 32) formError.value = '班组编码不能超过 32 个字符'
-  else if (form.name.trim().length > 80) formError.value = '班组名称不能超过 80 个字符'
-  else if (!Number.isInteger(form.sort_order) || form.sort_order < 0 || form.sort_order > 1000000) formError.value = '显示顺序必须为 0 至 1000000 的整数'
-  else formError.value = ''
-  return !formError.value
-}
-
+const validation = useDialogValidation(() => {
+  const issues: Record<string, string> = {}
+  if (!form.code.trim() || form.code.trim().length > 32) issues.code = '请输入有效班组编码'
+  if (!form.name.trim() || form.name.trim().length > 80) issues.name = '请输入有效班组名称'
+  if (!Number.isInteger(form.sort_order) || form.sort_order < 0 || form.sort_order > 1000000) issues.sort_order = '请填写有效显示顺序'
+  return issues
+})
+const { formRef, fieldErrors } = validation
+watch(editorOpen, open => { if (open) validation.reset() })
 async function submitForm(): Promise<void> {
-  if (!validateForm() || saving.value) return
+  if (saving.value) return
+  formError.value = ''
+  if (!validation.validate()) return
   saving.value = true
   ++requestVersion
   formError.value = ''
@@ -360,15 +362,15 @@ onMounted(() => void loadTeams())
       :show-close="!saving"
       @opened="focusEditor"
     >
-      <ElForm :model="form" label-position="top" @submit.prevent="submitForm">
+      <ElForm ref="formRef" :model="form" label-position="top" :show-message="false" @submit.prevent="submitForm">
         <div class="form-grid">
-          <ElFormItem label="班组编码" required>
+          <ElFormItem label="班组编码" :error="fieldErrors.code" required>
             <ElInput ref="codeInput" v-model="form.code" :disabled="editingWarehouse" maxlength="32" autocomplete="off" placeholder="请输入班组编码" aria-label="班组编码" />
           </ElFormItem>
-          <ElFormItem label="班组名称" required>
+          <ElFormItem label="班组名称" :error="fieldErrors.name" required>
             <ElInput ref="nameInput" v-model="form.name" :disabled="editingWarehouse" maxlength="80" autocomplete="off" placeholder="请输入班组名称" aria-label="班组名称" />
           </ElFormItem>
-          <ElFormItem label="显示顺序">
+          <ElFormItem label="显示顺序" :error="fieldErrors.sort_order">
             <ElInputNumber v-model="form.sort_order" class="full-width" :min="0" :max="1000000" :step="10" controls-position="right" aria-label="显示顺序" />
           </ElFormItem>
           <ElFormItem label="班组状态">

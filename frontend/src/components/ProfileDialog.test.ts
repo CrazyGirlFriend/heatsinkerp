@@ -76,7 +76,12 @@ describe('own profile editing', () => {
     await wrapper.get('input[aria-label="姓名"]').setValue('   ')
     await save()
     expect(update).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('请输入姓名')
+    expect(
+      wrapper
+        .get('input[aria-label="姓名"]')
+        .element.closest('.el-form-item')!
+        .classList.contains('is-error'),
+    ).toBe(true)
     await wrapper.get('input[aria-label="姓名"]').setValue('新的姓名')
     await wrapper.get('[aria-label="头像 2"]').trigger('click')
     await save()
@@ -178,13 +183,14 @@ describe('own password changes', () => {
     ['Current123!', 'Changed123!', 'Different123!', '两次输入的新密码不一致'],
   ])(
     'rejects invalid fields before sending a request (%s)',
-    async (old, password, confirmation, message) => {
+    async (old, password, confirmation) => {
       const change = vi.spyOn(adminApi, 'changePassword')
       await render()
       await openPassword()
       await fillPasswords(old, password, confirmation)
       await changePassword()
-      expect(wrapper.text()).toContain(message)
+      expect(wrapper.findAll('.is-error').length).toBeGreaterThan(0)
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false)
       expect(change).not.toHaveBeenCalled()
       expect(authState.session?.access_token).toBe('profile-token')
     },

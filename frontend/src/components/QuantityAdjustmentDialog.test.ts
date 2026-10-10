@@ -77,7 +77,7 @@ describe('processing piece adjustment', () => {
     wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 100)
     await wrapper.get('textarea').setValue('x'.repeat(2001))
     await click('保存件数')
-    expect(wrapper.text()).toContain('加工说明不能超过')
+    expect(wrapper.get('textarea[aria-label="加工说明"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
     await edit()
     vi.mocked(teamMaterialApi.changeQuantity).mockRejectedValue(new Error('网络错误'))
     await click('保存件数'); await click('保存件数')

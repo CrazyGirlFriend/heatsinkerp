@@ -10,7 +10,7 @@ const props = defineProps<{
   line: OpeningLine
   index: number
   disabled?: boolean
-  section?: 'material' | 'specification'
+  errors?: Record<string, string>
 }>()
 const emit = defineEmits<{
   'validity-change': [valid: boolean]
@@ -41,7 +41,7 @@ function select(item: MaterialSuggestion) {
 }
 </script>
 <template>
-  <div v-show="section !== 'specification'" class="dialog-field">
+  <div class="dialog-field" :class="{ 'is-error': errors?.[`${index}.serial_no`] }">
     <span class="dialog-field-label is-required">流水号</span
     ><MaterialInput
       v-model="form.serial_no"
@@ -52,7 +52,7 @@ function select(item: MaterialSuggestion) {
       @selected="select"
     />
   </div>
-  <div v-show="section !== 'specification'" class="dialog-field">
+  <div class="dialog-field" :class="{ 'is-error': errors?.[`${index}.material_name`] }">
     <span class="dialog-field-label is-required"
       >材质<AutofillBadge :source="autofill.source('material_name')" /></span
     ><MaterialInput
@@ -62,7 +62,10 @@ function select(item: MaterialSuggestion) {
       :disabled="disabled"
     />
   </div>
-  <div v-show="!section || section === 'specification'" class="dialog-field dialog-field-wide">
+  <div
+    class="dialog-field dialog-field-wide"
+    :class="{ 'is-error': errors?.[`${index}.transfer_specification`] }"
+  >
     <span class="dialog-field-label">规格</span
     ><SpecificationInput
       :key="generation"

@@ -157,7 +157,7 @@ describe('warehouse management', () => {
   it('creates a named slot and refreshes its catalog', async () => {
     await render(); await click('新增仓位'); await click('保存')
     expect(warehouseLocationApi.save).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('请填写仓位名称')
+    expect(wrapper.get('input[aria-label="仓位名称"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
     await wrapper.get('input[aria-label="仓位名称"]').setValue(' B区-03 ')
     await click('保存')
     expect(warehouseLocationApi.save).toHaveBeenCalledWith({ name: 'B区-03', active: true }, undefined)

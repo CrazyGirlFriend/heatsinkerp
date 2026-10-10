@@ -26,23 +26,23 @@ async function render(initialTab = 'opening') {
 async function click(text: string) { await wrapper.findAll('button').find(button => button.text() === text)!.trigger('click'); await flushPromises() }
 
 describe('team business settings', () => {
-  it('preserves every batch while paging and returns to an invalid hidden batch on submit', async () => {
+  it('shows all batches together, preserves values and marks each invalid field', async () => {
     await render()
     await wrapper.get('input[aria-label="第1行流水号"]').setValue('000017')
     await click('增加物料')
-    expect(wrapper.get('nav[aria-label="表单分页"]').text()).toContain('4 / 6')
     await wrapper.get('input[aria-label="第2行流水号"]').setValue('000018')
-    await click('上一页'); await click('上一页'); await click('上一页')
-    expect(wrapper.get('input[aria-label="第1行流水号"]').element).toHaveProperty('value', '000017')
-    await click('下一页'); await click('下一页'); await click('下一页')
-    expect(wrapper.get('input[aria-label="第2行流水号"]').element).toHaveProperty('value', '000018')
+    expect(wrapper.find('nav[aria-label="表单分页"]').exists()).toBe(false)
+    expect(wrapper.get('input[aria-label="第1行流水号"]').isVisible()).toBe(true)
+    expect(wrapper.get('input[aria-label="第2行流水号"]').isVisible()).toBe(true)
     await click('确认初始库存登记')
-    expect(wrapper.get('nav[aria-label="表单分页"]').text()).toContain('1 / 6')
     expect(teamMaterialApi.createOpening).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('请输入材质')
-    expect(wrapper.text()).toContain('第 1 页 · 物料 1 · 物料资料')
-    await click('下一页'); await click('前往补填')
-    expect(wrapper.get('nav[aria-label="表单分页"]').text()).toContain('1 / 6')
+    expect(wrapper.findAll('.opening-line')).toHaveLength(2)
+    expect(wrapper.findAll('.is-error').length).toBeGreaterThanOrEqual(8)
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    await wrapper.get('input[aria-label="第1行材质"]').setValue('材料1')
+    expect(wrapper.get('input[aria-label="第1行材质"]').element.closest('.dialog-field')!.classList.contains('is-error')).toBe(false)
+    expect(wrapper.get('input[aria-label="第2行材质"]').element.closest('.dialog-field')!.classList.contains('is-error')).toBe(true)
+    expect(wrapper.get('input[aria-label="第1行流水号"]').element).toHaveProperty('value', '000017')
   })
   it('opens business-only settings without reading or exposing opening stock', async () => {
     wrapper = mount(TeamBusinessDialog, { props: { modelValue: true, teamId: 2, businessOnly: true, initialTab: 'opening' }, global: { stubs: { ElDialog: { template: '<div><slot /><slot name="footer" /></div>' } } } })
@@ -70,7 +70,7 @@ describe('team business settings', () => {
     await wrapper.get('input[aria-label="新增业务名称"]').setValue('去毛刺')
     await wrapper.get('input[aria-label="业务名称 1"]').setValue('')
     await click('保存')
-    expect(wrapper.text()).toContain('请输入业务名称')
+    expect(wrapper.get('input[aria-label="业务名称 1"]').element.closest('.el-input')!.classList.contains('is-error')).toBe(true)
     expect(teamMaterialApi.savePurpose).not.toHaveBeenCalled()
   })
   it('keeps a business edit after a failed save and submits disable with its version', async () => {
@@ -136,7 +136,7 @@ describe('team business settings', () => {
   it('validates empty stock and restores only this account/team draft', async () => {
     localStorage.setItem('heatsink.opening-draft.v1:41:3', JSON.stringify([{ serial_no: 'FOREIGN', material_name: '铜' }]))
     await render(); await click('确认初始库存登记')
-    expect(wrapper.text()).toContain('请输入流水号')
+    expect(wrapper.get('input[aria-label="第1行流水号"]').element.closest('.dialog-field')!.classList.contains('is-error')).toBe(true)
     expect(teamMaterialApi.createOpening).not.toHaveBeenCalled()
     expect(wrapper.text()).not.toContain('FOREIGN')
   })

@@ -34,6 +34,13 @@ async function submit() { await wrapper.findAll('button').find(button => /^(确�
 async function destination(id = 3) { wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', id); await flushPromises() }
 
 describe('source batch dispatch and loss drafts', () => {
+  it('keeps an unreadable stock balance as an operational error instead of marking inputs', async () => {
+    const row = source(); row.available_weight = null
+    await render('dispatch', [row]); await destination(); await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    expect(wrapper.find('.el-alert--error').text()).toContain('请先刷新该批次的可转出库存')
+    expect(wrapper.find('.is-error').exists()).toBe(false)
+  })
   it('lets each outbound line carry a changed actual specification while defaults inherit on the server', async () => {
     const row = source(); row.current_specification = '20 × 10 × 2 mm'
     await render('dispatch', [row]); await destination()
@@ -74,24 +81,21 @@ describe('source batch dispatch and loss drafts', () => {
     await flushPromises(); await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ lines: [expect.objectContaining({ quantity: 0, weight: 10, material_type: 'scrap_chips' })] }))
   })
-  it('keeps quantities across pages and reveals an invalid batch before submitting all lines', async () => {
+  it('shows every source and marks an invalid row without hiding other values', async () => {
     await render(); await destination()
     wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 60)
-    await wrapper.findAll('button').find(button => button.text() === '下一页')!.trigger('click')
-    await wrapper.findAll('button').find(button => button.text() === '下一页')!.trigger('click')
-    expect(wrapper.get('nav[aria-label="表单分页"]').text()).toContain('3 / 4')
     wrapper.findAllComponents(ElInputNumber)[2]!.vm.$emit('update:modelValue', undefined)
-    await wrapper.findAll('button').find(button => button.text() === '上一页')!.trigger('click')
-    expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(60)
     await submit()
-    expect(wrapper.get('nav[aria-label="表单分页"]').text()).toContain('3 / 4')
+    expect(wrapper.find('nav[aria-label="表单分页"]').exists()).toBe(false)
+    expect(wrapper.findAll('.source-line').every(line => line.isVisible())).toBe(true)
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('第 3 页 · 物料 2 · TL11')
-    await wrapper.findAll('button').find(button => button.text() === '上一页')!.trigger('click')
-    await wrapper.findAll('button').find(button => button.text() === '前往补填')!.trigger('click')
-    expect(wrapper.get('nav[aria-label="表单分页"]').text()).toContain('3 / 4')
+    expect(wrapper.get('input[aria-label="TL11件数"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
+    expect(wrapper.find('.el-alert--error').exists()).toBe(false)
+    expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(60)
     wrapper.findAllComponents(ElInputNumber)[2]!.vm.$emit('update:modelValue', 90)
-    await flushPromises(); await submit()
+    await flushPromises()
+    expect(wrapper.get('input[aria-label="TL11件数"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(false)
+    await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ lines: [expect.objectContaining({ quantity: 60 }), expect.objectContaining({ quantity: 90 })] }))
   })
   it('converts newly produced sludge and clears remaining pieces only on the final material kg', async () => {
@@ -267,7 +271,8 @@ describe('source batch dispatch and loss drafts', () => {
     await render(); await destination()
     await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('请为每行物料选择')
+    expect(wrapper.get('input[aria-label="TL10接收业务"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
+    expect(wrapper.get('input[aria-label="TL11接收业务"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
     const selects = wrapper.findAllComponents(ElSelect).filter(select => /TL\d+接收业务/.test(select.props('ariaLabel') || ''))
     selects[0]!.vm.$emit('update:modelValue', 31); selects[1]!.vm.$emit('update:modelValue', 32)
     await submit()
@@ -332,7 +337,7 @@ describe('source batch dispatch and loss drafts', () => {
     await render('dispatch', [source()]); await destination(3)
     wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'waste')
     await submit(); expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('请选择一个启用的接收班组')
+    expect(wrapper.get('input[aria-label="出库接收班组"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
     await destination(1); await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ notes: null, next_team_id: 1 }))
   })
@@ -373,7 +378,7 @@ describe('source batch dispatch and loss drafts', () => {
   it('requires material type for a legacy source returning to warehouse and accepts an optional loss reason', async () => {
     await render('dispatch', [source(10, null)]); await destination(1); await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('请选择物料类型')
+    expect(wrapper.get('input[aria-label="TL10物料类型"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
     await wrapper.setProps({ mode: 'loss' })
     const inputs = wrapper.findAllComponents(ElInputNumber)
     inputs[0]!.vm.$emit('update:modelValue', 0); inputs[1]!.vm.$emit('update:modelValue', 0.005)

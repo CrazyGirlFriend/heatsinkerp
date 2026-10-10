@@ -110,6 +110,19 @@
   min-width: 0;
 }
 .dialog-field-wide { grid-column: 1 / -1; }
+.dialog-form-section { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px 24px; padding-block: 12px; border-bottom: 1px solid var(--line-light); }
+.dialog-form-section:first-child { padding-top: 0; }
+.dialog-form-section:last-child { border-bottom: 0; padding-bottom: 4px; }
+.dialog-form-section > h3 { margin: 8px 0 0; font-size: 14px; line-height: 20px; font-weight: 550; color: var(--text); }
+.dialog-form-section > .dialog-form-grid { gap: 8px 24px; }
+.el-dialog .dialog-form-section { --el-component-size: 32px; }
+.el-dialog .dialog-form-section :is(.el-form-item, .dialog-field) { margin-bottom: 0; }
+.el-dialog .dialog-form-section .el-form-item :is(.el-input__wrapper, .el-select__wrapper) { min-height: 32px; }
+.dialog-form-section .el-form-item__label { align-items: center; height: auto; min-height: 32px; line-height: 20px; font-size: 13px; }
+.el-dialog .el-input.is-error .el-input__wrapper,
+.el-dialog .dialog-field.is-error :is(.el-input__wrapper, .el-select__wrapper),
+.el-dialog .el-form-item.is-error :is(.el-input__wrapper, .el-select__wrapper) { box-shadow: 0 0 0 1px var(--el-color-danger) inset; }
+.el-dialog :is(.dialog-field, .el-form-item).is-error .el-textarea__inner { box-shadow: 0 0 0 1px var(--el-color-danger) inset; }
 .dialog-field { display: flex; flex-direction: column; min-width: 0; gap: 8px; margin-bottom: 20px; }
 .dialog-field-label { display: flex; align-items: center; gap: 6px; min-height: 24px; color: var(--muted); line-height: 24px; }
 .dialog-field-label.is-required::before { content: '*'; color: var(--el-color-danger); }
@@ -158,8 +171,16 @@
 .el-dialog__body { overscroll-behavior: contain; }
 .el-dialog__footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 .el-dialog__footer > .el-button { margin-left: 0; }
-@media (max-width: 560px) {
+@media (max-width: 1100px) {
+  .dialog-form-section .dialog-specification-field { grid-column: 1 / -1; }
+}
+@media (max-width: 760px) {
   .dialog-form-grid, .el-dialog .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .dialog-form-section { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .dialog-form-section > h3 { margin-top: 0; }
+  .dialog-form-section .el-form-item__label { width: 100% !important; justify-content: flex-start; padding: 0 0 6px; }
+  .dialog-form-section .el-form-item { flex-direction: column; }
+  .dialog-form-section .el-form-item__content { margin-left: 0 !important; width: 100%; }
 }
 @media (max-width: 560px), (max-height: 800px) {
   .el-dialog { max-height: calc(100dvh - 32px); margin-block: 16px; padding: 16px; }

@@ -52,13 +52,12 @@ describe('external dispatch creation', () => {
     vi.mocked(teamMaterialApi.createDispatch).mockResolvedValue({ items: [record(kind, { status: 'dispatched', locked: true, allowed_actions: [] })] })
     await stockDialog(); await mode(kind); await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('请填写外部去向')
+    expect(wrapper.get(`input[aria-label="${verb}去向"]`).element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
     await wrapper.get(`input[aria-label="${verb}去向"]`).setValue('  客户收货仓  ')
     await submit()
     const [id, body] = vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]!
     expect(id).toBe(teamId); expect(body).toMatchObject({ entry_kind: kind, external_destination: '客户收货仓', lines: [{ source_transfer_id: 3 }, { source_transfer_id: 4 }] })
     expect(body).not.toHaveProperty('next_team_id')
-    expect(wrapper.text()).toContain(`提交即完成${verb}并扣减库存`)
     expect(wrapper.text()).not.toContain('创建后需本班组确认')
     expect(wrapper.findAll('button').some(button => button.text() === `提交${verb}`)).toBe(true)
     expect(materialTransferApi.confirmOutbound).not.toHaveBeenCalled()
@@ -68,7 +67,6 @@ describe('external dispatch creation', () => {
   })
   it('keeps ordinary production teams on internal transfers', async () => {
     state.auth.currentUser.team_id = 2; await stockDialog()
-    expect(wrapper.text()).toContain('下序签收后转移库存')
     expect(wrapper.findComponent(ElRadioGroup).exists()).toBe(false)
     expect(wrapper.find('[aria-label="出库接收班组"]').exists()).toBe(true)
     expect(wrapper.find('[aria-label="出库去向"]').exists()).toBe(false)

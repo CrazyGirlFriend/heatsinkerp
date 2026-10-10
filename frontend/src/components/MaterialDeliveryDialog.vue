@@ -2,6 +2,7 @@
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { ElButton, ElDialog, ElForm } from 'element-plus'
 import MaterialDeliveryFields from './MaterialDeliveryFields.vue'
+import { useDialogValidation } from '@/composables/useDialogValidation'
 import { MaterialTransferApiError, materialTransferApi } from '@/services/materialTransferApi'
 import type { MaterialTransfer } from '@/types/materialTransfer'
 import { deliveryError } from '@/utils/materialDelivery'
@@ -17,6 +18,11 @@ const date = ref(''),
   version = ref(0),
   saving = ref(false),
   error = ref('')
+const validation = useDialogValidation(() => {
+  const message = deliveryError(date.value, quantity.value)
+  return message ? { [!date.value || message.includes('有效的要求发货日期') ? 'date' : 'quantity']: message } : {}
+})
+const { formRef, fieldErrors } = validation
 let generation = 0
 function fill(transfer: MaterialTransfer | null) {
   date.value = transfer?.delivery_date || ''
@@ -30,6 +36,7 @@ watch(
     saving.value = false
     emit('busy', false)
     error.value = ''
+    validation.reset()
     fill(props.transfer)
   },
   { immediate: true },
@@ -40,8 +47,8 @@ onBeforeUnmount(() => {
 })
 async function save() {
   if (saving.value || !props.transfer?.can_edit_delivery || !version.value) return
-  error.value = deliveryError(date.value, quantity.value)
-  if (error.value) return
+  error.value = ''
+  if (!validation.validate()) return
   const epoch = generation,
     batch = props.transfer.batch_no
   saving.value = true
@@ -93,8 +100,8 @@ async function save() {
     @close="emit('update:modelValue', false)"
   >
     <p class="delivery-document">{{ transfer?.serial_no }} · {{ transfer?.batch_no }}</p>
-    <ElForm label-position="top" @submit.prevent="save"
-      ><MaterialDeliveryFields v-model:date="date" v-model:quantity="quantity" :disabled="saving"
+    <ElForm ref="formRef" label-position="top" :show-message="false" @submit.prevent="save"
+      ><MaterialDeliveryFields v-model:date="date" v-model:quantity="quantity" :disabled="saving" :date-error="fieldErrors.date" :quantity-error="fieldErrors.quantity"
     /></ElForm>
     <p v-if="error" role="alert" class="delivery-error">{{ error }}</p>
     <template #footer
