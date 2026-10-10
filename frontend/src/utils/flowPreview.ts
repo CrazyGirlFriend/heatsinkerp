@@ -68,7 +68,7 @@ export function teamFlowModel(history: SerialHistory) {
 }
 
 const font = '"PingFang SC", "Microsoft YaHei", sans-serif'
-const tooltip = { trigger: 'item' as const, renderMode: 'richText' as const, confine: true, backgroundColor: '#fff', borderColor: '#e3e7ef', padding: 16, textStyle: { color: '#28364d', fontFamily: font, fontSize: 14 } }
+const tooltip = { trigger: 'item' as const, renderMode: 'richText' as const, confine: true, backgroundColor: '#fff', borderColor: '#e8edef', padding: 16, textStyle: { color: '#28332d', fontFamily: font, fontSize: 14 } }
 
 export function teamFlowOption(model: ReturnType<typeof teamFlowModel>, metric: FlowMetric): EChartsOption {
   const active = new Set(model.links.filter(link => link[metric] > 0).flatMap(link => [link.source, link.target]))
@@ -82,7 +82,7 @@ export function teamFlowOption(model: ReturnType<typeof teamFlowModel>, metric: 
     links: model.links.filter(link => link[metric] > 0).map(link => ({ ...link, value: link[metric], lineStyle: { color: link.color, opacity: .24 } })),
     lineStyle: { curveness: .52 }, emphasis: { focus: 'trajectory', lineStyle: { opacity: .58 } },
     blur: { lineStyle: { opacity: .045 }, itemStyle: { opacity: .2 } },
-    label: { color: '#2a3650', fontFamily: font, rich: { name: { fontSize: 14, fontWeight: 600, lineHeight: 23 }, value: { fontSize: 13, color: '#7d8799', lineHeight: 21 } } },
+    label: { color: '#28332d', fontFamily: font, rich: { name: { fontSize: 14, fontWeight: 600, lineHeight: 23 }, value: { fontSize: 13, color: '#77827b', lineHeight: 21 } } },
   }
   return {
     tooltip: { ...tooltip, formatter: params => { const value = (Array.isArray(params) ? params[0] : params)?.data as FlowSelection; return `${value.title}\n${amountLabel(value)}\n${value.batches.length} 个关联批次 · 点击查看`; } },
@@ -390,7 +390,7 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, metric
         if (faded || start < grid.x || start + width > grid.x + grid.width || y + 22 > grid.y + grid.height) return
         if (!chosen && labels.some(box => start < box.x + box.width + 12 && start + width + 12 > box.x && Math.abs(box.y - y) < 20)) return
         labels.push({ x: start, y, width })
-        children.push({ name, type: 'text', z2: 6, silent: true, style: { x, y, text, align, font: `500 15px ${font}`, fill: '#30304f', backgroundColor: '#ffffffdf', padding: [2, 3], opacity } })
+        children.push({ name, type: 'text', z2: 6, silent: true, style: { x, y, text, align, font: `500 15px ${font}`, fill: '#28332d', backgroundColor: '#ffffffdf', padding: [2, 3], opacity } })
       }
       if (stay.current && b[0]! <= grid.x + grid.width && b[0]! >= grid.x) {
         children.push({ name: 'balance-cap', type: 'line', shape: { x1: b[0]!, y1: b[1]! - 9, x2: b[0]!, y2: b[1]! + 9 }, style: { stroke: '#a699ca', lineWidth: 1.5, opacity } })
@@ -408,14 +408,14 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, metric
       const top = Math.max(grid.y, y), height = Math.min(grid.y + grid.height, bottom) - top
       if (height <= 0) return
       const children: NonNullable<Extract<CustomSeriesRenderItemReturn, { type: 'group' }>['children']> = [
-        { type: 'rect', shape: { x: 0, y: top, width: grid.x + grid.width, height, r: 6 }, style: { fill: params.dataIndex % 2 === 0 ? originColors ? '#f5f8f6' : '#f5f3fc' : '#fff' } },
+        { type: 'rect', shape: { x: 0, y: top, width: grid.x + grid.width, height, r: 6 }, style: { fill: params.dataIndex % 2 === 0 ? '#f5f8f6' : '#fff' } },
         { type: 'text', style: { x: 12, y: (y + bottom) / 2, text: model.teams[params.dataIndex], verticalAlign: 'middle', font: `600 ${originColors ? 13 : grid.x < 100 ? 15 : 17}px ${font}`, fill: '#2b4038', width: grid.x - 22, overflow: 'truncate' } },
       ]
       if (params.dataIndex === 0 && model.ongoing && model.closing !== null) {
         const x = api.coord([model.closing, 0])[0]!
         if (x >= grid.x && x <= grid.x + grid.width) children.push(
-          { type: 'line', z2: 1, shape: { x1: x, x2: x, y1: grid.y, y2: grid.y + grid.height }, style: { stroke: originColors ? '#b6cbbb' : '#b4a2e7', lineWidth: 1, lineDash: [5, 4] } },
-          { type: 'text', style: { x, y: grid.y - 14, text: `截至 ${traceTime(model.closing).slice(5, 16)}`, align: 'right', font: `12px ${font}`, fill: originColors ? '#788c7e' : '#8061be' } },
+          { type: 'line', z2: 1, shape: { x1: x, x2: x, y1: grid.y, y2: grid.y + grid.height }, style: { stroke: '#b6cbbb', lineWidth: 1, lineDash: [5, 4] } },
+          { type: 'text', style: { x, y: grid.y - 14, text: `截至 ${traceTime(model.closing).slice(5, 16)}`, align: 'right', font: `12px ${font}`, fill: '#788c7e' } },
         )
       }
       return { type: 'group', children }
@@ -453,7 +453,7 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, metric
   }
   series.z = 3
   const minSpan = Math.min(.05, 100 / Math.max(1, model.span))
-  const timeAxis: XAxisComponentOption = { type: model.span < 1000 ? 'value' : 'time', min: model.extent?.[0], max: model.extent?.[1], minInterval: visibleSpan > 3 * 86400000 ? 86400000 : 1, splitNumber: 10, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: originColors ? '#77887f' : '#68718e', fontSize: originColors ? 12 : 14, lineHeight: 21, margin: 16, hideOverlap: true, formatter: axisTime }, splitLine: { show: true, lineStyle: { color: originColors ? '#e4ece7' : '#dedced', type: 'dashed' } } }
+  const timeAxis: XAxisComponentOption = { type: model.span < 1000 ? 'value' : 'time', min: model.extent?.[0], max: model.extent?.[1], minInterval: visibleSpan > 3 * 86400000 ? 86400000 : 1, splitNumber: 10, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: originColors ? '#77887f' : '#77827b', fontSize: originColors ? 12 : 14, lineHeight: 21, margin: 16, hideOverlap: true, formatter: axisTime }, splitLine: { show: true, lineStyle: { color: originColors ? '#e4ece7' : '#e8edef', type: 'dashed' } } }
   return {
     useUTC: true, textStyle: { fontFamily: font },
     grid: { left: originColors ? 82 : 108, right: 32, top: originColors ? 44 : 64, bottom: originColors ? 100 : 144 },
@@ -462,13 +462,13 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, metric
     dataZoom: [
       { id: 'time', type: 'inside', xAxisIndex: [0, 1], filterMode: 'none', minSpan, zoomOnMouseWheel: true, moveOnMouseMove: interaction === 'pan', moveOnMouseWheel: false, preventDefaultMouseMove: true },
       { id: 'teams', type: 'inside', yAxisIndex: 0, filterMode: 'none', minSpan: 10, zoomOnMouseWheel: false, moveOnMouseMove: interaction === 'pan', moveOnMouseWheel: false },
-      { id: 'time-slider', type: 'slider', xAxisIndex: [0, 1], filterMode: 'none', minSpan, bottom: originColors ? 62 : 88, left: originColors ? 86 : 112, right: 32, height: 6, borderColor: 'transparent', backgroundColor: originColors ? '#f0f5f1' : '#f0edf9', fillerColor: originColors ? '#cbded1' : '#d8d0f1', handleIcon: 'circle', handleSize: 20, handleStyle: { color: '#fff', borderColor: originColors ? '#789b85' : '#987edf', borderWidth: 2, shadowBlur: 3, shadowColor: '#18243b18' }, showDataShadow: false, brushSelect: false, labelFormatter: value => traceTime(Number(value)) },
+      { id: 'time-slider', type: 'slider', xAxisIndex: [0, 1], filterMode: 'none', minSpan, bottom: originColors ? 62 : 88, left: originColors ? 86 : 112, right: 32, height: 6, borderColor: 'transparent', backgroundColor: '#f0f5f1', fillerColor: '#cbded1', handleIcon: 'circle', handleSize: 20, handleStyle: { color: '#fff', borderColor: '#789b85', borderWidth: 2, shadowBlur: 3, shadowColor: '#183b2d18' }, showDataShadow: false, brushSelect: false, labelFormatter: value => traceTime(Number(value)) },
     ],
     media: [
       { query: { maxWidth: 540 }, option: { grid: { left: 70, right: 20, bottom: originColors ? 130 : 190 }, dataZoom: [{ id: 'time-slider', left: 74, right: 24, bottom: originColors ? 106 : 136 }] } },
       { option: { grid: { left: originColors ? 82 : 108, right: 32, bottom: originColors ? 100 : 144 }, dataZoom: [{ id: 'time-slider', left: originColors ? 86 : 112, right: 32, bottom: originColors ? 62 : 88 }] } },
     ],
-    tooltip: { ...tooltip, renderMode: 'html', show: interaction === 'select', triggerOn: 'mousemove', enterable: true, hideDelay: 150, borderRadius: 8, shadowColor: '#2421391f', borderColor: '#e0daf1', textStyle: { color: '#30304f', fontFamily: font, fontSize: 15, lineHeight: 26 }, formatter: params => {
+    tooltip: { ...tooltip, renderMode: 'html', show: interaction === 'select', triggerOn: 'mousemove', enterable: true, hideDelay: 150, borderRadius: 8, shadowColor: '#183b2d1f', borderColor: '#e8edef', textStyle: { color: '#28332d', fontFamily: font, fontSize: 15, lineHeight: 26 }, formatter: params => {
       const item = (Array.isArray(params) ? params[0] : params)!
       const processing = item.seriesId === 'processing-events' ? processingEvents[item.dataIndex] : undefined
       if (processing) {

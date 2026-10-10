@@ -72,7 +72,7 @@ describe('warehouse grouped stock', () => {
     expect(wrapper.getComponent(ElPagination).props('currentPage')).toBe(2)
     expect(router.currentRoute.value.query).toMatchObject({ material_name: '材料1', page: '2' })
     await wrapper.setProps({ fullscreen: false })
-    expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBeUndefined()
+    expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBe('100%')
     expect(teamMaterialApi.teamInventory).toHaveBeenCalledTimes(calls)
   })
   it.each([true, false])('keeps filters inside the dialog and applies changes only on confirmation (warehouse=%s)', async warehouse => {
@@ -371,7 +371,7 @@ describe('warehouse grouped stock', () => {
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, { availability: 'owned', page: 1, page_size: 10 })
     expect(wrapper.text()).not.toContain('转出即扣减')
     expect(wrapper.getComponent(ElPagination).props('pageSizes')).toEqual([10,20,50,100])
-    expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBeUndefined()
+    expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBe('100%')
     wrapper.getComponent(ElPagination).vm.$emit('size-change', 20); await flushPromises()
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(901, expect.objectContaining({ page: 1, page_size: 20 }))
   })

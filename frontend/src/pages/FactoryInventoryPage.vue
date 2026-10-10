@@ -438,9 +438,10 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface, #fff);
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  background: var(--glass-surface);
+  box-shadow: var(--glass-shadow);
 }
 .stock-heading {
   display: flex;
@@ -493,27 +494,26 @@ onBeforeUnmount(() => {
 }
 .stock-actions :deep(.el-button) {
   height: 40px;
-  border-radius: 7px;
 }
 .stock-unit-switch {
   padding: 3px;
-  border: 1px solid #e2e9e4;
-  border-radius: 8px;
-  background: #f1f5f2;
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  background: var(--surface-soft);
 }
 .stock-unit-switch :deep(.el-radio-button__inner) {
   padding: 6px 12px;
   border: 0;
-  border-radius: 5px;
+  border-radius: 20px;
   background: transparent;
-  color: #54685b;
+  color: var(--muted);
   line-height: 20px;
   box-shadow: none;
 }
 .stock-unit-switch :deep(.el-radio-button.is-active .el-radio-button__inner) {
-  color: #fff;
-  background: var(--primary);
-  box-shadow: 0 1px 3px rgb(33 83 49 / 12%);
+  color: var(--primary);
+  background: var(--glass-surface);
+  box-shadow: var(--glass-shadow);
 }
 .stock-actions :deep(.stock-info-button) {
   width: 36px;
@@ -566,7 +566,7 @@ onBeforeUnmount(() => {
   border-spacing: 0;
   font-variant-numeric: tabular-nums;
   color: var(--text);
-  border: 1px solid #dfe8e1;
+  border: 1px solid var(--line);
   border-radius: 8px;
 }
 .stock-team-col {
@@ -582,11 +582,11 @@ onBeforeUnmount(() => {
 .stock-table td {
   height: var(--stock-row-height);
   padding: 6px 8px;
-  border-bottom: 1px solid #edf1ee;
+  border-bottom: 1px solid var(--line-light);
   white-space: nowrap;
   text-align: center;
-  background: #fff;
-  transition: background-color 140ms ease;
+  background: var(--surface);
+  transition: background-color var(--motion-fast) ease;
 }
 .stock-table th {
   font-size: clamp(16px, calc(var(--stock-material-width) * 0.14), 17px);
@@ -613,9 +613,9 @@ onBeforeUnmount(() => {
   z-index: 3;
   height: var(--stock-header-height);
   font-size: clamp(16px, calc(var(--stock-material-width) * 0.14), 17px);
-  color: #354d3e;
-  background: #edf3ef;
-  border-bottom-color: #dce6df;
+  color: var(--muted);
+  background: var(--table-header-bg);
+  border-bottom-color: var(--table-header-line);
 }
 .stock-table thead th:first-child {
   z-index: 4;
@@ -630,22 +630,22 @@ onBeforeUnmount(() => {
 }
 .material-code {
   margin-top: 3px;
-  color: #5f7166;
+  color: var(--muted);
   font-size: 13px;
   font-weight: 400;
   line-height: 1.3;
 }
 .stock-table tbody th {
-  background: #fbfcfb;
-  border-right: 1px solid #edf1ee;
+  background: var(--surface);
+  border-right: 1px solid var(--line-light);
 }
 .stock-table .sum-col {
   min-width: var(--stock-total-width);
   position: sticky;
   right: 0;
   z-index: 2;
-  background: #f3f7f4;
-  border-left: 1px solid #e2ebe5;
+  background: var(--surface-soft);
+  border-left: 1px solid var(--line);
   font-weight: 550;
   color: var(--primary);
 }
@@ -654,23 +654,23 @@ onBeforeUnmount(() => {
   border-top-right-radius: 7px;
 }
 .stock-table tbody .is-zero {
-  color: #6b766e;
+  color: var(--muted);
   font-weight: 400;
 }
 .stock-table tbody tr:hover > *,
 .stock-table tbody tr:focus-within > *,
 .stock-table .is-column-active {
-  background: #f1f6f2;
+  background: var(--table-hover-bg);
 }
 .stock-table tbody td:hover,
 .stock-table tbody td:focus-within {
-  background: #eaf3ec;
-  color: #285f3b;
-  box-shadow: inset 0 0 0 1px #c6dbcc;
+  background: var(--primary-soft);
+  color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--el-color-primary-light-7);
 }
 .stock-table tfoot > tr > * {
-  background: #f0f6f2;
-  color: #346b47;
+  background: var(--surface-soft);
+  color: var(--primary);
   font-weight: 550;
   border-top: 1px solid var(--table-header-line);
   border-bottom: 0;
@@ -680,8 +680,8 @@ onBeforeUnmount(() => {
 }
 .stock-table tfoot .grand-total {
   border-bottom-right-radius: 7px;
-  background: #e2eee5;
-  color: #205c35;
+  background: var(--primary-soft);
+  color: var(--primary);
   font-weight: 600;
 }
 .stock-retired {

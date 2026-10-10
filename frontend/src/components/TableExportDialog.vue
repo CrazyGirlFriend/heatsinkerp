@@ -119,7 +119,7 @@ onBeforeUnmount(cancel)
       ><span class="export-selected">已选 {{ selected.length }} 项</span
       ><ElButton @click="close">{{ busy ? '取消导出' : '取消' }}</ElButton
       ><ElButton
-        class="action-cool"
+        class="action-warm"
         :loading="busy"
         :disabled="!selected.length || !total"
         @click="exportFile"
@@ -157,7 +157,7 @@ onBeforeUnmount(cancel)
   gap: 8px;
   padding: 12px 14px;
   border-radius: 8px;
-  background: #eef5f0;
+  background: var(--surface-soft);
 }
 .export-scope span,
 .export-selected,

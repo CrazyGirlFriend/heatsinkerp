@@ -244,7 +244,7 @@ async function savePassword() {
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #f6f9f7;
+  background: var(--surface-soft);
 }
 .profile-identity div {
   display: grid;

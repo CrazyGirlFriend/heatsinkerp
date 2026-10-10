@@ -57,7 +57,7 @@ function cancel() {
 }
 .filter-dialog-trigger.is-filtered {
   color: var(--primary);
-  border-color: #bedcd3;
+  border-color: #bed3c7;
   background: var(--primary-soft);
 }
 .filter-count {
@@ -65,13 +65,13 @@ function cancel() {
   min-width: 19px;
   padding: 0 5px;
   border-radius: 4px;
-  background: #d9eee7;
-  color: #235f50;
+  background: var(--primary-soft);
+  color: var(--primary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 .compact-filter-dialog.el-dialog {
-  max-height: calc(100dvh - 32px);
+  max-height: calc(100dvh - 2 * min(8dvh, 40px));
   margin-block: min(8dvh, 40px) !important;
   display: flex;
   flex-direction: column;

@@ -374,7 +374,7 @@ onBeforeUnmount(() => {
       <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
       <div class="status-toolbar">
       <PageBackButton />
-      <h2 class="transfer-heading" style="margin: 0; font-size: 18px; font-weight: 600;">转料记录</h2>
+      <h2 class="transfer-heading">转料记录</h2>
         <div class="heading-actions"><TableExportButton :source="exportSource" :disabled="loading || !!errorMessage" :context="route.fullPath" />
           <ElButton v-if="canCreate" type="primary" :icon="Plus" @click="openCreate">新建转料</ElButton>
         </div>
@@ -445,7 +445,7 @@ onBeforeUnmount(() => {
 .status-toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
 .status-toolbar h2 { margin: 0; font-size: 20px; font-weight: 600; }
 .heading-actions { display: flex; gap: 8px; margin-left: auto; align-items: center; }
-.transfers-card { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--panel-line); border-radius: var(--card-radius); box-shadow: var(--panel-shadow); }
+.transfers-card { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--glass-border); border-radius: var(--card-radius); background: var(--glass-surface); box-shadow: var(--glass-shadow); }
 .transfers-card :deep(.el-card__body) { display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; padding: 0; flex-direction: column; }
 .filter-bar { display: flex; flex-wrap: wrap; align-items: center; flex: 0 0 auto; min-height: 60px; padding: 12px; gap: 8px 12px; border-bottom: 1px solid var(--line-light); }
 .search-fields { display: flex; align-items: center; gap: 4px; flex: 1 1 470px; min-width: 0; }
@@ -466,8 +466,8 @@ onBeforeUnmount(() => {
 .transfer-time { color: var(--muted); font-size: 14px; white-space: nowrap; }
 .transfer-serial { justify-content: center; }
 .transfers-page .transfer-table :deep(.transfer-status-text) { font-size: 14px; }
-.transfers-page .transfer-table :deep(.transfer-status-text--pending) { color: #946200; }
-.transfers-page .transfer-table :deep(.transfer-status-text--received), .transfers-page .transfer-table :deep(.transfer-status-text--dispatched) { color: #258058; }
+.transfers-page .transfer-table :deep(.transfer-status-text--pending) { color: var(--el-color-warning-dark-2); }
+.transfers-page .transfer-table :deep(.transfer-status-text--received), .transfers-page .transfer-table :deep(.transfer-status-text--dispatched) { color: var(--el-color-success); }
 .batch-link { justify-content: flex-start; height: auto; min-height: 20px; padding: 0 !important; color: var(--text); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .serial-number { color: var(--subtle); font-size: 12px; }
 .serial-number:hover { color: var(--primary); text-decoration: underline; }

@@ -20,8 +20,9 @@ function nativeFullscreen() {
   return { change, request, exit }
 }
 describe('workspace with in-page navigation', () => {
-  it('retains the reading layout and selects each warehouse section without large headings', async () => {
+  it('retains the reading layout and selects each warehouse section below the team title', async () => {
     wrapper = mount(TeamWorkspaceShell, { props: { title: '库房', modelValue: 'stock', warehouse: true } })
+    expect(wrapper.get('.team-workspace__title').text()).toBe('库房工作台')
     for (const [modelValue, label] of [['stock', '库存明细'], ['pending', '来料待签收'], ['receipts', '入库记录'], ['outgoing', '出库记录'], ['losses', '丢失记录'], ['materials', '材质库存'], ['material-types', '类型库存'], ['history', '收发历史']]) {
       await wrapper.setProps({ modelValue })
       expect(wrapper.classes()).toContain('team-workspace--reading')
@@ -54,6 +55,32 @@ describe('workspace with in-page navigation', () => {
       await wrapper.setProps({ pendingCount })
       expect(wrapper.find('.team-workspace__pending').exists()).toBe(false)
     }
+  })
+  it('keeps every permission-dependent section available when there are more than nine tabs', async () => {
+    wrapper = mount(TeamWorkspaceShell, { props: { title: '库房', modelValue: 'stock', warehouse: true, manageWarehouse: true, reallocations: true, processing: true } })
+    expect(wrapper.findAll('nav button')).toHaveLength(11)
+    await wrapper.findAll('nav button').at(-1)!.trigger('click')
+    expect(wrapper.emitted('update:modelValue')).toEqual([['warehouse']])
+    await wrapper.setProps({ modelValue: 'warehouse' })
+    expect(wrapper.get('nav [aria-current=page]').text()).toBe('仓库管理')
+    await wrapper.setProps({ manageWarehouse: false, reallocations: false, processing: false, modelValue: 'stock' })
+    expect(wrapper.findAll('nav button')).toHaveLength(8)
+  })
+  it('preserves export and settings permissions in the header and fullscreen commands', async () => {
+    nativeFullscreen()
+    wrapper = mount(TeamWorkspaceShell, { props: { title: '轧制', modelValue: 'stock', exportable: true }, slots: { settings: '<button>班组设置</button>', 'fullscreen-status': '<span role="status">连接中断</span>' } })
+    const settings = wrapper.get('.team-workspace__settings button').element
+    await wrapper.get('.team-workspace__export').trigger('click')
+    await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+    expect(wrapper.get('.team-workspace__settings').attributes('style')).toContain('display: none')
+    expect(wrapper.get('.team-workspace__status').text()).toBe('连接中断')
+    await wrapper.get('.team-workspace__export').trigger('click')
+    expect(wrapper.emitted('export')).toEqual([[], []])
+    await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
+    expect(wrapper.get('.team-workspace__settings button').element).toBe(settings)
+    expect(wrapper.get('.team-workspace__settings').attributes('style') || '').not.toContain('display: none')
+    await wrapper.setProps({ exportable: false })
+    expect(wrapper.find('.team-workspace__export').exists()).toBe(false)
   })
   it('reveals the selected section on narrow screens without scrolling the page and cleans up', async () => {
     let resize = () => undefined as void

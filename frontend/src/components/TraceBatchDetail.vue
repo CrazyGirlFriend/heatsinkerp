@@ -29,8 +29,8 @@ defineEmits<{ open: [code: string] }>()
 </template>
 
 <style scoped>
-.trace-detail { flex-shrink: 0; margin-top: 8px; padding: 13px 16px; border: 1px solid var(--line); border-radius: 9px; background: var(--workspace-bg); font-size: 12px; }
-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }header strong { font-weight: 600; font-size: 14px; }.detail-status { padding: 3px 7px; border-radius: 4px; color: var(--primary); background: var(--surface-soft); }.detail-status.pending { color: #946d30; background: #faf2e4; }.detail-batch { margin-left: auto; color: var(--muted); }button { border: 0; background: transparent; color: var(--primary); font: inherit; cursor: pointer; }
-dl { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 10px 0 0; }dl > div { display: flex; gap: 8px; min-width: 0; }dt { color: var(--muted); white-space: nowrap; }dd { margin: 0; color: var(--text); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }p { margin: 8px 0 0; color: #946d30; }.detail-empty { color: var(--muted); padding: 8px 0; text-align: center; }
+.trace-detail { flex-shrink: 0; margin-top: 8px; padding: 13px 16px; border: 1px solid var(--glass-border); border-radius: 14px; background: var(--glass-surface); box-shadow: var(--glass-shadow); font-size: 12px; }
+header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }header strong { font-weight: 600; font-size: 14px; }.detail-status { padding: 3px 7px; border-radius: 4px; color: var(--primary); background: var(--surface-soft); }.detail-status.pending { color: var(--el-color-warning-dark-2); background: var(--el-color-warning-light-9); }.detail-batch { margin-left: auto; color: var(--muted); }button { border: 0; background: transparent; color: var(--primary); font: inherit; cursor: pointer; }
+dl { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 10px 0 0; }dl > div { display: flex; gap: 8px; min-width: 0; }dt { color: var(--muted); white-space: nowrap; }dd { margin: 0; color: var(--text); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }p { margin: 8px 0 0; color: var(--el-color-warning-dark-2); }.detail-empty { color: var(--muted); padding: 8px 0; text-align: center; }
 @media (max-width: 700px) { .detail-batch { margin-left: 0; }dl { display: grid; grid-template-columns: 1fr; } }
 </style>

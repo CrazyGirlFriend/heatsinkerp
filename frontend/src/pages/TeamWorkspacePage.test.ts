@@ -223,7 +223,7 @@ describe('team workspace material ledger', () => {
     expect(wrapper.getComponent({ name: 'ElTable' }).element).toBe(instance)
     if (tab === 'pending' && wrapper.findComponent(MaterialReceiptScanner).exists()) expect(wrapper.getComponent(MaterialReceiptScanner).props('paused')).toBe(true)
     await wrapper.get('.team-workspace__fullscreen').trigger('click'); await flushPromises()
-    expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBeUndefined()
+    expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBe('100%')
     if (tab === 'pending' && wrapper.findComponent(MaterialReceiptScanner).exists()) expect(wrapper.getComponent(MaterialReceiptScanner).props('paused')).toBe(false)
     expect(table.find('.barcode-card').exists()).toBe(false)
     await table.get('.batch-link').trigger('click'); await flushPromises()
@@ -414,13 +414,13 @@ describe('team workspace material ledger', () => {
     finish(); await flushPromises()
     expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(false)
   })
-  it('defaults to ten records and keeps selectable page sizes without a fixed table height', async () => {
+  it('defaults to ten records and keeps selectable page sizes in a bounded table', async () => {
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: Array.from({ length: 10 }, (_, index) => warehouseFixture({ group_id: index + 1, serial_no: `SERIAL-${index}` })), total: 45, page: 1, page_size: 10 })
     await render('/team-workspaces/914?tab=stock')
     expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(10)
     const pagination = wrapper.getComponent(ElPagination)
     expect(pagination.props('pageSizes')).toEqual([10, 20, 50, 100])
-    expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBeUndefined()
+    expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBe('100%')
     expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, expect.objectContaining({ page_size: 10 }))
     pagination.vm.$emit('size-change', 20)
     await flushPromises()
@@ -439,11 +439,11 @@ describe('team workspace material ledger', () => {
     expect(wrapper.get('h1').text()).toBe('库存明细')
     expect(wrapper.findAll('[role=tab]')).toHaveLength(0)
     expect(teamMaterialApi.overview).toHaveBeenCalledWith(914)
-    expect(wrapper.find('.team-workspace__heading').exists()).toBe(false)
+    expect(wrapper.find('.team-workspace__heading').exists()).toBe(true)
     expect(wrapper.find('.workspace-balance-strip').exists()).toBe(false)
     expect(wrapper.get('h1').classes()).toContain('sr-only')
     expect(wrapper.get('.team-workspace__navigation [aria-current=page]').text()).toBe('库存明细')
-    expect(wrapper.get('.inventory-heading .workspace-actions').text()).toContain('新建出库')
+    expect(wrapper.get('.serial-toolbar .workspace-actions').text()).toContain('新建出库')
     expect(wrapper.text()).toContain('2 张历史已接收单')
     expect(wrapper.find('a[href*="next_team_id=914"]').exists()).toBe(true)
     expect(materialTransferApi.list).not.toHaveBeenCalled()
@@ -464,7 +464,7 @@ describe('team workspace material ledger', () => {
   it.each(['serials', 'stock', 'outgoing', 'pending', 'receipts', 'losses', 'materials', 'material-types', 'overview', 'history'])('keeps %s actions grouped separately from team settings', async tab => {
     state.auth.currentUser.team_id = 901
     await render(`/team-workspaces/901?tab=${tab}`)
-    const toolbar = ['serials', 'stock'].includes(tab) ? '.inventory-heading' : ['overview', 'history'].includes(tab) ? '.history-header' : ['materials', 'material-types'].includes(tab) ? '.material-ledger header' : '.list-heading'
+    const toolbar = ['serials', 'stock'].includes(tab) ? '.serial-toolbar' : ['overview', 'history'].includes(tab) ? '.history-header' : ['materials', 'material-types'].includes(tab) ? '.ledger-toolbar' : '.list-toolbar'
     const actions = wrapper.get(`${toolbar} .workspace-actions`)
     expect(actions.text()).toContain('新建入库')
     expect(actions.text()).toContain('新建出库')
@@ -476,7 +476,7 @@ describe('team workspace material ledger', () => {
     expect(wrapper.find('.team-workspace__settings [aria-label="班组设置"]').exists()).toBe(true)
     expect(actions.find('[aria-label="班组设置"]').exists()).toBe(false)
     expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(10)
-    expect(wrapper.find('.team-workspace__heading').exists()).toBe(false)
+    expect(wrapper.find('.team-workspace__heading').exists()).toBe(true)
   })
   it.each(['administrator', 'other-team', 'inactive'])('does not expose creation for %s accounts', async kind => {
     if (kind === 'administrator') { state.auth.isTeamAccount = false; state.auth.isAdmin = true }
@@ -500,7 +500,7 @@ describe('team workspace material ledger', () => {
     expect(toolbar.find('input[aria-label="物料搜索"]').exists()).toBe(true)
     expect(toolbar.find('input[aria-label="扫描转料批次号"]').exists()).toBe(false)
     expect(wrapper.find('.incoming-scan input[aria-label="扫描转料批次号"]').exists()).toBe(true)
-    expect(toolbar.find('.workspace-actions').exists()).toBe(false)
+    expect(toolbar.find('.workspace-toolbar-actions .workspace-actions').exists()).toBe(true)
     expect(toolbar.findAll('button').filter(button => button.text() === '查询')).toHaveLength(1)
     expect(toolbar.find('.record-date-trigger').exists()).toBe(false)
     const filters = wrapper.getComponent(FilterDialog)

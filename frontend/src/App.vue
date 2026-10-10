@@ -159,7 +159,7 @@ function handleUserCommand(command: string | number | object): void {
           <img v-if="sidebarCompact" class="brand-mark__icon" src="/brand/attl-official-favicon.ico" alt="安泰天龙" width="32" height="32" />
           <img v-else class="brand-mark__logo" src="/brand/attl-official-logo.png" alt="中国钢研 安泰科技 · 安泰天龙" width="1017" height="143" />
         </div>
-        <FactorySidebar :compact="sidebarCompact" illustrated />
+        <FactorySidebar :compact="sidebarCompact" glass illustrated />
 
         <div class="sidebar__footer">
           <div class="sidebar__account">
@@ -202,8 +202,8 @@ function handleUserCommand(command: string | number | object): void {
 .skip-link { position: fixed; z-index: 110; top: 8px; left: 8px; padding: 9px 13px; border-radius: 4px; color: #fff; background: var(--navy-active); transform: translateY(calc(-100% - 12px)); }
 .skip-link:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; transform: translateY(0); }
 .main-content:focus { outline: none; }
-.app-shell--business { --sidebar-width: 184px; --topbar-height: 0px; color: var(--text); font-family: var(--font-body); }
-.app-shell--business.app-shell--compact { --sidebar-width: 64px; --topbar-height: 40px; }
+.app-shell--business { --sidebar-width: 220px; --topbar-height: 0px; color: var(--text); font-family: var(--font-body); }
+.app-shell--business.app-shell--compact { --sidebar-width: 76px; --topbar-height: 40px; }
 .app-shell--business .brand-mark { display: flex; flex-shrink: 0; height: 56px; justify-content: center; padding-inline: 14px; border-right: 0; }
 .brand-mark__logo { display: block; width: 100%; height: auto; object-fit: contain; }
 .brand-mark__icon { display: block; flex: none; width: 32px; height: 32px; object-fit: contain; }
@@ -222,11 +222,54 @@ function handleUserCommand(command: string | number | object): void {
 .app-shell--compact .sidebar__footer { grid-template-columns: minmax(0, 1fr); margin-inline: 8px; }
 .app-shell--compact .sidebar__user, .app-shell--compact .sidebar__collapse { justify-content: center; width: 100%; }
 .app-shell--business.app-shell--compact .brand-mark { padding: 0; }
+.app-shell--business {
+  background:
+    linear-gradient(122deg, #ffffff00 0%, #ffffff96 12%, #ffffff00 24%),
+    radial-gradient(ellipse 400px 75% at -90px 62%, #84b39c57, #c5d8ce00 100%),
+    linear-gradient(115deg, #e0ece5 0%, #eff4f0 23%, #f6f7f5 65%, #f2f3ee 100%);
+}
+.app-shell--business .sidebar {
+  margin: 12px 0 12px 12px;
+  padding-bottom: 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  background: linear-gradient(145deg, #ffffff94, #ffffff38 48%, #ffffff73);
+  -webkit-backdrop-filter: blur(20px) saturate(110%);
+  backdrop-filter: blur(20px) saturate(110%);
+  box-shadow: 0 8px 28px #203b2e0c, 0 0 0 .5px #335d4614, inset 1px 1px 1px #fffffff2, inset -1px -1px 1px #ffffff78;
+}
+.app-shell--business .brand-mark { height: 96px; padding-inline: 15px; border-bottom: 0; background: transparent; }
+.app-shell--business .main-content { background: transparent; }
+.app-shell--business .topbar { border-bottom: 0; background: transparent; }
+.app-shell--business .sidebar__footer { min-height: 65px; align-items: center; margin-inline: 15px; padding: 16px 0 0; }
+.app-shell--business .sidebar__user, .app-shell--business .sidebar__collapse { border-radius: 11px; transition: color var(--motion-standard) ease, background-color var(--motion-standard) ease; }
+.app-shell--business .skip-link { background: var(--primary); }
+.app-shell--business.app-shell--compact .sidebar__footer { margin-inline: 8px; }
+@media (min-width: 1700px) {
+  .app-shell--business { --sidebar-width: 240px; }
+  .app-shell--business .brand-mark { padding-inline: 23px; }
+}
+@media (max-width: 1320px) and (min-width: 641px) {
+  .app-shell--business { --sidebar-width: 192px; }
+  .app-shell--business .brand-mark { padding-inline: 12px; }
+}
+@media (max-height: 820px) {
+  .app-shell--business .brand-mark { height: 76px; }
+  .app-shell--business .sidebar { padding-bottom: 12px; }
+  .app-shell--business .sidebar__footer { min-height: 50px; padding-top: 11px; }
+}
 @media (max-width: 640px) {
   .app-shell--business, .app-shell--business.app-shell--compact { --topbar-height: 48px; }
   .app-shell--business .topbar { gap: 10px; }
   .app-shell--business .brand-mark { display: none; }
   .sidebar__footer { grid-template-columns: minmax(0, 1fr); padding-bottom: max(8px, env(safe-area-inset-bottom)); }
   .app-shell--compact .sidebar__user { justify-content: flex-start; }
+  .app-shell--business .sidebar { transform: translateX(calc(-100% - 12px)); }
+  .app-shell--business .sidebar--open { transform: translateX(0); }
+  .app-shell--business .sidebar__footer { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+  .app-shell--business .sidebar-mask { background: rgb(24 40 29 / 28%); }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .app-shell--business .sidebar { background: #f7faf9; -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 </style>

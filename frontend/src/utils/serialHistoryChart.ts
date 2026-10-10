@@ -64,8 +64,8 @@ export function serialHistoryChart(groups: SerialHistoryGroup[], metric: 'quanti
     backgroundColor: 'transparent', textStyle: { fontFamily: 'Inter, "PingFang SC", sans-serif' },
     grid: { left: 66, right: 140, top: 30, bottom: 84 },
     tooltip: {
-      trigger: 'axis', confine: true, renderMode: 'richText', backgroundColor: '#fff', borderColor: '#dce3ee',
-      textStyle: { color: '#34445d', fontSize: 14 }, padding: 14,
+      trigger: 'axis', confine: true, renderMode: 'richText', backgroundColor: '#fff', borderColor: '#e8edef',
+      textStyle: { color: '#28332d', fontSize: 14 }, padding: 14,
       formatter: (raw: unknown) => {
         const params = raw as Array<{ dataIndex: number; seriesIndex: number; value: number }>
         const index = params[0]?.dataIndex ?? 0, event = timeline[index - 1]?.event
@@ -76,21 +76,21 @@ export function serialHistoryChart(groups: SerialHistoryGroup[], metric: 'quanti
           event.batch_no, '点击节点查看批次',
         ] : [])].join('\n')
       },
-      axisPointer: { type: 'line', lineStyle: { color: '#8c9cb3', type: 'dashed' } },
+      axisPointer: { type: 'line', lineStyle: { color: '#9aaba1', type: 'dashed' } },
     },
     xAxis: { type: 'category', boundaryGap: false, data: labels, axisTick: { show: false },
-      axisLine: { lineStyle: { color: '#dce3ee' } },
-      axisLabel: { color: '#76859c', fontSize: 13, margin: 16, hideOverlap: true,
+      axisLine: { lineStyle: { color: '#e8edef' } },
+      axisLabel: { color: '#77827b', fontSize: 13, margin: 16, hideOverlap: true,
         formatter: (value: string) => value === '区间起点' ? value : value.slice(5).replace(' ', '\n') } },
     yAxis: { type: 'value', name: unit, minInterval: metric === 'quantity' ? 1 : undefined,
-      nameTextStyle: { color: '#76859c', padding: [0, 20, 4, 0] },
-      axisLabel: { color: '#76859c', formatter: (value: number) => historyNumber(value) },
-      splitLine: { lineStyle: { color: '#e7ecf3', type: 'dashed' } } },
+      nameTextStyle: { color: '#77827b', padding: [0, 20, 4, 0] },
+      axisLabel: { color: '#77827b', formatter: (value: number) => historyNumber(value) },
+      splitLine: { lineStyle: { color: '#edf1ef', type: 'dashed' } } },
     dataZoom: [{ type: 'inside', filterMode: 'none', zoomOnMouseWheel: 'ctrl', moveOnMouseWheel: false },
-      { type: 'slider', filterMode: 'none', bottom: 4, height: 22, borderColor: '#dce3ee',
-        backgroundColor: '#f7f9fc', fillerColor: 'rgba(107,126,181,.1)',
-        dataBackground: { lineStyle: { color: '#97a7c1' }, areaStyle: { color: '#dce3ee' } },
-        handleStyle: { color: '#aab6cd', borderColor: '#aab6cd' }, textStyle: { color: '#76859c' }, showDetail: false }],
+      { type: 'slider', filterMode: 'none', bottom: 4, height: 22, borderColor: '#e8edef',
+        backgroundColor: '#f7f9f8', fillerColor: 'rgba(32,92,72,.1)',
+        dataBackground: { lineStyle: { color: '#9aaba1' }, areaStyle: { color: '#e8edef' } },
+        handleStyle: { color: '#a9bcb1', borderColor: '#a9bcb1' }, textStyle: { color: '#77827b' }, showDetail: false }],
     series,
   }
 }

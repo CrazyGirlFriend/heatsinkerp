@@ -31,7 +31,7 @@ const common = computed(() => ({ color: colors.value, textStyle: { fontFamily: '
   legend: { top: 0, right: 0, itemWidth: 9, itemHeight: 9, textStyle: { fontSize: fontSize.value, color: ink.value } } }))
 function plot(labels: string[], series: object[], horizontal = false, legend = true): EChartsCoreOption {
   const category = { type: 'category', data: labels, inverse: horizontal, axisTick: { show: false }, axisLine: { show: false }, axisLabel: { fontSize: fontSize.value, color: ink.value, hideOverlap: true, ...(horizontal ? { width: 130, overflow: 'truncate' } : {}) } }
-  const numeric = { type: 'value', splitNumber: 3, axisLabel: { fontSize: fontSize.value, color: ink.value }, splitLine: { lineStyle: { color: '#edf0f6' } } }
+  const numeric = { type: 'value', splitNumber: 3, axisLabel: { fontSize: fontSize.value, color: ink.value }, splitLine: { lineStyle: { color: '#e8edef' } } }
   return { ...common.value, legend: { ...common.value.legend, show: legend }, grid: { left: 8, right: 10, top: legend ? 34 : 12, bottom: 8, outerBoundsMode: 'same', outerBoundsContain: 'axisLabel' },
     xAxis: horizontal ? numeric : category, yAxis: horizontal ? category : numeric, series }
 }
@@ -90,7 +90,7 @@ function pick(key: string, index: number) { const team = props.data.teams[index]
 </template>
 <style scoped>
 .factory-charts { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); gap: 14px; height: 100%; min-height: 0; }
-.factory-chart { grid-column: span 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 18px 20px 14px; border: 1px solid var(--dashboard-line); background: var(--dashboard-surface); border-radius: var(--card-radius, 12px); }
+.factory-chart { grid-column: span 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 18px 20px 14px; border: 1px solid var(--dashboard-line); background: var(--dashboard-surface); border-radius: var(--card-radius, 12px); box-shadow: var(--glass-shadow); }
 .factory-chart--teams, .factory-chart--waiting { grid-column: span 5; }.factory-chart--flow, .factory-chart--loss { grid-column: span 4; }
 .factory-chart header { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }.factory-chart h2 { font-size: 15px; line-height: 22px; font-weight: 550; margin: 0; }.factory-chart header > span { font-size: 12px; color: var(--dashboard-muted); line-height: 22px; }
 .factory-chart--serials, .factory-chart--materials { grid-column: span 6; }
@@ -102,8 +102,8 @@ function pick(key: string, index: number) { const team = props.data.teams[index]
 .nature-content .ledger-chart-frame { grid-area: 2 / 1; align-self: center; height: 130px; }
 .nature-table-scroll { grid-area: 1 / 2 / -1 / 3; align-self: start; min-width: 0; max-height: 100%; overflow: auto; scrollbar-width: thin; }
 .nature-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.nature-table th, .nature-table td { padding: 2px 3px; border-bottom: 1px solid var(--dashboard-line); text-align: right; }
-.nature-table thead th { position: sticky; top: 0; z-index: 1; background: var(--dashboard-surface); color: var(--dashboard-muted); font-weight: 400; }
+.nature-table th, .nature-table td { padding: 2px 3px; border-bottom: 1px solid var(--line); text-align: right; }
+.nature-table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); color: var(--dashboard-muted); font-weight: 400; }
 .nature-table th:first-child { padding-left: 0; text-align: left; }.nature-table tbody th { font-weight: 400; }.nature-table td:last-child, .nature-table th:last-child { padding-right: 0; }
 .nature-table tbody tr:last-child > * { border-bottom: 0; }.nature-table i { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; vertical-align: 1px; }
 .nature-table-scroll:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 3px; }

@@ -104,11 +104,11 @@ onBeforeUnmount(() => {
 <template><div ref="root" class="flow-canvas" :class="{ panning: interaction === 'pan', dragging }" role="img" tabindex="0" :aria-label="label" @pointerdown="dragging = interaction === 'pan'" @pointerup="dragging = false" @pointercancel="dragging = false" @pointerleave="dragging = false" @dblclick="zoom(0)" @keydown="keyboard" /></template>
 <style scoped>
 .flow-canvas { width: 100%; height: 100%; min-height: 520px; outline: none; touch-action: none; }
-.flow-canvas:focus-visible { outline: 2px solid #9280d9; outline-offset: -2px; }
+.flow-canvas:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .flow-canvas.panning, .flow-canvas.panning :deep(*) { cursor: grab !important; }
 .flow-canvas.dragging, .flow-canvas.dragging :deep(*) { cursor: grabbing !important; }
 .flow-canvas :deep(.chain-flow-tooltip) { max-width: min(320px, calc(100vw - 72px)); max-height: 50vh; overflow: auto; white-space: normal; overflow-wrap: anywhere; line-height: 1.7; }
 .flow-canvas :deep(.chain-flow-tooltip strong) { display: block; margin-bottom: 2px; font-size: 16px; font-weight: 600; }
-.flow-canvas :deep(.chain-flow-tooltip .tooltip-route) { color: #6850a8; }
+.flow-canvas :deep(.chain-flow-tooltip .tooltip-route) { color: var(--primary); }
 .flow-canvas :deep(.chain-flow-tooltip b) { display: block; margin: 4px 0 8px; font-size: 17px; font-weight: 600; }
 </style>

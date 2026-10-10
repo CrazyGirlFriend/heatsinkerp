@@ -9,7 +9,7 @@ import { useSidebarStore } from '@/stores/sidebar'
 import { teamDirectory, refreshTeamDirectory } from '@/stores/teamDirectory'
 import { configuredTeamWorkspaces } from '@/config/teamWorkspaces'
 
-const props = withDefaults(defineProps<{ compact?: boolean; illustrated?: boolean }>(), { compact: false, illustrated: false })
+const props = withDefaults(defineProps<{ compact?: boolean; illustrated?: boolean; glass?: boolean }>(), { compact: false, illustrated: false, glass: false })
 const teamIcons = { 'FACTORY-WAREHOUSE': Box, 'FACTORY-ROLL': Connection, 'FACTORY-ANNEAL': HotWater, 'FACTORY-GRIND': Tools,
   'FACTORY-WIRE': Scissor, 'FACTORY-ENGRAVE': EditPen, 'FACTORY-PLATE': Coin, 'FACTORY-QC': CircleCheck }
 const route = useRoute()
@@ -136,7 +136,7 @@ const materialLinks = computed(() => [
 </script>
 
 <template>
-  <nav class="factory-nav" :class="{ 'factory-nav--compact': compact, 'factory-nav--illustrated': illustrated }" aria-label="主导航">
+  <nav class="factory-nav" :class="{ 'factory-nav--compact': compact, 'factory-nav--illustrated': illustrated, 'factory-nav--glass': glass }" aria-label="主导航">
     <div ref="viewport" class="factory-nav__scroll" @scroll.passive="updateOverflow" @wheel.passive="revealIndex = null" @touchstart.passive="revealIndex = null" @pointerdown="revealIndex = null" @keydown="revealIndex = null" @transitionend="revealMenu">
     <ElMenu ref="menu" router unique-opened tabindex="0" :default-active="activeIndex" :collapse="compact" :collapse-transition="false" popper-class="factory-nav-popup" @open="onOpen" @close="onClose">
       <ElSubMenu index="factory" data-nav-index="factory" aria-label="全厂总览" :class="{ 'factory-nav__current': activeGroup === 'factory' }" :aria-description="activeGroup === 'factory' ? '当前页面所属模块' : undefined">
@@ -204,4 +204,27 @@ const materialLinks = computed(() => [
 .factory-nav--illustrated :deep(.el-sub-menu > .el-menu) { background: transparent; }
 .factory-nav--illustrated :deep(.el-sub-menu .el-menu-item:not(.is-active)) { color: var(--muted); }
 .factory-nav--illustrated :deep(.factory-nav__team-icon) { width: 22px; margin-right: 10px; font-size: 19px; color: var(--muted); }
+.factory-nav--glass .factory-nav__scroll { padding: 0 15px 24px; }
+.factory-nav--glass :deep(.el-menu) { --el-menu-item-height: 51px; --el-menu-sub-item-height: 44px; --el-menu-level-padding: 20px; --el-menu-hover-bg-color: #ffffff50; }
+.factory-nav--glass :deep(.el-sub-menu__title) { border-radius: 11px; color: #657175; font-weight: 450; }
+.factory-nav--glass :deep(.factory-nav__current > .el-sub-menu__title) { color: #344347; font-weight: 620; }
+.factory-nav--glass .factory-nav__current-badge { display: none; }
+.factory-nav--glass :deep(.el-menu--inline) { padding-block: 5px 12px; }
+.factory-nav--glass :deep(.el-menu-item) { margin: 0 0 5px; border-radius: 11px; font-size: 15px; transition: background-color var(--motion-panel) var(--motion-ease), color var(--motion-standard) ease, box-shadow var(--motion-panel) var(--motion-ease); }
+.factory-nav--glass :deep(.el-sub-menu .el-menu-item:not(.is-active)) { color: #5b6b6e; }
+.factory-nav--glass :deep(.el-menu-item:not(.is-active):hover) { color: var(--primary); background: #ffffff4d; }
+.factory-nav--glass :deep(.el-menu-item.is-active) { color: #fff; background: var(--primary) linear-gradient(160deg, #ffffff17, #ffffff00 70%); box-shadow: 0 4px 10px #1d382322, inset 0 1px 1px #ffffff70, inset 0 -1px 1px #173b3433; font-weight: 630; }
+.factory-nav--glass :deep(.el-sub-menu .el-menu-item.is-active::before) { display: none; }
+.factory-nav--glass :deep(.factory-nav__team-icon) { color: inherit; transition: transform var(--motion-panel) var(--motion-ease); }
+.factory-nav--glass :deep(.el-menu-item.is-active .factory-nav__team-icon) { transform: scale(1.07); }
+.factory-nav--glass .factory-nav__scroll-hint { border-radius: 11px; background: #f0f6f2ed; }
+.factory-nav--glass.factory-nav--compact .factory-nav__scroll { padding-inline: 6px; }
+@media (max-width: 1320px) and (min-width: 641px) {
+  .factory-nav--glass:not(.factory-nav--compact) .factory-nav__scroll { padding-inline: 12px; }
+  .factory-nav--glass :deep(.el-menu) { --el-menu-base-level-padding: 9px; --el-menu-level-padding: 12px; }
+  .factory-nav--glass :deep(.el-menu-item) { font-size: 14px; }
+}
+@media (max-height: 820px) {
+  .factory-nav--glass :deep(.el-menu) { --el-menu-item-height: 42px; --el-menu-sub-item-height: 40px; }
+}
 </style>

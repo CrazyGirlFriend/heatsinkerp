@@ -400,15 +400,8 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
         </template>
         <template v-else>
           <div class="team-list-layout">
-            <section class="team-list-panel">
-              <header class="list-heading">
-                <div class="list-heading__title"><h2>{{ listTitle }}</h2><span v-if="!loading && !loadError">{{ total }} 条记录</span></div>
-                <div class="list-heading__actions">
-                  <ElButton v-if="tab === 'outgoing'" :disabled="!selectedPrintRows.length" @click="openPrint(selectedPrintRows)">合并打印<span v-if="selectedPrintRows.length">（{{ selectedPrintRows.length }}）</span></ElButton>
-                  <TeamWorkspaceActions v-if="tab !== 'reallocations'" v-bind="actionBindings" :show-refresh="false" />
-                </div>
-              </header>
-              <div class="list-toolbar">
+            <section class="team-list-panel workspace-data-panel">
+              <div class="list-toolbar workspace-data-toolbar">
                 <ElInput v-model="queryDraft" :prefix-icon="Search" :aria-label="`${tab === 'reallocations' ? '转投记录' : tab === 'losses' ? '丢失记录' : '物料'}搜索`" clearable :placeholder="tab === 'reallocations' ? '搜索原流水号、目标流水号或批次号' : tab === 'outgoing' ? '搜索批次、流水号、业务或去向' : tab === 'losses' ? '搜索批次、流水号或材质' : '搜索批次、流水号、材质或业务'" @keyup.enter="applyFilters()" @clear="applyFilters()" />
                 <div class="list-filter-controls">
                   <FilterDialog v-model="listFiltersOpen" title="记录筛选" :count="listFilterCount" @open="openListFilters" @cancel="cancelListFilters" @apply="applyListDialog" @reset="resetListFilters">
@@ -426,6 +419,10 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                 </div>
                 <div class="list-query-actions"><ElButton @click="applyFilters()">查询</ElButton></div>
                 <ElButton class="list-refresh" :icon="Refresh" :loading="loading" text aria-label="刷新工作台" title="刷新" @click="loadView()" />
+                <div v-show="!fullscreen" class="workspace-toolbar-actions">
+                  <ElButton v-if="tab === 'outgoing'" :disabled="!selectedPrintRows.length" @click="openPrint(selectedPrintRows)">合并打印<span v-if="selectedPrintRows.length">（{{ selectedPrintRows.length }}）</span></ElButton>
+                  <TeamWorkspaceActions v-if="tab !== 'reallocations'" v-bind="actionBindings" :show-refresh="false" />
+                </div>
               </div>
 
               <MaterialReceiptScanner v-if="tab === 'pending' && canWrite" :key="teamId" ref="scanner" :team-id="teamId" :paused="fullscreen || Boolean(exportSource) || drawerOpen || actionOpen || reallocationOpen || pickerOpen || receiptOpen || businessOpen || printOpen || listFiltersOpen" @received="loadView(true, true)" />
@@ -433,7 +430,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
               <StatePanel v-else-if="loadError" state="error" :description="loadError" @retry="loadView" />
               <StatePanel v-else-if="!total" state="empty" :title="tab === 'pending' ? '暂无来料待签收' : tab === 'outgoing' ? '暂无出库记录' : tab === 'receipts' ? '暂无入库记录' : tab === 'reallocations' ? '暂无转投记录' : '暂无丢失记录'" description="可以调整搜索条件或刷新记录。" />
               <div v-else class="team-table-scroll">
-                <ElTable v-if="tab === 'pending'" :data="pending" :height="fullscreen ? '100%' : undefined" :flexible="fullscreen" class="business-table team-table single-line-table" row-key="id">
+                <ElTable v-if="tab === 'pending'" :data="pending" height="100%" flexible class="business-table team-table single-line-table" row-key="id">
                   <ElTableColumn label="批次号" min-width="190" show-overflow-tooltip><template #default="{ row }"><button class="batch-link" :title="row.batch_no" @click="openIncoming(asTransfer(row))">{{ row.batch_no }}</button></template></ElTableColumn>
                   <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip><template #default="{ row }"><span class="record-serial"><span :title="row.serial_no">{{ row.serial_no }}</span><SerialUrgencyBadge :urgency="row.urgency" /></span></template></ElTableColumn>
                   <ElTableColumn label="材质" min-width="130" show-overflow-tooltip><template #default="{ row }">{{ row.material_name || '—' }}</template></ElTableColumn>
@@ -446,7 +443,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                   <ElTableColumn label="转出时间" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ formatDateTime(row.transferred_at) }}</template></ElTableColumn>
                   <ElTableColumn label="操作" width="110" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="openIncoming(asTransfer(row))">{{ canWrite ? '核对接收' : '查看详情' }}</ElButton></template></ElTableColumn>
                 </ElTable>
-                <ElTable v-else-if="tab === 'receipts'" :data="receipts" :height="fullscreen ? '100%' : undefined" :flexible="fullscreen" class="business-table team-table single-line-table" row-key="id">
+                <ElTable v-else-if="tab === 'receipts'" :data="receipts" height="100%" flexible class="business-table team-table single-line-table" row-key="id">
                   <ElTableColumn v-if="isWarehouse" prop="warehouse_location" label="仓位" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.warehouse_location || '未填写' }}</template></ElTableColumn>
                   <ElTableColumn label="批次号" min-width="190" show-overflow-tooltip><template #default="{ row }"><button class="batch-link" :title="row.batch_no" @click="openDetail(asTransfer(row))">{{ row.batch_no }}</button></template></ElTableColumn>
                   <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip><template #default="{ row }"><span class="record-serial"><span :title="row.serial_no">{{ row.serial_no }}</span><SerialUrgencyBadge :urgency="row.urgency" /></span></template></ElTableColumn>
@@ -462,7 +459,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                   <ElTableColumn label="接收人" min-width="100" show-overflow-tooltip><template #default="{ row }">{{ row.received_by || '—' }}</template></ElTableColumn>
                   <ElTableColumn label="操作" width="100" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="openDetail(asTransfer(row))">查看入库单</ElButton></template></ElTableColumn>
                 </ElTable>
-                <ElTable v-else-if="tab === 'outgoing'" :data="outgoing" :height="fullscreen ? '100%' : undefined" :flexible="fullscreen" class="business-table team-table dispatch-table single-line-table" row-key="batch_no" @selection-change="selectedPrintRows = $event">
+                <ElTable v-else-if="tab === 'outgoing'" :data="outgoing" height="100%" flexible class="business-table team-table dispatch-table single-line-table" row-key="batch_no" @selection-change="selectedPrintRows = $event">
                   <ElTableColumn type="selection" width="48" />
                   <ElTableColumn label="批次号" min-width="190"><template #default="{ row }"><ElPopover :trigger="['hover', 'focus']" placement="top" :width="320" :show-after="180"><template #reference><button class="batch-link" :title="row.batch_no" :aria-label="`${row.batch_no}，悬停查看条码，点击查看详情`" @click="openDetail(asTransfer(row))">{{ row.batch_no }}</button></template><BarcodeCard :value="row.batch_no" entity-label="批次号" compact /></ElPopover></template></ElTableColumn>
                   <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip><template #default="{ row }"><span class="record-serial"><span :title="row.serial_no">{{ row.serial_no }}</span><SerialUrgencyBadge :urgency="row.urgency" /></span></template></ElTableColumn>
@@ -478,7 +475,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                   <ElTableColumn label="登记时间" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ formatDateTime(row.transferred_at) }}</template></ElTableColumn>
                   <ElTableColumn label="操作" width="110" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="openDetail(asTransfer(row))">查看详情</ElButton></template></ElTableColumn>
                 </ElTable>
-                <ElTable v-else-if="tab === 'reallocations'" :data="reallocations" :height="fullscreen ? '100%' : undefined" :flexible="fullscreen" class="business-table team-table single-line-table" row-key="id">
+                <ElTable v-else-if="tab === 'reallocations'" :data="reallocations" height="100%" flexible class="business-table team-table single-line-table" row-key="id">
                   <ElTableColumn prop="source_serial_no" label="原流水号" min-width="145" show-overflow-tooltip />
                   <ElTableColumn prop="serial_no" label="目标流水号" min-width="145" show-overflow-tooltip />
                   <ElTableColumn label="转投时间" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ formatDateTime(row.transferred_at) }}</template></ElTableColumn>
@@ -492,7 +489,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
                   <ElTableColumn label="转投批次号" min-width="190" show-overflow-tooltip><template #default="{ row }"><button class="batch-link" @click="openDetail(asTransfer(row))">{{ row.batch_no }}</button></template></ElTableColumn>
                   <ElTableColumn label="操作" width="110" fixed="right"><template #default="{ row }"><ElButton link type="primary" @click="openDetail(asTransfer(row))">查看详情</ElButton></template></ElTableColumn>
                 </ElTable>
-                <ElTable v-else :data="losses" :height="fullscreen ? '100%' : undefined" :flexible="fullscreen" class="business-table team-table single-line-table" row-key="id">
+                <ElTable v-else :data="losses" height="100%" flexible class="business-table team-table single-line-table" row-key="id">
                   <ElTableColumn prop="loss_no" label="丢失记录号" min-width="190" show-overflow-tooltip />
                   <ElTableColumn label="来源批次号" min-width="190" show-overflow-tooltip><template #default="{ row }"><button class="batch-link" :title="row.batch_no" @click="openLossSource(asLoss(row))">{{ row.batch_no }}</button></template></ElTableColumn>
                   <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip><template #default="{ row }"><span class="record-serial"><span :title="row.serial_no">{{ row.serial_no }}</span><SerialUrgencyBadge :urgency="row.urgency" /></span></template></ElTableColumn>
@@ -531,13 +528,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 .legacy-notice a { color: var(--primary); }
 .team-list-layout { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-width: 0; min-height: 0; gap: 12px; }
 .team-list-panel { container-type: inline-size; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #fff; border: 1px solid var(--line); border-radius: var(--card-radius); overflow: hidden; }
-.list-heading, .list-toolbar, .table-footer { flex-shrink: 0; }
-.list-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; min-height: 68px; padding: 16px; border-bottom: 1px solid var(--line); }
-.list-heading__title { display: flex; align-items: baseline; gap: 12px; }
-.list-heading h2 { margin: 0; font-size: 16px; font-weight: 600; }
-.list-heading__title > span { padding: 2px 7px; border-radius: 5px; background: var(--surface-soft); color: var(--muted); font-size: 13px; }
-.list-heading__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.list-heading__actions > .el-button { height: 36px; }
+.list-toolbar, .table-footer { flex-shrink: 0; }
 .list-toolbar { background: #fafcfb; border-bottom: 1px solid var(--line); display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 14px 16px; }
 .list-toolbar > .el-input { flex: 1 1 220px; min-width: 0; }
 .list-filter-controls, .list-query-actions { display: flex; align-items: center; gap: 8px; }
@@ -562,8 +553,6 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
 .table-footer > span { color: var(--subtle); font-size: 12px; }
 @container (max-width: 680px) { .list-toolbar > .el-input { flex-basis: 100%; } }
 @container (max-width: 560px) {
-  .list-heading__actions { width: 100%; }
-  .list-heading__actions :deep(.workspace-actions) { margin-left: 0; justify-content: flex-start; }
   .list-toolbar { background: #fafcfb; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
   .list-toolbar > .el-input, .list-filter-controls { grid-column: 1 / -1; }
   .list-filter-controls :deep(.record-date-trigger) { flex: 1; max-width: none; }
@@ -572,7 +561,7 @@ onBeforeUnmount(() => { disposed = true; ++streamVersion; unsubscribe?.(); clear
   .list-toolbar > .list-refresh { grid-column: 2; }
 }
 @media (max-width: 760px) {
-  .list-heading, .list-toolbar { padding-inline: 12px; }
+  .list-toolbar { padding-inline: 12px; }
   .table-footer { padding: 8px; overflow-x: auto; }
   .team-table :deep(.el-table-fixed-column--right) { position: relative !important; right: auto !important; }
   .team-table :deep(.el-table-fixed-column--right::before) { box-shadow: none; }

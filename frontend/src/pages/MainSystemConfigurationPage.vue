@@ -110,30 +110,33 @@ onBeforeUnmount(() => { ++generation; form.token = '' })
 </template>
 
 <style scoped>
-.integration-page { display: flex; flex-direction: column; gap: 12px; }
+.integration-page { display: flex; flex-direction: column; gap: 16px; }
 .integration-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 16px; }
-.integration-panel { min-width: 0; background: var(--surface, white); border: 1px solid var(--line); border-radius: 8px; padding: 20px; }
-.integration-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
-.integration-panel-title { display: flex; align-items: center; gap: 12px; }
-.integration-panel h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.integration-panel { min-width: 0; background: var(--glass-surface); border: 1px solid var(--glass-border); border-radius: 16px; padding: 20px; box-shadow: var(--glass-shadow); backdrop-filter: blur(18px); }
+.integration-panel-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.integration-panel-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.integration-panel h2 { margin: 0; font-size: 16px; font-weight: 550; }
 .integration-panel-heading .field-hint { margin: 0; }
-.integration-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
+.integration-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
 .integration-wide { grid-column: 1 / -1; }
-.field-hint { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 8px 0 0; overflow-wrap: anywhere; }
-.integration-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+.field-hint { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 8px 0 0; overflow-wrap: anywhere; }
+.integration-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .integration-actions .field-hint { margin: 0; }
 .integration-actions .el-button + .el-button { margin-left: 0; }
-.connection-meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; margin: 16px 0 0; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.6; }
+.connection-meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; margin: 16px 0 0; padding-top: 16px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.6; }
 .connection-meta dt { color: var(--muted); }.connection-meta dd { margin: 0; overflow-wrap: anywhere; }
 .connection-meta + .el-alert { margin-top: 16px; }
-.integration-test { display: flex; gap: 12px; margin: 16px 0; max-width: 660px; }
-.integration-result { margin-top: 16px; }
-.integration-panel :deep(.el-form-item__label) { font-size: 16px; }
+.integration-test { display: flex; align-items: center; gap: 8px; margin: 16px 0; }
+.integration-test .el-input { flex: 1; min-width: 0; }
+.integration-test .el-button { flex-shrink: 0; }
+.integration-result { margin-top: 16px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.integration-panel :deep(.el-form-item__label) { font-size: 14px; font-weight: 500; }
 .integration-panel :deep(.el-form-item__content) { display: block; }
 @media (max-width: 1100px) { .integration-layout { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 680px) {
   .integration-panel { padding: 16px; }
   .integration-form-grid { grid-template-columns: minmax(0, 1fr); }
   .integration-test { flex-wrap: wrap; }
+  .integration-test .el-input { flex-basis: 100%; }
 }
 </style>

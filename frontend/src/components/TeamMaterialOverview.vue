@@ -44,14 +44,14 @@ defineExpose({ exportSource })
 </script>
 
 <template>
-  <section class="material-ledger">
-    <header><h2>{{ title }}</h2><slot name="actions" /></header>
-    <form class="ledger-toolbar" @submit.prevent="search">
+  <section class="material-ledger workspace-data-panel">
+    <form class="ledger-toolbar workspace-data-toolbar" @submit.prevent="search">
       <ElInput v-model="query" :prefix-icon="Search" :aria-label="isMaterial ? '搜索材质库存' : '搜索类型库存'" :placeholder="isMaterial ? '搜索材质' : '搜索物料类型'" clearable @clear="search" />
       <FilterDialog v-model="filtersOpen" title="库存统计筛选" :count="stockFilter === 'all' ? 0 : 1" @open="filterDraft = stockFilter" @cancel="filterDraft = stockFilter" @apply="applyFilter" @reset="filterDraft = 'all'"><label>库存状态<ElSelect v-model="filterDraft" aria-label="统计库存状态"><ElOption value="all" label="全部" /><ElOption value="stock" label="有库存" /><ElOption value="pending" label="有待确认转出" /><ElOption value="difference" label="有重量差异" /></ElSelect></label></FilterDialog>
-      <ElButton native-type="submit">查询</ElButton>
+      <ElButton native-type="submit" class="workspace-query">查询</ElButton>
+      <div v-show="!fullscreen" class="workspace-toolbar-actions"><slot name="actions" /></div>
     </form>
-    <ElTable :data="rows" :height="fullscreen ? '100%' : undefined" :flexible="fullscreen" class="business-table ledger-table single-line-table" :class="{ 'ledger-table--empty': !rows.length }" empty-text="暂无库存" show-overflow-tooltip>
+    <ElTable :data="rows" height="100%" flexible class="business-table ledger-table single-line-table" :class="{ 'ledger-table--empty': !rows.length }" empty-text="暂无库存" show-overflow-tooltip>
       <ElTableColumn prop="label" :label="isMaterial ? '材质' : '物料类型'" min-width="140" fixed="left" show-overflow-tooltip><template #default="{ row }"><ElButton link type="primary" :aria-label="`查看${row.label}的库存明细`" @click="emit('filter', row.key)">{{ row.label }}</ElButton></template></ElTableColumn>
       <ElTableColumn label="正常料件数" min-width="125" align="center"><template #default="{ row }">{{ inventoryAmount(row.available_quantity) }}</template></ElTableColumn>
       <ElTableColumn label="正常料重量 (kg)" min-width="155" align="center"><template #default="{ row }">{{ inventoryAmount(row.available_weight) }}</template></ElTableColumn>
@@ -78,12 +78,10 @@ defineExpose({ exportSource })
 
 <style scoped>
 .material-ledger { display: flex; flex: 1; flex-direction: column; min-height: 0; border: 1px solid var(--line); border-radius: 8px; background: #fff; overflow: hidden; }
-.material-ledger header, .material-ledger footer { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; }
-.material-ledger header { min-height: 68px; padding-block: 16px; }
+.material-ledger footer { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; }
 .ledger-toolbar { display: flex; flex-shrink: 0; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
 .ledger-toolbar .el-input { flex: 1; min-width: 0; }
 .ledger-toolbar .el-button { margin-left: 0; }
-.material-ledger h2 { display: flex; align-items: center; gap: 12px; flex-shrink: 0; margin: 0; font-size: 16px; font-weight: 600; }
 .material-ledger footer > span { font-size: 12px; font-weight: 400; color: var(--subtle); }
 .ledger-table { flex: 1; min-height: 0; }
 .material-ledger > .ledger-table--empty { display: flex; flex: 1 0 auto; flex-direction: column; min-height: 180px; }
@@ -94,8 +92,6 @@ defineExpose({ exportSource })
 @media (max-width: 760px) {
   .ledger-toolbar { flex-wrap: wrap; padding-inline: 12px; }
   .ledger-toolbar .el-input { flex-basis: 100%; }
-  .material-ledger header { flex-wrap: wrap; padding-inline: 12px; }
-  .material-ledger header :deep(.workspace-actions) { width: 100%; }
   .material-ledger footer { padding: 8px; overflow-x: auto; }
   .ledger-table :deep(.el-table-fixed-column--left), .ledger-table :deep(.el-table-fixed-column--right) { position: relative !important; left: auto !important; right: auto !important; }
   .ledger-table :deep(.el-table__cell::before) { box-shadow: none; }

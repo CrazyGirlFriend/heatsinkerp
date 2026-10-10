@@ -27,7 +27,7 @@
     height: 42px;
     padding-block: 10px;
     font-weight: 500;
-    font-size: var(--business-table-font);
+    font-size: var(--business-table-meta);
     text-align: center;
     vertical-align: middle;
     border-bottom-color: var(--table-header-line);

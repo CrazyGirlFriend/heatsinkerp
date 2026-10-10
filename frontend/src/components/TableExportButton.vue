@@ -32,7 +32,7 @@ watch(
 
 <template>
   <ElButton
-    class="table-export-button action-cool"
+    class="table-export-button action-warm"
     :icon="Download"
     :disabled="disabled"
     @click="taskSource = props.source()"

@@ -123,19 +123,19 @@ export function teamTimelineOption(model: TeamTimelineModel, selected = '', inte
           && !boxes.some(box => px < box.x + box.width + 8 && px + width + 8 > box.x && Math.abs(box.y - top) < 24))
         if (py === undefined) return
         boxes.push({ x: px, y: py, width })
-        children.push({ name: `${name}:${value}`, type: 'text', z2: 4, style: { x: px, y: py, text, width, overflow: 'truncate', font: `13px ${font}`, fill: '#34445d', lineHeight: 20, opacity,
+        children.push({ name: `${name}:${value}`, type: 'text', z2: 4, style: { x: px, y: py, text, width, overflow: 'truncate', font: `13px ${font}`, fill: '#28332d', lineHeight: 20, opacity,
           backgroundColor: '#ffffffed', padding: [1, 3],
           ...(animate ? { enterFrom: { opacity: 0 } } : {}) }, enterAnimation: { duration: 220, delay } })
       }
       if (!node.event) {
-        children.push({ name: 'batch', type: 'text', style: { x: 14, y: y - 15, text: lot.batch_no, width: grid.x - 36, overflow: 'truncate', font: `500 13px ${font}`, fill: '#24324a', opacity } })
+        children.push({ name: 'batch', type: 'text', style: { x: 14, y: y - 15, text: lot.batch_no, width: grid.x - 36, overflow: 'truncate', font: `500 13px ${font}`, fill: '#28332d', opacity } })
         const outgoing = row.events.filter(event => event.kind === 'outgoing').length
-        children.push({ name: 'purpose', type: 'text', silent: true, style: { x: 14, y: y + 10, text: `${row.name}${outgoing ? ` · ${outgoing} 笔转出` : ''}`, width: grid.x - 36, overflow: 'truncate', font: `12px ${font}`, fill: '#76849b', opacity } })
+        children.push({ name: 'purpose', type: 'text', silent: true, style: { x: 14, y: y + 10, text: `${row.name}${outgoing ? ` · ${outgoing} 笔转出` : ''}`, width: grid.x - 36, overflow: 'truncate', font: `12px ${font}`, fill: '#77827b', opacity } })
         const ownedQuantity = lot.owned_quantity ?? lot.on_hand_quantity, ownedWeight = lot.owned_weight ?? lot.on_hand_weight
         children.push({ name: 'current-quantity', type: 'text', style: { x: right + 18, y: y - 15, text: `${num(ownedQuantity)} 件`, font: `500 15px ${font}`, fill: hasStock(ownedQuantity, ownedWeight) ? '#327c4d' : '#87948d' } })
-        children.push({ name: 'current-weight', type: 'text', style: { x: right + 18, y: y + 10, text: `${num(ownedWeight)} kg`, font: `13px ${font}`, fill: '#76849b' } })
+        children.push({ name: 'current-weight', type: 'text', style: { x: right + 18, y: y + 10, text: `${num(ownedWeight)} kg`, font: `13px ${font}`, fill: '#77827b' } })
         const separator = api.coord([node.at, node.row + .7])[1]!
-        if (separator <= grid.y + grid.height) children.push({ name: 'separator', type: 'line', silent: true, shape: { x1: 12, y1: separator, x2: right + 150, y2: separator }, style: { stroke: '#edf0f5', lineWidth: 1 } })
+        if (separator <= grid.y + grid.height) children.push({ name: 'separator', type: 'line', silent: true, shape: { x1: 12, y1: separator, x2: right + 150, y2: separator }, style: { stroke: '#edf1ef', lineWidth: 1 } })
         const a = Math.max(grid.x, x), b = Math.min(right, q[0]!)
         if (b < a) return { type: 'group', name: node.id, children }
         stroke('retention', [[a, y], [b, y]])
@@ -174,10 +174,10 @@ export function teamTimelineOption(model: TeamTimelineModel, selected = '', inte
     useUTC: true, textStyle: { fontFamily: font },
     grid: { left: 220, right: 170, top: 48, bottom: 48 },
     xAxis: { type: model.span < 1000 ? 'value' : 'time', min: model.extent?.[0], max: model.extent?.[1], minInterval: 1, splitNumber: 4,
-      axisLine: { onZero: false, lineStyle: { color: '#dce2ec' } }, axisTick: { show: true },
-      axisLabel: { color: '#687b98', fontSize: 13, lineHeight: 20, margin: 15, hideOverlap: true,
+      axisLine: { onZero: false, lineStyle: { color: '#e8edef' } }, axisTick: { show: true },
+      axisLabel: { color: '#77827b', fontSize: 13, lineHeight: 20, margin: 15, hideOverlap: true,
         formatter: (value: number) => { const at = traceTime(value); return model.span < 60000 ? at.slice(11) : model.span > 86400000 ? `${at.slice(5, 10)}\n${at.slice(11, 16)}` : at.slice(11, 16) } },
-      splitLine: { show: true, lineStyle: { color: '#edf0f6', type: 'dashed' } } },
+      splitLine: { show: true, lineStyle: { color: '#edf1ef', type: 'dashed' } } },
     yAxis: { type: 'value', min: -.4, max: Math.max(2.65, model.rows.length - .35), inverse: true, interval: 1,
       axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false },
       axisLabel: { show: false } },
@@ -185,8 +185,8 @@ export function teamTimelineOption(model: TeamTimelineModel, selected = '', inte
       { id: 'time', type: 'inside', xAxisIndex: 0, filterMode: 'none', zoomOnMouseWheel: 'ctrl', moveOnMouseMove: interaction === 'pan', moveOnMouseWheel: false, minSpan: Math.min(.05, 100 / model.span) },
       { id: 'teams', type: 'inside', yAxisIndex: 0, filterMode: 'none', zoomOnMouseWheel: false, moveOnMouseMove: interaction === 'pan', moveOnMouseWheel: true, start: 0, end: visibleRows, minSpan: 1, maxSpan: visibleRows },
     ],
-    tooltip: { show: interaction === 'select', trigger: 'item', confine: true, renderMode: 'richText', backgroundColor: '#fff', borderColor: '#dfe4ee', padding: 16,
-      textStyle: { color: '#263651', fontSize: 14, lineHeight: 23 },
+    tooltip: { show: interaction === 'select', trigger: 'item', confine: true, renderMode: 'richText', backgroundColor: '#fff', borderColor: '#e8edef', padding: 16,
+      textStyle: { color: '#28332d', fontSize: 14, lineHeight: 23 },
       formatter: params => {
         const node = model.nodes[(Array.isArray(params) ? params[0] : params)!.dataIndex]!, row = model.rows[node.row]!, event = node.event
         return event ? `${eventTitle(event)} · ${row.name}\n${event.batch_no}\n${eventAmount(event)}\n${traceTime(node.at)}${event.kind === 'outgoing' ? `\n${materialTransferStatusLabel(event.status, event.entry_kind)}` : ''}\n点击查看批次`

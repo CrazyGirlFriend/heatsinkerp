@@ -77,12 +77,12 @@ onBeforeUnmount(() => { ++generation })
 </script>
 
 <template>
-  <section class="processing-records" :class="{ 'processing-records--fullscreen': fullscreen }" aria-label="加工记录">
-    <header v-show="!fullscreen" class="processing-records-heading"><div><h2>加工记录</h2><span>{{ total }} 条记录</span></div><ElButton v-if="canWrite" class="action-cool" @click="emit('register')">加工登记</ElButton></header>
-    <div class="processing-records-toolbar">
+  <section class="processing-records workspace-data-panel" :class="{ 'processing-records--fullscreen': fullscreen }" aria-label="加工记录">
+    <div class="processing-records-toolbar workspace-data-toolbar">
       <ElInput v-model="query" :prefix-icon="Search" clearable aria-label="加工记录搜索" placeholder="流水号、批次号或加工说明" @keyup.enter="apply()" @clear="apply()" />
       <FilterDialog v-model="filtersOpen" title="加工记录筛选" :count="filterCount" @open="syncFilters" @cancel="syncFilters" @apply="apply()" @reset="dates = { from: '', to: '' }"><label>登记日期<RecordDateFilter v-model="dates" label="登记日期" /></label></FilterDialog>
-      <ElButton @click="apply()">查询</ElButton><TableExportButton :source="exportSource" :disabled="loading || !!error" :context="route.fullPath" /><ElButton :icon="Refresh" :loading="loading" text aria-label="刷新加工记录" @click="load()" />
+      <ElButton class="workspace-query" @click="apply()">查询</ElButton><TableExportButton :source="exportSource" :disabled="loading || !!error" :context="route.fullPath" /><ElButton :icon="Refresh" :loading="loading" text aria-label="刷新加工记录" @click="load()" />
+      <ElButton v-if="canWrite && !fullscreen" type="primary" @click="emit('register')">加工登记</ElButton>
     </div>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
@@ -109,10 +109,6 @@ onBeforeUnmount(() => { ++generation })
 
 <style scoped>
 .processing-records { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--card-radius); background: var(--surface); padding: 0 16px; }
-.processing-records-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: 0 0 auto; padding: 16px 0; border-bottom: 1px solid var(--line); }
-.processing-records-heading > div { display: flex; align-items: baseline; gap: 12px; }
-.processing-records-heading h2 { margin: 0; font-size: 16px; font-weight: 600; }
-.processing-records-heading span, footer > span { color: var(--muted); font-size: 13px; }
 .processing-records-toolbar { display: flex; flex: 0 0 auto; gap: 8px; align-items: center; padding: 14px 0; }
 .processing-records-toolbar .el-input { flex: 1; min-width: 0; }
 .processing-records-toolbar .el-button { margin-left: 0; }
