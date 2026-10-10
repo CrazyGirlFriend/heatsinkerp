@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import TableExportButton from './TableExportButton.vue'
+import { loadExportPages, tableExportSource } from '@/utils/tableExport'
+import { globalTransferExportFields } from '@/utils/teamTableExport'
 import { currentLocations } from '@/utils/warehousePlacement'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElButton, ElDescriptions, ElDescriptionsItem, ElDialog, ElPagination, ElTable, ElTableColumn, ElTag } from 'element-plus'
@@ -47,6 +50,25 @@ async function load(background = false) {
   } catch (e) { if (current === version) { if (background) throw e; error.value = e instanceof Error ? e.message : '库存明细加载失败' } }
   finally { if (current === version) loading.value = false }
 }
+function exportStock() {
+  const id = props.teamId, group = props.group
+  if (!group) return null
+  return tableExportSource(`${group.serial_no} · 当前库存`, total.value, [
+    { key: 'batch_no', label: '来源批次号', value: (row: StockBatch) => row.transfer.batch_no },
+    { key: 'location', label: '仓位', value: currentLocations },
+    { key: 'quantity', label: '库存件数', value: row => row.owned_quantity },
+    { key: 'weight', label: '库存重量 (kg)', value: row => row.owned_weight },
+    { key: 'available_quantity', label: '可处理件数', value: row => dispatchableAmounts(row).quantity },
+    { key: 'available_weight', label: '可处理重量 (kg)', value: row => dispatchableAmounts(row).weight },
+    { key: 'received_at', label: '接收时间', value: row => formatDateTime(row.transfer.received_at) },
+  ], (signal, progress) => loadExportPages((page, pageSize) => teamMaterialApi.inventorySources(id, group.group_id, { page, page_size: pageSize }), signal, progress))
+}
+function exportMovements() {
+  const id = props.teamId, group = props.group
+  if (!group) return null
+  return tableExportSource(`${group.serial_no} · 收发记录`, movementTotal.value, globalTransferExportFields,
+    (signal, progress) => loadExportPages((page, pageSize) => teamMaterialApi.inventoryMovements(id, group.group_id, { page, page_size: pageSize }), signal, progress))
+}
 function open(transfer: MaterialTransfer) { selected.value = transfer; batchOpen.value = true }
 function action(mode: 'dispatch' | 'loss', row: StockBatch) { if (props.canWrite && !loading.value && !error.value && (mode === 'loss' ? stockAvailable(row) : stockSelectable(row))) emit('action', mode, [row]) }
 function asStock(row: unknown) { return row as StockBatch }
@@ -86,7 +108,7 @@ onBeforeUnmount(() => { ++version })
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存明细" />
     <template v-else>
       <section class="stock-detail-section" aria-label="当前库存">
-        <header><h3>当前库存</h3><ElButton v-if="group && (Number(group.reserved_quantity) > 0 || Number(group.reserved_weight) > 0)" link type="primary" @click="emit('pending')">查看转出待确认批次</ElButton></header>
+        <header><h3>当前库存</h3><TableExportButton :source="exportStock" :disabled="loading || !!error" :context="group?.group_id" /><ElButton v-if="group && (Number(group.reserved_quantity) > 0 || Number(group.reserved_weight) > 0)" link type="primary" @click="emit('pending')">查看转出待确认批次</ElButton></header>
         <ElTable class="business-table warehouse-source-table" :data="rows" row-key="transfer.id" empty-text="暂无来源记录">
           <ElTableColumn label="来源批次号" min-width="205"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
           <ElTableColumn v-if="warehouse" label="当前仓位" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ currentLocations(asStock(row)) }}</template></ElTableColumn>
@@ -106,7 +128,7 @@ onBeforeUnmount(() => { ++version })
         <footer><span>共 {{ total }} 个来源批次（含零库存）</span><ElPagination aria-label="当前库存分页" :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></footer>
       </section>
       <section class="stock-detail-section" aria-label="逐笔收发记录">
-        <header><h3>收发记录</h3><span>{{ movementTotal }} 笔</span></header>
+        <header><h3>收发记录</h3><span>{{ movementTotal }} 笔</span><TableExportButton :source="exportMovements" :disabled="loading || !!error" :context="group?.group_id" /></header>
         <ElTable class="business-table warehouse-movement-table" :data="movements" row-key="id" empty-text="暂无收发记录">
           <ElTableColumn label="批次号" min-width="205"><template #default="{ row }"><ElButton link type="primary" @click="open(asTransfer(row))">{{ row.batch_no }}</ElButton></template></ElTableColumn>
           <ElTableColumn label="业务" min-width="95"><template #default="{ row }">{{ movementLabel(asTransfer(row)) }}</template></ElTableColumn>

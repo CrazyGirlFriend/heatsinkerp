@@ -7,7 +7,26 @@ import snapshot from '@/fixtures/flowPurposeSnapshot.json'
 import type { SerialHistory } from '@/types/teamBusiness'
 
 let wrapper: ReturnType<typeof mount> | undefined
-afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
+afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); Reflect.deleteProperty(document, 'fullscreenElement'); Reflect.deleteProperty(document, 'exitFullscreen'); document.body.innerHTML = '' })
+it('expands the history container including its search, filters and export controls', async () => {
+  const parent = document.createElement('section')
+  parent.className = 'serial-history'
+  parent.scrollTop = 700
+  document.body.append(parent)
+  let fullscreen: Element | null = null
+  Object.defineProperty(document, 'fullscreenElement', { get: () => fullscreen, configurable: true })
+  const enter = vi.fn(async () => { fullscreen = parent; document.dispatchEvent(new Event('fullscreenchange')) })
+  parent.requestFullscreen = enter
+  const exit = vi.fn(async () => { fullscreen = null; document.dispatchEvent(new Event('fullscreenchange')) })
+  Object.defineProperty(document, 'exitFullscreen', { value: exit, configurable: true })
+  wrapper = mount(TeamFlowTimeline, { attachTo: parent, props: { history: snapshot.history as SerialHistory }, global: { stubs: { FlowPreviewCanvas: true } } })
+  await wrapper.get('[aria-label="全屏画布"]').trigger('click'); await flushPromises()
+  expect(enter).toHaveBeenCalledOnce()
+  expect(parent.scrollTop).toBe(0)
+  expect(wrapper.find('[aria-label="退出全屏"]').exists()).toBe(true)
+  await wrapper.get('[aria-label="退出全屏"]').trigger('click'); await flushPromises()
+  expect(exit).toHaveBeenCalledOnce()
+})
 it('supports pointer/pan, replay, motion and opening the selected source or outbound batch', async () => {
   wrapper = mount(TeamFlowTimeline, { props: { history: snapshot.history as SerialHistory }, global: { stubs: { FlowPreviewCanvas: true } } })
   const chart = wrapper.getComponent(FlowPreviewCanvas)

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import TableExportButton from '@/components/TableExportButton.vue'
+import { tableExportSource } from '@/utils/tableExport'
 import PageBackButton from '@/components/PageBackButton.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
@@ -27,6 +29,38 @@ const vLoading = ElLoading.directive
 const report = ref<FactoryDashboard>(),
   loading = ref(false),
   error = ref('')
+function exportSource() {
+  if (!report.value) return null
+  const stock = report.value.stock,
+    key = stockUnit.value,
+    unit = key === 'weight' ? 'kg' : '件'
+  const rows = [
+    ...stock.rows.map((row) => ({ ...row, amounts: { ...row.amounts } })),
+    {
+      team_id: null,
+      team_code: 'TOTAL',
+      team_name: '总计',
+      active: true,
+      amounts: Object.fromEntries(stock.materials.map((row) => [row.name, row])),
+      total: stock.total,
+    },
+  ]
+  return tableExportSource(
+    `班组材质库存 · ${unit}`,
+    rows.length,
+    [
+      { key: 'team_name', label: '班组', value: (row: (typeof rows)[number]) => row.team_name },
+      ...stock.materials.map((material) => ({
+        key: `material:${material.name}`,
+        label: `${material.name} (${unit})`,
+        value: (row: (typeof rows)[number]) =>
+          row.total === null ? null : (row.amounts[material.name]?.[key] ?? 0),
+      })),
+      { key: 'total', label: `合计 (${unit})`, value: (row) => row.total?.[key] },
+    ],
+    async () => rows,
+  )
+}
 const stockUnit = ref<'weight' | 'quantity'>('weight')
 const hoveredMaterial = ref<string | null>(null)
 const focusedMaterial = ref<string | null>(null)
@@ -186,6 +220,11 @@ onBeforeUnmount(() => {
         </div>
         <div class="stock-tools">
           <div class="stock-actions">
+            <TableExportButton
+              :source="exportSource"
+              :disabled="loading || !report || !!error"
+              :context="stockUnit"
+            />
             <ElRadioGroup v-model="stockUnit" class="stock-unit-switch" aria-label="库存显示单位">
               <ElRadioButton value="weight">重量 kg</ElRadioButton>
               <ElRadioButton value="quantity">件数</ElRadioButton>

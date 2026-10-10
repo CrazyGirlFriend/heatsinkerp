@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElPagination, ElSelect } from 'element-plus'
 import FilterDialog from '@/components/FilterDialog.vue'
+import TableExportButton from '@/components/TableExportButton.vue'
 import { ElOption } from 'element-plus'
 import TransferBatchesPage from './TransferBatchesPage.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
@@ -64,6 +65,21 @@ function statusCount(page: VueWrapper, value: string) {
 }
 
 describe('transfer list refresh continuity', () => {
+  it('exports all applied filtered pages, ignoring an unsubmitted search draft', async () => {
+    const page = await renderList('/transfer-batches?status=pending&page=2&query=APPLIED&source_team_id=1')
+    await page.get('input[aria-label="搜索转料记录"]').setValue('UNSENT')
+    const source = page.getComponent(TableExportButton).props('source')()!
+    vi.mocked(materialTransferApi.list).mockImplementation(async params => ({
+      items: Array.from({ length: params?.page === 1 ? 100 : 5 }, (_, index) => ({ ...transfer, id: index + (params?.page === 1 ? 1 : 101), serial_no: '000012' })),
+      total: 105, page: params?.page || 1, page_size: 100,
+    }))
+    const rows = await source.load(new AbortController().signal, () => undefined)
+    expect(rows).toHaveLength(105)
+    expect(rows[0].serial_no).toBe('000012')
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ query: 'APPLIED', status: 'pending', source_team_id: '1', page: 2, page_size: 100 }))
+    expect(source.fields.slice(0, 2).map((field: { key: string }) => field.key)).toEqual(['serial_no', 'transferred_at'])
+    expect(source.fields.at(-1)!.key).toBe('batch_no')
+  })
   it('discards a late batch link lookup after the account changes', async () => {
     let finish!: (value: Awaited<ReturnType<typeof materialDispatchApi.get>>) => void
     vi.spyOn(materialDispatchApi, 'get').mockReturnValue(new Promise(resolve => { finish = resolve }))

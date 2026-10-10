@@ -3,6 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElAlert, ElButton, ElInputNumber, ElOption, ElRadioButton, ElRadioGroup, ElSelect, ElSwitch } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
+import TableExportButton from '@/components/TableExportButton.vue'
+import { tableExportSource } from '@/utils/tableExport'
+import { materialTypeLabel } from '@/types/materialTransfer'
 import FactoryOverviewCharts from '@/components/FactoryOverviewCharts.vue'
 import PageBackButton from '@/components/PageBackButton.vue'
 import FactoryRecentBatches from '@/components/FactoryRecentBatches.vue'
@@ -51,6 +54,31 @@ const metrics = computed(() => {
     { key: 'outbound', label: `近${d.days}天对外出库`, value: d.period_totals.outbound[metric.value] + d.period_totals.shipment[metric.value], hint: `含库房对外出库和检验发货；检验发货 ${number(d.period_totals.shipment[metric.value])} ${unit.value}。` },
   ]
 })
+function exportSource() {
+  const data = report.value
+  if (!data) return null
+  const key = metric.value, section = scene.value, rows: { category: string; name: string; date?: string; value: number | null }[] = []
+  for (const item of metrics.value) rows.push({ category: '全厂合计', name: item.label || item.key, value: item.value })
+  if (section.key === 'overview') {
+    for (const team of data.teams) rows.push({ category: '班组库存', name: team.name, value: team.balance?.[`on_hand_${key}`] ?? null })
+    for (const kind of data.material_types) rows.push({ category: '物料性质', name: kind.label || materialTypeLabel(kind.key), value: kind[key] })
+    for (const day of data.trend) for (const [flow, label] of [['inbound', '库房入库'], ['outbound', '库房对外出库'], ['shipment', '检验发货']] as const)
+      rows.push({ category: '全厂对外收发', name: label, date: day.key, value: day[flow][key] })
+  } else if (section.key === 'stock') {
+    for (const item of data.serial_ranking[key]) rows.push({ category: '流水号库存', name: item.label || item.key, value: item[key] })
+    for (const item of data.material_ranking[key]) rows.push({ category: '材质库存', name: item.label || item.key, value: item[key] })
+  } else {
+    for (const team of data.teams) rows.push({ category: '待交接', name: team.name, value: team.pending_incoming?.[key] ?? null })
+    for (const item of data.waiting_age) for (const [flow, label] of [['internal', '内部待交接'], ['external', '对外待确认']] as const)
+      rows.push({ category: label, name: item.label || item.key, value: item[flow][key] })
+  }
+  return tableExportSource(`全厂数据分析 · ${section.label} · 近${data.days}天`, rows.length, [
+    { key: 'category', label: '统计项目', value: (row: typeof rows[number]) => row.category },
+    { key: 'name', label: '名称', value: row => row.name },
+    { key: 'date', label: '日期', value: row => row.date },
+    { key: 'value', label: key === 'weight' ? '重量 (kg)' : '件数', value: row => row.value },
+  ], async () => rows)
+}
 function preference(values: Record<string, string>) { void router.replace({ path: route.path, query: { ...route.query, ...values } }) }
 function applyCustomDays() {
   if (!validCustomDays.value) return
@@ -80,7 +108,7 @@ onBeforeUnmount(() => { ++version; if (timer) clearInterval(timer); media?.remov
     <header class="factory-heading">
       <PageBackButton />
       <div class="factory-heading-title"><h1>全厂物料总览</h1><p v-if="report">{{ formatDateTime(report.as_of) }} 更新</p></div>
-      <div class="factory-controls">
+      <div class="factory-controls"><TableExportButton :source="exportSource" :disabled="loading || !report || !!error" :context="[days, metric, scene.key].join('|')" />
         <ElRadioGroup :model-value="metric" size="small" aria-label="全厂统计单位" @update:model-value="preference({ metric: String($event) })"><ElRadioButton value="weight">重量</ElRadioButton><ElRadioButton value="quantity">件数</ElRadioButton></ElRadioGroup>
         <ElSelect ref="periodSelect" :model-value="days" :teleported="false" :fit-input-width="false" size="small" aria-label="全厂统计周期" @update:model-value="preference({ days: String($event) })" @visible-change="customDays = days">
           <ElOption v-for="value in periodOptions" :key="value" :value="value" :label="`近${value}天`" />

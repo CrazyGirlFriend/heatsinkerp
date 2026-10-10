@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import TableExportButton from './TableExportButton.vue'
+import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 import FilterDialog from './FilterDialog.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElCard, ElCheckbox, ElDialog, ElEmpty, ElForm, ElFormItem, ElIcon, ElInput, ElOption, ElPagination, ElSelect, ElSwitch, ElTable, ElTableColumn, ElTag, ElResult } from 'element-plus'
@@ -18,6 +20,22 @@ type Batch = WarehouseLocation['batches'][number]
 const section = ref<'locations' | 'unassigned'>('locations')
 const rows = ref<WarehouseLocation[]>([]), total = ref(0), page = ref(1)
 const query = ref(''), appliedQuery = ref(''), filter = ref<WarehouseLocationFilter>(), appliedFilter = ref<WarehouseLocationFilter>()
+function exportSource() {
+  const query = appliedQuery.value, state = appliedFilter.value
+  const joined = (row: WarehouseLocation, field: 'serial_no' | 'material_name' | 'batch_no') => [...new Set(row.batches.map(batch => batch[field]).filter(Boolean))].join('、')
+  return tableExportSource('仓位库存', total.value, [
+    { key: 'name', label: '仓位', value: (row: WarehouseLocation) => row.name },
+    { key: 'status', label: '状态', value: stateLabel },
+    { key: 'serial_no', label: '流水号', value: row => joined(row, 'serial_no') },
+    { key: 'material_name', label: '材质', value: row => joined(row, 'material_name') },
+    { key: 'material_type', label: '物料类型', value: row => [...new Set(row.batches.map(batch => materialTypeLabel(batch.material_type)))].join('、') },
+    { key: 'quantity', label: '在库件数', value: row => received(row).reduce((sum, batch) => sum + batch.quantity, 0) },
+    { key: 'weight', label: '在库重量 (kg)', value: row => received(row).reduce((sum, batch) => sum + batch.weight, 0) },
+    { key: 'received', label: '在库批次', value: row => received(row).length },
+    { key: 'pending', label: '待签收批次', value: row => pending(row).length },
+    { key: 'batch_no', label: '批次号', value: row => joined(row, 'batch_no') },
+  ], (signal, progress) => loadExportPages((page, pageSize) => warehouseLocationApi.list(query, page, pageSize, state), signal, progress))
+}
 const error = ref(''), loading = ref(false), saving = ref(false), editorOpen = ref(false), formError = ref('')
 const editing = ref<WarehouseLocation | null>(null), form = reactive({ name: '', active: true })
 const editingTitle = computed(() => editing.value ? '编辑仓位' : '新增仓位')
@@ -147,7 +165,7 @@ onBeforeUnmount(() => { disposed = true; ++version; clearInterval(timer); clearT
             <FilterDialog v-model="filtersOpen" title="仓位筛选" :count="appliedFilter ? 1 : 0" @open="filter = appliedFilter" @cancel="filter = appliedFilter" @apply="search(); filtersOpen = false" @reset="filter = undefined"><label>仓位状态<ElSelect v-model="filter" aria-label="仓位状态" placeholder="全部状态" clearable><ElOption label="有料" value="occupied" /><ElOption label="空闲" value="available" /><ElOption label="待签收" value="pending" /><ElOption label="填写中" value="draft" /><ElOption label="停用" value="disabled" /></ElSelect></label></FilterDialog>
             <ElButton type="primary" @click="search">查询</ElButton><ElButton text @click="reset">重置</ElButton>
           </template>
-          <div class="warehouse-actions">
+          <div class="warehouse-actions"><TableExportButton v-if="section === 'locations'" :source="exportSource" :disabled="loading || !!error" :context="[teamId, section, appliedQuery, appliedFilter].join('|')" />
             <ElButton v-if="canDispatch && selected.size" :disabled="loading || !!error" @click="batchDispatch">批量出库（{{ selected.size }}）</ElButton>
             <ElButton v-if="teamId" text @click="section = section === 'locations' ? 'unassigned' : 'locations'">{{ section === 'locations' ? '未分配仓位' : '返回仓位' }}</ElButton>
             <ElButton class="warehouse-add" :icon="Plus" @click="edit()">新增仓位</ElButton>

@@ -68,6 +68,7 @@ describe('filtered table export', () => {
       [
         { serial: '00001234', weight: 1234.567, note: '=1+1', hidden: '不可导出内容' },
         { serial: 'YS-017', weight: null, note: '<测试>&文字' },
+        { serial: '000001', weight: 0.000123, note: '' },
       ],
     )
     const files = unzipSync(new Uint8Array(await blob.arrayBuffer()))
@@ -81,6 +82,8 @@ describe('filtered table export', () => {
     expect(strings).toContain('&lt;测试&gt;&amp;文字')
     expect(strings).not.toContain('不可导出内容')
     expect(sheet).toContain('<v>1234.567</v>')
+    expect(sheet).toContain('<v>0.000123</v>')
+    expect(strFromU8(files['xl/styles.xml']!)).toContain('#,##0.######')
     expect(sheet).not.toContain('<f>')
     expect(sheet).toContain('state="frozen"')
     expect(sheet).toContain('ySplit="1"')

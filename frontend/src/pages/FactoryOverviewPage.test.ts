@@ -6,6 +6,7 @@ import { ElInputNumber, ElSelect } from 'element-plus'
 import FactoryOverviewPage from './FactoryOverviewPage.vue'
 import FactoryOverviewCharts from '@/components/FactoryOverviewCharts.vue'
 import FactoryRecentBatches from '@/components/FactoryRecentBatches.vue'
+import TableExportButton from '@/components/TableExportButton.vue'
 import { factoryOverviewApi } from '@/services/factoryOverviewApi'
 import { factoryFixture } from '@/testFixtures/factoryOverview'
 let wrapper: VueWrapper
@@ -20,6 +21,16 @@ async function render(path = '/') {
 }
 async function click(label: string) { await wrapper.findAll('button').find(button => button.text().trim() === label || button.attributes('aria-label') === label)!.trigger('click'); await flushPromises() }
 describe('factory dashboard', () => {
+  it('exports the displayed analysis, unit and period with readable material type names', async () => {
+    vi.mocked(factoryOverviewApi.get).mockImplementation(async days => ({ ...factoryFixture(), days: days || 30 }))
+    await render('/?days=3&metric=weight')
+    const source = wrapper.getComponent(TableExportButton).props('source')()!
+    const rows = await source.load(new AbortController().signal, () => undefined)
+    expect(source.title).toContain('近3天')
+    expect(source.fields.at(-1)!.label).toBe('重量 (kg)')
+    expect(rows.find(row => row.category === '物料性质')).toMatchObject({ name: '半成品', value: 10 })
+    expect(rows.some(row => row.category === '全厂对外收发')).toBe(true)
+  })
   it('loads a global report, keeps period in the URL and drills into a team without a fixed id', async () => {
     const router = await render('/?days=7&metric=quantity')
     expect(factoryOverviewApi.get).toHaveBeenCalledWith(7)

@@ -6,6 +6,7 @@ import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import AccountsPage from './AccountsPage.vue'
+import TableExportButton from '@/components/TableExportButton.vue'
 import { adminApi, type Account, type Team } from '@/services/adminApi'
 import { authState, clearSession } from '@/stores/auth'
 const live = vi.hoisted(() => ({ refresh: async () => {} }))
@@ -65,6 +66,19 @@ function buttonByText(wrapper: VueWrapper, text: string) {
 }
 
 describe('team leader management workspace', () => {
+  it('exports every matching account with chosen public fields and no password data', async () => {
+    vi.mocked(adminApi.listAccounts).mockResolvedValue([
+      systemAdmin,
+      ...Array.from({ length: 25 }, (_, index) => ({ ...leader, id: 10 + index, username: `demo-${index + 1}` })),
+    ])
+    const wrapper = await mountPage()
+    await wrapper.get('input[aria-label="搜索班组长"]').setValue('demo-1')
+    const source = wrapper.getComponent(TableExportButton).props('source')()!
+    const rows = await source.load(new AbortController().signal, () => undefined)
+    expect(rows).toHaveLength(11)
+    expect(rows.every(row => String(row.username).includes('demo-1'))).toBe(true)
+    expect(source.fields.map(field => field.key)).toEqual(['username', 'display_name', 'team', 'active'])
+  })
   it('lets the administrator choose an avatar when editing a team leader', async () => {
     const update = vi.spyOn(adminApi, 'updateAccount').mockResolvedValue({ ...leader, avatar_key: 'portrait-6' })
     const wrapper = await mountPage()

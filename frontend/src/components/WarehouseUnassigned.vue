@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import TableExportButton from './TableExportButton.vue'
+import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 import WeightInput from './WeightInput.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElCheckbox, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElPagination, ElSelect, ElTable, ElTableColumn } from 'element-plus'
@@ -14,6 +16,18 @@ import { showToast } from '@/stores/toast'
 const props = defineProps<{ teamId: number; canDispatch?: boolean; refreshKey?: unknown }>()
 const emit = defineEmits<{ view: [batchNo: string]; dispatch: [batchNo: string]; batchDispatch: [sourceIds: number[]]; changed: [] }>()
 const rows = ref<StockBatch[]>([]), total = ref(0), page = ref(1), query = ref(''), error = ref(''), loading = ref(false)
+const appliedQuery = ref('')
+function exportSource() {
+  const id = props.teamId, query = appliedQuery.value
+  return tableExportSource('未分配仓位物料', total.value, [
+    { key: 'serial_no', label: '流水号', value: (row: StockBatch) => row.transfer.serial_no },
+    { key: 'material_name', label: '材质', value: row => row.transfer.material_name },
+    { key: 'material_type', label: '物料类型', value: row => materialTypeLabel(row.transfer.material_type) },
+    { key: 'quantity', label: '未分配件数', value: row => row.unassigned_quantity },
+    { key: 'weight', label: '未分配重量 (kg)', value: row => row.unassigned_weight },
+    { key: 'batch_no', label: '批次号', value: row => row.transfer.batch_no },
+  ], (signal, progress) => loadExportPages((page, pageSize) => teamMaterialApi.stock(id, { availability: 'all', location_status: 'unassigned', query, page, page_size: pageSize }), signal, progress))
+}
 const selected = ref<StockBatch | null>(null), slots = ref<WarehouseLocation[]>([]), locationId = ref<number>()
 const currentSlot = computed(() => slots.value.find(slot => slot.id === locationId.value))
 const slotAmount = (key: 'quantity' | 'weight') => (currentSlot.value?.batches.filter(batch => batch.status === 'received').reduce((sum, batch) => sum + batch[key], 0) || 0).toLocaleString('zh-CN', { maximumFractionDigits: 6 })
@@ -24,11 +38,12 @@ let generation = 0, slotGeneration = 0, disposed = false
 function asStock(row: unknown) { return row as StockBatch }
 async function load() {
   const current = ++generation
+  const requestedQuery = query.value
   loading.value = true
   try {
-    const result = await teamMaterialApi.stock(props.teamId, { availability: 'all', location_status: 'unassigned', query: query.value, page: page.value, page_size: 10 })
+    const result = await teamMaterialApi.stock(props.teamId, { availability: 'all', location_status: 'unassigned', query: requestedQuery, page: page.value, page_size: 10 })
     if (current !== generation) return
-    rows.value = result.items; reconcile(result.items); total.value = result.total; error.value = ''
+    appliedQuery.value = requestedQuery; rows.value = result.items; reconcile(result.items); total.value = result.total; error.value = ''
   } catch (e) { if (current === generation) error.value = e instanceof Error ? e.message : '未分配物料加载失败' }
   finally { if (current === generation) loading.value = false }
 }
@@ -69,7 +84,7 @@ onBeforeUnmount(() => { disposed = true; ++generation; ++slotGeneration })
 
 <template>
   <section class="unassigned-stock">
-    <div class="unassigned-tools"><ElInput v-model="query" aria-label="搜索未分配物料" placeholder="流水号、批次或材质" clearable @keyup.enter="search" @clear="search" /><ElButton :loading="loading" @click="search">查询</ElButton></div>
+    <div class="unassigned-tools"><ElInput v-model="query" aria-label="搜索未分配物料" placeholder="流水号、批次或材质" clearable @keyup.enter="search" @clear="search" /><ElButton :loading="loading" @click="search">查询</ElButton><TableExportButton :source="exportSource" :disabled="loading || !!error" :context="teamId" /></div>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <BatchSelectionBar v-if="canDispatch" :count="checked.size" :quantity="totals.quantity" :weight="totals.weight" :all-checked="allChecked" :partial="checkedCount > 0 && !allChecked" :disabled="loading || !availableRows.length || (checked.size >= 100 && !checkedCount)" @all="toggleAll" @clear="checked.clear()"><ElButton type="primary" :disabled="!checked.size || loading || !!error" @click="batchDispatch">批量出库</ElButton></BatchSelectionBar>
     <ElTable :data="rows" row-key="transfer.id" class="business-table" empty-text="没有未分配仓位的物料">
@@ -100,7 +115,7 @@ onBeforeUnmount(() => { disposed = true; ++generation; ++slotGeneration })
 
 <style scoped>
 .unassigned-stock { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-.unassigned-tools, footer { display: flex; align-items: center; gap: 12px; margin-block: 12px; }
+.unassigned-tools, footer { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-block: 12px; }
 .unassigned-tools .el-input { max-width: 320px; }
 footer { justify-content: space-between; margin-top: auto; padding-top: 20px; color: var(--muted); }
 .el-select { width: 100%; }

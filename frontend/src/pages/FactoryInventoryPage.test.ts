@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import FactoryInventoryPage from './FactoryInventoryPage.vue'
+import TableExportButton from '@/components/TableExportButton.vue'
 import { factoryDashboardApi } from '@/services/factoryDashboardApi'
 import * as streams from '@/services/inventoryStream'
 import type { FactoryDashboard } from '@/types/factoryDashboard'
@@ -141,6 +142,27 @@ async function click(label: string) {
   await flushPromises()
 }
 describe('live team material stock page', () => {
+  it('exports the selected unit and exact totals without colliding with material names', async () => {
+    const data = fixture()
+    data.stock.materials[0]!.name = 'total'
+    data.stock.rows[0]!.amounts = { total: { quantity: 100, weight: 0.000123 } }
+    data.stock.rows[0]!.total = { quantity: 100, weight: 0.000123 }
+    data.stock.total = { quantity: 100, weight: 0.000123 }
+    data.stock.materials[0]!.weight = 0.000123
+    vi.mocked(factoryDashboardApi.get).mockResolvedValue(data)
+    await render()
+    let source = wrapper.getComponent(TableExportButton).props('source')()!
+    let rows = await source.load(new AbortController().signal, () => undefined)
+    expect(rows).toEqual([
+      { team_name: '库房', 'material:total': 0.000123, total: 0.000123 },
+      { team_name: '总计', 'material:total': 0.000123, total: 0.000123 },
+    ])
+    await wrapper.get('input[value="quantity"]').setValue(true)
+    source = wrapper.getComponent(TableExportButton).props('source')()!
+    rows = await source.load(new AbortController().signal, () => undefined)
+    expect(rows[1]).toMatchObject({ 'material:total': 100, total: 100 })
+    expect(source.fields.at(-1)!.label).toBe('合计 (件)')
+  })
   it('renders only the full-page stock matrix and switches stock units', async () => {
     await render()
     expect(wrapper.get('h1').text()).toBe('班组材质库存')

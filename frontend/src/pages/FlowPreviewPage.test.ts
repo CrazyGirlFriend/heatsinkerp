@@ -8,6 +8,9 @@ import { materialTransferApi } from '@/services/materialTransferApi'
 import FlowPreviewCanvas from '@/components/FlowPreviewCanvas.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
 import TraceStockSummary from '@/components/TraceStockSummary.vue'
+import TableExportButton from '@/components/TableExportButton.vue'
+import FilterDialog from '@/components/FilterDialog.vue'
+import RecordDateFilter from '@/components/RecordDateFilter.vue'
 import FlowPreviewPage from './FlowPreviewPage.vue'
 import snapshot from '@/fixtures/flowPurposeSnapshot.json'
 import type { SerialHistory } from '@/types/teamBusiness'
@@ -57,6 +60,11 @@ it('filters a complete intake family and keeps its source distinct from the prev
   const filter = page.findAllComponents(ElSelect).find(select => select.props('ariaLabel') === '筛选来源入库批次')!
   filter.vm.$emit('change', '101'); await flushPromises()
   expect(page.getComponent(TraceStockSummary).props('trace').items.map(item => item.id)).toEqual([101, 103, 104])
+  await page.get('input[aria-label="流水号"]').setValue('UNSENT')
+  const source = page.getComponent(TableExportButton).props('source')()!
+  const exported = await source.load(new AbortController().signal, () => undefined)
+  expect(exported.map(row => row.batch_no)).toEqual(['WAREHOUSE-A', 'PREVIOUS-A', 'PENDING-A'])
+  expect(source.title).not.toContain('UNSENT')
   page.getComponent(FlowPreviewCanvas).vm.$emit('select', { dataIndex: 0, data: { batchId: '104' } }); await flushPromises()
   const detail = page.get('[aria-label="选中批次收发详情"]').text()
   expect(detail).toContain('来源批次WAREHOUSE-A')
@@ -87,6 +95,19 @@ it('queries exact serials and keeps the canvas and unsent input intact on push r
   await live.refresh(); await flushPromises()
   expect(page.getComponent(FlowPreviewCanvas).element).toBe(canvas)
   expect(page.get('input[aria-label="流水号"]').element).toHaveProperty('value', 'UNSENT')
+})
+it('applies date filters in the standalone team view and refreshes only the applied range', async () => {
+  vi.spyOn(teamMaterialApi, 'serialHistory').mockResolvedValue(snapshot.history as SerialHistory)
+  const { page, router } = await render('/flow-preview/team?serial_no=000012&team_id=8')
+  await page.getComponent(FilterDialog).get('button').trigger('click'); await flushPromises()
+  page.getComponent(RecordDateFilter).vm.$emit('update:modelValue', { from: '2026-09-18', to: '2026-09-20' })
+  page.getComponent(FilterDialog).vm.$emit('apply'); await flushPromises()
+  expect(router.currentRoute.value.query.date_from).toBe('2026-09-18')
+  expect(teamMaterialApi.serialHistory).toHaveBeenLastCalledWith(8, { serial_no: '000012', date_from: '2026-09-18', date_to: '2026-09-20' })
+  await page.getComponent(FilterDialog).get('button').trigger('click'); await flushPromises()
+  page.getComponent(RecordDateFilter).vm.$emit('update:modelValue', { from: '2026-09-22', to: '2026-09-22' })
+  await live.refresh(); await flushPromises()
+  expect(teamMaterialApi.serialHistory).toHaveBeenLastCalledWith(8, { serial_no: '000012', date_from: '2026-09-18', date_to: '2026-09-20' })
 })
 it('separates the administrator chain entry from the team page', async () => {
   const { page } = await render('/flow-preview/chain?sample=purposes')

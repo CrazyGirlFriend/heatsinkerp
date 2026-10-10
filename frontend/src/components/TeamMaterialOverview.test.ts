@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ElPagination } from 'element-plus'
+import { ElPagination, ElSelect } from 'element-plus'
+import FilterDialog from './FilterDialog.vue'
 import TeamMaterialOverview from './TeamMaterialOverview.vue'
 import type { TeamMaterialOverview as Overview } from '@/types/teamMaterials'
 
@@ -13,6 +14,31 @@ const overview = (count = 25): Overview => ({
 })
 afterEach(() => wrapper?.unmount())
 describe('compact material classification', () => {
+  it('keeps search and applied filters in fullscreen and exports only matching rows across pages', async () => {
+    const data = overview(25)
+    data.materials[0]!.reserved_quantity = data.materials[0]!.reserved_weight = 0
+    wrapper = mount(TeamMaterialOverview, { props: { overview: data } })
+    const source = () => (wrapper.vm as unknown as { exportSource: () => import('@/utils/tableExport').TableExportSource }).exportSource()
+    await wrapper.get('input[aria-label="搜索材质库存"]').setValue('材质 1')
+    expect(source().total).toBe(25)
+    await wrapper.get('form').trigger('submit')
+    expect(source().total).toBe(11)
+    expect(wrapper.emitted('paginate')?.at(-1)).toEqual([1, 10])
+    await wrapper.getComponent(FilterDialog).get('button').trigger('click'); await flushPromises()
+    wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 'pending')
+    wrapper.getComponent(FilterDialog).vm.$emit('apply'); await flushPromises()
+    await wrapper.setProps({ fullscreen: true })
+    expect(wrapper.find('.ledger-toolbar').exists()).toBe(true)
+    const rows = await source().load(new AbortController().signal, () => undefined)
+    expect(rows).toHaveLength(10)
+    expect(rows.some(row => row.label === '材质 1')).toBe(false)
+    expect(rows.some(row => row.label === '材质 19')).toBe(true)
+    await wrapper.setProps({ fullscreen: false })
+    expect(source().total).toBe(10)
+    await wrapper.setProps({ kind: 'type' })
+    expect((wrapper.get('input[aria-label="搜索类型库存"]').element as HTMLInputElement).value).toBe('')
+    expect(wrapper.getComponent(FilterDialog).props('count')).toBe(0)
+  })
   it('exports all summary rows across pages with numeric amounts and type names', async () => {
     const data = overview(25)
     data.material_types = [{ ...data.materials[0]!, material_type: 'semi_finished' }]

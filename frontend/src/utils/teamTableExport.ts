@@ -94,6 +94,23 @@ export const reallocationExportFields: TableExportField<MaterialTransfer>[] = [
   { key: 'batch_no', label: '转投批次号', value: (row) => row.batch_no },
 ]
 
+export const globalTransferExportFields: TableExportField<MaterialTransfer>[] = [
+  { key: 'serial_no', label: '流水号', value: (row) => row.serial_no },
+  { key: 'transferred_at', label: '日期', value: (row) => formatDateTime(row.transferred_at) },
+  ...transferExportFields('outgoing', false).filter(
+    (field) => !['serial_no', 'transferred_at', 'batch_no'].includes(field.key),
+  ),
+  { key: 'source', label: '来源', value: materialSourceLabel },
+  { key: 'received_at', label: '签收时间', value: (row) => formatDateTime(row.received_at) },
+  { key: 'notes', label: '说明', value: (row) => row.notes },
+  {
+    key: 'source_transfer_batch_no',
+    label: '上一批次号',
+    value: (row) => row.source_transfer_batch_no,
+  },
+  { key: 'batch_no', label: '批次号', value: (row) => row.batch_no },
+]
+
 export const lossExportFields: TableExportField<MaterialLoss>[] = [
   { key: 'loss_no', label: '丢失记录号', value: (row) => row.loss_no },
   { key: 'batch_no', label: '来源批次号', value: (row) => row.batch_no },

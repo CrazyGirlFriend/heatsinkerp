@@ -7,6 +7,7 @@ import TeamSerialHistory from './TeamSerialHistory.vue'
 import TeamFlowTimeline from './TeamFlowTimeline.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
+import FilterDialog from './FilterDialog.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { SerialHistory, SerialHistoryGroup } from '@/types/teamBusiness'
 
@@ -49,6 +50,7 @@ describe('team serial history', () => {
   })
   it('uses explicit dates and opens the actual batch from a chart point', async () => {
     await render()
+    await wrapper.getComponent(FilterDialog).get('button').trigger('click'); await flushPromises()
     wrapper.getComponent(RecordDateFilter).vm.$emit('update:modelValue', { from: '2026-09-18', to: '2026-09-18' })
     await search()
     expect(teamMaterialApi.serialHistory).toHaveBeenLastCalledWith(2, { serial_no: '000012', date_from: '2026-09-18', date_to: '2026-09-18' })

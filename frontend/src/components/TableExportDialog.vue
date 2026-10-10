@@ -7,7 +7,7 @@ import {
   type TableExportSource,
 } from '@/utils/tableExport'
 
-const props = defineProps<{ source: TableExportSource | null }>()
+const props = defineProps<{ source: TableExportSource | null; appendTo?: HTMLElement }>()
 const emit = defineEmits<{ close: [] }>()
 const selected = ref<string[]>([]),
   busy = ref(false),
@@ -78,6 +78,7 @@ onBeforeUnmount(cancel)
     width="560px"
     class="table-export-dialog"
     append-to-body
+    :append-to="appendTo || 'body'"
     :close-on-click-modal="false"
     @update:model-value="!$event && close()"
   >

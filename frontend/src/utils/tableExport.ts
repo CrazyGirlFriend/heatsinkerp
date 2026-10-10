@@ -38,7 +38,7 @@ export function tableExportSource<T>(
 
 /** Read every filtered page through the same permission-checked list API. */
 export async function loadExportPages<T>(
-  fetchPage: (page: number, pageSize: number) => Promise<MaterialPage<T>>,
+  fetchPage: (page: number, pageSize: number) => Promise<Pick<MaterialPage<T>, 'items' | 'total'>>,
   signal: AbortSignal,
   progress: (loaded: number, total: number) => void,
 ): Promise<T[]> {
@@ -76,7 +76,7 @@ export async function createExportWorkbook(
         const value = row[field.key] ?? ''
         // Identifiers and user text stay text, including leading zeros and '='.
         return typeof value === 'number'
-          ? { value, type: Number, format: '#,##0.###' }
+          ? { value, type: Number, format: '#,##0.######' }
           : { value, type: String }
       }),
     ),

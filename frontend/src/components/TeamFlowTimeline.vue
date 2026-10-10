@@ -27,7 +27,7 @@ async function select(id: string) {
   const node = model.value.nodes.find(item => item.id === id)
   if (!node) return
   // The existing batch drawer teleports to body; leave fullscreen before opening it.
-  if (document.fullscreenElement === root.value) {
+  if (document.fullscreenElement === fullscreenTarget()) {
     try { await document.exitFullscreen() }
     catch { fullscreenError.value = '请退出全屏后查看批次。'; return }
   }
@@ -42,10 +42,15 @@ function shortcut(event: KeyboardEvent) {
 }
 async function toggleFullscreen() {
   fullscreenError.value = ''
-  try { if (document.fullscreenElement === root.value) await document.exitFullscreen(); else await root.value?.requestFullscreen() }
+  try {
+    const target = fullscreenTarget()
+    if (document.fullscreenElement === target) await document.exitFullscreen()
+    else if (target) { await target.requestFullscreen(); target.scrollTop = 0; target.scrollLeft = 0 }
+  }
   catch { fullscreenError.value = '无法进入全屏，请使用窗口最大化查看。' }
 }
-function fullscreenChanged() { fullscreen.value = document.fullscreenElement === root.value }
+function fullscreenTarget() { return root.value?.closest<HTMLElement>('.serial-history, .flow-preview-page') || root.value }
+function fullscreenChanged() { fullscreen.value = document.fullscreenElement === fullscreenTarget() }
 watch(() => props.history.serial_no, () => { selected.value = ''; replay.value++ })
 onMounted(() => document.addEventListener('fullscreenchange', fullscreenChanged))
 onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscreenChanged))

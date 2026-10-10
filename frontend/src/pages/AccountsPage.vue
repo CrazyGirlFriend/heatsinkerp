@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import TableExportButton from '@/components/TableExportButton.vue'
+import { tableExportSource } from '@/utils/tableExport'
 import PageBackButton from '@/components/PageBackButton.vue'
 import AccountAvatar from '@/components/AccountAvatar.vue'
 import AvatarPicker from '@/components/AvatarPicker.vue'
@@ -96,6 +98,15 @@ const filteredLeaders = computed(() => {
     return matchesQuery && matchesStatus && matchesTeam
   })
 })
+function exportSource() {
+  const rows = filteredLeaders.value.map(row => ({ ...row }))
+  return tableExportSource('班组长管理', rows.length, [
+    { key: 'username', label: '登录账号', value: (row: typeof rows[number]) => row.username },
+    { key: 'display_name', label: '姓名', value: row => row.display_name },
+    { key: 'team', label: '班组', value: row => row.team?.name },
+    { key: 'active', label: '状态', value: row => row.active ? '启用' : '停用' },
+  ], async () => rows)
+}
 const page = ref(1)
 const pageSize = ref(10)
 const pageRows = computed(() => filteredLeaders.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
@@ -318,7 +329,7 @@ onMounted(() => void loadData())
           <ElOption value="active" label="启用" />
           <ElOption value="inactive" label="停用" />
         </ElSelect>
-        <ElButton class="filter-primary-action" type="primary" :icon="Plus" :disabled="!isAdmin" @click="openCreate">新增班组长</ElButton>
+        <TableExportButton :source="exportSource" :disabled="!isAdmin || loading || !!errorMessage" /><ElButton class="filter-primary-action" type="primary" :icon="Plus" :disabled="!isAdmin" @click="openCreate">新增班组长</ElButton>
       </div>
 
       <div v-if="loading" class="state-region" aria-live="polite"><ElSkeleton :rows="6" animated /></div>

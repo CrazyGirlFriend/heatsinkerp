@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { Filter } from '@element-plus/icons-vue'
 import { ElButton, ElDialog } from 'element-plus'
-withDefaults(defineProps<{ modelValue: boolean; count?: number; title?: string }>(), {
-  count: 0,
-  title: '筛选条件',
-})
+withDefaults(
+  defineProps<{ modelValue: boolean; count?: number; title?: string; appendTo?: HTMLElement }>(),
+  {
+    count: 0,
+    title: '筛选条件',
+  },
+)
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   open: []
@@ -37,6 +40,7 @@ function cancel() {
     width="min(640px, 94vw)"
     class="compact-filter-dialog"
     append-to-body
+    :append-to="appendTo || 'body'"
     @update:model-value="!$event && cancel()"
   >
     <div class="filter-dialog-fields"><slot /></div>

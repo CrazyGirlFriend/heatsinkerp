@@ -5,7 +5,7 @@ import 'dayjs/locale/zh-cn'
 import { Calendar, ArrowDown, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { ElButton, ElCalendar, ElIcon, ElPopover, ElRadioButton, ElRadioGroup, type CalendarInstance } from 'element-plus'
 import type { CalendarRange } from '@/types/recordFilters'
-const props = withDefaults(defineProps<{ modelValue: CalendarRange; label?: string }>(), { label: '登记日期' })
+const props = withDefaults(defineProps<{ modelValue: CalendarRange; label?: string; appendTo?: HTMLElement }>(), { label: '登记日期' })
 const emit = defineEmits<{ 'update:modelValue': [value: CalendarRange] }>()
 dayjs.locale('zh-cn')
 const trigger = ref<{ ref: HTMLButtonElement }>()
@@ -44,7 +44,7 @@ watch(visible, value => { if (value) document.addEventListener('keydown', escape
 onBeforeUnmount(() => document.removeEventListener('keydown', escape))
 </script>
 <template>
-  <ElPopover v-model:visible="visible" role="dialog" trigger="click" placement="bottom-start" :width="316" popper-class="record-date-popover" @show="open">
+  <ElPopover :append-to="appendTo || 'body'" v-model:visible="visible" role="dialog" trigger="click" placement="bottom-start" :width="316" :popper-options="{ modifiers: [{ name: 'preventOverflow', options: { altAxis: true, padding: 8 } }] }" popper-class="record-date-popover" @show="open">
     <template #reference><ElButton ref="trigger" class="record-date-trigger" :class="{ 'is-filtered': active }" :icon="Calendar" :aria-label="`${label}：${display}`" :title="`${label}：${display}`" :aria-expanded="visible">{{ label }} · {{ display }}<ElIcon class="date-chevron"><ArrowDown /></ElIcon></ElButton></template>
     <div class="date-shortcuts"><ElButton size="small" @click="shortcut('')">不限</ElButton><ElButton size="small" :type="draft.from === today() && draft.to === today() ? 'primary' : 'default'" plain @click="shortcut(today())">今天</ElButton><ElButton size="small" @click="shortcut(today(-1))">昨天</ElButton></div>
     <ElRadioGroup v-model="mode" size="small" aria-label="日期选择方式" @change="draft = { from: '', to: '' }"><ElRadioButton value="day">某一天</ElRadioButton><ElRadioButton value="range">日期范围</ElRadioButton></ElRadioGroup>
@@ -56,6 +56,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
   </ElPopover>
 </template>
 <style scoped>
+:global(.record-date-popover.el-popper) { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; }
 .record-date-trigger { white-space: nowrap; margin-left: 0 !important; font-size: 13px; }
 .record-date-trigger.is-filtered { color: var(--primary); border-color: var(--primary); background: var(--el-color-primary-light-9); }
 .date-chevron { margin-left: 10px; }

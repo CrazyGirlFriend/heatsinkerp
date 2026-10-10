@@ -3,6 +3,9 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElAlert, ElButton, ElInput } from 'element-plus'
 import { Search, Connection } from '@element-plus/icons-vue'
+import TableExportButton from './TableExportButton.vue'
+import FilterDialog from './FilterDialog.vue'
+import { serialHistoryExportSource } from '@/utils/traceTableExport'
 import TeamFlowTimeline from './TeamFlowTimeline.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import StatePanel from './StatePanel.vue'
@@ -19,6 +22,8 @@ const route = useRoute()
 const query = (key: string) => typeof route.query[key] === 'string' ? String(route.query[key]) : ''
 const serial = ref(query('serial_no'))
 const dates = ref<CalendarRange>({ from: query('date_from'), to: query('date_to') })
+const historyRoot = ref<HTMLElement>()
+const filtersOpen = ref(false)
 const applied = ref({ serial_no: '', date_from: '', date_to: '' })
 const loading = ref(false), error = ref(''), result = ref<SerialHistory | null>(null)
 const batchOpen = ref(false), batchNo = ref('')
@@ -42,6 +47,7 @@ function search() {
   applied.value = { serial_no: serial.value.trim(), date_from: dates.value.from, date_to: dates.value.to }
   void load()
 }
+function exportSource() { return result.value ? serialHistoryExportSource(result.value) : null }
 function showBatch(code: string) { batchNo.value = code; batchOpen.value = true }
 watch(() => props.teamId, () => { ++epoch; loading.value = false; error.value = ''; result.value = null; applied.value.serial_no = ''; batchOpen.value = false })
 watch(() => [route.query.serial_no, route.query.date_from, route.query.date_to], () => {
@@ -54,13 +60,13 @@ if (serial.value) search()
 </script>
 
 <template>
-  <section class="serial-history" aria-label="本班组流水号收发历史">
+  <section ref="historyRoot" class="serial-history" aria-label="本班组流水号收发历史">
     <header class="history-header">
       <h2>本班组收发</h2>
       <slot name="actions" />
     </header>
     <div class="history-query-bar">
-      <form class="history-search" @submit.prevent="search"><ElInput v-model="serial" :prefix-icon="Search" aria-label="历史流水号" placeholder="输入完整流水号" maxlength="80" clearable /><RecordDateFilter v-model="dates" label="收发日期" /><ElButton native-type="submit" type="primary" :loading="loading">查询</ElButton></form>
+      <form class="history-search" @submit.prevent="search"><ElInput v-model="serial" :prefix-icon="Search" aria-label="历史流水号" placeholder="输入完整流水号" maxlength="80" clearable /><FilterDialog v-model="filtersOpen" :append-to="historyRoot" title="收发历史筛选" :count="applied.date_from || applied.date_to ? 1 : 0" @open="dates = { from: applied.date_from, to: applied.date_to }" @cancel="dates = { from: applied.date_from, to: applied.date_to }" @apply="filtersOpen = false; search()" @reset="dates = { from: '', to: '' }"><label>收发日期<RecordDateFilter :append-to="historyRoot" v-model="dates" label="收发日期" /></label></FilterDialog><ElButton native-type="submit" type="primary" :loading="loading">查询</ElButton><TableExportButton :append-to="historyRoot" :source="exportSource" :disabled="loading || !!error || !result?.found" :context="[teamId, applied.serial_no, applied.date_from, applied.date_to].join('|')" /></form>
       <div v-if="result?.found" class="history-total"><span>当前库存</span><strong>{{ num(totals.quantity) }} <small>件</small><i>/</i>{{ num(totals.weight) }} <small>kg</small></strong></div>
     </div>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
@@ -79,6 +85,10 @@ if (serial.value) search()
 
 <style scoped>
 .serial-history { display: flex; flex: 1 0 auto; flex-direction: column; min-width: 0; color: #24324a; }
+.serial-history:fullscreen { height: 100dvh; padding: 12px; overflow: auto; background: var(--workspace-bg); }
+.serial-history:fullscreen .history-header { display: none; }
+.serial-history:fullscreen .history-query-bar { position: sticky; top: 0; z-index: 20; }
+.serial-history:fullscreen .team-timeline { flex: 1; height: auto; min-height: 360px; }
 .serial-history > :is(.history-prompt, .state-panel) { display: flex; flex: 1 0 auto; flex-direction: column; align-items: center; justify-content: center; min-height: 300px; margin: 0; padding: 32px 16px; border: 1px solid var(--line); border-radius: var(--card-radius); background: var(--surface); }
 .serial-history > :is(.history-header, .history-query-bar) { flex-shrink: 0; }
 .history-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; min-height: 68px; padding: 16px; border: 1px solid var(--line); border-radius: var(--card-radius) var(--card-radius) 0 0; background: var(--surface); }

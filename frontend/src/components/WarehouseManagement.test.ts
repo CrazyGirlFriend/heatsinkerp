@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WarehouseManagement from './WarehouseManagement.vue'
 import BatchSelectionBar from './BatchSelectionBar.vue'
 import FilterDialog from './FilterDialog.vue'
+import TableExportButton from './TableExportButton.vue'
 import { ElPagination, ElSelect } from 'element-plus'
 import { warehouseLocationApi, type WarehouseLocation } from '@/services/warehouseLocationApi'
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
@@ -28,6 +29,18 @@ async function nextPage() {
 }
 
 describe('warehouse management', () => {
+  it('exports every filtered warehouse page with current states and excludes unsigned stock from totals', async () => {
+    await render()
+    const source = wrapper.getComponent(TableExportButton).props('source')()!
+    vi.mocked(warehouseLocationApi.list).mockImplementation(async (_query, page) => ({
+      items: page === 1 ? [occupied(1, [batch(1, 2, .000123), { ...batch(2, 100, 10), status: 'pending' }])] : [{ ...slot, draft_locked: true }], total: 2, team_id: 1,
+    }))
+    const rows = await source.load(new AbortController().signal, () => undefined)
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({ quantity: 2, weight: .000123, received: 1, pending: 1 })
+    expect(rows[1]).toMatchObject({ status: '填写中', quantity: 0, weight: 0 })
+    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 2, 100, undefined)
+  })
   it('uses the initial capacity before measurement and keeps material details inside the popup', async () => {
     const items = Array.from({ length: 50 }, (_, index) => occupied(index + 1))
     vi.mocked(warehouseLocationApi.list).mockResolvedValueOnce({ items, total: 51, team_id: 1 })

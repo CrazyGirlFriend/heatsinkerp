@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import TableExportButton from '@/components/TableExportButton.vue'
+import { tableExportSource } from '@/utils/tableExport'
 import PageBackButton from '@/components/PageBackButton.vue'
 import { CircleCheck, Delete, EditPen, Plus, Search, SwitchButton } from '@element-plus/icons-vue'
 import {
@@ -71,6 +73,17 @@ const filteredTeams = computed(() => {
   }).sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0) || String(left.id).localeCompare(String(right.id), undefined, { numeric: true }))
 })
 
+function exportSource() {
+  const rows = filteredTeams.value.map(row => ({ ...row }))
+  return tableExportSource('班组管理', rows.length, [
+    { key: 'code', label: '班组编码', value: (row: Team) => row.code },
+    { key: 'name', label: '班组名称', value: row => row.name },
+    { key: 'kind', label: '班组属性', value: row => kindLabel(row) },
+    { key: 'sort_order', label: '显示顺序', value: row => row.sort_order },
+    { key: 'active', label: '状态', value: row => row.active ? '启用' : '停用' },
+    { key: 'description', label: '说明', value: row => row.description },
+  ], async () => rows)
+}
 const page = ref(1)
 const pageSize = ref(10)
 const pageRows = computed(() => filteredTeams.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
@@ -290,7 +303,7 @@ onMounted(() => void loadTeams())
           <ElOption value="active" label="启用" />
           <ElOption value="inactive" label="停用" />
         </ElSelect>
-        <ElButton class="filter-primary-action" type="primary" :icon="Plus" :disabled="!isAdmin" @click="openCreate">新增班组</ElButton>
+        <TableExportButton :source="exportSource" :disabled="!isAdmin || loading || !!errorMessage" /><ElButton class="filter-primary-action" type="primary" :icon="Plus" :disabled="!isAdmin" @click="openCreate">新增班组</ElButton>
       </div>
 
       <div v-if="loading" class="state-region" aria-live="polite"><ElSkeleton :rows="6" animated /></div>

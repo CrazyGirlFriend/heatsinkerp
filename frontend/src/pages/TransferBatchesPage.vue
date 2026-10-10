@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import FilterDialog from '@/components/FilterDialog.vue'
+import TableExportButton from '@/components/TableExportButton.vue'
+import { loadExportPages, tableExportSource } from '@/utils/tableExport'
+import { globalTransferExportFields } from '@/utils/teamTableExport'
 import PageBackButton from '@/components/PageBackButton.vue'
 import { CircleCheck, Clock, Collection, Plus, Refresh, Remove, Search } from '@element-plus/icons-vue'
 import {
@@ -99,6 +102,11 @@ const filterParams = computed<MaterialTransferFilterParams>(() => ({
   source_team_id: sourceTeamId.value || undefined,
   next_team_id: nextTeamId.value || undefined,
 }))
+function exportSource() {
+  const params = { ...filterParams.value, status: status.value }
+  return tableExportSource('转料记录', total.value, globalTransferExportFields,
+    (signal, progress) => loadExportPages((page, pageSize) => materialTransferApi.list({ ...params, page, page_size: pageSize }), signal, progress))
+}
 const searchPlaceholder = computed(() => searchFieldDraft.value !== 'all'
   ? `搜索${materialSearchFields.find(option => option.value === searchFieldDraft.value)?.label}`
   : searchModeDraft.value === 'contains' ? '搜索编号、材质、班组或转料人' : '搜索批次号、流水号、原单批号、编号、客户代码或材质')
@@ -367,7 +375,7 @@ onBeforeUnmount(() => {
       <div class="status-toolbar">
       <PageBackButton />
       <h2 class="transfer-heading" style="margin: 0; font-size: 18px; font-weight: 600;">转料记录</h2>
-        <div class="heading-actions">
+        <div class="heading-actions"><TableExportButton :source="exportSource" :disabled="loading || !!errorMessage" :context="route.fullPath" />
           <ElButton v-if="canCreate" type="primary" :icon="Plus" @click="openCreate">新建转料</ElButton>
         </div>
       </div>

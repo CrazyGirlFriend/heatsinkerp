@@ -3,6 +3,10 @@ import { Close, FullScreen, InfoFilled, Pointer, Rank, RefreshRight, ScaleToOrig
 import { ElAlert, ElButton, ElDialog, ElDrawer, ElIcon, ElInput, ElOption, ElPagination, ElPopover, ElSelect, ElTable, ElTableColumn, ElTooltip } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import TableExportButton from '@/components/TableExportButton.vue'
+import FilterDialog from '@/components/FilterDialog.vue'
+import RecordDateFilter from '@/components/RecordDateFilter.vue'
+import { traceExportSource, serialHistoryExportSource } from '@/utils/traceTableExport'
 import FlowPreviewCanvas from '@/components/FlowPreviewCanvas.vue'
 import TraceStockSummary from '@/components/TraceStockSummary.vue'
 import TraceBatchDetail from '@/components/TraceBatchDetail.vue'
@@ -37,12 +41,15 @@ const chart = ref<InstanceType<typeof FlowPreviewCanvas>>()
 const pageRoot = ref<HTMLElement>(), fullscreen = ref(false), zoomLevel = ref(100)
 const interaction = ref<FlowInteraction>('select')
 const teamRange = ref({ start: 0, end: 100 })
+const historyDates = computed(() => ({ from: typeof route.query.date_from === 'string' ? route.query.date_from : '', to: typeof route.query.date_to === 'string' ? route.query.date_to : '' }))
+const dateDraft = ref({ from: '', to: '' }), filtersOpen = ref(false)
 let epoch = 0
 const localModel = computed(() => history.value ? teamFlowModel(history.value) : null)
 const originId = ref('all')
 const origins = computed(() => traceOrigins(trace.value?.items || []))
 const activeOrigin = computed(() => origins.value.groups.find(group => group.id === originId.value))
 const scopedTrace = computed(() => trace.value && activeOrigin.value ? traceOriginScope(trace.value, activeOrigin.value.items) : trace.value)
+function exportSource() { return mode.value === 'team' ? history.value && serialHistoryExportSource(history.value) : scopedTrace.value && traceExportSource(scopedTrace.value) }
 const chainModel = computed(() => traceFlowModel(scopedTrace.value?.items || [], trace.value?.observed_at, reallocations.value))
 const visibleOrigins = computed(() => activeOrigin.value ? [activeOrigin.value] : origins.value.groups)
 const originInput = computed(() => visibleOrigins.value.filter(group => ['warehouse_receipt', 'serial_reallocation'].includes(group.batch.entry_kind || '')).reduce((sum, group) => sum + group.batch[metric.value], 0))
@@ -84,7 +91,7 @@ async function load(background = false) {
       return
     }
     if (currentMode === 'team') {
-      const data = await teamMaterialApi.serialHistory(teamId.value, { serial_no: serial.value })
+      const data = await teamMaterialApi.serialHistory(teamId.value, { serial_no: serial.value, ...(historyDates.value.from ? { date_from: historyDates.value.from } : {}), ...(historyDates.value.to ? { date_to: historyDates.value.to } : {}) })
       if (request === epoch) history.value = data
     } else {
       const data = await materialTransferApi.trace(serial.value)
@@ -99,8 +106,9 @@ async function load(background = false) {
 function search() {
   if (!serialDraft.value.trim()) { error.value = '请输入完整流水号'; return }
   const next = serialDraft.value.trim()
-  if (next === serial.value && teamDraft.value === teamId.value) void load()
-  else void router.replace({ path: route.path, query: { serial_no: next, ...(mode.value === 'team' ? { team_id: teamDraft.value } : {}) } })
+  const sameDates = dateDraft.value.from === historyDates.value.from && dateDraft.value.to === historyDates.value.to
+  if (next === serial.value && teamDraft.value === teamId.value && (mode.value === 'chain' || sameDates)) void load()
+  else void router.replace({ path: route.path, query: { serial_no: next, ...(mode.value === 'team' ? { team_id: teamDraft.value, ...(dateDraft.value.from ? { date_from: dateDraft.value.from } : {}), ...(dateDraft.value.to ? { date_to: dateDraft.value.to } : {}) } : {}) } })
 }
 function switchData() { void router.replace({ path: route.path, query: example.value ? {} : { sample: 'purposes' } }) }
 async function chooseDetail(id: string) {
@@ -130,16 +138,16 @@ function openRelatedSerial(value: string) { reallocationsOpen.value = false; voi
 async function toggleFullscreen() {
   try {
     if (document.fullscreenElement === pageRoot.value) await document.exitFullscreen()
-    else await pageRoot.value?.requestFullscreen()
+    else if (pageRoot.value) { await pageRoot.value.requestFullscreen(); pageRoot.value.scrollTop = 0; pageRoot.value.scrollLeft = 0 }
   } catch { error.value = '浏览器未能进入全屏，可使用窗口最大化查看。' }
 }
 function updateFullscreen() { fullscreen.value = document.fullscreenElement === pageRoot.value }
 onMounted(() => document.addEventListener('fullscreenchange', updateFullscreen))
 const live = useLiveRefresh(() => load(true), { teamId: () => mode.value === 'team' ? teamId.value : undefined, enabled: () => Boolean(serial.value) && !example.value, busy: () => loading.value || Boolean(selected.value) || drawerOpen.value })
-watch(() => [route.path, route.params.view, route.query.serial_no, route.query.team_id, route.query.sample], () => {
+watch(() => [route.path, route.params.view, route.query.serial_no, route.query.team_id, route.query.sample, route.query.date_from, route.query.date_to], () => {
   ++epoch; loading.value = false; error.value = ''; selected.value = null; selectedId.value = ''; originId.value = 'all'; drawerOpen.value = false
   reallocationsOpen.value = false; reallocationsPage.value = 1
-  history.value = null; trace.value = null
+  history.value = null; trace.value = null; filtersOpen.value = false; dateDraft.value = { ...historyDates.value }
   serial.value = example.value ? purposeSnapshot.history.serial_no : typeof route.query.serial_no === 'string' ? route.query.serial_no.trim() : ''; serialDraft.value = serial.value
   const id = example.value ? 8 : Number(route.query.team_id || currentUser.value?.team_id || 1)
   teamId.value = teamDraft.value = Number.isSafeInteger(id) && id > 0 ? id : 1
@@ -155,7 +163,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
       <div v-if="!embedded || fullscreen" class="chain-title"><h1>全链路追踪</h1></div>
       <h1 v-else class="sr-only">全链路追踪</h1>
       <form class="chain-query" @submit.prevent="search"><ElInput v-model="serialDraft" placeholder="输入完整流水号" aria-label="流水号" clearable maxlength="80" :disabled="example"><template #prepend>流水号</template></ElInput><ElButton type="primary" native-type="submit" :loading="loading" :disabled="example">查询</ElButton></form>
-      <div class="chain-actions">
+      <div class="chain-actions"><TableExportButton :source="exportSource" :disabled="loading || !hasData || !!error" :context="[serial, originId].join('|')" :append-to="pageRoot" />
         <span v-if="chainModel.closing !== null" class="chain-asof" :title="`截至 ${traceTime(chainModel.closing)}（北京时间）`">{{ traceTime(chainModel.closing).slice(0, 10) }}</span>
         <span v-if="hasData" class="batch-count">{{ trace?.items.length }} 批次</span>
         <ElButton v-if="reallocations.length" text type="primary" @click="reallocationsOpen = true">转投记录 {{ reallocations.length }}</ElButton>
@@ -176,7 +184,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
     </header>
     <div class="preview-main">
       <header v-if="mode === 'team'" class="preview-heading"><div><h1>班组收发流向</h1></div>
-        <form @submit.prevent="search"><ElSelect v-if="mode === 'team'" v-model="teamDraft" aria-label="查询班组" :disabled="example || !isAdmin"><ElOption v-for="team in teamDirectory.items" :key="team.id" :value="Number(team.id)" :label="team.name" /></ElSelect><ElInput v-model="serialDraft" placeholder="输入完整流水号" aria-label="流水号" :prefix-icon="Search" clearable maxlength="80" :disabled="example" /><ElButton type="primary" native-type="submit" :loading="loading" :disabled="example">查询</ElButton></form>
+        <form @submit.prevent="search"><ElSelect v-if="mode === 'team'" v-model="teamDraft" aria-label="查询班组" :disabled="example || !isAdmin"><ElOption v-for="team in teamDirectory.items" :key="team.id" :value="Number(team.id)" :label="team.name" /></ElSelect><ElInput v-model="serialDraft" placeholder="输入完整流水号" aria-label="流水号" :prefix-icon="Search" clearable maxlength="80" :disabled="example" /><FilterDialog v-if="!example" v-model="filtersOpen" :append-to="pageRoot" title="收发流向筛选" :count="historyDates.from || historyDates.to ? 1 : 0" @open="dateDraft = { ...historyDates }" @cancel="dateDraft = { ...historyDates }" @reset="dateDraft = { from: '', to: '' }" @apply="filtersOpen = false; search()"><label>收发日期<RecordDateFilter v-model="dateDraft" :append-to="pageRoot" label="收发日期" /></label></FilterDialog><ElButton type="primary" native-type="submit" :loading="loading" :disabled="example">查询</ElButton><TableExportButton :source="exportSource" :disabled="loading || !history || !!error" :context="[teamId, serial, historyDates.from, historyDates.to].join('|')" :append-to="pageRoot" /></form>
       </header>
       <ElAlert v-if="error || live.message.value" :title="error || live.message.value" type="warning" :closable="false" />
       <section v-if="hasData && !loading && mode === 'team' && history" class="team-preview-workspace">
@@ -254,7 +262,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
 .preview-topbar { height: 60px; padding: 0 36px; display: flex; align-items: center; justify-content: space-between; background: #fff; border-bottom: 1px solid var(--line); }
 .sample-toggle { color: var(--muted); font-size: 13px; }.detail-select { width: 180px; }.chart-tools { flex-wrap: wrap; }.data-origin.example { color: #a37333; }.selection-batches button:disabled { cursor: default; }.selection-facts { display: grid; grid-template-columns: 90px 1fr; gap: 16px; margin-bottom: 28px; font-size: 13px; }.selection-facts dt { color: var(--subtle); }.selection-facts dd { margin: 0; color: var(--text); }
 .preview-topbar nav { display: flex; align-self: stretch; gap: 34px; }.preview-topbar nav button { background: none; border: 0; padding: 0 8px; border-bottom: 3px solid transparent; font: inherit; font-size: 15px; color: var(--muted); cursor: pointer; }.preview-topbar nav button.active { color: var(--primary); border-color: var(--primary); font-weight: 550; }
-.preview-main { max-width: 1920px; margin: auto; padding: 28px 44px 40px; }.preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 24px; }.preview-heading h1 { font-size: 26px; font-weight: 550; letter-spacing: -.5px; margin: 0; }.preview-heading form { display: flex; gap: 10px; align-items: center; }.preview-heading .el-select { width: 116px; }.preview-heading .el-input { width: 268px; }.preview-heading :deep(.el-input__wrapper), .preview-heading :deep(.el-select__wrapper) { min-height: 42px; }.preview-heading .el-button { height: 42px; background: var(--primary); border-color: var(--primary); }
+.preview-main { max-width: 1920px; margin: auto; padding: 28px 44px 40px; }.preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 24px; }.preview-heading h1 { font-size: 26px; font-weight: 550; letter-spacing: -.5px; margin: 0; }.preview-heading form { display: flex; gap: 10px; align-items: center; }.preview-heading .el-select { width: 116px; }.preview-heading .el-input { width: 268px; }.preview-heading :deep(.el-input__wrapper), .preview-heading :deep(.el-select__wrapper) { min-height: 42px; }.preview-heading :deep(.el-button) { height: 42px; margin-left: 0; }.preview-heading .el-button--primary { background: var(--primary); border-color: var(--primary); }
 .flow-workspace { background: #fff; border: 1px solid var(--line); border-radius: var(--card-radius); box-shadow: 0 8px 28px #29365304; overflow: hidden; }.identity-row { display: flex; justify-content: space-between; align-items: center; padding: 24px 30px 0; gap: 16px; }.identity-row > div { display: flex; align-items: center; gap: 14px; min-width: 0; flex-wrap: wrap; }.serial-prefix, .data-origin { color: var(--muted); font-size: 12px; }.identity-row strong { font-size: 18px; font-weight: 550; letter-spacing: .3px; overflow-wrap: anywhere; }.scope-label { color: var(--primary); background: var(--surface-soft); font-size: 12px; padding: 4px 9px; border-radius: 4px; }.data-origin { white-space: nowrap; }
 .metric-strip { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 0; padding: 22px 30px; }.metric-strip > div { padding-left: 28px; border-left: 1px solid var(--line); }.metric-strip > div:first-child { padding-left: 0; border: 0; }.metric-strip > div > span { font-size: 12px; color: var(--muted); }.metric-strip > div > div { margin-top: 8px; display: flex; align-items: baseline; gap: 7px; font-variant-numeric: tabular-nums; }.metric-strip strong { font-size: 27px; font-weight: 500; letter-spacing: -.6px; }.metric-strip b { font-size: 18px; font-weight: 400; }.metric-strip small { font-size: 12px; color: var(--muted); }.metric-strip i { color: var(--line); font-size: 14px; font-style: normal; margin: 0 4px; }
 .chart-toolbar { border-block: 1px solid var(--line); min-height: 64px; padding: 12px 30px; display: flex; align-items: center; justify-content: space-between; gap: 20px; background: var(--workspace-bg); }.purpose-legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: var(--muted); }.purpose-legend > span { display: inline-flex; gap: 7px; align-items: center; }.purpose-legend i { width: 8px; height: 8px; border-radius: 50%; }.purpose-legend .legend-title { color: var(--subtle); }.chart-tools { display: flex; gap: 16px; align-items: center; }.unit-toggle { display: flex; border: 1px solid var(--line); border-radius: 6px; padding: 3px; background: #fff; }.unit-toggle button { border: 0; border-radius: 3px; padding: 5px 14px; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }.unit-toggle button[aria-pressed=true] { background: var(--surface-soft); color: var(--primary); font-weight: 550; }.chart-tools :deep(.el-switch) { --el-switch-on-color: var(--primary); }.chart-tools .el-button { background: transparent; color: var(--muted); border-color: var(--line); }
@@ -313,6 +321,12 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
 .chain-page--embedded .mark-legend { gap: 14px; padding-right: 12px; }
 .chain-page--embedded .purpose-legend { gap: 14px; }
 .chain-page--embedded .chain-title h1 { font-size: 24px; }
+.flow-preview-page:fullscreen { height: 100dvh; overflow: auto; background: #fff; }
+.flow-preview-page:fullscreen .preview-topbar { display: none; }
+.flow-preview-page:fullscreen:not(.chain-page) .preview-main { padding: 12px; }
+.flow-preview-page:fullscreen .preview-heading { position: sticky; top: 0; z-index: 20; gap: 0; padding-block: 8px; background: #fff; }
+.flow-preview-page:fullscreen .preview-heading > div { display: none; }
+.flow-preview-page:fullscreen .chain-header { position: sticky; top: 0; z-index: 20; background: #fff; }
 .chain-page--embedded:fullscreen { height: 100dvh; padding: 0; background: #fff; }
 .chain-page--embedded:fullscreen .chain-header, .chain-page--embedded:fullscreen .preview-main { border-radius: 0; border: 0; }
 @media (max-width: 700px) { .chain-page--embedded { padding: 12px; }.chain-page--embedded .chain-header { gap: 8px; }.chain-page--embedded .chain-actions { width: 100%; justify-content: flex-end; }.chain-page--embedded .chain-query { order: 0; min-width: 0; width: 100%; }.chain-page--embedded .preview-main { padding-inline: 8px; min-height: 660px; }.chain-page--embedded .chain-asof { margin-right: auto; }.chain-page--embedded .canvas-area :deep(.flow-canvas) { min-width: 0; } }
