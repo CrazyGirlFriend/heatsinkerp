@@ -294,10 +294,10 @@ async function submit() {
       <OutboundQuantityClearance v-for="item in clearances.filter(item => item.id === line.source.transfer.id && lines.findIndex(candidate => candidate.source.transfer.id === item.id) === index)" :key="item.id" :batch-no="item.batchNo" :quantity="item.quantity" :enabled="!!clearanceSelected[item.id]" :reason="clearanceReasons[item.id] || ''" :disabled="busy || !canWrite" @update:enabled="clearanceSelected[item.id] = $event" @update:reason="clearanceReasons[item.id] = $event" />
         </article>
       </div>
-      <section class="dialog-form-section">
-      <h3>{{ isLoss ? '丢失说明' : '出库说明' }}</h3><div class="dialog-form-grid">
-      <ElFormItem v-if="isLoss" class="dialog-field-wide" label="丢失原因（选填）" :error="fieldErrors.reason"><ElInput v-model="form.reason" aria-label="丢失原因" type="textarea" :rows="3" maxlength="2000" show-word-limit placeholder="选填：填写实际情况和原因" /></ElFormItem>
-      <ElFormItem v-else class="dialog-field-wide" :error="fieldErrors.notes" :label="containsScrap ? '废料处理原因（选填）' : external ? `${actionLabel}说明` : warehouse ? '入库说明' : '出库说明'"><ElInput v-model="form.notes" :aria-label="external ? `${actionLabel}说明` : '出库说明'" type="textarea" :rows="2" maxlength="2000" show-word-limit placeholder="选填" /></ElFormItem>
+      <section class="dialog-form-section action-notes-section">
+      <h3>{{ isLoss ? '丢失原因' : containsScrap ? '废料处理原因' : external ? `${actionLabel}说明` : warehouse ? '入库说明' : '出库说明' }}</h3><div class="dialog-form-grid">
+      <ElFormItem v-if="isLoss" class="dialog-field-wide" label-width="0" :error="fieldErrors.reason"><ElInput v-model="form.reason" aria-label="丢失原因" type="textarea" :rows="3" maxlength="2000" show-word-limit placeholder="选填：填写实际情况和原因" /></ElFormItem>
+      <ElFormItem v-else class="dialog-field-wide" label-width="0" :error="fieldErrors.notes"><ElInput v-model="form.notes" :aria-label="containsScrap ? '废料处理原因' : external ? `${actionLabel}说明` : warehouse ? '入库说明' : '出库说明'" type="textarea" :rows="2" maxlength="2000" show-word-limit placeholder="选填" /></ElFormItem>
       </div></section>
     </ElForm>
     <ElAlert v-if="weightNotice" :title="weightNotice" type="warning" :closable="false" show-icon />
@@ -336,6 +336,9 @@ async function submit() {
 .source-inputs :deep(.sludge-result) { grid-column: auto; margin: 0; padding: 6px 10px; align-self: end; }
 .source-inputs :deep(.sludge-result small) { display: none; }
 .source-specification-field { grid-column: 1 / -1; padding-top: 2px; }
+.action-notes-section { grid-template-columns: minmax(0, 1fr); gap: 4px; padding-inline: 18px; }
+.action-notes-section > h3 { margin: 0; font-size: 12px; font-weight: 400; color: var(--subtle); }
+.action-notes-section :deep(.el-textarea__inner) { padding-inline: 15px; }
 .action-footer { width: 100%; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px; align-items: center; text-align: left; }
 .action-footer > div:last-child { display: flex; gap: 10px; }
 .action-footer > div:last-child .el-button { margin-left: 0; }
