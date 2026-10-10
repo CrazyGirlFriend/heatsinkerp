@@ -161,13 +161,12 @@ onBeforeUnmount(() => { ++generation })
 
 <template>
   <ElDialog :model-value="modelValue" title="库房手工入库" width="min(1180px, 96vw)" top="16px" class="warehouse-receipt-dialog" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving" @close="close">
-    <template #header><div class="receipt-heading"><h2>手工入库</h2></div></template>
+    <template #header><div class="receipt-heading"><h2>手工入库</h2><span>入库库房 · <strong>{{ warehouse?.name || '当前库房不可用' }}</strong></span></div></template>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <div class="receipt-destination"><span>入库库房</span><strong>{{ warehouse?.name || '当前库房不可用' }}</strong></div>
     <ElAlert v-if="!canWrite" type="warning" :closable="false" title="仅绑定正式库房的有效班组账号可以手工入库" />
     <ElAlert v-if="attempt" class="receipt-retry" type="warning" :closable="false" title="上次提交结果待确认" description="请重试核对同一次入库。核对完成前保留原内容，避免重复登记。" show-icon />
-    <ElForm ref="formRef" label-position="left" label-width="112px" :show-message="false" @submit.prevent="submit">
-      <section class="dialog-form-section"><h3>入库信息</h3>
+    <ElForm ref="formRef" class="dialog-form-compact" label-position="top" :show-message="false" @submit.prevent="submit">
+      <section class="dialog-form-section receipt-primary-section"><h3>入库信息</h3>
           <div class="receipt-grid dialog-form-grid">
             <ElFormItem label="入库来源" :error="fieldErrors.receiptKind" required><ElSelect v-model="form.receiptKind" aria-label="入库来源" :disabled="readonly"><ElOption value="external" label="外部来料" /><ElOption value="return" label="外部退回" /></ElSelect></ElFormItem>
             <ElFormItem label="外部来源单位" :error="fieldErrors.externalSource" required><MaterialInput v-model="form.externalSource" field="external_source" label="外部来源单位" :maxlength="240" :disabled="readonly" placeholder="供应商、外委单位或退回单位" /></ElFormItem>
@@ -177,7 +176,7 @@ onBeforeUnmount(() => { ++generation })
             <ElFormItem label="物料类型" :error="fieldErrors.materialType" required><ElSelect v-model="form.materialType" aria-label="物料类型" placeholder="选择物料类型" :disabled="readonly"><ElOption v-for="item in materialTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></ElSelect></ElFormItem>
           </div>
       </section>
-      <section class="dialog-form-section"><h3>数量与交期</h3>
+      <section class="dialog-form-section dialog-section-quantities"><h3>数量与交期</h3>
           <div class="receipt-grid dialog-form-grid">
           <MaterialDeliveryFields v-if="form.receiptKind === 'external' && !weightOnly" v-model:date="form.deliveryDate" v-model:quantity="form.deliveryQuantity" :disabled="readonly" :date-error="fieldErrors.deliveryDate" :quantity-error="fieldErrors.deliveryQuantity" />
             <ElFormItem v-if="!weightOnly" label="入库件数" :error="fieldErrors.quantity" required><ElInputNumber v-model="form.quantity" aria-label="入库件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="readonly"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
@@ -186,12 +185,12 @@ onBeforeUnmount(() => { ++generation })
             <ElFormItem label="入库仓位" :error="fieldErrors.warehouseLocation" class="dialog-field-wide"><WarehouseLocationSelect v-model="form.warehouseLocation" v-model:reservation-key="form.warehouseLocationKey" :team-id="teamId" :serial-no="form.serialNo" :material-name="form.document.material_name" :material-type="form.materialType" :active="modelValue" :disabled="readonly" @busy-change="locationBusy = $event" /></ElFormItem>
           </div>
       </section>
-      <section v-for="section in documentSections" :key="section.name" class="dialog-form-section"><h3>{{ section.label }}</h3>
+      <section v-for="section in documentSections" :key="section.name" class="dialog-form-section" :class="{ 'dialog-section-long': section.name !== 'document', 'dialog-section-details': section.name === 'document' }"><h3>{{ section.label }}</h3>
           <div class="receipt-grid dialog-form-grid">
             <ElFormItem v-for="field in section.fields" :key="field.key" :label="field.label" :error="fieldErrors[field.key]" :class="{ 'dialog-specification-field': specificationKeys.includes(field.key) }"><template #label>{{ field.label }}<AutofillBadge :source="autofill.source(field.key)" /></template><SpecificationInput v-if="specificationKeys.includes(field.key)" v-model="form.document[field.key]" :label="field.label" :disabled="readonly" @validity-change="specificationValidity[field.key] = $event" /><MaterialInput v-else-if="suggestionFields.includes(field.key)" v-model="form.document[field.key]" :field="field.key as MaterialInputField" :label="field.label" :maxlength="field.maxLength" :disabled="readonly" /><ElInput v-else v-model="form.document[field.key]" :aria-label="field.label" :type="field.multiline ? 'textarea' : 'text'" :rows="2" :maxlength="field.maxLength" :show-word-limit="field.multiline" :disabled="readonly" placeholder="选填" /></ElFormItem>
             <ElFormItem v-if="section.name === 'document' && !weightOnly" label="成品件数" :error="fieldErrors.finishedQuantity"><ElInputNumber v-model="form.finishedQuantity" aria-label="成品件数" :min="0" :max="2147483647" :precision="0" controls-position="right" :disabled="readonly" placeholder="选填"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
           <template v-if="section.name === 'notes'">
-          <ElFormItem label="入库说明" :error="fieldErrors.notes"><ElInput v-model="form.notes" aria-label="入库说明" type="textarea" :rows="3" maxlength="2000" show-word-limit :disabled="readonly" placeholder="选填：说明来料来源及本次入库情况" /></ElFormItem>
+          <ElFormItem label="入库说明" :error="fieldErrors.notes"><ElInput v-model="form.notes" aria-label="入库说明" type="textarea" :rows="2" maxlength="2000" show-word-limit :disabled="readonly" placeholder="选填：说明来料来源及本次入库情况" /></ElFormItem>
           </template>
           </div>
       </section>
@@ -202,8 +201,9 @@ onBeforeUnmount(() => { ++generation })
 
 <style scoped>
 .receipt-heading h2 { margin: 0; color: var(--text); font-size: 20px; font-weight: 550; }
-.receipt-destination { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 12px; padding: 12px; border-radius: 6px; background: var(--surface-soft); font-size: 13px; }
-.receipt-destination span { color: var(--subtle); }
-.receipt-destination strong { color: var(--text); font-weight: 500; }
+.receipt-heading { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; }
+.receipt-heading > span { color: var(--subtle); font-size: 12px; }
+.receipt-heading strong { color: var(--primary); font-weight: 500; }
+.receipt-primary-section { padding: 12px; margin-bottom: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--workspace-bg); }
 .receipt-retry { margin-bottom: 12px; }
 </style>

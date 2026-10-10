@@ -130,21 +130,19 @@ async function submitOpening() {
     <section v-else-if="!businessOnly" class="opening-settings">
       <ElAlert v-if="!opening?.enabled" title="请系统管理员在“班组管理”中开启初始库存录入权限。" type="info" :closable="false" />
       <template v-if="opening?.can_submit">
-        <ElForm ref="formRef" label-position="top" :show-message="false" class="opening-lines" @submit.prevent="submitOpening">
+        <ElForm ref="formRef" label-position="top" :show-message="false" class="opening-lines dialog-form-compact" @submit.prevent="submitOpening">
           <article v-for="(line, index) in lines" :key="index" class="opening-line">
             <header><strong>物料 {{ index + 1 }}</strong><ElButton v-if="lines.length > 1" text type="danger" :disabled="saving" @click="lines.splice(index, 1)">移除</ElButton></header>
-            <section class="dialog-form-section"><h3>物料资料</h3><div class="dialog-form-grid">
-              <OpeningMaterialFields :line="line" :index="index" :errors="fieldErrors" :disabled="saving || !modelValue" @update="Object.assign(line, $event)" @validity-change="$event ? invalidSpecifications.delete(line) : invalidSpecifications.add(line)" />
-            </div></section>
-            <section class="dialog-form-section"><h3>数量与业务</h3><div class="dialog-form-grid">
-              <div class="dialog-field" :class="{ 'is-error': lineError(index, 'material_type') }"><span class="dialog-field-label is-required">物料类型</span><ElSelect v-model="line.material_type" :aria-label="`第${index + 1}行物料类型`" :disabled="saving"><ElOption v-for="option in materialTypeOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect></div>
+            <div class="dialog-form-grid opening-fields">
+              <OpeningMaterialFields :line="line" :index="index" :errors="fieldErrors" :disabled="saving || !modelValue" @update="Object.assign(line, $event)" @validity-change="$event ? invalidSpecifications.delete(line) : invalidSpecifications.add(line)">
+              <div class="dialog-field" :class="{ 'is-error': lineError(index, 'material_type') }"><span class="dialog-field-label is-required">物料类型</span><ElSelect v-model="line.material_type" placeholder="选择物料类型" :aria-label="`第${index + 1}行物料类型`" :disabled="saving"><ElOption v-for="option in materialTypeOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect></div>
               <div class="dialog-field"><span class="dialog-field-label">本班组业务</span><ElSelect v-model="line.purpose_id" aria-label="初始库存业务" clearable placeholder="未分类" :disabled="saving"><ElOption v-for="item in purposes.filter(item => item.active)" :key="item.id" :value="item.id" :label="item.name" /></ElSelect></div>
               <div v-if="!isWeightOnlyType(line.material_type)" class="dialog-field" :class="{ 'is-error': lineError(index, 'quantity') }"><span class="dialog-field-label is-required">件数</span><ElInputNumber v-model="line.quantity" :aria-label="`第${index + 1}行件数`" :min="0" :precision="0" :disabled="saving" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></div>
               <div class="dialog-field" v-if="line.material_type !== 'sludge'" :class="{ 'is-error': lineError(index, 'weight') }"><span class="dialog-field-label is-required">重量</span><WeightInput v-model="line.weight" :ariaLabel="`第${index + 1}行重量`" :disabled="saving" /></div>
               <SludgeWeightFields v-else v-model:gross="line.sludge_gross_weight" v-model:percent="line.sludge_content_percent" :label="`第${index + 1}行`" :gross-error="lineError(index, 'gross')" :percent-error="lineError(index, 'percent')" :disabled="saving" @update:weight="line.weight = $event" />
-              </div>
-            </section>
-            <section class="dialog-form-section"><h3>补充说明</h3><div class="dialog-form-grid"><div class="dialog-field dialog-field-wide"><span class="dialog-field-label">备注</span><ElInput v-model="line.notes" aria-label="初始库存备注" maxlength="2000" type="textarea" :rows="2" :disabled="saving" placeholder="选填" /></div></div></section>
+              </OpeningMaterialFields>
+              <div class="dialog-field"><span class="dialog-field-label">备注</span><ElInput v-model="line.notes" aria-label="初始库存备注" maxlength="2000" type="textarea" :rows="2" :disabled="saving" placeholder="选填" /></div>
+            </div>
           </article>
         </ElForm>
       </template>
@@ -166,7 +164,10 @@ async function submitOpening() {
 .purpose-settings { display: grid; gap: 14px; padding-block: 8px 24px; }
 .purpose-editor { display: flex; align-items: center; gap: 20px; max-width: 720px; }
 .purpose-editor :deep(.el-input) { flex: 1; }.purpose-editor :deep(.el-switch) { flex-shrink: 0; }
-.opening-lines { display: grid; gap: 20px; }.opening-line { min-width: 0; border-top: 1px solid var(--line); padding-block: 12px 20px; }
-.opening-line header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.opening-lines { display: grid; gap: 12px; }.opening-line { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
+.opening-line header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line-light); }
+.opening-line header strong { color: var(--primary); font-size: 15px; }
+.opening-fields :deep(.opening-specification-field) { grid-column: span 2; }
+@media(max-width:900px) { .opening-fields :deep(.opening-specification-field) { grid-column: 1 / -1; } }
 @media(max-width:560px) { .purpose-editor { flex-wrap: wrap; gap: 8px; }.purpose-editor :deep(.el-input) { flex-basis: 100%; } }
 </style>

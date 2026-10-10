@@ -90,9 +90,12 @@ watch(valid, (value) => emit('validity-change', value), { immediate: true })
       placeholder="如：异形件，按图纸 HS-01 加工"
       @update:model-value="update($event)"
     />
-    <div v-else class="specification-dimensions">
+    <div
+      v-else
+      class="specification-dimensions"
+      :class="{ 'has-three-dimensions': labels.length === 3 }"
+    >
       <label v-for="(name, i) in labels" :key="name"
-        ><span>{{ name }}<small>mm</small></span
         ><ElInputNumber
           v-model="dimensions[i]"
           :aria-label="`${label}${name}`"
@@ -103,7 +106,11 @@ watch(valid, (value) => emit('validity-change', value), { immediate: true })
           :controls="false"
           placeholder="尺寸"
           @update:model-value="generate"
-      /></label>
+          ><template #prefix
+            ><span class="dimension-name">{{ name }}</span></template
+          ><template #suffix><small>mm</small></template></ElInputNumber
+        ></label
+      >
     </div>
     <small v-if="!valid" class="specification-error">{{
       shape === 'ring' && dimensions[0] && dimensions[1] && dimensions[0] <= dimensions[1]
@@ -115,35 +122,44 @@ watch(valid, (value) => emit('validity-change', value), { immediate: true })
 <style scoped>
 .specification-input {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 8px;
   width: 100%;
   min-width: 0;
 }
+.specification-input > :deep(.el-select) {
+  flex: 0 0 150px;
+  max-width: 100%;
+}
+.specification-input > :deep(.el-input) {
+  flex: 1 1 180px;
+  min-width: 0;
+}
 .specification-dimensions {
   display: flex;
+  flex: 1 1 240px;
+  flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
 }
 .specification-dimensions label {
-  flex: 1;
-  min-width: 0;
-}
-.specification-dimensions i {
-  margin-right: auto;
-  color: var(--el-color-danger);
-  font-style: normal;
-}
-.specification-dimensions label > span {
   display: flex;
-  justify-content: space-between;
-  gap: 4px;
-  margin-bottom: 4px;
+  flex: 1 1 112px;
+  min-width: 112px;
+  max-width: 154px;
+}
+.specification-dimensions.has-three-dimensions {
+  flex-basis: 352px;
+}
+.dimension-name {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
+  white-space: nowrap;
 }
 .specification-dimensions small {
   color: var(--subtle);
+  font-size: 10px;
 }
 .specification-dimensions :deep(.el-input-number) {
   width: 100%;
@@ -152,7 +168,13 @@ watch(valid, (value) => emit('validity-change', value), { immediate: true })
   text-align: left;
 }
 .specification-error {
+  flex-basis: 100%;
   color: var(--el-color-danger);
   font-size: 12px;
+}
+@media (max-width: 640px) {
+  .specification-input > :deep(.el-select) {
+    flex-basis: 100%;
+  }
 }
 </style>

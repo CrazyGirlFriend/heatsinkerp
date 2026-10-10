@@ -315,10 +315,10 @@ onBeforeUnmount(() => { ++formGeneration })
     <ElAlert v-if="linkedSource" type="info" :closable="false" :title="`上一批次 ${editingSnapshot?.source_transfer_batch_no || '已关联'} · 流水号与材质继承自来料`" />
     <ElAlert v-if="external" type="info" :closable="false" title="去向和来源批次已固定；如需更换去向，请作废后重新创建。" />
 
-    <ElForm ref="transferForm" class="transfer-form" label-position="left" label-width="120px" :show-message="false" @submit.prevent="submit">
-      <section class="transfer-section" data-form-section="handoff" aria-labelledby="transfer-handoff-heading">
+    <ElForm ref="transferForm" class="transfer-form dialog-form-compact" label-position="top" :show-message="false" @submit.prevent="submit">
+      <section class="transfer-section dialog-form-section dialog-section-quantities" data-form-section="handoff" aria-labelledby="transfer-handoff-heading">
         <h3 id="transfer-handoff-heading">转料信息</h3>
-        <div class="transfer-section-fields">
+        <div class="transfer-section-fields dialog-form-grid">
           <ElFormItem label="流水号" required :error="fieldErrors.serialNo" data-validation-field="serialNo">
             <MaterialInput v-model="form.serialNo" field="serial_no" label="流水号" :maxlength="80" :disabled="!canSubmit || linkedSource || external" placeholder="输入或选择流水号" @selected="autofill.select" />
           </ElFormItem>
@@ -354,10 +354,10 @@ onBeforeUnmount(() => { ++formGeneration })
         </div>
       </section>
 
-      <section v-for="section in documentSections" :key="section.name" class="transfer-section" :data-form-section="section.name" :aria-labelledby="`transfer-${section.name}-heading`">
+      <section v-for="section in documentSections" :key="section.name" class="transfer-section dialog-form-section" :class="{ 'dialog-section-long': section.name !== 'document', 'dialog-section-details': section.name === 'document' }" :data-form-section="section.name" :aria-labelledby="`transfer-${section.name}-heading`">
         <h3 :id="`transfer-${section.name}-heading`">{{ section.label }}</h3>
-        <div class="transfer-section-fields">
-          <ElFormItem v-for="field in section.fields" :key="field.key" :label="field.label" :error="fieldErrors[field.key]" :data-validation-field="field.key" :class="{ 'transfer-specification-field': specificationKeys.includes(field.key) }">
+        <div class="transfer-section-fields dialog-form-grid">
+          <ElFormItem v-for="field in section.fields" :key="field.key" :label="field.label" :error="fieldErrors[field.key]" :data-validation-field="field.key" :class="{ 'dialog-specification-field': specificationKeys.includes(field.key) }">
             <template #label>{{ field.label }}<AutofillBadge :source="autofill.source(field.key)" /></template>
             <SpecificationInput v-if="specificationKeys.includes(field.key)" v-model="form.document[field.key]" :label="field.label" :disabled="!canSubmit || external" @validity-change="specificationValidity[field.key] = $event" />
             <MaterialInput v-else-if="suggestionFields.includes(field.key)" v-model="form.document[field.key]" :field="field.key as MaterialInputField" :label="field.label" :maxlength="field.maxLength" :disabled="!canSubmit || external || (linkedSource && field.key === 'material_name')" />
@@ -388,38 +388,10 @@ onBeforeUnmount(() => { ++formGeneration })
 .handoff-preview strong { color: var(--primary); font-weight: 500; overflow-wrap: anywhere; }
 .handoff-preview > .el-icon { color: var(--subtle); }
 .transfer-form { margin-top: 0; }
-.transfer-section { display: grid; grid-template-columns: 100px minmax(0, 1fr); column-gap: 24px; padding-block: 8px; border-bottom: 1px solid var(--line-light); }
-.transfer-section:first-child { padding-top: 0; }
-.transfer-section:last-of-type { padding-bottom: 0; border-bottom: 0; }
-.transfer-section h3 { margin: 6px 0 0; color: var(--text); font-size: 14px; font-weight: 550; line-height: 20px; }
-.transfer-section-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 24px; min-width: 0; align-items: start; }
-.transfer-section-fields :deep(.el-form-item) { margin-bottom: 0; min-width: 0; }
-.transfer-section-fields :deep(.el-form-item__label) { align-items: center; flex-wrap: nowrap; gap: 4px; min-height: 32px; height: auto; padding-right: 12px; line-height: 20px; font-size: 13px; }
-.transfer-section-fields :deep(.el-form-item__content) { min-width: 0; }
-.transfer-section-fields :deep(.el-input__wrapper), .transfer-section-fields :deep(.el-select__wrapper) { min-height: 32px; }
-.transfer-section-fields :deep(.delivery-fields) { display: contents; }
-.transfer-section-fields :deep(.el-input-number) { width: 100%; }
-.transfer-section-fields :deep(.autofill-badge) { padding: 0 4px; font-size: 10px; }
-.transfer-specification-field :deep(.el-form-item__label) { align-content: start; padding-top: 10px; }
-.transfer-specification-field :deep(.specification-dimensions label > span) { line-height: 18px; }
+.transfer-section:first-child { padding: 12px; margin-bottom: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--workspace-bg); }
 .quantity-hint, .delivery-origin { margin: 0; color: var(--subtle); font-size: 12px; }
-@media (max-width: 900px) {
-  :global(.material-transfer-form-dialog.el-dialog) { --el-component-size: 36px; }
-  .transfer-section { grid-template-columns: 88px minmax(0, 1fr); column-gap: 16px; }
-  .transfer-section-fields { grid-template-columns: minmax(0, 1fr); }
-  .transfer-section-fields :deep(.el-form-item__label) { min-height: 36px; }
-  .transfer-section-fields :deep(.el-input__wrapper), .transfer-section-fields :deep(.el-select__wrapper) { min-height: 36px; }
-}
 @media (max-width: 560px) {
-  :global(.material-transfer-form-dialog.el-dialog) { --el-component-size: 40px; }
   .form-heading { gap: 6px; flex-direction: column; align-items: flex-start; }
   .form-heading h2 { font-size: 18px; }
-  .transfer-section { grid-template-columns: minmax(0, 1fr); gap: 12px; padding-block: 18px; }
-  .transfer-section h3 { margin: 0; color: var(--primary); }
-  .transfer-section-fields { row-gap: 14px; }
-  .transfer-section-fields :deep(.el-form-item) { display: block; }
-  .transfer-section-fields :deep(.el-form-item__label) { width: 100% !important; min-height: 20px; margin-bottom: 6px; padding: 0; justify-content: flex-start; }
-  .transfer-section-fields :deep(.el-form-item__content) { margin-left: 0 !important; }
-  .transfer-section-fields :deep(.el-input__wrapper), .transfer-section-fields :deep(.el-select__wrapper) { min-height: 40px; }
 }
 </style>

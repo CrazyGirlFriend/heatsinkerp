@@ -171,6 +171,36 @@
 .el-dialog__body { overscroll-behavior: contain; }
 .el-dialog__footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 .el-dialog__footer > .el-button { margin-left: 0; }
+.dialog-form-compact { --el-component-size: 32px; }
+.dialog-form-compact .dialog-form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; }
+.dialog-form-compact .dialog-section-long > .dialog-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dialog-form-compact .dialog-form-section .dialog-specification-field { grid-column: auto; }
+.dialog-form-compact .dialog-form-section > h3 { align-self: start; padding-left: 10px; border-left: 3px solid var(--primary); color: var(--text); font-weight: 600; }
+.dialog-form-compact :is(.dialog-section-details, .dialog-section-quantities) > .dialog-form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.el-dialog .dialog-form-compact :is(.el-form-item, .dialog-field) { margin-bottom: 0; }
+.el-dialog .dialog-form-compact .el-form-item__label,
+.dialog-form-compact .dialog-field-label { min-height: 20px; height: auto; margin-bottom: 4px; line-height: 20px; font-size: 12px; }
+.dialog-form-compact .dialog-field { gap: 0; }
+.dialog-form-compact :is(.el-input__wrapper, .el-select__wrapper) { min-height: 32px; }
+.dialog-form-compact .el-input-number { width: 100%; max-width: 160px; }
+.dialog-form-compact .weight-input { max-width: 208px; }
+.dialog-form-compact .weight-input .el-input-number { max-width: none; }
+.dialog-form-compact .el-input-number .el-input__inner { text-align: left; }
+.dialog-form-compact .material-input .el-autocomplete { display: flex; }
+.dialog-form-compact .delivery-fields,
+.dialog-form-compact .sludge-measurement { display: contents; }
+.dialog-form-compact .sludge-result { margin: 0; padding: 8px 12px; font-size: 12px; }
+@media (max-width: 900px) {
+  .dialog-form-compact .dialog-form-grid,
+  .dialog-form-compact :is(.dialog-section-details, .dialog-section-quantities) > .dialog-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .dialog-form-compact .dialog-form-grid,
+  .dialog-form-compact :is(.dialog-section-details, .dialog-section-quantities) > .dialog-form-grid,
+  .dialog-form-compact .dialog-section-long > .dialog-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .dialog-form-compact .dialog-form-section > h3 { margin: 0; }
+  .dialog-form-compact :is(.el-input__wrapper, .el-select__wrapper) { min-height: 36px; }
+}
 @media (max-width: 1100px) {
   .dialog-form-section .dialog-specification-field { grid-column: 1 / -1; }
 }

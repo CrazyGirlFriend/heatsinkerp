@@ -268,7 +268,7 @@ async function submit() {
       </section>
       <div class="source-lines">
         <article v-for="(line, index) in lines" :key="line.key" class="source-line">
-          <header><div><strong>{{ line.source.transfer.serial_no }}</strong><span>{{ line.source.transfer.material_name || '未填写材质' }}</span><span>上一批次 {{ line.source.transfer.batch_no }}</span></div><div class="source-actions"><ElButton link type="primary" :disabled="!line.latest" @click="fillAll(index)">全部填入</ElButton><ElButton v-if="!isLoss && !sourceWarehouse" link type="primary" :disabled="lines.length >= 100" @click="splitLine(index)">拆分物料</ElButton><ElButton v-if="!isLoss && lines.length > 1" link type="danger" @click="removeLine(index)">移除</ElButton><ElButton v-if="!isLoss && !sourceWarehouse && !isWeightOnlyType(line.source.transfer.material_type) && !isWeightOnlyType(line.materialType) && !processing[Number(line.source.transfer.id)] && lines.findIndex(other => other.source.transfer.id === line.source.transfer.id) === index" link type="primary" @click="openQuantity(line.source)">登记加工后件数</ElButton></div></header>
+          <header><div><strong>{{ line.source.transfer.serial_no }}</strong><span class="source-material">{{ line.source.transfer.material_name || '未填写材质' }}</span><span>上一批次 {{ line.source.transfer.batch_no }}</span></div><div class="source-actions"><ElButton link type="primary" :disabled="!line.latest" @click="fillAll(index)">全部填入</ElButton><ElButton v-if="!isLoss && !sourceWarehouse" link type="primary" :disabled="lines.length >= 100" @click="splitLine(index)">拆分物料</ElButton><ElButton v-if="!isLoss && lines.length > 1" link type="danger" @click="removeLine(index)">移除</ElButton><ElButton v-if="!isLoss && !sourceWarehouse && !isWeightOnlyType(line.source.transfer.material_type) && !isWeightOnlyType(line.materialType) && !processing[Number(line.source.transfer.id)] && lines.findIndex(other => other.source.transfer.id === line.source.transfer.id) === index" link type="primary" @click="openQuantity(line.source)">登记加工后件数</ElButton></div></header>
           <div class="source-meta"><span>来自 {{ line.source.transfer.source_team.name }}</span><span v-if="line.source.transfer.purpose_name">业务 {{ line.source.transfer.purpose_name }}</span><span v-if="line.source.transfer.source_batch_no">原单批号 {{ line.source.transfer.source_batch_no }}</span><span v-if="sourceWarehouse">当前仓位 {{ currentLocations(line.latest || line.source) }}</span><div class="source-balance"><span>账面库存</span><MaterialAmount :weight-only="isWeightOnlyType(line.source.transfer.material_type)" :quantity="dispatchableAmounts(line.latest).quantity" :weight="dispatchableAmounts(line.latest).weight" /></div></div>
           <template v-if="!isLoss && !sourceWarehouse && !isWeightOnlyType(line.source.transfer.material_type) && (!isWeightOnlyType(line.materialType) || processing[Number(line.source.transfer.id)]) && lines.findIndex(other => other.source.transfer.id === line.source.transfer.id) === index">
             <div v-if="processing[Number(line.source.transfer.id)]" class="processing-count source-inputs dialog-form-grid">
@@ -281,14 +281,14 @@ async function submit() {
             </div>
           </template>
           <div class="source-inputs dialog-form-grid">
-            <ElFormItem v-if="!isWeightOnlyType(line.materialType)" :label="isLoss ? '丢失件数' : `${actionLabel}件数`" :error="lineError(line, 'quantity')" required><ElInputNumber v-model="line.quantity" :aria-label="`${line.source.transfer.batch_no}件数`" :min="0" :precision="0" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
-            <ElFormItem v-if="!converted(line)" :label="isLoss ? (line.source.transfer.sludge_content_percent ? '丢失折算重量' : '丢失重量') : `${actionLabel}重量`" :error="lineError(line, 'weight')" required><WeightInput v-model="line.weight" :ariaLabel="`${line.source.transfer.batch_no}重量`" /></ElFormItem>
+            <ElFormItem class="source-quantity-field" v-if="!isWeightOnlyType(line.materialType)" :label="isLoss ? '丢失件数' : `${actionLabel}件数`" :error="lineError(line, 'quantity')" required><ElInputNumber v-model="line.quantity" :aria-label="`${line.source.transfer.batch_no}件数`" :min="0" :precision="0" controls-position="right"><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber></ElFormItem>
+            <ElFormItem class="source-weight-field" v-if="!converted(line)" :label="isLoss ? (line.source.transfer.sludge_content_percent ? '丢失折算重量' : '丢失重量') : `${actionLabel}重量`" :error="lineError(line, 'weight')" required><WeightInput v-model="line.weight" :ariaLabel="`${line.source.transfer.batch_no}重量`" /></ElFormItem>
             <SludgeWeightFields v-if="converted(line)" v-model:gross="line.gross" v-model:percent="line.percent" :label="line.source.transfer.batch_no" :gross-error="lineError(line, 'gross')" :percent-error="lineError(line, 'percent')" :locked="line.source.transfer.sludge_content_percent != null" :disabled="busy || !canWrite" @update:weight="line.weight = $event" />
             <p v-else-if="line.materialType === 'sludge' && line.source.transfer.sludge_content_percent == null" class="dialog-field-hint dialog-field-wide">历史废泥未记录比例，沿用原账重，不自动折算。</p>
             <p v-else-if="isLoss && line.materialType === 'sludge'" class="dialog-field-hint dialog-field-wide">丢失重量按有效材料计算，不填废泥实重。</p>
             <ElFormItem v-if="!isLoss" :label="`${actionLabel}物料类型`" :error="lineError(line, 'materialType')" :required="warehouse"><span class="dialog-readonly" v-if="sourceWarehouse || line.source.transfer.material_type === 'sludge'">{{ materialTypeLabel(line.source.transfer.material_type) }}</span><ElSelect v-else v-model="line.materialType" :aria-label="`${line.source.transfer.batch_no}物料类型`" :placeholder="materialTypeLabel(line.source.transfer.material_type)"><ElOption v-for="type in materialTypeOptions.filter(type => !isScrapType(line.source.transfer.material_type) || isScrapType(type.value))" :key="type.value" :label="type.label" :value="type.value" /></ElSelect></ElFormItem>
-            <ElFormItem v-if="!isLoss && !isScrapType(line.materialType)" label="实际尺寸（选填）" class="source-specification-field" :error="lineError(line, 'specification')"><SpecificationInput class="source-specification" v-model="line.specification" :label="`${line.source.transfer.batch_no}实际尺寸`" @validity-change="line.specificationValid = $event" /></ElFormItem>
             <ElFormItem v-if="!isLoss && !external" label="下序接收业务" :error="lineError(line, 'purposeId')" :required="purposes.items.value.length > 0"><ElSelect v-model="line.purposeId" :aria-label="`${line.source.transfer.batch_no}接收业务`" :loading="purposes.loading.value" :disabled="!form.nextTeamId || !purposes.items.value.length" :placeholder="!form.nextTeamId ? '先选择接收班组' : !purposes.items.value.length ? '接收班组尚未配置业务' : purposes.items.value.some(item => item.active) ? '选择接收业务' : '接收班组暂无启用业务'"><ElOption v-for="purpose in purposes.items.value.filter(item => item.active)" :key="purpose.id" :value="purpose.id" :label="purpose.name" /></ElSelect></ElFormItem>
+            <ElFormItem v-if="!isLoss && !isScrapType(line.materialType)" label="实际尺寸（选填）" class="source-specification-field" :error="lineError(line, 'specification')"><SpecificationInput class="source-specification" v-model="line.specification" :label="`${line.source.transfer.batch_no}实际尺寸`" @validity-change="line.specificationValid = $event" /></ElFormItem>
             <ElFormItem v-if="!isLoss && warehouse" label="入库仓位" class="dialog-field-wide"><WarehouseLocationSelect v-model="line.warehouseLocation" v-model:reservation-key="line.warehouseLocationKey" :team-id="Number(form.nextTeamId)" :serial-no="line.source.transfer.serial_no" :material-name="line.source.transfer.material_name || ''" :material-type="line.materialType" :lease-group="locationLeases" :active="modelValue" :disabled="busy || !canWrite" @busy-change="line.locationBusy = $event" /></ElFormItem>
           </div>
       <OutboundQuantityClearance v-for="item in clearances.filter(item => item.id === line.source.transfer.id && lines.findIndex(candidate => candidate.source.transfer.id === item.id) === index)" :key="item.id" :batch-no="item.batchNo" :quantity="item.quantity" :enabled="!!clearanceSelected[item.id]" :reason="clearanceReasons[item.id] || ''" :disabled="busy || !canWrite" @update:enabled="clearanceSelected[item.id] = $event" @update:reason="clearanceReasons[item.id] = $event" />
@@ -312,33 +312,35 @@ async function submit() {
 <style scoped>
 .processing-count { padding: 10px 0; margin-bottom: 10px; border-block: 1px solid var(--line); }
 .source-lines { display: grid; gap: 10px; margin-bottom: 14px; padding: 1px; }
-.source-line { --el-component-size: 32px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--workspace-bg); }
-.source-line header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; align-items: center; }
+.source-line { --el-component-size: 32px; overflow: hidden; padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.source-line header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; align-items: center; margin: -12px -16px 0; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--workspace-bg); }
 .source-line header > div { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; min-width: 0; }
 .source-line header strong, .source-line header span, .source-meta > span { overflow-wrap: anywhere; }
 .source-actions { margin-left: auto; }
 .source-actions :deep(.el-button) { margin-left: 0; font-size: 12px; }
-.source-line header strong { color: var(--text); font-size: 16px; font-weight: 600; }
+.source-line header strong { color: var(--primary); font-size: 16px; font-weight: 600; }
 .source-line header span { font-size: 12px; color: var(--subtle); }
-.source-meta { display: flex; gap: 6px 16px; flex-wrap: wrap; align-items: center; margin: 6px 0 12px; color: var(--subtle); font-size: 12px; }
-.source-balance { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
-.source-inputs { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; }
+.source-material { padding: 2px 8px; border-radius: 4px; background: var(--primary-soft); color: var(--primary) !important; }
+.source-meta { display: flex; gap: 6px 16px; flex-wrap: wrap; align-items: center; margin: 6px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line-light); color: var(--subtle); font-size: 12px; }
+.source-balance { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; color: var(--text); }
+.source-balance > span { color: var(--subtle); }
+.source-inputs { grid-template-columns: 156px 208px repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
 .source-inputs :deep(.el-form-item) { margin-bottom: 0; flex-direction: column; }
 .source-inputs :deep(.el-form-item__label) { width: 100% !important; justify-content: flex-start; height: auto; line-height: 20px; padding: 0 0 4px; font-size: 12px; }
 .source-inputs :deep(.el-form-item__content) { width: 100%; margin-left: 0 !important; }
+.source-inputs :deep(.el-input-number .el-input__inner) { text-align: left; }
+.source-quantity-field :deep(.el-input-number) { max-width: 156px; }
+.source-weight-field :deep(.weight-input) { max-width: 208px; }
 .source-inputs :deep(.el-input__wrapper), .source-inputs :deep(.el-select__wrapper) { min-height: 32px; }
 .source-inputs :deep(.sludge-measurement) { display: contents; }
 .source-inputs :deep(.sludge-result) { grid-column: auto; margin: 0; padding: 6px 10px; align-self: end; }
 .source-inputs :deep(.sludge-result small) { display: none; }
-.source-specification-field { grid-column: span 2; }
-.source-specification { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
-.source-specification :deep(.el-select) { flex: 0 0 150px; }
-.source-specification :deep(.el-input), .source-specification :deep(.specification-dimensions) { flex: 1; min-width: 0; }
+.source-specification-field { grid-column: 1 / -1; padding-top: 2px; }
 .action-footer { width: 100%; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px; align-items: center; text-align: left; }
 .action-footer > div:last-child { display: flex; gap: 10px; }
 .action-footer > div:last-child .el-button { margin-left: 0; }
 .action-footer > div:first-of-type { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .action-footer > div:first-of-type > span { color: var(--subtle); font-size: 12px; }
-@media (max-width: 1000px) { .source-inputs { grid-template-columns: repeat(2, minmax(0, 1fr)); }.source-specification-field { grid-column: 1 / -1; } }
-@media (max-width: 640px) { .source-line { padding: 12px; }.source-actions { margin-left: 0; }.source-balance { margin-left: 0; }.source-inputs { grid-template-columns: minmax(0, 1fr); }.source-specification { flex-direction: column; }.source-specification :deep(.el-select), .source-specification :deep(.el-input), .source-specification :deep(.specification-dimensions) { flex: initial; width: 100%; }.action-footer { flex-wrap: wrap; }.action-footer > div:last-child { margin-left: auto; } }
+@media (max-width: 1000px) { .source-inputs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .source-line { padding: 12px; }.source-line header { margin-inline: -12px; padding-inline: 12px; }.source-actions { margin-left: 0; }.source-balance { margin-left: 0; }.source-inputs { grid-template-columns: minmax(0, 1fr); }.action-footer { flex-wrap: wrap; }.action-footer > div:last-child { margin-left: auto; } }
 </style>

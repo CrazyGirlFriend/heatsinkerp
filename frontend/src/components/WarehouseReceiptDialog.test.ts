@@ -115,7 +115,7 @@ describe('warehouse manual receipt', () => {
   })
   it('creates a root receipt for the bound warehouse with no transfer destination or status fields', async () => {
     await render(); await fill()
-    expect(wrapper.text()).toContain('入库库房库房')
+    expect(wrapper.get('.receipt-heading strong').text()).toBe('库房')
     expect(wrapper.find('nav[aria-label="表单分页"]').exists()).toBe(false)
     expect(wrapper.findAllComponents(ElSelect)).toHaveLength(5)
     expect(wrapper.text()).not.toContain('接收班组')

@@ -62,8 +62,9 @@ function select(item: MaterialSuggestion) {
       :disabled="disabled"
     />
   </div>
+  <slot />
   <div
-    class="dialog-field dialog-field-wide"
+    class="dialog-field opening-specification-field"
     :class="{ 'is-error': errors?.[`${index}.transfer_specification`] }"
   >
     <span class="dialog-field-label">规格</span
