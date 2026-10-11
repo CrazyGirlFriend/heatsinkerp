@@ -168,7 +168,7 @@ onBeforeUnmount(() => { ++version })
 .stock-detail-section > footer { padding: 14px 0; }
 .stock-detail-section .business-table { font-size: 14px; font-variant-numeric: tabular-nums; }
 .stock-detail-section :deep(.el-table__cell) { padding-block: 13px; }
-.source-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.source-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 12px; }
 .source-actions :deep(.el-button + .el-button) { margin-left: 0; }
 @media (max-width: 760px) {
   :deep(.el-descriptions__body) { overflow-x: auto; }

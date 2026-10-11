@@ -77,6 +77,7 @@ onBeforeUnmount(() => {
     </div>
     <p v-if="error" role="alert">{{ error }}<ElButton link @click="load">重试</ElButton></p>
     <ElTable
+      class="business-table"
       v-loading="loading"
       :data="rows"
       empty-text="暂无批次交期，请在源头单据填写"

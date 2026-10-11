@@ -284,7 +284,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存" />
     <ElTable v-else class="business-table serial-table warehouse-table" :data="rows" height="100%" flexible row-key="group_id" :span-method="span" :row-class-name="rowClass" empty-text="暂无符合条件的库存">
-      <ElTableColumn v-for="column in visibleColumns" :key="column.key" :prop="column.key" :label="column.label" :min-width="column.width" :align="'numeric' in column ? 'right' : 'left'" show-overflow-tooltip :label-class-name="column.key === searchedColumn?.key ? 'searched-column' : ''" :class-name="['serial_no', 'material_name'].includes(column.key) ? 'warehouse-group-cell' : 'numeric' in column ? 'inventory-number-cell' : ''">
+      <ElTableColumn v-for="column in visibleColumns" :key="column.key" :prop="column.key" :label="column.label" :min-width="column.width" align="center" show-overflow-tooltip :label-class-name="column.key === searchedColumn?.key ? 'searched-column' : ''" :class-name="['serial_no', 'material_name'].includes(column.key) ? 'warehouse-group-cell' : 'numeric' in column ? 'inventory-number-cell' : ''">
         <template #default="{ row }">
           <div v-if="column.key === 'serial_no'" class="inventory-inline inventory-serial"><ElButton class="serial-number-link" :title="row.serial_no" link type="primary" @click="openSerial(row)"><strong>{{ row.serial_no }}</strong></ElButton><SerialUrgencyBadge :urgency="row.urgency" /><ElTooltip v-if="canManageUrgency" :content="row.urgency?.urgent ? '取消加急' : '标记加急'" placement="top"><ElButton class="warehouse-urgency-action" link type="primary" :icon="row.urgency?.urgent ? Close : Flag" :aria-label="row.urgency?.urgent ? '取消加急' : '标记加急'" @click="flag(row)" /></ElTooltip></div>
           <ElTooltip v-else-if="column.key === 'material_name'" :content="`规格：${row.transfer_specification}`" :disabled="!row.transfer_specification || separateSpecification" :trigger="['hover', 'focus']" placement="top"><span class="inventory-material" :tabindex="row.transfer_specification && !separateSpecification ? 0 : undefined">{{ row.material_name || '—' }}</span></ElTooltip>
@@ -304,7 +304,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
           <span v-else>{{ column.format(asRow(row)) }}</span>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="操作" :width="actionWidth" align="right" fixed="right"><template #default="{ row }"><div class="inventory-row-actions"><ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton><ElButton v-if="processing && canWrite && !isScrapMaterialType(row.material_type) && (row.on_hand_quantity > 0 || row.on_hand_weight > 0)" link class="action-cool" @click="emit('process', row.group_id)">加工登记</ElButton><ElButton v-if="canWrite && inventoryCanDispatch(asRow(row))" link class="action-warm" @click="picker = asRow(row)">出库</ElButton><ElButton v-if="inventoryHasPending(asRow(row))" link type="primary" @click="pending = asRow(row)">{{ Number(row.external_pending_quantity) > 0 || Number(row.external_pending_weight) > 0 ? '查看转出' : '在途转出' }}</ElButton></div></template></ElTableColumn>
+      <ElTableColumn label="操作" :width="actionWidth" align="center" fixed="right"><template #default="{ row }"><div class="inventory-row-actions"><ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton><ElButton v-if="processing && canWrite && !isScrapMaterialType(row.material_type) && (row.on_hand_quantity > 0 || row.on_hand_weight > 0)" link class="action-cool" @click="emit('process', row.group_id)">加工登记</ElButton><ElButton v-if="canWrite && inventoryCanDispatch(asRow(row))" link class="action-warm" @click="picker = asRow(row)">出库</ElButton><ElButton v-if="inventoryHasPending(asRow(row))" link type="primary" @click="pending = asRow(row)">{{ Number(row.external_pending_quantity) > 0 || Number(row.external_pending_weight) > 0 ? '查看转出' : '在途转出' }}</ElButton></div></template></ElTableColumn>
     </ElTable>
     <footer v-if="!error"><span>共 {{ total }} 条库存记录<small v-if="asOf" class="inventory-as-of">系统记录 · {{ formatDateTime(asOf) }}</small></span><ElPagination background :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="paginate($event)" @size-change="paginate(1, $event)" /></footer>
     <TeamInventoryDetail :team-id="teamId" :group="detail" :warehouse="warehouse" :can-write="canWrite" :can-reallocate="canReallocate" :processing="processing" @reallocate="reallocate" @close="detail = null" @changed="emit('changed')" @action="action" @pending="pending = detail" />
@@ -334,14 +334,14 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
 .warehouse-table { --business-table-font: 14px; --business-table-padding: 11px; font-variant-numeric: tabular-nums; }
 .warehouse-table.el-table.business-table :deep(th.el-table__cell) { height: 44px; }
 .warehouse-table.el-table.business-table :deep(.cell) { white-space: nowrap; overflow-wrap: normal; }
-.inventory-inline { display: flex; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; white-space: nowrap; line-height: 24px; }
+.inventory-inline { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; white-space: nowrap; line-height: 24px; }
 .inventory-source-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .inventory-inline .el-tag { flex-shrink: 0; }
 .inventory-balance { display: block; overflow: hidden; text-overflow: ellipsis; }
 .inventory-balance strong { font-size: var(--workspace-number-size, 15px); font-weight: 550; color: var(--text); }
 .inventory-material:focus-visible, .inventory-balance:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 3px; }
 :global(.inventory-balance-tooltip) { white-space: pre-line; line-height: 1.7; }
-.inventory-row-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; white-space: nowrap; }
+.inventory-row-actions { display: flex; justify-content: center; align-items: center; gap: 8px; white-space: nowrap; }
 .inventory-row-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .inventory-as-of { display: block; margin-top: 4px; font-size: 13px; }
 .warehouse-table :deep(.searched-column) { color: var(--primary); }
@@ -375,6 +375,6 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
   .warehouse-table :deep(.el-scrollbar__bar.is-horizontal) { opacity: 1; }
 }
 .inventory-balance--shortage strong { color: var(--el-color-danger); }
-.inventory-material-kind { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.inventory-material-kind { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
 .inventory-material-kind small { max-width: 100%; color: var(--muted); font-size: 12px; line-height: 1.35; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 </style>

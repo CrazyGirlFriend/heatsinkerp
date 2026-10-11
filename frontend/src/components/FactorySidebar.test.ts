@@ -5,7 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import FactorySidebar from './FactorySidebar.vue'
 import { ElMenu, ElMenuItem, ElSubMenu } from 'element-plus'
-import { DataAnalysis, Grid } from '@element-plus/icons-vue'
+import FactoryNavIcon from './FactoryNavIcon.vue'
 import { authState, clearSession } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { appPinia } from '@/stores/access'
@@ -287,8 +287,8 @@ describe('two-level team navigation', () => {
     expect(group.findAllComponents(ElMenuItem).map(item => item.props('index'))).toEqual(['/factory-analysis', '/'])
     const analysis = group.findAllComponents(ElMenuItem).find(item => item.props('index') === '/factory-analysis')!
     const stock = group.findAllComponents(ElMenuItem).find(item => item.props('index') === '/')!
-    expect(analysis.findComponent(DataAnalysis).exists()).toBe(true)
-    expect(stock.findComponent(Grid).exists()).toBe(true)
+    expect(analysis.getComponent(FactoryNavIcon).props('name')).toBe('analysis')
+    expect(stock.getComponent(FactoryNavIcon).props('name')).toBe('inventory')
     for (const item of [analysis, stock]) {
       expect(item.get('.el-icon').classes()).toContain('factory-nav__team-icon')
       expect(item.get('.el-icon').attributes('aria-hidden')).toBe('true')

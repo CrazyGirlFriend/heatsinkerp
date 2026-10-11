@@ -379,7 +379,13 @@ onBeforeUnmount(() => {
       <p v-if="detailError" role="alert">
         {{ detailError }}<ElButton link @click="loadStock">重试</ElButton>
       </p>
-      <ElTable v-loading="detailLoading" :data="stockRows" max-height="460" empty-text="暂无库存">
+      <ElTable
+        v-loading="detailLoading"
+        :data="stockRows"
+        class="business-table"
+        max-height="460"
+        empty-text="暂无库存"
+      >
         <ElTableColumn prop="team_name" label="班组" width="90" align="center" />
         <ElTableColumn prop="serial_no" label="流水号" min-width="160" align="center">
           <template #default="{ row }">

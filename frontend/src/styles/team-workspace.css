@@ -157,12 +157,10 @@
 }
 .team-workspace.team-workspace--reading .workspace-data-panel .el-table.business-table th.el-table__cell { height: 42px; padding-block: 8px; color: #748078; font-size: 12px; font-weight: 500; }
 .team-workspace.team-workspace--reading .workspace-data-panel .el-table.business-table td.el-table__cell { height: 57px; padding-block: 10px; color: #47564d; }
-.team-workspace.team-workspace--reading .workspace-data-panel .el-table.business-table .cell { line-height: 22px; text-align: inherit; }
-.team-workspace.team-workspace--reading .workspace-data-panel .el-table.business-table .el-table__cell.is-left { text-align: left; }
-.team-workspace.team-workspace--reading .workspace-data-panel .el-table.business-table .el-table__cell.is-right { text-align: right; }
+.team-workspace.team-workspace--reading .workspace-data-panel .el-table.business-table .cell { line-height: 22px; }
 .team-workspace.team-workspace--reading .workspace-data-panel .el-table.business-table :is(.el-button.is-link, .batch-link) { font-size: 13px; }
 .team-workspace.team-workspace--reading .warehouse-table .serial-number-link { color: var(--primary); font-weight: 600; }
-.team-workspace .workspace-data-panel .processing-stock-status { align-items: flex-start; gap: 0; }
+.team-workspace .workspace-data-panel .processing-stock-status { gap: 0; }
 .team-workspace.team-workspace--reading .workspace-data-panel .el-table.business-table .processing-stock-status .el-tag { height: 20px; line-height: 18px; }
 .team-workspace.team-workspace--reading .workspace-data-panel .el-table.business-table .processing-stock-status small { font-size: 11px; line-height: 16px; }
 .team-workspace.team-workspace--reading .warehouse-table .inventory-number-cell { font-variant-numeric: tabular-nums; }

@@ -6,6 +6,11 @@
     --business-table-line: 22px;
     --business-table-padding: 10px;
   }
+  .el-table.business-table :is(th, td).el-table__cell,
+  .el-table.business-table .cell {
+    text-align: center;
+    vertical-align: middle;
+  }
   :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table {
     font-family: inherit;
     font-size: var(--business-table-font);
@@ -69,7 +74,6 @@
     white-space: nowrap;
   }
   :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table .table-prose .cell {
-    text-align: left;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
@@ -92,7 +96,6 @@
     font-weight: 500;
   }
   :is(.drawer-content, .dispatch-detail-content) table.business-document-table:is(.document-table, .document-history, .loss-record-table, .dispatch-detail-lines) small { font-size: var(--business-table-meta); }
-  :is(.drawer-content, .dispatch-detail-content) table.business-document-table:is(.document-table, .document-history, .loss-record-table, .dispatch-detail-lines) td.table-prose { text-align: left; }
   .dispatch-detail-content .dispatch-line-actions { justify-content: center; }
   .dispatch-detail-content .dispatch-line-actions .el-button { font-size: var(--business-table-font); }
   .serial-detail-body .el-descriptions .el-descriptions__body .el-descriptions__cell {
