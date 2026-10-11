@@ -68,8 +68,9 @@ function extraValue(row: TeamInventoryRow, key: typeof extraKeys[number]) {
 }
 export const warehouseColumns = [
   { key: 'material_name', label: '材质', width: 160, defaultVisible: true, format: (row: TeamInventoryRow) => row.material_name || '—' },
-  { key: 'transfer_specification', label: '规格', width: 180, defaultVisible: false, format: (row: TeamInventoryRow) => row.transfer_specification || '—' },
   { key: 'material_type', label: '物料类型', width: 140, defaultVisible: true, format: (row: TeamInventoryRow) => materialTypeLabel(row.material_type || null) },
+  { key: 'processing_role', label: '加工分类', width: 110, defaultVisible: true, format: (row: TeamInventoryRow) => row.processing_role ? processingRoleLabels[row.processing_role] : '—' },
+  { key: 'transfer_specification', label: '实际尺寸', width: 180, defaultVisible: true, format: (row: TeamInventoryRow) => row.transfer_specification || '—' },
   { key: 'purpose_name', label: '本班组业务', width: 150, defaultVisible: true, format: (row: TeamInventoryRow) => row.purpose_name || '—' },
   { key: 'source', label: '来源', width: 120, defaultVisible: true, format: warehouseSourceLabel },
   { key: 'owned_quantity', label: '库存件数', width: 140, defaultVisible: true, numeric: true, format: (row: TeamInventoryRow) => amount(row.owned_quantity) },
@@ -91,13 +92,14 @@ export const warehouseColumns = [
 ] as const
 export type WarehouseColumnKey = typeof warehouseColumns[number]['key']
 export const warehouseLegacyColumnKeys = {
+  material_type: ['material_type', 'processing_role', 'transfer_specification'],
   stock_balance: ['on_hand_quantity', 'on_hand_weight'],
   owned_balance: ['owned_quantity', 'owned_weight'],
   dispatchable_balance: ['dispatchable_quantity', 'dispatchable_weight'],
   pending_transfer: ['in_transit_quantity', 'in_transit_weight'],
 } satisfies Record<string, WarehouseColumnKey[]>
 export const warehouseSerialColumn = { key: 'serial_no', label: '流水号', width: 170, format: (row: TeamInventoryRow) => row.serial_no } as const
-export const warehouseSearchColumns = [warehouseSerialColumn, ...warehouseColumns.filter(column => !['material_type', 'stock_status', 'dispatchable_quantity', 'dispatchable_weight', 'in_transit_quantity', 'in_transit_weight'].includes(column.key))]
+export const warehouseSearchColumns = [warehouseSerialColumn, ...warehouseColumns.filter(column => !['material_type', 'processing_role', 'stock_status', 'dispatchable_quantity', 'dispatchable_weight', 'in_transit_quantity', 'in_transit_weight'].includes(column.key))]
 export type WarehouseSearchField = 'all' | typeof warehouseSearchColumns[number]['key']
 export const warehouseSearchKind = (field: WarehouseSearchField) => field === 'urgency' ? 'status' : field === 'last_activity_at' ? 'date' : warehouseColumns.some(column => column.key === field && 'numeric' in column) ? 'number' : 'text'
 export interface TeamInventoryParams extends Omit<SerialParams, 'availability' | 'search_field'> {

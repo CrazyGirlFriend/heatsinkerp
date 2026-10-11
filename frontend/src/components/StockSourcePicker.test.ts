@@ -26,8 +26,13 @@ const nextButton = () => wrapper.findAll('button').find(button => button.text() 
 describe('stock selection for new outbound', () => {
   it('shows processing role and current dimensions before choosing a physical child batch', async () => {
     const row = { ...source(1, 2), current_specification: '100 × 80 × 5 mm', processing_role: 'remaining' as const, transfer: { ...source(1, 2).transfer, entry_kind: 'processing_output' as const, transfer_specification: 'old', material_type: 'semi_finished' as const } }
-    vi.mocked(teamMaterialApi.stock).mockResolvedValue({ items: [row], total: 1, page: 1, page_size: 20 })
+    const child = { ...source(2), transfer: { ...source(2).transfer, material_type: 'semi_finished' as const, processing_role: 'produced' as const } }
+    vi.mocked(teamMaterialApi.stock).mockResolvedValue({ items: [row, child, source(3)], total: 3, page: 1, page_size: 20 })
     await render()
+    const headings = wrapper.findAll('thead th').map(cell => cell.text())
+    const column = (label: string) => wrapper.findAll('tbody tr').map(item => item.findAll('td')[headings.indexOf(label)]!.text())
+    expect(column('物料类型').slice(0, 2)).toEqual(['半成品', '半成品'])
+    expect(column('加工分类')).toEqual(['剩余大料', '加工产出', '—'])
     expect(wrapper.get('tbody tr').text()).toContain('剩余大料'); expect(wrapper.get('tbody tr').text()).toContain('100 × 80 × 5 mm')
     expect(wrapper.get('tbody tr').text()).not.toContain('old')
   })

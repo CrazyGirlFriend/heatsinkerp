@@ -19,6 +19,8 @@ function normalize(value: unknown): InventoryColumnChoice<K>[] {
     if (!item || typeof item.visible !== 'boolean') continue
     for (const key of props.legacyKeys?.[item.key] || [item.key]) {
       if (!options.value.some(column => column.key === key)) continue
+      // A retained column only supplies defaults for newly split fields, not explicit choices.
+      if (key !== item.key && options.value.some(column => column.key === item.key) && value.some(saved => saved?.key === key && typeof saved.visible === 'boolean')) continue
       const existing = result.find(column => column.key === key)
       if (existing) existing.visible ||= item.visible
       else result.push({ key, visible: item.visible })

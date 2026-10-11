@@ -29,6 +29,49 @@ def incoming(client, source_headers, target_headers, target_id, key, **overrides
     return response.json()
 
 
+@pytest.mark.parametrize('workshop', [False, True])
+def test_inventory_orders_latest_activity_before_pagination_with_stable_ties(client, warehouse, workshop):
+    s = warehouse
+    target = s['other']['id'] if workshop else s['team']['id']
+    lots = []
+    for index, (serial, specification) in enumerate([
+        ('A-001', '20 × 30'), ('Z-001', '20 × 30'), ('A-001', '40 × 60'),
+        ('B-001', '20 × 30'), ('A-001', '20 × 30'),
+    ]):
+        values = dict(serial_no=serial, transfer_specification=specification)
+        if workshop:
+            lot = incoming(client, s['headers'], s['other_headers'], target, f'order-{index}', **values)
+        else:
+            response = intake(client, s, idempotency_key=f'order-{index}', **values)
+            assert response.status_code == 201, response.text
+            lot = response.json()
+        lots.append(lot)
+    with SessionLocal() as db:
+        for lot, day in zip(lots, [1, 2, 3, 3, 4]):
+            row = db.get(MaterialTransfer, lot['id'])
+            row.received_at = row.created_at = row.updated_at = datetime(2026, 9, day, 3)
+        db.commit()
+
+    expected = [lots[index]['id'] for index in (0, 3, 2, 1)]
+    rows = get_inventory(client, target)['items']
+    assert [row['group_id'] for row in rows] == expected
+    assert rows[0]['batch_count'] == 2
+    assert rows[0]['last_activity_at'].startswith('2026-09-04')
+    pages = [get_inventory(client, target, page=page, page_size=2) for page in (1, 2)]
+    assert [row['group_id'] for page in pages for row in page['items']] == expected
+    assert [page['total'] for page in pages] == [4, 4]
+    filtered = get_inventory(client, target, material_name='铜钼', page_size=100)['items']
+    assert [row['group_id'] for row in filtered] == expected
+
+    sent = dispatch(client, s, [{'source_transfer_id': lots[1]['id'], 'quantity': 1, 'weight': .1}], workshop=workshop)
+    assert sent.status_code == 201, sent.text
+    with SessionLocal() as db:
+        row = db.get(MaterialTransfer, sent.json()['items'][0]['id'])
+        row.created_at = row.updated_at = datetime(2026, 9, 5, 3)
+        db.commit()
+    assert get_inventory(client, target, page_size=1)['items'][0]['group_id'] == lots[1]['id']
+
+
 @pytest.mark.parametrize('name', ['轧制', '退火', '研磨', '线切割', '雕刻', '电镀', '检验'])
 def test_seven_workshops_share_classified_inventory(client, warehouse, name):
     s = warehouse
@@ -54,7 +97,7 @@ def test_seven_workshops_share_classified_inventory(client, warehouse, name):
     assert get_inventory(client, team['id'], source_team_id=s['other']['id'], material_type='finished')['total'] == 0
     assert get_inventory(client, team['id'], search_field='source', query='库房')['total'] == 4
     assert get_inventory(client, team['id'], search_field='on_hand_quantity', search_operator='gte', query='20')['total'] == 1
-    assert get_inventory(client, team['id'], page_size=2, page=3)['items'][0]['on_hand_weight'] == .321
+    assert get_inventory(client, team['id'], page_size=2, page=1)['items'][0]['on_hand_weight'] == .321
     overview = client.get(f"/api/team-materials/{team['id']}/overview").json()
     assert sum(row['on_hand_quantity'] for row in result['items']) == overview['totals']['on_hand_quantity']
     assert client.get(f"/api/team-materials/{s['other']['id']}/inventory/{first['id']}/sources").status_code == 404
@@ -158,10 +201,10 @@ def test_business_filter_is_exact_paginated_and_keeps_historical_receipts(client
                         json={'name': '成品检验', 'active': False, 'expected_version': 2}).status_code == 200
     filtered = get_inventory(client, target, purpose_id=chosen)
     assert filtered['total'] == 2
-    assert {row['group_id'] for row in filtered['items']} == {first['id'], second['id']}
+    assert [row['group_id'] for row in filtered['items']] == [second['id'], first['id']]
     assert {row['purpose_name'] for row in filtered['items']} == {'检验', '成品检验'}
     assert sum(row['owned_weight'] for row in filtered['items']) == 2
-    assert get_inventory(client, target, purpose_id=chosen, page_size=1, page=2)['items'][0]['group_id'] == second['id']
+    assert get_inventory(client, target, purpose_id=chosen, page_size=1, page=2)['items'][0]['group_id'] == first['id']
     assert get_inventory(client, target, purpose_id=chosen, page_size=1)['total'] == 2
     assert get_inventory(client, target, purpose_id=chosen, source_team_id=s['team']['id'],
                          material_type='semi_finished', query='000007', stock_age='lt1')['total'] == 2

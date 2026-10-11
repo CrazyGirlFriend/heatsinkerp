@@ -13,7 +13,6 @@ import SerialUrgencyDialog from './SerialUrgencyDialog.vue'
 import StockSourcePicker from './StockSourcePicker.vue'
 import TeamInventoryDetail from './TeamInventoryDetail.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
-import { processingRoleLabels } from '@/types/materialProcessing'
 import StatePanel from './StatePanel.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
@@ -71,19 +70,20 @@ const sourceTeams = computed(() => directory.items.filter(team => team.id !== pr
 const sourceLabel = (row: TeamInventoryRow) => inventorySourceLabel(row, props.warehouse)
 const columns = computed(() => warehouseColumns.map(column => ({ ...column,
   label: props.processing && column.key === 'stock_status' ? '加工状态' : column.key === 'source' ? props.warehouse ? '来源' : '上序班组' : column.label,
-  width: props.processing ? ({ material_name: 100, material_type: 150, purpose_name: 130, source: 90, owned_quantity: 80, owned_weight: 110, stock_status: 170 } as Partial<Record<WarehouseColumnKey, number>>)[column.key] || column.width : column.key === 'owned_quantity' ? 100 : column.key === 'owned_weight' ? 130 : column.key === 'source' ? 120 : column.width,
+  width: ({ material_name: 140, material_type: props.processing ? 120 : 110, purpose_name: props.processing ? 95 : 120, source: props.processing ? 85 : 120, owned_quantity: props.processing ? 80 : 90, owned_weight: props.processing ? 100 : 110, stock_status: props.processing ? 135 : 110 } as Partial<Record<WarehouseColumnKey, number>>)[column.key] || column.width,
   format: column.key === 'source' ? sourceLabel : column.format,
 })))
+const selectableColumns = computed(() => columns.value.filter(column => column.key !== 'material_name'))
 const searchColumns = computed(() => warehouseSearchColumns.map(column => column.key === 'source' ? { ...column, label: props.warehouse ? '来源' : '上序班组' } : column))
-const columnChoices = ref<InventoryColumnChoice<WarehouseColumnKey>[]>(warehouseColumns.map(column => ({ key: column.key, visible: column.defaultVisible })))
+const columnChoices = ref<InventoryColumnChoice<WarehouseColumnKey>[]>(warehouseColumns.filter(column => column.key !== 'material_name').map(column => ({ key: column.key, visible: column.defaultVisible })))
 const storageKey = computed(() => auth.currentUser?.id ? `heatsink.${props.warehouse ? 'warehouse' : 'classified'}-columns.v1:${auth.currentUser.id}:${props.teamId}` : null)
 const searchedColumn = computed(() => text('query').trim() ? searchColumns.value.find(column => column.key === text('search_field')) : undefined)
 const visibleColumns = computed(() => {
-  const saved = [{ ...warehouseSerialColumn, width: props.processing ? 130 : 210 }, ...columnChoices.value.filter(choice => choice.visible).map(choice => columns.value.find(column => column.key === choice.key)!)]
+  const saved = [{ ...warehouseSerialColumn, width: 200 }, columns.value.find(column => column.key === 'material_name')!, ...columnChoices.value.filter(choice => choice.visible && choice.key !== 'material_name').map(choice => columns.value.find(column => column.key === choice.key)!)]
   return searchedColumn.value ? [searchedColumn.value, ...saved.filter(column => column.key !== searchedColumn.value!.key)] : saved
 })
 const separateSpecification = computed(() => visibleColumns.value.some(column => column.key === 'transfer_specification'))
-const actionWidth = computed(() => (rows.value.some(row => inventoryHasPending(row) && props.canWrite && inventoryCanDispatch(row)) ? 185 : rows.value.some(inventoryHasPending) ? 150 : props.canWrite ? 112 : 88) + (props.processing && props.canWrite ? 65 : 0))
+const actionWidth = computed(() => (rows.value.some(row => inventoryHasPending(row) && props.canWrite && inventoryCanDispatch(row)) ? 185 : rows.value.some(inventoryHasPending) ? 150 : props.canWrite ? 112 : 88) + (props.processing && props.canWrite ? 45 : 0))
 function ownershipHint(row: TeamInventoryRow) {
   const available = inventoryDispatchable(row)
   const external = Number(row.external_pending_quantity) > 0 || Number(row.external_pending_weight) > 0
@@ -102,7 +102,7 @@ const filters = computed<TeamInventoryParams>(() => {
 function exportSource() {
   const id = props.teamId, params = { ...filters.value }
   const fields = [warehouseSerialColumn, ...columns.value.filter(column => !column.key.startsWith('shortage_'))].map(column => ({ key: column.key, label: column.label,
-    selected: visibleColumns.value.some(item => item.key === column.key),
+    selected: column.key === 'material_name' || visibleColumns.value.some(item => item.key === column.key),
     value: (row: TeamInventoryRow) => {
       const value = column.format(row)
       if (value === '—') return null
@@ -193,15 +193,6 @@ async function load(background = false) {
     }
   } finally { if (current === version) loading.value = false }
 }
-function span({ rowIndex, column }: { rowIndex: number; column: { property: string } }) {
-  if (!['serial_no', 'material_name'].includes(column.property)) return { rowspan: 1, colspan: 1 }
-  const same = (a: TeamInventoryRow, b: TeamInventoryRow) => a.serial_no === b.serial_no && (column.property === 'serial_no' || (a.material_name === b.material_name && (separateSpecification.value || a.transfer_specification === b.transfer_specification)))
-  if (rowIndex > 0 && same(rows.value[rowIndex - 1]!, rows.value[rowIndex]!)) return { rowspan: 0, colspan: 0 }
-  let end = rowIndex + 1
-  while (end < rows.value.length && same(rows.value[rowIndex]!, rows.value[end]!)) ++end
-  return { rowspan: end - rowIndex, colspan: 1 }
-}
-function rowClass({ rowIndex }: { rowIndex: number }) { return rowIndex > 0 && rows.value[rowIndex - 1]!.serial_no !== rows.value[rowIndex]!.serial_no ? 'serial-group-start' : '' }
 const detail = ref<TeamInventoryRow | null>(null), picker = ref<TeamInventoryRow | null>(null), pending = ref<TeamInventoryRow | null>(null)
 const serialOpen = ref(false), serialNo = ref(''), urgencyOpen = ref(false), urgencySerial = ref('')
 const canManageUrgency = computed(() => auth.isAdmin && auth.currentUser?.active !== false && !auth.currentUserError)
@@ -271,7 +262,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
         <div class="inventory-query-actions"><ElButton @click="search">查询</ElButton></div>
       </div>
       <div class="inventory-table-tools" role="group" aria-label="表格工具">
-        <InventoryColumnSettings :storage-key="storageKey" :columns="columns" :legacy-keys="warehouseLegacyColumnKeys" @change="columnChoices = $event" />
+        <InventoryColumnSettings :storage-key="storageKey" :columns="selectableColumns" :legacy-keys="warehouseLegacyColumnKeys" @change="columnChoices = $event" />
         <ElButton :icon="Refresh" :loading="loading" text aria-label="刷新工作台" title="刷新" @click="emit('refresh')" />
       </div>
       <div v-show="!fullscreen" class="workspace-toolbar-actions"><slot name="actions" /></div>
@@ -283,12 +274,15 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
     <div v-if="searchedColumn" class="warehouse-search-context"><ElTag closable @close="apply({ ...filters, query: undefined, search_field: undefined, search_operator: undefined, page: 1 })">按{{ searchedColumn.label }}查询 · 首列显示</ElTag></div>
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存" />
-    <ElTable v-else class="business-table serial-table warehouse-table" :data="rows" height="100%" flexible row-key="group_id" :span-method="span" :row-class-name="rowClass" empty-text="暂无符合条件的库存">
-      <ElTableColumn v-for="column in visibleColumns" :key="column.key" :prop="column.key" :label="column.label" :min-width="column.width" align="center" show-overflow-tooltip :label-class-name="column.key === searchedColumn?.key ? 'searched-column' : ''" :class-name="['serial_no', 'material_name'].includes(column.key) ? 'warehouse-group-cell' : 'numeric' in column ? 'inventory-number-cell' : ''">
+    <ElTable v-else class="business-table serial-table warehouse-table" :data="rows" height="100%" flexible row-key="group_id" empty-text="暂无符合条件的库存">
+      <ElTableColumn v-for="column in visibleColumns" :key="column.key" :prop="column.key" :label="column.label" :min-width="column.width" align="center" show-overflow-tooltip :label-class-name="column.key === searchedColumn?.key ? 'searched-column' : ''" :class-name="'numeric' in column ? 'inventory-number-cell' : ''">
         <template #default="{ row }">
-          <div v-if="column.key === 'serial_no'" class="inventory-inline inventory-serial"><ElButton class="serial-number-link" :title="row.serial_no" link type="primary" @click="openSerial(row)"><strong>{{ row.serial_no }}</strong></ElButton><SerialUrgencyBadge :urgency="row.urgency" /><ElTooltip v-if="canManageUrgency" :content="row.urgency?.urgent ? '取消加急' : '标记加急'" placement="top"><ElButton class="warehouse-urgency-action" link type="primary" :icon="row.urgency?.urgent ? Close : Flag" :aria-label="row.urgency?.urgent ? '取消加急' : '标记加急'" @click="flag(row)" /></ElTooltip></div>
-          <ElTooltip v-else-if="column.key === 'material_name'" :content="`规格：${row.transfer_specification}`" :disabled="!row.transfer_specification || separateSpecification" :trigger="['hover', 'focus']" placement="top"><span class="inventory-material" :tabindex="row.transfer_specification && !separateSpecification ? 0 : undefined">{{ row.material_name || '—' }}</span></ElTooltip>
-          <div v-else-if="column.key === 'material_type'" class="inventory-material-kind"><ElTag effect="light" :type="isScrapMaterialType(row.material_type) ? 'warning' : row.material_type === 'finished' ? 'success' : 'primary'">{{ column.format(asRow(row)) }}</ElTag><small v-if="row.processing_role">{{ processingRoleLabels[asRow(row).processing_role!] }}</small><small v-if="processing && !separateSpecification && row.transfer_specification" :title="row.transfer_specification">{{ row.transfer_specification }}</small></div>
+          <div v-if="column.key === 'serial_no'" class="inventory-inline inventory-serial">
+            <ElButton class="serial-number-link" :title="row.serial_no" link type="primary" @click="openSerial(row)"><strong>{{ row.serial_no }}</strong></ElButton><SerialUrgencyBadge :urgency="row.urgency" />
+            <ElTooltip v-if="canManageUrgency" :content="row.urgency?.urgent ? '取消加急' : '标记加急'" placement="top"><ElButton class="warehouse-urgency-action" link type="primary" :icon="row.urgency?.urgent ? Close : Flag" :aria-label="row.urgency?.urgent ? '取消加急' : '标记加急'" @click="flag(row)" /></ElTooltip>
+          </div>
+          <ElTooltip v-else-if="column.key === 'material_name'" :content="`规格：${row.transfer_specification}`" :disabled="!row.transfer_specification || separateSpecification" :trigger="['hover', 'focus']" placement="top"><span class="inventory-material" :title="row.material_name || '未填写材质'" :tabindex="row.transfer_specification && !separateSpecification ? 0 : undefined">{{ column.format(asRow(row)) }}</span></ElTooltip>
+          <div v-else-if="column.key === 'material_type'" class="inventory-material-kind"><ElTag effect="light" :type="isScrapMaterialType(row.material_type) ? 'warning' : row.material_type === 'finished' ? 'success' : 'primary'">{{ column.format(asRow(row)) }}</ElTag></div>
           <ProcessingStockStatus v-else-if="column.key === 'stock_status' && processing" :summary="asRow(row)" :material-type="row.material_type" :pending="inventoryHasPending(asRow(row))" />
           <ElTooltip v-else-if="column.key === 'stock_status'" :content="ownershipHint(asRow(row))" :trigger="['hover', 'focus']" popper-class="inventory-balance-tooltip" placement="top"><ElTag :type="column.format(asRow(row)) === '重量差异' ? 'danger' : inventoryHasPending(asRow(row)) ? 'warning' : inventoryCanDispatch(asRow(row)) ? 'success' : 'info'" effect="light" tabindex="0">{{ column.format(asRow(row)) }}</ElTag></ElTooltip>
           <div v-else-if="column.key === 'source' && warehouse" class="inventory-inline"><span class="inventory-source-name">{{ row.receipt_source === 'opening' ? '初始库存' : row.source_name || '—' }}</span></div>
@@ -335,6 +329,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
 .warehouse-table.el-table.business-table :deep(th.el-table__cell) { height: 44px; }
 .warehouse-table.el-table.business-table :deep(.cell) { white-space: nowrap; overflow-wrap: normal; }
 .inventory-inline { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; white-space: nowrap; line-height: 24px; }
+.inventory-material { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .inventory-source-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .inventory-inline .el-tag { flex-shrink: 0; }
 .inventory-balance { display: block; overflow: hidden; text-overflow: ellipsis; }
@@ -345,12 +340,11 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
 .inventory-row-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .inventory-as-of { display: block; margin-top: 4px; font-size: 13px; }
 .warehouse-table :deep(.searched-column) { color: var(--primary); }
-.warehouse-table :deep(td.warehouse-group-cell) { border-right: 1px solid var(--line); }
-.warehouse-table :deep(tr.serial-group-start > td) { border-top: 1px solid var(--table-header-line); }
 .warehouse-table.el-table.business-table :deep(.el-tag) { font-size: 12px; border: 0; padding: 0 9px; height: 26px; line-height: 24px; }
 .warehouse-table :deep(.serial-number-link) { min-width: 0; max-width: 100%; flex-shrink: 1; }
 .warehouse-table :deep(.serial-number-link > span) { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .warehouse-table :deep(.serial-number-link strong) { font-weight: 550; }
+.inventory-serial .serial-number-link { flex: 0 1 auto; }
 .warehouse-table :deep(.el-button.warehouse-urgency-action) { flex: 0 0 26px; width: 26px; height: 26px; margin: 0; font-size: 15px; }
 .inventory-serial :deep(.serial-urgency-badge) { flex-shrink: 0; margin-left: 0; }
 .warehouse-inventory > footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 56px; padding: 14px 12px; border-top: 1px solid var(--line); }
@@ -375,6 +369,5 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
   .warehouse-table :deep(.el-scrollbar__bar.is-horizontal) { opacity: 1; }
 }
 .inventory-balance--shortage strong { color: var(--el-color-danger); }
-.inventory-material-kind { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
-.inventory-material-kind small { max-width: 100%; color: var(--muted); font-size: 12px; line-height: 1.35; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.inventory-material-kind { display: flex; align-items: center; justify-content: center; min-width: 0; }
 </style>

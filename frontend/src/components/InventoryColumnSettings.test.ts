@@ -20,6 +20,30 @@ function check(label: string, value: boolean) { wrapper.findAllComponents(ElChec
 const latest = () => wrapper.emitted('change')!.at(-1)![0] as InventoryColumnChoice<string>[]
 
 describe('inventory display columns', () => {
+  it.each([true, false])('carries the old material type visibility into split fields, then preserves independent choices (visible=%s)', async visible => {
+    const old = [{ key: 'material_type', visible }, { key: 'owned_weight', visible: true }]
+    localStorage.setItem(key, JSON.stringify(old))
+    const renderWarehouse = async () => {
+      wrapper = mount(InventoryColumnSettings, { props: { storageKey: key, columns: warehouseColumns, legacyKeys: warehouseLegacyColumnKeys }, global: { stubs: { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } } } })
+      await flushPromises()
+    }
+    await renderWarehouse()
+    expect(latest().slice(0, 4)).toEqual([{ key: 'material_type', visible }, { key: 'processing_role', visible }, { key: 'transfer_specification', visible }, { key: 'owned_weight', visible: true }])
+    expect(localStorage.getItem(key)).toBe(JSON.stringify(old))
+    check('物料类型', true); check('加工分类', false); check('实际尺寸', false)
+    await button('应用').trigger('click')
+    const saved = latest()
+    wrapper.unmount(); await renderWarehouse()
+    expect(latest()).toEqual(saved)
+    expect(latest().find(item => item.key === 'processing_role')?.visible).toBe(false)
+    expect(latest().find(item => item.key === 'transfer_specification')?.visible).toBe(false)
+  })
+  it('keeps saved dimensions hidden and in place when migrating only the missing processing column', async () => {
+    localStorage.setItem(key, JSON.stringify([{ key: 'transfer_specification', visible: false }, { key: 'material_type', visible: true }]))
+    wrapper = mount(InventoryColumnSettings, { props: { storageKey: key, columns: warehouseColumns, legacyKeys: warehouseLegacyColumnKeys }, global: { stubs: { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } } } })
+    await flushPromises()
+    expect(latest().slice(0, 3)).toEqual([{ key: 'transfer_specification', visible: false }, { key: 'material_type', visible: true }, { key: 'processing_role', visible: true }])
+  })
   it('expands old combined balances without duplicates and saves quantity and weight independently', async () => {
     const old = [{ key: 'on_hand_weight', visible: false }, { key: 'stock_balance', visible: true }, { key: 'on_hand_quantity', visible: false }, { key: 'owned_balance', visible: true }, { key: 'dispatchable_balance', visible: true }, { key: 'pending_transfer', visible: true }, { key: 'removed_field', visible: true }]
     localStorage.setItem(key, JSON.stringify(old))

@@ -186,7 +186,7 @@ def list_inventory(db, team_id, filters):
             "date_from": None, "date_to": None, "stock_age": None})
         conditions.append(table.c.serial_no.in_(select(serial.c.serial_no).where(*serial_predicates(team_id, serial, scope_filters, utcnow()))))
     total = db.scalar(select(func.count()).select_from(table).where(*conditions)) or 0
-    rows = db.execute(select(table).where(*conditions).order_by(table.c.serial_no, table.c.material_name, table.c.group_id)
+    rows = db.execute(select(table).where(*conditions).order_by(table.c.last_activity_at.desc(), table.c.group_id.desc())
         .offset((filters.page - 1) * filters.page_size).limit(filters.page_size)).mappings().all()
     priorities = urgency_map(db, [row["serial_no"] for row in rows])
     origins = origin_columns()
