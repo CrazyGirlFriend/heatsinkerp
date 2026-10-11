@@ -592,6 +592,12 @@ def list_dispatches(db, team_id, user, *, record_filters=None, query=None, next_
     mt = MaterialTransfer
     # Union is only the lightweight page index; line details are fetched for
     # that page, not grouped after pagination in the browser.
+    dispatch_number, batch_number = MaterialDispatch.dispatch_no, mt.batch_no
+    if db.get_bind().dialect.name == "mysql":
+        # Fresh schemas use case-sensitive batch numbers; old dispatch numbers
+        # may use the database default. UNION requires a common collation.
+        dispatch_number = dispatch_number.collate("utf8mb4_0900_as_cs")
+        batch_number = batch_number.collate("utf8mb4_0900_as_cs")
     statuses = case(
         (func.sum(case((mt.status != "voided", 1), else_=0)) == 0, "voided"),
         ((func.sum(case((mt.status == "pending", 1), else_=0)) == 0) & (func.sum(case((mt.status == "dispatched", 1), else_=0)) > 0), "dispatched"),
@@ -599,11 +605,11 @@ def list_dispatches(db, team_id, user, *, record_filters=None, query=None, next_
         (func.sum(case((mt.status.in_(["received", "dispatched"]), 1), else_=0)) > 0, "partial"),
         else_="pending")
     grouped = select(MaterialDispatch.id.label("group_id"), literal(None).label("single_id"),
-        MaterialDispatch.dispatch_no.label("dispatch_no"), MaterialDispatch.created_at.label("created_at"),
+        dispatch_number.label("dispatch_no"), MaterialDispatch.created_at.label("created_at"),
         MaterialDispatch.next_team_id.label("next_team_id"), statuses.label("status")
     ).join(mt, mt.dispatch_id == MaterialDispatch.id).where(MaterialDispatch.source_team_id == team_id, MaterialDispatch.dispatch_no.is_not(None)).group_by(
         MaterialDispatch.id, MaterialDispatch.dispatch_no, MaterialDispatch.created_at, MaterialDispatch.next_team_id)
-    singles = select(literal(None).label("group_id"), mt.id.label("single_id"), mt.batch_no.label("dispatch_no"),
+    singles = select(literal(None).label("group_id"), mt.id.label("single_id"), batch_number.label("dispatch_no"),
         mt.created_at.label("created_at"), mt.next_team_id.label("next_team_id"), mt.status.label("status")
     ).outerjoin(MaterialDispatch, mt.dispatch_id == MaterialDispatch.id).where(mt.source_team_id == team_id, mt.entry_kind.in_(["transfer", *EXTERNAL_ENTRY_KINDS]), MaterialDispatch.dispatch_no.is_(None))
     if entry_kind:
