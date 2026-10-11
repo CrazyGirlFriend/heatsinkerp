@@ -60,6 +60,18 @@ describe('warehouse grouped stock', () => {
     const exported = await source.load(new AbortController().signal, vi.fn())
     expect(exported.map(row => [row.material_type, row.processing_role])).toEqual([['原材料', '剩余大料'], ['原材料', '加工产出'], ['废屑', '加工废料']])
   })
+  it.each([true, false])('keeps the processing toolbar entry visible in fullscreen=%s and respects permissions', async fullscreen => {
+    await render('/team-workspaces/901?tab=stock', true, false)
+    await wrapper.setProps({ processing: true, fullscreen })
+    const entry = wrapper.get('.warehouse-toolbar .inventory-process')
+    expect(entry.isVisible()).toBe(true)
+    await entry.trigger('click')
+    expect(wrapper.emitted('process')).toEqual([[]])
+    await wrapper.setProps({ canWrite: false })
+    expect(wrapper.find('.inventory-process').exists()).toBe(false)
+    await wrapper.setProps({ canWrite: true, processing: false })
+    expect(wrapper.find('.inventory-process').exists()).toBe(false)
+  })
   it('shows cutting status beside actual stock without adding a duplicate status column', async () => {
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [warehouseFixture({ material_type: 'semi_finished', owned_quantity: 12, on_hand_quantity: 12, processing_registered_batch_count: 1, processing_unregistered_batch_count: 0, processing_registered_quantity: 12, processing_registered_weight: 60 })], total: 1, page: 1, page_size: 10 })
     await render('/team-workspaces/901?tab=stock', true, false)
@@ -68,7 +80,7 @@ describe('warehouse grouped stock', () => {
     expect(headers()).not.toContain('库存状态')
     expect(wrapper.text()).toContain('有加工记录 · 进度未标明')
     expect(wrapper.text()).toContain('未转出 12 件')
-    await wrapper.findAll('button').find(button => button.text() === '加工登记')!.trigger('click')
+    await wrapper.findAll('.inventory-row-actions button').find(button => button.text() === '加工登记')!.trigger('click')
     expect(wrapper.emitted('process')).toEqual([[11]])
   })
   it('exports every page with the applied filters, visible defaults and repeated serial values', async () => {

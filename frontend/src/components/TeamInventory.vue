@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Close, Flag, Refresh, Search } from '@element-plus/icons-vue'
+import { Close, Flag, Operation, Refresh, Search } from '@element-plus/icons-vue'
 import { ElAlert, ElButton, ElCheckbox, ElDatePicker, ElInput, ElOption, ElOptionGroup, ElPagination, ElSelect, ElTable, ElTableColumn, ElTag, ElTooltip } from 'element-plus'
 import FilterDialog from './FilterDialog.vue'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
@@ -28,7 +28,7 @@ import { formatDateTime } from '@/utils/format'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 
 const props = defineProps<{ teamId: number; overview: TeamMaterialOverview; canWrite?: boolean; canReallocate?: boolean; warehouse?: boolean; fullscreen?: boolean; processing?: boolean }>()
-const emit = defineEmits<{ changed: []; refresh: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]; reallocate: [source: StockBatch]; process: [groupId: number] }>()
+const emit = defineEmits<{ changed: []; refresh: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]; reallocate: [source: StockBatch]; process: [groupId?: number] }>()
 const route = useRoute(), router = useRouter(), auth = useAuthStore(), directory = useTeamDirectoryStore()
 const text = (key: string) => typeof route.query[key] === 'string' ? String(route.query[key]) : ''
 const summarySection = computed(() => ['materials', 'material-types'].includes(text('summary')) ? text('summary') : '')
@@ -261,6 +261,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
           </div>        </FilterDialog>
         <div class="inventory-query-actions"><ElButton @click="search">查询</ElButton></div>
       </div>
+      <ElButton v-if="processing && canWrite" class="inventory-process" type="primary" :icon="Operation" @click="emit('process')">加工登记</ElButton>
       <div class="inventory-table-tools" role="group" aria-label="表格工具">
         <InventoryColumnSettings :storage-key="storageKey" :columns="selectableColumns" :legacy-keys="warehouseLegacyColumnKeys" @change="columnChoices = $event" />
         <ElButton :icon="Refresh" :loading="loading" text aria-label="刷新工作台" title="刷新" @click="emit('refresh')" />

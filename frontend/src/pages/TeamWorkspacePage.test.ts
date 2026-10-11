@@ -80,6 +80,12 @@ describe('team workspace material ledger', () => {
       vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({ source_transfer_id: 10, batch_no: 'TL10', serial_no: 'YS-007', material_type: 'semi_finished', quantity: 1, weight: 100, revision: 0, as_of: '2026-10-09T00:00:00Z', items: [], total: 0, page: 1, page_size: 10 })
       const router = await render('/team-workspaces/914?tab=stock')
       expect(wrapper.getComponent(TeamInventory).props('processing')).toBe(true)
+      expect(wrapper.find('.inventory-process').exists()).toBe(canWrite)
+      if (canWrite) {
+        await wrapper.get('.inventory-process').trigger('click'); await flushPromises()
+        expect(wrapper.getComponent(ProcessingBatchPicker).props()).toMatchObject({ teamId: 914, groupId: undefined })
+        wrapper.getComponent(ProcessingBatchPicker).vm.$emit('close'); await flushPromises()
+      }
       wrapper.getComponent(TeamInventory).vm.$emit('process', 10); await flushPromises()
       expect(wrapper.findComponent(ProcessingBatchPicker).exists()).toBe(canWrite)
       if (canWrite) {
@@ -100,6 +106,7 @@ describe('team workspace material ledger', () => {
       await router.push('/team-workspaces/914?tab=processing'); await flushPromises()
       expect(wrapper.findComponent(TeamProcessingRecords).exists()).toBe(false)
       expect(wrapper.getComponent(TeamInventory).props('processing')).toBe(false)
+      expect(wrapper.find('.inventory-process').exists()).toBe(false)
     } finally { state.directory.items = previous }
   })
   it.each(['pending', 'receipts', 'outgoing', 'reallocations', 'losses'])('exports %s with the same filters and team scope, closing on navigation', async tab => {
