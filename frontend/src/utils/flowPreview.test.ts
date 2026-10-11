@@ -151,21 +151,53 @@ describe('ECharts flow preview data', () => {
   })
   it('uses stable batch and child identities for incremental animation and purposeful hover feedback', () => {
     const rows = [{ ...batch(1), received_at: '2026-09-19T00:00:00Z' }, { ...batch(2, 1), source_team: batch(1).next_team, transferred_at: '2026-09-19T00:00:00.100Z', received_at: '2026-09-19T00:00:00.200Z' }]
-    const render = (items: TraceBatch[], selection = '') => {
+    const render = (items: TraceBatch[], selection = '', actionType?: string) => {
       const model = traceFlowModel(items), series = (traceFlowOption(model, 'weight', selection).series as CustomSeriesOption[])[0]!
-      const group = series.renderItem!({ dataIndex: model.nodes.findIndex(node => node.batch.id === 2), context: {}, coordSys: { type: 'cartesian2d', x: 0, y: 0, width: 1200, height: 800 } } as unknown as CustomSeriesRenderItemParams, { coord: (values: number[]) => [(values[0]! - model.first!) * 2, 90 + values[1]! * 60] } as CustomSeriesRenderItemAPI)
+      const group = series.renderItem!({ actionType, dataIndex: model.nodes.findIndex(node => node.batch.id === 2), context: {}, coordSys: { type: 'cartesian2d', x: 0, y: 0, width: 1200, height: 800 } } as unknown as CustomSeriesRenderItemParams, { coord: (values: number[]) => [(values[0]! - model.first!) * 2, 90 + values[1]! * 60] } as CustomSeriesRenderItemAPI)
       if (!group || group.type !== 'group') throw new Error('Expected a batch group')
       return { group, children: group.children, series }
     }
     const before = render(rows), selected = render(rows, '2')
     expect(before.group).toMatchObject({ name: '2', $mergeChildren: 'byName' })
     expect(before.series.data).toEqual(expect.arrayContaining([expect.objectContaining({ id: '2', name: 'B2' })]))
-    expect(before.children.find(child => child.name === 'transfer')).toMatchObject({ type: 'polyline', style: { lineWidth: 2, strokePercent: 1, enterFrom: { strokePercent: 0 } }, emphasis: { style: { lineWidth: 3.2, opacity: 1 } } })
+    expect(before.children.find(child => child.name === 'transfer')).toMatchObject({ type: 'path', style: { lineWidth: 2.6, strokePercent: 1, enterFrom: { strokePercent: 0 } }, emphasis: { style: { lineWidth: 3.6, opacity: 1 } } })
     expect(selected.children.map(child => child.name)).toEqual(before.children.map(child => child.name))
-    expect(selected.children.find(child => child.name === 'transfer')).toMatchObject({ style: { lineWidth: 3 } })
+    expect(selected.children.find(child => child.name === 'transfer')).toMatchObject({ style: { lineWidth: 3.6 } })
     const changed = render([rows[0]!, { ...rows[1]!, weight: 2 }])
     expect(changed.children.find(child => child.name === 'transfer')?.name).toBe('transfer')
     expect(changed.children.some(child => child.name === 'amount:10:2')).toBe(true)
     expect(changed.children.some(child => child.name === 'amount:10:1')).toBe(false)
+    for (const action of ['resize', 'dataZoom']) {
+      const updated = render(rows, '2', action)
+      for (const name of ['transfer', 'transfer-clearance']) {
+        const path = updated.children.find(child => child.name === name)!
+        expect(path).toMatchObject({ style: { strokePercent: 1 }, enterAnimation: { duration: 0 } })
+        expect('style' in path && path.style).not.toHaveProperty('enterFrom')
+      }
+    }
+  })
+  it('animates only unsigned transfers, preserving dispatch time and keeping stopped and pan views static', () => {
+    const root = { ...batch(1), received_at: '2026-09-19T00:00:00Z' }
+    const pending = { ...batch(2, 1, 2), source_team: root.next_team, status: 'pending' as const, transferred_at: '2026-09-20T00:00:00Z', received_at: null }
+    const received = { ...batch(3, 1, 2), source_team: root.next_team, transferred_at: pending.transferred_at, received_at: '2026-09-20T01:00:00Z' }
+    const model = traceFlowModel([root, pending, received], '2026-09-21T00:00:00Z')
+    const colors = new Map([['1', '#46d4a4'], ['2', '#46d4a4'], ['3', '#46d4a4']])
+    const render = (id: number, motion = true, pan = false, selected = '') => {
+      const series = (traceFlowOption(model, 'weight', selected, motion, pan ? 'pan' : 'select', 100, colors).series as CustomSeriesOption[])[0]!
+      const group = series.renderItem!({ dataIndex: model.nodes.findIndex(node => node.batch.id === id), context: {}, coordSys: { x: 0, y: 0, width: 1200, height: 1200 } } as unknown as CustomSeriesRenderItemParams, { coord: (v: number[]) => [(v[0]! - model.first!) / 864000, 80 + v[1]! * 90] } as CustomSeriesRenderItemAPI)
+      if (!group || group.type !== 'group') throw new Error('Expected transfer group')
+      return group.children
+    }
+    const active = render(2)
+    const dot = active.find(child => child.name === 'pending-flow')!
+    expect(dot).toMatchObject({ silent: true, keyframeAnimation: { loop: true } })
+    expect(active.some(child => child.name === 'receipt')).toBe(false)
+    expect(model.byId.get('2')?.finishedAt).toBeNull()
+    // Pending direction has no fictitious duration on the time axis.
+    const frames = (dot as { keyframeAnimation: { keyframes: Array<{ shape: { cx: number } }> } }).keyframeAnimation.keyframes
+    expect(new Set(frames.map(frame => frame.shape.cx)).size).toBe(1)
+    for (const children of [render(1), render(3), render(2, false), render(2, true, true), render(2, true, false, '3')]) {
+      expect(children.some(child => child.name === 'pending-flow')).toBe(false)
+    }
   })
 })

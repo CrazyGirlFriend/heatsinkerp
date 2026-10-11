@@ -8,11 +8,21 @@ import type { FlowInteraction } from '@/utils/flowPreview'
 
 use([SankeyChart, CustomChart, AriaComponent, TooltipComponent, GridComponent, DataZoomComponent, CanvasRenderer, SVGRenderer])
 const props = defineProps<{ option: EChartsCoreOption; label: string; replay: number; motion: boolean; renderer?: 'canvas' | 'svg'; interaction?: FlowInteraction }>()
-const emit = defineEmits<{ select: [value: { dataIndex: number; dataType?: string; data: unknown }]; zoom: [value: number]; teamRange: [value: { start: number; end: number }] }>()
+const emit = defineEmits<{ select: [value: { dataIndex: number; dataType?: string; data: unknown }]; hover: [id: string]; zoom: [value: number]; teamRange: [value: { start: number; end: number }] }>()
 const root = ref<HTMLElement>()
 const dragging = ref(false)
 let chart: ECharts | undefined, observer: ResizeObserver | undefined
 let motionQuery: MediaQueryList | undefined
+let hoveredId = ''
+function hover(id = '') {
+  const next = props.interaction === 'pan' ? '' : id
+  if (next !== hoveredId) { hoveredId = next; emit('hover', next) }
+}
+function leaveCanvas() {
+  dragging.value = false
+  hover()
+  chart?.dispatchAction({ type: 'hideTip' })
+}
 function render(reset = false) {
   if (!root.value?.clientWidth || !root.value.clientHeight) return
   if (!chart) {
@@ -21,6 +31,11 @@ function render(reset = false) {
       if (props.interaction !== 'pan') emit('select', { dataIndex: params.dataIndex, dataType: params.dataType, data: params.data })
     })
     chart.on('datazoom', reportZoom)
+    chart.on('mousemove', params => {
+      const data = params.data as { id?: string; batchId?: string } | undefined
+      hover(data?.batchId || (params.seriesId === 'batch-paths' ? data?.id : '') || '')
+    })
+    chart.on('mouseout', () => hover())
   }
   const view = zoomStates()
   if (reset) chart.clear()
@@ -37,7 +52,11 @@ function render(reset = false) {
 }
 function resize() {
   if (!chart) { render(); return }
-  if (root.value && (root.value.clientWidth !== chart.getWidth() || root.value.clientHeight !== chart.getHeight())) chart.resize()
+  if (root.value && (root.value.clientWidth !== chart.getWidth() || root.value.clientHeight !== chart.getHeight())) {
+    // Old tooltip coordinates can land on another batch after a layout change.
+    chart.dispatchAction({ type: 'hideTip' })
+    chart.resize()
+  }
 }
 function changeMotion() { render() }
 interface ZoomState { id?: string; type?: string; start?: number; end?: number; minSpan?: number; maxSpan?: number }
@@ -88,6 +107,7 @@ function keyboard(event: KeyboardEvent) {
 }
 defineExpose({ zoom, showBatch })
 watch(() => [props.option, props.replay, props.motion], (value, previous) => render(value[1] !== previous[1]), { flush: 'post' })
+watch(() => props.interaction, () => hover())
 onMounted(() => {
   motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
   motionQuery.addEventListener('change', changeMotion)
@@ -101,7 +121,7 @@ onBeforeUnmount(() => {
   chart?.dispose(); chart = undefined
 })
 </script>
-<template><div ref="root" class="flow-canvas" :class="{ panning: interaction === 'pan', dragging }" role="img" tabindex="0" :aria-label="label" @pointerdown="dragging = interaction === 'pan'" @pointerup="dragging = false" @pointercancel="dragging = false" @pointerleave="dragging = false" @dblclick="zoom(0)" @keydown="keyboard" /></template>
+<template><div ref="root" class="flow-canvas" :class="{ panning: interaction === 'pan', dragging }" role="img" tabindex="0" :aria-label="label" @pointerdown="dragging = interaction === 'pan'" @pointerup="dragging = false" @pointercancel="leaveCanvas" @pointerleave="leaveCanvas" @dblclick="zoom(0)" @keydown="keyboard" /></template>
 <style scoped>
 .flow-canvas { width: 100%; height: 100%; min-height: 520px; outline: none; touch-action: none; }
 .flow-canvas:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }

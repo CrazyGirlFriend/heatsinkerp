@@ -34,7 +34,7 @@ const example = computed(() => route.query.sample === 'purposes')
 const serialDraft = ref(''), teamDraft = ref(Number(currentUser.value?.team_id) || 1)
 const serial = ref(''), teamId = ref(1), history = ref<SerialHistory | null>(null), trace = ref<MaterialTrace | null>(null)
 const loading = ref(false), error = ref(''), metric = ref<FlowMetric>('weight'), motion = ref(true), replay = ref(0)
-const selected = ref<FlowSelection | null>(null), selectedId = ref(''), drawerOpen = ref(false), batchNo = ref('')
+const selected = ref<FlowSelection | null>(null), selectedId = ref(''), hoveredId = ref(''), drawerOpen = ref(false), batchNo = ref('')
 const reallocationsOpen = ref(false), reallocationsPage = ref(1)
 const reallocations = computed(() => trace.value?.reallocations || [])
 const chart = ref<InstanceType<typeof FlowPreviewCanvas>>()
@@ -55,12 +55,12 @@ const visibleOrigins = computed(() => activeOrigin.value ? [activeOrigin.value] 
 const originInput = computed(() => visibleOrigins.value.filter(group => ['warehouse_receipt', 'serial_reallocation'].includes(group.batch.entry_kind || '')).reduce((sum, group) => sum + group.batch[metric.value], 0))
 const hasReallocatedOrigin = computed(() => visibleOrigins.value.some(group => group.batch.entry_kind === 'serial_reallocation'))
 async function changeOrigin(id: string) {
-  originId.value = id; selectedId.value = ''; teamRange.value = { start: 0, end: 100 }
+  originId.value = id; selectedId.value = ''; hoveredId.value = ''; teamRange.value = { start: 0, end: 100 }
   await nextTick(); chart.value?.zoom(0)
 }
 const hasData = computed(() => mode.value === 'team' ? Boolean(history.value?.groups.length) : Boolean(trace.value?.items.length))
 const hasMetricData = computed(() => mode.value === 'chain' || Boolean(localModel.value?.links.some(link => link[metric.value] > 0)))
-const chartOption = computed(() => mode.value === 'team' && localModel.value ? teamFlowOption(localModel.value, metric.value) : traceFlowOption(chainModel.value, metric.value, selectedId.value, motion.value, interaction.value, zoomLevel.value, origins.value.colors))
+const chartOption = computed(() => mode.value === 'team' && localModel.value ? teamFlowOption(localModel.value, metric.value) : traceFlowOption(chainModel.value, metric.value, selectedId.value || hoveredId.value, motion.value, interaction.value, zoomLevel.value, origins.value.colors))
 const colors = computed(() => [...(mode.value === 'team' ? localModel.value?.palette || new Map<string, string>() : chainModel.value.palette)].map(([name, color]) => ({ name, color })))
 const detailOptions = computed(() => mode.value === 'team'
   ? (localModel.value?.nodes || []).map(node => ({ value: node.name, label: `${['来源', '业务', '去向'][node.depth]} · ${node.title}` }))
@@ -83,7 +83,7 @@ const originalPath = computed(() => ({ path: mode.value === 'team' ? `/team-work
 async function load(background = false) {
   if (!serial.value) return
   const request = ++epoch, currentMode = mode.value
-  if (!background) { loading.value = true; history.value = null; trace.value = null; selected.value = null; selectedId.value = ''; error.value = '' }
+  if (!background) { loading.value = true; history.value = null; trace.value = null; selected.value = null; selectedId.value = ''; hoveredId.value = ''; error.value = '' }
   try {
     if (example.value) {
       if (currentMode === 'team') history.value = structuredClone(purposeSnapshot.history) as SerialHistory
@@ -115,7 +115,7 @@ async function chooseDetail(id: string) {
   if (mode.value === 'team') selected.value = localModel.value?.nodes.find(node => node.name === id) || null
   else {
     const batch = chainModel.value.byId.get(id)?.batch
-    if (batch) { selectedId.value = id; await nextTick(); chart.value?.zoom(0) }
+    if (batch) { selectedId.value = id; hoveredId.value = ''; await nextTick(); chart.value?.zoom(0) }
   }
 }
 function pick(event: { dataIndex: number; dataType?: string; data: unknown }) {
@@ -123,10 +123,11 @@ function pick(event: { dataIndex: number; dataType?: string; data: unknown }) {
   else {
     const data = event.data as { batchId?: string } | null
     const batch = (data?.batchId ? chainModel.value.byId.get(data.batchId) : chainModel.value.nodes[event.dataIndex])?.batch
-    if (batch) selectedId.value = String(batch.id)
+    if (batch) { selectedId.value = String(batch.id); hoveredId.value = '' }
   }
 }
-function clearSelection() { selected.value = null; selectedId.value = '' }
+function hoverBatch(id: string) { hoveredId.value = selectedId.value ? '' : id }
+function clearSelection() { selected.value = null; selectedId.value = ''; hoveredId.value = '' }
 function canvasShortcut(event: KeyboardEvent) {
   if (mode.value !== 'chain' || event.ctrlKey || event.metaKey || event.altKey || (event.target as HTMLElement).closest('input, textarea, [contenteditable=true], [role=combobox]')) return
   const key = event.key.toLowerCase()
@@ -145,7 +146,7 @@ function updateFullscreen() { fullscreen.value = document.fullscreenElement === 
 onMounted(() => document.addEventListener('fullscreenchange', updateFullscreen))
 const live = useLiveRefresh(() => load(true), { teamId: () => mode.value === 'team' ? teamId.value : undefined, enabled: () => Boolean(serial.value) && !example.value, busy: () => loading.value || Boolean(selected.value) || drawerOpen.value })
 watch(() => [route.path, route.params.view, route.query.serial_no, route.query.team_id, route.query.sample, route.query.date_from, route.query.date_to], () => {
-  ++epoch; loading.value = false; error.value = ''; selected.value = null; selectedId.value = ''; originId.value = 'all'; drawerOpen.value = false
+  ++epoch; loading.value = false; error.value = ''; selected.value = null; selectedId.value = ''; hoveredId.value = ''; originId.value = 'all'; drawerOpen.value = false
   reallocationsOpen.value = false; reallocationsPage.value = 1
   history.value = null; trace.value = null; filtersOpen.value = false; dateDraft.value = { ...historyDates.value }
   serial.value = example.value ? purposeSnapshot.history.serial_no : typeof route.query.serial_no === 'string' ? route.query.serial_no.trim() : ''; serialDraft.value = serial.value
@@ -173,7 +174,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
         <ElButton v-if="embedded" class="chain-fullscreen" :icon="FullScreen" :aria-pressed="fullscreen" @click="toggleFullscreen">{{ fullscreen ? '退出全屏' : '全屏查看' }}</ElButton>
         <ElPopover trigger="click" title="画布说明" :width="320" :append-to="pageRoot">
           <template #reference><ElButton class="header-icon" :icon="InfoFilled" aria-label="画布说明" title="画布说明" text /></template>
-          <div class="canvas-help"><p>滚轮缩放 · H 平移 · V 选择 · 双击还原</p><p>颜色区分入库批次，浅色横条表示在库停留。点击节点，在图下方查看收发详情。</p><p>空心点为转出，实心点为接收，菱形为加工登记；金色虚线表示待确认，物料仍计入转出班组库存。</p><p v-if="chainModel.extent">{{ traceTime(chainModel.first) }}<br>至 {{ traceTime(chainModel.last) }}（北京时间）</p><p v-if="timeIssues">{{ timeIssues }} 个批次时间异常，仅显示有效时间点。</p><p v-if="residenceIssues">{{ residenceIssues }} 个批次历史收发记录与库存对不上，暂不显示停留时间。</p><p v-if="untracked">{{ untracked }} 个历史批次未计入库存。</p><p v-if="colors.some(entry => entry.name === '未分类')">未登记接收业务的历史批次标为“未分类”。</p><p v-if="example">演示数据，不影响库存。</p></div>
+          <div class="canvas-help"><p>滚轮缩放 · H 平移 · V 选择 · 双击还原</p><p>颜色区分入库批次，浅色横条表示在库停留。悬停可突出上下游路径，点击后保持高亮并查看详情。</p><p>空心点为转出，实心点为接收，菱形为加工登记；金色虚线表示待确认，物料仍计入转出班组库存。</p><p v-if="chainModel.extent">{{ traceTime(chainModel.first) }}<br>至 {{ traceTime(chainModel.last) }}（北京时间）</p><p v-if="timeIssues">{{ timeIssues }} 个批次时间异常，仅显示有效时间点。</p><p v-if="residenceIssues">{{ residenceIssues }} 个批次历史收发记录与库存对不上，暂不显示停留时间。</p><p v-if="untracked">{{ untracked }} 个历史批次未计入库存。</p><p v-if="colors.some(entry => entry.name === '未分类')">未登记接收业务的历史批次标为“未分类”。</p><p v-if="example">演示数据，不影响库存。</p></div>
         </ElPopover>
       </div>
     </header>
@@ -198,14 +199,13 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
         </div>
         <header class="chart-toolbar">
           <div class="chain-legends"><strong class="path-heading">流转路径 <small>{{ chainModel.nodes.length }} 笔记录</small></strong><div class="purpose-legend"><span v-for="group in visibleOrigins" :key="group.id" :title="group.batch.batch_no"><i :style="{ background: group.color }" />{{ group.name }}</span></div><div class="mark-legend" aria-label="图形说明"><span><i class="stay-mark" />在库停留</span><span><i class="departure-mark" />转出</span><span><i class="receipt-mark" />签收</span><span><i class="processing-mark" />加工登记</span><span><i class="pending-mark" />待确认</span><span><i class="waste-mark" />废料</span></div></div>
-          <div class="chart-tools"><span v-if="timeIssues" class="data-warning">时间异常 {{ timeIssues }}</span><span v-if="residenceIssues" class="data-warning">历史不完整 {{ residenceIssues }}</span><span v-if="untracked" class="data-warning">未计入库存 {{ untracked }}</span><ElSelect class="detail-select" placeholder="选择转料批次" aria-label="选择图形明细" filterable :append-to="pageRoot" :model-value="selectedId || undefined" @change="chooseDetail"><ElOption v-for="option in detailOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect></div>
+          <div class="chart-tools"><span v-if="timeIssues" class="data-warning">时间异常 {{ timeIssues }}</span><span v-if="residenceIssues" class="data-warning">历史不完整 {{ residenceIssues }}</span><span v-if="untracked" class="data-warning">未计入库存 {{ untracked }}</span><ElSelect class="detail-select" placeholder="选择转料批次" aria-label="选择图形明细" filterable :append-to="pageRoot" :model-value="selectedId || undefined" @change="chooseDetail"><ElOption v-for="option in detailOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect><ElButton v-if="selectedId" class="clear-path" :icon="Close" aria-label="取消路径高亮" title="取消路径高亮" text circle @click="clearSelection" /></div>
         </header>
         <div class="chain-flow-region">
         <div class="canvas-area" :style="mode === 'team' ? { height: `${chartHeight}px` } : undefined">
-          <FlowPreviewCanvas v-if="hasMetricData && (mode === 'team' || chainModel.extent)" :key="mode" ref="chart" :renderer="mode === 'chain' ? 'svg' : 'canvas'" :option="chartOption" :replay="replay" :motion="motion" :interaction="mode === 'chain' ? interaction : undefined" :label="`${serial}，${mode === 'team' ? history?.team_name + '收发流向' : '全链路时间画布；滚轮缩放，H键平移，V键选择，双击还原；加减键缩放，0键还原'}，件数和重量`" @select="pick" @zoom="zoomLevel = $event" @team-range="teamRange = $event" />
+          <FlowPreviewCanvas v-if="hasMetricData && (mode === 'team' || chainModel.extent)" :key="mode" ref="chart" :renderer="mode === 'chain' ? 'svg' : 'canvas'" :option="chartOption" :replay="replay" :motion="motion" :interaction="mode === 'chain' ? interaction : undefined" :label="`${serial}，${mode === 'team' ? history?.team_name + '收发流向' : '全链路时间画布；滚轮缩放，H键平移，V键选择，双击还原；加减键缩放，0键还原'}，件数和重量`" @select="pick" @hover="hoverBatch" @zoom="zoomLevel = $event" @team-range="teamRange = $event" />
           <div v-else class="zero-measure">{{ mode === 'chain' ? '缺少有效时间记录，请通过上方批次查询查看明细。' : '当前记录没有件数。请切换重量查看废屑等按重量记录的物料。' }}</div>
           <template v-if="mode === 'chain' && chainModel.extent">
-            <div v-if="selectedId && selectedBatch" class="selection-chip"><span>{{ selectedBatch.batch_no }}</span><button type="button" aria-label="取消路径高亮" @click="clearSelection"><ElIcon><Close /></ElIcon></button></div>
             <div class="canvas-controls" role="group" aria-label="画布工具">
               <div class="canvas-mode" :class="{ 'is-pan': interaction === 'pan' }" role="group" aria-label="操作模式">
                 <ElTooltip content="选择批次 · V" :append-to="pageRoot" :show-after="350"><button type="button" aria-label="选择批次" :aria-pressed="interaction === 'select'" @click="interaction = 'select'"><ElIcon><Pointer /></ElIcon></button></ElTooltip>
@@ -287,16 +287,16 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
 .mark-legend .stay-mark { width: 32px; border: 0; border-radius: 8px; background: #d9d1f5; }.mark-legend .receipt-mark { background: #926de2; }
 .chain-page .purpose-legend { color: var(--muted); font-size: 14px; gap: 22px; }
 .chain-page .purpose-legend i { width: 22px; height: 4px; border-radius: 3px; }
-.chain-page .chart-tools { gap: 12px; }.chain-page .detail-select { width: 220px; }
+.chain-page .chart-tools { gap: 8px; flex-shrink: 0; }.chain-page .clear-path { width: 30px; height: 30px; margin: 0; flex-shrink: 0; }.chain-page .detail-select { width: 220px; }
 .chain-page .canvas-area { flex: 1; min-height: 340px; background: var(--surface); border-radius: 12px; }
 .chain-page .canvas-area :deep(.flow-canvas) { min-height: 0; }
 .canvas-controls { position: absolute; z-index: 6; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 6px; width: max-content; max-width: calc(100% - 16px); box-sizing: border-box; border: 1px solid var(--glass-border); border-radius: 22px; background: var(--glass-surface); box-shadow: var(--glass-shadow); }
 .canvas-controls > div { display: flex; align-items: center; flex-shrink: 0; }
 .canvas-controls > div + div { padding-left: 8px; border-left: 1px solid var(--line); }
-.canvas-controls button, .selection-chip button { width: 44px; height: 44px; padding: 0; border: 0; border-radius: 12px; display: grid; place-items: center; flex-shrink: 0; background: transparent; color: var(--muted); cursor: pointer; transition: background-color var(--motion-fast), color var(--motion-fast), transform var(--motion-fast); }
-.canvas-controls button:hover, .selection-chip button:hover { background: var(--surface-soft); color: var(--text); }
+.canvas-controls button { width: 44px; height: 44px; padding: 0; border: 0; border-radius: 12px; display: grid; place-items: center; flex-shrink: 0; background: transparent; color: var(--muted); cursor: pointer; transition: background-color var(--motion-fast), color var(--motion-fast), transform var(--motion-fast); }
+.canvas-controls button:hover { background: var(--surface-soft); color: var(--text); }
 .canvas-controls button:active { transform: scale(.92); }
-.canvas-controls button:focus-visible, .selection-chip button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.canvas-controls button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .canvas-controls button:disabled { cursor: not-allowed; color: var(--el-text-color-placeholder); background: transparent; transform: none; }
 .canvas-controls .el-icon { font-size: 21px; }
 .canvas-mode { position: relative; }
@@ -305,14 +305,12 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
 .canvas-mode button { position: relative; }
 .canvas-mode button[aria-pressed=true] { color: var(--primary); background: transparent; }
 .canvas-controls .zoom-level { min-width: 56px; color: var(--text); text-align: center; font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.selection-chip { position: absolute; z-index: 6; top: 6px; right: 12px; display: flex; align-items: center; gap: 8px; padding-left: 14px; border: 1px solid var(--glass-border); border-radius: 14px; color: var(--primary); background: var(--glass-surface); box-shadow: var(--glass-shadow); font-size: 13px; }
-.selection-chip button { width: 36px; height: 36px; border-radius: 8px; }
 @media (max-width: 1000px) { .chain-header { gap: 12px; flex-wrap: wrap; padding-inline: 12px; }.chain-query { flex: 1; min-width: 260px; }.chain-actions { gap: 8px; }.chain-page .chart-toolbar { align-items: center; gap: 8px; flex-wrap: wrap; }.chain-page .preview-main { padding-inline: 16px; }.chain-page .chart-tools { gap: 8px; } }
 @media (max-width: 700px) { .chain-page { overflow: auto; }.chain-header { gap: 8px; }.chain-title h1 { font-size: 20px; }.chain-query { order: 1; flex-basis: 100%; }.chain-actions { gap: 4px; }.chain-page .preview-main { min-height: 560px; }.chain-page .canvas-area { min-height: 680px; }.chain-page .canvas-area :deep(.flow-canvas) { min-width: 0; }.chain-page .purpose-legend { gap: 12px; font-size: 13px; }.chain-page .detail-select { width: 180px; }.chain-page .chart-tools { margin-left: auto; } }
 @media (max-width: 1250px) { .preview-main { padding: 28px 24px; }.preview-heading { align-items: flex-start; flex-direction: column; gap: 22px; }.preview-heading form { align-self: stretch; }.preview-heading .el-input { flex: 1; max-width: 440px; }.metric-strip { padding: 24px; }.metric-strip > div { padding-left: 20px; }.metric-strip strong { font-size: 24px; }.metric-strip b { font-size: 16px; } }
 @media (max-width: 700px) { .preview-topbar { padding: 0 16px; height: 60px; gap: 12px; }.sample-toggle { font-size: 11px; padding-inline: 0; }.preview-topbar nav { gap: 8px; }.preview-topbar nav button { font-size: 13px; white-space: nowrap; }.preview-main { padding: 24px 12px; }.preview-heading h1 { font-size: 24px; }.preview-heading form { flex-wrap: wrap; }.preview-heading .el-input { width: 190px; }.metric-strip { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px 0; }.metric-strip > div:nth-child(3) { border: 0; padding: 0; }.chart-toolbar { flex-wrap: wrap; padding: 16px; }.identity-row { padding: 20px 20px 0; flex-wrap: wrap; }.data-origin { display: none; }.data-origin.example { display: block; }.canvas-area { overflow-x: auto; }.canvas-area :deep(.flow-canvas) { min-width: 720px; }.flow-column-labels { padding-inline: 20px; } }
 @media (max-width: 572px) { .canvas-controls { flex-wrap: wrap; justify-content: center; width: 322px; gap: 4px 8px; }.canvas-controls .canvas-playback { width: 100%; justify-content: center; padding: 2px 0 0; border-left: 0; border-top: 1px solid var(--line-light); }.canvas-controls .canvas-zoom { padding-left: 4px; }.canvas-controls .zoom-level { min-width: 48px; } }
-@media (prefers-reduced-motion: reduce) { .canvas-controls button, .canvas-mode::before, .selection-chip button { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .canvas-controls button, .canvas-mode::before { transition: none; } }
 .chain-page--embedded { height: calc(100dvh - var(--topbar-height)); padding: 20px 24px; box-sizing: border-box; background: transparent; font-family: inherit; }
 .chain-page--embedded .chain-header { min-height: 64px; padding: 12px 16px; gap: 16px; border: 1px solid var(--glass-border); border-radius: 22px 22px 0 0; background: var(--glass-surface); }
 .chain-page--embedded .chain-query { width: 420px; gap: 8px; }
@@ -340,6 +338,54 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
   .chain-page:fullscreen { overflow: auto; }
 }
 .origin-filter { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--line); font-size: 13px; flex-shrink: 0; }.origin-filter label { color: var(--text); font-weight: 500; white-space: nowrap; }.origin-select { width: 340px; max-width: 65%; }.origin-input { margin-left: auto; color: var(--muted); white-space: nowrap; }.origin-input strong { color: var(--text); font-size: 20px; font-weight: 550; margin-left: 8px; }.path-heading { font-size: 14px; white-space: nowrap; font-weight: 600; }.path-heading small { font-weight: 400; font-size: 11px; color: var(--muted); margin-left: 6px; }
-.chain-page .chain-legends { gap: 10px 18px; }.chain-page .purpose-legend { gap: 7px 12px; font-size: 11px; }.chain-page .mark-legend { border: 0; padding: 0; gap: 12px; font-size: 11px; }.chain-page .mark-legend .departure-mark, .chain-page .mark-legend .receipt-mark { width: 10px; height: 10px; border-color: #52866b; }.chain-page .mark-legend .receipt-mark { background: #52866b; }.chain-page .mark-legend .stay-mark { width: 20px; height: 6px; background: #dfeae3; }.chain-page .mark-legend .waste-mark { width: 10px; height: 10px; border-color: #b48b50; background: #b48b50; }.chain-page .mark-legend .pending-mark { width: 20px; height: 0; border: 0; border-top: 2px dashed #b48b50; border-radius: 0; }.chain-page .canvas-controls { padding: 4px; border-radius: 12px; bottom: 8px; }.chain-page .canvas-controls button { width: 32px; height: 32px; border-radius: 8px; }.chain-page .canvas-controls .el-icon { font-size: 18px; }.chain-page .flow-workspace { overflow: visible; }.chain-page--embedded { min-height: 700px; }
+.chain-page .chain-legends { gap: 10px 18px; }.chain-page .purpose-legend { gap: 7px 12px; font-size: 11px; }.chain-page .mark-legend { border: 0; padding: 0; gap: 12px; font-size: 11px; }.chain-page .mark-legend .departure-mark, .chain-page .mark-legend .receipt-mark { width: 10px; height: 10px; border-color: #52866b; }.chain-page .mark-legend .receipt-mark { background: #52866b; }.chain-page .mark-legend .stay-mark { width: 20px; height: 6px; background: #dfeae3; }.chain-page .mark-legend .waste-mark { width: 10px; height: 10px; border-color: #b48b50; background: #b48b50; }.chain-page .mark-legend .pending-mark { width: 20px; height: 0; border: 0; border-top: 2px dashed #b48b50; border-radius: 0; }.chain-page .canvas-controls { padding: 4px; border-radius: 12px; bottom: 8px; }.chain-page .canvas-controls button { width: 32px; height: 32px; border-radius: 8px; }.chain-page .canvas-mode::before { width: 32px; border-radius: 8px; }.chain-page .canvas-mode.is-pan::before { transform: translateX(32px); }.chain-page .canvas-controls .el-icon { font-size: 18px; }.chain-page .flow-workspace { overflow: visible; }.chain-page--embedded { min-height: 700px; }
 @media (max-width: 700px) { .origin-filter { flex-wrap: wrap; }.origin-select { flex: 1; max-width: none; width: auto; min-width: 160px; }.origin-input { flex-basis: 100%; text-align: right; }.chain-page--embedded { height: auto; min-height: calc(100dvh - var(--topbar-height)); }.chain-page .canvas-area { min-height: 520px; }.chain-page .chart-tools { margin-left: 0; }.chain-page .canvas-controls { bottom: 8px; }.chain-page .origin-filter label { font-size: 12px; } }
+
+/* Light plotting surface, with glass reserved for the controls. */
+.chain-page .chart-toolbar {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid #dce8e3;
+  border-bottom-color: #e3ece8;
+  border-radius: 14px 14px 0 0;
+  background: linear-gradient(110deg, #f0f7f3, #fcfdfc);
+  gap: 12px;
+}
+.chain-page .path-heading { letter-spacing: .3px; }
+.chain-page .chart-tools:has(.clear-path) .detail-select { width: 182px; }
+.chain-page .purpose-legend,
+.chain-page .mark-legend { font-size: 12px; }
+.chain-page .mark-legend .departure-mark,
+.chain-page .mark-legend .receipt-mark,
+.chain-page .mark-legend .processing-mark { border-color: #128974; }
+.chain-page .mark-legend .receipt-mark { background: #128974; }
+.chain-page .mark-legend .stay-mark { background: #dfece7; border-bottom: 1px solid #7baf9d; }
+.chain-page .mark-legend .pending-mark { border-color: #b77a19; }
+.chain-page .mark-legend .waste-mark { background: #81919c; border-color: #81919c; }
+.chain-flow-region {
+  padding: 8px 10px 0;
+  border: 1px solid #dce8e3;
+  border-top: 0;
+  border-radius: 0 0 14px 14px;
+  background: #fff;
+}
+.chain-page .chain-flow-region .canvas-area { background: transparent; border-radius: 0; }
+.chain-page .canvas-controls {
+  background: #ffffffd9;
+  border-color: #d2e4dc;
+  box-shadow: inset 0 1px 0 #fff, 0 4px 16px #214d3610;
+  backdrop-filter: blur(18px);
+}
+.chain-flow-region :deep(.stock-total strong),
+.chain-flow-region :deep(.stock-value) { color: #21765b; }
+.chain-flow-region :deep(.stock-waste) { color: #76878e; }
+.chain-flow-region :deep(.stock-heading) { padding-top: 1px; }
+.chain-flow-region :deep(.stock-row) { border-bottom-color: #e8efef; }
+.chain-flow-region :deep(.stock-row:nth-child(odd)) { background: #f5f8f8; }
+.chain-page :deep(.trace-detail) { box-shadow: none; }
+
+.chain-flow-region :deep(.compact .stock-totals) { gap: 6px; }
+.chain-flow-region :deep(.compact.has-gap .stock-totals) { gap: 2px; }
+.chain-page :deep(.trace-detail:has(.detail-empty)) { padding-block: 8px; margin-top: 4px; }
+.chain-page :deep(.detail-empty) { padding: 0; }
 </style>

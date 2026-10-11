@@ -1,7 +1,7 @@
 import type { MaterialTrace, TraceAmount, TraceBatch, TraceHolding } from '@/types/materialTrace'
 import { isExternalTransfer } from '@/types/materialTransfer'
 
-const palette = ['#52866b', '#648aa7', '#9580ad', '#b48b50', '#538f95', '#b57868', '#789353', '#8a809d', '#658997']
+const palette = ['#128974', '#4477bc', '#9466aa', '#967531', '#198b9b', '#b5684f', '#688947', '#af6387', '#6479a0']
 export function traceOrigins(items: TraceBatch[]) {
   const byId = new Map(items.map(item => [String(item.id), item]))
   const originById = new Map<string, TraceBatch>()

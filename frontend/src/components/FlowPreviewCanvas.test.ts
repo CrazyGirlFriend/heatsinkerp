@@ -21,6 +21,24 @@ beforeEach(() => {
 })
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; vi.restoreAllMocks(); vi.unstubAllGlobals() })
 function render() { wrapper = mount(FlowPreviewCanvas, { props: { option: { series: [] }, label: '真实流向', motion: true, replay: 0 } }); return wrapper }
+it('reports the batch behind paths, stays and processing markers, clearing hover when leaving or panning', async () => {
+  const page = render()
+  const over = chart.on.mock.calls.find(([name]) => name === 'mousemove')![1]
+  const out = chart.on.mock.calls.find(([name]) => name === 'mouseout')![1]
+  over({ seriesId: 'batch-paths', data: { id: '42' } })
+  over({ seriesId: 'residence-bars', data: { id: '42:time', batchId: '42' } })
+  expect(page.emitted('hover')).toEqual([['42']])
+  out()
+  over({ seriesId: 'processing-events', data: { id: 'processing:7', batchId: '42' } })
+  await page.setProps({ interaction: 'pan' })
+  over({ seriesId: 'batch-paths', data: { id: '99' } })
+  expect(page.emitted('hover')).toEqual([['42'], [''], ['42'], ['']])
+  await page.setProps({ interaction: 'select' })
+  over({ seriesId: 'batch-paths', data: { id: '99' } })
+  await page.trigger('pointerleave')
+  expect(page.emitted('hover')?.at(-1)).toEqual([''])
+  expect(chart.dispatchAction).toHaveBeenLastCalledWith({ type: 'hideTip' })
+})
 it('renders on first initialization before ECharts has an option or zoom state', () => {
   chart.getOption.mockReturnValue(undefined)
   render()
@@ -32,6 +50,7 @@ it('keeps the ECharts instance for updates, does not interrupt drawing on unchan
   notifyResize(); expect(chart.resize).not.toHaveBeenCalled()
   await page.setProps({ replay: 1 }); expect(chart.clear).toHaveBeenCalledOnce()
   width = 900; notifyResize(); expect(chart.resize).toHaveBeenCalledOnce()
+  expect(chart.dispatchAction).toHaveBeenLastCalledWith({ type: 'hideTip' })
   page.unmount(); wrapper = undefined
   expect(chart.dispose).toHaveBeenCalledOnce(); expect(disconnect).toHaveBeenCalledOnce(); expect(removeListener).toHaveBeenCalledOnce()
 })

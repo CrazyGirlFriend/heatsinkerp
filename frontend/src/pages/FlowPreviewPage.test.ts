@@ -31,6 +31,23 @@ async function render(path: string) {
   await flushPromises()
   return { page: wrapper, router }
 }
+it('previews a path on hover without opening details, and preserves a clicked path until cleared', async () => {
+  const { page } = await render('/flow-preview/chain?sample=purposes')
+  const canvas = page.getComponent(FlowPreviewCanvas)
+  const option = canvas.props('option')
+  canvas.vm.$emit('hover', '1'); await flushPromises()
+  expect(canvas.props('option')).not.toBe(option)
+  expect(page.find('[aria-label="取消路径高亮"]').exists()).toBe(false)
+  expect(page.get('[aria-label="选中批次收发详情"]').text()).toContain('点击图中节点')
+  canvas.vm.$emit('select', { dataIndex: 0, data: { batchId: '1' } }); await flushPromises()
+  const pinned = canvas.props('option')
+  canvas.vm.$emit('hover', '7'); await flushPromises()
+  expect(canvas.props('option')).toBe(pinned)
+  expect(page.get('[aria-label="选中批次收发详情"]').text()).toContain(snapshot.trace.items[0]!.batch_no)
+  await page.get('[aria-label="取消路径高亮"]').trigger('click')
+  expect(page.find('[aria-label="取消路径高亮"]').exists()).toBe(false)
+  expect(page.get('[aria-label="选中批次收发详情"]').text()).toContain('点击图中节点')
+})
 it('shows A/B reallocation records and can follow the related serial without calling it a warehouse intake', async () => {
   const target = normalizeMaterialTransfer({ id: 201, batch_no: 'ALLOC-B', entry_kind: 'serial_reallocation', serial_no: '000B', source_serial_no: '000A', source_transfer_id: 101, source_transfer_batch_no: 'INTAKE-A', source_team: { id: 8, code: 'FACTORY-QC', name: '检验' }, next_team: { id: 8, code: 'FACTORY-QC', name: '检验' }, quantity: 30, weight: 3, status: 'received', received_at: '2026-09-20T00:00:00Z', created_at: '2026-09-20T00:00:00Z', stock_tracked: true })
   vi.spyOn(materialTransferApi, 'trace').mockResolvedValue({ ...snapshot.trace, serial_no: '000B', observed_at: '2026-09-21T00:00:00Z', items: [{ ...target, on_hand_quantity: 30, on_hand_weight: 3 }], reallocations: [target] })
@@ -72,7 +89,7 @@ it('filters a complete intake family and keeps its source distinct from the prev
   expect(detail).toContain('已占用可转额度')
   filter.vm.$emit('change', '102'); await flushPromises()
   expect(page.getComponent(TraceStockSummary).props('trace').items).toHaveLength(1)
-  expect(page.find('.selection-chip').exists()).toBe(false)
+  expect(page.find('[aria-label="取消路径高亮"]').exists()).toBe(false)
 })
 it('labels the snapshot and does not query live stock or open a possibly unrelated real batch', async () => {
   const team = vi.spyOn(teamMaterialApi, 'serialHistory'), trace = vi.spyOn(materialTransferApi, 'trace')
@@ -128,7 +145,7 @@ it('shows a single SVG time canvas with both units and hover details instead of 
   // The snapshot is immutable: a 47 ms handoff must not be stretched into an invented day.
   canvas.vm.$emit('select', { dataIndex: 1, data: {} })
   await flushPromises()
-  expect(page.find('.selection-chip').exists()).toBe(true)
+  expect(page.find('[aria-label="取消路径高亮"]').exists()).toBe(true)
   expect(document.body.querySelector('.flow-selection-drawer')).toBeNull()
   expect(page.findComponent(MaterialTransferDrawer).exists()).toBe(false)
   const tooltip = canvas.props('option').tooltip as { triggerOn: string; formatter: (params: { dataIndex: number }) => string }
@@ -176,10 +193,11 @@ it('selects the correct batch from a residence interval and clears its highlight
   const batch = snapshot.trace.items.at(-1)!
   canvas.vm.$emit('select', { dataIndex: 0, data: { batchId: String(batch.id) } })
   await flushPromises()
-  expect(page.find('.selection-chip').exists()).toBe(true)
-  expect(page.get('.selection-chip').text()).toContain(batch.batch_no)
+  expect(page.find('.canvas-area [aria-label="取消路径高亮"]').exists()).toBe(false)
+  expect(page.find('.chart-tools [aria-label="取消路径高亮"]').exists()).toBe(true)
+  expect(page.get('[aria-label="选中批次收发详情"]').text()).toContain(batch.batch_no)
   await page.get('[aria-label="取消路径高亮"]').trigger('click')
-  expect(page.find('.selection-chip').exists()).toBe(false)
+  expect(page.find('[aria-label="取消路径高亮"]').exists()).toBe(false)
   expect(canvas.props('replay')).toBe(0)
 })
 it('uses one compact business query header without repeated headings, demo actions or permanent instructions', async () => {
@@ -198,7 +216,7 @@ it('uses one compact business query header without repeated headings, demo actio
   expect(materialTransferApi.trace).toHaveBeenLastCalledWith('000012')
   page.getComponent(FlowPreviewCanvas).vm.$emit('select', { dataIndex: 1, data: {} })
   await flushPromises()
-  expect(page.get('.selection-chip').text()).toContain('TL')
+  expect(page.get('[aria-label="选中批次收发详情"]').text()).toContain('TL')
   expect(page.findComponent(MaterialTransferDrawer).exists()).toBe(false)
   expect(document.body.querySelector('.flow-selection-drawer')).toBeNull()
 })
