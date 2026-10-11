@@ -17,6 +17,7 @@ import { inventorySourceLabel, inventoryAmount, type TeamInventoryRow } from '@/
 import type { StockBatch } from '@/types/teamMaterials'
 import { dispatchableAmounts, stockAvailable, stockSelectable } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
+import { processingRoleLabels } from '@/types/materialProcessing'
 
 const props = defineProps<{ teamId: number; group: TeamInventoryRow | null; canWrite?: boolean; canReallocate?: boolean; warehouse?: boolean; processing?: boolean }>()
 const emit = defineEmits<{ close: []; changed: []; pending: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]; reallocate: [source: StockBatch] }>()
@@ -56,6 +57,8 @@ function exportStock() {
   if (!group) return null
   return tableExportSource(`${group.serial_no} · 当前库存`, total.value, [
     { key: 'batch_no', label: '来源批次号', value: (row: StockBatch) => row.transfer.batch_no },
+    { key: 'processing_role', label: '加工类别', value: row => row.processing_role ? processingRoleLabels[row.processing_role] : row.transfer.processing_role ? processingRoleLabels[row.transfer.processing_role] : '' },
+    { key: 'specification', label: '实际尺寸', value: row => row.current_specification ?? row.transfer.transfer_specification ?? '' },
     { key: 'location', label: '仓位', value: currentLocations },
     { key: 'quantity', label: '库存件数', value: row => row.owned_quantity },
     { key: 'weight', label: '库存重量 (kg)', value: row => row.owned_weight },
@@ -76,11 +79,13 @@ function asStock(row: unknown) { return row as StockBatch }
 function asTransfer(row: unknown) { return row as MaterialTransfer }
 function incoming(row: MaterialTransfer) { return row.entry_kind === 'serial_reallocation' ? row.serial_no === props.group?.serial_no : Number(row.next_team.id) === props.teamId }
 function movementLabel(row: MaterialTransfer) {
+  if (row.entry_kind === 'processing_output') return '本班组加工'
   if (row.entry_kind === 'serial_reallocation') return incoming(row) ? '转投入' : '转投出'
   if (incoming(row)) return row.entry_kind === 'opening_stock' ? '初始库存登记' : row.entry_kind === 'warehouse_receipt' ? '入库' : '收料'
   return row.entry_kind === 'inspection_shipment' ? '发货' : row.entry_kind === 'warehouse_outbound' ? '对外出库' : '转出'
 }
 function counterpart(row: MaterialTransfer) {
+  if (row.entry_kind === 'processing_output') return `${row.next_team.name} · 加工实物`
   if (row.entry_kind === 'serial_reallocation') return incoming(row) ? row.source_serial_no || '—' : row.serial_no
   if (!incoming(row)) return row.external_destination || row.next_team.name || '—'
   return row.entry_kind === 'opening_stock' ? '初始库存' : row.external_source || row.source_team.name || '—'
@@ -104,6 +109,7 @@ onBeforeUnmount(() => { ++version })
       <ElDescriptionsItem label="物料类型">{{ materialTypeLabel(group.material_type || null) }}</ElDescriptionsItem>
       <ElDescriptionsItem label="本班组业务">{{ group.purpose_name || '未指定业务' }}</ElDescriptionsItem>
       <ElDescriptionsItem :label="warehouse ? '来源' : '上序班组'">{{ inventorySourceLabel(group, warehouse) }}</ElDescriptionsItem>
+      <ElDescriptionsItem v-if="(group.max_weight_difference || 0) > 1" label="同批累计重量差异">最大 {{ inventoryAmount(group.max_weight_difference) }} kg，超过 1 kg，请核对</ElDescriptionsItem>
     </ElDescriptions>
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存明细" />
@@ -112,9 +118,12 @@ onBeforeUnmount(() => { ++version })
         <header><h3>当前库存</h3><TableExportButton :source="exportStock" :disabled="loading || !!error" :context="group?.group_id" /><ElButton v-if="group && (Number(group.reserved_quantity) > 0 || Number(group.reserved_weight) > 0)" link type="primary" @click="emit('pending')">查看转出待确认批次</ElButton></header>
         <ElTable class="business-table warehouse-source-table" :data="rows" row-key="transfer.id" empty-text="暂无来源记录">
           <ElTableColumn label="来源批次号" min-width="205"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
+          <ElTableColumn v-if="rows.some(row => row.processing_role || row.transfer.processing_role)" label="加工类别" min-width="110"><template #default="{ row }">{{ processingRoleLabels[(row.processing_role || row.transfer.processing_role) as keyof typeof processingRoleLabels] || '—' }}</template></ElTableColumn>
+          <ElTableColumn label="当前实际尺寸" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ row.current_specification ?? row.transfer.transfer_specification ?? '—' }}</template></ElTableColumn>
           <ElTableColumn v-if="warehouse" label="当前仓位" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ currentLocations(asStock(row)) }}</template></ElTableColumn>
           <ElTableColumn label="库存件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.owned_quantity) }}</template></ElTableColumn>
           <ElTableColumn label="库存重量 (kg)" min-width="140" align="right"><template #default="{ row }">{{ inventoryAmount(row.owned_weight) }}</template></ElTableColumn>
+          <ElTableColumn v-if="rows.some(row => row.weight_difference)" label="同批累计差异 (kg)" min-width="175" align="right"><template #default="{ row }"><span :class="{ 'source-weight-warning': Math.abs(row.weight_difference || 0) > 1 }">{{ row.weight_difference > 0 ? '+' : '' }}{{ inventoryAmount(row.weight_difference) }}</span></template></ElTableColumn>
           <ElTableColumn :label="`${availableLabel}件数`" min-width="120" align="right"><template #default="{ row }">{{ inventoryAmount(dispatchableAmounts(asStock(row)).quantity) }}</template></ElTableColumn>
           <ElTableColumn :label="`${availableLabel}重量 (kg)`" min-width="150" align="right"><template #default="{ row }">{{ inventoryAmount(dispatchableAmounts(asStock(row)).weight) }}</template></ElTableColumn>
           <ElTableColumn v-if="hasPending" label="待签收件数" min-width="120" align="right"><template #default="{ row }">{{ inventoryAmount(row.in_transit_quantity) }}</template></ElTableColumn>
@@ -123,7 +132,7 @@ onBeforeUnmount(() => { ++version })
           <ElTableColumn v-if="hasExternalPending" label="对外待确认重量 (kg)" min-width="180" align="right"><template #default="{ row }">{{ inventoryAmount(row.external_pending_weight) }}</template></ElTableColumn>
           <ElTableColumn v-if="hasLoss" label="丢失件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.lost_quantity) }}</template></ElTableColumn>
           <ElTableColumn v-if="hasLoss" label="丢失重量 (kg)" min-width="140" align="right"><template #default="{ row }">{{ inventoryAmount(row.lost_weight) }}</template></ElTableColumn>
-          <ElTableColumn label="接收时间" min-width="170"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>
+          <ElTableColumn label="接收 / 加工时间" min-width="170"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>
           <ElTableColumn v-if="processing" label="加工状态" min-width="185" align="center"><template #default="{ row }"><ProcessingStockStatus :state="row.processing_state" :material-type="row.transfer.material_type" /></template></ElTableColumn>
           <ElTableColumn label="操作" :width="canWrite ? canReallocate ? 310 : 250 : 110" fixed="right"><template #default="{ row }"><div class="source-actions"><ElButton v-if="!isWeightOnlyType(row.transfer.material_type)" link type="primary" @click="openQuantity(asStock(row))">{{ canWrite && !warehouse && stockAvailable(asStock(row)) ? processing ? '加工登记' : '加工件数变更' : processing ? '加工记录' : '件数记录' }}</ElButton><template v-if="canWrite"><ElButton link type="primary" :disabled="!stockSelectable(asStock(row))" @click="action('dispatch', asStock(row))">出库</ElButton><ElButton v-if="canReallocate" link type="primary" :disabled="!stockSelectable(asStock(row))" @click="emit('reallocate', asStock(row))">转投</ElButton><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('loss', asStock(row))">登记丢失</ElButton></template></div></template></ElTableColumn>
         </ElTable>
@@ -134,7 +143,7 @@ onBeforeUnmount(() => { ++version })
         <ElTable class="business-table warehouse-movement-table" :data="movements" row-key="id" empty-text="暂无收发记录">
           <ElTableColumn label="批次号" min-width="205"><template #default="{ row }"><ElButton link type="primary" @click="open(asTransfer(row))">{{ row.batch_no }}</ElButton></template></ElTableColumn>
           <ElTableColumn label="业务" min-width="95"><template #default="{ row }">{{ movementLabel(asTransfer(row)) }}</template></ElTableColumn>
-          <ElTableColumn label="来源批次号" min-width="205"><template #default="{ row }">{{ incoming(asTransfer(row)) && row.entry_kind !== 'serial_reallocation' ? '—' : row.source_transfer_batch_no || '—' }}</template></ElTableColumn>
+          <ElTableColumn label="来源批次号" min-width="205"><template #default="{ row }">{{ incoming(asTransfer(row)) && !['serial_reallocation', 'processing_output'].includes(row.entry_kind) ? '—' : row.source_transfer_batch_no || '—' }}</template></ElTableColumn>
           <ElTableColumn label="来源 / 去向" min-width="120"><template #default="{ row }">{{ counterpart(asTransfer(row)) }}</template></ElTableColumn>
           <ElTableColumn label="件数" min-width="85" align="right"><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
           <ElTableColumn label="重量 (kg)" min-width="115" align="right"><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
@@ -151,6 +160,7 @@ onBeforeUnmount(() => { ++version })
 
 <style scoped>
 .stock-detail-section { margin-top: 24px; }
+.source-weight-warning { color: var(--el-color-danger); }
 .stock-detail-section > header, .stock-detail-section > footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
 .stock-detail-section > header { margin-bottom: 12px; }
 .stock-detail-section h3 { margin: 0; font-size: 16px; font-weight: 550; color: var(--text); }

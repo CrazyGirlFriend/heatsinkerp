@@ -44,6 +44,14 @@ async function confirm() {
 }
 
 describe('material transfer receipt review', () => {
+  it('presents a completed local processing output without edit, void or receipt actions', async () => {
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ entry_kind: 'processing_output', processing_role: 'produced', status: 'received', locked: true, allowed_actions: [], source_team: { id: 3, name: '电镀', code: '' }, source_transfer_batch_no: 'TL-PARENT' }))
+    await render()
+    expect(wrapper.text()).toContain('加工实物登记单')
+    expect(wrapper.text()).toContain('本班组加工实物已登记')
+    expect(wrapper.text()).toContain('TL-PARENT')
+    expect(wrapper.findAll('button').some(button => ['编辑', '作废', '确认签收'].includes(button.text()))).toBe(false)
+  })
   it('allows the receiver to sign, but never edit or void even if action flags are stale', async () => {
     vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ allowed_actions: ['edit', 'void', 'confirm'], can_edit_delivery: true }))
     await render()

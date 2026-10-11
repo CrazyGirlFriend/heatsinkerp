@@ -160,7 +160,9 @@ def today_batches(db, involved, now):
             func.max(mt.updated_at).label("updated_at"),
         )
         .outerjoin(MaterialDispatch, mt.dispatch_id == MaterialDispatch.id)
-        .where(involved, activity_at >= start, activity_at <= end)
+        .where(
+            involved, mt.entry_kind != "processing_output", activity_at >= start, activity_at <= end
+        )
         .group_by(code)
         .order_by(func.max(activity_at).desc(), code.desc())
     ).mappings()

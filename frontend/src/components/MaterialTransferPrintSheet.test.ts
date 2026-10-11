@@ -36,6 +36,16 @@ const transfer: MaterialTransfer = {
 }
 
 describe('material transfer print sheet', () => {
+  it('prints processing outputs as local registration with the original parent batch and no fictitious receiving signature', () => {
+    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, entry_kind: 'processing_output', processing_role: 'produced', source_transfer_batch_no: 'TL-PARENT', transfer_specification: '20 × 10 × 2 mm' } } })
+    expect(wrapper.attributes('aria-label')).toBe('A4 双联加工实物登记单')
+    for (const copy of wrapper.findAll('.material-transfer-print-copy')) {
+      expect(copy.text()).toContain('加工实物登记单'); expect(copy.text()).toContain('加工产出'); expect(copy.text()).toContain('TL-PARENT')
+      expect(copy.text()).toContain('实际尺寸'); expect(copy.text()).toContain('加工时间')
+      expect(copy.text()).not.toContain('接收方签字'); expect(copy.text()).not.toContain('转出班组')
+    }
+    wrapper.unmount()
+  })
   it('prints actual sludge, percentage and accounting kg in both copies', () => {
     const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, material_type: 'sludge', weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30 } } })
     for (const copy of wrapper.findAll('.material-transfer-print-copy')) {

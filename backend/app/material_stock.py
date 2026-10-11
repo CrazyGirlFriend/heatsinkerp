@@ -14,9 +14,9 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import case, func, or_, select, union_all, literal
+from sqlalchemy import case, cast, func, or_, select, union_all, literal
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm import lazyload, selectinload
+from sqlalchemy.orm import aliased, lazyload, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
 from .auth import actor_name
@@ -75,6 +75,8 @@ class DispatchCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_destination(self):
+        if any(item.outputs is not None for item in self.quantity_adjustments):
+            raise ValueError("请先保存加工明细，再选择加工后的批次出库")
         if not self.idempotency_key.strip():
             raise ValueError("idempotency_key cannot be blank")
         if self.entry_kind == "transfer":
@@ -148,6 +150,13 @@ def available_locked(db, lot, exclude_transfer_id=None):
         if prior is not None:
             quantity, weight = quantity + prior.quantity, weight + prior.weight
     return quantity, weight
+
+
+def require_unallocated_source(db, lot, available):
+    if available[0] <= 0 and available[1] <= 0 and db.scalar(select(MaterialTransfer.id).where(
+        MaterialTransfer.source_transfer_id == lot.id, MaterialTransfer.entry_kind == "processing_output"
+    ).limit(1)) is not None:
+        raise HTTPException(409, "本批已分解为加工明细，请重新选择剩余大料或加工后小料批次")
 
 
 def validate_available(db, lot, quantity, weight, exclude_transfer_id=None):
@@ -253,6 +262,7 @@ def create_dispatch(db, team_id, payload, user):
                 portions = [line for line in payload.lines if line.source_transfer_id == source_id]
                 quantity, weight = sum(line.quantity for line in portions), sum((line.weight for line in portions), Decimal(0))
                 available = available_locked(db, lot)
+                require_unallocated_source(db, lot, available)
                 validate_outbound_clearance(lot, quantity, weight, available, clearances.get(source_id))
                 stock_after[source_id] = (available[0] - quantity - (clearances[source_id].quantity if source_id in clearances else 0), available[1] - weight)
             for line in payload.lines:
@@ -427,7 +437,13 @@ def stock_table(team_id=None):
     """Read committed lot balances; pending outbound is already deducted."""
     from .stock_balances import AMOUNTS
     balance = MaterialStockBalance
+    # Internal machining reallocates the same stock. It is neither a new
+    # receipt nor a handoff, although its child lots share the stock ledger.
     columns = {name: getattr(balance, name) for name in AMOUNTS}
+    for amount in ("quantity", "weight"):
+        columns[f"received_{amount}"] = cast(case((MaterialTransfer.entry_kind == "processing_output", 0), else_=columns[f"received_{amount}"]), getattr(balance, f"received_{amount}").type)
+        columns[f"dispatched_{amount}"] -= getattr(balance, f"converted_{amount}")
+        columns[f"adjusted_{amount}"] = getattr(balance, f"adjusted_{amount}")
     for amount in ("quantity", "weight"):
         free = columns[f"on_hand_{amount}"]
         columns[f"shortage_{amount}"] = case((free < 0, -free), else_=0)
@@ -440,6 +456,7 @@ def stock_table(team_id=None):
     return select(balance.transfer_id, balance.team_id,
                   MaterialTransfer.batch_no, MaterialTransfer.serial_no, MaterialTransfer.material_name,
                   MaterialTransfer.material_type, MaterialTransfer.source_batch_no, MaterialTransfer.received_at,
+                  MaterialTransfer.processing_role,
                   *(value.label(key) for key, value in columns.items())).join(
         MaterialTransfer, MaterialTransfer.id == balance.transfer_id
     ).where(
@@ -447,7 +464,7 @@ def stock_table(team_id=None):
     ).subquery()
 
 
-BALANCE_KEYS = tuple(f"{prefix}_{amount}" for prefix in ("received", "dispatched", "reserved", "in_transit", "lost", "on_hand", "available", "scrap", "scrap_available", "owned", "external_pending", "shortage") for amount in ("quantity", "weight"))
+BALANCE_KEYS = tuple(f"{prefix}_{amount}" for prefix in ("received", "dispatched", "reserved", "in_transit", "lost", "on_hand", "available", "scrap", "scrap_available", "owned", "external_pending", "shortage", "adjusted") for amount in ("quantity", "weight"))
 
 
 def balance_dict(row):
@@ -461,6 +478,7 @@ def literal_query(query, columns):
 
 def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=None, material_type=None, availability="available", location_status=None, source_ids=None, page=1, page_size=20):
     from .record_filters import RecordFilters
+    from .processing_records import annotate_source, source_metadata
     team = require_team(db, team_id)
     stock = stock_table(team_id)
     filters = [stock.c.team_id == team_id]
@@ -476,6 +494,10 @@ def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=
         filters.append(stock.c.serial_no == serial_no.strip())
     if availability == "available":
         filters.append(or_(stock.c.available_quantity != 0, stock.c.available_weight != 0))
+    child = aliased(MaterialTransfer)
+    filters.append(or_(stock.c.on_hand_quantity > 0, stock.c.on_hand_weight > 0,
+        ~select(child.id).where(child.source_transfer_id == stock.c.transfer_id,
+            child.entry_kind == "processing_output").exists()))
     # Outbound selection includes all received lots, even exhausted or overdrawn ones.
     if material_type:
         filters.append(stock.c.material_type == material_type)
@@ -488,10 +510,14 @@ def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=
             matches = or_(matches, stock.c.transfer_id.in_(location_matches))
         filters.append(matches)
     total = db.scalar(select(func.count()).select_from(stock).where(*filters)) or 0
-    rows = db.execute(select(stock).where(*filters).order_by(stock.c.received_at.desc(), stock.c.transfer_id.desc()).offset((page-1)*page_size).limit(page_size)).mappings().all()
+    metadata = source_metadata(team_id)
+    rows = db.execute(select(stock, metadata).outerjoin(metadata, metadata.c.lot_id == stock.c.transfer_id).where(*filters)
+        .order_by(stock.c.received_at.desc(), stock.c.transfer_id.desc()).offset((page-1)*page_size).limit(page_size)).mappings().all()
     transfers = {item.id: item for item in db.scalars(select(MaterialTransfer).options(*workflow.material_transfer_list_options()).where(MaterialTransfer.id.in_([row["transfer_id"] for row in rows]))).all()}
     from .warehouse_placements import stock_positions
-    return {"items": stock_positions(db, stock_sludge_measurements(db, [{"transfer": workflow.material_transfer_dict(transfers[row["transfer_id"]], user, include_history=False), **balance_dict(row)} for row in rows])),
+    items = [annotate_source({"transfer": workflow.material_transfer_dict(transfers[row["transfer_id"]], user, include_history=False),
+        **balance_dict(row)}, row) for row in rows]
+    return {"items": stock_positions(db, stock_sludge_measurements(db, items)),
             "total": total, "page": page, "page_size": page_size, "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
 
 
@@ -545,7 +571,7 @@ def list_losses(db, team_id, *, record_filters=None, query=None, serial_no=None,
 def list_outbound_batches(db, team_id, user, *, record_filters, query=None, next_team_id=None, status=None, entry_kind=None, material_type=None, page=1, page_size=20):
     require_team(db, team_id)
     mt = MaterialTransfer
-    filters = [mt.source_team_id == team_id, ~mt.entry_kind.in_(["warehouse_receipt", "serial_reallocation"]),
+    filters = [mt.source_team_id == team_id, mt.entry_kind.in_(["transfer", *EXTERNAL_ENTRY_KINDS]),
                *record_filters.predicates(mt.created_at, mt.serial_no)]
     for column, value in ((mt.next_team_id, next_team_id), (mt.status, status), (mt.entry_kind, entry_kind), (mt.material_type, material_type)):
         if value is not None:
@@ -579,7 +605,7 @@ def list_dispatches(db, team_id, user, *, record_filters=None, query=None, next_
         MaterialDispatch.id, MaterialDispatch.dispatch_no, MaterialDispatch.created_at, MaterialDispatch.next_team_id)
     singles = select(literal(None).label("group_id"), mt.id.label("single_id"), mt.batch_no.label("dispatch_no"),
         mt.created_at.label("created_at"), mt.next_team_id.label("next_team_id"), mt.status.label("status")
-    ).outerjoin(MaterialDispatch, mt.dispatch_id == MaterialDispatch.id).where(mt.source_team_id == team_id, mt.entry_kind != "serial_reallocation", MaterialDispatch.dispatch_no.is_(None))
+    ).outerjoin(MaterialDispatch, mt.dispatch_id == MaterialDispatch.id).where(mt.source_team_id == team_id, mt.entry_kind.in_(["transfer", *EXTERNAL_ENTRY_KINDS]), MaterialDispatch.dispatch_no.is_(None))
     if entry_kind:
         grouped = grouped.where(MaterialDispatch.entry_kind == entry_kind)
         singles = singles.where(mt.entry_kind == entry_kind)

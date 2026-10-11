@@ -6,7 +6,7 @@ export interface OpeningLine extends SludgeMeasurement {
 }
 export interface OpeningState { enabled: boolean; completed: boolean; has_stock_history: boolean; can_submit: boolean; items: MaterialTransfer[] }
 export interface SerialHistoryEvent {
-  id: string; at: string; kind: 'incoming' | 'opening' | 'outgoing' | 'adjusted' | 'voided' | 'loss' | 'quantity_changed'
+  id: string; at: string; kind: 'incoming' | 'opening' | 'outgoing' | 'adjusted' | 'voided' | 'loss' | 'quantity_changed' | 'processing_input' | 'processing_output'
   batch_no: string; source_batch_no: string; counterpart: string; material_type: MaterialType | null
   source_material_type: MaterialType | null; quantity: number; weight: number
   delta_quantity: number; delta_weight: number; balance_quantity: number; balance_weight: number; status: string

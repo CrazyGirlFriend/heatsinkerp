@@ -67,6 +67,7 @@ const opening = computed(() => current.value?.entry_kind === 'opening_stock')
 const receipt = computed(() => opening.value || Boolean(current.value && isWarehouseReceipt(current.value)))
 const external = computed(() => Boolean(current.value && isExternalTransfer(current.value)))
 const actionLabel = computed(() => externalActionLabel(current.value?.entry_kind))
+const processed = computed(() => current.value?.entry_kind === 'processing_output')
 const loading = ref(false)
 const loadError = ref('')
 const confirming = ref(false)
@@ -108,6 +109,7 @@ const tracePath = computed(() => {
 const stateMessage = computed(() => {
   if (!current.value) return ''
 
+  if (current.value.entry_kind === 'processing_output') return '本班组加工实物已登记，来源单据保持不变'
   if (opening.value) return '初始库存已登记，单据已锁定'
   if (receipt.value) return '手工入库已完成，单据已锁定'
   if (authStore.isAdmin) return '管理员仅可查看转料记录'
@@ -356,7 +358,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
   <MaterialTransferDetailFrame :model-value="modelValue && !groupOpen" :busy="confirming || voiding || deliveryBusy" @close="close">
     <template #header>
       <header class="drawer-heading">
-        <span>{{ opening ? '初始库存' : receipt ? '库房手工入库' : external ? `${actionLabel}详情` : '转料详情' }}</span>
+        <span>{{ processed ? '加工实物登记单' : opening ? '初始库存' : receipt ? '库房手工入库' : external ? `${actionLabel}详情` : '转料详情' }}</span>
         <h2>{{ current?.batch_no || effectiveBatchNo || '正在读取…' }}</h2>
         <MaterialTransferStatus v-if="current" :status="current.status" :entry-kind="current.entry_kind" />
       </header>
@@ -370,10 +372,10 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
       <ElButton v-if="loadError" :loading="loading" @click="load">重新读取</ElButton>
       <ElAlert v-if="reviewNotice" class="review-notice" type="warning" :closable="false" :title="reviewNotice" show-icon />
       <ElAlert v-if="current.rejection_reason != null && current.status === 'pending'" type="warning" :closable="false" :title="current.rejection_reason ? '待上序修正：' + current.rejection_reason : '已退回核对，待上序修正'" />
-      <div class="document-barcode"><BarcodeCard :value="current.batch_no" :entity-label="receipt ? '入库批次号' : '转料批次号'" compact /><ElButton v-if="grouped" link type="primary" @click="groupOpen = true">历史合并记录 · {{ current.dispatch_no }}</ElButton></div>
+      <div class="document-barcode"><BarcodeCard :value="current.batch_no" :entity-label="processed ? '加工批次号' : receipt ? '入库批次号' : '转料批次号'" compact /><ElButton v-if="grouped" link type="primary" @click="groupOpen = true">历史合并记录 · {{ current.dispatch_no }}</ElButton></div>
       <MaterialTransferDocumentFields :transfer="current" group="all"><template #serial><RouterLink :to="tracePath">{{ current.serial_no }}</RouterLink><SerialUrgencyBadge :urgency="current.urgency" /></template></MaterialTransferDocumentFields>
       <section v-if="canConfirm && warehouseReceiver" class="receipt-location"><label>入库仓位</label><strong v-if="current.warehouse_location">{{ current.warehouse_location }}</strong><WarehouseLocationSelect v-else v-model="warehouseLocation" v-model:reservation-key="warehouseLocationKey" :team-id="Number(current.next_team.id)" :serial-no="current.serial_no" :material-name="current.material_name || ''" :material-type="current.material_type || ''" :active="modelValue && !groupOpen" :disabled="confirming" @busy-change="locationBusy = $event" /></section>
-      <section class="document-records"><h3>{{ receipt ? '入库记录' : '流转记录' }}</h3><MaterialTransferHistory :transfer="current" /></section>
+      <section class="document-records"><h3>{{ processed ? '加工记录' : receipt ? '入库记录' : '流转记录' }}</h3><MaterialTransferHistory :transfer="current" /></section>
       <section v-if="current.loss_records?.length" class="document-records"><h3>来源批次丢失记录</h3><div class="document-table-scroll"><table class="loss-record-table business-document-table" aria-label="来源批次丢失记录"><thead><tr><th scope="col">记录号</th><th scope="col">件数</th><th scope="col">重量（kg）</th><th scope="col">原因</th><th scope="col">登记人 / 时间</th></tr></thead><tbody><tr v-for="loss in current.loss_records" :key="loss.id"><td>{{ loss.loss_no }}</td><td>{{ loss.quantity }}</td><td>{{ loss.weight }}</td><td class="table-prose">{{ loss.reason }}</td><td>{{ loss.created_by }}<br />{{ formatDateTime(loss.created_at) }}</td></tr></tbody></table></div></section>
     </div>
 
@@ -385,7 +387,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
         <ElButton v-if="canMaintainDelivery" :disabled="confirming || voiding" @click="deliveryOpen = true">维护交期</ElButton>
         <a v-if="current.delivery_origin_batch_no && current.delivery_origin_batch_no !== current.batch_no" :href="'/transfer-batches?batch_no=' + encodeURIComponent(current.delivery_origin_batch_no)">查看交期源单</a>
         <ElButton v-if="canEdit" type="primary" :icon="EditPen" :disabled="voiding" @click="editOpen = true">编辑</ElButton>
-        <ElButton v-if="allowPrint" :icon="Printer" @click="printTransfer">{{ receipt ? '打印入库单' : external ? `打印${actionLabel}单` : '打印转料单' }}</ElButton>
+        <ElButton v-if="allowPrint" :icon="Printer" @click="printTransfer">{{ processed ? '打印加工登记单' : receipt ? '打印入库单' : external ? `打印${actionLabel}单` : '打印转料单' }}</ElButton>
         <ElButton v-if="canVoid" type="danger" plain :icon="Delete" :loading="voiding" @click="voidTransfer">作废</ElButton>
       </div>
       <p class="permission-note" :title="stateMessage" aria-live="polite"><ElIcon><Lock /></ElIcon>{{ canConfirm ? '接收后本单将锁定。' : stateMessage }}</p>

@@ -13,7 +13,7 @@ const lanes = computed(() => props.groups.filter(group => !props.focus || props.
     || (props.direction === 'incoming' ? ['incoming', 'opening'] : ['outgoing', 'adjusted', 'voided']).includes(event.kind)),
 })))
 const columns = computed(() => Math.max(3, ...lanes.value.map(lane => lane.events.length)))
-const shortKind = (event: SerialHistoryEvent) => ({ incoming: '收进', opening: '初始库存', outgoing: '转出', adjusted: '修改数量', voided: '撤回', loss: '丢失', quantity_changed: '件数变更' })[event.kind]
+const shortKind = (event: SerialHistoryEvent) => ({ incoming: '收进', opening: '初始库存', outgoing: '转出', adjusted: '修改数量', voided: '撤回', loss: '丢失', quantity_changed: '件数变更', processing_input: '加工投入', processing_output: '加工产出' })[event.kind]
 </script>
 
 <template>
@@ -27,7 +27,8 @@ const shortKind = (event: SerialHistoryEvent) => ({ incoming: '收进', opening:
           <time>{{ formatDateTime(event.at) }}</time>
           <span class="event-mark">{{ shortKind(event) }}</span>
           <strong class="event-peer" :title="event.counterpart">{{ event.counterpart || historyKindNames[event.kind] }}</strong>
-          <span v-if="event.kind === 'quantity_changed'" class="event-amount">{{ event.delta_quantity > 0 ? '+' : '' }}{{ num(event.delta_quantity) }} <small>件 · 重量不变</small></span>
+          <span v-if="event.kind === 'quantity_changed' && !event.delta_weight" class="event-amount">{{ event.delta_quantity > 0 ? '+' : '' }}{{ num(event.delta_quantity) }} <small>件 · 重量不变</small></span>
+          <span v-else-if="event.kind === 'quantity_changed'" class="event-amount">{{ event.delta_quantity > 0 ? '+' : '' }}{{ num(event.delta_quantity) }} <small>件</small><i>·</i>{{ event.delta_weight > 0 ? '+' : '' }}{{ num(event.delta_weight) }} <small>kg</small></span>
           <span v-else class="event-amount">{{ num(event.quantity) }} <small>件</small><i>·</i>{{ num(event.weight) }} <small>kg</small></span>
           <span class="event-batch" :title="event.batch_no">{{ event.batch_no }}</span>
         </button>

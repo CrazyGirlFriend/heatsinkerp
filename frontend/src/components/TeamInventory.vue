@@ -13,6 +13,7 @@ import SerialUrgencyDialog from './SerialUrgencyDialog.vue'
 import StockSourcePicker from './StockSourcePicker.vue'
 import TeamInventoryDetail from './TeamInventoryDetail.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
+import { processingRoleLabels } from '@/types/materialProcessing'
 import StatePanel from './StatePanel.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
@@ -70,7 +71,7 @@ const sourceTeams = computed(() => directory.items.filter(team => team.id !== pr
 const sourceLabel = (row: TeamInventoryRow) => inventorySourceLabel(row, props.warehouse)
 const columns = computed(() => warehouseColumns.map(column => ({ ...column,
   label: props.processing && column.key === 'stock_status' ? '加工状态' : column.key === 'source' ? props.warehouse ? '来源' : '上序班组' : column.label,
-  width: props.processing ? ({ material_name: 100, material_type: 100, purpose_name: 130, source: 90, owned_quantity: 80, owned_weight: 110, stock_status: 170 } as Partial<Record<WarehouseColumnKey, number>>)[column.key] || column.width : column.key === 'owned_quantity' ? 100 : column.key === 'owned_weight' ? 130 : column.key === 'source' ? 120 : column.width,
+  width: props.processing ? ({ material_name: 100, material_type: 150, purpose_name: 130, source: 90, owned_quantity: 80, owned_weight: 110, stock_status: 170 } as Partial<Record<WarehouseColumnKey, number>>)[column.key] || column.width : column.key === 'owned_quantity' ? 100 : column.key === 'owned_weight' ? 130 : column.key === 'source' ? 120 : column.width,
   format: column.key === 'source' ? sourceLabel : column.format,
 })))
 const searchColumns = computed(() => warehouseSearchColumns.map(column => column.key === 'source' ? { ...column, label: props.warehouse ? '来源' : '上序班组' } : column))
@@ -287,7 +288,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
         <template #default="{ row }">
           <div v-if="column.key === 'serial_no'" class="inventory-inline inventory-serial"><ElButton class="serial-number-link" :title="row.serial_no" link type="primary" @click="openSerial(row)"><strong>{{ row.serial_no }}</strong></ElButton><SerialUrgencyBadge :urgency="row.urgency" /><ElTooltip v-if="canManageUrgency" :content="row.urgency?.urgent ? '取消加急' : '标记加急'" placement="top"><ElButton class="warehouse-urgency-action" link type="primary" :icon="row.urgency?.urgent ? Close : Flag" :aria-label="row.urgency?.urgent ? '取消加急' : '标记加急'" @click="flag(row)" /></ElTooltip></div>
           <ElTooltip v-else-if="column.key === 'material_name'" :content="`规格：${row.transfer_specification}`" :disabled="!row.transfer_specification || separateSpecification" :trigger="['hover', 'focus']" placement="top"><span class="inventory-material" :tabindex="row.transfer_specification && !separateSpecification ? 0 : undefined">{{ row.material_name || '—' }}</span></ElTooltip>
-          <ElTag v-else-if="column.key === 'material_type'" effect="light" :type="isScrapMaterialType(row.material_type) ? 'warning' : row.material_type === 'finished' ? 'success' : 'primary'">{{ column.format(asRow(row)) }}</ElTag>
+          <div v-else-if="column.key === 'material_type'" class="inventory-material-kind"><ElTag effect="light" :type="isScrapMaterialType(row.material_type) ? 'warning' : row.material_type === 'finished' ? 'success' : 'primary'">{{ column.format(asRow(row)) }}</ElTag><small v-if="row.processing_role">{{ processingRoleLabels[asRow(row).processing_role!] }}</small><small v-if="processing && !separateSpecification && row.transfer_specification" :title="row.transfer_specification">{{ row.transfer_specification }}</small></div>
           <ProcessingStockStatus v-else-if="column.key === 'stock_status' && processing" :summary="asRow(row)" :material-type="row.material_type" :pending="inventoryHasPending(asRow(row))" />
           <ElTooltip v-else-if="column.key === 'stock_status'" :content="ownershipHint(asRow(row))" :trigger="['hover', 'focus']" popper-class="inventory-balance-tooltip" placement="top"><ElTag :type="column.format(asRow(row)) === '重量差异' ? 'danger' : inventoryHasPending(asRow(row)) ? 'warning' : inventoryCanDispatch(asRow(row)) ? 'success' : 'info'" effect="light" tabindex="0">{{ column.format(asRow(row)) }}</ElTag></ElTooltip>
           <div v-else-if="column.key === 'source' && warehouse" class="inventory-inline"><span class="inventory-source-name">{{ row.receipt_source === 'opening' ? '初始库存' : row.source_name || '—' }}</span></div>
@@ -374,4 +375,6 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
   .warehouse-table :deep(.el-scrollbar__bar.is-horizontal) { opacity: 1; }
 }
 .inventory-balance--shortage strong { color: var(--el-color-danger); }
+.inventory-material-kind { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.inventory-material-kind small { max-width: 100%; color: var(--muted); font-size: 12px; line-height: 1.35; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 </style>

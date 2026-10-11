@@ -73,6 +73,17 @@ it('distinguishes an unavailable older response from a verified zero balance', a
   await page.setProps({ trace: { ...trace, holdings: [] } })
   expect(page.get('.stock-total').text()).toBe('正常料合计0 件')
 })
+it('shows signed measured processing changes separately from actual shortages and warns on a root absolute difference', async () => {
+  const page = render({ ...trace, processing_delta_weight: -.5, weight_difference: -.5, max_weight_difference: .5 })
+  await page.setProps({ metric: 'weight', compact: true })
+  expect(page.get('.stock-measured').text()).toBe('加工实测差额-0.5 kg')
+  expect(page.find('.stock-gap').exists()).toBe(false)
+  expect(page.find('.stock-measured--warning').exists()).toBe(false)
+  await page.setProps({ trace: { ...trace, processing_delta_weight: -1.1, weight_difference: 0, max_weight_difference: 1.1, shortage: { quantity: 0, weight: 1.1 } } })
+  expect(page.get('.stock-measured--warning').text()).toContain('-1.1 kg')
+  expect(page.get('.stock-gap').text()).toBe('重量差异1.1 kg')
+  expect(page.get('.stock-measured').attributes('title')).toContain('不计丢失')
+})
 
 it('shows a book shortage separately from signed current normal stock', () => {
   const data = { ...trace, shortage: { quantity: 20, weight: 2 }, holdings: [{ team_id: 1, team_code: 'FACTORY-WAREHOUSE', team_name: '库房', material_types: [{ material_type: 'finished', quantity: -20, weight: -2 }] }] }

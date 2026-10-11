@@ -114,7 +114,8 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
 def list_receipts(db, team_id, user, *, record_filters=None, query=None, material_type=None, receipt_source=None, page=1, page_size=20):
     stock.require_team(db, team_id)
     # Receiving a batch creates its ledger entry; later stock depletion does not remove it.
-    filters = [MaterialTransfer.next_team_id == team_id, MaterialTransfer.status == "received"]
+    filters = [MaterialTransfer.next_team_id == team_id, MaterialTransfer.status == "received",
+               MaterialTransfer.entry_kind != "processing_output"]
     if receipt_source == "internal":
         filters.append(MaterialTransfer.entry_kind == "transfer")
     elif receipt_source == "external":

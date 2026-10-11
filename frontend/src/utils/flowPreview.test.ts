@@ -176,6 +176,35 @@ describe('ECharts flow preview data', () => {
       }
     }
   })
+  it('connects processing children to the parent track at the actual processing time, without inventing receipts', () => {
+    const processedAt = '2026-09-20T00:00:00Z'
+    const root = { ...batch(1), quantity: 10, weight: 100, on_hand_quantity: 0, on_hand_weight: 0, received_at: '2026-09-19T00:00:00Z' }
+    const pieces = ([['remaining', 2, 40], ['produced', 8, 59], ['scrap', 0, 1]] as const).map(([role, quantity, weight], i) => ({
+      ...batch(i + 2, 1), entry_kind: 'processing_output' as const, processing_role: role,
+      source_team: root.next_team, next_team: root.next_team, quantity, weight, on_hand_quantity: quantity, on_hand_weight: weight,
+      transferred_at: processedAt, received_at: processedAt,
+    }))
+    const model = traceFlowModel([root, ...pieces], '2026-09-21T00:00:00Z')
+    const option = traceFlowOption(model, 'weight', '3', false, 'select', 100, new Map(model.nodes.map(node => [String(node.batch.id), '#287457'])))
+    const series = (option.series as CustomSeriesOption[]).find(item => item.id === 'batch-paths')!
+    const residences = (option.series as CustomSeriesOption[]).find(item => item.id === 'residence-bars')!
+    expect(series.z).toBeGreaterThan(residences.z!)
+    const coord = (values: number[]) => [(values[0]! - model.first!) / 864000, 80 + values[1]! * 90]
+    for (const child of pieces) {
+      const index = model.nodes.findIndex(node => node.batch.id === child.id), node = model.nodes[index]!
+      const rendered = series.renderItem!({ dataIndex: index, context: {}, coordSys: { x: 0, y: 0, width: 1200, height: 1000 } } as unknown as CustomSeriesRenderItemParams, { coord } as CustomSeriesRenderItemAPI)
+      if (!rendered || rendered.type !== 'group') throw new Error('Expected processing branch')
+      const parent = model.byId.get('1')!
+      const start = coord([node.finishedAt!, parent.targetLane + parent.targetOffset]), end = coord([node.finishedAt!, node.targetLane + node.targetOffset])
+      expect(rendered.children.find(item => item.name === 'processing-branch')).toMatchObject({
+        type: 'path', shape: { pathData: `M${start[0]},${start[1]} L${end[0]},${end[1]}` },
+      })
+      expect(rendered.children.some(item => item.name === 'receipt' || item.name === 'departure' || item.name === 'transfer')).toBe(false)
+      expect(rendered.children.find(item => item.name === 'processing-output')).toMatchObject({ type: 'polygon' })
+      expect(start[0]).toBe(end[0])
+      expect(node.finishedAt).toBe(traceTimestamp(processedAt))
+    }
+  })
   it('animates only unsigned transfers, preserving dispatch time and keeping stopped and pan views static', () => {
     const root = { ...batch(1), received_at: '2026-09-19T00:00:00Z' }
     const pending = { ...batch(2, 1, 2), source_team: root.next_team, status: 'pending' as const, transferred_at: '2026-09-20T00:00:00Z', received_at: null }

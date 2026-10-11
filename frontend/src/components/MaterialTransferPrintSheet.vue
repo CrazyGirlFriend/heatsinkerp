@@ -5,32 +5,35 @@ import { computed } from 'vue'
 import type { MaterialTransfer } from '@/types/materialTransfer'
 import { externalActionLabel, isExternalTransfer, isWarehouseReceipt, materialSourceLabel, materialPurposeLabel, receiptSourceLabel, materialDocumentTitle, materialDocumentTextFields, materialTransferNotesLabel, materialTransferStatusLabel, materialTypeLabel } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
+import { processingRoleLabels } from '@/types/materialProcessing'
 
 const props = defineProps<{ transfer: MaterialTransfer }>()
+const processed = computed(() => props.transfer.entry_kind === 'processing_output')
 const opening = computed(() => props.transfer.entry_kind === 'opening_stock')
 const receipt = computed(() => isWarehouseReceipt(props.transfer) || opening.value)
 const external = computed(() => isExternalTransfer(props.transfer))
 const verb = computed(() => externalActionLabel(props.transfer.entry_kind))
-const copies = computed(() => opening.value ? [{ key: 'source', name: '班组留存联' }, { key: 'target', name: '初始库存登记联' }] : external.value ? [{ key: 'source', name: `${verb.value}留存联` }, { key: 'target', name: `${verb.value}凭证联` }] : receipt.value ? [{ key: 'source', name: '库房留存联' }, { key: 'target', name: '入库凭证联' }] : [{ key: 'source', name: '转出留存联' }, { key: 'target', name: '接收确认联' }])
+const copies = computed(() => processed.value ? [{ key: 'source', name: '加工登记联' }, { key: 'target', name: '班组留存联' }] : opening.value ? [{ key: 'source', name: '班组留存联' }, { key: 'target', name: '初始库存登记联' }] : external.value ? [{ key: 'source', name: `${verb.value}留存联` }, { key: 'target', name: `${verb.value}凭证联` }] : receipt.value ? [{ key: 'source', name: '库房留存联' }, { key: 'target', name: '入库凭证联' }] : [{ key: 'source', name: '转出留存联' }, { key: 'target', name: '接收确认联' }])
 const fields = computed(() => {
   const transfer = props.transfer
   return [
     { label: '流水号', value: transfer.serial_no },
     { label: '状态', value: materialTransferStatusLabel(transfer.status, transfer.entry_kind) },
-    { label: receipt.value ? '入库来源' : external.value ? `${verb.value}班组` : '转出班组', value: materialSourceLabel(transfer) },
-    { label: receipt.value || external.value ? '登记人' : '转料人', value: transfer.transferred_by || '—' },
-    { label: opening.value ? '登记班组' : receipt.value ? '入库库房' : external.value ? `${verb.value}去向` : '接收班组', value: external.value ? transfer.external_destination || '—' : transfer.next_team.name },
-    { label: '接收业务', value: materialPurposeLabel(transfer) },
+    { label: processed.value ? '加工来源' : receipt.value ? '入库来源' : external.value ? `${verb.value}班组` : '转出班组', value: materialSourceLabel(transfer) },
+    { label: processed.value || receipt.value || external.value ? '登记人' : '转料人', value: transfer.transferred_by || '—' },
+    { label: processed.value ? '加工班组' : opening.value ? '登记班组' : receipt.value ? '入库库房' : external.value ? `${verb.value}去向` : '接收班组', value: external.value ? transfer.external_destination || '—' : transfer.next_team.name },
+    { label: processed.value ? '本班组业务' : '接收业务', value: materialPurposeLabel(transfer) },
     ...(transfer.next_team.code === 'FACTORY-WAREHOUSE' ? [{ label: '入库仓位', value: transfer.warehouse_location || '未填写' }] : []),
     ...(transfer.source_transfer_batch_no ? [{ label: '上一批次', value: transfer.source_transfer_batch_no }] : []),
+    ...(transfer.processing_role ? [{ label: '加工类别', value: processingRoleLabels[transfer.processing_role] }] : []),
     { label: '物料类型', value: materialTypeLabel(transfer.material_type) },
     { label: '原单批号', value: transfer.source_batch_no || '—' },
     { label: '材质', value: transfer.material_name || '—' },
     { label: '客户代码', value: transfer.customer_code || '—' },
     { label: '成品规格', value: transfer.finished_specification || '—' },
-    { label: '转料规格', value: transfer.transfer_specification || '—' },
-    { label: receipt.value ? '入库件数' : external.value ? `${verb.value}件数` : '转料件数', value: `${transfer.quantity} 件` },
-    { label: transfer.sludge_content_percent != null ? '折算重量' : receipt.value ? '入库重量' : external.value ? `${verb.value}重量` : '转料重量', value: `${transfer.weight} kg` },
+    { label: processed.value ? '实际尺寸' : '转料规格', value: transfer.transfer_specification || '—' },
+    { label: processed.value ? '实物件数' : receipt.value ? '入库件数' : external.value ? `${verb.value}件数` : '转料件数', value: `${transfer.quantity} 件` },
+    { label: transfer.sludge_content_percent != null ? '折算重量' : processed.value ? '实物重量' : receipt.value ? '入库重量' : external.value ? `${verb.value}重量` : '转料重量', value: `${transfer.weight} kg` },
     ...sludgeFields(transfer),
     { label: '成品件数', value: transfer.finished_quantity == null ? '—' : `${transfer.finished_quantity} 件` },
     ...(transfer.delivery_date ? [{ label: '要求发货日期', value: transfer.delivery_date }, { label: '应发成品件数', value: `${transfer.delivery_quantity} 件` }] : []),
@@ -48,7 +51,7 @@ const extended = computed(() => fields.value.length > 18 || fields.value.some(fi
 </script>
 
 <template>
-  <article class="material-transfer-print-sheet" :class="{ 'material-transfer-print-sheet--extended': extended }" :aria-label="external ? `A4 双联${verb}单` : receipt ? 'A4 双联入库单' : 'A4 双联转料单'">
+  <article class="material-transfer-print-sheet" :class="{ 'material-transfer-print-sheet--extended': extended }" :aria-label="processed ? 'A4 双联加工实物登记单' : external ? `A4 双联${verb}单` : receipt ? 'A4 双联入库单' : 'A4 双联转料单'">
     <section class="material-transfer-print-page">
       <template v-for="copy in copies" :key="copy.key">
         <section class="material-transfer-print-copy" :aria-label="copy.name">
@@ -58,7 +61,7 @@ const extended = computed(() => fields.value.length > 18 || fields.value.some(fi
           </header>
 
           <div class="print-barcode">
-            <BarcodeCard :value="transfer.barcode_payload || transfer.batch_no" compact :entity-label="receipt ? '入库批次号' : external ? `${verb}批次号` : '转料批次号'" />
+            <BarcodeCard :value="transfer.barcode_payload || transfer.batch_no" compact :entity-label="processed ? '加工批次号' : receipt ? '入库批次号' : external ? `${verb}批次号` : '转料批次号'" />
             <small>Code 128 · {{ transfer.batch_no }}</small>
           </div>
 
@@ -67,7 +70,8 @@ const extended = computed(() => fields.value.length > 18 || fields.value.some(fi
             <tr v-for="field in longFields" :key="field.label" class="print-notes"><th scope="row">{{ field.label }}</th><td colspan="3">{{ field.value }}</td></tr>
           </tbody></table>
 
-          <footer v-if="external"><div><span>登记人签字：________________</span><small>创建时间：{{ formatDateTime(transfer.transferred_at) }}</small></div><div><span>{{ verb }}确认人签字：________________</span><small>确认人：{{ transfer.dispatched_by || '—' }}</small><small>确认时间：{{ formatDateTime(transfer.dispatched_at) }}</small></div></footer>
+          <footer v-if="processed"><div><span>加工登记人签字：________________</span><small>登记人：{{ transfer.transferred_by || '—' }}</small></div><div><span>班组复核签字：________________</span><small>加工时间：{{ formatDateTime(transfer.transferred_at) }}</small></div></footer>
+          <footer v-else-if="external"><div><span>登记人签字：________________</span><small>创建时间：{{ formatDateTime(transfer.transferred_at) }}</small></div><div><span>{{ verb }}确认人签字：________________</span><small>确认人：{{ transfer.dispatched_by || '—' }}</small><small>确认时间：{{ formatDateTime(transfer.dispatched_at) }}</small></div></footer>
           <footer v-else-if="receipt"><div><span>登记人签字：________________</span><small>登记人：{{ transfer.transferred_by || '—' }}</small></div><div><span>{{ opening ? '班组复核' : '库房复核' }}签字：________________</span><small>入库时间：{{ formatDateTime(transfer.transferred_at) }}</small></div></footer>
           <footer v-else>
             <div><span>转出方签字：________________</span><small>转料时间：{{ formatDateTime(transfer.transferred_at) }}</small></div>

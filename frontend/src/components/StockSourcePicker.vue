@@ -9,6 +9,7 @@ import SerialUrgencyBadge from './SerialUrgencyBadge.vue'
 import StatePanel from './StatePanel.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { StockBatch } from '@/types/teamMaterials'
+import { processingRoleLabels, type ProcessingRole } from '@/types/materialProcessing'
 import { materialTypeLabel } from '@/types/materialTransfer'
 import { dispatchableAmounts, stockSelectable } from '@/utils/materialStock'
 import { currentLocations } from '@/utils/warehousePlacement'
@@ -71,7 +72,8 @@ onBeforeUnmount(() => { ++version })
         <ElTableColumn v-if="rows.some(item => item.transfer.next_team.code === 'FACTORY-WAREHOUSE')" label="当前仓位" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ currentLocations(asStock(row)) }}</template></ElTableColumn>
         <ElTableColumn label="本班组业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.purpose_name || '未分类' }}</template></ElTableColumn>
         <ElTableColumn label="材质" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.material_name || '—' }}</template></ElTableColumn>
-        <ElTableColumn label="物料类型" min-width="110" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.transfer.material_type) }}</template></ElTableColumn>
+        <ElTableColumn label="物料类型" :min-width="rows.some(row => row.processing_role || row.transfer.processing_role) ? 175 : 110" show-overflow-tooltip><template #default="{ row }">{{ materialTypeLabel(row.transfer.material_type) }}<template v-if="row.processing_role || row.transfer.processing_role"> · {{ processingRoleLabels[(row.processing_role || row.transfer.processing_role) as ProcessingRole] }}</template></template></ElTableColumn>
+        <ElTableColumn v-if="rows.some(row => row.current_specification || row.transfer.transfer_specification)" label="当前实际尺寸" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ row.current_specification ?? row.transfer.transfer_specification ?? '—' }}</template></ElTableColumn>
         <ElTableColumn label="账面件数" min-width="130" align="center"><template #default="{ row }">{{ inventoryAmount(dispatchableAmounts(asStock(row)).quantity) }}</template></ElTableColumn>
         <ElTableColumn label="账面重量 (kg)" min-width="160" align="center"><template #default="{ row }">{{ inventoryAmount(dispatchableAmounts(asStock(row)).weight) }}</template></ElTableColumn>
       </ElTable>

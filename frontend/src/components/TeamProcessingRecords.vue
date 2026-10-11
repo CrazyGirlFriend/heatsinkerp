@@ -16,7 +16,7 @@ import { materialTypeLabel } from '@/types/materialTransfer'
 import { inventoryAmount } from '@/types/teamInventory'
 import TableExportButton from './TableExportButton.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
-import { processingStateLabels, processingProgressLabels } from '@/types/materialProcessing'
+import { processingStateLabels, processingProgressLabels, processingRoleLabels } from '@/types/materialProcessing'
 import { formatDateTime } from '@/utils/format'
 
 const props = defineProps<{ teamId: number; canWrite?: boolean; fullscreen?: boolean; refreshKey?: unknown }>()
@@ -60,6 +60,8 @@ function exportSource() {
     { key: 'created_at', label: '登记时间', value: row => formatDateTime(row.created_at) },
     { key: 'before_quantity', label: '加工前件数', value: row => row.before_quantity },
     { key: 'after_quantity', label: '加工后件数', value: row => row.after_quantity },
+    { key: 'after_weight', label: '加工后重量 (kg)', value: row => row.after_weight ?? row.weight },
+    { key: 'outputs', label: '加工实物明细', value: row => row.outputs?.map(output => `${output.batch_no} · ${processingRoleLabels[output.role]} · ${materialTypeLabel(output.material_type)} · ${output.quantity} 件 / ${output.weight} kg · ${output.transfer_specification || ''}`).join('；') || '' },
     { key: 'processing_status', label: '登记时进度', value: row => row.processing_status ? processingProgressLabels[row.processing_status] : '未标明' },
     { key: 'after_specification', label: '登记后实际尺寸', value: row => row.after_specification || '' },
     { key: 'on_hand_quantity', label: '当前未转出件数', value: row => row.on_hand_quantity },
@@ -92,6 +94,8 @@ onBeforeUnmount(() => { ++generation })
       <ElTableColumn label="物料类型" min-width="115"><template #default="{ row }">{{ materialTypeLabel(row.material_type) }}</template></ElTableColumn>
       <ElTableColumn label="加工前件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.before_quantity) }}</template></ElTableColumn>
       <ElTableColumn label="加工后件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.after_quantity) }}</template></ElTableColumn>
+      <ElTableColumn label="加工后重量 (kg)" min-width="160" align="right"><template #default="{ row }">{{ inventoryAmount(row.after_weight ?? row.weight) }}</template></ElTableColumn>
+      <ElTableColumn v-if="rows.some(row => row.outputs?.length)" label="加工实物明细" min-width="240"><template #default="{ row }"><ElButton v-if="row.outputs?.length" link type="primary" @click="detail(row)">{{ row.outputs.length }} 个实物子批 · 查看明细</ElButton><span v-else>统一件数登记</span></template></ElTableColumn>
       <ElTableColumn label="当前未转出件数" min-width="145" align="right"><template #default="{ row }">{{ inventoryAmount(row.on_hand_quantity) }}</template></ElTableColumn>
       <ElTableColumn label="当前未转出重量 (kg)" min-width="185" align="right"><template #default="{ row }">{{ inventoryAmount(row.on_hand_weight) }}</template></ElTableColumn>
       <ElTableColumn label="当前状态" min-width="185" align="center"><template #default="{ row }"><ProcessingStockStatus :state="row.processing_state" :material-type="row.material_type" /></template></ElTableColumn>

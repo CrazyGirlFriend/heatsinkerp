@@ -69,13 +69,26 @@ function availableFor(line: typeof lines.value[number]) {
   const draft = processing[Number(line.source.transfer.id)]
   return { ...free, quantity: draft && !draft.error && draft.revision != null ? draft.quantity ?? free.quantity : free.quantity }
 }
-const weightNotice = computed(() => isLoss.value ? '' : lines.value.flatMap((line, index) => {
-  if (lines.value.slice(0, index).some(other => other.source.transfer.id === line.source.transfer.id)) return []
-  const same = lines.value.filter(other => other.source.transfer.id === line.source.transfer.id)
-  if (same.some(other => amountError(enteredQuantity(other), other.weight, other.latest))) return []
-  const difference = Math.round((same.reduce((sum, other) => sum + Number(other.weight), 0) - Number(dispatchableAmounts(line.latest).weight)) * 1000000) / 1000000
-  return difference > 0 ? [`${line.source.transfer.batch_no}：本次转出比账面剩余多 ${difference} kg，${difference <= weightToleranceKg ? `在允许的 ${weightToleranceKg} kg 误差范围内` : `超过允许的 ${weightToleranceKg} kg 误差，请核对，仍可提交`}；仅记录重量差异，不计为损耗`] : []
-}).join('；'))
+const weightNotice = computed(() => {
+  if (isLoss.value) return ''
+  const roots = new Map<number, { batches: string[]; prior: number; added: number }>()
+  lines.value.forEach((line, index) => {
+    if (lines.value.slice(0, index).some(other => other.source.transfer.id === line.source.transfer.id)) return
+    const same = lines.value.filter(other => other.source.transfer.id === line.source.transfer.id)
+    if (same.some(other => amountError(enteredQuantity(other), other.weight, other.latest))) return
+    const free = Number(dispatchableAmounts(line.latest).weight)
+    const added = Math.max(0, same.reduce((sum, other) => sum + Number(other.weight), 0) - Math.max(0, free))
+    const root = line.latest?.weight_root_transfer_id || Number(line.source.transfer.id)
+    const row = roots.get(root) || { batches: [], prior: line.latest?.weight_difference ?? Math.max(0, -free), added: 0 }
+    row.batches.push(line.source.transfer.batch_no); row.added += added; roots.set(root, row)
+  })
+  return [...roots.values()].flatMap(row => {
+    const added = Math.round(row.added * 1000000) / 1000000
+    const difference = Math.round((row.prior + added) * 1000000) / 1000000
+    if (!added && !difference) return []
+    return [`${row.batches.join('、')}：${added ? `本次转出比账面剩余多 ${added} kg；` : ''}同一来源在本班组累计${difference >= 0 ? '多' : '少'} ${Math.abs(difference)} kg，${Math.abs(difference) <= weightToleranceKg ? `在允许的 ${weightToleranceKg} kg 误差范围内` : `超过允许的 ${weightToleranceKg} kg 误差，请核对，仍可提交`}；拆分和继续加工共用提醒额度，仅记录重量差异，不计为损耗`]
+  }).join('；')
+})
 const clearanceReasons = reactive<Record<string, string>>({})
 const clearanceSelected = reactive<Record<string, boolean>>({})
 const clearances = computed(() => isLoss.value ? [] : lines.value.flatMap((line, index) => {
@@ -83,7 +96,7 @@ const clearances = computed(() => isLoss.value ? [] : lines.value.flatMap((line,
   if (lines.value.slice(0, index).some(other => Number(other.source.transfer.id) === id)) return []
   const sameSource = lines.value.filter(other => Number(other.source.transfer.id) === id)
   if (sameSource.some(other => !!amountError(enteredQuantity(other), other.weight, other.latest))) return []
-  const free = dispatchableAmounts(line.latest)
+  const free = availableFor(line)
   const quantity = outboundRemainder(sameSource.reduce((sum, item) => sum + Number(enteredQuantity(item)), 0), sameSource.reduce((sum, item) => sum + Number(item.weight), 0), free.quantity, free.weight)
   return quantity > 0 ? [{ id, batchNo: line.source.transfer.batch_no, quantity, availableQuantity: free.quantity, availableWeight: free.weight }] : []
 }))
@@ -104,6 +117,11 @@ async function loadProcessing(source: StockBatch) {
   finally { if (current === generation) draft.loading = false }
 }
 function openQuantity(source: StockBatch) { if (canWrite.value && !busy.value) void loadProcessing(source) }
+function needsProcessingCount(line: typeof lines.value[number]) {
+  if (isLoss.value || !processingTeam.value || processing[Number(line.source.transfer.id)] || isScrapType(line.materialType) || ['registered', 'partial', 'complete'].includes(line.latest?.processing_state || '')) return false
+  const available = availableFor(line).quantity
+  return available != null && lines.value.filter(other => other.source.transfer.id === line.source.transfer.id).reduce((sum, other) => sum + (enteredQuantity(other) || 0), 0) > available
+}
 function removeLine(index: number) {
   const id = Number(lines.value[index]!.source.transfer.id)
   lines.value.splice(index, 1)
@@ -271,12 +289,13 @@ async function submit() {
           <header><div><strong>{{ line.source.transfer.serial_no }}</strong><span class="source-material">{{ line.source.transfer.material_name || '未填写材质' }}</span><span>上一批次 {{ line.source.transfer.batch_no }}</span></div><div class="source-actions"><ElButton link type="primary" :disabled="!line.latest" @click="fillAll(index)">全部填入</ElButton><ElButton v-if="!isLoss && !sourceWarehouse" link type="primary" :disabled="lines.length >= 100" @click="splitLine(index)">拆分物料</ElButton><ElButton v-if="!isLoss && lines.length > 1" link type="danger" @click="removeLine(index)">移除</ElButton><ElButton v-if="!isLoss && !sourceWarehouse && !isWeightOnlyType(line.source.transfer.material_type) && !isWeightOnlyType(line.materialType) && !processing[Number(line.source.transfer.id)] && lines.findIndex(other => other.source.transfer.id === line.source.transfer.id) === index" link type="primary" @click="openQuantity(line.source)">登记加工后件数</ElButton></div></header>
           <div class="source-meta"><span>来自 {{ line.source.transfer.source_team.name }}</span><span v-if="line.source.transfer.purpose_name">业务 {{ line.source.transfer.purpose_name }}</span><span v-if="line.source.transfer.source_batch_no">原单批号 {{ line.source.transfer.source_batch_no }}</span><span v-if="sourceWarehouse">当前仓位 {{ currentLocations(line.latest || line.source) }}</span><div class="source-balance"><span>账面库存</span><MaterialAmount :weight-only="isWeightOnlyType(line.source.transfer.material_type)" :quantity="dispatchableAmounts(line.latest).quantity" :weight="dispatchableAmounts(line.latest).weight" /></div></div>
           <template v-if="!isLoss && !sourceWarehouse && !isWeightOnlyType(line.source.transfer.material_type) && (!isWeightOnlyType(line.materialType) || processing[Number(line.source.transfer.id)]) && lines.findIndex(other => other.source.transfer.id === line.source.transfer.id) === index">
+            <p v-if="needsProcessingCount(line)" class="processing-count-notice" role="status">本次转出件数超过账面可用 {{ availableFor(line).quantity }} 件。若加工后件数已变化，可先登记实际总件数；仍可按当前填写提交。<ElButton link type="primary" @click="openQuantity(line.source)">展开加工登记</ElButton></p>
             <div v-if="processing[Number(line.source.transfer.id)]" class="processing-count source-inputs dialog-form-grid">
               <p v-if="processing[Number(line.source.transfer.id)]!.loading" class="dialog-field-hint dialog-field-wide" role="status">正在读取加工件数…</p>
               <ElFormItem v-else label="加工后未转出件数" :error="lineError(line, 'processingQuantity')" required><ElInputNumber v-model="processing[Number(line.source.transfer.id)]!.quantity" :aria-label="`${line.source.transfer.batch_no}加工后未转出件数`" :min="0" :max="2147483647" :precision="0" controls-position="right" /></ElFormItem>
               <ElFormItem v-if="processingTeam && !processing[Number(line.source.transfer.id)]!.loading" label="本批加工进度" :error="lineError(line, 'processingStatus')" required><ElSelect v-model="processing[Number(line.source.transfer.id)]!.status" :aria-label="`${line.source.transfer.batch_no}本批加工进度`"><ElOption v-for="(label, value) in processingProgressLabels" :key="value" :value="value" :label="label" /></ElSelect></ElFormItem>
               <ElFormItem label="加工说明（选填）" :error="lineError(line, 'processingReason')"><ElInput v-model="processing[Number(line.source.transfer.id)]!.reason" maxlength="2000" placeholder="例如：1 块切成 20 件" /></ElFormItem>
-              <p class="dialog-field-hint dialog-field-wide">仅登记尚未转出的实际件数，与本次出库一起保存。<ElButton link @click="delete processing[Number(line.source.transfer.id)]">取消登记</ElButton></p>
+              <p class="dialog-field-hint dialog-field-wide">仅登记尚未转出的实际总件数，与本次出库一起保存。大料、小料或废料需要分别记账时，请先在库存中按明细登记，再选择实际子批出库。<ElButton link @click="delete processing[Number(line.source.transfer.id)]">取消登记</ElButton></p>
               <ElAlert v-if="processing[Number(line.source.transfer.id)]!.error" :title="processing[Number(line.source.transfer.id)]!.error" type="error" class="dialog-field-wide" :closable="false"><ElButton link @click="loadProcessing(line.source)">重新读取</ElButton></ElAlert>
             </div>
           </template>
@@ -311,6 +330,7 @@ async function submit() {
 
 <style scoped>
 .processing-count { padding: 10px 0; margin-bottom: 10px; border-block: 1px solid var(--line); }
+.processing-count-notice { margin: 8px 0 12px; color: var(--action-warm); font-size: 12px; line-height: 1.7; }
 .source-lines { display: grid; gap: 10px; margin-bottom: 14px; padding: 1px; }
 .source-line { --el-component-size: 32px; overflow: hidden; padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .source-line header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; align-items: center; margin: -12px -16px 0; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--workspace-bg); }

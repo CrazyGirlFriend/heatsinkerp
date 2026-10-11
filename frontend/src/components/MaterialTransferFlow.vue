@@ -35,7 +35,8 @@ watch(() => [props.transfer.batch_no, moving.value] as const, async ([batch, act
 </script>
 
 <template>
-  <div v-if="isWarehouseReceipt(transfer)" class="receipt-flow" :class="{ 'receipt-flow--compact': compact }" data-animated="false" :aria-label="`库房手工入库 → ${transfer.next_team.name}，已入库`">
+  <div v-if="transfer.entry_kind === 'processing_output'" class="receipt-flow" :class="{ 'receipt-flow--compact': compact }" data-animated="false" :aria-label="`${transfer.next_team.name} · 本班组加工`"><div><small v-if="!compact">本班组加工</small><strong>{{ transfer.next_team.name }}</strong></div><div><small v-if="!compact">来源批次</small><strong>{{ transfer.source_transfer_batch_no || '—' }}</strong></div></div>
+  <div v-else-if="isWarehouseReceipt(transfer)" class="receipt-flow" :class="{ 'receipt-flow--compact': compact }" data-animated="false" :aria-label="`库房手工入库 → ${transfer.next_team.name}，已入库`">
     <div><small v-if="!compact">入库来源</small><strong>库房手工入库</strong></div><ElIcon><ArrowRight /></ElIcon><div><small v-if="!compact">入库库房</small><strong>{{ transfer.next_team.name }}</strong></div>
   </div>
   <div v-else class="transfer-flow" :class="{ 'transfer-flow--compact': compact, 'transfer-flow--moving': moving, 'transfer-flow--voided': transfer.status === 'voided', 'transfer-flow--external': external }" :data-status="transfer.status" :data-animated="moving" :aria-label="`${transfer.source_team.name} → ${external ? '外部去向：' : ''}${transfer.next_team.name}，${materialTransferStatusLabel(transfer.status, transfer.entry_kind)}`">

@@ -8,6 +8,7 @@ from sqlalchemy.orm import aliased, selectinload
 from . import material_transfer_workflow as workflow
 from .material_stock import stock_table
 from .models import MaterialTransfer
+from .processing_statistics import difference_totals, weight_differences
 
 
 def serial_trace(db, serial_no, user):
@@ -26,6 +27,7 @@ def serial_trace(db, serial_no, user):
     balances = {row['transfer_id']: row for row in db.execute(
         select(stock).where(stock.c.serial_no == serial_no)
     ).mappings()}
+    differences = weight_differences(db, list(balances))
     buckets = {key: {'quantity': 0, 'weight': Decimal(0)} for key in (
         'on_hand', 'in_transit', 'external_pending', 'dispatched', 'lost'
     )}
@@ -48,6 +50,8 @@ def serial_trace(db, serial_no, user):
         # Per-lot ownership lets a selected origin retain pending stock at its sender.
         item['owned_quantity'] = int(balance['owned_quantity']) if balance else None
         item['owned_weight'] = float(balance['owned_weight']) if balance else None
+        item['processing_delta_weight'] = float(balance['adjusted_weight']) if balance else 0
+        item.update(differences.get(transfer.id, {}))
         items.append(item)
         if balance:
             quantity, weight = int(balance['on_hand_quantity']), balance['on_hand_weight']
@@ -84,6 +88,8 @@ def serial_trace(db, serial_no, user):
 
     return {
         'serial_no': serial_no, 'items': items,
+        'processing_delta_weight': float(sum((row['adjusted_weight'] for row in balances.values()), Decimal(0))),
+        **difference_totals(differences.values()),
         'reallocations': [workflow.material_transfer_dict(row, user, include_history=False) for row in reallocations],
         'shortage': {'quantity': sum(row['shortage_quantity'] for row in balances.values()),
                      'weight': float(sum((row['shortage_weight'] for row in balances.values()), Decimal(0)))},

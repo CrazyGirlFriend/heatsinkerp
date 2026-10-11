@@ -34,6 +34,42 @@ async function submit() { await wrapper.findAll('button').find(button => /^(确�
 async function destination(id = 3) { wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', id); await flushPromises() }
 
 describe('source batch dispatch and loss drafts', () => {
+  it('shares the existing tolerance across sibling outputs once instead of granting one kg per child', async () => {
+    const first = source(), second = source(11)
+    for (const row of [first, second]) { row.weight_root_transfer_id = 1; row.weight_difference = .7 }
+    await render('dispatch', [first, second]); await destination()
+    wrapper.findAllComponents(ElInputNumber)[1]!.vm.$emit('update:modelValue', 10.2)
+    wrapper.findAllComponents(ElInputNumber)[3]!.vm.$emit('update:modelValue', 10.2); await flushPromises()
+    expect(wrapper.text()).toContain('累计多 1.1 kg')
+    expect(wrapper.text()).toContain('超过允许的 1 kg')
+    await submit(); expect(teamMaterialApi.createDispatch).toHaveBeenCalled()
+  })
+  it('offers a soft processing prompt for piece expansion without guessing the registered total or blocking dispatch', async () => {
+    const row = source(); row.available_quantity = 1; row.transfer.next_team = { id: '2', name: '轧制', code: 'FACTORY-ROLL' }
+    vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({ source_transfer_id: 10, batch_no: 'TL10', quantity: 1, weight: 10, revision: 7, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
+    await render('dispatch', [row]); await destination()
+    wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 20); await flushPromises()
+    expect(wrapper.get('.processing-count-notice').text()).toContain('超过账面可用 1 件')
+    await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ lines: [expect.objectContaining({ quantity: 20 })] }))
+    await wrapper.findAll('button').find(button => button.text() === '展开加工登记')!.trigger('click'); await flushPromises()
+    expect(wrapper.findComponent({ name: 'QuantityAdjustmentDialog' }).exists()).toBe(false)
+    expect(wrapper.get('input[aria-label="TL10加工后未转出件数"]').element).toHaveProperty('value', '1')
+    expect(wrapper.find('.processing-count-notice').exists()).toBe(false)
+  })
+  it('calculates optional clearance from the staged processing total and never from the old count', async () => {
+    const row = source(); row.transfer.next_team = { id: '2', name: '轧制', code: 'FACTORY-ROLL' }
+    vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({ source_transfer_id: 10, batch_no: 'TL10', quantity: 100, weight: 10, revision: 7, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
+    await render('dispatch', [row]); await destination()
+    await wrapper.findAll('button').find(button => button.text() === '登记加工后件数')!.trigger('click'); await flushPromises()
+    const count = wrapper.findAllComponents(ElInputNumber).find(input => input.props('ariaLabel') === 'TL10加工后未转出件数')!
+    count.vm.$emit('update:modelValue', 120); await flushPromises()
+    expect(wrapper.text()).toContain('账面仍有 20 件')
+    await wrapper.get('[aria-label="TL10清零剩余件数"] input').setValue(true); await submit()
+    expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1]).toMatchObject({ quantity_adjustments: [{ quantity: 120 }], quantity_clearances: [{ source_transfer_id: 10, quantity: 20 }] })
+    count.vm.$emit('update:modelValue', 100); await flushPromises()
+    expect(wrapper.find('[aria-label="TL10清零剩余件数"]').exists()).toBe(false)
+  })
   it('keeps an unreadable stock balance as an operational error instead of marking inputs', async () => {
     const row = source(); row.available_weight = null
     await render('dispatch', [row]); await destination(); await submit()
@@ -328,7 +364,7 @@ describe('source batch dispatch and loss drafts', () => {
     const inputs = wrapper.findAllComponents(ElInputNumber)
     inputs[0]!.vm.$emit('update:modelValue', 0); inputs[1]!.vm.$emit('update:modelValue', .5)
     await flushPromises()
-    expect(wrapper.text()).toContain('本次转出比账面剩余多 1.1 kg')
+    expect(wrapper.text()).toContain('累计多 1.1 kg')
     expect(wrapper.text()).toContain('超过允许的 1 kg 误差，请核对，仍可提交')
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, expect.objectContaining({ lines: [expect.objectContaining({ quantity: 0, weight: .5 })] }))

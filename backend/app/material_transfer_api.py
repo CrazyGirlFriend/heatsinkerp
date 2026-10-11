@@ -91,7 +91,7 @@ def list_material_transfers(
     ):
         raise HTTPException(422, "next_team_id and target_team_id must match")
     target_id = next_team_id if next_team_id is not None else target_team_id
-    filters = []
+    filters = [MaterialTransfer.entry_kind != "processing_output"]
     if direction != "all" and team_id is None:
         raise HTTPException(422, "team_id is required when direction is incoming or outgoing")
     if team_id is not None:

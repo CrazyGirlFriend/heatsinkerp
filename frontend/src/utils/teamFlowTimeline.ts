@@ -12,19 +12,22 @@ const dayStart = (day: string | null) => day ? Date.parse(`${day}T00:00:00+08:00
 function receiptTitle(row: TeamTimelineModel['rows'][number]) {
   if (row.beforeRange) return '所选时间开始时未转出'
   if (row.events.some(event => event.kind === 'opening')) return '初始库存登记'
+  if (row.events.some(event => event.kind === 'processing_output')) return '本班组加工产出'
   return row.lot.from_name ? `从${row.lot.from_name}接收` : '接收 · 来源未记录'
 }
 function eventTitle(event: SerialHistoryEvent) {
   if (event.kind === 'loss') return '登记丢失'
   if (event.kind === 'voided') return '作废退回'
   if (event.kind === 'adjusted') return '转出改量'
-  if (event.kind === 'quantity_changed') return '加工件数调整'
+  if (event.kind === 'quantity_changed') return event.delta_weight ? '加工实物登记' : '加工件数调整'
+  if (event.kind === 'processing_input') return '投入本班组加工'
+  if (event.kind === 'processing_output') return '本班组加工产出'
   return `${isExternalEntryKind(event.entry_kind) ? '发往' : '转给'}${event.counterpart || '未记录去向'}`
 }
 function eventAmount(event: SerialHistoryEvent) {
   const signed = (value: number) => `${value > 0 ? '+' : ''}${num(value)}`
-  if (event.kind === 'quantity_changed') return `${signed(event.delta_quantity)} 件 · 重量不变`
-  if (['adjusted', 'voided'].includes(event.kind)) return `${signed(event.delta_quantity)} 件 / ${signed(event.delta_weight)} kg`
+  if (event.kind === 'quantity_changed' && !event.delta_weight) return `${signed(event.delta_quantity)} 件 · 重量不变`
+  if (['adjusted', 'voided', 'quantity_changed'].includes(event.kind)) return `${signed(event.delta_quantity)} 件 / ${signed(event.delta_weight)} kg`
   return amount(event.quantity, event.weight)
 }
 
@@ -33,7 +36,7 @@ function eventAmount(event: SerialHistoryEvent) {
 function snapshotLots(history: SerialHistory): SerialHistoryLot[] {
   const entries = historyTimeline(history.groups), lots = new Map<string, SerialHistoryLot>()
   for (const { event, groupKey } of entries) {
-    if (!['incoming', 'opening'].includes(event.kind)) continue
+    if (!['incoming', 'opening', 'processing_output'].includes(event.kind)) continue
     lots.set(event.batch_no, { batch_no: event.batch_no, group_key: groupKey, received_at: event.at,
       from_name: event.counterpart, quantity: event.quantity, weight: event.weight,
       on_hand_quantity: 0, on_hand_weight: 0, baseline_quantity: 0, baseline_weight: 0,
@@ -74,7 +77,7 @@ export function teamTimelineModel(history: SerialHistory) {
     const simultaneous = new Map<number, number>()
     for (const event of row.events) {
       const at = traceTimestamp(event.at)
-      if (at === null || ['incoming', 'opening'].includes(event.kind)) continue
+      if (at === null || ['incoming', 'opening', 'processing_output'].includes(event.kind)) continue
       const slot = simultaneous.get(at) || 0; simultaneous.set(at, slot + 1)
       nodes.push({ id: event.id, row: index, at, end: at, event, offset: .31 + Math.min(slot, 4) * .065 })
     }
@@ -190,7 +193,7 @@ export function teamTimelineOption(model: TeamTimelineModel, selected = '', inte
       formatter: params => {
         const node = model.nodes[(Array.isArray(params) ? params[0] : params)!.dataIndex]!, row = model.rows[node.row]!, event = node.event
         return event ? `${eventTitle(event)} · ${row.name}\n${event.batch_no}\n${eventAmount(event)}\n${traceTime(node.at)}${event.kind === 'outgoing' ? `\n${materialTransferStatusLabel(event.status, event.entry_kind)}` : ''}\n点击查看批次`
-          : `${row.lot.batch_no} · ${row.name}\n${['初始库存', '期初库存'].includes(row.lot.from_name) ? '初始库存登记' : `从${row.lot.from_name || '未记录来源'}接收`} ${amount(row.lot.quantity, row.lot.weight)}\n${traceTime(row.received)}\n所选时间结束时未转出 ${amount(row.lot.closing_quantity, row.lot.closing_weight)}\n当前库存 ${amount(row.lot.owned_quantity ?? row.lot.on_hand_quantity, row.lot.owned_weight ?? row.lot.on_hand_weight)}\n点击查看批次`
+          : `${row.lot.batch_no} · ${row.name}\n${row.events.some(item => item.kind === 'processing_output') ? '本班组加工产出' : ['初始库存', '期初库存'].includes(row.lot.from_name) ? '初始库存登记' : `从${row.lot.from_name || '未记录来源'}接收`} ${amount(row.lot.quantity, row.lot.weight)}\n${traceTime(row.received)}\n所选时间结束时未转出 ${amount(row.lot.closing_quantity, row.lot.closing_weight)}\n当前库存 ${amount(row.lot.owned_quantity ?? row.lot.on_hand_quantity, row.lot.owned_weight ?? row.lot.on_hand_weight)}\n点击查看批次`
       } }, series: [series],
   }
 }

@@ -21,6 +21,21 @@ function event(id: number, action: MaterialTransferHistoryEntry['action'], day: 
 }
 
 describe('full-chain residence from committed stock history', () => {
+  it('reconciles measured processing decomposition at the same time without creating a receiving transfer', () => {
+    const root = lot(1, { quantity: 10, weight: 100, on_hand_quantity: 0, on_hand_weight: 0, history: [{ id: 10, action: 'quantity_changed', actor: '班组长', occurred_at: at(11), changes: { stock_quantity: { before: 10, after: 12 }, stock_weight: { before: 100, after: 101 }, processing_status: { before: null, after: 'partial' } } }] })
+    const children = ([['remaining', 2, 40], ['produced', 10, 60], ['scrap', 0, 1]] as const).map(([role, quantity, weight], index) => lot(index + 2, { entry_kind: 'processing_output', processing_role: role, source_team: root.next_team, next_team: root.next_team, quantity, weight, on_hand_quantity: quantity, on_hand_weight: weight, transferred_at: at(11), received_at: at(11), history: [{ id: index + 11, action: 'processed', actor: '班组长', occurred_at: at(11), changes: { quantity: { before: null, after: quantity }, weight: { before: null, after: weight } } }] }))
+    const model = traceFlowModel([root, ...children], at(17))
+    expect(model.nodes.every(node => !node.residenceIssue && !node.timingIssue)).toBe(true)
+    expect(model.byId.get('1')!.stays).toEqual([{ start: stamp(10), end: stamp(11), quantity: 10, weight: 100, current: false }])
+    for (const child of children) {
+      const node = model.byId.get(String(child.id))!
+      expect(node.intake).toBe(true); expect(node.sourceLane).toBe(node.targetLane)
+      expect(node.stays).toEqual([{ start: stamp(11), end: stamp(17), quantity: child.quantity, weight: child.weight, current: true }])
+    }
+    const tooltip = traceFlowOption(model, 'weight').tooltip as { formatter: (params: unknown) => string }
+    expect(tooltip.formatter({ seriesId: 'processing-events', dataIndex: 0 })).toContain('实测重量 100 → 101 kg')
+    expect(tooltip.formatter({ dataIndex: model.nodes.findIndex(node => node.batch.id === 2) })).toContain('本班组加工')
+  })
   it.each([.5, 1, 2])('retains valid residence with an allowed measured overdraw of %s kg', excess => {
     const root = lot(1, { quantity: 10, weight: 100, on_hand_quantity: 0, on_hand_weight: -excess })
     const child = lot(2, { quantity: 10, weight: 100 + excess, transferred_at: at(12), received_at: at(13), on_hand_quantity: 10, on_hand_weight: 100 + excess })

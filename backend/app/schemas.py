@@ -11,6 +11,30 @@ DIRECT_MATERIAL_TYPE_PATTERN = (
 SCRAP_MATERIAL_TYPES = ("defective", "waste", "sludge", "scrap_chips")
 
 
+class ProcessingOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["remaining", "produced", "scrap"]
+    quantity: int = Field(ge=0, le=2_147_483_647)
+    weight: Decimal = Field(ge=0, max_digits=17, decimal_places=6)
+    material_type: str = Field(pattern=DIRECT_MATERIAL_TYPE_PATTERN)
+    transfer_specification: str | None = Field(default=None, max_length=240)
+    sludge_gross_weight: Decimal | None = Field(default=None, gt=0, max_digits=17, decimal_places=6)
+    sludge_content_percent: Decimal | None = Field(default=None, gt=0, le=100, max_digits=5, decimal_places=2)
+
+    @field_validator("transfer_specification")
+    @classmethod
+    def normalize_specification(cls, value):
+        return value.strip() or None if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_output(self):
+        if self.quantity == 0 and self.weight == 0:
+            raise ValueError("加工明细的件数和重量至少一项大于零")
+        if (self.material_type in SCRAP_MATERIAL_TYPES) != (self.role == "scrap"):
+            raise ValueError("废料须单独列为废料明细")
+        return self
+
+
 class ProcessingQuantity(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_transfer_id: int = Field(ge=1)
@@ -19,6 +43,7 @@ class ProcessingQuantity(BaseModel):
     reason: str = Field(default="", max_length=2000)
     processing_status: Literal["partial", "complete"] | None = None
     transfer_specification: str | None = Field(default=None, max_length=240)
+    outputs: list[ProcessingOutput] | None = Field(default=None, min_length=1, max_length=100)
 
     @field_validator("transfer_specification")
     @classmethod
@@ -284,6 +309,7 @@ class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement
     barcode_type: str
     serial_no: str
     entry_kind: str = "transfer"
+    processing_role: Literal["remaining", "produced", "scrap"] | None = None
     purpose_id: int | None = None
     purpose_name: str | None = None
     external_destination: str | None = None

@@ -24,6 +24,13 @@ async function render() {
 }
 const nextButton = () => wrapper.findAll('button').find(button => button.text() === '下一步：填写出库')!
 describe('stock selection for new outbound', () => {
+  it('shows processing role and current dimensions before choosing a physical child batch', async () => {
+    const row = { ...source(1, 2), current_specification: '100 × 80 × 5 mm', processing_role: 'remaining' as const, transfer: { ...source(1, 2).transfer, entry_kind: 'processing_output' as const, transfer_specification: 'old', material_type: 'semi_finished' as const } }
+    vi.mocked(teamMaterialApi.stock).mockResolvedValue({ items: [row], total: 1, page: 1, page_size: 20 })
+    await render()
+    expect(wrapper.get('tbody tr').text()).toContain('剩余大料'); expect(wrapper.get('tbody tr').text()).toContain('100 × 80 × 5 mm')
+    expect(wrapper.get('tbody tr').text()).not.toContain('old')
+  })
   it('shows no signed source batch when the team has no historical receipts', async () => {
     vi.mocked(teamMaterialApi.stock).mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 })
     await render()

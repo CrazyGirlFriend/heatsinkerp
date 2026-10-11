@@ -26,7 +26,7 @@ export function traceOrigins(items: TraceBatch[]) {
 
 const add = (target: TraceAmount, value: TraceAmount) => {
   target.quantity += value.quantity
-  target.weight = Math.round((target.weight + value.weight) * 1000) / 1000
+  target.weight = Math.round((target.weight + value.weight) * 1000000) / 1000000
 }
 
 // Filter the entire family, not just its highlighted path. Pending weight stays
@@ -34,8 +34,13 @@ const add = (target: TraceAmount, value: TraceAmount) => {
 export function traceOriginScope(trace: MaterialTrace, items: TraceBatch[]): MaterialTrace {
   const holdings = new Map<number, TraceHolding>()
   const positions = new Map<number, MaterialTrace['positions'][number]>()
+  const differences = new Map<number, number>(), shortage = { quantity: 0, weight: 0 }
+  let processingDelta = 0
   const totals: MaterialTrace['totals'] = { on_hand: { quantity: 0, weight: 0 }, in_transit: { quantity: 0, weight: 0 }, external_pending: { quantity: 0, weight: 0 }, dispatched: { quantity: 0, weight: 0 }, lost: { quantity: 0, weight: 0 } }
   for (const item of items) {
+    if (item.weight_difference !== undefined) differences.set(item.weight_root_transfer_id || Number(item.id), item.weight_difference)
+    processingDelta += item.processing_delta_weight || 0
+    add(shortage, { quantity: Math.max(0, -(item.on_hand_quantity || 0)), weight: Math.max(0, -(item.on_hand_weight || 0)) })
     if (item.on_hand_quantity !== null && item.on_hand_weight !== null) {
       add(totals.on_hand, { quantity: item.on_hand_quantity, weight: item.on_hand_weight })
       const teamId = Number(item.next_team.id)
@@ -46,7 +51,7 @@ export function traceOriginScope(trace: MaterialTrace, items: TraceBatch[]): Mat
       }
       const pending = items.filter(child => String(child.source_transfer_id) === String(item.id) && child.status === 'pending')
         .reduce((sum, child) => { add(sum, child); return sum }, { quantity: 0, weight: 0 })
-      const owned = { quantity: item.owned_quantity ?? item.on_hand_quantity + pending.quantity, weight: item.owned_weight ?? Math.round((item.on_hand_weight + pending.weight) * 1000) / 1000 }
+      const owned = { quantity: item.owned_quantity ?? item.on_hand_quantity + pending.quantity, weight: item.owned_weight ?? Math.round((item.on_hand_weight + pending.weight) * 1000000) / 1000000 }
       if (owned.quantity || owned.weight) {
         const team = holdings.get(teamId) || { team_id: teamId, team_code: item.next_team.code, team_name: item.next_team.name, material_types: [] }
         let nature = team.material_types.find(row => row.material_type === (item.material_type ?? null))
@@ -58,5 +63,8 @@ export function traceOriginScope(trace: MaterialTrace, items: TraceBatch[]): Mat
     if (item.status === 'dispatched') add(totals.dispatched, item)
     for (const loss of item.loss_records || []) add(totals.lost, loss)
   }
-  return { ...trace, items, totals, holdings: [...holdings.values()], positions: [...positions.values()], untracked_count: items.filter(item => item.status === 'received' && !item.stock_tracked).length }
+  return { ...trace, items, totals, shortage, processing_delta_weight: Math.round(processingDelta * 1000000) / 1000000,
+    weight_difference: Math.round([...differences.values()].reduce((sum, value) => sum + value, 0) * 1000000) / 1000000,
+    max_weight_difference: Math.max(0, ...[...differences.values()].map(Math.abs)),
+    holdings: [...holdings.values()], positions: [...positions.values()], untracked_count: items.filter(item => item.status === 'received' && !item.stock_tracked).length }
 }

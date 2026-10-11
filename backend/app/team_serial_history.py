@@ -42,11 +42,12 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
     rows = db.scalars(select(MT).options(lazyload("*"), selectinload(MT.stock_source)).where(serial_scope,
         or_(MT.next_team_id == team_id, MT.source_team_id == team_id)).order_by(MT.id)).all()
     received = {row.id: row for row in rows if row.serial_no == serial_no and row.next_team_id == team_id and row.status == "received" and row.stock_tracked}
-    outgoing = [row for row in rows if row.source_team_id == team_id and row.source_transfer_id in received]
+    outgoing = [row for row in rows if row.source_team_id == team_id and row.source_transfer_id in received and row.entry_kind != "processing_output"]
+    processed = [lot for lot in received.values() if lot.entry_kind == "processing_output"]
     losses = db.scalars(select(MaterialLoss).options(lazyload("*")).join(MT, MT.id == MaterialLoss.source_transfer_id)
         .where(MaterialLoss.team_id == team_id, MT.serial_no == serial_no).order_by(MaterialLoss.id)).all()
     audits = defaultdict(list)
-    if outgoing:
+    if outgoing or processed:
         # Join instead of an unbounded IN parameter list for long-lived serials.
         for event in db.scalars(select(MaterialTransferEvent).join(MT, MT.id == MaterialTransferEvent.transfer_id)
             .where(MT.source_team_id == team_id, serial_scope)
@@ -61,7 +62,8 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
             groups[key] = {"key": key, "purpose_id": lot.purpose_id, "name": lot.purpose_name or "未分类",
                 "incoming_quantity": 0, "incoming_weight": Decimal(0), "outgoing_quantity": 0, "outgoing_weight": Decimal(0),
                 "lost_quantity": 0, "lost_weight": Decimal(0), "on_hand_quantity": 0, "on_hand_weight": Decimal(0),
-                "owned_quantity": 0, "owned_weight": Decimal(0), "events": []}
+                "owned_quantity": 0, "owned_weight": Decimal(0),
+                "processing_delta_quantity": 0, "processing_delta_weight": Decimal(0), "events": []}
         return groups[key]
 
     def add(lot, row, kind, at, quantity, weight, counterpart, delta_quantity, delta_weight, event_id):
@@ -69,15 +71,31 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
             "source_batch_no": lot.batch_no, "material_type": row.material_type, "source_material_type": lot.material_type,
             "counterpart": counterpart, "quantity": int(quantity), "weight": float(weight),
             "delta_quantity": int(delta_quantity), "delta_weight": float(delta_weight), "status": row.status,
-            "entry_kind": row.entry_kind})
+            "entry_kind": row.entry_kind, "processing_role": row.processing_role,
+            "transfer_specification": row.transfer_specification})
+
+    def source_label(lot):
+        return ("本班组加工产物" if lot.entry_kind == "processing_output" else
+                f"{lot.stock_source.serial_no} 转投入" if lot.entry_kind == "serial_reallocation" else
+                "初始库存" if lot.entry_kind == "opening_stock" else
+                (lot.external_source or "外部入库") if lot.entry_kind == "warehouse_receipt" else lot.source_team_name)
 
     for lot in received.values():
         item = group(lot)
-        item["incoming_quantity"] += lot.quantity
-        item["incoming_weight"] += lot.weight
-        label = f"{lot.stock_source.serial_no} 转投入" if lot.entry_kind == "serial_reallocation" else "初始库存" if lot.entry_kind == "opening_stock" else (lot.external_source or "外部入库") if lot.entry_kind == "warehouse_receipt" else lot.source_team_name
-        add(lot, lot, "opening" if lot.entry_kind == "opening_stock" else "incoming", lot.received_at or lot.created_at,
-            lot.quantity, lot.weight, label, lot.quantity, lot.weight, f"receipt-{lot.id}")
+        if lot.entry_kind == "processing_output":
+            audit = next((event for event in audits[lot.id] if event.action == "processed"), None)
+            at, event_id = (audit.occurred_at, audit.id) if audit else (lot.received_at or lot.created_at, lot.id)
+            parent = received.get(lot.source_transfer_id)
+            if parent:
+                add(parent, lot, "processing_input", at, lot.quantity, lot.weight, "本班组加工分解",
+                    -lot.quantity, -lot.weight, f"processing-input-{event_id}")
+            add(lot, lot, "processing_output", at, lot.quantity, lot.weight, source_label(lot),
+                lot.quantity, lot.weight, f"processing-output-{event_id}")
+        else:
+            item["incoming_quantity"] += lot.quantity
+            item["incoming_weight"] += lot.weight
+            add(lot, lot, "opening" if lot.entry_kind == "opening_stock" else "incoming", lot.received_at or lot.created_at,
+                lot.quantity, lot.weight, source_label(lot), lot.quantity, lot.weight, f"receipt-{lot.id}")
     for row in outgoing:
         lot = received[row.source_transfer_id]
         item = group(lot)
@@ -127,14 +145,19 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
         if lot:
             pieces = adjustment.changes["stock_quantity"]
             delta = pieces["after"] - pieces["before"]
-            add(lot, lot, "quantity_changed", adjustment.occurred_at, abs(delta), 0, adjustment.changes["reason"]["after"],
-                delta, 0, f"event-{adjustment.id}")
+            measured = adjustment.changes.get("stock_weight", {})
+            weight_delta = Decimal(str(measured.get("after", 0))) - Decimal(str(measured.get("before", 0)))
+            group(lot)["processing_delta_quantity"] += delta
+            group(lot)["processing_delta_weight"] += weight_delta
+            add(lot, lot, "quantity_changed", adjustment.occurred_at, abs(delta), abs(weight_delta), adjustment.changes["reason"]["after"],
+                delta, weight_delta, f"event-{adjustment.id}")
     ledger = stock_table(team_id)
     lots = {lot.batch_no: {
         "batch_no": lot.batch_no, "group_key": group(lot)["key"],
         "received_at": iso(lot.received_at or lot.created_at),
-        "from_name": f"{lot.stock_source.serial_no} 转投入" if lot.entry_kind == "serial_reallocation" else "初始库存" if lot.entry_kind == "opening_stock" else
-            (lot.external_source or "外部入库") if lot.entry_kind == "warehouse_receipt" else lot.source_team_name,
+        "from_name": source_label(lot), "entry_kind": lot.entry_kind, "processing_role": lot.processing_role,
+        "source_batch_no": lot.stock_source.batch_no if lot.source_transfer_id else None,
+        "material_type": lot.material_type, "transfer_specification": lot.transfer_specification,
         "quantity": lot.quantity, "weight": float(lot.weight),
         "on_hand_quantity": 0, "on_hand_weight": 0,
         "owned_quantity": 0, "owned_weight": 0,
@@ -172,8 +195,8 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
             "weight": float(row.weight), "status": row.status, "entry_kind": row.entry_kind})
 
     for lot in received.values():
-        origin = f"{lot.stock_source.serial_no} 转投入" if lot.entry_kind == "serial_reallocation" else "初始库存" if lot.entry_kind == "opening_stock" else (lot.external_source or "外部入库") if lot.entry_kind == "warehouse_receipt" else lot.source_team_name
-        add_flow(lot, lot, "incoming", lot.received_at or lot.created_at, origin, team.name)
+        if lot.entry_kind != "processing_output":
+            add_flow(lot, lot, "incoming", lot.received_at or lot.created_at, source_label(lot), team.name)
     for row in outgoing:
         if row.status != "voided":
             add_flow(received[row.source_transfer_id], row, "outgoing", row.created_at,
@@ -184,7 +207,7 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
         # void order; receipts precede their deductions at equal timestamps.
         events = sorted(item.pop("events"), key=lambda event: (event["at"],
             0 if event["kind"] in ("incoming", "opening") else 1,
-            int(event["id"].rsplit("-", 1)[1])))
+            int(event["id"].rsplit("-", 1)[1]), event["kind"] == "processing_output"))
         q, w = 0, Decimal(0)
         baseline_q, baseline_w = 0, Decimal(0)
         visible = []

@@ -18,7 +18,7 @@ def read_statements():
 
     def capture(_connection, _cursor, statement, _parameters, _context, _many):
         if (
-            statement.lstrip().upper().startswith("SELECT")
+            statement.lstrip().upper().startswith(("SELECT", "WITH"))
             and "notification_outbox" not in statement
         ):
             statements.append(statement)

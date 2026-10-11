@@ -18,6 +18,13 @@ beforeEach(() => {
 })
 afterEach(() => { httpClient.defaults.adapter = originalAdapter })
 describe('team material API contract', () => {
+  it('preserves current dimensions, processing roles and output identity on stock sources', async () => {
+    data = { items: [{ transfer: { id: 19, batch_no: 'JG19', entry_kind: 'processing_output', processing_role: 'remaining', source_transfer_id: 8, transfer_specification: 'original', status: 'received' }, processing_role: 'remaining', current_specification: '20 × 10 × 2 mm', weight_difference: '-1.1', weight_root_transfer_id: 8, available_quantity: 2, available_weight: 40 }], total: 1, page: 1, page_size: 10 }
+    const result = await teamMaterialApi.stock(2)
+    expect(result.items[0]).toMatchObject({ current_specification: '20 × 10 × 2 mm', processing_role: 'remaining', weight_difference: -1.1, weight_root_transfer_id: 8, transfer: { entry_kind: 'processing_output', source_transfer_id: 8, processing_role: 'remaining' } })
+    data = { items: [{ transfer: { id: 20 }, current_specification: '' }], total: 1, page: 1, page_size: 10 }
+    expect((await teamMaterialApi.inventorySources(2, 19)).items[0]).toHaveProperty('current_specification', '')
+  })
   it('passes exact receiving business filters including unassigned receipts', async () => {
     data = { items: [], total: 0, page: 1, page_size: 10 }
     await teamMaterialApi.teamInventory(2, { purpose_id: 12, page: 2 })

@@ -11,6 +11,8 @@ const props = defineProps<{ trace: MaterialTrace; teams: string[]; metric: FlowM
 const emit = defineEmits<{ 'update:metric': [value: FlowMetric] }>()
 const unit = computed(() => props.metric === 'weight' ? 'kg' : '件')
 const available = computed(() => props.trace.holdings !== undefined)
+const measured = computed(() => props.trace.processing_delta_weight || 0)
+const exceedsTolerance = computed(() => (props.trace.max_weight_difference || 0) > 1)
 const add = (total: TraceAmount, amount: TraceAmount) => {
   total.quantity += amount.quantity
   total.weight = Math.round((total.weight + amount.weight) * 1000000) / 1000000
@@ -49,7 +51,7 @@ const rows = computed(() => props.teams.map((name, index) => ({ name,
 </script>
 
 <template>
-  <aside class="trace-stock-summary" :class="{ compact, 'has-gap': metric === 'weight' && trace.shortage && trace.shortage.weight > 0 }" aria-label="流水号当前库存">
+  <aside class="trace-stock-summary" :class="{ compact, 'has-gap': metric === 'weight' && (!!measured || exceedsTolerance || trace.shortage && trace.shortage.weight > 0) }" aria-label="流水号当前库存">
     <header class="stock-heading"><h2>当前正常料库存</h2><div class="stock-unit" role="group" aria-label="库存单位"><button type="button" :aria-pressed="metric === 'quantity'" @click="emit('update:metric', 'quantity')">件数</button><button type="button" :aria-pressed="metric === 'weight'" @click="emit('update:metric', 'weight')">重量</button></div></header>
     <div class="stock-rows">
       <div v-for="row in rows" :key="row.name" class="stock-row" :class="{ 'stock-row--external': row.external }" :style="{ top: `${row.top}%`, height: `${10000 / teams.length / (range.end - range.start)}%` }" :data-team="row.name">
@@ -68,7 +70,9 @@ const rows = computed(() => props.teams.map((name, index) => ({ name,
         <template #reference><button type="button" class="stock-waste" :disabled="!stock.waste.length" aria-label="查看废料分类与存放班组"><span>废料另计 <i v-if="stock.waste.length">›</i></span><b>{{ available ? num(stock.scrap.weight) : '—' }} <small v-if="available">kg</small></b></button></template>
         <div class="stock-breakdown stock-waste-details"><section v-for="nature in stock.waste" :key="nature.name"><header><b>{{ nature.name }}</b><b>{{ num(nature.weight) }} kg</b></header><div v-for="team in nature.teams" :key="team.name"><span>{{ team.name }}</span><span>{{ num(team.weight) }} kg<template v-if="team.quantity"> · {{ num(team.quantity) }} 件</template></span></div></section></div>
       </ElPopover>
+      <div v-if="metric === 'weight' && measured" class="stock-measured" :class="{ 'stock-measured--warning': exceedsTolerance }" :title="`加工实测差额单独记录，不计丢失；同一来源本班组累计最大差异 ${num(trace.max_weight_difference || 0)} kg${exceedsTolerance ? '，超过 1 kg，请核对' : ''}`"><span>加工实测差额</span><b>{{ measured > 0 ? '+' : '' }}{{ num(measured) }} <small>kg</small></b></div>
       <div v-if="metric === 'weight' && trace.shortage && trace.shortage.weight > 0" class="stock-gap"><span>重量差异</span><b>{{ num(trace.shortage[metric]) }} <small>{{ unit }}</small></b></div>
+      <div v-if="metric === 'weight' && exceedsTolerance && !measured && !(trace.shortage && trace.shortage.weight > 0)" class="stock-gap"><span>同批累计差异</span><b>超 1 kg</b></div>
       <div class="stock-shipped"><span>成品已发货</span><b>{{ num(stock.shipped[metric]) }} <small>{{ unit }}</small></b></div>
     </footer>
   </aside>
@@ -95,5 +99,8 @@ button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 }
 @media (max-width: 1100px) { .compact { width: auto; flex-basis: auto; }.compact .stock-heading { height: auto; }.compact .stock-totals { height: auto; }.compact .stock-rows { position: static; } }
 .stock-value--shortage, .stock-gap { color: var(--el-color-danger); }
-.compact.has-gap .stock-totals { gap: 3px; padding-top: 8px; padding-bottom: 6px; }
+.stock-measured { color: var(--muted); }.stock-measured--warning { color: var(--el-color-danger); }
+.has-gap .stock-totals { gap: 4px; padding-top: 8px; padding-bottom: 6px; }
+.compact.has-gap .stock-totals { gap: 2px; line-height: 14px; font-size: 11px; padding-top: 8px; padding-bottom: 6px; }
+.compact.has-gap .stock-total strong { font-size: 16px; line-height: 18px; }
 </style>

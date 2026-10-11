@@ -161,7 +161,9 @@ function residence(node: PathNode, outgoing: TraceBatch[], closing: number): { s
     if (event.action === 'quantity_changed') {
       const pieces = event.changes.stock_quantity
       if (!pieces || !Number.isInteger(pieces.before) || !Number.isInteger(pieces.after)) { issue = true; continue }
-      add(traceTimestamp(event.occurred_at), Number(pieces.after) - Number(pieces.before), 0)
+      const weight = event.changes.stock_weight
+      if (weight && (!Number.isFinite(Number(weight.before)) || !Number.isFinite(Number(weight.after)))) { issue = true; continue }
+      add(traceTimestamp(event.occurred_at), Number(pieces.after) - Number(pieces.before), weight ? Number(weight.after) - Number(weight.before) : 0)
     }
   }
   const stays: ResidenceSegment[] = []
@@ -198,7 +200,7 @@ export function traceFlowModel(items: TraceBatch[], observedAt?: string | null, 
   const nodes: PathNode[] = []
   function visit(batch: TraceBatch, depth: number): PathNode {
     const descendants = (children.get(String(batch.id)) || []).map(child => visit(child, depth + 1))
-    const intake = batch.entry_kind === 'warehouse_receipt' || batch.entry_kind === 'opening_stock' || batch.entry_kind === 'serial_reallocation'
+    const intake = batch.entry_kind === 'warehouse_receipt' || batch.entry_kind === 'opening_stock' || batch.entry_kind === 'serial_reallocation' || batch.entry_kind === 'processing_output'
     const startedAt = traceTimestamp(intake ? batch.received_at || batch.transferred_at : batch.transferred_at)
     const recordedEnd = intake ? startedAt : batch.status === 'received' ? traceTimestamp(batch.received_at) : batch.status === 'dispatched' ? traceTimestamp(batch.dispatched_at) : null
     const reversed = startedAt !== null && recordedEnd !== null && recordedEnd < startedAt
@@ -354,6 +356,14 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, metric
         const dx = end[0]! - start[0]!
         path([start, [start[0]! + dx * .35, start[1]!], [start[0]! + dx * .35, end[1]!], end])
       }
+      if (end && batch.entry_kind === 'processing_output') {
+        const parent = model.byId.get(String(batch.source_transfer_id))
+        // A split stays in its team. Connect to its parent at the processing time,
+        // without treating the new pieces as another transfer or receipt.
+        if (parent?.targetLane === node.targetLane) {
+          path([api.coord([node.finishedAt, parent.targetLane + parent.targetOffset]), end], 'processing-branch')
+        }
+      }
       if (originColors && start && !end && batch.status === 'pending') {
         // Destination is shown at dispatch time, with no fabricated receipt date.
         const target = api.coord([node.startedAt, node.targetLane + node.targetOffset])
@@ -378,7 +388,10 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, metric
         children.push({ name, type: 'circle', z2: layer + 4, shape: { cx: position[0]!, cy: position[1]!, r: chosen ? 5.5 : originColors ? 4.2 : 4.5 }, style: { fill: filled ? color : surface, stroke: filled ? surface : color, lineWidth: filled ? 1.4 : 1.8, opacity, transition: ['opacity'], ...(draw ? { enterFrom: { opacity: 0 } } : {}) }, emphasis: { style: { lineWidth: 2.5, opacity: 1 } }, enterAnimation: { delay: delay + (filled && !node.intake ? duration : 0), duration: 200 } })
       }
       if (start && !node.intake) point(start, false)
-      if (end) point(end, true)
+      if (end && batch.entry_kind === 'processing_output') {
+        const [x, y] = end as [number, number], radius = chosen ? 5.5 : 4.5
+        children.push({ name: 'processing-output', type: 'polygon', z2: layer + 4, shape: { points: [[x, y - radius], [x + radius, y], [x, y + radius], [x - radius, y]] }, style: { fill: color, stroke: surface, lineWidth: 1.2, opacity } })
+      } else if (end) point(end, true)
       if (!end && start && !(originColors && batch.status === 'pending')) children.push({ name: 'pending', type: 'line', z2: 2, shape: { x1: start[0]! + 8, y1: start[1]!, x2: start[0]! + 30, y2: start[1]! }, style: { stroke: color, lineWidth: 2, lineDash: [4, 4], opacity }, emphasis: { style: { opacity: 1 } } })
       const x = anchor[0]!, y = anchor[1]!
       const inView = x >= grid.x && x <= grid.x + grid.width && y >= grid.y && y <= grid.y + grid.height
@@ -520,23 +533,24 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, metric
       if (processing) {
         const { node, event, at } = processing, pieces = event.changes.stock_quantity!
         const progress = event.changes.processing_status?.after as keyof typeof processingProgressLabels | undefined
-        return chainTooltip(`${node.batch.batch_no}\n${node.batch.next_team.name} · 加工登记\n加工 ${num(Number(pieces.before))} → ${num(Number(pieces.after))} 件${progress ? `\n${processingProgressLabels[progress] || '进度未标明'}` : ''}${event.changes.transfer_specification ? `\n实际尺寸 ${event.changes.transfer_specification.after || '未填写'}` : ''}\n${traceTime(at)} · ${event.actor}${event.changes.reason?.after ? `\n${event.changes.reason.after}` : ''}`)
+        const measured = event.changes.stock_weight
+        return chainTooltip(`${node.batch.batch_no}\n${node.batch.next_team.name} · 加工登记\n加工 ${num(Number(pieces.before))} → ${num(Number(pieces.after))} 件${measured ? `\n实测重量 ${num(Number(measured.before))} → ${num(Number(measured.after))} kg` : ''}${progress ? `\n${processingProgressLabels[progress] || '进度未标明'}` : ''}${event.changes.transfer_specification ? `\n实际尺寸 ${event.changes.transfer_specification.after || '未填写'}` : ''}\n${traceTime(at)} · ${event.actor}${event.changes.reason?.after ? `\n${event.changes.reason.after}` : ''}`)
       }
       const interval = item.seriesId === 'residence-bars' ? residences[item.dataIndex] : undefined
       const node = interval?.node || model.nodes[item.dataIndex]!, batch = node.batch, stay = interval?.stay
-      const difference = Math.max(0, -(batch.on_hand_weight || 0))
-      const variance = difference ? `\n重量差异 ${num(difference)} kg · ${difference <= 1 ? '在 1 kg 允许误差内' : '超过 1 kg，请核对'}` : ''
-      if (originColors) return chainTooltip(`${batch.batch_no}\n${node.intake ? batch.entry_kind === 'serial_reallocation' ? `${batch.source_serial_no || '原流水号'} 转投入 · ${batch.next_team.name}` : batch.entry_kind === 'opening_stock' ? '初始库存登记' : '库房入库' : `${batch.source_team.name} → ${batch.next_team.name}`}\n${materialTypeLabel(batch.material_type)} · ${metricLabel(stay || batch, metric)}\n${stay ? '在库停留' : materialTransferStatusLabel(batch.status, batch.entry_kind)} · 点击查看详情${variance}`)
+      const difference = batch.weight_difference ?? Math.max(0, -(batch.on_hand_weight || 0))
+      const variance = difference ? `\n重量差异 ${num(difference)} kg · ${Math.abs(difference) <= 1 ? '在 1 kg 允许误差内' : '超过 1 kg，请核对'}` : ''
+      if (originColors) return chainTooltip(`${batch.batch_no}\n${node.intake ? batch.entry_kind === 'processing_output' ? `本班组加工 · ${batch.next_team.name}` : batch.entry_kind === 'serial_reallocation' ? `${batch.source_serial_no || '原流水号'} 转投入 · ${batch.next_team.name}` : batch.entry_kind === 'opening_stock' ? '初始库存登记' : '库房入库' : `${batch.source_team.name} → ${batch.next_team.name}`}\n${materialTypeLabel(batch.material_type)} · ${metricLabel(stay || batch, metric)}\n${stay ? '在库停留' : materialTransferStatusLabel(batch.status, batch.entry_kind)} · 点击查看详情${variance}`)
       const balance = batch.on_hand_quantity == null || batch.on_hand_weight == null ? '' : `\n未转出库存 ${amountLabel({ quantity: Math.max(0, batch.on_hand_quantity), weight: Math.max(0, batch.on_hand_weight) })}`
       if (stay) return chainTooltip(`${batch.batch_no}\n${batch.next_team.name} · 在库停留\n这段时间的未转出库存 ${amountLabel(stay)}\n${traceTime(stay.start)}\n至 ${traceTime(stay.end)}\n累计停留 ${traceDuration(node.finishedAt, stay.end)}${balance}${variance}`)
-      return chainTooltip(`${batch.batch_no}\n${batch.source_team.name} → ${batch.next_team.name}\n${amountLabel(batch)}\n${node.intake ? '入库' : '转出'} ${traceTime(node.startedAt)}${node.intake ? '' : `\n${isExternalTransfer(batch) ? '对外确认' : '接收'} ${traceTime(node.finishedAt)}`}\n接收业务 ${batch.purpose_name || '未分类'} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}${balance}${variance}${batch.notes ? `\n备注 ${batch.notes}` : ''}${node.timingIssue ? '\n时间记录不完整或异常' : ''}${node.residenceIssue ? '\n历史收发记录与库存对不上，暂不显示停留时间' : ''}`)
+      return chainTooltip(`${batch.batch_no}\n${batch.entry_kind === 'processing_output' ? `本班组加工 · ${batch.next_team.name}` : `${batch.source_team.name} → ${batch.next_team.name}`}\n${amountLabel(batch)}\n${batch.entry_kind === 'processing_output' ? '加工' : node.intake ? '入库' : '转出'} ${traceTime(node.startedAt)}${node.intake ? '' : `\n${isExternalTransfer(batch) ? '对外确认' : '接收'} ${traceTime(node.finishedAt)}`}\n${batch.entry_kind === 'processing_output' ? '本班组业务' : '接收业务'} ${batch.purpose_name || '未分类'} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}${balance}${variance}${batch.notes ? `\n备注 ${batch.notes}` : ''}${node.timingIssue ? '\n时间记录不完整或异常' : ''}${node.residenceIssue ? '\n历史收发记录与库存对不上，暂不显示停留时间' : ''}`)
     } },
     series: [series, lanes, residenceSeries, processingSeries],
   }
 }
 
 export function batchSelection(batch: TraceBatch): FlowSelection {
-  return { title: batch.batch_no, description: `${batch.source_team.name} → ${isExternalTransfer(batch) ? batch.external_destination : batch.next_team.name}`, quantity: batch.quantity, weight: batch.weight, batches: [batch.batch_no] }
+  return { title: batch.batch_no, description: batch.entry_kind === 'processing_output' ? `${batch.next_team.name} · 本班组加工` : `${batch.source_team.name} → ${isExternalTransfer(batch) ? batch.external_destination : batch.next_team.name}`, quantity: batch.quantity, weight: batch.weight, batches: [batch.batch_no] }
 }
 
 export function flowByBatch(flows: SerialHistoryFlow[], batchNo: string) { return flows.find(flow => flow.batch_no === batchNo) }

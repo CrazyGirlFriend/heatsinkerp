@@ -2,7 +2,7 @@ import { externalActionLabel, isExternalEntryKind, type ExternalEntryKind, type 
 
 export const balanceFields = ['received', 'dispatched', 'reserved', 'in_transit', 'lost', 'on_hand', 'available'] as const
 export const ownershipFields = ['owned', 'external_pending'] as const
-export type MaterialBalance = Record<`${typeof balanceFields[number]}_${'quantity' | 'weight'}`, number | null> & Partial<Record<`${'scrap' | 'scrap_available' | 'shortage' | typeof ownershipFields[number]}_${'quantity' | 'weight'}`, number | null>>
+export type MaterialBalance = Record<`${typeof balanceFields[number]}_${'quantity' | 'weight'}`, number | null> & Partial<Record<`${'scrap' | 'scrap_available' | 'shortage' | typeof ownershipFields[number]}_${'quantity' | 'weight'}`, number | null>> & { weight_difference?: number; max_weight_difference?: number }
 export interface TeamMaterialOverview {
   team_id: number
   as_of?: string
@@ -16,6 +16,8 @@ export interface StockBatch extends MaterialBalance {
   transfer: MaterialTransfer
   processing_state?: import('./materialProcessing').ProcessingState
   current_specification?: string | null
+  processing_role?: import('./materialProcessing').ProcessingRole | null
+  weight_root_transfer_id?: number
   sludge_available_gross_weight?: number
   warehouse_positions?: { location_id: number; name: string; quantity: number; weight: number }[]
   physical_quantity?: number; physical_weight?: number
@@ -27,15 +29,27 @@ export interface QuantityAdjustment {
   operation_kind?: 'processing' | 'outbound_clearance'
   processing_status?: 'partial' | 'complete' | null
   before_specification?: string | null; after_specification?: string | null
+  after_weight?: number
+  outputs?: ProcessingOutput[]
+}
+export interface CreateProcessingOutput extends SludgeMeasurement {
+  role: import('./materialProcessing').ProcessingRole; quantity: number; weight: number; material_type: MaterialType; transfer_specification?: string | null
+}
+export interface ProcessingOutput extends CreateProcessingOutput {
+  id: number; batch_no: string
+  on_hand_quantity?: number; on_hand_weight?: number; in_transit_quantity?: number; in_transit_weight?: number; owned_quantity?: number; owned_weight?: number
 }
 export interface QuantityAdjustmentContext extends MaterialPage<QuantityAdjustment> {
   source_transfer_id: number; batch_no: string; quantity: number; weight: number; revision: number; as_of: string
   serial_no?: string; material_name?: string | null; material_type?: MaterialType | null; purpose_name?: string | null
   processing_status?: 'partial' | 'complete' | null; transfer_specification?: string | null
+  weight_difference?: number; weight_root_transfer_id?: number
+  origin_processing_record?: QuantityAdjustment | null
 }
 export interface CreateQuantityAdjustment {
   source_transfer_id: number; quantity: number; expected_revision: number; reason?: string; idempotency_key: string
   processing_status?: 'partial' | 'complete'; transfer_specification?: string | null
+  outputs?: CreateProcessingOutput[]
 }
 export interface MaterialLoss {
   urgency?: import('./recordFilters').SerialUrgency
@@ -82,7 +96,7 @@ export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocument
 }
 export interface DispatchParams extends MaterialPageParams { next_team_id?: string | number; status?: Exclude<DispatchStatus, 'partial'>; entry_kind?: DispatchKind; material_type?: MaterialType }
 export interface DispatchLine extends SludgeMeasurement { warehouse_location?: string | null; warehouse_location_reservation_key?: string | null; source_transfer_id: number; quantity: number; weight: number; material_type?: MaterialType | null; purpose_id?: number | null; transfer_specification?: string | null }
-export type CreateDispatch = { notes?: string | null; idempotency_key: string; lines: DispatchLine[]; quantity_adjustments?: Omit<CreateQuantityAdjustment, 'idempotency_key'>[]; quantity_clearances?: import('./materialTransfer').OutboundQuantityClearance[] } & (
+export type CreateDispatch = { notes?: string | null; idempotency_key: string; lines: DispatchLine[]; quantity_adjustments?: Omit<CreateQuantityAdjustment, 'idempotency_key' | 'outputs'>[]; quantity_clearances?: import('./materialTransfer').OutboundQuantityClearance[] } & (
   { entry_kind?: 'transfer'; next_team_id: number; external_destination?: never }
   | { entry_kind: ExternalEntryKind; next_team_id?: null; external_destination: string }
 )

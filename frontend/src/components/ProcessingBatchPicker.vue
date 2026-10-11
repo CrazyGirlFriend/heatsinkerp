@@ -8,6 +8,7 @@ import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { inventoryAmount } from '@/types/teamInventory'
 import { materialTypeLabel } from '@/types/materialTransfer'
 import type { StockBatch } from '@/types/teamMaterials'
+import { processingRoleLabels, type ProcessingRole } from '@/types/materialProcessing'
 
 const props = defineProps<{ teamId: number; groupId?: number }>()
 const vLoading = ElLoading.directive
@@ -38,7 +39,8 @@ onBeforeUnmount(() => { ++generation })
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
     <ElTable v-else v-loading="loading" :data="rows" class="business-table" height="min(440px, 50dvh)" empty-text="暂无可登记加工的在库批次" aria-label="加工来源批次">
       <ElTableColumn label="流水号" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.serial_no }}</template></ElTableColumn>
-      <ElTableColumn label="物料类型" min-width="110"><template #default="{ row }">{{ materialTypeLabel(row.transfer.material_type) }}</template></ElTableColumn>
+      <ElTableColumn label="物料类型" :min-width="rows.some(row => row.processing_role || row.transfer.processing_role) ? 175 : 110"><template #default="{ row }">{{ materialTypeLabel(row.transfer.material_type) }}<template v-if="row.processing_role || row.transfer.processing_role"> · {{ processingRoleLabels[(row.processing_role || row.transfer.processing_role) as ProcessingRole] }}</template></template></ElTableColumn>
+      <ElTableColumn v-if="rows.some(row => row.current_specification || row.transfer.transfer_specification)" label="当前实际尺寸" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ row.current_specification ?? row.transfer.transfer_specification ?? '—' }}</template></ElTableColumn>
       <ElTableColumn label="未转出件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.on_hand_quantity) }}</template></ElTableColumn>
       <ElTableColumn label="未转出重量 (kg)" min-width="145" align="right"><template #default="{ row }">{{ inventoryAmount(row.on_hand_weight) }}</template></ElTableColumn>
       <ElTableColumn label="加工状态" min-width="185" align="center"><template #default="{ row }"><ProcessingStockStatus :state="row.processing_state" :material-type="row.transfer.material_type" /></template></ElTableColumn>

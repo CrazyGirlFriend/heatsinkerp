@@ -10,6 +10,16 @@ const lot = (id: number, parent: number | null, overrides: Partial<TraceBatch> =
 const trace = (items: TraceBatch[]): MaterialTrace => ({ serial_no: 'YS', items, positions: [], untracked_count: 0, totals: { on_hand: { quantity: 0, weight: 0 }, in_transit: { quantity: 0, weight: 0 }, external_pending: { quantity: 0, weight: 0 }, dispatched: { quantity: 0, weight: 0 }, lost: { quantity: 0, weight: 0 } } })
 
 describe('warehouse origin scope', () => {
+  it('recomputes signed measured differences for the selected family and counts each processing root only once', () => {
+    const rows = [lot(1, null, { processing_delta_weight: -.500001, weight_difference: -.500001, weight_root_transfer_id: 1 }), lot(2, 1, { entry_kind: 'processing_output', processing_delta_weight: 0, weight_difference: -.500001, weight_root_transfer_id: 1, on_hand_weight: 99.499999 }), lot(3, null, { processing_delta_weight: 3, weight_difference: 3, weight_root_transfer_id: 3, on_hand_weight: -3 })]
+    const scoped = traceOriginScope({ ...trace(rows), processing_delta_weight: 2.499999, weight_difference: 2.499999, max_weight_difference: 3, shortage: { quantity: 0, weight: 3 } }, [rows[0]!, rows[1]!])
+    expect(scoped.processing_delta_weight).toBe(-.500001)
+    expect(scoped.weight_difference).toBe(-.500001)
+    expect(scoped.max_weight_difference).toBe(.500001)
+    expect(scoped.shortage?.weight).toBe(0)
+    expect(scoped.totals.on_hand.weight).toBe(99.499999)
+    expect(scoped.totals.lost.weight).toBe(0)
+  })
   it('keeps all splits and returns in their own intake family, with stable colors', () => {
     const rows = [lot(5, 3), lot(2, null), lot(4, 1), lot(3, 1), lot(1, null)]
     const result = traceOrigins(rows)

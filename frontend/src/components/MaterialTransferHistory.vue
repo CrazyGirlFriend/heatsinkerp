@@ -2,17 +2,19 @@
 import { computed } from 'vue'
 import { externalActionLabel, isExternalTransfer, materialEntryLabel, materialDocumentTextFields, materialTransferNotesLabel, materialTransferStatusLabel, materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
-import { processingProgressLabels } from '@/types/materialProcessing'
+import { processingProgressLabels, processingRoleLabels } from '@/types/materialProcessing'
+import type { ProcessingOutput } from '@/types/teamMaterials'
 
 const props = defineProps<{ transfer: MaterialTransfer }>()
 const events = computed(() => [...(props.transfer.history ?? [])].sort((left, right) => right.id - left.id))
-const actions = { created: '创建转料单', updated: '修改转料单', received: '确认签收', voided: '作废转料单', stocked: '手工入库已完成', dispatched: '确认出库', rejected: '库房退回核对', quantity_changed: '加工件数变更', reallocated: '流水号转投' }
+const actions = { created: '创建转料单', updated: '修改转料单', received: '确认签收', voided: '作废转料单', stocked: '手工入库已完成', dispatched: '确认出库', rejected: '库房退回核对', quantity_changed: '加工件数变更', reallocated: '流水号转投', processed: '本班组加工实物登记' }
 const labels: Record<string, string> = {
   source_serial_no: '原流水号', source_transfer_batch_no: '来源批次',
   warehouse_location: '入库仓位',
   sludge_gross_weight: '废泥实重（kg）', sludge_content_percent: '有效材料占比（%）',
   stock_quantity: '未转出件数', stock_weight: '未转出重量', shortage_quantity: '件数变动差值', shortage_weight: '重量差异', reason: '加工说明',
   outbound_batches: '关联出库批次', processing_status: '本批加工进度',
+  processing_outputs: '加工实物明细', processing_role: '加工类别', source_transfer_id: '来源批次编号',
   receipt_kind: '入库来源类别', external_source: '外部来源单位', return_dispatch_no: '原出库批次', rejection_reason: '退回核对原因',
   main_system_schema_version: '主系统接口版本', main_system_revision: '主系统资料版本',
   main_system_updated_at: '主系统资料更新时间', main_system_snapshot_hash: '主系统资料校验值',
@@ -34,6 +36,10 @@ function actionLabel(action: keyof typeof actions): string {
   return actions[action]
 }
 function fieldLabel(field: string, clearance = false): string {
+  if (props.transfer.entry_kind === 'processing_output') {
+    const processingLabels: Record<string, string> = { quantity: '实物件数', weight: '实物重量', source_team_id: '加工班组编号', next_team_id: '加工班组编号', next_team_code: '加工班组编码', next_team_name: '加工班组', purpose_id: '本班组业务编号', purpose_name: '本班组业务', received_at: '加工时间', received_by: '登记人', transfer_specification: '实际尺寸' }
+    if (processingLabels[field]) return processingLabels[field]
+  }
   if (field === 'reason' && clearance) return '清零原因'
   const purposeLabels: Record<string, string> = { purpose_id: '接收业务编号', purpose_name: '接收业务', opening_stock_id: '初始库存登记编号' }
   if (purposeLabels[field]) return purposeLabels[field]
@@ -57,6 +63,8 @@ function valueText(field: string, value: unknown): string {
   if (field === 'entry_kind') return materialEntryLabel(String(value) as MaterialTransfer['entry_kind'])
   if (field === 'material_type') return materialTypeLabel(String(value))
   if (field === 'processing_status') return processingProgressLabels[value as keyof typeof processingProgressLabels] || '未标明'
+  if (field === 'processing_role') return processingRoleLabels[value as keyof typeof processingRoleLabels] || '未标明'
+  if (field === 'processing_outputs' && Array.isArray(value)) return (value as ProcessingOutput[]).map(output => `${output.batch_no} · ${processingRoleLabels[output.role]} · ${materialTypeLabel(output.material_type)} · ${output.quantity} 件 / ${output.weight} kg${output.transfer_specification ? ` · ${output.transfer_specification}` : ''}`).join('；')
   if (field === 'receipt_kind') return value === 'return' ? '外部退回' : '外部来料'
   if (field === 'status') return materialTransferStatusLabel(String(value), props.transfer.entry_kind)
   if (field.endsWith('_at')) return formatDateTime(String(value))
@@ -73,7 +81,7 @@ function valueText(field: string, value: unknown): string {
 
 <template>
   <div v-if="events.length" class="history-table-scroll">
-    <table class="document-history business-document-table" :aria-label="transfer.entry_kind === 'warehouse_receipt' ? '入库单记录' : '转料单修改记录'">
+    <table class="document-history business-document-table" :aria-label="transfer.entry_kind === 'processing_output' ? '加工实物登记记录' : transfer.entry_kind === 'warehouse_receipt' ? '入库单记录' : '转料单修改记录'">
       <thead><tr><th scope="col">时间</th><th scope="col">操作人</th><th scope="col">操作</th><th scope="col">变更内容</th></tr></thead>
       <tbody><tr v-for="event in events" :key="event.id">
         <td><time :datetime="event.occurred_at">{{ formatDateTime(event.occurred_at) }}</time></td>

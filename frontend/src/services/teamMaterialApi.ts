@@ -15,11 +15,16 @@ const record = (value: unknown): Raw => value && typeof value === 'object' ? val
 const numeric = (value: unknown): number | null => (typeof value === 'string' && value.trim() || typeof value === 'number') && Number.isFinite(Number(value)) ? Number(value) : null
 function balance(value: unknown): MaterialBalance {
   const raw = record(value)
-  return Object.fromEntries([...balanceFields, ...ownershipFields, 'scrap', 'scrap_available', 'shortage'].flatMap(key => ['quantity', 'weight'].map(unit => [`${key}_${unit}`, numeric(raw[`${key}_${unit}`])]))) as MaterialBalance
+  return { ...Object.fromEntries([...balanceFields, ...ownershipFields, 'scrap', 'scrap_available', 'shortage'].flatMap(key => ['quantity', 'weight'].map(unit => [`${key}_${unit}`, numeric(raw[`${key}_${unit}`])]))),
+    ...(numeric(raw.weight_difference) != null ? { weight_difference: Number(raw.weight_difference) } : {}),
+    ...(numeric(raw.max_weight_difference) != null ? { max_weight_difference: Number(raw.max_weight_difference) } : {}) } as MaterialBalance
 }
 function stock(value: unknown): StockBatch {
   const raw = record(value)
   return { ...balance(value), transfer: normalizeMaterialTransfer(raw.transfer),
+    ...(numeric(raw.weight_root_transfer_id) != null ? { weight_root_transfer_id: Number(raw.weight_root_transfer_id) } : {}),
+    ...(typeof raw.current_specification === 'string' || raw.current_specification === null ? { current_specification: raw.current_specification } : {}),
+    ...(['remaining', 'produced', 'scrap'].includes(String(raw.processing_role)) ? { processing_role: raw.processing_role as StockBatch['processing_role'] } : {}),
     ...(typeof raw.processing_state === 'string' ? { processing_state: raw.processing_state as StockBatch['processing_state'] } : {}),
     ...(numeric(raw.sludge_available_gross_weight) != null ? { sludge_available_gross_weight: Number(raw.sludge_available_gross_weight) } : {}),
     ...(Array.isArray(raw.warehouse_positions) ? { warehouse_positions: raw.warehouse_positions.map(item => { const row = record(item); return { location_id: Number(row.location_id), name: String(row.name), quantity: Number(row.quantity), weight: Number(row.weight) } }),

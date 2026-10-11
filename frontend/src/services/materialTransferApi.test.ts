@@ -69,6 +69,12 @@ beforeEach(() => {
 afterEach(() => { httpClient.defaults.adapter = originalAdapter })
 
 describe('material transfer API', () => {
+  it('preserves internal processing batches, linkage and audits without granting receipt or edit permissions', () => {
+    const row = normalizeMaterialTransfer(rawTransfer({ entry_kind: 'processing_output', processing_role: 'produced', source_transfer_id: 5, source_transfer_batch_no: 'TL5', delivery_origin_batch_no: 'TL-ORIGIN', status: 'received', allowed_actions: [], history: [{ id: 18, action: 'processed', actor: '轧制', occurred_at: '2026-09-07T01:00:00Z', changes: { quantity: { before: null, after: 20 } } }] }))
+    expect(row).toMatchObject({ entry_kind: 'processing_output', processing_role: 'produced', source_transfer_id: 5, delivery_origin_batch_no: 'TL-ORIGIN', history: [{ action: 'processed' }], allowed_actions: [] })
+    expect(canEditMaterialTransfer(row)).toBe(false)
+    expect(canConfirmMaterialTransfer(row)).toBe(false)
+  })
   it('preserves cross-serial links and the reallocation audit in record and trace responses', async () => {
     const row = rawTransfer({ entry_kind: 'serial_reallocation', serial_no: '000B', source_serial_no: '000A', source_transfer_id: 5, source_transfer_batch_no: 'TL5', status: 'received', history: [{ id: 18, action: 'reallocated', actor: '检验', occurred_at: '2026-09-07T01:00:00Z', changes: {} }] })
     expect(normalizeMaterialTransfer(row)).toMatchObject({ entry_kind: 'serial_reallocation', source_serial_no: '000A', history: [{ action: 'reallocated' }] })

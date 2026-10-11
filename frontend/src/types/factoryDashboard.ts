@@ -21,6 +21,9 @@ export interface YieldRow {
   material: string
   input_weight: number
   output_weight: number
+  processing_delta_weight?: number
+  current_weight?: number
+  lost_weight?: number
   rate: number | null
   completed_count?: number
   active_count?: number
@@ -32,6 +35,9 @@ export interface TeamYield {
   team_name: string
   input_weight: number
   output_weight: number
+  processing_delta_weight?: number
+  current_weight?: number
+  lost_weight?: number
   rate: number | null
   status: 'complete' | 'in_progress' | 'needs_review'
 }
@@ -85,6 +91,8 @@ export interface StockDetail {
   serial_no: string
   material: string
   material_type: string | null
+  transfer_specification?: string | null
+  processing_role?: 'remaining' | 'produced' | 'scrap' | null
   quantity: number
   weight: number
 }

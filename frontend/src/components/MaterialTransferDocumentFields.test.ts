@@ -5,6 +5,13 @@ import MaterialTransferDocumentFields from './MaterialTransferDocumentFields.vue
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 
 describe('transfer destination fields', () => {
+  it('shows a processing child as local physical stock with its role, dimensions and parent batch', () => {
+    const wrapper = mount(MaterialTransferDocumentFields, { props: { group: 'all', transfer: normalizeMaterialTransfer({ entry_kind: 'processing_output', processing_role: 'remaining', batch_no: 'JG-20', source_transfer_batch_no: 'TL-1', next_team: { id: 2, name: '轧制' }, status: 'received', transfer_specification: '20 × 10 × 2 mm' }) } })
+    expect(wrapper.text()).toContain('本班组加工'); expect(wrapper.text()).toContain('剩余大料'); expect(wrapper.text()).toContain('TL-1')
+    expect(wrapper.findAll('th').map(th => th.text())).toEqual(expect.arrayContaining(['加工班组', '实物件数', '实际尺寸', '加工时间']))
+    expect(wrapper.text()).not.toContain('接收班组'); expect(wrapper.text()).not.toContain('接收时间')
+    wrapper.unmount()
+  })
   it('shows actual sludge, percentage and accounting kg separately', () => {
     const wrapper = mount(MaterialTransferDocumentFields, { props: { group: 'all', transfer: normalizeMaterialTransfer({ material_type: 'sludge', quantity: 0, weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30 }) } })
     const cells = wrapper.findAll('th').map(th => th.text())

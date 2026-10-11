@@ -1,11 +1,11 @@
 import type { MaterialBalance, MaterialPageParams } from './teamMaterials'
-import type { ProcessingSummary } from './materialProcessing'
+import { processingRoleLabels, type ProcessingRole, type ProcessingSummary } from './materialProcessing'
 import type { SerialSummary, SerialParams } from './materialAnalytics'
 import { inventoryColumns } from './inventoryColumns'
 import { isScrapType, materialTypeLabel, type MaterialType } from './materialTransfer'
 import { formatDateTime } from '@/utils/format'
 
-export type WarehouseSource = 'external' | 'return' | 'internal' | 'opening'
+export type WarehouseSource = 'external' | 'return' | 'internal' | 'opening' | 'processing'
 export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary {
   group_id: number
   batch_count: number
@@ -18,6 +18,7 @@ export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary {
   transfer_specification: string
   material_type: MaterialType | ''
   receipt_source: WarehouseSource
+  processing_role?: ProcessingRole | null
   source_team_id: number | null
   external_source: string
   source_name: string | null
@@ -32,9 +33,9 @@ export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary {
   finished_quantity: number | null
   finished_quantity_count: number
 }
-export const warehouseSourceNames: Record<WarehouseSource, string> = { external: '外部来料', return: '外部退回', internal: '车间转入', opening: '初始库存' }
+export const warehouseSourceNames: Record<WarehouseSource, string> = { external: '外部来料', return: '外部退回', internal: '车间转入', opening: '初始库存', processing: '本班组加工' }
 export const warehouseSourceLabel = (row: TeamInventoryRow) => row.receipt_source === 'opening' ? '初始库存' : `${warehouseSourceNames[row.receipt_source]} · ${row.source_name || '未登记'}`
-export const inventorySourceLabel = (row: TeamInventoryRow, warehouse = false) => row.receipt_source === 'opening' ? '初始库存' : warehouse ? warehouseSourceLabel(row) : row.source_name || '上序未登记'
+export const inventorySourceLabel = (row: TeamInventoryRow, warehouse = false) => row.receipt_source === 'processing' ? `本班组加工${row.processing_role ? ` · ${processingRoleLabels[row.processing_role]}` : ''}` : row.receipt_source === 'opening' ? '初始库存' : warehouse ? warehouseSourceLabel(row) : row.source_name || '上序未登记'
 export const inventoryAmount = (value: number | null | undefined) => value == null ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(value)
 const amount = inventoryAmount
 export function inventoryDispatchable(row: TeamInventoryRow) {
@@ -44,7 +45,7 @@ export function inventoryDispatchable(row: TeamInventoryRow) {
 export const inventoryCanDispatch = (row: TeamInventoryRow) => row.batch_count > 0 && Object.values(inventoryDispatchable(row)).every(value => value != null)
 export const inventoryHasPending = (row: TeamInventoryRow) => [row.reserved_quantity, row.reserved_weight, row.in_transit_quantity, row.in_transit_weight, row.external_pending_quantity, row.external_pending_weight].some(value => value != null && value > 0)
 export function inventoryStockStatus(row: TeamInventoryRow) {
-  if ((row.shortage_weight ?? 0) > 0 || (row.on_hand_weight ?? 0) < 0) return '重量差异'
+  if ((row.max_weight_difference ?? 0) > 1 || (row.shortage_weight ?? 0) > 0 || (row.on_hand_weight ?? 0) < 0) return '重量差异'
   const available = Object.values(inventoryDispatchable(row)).some(value => value != null && value > 0)
   if (inventoryHasPending(row)) {
     const external = (row.external_pending_quantity ?? 0) > 0 || (row.external_pending_weight ?? 0) > 0

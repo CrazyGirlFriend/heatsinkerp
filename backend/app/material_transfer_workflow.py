@@ -31,7 +31,7 @@ AUDITED_FIELDS = DOCUMENT_FIELDS + SLUDGE_FIELDS + (
     "source_transfer_id", "dispatch_id", "stock_tracked", "entry_kind",
     "external_destination", "dispatched_by", "dispatched_at",
     "receipt_kind", "external_source", "return_dispatch_no", "rejection_reason",
-    "purpose_id", "purpose_name", "opening_stock_id", "warehouse_location",
+    "purpose_id", "purpose_name", "opening_stock_id", "warehouse_location", "processing_role",
 )
 
 
@@ -218,6 +218,7 @@ def material_transfer_dict(
         "serial_no": transfer.serial_no,
         "urgency": urgency_dict(transfer.urgency),
         "entry_kind": transfer.entry_kind,
+        "processing_role": transfer.processing_role,
         "purpose_id": transfer.purpose_id,
         "purpose_name": transfer.purpose_name,
         "external_destination": transfer.external_destination,

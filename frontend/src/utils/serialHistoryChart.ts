@@ -2,7 +2,7 @@ import type { EChartsOption, LineSeriesOption } from 'echarts'
 import type { SerialHistoryEvent, SerialHistoryGroup } from '@/types/teamBusiness'
 import { formatDateTime } from './format'
 
-export const historyKindNames = { incoming: '接收入库', opening: '初始库存登记', outgoing: '转出', adjusted: '出库修改', voided: '作废退回', loss: '丢失', quantity_changed: '加工件数变更' }
+export const historyKindNames = { incoming: '接收入库', opening: '初始库存登记', outgoing: '转出', adjusted: '出库修改', voided: '作废退回', loss: '丢失', quantity_changed: '加工件数变更', processing_input: '投入本班组加工', processing_output: '本班组加工产出' }
 export const historyNumber = (value: number) => new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(value)
 export function purposePalette(names: string[]) {
   const palette = ['#4875c7', '#8660be', '#27918a', '#b07a29', '#bd5781', '#4c8399', '#708339', '#ac6848']
@@ -72,7 +72,7 @@ export function serialHistoryChart(groups: SerialHistoryGroup[], metric: 'quanti
         const values = params.filter(point => !focus || groups[point.seriesIndex]?.key === focus)
           .map(point => `${groups[point.seriesIndex]?.name}  ${historyNumber(Number(point.value))} ${unit}`)
         return [labels[index], ...values, ...(event ? [
-          `${historyKindNames[event.kind]}  ${event.delta_quantity > 0 ? '+' : ''}${historyNumber(event.delta_quantity)} 件 / ${event.kind === 'quantity_changed' ? '重量不变' : `${event.delta_weight > 0 ? '+' : ''}${historyNumber(event.delta_weight)} kg`}`,
+          `${historyKindNames[event.kind]}  ${event.delta_quantity > 0 ? '+' : ''}${historyNumber(event.delta_quantity)} 件 / ${event.kind === 'quantity_changed' && !event.delta_weight ? '重量不变' : `${event.delta_weight > 0 ? '+' : ''}${historyNumber(event.delta_weight)} kg`}`,
           event.batch_no, '点击节点查看批次',
         ] : [])].join('\n')
       },

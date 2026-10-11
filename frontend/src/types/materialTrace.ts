@@ -5,6 +5,9 @@ export interface TraceBatch extends MaterialTransfer {
   on_hand_weight: number | null
   owned_quantity?: number | null
   owned_weight?: number | null
+  processing_delta_weight?: number
+  weight_difference?: number
+  weight_root_transfer_id?: number
 }
 export interface TraceAmount { quantity: number; weight: number }
 export interface TraceHolding {
@@ -14,6 +17,9 @@ export interface TraceHolding {
 export interface MaterialTrace {
   reallocations?: MaterialTransfer[]
   shortage?: TraceAmount
+  processing_delta_weight?: number
+  weight_difference?: number
+  max_weight_difference?: number
   serial_no: string
   observed_at?: string
   items: TraceBatch[]

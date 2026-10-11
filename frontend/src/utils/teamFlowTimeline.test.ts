@@ -6,6 +6,20 @@ import type { CustomSeriesOption } from 'echarts'
 
 const data = () => structuredClone(snapshot.history) as SerialHistory
 describe('team batch timeline', () => {
+  it('starts processing output tracks without implying an incoming handoff and keeps measured weight changes visible', () => {
+    const h = data(), sample = h.groups[0]!.events[0]!
+    h.groups = [{ ...h.groups[0]!, events: [
+      { ...sample, id: 'processing-output-22', kind: 'processing_output', entry_kind: 'processing_output', batch_no: 'JG22', source_batch_no: 'JG22', quantity: 20, weight: 99, delta_quantity: 20, delta_weight: 99 },
+      { ...sample, id: 'quantity-23', kind: 'quantity_changed', batch_no: 'JG22', source_batch_no: 'JG22', quantity: 25, weight: 100, delta_quantity: 5, delta_weight: 1 },
+    ] }]
+    const model = teamTimelineModel(h)
+    expect(model.rows).toHaveLength(1); expect(model.rows[0]!.lot.on_hand_weight).toBe(100)
+    const tooltip = teamTimelineOption(model).tooltip as { formatter: (params: unknown) => string }
+    expect(tooltip.formatter({ dataIndex: 0 })).toContain('本班组加工产出')
+    expect(tooltip.formatter({ dataIndex: 0 })).not.toContain('接收')
+    const detail = tooltip.formatter({ dataIndex: model.nodes.findIndex(node => node.event?.kind === 'quantity_changed') })
+    expect(detail).toContain('+5 件 / +1 kg'); expect(detail).not.toContain('重量不变')
+  })
   it('makes one track per received batch and attaches every deduction to its actual source', () => {
     const model = teamTimelineModel(data())
     expect(model.rows).toHaveLength(3)

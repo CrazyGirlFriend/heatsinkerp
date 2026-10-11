@@ -21,6 +21,7 @@ from .database import get_db
 from .material_stock import literal_query, stock_table
 from .material_weight import MATERIAL_WEIGHT_TOLERANCE
 from .models import MaterialTransfer, SerialDeliveryPlan, Team, utcnow
+from .processing_statistics import weight_lineage, weight_roots
 from .record_filters import day_bounds
 from .schemas import SCRAP_MATERIAL_TYPES
 from .serial_urgency import urgency_map
@@ -253,7 +254,37 @@ def reallocation_weights(db):
     )
 
 
+def material_balances(db):
+    stock = stock_table()
+    name = material_name(stock.c.material_name)
+    balances = {
+        (row["serial_no"], row["material"]): dict(row)
+        for row in db.execute(
+            select(
+                stock.c.serial_no,
+                name.label("material"),
+                func.sum(stock.c.lost_weight).label("lost_weight"),
+                func.sum(stock.c.owned_weight).label("current_weight"),
+                func.sum(stock.c.adjusted_weight).label("processing_delta_weight"),
+            ).group_by(stock.c.serial_no, name)
+        ).mappings()
+    }
+    roots = weight_roots(weight_lineage())
+    name = material_name(roots.c.material_name)
+    for row in db.execute(
+        select(
+            roots.c.serial_no,
+            name.label("material"),
+            func.sum(roots.c.weight_difference).label("weight_difference"),
+            func.max(func.abs(roots.c.weight_difference)).label("max_weight_difference"),
+        ).group_by(roots.c.serial_no, name)
+    ).mappings():
+        balances[(row["serial_no"], row["material"])].update(row)
+    return balances
+
+
 def yields(db, owned):
+    balances = material_balances(db)
     name = material_name(mt.material_name)
     incoming = and_(
         mt.entry_kind == "warehouse_receipt",
@@ -298,7 +329,9 @@ def yields(db, owned):
         assigned_out[(item["source_serial"], item["material"])] += item["weight"]
     remaining = {r["serial_no"] for r in owned if r["remaining_count"]}
     shortages = {
-        r["serial_no"] for r in owned if r["max_shortage_weight"] > MATERIAL_WEIGHT_TOLERANCE
+        r["serial_no"]
+        for r in balances.values()
+        if r.get("max_weight_difference", 0) > MATERIAL_WEIGHT_TOLERANCE
     }
     differences = defaultdict(Decimal)
     for item in owned:
@@ -322,6 +355,8 @@ def yields(db, owned):
     result = []
     for row in rows:
         key = (row["serial_no"], row["material"])
+        measured = balances.get(key, {})
+        adjustment = measured.get("processing_delta_weight", Decimal(0))
         source_weight = row["input_weight"] + assigned_in[key] - assigned_out[key]
         source = float(source_weight)
         output = float(row["output_weight"])
@@ -329,9 +364,9 @@ def yields(db, owned):
             "needs_review"
             if row["serial_no"] in shortages
             or row["serial_no"] in uncertain
-            or source < 0
-            or (source == 0 and not assigned_out[key])
-            or row["output_weight"] > source_weight + differences[key]
+            or source_weight + adjustment < 0
+            or (source_weight + adjustment == 0 and not assigned_out[key])
+            or row["output_weight"] > source_weight + adjustment + differences[key]
             else "in_progress"
             if row["serial_no"] in remaining or row["pending"]
             else "complete"
@@ -342,6 +377,11 @@ def yields(db, owned):
                 "material": row["material"],
                 "input_weight": source,
                 "output_weight": output,
+                "lost_weight": float(measured.get("lost_weight", 0)),
+                "current_weight": float(measured.get("current_weight", 0)),
+                "processing_delta_weight": float(adjustment),
+                "weight_difference": float(measured.get("weight_difference", 0)),
+                "max_weight_difference": float(measured.get("max_weight_difference", 0)),
                 "reallocated_in_weight": float(assigned_in[key]),
                 "reallocated_out_weight": float(assigned_out[key]),
                 "rate": round(output / source * 100, 2)
@@ -386,6 +426,9 @@ def get_team_yields(
             select(
                 stock.c.team_id,
                 func.sum(stock.c.received_weight).label("input_weight"),
+                func.sum(stock.c.adjusted_weight).label("processing_delta_weight"),
+                func.sum(stock.c.lost_weight).label("lost_weight"),
+                func.sum(stock.c.owned_weight).label("current_weight"),
                 func.sum(stock.c.shortage_quantity).label("shortage_quantity"),
                 func.sum(stock.c.shortage_weight).label("shortage_weight"),
                 func.max(stock.c.shortage_weight).label("max_shortage_weight"),
@@ -432,7 +475,31 @@ def get_team_yields(
         if item["source_serial"] == serial_no and (not material or item["material"] == material):
             assigned_out[item["team_id"]] += item["weight"]
     incoming = [
-        {**r, "input_weight": r["input_weight"] - assigned_out[r["team_id"]]} for r in incoming
+        {**r, "input_weight": Decimal(str(r["input_weight"])) - assigned_out[r["team_id"]]}
+        for r in incoming
+    ]
+    roots = weight_roots(weight_lineage())
+    predicates = [roots.c.serial_no == serial_no]
+    if material:
+        predicates.append(material_name(roots.c.material_name) == material)
+    differences = {
+        row["team_id"]: row
+        for row in db.execute(
+            select(
+                roots.c.team_id,
+                func.sum(roots.c.weight_difference).label("weight_difference"),
+                func.max(func.abs(roots.c.weight_difference)).label("max_weight_difference"),
+            )
+            .where(*predicates)
+            .group_by(roots.c.team_id)
+        ).mappings()
+    }
+    incoming = [
+        {
+            **row,
+            **differences.get(row["team_id"], {"weight_difference": 0, "max_weight_difference": 0}),
+        }
+        for row in incoming
     ]
     teams = {t.id: t.name for t in db.scalars(select(Team))}
     return {
@@ -441,18 +508,25 @@ def get_team_yields(
                 "team_id": r["team_id"],
                 "team_name": teams.get(r["team_id"], "历史班组"),
                 "input_weight": float(r["input_weight"]),
+                "processing_delta_weight": float(r["processing_delta_weight"]),
+                "weight_difference": float(r["weight_difference"]),
+                "max_weight_difference": float(r["max_weight_difference"]),
+                "lost_weight": float(r["lost_weight"]),
+                "current_weight": float(r["current_weight"]),
                 "reallocated_out_weight": float(assigned_out[r["team_id"]]),
                 "output_weight": float(output.get(r["team_id"], 0)),
                 "rate": round(float(output.get(r["team_id"], 0) / r["input_weight"]) * 100, 2)
                 if r["input_weight"] > 0
-                and r["max_shortage_weight"] <= MATERIAL_WEIGHT_TOLERANCE
-                and output.get(r["team_id"], 0) <= r["input_weight"] + r["shortage_weight"]
+                and r["max_weight_difference"] <= MATERIAL_WEIGHT_TOLERANCE
+                and output.get(r["team_id"], 0)
+                <= r["input_weight"] + r["processing_delta_weight"] + r["shortage_weight"]
                 and not r["remaining_weight"]
                 and not r["remaining_quantity"]
                 else None,
                 "status": "needs_review"
-                if r["max_shortage_weight"] > MATERIAL_WEIGHT_TOLERANCE
-                or output.get(r["team_id"], 0) > r["input_weight"] + r["shortage_weight"]
+                if r["max_weight_difference"] > MATERIAL_WEIGHT_TOLERANCE
+                or output.get(r["team_id"], 0)
+                > r["input_weight"] + r["processing_delta_weight"] + r["shortage_weight"]
                 else "in_progress"
                 if r["remaining_weight"] or r["remaining_quantity"]
                 else "complete",
@@ -489,11 +563,22 @@ def get_stock_detail(
             stock.c.serial_no,
             name.label("material"),
             stock.c.material_type,
+            mt.transfer_specification,
+            stock.c.processing_role,
             func.sum(quantity).label("quantity"),
             func.sum(weight).label("weight"),
         )
+        .select_from(stock)
+        .join(mt, mt.id == stock.c.transfer_id)
         .where(*predicates)
-        .group_by(stock.c.team_id, stock.c.serial_no, name, stock.c.material_type)
+        .group_by(
+            stock.c.team_id,
+            stock.c.serial_no,
+            name,
+            stock.c.material_type,
+            mt.transfer_specification,
+            stock.c.processing_role,
+        )
         .subquery()
     )
     total = db.scalar(select(func.count()).select_from(grouped)) or 0

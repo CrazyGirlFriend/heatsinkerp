@@ -30,7 +30,7 @@ FIELDS = {
         "weight",
     ),
     MaterialLoss: ("id", "source_transfer_id", "team_id", "quantity", "weight"),
-    MaterialQuantityAdjustment: ("id", "source_transfer_id", "before_quantity", "after_quantity"),
+    MaterialQuantityAdjustment: ("id", "source_transfer_id", "before_quantity", "after_quantity", "weight_snapshot", "after_weight"),
 }
 PENDING = "stock_balance_flush_changes"
 
@@ -85,6 +85,10 @@ def contribute(deltas, model, row, sign):
         delta = sign * (row["after_quantity"] - row["before_quantity"])
         deltas[row["source_transfer_id"]]["adjusted_quantity"] += delta
         deltas[row["source_transfer_id"]]["on_hand_quantity"] += delta
+        if row["after_weight"] is not None:
+            weight_delta = sign * (row["after_weight"] - row["weight_snapshot"])
+            deltas[row["source_transfer_id"]]["adjusted_weight"] += weight_delta
+            deltas[row["source_transfer_id"]]["on_hand_weight"] += weight_delta
         return
 
     def add(lot_id, prefix, direction=1):
@@ -105,6 +109,8 @@ def contribute(deltas, model, row, sign):
             add(row["source_transfer_id"], "in_transit")
     elif row["status"] in ("received", "dispatched"):
         add(row["source_transfer_id"], "dispatched")
+        if row["entry_kind"] == "processing_output":
+            add(row["source_transfer_id"], "converted")
     if row["status"] in ("pending", "received", "dispatched"):
         add(row["source_transfer_id"], "on_hand", -1)
 
@@ -114,7 +120,7 @@ def apply_balances(db, *_):
     changes = db.info.pop(PENDING, ())
     if not changes:
         return
-    deltas = defaultdict(lambda: {name: 0 for name in (*AMOUNTS, "adjusted_quantity")})
+    deltas = defaultdict(lambda: {name: 0 for name in (*AMOUNTS, "adjusted_quantity", "adjusted_weight", "converted_quantity", "converted_weight")})
     created, removed, teams, recounted = {}, set(), {}, set()
     for row, before, deleted in changes:
         model = type(row)

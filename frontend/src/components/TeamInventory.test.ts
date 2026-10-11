@@ -39,6 +39,13 @@ const select = (label: string) => wrapper.findAllComponents(ElSelect).find(item 
 async function submit(term: string) { await wrapper.get('input[aria-label="库存明细搜索"]').setValue(term); await wrapper.get('input[aria-label="库存明细搜索"]').trigger('keyup.enter'); await flushPromises() }
 
 describe('warehouse grouped stock', () => {
+  it('distinguishes remaining large material and produced sizes directly even when the specification column is hidden', async () => {
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [warehouseFixture({ processing_role: 'remaining', receipt_source: 'processing', transfer_specification: '100 × 80 × 5 mm' }), warehouseFixture({ group_id: 12, processing_role: 'produced', receipt_source: 'processing', transfer_specification: '20 × 10 × 2 mm' }), warehouseFixture({ group_id: 13, processing_role: 'produced', receipt_source: 'processing', transfer_specification: '15 × 10 × 2 mm' })], total: 3, page: 1, page_size: 10 })
+    await render('/team-workspaces/901?tab=stock', true, false); await wrapper.setProps({ processing: true })
+    const kinds = wrapper.findAll('.inventory-material-kind').map(row => row.text())
+    expect(kinds).toEqual(expect.arrayContaining([expect.stringContaining('剩余大料100 × 80 × 5 mm'), expect.stringContaining('加工产出20 × 10 × 2 mm'), expect.stringContaining('加工产出15 × 10 × 2 mm')]))
+    expect(wrapper.text()).toContain('本班组加工')
+  })
   it('shows cutting status beside actual stock without adding a duplicate status column', async () => {
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({ items: [warehouseFixture({ material_type: 'semi_finished', owned_quantity: 12, on_hand_quantity: 12, processing_registered_batch_count: 1, processing_unregistered_batch_count: 0, processing_registered_quantity: 12, processing_registered_weight: 60 })], total: 1, page: 1, page_size: 10 })
     await render('/team-workspaces/901?tab=stock', true, false)

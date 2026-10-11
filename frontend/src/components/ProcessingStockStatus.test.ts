@@ -4,6 +4,13 @@ import { describe, expect, it } from 'vitest'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
 
 describe('processing stock meaning', () => {
+  it('flags a same-source cumulative difference only when the largest absolute root value exceeds one kg', async () => {
+    const wrapper = mount(ProcessingStockStatus, { props: { state: 'partial', summary: { max_weight_difference: 1 } } })
+    expect(wrapper.find('.processing-weight-warning').exists()).toBe(false)
+    await wrapper.setProps({ summary: { max_weight_difference: 1.000001 } })
+    expect(wrapper.get('.processing-weight-warning').text()).toContain('累计差异超 1 kg')
+    wrapper.unmount()
+  })
   it('labels twelve remaining pieces as registered processing, without calling them finished', () => {
     const wrapper = mount(ProcessingStockStatus, { props: { materialType: 'semi_finished', summary: {
       processing_registered_batch_count: 1, processing_unregistered_batch_count: 0,

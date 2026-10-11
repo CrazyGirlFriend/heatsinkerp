@@ -227,12 +227,12 @@ class MaterialTransfer(Base):
             "(entry_kind IN ('transfer', 'warehouse_outbound', 'inspection_shipment') AND source_team_id IS NOT NULL AND source_team_code IS NOT NULL AND source_team_name IS NOT NULL) OR "
             "(entry_kind IN ('warehouse_receipt', 'opening_stock') AND source_team_id IS NULL AND source_team_code IS NULL AND source_team_name IS NULL "
             "AND source_transfer_id IS NULL AND dispatch_id IS NULL AND status = 'received' AND stock_tracked = 1) OR "
-            "(entry_kind = 'serial_reallocation' AND source_team_id IS NOT NULL AND source_team_id = next_team_id AND source_team_code IS NOT NULL AND source_team_name IS NOT NULL "
+            "(entry_kind IN ('serial_reallocation', 'processing_output') AND source_team_id IS NOT NULL AND source_team_id = next_team_id AND source_team_code IS NOT NULL AND source_team_name IS NOT NULL "
             "AND source_transfer_id IS NOT NULL AND dispatch_id IS NULL AND status = 'received' AND stock_tracked = 1)",
             name="ck_mt_entry_kind_source",
         ),
         CheckConstraint(
-            "(entry_kind IN ('transfer', 'warehouse_receipt', 'opening_stock', 'serial_reallocation') AND next_team_id IS NOT NULL AND next_team_code IS NOT NULL AND next_team_name IS NOT NULL "
+            "(entry_kind IN ('transfer', 'warehouse_receipt', 'opening_stock', 'serial_reallocation', 'processing_output') AND next_team_id IS NOT NULL AND next_team_code IS NOT NULL AND next_team_name IS NOT NULL "
             "AND external_destination IS NULL AND status IN ('pending', 'received', 'voided')) OR "
             "(entry_kind IN ('warehouse_outbound', 'inspection_shipment') AND next_team_id IS NULL AND next_team_code IS NULL AND next_team_name IS NULL "
             "AND external_destination IS NOT NULL AND length(trim(external_destination)) > 0 AND source_transfer_id IS NOT NULL AND dispatch_id IS NOT NULL "
@@ -278,6 +278,7 @@ class MaterialTransfer(Base):
     entry_kind: Mapped[str] = mapped_column(
         String(24), nullable=False, default="transfer", server_default="transfer"
     )
+    processing_role: Mapped[str | None] = mapped_column(String(16))
     purpose_id: Mapped[int | None] = mapped_column(
         ForeignKey("team_purposes.id", ondelete="RESTRICT")
     )
@@ -412,6 +413,9 @@ class MaterialStockBalance(Base):
     adjusted_quantity: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    adjusted_weight: Mapped[Decimal] = mapped_column(
+        Numeric(17, 6), nullable=False, default=0, server_default="0"
+    )
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     on_hand_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     on_hand_weight: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
@@ -421,6 +425,12 @@ class MaterialStockBalance(Base):
     in_transit_weight: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
     dispatched_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     dispatched_weight: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
+    converted_quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    converted_weight: Mapped[Decimal] = mapped_column(
+        Numeric(17, 6), nullable=False, default=0, server_default="0"
+    )
     lost_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     lost_weight: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
@@ -433,7 +443,7 @@ class MaterialStockBalance(Base):
         ),
         *(
             CheckConstraint(
-                f"round(received_{amount}{' + adjusted_quantity' if amount == 'quantity' else ''}, {precision}) = round(on_hand_{amount} + reserved_{amount} + dispatched_{amount} + lost_{amount}, {precision})",
+                f"round(received_{amount} + adjusted_{amount}, {precision}) = round(on_hand_{amount} + reserved_{amount} + dispatched_{amount} + lost_{amount}, {precision})",
                 name=f"ck_msb_reconcile_{amount}",
             )
             for amount, precision in (("quantity", 3), ("weight", 6))
@@ -548,6 +558,8 @@ class MaterialQuantityAdjustment(Base):
     before_specification: Mapped[str | None] = mapped_column(String(240))
     after_specification: Mapped[str | None] = mapped_column(String(240))
     weight_snapshot: Mapped[Decimal] = mapped_column(Numeric(17, 6), nullable=False)
+    after_weight: Mapped[Decimal | None] = mapped_column(Numeric(17, 6))
+    outputs: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
     stock_revision_before: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
