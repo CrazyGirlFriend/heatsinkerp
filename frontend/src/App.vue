@@ -238,7 +238,7 @@ function handleUserCommand(command: string | number | object): void {
   backdrop-filter: blur(20px) saturate(110%);
   box-shadow: 0 8px 28px #203b2e0c, 0 0 0 .5px #335d4614, inset 1px 1px 1px #fffffff2, inset -1px -1px 1px #ffffff78;
 }
-.app-shell--business .brand-mark { height: 96px; padding-inline: 15px; border-bottom: 0; background: transparent; }
+.app-shell--business .brand-mark { height: 84px; padding-inline: 15px; border-bottom: 0; background: transparent; }
 .app-shell--business .main-content { background: transparent; }
 .app-shell--business .topbar { border-bottom: 0; background: transparent; }
 .app-shell--business .sidebar__footer { min-height: 65px; align-items: center; margin-inline: 15px; padding: 16px 0 0; }

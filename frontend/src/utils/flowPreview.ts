@@ -5,6 +5,7 @@ import { isExternalTransfer, isScrapType, materialTypeLabel, materialTransferSta
 import { historyNumber as num, purposePalette } from './serialHistoryChart'
 import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
 import { processingProgressLabels } from '@/types/materialProcessing'
+import { glassTooltip } from './chartGlass'
 
 export type FlowMetric = 'quantity' | 'weight'
 export type FlowInteraction = 'select' | 'pan'
@@ -68,7 +69,7 @@ export function teamFlowModel(history: SerialHistory) {
 }
 
 const font = '"PingFang SC", "Microsoft YaHei", sans-serif'
-const tooltip = { trigger: 'item' as const, renderMode: 'richText' as const, confine: true, backgroundColor: '#fff', borderColor: '#e8edef', padding: 16, textStyle: { color: '#28332d', fontFamily: font, fontSize: 14 } }
+const tooltip = { ...glassTooltip, trigger: 'item' as const, renderMode: 'richText' as const, confine: true, padding: 16, textStyle: { color: '#28332d', fontFamily: font, fontSize: 14 } }
 
 export function teamFlowOption(model: ReturnType<typeof teamFlowModel>, metric: FlowMetric): EChartsOption {
   const active = new Set(model.links.filter(link => link[metric] > 0).flatMap(link => [link.source, link.target]))
@@ -527,7 +528,7 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, metric
       { query: { maxWidth: 540 }, option: { grid: { left: 70, right: 20, bottom: originColors ? 130 : 190 }, dataZoom: [{ id: 'time-slider', left: 74, right: 24, bottom: originColors ? 106 : 136 }] } },
       { option: { grid: { left: originColors ? 82 : 108, right: 32, bottom: originColors ? 100 : 144 }, dataZoom: [{ id: 'time-slider', left: originColors ? 86 : 112, right: 32, bottom: originColors ? 62 : 88 }] } },
     ],
-    tooltip: { ...tooltip, renderMode: 'html', show: interaction === 'select', triggerOn: 'mousemove', enterable: true, hideDelay: 150, borderRadius: 10, backgroundColor: '#fffffffa', shadowColor: '#1748381a', borderColor: '#d9e5df', textStyle: { color: originColors ? ink : '#28332d', fontFamily: font, fontSize: 15, lineHeight: 26 }, formatter: params => {
+    tooltip: { ...tooltip, renderMode: 'html', show: interaction === 'select', triggerOn: 'mousemove', enterable: true, hideDelay: 150, textStyle: { color: originColors ? ink : '#28332d', fontFamily: font, fontSize: 15, lineHeight: 26 }, formatter: params => {
       const item = (Array.isArray(params) ? params[0] : params)!
       const processing = item.seriesId === 'processing-events' ? processingEvents[item.dataIndex] : undefined
       if (processing) {

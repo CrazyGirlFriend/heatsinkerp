@@ -103,6 +103,13 @@ a { color: inherit; text-decoration: none; }
 .page-heading h1, .workspace-heading h1 { margin: 0; color: var(--text); font-size: 29px; font-weight: 640; line-height: 1.4; letter-spacing: -.7px; }
 .page-heading p, .workspace-heading p { margin: 7px 0 0; color: var(--subtle); font-size: 14px; }
 .page-card { border: 1px solid var(--panel-line); border-radius: var(--card-radius); background: #fff; box-shadow: var(--panel-shadow); }
+.chart-glass {
+  border: 1px solid #ffffffd9;
+  background: radial-gradient(ellipse at 8% 0%, #ffffffd9, transparent 62%), linear-gradient(145deg, #ffffff9c, #ffffff61 55%, #e3efe896);
+  box-shadow: 0 8px 24px #203b2e0c, 0 0 0 .5px #335d461a, inset 0 1px 0 #fff, inset 0 -1px 0 #ffffffb3;
+  -webkit-backdrop-filter: blur(18px) saturate(112%);
+  backdrop-filter: blur(18px) saturate(112%);
+}
 .page-shift-enter-active { transition: opacity var(--motion-standard) ease; }
 .page-shift-enter-from { opacity: 0; }
 .page-shift-leave-active { display: none; }

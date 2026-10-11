@@ -57,7 +57,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
 </script>
 
 <template>
-  <section ref="root" class="team-timeline" aria-label="本班组批次收发时间画布" @keydown="shortcut">
+  <section ref="root" class="team-timeline chart-glass" aria-label="本班组批次收发时间画布" @keydown="shortcut">
     <header class="timeline-legend">
       <ElSelect v-if="dense" :model-value="selected || undefined" filterable clearable :append-to="root" placeholder="查找收发节点" aria-label="查找收发节点" @change="select" @clear="selected = ''"><ElOption v-for="entry in selectionOptions" :key="entry.id" :value="entry.id" :label="entry.label" /></ElSelect>
       <div class="node-legend"><span><i class="marker received" />接收</span><span><i class="marker" />转出</span><span><ElIcon><Close /></ElIcon>丢失</span></div>
@@ -90,7 +90,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
 </template>
 
 <style scoped>
-.team-timeline { position: relative; display: flex; flex-direction: column; height: max(580px, calc(100dvh - 225px)); min-width: 0; border: 1px solid var(--glass-border); border-radius: 16px; background: var(--surface); box-shadow: var(--glass-shadow); color: var(--text); }
+.team-timeline { position: relative; display: flex; flex-direction: column; height: max(580px, calc(100dvh - 225px)); min-width: 0; border-radius: 16px; color: var(--text); }
 .team-timeline:fullscreen { width: 100%; height: 100dvh; border: 0; border-radius: 0; }
 .timeline-legend { display: flex; align-items: center; justify-content: flex-end; gap: 22px; min-height: 42px; padding: 10px 24px 0; flex-shrink: 0; }
 .timeline-legend .el-select { width: 210px; margin-right: auto; }

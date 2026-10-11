@@ -268,7 +268,7 @@ onBeforeUnmount(() => {
                 ><em>{{ peakDate }}</em>
               </div>
             </div>
-            <div class="analysis-chart-region" :aria-busy="loading">
+            <div class="analysis-chart-region chart-glass" :aria-busy="loading">
               <div class="analysis-legend">
                 <span v-for="row in selected" :key="row.serial_no"
                   ><i
@@ -662,11 +662,8 @@ onBeforeUnmount(() => {
   flex-direction: column;
   flex: 1;
   min-height: 240px;
-  background: #fff;
-  border: 1px solid #e1e9e2;
   border-radius: 13px;
   padding: 0 12px 8px;
-  box-shadow: 0 2px 5px #223c2a03;
   overflow: hidden;
 }
 .analysis-chart {

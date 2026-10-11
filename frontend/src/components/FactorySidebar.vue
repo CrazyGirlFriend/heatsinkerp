@@ -204,27 +204,32 @@ const materialLinks = computed(() => [
 .factory-nav--illustrated :deep(.el-sub-menu > .el-menu) { background: transparent; }
 .factory-nav--illustrated :deep(.el-sub-menu .el-menu-item:not(.is-active)) { color: var(--muted); }
 .factory-nav--illustrated :deep(.factory-nav__team-icon) { width: 22px; margin-right: 10px; font-size: 19px; color: var(--muted); }
-.factory-nav--glass .factory-nav__scroll { padding: 0 15px 24px; }
-.factory-nav--glass :deep(.el-menu) { --el-menu-item-height: 51px; --el-menu-sub-item-height: 44px; --el-menu-level-padding: 20px; --el-menu-hover-bg-color: #ffffff50; }
-.factory-nav--glass :deep(.el-sub-menu__title) { border-radius: 11px; color: #657175; font-weight: 450; }
-.factory-nav--glass :deep(.factory-nav__current > .el-sub-menu__title) { color: #344347; font-weight: 620; }
+.factory-nav--glass .factory-nav__scroll { padding: 0 14px 20px; }
+.factory-nav--glass :deep(.el-menu) { --el-menu-item-height: 42px; --el-menu-sub-item-height: 36px; --el-menu-level-padding: 20px; --el-menu-hover-bg-color: #ffffff50; }
+.factory-nav--glass :deep(.el-sub-menu__title) { border-radius: 8px; color: var(--muted); font-size: 14px; font-weight: 500; }
+.factory-nav--glass :deep(.el-sub-menu__title > .el-icon:not(.el-sub-menu__icon-arrow)) { width: 20px; margin-right: 10px; font-size: 19px; }
+.factory-nav--glass :deep(.factory-nav__current > .el-sub-menu__title) { color: var(--text); font-weight: 550; }
 .factory-nav--glass .factory-nav__current-badge { display: none; }
-.factory-nav--glass :deep(.el-menu--inline) { padding-block: 5px 12px; }
-.factory-nav--glass :deep(.el-menu-item) { margin: 0 0 5px; border-radius: 11px; font-size: 15px; transition: background-color var(--motion-panel) var(--motion-ease), color var(--motion-standard) ease, box-shadow var(--motion-panel) var(--motion-ease); }
-.factory-nav--glass :deep(.el-sub-menu .el-menu-item:not(.is-active)) { color: #5b6b6e; }
-.factory-nav--glass :deep(.el-menu-item:not(.is-active):hover) { color: var(--primary); background: #ffffff4d; }
-.factory-nav--glass :deep(.el-menu-item.is-active) { color: #fff; background: var(--primary) linear-gradient(160deg, #ffffff17, #ffffff00 70%); box-shadow: 0 4px 10px #1d382322, inset 0 1px 1px #ffffff70, inset 0 -1px 1px #173b3433; font-weight: 630; }
-.factory-nav--glass :deep(.el-sub-menu .el-menu-item.is-active::before) { display: none; }
-.factory-nav--glass :deep(.factory-nav__team-icon) { color: inherit; transition: transform var(--motion-panel) var(--motion-ease); }
-.factory-nav--glass :deep(.el-menu-item.is-active .factory-nav__team-icon) { transform: scale(1.07); }
-.factory-nav--glass .factory-nav__scroll-hint { border-radius: 11px; background: #f0f6f2ed; }
+.factory-nav--glass :deep(.el-menu--inline) { padding-block: 2px 6px; }
+.factory-nav--glass :deep(.el-menu-item) { margin: 2px 0; border-radius: 8px; font-size: 13px; font-weight: 450; transition: background-color var(--motion-standard) var(--motion-ease), color var(--motion-standard) ease; }
+.factory-nav--glass:not(.factory-nav--compact) :deep(.el-sub-menu .el-menu-item) { padding-inline: 42px 10px; }
+.factory-nav--glass:not(.factory-nav--compact) :deep(.factory-nav__team-icon) { display: none; }
+.factory-nav--glass :deep(.el-sub-menu .el-menu-item:not(.is-active)) { color: #596a61; }
+.factory-nav--glass :deep(.el-menu-item:not(.is-active):hover) { color: var(--primary); background: #ffffff70; }
+.factory-nav--glass :deep(.el-menu-item.is-active) { color: var(--primary); background: #205c4812; box-shadow: inset 0 0 0 1px #205c480b; font-weight: 550; }
+.factory-nav--glass :deep(.el-sub-menu .el-menu-item.is-active::before) { left: 20px; height: 14px; width: 2px; border-radius: 2px; }
+.factory-nav--glass :deep(.el-menu-item:focus-visible), .factory-nav--glass :deep(.el-sub-menu__title:focus-visible) { outline: 2px solid var(--primary); outline-offset: -2px; }
+.factory-nav--glass :deep(.factory-nav__team-icon) { color: inherit; }
+.factory-nav--glass .factory-nav__scroll-hint { border-radius: 8px; background: #f0f6f2ed; }
 .factory-nav--glass.factory-nav--compact .factory-nav__scroll { padding-inline: 6px; }
+.factory-nav--glass.factory-nav--compact :deep(.el-sub-menu__title > .el-icon:not(.el-sub-menu__icon-arrow)) { margin-right: 0; }
 @media (max-width: 1320px) and (min-width: 641px) {
-  .factory-nav--glass:not(.factory-nav--compact) .factory-nav__scroll { padding-inline: 12px; }
+.factory-nav--glass:not(.factory-nav--compact) .factory-nav__scroll { padding-inline: 10px; }
   .factory-nav--glass :deep(.el-menu) { --el-menu-base-level-padding: 9px; --el-menu-level-padding: 12px; }
-  .factory-nav--glass :deep(.el-menu-item) { font-size: 14px; }
+  .factory-nav--glass:not(.factory-nav--compact) :deep(.el-sub-menu .el-menu-item) { padding-left: 39px; }
+  .factory-nav--glass :deep(.el-sub-menu .el-menu-item.is-active::before) { left: 17px; }
 }
 @media (max-height: 820px) {
-  .factory-nav--glass :deep(.el-menu) { --el-menu-item-height: 42px; --el-menu-sub-item-height: 40px; }
+  .factory-nav--glass :deep(.el-menu) { --el-menu-item-height: 40px; --el-menu-sub-item-height: 34px; }
 }
 </style>

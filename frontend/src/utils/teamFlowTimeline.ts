@@ -3,6 +3,7 @@ import type { SerialHistory, SerialHistoryEvent, SerialHistoryLot } from '@/type
 import { amountLabel, traceTime, traceTimestamp, type FlowInteraction } from './flowPreview'
 import { historyNumber as num, historyTimeline, purposeColors } from './serialHistoryChart'
 import { isExternalEntryKind, materialTransferStatusLabel } from '@/types/materialTransfer'
+import { glassTooltip } from './chartGlass'
 
 const font = '"PingFang SC", "Microsoft YaHei", sans-serif'
 const amount = (quantity: number, weight: number) => amountLabel({ quantity, weight })
@@ -188,7 +189,7 @@ export function teamTimelineOption(model: TeamTimelineModel, selected = '', inte
       { id: 'time', type: 'inside', xAxisIndex: 0, filterMode: 'none', zoomOnMouseWheel: 'ctrl', moveOnMouseMove: interaction === 'pan', moveOnMouseWheel: false, minSpan: Math.min(.05, 100 / model.span) },
       { id: 'teams', type: 'inside', yAxisIndex: 0, filterMode: 'none', zoomOnMouseWheel: false, moveOnMouseMove: interaction === 'pan', moveOnMouseWheel: true, start: 0, end: visibleRows, minSpan: 1, maxSpan: visibleRows },
     ],
-    tooltip: { show: interaction === 'select', trigger: 'item', confine: true, renderMode: 'richText', backgroundColor: '#fff', borderColor: '#e8edef', padding: 16,
+    tooltip: { ...glassTooltip, show: interaction === 'select', trigger: 'item', confine: true, renderMode: 'richText', padding: 16,
       textStyle: { color: '#28332d', fontSize: 14, lineHeight: 23 },
       formatter: params => {
         const node = model.nodes[(Array.isArray(params) ? params[0] : params)!.dataIndex]!, row = model.rows[node.row]!, event = node.event

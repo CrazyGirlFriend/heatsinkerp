@@ -5,6 +5,7 @@ import LedgerChart from './LedgerChart.vue'
 import { materialTypeLabel, materialTypeOptions } from '@/types/materialTransfer'
 import type { Metric } from '@/types/materialAnalytics'
 import type { FactoryOverview, FactoryTeam, FactoryScene } from '@/types/factoryOverview'
+import { glassArea, glassFill, glassTooltip } from '@/utils/chartGlass'
 
 const props = withDefaults(defineProps<{ data: FactoryOverview; metric: Metric; scene?: FactoryScene; motion?: boolean }>(), { scene: 'overview', motion: true })
 const emit = defineEmits<{ team: [team: FactoryTeam] }>()
@@ -27,24 +28,24 @@ function natureTooltipPosition(_point: number[], _params: unknown, _dom: unknown
   return bounds ? [Math.max(8 - bounds.left, Math.min(left, document.documentElement.clientWidth - bounds.left - width - 8)), Math.max(8 - bounds.top, -height - 10)] : [left, -height - 10]
 }
 const common = computed(() => ({ color: colors.value, textStyle: { fontFamily: 'HeatSink Inter, PingFang SC, Microsoft YaHei, sans-serif', fontSize: fontSize.value, color: ink.value },
-  tooltip: { trigger: 'axis', renderMode: 'richText', confine: true, valueFormatter: (value: number) => `${format(value)} ${unit.value}` },
-  legend: { top: 0, right: 0, itemWidth: 9, itemHeight: 9, textStyle: { fontSize: fontSize.value, color: ink.value } } }))
+  tooltip: { ...glassTooltip, trigger: 'axis', renderMode: 'html', confine: true, axisPointer: { lineStyle: { color: '#75978670', type: 'dashed' } }, valueFormatter: (value: number) => `${format(value)} ${unit.value}` },
+  legend: { top: 0, right: 0, itemWidth: 9, itemHeight: 9, padding: [4, 8], backgroundColor: '#ffffff66', borderColor: '#ffffffb3', borderWidth: 1, borderRadius: 8, textStyle: { fontSize: fontSize.value, color: ink.value } } }))
 function plot(labels: string[], series: object[], horizontal = false, legend = true): EChartsCoreOption {
   const category = { type: 'category', data: labels, inverse: horizontal, axisTick: { show: false }, axisLine: { show: false }, axisLabel: { fontSize: fontSize.value, color: ink.value, hideOverlap: true, ...(horizontal ? { width: 130, overflow: 'truncate' } : {}) } }
-  const numeric = { type: 'value', splitNumber: 3, axisLabel: { fontSize: fontSize.value, color: ink.value }, splitLine: { lineStyle: { color: '#e8edef' } } }
+  const numeric = { type: 'value', splitNumber: 3, axisLabel: { fontSize: fontSize.value, color: ink.value }, splitLine: { lineStyle: { color: '#75978620', type: 'dashed' } } }
   return { ...common.value, legend: { ...common.value.legend, show: legend }, grid: { left: 8, right: 10, top: legend ? 34 : 12, bottom: 8, outerBoundsMode: 'same', outerBoundsContain: 'axisLabel' },
     xAxis: horizontal ? numeric : category, yAxis: horizontal ? category : numeric, series }
 }
 const cards = computed(() => {
   const d = props.data, metric = props.metric
   const labels = d.trend.map(row => row.key.slice(5))
-  const bar = (name: string, data: (number | null)[], stack?: string) => ({ id: name, name, data, type: 'bar', stack, barMaxWidth: 22, itemStyle: { borderRadius: 3 }, emphasis: { focus: 'none' } })
-  const line = (name: string, data: number[]) => ({ id: name, name, data, type: 'line', showSymbol: false, smooth: false, lineStyle: { width: 2.5 } })
+  const bar = (name: string, data: (number | null)[], stack?: string, color = colors.value[0]!) => ({ id: name, name, data, type: 'bar', stack, barMaxWidth: 22, itemStyle: { color: glassFill(color, !stack), borderRadius: 4, borderColor: '#ffffff8c', borderWidth: 1 }, emphasis: { focus: 'none', itemStyle: { shadowBlur: 8, shadowColor: `${color}33` } } })
+  const line = (name: string, data: number[], color: string) => ({ id: name, name, data, type: 'line', showSymbol: false, smooth: false, itemStyle: { color }, lineStyle: { color, width: 2.5, shadowBlur: 4, shadowColor: `${color}26`, shadowOffsetY: 2 }, areaStyle: { color: glassArea(color) } })
   const rank = (key: 'material' | 'serial', title: string) => {
     const rows = d[`${key}_ranking`]?.[metric] || []
     const option = plot(rows.map(row => row.key), [{ ...bar('未转出库存', rows.map(row => row[metric])), barMaxWidth: 12,
-      showBackground: true, backgroundStyle: { color: '#f3f6f4', borderRadius: 3 },
-      itemStyle: { borderRadius: 3, color: ({ dataIndex }: { dataIndex: number }) => dataIndex === 0 ? '#4f8f68' : '#9bbba7' },
+      showBackground: true, backgroundStyle: { color: '#205c4808', borderRadius: 4 },
+      itemStyle: { borderRadius: 4, borderColor: '#ffffff8c', borderWidth: 1, color: ({ dataIndex }: { dataIndex: number }) => glassFill(dataIndex === 0 ? '#4f8f68' : '#7fa58f', true) },
       label: { show: true, position: 'right', distance: 10, color: '#354d3e', fontSize: 13, fontWeight: 500, formatter: ({ value }: { value: number }) => format(value) },
     }], true, false)
     option.grid = { left: 0, right: 84, top: 4, bottom: 4, outerBoundsMode: 'same', outerBoundsContain: 'axisLabel' }
@@ -56,13 +57,13 @@ const cards = computed(() => {
     { key: 'teams', title: '班组库存分布', hint: '未转出库存 · 点击查看班组', empty: !d.teams.some(team => team.balance && (team.balance[`on_hand_${metric}`] || 0) !== 0),
       option: plot(d.teams.map(team => team.name + (!team.balance ? '（未配置）' : !team.active ? '（停用）' : '')), [bar('未转出库存', d.teams.map(team => team.balance?.[`on_hand_${metric}`] ?? null))], true, false) },
     { key: 'flow', title: '全厂对外收发', hint: `近${d.days}天 · 内部转料不计入`, empty: !d.trend.some(row => row.inbound[metric] || row.outbound[metric] || row.shipment[metric]),
-      option: plot(labels, [line('库房入库', d.trend.map(row => row.inbound[metric])), line('库房对外出库', d.trend.map(row => row.outbound[metric])), line('检验发货', d.trend.map(row => row.shipment[metric]))]) },
+      option: plot(labels, [line('库房入库', d.trend.map(row => row.inbound[metric]), colors.value[0]!), line('库房对外出库', d.trend.map(row => row.outbound[metric]), colors.value[1]!), line('检验发货', d.trend.map(row => row.shipment[metric]), colors.value[2]!)]) },
     { key: 'types', title: '物料类型分布', hint: '未转出库存构成', empty: !materialTypes.value.some(row => row[metric] > 0),
-      option: { ...common.value, tooltip: { ...common.value.tooltip, trigger: 'item', renderMode: 'html', appendTo: 'body', confine: false, position: natureTooltipPosition, className: 'factory-nature-tooltip', textStyle: { fontSize: 12 }, padding: [8, 10] }, legend: { show: false }, series: [{ type: 'pie', radius: ['55%', '86%'], center: ['50%', '50%'], label: { show: false }, itemStyle: { borderColor: '#fff', borderWidth: 2 }, data: materialTypes.value.filter(row => row[metric] >= 0).map(row => ({ name: row.name, value: row[metric], itemStyle: { color: row.color } })) }] } },
+      option: { ...common.value, tooltip: { ...common.value.tooltip, trigger: 'item', renderMode: 'html', appendTo: 'body', confine: false, position: natureTooltipPosition, className: 'factory-nature-tooltip', textStyle: { fontSize: 12 }, padding: [8, 10] }, legend: { show: false }, series: [{ type: 'pie', radius: ['55%', '86%'], center: ['50%', '50%'], label: { show: false }, itemStyle: { borderColor: '#ffffffd9', borderWidth: 2, borderRadius: 3 }, data: materialTypes.value.filter(row => row[metric] >= 0).map(row => ({ name: row.name, value: row[metric], itemStyle: { color: glassFill(row.color) } })) }] } },
     { key: 'waiting', title: '待交接时长', hint: '每笔转料只统计一次', empty: !d.waiting_age.some(row => row.internal[metric] || row.external[metric]),
-      option: plot(['<1天', '1–3天', '3–7天', '≥7天'], [bar('内部待签收', d.waiting_age.map(row => row.internal[metric]), 'waiting'), bar('对外待确认', d.waiting_age.map(row => row.external[metric]), 'waiting')]) },
+      option: plot(['<1天', '1–3天', '3–7天', '≥7天'], [bar('内部待签收', d.waiting_age.map(row => row.internal[metric]), 'waiting'), bar('对外待确认', d.waiting_age.map(row => row.external[metric]), 'waiting', colors.value[1])]) },
     { key: 'loss', title: '丢失趋势', hint: `近${d.days}天 ${format(d.period_totals.loss[metric])} ${unit.value} · 不含转废`, empty: !d.trend.some(row => row.loss[metric] > 0),
-      option: plot(labels, [{ ...line('丢失', d.trend.map(row => row.loss[metric])), itemStyle: { color: colors.value[3] }, lineStyle: { color: colors.value[3], width: 2.5 }, areaStyle: { color: colors.value[3], opacity: .08 } }], false, false) },
+      option: plot(labels, [line('丢失', d.trend.map(row => row.loss[metric]), colors.value[3]!)], false, false) },
     rank('serial', '流水号库存排行'), rank('material', '材质库存排行'),
     { key: 'outbound', title: '对外出库与发货', hint: `近${d.days}天 · 仅已确认`, empty: !(d.period_totals.outbound[metric] || d.period_totals.shipment[metric]),
       option: plot(['库房对外出库', '检验发货'], [bar('已确认', [d.period_totals.outbound[metric], d.period_totals.shipment[metric]])], false, false) },
@@ -74,7 +75,7 @@ function pick(key: string, index: number) { const team = props.data.teams[index]
 </script>
 <template>
   <section ref="chartsRoot" class="factory-charts" :data-scene="scene" aria-label="全厂物料分析">
-    <article v-for="card in cards" :key="card.key" class="factory-chart" :class="[`factory-chart--${card.key}`, { 'factory-chart--nature': card.key === 'types' && materialTypes.length }]">
+    <article v-for="card in cards" :key="card.key" class="factory-chart chart-glass" :class="[`factory-chart--${card.key}`, { 'factory-chart--nature': card.key === 'types' && materialTypes.length }]">
       <header><h2 :title="card.hint">{{ card.title }}</h2><span v-if="card.key !== 'types'">{{ unit }}</span></header>
       <div class="factory-chart-content" :class="{ 'nature-content': card.key === 'types' && materialTypes.length }">
         <LedgerChart :option="card.option" :empty="card.empty" :label="`${card.title}，单位${unit}`" smooth-update :motion="motion" @select="pick(card.key, $event.dataIndex)" />
@@ -90,7 +91,7 @@ function pick(key: string, index: number) { const team = props.data.teams[index]
 </template>
 <style scoped>
 .factory-charts { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); gap: 14px; height: 100%; min-height: 0; }
-.factory-chart { grid-column: span 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 18px 20px 14px; border: 1px solid var(--dashboard-line); background: var(--dashboard-surface); border-radius: var(--card-radius, 12px); box-shadow: var(--glass-shadow); }
+.factory-chart { grid-column: span 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 18px 20px 14px; border-radius: var(--card-radius, 12px); }
 .factory-chart--teams, .factory-chart--waiting { grid-column: span 5; }.factory-chart--flow, .factory-chart--loss { grid-column: span 4; }
 .factory-chart header { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }.factory-chart h2 { font-size: 15px; line-height: 22px; font-weight: 550; margin: 0; }.factory-chart header > span { font-size: 12px; color: var(--dashboard-muted); line-height: 22px; }
 .factory-chart--serials, .factory-chart--materials { grid-column: span 6; }
@@ -103,7 +104,7 @@ function pick(key: string, index: number) { const team = props.data.teams[index]
 .nature-table-scroll { grid-area: 1 / 2 / -1 / 3; align-self: start; min-width: 0; max-height: 100%; overflow: auto; scrollbar-width: thin; }
 .nature-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .nature-table th, .nature-table td { padding: 2px 3px; border-bottom: 1px solid var(--line); text-align: right; }
-.nature-table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); color: var(--dashboard-muted); font-weight: 400; }
+.nature-table thead th { position: sticky; top: 0; z-index: 1; background: #f8fcf9e6; backdrop-filter: blur(12px); color: var(--dashboard-muted); font-weight: 400; }
 .nature-table th:first-child { padding-left: 0; text-align: left; }.nature-table tbody th { font-weight: 400; }.nature-table td:last-child, .nature-table th:last-child { padding-right: 0; }
 .nature-table tbody tr:last-child > * { border-bottom: 0; }.nature-table i { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; vertical-align: 1px; }
 .nature-table-scroll:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 3px; }

@@ -201,7 +201,7 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
           <div class="chain-legends"><strong class="path-heading">流转路径 <small>{{ chainModel.nodes.length }} 笔记录</small></strong><div class="purpose-legend"><span v-for="group in visibleOrigins" :key="group.id" :title="group.batch.batch_no"><i :style="{ background: group.color }" />{{ group.name }}</span></div><div class="mark-legend" aria-label="图形说明"><span><i class="stay-mark" />在库停留</span><span><i class="departure-mark" />转出</span><span><i class="receipt-mark" />签收</span><span><i class="processing-mark" />加工登记</span><span><i class="pending-mark" />待确认</span><span><i class="waste-mark" />废料</span></div></div>
           <div class="chart-tools"><span v-if="timeIssues" class="data-warning">时间异常 {{ timeIssues }}</span><span v-if="residenceIssues" class="data-warning">历史不完整 {{ residenceIssues }}</span><span v-if="untracked" class="data-warning">未计入库存 {{ untracked }}</span><ElSelect class="detail-select" placeholder="选择转料批次" aria-label="选择图形明细" filterable :append-to="pageRoot" :model-value="selectedId || undefined" @change="chooseDetail"><ElOption v-for="option in detailOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect><ElButton v-if="selectedId" class="clear-path" :icon="Close" aria-label="取消路径高亮" title="取消路径高亮" text circle @click="clearSelection" /></div>
         </header>
-        <div class="chain-flow-region">
+        <div class="chain-flow-region chart-glass">
         <div class="canvas-area" :style="mode === 'team' ? { height: `${chartHeight}px` } : undefined">
           <FlowPreviewCanvas v-if="hasMetricData && (mode === 'team' || chainModel.extent)" :key="mode" ref="chart" :renderer="mode === 'chain' ? 'svg' : 'canvas'" :option="chartOption" :replay="replay" :motion="motion" :interaction="mode === 'chain' ? interaction : undefined" :label="`${serial}，${mode === 'team' ? history?.team_name + '收发流向' : '全链路时间画布；滚轮缩放，H键平移，V键选择，双击还原；加减键缩放，0键还原'}，件数和重量`" @select="pick" @hover="hoverBatch" @zoom="zoomLevel = $event" @team-range="teamRange = $event" />
           <div v-else class="zero-measure">{{ mode === 'chain' ? '缺少有效时间记录，请通过上方批次查询查看明细。' : '当前记录没有件数。请切换重量查看废屑等按重量记录的物料。' }}</div>
@@ -364,10 +364,8 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
 .chain-page .mark-legend .waste-mark { background: #81919c; border-color: #81919c; }
 .chain-flow-region {
   padding: 8px 10px 0;
-  border: 1px solid #dce8e3;
   border-top: 0;
   border-radius: 0 0 14px 14px;
-  background: #fff;
 }
 .chain-page .chain-flow-region .canvas-area { background: transparent; border-radius: 0; }
 .chain-page .canvas-controls {
