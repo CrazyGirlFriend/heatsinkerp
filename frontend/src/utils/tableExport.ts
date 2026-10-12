@@ -1,5 +1,12 @@
 import type { MaterialPage } from '@/types/teamMaterials'
 
+// Client-side XLSX construction keeps several copies of the rows in memory.
+export const MAX_EXPORT_ROWS = 10_000
+export function assertExportSize(total: number) {
+  if (total > MAX_EXPORT_ROWS)
+    throw new Error('单次最多导出 10,000 条，请按日期或班组缩小筛选范围。')
+}
+
 export type ExportValue = string | number | null | undefined
 export interface ExportField {
   key: string
@@ -50,6 +57,7 @@ export async function loadExportPages<T>(
     signal.throwIfAborted()
     if (total !== undefined && result.total !== total)
       throw new Error('筛选结果已变化，请刷新后重新导出。')
+    assertExportSize(result.total)
     total = result.total
     rows.push(...result.items)
     if (rows.length > total || (rows.length < total && !result.items.length))
@@ -63,6 +71,7 @@ export async function createExportWorkbook(
   fields: ExportField[],
   rows: Record<string, ExportValue>[],
 ): Promise<Blob> {
+  assertExportSize(rows.length)
   const { default: writeExcelFile } = await import('write-excel-file/universal')
   const data = [
     fields.map((field) => ({

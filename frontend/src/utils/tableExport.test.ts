@@ -89,3 +89,12 @@ describe('filtered table export', () => {
     expect(sheet).toContain('ySplit="1"')
   })
 })
+
+it('rejects oversized exports before fetching more pages or building a workbook', async () => {
+  const fetchPage = vi.fn().mockResolvedValue({ items: [], total: 100_000_000 })
+  await expect(loadExportPages(fetchPage, new AbortController().signal, vi.fn())).rejects.toThrow(
+    '10,000',
+  )
+  expect(fetchPage).toHaveBeenCalledOnce()
+  await expect(createExportWorkbook([], new Array(10_001))).rejects.toThrow('10,000')
+})

@@ -1,0 +1,16 @@
+[Unit]
+Description=HeatSinkERP daily consistent database backup
+After=docker.service
+Requires=docker.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+UMask=0077
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+ExecStart=/usr/bin/python3 /opt/heatsinkrep/bin/database_backup.py full
+TimeoutStartSec=1800
+Restart=on-failure
+RestartSec=900

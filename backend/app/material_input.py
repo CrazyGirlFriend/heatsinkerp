@@ -40,16 +40,36 @@ def input_suggestions(db: Session, field: str, query: str, limit: int) -> dict:
         .order_by(case((column == query.strip(), 0), else_=1), func.max(MaterialTransfer.id).desc())
         .limit(limit)
     )
-    items = []
-    for row in db.execute(statement):
-        latest = db.get(MaterialTransfer, row[-1])
-        details = (
-            {name: getattr(latest, name) for name in PROFILE_FIELDS} if field == "serial_no" else {}
+    latest_rows = statement.subquery()
+    profiles = db.execute(
+        select(
+            latest_rows.c[0].label("value"),
+            MaterialTransfer.batch_no,
+            *(getattr(MaterialTransfer, name) for name in PROFILE_FIELDS),
         )
-        items.append({"value": row[0], "details": details, "source_batch_no": latest.batch_no})
+        .join(MaterialTransfer, MaterialTransfer.id == latest_rows.c.latest)
+        .order_by(
+            case((latest_rows.c[0] == query.strip(), 0), else_=1),
+            latest_rows.c.latest.desc(),
+        )
+    ).mappings()
+    items = [
+        {
+            "value": row["value"],
+            "details": {name: row[name] for name in PROFILE_FIELDS} if field == "serial_no" else {},
+            "source_batch_no": row["batch_no"],
+        }
+        for row in profiles
+    ]
     if field == "serial_no":
-        member_query = select(SharedMaterialMember, SharedMaterialGroup.batch_no).join(
-            SharedMaterialGroup
+        member_query = (
+            select(
+                SharedMaterialMember,
+                SharedMaterialGroup.batch_no,
+                *(getattr(MaterialTransfer, name) for name in PROFILE_FIELDS),
+            )
+            .join(SharedMaterialGroup, SharedMaterialGroup.id == SharedMaterialMember.group_id)
+            .join(MaterialTransfer, MaterialTransfer.batch_no == SharedMaterialGroup.batch_no)
         )
         if query.strip():
             term = query.strip().replace("!", "!!").replace("%", "!%").replace("_", "!_")
@@ -60,13 +80,11 @@ def input_suggestions(db: Session, field: str, query: str, limit: int) -> dict:
             case((SharedMaterialMember.serial_no == query.strip(), 0), else_=1),
             SharedMaterialMember.id.desc(),
         ).limit(limit)
-        for member, batch_no in db.execute(member_query):
+        for row in db.execute(member_query):
+            member, batch_no = row[:2]
             if any(item["value"] == member.serial_no for item in items):
                 continue
-            origin = db.scalar(
-                select(MaterialTransfer).where(MaterialTransfer.batch_no == batch_no)
-            )
-            details = {name: getattr(origin, name) for name in PROFILE_FIELDS}
+            details = dict(zip(PROFILE_FIELDS, row[2:], strict=True))
             details.update(
                 customer_code=member.customer_code,
                 finished_specification=member.finished_specification,

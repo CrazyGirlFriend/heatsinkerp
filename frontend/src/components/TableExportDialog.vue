@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElCheckbox, ElCheckboxGroup, ElDialog } from 'element-plus'
 import {
+  assertExportSize,
   createExportWorkbook,
   downloadExportWorkbook,
   type TableExportSource,
@@ -45,6 +46,7 @@ async function exportFile() {
   busy.value = true
   error.value = ''
   try {
+    assertExportSize(source.total)
     const rows = await source.load(task.signal, (count, size) => {
       loaded.value = count
       total.value = size

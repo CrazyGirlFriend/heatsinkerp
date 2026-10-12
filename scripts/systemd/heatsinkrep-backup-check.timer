@@ -1,0 +1,9 @@
+[Unit]
+Description=Check HeatSinkERP backups every minute
+
+[Timer]
+OnBootSec=90
+OnUnitActiveSec=60
+
+[Install]
+WantedBy=timers.target

@@ -73,3 +73,26 @@ def test_suggestions_escape_wildcards_exclude_voided_and_bound_results(client):
     assert client.get("/api/material-input-suggestions?field=password").status_code == 422
     client.headers.pop("Authorization")
     assert client.get("/api/material-input-suggestions?field=serial_no").status_code == 401
+
+
+def test_suggestion_queries_do_not_grow_with_result_count(client):
+    from app.database import SessionLocal
+    from app.material_input import input_suggestions
+    from app.observability import measure_database
+
+    setup = _setup_three_teams(client)
+    for index in range(20):
+        response = _create(
+            client,
+            setup,
+            idempotency_key=f"bounded-{index}",
+            serial_no=f"SUGGEST-{index:02d}",
+            material_name=f"材料{index}",
+        )
+        assert response.status_code == 201, response.text
+    for field, budget in (("serial_no", 2), ("material_name", 1)):
+        for limit in (1, 20):
+            with SessionLocal() as db, measure_database() as timing:
+                result = input_suggestions(db, field, "", limit)
+            assert len(result["items"]) == limit
+            assert timing.sql_count <= budget

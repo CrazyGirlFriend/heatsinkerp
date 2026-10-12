@@ -61,6 +61,15 @@ describe('export field picker', () => {
     expect(document.body.textContent).toContain('无权访问')
     expect(wrapper.emitted('close')).toBeUndefined()
   })
+  it('asks for a narrower filter before loading an oversized export', async () => {
+    const data = render({ ...source(), total: 100_000_000 })
+    await flushPromises()
+    await button('导出 Excel').trigger('click')
+    await flushPromises()
+    expect(data.load).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('单次最多导出 10,000 条')
+    expect(wrapper.emitted('close')).toBeUndefined()
+  })
   it('cancels an in-flight export and never downloads its late response', async () => {
     let finish!: (value: Record<string, string>[]) => void
     const data = source()

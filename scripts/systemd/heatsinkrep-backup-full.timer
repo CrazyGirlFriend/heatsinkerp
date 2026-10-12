@@ -1,0 +1,10 @@
+[Unit]
+Description=HeatSinkERP daily backup at 03:10 Asia/Shanghai
+
+[Timer]
+OnCalendar=*-*-* 03:10:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

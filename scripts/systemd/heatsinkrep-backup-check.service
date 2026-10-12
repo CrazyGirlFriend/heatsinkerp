@@ -1,0 +1,9 @@
+[Unit]
+Description=HeatSinkERP backup freshness and disk check
+After=docker.service
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/heatsinkrep/bin/database_backup.py check
+TimeoutStartSec=45

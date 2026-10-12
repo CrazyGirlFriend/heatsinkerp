@@ -1,0 +1,18 @@
+[Unit]
+Description=HeatSinkERP continuous binary log archive
+After=docker.service network-online.target
+Requires=docker.service
+StartLimitIntervalSec=0
+
+[Service]
+UMask=0077
+ExecStartPre=-/usr/bin/docker rm -f heatsinkrep-binlog-backup
+ExecStart=/usr/bin/python3 /opt/heatsinkrep/bin/database_backup.py stream
+ExecStop=-/usr/bin/docker stop -t 10 heatsinkrep-binlog-backup
+ExecStopPost=-/usr/bin/docker rm -f heatsinkrep-binlog-backup
+Restart=always
+RestartSec=30
+TimeoutStopSec=25
+
+[Install]
+WantedBy=multi-user.target
