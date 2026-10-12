@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SharedTraceStock from '@/components/SharedTraceStock.vue'
 import { Close, FullScreen, InfoFilled, Pointer, Rank, RefreshRight, ScaleToOriginal, Search, VideoPause, VideoPlay, ZoomIn, ZoomOut } from '@element-plus/icons-vue'
 import { ElAlert, ElButton, ElDialog, ElDrawer, ElIcon, ElInput, ElOption, ElPagination, ElPopover, ElSelect, ElTable, ElTableColumn, ElTooltip } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -195,8 +196,9 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
       <section v-else-if="hasData && !loading" class="flow-workspace">
         <div class="origin-filter">
           <label>来源批次</label><ElSelect class="origin-select" aria-label="筛选来源入库批次" :append-to="pageRoot" :model-value="originId" filterable @change="changeOrigin"><ElOption value="all" :label="`全部来源批次（${origins.groups.length} 批）`" /><ElOption v-for="group in origins.groups" :key="group.id" :value="group.id" :label="`${group.name} · ${group.batch.batch_no}`" /></ElSelect>
-          <span class="origin-input">{{ hasReallocatedOrigin ? '流入物料' : activeOrigin?.batch.entry_kind === 'warehouse_receipt' || !activeOrigin ? '入库' : '起点物料' }} <strong>{{ num(activeOrigin && activeOrigin.batch.entry_kind !== 'warehouse_receipt' ? activeOrigin.batch[metric] : originInput) }}</strong> {{ metric === 'weight' ? 'kg' : '件' }}</span>
+          <span class="origin-input">{{ visibleOrigins.some(group => group.batch.shared_unallocated) ? '来源实物（含共投）' : hasReallocatedOrigin ? '流入物料' : activeOrigin?.batch.entry_kind === 'warehouse_receipt' || !activeOrigin ? '入库' : '起点物料' }} <strong>{{ num(activeOrigin && activeOrigin.batch.entry_kind !== 'warehouse_receipt' ? activeOrigin.batch[metric] : originInput) }}</strong> {{ metric === 'weight' ? 'kg' : '件' }}</span>
         </div>
+        <SharedTraceStock v-if="scopedTrace" :trace="scopedTrace" :append-to="pageRoot" @serial="openRelatedSerial" />
         <header class="chart-toolbar">
           <div class="chain-legends"><strong class="path-heading">流转路径 <small>{{ chainModel.nodes.length }} 笔记录</small></strong><div class="purpose-legend"><span v-for="group in visibleOrigins" :key="group.id" :title="group.batch.batch_no"><i :style="{ background: group.color }" />{{ group.name }}</span></div><div class="mark-legend" aria-label="图形说明"><span><i class="stay-mark" />在库停留</span><span><i class="departure-mark" />转出</span><span><i class="receipt-mark" />签收</span><span><i class="processing-mark" />加工登记</span><span><i class="pending-mark" />待确认</span><span><i class="waste-mark" />废料</span></div></div>
           <div class="chart-tools"><span v-if="timeIssues" class="data-warning">时间异常 {{ timeIssues }}</span><span v-if="residenceIssues" class="data-warning">历史不完整 {{ residenceIssues }}</span><span v-if="untracked" class="data-warning">未计入库存 {{ untracked }}</span><ElSelect class="detail-select" placeholder="选择转料批次" aria-label="选择图形明细" filterable :append-to="pageRoot" :model-value="selectedId || undefined" @change="chooseDetail"><ElOption v-for="option in detailOptions" :key="option.value" :value="option.value" :label="option.label" /></ElSelect><ElButton v-if="selectedId" class="clear-path" :icon="Close" aria-label="取消路径高亮" title="取消路径高亮" text circle @click="clearSelection" /></div>

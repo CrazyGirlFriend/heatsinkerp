@@ -55,6 +55,8 @@ def origin_columns():
     manual = mt.entry_kind == "warehouse_receipt"
     return {
         "serial_no": mt.serial_no,
+        "shared_group_id": mt.shared_group_id,
+        "shared_unallocated": mt.shared_unallocated,
         "material_name": func.coalesce(mt.material_name, ""),
         "transfer_specification": func.coalesce(mt.transfer_specification, ""),
         "material_type": func.coalesce(mt.material_type, ""),
@@ -132,7 +134,8 @@ def list_inventory(db, team_id, filters):
         if value is not None:
             if (key, value) in (("material_name", "未填写材质"), ("material_type", "unknown")):
                 value = ""
-            conditions.append(table.c[key] == value)
+            from .shared_material import serial_match
+            conditions.append(serial_match(table.c[key], value) if key == "serial_no" else table.c[key] == value)
     if filters.purpose_id is not None:
         conditions.append(table.c.purpose_id.is_(None) if filters.purpose_id == 0 else table.c.purpose_id == filters.purpose_id)
     if filters.urgent_only:
@@ -210,6 +213,8 @@ def list_inventory(db, team_id, filters):
         for key in ("last_activity_at", "oldest_received_at"):
             item[key] = row[key].replace(tzinfo=timezone.utc).isoformat() if row[key] else None
         items.append(item)
+    from .shared_material import annotate_groups
+    annotate_groups(db, items)
     return {"items": items, "total": total, "page": filters.page, "page_size": filters.page_size,
             "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
 

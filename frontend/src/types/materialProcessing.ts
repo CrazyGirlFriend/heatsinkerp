@@ -1,3 +1,4 @@
+import type { SharedMaterialFields } from './sharedMaterial'
 import type { MaterialType } from './materialTransfer'
 import type { QuantityAdjustment } from './teamMaterials'
 
@@ -14,7 +15,7 @@ export interface ProcessingSummary {
   processing_registered_quantity?: number; processing_registered_weight?: number
   processing_unregistered_quantity?: number; processing_unregistered_weight?: number
 }
-export interface ProcessingRecord extends QuantityAdjustment {
+export interface ProcessingRecord extends QuantityAdjustment, SharedMaterialFields {
   serial_no: string; batch_no: string; material_name: string | null; material_type: MaterialType | null; purpose_name: string | null
   on_hand_quantity: number; on_hand_weight: number; in_transit_quantity: number; in_transit_weight: number
   processing_state: ProcessingState

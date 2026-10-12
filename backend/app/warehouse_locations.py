@@ -191,7 +191,7 @@ def occupants(db, ids, *, locking=False):
             WarehouseLocation.id.label("location_id"),
             Transfer.id,
             Transfer.batch_no,
-            Transfer.serial_no,
+            Transfer.serial_no, Transfer.shared_group_id, Transfer.shared_unallocated,
             Transfer.material_name,
             Transfer.material_type,
             Transfer.status,
@@ -215,7 +215,8 @@ def occupants(db, ids, *, locking=False):
         # Current reads avoid a stale MySQL REPEATABLE READ snapshot after a
         # concurrent submit/claim; any deadlock rolls the entire operation back.
         statement = statement.with_for_update()
-    return db.execute(statement).mappings().all()
+    from .shared_material import annotate_groups
+    return annotate_groups(db, [dict(row) for row in db.execute(statement).mappings()])
 
 
 def leased(location):

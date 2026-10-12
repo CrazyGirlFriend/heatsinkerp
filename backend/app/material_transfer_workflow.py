@@ -32,13 +32,14 @@ AUDITED_FIELDS = DOCUMENT_FIELDS + SLUDGE_FIELDS + (
     "external_destination", "dispatched_by", "dispatched_at",
     "receipt_kind", "external_source", "return_dispatch_no", "rejection_reason",
     "purpose_id", "purpose_name", "opening_stock_id", "warehouse_location", "processing_role",
+    "shared_group_id", "shared_unallocated",
 )
 
 
 def _creation_fingerprint(payload) -> str:
     # Preserve pre-upgrade idempotency hashes when optional fields are absent.
     value = payload.model_dump(mode="json", exclude={"idempotency_key"})
-    for field in ("receipt_kind", "external_source", "return_dispatch_no", "purpose_id", "warehouse_location", "warehouse_location_reservation_key"):
+    for field in ("receipt_kind", "external_source", "return_dispatch_no", "purpose_id", "warehouse_location", "warehouse_location_reservation_key", "shared_serials"):
         if field not in payload.model_fields_set:
             value.pop(field, None)
     for field in (*DOCUMENT_FIELDS, *SLUDGE_FIELDS):
@@ -209,6 +210,7 @@ def material_transfer_dict(
 ) -> dict[str, Any]:
     from .serial_urgency import urgency_dict
     from .material_delivery import document
+    from .shared_material import document as shared_document
     locked_at = transfer.received_at or transfer.dispatched_at or transfer.voided_at
     return {
         "id": transfer.id,
@@ -216,6 +218,7 @@ def material_transfer_dict(
         "barcode_payload": transfer.batch_no,
         "barcode_type": "CODE128",
         "serial_no": transfer.serial_no,
+        **shared_document(transfer),
         "urgency": urgency_dict(transfer.urgency),
         "entry_kind": transfer.entry_kind,
         "processing_role": transfer.processing_role,

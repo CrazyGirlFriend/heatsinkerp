@@ -65,14 +65,19 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
             from .warehouse_locations import consume
             validate_material_amounts(payload.material_type, payload.quantity, payload.weight)
             measured = sludge_measurement(payload.material_type, payload.weight, payload.sludge_gross_weight, payload.sludge_content_percent)
-            location_name = consume(db, team, payload, user)
+            from .shared_material import create_group
+            number = next_transfer_batch_number(db)
+            group = create_group(db, number, payload.shared_serials) if payload.shared_serials else None
+            serial_no = f"共投-{number}" if group else payload.serial_no
+            location_name = consume(db, team, payload, user, identity=(serial_no, payload.material_name, payload.material_type))
             now = utcnow()
             receipt = MaterialTransfer(
-                batch_no=next_transfer_batch_number(db), entry_kind="warehouse_receipt",
+                batch_no=number, entry_kind="warehouse_receipt",
+                shared_group_id=group.id if group else None, shared_unallocated=bool(group),
                 receipt_kind=payload.receipt_kind, external_source=payload.external_source,
                 return_dispatch_no=payload.return_dispatch_no,
                 warehouse_location=location_name,
-                serial_no=payload.serial_no,
+                serial_no=serial_no,
                 delivery_origin_id=delivery_origin_id,
                 **{field: getattr(payload, field) for field in workflow.DOCUMENT_FIELDS},
                 source_team_id=None, source_team_code=None, source_team_name=None,

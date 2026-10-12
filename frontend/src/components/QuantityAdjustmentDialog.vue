@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElDescriptions, ElDescriptionsItem, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElSelect, ElSwitch, ElPagination, ElTable, ElTableColumn } from 'element-plus'
 import SpecificationInput from './SpecificationInput.vue'
@@ -22,7 +23,7 @@ const historyRecords = computed(() => snapshot.value?.origin_processing_record ?
 const quantity = ref<number | undefined>(), reason = ref(''), error = ref('')
 const progress = ref<'partial' | 'complete'>('partial'), specification = ref(''), specificationValid = ref(true), submitted = ref(false)
 const loading = ref(false), saving = ref(false), conflict = ref(false)
-type OutputDraft = { key: string; role: ProcessingRole; material_type: MaterialType; quantity?: number; weight?: number; gross?: number; percent?: number; specification: string; specificationValid: boolean }
+type OutputDraft = { serialNo?: string; key: string; role: ProcessingRole; material_type: MaterialType; quantity?: number; weight?: number; gross?: number; percent?: number; specification: string; specificationValid: boolean }
 const detailed = ref(false), outputs = ref<OutputDraft[]>([])
 const activeOutputs = computed(() => outputs.value.filter(line => Number(outputQuantity(line)) || Number(line.weight) || line.material_type === 'sludge' && Number(line.gross)))
 const outputQuantity = (line: OutputDraft) => isWeightOnlyType(line.material_type) ? 0 : line.quantity
@@ -46,8 +47,9 @@ function outputRoleChanged(line: OutputDraft) {
   }
 }
 function outputTypeChanged(line: OutputDraft) { line.quantity = isWeightOnlyType(line.material_type) ? 0 : undefined; line.weight = line.gross = line.percent = undefined }
-function outputError(line: OutputDraft, field: 'quantity' | 'weight' | 'specification') {
+function outputError(line: OutputDraft, field: 'quantity' | 'weight' | 'specification' | 'serial') {
   if (!submitted.value || !activeOutputs.value.includes(line)) return false
+  if (field === 'serial') return snapshot.value?.shared_unallocated && line.role === 'produced' && !snapshot.value.shared_serials?.some(member => member.serial_no === line.serialNo)
   if (field === 'quantity') return !Number.isSafeInteger(outputQuantity(line)) || outputQuantity(line)! < 0 || outputQuantity(line)! > 2147483647
   if (field === 'specification') return !line.specificationValid
   return line.material_type === 'sludge' ? !sludgeWeight(line.gross, line.percent) : line.weight == null || !Number.isFinite(line.weight) || line.weight < 0 || line.weight > 99999999999.999
@@ -66,6 +68,7 @@ async function load(refreshSnapshot = false) {
     if (current !== generation) return
     if (!snapshot.value) { quantity.value = result.quantity; progress.value = result.processing_status || 'partial'; specification.value = result.transfer_specification || '' }
     if (!snapshot.value || refreshSnapshot) { snapshot.value = result; conflict.value = false }
+    if (result.shared_unallocated && props.processing) detailed.value = true
     records.value = result.items; total.value = result.total
   } catch (e) { if (current === generation) error.value = e instanceof Error ? e.message : '件数记录读取失败' }
   finally { if (current === generation) loading.value = false }
@@ -77,12 +80,12 @@ async function save() {
   submitted.value = true
   const byOutput = props.processing && detailed.value
   const count = byOutput ? outputTotal.value : quantity.value
-  if (byOutput && (!activeOutputs.value.length || activeOutputs.value.some(line => ['quantity', 'weight', 'specification'].some(field => outputError(line, field as 'quantity' | 'weight' | 'specification'))))) return
+  if (byOutput && (!activeOutputs.value.length || activeOutputs.value.some(line => ['quantity', 'weight', 'specification', 'serial'].some(field => outputError(line, field as 'quantity' | 'weight' | 'specification' | 'serial'))))) return
   if (props.processing && !byOutput && !specificationValid.value) return
   if (!Number.isSafeInteger(count) || count! < 0 || count! > 2147483647 || props.processing && progressInvalid.value) return
   if (!props.processing && quantity.value === snapshot.value.quantity) { error.value = '件数未发生变化'; return }
   if (reason.value.trim().length > 2000) return
-  const outputLines: CreateProcessingOutput[] = activeOutputs.value.map(line => ({ role: line.role, quantity: outputQuantity(line)!, weight: line.weight!, material_type: line.material_type, transfer_specification: line.specification.trim(), ...(line.material_type === 'sludge' ? sludgePayload(line.material_type, line.gross, line.percent) : {}) }))
+  const outputLines: CreateProcessingOutput[] = activeOutputs.value.map(line => ({ role: line.role, ...(snapshot.value?.shared_unallocated && line.role === 'produced' ? { serial_no: line.serialNo } : {}), quantity: outputQuantity(line)!, weight: line.weight!, material_type: line.material_type, transfer_specification: line.specification.trim(), ...(line.material_type === 'sludge' ? sludgePayload(line.material_type, line.gross, line.percent) : {}) }))
   const body = { source_transfer_id: props.sourceId, quantity: count!, expected_revision: snapshot.value.revision, reason: reason.value.trim(), ...(props.processing ? { processing_status: progress.value, ...(byOutput ? { outputs: outputLines } : { transfer_specification: specification.value.trim() }) } : {}) }
   const nextFingerprint = JSON.stringify(body)
   if (fingerprint !== nextFingerprint || !requestKey) { requestKey = materialRequestKey(); fingerprint = nextFingerprint }
@@ -116,7 +119,7 @@ onBeforeUnmount(() => { ++generation })
     <div v-if="loading" role="status" class="quantity-loading">正在读取件数记录…</div>
     <template v-if="snapshot">
       <ElDescriptions :column="2" border class="quantity-summary">
-        <ElDescriptionsItem v-if="processing" label="流水号">{{ snapshot.serial_no || '—' }}</ElDescriptionsItem>
+        <ElDescriptionsItem v-if="processing" label="流水号">{{ sharedSerialLabel(snapshot) }}</ElDescriptionsItem>
         <ElDescriptionsItem v-if="processing" label="物料类型">{{ materialTypeLabel(snapshot.material_type || null) }}</ElDescriptionsItem>
         <ElDescriptionsItem label="来源批次" :span="2">{{ snapshot.batch_no }}</ElDescriptionsItem>
         <ElDescriptionsItem label="未转出件数">{{ snapshot.quantity }} 件</ElDescriptionsItem>
@@ -125,17 +128,18 @@ onBeforeUnmount(() => { ++generation })
       </ElDescriptions>
       <ElForm v-if="editable && hasStock" label-position="top" :show-message="false" :disabled="saving || loading" @submit.prevent="save">
         <p v-if="!processing" class="quantity-note">只修改本批未转出的件数，重量、原签收单和已转出件数不变。保存后立即生效，取消出库不会撤销本次修改。</p>
-        <div v-if="processing" class="processing-mode"><ElSwitch v-model="detailed" aria-label="按明细登记" active-text="按明细登记" /><span>{{ detailed ? '逐行填写本批全部未转出实物，剩余大料、不同尺寸小料和废料分别录入。保存后从实际子批出库。' : '仅登记总件数和统一尺寸；一批包含多种尺寸或废料时，启用明细登记。' }}</span></div>
+        <div v-if="processing" class="processing-mode"><ElSwitch v-model="detailed" :disabled="snapshot.shared_unallocated" aria-label="按明细登记" active-text="按明细登记" /><span>{{ detailed ? '逐行填写本批全部未转出实物，剩余大料、不同尺寸小料和废料分别录入。保存后从实际子批出库。' : '仅登记总件数和统一尺寸；一批包含多种尺寸或废料时，启用明细登记。' }}</span></div>
         <section v-if="processing && detailed" class="processing-outputs" :class="{ 'is-error': submitted && !activeOutputs.length }" aria-label="加工后完整实物明细">
-          <div class="processing-output-scroll"><table class="processing-output-table"><thead><tr><th>类别</th><th>物料类型</th><th>件数</th><th>实测重量</th><th>实际尺寸（选填）</th><th>操作</th></tr></thead><tbody>
+          <div class="processing-output-scroll"><table class="processing-output-table"><thead><tr><th>类别</th><th>物料类型</th><th>件数</th><th>实测重量</th><th>实际尺寸（选填）</th><th v-if="snapshot.shared_unallocated" class="shared-owner-column">归属流水号 *</th><th>操作</th></tr></thead><tbody>
             <template v-for="(line, index) in outputs" :key="line.key"><tr>
               <td><ElSelect v-model="line.role" :aria-label="`明细${index + 1}类别`" @change="outputRoleChanged(line)"><ElOption v-for="(label, value) in processingRoleLabels" :key="value" :value="value" :label="label" /></ElSelect></td>
               <td><ElSelect v-model="line.material_type" :aria-label="`明细${index + 1}物料类型`" :disabled="line.role === 'remaining' && !!snapshot.material_type" @change="outputTypeChanged(line)"><ElOption v-for="type in materialTypeOptions.filter(type => isScrapType(type.value) === (line.role === 'scrap'))" :key="type.value" :value="type.value" :label="type.label" /></ElSelect></td>
               <td><span v-if="isWeightOnlyType(line.material_type)" class="dialog-input-unit">仅计重量</span><div v-else class="dialog-field" :class="{ 'is-error': outputError(line, 'quantity') }"><ElInputNumber v-model="line.quantity" :aria-label="`明细${index + 1}件数`" :min="0" :max="2147483647" :precision="0" controls-position="right" /></div></td>
               <td><span v-if="line.material_type === 'sludge'">{{ line.weight ?? '—' }} kg（折算）</span><div v-else class="dialog-field" :class="{ 'is-error': outputError(line, 'weight') }"><WeightInput v-model="line.weight" :ariaLabel="`明细${index + 1}重量`" /></div></td>
               <td><div class="dialog-field" :class="{ 'is-error': outputError(line, 'specification') }"><SpecificationInput v-model="line.specification" :label="`明细${index + 1}实际尺寸`" @validity-change="line.specificationValid = $event" /></div></td>
+              <td v-if="snapshot.shared_unallocated"><div v-if="line.role === 'produced'" class="dialog-field" :class="{ 'is-error': outputError(line, 'serial') }"><ElSelect v-model="line.serialNo" :aria-label="`明细${index + 1}归属流水号`" placeholder="请选择" filterable><ElOption v-for="member in snapshot.shared_serials" :key="member.serial_no" :value="member.serial_no" :label="member.serial_no" /></ElSelect></div><span v-else>{{ line.role === 'scrap' ? '共投废料' : '共投未分配' }}</span></td>
               <td><ElButton text :aria-label="`移除明细${index + 1}`" @click="outputs.splice(index, 1)">移除</ElButton></td>
-            </tr><tr v-if="line.material_type === 'sludge'"><td colspan="6"><SludgeWeightFields v-model:gross="line.gross" v-model:percent="line.percent" :label="`明细${index + 1}`" :gross-error="outputError(line, 'weight') ? '请填写实重和比例' : ''" :percent-error="outputError(line, 'weight') ? '请填写实重和比例' : ''" @update:weight="line.weight = $event" /></td></tr></template>
+            </tr><tr v-if="line.material_type === 'sludge'"><td :colspan="snapshot.shared_unallocated ? 7 : 6"><SludgeWeightFields v-model:gross="line.gross" v-model:percent="line.percent" :label="`明细${index + 1}`" :gross-error="outputError(line, 'weight') ? '请填写实重和比例' : ''" :percent-error="outputError(line, 'weight') ? '请填写实重和比例' : ''" @update:weight="line.weight = $event" /></td></tr></template>
           </tbody></table></div>
           <footer><ElButton text :disabled="outputs.length >= 100" @click="addOutput()">增加明细</ElButton><span>共 {{ activeOutputs.length }} 行 · {{ outputTotal }} 件 · {{ outputWeight }} kg；空白或全零行不提交</span></footer>
         </section>
@@ -155,7 +159,7 @@ onBeforeUnmount(() => { ++generation })
         <ElTableColumn label="变更前 → 变更后" min-width="140" align="center"><template #default="{ row }">{{ row.before_quantity }} → {{ row.after_quantity }} 件</template></ElTableColumn>
         <ElTableColumn prop="reason" label="加工说明" min-width="220" align="center" />
         <ElTableColumn v-if="processing" label="登记后尺寸" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ row.after_specification || '—' }}</template></ElTableColumn>
-        <ElTableColumn v-if="processing" label="实物明细 / 登记后重量" min-width="300"><template #default="{ row }"><div v-for="output in row.outputs || []" :key="output.id" class="processing-history-output"><strong>{{ output.batch_no }} · {{ processingRoleLabels[output.role as ProcessingRole] }}</strong><span>{{ materialTypeLabel(output.material_type) }} · {{ output.quantity }} 件 / {{ output.weight }} kg · {{ output.transfer_specification || '未填尺寸' }}</span><span v-if="output.on_hand_weight != null">当前未转出 {{ output.on_hand_quantity }} 件 / {{ output.on_hand_weight }} kg；待签收 {{ output.in_transit_quantity ?? 0 }} 件 / {{ output.in_transit_weight ?? 0 }} kg</span><span v-if="output.material_type === 'sludge'">实重 {{ output.sludge_gross_weight }} kg · 有效材料 {{ output.sludge_content_percent }}%</span></div><span v-if="!row.outputs?.length">{{ row.after_weight ?? row.weight }} kg</span></template></ElTableColumn>
+        <ElTableColumn v-if="processing" label="实物明细 / 登记后重量" min-width="300"><template #default="{ row }"><div v-for="output in row.outputs || []" :key="output.id" class="processing-history-output"><strong>{{ output.batch_no }}{{ output.serial_no ? ' · ' + (output.shared_unallocated ? '共投未分配' : output.serial_no) : '' }} · {{ processingRoleLabels[output.role as ProcessingRole] }}</strong><span>{{ materialTypeLabel(output.material_type) }} · {{ output.quantity }} 件 / {{ output.weight }} kg · {{ output.transfer_specification || '未填尺寸' }}</span><span v-if="output.on_hand_weight != null">当前未转出 {{ output.on_hand_quantity }} 件 / {{ output.on_hand_weight }} kg；待签收 {{ output.in_transit_quantity ?? 0 }} 件 / {{ output.in_transit_weight ?? 0 }} kg</span><span v-if="output.material_type === 'sludge'">实重 {{ output.sludge_gross_weight }} kg · 有效材料 {{ output.sludge_content_percent }}%</span></div><span v-if="!row.outputs?.length">{{ row.after_weight ?? row.weight }} kg</span></template></ElTableColumn>
       </ElTable>
       <ElPagination v-if="total > 10" :current-page="page" :page-size="10" :total="total" :disabled="loading || saving" layout="prev, pager, next" @current-change="page = $event; load()" />
     </template>
@@ -185,6 +189,8 @@ onBeforeUnmount(() => { ++generation })
 .processing-output-table th:nth-child(1), .processing-output-table th:nth-child(2) { width: 120px; }
 .processing-output-table th:nth-child(3) { width: 132px; }
 .processing-output-table th:nth-child(4) { width: 200px; }
+.processing-output-table .shared-owner-column { width: 150px; }
+.processing-output-table:has(.shared-owner-column) { min-width: 1050px; }
 .processing-output-table th:last-child { width: 60px; }
 .processing-output-table .dialog-field { margin: 0; }
 .processing-outputs > footer { margin: 0; padding: 6px 10px; border-top: 1px solid var(--line); flex-wrap: wrap; }

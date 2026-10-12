@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import TableExportButton from './TableExportButton.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
@@ -21,7 +22,7 @@ const appliedQuery = ref('')
 function exportSource() {
   const id = props.teamId, query = appliedQuery.value
   return tableExportSource('未分配仓位物料', total.value, [
-    { key: 'serial_no', label: '流水号', value: (row: StockBatch) => row.transfer.serial_no },
+    { key: 'serial_no', label: '流水号', value: (row: StockBatch) => sharedSerialLabel(row.transfer) },
     { key: 'material_name', label: '材质', value: row => row.transfer.material_name },
     { key: 'material_type', label: '物料类型', value: row => materialTypeLabel(row.transfer.material_type) },
     { key: 'quantity', label: '未分配件数', value: row => row.unassigned_quantity },
@@ -100,7 +101,7 @@ onBeforeUnmount(() => { disposed = true; ++generation; ++slotGeneration })
     <ElTable :data="rows" row-key="transfer.id" class="business-table" empty-text="没有未分配仓位的物料">
       <ElTableColumn v-if="canDispatch" width="50"><template #default="{ row }"><ElCheckbox :aria-label="`选择未分配物料 ${row.transfer.batch_no}`" :model-value="checked.has(String(row.transfer.id))" :disabled="loading || !stockAvailable(asStock(row)) || (checked.size >= 100 && !checked.has(String(row.transfer.id)))" @change="toggle(asStock(row), $event)" /></template></ElTableColumn>
       <ElTableColumn label="批次号" min-width="200"><template #default="{ row }"><ElButton link type="primary" @click="emit('view', row.transfer.batch_no)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
-      <ElTableColumn label="流水号" min-width="150" prop="transfer.serial_no" />
+      <ElTableColumn label="流水号" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ sharedSerialLabel(row.transfer) }}</template></ElTableColumn>
       <ElTableColumn label="材质" min-width="130" prop="transfer.material_name" />
       <ElTableColumn label="类型" min-width="120"><template #default="{ row }">{{ materialTypeLabel(row.transfer.material_type) }}</template></ElTableColumn>
       <ElTableColumn label="未分配件数" min-width="130" prop="unassigned_quantity" align="center" />

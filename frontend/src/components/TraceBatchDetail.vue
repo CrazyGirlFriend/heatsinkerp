@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SharedMaterialInfo from './SharedMaterialInfo.vue'
+import { sharedSerialLabel } from '@/types/sharedMaterial'
 import type { TraceBatch } from '@/types/materialTrace'
 import { isExternalTransfer, materialSourceLabel, materialTypeLabel, materialTransferStatusLabel } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
@@ -13,7 +15,10 @@ defineEmits<{ open: [code: string] }>()
   <section class="trace-detail" aria-label="选中批次收发详情" aria-live="polite">
     <template v-if="batch">
       <header><strong>{{ materialSourceLabel(batch) }}{{ batch.entry_kind === 'processing_output' ? '' : ` → ${batch.next_team.name}` }}</strong><span class="detail-status" :class="{ pending: batch.status === 'pending' }">{{ materialTransferStatusLabel(batch.status, batch.entry_kind) }}</span><span class="detail-batch">{{ batch.batch_no }}</span><button v-if="!example" type="button" @click="$emit('open', batch.batch_no)">查看单据</button></header>
+      <SharedMaterialInfo :item="batch" />
+      <p v-if="batch.other_processing_outputs?.length" class="shared-split-context">同批还分配给 {{ batch.other_processing_outputs.map(output => `${output.serial_no}：${num(output.weight)} kg`).join('；') }}，查看整块料可看全部分支。</p>
       <dl>
+        <div><dt>流水号</dt><dd>{{ sharedSerialLabel(batch) }}</dd></div>
         <div><dt>本次物料</dt><dd>{{ num(batch.quantity) }} 件 / {{ num(batch.weight) }} kg</dd></div>
         <div><dt>物料性质</dt><dd>{{ materialTypeLabel(batch.material_type) }}</dd></div>
         <div><dt>{{ batch.entry_kind === 'processing_output' ? '加工时间' : batch.entry_kind === 'serial_reallocation' ? '转投时间' : batch.entry_kind === 'warehouse_receipt' ? '入库时间' : batch.entry_kind === 'opening_stock' ? '登记时间' : '转出时间' }}</dt><dd>{{ formatDateTime(batch.transferred_at) }}</dd></div>

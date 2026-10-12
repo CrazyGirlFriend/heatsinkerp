@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Refresh, Search } from '@element-plus/icons-vue'
@@ -56,7 +57,7 @@ async function load(background = false) {
 function exportSource() {
   const id = props.teamId, params = { query: text('query') || undefined, date_from: text('date_from') || undefined, date_to: text('date_to') || undefined }
   return tableExportSource('加工记录', total.value, [
-    { key: 'serial_no', label: '流水号', value: (row: ProcessingRecord) => row.serial_no },
+    { key: 'serial_no', label: '流水号', value: (row: ProcessingRecord) => sharedSerialLabel(row) },
     { key: 'created_at', label: '登记时间', value: row => formatDateTime(row.created_at) },
     { key: 'before_quantity', label: '加工前件数', value: row => row.before_quantity },
     { key: 'after_quantity', label: '加工后件数', value: row => row.after_quantity },
@@ -89,7 +90,7 @@ onBeforeUnmount(() => { ++generation })
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
     <ElTable v-else v-loading="loading" :data="rows" row-key="id" class="business-table processing-records-table" height="100%" flexible empty-text="暂无加工登记记录" aria-label="班组加工记录">
-      <ElTableColumn prop="serial_no" label="流水号" min-width="150" fixed show-overflow-tooltip />
+      <ElTableColumn label="流水号" min-width="150" fixed show-overflow-tooltip><template #default="{ row }">{{ sharedSerialLabel(row) }}</template></ElTableColumn>
       <ElTableColumn label="登记时间" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></ElTableColumn>
       <ElTableColumn label="物料类型" min-width="115"><template #default="{ row }">{{ materialTypeLabel(row.material_type) }}</template></ElTableColumn>
       <ElTableColumn label="加工前件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.before_quantity) }}</template></ElTableColumn>

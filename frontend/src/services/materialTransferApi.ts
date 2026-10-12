@@ -91,6 +91,10 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
   const documentText = Object.fromEntries(materialDocumentTextFields.map(field => [field.key, textValue(raw[field.key]) || null])) as Pick<MaterialTransferDocumentFields, typeof materialDocumentTextFields[number]['key']>
   return {
     ...documentText,
+    shared_group_id: optionalInteger(raw.shared_group_id, 1),
+    shared_unallocated: raw.shared_unallocated === true,
+    shared_origin_batch_no: textValue(raw.shared_origin_batch_no) || null,
+    shared_serials: Array.isArray(raw.shared_serials) ? raw.shared_serials.map(value => { const member = objectValue(value); return { serial_no: textValue(member.serial_no), customer_code: textValue(member.customer_code) || null, finished_specification: textValue(member.finished_specification) || null, delivery_date: textValue(member.delivery_date) || null, delivery_quantity: optionalInteger(member.delivery_quantity, 1) } }) : [],
     sludge_gross_weight: raw.sludge_gross_weight == null ? null : numberValue(raw.sludge_gross_weight),
     sludge_content_percent: raw.sludge_content_percent == null ? null : numberValue(raw.sludge_content_percent),
     sludge_percent_locked: raw.sludge_percent_locked === true,
@@ -214,7 +218,7 @@ function queryString(params: MaterialTransferListParams): string {
 export const materialTransferApi = {
   async trace(serialNo: string): Promise<MaterialTrace> {
     const result = await request<MaterialTrace>(`/material-trace?${new URLSearchParams({ serial_no: serialNo.trim() })}`)
-    return { ...result, reallocations: result.reallocations?.map(normalizeMaterialTransfer), items: result.items.map(item => ({ ...normalizeMaterialTransfer(item), on_hand_quantity: item.on_hand_quantity, on_hand_weight: item.on_hand_weight, owned_quantity: item.owned_quantity, owned_weight: item.owned_weight, processing_delta_weight: item.processing_delta_weight, weight_difference: item.weight_difference, weight_root_transfer_id: item.weight_root_transfer_id })) }
+    return { ...result, reallocations: result.reallocations?.map(normalizeMaterialTransfer), items: result.items.map(item => ({ ...normalizeMaterialTransfer(item), other_processing_outputs: item.other_processing_outputs, on_hand_quantity: item.on_hand_quantity, on_hand_weight: item.on_hand_weight, owned_quantity: item.owned_quantity, owned_weight: item.owned_weight, processing_delta_weight: item.processing_delta_weight, weight_difference: item.weight_difference, weight_root_transfer_id: item.weight_root_transfer_id })) }
   },
   async counts(params: MaterialTransferFilterParams = {}): Promise<MaterialTransferStatusCounts> {
     const statuses = ['pending', 'received', 'voided', 'dispatched'] as const

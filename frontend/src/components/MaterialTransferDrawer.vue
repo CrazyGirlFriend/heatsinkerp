@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { sludgeSummary } from '@/utils/sludgeWeight'
 import { CircleCheck, Delete, EditPen, Lock, Printer } from '@element-plus/icons-vue'
 import {
@@ -75,6 +76,7 @@ const voiding = ref(false)
 const editOpen = ref(false)
 const deliveryOpen = ref(false), deliveryBusy = ref(false)
 const printReady = ref(false)
+const printSheet = ref<InstanceType<typeof MaterialTransferPrintSheet> | null>(null)
 const reviewNotice = ref('')
 const warehouseLocation = ref(''), warehouseLocationKey = ref(''), locationBusy = ref(false)
 const warehouseReceiver = computed(() => current.value?.next_team.code === 'FACTORY-WAREHOUSE')
@@ -293,14 +295,21 @@ async function voidTransfer(): Promise<void> {
 }
 
 async function printTransfer(): Promise<void> {
-  if (!current.value || !props.allowPrint) return
-
+  if (!current.value || !props.allowPrint || printReady.value) return
+  const batchNo = current.value.batch_no, epoch = requestVersion
   printReady.value = true
-  await nextTick()
-  await nextTick()
-  document.body.classList.add('material-transfer-printing')
   try {
+    const latest = await materialTransferApi.get(batchNo)
+    if (!props.modelValue || epoch !== requestVersion || current.value?.batch_no !== batchNo) return
+    current.value = latest
+    await nextTick()
+    await nextTick()
+    await printSheet.value?.prepare?.()
+    if (!props.modelValue || epoch !== requestVersion) return
+    document.body.classList.add('material-transfer-printing')
     window.print()
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '打印失败，请重试', 'error')
   } finally {
     document.body.classList.remove('material-transfer-printing')
     printReady.value = false
@@ -373,7 +382,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
       <ElAlert v-if="reviewNotice" class="review-notice" type="warning" :closable="false" :title="reviewNotice" show-icon />
       <ElAlert v-if="current.rejection_reason != null && current.status === 'pending'" type="warning" :closable="false" :title="current.rejection_reason ? '待上序修正：' + current.rejection_reason : '已退回核对，待上序修正'" />
       <div class="document-barcode"><BarcodeCard :value="current.batch_no" :entity-label="processed ? '加工批次号' : receipt ? '入库批次号' : '转料批次号'" compact /><ElButton v-if="grouped" link type="primary" @click="groupOpen = true">历史合并记录 · {{ current.dispatch_no }}</ElButton></div>
-      <MaterialTransferDocumentFields :transfer="current" group="all"><template #serial><RouterLink :to="tracePath">{{ current.serial_no }}</RouterLink><SerialUrgencyBadge :urgency="current.urgency" /></template></MaterialTransferDocumentFields>
+      <MaterialTransferDocumentFields :transfer="current" group="all"><template #serial><RouterLink :to="tracePath">{{ sharedSerialLabel(current) }}</RouterLink><SerialUrgencyBadge :urgency="current.urgency" /></template></MaterialTransferDocumentFields>
       <section v-if="canConfirm && warehouseReceiver" class="receipt-location"><label>入库仓位</label><strong v-if="current.warehouse_location">{{ current.warehouse_location }}</strong><WarehouseLocationSelect v-else v-model="warehouseLocation" v-model:reservation-key="warehouseLocationKey" :team-id="Number(current.next_team.id)" :serial-no="current.serial_no" :material-name="current.material_name || ''" :material-type="current.material_type || ''" :active="modelValue && !groupOpen" :disabled="confirming" @busy-change="locationBusy = $event" /></section>
       <section class="document-records"><h3>{{ processed ? '加工记录' : receipt ? '入库记录' : '流转记录' }}</h3><MaterialTransferHistory :transfer="current" /></section>
       <section v-if="current.loss_records?.length" class="document-records"><h3>来源批次丢失记录</h3><div class="document-table-scroll"><table class="loss-record-table business-document-table" aria-label="来源批次丢失记录"><thead><tr><th scope="col">记录号</th><th scope="col">件数</th><th scope="col">重量（kg）</th><th scope="col">原因</th><th scope="col">登记人 / 时间</th></tr></thead><tbody><tr v-for="loss in current.loss_records" :key="loss.id"><td>{{ loss.loss_no }}</td><td>{{ loss.quantity }}</td><td>{{ loss.weight }}</td><td class="table-prose">{{ loss.reason }}</td><td>{{ loss.created_by }}<br />{{ formatDateTime(loss.created_at) }}</td></tr></tbody></table></div></section>
@@ -396,7 +405,7 @@ watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id
   <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="current?.dispatch_no || ''" :allow-print="allowPrint" :receipt-only="receiptOnly" @changed="groupChanged" @busy-change="emit('busyChange', $event)" />
   <MaterialDeliveryDialog v-model="deliveryOpen" :transfer="current" @saved="updateCurrent" @refreshed="updateCurrent" @busy="deliveryBusy = $event" />
   <MaterialTransferFormDialog v-model="editOpen" :transfer="current" @saved="updateCurrent" @refreshed="updateCurrent" />
-  <Teleport to="body"><MaterialTransferPrintSheet v-if="current && printReady" :transfer="current" /></Teleport>
+  <Teleport to="body"><MaterialTransferPrintSheet v-if="current && printReady" ref="printSheet" :transfer="current" /></Teleport>
 </template>
 
 <style scoped>

@@ -1,3 +1,4 @@
+import type { SharedMaterialFields, SharedMaterialSerial } from './sharedMaterial'
 import { externalActionLabel, isExternalEntryKind, type ExternalEntryKind, type MaterialEntryKind, type MaterialTransfer, type MaterialTransferDocumentFields, type MaterialTransferTeam, type MaterialType, type SludgeMeasurement } from './materialTransfer'
 
 export const balanceFields = ['received', 'dispatched', 'reserved', 'in_transit', 'lost', 'on_hand', 'available'] as const
@@ -33,13 +34,15 @@ export interface QuantityAdjustment {
   outputs?: ProcessingOutput[]
 }
 export interface CreateProcessingOutput extends SludgeMeasurement {
+  serial_no?: string | null
   role: import('./materialProcessing').ProcessingRole; quantity: number; weight: number; material_type: MaterialType; transfer_specification?: string | null
 }
 export interface ProcessingOutput extends CreateProcessingOutput {
+  shared_unallocated?: boolean
   id: number; batch_no: string
   on_hand_quantity?: number; on_hand_weight?: number; in_transit_quantity?: number; in_transit_weight?: number; owned_quantity?: number; owned_weight?: number
 }
-export interface QuantityAdjustmentContext extends MaterialPage<QuantityAdjustment> {
+export interface QuantityAdjustmentContext extends MaterialPage<QuantityAdjustment>, SharedMaterialFields {
   source_transfer_id: number; batch_no: string; quantity: number; weight: number; revision: number; as_of: string
   serial_no?: string; material_name?: string | null; material_type?: MaterialType | null; purpose_name?: string | null
   processing_status?: 'partial' | 'complete' | null; transfer_specification?: string | null
@@ -81,6 +84,7 @@ export type MaterialPageParams = import('./recordFilters').RecordFilterParams & 
 export interface StockParams extends MaterialPageParams { material_type?: MaterialType; availability?: 'available' | 'all' | 'dispatchable'; location_status?: 'unassigned'; source_ids?: string }
 export interface WarehouseReceiptParams extends MaterialPageParams { material_type?: MaterialType; receipt_source?: 'external' | 'internal' | 'return' }
 export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement {
+  shared_serials?: SharedMaterialSerial[]
   serial_no: string
   material_name: string
   material_type: MaterialType

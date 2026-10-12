@@ -14,6 +14,7 @@ SCRAP_MATERIAL_TYPES = ("defective", "waste", "sludge", "scrap_chips")
 class ProcessingOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     role: Literal["remaining", "produced", "scrap"]
+    serial_no: str | None = Field(default=None, min_length=1, max_length=80)
     quantity: int = Field(ge=0, le=2_147_483_647)
     weight: Decimal = Field(ge=0, max_digits=17, decimal_places=6)
     material_type: str = Field(pattern=DIRECT_MATERIAL_TYPE_PATTERN)
@@ -107,6 +108,30 @@ class MaterialTransferDocumentFields(MaterialDocumentFields):
         if value is not None and not date(2000, 1, 1) <= value <= date(2100, 12, 31):
             raise ValueError("要求发货日期须在2000至2100年之间")
         return value
+
+
+class SharedMaterialSerial(APIModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+    serial_no: str = Field(min_length=1, max_length=80)
+    customer_code: str | None = Field(default=None, max_length=80)
+    finished_specification: str | None = Field(default=None, max_length=240)
+    delivery_date: date | None = None
+    delivery_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647)
+
+    @field_validator("serial_no", "customer_code", "finished_specification")
+    @classmethod
+    def normalize_text(cls, value):
+        return value.strip() if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_member(self):
+        if not self.serial_no or self.serial_no.startswith("共投-"):
+            raise ValueError("请输入有效流水号")
+        if (self.delivery_date is None) != (self.delivery_quantity is None):
+            raise ValueError("请同时填写要求发货日期和应发成品件数")
+        if self.delivery_date and not date(2000, 1, 1) <= self.delivery_date <= date(2100, 12, 31):
+            raise ValueError("要求发货日期须在2000至2100年之间")
+        return self
 
 
 class WarehouseLocationChoice(APIModel):
@@ -204,7 +229,8 @@ class WarehouseReceiptCreate(MaterialTransferDocumentFields, WarehouseLocationCh
     """Explicit stock origin; never impersonate an upstream team or ERP event."""
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
-    serial_no: str = Field(min_length=1, max_length=80)
+    serial_no: str = Field(default="", max_length=80)
+    shared_serials: list[SharedMaterialSerial] | None = Field(default=None, min_length=2, max_length=20)
     material_name: str = Field(min_length=1, max_length=160)
     material_type: str = Field(pattern=DIRECT_MATERIAL_TYPE_PATTERN)
     quantity: int = Field(ge=0, le=2_147_483_647)
@@ -222,7 +248,7 @@ class WarehouseReceiptCreate(MaterialTransferDocumentFields, WarehouseLocationCh
             raise ValueError("来源或关联出库单不能为空白")
         return value.strip() if value is not None else None
 
-    @field_validator("serial_no", "idempotency_key")
+    @field_validator("idempotency_key")
     @classmethod
     def nonblank_text(cls, value: str) -> str:
         if not value.strip():
@@ -236,6 +262,17 @@ class WarehouseReceiptCreate(MaterialTransferDocumentFields, WarehouseLocationCh
 
     @model_validator(mode="after")
     def validate_intake(self):
+        self.serial_no = self.serial_no.strip()
+        if self.shared_serials:
+            if self.receipt_kind != "external" or self.material_type in SCRAP_MATERIAL_TYPES:
+                raise ValueError("共投入库须为正常物料的外部来料")
+            serials = [member.serial_no.casefold() for member in self.shared_serials]
+            if len(set(serials)) != len(serials):
+                raise ValueError("共投流水号不能重复")
+            if self.serial_no or self.customer_code or self.finished_specification or self.delivery_date or self.delivery_quantity:
+                raise ValueError("共投料的流水号、客户、成品规格与交期须分别填写")
+        elif not self.serial_no or self.serial_no.startswith("共投-"):
+            raise ValueError("请输入有效流水号，共投编号由系统生成")
         if self.receipt_kind == "return" and not self.external_source:
             raise ValueError("外部返料须填写来源单位")
         if self.return_dispatch_no and self.receipt_kind != "return":
@@ -297,6 +334,10 @@ class MaterialTransferEventResponse(APIModel):
 
 
 class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement):
+    shared_group_id: int | None = None
+    shared_unallocated: bool = False
+    shared_origin_batch_no: str | None = None
+    shared_serials: list[SharedMaterialSerial] = Field(default_factory=list)
     sludge_gross_weight: float | None = None
     sludge_content_percent: float | None = None
     sludge_percent_locked: bool = False

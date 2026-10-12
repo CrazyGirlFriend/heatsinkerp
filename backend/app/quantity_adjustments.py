@@ -83,6 +83,8 @@ def context(db, team_id, lot_id, page=1, page_size=10):
         MaterialTransfer.status == "received", MaterialTransfer.stock_tracked.is_(True))).one_or_none()
     if lot is None:
         raise HTTPException(404, "未找到本班组已签收的库存批次")
+    from .shared_material import document as shared_document
+    shared = shared_document(db.get(MaterialTransfer, lot_id))
     balance = db.get(Balance, lot_id)
     if balance is None:
         raise HTTPException(409, "未找到该批次的库存记录，请先核对")
@@ -99,6 +101,7 @@ def context(db, team_id, lot_id, page=1, page_size=10):
     progress = latest.processing_status if latest and latest.processing_status is not None else (
         "partial" if lot.processing_role == "remaining" else "complete" if lot.processing_role == "produced" else None)
     return {"source_transfer_id": lot_id, "batch_no": lot.batch_no, "serial_no": lot.serial_no,
+            **shared,
             "material_name": lot.material_name, "material_type": lot.material_type, "purpose_name": lot.purpose_name,
             "quantity": balance.on_hand_quantity, "weight": float(balance.on_hand_weight),
             "processing_status": progress, "origin_processing_record": record_dict(origin) if origin else None,

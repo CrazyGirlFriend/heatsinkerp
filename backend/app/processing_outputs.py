@@ -38,6 +38,8 @@ def create_outputs(db, lot, payload, user, now):
     items = []
     numbers = next_transfer_batch_numbers(db, len(payload.outputs))
     for output, number in zip(payload.outputs, numbers, strict=True):
+        from .shared_material import allocate
+        serial_no, unallocated, member_fields = allocate(lot, output)
         if (
             output.role == "remaining"
             and lot.material_type is not None
@@ -58,9 +60,12 @@ def create_outputs(db, lot, payload, user, now):
             delivery_date=None,
             delivery_quantity=None,
         )
+        fields.update(member_fields)
         item = MaterialTransfer(
             batch_no=number,
-            serial_no=lot.serial_no,
+            serial_no=serial_no,
+            shared_group_id=lot.shared_group_id,
+            shared_unallocated=unallocated,
             entry_kind="processing_output",
             processing_role=output.role,
             source_transfer_id=lot.id,
@@ -99,6 +104,8 @@ def create_outputs(db, lot, payload, user, now):
         {
             "id": row.id,
             "batch_no": row.batch_no,
+            "serial_no": row.serial_no,
+            "shared_unallocated": row.shared_unallocated,
             "role": row.processing_role,
             "quantity": row.quantity,
             "weight": float(row.weight),

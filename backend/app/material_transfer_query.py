@@ -41,9 +41,11 @@ def search_predicate(query: str, search_field: str = "all", search_mode: str = "
     else:
         fields = (INDEXED_SEARCH_FIELDS[search_field],)
     term = query.strip()
+    from .shared_material import serial_match
+    shared = serial_match(MaterialTransfer.serial_no, term, search_mode) if search_field in ("all", "serial_no") else False
     if search_mode == "exact":
-        return or_(*(field == term for field in fields))
+        return or_(shared, *(field == term for field in fields))
     # Treat user-supplied SQL wildcards literally, including the escape itself.
     escaped = term.replace("!", "!!").replace("%", "!%").replace("_", "!_")
     pattern = f"{escaped}%" if search_mode == "prefix" else f"%{escaped}%"
-    return or_(*(field.like(pattern, escape="!") for field in fields))
+    return or_(shared, *(field.like(pattern, escape="!") for field in fields))

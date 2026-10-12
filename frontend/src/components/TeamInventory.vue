@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Close, Flag, Operation, Refresh, Search } from '@element-plus/icons-vue'
@@ -279,7 +280,7 @@ onBeforeUnmount(() => { ++version; ++purposeVersion })
       <ElTableColumn v-for="column in visibleColumns" :key="column.key" :prop="column.key" :label="column.label" :min-width="column.width" align="center" show-overflow-tooltip :label-class-name="column.key === searchedColumn?.key ? 'searched-column' : ''" :class-name="'numeric' in column ? 'inventory-number-cell' : ''">
         <template #default="{ row }">
           <div v-if="column.key === 'serial_no'" class="inventory-inline inventory-serial">
-            <ElButton class="serial-number-link" :title="row.serial_no" link type="primary" @click="openSerial(row)"><strong>{{ row.serial_no }}</strong></ElButton><SerialUrgencyBadge :urgency="row.urgency" />
+            <ElButton class="serial-number-link" :title="sharedSerialLabel(row)" link type="primary" @click="openSerial(row)"><strong>{{ sharedSerialLabel(row) }}</strong></ElButton><SerialUrgencyBadge :urgency="row.urgency" />
             <ElTooltip v-if="canManageUrgency" :content="row.urgency?.urgent ? '取消加急' : '标记加急'" placement="top"><ElButton class="warehouse-urgency-action" link type="primary" :icon="row.urgency?.urgent ? Close : Flag" :aria-label="row.urgency?.urgent ? '取消加急' : '标记加急'" @click="flag(row)" /></ElTooltip>
           </div>
           <ElTooltip v-else-if="column.key === 'material_name'" :content="`规格：${row.transfer_specification}`" :disabled="!row.transfer_specification || separateSpecification" :trigger="['hover', 'focus']" placement="top"><span class="inventory-material" :title="row.material_name || '未填写材质'" :tabindex="row.transfer_specification && !separateSpecification ? 0 : undefined">{{ column.format(asRow(row)) }}</span></ElTooltip>

@@ -272,6 +272,8 @@ def create_dispatch(db, team_id, payload, user):
                 sludge_measurement(kind, line.weight, line.sludge_gross_weight, line.sludge_content_percent, source=lot)
                 if source.code == WAREHOUSE_TEAM_CODE and kind != lot.material_type:
                     raise HTTPException(422, "库房按原物料转出，不能更改物料类型")
+                if external and lot.shared_unallocated and kind not in SCRAP_MATERIAL_TYPES:
+                    raise HTTPException(422, "共投料尚未分配流水号，请先登记加工分配，再对外出库或发货")
                 workflow.validate_material_route(lot.material_type, kind, target, payload.entry_kind, payload.notes)
                 if target is not None:
                     workflow._validate_warehouse_type(target, kind)
@@ -317,6 +319,7 @@ def create_dispatch(db, team_id, payload, user):
                     fields["material_type"] = line.material_type
                 transfer = MaterialTransfer(
                     batch_no=batch_no, serial_no=lot.serial_no, **fields, **purposes[line.purpose_id],
+                    shared_group_id=lot.shared_group_id, shared_unallocated=lot.shared_unallocated,
                     source_transfer_id=lot.id, dispatch_id=dispatch.id,
                     delivery_origin_id=lot.delivery_origin_id or lot.id,
                     source_team_id=source.id, source_team_code=source.code, source_team_name=source.name,
@@ -457,6 +460,7 @@ def stock_table(team_id=None):
                   MaterialTransfer.batch_no, MaterialTransfer.serial_no, MaterialTransfer.material_name,
                   MaterialTransfer.material_type, MaterialTransfer.source_batch_no, MaterialTransfer.received_at,
                   MaterialTransfer.processing_role,
+                  MaterialTransfer.shared_group_id, MaterialTransfer.shared_unallocated,
                   *(value.label(key) for key, value in columns.items())).join(
         MaterialTransfer, MaterialTransfer.id == balance.transfer_id
     ).where(
@@ -472,8 +476,9 @@ def balance_dict(row):
 
 
 def literal_query(query, columns):
+    from .shared_material import serial_match
     escaped = query.strip().replace("!", "!!").replace("%", "!%").replace("_", "!_")
-    return or_(*(column.like(f"%{escaped}%", escape="!") for column in columns))
+    return or_(*(serial_match(column, query, "contains") if column.key == "serial_no" else column.like(f"%{escaped}%", escape="!") for column in columns))
 
 
 def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=None, material_type=None, availability="available", location_status=None, source_ids=None, page=1, page_size=20):
@@ -491,7 +496,8 @@ def list_stock(db, team_id, user, *, record_filters=None, query=None, serial_no=
         filters.append(unassigned_predicate(stock))
     filters.extend((record_filters or RecordFilters()).predicates(stock.c.received_at, stock.c.serial_no))
     if serial_no is not None:
-        filters.append(stock.c.serial_no == serial_no.strip())
+        from .shared_material import serial_match
+        filters.append(serial_match(stock.c.serial_no, serial_no))
     if availability == "available":
         filters.append(or_(stock.c.available_quantity != 0, stock.c.available_weight != 0))
     child = aliased(MaterialTransfer)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import TableExportButton from './TableExportButton.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
@@ -23,7 +24,7 @@ const rows = ref<WarehouseLocation[]>([]), total = ref(0), page = ref(1)
 const query = ref(''), appliedQuery = ref(''), filter = ref<WarehouseLocationFilter>(), appliedFilter = ref<WarehouseLocationFilter>()
 function exportSource() {
   const query = appliedQuery.value, state = appliedFilter.value
-  const joined = (row: WarehouseLocation, field: 'serial_no' | 'material_name' | 'batch_no') => [...new Set(row.batches.map(batch => batch[field]).filter(Boolean))].join('、')
+  const joined = (row: WarehouseLocation, field: 'serial_no' | 'material_name' | 'batch_no') => [...new Set(row.batches.map(batch => field === 'serial_no' ? sharedSerialLabel(batch) : batch[field]).filter(Boolean))].join('、')
   return tableExportSource('仓位库存', total.value, [
     { key: 'name', label: '仓位', value: (row: WarehouseLocation) => row.name },
     { key: 'status', label: '状态', value: stateLabel },
@@ -50,7 +51,7 @@ const detailBatches = computed(() => detail.value ? (detailTab.value === 'receiv
 const detailIdentity = computed(() => {
   const batches = detail.value?.batches || []
   return {
-    serial: [...new Set(batches.map(batch => batch.serial_no))].join('、'),
+    serial: [...new Set(batches.map(sharedSerialLabel))].join('、'),
     material: [...new Set(batches.map(batch => batch.material_name).filter(Boolean))].join('、'),
     type: [...new Set(batches.map(batch => materialTypeLabel(batch.material_type)))].join('、'),
   }

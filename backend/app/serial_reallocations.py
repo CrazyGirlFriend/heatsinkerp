@@ -113,6 +113,8 @@ def create(db, team_id, payload, user):
             )
             if payload.serial_no == lot.serial_no:
                 raise HTTPException(422, "目标流水号不能与当前流水号相同")
+            if lot.shared_unallocated:
+                raise HTTPException(422, "共投料请通过加工明细拆分并选择归属流水号")
             # Follow the existing signed-stock policy; this operation adds no amount cap.
             stock.available_locked(db, lot)
             validate_material_amounts(lot.material_type, payload.quantity, payload.weight)

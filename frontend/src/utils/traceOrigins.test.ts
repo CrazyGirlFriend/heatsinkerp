@@ -10,6 +10,19 @@ const lot = (id: number, parent: number | null, overrides: Partial<TraceBatch> =
 const trace = (items: TraceBatch[]): MaterialTrace => ({ serial_no: 'YS', items, positions: [], untracked_count: 0, totals: { on_hand: { quantity: 0, weight: 0 }, in_transit: { quantity: 0, weight: 0 }, external_pending: { quantity: 0, weight: 0 }, dispatched: { quantity: 0, weight: 0 }, lost: { quantity: 0, weight: 0 } } })
 
 describe('warehouse origin scope', () => {
+  it('separates shared holdings from allocated stock and colors the split by order without losing the origin', () => {
+    const shared = { shared_group_id: 1, shared_origin_batch_no: 'B1', shared_serials: [{ serial_no: 'A' }, { serial_no: 'B' }] }
+    const rows = [lot(1, null, { ...shared, shared_unallocated: true }), lot(2, 1, { ...shared, shared_unallocated: true, on_hand_quantity: 1, on_hand_weight: 40 }), lot(3, 1, { ...shared, serial_no: 'A', entry_kind: 'processing_output', on_hand_quantity: 30, on_hand_weight: 55 }), lot(4, 1, { ...shared, shared_unallocated: true, material_type: 'scrap_chips', on_hand_quantity: 0, on_hand_weight: 5 })]
+    const origins = traceOrigins(rows), scoped = traceOriginScope(trace(rows), rows)
+    expect(origins.groups).toHaveLength(1)
+    expect(origins.originById.get('3')?.id).toBe(1)
+    expect(origins.colors.get('3')).not.toBe(origins.colors.get('1'))
+    expect(scoped.totals.on_hand).toEqual({ quantity: 30, weight: 55 })
+    expect(scoped.shared_totals?.on_hand).toEqual({ quantity: 1, weight: 45 })
+    expect(scoped.shared_positions?.map(row => row.weight)).toEqual([40, 5])
+    expect(scoped.holdings?.[0]?.material_types[0]?.weight).toBe(55)
+  })
+
   it('recomputes signed measured differences for the selected family and counts each processing root only once', () => {
     const rows = [lot(1, null, { processing_delta_weight: -.500001, weight_difference: -.500001, weight_root_transfer_id: 1 }), lot(2, 1, { entry_kind: 'processing_output', processing_delta_weight: 0, weight_difference: -.500001, weight_root_transfer_id: 1, on_hand_weight: 99.499999 }), lot(3, null, { processing_delta_weight: 3, weight_difference: 3, weight_root_transfer_id: 3, on_hand_weight: -3 })]
     const scoped = traceOriginScope({ ...trace(rows), processing_delta_weight: 2.499999, weight_difference: 2.499999, max_weight_difference: 3, shortage: { quantity: 0, weight: 3 } }, [rows[0]!, rows[1]!])

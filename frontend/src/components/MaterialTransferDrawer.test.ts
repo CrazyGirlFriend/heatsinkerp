@@ -8,6 +8,7 @@ import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { MaterialTransferApiError, materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { MaterialTransfer } from '@/types/materialTransfer'
+import { showToast } from '@/stores/toast'
 const live = vi.hoisted(() => ({ refresh: async () => {}, busy: (): boolean => false, request: vi.fn() }))
 vi.mock('@/composables/useLiveRefresh', async () => {
   const { ref } = await import('vue')
@@ -139,6 +140,42 @@ describe('material transfer receipt review', () => {
     await wrapper.findAll('button').find(button => button.text() === '打印转料单')!.trigger('click')
     await flushPromises()
     expect(print).toHaveBeenCalledOnce()
+    expect(document.body.classList.contains('material-transfer-printing')).toBe(false)
+  })
+
+  it('prints the latest single-batch values after refreshing the document', async () => {
+    await render()
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(fixture({ weight: 12.345678, version: 5 }))
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {
+      expect(wrapper.getComponent({ name: 'MaterialTransferPrintSheet' }).props('transfer').weight).toBe(12.345678)
+      expect(document.body.classList.contains('material-transfer-printing')).toBe(true)
+    })
+    await wrapper.findAll('button').find(button => button.text() === '打印转料单')!.trigger('click')
+    await flushPromises()
+    expect(print).toHaveBeenCalledOnce()
+    expect(document.body.classList.contains('material-transfer-printing')).toBe(false)
+  })
+
+  it('does not print stale single-batch data if its refresh fails', async () => {
+    await render()
+    vi.mocked(materialTransferApi.get).mockRejectedValueOnce(new Error('最新批次读取失败'))
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {})
+    await wrapper.findAll('button').find(button => button.text() === '打印转料单')!.trigger('click')
+    await flushPromises()
+    expect(print).not.toHaveBeenCalled()
+    expect(showToast).toHaveBeenCalledWith('最新批次读取失败', 'error')
+    expect(document.body.classList.contains('material-transfer-printing')).toBe(false)
+  })
+
+  it('cancels a pending single-batch print when its drawer closes', async () => {
+    await render()
+    let finish!: (row: MaterialTransfer) => void
+    vi.mocked(materialTransferApi.get).mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {})
+    await wrapper.findAll('button').find(button => button.text() === '打印转料单')!.trigger('click')
+    await wrapper.setProps({ modelValue: false })
+    finish(fixture()); await flushPromises()
+    expect(print).not.toHaveBeenCalled()
     expect(document.body.classList.contains('material-transfer-printing')).toBe(false)
   })
 

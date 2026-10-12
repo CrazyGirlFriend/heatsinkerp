@@ -232,7 +232,7 @@ def ownership(db):
     return matrix, rows
 
 
-def reallocation_weights(db):
+def reallocation_weights(db, shared=False):
     source = aliased(MaterialTransfer)
     return (
         db.execute(
@@ -244,7 +244,16 @@ def reallocation_weights(db):
                 func.sum(mt.weight).label("weight"),
             )
             .join(source, source.id == mt.source_transfer_id)
-            .where(mt.entry_kind == "serial_reallocation", mt.status == "received")
+            .where(
+                and_(
+                    mt.entry_kind == "processing_output",
+                    source.shared_unallocated.is_(True),
+                    mt.shared_unallocated.is_(False),
+                )
+                if shared
+                else mt.entry_kind == "serial_reallocation",
+                mt.status == "received",
+            )
             .group_by(
                 source.serial_no, mt.serial_no, mt.next_team_id, material_name(mt.material_name)
             )
@@ -300,6 +309,9 @@ def yields(db, owned):
                 mt.serial_no,
                 name.label("material"),
                 func.sum(case((incoming, mt.weight), else_=0)).label("input_weight"),
+                func.max(case((mt.shared_unallocated.is_(True), 1), else_=0)).label(
+                    "shared_unallocated"
+                ),
                 func.sum(case((finished_shipments(), mt.weight), else_=0)).label("output_weight"),
                 func.sum(case((returned, 1), else_=0)).label("returns"),
                 func.sum(case((mt.entry_kind == "opening_stock", 1), else_=0)).label("opening"),
@@ -323,7 +335,12 @@ def yields(db, owned):
         ).mappings()
     )
     assigned_in, assigned_out = defaultdict(Decimal), defaultdict(Decimal)
-    assignments = reallocation_weights(db)
+    shared_assignments = reallocation_weights(db, shared=True)
+    shared_in, shared_out = defaultdict(Decimal), defaultdict(Decimal)
+    for item in shared_assignments:
+        shared_in[(item["target_serial"], item["material"])] += item["weight"]
+        shared_out[(item["source_serial"], item["material"])] += item["weight"]
+    assignments = reallocation_weights(db) + shared_assignments
     for item in assignments:
         assigned_in[(item["target_serial"], item["material"])] += item["weight"]
         assigned_out[(item["source_serial"], item["material"])] += item["weight"]
@@ -354,6 +371,8 @@ def yields(db, owned):
         uncertain.update(propagated)
     result = []
     for row in rows:
+        if row["shared_unallocated"]:
+            continue  # Common stock has no per-order yield until it is allocated.
         key = (row["serial_no"], row["material"])
         measured = balances.get(key, {})
         adjustment = measured.get("processing_delta_weight", Decimal(0))
@@ -382,8 +401,9 @@ def yields(db, owned):
                 "processing_delta_weight": float(adjustment),
                 "weight_difference": float(measured.get("weight_difference", 0)),
                 "max_weight_difference": float(measured.get("max_weight_difference", 0)),
-                "reallocated_in_weight": float(assigned_in[key]),
-                "reallocated_out_weight": float(assigned_out[key]),
+                "reallocated_in_weight": float(assigned_in[key] - shared_in[key]),
+                "reallocated_out_weight": float(assigned_out[key] - shared_out[key]),
+                "shared_allocated_weight": float(shared_in[key]),
                 "rate": round(output / source * 100, 2)
                 if status == "complete" and source > 0
                 else None,
@@ -474,8 +494,17 @@ def get_team_yields(
     for item in reallocation_weights(db):
         if item["source_serial"] == serial_no and (not material or item["material"] == material):
             assigned_out[item["team_id"]] += item["weight"]
+    shared_in = defaultdict(Decimal)
+    for item in reallocation_weights(db, shared=True):
+        if item["target_serial"] == serial_no and (not material or item["material"] == material):
+            shared_in[item["team_id"]] += item["weight"]
     incoming = [
-        {**r, "input_weight": Decimal(str(r["input_weight"])) - assigned_out[r["team_id"]]}
+        {
+            **r,
+            "input_weight": Decimal(str(r["input_weight"]))
+            + shared_in[r["team_id"]]
+            - assigned_out[r["team_id"]],
+        }
         for r in incoming
     ]
     roots = weight_roots(weight_lineage())
@@ -625,6 +654,22 @@ def save_plan():
 
 def delivery_rows(db, today):
     plans = defaultdict(list)
+    from .models import SharedMaterialGroup, SharedMaterialMember
+
+    for member, group in db.execute(
+        select(SharedMaterialMember, SharedMaterialGroup)
+        .join(SharedMaterialGroup)
+        .where(SharedMaterialMember.delivery_date.is_not(None))
+    ):
+        plans[member.serial_no].append(
+            {
+                "label": group.batch_no,
+                "due_date": member.delivery_date.isoformat(),
+                "quantity": member.delivery_quantity,
+                "source_batch_no": group.batch_no,
+                "legacy": False,
+            }
+        )
     # Historical plans remain visible, explicitly distinguished from batch-owned requirements.
     for plan in db.scalars(select(SerialDeliveryPlan).order_by(SerialDeliveryPlan.serial_no)):
         plans[plan.serial_no].extend(

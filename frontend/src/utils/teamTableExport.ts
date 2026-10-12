@@ -1,3 +1,4 @@
+import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { teamWorkspaceProfile } from '@/config/teamWorkspaces'
 import {
   isExternalEntryKind,
@@ -27,7 +28,7 @@ export function transferExportFields(
       ? [field('warehouse_location', '仓位', (row) => row.warehouse_location || '未填写')]
       : []),
     field('batch_no', '批次号', (row) => row.batch_no),
-    field('serial_no', '流水号', (row) => row.serial_no),
+    field('serial_no', '流水号', sharedSerialLabel),
     ...(section === 'receipts'
       ? [
           field('received_at', '入库时间', (row) => formatDateTime(row.received_at)),
@@ -95,7 +96,7 @@ export const reallocationExportFields: TableExportField<MaterialTransfer>[] = [
 ]
 
 export const globalTransferExportFields: TableExportField<MaterialTransfer>[] = [
-  { key: 'serial_no', label: '流水号', value: (row) => row.serial_no },
+  { key: 'serial_no', label: '流水号', value: sharedSerialLabel },
   { key: 'transferred_at', label: '日期', value: (row) => formatDateTime(row.transferred_at) },
   ...transferExportFields('outgoing', false).filter(
     (field) => !['serial_no', 'transferred_at', 'batch_no'].includes(field.key),

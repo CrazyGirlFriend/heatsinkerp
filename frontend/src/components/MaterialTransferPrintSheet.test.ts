@@ -1,157 +1,77 @@
 // @vitest-environment jsdom
 import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
-import type { MaterialTransfer } from '@/types/materialTransfer'
 import MaterialTransferPrintSheet from './MaterialTransferPrintSheet.vue'
-import source from './MaterialTransferPrintSheet.vue?raw'
+import MaterialBatchPrintSheet from './MaterialBatchPrintSheet.vue'
+import { dispatchFixture } from '@/testFixtures/materialDispatch'
+import type { MaterialTransfer } from '@/types/materialTransfer'
 
-vi.mock('jsbarcode', () => ({
-  default: vi.fn((element: SVGSVGElement, value: string) => element.setAttribute('data-code128-value', value)),
-}))
+vi.mock('jsbarcode', () => ({ default: vi.fn((element: SVGSVGElement, value: string) => element.setAttribute('data-code128-value', value)) }))
+const transfer = { ...dispatchFixture(1).items[0]!, batch_no: 'TL20261012000027', serial_no: 'YS-027', material_name: '材料2', transferred_by: '张建国', transferred_at: '2026-10-12T01:00:00Z', source_transfer_batch_no: 'TL-PARENT' }
 
-const transfer: MaterialTransfer = {
-  id: 7,
-  batch_no: 'TL20260906000007',
-  barcode_payload: 'TL20260906000007',
-  barcode_type: 'CODE128',
-  serial_no: 'LS-2026-007',
-  source_team: { id: 2, code: 'ZB', name: '扎板' },
-  next_team: { id: 3, code: 'TH', name: '退火' },
-  quantity: 120,
-  quantity_unit: '件',
-  weight: 18.75,
-  weight_unit: 'kg',
-  status: 'received',
-  notes: '当班转料',
-  transferred_by: '扎板班组长',
-  transferred_at: '2026-09-06T01:20:00Z',
-  received_by: '退火班组长',
-  received_at: '2026-09-06T02:10:00Z',
-  voided_by: null,
-  voided_at: null,
-  updated_at: '2026-09-06T02:10:00Z',
-  locked: true,
-  locked_at: '2026-09-06T02:10:00Z',
-  allowed_actions: [],
-}
-
-describe('material transfer print sheet', () => {
-  it('prints processing outputs as local registration with the original parent batch and no fictitious receiving signature', () => {
-    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, entry_kind: 'processing_output', processing_role: 'produced', source_transfer_batch_no: 'TL-PARENT', transfer_specification: '20 × 10 × 2 mm' } } })
-    expect(wrapper.attributes('aria-label')).toBe('A4 双联加工实物登记单')
-    for (const copy of wrapper.findAll('.material-transfer-print-copy')) {
-      expect(copy.text()).toContain('加工实物登记单'); expect(copy.text()).toContain('加工产出'); expect(copy.text()).toContain('TL-PARENT')
-      expect(copy.text()).toContain('实际尺寸'); expect(copy.text()).toContain('加工时间')
-      expect(copy.text()).not.toContain('接收方签字'); expect(copy.text()).not.toContain('转出班组')
+describe('shared transfer print template', () => {
+  it('uses identical fields and layout for one selected batch and single-batch printing', async () => {
+    const single = mount(MaterialTransferPrintSheet, { props: { transfer } })
+    const batch = mount(MaterialBatchPrintSheet, { props: { items: [transfer] } })
+    await flushPromises()
+    expect(single.get('.transfer-print-page').text()).toBe(batch.get('.transfer-print-page').text())
+    const copies = single.findAll('.transfer-print-page .transfer-print-copy')
+    expect(copies).toHaveLength(2)
+    expect(copies[0]!.get('.transfer-print-lines').text()).toBe(copies[1]!.get('.transfer-print-lines').text())
+    expect(single.findAll('.transfer-print-page svg[data-code128-value="TL20261012000027"]')).toHaveLength(2)
+    expect(copies[0]!.text()).toContain('TL-PARENT')
+    single.unmount(); batch.unmount()
+  })
+  it.each(['库房', '轧制', '退火', '研磨', '线切割', '雕刻', '电镀', '检验'])('keeps the same columns and internal transfer title for %s', async name => {
+    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, source_team: { ...transfer.source_team, name } } } })
+    await flushPromises()
+    const copy = wrapper.get('.transfer-print-page .transfer-print-copy')
+    expect(copy.get('h1').text()).toBe('物料转料单')
+    expect(copy.findAll('thead th').map(cell => cell.text())).toEqual(['流水号', '材质', '物料类型', '实际尺寸', '件数', '重量 (kg)', '接收业务', '本次批次 / 条码'])
+    expect(copy.text()).toContain(name)
+    wrapper.unmount()
+  })
+  it.each(['pending', 'received'] as const)('leaves only a blank receiver signature for %s transfers', async status => {
+    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, status, received_by: '李明', received_at: '2026-10-12T02:30:00Z' } } })
+    await flushPromises()
+    for (const copy of wrapper.findAll('.transfer-print-page .transfer-print-copy')) {
+      expect(copy.text()).toContain('接收班组')
+      expect(copy.text()).toContain('张建国')
+      expect(copy.text()).toContain('接收方签字')
+      for (const text of ['接收人', '签收时间', '李明', '2026-10-12 10:30']) expect(copy.text()).not.toContain(text)
     }
     wrapper.unmount()
   })
-  it('prints actual sludge, percentage and accounting kg in both copies', () => {
-    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, material_type: 'sludge', weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30 } } })
-    for (const copy of wrapper.findAll('.material-transfer-print-copy')) {
-      expect(copy.text()).toContain('废泥实重'); expect(copy.text()).toContain('有效材料占比'); expect(copy.text()).toContain('折算重量')
-      expect(copy.text()).toContain('10 kg'); expect(copy.text()).toContain('30%'); expect(copy.text()).toContain('3 kg')
-    }
+  it.each([
+    ['processing_output', '加工实物登记单', '加工登记联', '加工类别'],
+    ['opening_stock', '初始库存登记单', '班组留存联', '登记班组'],
+    ['warehouse_receipt', '库房入库单', '库房留存联', '入库来源类别'],
+    ['warehouse_outbound', '出库单', '出库留存联', '出库去向'],
+    ['inspection_shipment', '发货单', '发货留存联', '发货去向'],
+    ['serial_reallocation', '流水号转投单', '转投留存联', '转投原因'],
+  ] as const)('preserves the business meaning of %s', async (kind, title, copyName, label) => {
+    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, entry_kind: kind, processing_role: 'produced', notes: '示例说明', external_destination: '客户收货仓', next_team: { id: 15, code: 'FACTORY-WAREHOUSE', kind: 'warehouse', name: '库房' }, warehouse_location: 'A-01' } } })
+    await flushPromises()
+    const copy = wrapper.get('.transfer-print-page .transfer-print-copy')
+    expect(copy.attributes('aria-label')).toBe(copyName)
+    expect(copy.get('h1').text()).toBe(title)
+    expect(copy.text()).toContain(label)
+    expect(copy.text()).not.toContain('接收方签字')
+    expect(copy.text()).toContain('A-01')
     wrapper.unmount()
   })
-  it('prints the recorded warehouse location in both copies', () => {
-    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, next_team: { id: 1, code: 'FACTORY-WAREHOUSE', name: '库房' }, warehouse_location: 'A区-01' } } })
-    for (const copy of wrapper.findAll('.material-transfer-print-copy')) {
-      expect(copy.text()).toContain('入库仓位')
-      expect(copy.text()).toContain('A区-01')
-    }
-    wrapper.unmount()
-  })
-  it('places the receiving team and its historical purpose together in both copies', async () => {
-    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, next_team: { id: 8, code: 'FACTORY-QC', name: '检验' }, purpose_name: '去毛刺' } } })
-    await flushPromises()
-    for (const copy of wrapper.findAll('.material-transfer-print-copy')) {
-      const destination = copy.findAll('tr').find(row => row.findAll('th').some(th => th.text() === '接收班组'))!
-      expect(destination.findAll('th').map(th => th.text())).toEqual(['接收班组', '接收业务'])
-      expect(destination.findAll('td').map(td => td.text())).toEqual(['检验', '去毛刺'])
-      expect(copy.findAll('th').filter(th => th.text() === '接收业务')).toHaveLength(1)
-    }
-    wrapper.unmount()
-  })
-
-  it('prints opening stock as an already-posted origin, with purpose and no fictitious upstream', async () => {
-    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, entry_kind: 'opening_stock', purpose_id: 1, purpose_name: '去毛刺' } } })
-    await flushPromises()
-    expect(wrapper.text()).toContain('初始库存登记单')
-    expect(wrapper.text()).toContain('登记班组')
-    expect(wrapper.text()).toContain('去毛刺')
-    expect(wrapper.text()).not.toContain('转出班组')
-    expect(wrapper.text()).not.toContain('接收确认联')
-    expect(wrapper.classes()).not.toContain('material-transfer-print-sheet--extended')
-    wrapper.unmount()
-  })
-  it.each([['warehouse_outbound', '出库'], ['inspection_shipment', '发货']] as const)('prints %s as an external confirmation with no receiving team', async (kind, verb) => {
-    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, entry_kind: kind, external_destination: '客户外部收货仓', next_team: { id: '', code: '', name: '客户外部收货仓' }, status: 'dispatched', dispatched_by: '本班组确认人', dispatched_at: '2026-09-07T01:00:00Z' } } })
-    await flushPromises()
-    expect(wrapper.attributes('aria-label')).toBe(`A4 双联${verb}单`)
-    expect(wrapper.get(`[aria-label="${verb}留存联"]`).text()).toContain(`${verb}去向`)
-    expect(wrapper.get(`[aria-label="${verb}凭证联"]`).text()).toContain('客户外部收货仓')
-    expect(wrapper.text()).toContain(`已${verb}`); expect(wrapper.text()).toContain('本班组确认人')
-    expect(wrapper.text()).not.toContain('接收班组'); expect(wrapper.text()).not.toContain('接收方签字')
-  })
-  it('prints warehouse intake copies as a stock origin rather than a team-to-team handoff', async () => {
-    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, entry_kind: 'warehouse_receipt', source_team: { id: '', code: '', name: '库房手工入库' }, next_team: { id: 1, code: 'FACTORY-WAREHOUSE', name: '库房', kind: 'warehouse' }, notes: '到货登记' } } })
-    await flushPromises()
-    expect(wrapper.attributes('aria-label')).toBe('A4 双联入库单')
-    expect(wrapper.get('[aria-label="库房留存联"]').text()).toContain('入库来源')
-    expect(wrapper.get('[aria-label="入库凭证联"]').text()).toContain('外部来源未登记')
-    expect(wrapper.text()).toContain('已入库'); expect(wrapper.text()).toContain('入库说明')
-    expect(wrapper.text()).not.toContain('转出班组'); expect(wrapper.text()).not.toContain('接收确认联')
-    expect(wrapper.findAll('svg[data-code128-value="TL20260906000007"]')).toHaveLength(2)
-  })
-  it('prints semi-finished inbound material and its explanation by destination kind', async () => {
-    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: { ...transfer, next_team: { ...transfer.next_team, name: '中央收发站', kind: 'warehouse' }, material_type: 'semi_finished', notes: '中途退回，表面未处理' } } })
-    await flushPromises()
-    for (const copy of wrapper.findAll('.material-transfer-print-copy')) {
-      expect(copy.text()).toContain('半成品')
-      expect(copy.text()).toContain('入库说明')
-      expect(copy.text()).toContain('中途退回，表面未处理')
-    }
-  })
-
-  it('renders two bounded handoff copies with the same Code 128 batch barcode', async () => {
-    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer } })
-    await flushPromises()
-    expect(wrapper.findAll('.material-transfer-print-copy')).toHaveLength(2)
-    expect(wrapper.findAll('table.print-fields')).toHaveLength(2)
-    expect(wrapper.find('dl.print-fields').exists()).toBe(false)
-    expect(wrapper.get('[aria-label="转出留存联"]').text()).toContain('扎板')
-    expect(wrapper.get('[aria-label="接收确认联"]').text()).toContain('退火')
-    expect(wrapper.text()).toContain('LS-2026-007')
-    expect(wrapper.text()).toContain('120 件')
-    expect(wrapper.text()).toContain('18.75 kg')
-    expect(wrapper.findAll('svg[data-code128-value="TL20260906000007"]')).toHaveLength(2)
-  })
-
-  it('uses a teleported-body-compatible A4 print selector without a process workflow', () => {
-    expect(source).toContain('@page { size: A4 portrait; margin: 12mm; }')
-    expect(source).toContain('body.material-transfer-printing > :not(.material-transfer-print-sheet)')
-    expect(source).not.toMatch(/工单号|工艺路线|报工/)
-  })
-
-  it('prints complete identical document fields in both copies and permits long text to paginate', async () => {
+  it('retains every optional document field and every character of long notes in both copies', async () => {
     const technical = `首行\n${'技术要求完整保留，'.repeat(350)}末行`
-    const document = { ...transfer, material_type: 'scrap_chips' as const, quantity: 0, finished_quantity: 132, source_batch_no: 'RAW-009', material_name: 'Mo70Cu30', customer_code: '001440', finished_specification: 'Φ20×4', transfer_specification: '散装', technical_requirements: technical, product_code: 'P-01', part_no: 'PART-2', material_shape: '圆', material_description: '完整物料说明', outsourced_unit: '外委单位甲', purpose_category: '样品', category_level3: '三级A', order_category: '生产', special_process: '特殊工艺文本说明' }
+    const document: MaterialTransfer = { ...transfer, source_batch_no: 'RAW-009', material_type: 'scrap_chips', quantity: 99, finished_quantity: 132, customer_code: '001440', finished_specification: 'Φ20×4', transfer_specification: '散装', technical_requirements: technical, product_code: 'P-01', part_no: 'PART-2', material_shape: '圆', material_description: '完整物料说明', outsourced_unit: '外委单位甲', purpose_category: '样品', category_level3: '三级A', order_category: '生产', special_process: '特殊工艺文本说明', delivery_date: '2026-10-20', delivery_quantity: 123, delivery_origin_batch_no: 'TL-ORIGIN' }
     const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer: document } })
     await flushPromises()
-    const copies = wrapper.findAll('.material-transfer-print-copy')
-    expect(copies[0]!.get('.print-fields').text()).toBe(copies[1]!.get('.print-fields').text())
-    for (const copy of copies) {
-      expect(copy.text()).toContain('废屑')
-      expect(copy.text()).toContain('0 件')
-      expect(copy.text()).toContain('132 件')
-      expect(copy.text()).toContain('RAW-009')
-      expect(copy.text()).toContain('001440')
-      expect(copy.text()).toContain(technical)
-      expect(copy.text()).toContain('特殊工艺文本说明')
-      expect(copy.text()).toContain('接收时间')
-      expect(copy.get('svg').attributes('data-code128-value')).toBe(transfer.batch_no)
+    for (const copy of wrapper.findAll('.transfer-print-page .transfer-print-copy')) {
+      const parts = copy.findAll('.transfer-print-pairs > div').filter(field => field.get('strong').text().startsWith('技术要求')).map(field => field.get('span').element.textContent)
+      expect(parts.join('')).toBe(technical)
+      for (const value of ['RAW-009', '001440', '132 件', 'P-01', 'PART-2', '外委单位甲', '三级A', '特殊工艺文本说明', '123 件', 'TL-ORIGIN']) expect(copy.text()).toContain(value)
+      expect(copy.get('.transfer-print-material').findAll('td')[4]!.text()).toBe('—')
+      expect(copy.get('.transfer-print-total').text()).not.toContain('99')
     }
-    expect(wrapper.classes()).toContain('material-transfer-print-sheet--extended')
+    wrapper.unmount()
   })
 })

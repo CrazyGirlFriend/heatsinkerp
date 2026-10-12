@@ -33,7 +33,8 @@ def test_each_batch_has_its_own_identity_status_and_paginated_source_scope(clien
     pages = [movements(client, s, origin['id'], page=i, page_size=2) for i in (1, 2)]
     assert [len(page['items']) for page in pages] == [2, 2]
     assert {row['id'] for page in pages for row in page['items']} == set(by_id)
-    assert client.get(base(s) + '/inventory').json()['items'][0]['on_hand_quantity'] == 40
+    inventory = client.get(base(s) + '/inventory').json()['items']
+    assert next(row for row in inventory if row['group_id'] == origin['id'])['on_hand_quantity'] == 40
     assert client.delete('/api/material-transfers/' + pending['items'][0]['batch_no'], headers=s['headers']).status_code == 204
     updated = movements(client, s, origin['id'])
     assert updated['total'] == 4

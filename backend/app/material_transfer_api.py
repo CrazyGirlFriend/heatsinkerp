@@ -103,7 +103,8 @@ def list_material_transfers(
     if material_type is not None:
         filters.append(MaterialTransfer.material_type == material_type)
     if serial_no is not None:
-        filters.append(MaterialTransfer.serial_no == serial_no.strip())
+        from .shared_material import serial_match
+        filters.append(serial_match(MaterialTransfer.serial_no, serial_no))
     if source_team_id is not None:
         filters.append(MaterialTransfer.source_team_id == source_team_id)
     if target_id is not None:

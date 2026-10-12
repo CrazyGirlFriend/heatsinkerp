@@ -31,6 +31,22 @@ async function edit() {
 }
 
 describe('processing piece adjustment', () => {
+  it('requires an order only for shared produced output and keeps remainder and scrap unallocated', async () => {
+    vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({ ...context(), shared_group_id: 1, shared_unallocated: true, shared_serials: [{ serial_no: 'A' }, { serial_no: 'B' }] })
+    wrapper = mount(QuantityAdjustmentDialog, { props: { modelValue: true, teamId: 2, sourceId: 10, canWrite: true, processing: true }, global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } } })
+    await flushPromises()
+    expect(wrapper.getComponent(ElSwitch).props('disabled')).toBe(true)
+    pieces(1, 1); weight(1, 40); pieces(2, 30); weight(2, 55); pieces(3, 0); weight(3, 5)
+    await click('保存加工登记')
+    expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+    const select = wrapper.findAllComponents(ElSelect).find(input => input.props('ariaLabel') === '明细2归属流水号')!
+    expect(select.element.closest('.dialog-field')?.classList.contains('is-error')).toBe(true)
+    select.vm.$emit('update:modelValue', 'A'); await click('保存加工登记')
+    const outputs = vi.mocked(teamMaterialApi.changeQuantity).mock.calls[0]![1].outputs!
+    expect(outputs.map(output => output.serial_no)).toEqual([undefined, 'A', undefined])
+    expect(outputs.map(output => output.weight)).toEqual([40, 55, 5])
+  })
+
   async function detailMode() {
     await render(); await wrapper.setProps({ processing: true })
     wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', true)

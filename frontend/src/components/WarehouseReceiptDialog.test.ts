@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
-import { ElInputNumber, ElSelect } from 'element-plus'
+import { ElInputNumber, ElSelect, ElSwitch, ElDatePicker } from 'element-plus'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WarehouseReceiptDialog from './WarehouseReceiptDialog.vue'
@@ -44,6 +44,29 @@ async function fill() {
 async function submit() { await wrapper.get('form').trigger('submit'); await flushPromises() }
 
 describe('warehouse manual receipt', () => {
+  it('submits one shared physical batch with distinct order requirements, validates duplicate identities and preserves retries', async () => {
+    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(new TeamMaterialApiError('网络中断'))
+    await render(); await fill()
+    wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', true); await flushPromises()
+    expect(wrapper.find('input[aria-label="流水号"]').exists()).toBe(false)
+    await wrapper.get('input[aria-label="共投流水号1"]').setValue(' A ')
+    await wrapper.get('input[aria-label="共投流水号2"]').setValue('a')
+    await submit()
+    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+    expect(wrapper.get('input[aria-label="共投流水号2"]').element.closest('.el-form-item')?.classList.contains('is-error')).toBe(true)
+    await wrapper.get('input[aria-label="共投流水号2"]').setValue('B')
+    await wrapper.get('input[aria-label="共投客户1"]').setValue('CA')
+    await wrapper.get('input[aria-label="共投成品规格1"]').setValue('20 × 10 × 2 mm')
+    wrapper.findAllComponents(ElDatePicker)[0]!.vm.$emit('update:modelValue', '2026-11-01')
+    wrapper.findAllComponents(ElInputNumber).find(input => input.props('ariaLabel') === '共投应发件数1')!.vm.$emit('update:modelValue', 30)
+    await submit()
+    const original = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
+    expect(original).toMatchObject({ serial_no: '', quantity: 0, weight: .005, customer_code: null, finished_specification: null, delivery_date: null, delivery_quantity: null,
+      shared_serials: [{ serial_no: 'A', customer_code: 'CA', finished_specification: '20 × 10 × 2 mm', delivery_date: '2026-11-01', delivery_quantity: 30 }, { serial_no: 'B', customer_code: null, finished_specification: null, delivery_date: null, delivery_quantity: null }] })
+    wrapper.unmount(); await render(); await submit()
+    expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]).toEqual(original)
+  })
+
   it('marks selected metadata, preserves manual edits and keeps receipt amounts independent', async () => {
     await render()
     await wrapper.get('input[aria-label="流水号"]').setValue('YS-007')

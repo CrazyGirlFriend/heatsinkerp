@@ -23,6 +23,8 @@ RESET_TABLES = (
     "material_losses",
     "material_quantity_adjustments",
     "material_transfers",
+    "shared_material_members",
+    "shared_material_groups",
     "material_dispatches",
     "opening_stock_submissions",
     "serial_urgency_events",

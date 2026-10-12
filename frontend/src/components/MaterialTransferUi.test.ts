@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import drawerSource from './MaterialTransferDrawer.vue?raw'
 import formSource from './MaterialTransferFormDialog.vue?raw'
 import printSource from './MaterialTransferPrintSheet.vue?raw'
+import printCopySource from './MaterialTransferPrintCopy.vue?raw'
+import printModelSource from '@/utils/materialTransferPrint.ts?raw'
 import listSource from '@/pages/TransferBatchesPage.vue?raw'
 import traceSource from '@/pages/MaterialTracePage.vue?raw'
 
@@ -51,10 +53,10 @@ describe('pure material transfer interface', () => {
     expect(drawerSource).toContain('<Teleport to="body">')
     expect(drawerSource).toContain("document.body.classList.add('material-transfer-printing')")
     expect(printSource).toContain('body.material-transfer-printing > :not(.material-transfer-print-sheet)')
-    expect(printSource).toContain('<BarcodeCard')
-    expect(printSource).toContain('Code 128')
-    expect(printSource).toContain('转出留存联')
-    expect(printSource).toContain('接收确认联')
+    expect(printSource).toContain('<MaterialTransferPrintDocument')
+    expect(printCopySource).toContain('<BarcodeCard')
+    expect(printModelSource).toContain('转出留存联')
+    expect(printModelSource).toContain('接收确认联')
     expect(printSource).not.toMatch(/工单号|产品|工艺|报工/)
   })
 })

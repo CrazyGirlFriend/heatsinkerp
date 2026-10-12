@@ -44,6 +44,9 @@ def database(monkeypatch):
                 ),
                 Column("dispatch_id", ForeignKey("material_dispatches.id", ondelete="RESTRICT")),
                 Column(
+                    "shared_group_id", ForeignKey("shared_material_groups.id", ondelete="RESTRICT")
+                ),
+                Column(
                     "opening_stock_id",
                     ForeignKey("opening_stock_submissions.id", ondelete="RESTRICT"),
                 ),
@@ -51,6 +54,10 @@ def database(monkeypatch):
         if name in ("material_losses", "material_transfer_events"):
             columns += [
                 Column("transfer_id", ForeignKey("material_transfers.id", ondelete="RESTRICT"))
+            ]
+        if name == "shared_material_members":
+            columns += [
+                Column("group_id", ForeignKey("shared_material_groups.id", ondelete="RESTRICT"))
             ]
         Table(name, metadata, *columns)
     metadata.create_all(engine)
@@ -64,6 +71,8 @@ def database(monkeypatch):
         connection.execute(transfers.insert(), {"id": 2, "source_transfer_id": 1, "dispatch_id": 1})
         for name in ("material_losses", "material_transfer_events"):
             connection.execute(metadata.tables[name].insert(), {"id": 1, "transfer_id": 2})
+        connection.execute(metadata.tables["material_transfers"].update().values(shared_group_id=1))
+        connection.execute(metadata.tables["shared_material_members"].update().values(group_id=1))
     try:
         yield engine, metadata
     finally:

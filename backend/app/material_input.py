@@ -3,7 +3,7 @@
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from .models import MaterialTransfer
+from .models import MaterialTransfer, SharedMaterialGroup, SharedMaterialMember
 
 INPUT_FIELDS = (
     "serial_no",
@@ -28,6 +28,8 @@ def input_suggestions(db: Session, field: str, query: str, limit: int) -> dict:
     """Use one latest document per value, with an exact match before similar values."""
     column = getattr(MaterialTransfer, field)
     filters = [MaterialTransfer.status != "voided", column.is_not(None), column != ""]
+    if field == "serial_no":
+        filters.append(MaterialTransfer.shared_unallocated.is_(False))
     if query.strip():
         term = query.strip().replace("!", "!!").replace("%", "!%").replace("_", "!_")
         filters.append(column.like(f"%{term}%", escape="!"))
@@ -45,4 +47,32 @@ def input_suggestions(db: Session, field: str, query: str, limit: int) -> dict:
             {name: getattr(latest, name) for name in PROFILE_FIELDS} if field == "serial_no" else {}
         )
         items.append({"value": row[0], "details": details, "source_batch_no": latest.batch_no})
-    return {"items": items}
+    if field == "serial_no":
+        member_query = select(SharedMaterialMember, SharedMaterialGroup.batch_no).join(
+            SharedMaterialGroup
+        )
+        if query.strip():
+            term = query.strip().replace("!", "!!").replace("%", "!%").replace("_", "!_")
+            member_query = member_query.where(
+                SharedMaterialMember.serial_no.like(f"%{term}%", escape="!")
+            )
+        member_query = member_query.order_by(
+            case((SharedMaterialMember.serial_no == query.strip(), 0), else_=1),
+            SharedMaterialMember.id.desc(),
+        ).limit(limit)
+        for member, batch_no in db.execute(member_query):
+            if any(item["value"] == member.serial_no for item in items):
+                continue
+            origin = db.scalar(
+                select(MaterialTransfer).where(MaterialTransfer.batch_no == batch_no)
+            )
+            details = {name: getattr(origin, name) for name in PROFILE_FIELDS}
+            details.update(
+                customer_code=member.customer_code,
+                finished_specification=member.finished_specification,
+            )
+            items.append(
+                {"value": member.serial_no, "details": details, "source_batch_no": batch_no}
+            )
+        items.sort(key=lambda item: item["value"] != query.strip())
+    return {"items": items[:limit]}

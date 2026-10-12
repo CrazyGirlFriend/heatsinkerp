@@ -7,6 +7,7 @@ import type { MaterialTransfer } from '@/types/materialTransfer'
 const props = defineProps<{ modelValue: boolean; items: MaterialTransfer[] }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
 const rows = ref<MaterialTransfer[]>([]), error = ref(''), busy = ref(false), printing = ref(false)
+const printSheet = ref<InstanceType<typeof MaterialBatchPrintSheet> | null>(null)
 let generation = 0
 watch(() => [props.modelValue, props.items] as const, () => { ++generation; rows.value = [...props.items]; error.value = ''; busy.value = false }, { immediate: true })
 function cleanup() { document.body.classList.remove('material-batches-printing'); printing.value = false }
@@ -20,6 +21,8 @@ async function print() {
     if (current !== generation || !props.modelValue) return
     rows.value = latest; printing.value = true
     await nextTick(); await nextTick()
+    await printSheet.value?.prepare?.()
+    if (current !== generation || !props.modelValue) return
     document.body.classList.add('material-batches-printing')
     window.print()
   } catch (reason) { if (current === generation) error.value = reason instanceof Error ? reason.message : '无法核对最新批次，未打印，请重试' }
@@ -33,6 +36,6 @@ async function print() {
     <div class="batch-print-preview"><MaterialBatchPrintSheet :items="rows" /></div>
     <template #footer><ElButton :disabled="busy" @click="emit('update:modelValue', false)">关闭</ElButton><ElButton type="primary" :loading="busy" :disabled="!rows.length" @click="print">打印 {{ rows.length }} 个批次</ElButton></template>
   </ElDialog>
-  <Teleport to="body"><MaterialBatchPrintSheet v-if="printing" :items="rows" /></Teleport>
+  <Teleport to="body"><MaterialBatchPrintSheet v-if="printing" ref="printSheet" :items="rows" /></Teleport>
 </template>
 <style scoped>.batch-print-preview { overflow-x: auto; }.batch-print-preview :deep(article) { min-width: 680px; }</style>

@@ -185,6 +185,38 @@ class SerialDeliveryPlan(Base):
     __table_args__ = (CheckConstraint("version > 0", name="ck_delivery_plan_version"),)
 
 
+class SharedMaterialGroup(Base):
+    """One physical stock origin assigned to several orders, before allocation."""
+
+    __tablename__ = "shared_material_groups"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    batch_no: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    members: Mapped[list[SharedMaterialMember]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="SharedMaterialMember.id"
+    )
+
+
+class SharedMaterialMember(Base):
+    __tablename__ = "shared_material_members"
+    __table_args__ = (
+        UniqueConstraint("group_id", "serial_no", name="uq_shared_material_member"),
+        CheckConstraint(
+            "(delivery_date IS NULL AND delivery_quantity IS NULL) OR "
+            "(delivery_date IS NOT NULL AND delivery_quantity IS NOT NULL AND delivery_quantity > 0)",
+            name="ck_shared_material_delivery",
+        ),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("shared_material_groups.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    serial_no: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    customer_code: Mapped[str | None] = mapped_column(String(80))
+    finished_specification: Mapped[str | None] = mapped_column(String(240))
+    delivery_date: Mapped[date | None] = mapped_column(Date)
+    delivery_quantity: Mapped[int | None] = mapped_column(Integer)
+
+
 class MaterialTransfer(Base):
     """A material batch: internal handoff, warehouse intake, or external exit.
 
@@ -269,6 +301,13 @@ class MaterialTransfer(Base):
         TRANSFER_BATCH_NUMBER_TYPE, nullable=False, unique=True, index=True
     )
     serial_no: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    shared_group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("shared_material_groups.id", ondelete="RESTRICT"), index=True
+    )
+    shared_unallocated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    shared_group: Mapped[SharedMaterialGroup | None] = relationship(lazy="joined")
     urgency: Mapped[SerialUrgency | None] = relationship(
         primaryjoin="foreign(MaterialTransfer.serial_no) == SerialUrgency.serial_no",
         viewonly=True,

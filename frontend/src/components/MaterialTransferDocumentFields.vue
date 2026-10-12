@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SharedMaterialInfo from './SharedMaterialInfo.vue'
+import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { sludgeFields } from '@/utils/sludgeWeight'
 import { computed } from 'vue'
 import MaterialDocumentTable, { type DocumentField } from './MaterialDocumentTable.vue'
@@ -21,7 +23,7 @@ const fields = computed<DocumentField[]>(() => {
     { label: '批次号', value: t.batch_no },
     { label: '状态', value: materialTransferStatusLabel(t.status, t.entry_kind) },
     { label: processed ? '加工来源' : reallocated ? '转投来源' : receipt ? '入库来源' : external ? `${verb}班组` : '转出班组', value: materialSourceLabel(t) },
-    { label: '流水号', key: 'serial', value: t.serial_no },
+    { label: '流水号', key: 'serial', value: sharedSerialLabel(t) },
     { label: processed ? '加工班组' : reallocated ? '所属班组' : opening ? '登记班组' : receipt ? '入库库房' : external ? `${verb}去向` : '接收班组', value: external ? t.external_destination || '—' : t.next_team.name },
     { label: processed ? '本班组业务' : '接收业务', value: materialPurposeLabel(t) },
     ...(t.next_team.code === 'FACTORY-WAREHOUSE' ? [{ label: '入库仓位', value: t.warehouse_location || '未填写' }] : []),
@@ -51,4 +53,5 @@ const fields = computed<DocumentField[]>(() => {
   <MaterialDocumentTable :fields="fields" :label="group === 'all' ? '转料单据资料' : group === 'basic' ? '物料明细' : '补充信息'">
     <template #serial="{ field }"><slot name="serial">{{ field.value }}</slot></template>
   </MaterialDocumentTable>
+  <SharedMaterialInfo v-if="group !== 'extra'" :item="transfer" />
 </template>

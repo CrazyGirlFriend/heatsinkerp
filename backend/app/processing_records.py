@@ -143,7 +143,7 @@ def list_records(db, team_id, *, record_filters=None, query=None, page=1, page_s
     conditions.extend((record_filters or RecordFilters()).predicates(Adjustment.created_at, Transfer.serial_no))
     if query and query.strip():
         conditions.append(stock.literal_query(query, [Transfer.serial_no, Transfer.batch_no, Transfer.material_name, Adjustment.created_by, Adjustment.reason]))
-    statement = select(Adjustment, Transfer.serial_no, Transfer.batch_no, Transfer.material_name, Transfer.material_type,
+    statement = select(Adjustment, Transfer.serial_no, Transfer.shared_group_id, Transfer.shared_unallocated, Transfer.batch_no, Transfer.material_name, Transfer.material_type,
         Transfer.purpose_name, balance.c.on_hand_quantity, balance.c.on_hand_weight, balance.c.in_transit_quantity,
         balance.c.in_transit_weight, registered.c.latest_id, registered.c.processing_status.label("current_processing_status")).join(Transfer, Transfer.id == Adjustment.source_transfer_id).join(
         balance, balance.c.transfer_id == Transfer.id).join(registered, registered.c.lot_id == Transfer.id).where(*conditions)
@@ -170,9 +170,10 @@ def list_records(db, team_id, *, record_filters=None, query=None, page=1, page_s
                 "on_hand_quantity", "on_hand_weight", "in_transit_quantity", "in_transit_weight", "owned_quantity", "owned_weight")}
             holdings["progress"] = "partial" if any(item.get("progress") == "partial" for item in descendants) else (
                 "complete" if any(item.get("progress") == "complete" for item in descendants) else None)
-        items.append({**snapshot, **{key: current[key] for key in ("serial_no", "batch_no", "material_name", "material_type", "purpose_name")},
+        items.append({**snapshot, **{key: current[key] for key in ("serial_no", "shared_group_id", "shared_unallocated", "batch_no", "material_name", "material_type", "purpose_name")},
             **{key: value for key, value in holdings.items() if key != "progress"},
             "processing_state": state(current["material_type"], holdings.get("on_hand_quantity", 0), holdings.get("on_hand_weight", 0),
                 holdings.get("in_transit_quantity", 0), holdings.get("in_transit_weight", 0), True,
                 holdings.get("progress") or current["current_processing_status"])})
-    return {"items": items, "total": total, "page": page, "page_size": page_size, "as_of": _utc(utcnow())}
+    from .shared_material import annotate_groups
+    return {"items": annotate_groups(db, items), "total": total, "page": page, "page_size": page_size, "as_of": _utc(utcnow())}

@@ -7,17 +7,36 @@ from sqlalchemy.orm import aliased, selectinload
 
 from . import material_transfer_workflow as workflow
 from .material_stock import stock_table
-from .models import MaterialTransfer
+from .models import MaterialTransfer, SharedMaterialGroup
 from .processing_statistics import difference_totals, weight_differences
 
 
 def serial_trace(db, serial_no, user):
     serial_no = serial_no.strip()
+    from .shared_material import serial_match
+    group_id = db.scalar(select(SharedMaterialGroup.id).where(SharedMaterialGroup.batch_no == serial_no.removeprefix("共投-")))
+    scope = MaterialTransfer.shared_group_id == group_id if group_id else serial_match(MaterialTransfer.serial_no, serial_no)
     transfers = db.scalars(select(MaterialTransfer).where(
-        MaterialTransfer.serial_no == serial_no
+        scope
     ).options(selectinload(MaterialTransfer.losses), selectinload(MaterialTransfer.history)).order_by(
         MaterialTransfer.created_at, MaterialTransfer.id
     )).all()
+    other_outputs = {}
+    if not group_id:
+        # A serial view hides sibling orders, but their actual split still closes
+        # the common parent's residence. Keep accounting facts without adding
+        # those siblings to this serial's inventory or drawing their full route.
+        groups = {item.shared_group_id for item in transfers if item.shared_group_id}
+        if groups:
+            for output in db.scalars(select(MaterialTransfer).where(
+                MaterialTransfer.shared_group_id.in_(groups), MaterialTransfer.entry_kind == "processing_output",
+                MaterialTransfer.shared_unallocated.is_(False), MaterialTransfer.serial_no != serial_no,
+            )):
+                other_outputs.setdefault(output.source_transfer_id, []).append({
+                    "batch_no": output.batch_no, "serial_no": output.serial_no,
+                    "quantity": output.quantity, "weight": float(output.weight),
+                    "at": workflow._utc(output.created_at),
+                })
     stock = stock_table()
     source = aliased(MaterialTransfer)
     reallocations = db.scalars(select(MaterialTransfer).join(source, source.id == MaterialTransfer.source_transfer_id).where(
@@ -25,7 +44,7 @@ def serial_trace(db, serial_no, user):
         or_(MaterialTransfer.serial_no == serial_no, source.serial_no == serial_no)
     ).options(*workflow.material_transfer_list_options()).order_by(MaterialTransfer.created_at.desc(), MaterialTransfer.id.desc())).all()
     balances = {row['transfer_id']: row for row in db.execute(
-        select(stock).where(stock.c.serial_no == serial_no)
+        select(stock).where(stock.c.transfer_id.in_([item.id for item in transfers]))
     ).mappings()}
     differences = weight_differences(db, list(balances))
     buckets = {key: {'quantity': 0, 'weight': Decimal(0)} for key in (
@@ -33,6 +52,8 @@ def serial_trace(db, serial_no, user):
     )}
     positions = {}
     holdings = {}
+    shared_positions = {}
+    shared_buckets = {key: {'quantity': 0, 'weight': Decimal(0)} for key in buckets}
     items = []
 
     def add(bucket, quantity, weight):
@@ -52,7 +73,26 @@ def serial_trace(db, serial_no, user):
         item['owned_weight'] = float(balance['owned_weight']) if balance else None
         item['processing_delta_weight'] = float(balance['adjusted_weight']) if balance else 0
         item.update(differences.get(transfer.id, {}))
+        item['other_processing_outputs'] = other_outputs.get(transfer.id, [])
         items.append(item)
+        if transfer.shared_unallocated:
+            if balance:
+                add(shared_buckets['on_hand'], balance['on_hand_quantity'], balance['on_hand_weight'])
+                if balance['owned_quantity'] or balance['owned_weight']:
+                    shared = shared_positions.setdefault((transfer.shared_group_id, transfer.next_team_id, transfer.material_type), {
+                        'team_id': transfer.next_team_id, 'team_name': transfer.next_team_name,
+                        'origin_batch_no': item['shared_origin_batch_no'], 'material_type': transfer.material_type,
+                        'serials': [member['serial_no'] for member in item['shared_serials']],
+                        'quantity': 0, 'weight': Decimal(0),
+                    })
+                    add(shared, balance['owned_quantity'], balance['owned_weight'])
+            if transfer.status == 'pending':
+                add(shared_buckets['in_transit' if transfer.entry_kind == 'transfer' else 'external_pending'], transfer.quantity, transfer.weight)
+            elif transfer.status == 'dispatched':
+                add(shared_buckets['dispatched'], transfer.quantity, transfer.weight)
+            for loss in transfer.losses:
+                add(shared_buckets['lost'], loss.quantity, loss.weight)
+            continue
         if balance:
             quantity, weight = int(balance['on_hand_quantity']), balance['on_hand_weight']
             add(buckets['on_hand'], quantity, weight)
@@ -95,6 +135,9 @@ def serial_trace(db, serial_no, user):
                      'weight': float(sum((row['shortage_weight'] for row in balances.values()), Decimal(0)))},
         'observed_at': datetime.now(timezone.utc).isoformat(),
         'totals': {key: amounts(value) for key, value in buckets.items()},
+        'shared_totals': {key: amounts(value) for key, value in shared_buckets.items()},
+        'shared_positions': [amounts(value) for value in shared_positions.values()],
+        'shared_group_view': bool(group_id),
         'positions': [amounts(value) for value in positions.values()],
         'holdings': [{**value, 'material_types': [amounts(nature) for nature in value['material_types'].values()]}
                      for value in holdings.values()],

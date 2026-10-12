@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { sharedSerialLabel } from '@/types/sharedMaterial'
 import FilterDialog from './FilterDialog.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
@@ -67,7 +68,7 @@ onBeforeUnmount(() => { ++version })
           <template #header><ElCheckbox aria-label="选择本页出库物料" :model-value="allChecked" :indeterminate="checkedCount > 0 && !allChecked" :disabled="!availableRows.length || (selected.size >= 100 && !checkedCount)" @change="toggleAll" /></template>
           <template #default="{ row }"><ElCheckbox :aria-label="`选择出库 ${row.transfer.batch_no}`" :model-value="selected.has(String(row.transfer.id))" :disabled="!stockSelectable(asStock(row)) || (selected.size >= 100 && !selected.has(String(row.transfer.id)))" @change="toggle(asStock(row), $event)" /></template>
         </ElTableColumn>
-        <ElTableColumn label="流水号" min-width="245" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.serial_no }}<SerialUrgencyBadge :urgency="row.transfer.urgency" /></template></ElTableColumn>
+        <ElTableColumn label="流水号" min-width="245" show-overflow-tooltip><template #default="{ row }">{{ sharedSerialLabel(row.transfer) }}<SerialUrgencyBadge :urgency="row.transfer.urgency" /></template></ElTableColumn>
         <ElTableColumn label="来源批次" min-width="170" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.batch_no }}</template></ElTableColumn>
         <ElTableColumn v-if="rows.some(item => item.transfer.next_team.code === 'FACTORY-WAREHOUSE')" label="当前仓位" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ currentLocations(asStock(row)) }}</template></ElTableColumn>
         <ElTableColumn label="本班组业务" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.purpose_name || '未分类' }}</template></ElTableColumn>

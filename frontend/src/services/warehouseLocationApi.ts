@@ -4,7 +4,7 @@ export type WarehouseLocation = {
   id: number; team_id: number; name: string; active: boolean; version: number
   status: 'available' | 'locked' | 'occupied' | 'disabled'; has_stock: boolean
   draft_locked?: boolean
-  batches: { id: number; batch_no: string; serial_no: string; material_name?: string; material_type?: string; quantity: number; weight: number; status: string; created_at?: string; received_at?: string | null; available_quantity?: number; available_weight?: number }[]
+  batches: (import('@/types/sharedMaterial').SharedMaterialFields & { id: number; batch_no: string; serial_no: string; material_name?: string; material_type?: string; quantity: number; weight: number; status: string; created_at?: string; received_at?: string | null; available_quantity?: number; available_weight?: number })[]
 }
 export type WarehouseLocationFilter = 'occupied' | 'available' | 'pending' | 'draft' | 'disabled'
 export type WarehouseMaterial = { serial_no: string; material_name: string; material_type: string }

@@ -1,3 +1,4 @@
+import { sharedSerialLabel, type SharedMaterialFields } from './sharedMaterial'
 import type { MaterialBalance, MaterialPageParams } from './teamMaterials'
 import { processingRoleLabels, type ProcessingRole, type ProcessingSummary } from './materialProcessing'
 import type { SerialSummary, SerialParams } from './materialAnalytics'
@@ -6,7 +7,7 @@ import { isScrapType, materialTypeLabel, type MaterialType } from './materialTra
 import { formatDateTime } from '@/utils/format'
 
 export type WarehouseSource = 'external' | 'return' | 'internal' | 'opening' | 'processing'
-export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary {
+export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary, SharedMaterialFields {
   group_id: number
   batch_count: number
   current_batch_count: number
@@ -98,7 +99,7 @@ export const warehouseLegacyColumnKeys = {
   dispatchable_balance: ['dispatchable_quantity', 'dispatchable_weight'],
   pending_transfer: ['in_transit_quantity', 'in_transit_weight'],
 } satisfies Record<string, WarehouseColumnKey[]>
-export const warehouseSerialColumn = { key: 'serial_no', label: '流水号', width: 170, format: (row: TeamInventoryRow) => row.serial_no } as const
+export const warehouseSerialColumn = { key: 'serial_no', label: '流水号', width: 170, format: (row: TeamInventoryRow) => sharedSerialLabel(row) } as const
 export const warehouseSearchColumns = [warehouseSerialColumn, ...warehouseColumns.filter(column => !['material_type', 'processing_role', 'stock_status', 'dispatchable_quantity', 'dispatchable_weight', 'in_transit_quantity', 'in_transit_weight'].includes(column.key))]
 export type WarehouseSearchField = 'all' | typeof warehouseSearchColumns[number]['key']
 export const warehouseSearchKind = (field: WarehouseSearchField) => field === 'urgency' ? 'status' : field === 'last_activity_at' ? 'date' : warehouseColumns.some(column => column.key === field && 'numeric' in column) ? 'number' : 'text'

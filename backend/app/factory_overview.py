@@ -18,7 +18,14 @@ from .material_analytics import (
     period,
 )
 from .material_stock import BALANCE_KEYS, balance_dict, stock_table
-from .models import MaterialDispatch, MaterialLoss, MaterialTransfer, Team, utcnow
+from .models import (
+    MaterialDispatch,
+    MaterialLoss,
+    MaterialTransfer,
+    SharedMaterialMember,
+    Team,
+    utcnow,
+)
 from .record_filters import urgent_serials
 
 router = APIRouter(prefix="/api/factory-overview", dependencies=[Depends(get_current_user)])
@@ -33,7 +40,7 @@ def stock_rankings(db, stock, in_scope, remaining, column):
             func.sum(stock.c.on_hand_weight).label("weight"),
         )
         .where(in_scope, remaining)
-        .group_by(column)
+        .group_by("key")
         .subquery()
     )
     return {
@@ -199,19 +206,6 @@ def factory_overview(db: Session, days: int = 30) -> dict:
         db.execute(
             select(
                 stock.c.team_id,
-                func.count(func.distinct(case((remaining, stock.c.serial_no)))).label(
-                    "serial_count"
-                ),
-                func.count(
-                    func.distinct(
-                        case(
-                            (
-                                and_(remaining, stock.c.serial_no.in_(urgent_serials())),
-                                stock.c.serial_no,
-                            )
-                        )
-                    )
-                ).label("urgent_serial_count"),
                 *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS),
             )
             .where(in_scope)
@@ -219,7 +213,31 @@ def factory_overview(db: Session, days: int = 30) -> dict:
         ).mappings()
     )
     balances = {row["team_id"]: balance_dict(row) for row in stock_rows}
-    serial_counts = {row["team_id"]: row for row in stock_rows}
+    # Order counts include shared memberships, while physical balances above
+    # remain a single row per stock lot. UNION deduplicates already-allocated orders.
+    member = SharedMaterialMember
+    serial_stock = (
+        select(stock.c.team_id, stock.c.serial_no)
+        .where(in_scope, remaining, stock.c.shared_unallocated.is_(False))
+        .union(
+            select(stock.c.team_id, member.serial_no)
+            .join(member, member.group_id == stock.c.shared_group_id)
+            .where(in_scope, remaining, stock.c.shared_unallocated.is_(True))
+        )
+        .subquery()
+    )
+    serial_counts = {
+        row["team_id"]: row
+        for row in db.execute(
+            select(
+                serial_stock.c.team_id,
+                func.count().label("serial_count"),
+                func.sum(case((serial_stock.c.serial_no.in_(urgent_serials()), 1), else_=0)).label(
+                    "urgent_serial_count"
+                ),
+            ).group_by(serial_stock.c.team_id)
+        ).mappings()
+    }
     batch_key = mt.batch_no
     incoming = {
         row["team_id"]: {
@@ -420,7 +438,13 @@ def factory_overview(db: Session, days: int = 30) -> dict:
         **report,
         "stock_matrix": stock_matrix(db, teams),
         "material_ranking": stock_rankings(db, stock, in_scope, remaining, stock.c.material_name),
-        "serial_ranking": stock_rankings(db, stock, in_scope, remaining, stock.c.serial_no),
+        "serial_ranking": stock_rankings(
+            db,
+            stock,
+            in_scope,
+            remaining,
+            case((stock.c.shared_unallocated.is_(True), "共投未分配"), else_=stock.c.serial_no),
+        ),
         "period_totals": period_totals,
         "trend": [
             {

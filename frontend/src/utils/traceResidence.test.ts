@@ -21,6 +21,18 @@ function event(id: number, action: MaterialTransferHistoryEntry['action'], day: 
 }
 
 describe('full-chain residence from committed stock history', () => {
+  it('deducts allocations to other orders without drawing their branches in a single order trace', () => {
+    const root = lot(1, { quantity: 1, weight: 100, on_hand_quantity: 0, on_hand_weight: 0, shared_unallocated: true,
+      history: [{ id: 10, action: 'quantity_changed', actor: '班组长', occurred_at: at(11), changes: { stock_quantity: { before: 1, after: 50 } } }],
+      other_processing_outputs: [{ batch_no: 'TL-B', serial_no: 'ORDER-B', quantity: 20, weight: 40, at: at(11) }] })
+    const owned = lot(2, { entry_kind: 'processing_output', serial_no: 'ORDER-A', quantity: 30, weight: 60,
+      on_hand_quantity: 30, on_hand_weight: 60, transferred_at: at(11), received_at: at(11), source_team: warehouse, next_team: warehouse })
+    const model = traceFlowModel([root, owned], at(17))
+    expect(model.nodes).toHaveLength(2)
+    expect(model.byId.get('1')!.residenceIssue).toBe(false)
+    expect(model.byId.get('1')!.stays).toEqual([{ start: stamp(10), end: stamp(11), quantity: 1, weight: 100, current: false }])
+    expect(model.byId.get('2')!.stays.at(-1)).toMatchObject({ current: true, quantity: 30, weight: 60 })
+  })
   it('reconciles measured processing decomposition at the same time without creating a receiving transfer', () => {
     const root = lot(1, { quantity: 10, weight: 100, on_hand_quantity: 0, on_hand_weight: 0, history: [{ id: 10, action: 'quantity_changed', actor: '班组长', occurred_at: at(11), changes: { stock_quantity: { before: 10, after: 12 }, stock_weight: { before: 100, after: 101 }, processing_status: { before: null, after: 'partial' } } }] })
     const children = ([['remaining', 2, 40], ['produced', 10, 60], ['scrap', 0, 1]] as const).map(([role, quantity, weight], index) => lot(index + 2, { entry_kind: 'processing_output', processing_role: role, source_team: root.next_team, next_team: root.next_team, quantity, weight, on_hand_quantity: quantity, on_hand_weight: weight, transferred_at: at(11), received_at: at(11), history: [{ id: index + 11, action: 'processed', actor: '班组长', occurred_at: at(11), changes: { quantity: { before: null, after: quantity }, weight: { before: null, after: weight } } }] }))

@@ -1,3 +1,4 @@
+import type { SharedMaterialFields } from './sharedMaterial'
 import type { EntityId, TeamKind } from '@/services/adminApi'
 import type { MaterialLoss } from './teamMaterials'
 
@@ -91,7 +92,7 @@ export interface MaterialTransferTeam {
 }
 
 export interface SludgeMeasurement { sludge_gross_weight?: number | null; sludge_content_percent?: number | null }
-export interface MaterialTransfer extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement {
+export interface MaterialTransfer extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement, SharedMaterialFields {
   sludge_percent_locked?: boolean
   delivery_origin_batch_no?: string | null
   can_edit_delivery?: boolean
@@ -171,7 +172,7 @@ export interface MaterialTransferListResponse {
 
 export type MaterialTransferStatusCounts = Record<MaterialTransferStatus | 'all', number>
 
-export interface CreateMaterialTransferPayload extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement {
+export interface CreateMaterialTransferPayload extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement, SharedMaterialFields {
   warehouse_location?: string | null
   warehouse_location_reservation_key?: string | null
   purpose_id?: number | null

@@ -1,3 +1,4 @@
+import { sharedSerialLabel } from '@/types/sharedMaterial'
 import type { EChartsOption, CustomSeriesOption, SankeySeriesOption, CustomSeriesRenderItemReturn, XAxisComponentOption } from 'echarts'
 import type { SerialHistory, SerialHistoryFlow } from '@/types/teamBusiness'
 import type { TraceBatch } from '@/types/materialTrace'
@@ -157,6 +158,7 @@ function residence(node: PathNode, outgoing: TraceBatch[], closing: number): { s
       quantity = nextQuantity; weight = nextWeight
     }
   }
+  for (const output of lot.other_processing_outputs || []) add(traceTimestamp(output.at), -output.quantity, -output.weight)
   for (const loss of lot.loss_records || []) add(traceTimestamp(loss.created_at), -loss.quantity, -loss.weight)
   for (const event of lot.history || []) {
     if (event.action === 'quantity_changed') {
@@ -404,7 +406,7 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, metric
         return Math.abs(p[0]! - x) < 150 && Math.abs(p[1]! - y) < 32
       })
       if (inView && (originColors || !node.stays.length) && (!crowded || chosen) && (!originColors || chosen || model.nodes.length <= 18)) {
-        label(`amount:${batch.quantity}:${batch.weight}`, Math.max(grid.x + 6, Math.min(x + 12, grid.x + grid.width - 170)), y - 28, originColors ? metricLabel(batch, metric) : amountLabel(batch))
+        label(`amount:${batch.quantity}:${batch.weight}`, Math.max(grid.x + 6, Math.min(x + 12, grid.x + grid.width - 170)), y - 28, originColors ? `${batch.shared_group_id && !batch.shared_unallocated ? batch.serial_no + ' · ' : ''}${metricLabel(batch, metric)}` : amountLabel(batch))
         if (!end) label('pending-label', x + 36, y + 12, `${batch.next_team.name} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}`)
       }
       return {
@@ -541,10 +543,10 @@ export function traceFlowOption(model: ReturnType<typeof traceFlowModel>, metric
       const node = interval?.node || model.nodes[item.dataIndex]!, batch = node.batch, stay = interval?.stay
       const difference = batch.weight_difference ?? Math.max(0, -(batch.on_hand_weight || 0))
       const variance = difference ? `\n重量差异 ${num(difference)} kg · ${Math.abs(difference) <= 1 ? '在 1 kg 允许误差内' : '超过 1 kg，请核对'}` : ''
-      if (originColors) return chainTooltip(`${batch.batch_no}\n${node.intake ? batch.entry_kind === 'processing_output' ? `本班组加工 · ${batch.next_team.name}` : batch.entry_kind === 'serial_reallocation' ? `${batch.source_serial_no || '原流水号'} 转投入 · ${batch.next_team.name}` : batch.entry_kind === 'opening_stock' ? '初始库存登记' : '库房入库' : `${batch.source_team.name} → ${batch.next_team.name}`}\n${materialTypeLabel(batch.material_type)} · ${metricLabel(stay || batch, metric)}\n${stay ? '在库停留' : materialTransferStatusLabel(batch.status, batch.entry_kind)} · 点击查看详情${variance}`)
+      if (originColors) return chainTooltip(`${batch.batch_no}\n${sharedSerialLabel(batch)}\n${node.intake ? batch.entry_kind === 'processing_output' ? `本班组加工 · ${batch.next_team.name}` : batch.entry_kind === 'serial_reallocation' ? `${batch.source_serial_no || '原流水号'} 转投入 · ${batch.next_team.name}` : batch.entry_kind === 'opening_stock' ? '初始库存登记' : '库房入库' : `${batch.source_team.name} → ${batch.next_team.name}`}\n${materialTypeLabel(batch.material_type)} · ${metricLabel(stay || batch, metric)}\n${stay ? '在库停留' : materialTransferStatusLabel(batch.status, batch.entry_kind)} · 点击查看详情${variance}`)
       const balance = batch.on_hand_quantity == null || batch.on_hand_weight == null ? '' : `\n未转出库存 ${amountLabel({ quantity: Math.max(0, batch.on_hand_quantity), weight: Math.max(0, batch.on_hand_weight) })}`
-      if (stay) return chainTooltip(`${batch.batch_no}\n${batch.next_team.name} · 在库停留\n这段时间的未转出库存 ${amountLabel(stay)}\n${traceTime(stay.start)}\n至 ${traceTime(stay.end)}\n累计停留 ${traceDuration(node.finishedAt, stay.end)}${balance}${variance}`)
-      return chainTooltip(`${batch.batch_no}\n${batch.entry_kind === 'processing_output' ? `本班组加工 · ${batch.next_team.name}` : `${batch.source_team.name} → ${batch.next_team.name}`}\n${amountLabel(batch)}\n${batch.entry_kind === 'processing_output' ? '加工' : node.intake ? '入库' : '转出'} ${traceTime(node.startedAt)}${node.intake ? '' : `\n${isExternalTransfer(batch) ? '对外确认' : '接收'} ${traceTime(node.finishedAt)}`}\n${batch.entry_kind === 'processing_output' ? '本班组业务' : '接收业务'} ${batch.purpose_name || '未分类'} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}${balance}${variance}${batch.notes ? `\n备注 ${batch.notes}` : ''}${node.timingIssue ? '\n时间记录不完整或异常' : ''}${node.residenceIssue ? '\n历史收发记录与库存对不上，暂不显示停留时间' : ''}`)
+      if (stay) return chainTooltip(`${batch.batch_no}\n${sharedSerialLabel(batch)}\n${batch.next_team.name} · 在库停留\n这段时间的未转出库存 ${amountLabel(stay)}\n${traceTime(stay.start)}\n至 ${traceTime(stay.end)}\n累计停留 ${traceDuration(node.finishedAt, stay.end)}${balance}${variance}`)
+      return chainTooltip(`${batch.batch_no}\n${sharedSerialLabel(batch)}\n${batch.entry_kind === 'processing_output' ? `本班组加工 · ${batch.next_team.name}` : `${batch.source_team.name} → ${batch.next_team.name}`}\n${amountLabel(batch)}\n${batch.entry_kind === 'processing_output' ? '加工' : node.intake ? '入库' : '转出'} ${traceTime(node.startedAt)}${node.intake ? '' : `\n${isExternalTransfer(batch) ? '对外确认' : '接收'} ${traceTime(node.finishedAt)}`}\n${batch.entry_kind === 'processing_output' ? '本班组业务' : '接收业务'} ${batch.purpose_name || '未分类'} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}${balance}${variance}${batch.notes ? `\n备注 ${batch.notes}` : ''}${node.timingIssue ? '\n时间记录不完整或异常' : ''}${node.residenceIssue ? '\n历史收发记录与库存对不上，暂不显示停留时间' : ''}`)
     } },
     series: [series, lanes, residenceSeries, processingSeries],
   }
