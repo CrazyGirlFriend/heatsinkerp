@@ -42,8 +42,32 @@ describe('print grouping and pagination', () => {
 })
 
  it('prints every shared requirement and counts the unsplit physical batch only once', () => {
-  const item = normalizeMaterialTransfer({ id: 900, batch_no: 'SHARED-1', serial_no: '共投-SHARED-1', shared_group_id: 1, shared_unallocated: true, shared_origin_batch_no: 'SHARED-1', quantity: 1, weight: 100, status: 'received', shared_serials: Array.from({ length: 20 }, (_, i) => ({ serial_no: `ORDER-${i + 1}`, customer_code: `C${i + 1}`, finished_specification: `${i + 1} × 20 × 2 mm`, delivery_date: '2026-11-01', delivery_quantity: 30 + i })) })
+  const item = normalizeMaterialTransfer({ id: 900, batch_no: 'SHARED-1', serial_no: '共投-SHARED-1', shared_group_id: 1, shared_unallocated: true, shared_origin_batch_no: 'SHARED-1', quantity: 1, weight: 100, status: 'received', shared_serials: Array.from({ length: 20 }, (_, i) => ({ serial_no: `ORDER-${i + 1}`, customer_code: `C${i + 1}`, finished_specification: `${i + 1} × 20 × 2 mm`, delivery_date: '2026-11-01', delivery_quantity: 30 + i, planned_weight: 5, planned_quantity: 30 + i, planned_specification: '25 × 12 × 3 mm' })) })
   const groups = groupTransferPrintItems([item]), text = JSON.stringify(groups[0]!.blocks.flatMap(block => block.fields || []))
+  expect(text).toContain('计划用料重量'); expect(text).toContain('5 kg'); expect(text).toContain('25 × 12 × 3 mm'); expect(text).toContain('计划切出件数');
   expect(text).toContain('ORDER-20'); expect(text).toContain('49 件'); expect(text).toContain('C20')
   expect(transferPrintTotals([item])).toMatchObject({ quantity: '1', weight: '100', batches: 1 })
+})
+
+it('retains the plan on allocated child printouts without changing actual totals', () => {
+  const item = normalizeMaterialTransfer({ id: 901, batch_no: 'CHILD', serial_no: 'A', shared_group_id: 1, shared_unallocated: false, quantity: 8, weight: 50, status: 'received', shared_serials: [{ serial_no: 'A', planned_weight: 60, planned_quantity: 10, planned_specification: '25 × 12 × 2 mm' }] })
+  const fields = groupTransferPrintItems([item])[0]!.blocks.flatMap(block => block.fields || [])
+  expect(fields).toContainEqual({ label: '计划用料重量', value: '60 kg' })
+  expect(fields).toContainEqual({ label: '计划切出件数', value: '10 件' })
+  expect(transferPrintTotals([item])).toMatchObject({ quantity: '8', weight: '50' })
+})
+
+it('keeps each shared plan together and repeats its serial when a long plan must continue', () => {
+  const item = normalizeMaterialTransfer({ id: 900, batch_no: 'SHARED-1', shared_group_id: 1, shared_unallocated: true, shared_origin_batch_no: 'SHARED-1', shared_serials: ['A', 'B', 'C'].map(serial_no => ({ serial_no, planned_weight: 10, planned_quantity: 20, planned_specification: '10 × 10 × 2 mm' })) })
+  const blocks = groupTransferPrintItems([item])[0]!.blocks
+  const pages = paginateTransferBlocks(blocks, blocks.map(block => block.fields ? 10 : 20), 90)
+  for (const serial of ['A', 'B', 'C']) expect(pages.filter(page => page.some(block => block.section?.endsWith(`:${serial}`)))).toHaveLength(1)
+  const heights = blocks.map(block => block.section ? 26 : block.fields ? 10 : 20)
+  const continued = paginateTransferBlocks(blocks, heights, 90)
+  const sizes = new Map(blocks.map((block, index) => [block.key, heights[index]!]))
+  for (const page of continued) {
+    expect(page.reduce((sum, block) => sum + sizes.get(block.key)!, 0)).toBeLessThanOrEqual(90)
+    for (const section of new Set(page.flatMap(block => block.section ? [block.section] : []))) expect(page.find(block => block.section === section)?.fields?.[0]?.label).toBe('关联流水号')
+  }
+  expect(new Set(continued.flat().map(block => block.key))).toEqual(new Set(blocks.map(block => block.key)))
 })

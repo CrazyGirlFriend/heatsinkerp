@@ -291,12 +291,11 @@ onMounted(() => void loadTeams())
 
 <template>
   <section class="page admin-workspace teams-page reading-workspace">
+    <header class="workspace-heading"><div class="page-heading-start"><PageBackButton /><h1>班组管理</h1></div></header>
     <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
-    <h1 class="sr-only">班组管理</h1>
 
     <ElCard shadow="never" class="workspace-card">
       <div class="filter-bar">
-        <PageBackButton />
         <ElInput v-model="query" clearable placeholder="班组编码或名称" aria-label="搜索班组">
           <template #prefix><ElIcon><Search /></ElIcon></template>
         </ElInput>

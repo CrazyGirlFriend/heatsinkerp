@@ -374,8 +374,7 @@ onBeforeUnmount(() => {
     <div class="transfers-main">
       <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
       <div class="status-toolbar">
-      <PageBackButton />
-      <h2 class="transfer-heading">转料记录</h2>
+      <div class="page-heading-start"><PageBackButton /><h2 class="transfer-heading">转料记录</h2></div>
         <div class="heading-actions"><TableExportButton :source="exportSource" :disabled="loading || !!errorMessage" :context="route.fullPath" />
           <ElButton v-if="canCreate" type="primary" :icon="Plus" @click="openCreate">新建转料</ElButton>
         </div>

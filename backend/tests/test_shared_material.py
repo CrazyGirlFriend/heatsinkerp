@@ -14,6 +14,9 @@ MEMBERS = [
         "finished_specification": "20×10×2",
         "delivery_date": "2026-11-01",
         "delivery_quantity": 30,
+        "planned_weight": 60,
+        "planned_quantity": 30,
+        "planned_specification": "25 × 12 × 2 mm",
     },
     {
         "serial_no": "ORDER-B",
@@ -21,6 +24,9 @@ MEMBERS = [
         "finished_specification": "10×10×2",
         "delivery_date": "2026-11-05",
         "delivery_quantity": 20,
+        "planned_weight": 40,
+        "planned_quantity": 20,
+        "planned_specification": "12 × 12 × 2 mm",
     },
 ]
 
@@ -64,6 +70,7 @@ def test_shared_intake_and_queries_count_one_physical_lot(client, warehouse):
         rows = client.get(base(s) + "/inventory", params={"query": serial}).json()
         assert rows["total"] == 1 and rows["items"][0]["on_hand_weight"] == 100
         assert rows["items"][0]["shared_unallocated"]
+        assert rows["items"][0]["shared_serials"] == MEMBERS
         assert client.get(base(s) + "/stock", params={"serial_no": serial}).json()["total"] == 1
         assert (
             client.get("/api/material-transfers", params={"serial_no": serial}).json()["total"] == 1
@@ -104,6 +111,8 @@ def test_shared_flow_partial_processing_and_later_allocation_preserve_genealogy(
     assert produced["serial_no"] == "ORDER-A" and not produced["shared_unallocated"]
     detail = client.get("/api/material-transfers/" + produced["batch_no"]).json()
     assert detail["customer_code"] == "CA" and detail["delivery_quantity"] == 30
+    assert detail["shared_serials"] == MEMBERS
+    assert detail["quantity"] == 30 and detail["weight"] == 55  # Actual output does not overwrite the 60 kg plan.
     second = change(
         client,
         s,
@@ -159,6 +168,11 @@ def test_shared_flow_partial_processing_and_later_allocation_preserve_genealogy(
         [MEMBERS[0]],
         [MEMBERS[0], MEMBERS[0]],
         [{**MEMBERS[0], "delivery_quantity": None}, MEMBERS[1]],
+        [{**MEMBERS[0], "planned_weight": None}, MEMBERS[1]],
+        [{**MEMBERS[0], "planned_weight": 0}, MEMBERS[1]],
+        [{**MEMBERS[0], "planned_quantity": 0}, MEMBERS[1]],
+        [{**MEMBERS[0], "planned_specification": "   "}, MEMBERS[1]],
+        [{key: value for key, value in member.items() if not key.startswith("planned_")} for member in MEMBERS],
     ],
 )
 def test_invalid_shared_members_are_rejected_without_stock(client, warehouse, members):
@@ -299,3 +313,49 @@ def test_shared_allocation_to_inspection_shipping_and_void_keep_single_stock(cli
     assert a_yield["input_weight"] == a_yield["shared_allocated_weight"] == 60.5
     assert a_yield["reallocated_in_weight"] == 0
     assert a_yield["status"] == "complete" and a_yield["rate"] == 100
+
+
+def test_legacy_shared_receipt_retry_still_replays_without_a_plan(client, warehouse):
+    import hashlib
+    import json
+
+    from app.database import SessionLocal
+    from app.material_transfer_workflow import _creation_fingerprint
+    from app.models import MaterialTransfer, SharedMaterialMember
+    from app.schemas import WarehouseReceiptCreate
+    from sqlalchemy import select
+
+    created = shared_intake(client, warehouse).json()
+    members = [
+        {key: value for key, value in member.items() if not key.startswith("planned_")}
+        for member in MEMBERS
+    ]
+    body = {
+        "serial_no": "", "material_name": "铜钼", "material_type": "semi_finished",
+        "quantity": 1, "weight": 100, "notes": "外部来料，实物清点后手工入库",
+        "source_batch_no": "RAW-001", "idempotency_key": "warehouse-intake-1",
+        "shared_serials": members,
+    }
+    payload = WarehouseReceiptCreate.model_validate(body)
+    legacy_hash = _creation_fingerprint(payload)
+    # Compare with the pre-plan canonical request, including its original default fields.
+    value = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    from app.material_transfer_workflow import DOCUMENT_FIELDS, SLUDGE_FIELDS
+    for field in ("receipt_kind", "external_source", "return_dispatch_no", "purpose_id", "warehouse_location", "warehouse_location_reservation_key"):
+        if field not in payload.model_fields_set:
+            value.pop(field, None)
+    for field in (*DOCUMENT_FIELDS, *SLUDGE_FIELDS):
+        if value.get(field) is None:
+            value.pop(field, None)
+    value["shared_serials"] = members
+    assert legacy_hash == hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    with SessionLocal.begin() as db:
+        lot = db.get(MaterialTransfer, created["id"])
+        lot.request_hash = legacy_hash
+        for member in db.scalars(select(SharedMaterialMember).where(SharedMaterialMember.group_id == lot.shared_group_id)):
+            member.planned_weight = member.planned_quantity = member.planned_specification = None
+    replay = shared_intake(client, warehouse, shared_serials=members)
+    assert replay.status_code == 201, replay.text
+    assert replay.json()["id"] == created["id"]
+    assert all(member["planned_weight"] is None for member in replay.json()["shared_serials"])
+    assert client.get(base(warehouse) + "/stock").json()["total"] == 1

@@ -4,7 +4,7 @@ import { formatDateTime } from './format'
 import { sludgeFields } from './sludgeWeight'
 
 export interface PrintField { label: string; value: string }
-export interface TransferPrintBlock { key: string; transfer: MaterialTransfer; fields?: PrintField[] }
+export interface TransferPrintBlock { key: string; transfer: MaterialTransfer; fields?: PrintField[]; section?: string }
 export interface TransferPrintGroup { key: string; items: MaterialTransfer[]; blocks: TransferPrintBlock[] }
 
 export function transferPrintProfile(item: MaterialTransfer) {
@@ -40,7 +40,7 @@ export function printMaterialValue(value?: string | null): string { return value
 
 function blocksFor(item: MaterialTransfer): TransferPrintBlock[] {
   const value = (v: unknown) => v == null || v === '' ? '—' : String(v)
-  const fields: PrintField[] = [
+  const fields: (PrintField & { section?: string })[] = [
     { label: '上一批次', value: value(item.source_transfer_batch_no) }, { label: '原单批号', value: value(item.source_batch_no) },
   ]
   if (!item.shared_unallocated) fields.push(
@@ -51,8 +51,12 @@ function blocksFor(item: MaterialTransfer): TransferPrintBlock[] {
   if (item.shared_unallocated) {
     fields.push({ label: '共投状态', value: '未分配；实物件数和重量仅计一份' })
     for (const member of item.shared_serials || []) {
-      fields.push({ label: '关联流水号', value: member.serial_no }, { label: '客户 / 成品规格', value: [member.customer_code || '—', member.finished_specification || '—'].join(' / ') }, { label: '要求发货日期', value: member.delivery_date || '—' }, { label: '应发成品件数', value: member.delivery_quantity == null ? '—' : `${member.delivery_quantity} 件` })
+      fields.push(...[{ label: '关联流水号', value: member.serial_no }, { label: '客户代码', value: member.customer_code || '—' }, { label: '成品规格', value: member.finished_specification || '—' }, { label: '计划切割尺寸', value: member.planned_specification || '未登记' }, { label: '计划用料重量', value: member.planned_weight == null ? '未登记' : `${member.planned_weight} kg` }, { label: '计划切出件数', value: member.planned_quantity == null ? '未登记' : `${member.planned_quantity} 件` }, { label: '要求发货日期', value: member.delivery_date || '—' }, { label: '应发成品件数', value: member.delivery_quantity == null ? '—' : `${member.delivery_quantity} 件` }].map(field => ({ ...field, section: `${item.batch_no}:shared:${member.serial_no}` })))
     }
+  }
+  if (item.shared_group_id && !item.shared_unallocated) {
+    const member = item.shared_serials?.find(member => member.serial_no === item.serial_no)
+    if (member) fields.push({ label: '计划用料重量', value: member.planned_weight == null ? '未登记' : `${member.planned_weight} kg` }, { label: '计划切出件数', value: member.planned_quantity == null ? '未登记' : `${member.planned_quantity} 件` }, { label: '计划切割尺寸', value: member.planned_specification || '未登记' })
   }
   if (item.delivery_origin_batch_no) fields.push({ label: '交期源头批次', value: item.delivery_origin_batch_no })
   if (item.finished_quantity != null) fields.push({ label: '成品件数', value: `${item.finished_quantity} 件` })
@@ -74,8 +78,14 @@ function blocksFor(item: MaterialTransfer): TransferPrintBlock[] {
   if (item.notes) fields.push({ label: internal ? '转料说明' : item.entry_kind === 'processing_output' ? '加工说明' : item.entry_kind === 'serial_reallocation' ? '转投原因' : item.entry_kind === 'warehouse_receipt' ? '入库说明' : '备注', value: item.notes })
   const compactAudit = audit.length === 4 && audit.every(field => field.value.length <= 24)
   if (!compactAudit) fields.push(...audit)
-  const parts = fields.flatMap(field => printTextParts(field.value).map((part, index) => ({ label: field.label + (index ? '（续）' : ''), value: part })))
-  return [{ key: `${item.batch_no}:material`, transfer: item }, ...Array.from({ length: Math.ceil(parts.length / 2) }, (_, index) => ({ key: `${item.batch_no}:fields:${index}`, transfer: item, fields: parts.slice(index * 2, index * 2 + 2) })), ...(compactAudit ? [{ key: `${item.batch_no}:audit`, transfer: item, fields: audit }] : [])]
+  const parts = fields.flatMap(field => printTextParts(field.value).map((part, index) => ({ ...field, label: field.label + (index ? '（续）' : ''), value: part })))
+  const details: TransferPrintBlock[] = []
+  for (let index = 0; index < parts.length;) {
+    const count = parts[index + 1] && parts[index]!.section === parts[index + 1]!.section ? 2 : 1
+    details.push({ key: `${item.batch_no}:fields:${index}`, transfer: item, section: parts[index]!.section, fields: parts.slice(index, index + count).map(({ label, value }) => ({ label, value })) })
+    index += count
+  }
+  return [{ key: `${item.batch_no}:material`, transfer: item }, ...details, ...(compactAudit ? [{ key: `${item.batch_no}:audit`, transfer: item, fields: audit }] : [])]
 }
 
 export function groupTransferPrintItems(items: MaterialTransfer[]): TransferPrintGroup[] {
@@ -99,16 +109,28 @@ export function transferPrintTotals(items: MaterialTransfer[]) {
 export function paginateTransferBlocks(blocks: TransferPrintBlock[], heights: number[], capacity: number): TransferPrintBlock[][] {
   const pages: TransferPrintBlock[][] = [], material = new Map(blocks.filter(block => !block.fields).map(block => [block.transfer.batch_no, block]))
   const sizes = new Map(blocks.map((block, index) => [block.key, heights[index] || 0]))
+  const sections = new Map<string, TransferPrintBlock[]>()
+  for (const block of blocks) if (block.section) sections.set(block.section, [...(sections.get(block.section) || []), block])
   let page: TransferPrintBlock[] = [], used = 0
   for (const [index, block] of blocks.entries()) {
     const height = sizes.get(block.key)!
+    const section = block.section ? sections.get(block.section) : undefined
+    if (section?.[0] === block && page.length) {
+      const sectionHeight = section.reduce((sum, row) => sum + sizes.get(row.key)!, 0)
+      const contextHeight = sizes.get(material.get(block.transfer.batch_no)!.key)!
+      if (sectionHeight + contextHeight <= capacity && used + sectionHeight > capacity) { pages.push(page); page = []; used = 0 }
+    }
     if (!block.fields && page.length) {
       let batchHeight = height
       for (let next = index + 1; next < blocks.length && blocks[next]!.fields; next++) batchHeight += sizes.get(blocks[next]!.key)!
       if (batchHeight <= capacity && used + batchHeight > capacity) { pages.push(page); page = []; used = 0 }
     }
     if (page.length && used + height > capacity) { pages.push(page); page = []; used = 0 }
-    if (!page.length && block.fields) { const context = material.get(block.transfer.batch_no)!; page.push(context); used += sizes.get(context.key)! }
+    if (!page.length && block.fields) {
+      const context = material.get(block.transfer.batch_no)!; page.push(context); used += sizes.get(context.key)!
+      // A long plan may span pages; repeat its serial number beside the batch barcode.
+      if (section?.[0] && section[0] !== block) { page.push(section[0]); used += sizes.get(section[0].key)! }
+    }
     if (used + height > capacity) throw new Error('打印内容超出纸张范围，请检查过长的流水号或单据字段')
     page.push(block); used += height
   }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { sharedSerialLabel } from '@/types/sharedMaterial'
+import SharedMaterialInfo from './SharedMaterialInfo.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElDescriptions, ElDescriptionsItem, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElSelect, ElSwitch, ElPagination, ElTable, ElTableColumn } from 'element-plus'
 import SpecificationInput from './SpecificationInput.vue'
@@ -126,6 +127,7 @@ onBeforeUnmount(() => { ++generation })
         <ElDescriptionsItem label="未转出重量">{{ snapshot.weight }} kg</ElDescriptionsItem>
         <ElDescriptionsItem v-if="processing" label="当前实际尺寸" :span="2">{{ snapshot.transfer_specification || '—' }}</ElDescriptionsItem>
       </ElDescriptions>
+      <SharedMaterialInfo :item="snapshot" />
       <ElForm v-if="editable && hasStock" label-position="top" :show-message="false" :disabled="saving || loading" @submit.prevent="save">
         <p v-if="!processing" class="quantity-note">只修改本批未转出的件数，重量、原签收单和已转出件数不变。保存后立即生效，取消出库不会撤销本次修改。</p>
         <div v-if="processing" class="processing-mode"><ElSwitch v-model="detailed" :disabled="snapshot.shared_unallocated" aria-label="按明细登记" active-text="按明细登记" /><span>{{ detailed ? '逐行填写本批全部未转出实物，剩余大料、不同尺寸小料和废料分别录入。保存后从实际子批出库。' : '仅登记总件数和统一尺寸；一批包含多种尺寸或废料时，启用明细登记。' }}</span></div>

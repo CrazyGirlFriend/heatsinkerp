@@ -205,6 +205,12 @@ class SharedMaterialMember(Base):
             "(delivery_date IS NOT NULL AND delivery_quantity IS NOT NULL AND delivery_quantity > 0)",
             name="ck_shared_material_delivery",
         ),
+        CheckConstraint(
+            "(planned_weight IS NULL AND planned_quantity IS NULL AND planned_specification IS NULL) OR "
+            "(planned_weight IS NOT NULL AND planned_weight > 0 AND planned_quantity IS NOT NULL AND planned_quantity > 0 "
+            "AND planned_specification IS NOT NULL AND length(trim(planned_specification)) > 0)",
+            name="ck_shared_material_plan",
+        ),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     group_id: Mapped[int] = mapped_column(
@@ -215,6 +221,9 @@ class SharedMaterialMember(Base):
     finished_specification: Mapped[str | None] = mapped_column(String(240))
     delivery_date: Mapped[date | None] = mapped_column(Date)
     delivery_quantity: Mapped[int | None] = mapped_column(Integer)
+    planned_weight: Mapped[Decimal | None] = mapped_column(Numeric(17, 6))
+    planned_quantity: Mapped[int | None] = mapped_column(Integer)
+    planned_specification: Mapped[str | None] = mapped_column(String(240))
 
 
 class MaterialTransfer(Base):

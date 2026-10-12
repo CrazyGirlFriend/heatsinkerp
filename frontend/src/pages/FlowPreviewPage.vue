@@ -161,9 +161,9 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
 <template>
   <div ref="pageRoot" class="flow-preview-page" :class="{ 'chain-page': mode === 'chain', 'chain-page--embedded': embedded }" @keydown="canvasShortcut">
     <header v-if="mode === 'chain'" class="chain-header">
-      <PageBackButton :fallback="originalPath" />
+      <div class="page-heading-start"><PageBackButton :fallback="originalPath" />
       <div v-if="!embedded || fullscreen" class="chain-title"><h1>全链路追踪</h1></div>
-      <h1 v-else class="sr-only">全链路追踪</h1>
+      <h1 v-else class="sr-only">全链路追踪</h1></div>
       <form class="chain-query" @submit.prevent="search"><ElInput v-model="serialDraft" placeholder="输入完整流水号" aria-label="流水号" clearable maxlength="80" :disabled="example"><template #prepend>流水号</template></ElInput><ElButton type="primary" native-type="submit" :loading="loading" :disabled="example">查询</ElButton></form>
       <div class="chain-actions"><TableExportButton :source="exportSource" :disabled="loading || !hasData || !!error" :context="[serial, originId].join('|')" :append-to="pageRoot" />
         <span v-if="chainModel.closing !== null" class="chain-asof" :title="`截至 ${traceTime(chainModel.closing)}（北京时间）`">{{ traceTime(chainModel.closing).slice(0, 10) }}</span>
@@ -180,8 +180,8 @@ onBeforeUnmount(() => { ++epoch; document.removeEventListener('fullscreenchange'
       </div>
     </header>
     <header v-else class="preview-topbar">
-      <PageBackButton :fallback="originalPath" />
-      <span class="scope-title">{{ mode === 'team' ? '本班组收发' : '全链路追踪 · 管理员' }}</span>
+      <div class="page-heading-start"><PageBackButton :fallback="originalPath" />
+      <span class="scope-title">{{ mode === 'team' ? '本班组收发' : '全链路追踪 · 管理员' }}</span></div>
       <ElButton class="sample-toggle" text @click="switchData">{{ example ? '使用业务数据' : '多业务演示' }}</ElButton>
     </header>
     <div class="preview-main">

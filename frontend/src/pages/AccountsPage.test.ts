@@ -135,7 +135,7 @@ describe('team leader management workspace', () => {
     expect(wrapper.text()).toContain('leader01')
     expect(wrapper.text()).toContain('扎板班组长')
     expect(wrapper.find('.system-admin-notice').exists()).toBe(false)
-    expect(wrapper.get('h1').classes()).toContain('sr-only')
+    expect(wrapper.get('.workspace-heading h1').text()).toBe('班组长管理')
     expect(wrapper.get('.filter-bar').text()).toContain('新增班组长')
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
 

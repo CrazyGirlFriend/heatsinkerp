@@ -52,6 +52,8 @@ def document(transfer):
 
 
 def create_group(db, batch_no, members):
+    if any(member.planned_weight is None or member.planned_quantity is None or not member.planned_specification for member in members):
+        raise HTTPException(422, "请为每个共投流水号填写计划用料重量、切出件数和切割尺寸")
     group = SharedMaterialGroup(
         batch_no=batch_no,
         members=[SharedMaterialMember(**member.model_dump()) for member in members],

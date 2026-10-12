@@ -94,7 +94,7 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
     shared_group_id: optionalInteger(raw.shared_group_id, 1),
     shared_unallocated: raw.shared_unallocated === true,
     shared_origin_batch_no: textValue(raw.shared_origin_batch_no) || null,
-    shared_serials: Array.isArray(raw.shared_serials) ? raw.shared_serials.map(value => { const member = objectValue(value); return { serial_no: textValue(member.serial_no), customer_code: textValue(member.customer_code) || null, finished_specification: textValue(member.finished_specification) || null, delivery_date: textValue(member.delivery_date) || null, delivery_quantity: optionalInteger(member.delivery_quantity, 1) } }) : [],
+    shared_serials: Array.isArray(raw.shared_serials) ? raw.shared_serials.map(value => { const member = objectValue(value); return { serial_no: textValue(member.serial_no), customer_code: textValue(member.customer_code) || null, finished_specification: textValue(member.finished_specification) || null, delivery_date: textValue(member.delivery_date) || null, delivery_quantity: optionalInteger(member.delivery_quantity, 1), planned_weight: member.planned_weight == null ? null : numberValue(member.planned_weight), planned_quantity: optionalInteger(member.planned_quantity, 1), planned_specification: textValue(member.planned_specification) || null } }) : [],
     sludge_gross_weight: raw.sludge_gross_weight == null ? null : numberValue(raw.sludge_gross_weight),
     sludge_content_percent: raw.sludge_content_percent == null ? null : numberValue(raw.sludge_content_percent),
     sludge_percent_locked: raw.sludge_percent_locked === true,

@@ -72,9 +72,9 @@ onBeforeUnmount(() => { ++generation; form.token = '' })
 
 <template>
   <section class="page reading-workspace integration-page">
+    <header class="workspace-heading"><div class="page-heading-start"><PageBackButton /><h1>主系统对接</h1></div></header>
     <ElResult v-if="!isAdmin" icon="warning" title="仅管理员可访问" />
     <template v-else>
-      <h1 class="sr-only">主系统对接</h1>
       <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
       <ElAlert v-if="notice" :title="notice" type="success" :closable="false" show-icon />
       <ElSkeleton v-if="loading && !config" :rows="6" animated />
@@ -83,7 +83,7 @@ onBeforeUnmount(() => { ++generation; form.token = '' })
         <ElAlert v-if="!config.key_ready" title="未配置服务端加密密钥，请联系部署管理员后再保存。" type="warning" :closable="false" show-icon />
         <div class="integration-layout">
         <section class="integration-panel" aria-label="连接配置">
-          <header class="integration-panel-heading"><div class="integration-panel-title"><PageBackButton /><h2>连接配置</h2></div><ElTag :type="config.enabled ? 'success' : 'info'" effect="plain">{{ config.enabled ? '已启用' : '已停用' }}</ElTag></header>
+          <header class="integration-panel-heading"><h2>连接配置</h2><ElTag :type="config.enabled ? 'success' : 'info'" effect="plain">{{ config.enabled ? '已启用' : '已停用' }}</ElTag></header>
           <ElForm label-position="top" :disabled="busy" @submit.prevent="save">
             <div class="integration-form-grid">
               <ElFormItem label="主系统地址" class="integration-wide"><ElInput v-model="form.base_url" aria-label="主系统地址" placeholder="https://主系统域名" maxlength="500" autocomplete="off" /><p class="field-hint">允许地址：{{ config.allowed_origins.length ? config.allowed_origins.join('、') : '未设置，请联系部署管理员' }}</p></ElFormItem>
@@ -114,7 +114,6 @@ onBeforeUnmount(() => { ++generation; form.token = '' })
 .integration-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 16px; }
 .integration-panel { min-width: 0; background: var(--glass-surface); border: 1px solid var(--glass-border); border-radius: 16px; padding: 20px; box-shadow: var(--glass-shadow); backdrop-filter: blur(18px); }
 .integration-panel-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
-.integration-panel-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .integration-panel h2 { margin: 0; font-size: 16px; font-weight: 550; }
 .integration-panel-heading .field-hint { margin: 0; }
 .integration-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }

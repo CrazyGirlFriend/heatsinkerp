@@ -156,3 +156,22 @@ describe('warehouse source detail', () => {
     expect(wrapper.text()).not.toContain('TL999')
   })
 })
+
+it('shows each shared order and its original cutting plan directly in inventory detail', async () => {
+  await render(false)
+  await wrapper.setProps({ group: { ...warehouseFixture(), serial_no: '共投-TL1', shared_group_id: 1, shared_unallocated: true, shared_origin_batch_no: 'TL1', shared_serials: [
+    { serial_no: 'ORDER-A', customer_code: 'CA', planned_weight: 60, planned_quantity: 30, planned_specification: '25 × 12 × 2 mm', finished_specification: '20 × 10 × 2 mm', delivery_date: '2026-11-01', delivery_quantity: 30 },
+    { serial_no: 'ORDER-B', customer_code: 'CB', planned_weight: 40, planned_quantity: 20, planned_specification: '12 × 12 × 2 mm' },
+  ] } })
+  await flushPromises()
+  const table = wrapper.get('.shared-plan-table')
+  expect(table.findAll('tbody tr').map(row => row.findAll('td').map(cell => cell.text()))).toEqual([
+    ['ORDER-A', 'CA', '60', '30', '25 × 12 × 2 mm', '20 × 10 × 2 mm', '2026-11-01', '30'],
+    ['ORDER-B', 'CB', '40', '20', '12 × 12 × 2 mm', '—', '—', '—'],
+  ])
+  expect(wrapper.get('.shared-material-info footer').text()).toContain('100 kg')
+  expect(wrapper.get('.shared-material-info footer').text()).toContain('50 件')
+  await wrapper.setProps({ group: { ...warehouseFixture(), serial_no: 'ORDER-A', shared_group_id: 1, shared_unallocated: false, shared_serials: [{ serial_no: 'ORDER-A' }, { serial_no: 'ORDER-B' }] } })
+  expect(wrapper.get('.shared-current-serial').text()).toContain('ORDER-A')
+  expect(wrapper.get('.shared-current-serial').text()).toContain('未登记')
+})

@@ -212,8 +212,10 @@ onBeforeUnmount(() => {
     <section class="stock-panel">
       <header class="stock-heading">
         <div class="stock-title">
-          <PageBackButton />
-          <h1>班组材质库存</h1>
+          <div class="page-heading-start">
+            <PageBackButton />
+            <h1>班组材质库存</h1>
+          </div>
           <p v-if="report" class="stock-count">
             {{ report.stock.rows.length }} 个班组 · {{ report.stock.materials.length }} 种材质
           </p>

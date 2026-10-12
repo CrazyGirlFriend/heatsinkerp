@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 DIRECT_MATERIAL_TYPE_PATTERN = (
     "^(raw_material|finished|semi_finished|finished_surplus|semi_finished_surplus|defective|waste|sludge|scrap_chips)$"
@@ -117,8 +117,15 @@ class SharedMaterialSerial(APIModel):
     finished_specification: str | None = Field(default=None, max_length=240)
     delivery_date: date | None = None
     delivery_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647)
+    planned_weight: Decimal | None = Field(default=None, gt=0, max_digits=17, decimal_places=6)
+    planned_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647)
+    planned_specification: str | None = Field(default=None, min_length=1, max_length=240)
 
-    @field_validator("serial_no", "customer_code", "finished_specification")
+    @field_serializer("planned_weight", when_used="json")
+    def serialize_planned_weight(self, value):
+        return float(value) if value is not None else None
+
+    @field_validator("serial_no", "customer_code", "finished_specification", "planned_specification")
     @classmethod
     def normalize_text(cls, value):
         return value.strip() if value is not None else None
@@ -131,6 +138,9 @@ class SharedMaterialSerial(APIModel):
             raise ValueError("请同时填写要求发货日期和应发成品件数")
         if self.delivery_date and not date(2000, 1, 1) <= self.delivery_date <= date(2100, 12, 31):
             raise ValueError("要求发货日期须在2000至2100年之间")
+        plan = (self.planned_weight, self.planned_quantity, self.planned_specification)
+        if any(value is not None for value in plan) and not all(plan):
+            raise ValueError("请完整填写计划用料重量、切出件数和切割尺寸")
         return self
 
 

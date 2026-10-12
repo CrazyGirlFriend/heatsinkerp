@@ -305,12 +305,11 @@ onMounted(() => void loadData())
 
 <template>
   <section class="page admin-workspace accounts-page reading-workspace">
+    <header class="workspace-heading"><div class="page-heading-start"><PageBackButton /><h1>班组长管理</h1></div></header>
     <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
-    <h1 class="sr-only">班组长管理</h1>
 
     <ElCard shadow="never" class="workspace-card">
       <div class="filter-bar">
-        <PageBackButton />
         <ElInput v-model="query" clearable class="search-input" placeholder="账号、姓名或班组" aria-label="搜索班组长">
           <template #prefix><ElIcon><Search /></ElIcon></template>
         </ElInput>

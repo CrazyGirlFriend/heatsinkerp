@@ -49,8 +49,12 @@ const form = reactive({
   document: Object.fromEntries(materialDocumentTextFields.map(field => [field.key, ''])) as Record<MaterialTransferTextField, string>,
 })
 const shared = ref(false)
-const members = ref<SharedMaterialSerial[]>([])
-const newMember = (): SharedMaterialSerial => ({ serial_no: '', customer_code: '', finished_specification: '', delivery_date: null, delivery_quantity: null })
+type MemberDraft = SharedMaterialSerial & { planned_specification: string; specificationValid?: boolean }
+const members = ref<MemberDraft[]>([])
+const newMember = (): MemberDraft => ({ serial_no: '', customer_code: '', finished_specification: '', delivery_date: null, delivery_quantity: null, planned_weight: null, planned_quantity: null, planned_specification: '' })
+const plannedWeight = computed(() => Math.round(members.value.reduce((sum, member) => sum + (member.planned_weight || 0), 0) * 1000000) / 1000000)
+const plannedQuantity = computed(() => members.value.reduce((sum, member) => sum + (member.planned_quantity || 0), 0))
+const planWeightDifference = computed(() => Math.round((plannedWeight.value - (form.weight || 0)) * 1000000) / 1000000)
 const sharedEntry = computed(() => shared.value && form.receiptKind === 'external')
 const visibleSections = computed(() => documentSections.map(section => ({ ...section, fields: section.fields.filter(field => !sharedEntry.value || !['customer_code', 'finished_specification'].includes(field.key)) })))
 watch(sharedEntry, active => { if (active && members.value.length < 2) members.value = [newMember(), newMember()] })
@@ -67,7 +71,7 @@ function fill(payload: CreateWarehouseReceipt | null = null) {
   form.warehouseLocation = payload?.warehouse_location || ''
   form.warehouseLocationKey = payload?.warehouse_location_reservation_key || ''
   form.receiptKind = payload?.receipt_kind || 'external'; form.externalSource = payload?.external_source || ''; form.returnDispatchNo = payload?.return_dispatch_no || ''
-  shared.value = Boolean(payload?.shared_serials?.length); members.value = payload?.shared_serials?.map(member => ({ ...member })) || [newMember(), newMember()]
+  shared.value = Boolean(payload?.shared_serials?.length); members.value = payload?.shared_serials?.map(member => ({ ...member, planned_specification: member.planned_specification || '' })) || [newMember(), newMember()]
   form.serialNo = payload?.serial_no || ''; form.materialType = payload?.material_type || ''
   form.quantity = payload?.quantity ?? 0; form.weight = payload?.weight ?? 0; form.notes = payload?.notes || ''
   form.gross = payload?.sludge_gross_weight ?? undefined; form.percent = payload?.sludge_content_percent ?? undefined
@@ -96,6 +100,9 @@ const validation = useDialogValidation(() => {
     const serials = members.value.map(member => member.serial_no.trim().toLocaleLowerCase())
     members.value.forEach((member, index) => {
       if (!member.serial_no.trim() || member.serial_no.length > 80 || serials.indexOf(serials[index]!) !== index || member.serial_no.startsWith('共投-')) issues[`member${index}serial`] = '流水号不能为空或重复'
+      if (member.planned_weight == null || !Number.isFinite(member.planned_weight) || member.planned_weight <= 0 || member.planned_weight > 99999999999.999 || Math.abs(member.planned_weight * 1000000 - Math.round(member.planned_weight * 1000000)) > .0001) issues[`member${index}weight`] = '请填写计划用料重量'
+      if (!Number.isSafeInteger(member.planned_quantity) || Number(member.planned_quantity) <= 0 || Number(member.planned_quantity) > 2147483647) issues[`member${index}quantity`] = '请填写计划切出件数'
+      if (!member.planned_specification.trim() || member.planned_specification.length > 240 || member.specificationValid === false) issues[`member${index}cutting`] = '请填写完整的计划切割尺寸'
       if ((member.customer_code?.length || 0) > 80) issues[`member${index}customer`] = '内容过长'
       if ((member.finished_specification?.length || 0) > 240) issues[`member${index}specification`] = '内容过长'
       const message = deliveryError(member.delivery_date || '', member.delivery_quantity ?? undefined)
@@ -139,7 +146,7 @@ function payload(): CreateWarehouseReceipt {
     quantity: Number(enteredQuantity.value), weight: Number(form.weight), notes: form.notes.trim(), finished_quantity: weightOnly.value ? null : form.finishedQuantity ?? null,
     ...(form.materialType === 'sludge' ? sludgePayload(form.materialType, form.gross, form.percent) : {}),
     ...(form.receiptKind === 'external' ? { delivery_date: weightOnly.value ? null : form.deliveryDate || null, delivery_quantity: weightOnly.value ? null : form.deliveryQuantity ?? null } : {}),
-    ...(sharedEntry.value ? { customer_code: null, finished_specification: null, delivery_date: null, delivery_quantity: null, shared_serials: members.value.map(member => ({ serial_no: member.serial_no.trim(), customer_code: member.customer_code?.trim() || null, finished_specification: member.finished_specification?.trim() || null, delivery_date: member.delivery_date || null, delivery_quantity: member.delivery_quantity ?? null })) } : {}),
+    ...(sharedEntry.value ? { customer_code: null, finished_specification: null, delivery_date: null, delivery_quantity: null, shared_serials: members.value.map(member => ({ serial_no: member.serial_no.trim(), customer_code: member.customer_code?.trim() || null, finished_specification: member.finished_specification?.trim() || null, delivery_date: member.delivery_date || null, delivery_quantity: member.delivery_quantity ?? null, planned_weight: member.planned_weight, planned_quantity: member.planned_quantity, planned_specification: member.planned_specification.trim() })) } : {}),
     idempotency_key: globalThis.crypto?.randomUUID?.() || `warehouse-receipt-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   }
 }
@@ -198,17 +205,19 @@ onBeforeUnmount(() => { ++generation })
           </div>
       </section>
       <section v-if="form.receiptKind === 'external'" class="shared-entry-section">
-        <div class="shared-entry-heading"><ElSwitch v-model="shared" :disabled="readonly" active-text="共投入库" aria-label="共投入库" /><span v-if="sharedEntry">同一块料关联多个流水号；入库实物只记一份</span></div>
-        <div v-if="sharedEntry" class="shared-member-scroll"><table class="shared-member-table" aria-label="共投流水号安排"><thead><tr><th>流水号 *</th><th>客户代码</th><th>成品规格</th><th>要求发货日期</th><th>应发件数</th><th></th></tr></thead><tbody>
-          <tr v-for="(member, index) in members" :key="index">
+        <div class="shared-entry-heading"><ElSwitch v-model="shared" :disabled="readonly" active-text="共投入库" aria-label="共投入库" /><span v-if="sharedEntry">先填写各流水号用料计划；整块料库存只记一次</span></div>
+        <div v-if="sharedEntry" class="shared-member-scroll"><table class="shared-member-table" aria-label="共投流水号安排"><thead><tr><th>流水号 *</th><th>计划用料 (kg) *</th><th>计划切出 (件) *</th><th>客户代码</th><th>成品规格</th><th>要求发货日期</th><th>应发件数</th><th></th></tr></thead><tbody>
+          <template v-for="(member, index) in members" :key="index"><tr>
             <td><ElFormItem :error="fieldErrors[`member${index}serial`]"><MaterialInput v-model="member.serial_no" field="serial_no" :label="`共投流水号${index + 1}`" :maxlength="80" :disabled="readonly" /></ElFormItem></td>
+            <td><ElFormItem :error="fieldErrors[`member${index}weight`]"><ElInputNumber v-model="member.planned_weight" :aria-label="`共投计划重量${index + 1}`" :disabled="readonly" :min="0.000001" :max="99999999999.999" :controls="false" /></ElFormItem></td>
+            <td><ElFormItem :error="fieldErrors[`member${index}quantity`]"><ElInputNumber v-model="member.planned_quantity" :aria-label="`共投计划件数${index + 1}`" :disabled="readonly" :min="1" :max="2147483647" :precision="0" :controls="false" /></ElFormItem></td>
             <td><ElFormItem :error="fieldErrors[`member${index}customer`]"><ElInput v-model="member.customer_code" :aria-label="`共投客户${index + 1}`" :disabled="readonly" maxlength="80" placeholder="选填" /></ElFormItem></td>
             <td><ElFormItem :error="fieldErrors[`member${index}specification`]"><ElInput v-model="member.finished_specification" :aria-label="`共投成品规格${index + 1}`" :disabled="readonly" maxlength="240" placeholder="选填" /></ElFormItem></td>
             <td><ElFormItem :error="fieldErrors[`member${index}delivery`]"><ElDatePicker v-model="member.delivery_date" type="date" value-format="YYYY-MM-DD" :aria-label="`共投交期${index + 1}`" :disabled="readonly" placeholder="选填" /></ElFormItem></td>
             <td><ElFormItem :error="fieldErrors[`member${index}delivery`]"><ElInputNumber v-model="member.delivery_quantity" :aria-label="`共投应发件数${index + 1}`" :disabled="readonly" :min="1" :max="2147483647" :precision="0" :controls="false" /></ElFormItem></td>
             <td><ElButton text :disabled="readonly || members.length <= 2" :aria-label="`移除共投流水号${index + 1}`" @click="members.splice(index, 1)">移除</ElButton></td>
-          </tr>
-        </tbody></table><ElButton text :disabled="readonly || members.length >= 20" @click="members.push(newMember())">添加流水号</ElButton></div>
+          </tr><tr class="shared-cutting-row"><td colspan="8"><ElFormItem :label="'计划切割尺寸 · ' + (member.serial_no || `流水号 ${index + 1}`)" :error="fieldErrors[`member${index}cutting`]" required><SpecificationInput v-model="member.planned_specification" :label="`共投计划切割尺寸${index + 1}`" :disabled="readonly" @validity-change="member.specificationValid = $event" /></ElFormItem></td></tr></template>
+        </tbody></table><div class="shared-plan-summary"><span>计划合计 <b>{{ plannedWeight }} kg</b><b>{{ plannedQuantity }} 件</b></span><span v-if="form.weight && planWeightDifference !== 0" :class="{ 'shared-plan-warning': planWeightDifference > 1 }">{{ planWeightDifference > 0 ? '计划超出入库重量' : '未规划重量' }} {{ Math.abs(planWeightDifference) }} kg</span></div><ElButton text :disabled="readonly || members.length >= 20" @click="members.push(newMember())">添加流水号</ElButton></div>
       </section>
       <section class="dialog-form-section dialog-section-quantities"><h3>数量与交期</h3>
           <div class="receipt-grid dialog-form-grid">
@@ -238,15 +247,22 @@ onBeforeUnmount(() => { ++generation })
 .shared-entry-heading { display: flex; align-items: center; gap: 20px; font-size: 12px; color: var(--muted); }
 .shared-member-scroll { overflow-x: auto; }
 .shared-member-table { width: 100%; min-width: 900px; table-layout: fixed; border-collapse: collapse; }
-.shared-member-table th { text-align: left; font-size: 12px; font-weight: 500; color: var(--muted); padding: 8px; }
+.shared-member-table th { text-align: center; font-size: 12px; font-weight: 500; color: var(--muted); padding: 8px; }
 .shared-member-table td { padding: 4px 8px; vertical-align: top; }
 .shared-member-table :deep(.el-form-item) { margin-bottom: 0; }
 .shared-member-table :deep(.el-input-number), .shared-member-table :deep(.el-date-editor) { width: 100%; }
-.shared-member-table th:nth-child(3) { width: 22%; }.shared-member-table th:last-child { width: 60px; }
+.shared-member-table th:nth-child(5) { width: 18%; }.shared-member-table th:last-child { width: 60px; }
 .receipt-heading h2 { margin: 0; color: var(--text); font-size: 20px; font-weight: 550; }
 .receipt-heading { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; }
 .receipt-heading > span { color: var(--subtle); font-size: 12px; }
 .receipt-heading strong { color: var(--primary); font-weight: 500; }
 .receipt-primary-section { padding: 12px; margin-bottom: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--workspace-bg); }
 .receipt-retry { margin-bottom: 12px; }
+.shared-cutting-row td { padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.shared-cutting-row :deep(.el-form-item) { display: flex; flex-direction: row; align-items: center; gap: 12px; }
+.shared-cutting-row :deep(.el-form-item__label) { margin-bottom: 0; flex-shrink: 0; }
+.shared-cutting-row :deep(.el-form-item__content) { flex: 1; min-width: 0; }
+.shared-plan-summary, .shared-plan-summary > span { display: flex; align-items: baseline; gap: 16px; }
+.shared-plan-summary { padding: 12px 8px 4px; flex-wrap: wrap; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.shared-plan-summary b { font-weight: 550; color: var(--text); }.shared-plan-warning { color: var(--el-color-warning); }
 </style>

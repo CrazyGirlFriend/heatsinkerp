@@ -66,7 +66,7 @@ onBeforeUnmount(() => { disposed = true; observer?.disconnect(); document.remove
     <h1 id="workspace-page-heading" class="sr-only">{{ sectionLabel }}</h1>
     <header class="team-workspace__navigation-row">
       <strong v-if="fullscreen" class="team-workspace__team">{{ title }} · {{ sectionLabel }}</strong>
-      <div v-else class="team-workspace__heading"><strong class="team-workspace__title">{{ title.endsWith('工作台') ? title : title + '工作台' }}</strong><PageBackButton /></div>
+      <div v-else class="team-workspace__heading page-heading-start"><PageBackButton /><strong class="team-workspace__title">{{ title.endsWith('工作台') ? title : title + '工作台' }}</strong></div>
       <div v-if="fullscreen && $slots['fullscreen-status']" class="team-workspace__status"><slot name="fullscreen-status" /></div>
       <div v-if="canFullscreen || $slots.settings" class="team-workspace__commands">
         <div v-if="canFullscreen" class="team-workspace__view-actions"><ElButton v-if="exportable" class="team-workspace__export" text :icon="Upload" @click="emit('export')">导出</ElButton><ElButton class="team-workspace__fullscreen" text :icon="fullscreen ? ScaleToOriginal : FullScreen" :aria-pressed="fullscreen" :disabled="fullscreenBusy" @click="toggleFullscreen">{{ fullscreen ? '退出全屏' : '全屏查看' }}</ElButton></div>
@@ -90,7 +90,6 @@ onBeforeUnmount(() => { disposed = true; observer?.disconnect(); document.remove
 .team-workspace__navigation-row { display: flex; flex: 0 0 auto; align-items: center; gap: 18px; min-width: 0; min-height: 55px; margin-bottom: 21px; }
 .team-workspace__heading { display: flex; align-items: center; flex: 1; gap: 12px; min-width: 0; }
 .team-workspace__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 29px; font-weight: 640; letter-spacing: -.9px; }
-.team-workspace__heading :deep(.page-back-button) { height: 32px; padding-inline: 8px; border-radius: 20px; font-size: 12px; }
 .team-workspace__commands { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; margin-left: auto; padding: 4px; border-radius: 24px; background: linear-gradient(160deg, #ffffffe0, #ffffff47 65%, #ffffff85); -webkit-backdrop-filter: blur(10px) saturate(125%); backdrop-filter: blur(10px) saturate(125%); box-shadow: 0 5px 13px #233e2d12, 0 0 0 .5px #4b6c581a, inset 0 1px 1px #fff, inset 0 -1px 1px #ffffffb8; }
 .team-workspace__settings, .team-workspace__view-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; }
 .team-workspace__settings--separated::before { content: ''; width: 1px; height: 20px; margin-inline: 5px; background: var(--line); }

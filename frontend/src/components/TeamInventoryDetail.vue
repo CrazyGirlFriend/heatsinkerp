@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import TableExportButton from './TableExportButton.vue'
+import SharedMaterialInfo from './SharedMaterialInfo.vue'
+import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 import { globalTransferExportFields } from '@/utils/teamTableExport'
 import { currentLocations } from '@/utils/warehousePlacement'
@@ -25,6 +27,7 @@ const rows = ref<StockBatch[]>([]), total = ref(0), page = ref(1), pageSize = re
 const movements = ref<MaterialTransfer[]>([]), movementTotal = ref(0), movementPage = ref(1), movementPageSize = ref(10)
 const loading = ref(false), error = ref('')
 const batchOpen = ref(false), selected = ref<MaterialTransfer | null>(null)
+const serialOpen = ref(false)
 const quantityOpen = ref(false), quantitySource = ref<number | null>(null)
 const hasLoss = computed(() => rows.value.some(row => Number(row.lost_quantity) > 0 || Number(row.lost_weight) > 0))
 const hasPending = computed(() => rows.value.some(row => Number(row.in_transit_quantity) > 0 || Number(row.in_transit_weight) > 0))
@@ -94,7 +97,7 @@ function openQuantity(row: StockBatch) { quantitySource.value = Number(row.trans
 function changed() { void load(); emit('changed') }
 watch([() => props.teamId, () => props.group?.group_id], () => {
   page.value = movementPage.value = 1; rows.value = []; movements.value = []; total.value = movementTotal.value = 0
-  batchOpen.value = quantityOpen.value = false; selected.value = null; void load()
+  batchOpen.value = quantityOpen.value = serialOpen.value = false; selected.value = null; void load()
 }, { immediate: true })
 onBeforeUnmount(() => { ++version })
 </script>
@@ -102,8 +105,8 @@ onBeforeUnmount(() => { ++version })
 <template>
   <ElDialog :model-value="!!group" title="库存明细" width="min(1480px, calc(100vw - 32px))" align-center append-to-body class="material-detail-dialog warehouse-stock-detail" @update:model-value="!$event && emit('close')">
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
-    <ElDescriptions v-if="group" :column="3" border>
-      <ElDescriptionsItem label="流水号">{{ group.serial_no }}</ElDescriptionsItem>
+    <ElDescriptions v-if="group" class="stock-detail-overview" :column="3" border>
+      <ElDescriptionsItem label="流水号"><span v-if="group.shared_unallocated">共投料 · {{ group.shared_serials?.length || 0 }} 个流水号</span><ElButton v-else link type="primary" @click="serialOpen = true">{{ group.serial_no }}</ElButton></ElDescriptionsItem>
       <ElDescriptionsItem label="材质">{{ group.material_name || '—' }}</ElDescriptionsItem>
       <ElDescriptionsItem label="规格">{{ group.transfer_specification || '—' }}</ElDescriptionsItem>
       <ElDescriptionsItem label="物料类型">{{ materialTypeLabel(group.material_type || null) }}</ElDescriptionsItem>
@@ -111,11 +114,15 @@ onBeforeUnmount(() => { ++version })
       <ElDescriptionsItem :label="warehouse ? '来源' : '上序班组'">{{ inventorySourceLabel(group, warehouse) }}</ElDescriptionsItem>
       <ElDescriptionsItem v-if="(group.max_weight_difference || 0) > 1" label="同批累计重量差异">最大 {{ inventoryAmount(group.max_weight_difference) }} kg，超过 1 kg，请核对</ElDescriptionsItem>
     </ElDescriptions>
+    <SharedMaterialInfo v-if="group" :item="group" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存明细" />
     <template v-else>
-      <section class="stock-detail-section" aria-label="当前库存">
-        <header><h3>当前库存</h3><TableExportButton :source="exportStock" :disabled="loading || !!error" :context="group?.group_id" /><ElButton v-if="group && (Number(group.reserved_quantity) > 0 || Number(group.reserved_weight) > 0)" link type="primary" @click="emit('pending')">查看转出待确认批次</ElButton></header>
+      <section class="stock-detail-section material-detail-section" aria-label="当前库存">
+        <header>
+          <h3>当前库存</h3>
+          <div class="detail-section-actions"><ElButton v-if="group && (Number(group.reserved_quantity) > 0 || Number(group.reserved_weight) > 0)" link type="primary" @click="emit('pending')">查看转出待确认批次</ElButton><TableExportButton :source="exportStock" :disabled="loading || !!error" :context="group?.group_id" /></div>
+        </header>
         <ElTable class="business-table warehouse-source-table" :data="rows" row-key="transfer.id" empty-text="暂无来源记录">
           <ElTableColumn label="来源批次号" min-width="205"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
           <ElTableColumn v-if="rows.some(row => row.processing_role || row.transfer.processing_role)" label="加工类别" min-width="110"><template #default="{ row }">{{ processingRoleLabels[(row.processing_role || row.transfer.processing_role) as keyof typeof processingRoleLabels] || '—' }}</template></ElTableColumn>
@@ -138,8 +145,8 @@ onBeforeUnmount(() => { ++version })
         </ElTable>
         <footer><span>共 {{ total }} 个来源批次（含零库存）</span><ElPagination aria-label="当前库存分页" :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></footer>
       </section>
-      <section class="stock-detail-section" aria-label="逐笔收发记录">
-        <header><h3>收发记录</h3><span>{{ movementTotal }} 笔</span><TableExportButton :source="exportMovements" :disabled="loading || !!error" :context="group?.group_id" /></header>
+      <section class="stock-detail-section material-detail-section" aria-label="逐笔收发记录">
+        <header><div class="detail-section-heading"><h3>收发记录</h3><span>{{ movementTotal }} 笔</span></div><div class="detail-section-actions"><TableExportButton :source="exportMovements" :disabled="loading || !!error" :context="group?.group_id" /></div></header>
         <ElTable class="business-table warehouse-movement-table" :data="movements" row-key="id" empty-text="暂无收发记录">
           <ElTableColumn label="批次号" min-width="205"><template #default="{ row }"><ElButton link type="primary" @click="open(asTransfer(row))">{{ row.batch_no }}</ElButton></template></ElTableColumn>
           <ElTableColumn label="业务" min-width="95"><template #default="{ row }">{{ movementLabel(asTransfer(row)) }}</template></ElTableColumn>
@@ -156,18 +163,14 @@ onBeforeUnmount(() => { ++version })
   </ElDialog>
   <MaterialTransferDrawer v-model="batchOpen" :transfer="selected" :trace-scope="{ team_id: teamId, direction: 'all' }" @changed="changed" />
   <QuantityAdjustmentDialog v-model="quantityOpen" :team-id="teamId" :source-id="quantitySource" :can-write="canWrite && !warehouse" :processing="processing" @saved="changed" />
+  <SerialMaterialDrawer v-if="group && serialOpen" v-model="serialOpen" :team-id="teamId" :serial-no="group.serial_no" />
 </template>
 
 <style scoped>
-.stock-detail-section { margin-top: 24px; }
+.stock-detail-overview :deep(.el-descriptions__table) { table-layout: fixed; }
+.stock-detail-overview :deep(.el-descriptions__table .el-descriptions__cell) { padding: 10px; font-size: 14px; line-height: 22px; text-align: center; }
+.stock-detail-overview :deep(.el-descriptions__table .el-descriptions__label) { width: 110px; font-weight: 500; background: var(--table-header-bg); }
 .source-weight-warning { color: var(--el-color-danger); }
-.stock-detail-section > header, .stock-detail-section > footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-.stock-detail-section > header { margin-bottom: 12px; }
-.stock-detail-section h3 { margin: 0; font-size: 16px; font-weight: 550; color: var(--text); }
-.stock-detail-section > header > span, .stock-detail-section > footer > span { color: var(--muted); font-size: 13px; }
-.stock-detail-section > footer { padding: 14px 0; }
-.stock-detail-section .business-table { font-size: 14px; font-variant-numeric: tabular-nums; }
-.stock-detail-section :deep(.el-table__cell) { padding-block: 13px; }
 .source-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 12px; }
 .source-actions :deep(.el-button + .el-button) { margin-left: 0; }
 @media (max-width: 760px) {

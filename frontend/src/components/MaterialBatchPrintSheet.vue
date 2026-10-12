@@ -12,7 +12,7 @@ defineExpose({ prepare: () => documentRef.value?.prepare() })
 </template>
 
 <style scoped>
-.material-batches-print-sheet { width: 186mm; color: #111; background: #fff; }
+.material-batches-print-sheet { width: 186mm; margin-inline: auto; color: #111; background: #fff; }
 @media print {
   @page { size: A4 portrait; margin: 12mm; }
   :global(body.material-batches-printing > :not(.material-batches-print-sheet)) { display: none !important; }

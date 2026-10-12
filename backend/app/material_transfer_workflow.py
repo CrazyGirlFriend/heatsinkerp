@@ -39,6 +39,10 @@ AUDITED_FIELDS = DOCUMENT_FIELDS + SLUDGE_FIELDS + (
 def _creation_fingerprint(payload) -> str:
     # Preserve pre-upgrade idempotency hashes when optional fields are absent.
     value = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    for member in value.get("shared_serials") or []:
+        for field in ("planned_weight", "planned_quantity", "planned_specification"):
+            if member.get(field) is None:
+                member.pop(field, None)
     for field in ("receipt_kind", "external_source", "return_dispatch_no", "purpose_id", "warehouse_location", "warehouse_location_reservation_key", "shared_serials"):
         if field not in payload.model_fields_set:
             value.pop(field, None)

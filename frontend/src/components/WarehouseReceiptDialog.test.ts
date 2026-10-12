@@ -55,6 +55,14 @@ describe('warehouse manual receipt', () => {
     expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
     expect(wrapper.get('input[aria-label="共投流水号2"]').element.closest('.el-form-item')?.classList.contains('is-error')).toBe(true)
     await wrapper.get('input[aria-label="共投流水号2"]').setValue('B')
+    await submit()
+    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+    expect(wrapper.get('input[aria-label="共投计划重量1"]').element.closest('.el-form-item')?.classList.contains('is-error')).toBe(true)
+    for (const index of [1, 2]) {
+      await amount(`共投计划重量${index}`, .0025)
+      await amount(`共投计划件数${index}`, 30)
+      await wrapper.get(`input[aria-label="共投计划切割尺寸${index}"]`).setValue('25 × 12 × 2 mm')
+    }
     await wrapper.get('input[aria-label="共投客户1"]').setValue('CA')
     await wrapper.get('input[aria-label="共投成品规格1"]').setValue('20 × 10 × 2 mm')
     wrapper.findAllComponents(ElDatePicker)[0]!.vm.$emit('update:modelValue', '2026-11-01')
@@ -62,7 +70,7 @@ describe('warehouse manual receipt', () => {
     await submit()
     const original = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
     expect(original).toMatchObject({ serial_no: '', quantity: 0, weight: .005, customer_code: null, finished_specification: null, delivery_date: null, delivery_quantity: null,
-      shared_serials: [{ serial_no: 'A', customer_code: 'CA', finished_specification: '20 × 10 × 2 mm', delivery_date: '2026-11-01', delivery_quantity: 30 }, { serial_no: 'B', customer_code: null, finished_specification: null, delivery_date: null, delivery_quantity: null }] })
+      shared_serials: [{ serial_no: 'A', customer_code: 'CA', finished_specification: '20 × 10 × 2 mm', delivery_date: '2026-11-01', delivery_quantity: 30, planned_weight: .0025, planned_quantity: 30, planned_specification: '25 × 12 × 2 mm' }, { serial_no: 'B', customer_code: null, finished_specification: null, delivery_date: null, delivery_quantity: null, planned_weight: .0025, planned_quantity: 30, planned_specification: '25 × 12 × 2 mm' }] })
     wrapper.unmount(); await render(); await submit()
     expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]).toEqual(original)
   })

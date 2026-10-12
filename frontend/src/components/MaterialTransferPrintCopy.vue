@@ -62,7 +62,8 @@ th { background: #f3f3f3; font-weight: 600; }
 .transfer-print-pairs > div { display: grid; grid-template-columns: 24mm minmax(0, 1fr); min-height: 5mm; }
 .transfer-print-pairs > div + div { border-left: .5pt solid #333; }
 .transfer-print-pairs strong { padding: .5mm 1mm; border-right: .5pt solid #333; background: #f3f3f3; font-size: 7.5pt; font-weight: 600; }
-.transfer-print-pairs span { padding: .5mm 1.5mm; white-space: pre-wrap; text-align: left; min-width: 0; }
+.transfer-print-pairs strong, .transfer-print-pairs span { align-content: center; text-align: center; }
+.transfer-print-pairs span { padding: .5mm 1.5mm; white-space: pre-wrap; min-width: 0; }
 .transfer-print-audit { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .transfer-print-audit > div { grid-template-columns: 16mm minmax(0, 1fr); }
 .transfer-print-audit strong, .transfer-print-audit span { font-size: 7pt; padding: .5mm .8mm; }

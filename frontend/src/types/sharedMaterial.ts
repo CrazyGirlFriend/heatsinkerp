@@ -4,6 +4,9 @@ export interface SharedMaterialSerial {
   finished_specification?: string | null
   delivery_date?: string | null
   delivery_quantity?: number | null
+  planned_weight?: number | null
+  planned_quantity?: number | null
+  planned_specification?: string | null
 }
 export interface SharedMaterialFields {
   shared_group_id?: number | null
