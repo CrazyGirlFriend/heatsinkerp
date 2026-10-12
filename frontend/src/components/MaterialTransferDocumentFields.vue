@@ -155,13 +155,18 @@ const fields = computed<DocumentField[]>(() => {
       ? [
           {
             label: external ? `${verb}确认人` : '接收人',
-            value: (external ? t.dispatched_by : t.received_by) || '—',
+            value: external
+              ? t.dispatched_by || '—'
+              : t.received_employee_name || (t.status === 'received' ? '未登记' : '—'),
           },
           {
             label: external ? `${verb}确认时间` : '接收时间',
             value: formatDateTime(external ? t.dispatched_at : t.received_at),
           },
         ]
+      : []),
+    ...(!external && t.entry_kind === 'transfer' && t.received_at
+      ? [{ label: '签收操作账号', value: t.received_by || '—' }]
       : []),
     ...(t.status === 'voided'
       ? [

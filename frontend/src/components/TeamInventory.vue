@@ -262,7 +262,9 @@ const actionWidth = computed(
         ? 150
         : props.canWrite
           ? 112
-          : 88) + (props.processing && props.canWrite ? 45 : 0),
+          : 88) +
+    (props.processing && props.canWrite ? 45 : 0) +
+    (props.canWrite && props.canReallocate ? 48 : 0),
 )
 function ownershipHint(row: TeamInventoryRow) {
   const available = inventoryDispatchable(row)
@@ -537,6 +539,16 @@ async function load(background = false) {
 const detail = ref<TeamInventoryRow | null>(null),
   picker = ref<TeamInventoryRow | null>(null),
   pending = ref<TeamInventoryRow | null>(null)
+const pickerMode = ref<'dispatch' | 'reallocate'>('dispatch')
+function openPicker(row: TeamInventoryRow, mode: 'dispatch' | 'reallocate') {
+  pickerMode.value = mode
+  picker.value = row
+}
+function selectedSources(sources: StockBatch[]) {
+  if (pickerMode.value === 'reallocate') {
+    if (sources.length === 1) reallocate(sources[0]!)
+  } else action('dispatch', sources)
+}
 const serialOpen = ref(false),
   serialNo = ref(''),
   urgencyOpen = ref(false),
@@ -564,7 +576,7 @@ function action(mode: 'dispatch' | 'loss', sources: StockBatch[]) {
 }
 function reallocate(source: StockBatch) {
   if (props.canWrite && props.canReallocate) {
-    detail.value = null
+    detail.value = picker.value = null
     emit('reallocate', source)
   }
 }
@@ -1110,8 +1122,16 @@ onBeforeUnmount(() => {
               v-if="canWrite && inventoryCanDispatch(asRow(row))"
               link
               class="action-warm"
-              @click="picker = asRow(row)"
+              @click="openPicker(asRow(row), 'dispatch')"
               >出库</ElButton
+            ><ElButton
+              v-if="canWrite && canReallocate && inventoryCanDispatch(asRow(row))"
+              link
+              type="primary"
+              :disabled="row.shared_unallocated"
+              :title="row.shared_unallocated ? '共投料请通过加工登记拆分归属' : undefined"
+              @click="openPicker(asRow(row), 'reallocate')"
+              >转投</ElButton
             ><ElButton
               v-if="inventoryHasPending(asRow(row))"
               link
@@ -1172,6 +1192,7 @@ onBeforeUnmount(() => {
       v-if="picker && canWrite"
       :team-id="teamId"
       :group-id="picker.group_id"
+      :mode="pickerMode"
       :group-label="
         [
           picker.serial_no,
@@ -1183,7 +1204,7 @@ onBeforeUnmount(() => {
           .join(' · ')
       "
       @close="picker = null"
-      @selected="action('dispatch', $event)"
+      @selected="selectedSources"
     />
     <SerialMaterialDrawer
       v-model="serialOpen"

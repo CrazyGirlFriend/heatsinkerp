@@ -32,6 +32,10 @@ class DispatchConfirm(BaseModel):
         return value
 
 
+class DispatchReceiptConfirm(DispatchConfirm):
+    received_employee_id: int = Field(ge=1)
+
+
 def revision(dispatch, items):
     # Every supported line mutation increments version; include identity and
     # status too so no reviewed line may be silently skipped or substituted.
@@ -133,6 +137,14 @@ def confirm_dispatch(db, dispatch_no, payload, user, *, external=False):
                     or group.confirmed_revision != payload.expected_revision
                 ):
                     raise HTTPException(409, "batch was already confirmed with a different request")
+                if not external and any(
+                    item.receipt_idempotency_key
+                    == "batch:"
+                    + hashlib.sha256(f"{payload.idempotency_key}:{item.id}".encode()).hexdigest()
+                    and item.received_employee_id != payload.received_employee_id
+                    for item in items
+                ):
+                    raise HTTPException(409, "同一签收请求的接收人不一致，请刷新单据")
                 return stock.dispatch_dict(db, group, user, items=items, include_history=True)
             if revision(group, items) != payload.expected_revision:
                 raise HTTPException(
@@ -163,6 +175,13 @@ def confirm_dispatch(db, dispatch_no, payload, user, *, external=False):
                     item.entry_kind,
                     item.notes,
                 )
+            employee = (
+                workflow.require_receipt_employee(
+                    db, group.next_team_id, payload.received_employee_id
+                )
+                if not external
+                else None
+            )
             now = utcnow()
             group.confirmation_idempotency_key = payload.idempotency_key
             group.confirmed_revision = payload.expected_revision
@@ -173,6 +192,9 @@ def confirm_dispatch(db, dispatch_no, payload, user, *, external=False):
             db.refresh(group, attribute_names=["confirmed_at"])
             for item in pending:
                 before = workflow._snapshot(item)
+                if employee is not None:
+                    item.received_employee_id = employee.id
+                    item.received_employee_name = employee.name
                 item.status = expected_done
                 item.stock_tracked = not external
                 item.updated_at = now

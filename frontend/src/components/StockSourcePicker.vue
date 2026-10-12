@@ -25,7 +25,15 @@ import { currentLocations } from '@/utils/warehousePlacement'
 import { useBatchSelection } from '@/composables/useBatchSelection'
 import BatchSelectionBar from './BatchSelectionBar.vue'
 
-const props = defineProps<{ teamId: number; groupId?: number; groupLabel?: string }>()
+const props = withDefaults(
+  defineProps<{
+    teamId: number
+    groupId?: number
+    groupLabel?: string
+    mode?: 'dispatch' | 'reallocate'
+  }>(),
+  { mode: 'dispatch' },
+)
 const emit = defineEmits<{ close: []; selected: [sources: StockBatch[]]; outbound: [] }>()
 const query = ref(''),
   appliedQuery = ref(''),
@@ -106,6 +114,10 @@ async function load() {
 function proceed() {
   if (!loading.value && !error.value && selected.size) emit('selected', [...selected.values()])
 }
+function chooseReallocation(row: StockBatch) {
+  if (!loading.value && !error.value && stockSelectable(row) && !row.transfer.shared_unallocated)
+    emit('selected', [row])
+}
 watch(
   () => [props.teamId, props.groupId],
   () => {
@@ -127,7 +139,7 @@ onBeforeUnmount(() => {
 <template>
   <ElDialog
     :model-value="true"
-    title="新建出库 · 选择来源批次"
+    :title="mode === 'reallocate' ? '流水号转投 · 选择来源批次' : '新建出库 · 选择来源批次'"
     width="min(1040px, 94vw)"
     top="6vh"
     class="stock-source-picker"
@@ -138,7 +150,7 @@ onBeforeUnmount(() => {
       <ElInput
         v-model="query"
         :prefix-icon="Search"
-        aria-label="出库库存搜索"
+        :aria-label="mode === 'reallocate' ? '转投库存搜索' : '出库库存搜索'"
         placeholder="搜索流水号、批次、材质或仓位"
         clearable
         @keyup.enter="search"
@@ -163,6 +175,7 @@ onBeforeUnmount(() => {
       <ElButton @click="search">查询</ElButton>
     </div>
     <BatchSelectionBar
+      v-if="mode === 'dispatch'"
       :count="selected.size"
       :quantity="totals.quantity"
       :weight="totals.weight"
@@ -189,7 +202,7 @@ onBeforeUnmount(() => {
             <p>{{ filtered ? '请调整搜索条件或日期后重试。' : '暂无已签收来源批次。' }}</p>
           </div></template
         >
-        <ElTableColumn width="46" class-name="stock-selection-column">
+        <ElTableColumn v-if="mode === 'dispatch'" width="46" class-name="stock-selection-column">
           <template #header
             ><ElCheckbox
               aria-label="选择本页出库物料"
@@ -273,6 +286,24 @@ onBeforeUnmount(() => {
             inventoryAmount(dispatchableAmounts(asStock(row)).weight)
           }}</template></ElTableColumn
         >
+        <ElTableColumn
+          v-if="mode === 'reallocate'"
+          label="操作"
+          width="100"
+          align="center"
+          fixed="right"
+        >
+          <template #default="{ row }">
+            <ElButton
+              link
+              type="primary"
+              :disabled="!stockSelectable(asStock(row)) || row.transfer.shared_unallocated"
+              :aria-label="`转投 ${row.transfer.batch_no}`"
+              @click="chooseReallocation(asStock(row))"
+              >转投</ElButton
+            >
+          </template>
+        </ElTableColumn>
       </ElTable>
     </div>
     <div class="picker-pagination">
@@ -288,9 +319,14 @@ onBeforeUnmount(() => {
       />
     </div>
     <template #footer
-      ><span class="picker-batch-note">每条物料独立批次、独立条码，可合并打印</span
+      ><span v-if="mode === 'dispatch'" class="picker-batch-note"
+        >每条物料独立批次、独立条码，可合并打印</span
       ><ElButton @click="emit('close')">取消</ElButton
-      ><ElButton type="primary" :disabled="!selected.size || loading || !!error" @click="proceed"
+      ><ElButton
+        v-if="mode === 'dispatch'"
+        type="primary"
+        :disabled="!selected.size || loading || !!error"
+        @click="proceed"
         >下一步：填写出库</ElButton
       ></template
     >

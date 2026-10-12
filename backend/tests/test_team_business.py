@@ -14,6 +14,7 @@ from app.models import (
     Team,
     TeamSettingEvent,
 )
+from receipt_helpers import receipt_post
 from sqlalchemy import create_engine, func, inspect, select
 from test_material_stock import dispatch, loss, receive_lot, totals
 from test_material_stock import stock_setup as stock_setup
@@ -125,8 +126,11 @@ def test_upstream_chooses_destination_purpose_and_snapshot_survives_rename_disab
     )
     assert client.get(batch).json()["purpose_name"] == "检验"
     assert (
-        client.post(
-            batch + "/confirm", headers=s["target_headers"], json={"idempotency_key": "confirm"}
+        receipt_post(
+            client,
+            batch + "/confirm",
+            headers=s["target_headers"],
+            json={"idempotency_key": "confirm"},
         ).status_code
         == 200
     )
@@ -192,7 +196,8 @@ def test_business_search_uses_historical_names_and_literal_wildcards(
         assert found["total"] == 1 and found["items"][0]["id"] == row["id"]
         assert found["items"][0]["purpose_name"] == "去毛刺_100%"
         assert client.get(endpoint, params={**params, "query": "精修"}).json()["total"] == 0
-    confirmed = client.post(
+    confirmed = receipt_post(
+        client,
         "/api/material-transfers/" + row["batch_no"] + "/confirm",
         headers=s["third_headers"],
         json={"idempotency_key": "receive-business"},
@@ -440,7 +445,8 @@ def test_history_confirmed_handoff_date_baseline_and_pending_not_counted(client,
         client, s, [{"source_transfer_id": lot["id"], "quantity": 100, "weight": "10.125"}]
     ).json()["items"][0]
     assert (
-        client.post(
+        receipt_post(
+            client,
             "/api/material-transfers/" + out["batch_no"] + "/confirm",
             headers=s["third_headers"],
             json={"idempotency_key": "confirm"},

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from app import material_analytics
 from app.database import SessionLocal
 from app.models import MaterialTransfer
+from receipt_helpers import receipt_post
 from test_material_stock import dispatch, endpoint, loss, receive_lot
 from test_material_stock import stock_setup as stock_setup
 from test_material_transfers import _create
@@ -33,7 +34,8 @@ def test_serial_aggregates_before_pagination_and_preserves_real_balances(client,
         client, s, [{"source_transfer_id": a["id"], "quantity": 60, "weight": 6}]
     ).json()["items"][0]
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{confirmed['batch_no']}/confirm",
             headers=s["third_headers"],
             json={"idempotency_key": "confirmed"},
@@ -156,7 +158,8 @@ def test_stock_age_uses_remaining_original_lots_not_latest_serial_activity(
         client, stock_setup, [{"source_transfer_id": old["id"], "quantity": 60, "weight": 6}]
     ).json()["items"][0]
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{item['batch_no']}/confirm",
             headers=stock_setup["third_headers"],
             json={"idempotency_key": "age-out"},

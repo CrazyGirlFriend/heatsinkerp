@@ -17,6 +17,7 @@ from app.models import (
     TransferBatchNumberSequence,
     User,
 )
+from receipt_helpers import receipt_post
 from sqlalchemy import create_engine, func, inspect, select
 from sqlalchemy.exc import IntegrityError
 from test_material_transfers import _leader, _team
@@ -86,7 +87,8 @@ def test_manual_intake_is_a_locked_stock_origin_not_a_self_transfer(client, ware
     )
     assert client.delete(detail_url, headers=warehouse["headers"]).status_code == 403
     assert (
-        client.post(
+        receipt_post(
+            client,
             detail_url + "/confirm",
             headers=warehouse["headers"],
             json={"idempotency_key": "double-receive"},
@@ -116,7 +118,8 @@ def test_downstream_excess_uses_received_lot_link_and_signed_balance(client, war
     assert response.status_code == 201, response.text
     previous = response.json()["items"][0]
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{previous['batch_no']}/confirm",
             headers=warehouse["other_headers"],
             json={"idempotency_key": "receive-sixty"},
@@ -370,7 +373,8 @@ def test_intake_dispatch_loss_receipt_and_return_keep_source_and_balances(client
     )
     overview = client.get(base + "/overview").json()["totals"]
     assert overview["available_quantity"] == 68 and overview["available_weight"] == 7
-    confirmed = client.post(
+    confirmed = receipt_post(
+        client,
         f"/api/material-transfers/{line['batch_no']}/confirm",
         headers=warehouse["other_headers"],
         json={"idempotency_key": "receive-dispatch"},
@@ -390,7 +394,8 @@ def test_intake_dispatch_loss_receipt_and_return_keep_source_and_balances(client
     back_line = back.json()["items"][0]
     assert client.get(base + "/overview").json()["pending_incoming"]["count"] == 1
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{back_line['batch_no']}/confirm",
             headers=warehouse["headers"],
             json={"idempotency_key": "warehouse-receive-return"},

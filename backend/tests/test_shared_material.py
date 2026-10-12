@@ -1,6 +1,7 @@
 """A shared physical lot is counted once and allocated only at actual processing."""
 
 import pytest
+from receipt_helpers import receipt_post
 from test_quantity_adjustments import change
 from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import intake  # noqa: F401
@@ -286,7 +287,8 @@ def test_shared_allocation_to_inspection_shipping_and_void_keep_single_stock(cli
     ).json()["items"][0]
     assert to_inspection["shared_group_id"] == origin["shared_group_id"]
     assert (
-        client.post(
+        receipt_post(
+            client,
             "/api/material-transfers/" + to_inspection["batch_no"] + "/confirm",
             headers=headers,
             json={"idempotency_key": "sign-a"},

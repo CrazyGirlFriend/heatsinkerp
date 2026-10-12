@@ -175,46 +175,52 @@ it('keeps the same idempotency key for a failed retry and prevents duplicate in-
   expect(wrapper.emitted('saved')).toHaveLength(1)
 })
 
-it.each(['FACTORY-QC', 'FACTORY-PLATE', 'FACTORY-WAREHOUSE'])(
-  'accepts the official %s team and selects warehouse slots using B identity',
-  async (code) => {
-    state.team = {
-      ...state.team,
-      code,
-      kind: code === 'FACTORY-WAREHOUSE' ? 'warehouse' : 'production',
-    }
-    await render()
-    await fill()
-    if (code === 'FACTORY-WAREHOUSE') {
-      const selector = wrapper.getComponent(WarehouseLocationSelect)
-      expect(selector.props()).toMatchObject({
-        serialNo: '000B',
-        materialName: '材料1',
-        materialType: 'finished',
-        active: true,
-      })
-      selector.vm.$emit('update:modelValue', 'B区01')
-      selector.vm.$emit('update:reservationKey', 'lease-B')
-      await flushPromises()
-    }
-    await submit()
-    expect(teamMaterialApi.reallocate).toHaveBeenCalled()
-    if (code === 'FACTORY-WAREHOUSE')
-      expect(vi.mocked(teamMaterialApi.reallocate).mock.calls[0]![1]).toMatchObject({
-        warehouse_location: 'B区01',
-        warehouse_location_reservation_key: 'lease-B',
-      })
-  },
-)
+it.each([
+  'FACTORY-QC',
+  'FACTORY-PLATE',
+  'FACTORY-WAREHOUSE',
+  'FACTORY-ROLL',
+  'FACTORY-ANNEAL',
+  'FACTORY-GRIND',
+  'FACTORY-WIRE',
+  'FACTORY-ENGRAVE',
+])('accepts the official %s team and selects warehouse slots using B identity', async (code) => {
+  state.team = {
+    ...state.team,
+    code,
+    kind: code === 'FACTORY-WAREHOUSE' ? 'warehouse' : 'production',
+  }
+  await render()
+  await fill()
+  if (code === 'FACTORY-WAREHOUSE') {
+    const selector = wrapper.getComponent(WarehouseLocationSelect)
+    expect(selector.props()).toMatchObject({
+      serialNo: '000B',
+      materialName: '材料1',
+      materialType: 'finished',
+      active: true,
+    })
+    selector.vm.$emit('update:modelValue', 'B区01')
+    selector.vm.$emit('update:reservationKey', 'lease-B')
+    await flushPromises()
+  }
+  await submit()
+  expect(teamMaterialApi.reallocate).toHaveBeenCalled()
+  if (code === 'FACTORY-WAREHOUSE')
+    expect(vi.mocked(teamMaterialApi.reallocate).mock.calls[0]![1]).toMatchObject({
+      warehouse_location: 'B区01',
+      warehouse_location_reservation_key: 'lease-B',
+    })
+})
 
-it('disallows other teams and stops a draft if the account changes before submission', async () => {
-  state.team = { ...state.team, code: 'FACTORY-ROLL' }
+it('disallows inactive teams and stops a draft if the account changes before submission', async () => {
+  state.team = { ...state.team, active: false }
   await render()
   await fill()
   await submit()
   expect(teamMaterialApi.reallocate).not.toHaveBeenCalled()
   wrapper.unmount()
-  state.team = { ...state.team, code: 'FACTORY-QC' }
+  state.team = { ...state.team, active: true }
   await render()
   await fill()
   state.auth.refreshCurrentUser.mockImplementationOnce(async () => {

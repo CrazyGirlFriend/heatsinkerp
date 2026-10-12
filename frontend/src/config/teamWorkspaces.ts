@@ -73,10 +73,7 @@ export function teamWorkspaceProfile(code: string | null | undefined) {
 }
 
 export function teamCanReallocate(team?: Pick<Team, 'code' | 'kind'>) {
-  return (
-    (team?.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse') ||
-    (['FACTORY-QC', 'FACTORY-PLATE'].includes(team?.code || '') && team?.kind === 'production')
-  )
+  return team?.kind === 'warehouse' || team?.kind === 'production'
 }
 
 export function configuredTeamWorkspaces(teams: readonly Team[]) {

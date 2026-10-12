@@ -3,6 +3,7 @@
 from datetime import datetime
 
 import pytest
+from receipt_helpers import receipt_post
 from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
@@ -69,7 +70,7 @@ def test_ownership_stays_with_sender_until_receipt_in_every_balance_view(client,
     assert pending["items"][0]["next_team"]["id"] == s["other"]["id"]
     payload = {"idempotency_key": "sign-once", "expected_version": edited.json()["version"]}
     for _ in range(2):
-        signed = client.post(url + "/confirm", headers=s["other_headers"], json=payload)
+        signed = receipt_post(client, url + "/confirm", headers=s["other_headers"], json=payload)
         assert signed.status_code == 200, signed.text
         assert_amounts(totals(client, s), 80, 80, 0)
         assert_amounts(totals(client, s, True), 20, 20, 0)
@@ -206,7 +207,8 @@ def test_weight_only_waste_return_and_partial_receipt_do_not_create_factory_inpu
     assert len({row["batch_no"] for row in returned["items"]}) == 2
     first = returned["items"][0]
     assert (
-        client.post(
+        receipt_post(
+            client,
             "/api/material-transfers/" + first["batch_no"] + "/confirm",
             headers=s["headers"],
             json={"idempotency_key": "partial-sign"},

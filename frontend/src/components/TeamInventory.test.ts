@@ -106,6 +106,29 @@ async function submit(term: string) {
 }
 
 describe('warehouse grouped stock', () => {
+  it('exposes reallocation on each stock row in normal and fullscreen modes and enforces write access', async () => {
+    await render('/team-workspaces/901?tab=stock', true, false)
+    await wrapper.setProps({ canReallocate: true })
+    for (const fullscreen of [false, true]) {
+      await wrapper.setProps({ fullscreen })
+      const button = wrapper
+        .findAll('.inventory-row-actions button')
+        .find((item) => item.text() === '转投')!
+      expect(button).toBeDefined()
+      await button.trigger('click')
+      const picker = wrapper.getComponent(StockSourcePicker)
+      expect(picker.props('mode')).toBe('reallocate')
+      const source = { transfer: { id: 11 } } as StockBatch
+      picker.vm.$emit('selected', [source])
+      await flushPromises()
+      expect(wrapper.emitted('reallocate')?.at(-1)).toEqual([source])
+      expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
+    }
+    await wrapper.setProps({ canWrite: false })
+    expect(
+      wrapper.findAll('.inventory-row-actions button').some((item) => item.text() === '转投'),
+    ).toBe(false)
+  })
   it('separates material types, processing roles and dimensions in normal view, fullscreen and export', async () => {
     vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
       items: [

@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from app.database import SessionLocal
 from app.models import MaterialStockBalance, MaterialTransfer
+from receipt_helpers import receipt_post
 from test_material_stock import dispatch, endpoint, loss, receive_lot, totals  # noqa: F401
 from test_material_stock import stock_setup as stock_setup
 
@@ -33,7 +34,8 @@ def test_excess_split_receipt_replay_and_factory_conservation(client, stock_setu
         detail = client.get(f"/api/material-transfers/{item['batch_no']}").json()
         assert detail["history"][0]["changes"]["shortage_weight"]["after"] == 2
         assert (
-            client.post(
+            receipt_post(
+                client,
                 f"/api/material-transfers/{item['batch_no']}/confirm",
                 headers=s["third_headers"],
                 json={"idempotency_key": f"sign-{item['id']}"},

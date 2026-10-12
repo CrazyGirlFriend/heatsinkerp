@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from app.database import SessionLocal
 from app.models import AdminAuditEvent, MaterialTransfer, WarehouseLocation, utcnow
+from receipt_helpers import receipt_post
 from sqlalchemy import func, select
 from test_warehouse_locations import dispatch, location
 from test_warehouse_receipts import intake
@@ -157,7 +158,8 @@ def test_internal_outgoing_frees_slot_and_void_does_not_restore_old_position(cli
     assert state(client, slot)["status"] == "available"
     outgoing = dispatch(client, warehouse, origin, "out-2")
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{outgoing['batch_no']}/confirm",
             headers=warehouse["other_headers"],
             json={"idempotency_key": "recv"},
@@ -171,7 +173,8 @@ def test_internal_outgoing_frees_slot_and_void_does_not_restore_old_position(cli
 def production_source(client, setup):
     row = dispatch(client, setup, intake(client, setup).json(), "out")
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{row['batch_no']}/confirm",
             headers=setup["other_headers"],
             json={"idempotency_key": "recv"},
@@ -209,7 +212,8 @@ def test_saved_transfer_retains_lock_through_receipt_and_void_releases(client, w
         assert db.get(WarehouseLocation, slot["id"]).reservation_key is None
     assert claim(client, slot, warehouse["headers"]).status_code == 409
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{row['batch_no']}/confirm",
             headers=warehouse["headers"],
             json={"idempotency_key": "return-recv", "warehouse_location": "A-01"},
@@ -334,7 +338,8 @@ def test_direct_transfer_and_edit_require_a_lease_and_preserve_assigned_slot(cli
     assert updated.status_code == 200, updated.text
     assert updated.json()["warehouse_location"] == "B-01"
     assert (
-        client.post(
+        receipt_post(
+            client,
             url + "/confirm",
             headers=warehouse["headers"],
             json={"idempotency_key": "confirm-direct", "warehouse_location": "A-01"},
@@ -362,7 +367,8 @@ def test_all_split_outgoings_release_slot_before_either_is_received(client, ware
     rows = response.json()["items"]
     assert state(client, slot)["status"] == "available"
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{rows[0]['batch_no']}/confirm",
             headers=warehouse["other_headers"],
             json={"idempotency_key": "partial"},
@@ -371,7 +377,8 @@ def test_all_split_outgoings_release_slot_before_either_is_received(client, ware
     )
     assert state(client, slot)["status"] == "available"
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{rows[1]['batch_no']}/confirm",
             headers=warehouse["other_headers"],
             json={"idempotency_key": "complete"},

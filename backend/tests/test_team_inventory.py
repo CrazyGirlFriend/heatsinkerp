@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import pytest
 from app.database import SessionLocal
 from app.models import MaterialTransfer, utcnow
+from receipt_helpers import receipt_post
 from test_material_transfers import _leader, _team
 from test_warehouse_classification import confirm, dispatch
 from test_warehouse_receipts import intake
@@ -35,7 +36,8 @@ def incoming(client, source_headers, target_headers, target_id, key, **overrides
     )
     assert response.status_code == 201, response.text
     row = response.json()
-    response = client.post(
+    response = receipt_post(
+        client,
         "/api/material-transfers/" + row["batch_no"] + "/confirm",
         headers=target_headers,
         json={"idempotency_key": key + "-receive"},

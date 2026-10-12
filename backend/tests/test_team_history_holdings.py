@@ -1,5 +1,6 @@
 """Current ownership and dated dispatch history must not be conflated."""
 
+from receipt_helpers import receipt_post
 from test_external_outbound import confirm as external_confirm
 from test_external_outbound import legacy_dispatch as external_dispatch
 from test_external_outbound import outbound as outbound
@@ -23,7 +24,8 @@ def test_pending_handoff_is_still_owned_and_confirmation_moves_it_once(client, s
     assert result["groups"][0]["events"][-1]["entry_kind"] == "transfer"
     assert result["groups"][0]["events"][-1]["status"] == "pending"
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{item['batch_no']}/confirm",
             headers=s["third_headers"],
             json={"idempotency_key": "receive-owned"},

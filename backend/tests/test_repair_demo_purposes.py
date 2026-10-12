@@ -5,6 +5,7 @@ from app.configure_material_teams import MATERIAL_TEAMS, configure_material_team
 from app.database import SessionLocal
 from app.models import MaterialTransfer, MaterialTransferEvent, Team, TeamPurpose
 from app.repair_demo_purposes import LEGACY_NAMES, protected_fingerprints, repair_demo_purposes
+from receipt_helpers import receipt_post
 from sqlalchemy import func, select
 from test_material_transfers import _leader
 
@@ -62,7 +63,8 @@ def demo(client):
             )
             assert response.status_code == 201, response.text
             lot = response.json()["items"][0]
-            response = client.post(
+            response = receipt_post(
+                client,
                 f"/api/material-transfers/{lot['batch_no']}/confirm",
                 headers=headers[target],
                 json={"idempotency_key": f"confirm:{index}:{target}"},

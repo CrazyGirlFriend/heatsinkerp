@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 from app.database import SessionLocal
 from app.models import WarehouseLocation
+from receipt_helpers import receipt_post
 from sqlalchemy import select
 from test_warehouse_location_locks import create_slot, production_source, return_rows, state
 from test_warehouse_locations import dispatch, location
@@ -194,7 +195,8 @@ def test_pending_batches_keep_matching_identity_on_edits_and_receive_independent
     )
     assert edited.status_code == 200, edited.text
     for index, row in enumerate([first, second]):
-        result = client.post(
+        result = receipt_post(
+            client,
             "/api/material-transfers/" + row["batch_no"] + "/confirm",
             headers=warehouse["headers"],
             json={"idempotency_key": f"receive-{index}"},

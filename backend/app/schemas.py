@@ -362,6 +362,10 @@ class MaterialTransferConfirm(WarehouseLocationChoice):
     expected_version: int | None = Field(default=None, ge=1)
 
 
+class MaterialReceiptConfirm(MaterialTransferConfirm):
+    received_employee_id: int = Field(ge=1)
+
+
 class MaterialTransferReject(APIModel):
     model_config = ConfigDict(extra="forbid")
     expected_version: int = Field(ge=1)
@@ -430,6 +434,8 @@ class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement
     created_at: datetime
     updated_at: datetime
     received_by: str | None
+    received_employee_id: int | None = None
+    received_employee_name: str | None = None
     received_by_user_id: int | None
     received_at: datetime | None
     dispatched_by: str | None = None

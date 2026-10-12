@@ -17,7 +17,8 @@ from .database import SessionLocal
 from .material_stock import DispatchCreate, LossCreate, create_dispatch, create_loss
 from .material_transfer_workflow import confirm_material_transfer, confirm_outbound
 from .models import MaterialDispatch, MaterialLoss, MaterialTransfer, Team, User
-from .schemas import MaterialTransferConfirm, WarehouseReceiptCreate
+from .schemas import MaterialReceiptConfirm, MaterialTransferConfirm, WarehouseReceiptCreate
+from .seed_material_transfer_showcase import demo_receiving_employee
 from .warehouse_receipts import create_receipt
 
 PREFIX = "team-showcase-v2"
@@ -108,7 +109,16 @@ def seed_team_material_showcase(db, password):
                     result["items"][index] = run(
                         confirm_outbound if external else confirm_material_transfer,
                         item["batch_no"],
-                        MaterialTransferConfirm(
+                        (MaterialTransferConfirm if external else MaterialReceiptConfirm)(
+                            **(
+                                {}
+                                if external
+                                else {
+                                    "received_employee_id": demo_receiving_employee(
+                                        db, target.team_id
+                                    )
+                                }
+                            ),
                             idempotency_key=f"{PREFIX}:{key}:confirm:{index}",
                             expected_version=item["version"],
                         ),

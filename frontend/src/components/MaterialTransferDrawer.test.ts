@@ -5,6 +5,8 @@ import { ElMessageBox } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
+import ReceiptPersonInput from './ReceiptPersonInput.vue'
+const person = { id: 31, team_id: 3, name: '李师傅', active: true, version: 1 }
 import {
   MaterialTransferApiError,
   materialTransferApi,
@@ -74,6 +76,7 @@ beforeEach(() => {
     currentUserError: '',
     refreshCurrentUser: vi.fn().mockResolvedValue(undefined),
   })
+  vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([person])
   vi.spyOn(teamMaterialApi, 'warehouseLocations').mockResolvedValue({ items: [] })
   vi.spyOn(materialTransferApi, 'get').mockResolvedValue(fixture())
   vi.spyOn(materialTransferApi, 'confirm').mockResolvedValue(
@@ -87,7 +90,10 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render(props: { allowPrint?: boolean; receiptOnly?: boolean } = {}) {
+async function render(
+  props: { allowPrint?: boolean; receiptOnly?: boolean } = {},
+  selectReceiver = true,
+) {
   wrapper = mount(MaterialTransferDrawer, {
     props: { modelValue: true, batchNo: 'TL20260906000001', ...props },
     global: {
@@ -104,6 +110,10 @@ async function render(props: { allowPrint?: boolean; receiptOnly?: boolean } = {
     },
   })
   await flushPromises()
+  if (selectReceiver && wrapper.findComponent(ReceiptPersonInput).exists()) {
+    wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', person)
+    await flushPromises()
+  }
 }
 async function confirm() {
   await wrapper
@@ -114,6 +124,46 @@ async function confirm() {
 }
 
 describe('material transfer receipt review', () => {
+  it('requires an employee and marks just the picker before any receipt confirmation', async () => {
+    await render({}, false)
+    await confirm()
+    expect(materialTransferApi.confirm).not.toHaveBeenCalled()
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    expect(wrapper.get('button[aria-label="接收人"]').attributes('aria-invalid')).toBe('true')
+    wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', person)
+    await flushPromises()
+    await confirm()
+    expect(materialTransferApi.confirm).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ received_employee_id: person.id }),
+    )
+  })
+  it('separates actual receiver from operator and labels legacy receipts without inventing a name', async () => {
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(
+      fixture({
+        status: 'received',
+        received_at: '2026-10-12T10:00:00Z',
+        received_by: '班组长账号',
+        received_employee_name: '李师傅',
+        allowed_actions: [],
+      }),
+    )
+    await render()
+    const text = wrapper.get('table[aria-label="转料单据资料"]').text()
+    expect(text).toContain('接收人李师傅')
+    expect(text).toContain('签收操作账号班组长账号')
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(
+      fixture({
+        status: 'received',
+        received_by: '旧账号',
+        received_employee_name: null,
+        allowed_actions: [],
+      }),
+    )
+    await live.refresh()
+    expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('接收人未登记')
+  })
+
   it('presents a completed local processing output without edit, void or receipt actions', async () => {
     vi.mocked(materialTransferApi.get).mockResolvedValueOnce(
       fixture({
@@ -231,6 +281,7 @@ describe('material transfer receipt review', () => {
     await confirm()
     expect(materialTransferApi.confirm).toHaveBeenCalledWith('TL20260906000001', {
       idempotency_key: expect.any(String),
+      received_employee_id: person.id,
       expected_version: 4,
       warehouse_location: 'B区-02',
       warehouse_location_reservation_key: 'test-lease-key-for-confirm',
@@ -539,6 +590,7 @@ describe('material transfer receipt review', () => {
     await confirm()
     expect(materialTransferApi.confirm).toHaveBeenCalledWith('TL20260906000001', {
       idempotency_key: expect.any(String),
+      received_employee_id: person.id,
       expected_version: 4,
     })
     expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain('已接收')
@@ -565,6 +617,7 @@ describe('material transfer receipt review', () => {
     await confirm()
     expect(materialTransferApi.confirm).toHaveBeenLastCalledWith('TL20260906000001', {
       idempotency_key: expect.any(String),
+      received_employee_id: person.id,
       expected_version: 5,
     })
   })

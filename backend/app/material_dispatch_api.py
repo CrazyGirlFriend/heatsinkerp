@@ -22,7 +22,7 @@ def get_dispatch(
 @router.post("/{dispatch_no}/confirm")
 def confirm_dispatch(
     dispatch_no: str,
-    payload: workflow.DispatchConfirm,
+    payload: workflow.DispatchReceiptConfirm,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

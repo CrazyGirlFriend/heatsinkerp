@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 from app.database import SessionLocal
 from app.models import MaterialTransfer, NotificationOutbox, SerialDeliveryPlan, Team
+from receipt_helpers import receipt_post
 from sqlalchemy import select
 from test_external_outbound import confirm
 from test_external_outbound import legacy_dispatch as dispatch
@@ -46,7 +47,8 @@ def test_pending_is_owned_upstream_until_receipt_and_external_confirmation(clien
     assert source["total"] == data["total"] == {"quantity": 200, "weight": 20}
     line = group["items"][0]
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{line['batch_no']}/confirm",
             headers=outbound["other_headers"],
             json={"idempotency_key": "dashboard-receive"},

@@ -3,6 +3,7 @@
 import pytest
 from app.database import SessionLocal
 from app.models import MaterialStockBalance, MaterialTransfer
+from receipt_helpers import receipt_post
 from test_material_transfers import _leader
 from test_shared_warehouse_locations import reserve
 from test_warehouse_location_locks import state
@@ -25,6 +26,41 @@ def reallocate(client, setup, lot, **values):
             **values,
         },
     )
+
+
+def test_received_production_lot_reallocation_keeps_both_serial_traces(client, warehouse):
+    lot = intake(client, warehouse, serial_no="TRACE-A").json()
+    sent = client.post(
+        f"/api/team-materials/{warehouse['team']['id']}/dispatches",
+        headers=warehouse["headers"],
+        json={
+            "next_team_id": warehouse["other"]["id"],
+            "idempotency_key": "trace-send",
+            "lines": [{"source_transfer_id": lot["id"], "quantity": 100, "weight": 10}],
+        },
+    )
+    assert sent.status_code == 201, sent.text
+    received = receipt_post(
+        client,
+        f"/api/material-transfers/{sent.json()['items'][0]['batch_no']}/confirm",
+        headers=warehouse["other_headers"],
+        json={"idempotency_key": "trace-receive"},
+    )
+    assert received.status_code == 200, received.text
+    changed = reallocate(
+        client,
+        {"team": warehouse["other"], "headers": warehouse["other_headers"]},
+        received.json(),
+        serial_no="TRACE-B",
+    )
+    assert changed.status_code == 201, changed.text
+    for serial in ("TRACE-A", "TRACE-B"):
+        response = client.get("/api/material-trace", params={"serial_no": serial})
+        assert response.status_code == 200, response.text
+        assert (
+            response.json()["reallocations"][0]["source_transfer_batch_no"]
+            == received.json()["batch_no"]
+        )
 
 
 def test_partial_reallocation_is_atomic_stock_with_original_batch_and_separate_metrics(
@@ -113,9 +149,15 @@ def test_partial_reallocation_is_atomic_stock_with_original_batch_and_separate_m
         ("FACTORY-WAREHOUSE", "warehouse"),
         ("FACTORY-QC", "production"),
         ("FACTORY-PLATE", "production"),
+        ("FACTORY-ROLL", "production"),
+        ("FACTORY-ANNEAL", "production"),
+        ("FACTORY-GRIND", "production"),
+        ("FACTORY-WIRE", "production"),
+        ("FACTORY-ENGRAVE", "production"),
+        ("NEW-TEAM", "production"),
     ],
 )
-def test_only_designated_own_team_can_reallocate_and_new_submissions_accumulate(client, code, kind):
+def test_all_own_teams_can_reallocate_and_new_submissions_accumulate(client, code, kind):
     team = client.post(
         "/api/teams",
         json={"code": code, "name": "库房" if kind == "warehouse" else code, "kind": kind},
@@ -153,6 +195,13 @@ def test_only_designated_own_team_can_reallocate_and_new_submissions_accumulate(
     assert all(row["status"] == "needs_review" for row in rates)
     with SessionLocal() as db:
         assert db.get(MaterialStockBalance, lot["id"]).on_hand_quantity == 40
+    records = client.get(f"/api/team-materials/{team['id']}/serial-reallocations").json()
+    assert records["total"] == 2
+    assert {item["source_serial_no"] for item in records["items"]} == {"000A"}
+    assert (
+        len(client.get("/api/material-trace", params={"serial_no": "000B"}).json()["reallocations"])
+        == 2
+    )
 
 
 def test_permissions_invalid_targets_and_signed_amount_policy(client, warehouse):

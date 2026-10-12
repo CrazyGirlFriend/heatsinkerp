@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from app.database import SessionLocal
 from app.models import MaterialTransfer
+from receipt_helpers import receipt_post
 from test_external_outbound import confirm as external_confirm
 from test_external_outbound import legacy_dispatch as external_dispatch
 from test_external_outbound import outbound as outbound
@@ -32,7 +33,8 @@ def test_split_pending_receipt_return_void_and_losses_share_the_stock_ledger(cli
     assert response.status_code == 201, response.text
     first, second = response.json()["items"]
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{first['batch_no']}/confirm",
             headers=s["third_headers"],
             json={"idempotency_key": "receive-first"},
@@ -78,7 +80,8 @@ def test_split_pending_receipt_return_void_and_losses_share_the_stock_ledger(cli
         s["third"]["id"]: [{"material_type": "semi_finished", "quantity": 30, "weight": 3}],
     }
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{returned['batch_no']}/confirm",
             headers=s["target_headers"],
             json={"idempotency_key": "receive-return"},
@@ -148,7 +151,8 @@ def test_pending_nature_change_stays_with_source_until_received(client, stock_se
         {"material_type": "semi_finished", "quantity": 100, "weight": 10},
     ]
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{item['batch_no']}/confirm",
             headers=stock_setup["third_headers"],
             json={"idempotency_key": "receive-finished"},

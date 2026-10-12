@@ -125,7 +125,7 @@ async function submit() {
   if (saving.value || locationBusy.value || !props.source) return
   error.value = ''
   if (!canWrite.value) {
-    error.value = '仅库房、检验和电镀的本班组账号可以转投'
+    error.value = '请使用本班组账号转投本班组库存'
     return
   }
   if (!validation.validate()) return

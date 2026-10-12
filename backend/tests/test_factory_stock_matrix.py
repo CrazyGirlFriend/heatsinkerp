@@ -3,6 +3,7 @@
 import pytest
 from app.database import SessionLocal
 from app.models import MaterialTransfer, Team
+from receipt_helpers import receipt_post
 from test_external_outbound import confirm
 from test_external_outbound import legacy_dispatch as dispatch
 from test_external_outbound import outbound as outbound
@@ -75,7 +76,8 @@ def test_matrix_excludes_in_transit_and_moves_only_confirmed_stock_to_destinatio
     assert target["total"] == {"quantity": 0, "weight": 0}
     first, second = response.json()["items"]
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{first['batch_no']}/confirm",
             headers=outbound["other_headers"],
             json={"idempotency_key": "matrix-receive"},

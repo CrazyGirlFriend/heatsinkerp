@@ -5,6 +5,7 @@ from unittest.mock import patch
 from app import material_transfer_workflow as workflow
 from app.database import SessionLocal
 from app.models import MaterialDispatch, MaterialTransfer
+from receipt_helpers import receipt_post
 from sqlalchemy import func, select
 from test_external_outbound import dispatch
 from test_external_outbound import outbound as outbound
@@ -123,7 +124,8 @@ def test_internal_submission_still_requires_downstream_receipt(client, outbound)
     rows = response.json()["items"]
     assert all(row["status"] == "pending" and row["dispatched_at"] is None for row in rows)
     for row in rows:
-        received = client.post(
+        received = receipt_post(
+            client,
             "/api/material-transfers/" + row["batch_no"] + "/confirm",
             headers=outbound["other_headers"],
             json={"idempotency_key": "receive-" + row["batch_no"]},

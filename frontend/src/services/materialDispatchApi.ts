@@ -60,7 +60,7 @@ export const materialDispatchApi = {
   },
   confirm(
     code: string,
-    body: { idempotency_key: string; expected_revision: string },
+    body: { idempotency_key: string; expected_revision: string; received_employee_id?: number },
     outbound = false,
   ) {
     return request(code, { method: 'POST', body }, outbound ? '/confirm-outbound' : '/confirm')

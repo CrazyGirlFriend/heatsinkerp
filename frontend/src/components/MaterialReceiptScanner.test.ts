@@ -3,6 +3,9 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialReceiptScanner from './MaterialReceiptScanner.vue'
+import ReceiptPersonInput from './ReceiptPersonInput.vue'
+import { teamMaterialApi } from '@/services/teamMaterialApi'
+const person = { id: 21, team_id: 2, name: '王师傅', active: true, version: 1 }
 import {
   materialTransferApi,
   normalizeMaterialTransfer,
@@ -37,6 +40,7 @@ const received = (batchNo = 'TL000001') => ({
 })
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([person])
   vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
   state.auth = reactive({
     isTeamAccount: true,
@@ -52,8 +56,13 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.clearAllMocks()
 })
-function render() {
+async function render(selectReceiver = true) {
   wrapper = mount(MaterialReceiptScanner, { props: { teamId: 2 }, attachTo: document.body })
+  await flushPromises()
+  if (selectReceiver && wrapper.findComponent(ReceiptPersonInput).exists()) {
+    wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', person)
+    await flushPromises()
+  }
   return wrapper
 }
 async function scan(code = 'TL000001') {
@@ -66,6 +75,51 @@ function hid(code: string, target: EventTarget = document) {
     target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
 }
 describe('scan directly into receiving inventory', () => {
+  it('requires an explicit employee before HID receipt and keeps the selection for later scans', async () => {
+    await render(false)
+    hid('TL000001')
+    await flushPromises()
+    expect(materialTransferApi.confirm).not.toHaveBeenCalled()
+    expect(wrapper.get('button[aria-label="接收人"]').attributes('aria-invalid')).toBe('true')
+    wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', person)
+    await flushPromises()
+    await scan('TL000001')
+    await scan('TL000002')
+    expect(
+      vi.mocked(materialTransferApi.confirm).mock.calls.map((call) => call[1].received_employee_id),
+    ).toEqual([person.id, person.id])
+    expect(wrapper.get('button[aria-label="接收人"]').text()).toContain('王师傅')
+    state.auth.currentUser.id = 11
+    await flushPromises()
+    hid('TL000003')
+    await flushPromises()
+    expect(materialTransferApi.confirm).toHaveBeenCalledTimes(2)
+  })
+  it('locks the employee during queued scans and records the newly selected employee afterwards', async () => {
+    let resolve!: (value: MaterialTransfer) => void
+    vi.mocked(materialTransferApi.confirm).mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done
+        }),
+    )
+    await render()
+    await scan('TL000001')
+    await scan('TL000002')
+    expect(wrapper.get('button[aria-label="接收人"]').attributes('disabled')).toBeDefined()
+    resolve(received())
+    await flushPromises()
+    expect(wrapper.get('button[aria-label="接收人"]').attributes('disabled')).toBeUndefined()
+    wrapper
+      .getComponent(ReceiptPersonInput)
+      .vm.$emit('update:modelValue', { ...person, id: 22, name: '李师傅' })
+    await flushPromises()
+    await scan('TL000003')
+    expect(
+      vi.mocked(materialTransferApi.confirm).mock.calls.map((call) => call[1].received_employee_id),
+    ).toEqual([21, 21, 22])
+  })
+
   it('distinguishes received sludge gross kg from the accounted material kg', async () => {
     vi.mocked(materialTransferApi.confirm).mockResolvedValue({
       ...received(),
@@ -75,24 +129,25 @@ describe('scan directly into receiving inventory', () => {
       sludge_gross_weight: 10,
       sludge_content_percent: 30,
     })
-    render()
+    await render()
     await scan()
     expect(wrapper.text()).toContain('废泥实重：10 kg；有效材料占比：30%；折算重量：3 kg')
   })
   it('receives on Enter, shows actual amounts and stays ready for the next scan', async () => {
-    render()
+    await render()
     await scan(' tl000001 ')
     expect(materialTransferApi.confirm).toHaveBeenCalledWith('TL000001', {
       expected_version: 3,
+      received_employee_id: person.id,
       idempotency_key: expect.any(String),
     })
     expect(wrapper.emitted('received')).toEqual([[received()]])
-    expect(wrapper.text()).toContain('TL000001 已入库 · 100 件 / 12.5 kg')
+    expect(wrapper.text()).toContain('TL000001 已入库 · 接收人 王师傅 · 100 件 / 12.5 kg')
     expect((wrapper.get('input').element as HTMLInputElement).value).toBe('')
     expect(document.querySelector('.el-message-box')).toBeNull()
   })
   it('accepts a keyboard scanner outside fields and ignores typing inside unrelated fields', async () => {
-    render()
+    await render()
     hid('TL000001')
     await flushPromises()
     expect(materialTransferApi.confirm).toHaveBeenCalledTimes(1)
@@ -114,7 +169,7 @@ describe('scan directly into receiving inventory', () => {
           resolve = done
         }),
     )
-    render()
+    await render()
     await scan('TL000001')
     await scan('TL000002')
     await scan('TL000002')
@@ -139,14 +194,14 @@ describe('scan directly into receiving inventory', () => {
     [{ version: null }, '当前不能签收'],
   ])('does not write when the batch cannot be received: %s', async (extra, message) => {
     vi.mocked(materialTransferApi.get).mockResolvedValue(pending('TL000001', extra))
-    render()
+    await render()
     await scan()
     expect(wrapper.text()).toContain(message)
     expect(materialTransferApi.confirm).not.toHaveBeenCalled()
     expect(wrapper.emitted('received')).toBeUndefined()
   })
   it('rejects old group barcodes rather than silently receiving unscanned batches', async () => {
-    render()
+    await render()
     await scan('CK-GROUP')
     expect(wrapper.text()).toContain('每批物料的独立条码')
     expect(materialTransferApi.get).not.toHaveBeenCalled()
@@ -160,7 +215,7 @@ describe('scan directly into receiving inventory', () => {
         next_team: { id: 2, kind: 'warehouse', name: '库房' },
       }),
     )
-    render()
+    await render()
     await scan()
     const payload = vi.mocked(materialTransferApi.confirm).mock.calls[0]![1]
     expect(payload).not.toHaveProperty('warehouse_location')
@@ -170,7 +225,7 @@ describe('scan directly into receiving inventory', () => {
     vi.mocked(materialTransferApi.confirm).mockRejectedValueOnce(
       new MaterialTransferApiError('网络中断', 0),
     )
-    render()
+    await render()
     await scan()
     expect(wrapper.get('[role=alert]').text()).toContain('网络中断')
     expect(wrapper.emitted('received')).toBeUndefined()
@@ -183,7 +238,7 @@ describe('scan directly into receiving inventory', () => {
     vi.mocked(materialTransferApi.confirm).mockRejectedValue(
       new MaterialTransferApiError('转料单已更新，请重新核对', 409),
     )
-    render()
+    await render()
     await scan()
     expect(materialTransferApi.confirm).toHaveBeenCalledTimes(1)
     expect(wrapper.get('[role=alert]').text()).toContain('已更新')
@@ -191,7 +246,7 @@ describe('scan directly into receiving inventory', () => {
   })
   it('continues the next batch after a lookup fails', async () => {
     vi.mocked(materialTransferApi.get).mockRejectedValueOnce(new Error('未找到该转料单'))
-    render()
+    await render()
     hid('TL000001')
     hid('TL000002')
     await flushPromises()
@@ -203,7 +258,7 @@ describe('scan directly into receiving inventory', () => {
     if (role === 'administrator') state.auth.isTeamAccount = false
     if (role === 'other-team') state.auth.currentUser.team_id = 3
     if (role === 'inactive') state.auth.currentUser.active = false
-    render()
+    await render()
     hid('TL000001')
     await flushPromises()
     expect(wrapper.get('input').attributes('disabled')).toBeDefined()
@@ -218,7 +273,7 @@ describe('scan directly into receiving inventory', () => {
           resolve = done
         }),
     )
-    render()
+    await render()
     await scan('TL000001')
     await scan('TL000002')
     state.auth.currentUser.id = 11
@@ -231,7 +286,7 @@ describe('scan directly into receiving inventory', () => {
     state.auth.refreshCurrentUser.mockImplementation(async () => {
       state.auth.currentUser.team_id = 3
     })
-    render()
+    await render()
     await scan()
     expect(materialTransferApi.get).not.toHaveBeenCalled()
     expect(materialTransferApi.confirm).not.toHaveBeenCalled()
@@ -244,7 +299,7 @@ describe('scan directly into receiving inventory', () => {
           resolve = done
         }),
     )
-    render()
+    await render()
     await scan('TL000001')
     await scan('TL000002')
     await wrapper.setProps({ paused: true })

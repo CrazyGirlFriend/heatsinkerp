@@ -66,6 +66,23 @@ async function render() {
 const nextButton = () =>
   wrapper.findAll('button').find((button) => button.text() === '下一步：填写出库')!
 describe('stock selection for new outbound', () => {
+  it('selects a single batch for reallocation without outbound controls or allowing shared stock', async () => {
+    const normal = source(1)
+    const shared = { ...source(2), transfer: { ...source(2).transfer, shared_unallocated: true } }
+    vi.mocked(teamMaterialApi.stock).mockResolvedValue({
+      items: [normal, shared],
+      total: 2,
+      page: 1,
+      page_size: 20,
+    })
+    await render()
+    await wrapper.setProps({ mode: 'reallocate' })
+    expect(wrapper.findComponent(BatchSelectionBar).exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('下一步：填写出库')
+    expect(wrapper.get('button[aria-label="转投 TL2"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('button[aria-label="转投 TL1"]').trigger('click')
+    expect(wrapper.emitted('selected')).toEqual([[[normal]]])
+  })
   it('shows processing role and current dimensions before choosing a physical child batch', async () => {
     const row = {
       ...source(1, 2),

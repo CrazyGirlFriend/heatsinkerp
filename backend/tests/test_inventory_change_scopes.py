@@ -8,6 +8,7 @@ from app.database import SessionLocal
 from app.inventory_events import InventoryChange, InventoryEvents, inventory_events
 from app.models import User
 from fastapi.security import HTTPAuthorizationCredentials
+from receipt_helpers import receipt_post
 from sqlalchemy import select
 from test_inventory_stream import LiveRequest
 from test_material_transfers import _create, _setup_three_teams
@@ -191,7 +192,8 @@ def test_receipt_dispatch_loss_and_confirmation_identify_affected_teams(
     assert publish.call_args.args[0].team_ids == {source, target}
     batch = response.json()["items"][0]["batch_no"]
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{batch}/confirm",
             headers=warehouse["other_headers"],
             json={"idempotency_key": "scoped-in"},

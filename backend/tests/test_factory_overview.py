@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from app import factory_overview
 from app.database import SessionLocal
 from app.models import MaterialTransfer, Team
+from receipt_helpers import receipt_post
 from test_external_outbound import dispatch
 from test_external_outbound import outbound as outbound
 from test_material_stock import receive_lot
@@ -111,7 +112,8 @@ def test_internal_bulk_pending_is_counted_once_and_confirmation_keeps_factory_st
     assert before["pending"]["batches"] == 2 and before["pending"]["quantity"] == 60
     assert sum(row["internal"]["quantity"] for row in before["waiting_age"]) == 60
     item = group["items"][0]
-    result = client.post(
+    result = receipt_post(
+        client,
         f"/api/material-transfers/{item['batch_no']}/confirm",
         headers=outbound["other_headers"],
         json={"idempotency_key": "factory-receive"},
@@ -230,7 +232,8 @@ def test_today_feed_includes_yesterdays_batches_received_or_shipped_today(
         idempotency_key="daily-internal",
     ).json()["items"]
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{internal[0]['batch_no']}/confirm",
             headers=outbound["other_headers"],
             json={"idempotency_key": "daily-receive"},
@@ -389,7 +392,8 @@ def test_inventory_card_incoming_is_one_ck_not_child_lines_and_never_external(cl
     assert target()["pending_incoming"] == {"batches": 2, "quantity": 60, "weight": 6}
     assert target()["serial_count"] == 0
     for index, line in enumerate(response.json()["items"]):
-        received = client.post(
+        received = receipt_post(
+            client,
             f"/api/material-transfers/{line['batch_no']}/confirm",
             headers=outbound["other_headers"],
             json={"idempotency_key": f"card-receive-{index}"},

@@ -11,7 +11,7 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm import joinedload, lazyload, raiseload
+from sqlalchemy.orm import joinedload, lazyload, raiseload, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
 from .auth import actor_name
@@ -22,6 +22,7 @@ from .models import (
     MaterialTransfer,
     MaterialTransferEvent,
     Team,
+    TeamEmployee,
     User,
     WarehousePlacement,
     utcnow,
@@ -50,6 +51,7 @@ AUDITED_FIELDS = (
         "created_by",
         "created_at",
         "received_by",
+        "received_employee_name",
         "received_at",
         "voided_by",
         "voided_at",
@@ -290,7 +292,7 @@ def material_loss_dict(loss):
     }
 
 
-def material_transfer_list_options():
+def material_transfer_list_options(*, include_history=False):
     # Lists need only the immediate source's identity, not its own relationships.
     # All joins are scalar/unique, so they preserve page limits and row counts.
     return (
@@ -310,8 +312,8 @@ def material_transfer_list_options():
         )
         .raiseload("*"),
         joinedload(MaterialTransfer.dispatch).load_only(MaterialDispatch.dispatch_no),
-        raiseload(MaterialTransfer.history),
-        raiseload(MaterialTransfer.losses),
+        (selectinload if include_history else raiseload)(MaterialTransfer.history),
+        (selectinload if include_history else raiseload)(MaterialTransfer.losses),
     )
 
 
@@ -403,6 +405,8 @@ def material_transfer_dict(
         "created_at": _utc(transfer.created_at),
         "updated_at": _utc(transfer.updated_at),
         "received_by": transfer.received_by,
+        "received_employee_id": transfer.received_employee_id,
+        "received_employee_name": transfer.received_employee_name,
         "received_by_user_id": transfer.received_by_user_id,
         "received_at": _utc(transfer.received_at),
         "dispatched_by": transfer.dispatched_by,
@@ -689,9 +693,27 @@ def void_material_transfer(db, batch_no: str, user: User) -> None:
         _record_event(db, transfer, user, "voided", before)
 
 
+def require_receipt_employee(db, team_id, employee_id):
+    employee = db.scalar(
+        select(TeamEmployee)
+        .where(
+            TeamEmployee.id == employee_id,
+            TeamEmployee.team_id == team_id,
+            TeamEmployee.active.is_(True),
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if employee is None:
+        raise HTTPException(422, "请选择本班组启用的接收人；员工名单可在班组设置中维护")
+    return employee
+
+
 def _check_receipt_location(transfer, payload, *, replay=False):
     from .team_constants import WAREHOUSE_TEAM_CODE
 
+    if replay and transfer.received_employee_id != payload.received_employee_id:
+        raise _conflict("同一签收请求的接收人不一致，请刷新单据")
     if "warehouse_location" not in payload.model_fields_set:
         return
     if transfer.next_team_code != WAREHOUSE_TEAM_CODE:
@@ -744,6 +766,11 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
                     transfer.warehouse_location = consume(
                         db, transfer.next_team, payload, user, identity=material_identity(transfer)
                     )
+            employee = require_receipt_employee(
+                db, transfer.next_team_id, payload.received_employee_id
+            )
+            transfer.received_employee_id = employee.id
+            transfer.received_employee_name = employee.name
             transfer.status = "received"
             transfer.stock_tracked = True
             transfer.received_by = actor_name(user)

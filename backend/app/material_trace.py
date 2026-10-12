@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import or_, select
-from sqlalchemy.orm import aliased, selectinload
+from sqlalchemy.orm import aliased
 
 from . import material_transfer_workflow as workflow
 from .material_stock import stock_table
@@ -29,7 +29,7 @@ def serial_trace(db, serial_no, user):
     transfers = db.scalars(
         select(MaterialTransfer)
         .where(scope)
-        .options(selectinload(MaterialTransfer.losses), selectinload(MaterialTransfer.history))
+        .options(*workflow.material_transfer_list_options(include_history=True))
         .order_by(MaterialTransfer.created_at, MaterialTransfer.id)
     ).all()
     other_outputs = {}

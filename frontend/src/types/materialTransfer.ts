@@ -185,6 +185,8 @@ export interface MaterialTransfer
   transferred_by: string | null
   transferred_at: string
   received_by: string | null
+  received_employee_id?: number | null
+  received_employee_name?: string | null
   received_at: string | null
   voided_by: string | null
   voided_at: string | null

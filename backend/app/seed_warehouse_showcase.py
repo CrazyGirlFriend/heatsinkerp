@@ -30,7 +30,8 @@ from .models import (
     WarehouseLocation,
     utcnow,
 )
-from .schemas import MaterialTransferConfirm, WarehouseReceiptCreate
+from .schemas import MaterialReceiptConfirm, MaterialTransferConfirm, WarehouseReceiptCreate
+from .seed_material_transfer_showcase import demo_receiving_employee
 from .warehouse_locations import LocationWrite, reserve, save_location
 from .warehouse_receipts import create_receipt
 
@@ -118,7 +119,15 @@ def seed_warehouse_showcase(db):
         return run(
             operation,
             item["batch_no"],
-            MaterialTransferConfirm(idempotency_key=key, expected_version=item["version"]),
+            (MaterialTransferConfirm if operation is confirm_outbound else MaterialReceiptConfirm)(
+                idempotency_key=key,
+                expected_version=item["version"],
+                **(
+                    {}
+                    if operation is confirm_outbound
+                    else {"received_employee_id": demo_receiving_employee(db, actor.team_id)}
+                ),
+            ),
             actor,
         )
 

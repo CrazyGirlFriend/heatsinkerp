@@ -16,7 +16,6 @@ from .material_weight import sludge_measurement, validate_material_amounts
 from .models import MaterialTransfer, Team, utcnow
 from .record_filters import RecordFilters
 from .schemas import SludgeMeasurement, WarehouseLocationChoice
-from .team_constants import REALLOCATION_TEAM_CODES, WAREHOUSE_TEAM_CODE
 
 
 class ReallocationCreate(stock.StockAmounts, WarehouseLocationChoice, SludgeMeasurement):
@@ -38,12 +37,8 @@ class ReallocationCreate(stock.StockAmounts, WarehouseLocationChoice, SludgeMeas
 
 
 def require_team(team):
-    if (
-        not team.active
-        or team.code not in REALLOCATION_TEAM_CODES
-        or (team.kind != ("warehouse" if team.code == WAREHOUSE_TEAM_CODE else "production"))
-    ):
-        raise HTTPException(403, "仅库房、检验和电镀班组可以转投本班组库存")
+    if not team.active or team.kind not in ("warehouse", "production"):
+        raise HTTPException(403, "仅启用的班组可以转投本班组库存")
     return team
 
 

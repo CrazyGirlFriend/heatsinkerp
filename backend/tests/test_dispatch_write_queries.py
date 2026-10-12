@@ -11,6 +11,7 @@ from app.models import (
     TransferBatchNumberSequence,
 )
 from app.schemas import MaterialTransferResponse
+from receipt_helpers import receipt_post
 from sqlalchemy import func, select
 from test_stock_balances import reconcile
 from test_transfer_list_loading import read_statements
@@ -39,7 +40,8 @@ def test_new_dispatch_reuses_created_rows_but_replay_reads_current_state(
     retry = dispatch(client, warehouse, lines)
     assert retry.status_code == 201 and retry.json() == created.json()
     batch = created.json()["items"][0]
-    confirmed = client.post(
+    confirmed = receipt_post(
+        client,
         f"/api/material-transfers/{batch['batch_no']}/confirm",
         headers=warehouse["other_headers"],
         json={"idempotency_key": "query-budget-confirm", "expected_version": batch["version"]},
@@ -192,7 +194,8 @@ def test_replay_loads_response_relationships_in_batches(client, warehouse, line_
     )
 
     first = created.json()["items"][0]
-    confirmed = client.post(
+    confirmed = receipt_post(
+        client,
         f"/api/material-transfers/{first['batch_no']}/confirm",
         headers=warehouse["other_headers"],
         json={"idempotency_key": "replay-confirm"},

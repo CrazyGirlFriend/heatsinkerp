@@ -10,6 +10,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from app.database import SessionLocal
 from app.models import MaterialTransfer
+from receipt_helpers import receipt_post
 from sqlalchemy import create_engine
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
@@ -45,7 +46,8 @@ def test_origin_date_follows_two_handoffs_and_revision_never_changes_stock(clien
         assert child["delivery_origin_batch_no"] == origin["batch_no"]
     child = children[0]
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{child['batch_no']}/confirm",
             headers=warehouse["other_headers"],
             json={"idempotency_key": "delivery-receive"},

@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
+from receipt_helpers import receipt_post
 from sqlalchemy import create_engine, inspect, text
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
@@ -84,7 +85,8 @@ def test_internal_warehouse_receipt_sets_its_own_location_and_replay_is_checked(
     assert outgoing["warehouse_location"] is None
     url = f"/api/material-transfers/{outgoing['batch_no']}/confirm"
     assert (
-        client.post(
+        receipt_post(
+            client,
             url,
             headers=warehouse["other_headers"],
             json={"idempotency_key": "received-other", "warehouse_location": "A-02"},
@@ -92,8 +94,11 @@ def test_internal_warehouse_receipt_sets_its_own_location_and_replay_is_checked(
         == 422
     )
     assert (
-        client.post(
-            url, headers=warehouse["other_headers"], json={"idempotency_key": "received-other"}
+        receipt_post(
+            client,
+            url,
+            headers=warehouse["other_headers"],
+            json={"idempotency_key": "received-other"},
         ).status_code
         == 200
     )
@@ -104,15 +109,21 @@ def test_internal_warehouse_receipt_sets_its_own_location_and_replay_is_checked(
         "expected_version": 1,
         **location(client, warehouse, "B-02"),
     }
-    assert client.post(url, json=payload).status_code == 403
-    result = client.post(url, headers=warehouse["headers"], json=payload)
+    assert receipt_post(client, url, json=payload).status_code == 403
+    result = receipt_post(client, url, headers=warehouse["headers"], json=payload)
     assert result.status_code == 200, result.text
     assert result.json()["warehouse_location"] == "B-02"
     assert result.json()["history"][-1]["changes"]["warehouse_location"]["after"] == "B-02"
-    assert client.post(url, headers=warehouse["headers"], json=payload).json() == result.json()
     assert (
-        client.post(
-            url, headers=warehouse["headers"], json={**payload, "warehouse_location": "B-03"}
+        receipt_post(client, url, headers=warehouse["headers"], json=payload).json()
+        == result.json()
+    )
+    assert (
+        receipt_post(
+            client,
+            url,
+            headers=warehouse["headers"],
+            json={**payload, "warehouse_location": "B-03"},
         ).status_code
         == 409
     )

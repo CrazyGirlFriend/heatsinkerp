@@ -17,13 +17,28 @@ from .material_transfer_workflow import (
     confirm_material_transfer,
     create_material_transfer,
 )
-from .models import MaterialTransfer, Team, User
-from .schemas import MaterialTransferConfirm, MaterialTransferCreate
+from .models import MaterialTransfer, Team, TeamEmployee, User
+from .schemas import MaterialReceiptConfirm, MaterialTransferCreate
 
 DEMO_SERIAL_NO = "DEMO-DIRECT-FLOW-001"
 FIRST_CREATE_KEY = "material-transfer-showcase:v1:first"
 FIRST_CONFIRM_KEY = "material-transfer-showcase:v1:first-confirm"
 SECOND_CREATE_KEY = "material-transfer-showcase:v1:second"
+
+
+def demo_receiving_employee(db, team_id):
+    employee = db.scalar(
+        select(TeamEmployee).where(
+            TeamEmployee.team_id == team_id, TeamEmployee.name == "演示收料员"
+        )
+    )
+    if employee is None:
+        employee = TeamEmployee(team_id=team_id, name="演示收料员", active=True)
+        db.add(employee)
+        db.flush()
+    employee_id = employee.id
+    db.commit()
+    return employee_id
 
 
 def _eligible_leaders(db) -> dict[int, User]:
@@ -101,7 +116,10 @@ def seed_material_transfer_showcase(db) -> dict:
             received = confirm_material_transfer(
                 db,
                 first["batch_no"],
-                MaterialTransferConfirm(idempotency_key=FIRST_CONFIRM_KEY),
+                MaterialReceiptConfirm(
+                    idempotency_key=FIRST_CONFIRM_KEY,
+                    received_employee_id=demo_receiving_employee(db, target.team_id),
+                ),
                 target,
             )
             summary["confirmed"].append(received["batch_no"])

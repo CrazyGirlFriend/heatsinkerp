@@ -2,6 +2,7 @@ import pytest
 from app.configure_material_teams import MATERIAL_TEAMS, configure_material_teams
 from app.database import SessionLocal
 from app.models import MaterialDispatch, MaterialLoss, MaterialTransfer, Team
+from receipt_helpers import receipt_post
 from sqlalchemy import func, select
 from test_material_transfers import _create, _setup_three_teams
 
@@ -26,7 +27,8 @@ def receive_lot(client, setup, *, key="lot-1", material_name="铜钼", quantity=
         weight=weight,
     )
     assert response.status_code == 201, response.text
-    confirmed = client.post(
+    confirmed = receipt_post(
+        client,
         f"/api/material-transfers/{response.json()['batch_no']}/confirm",
         headers=setup["target_headers"],
         json={"idempotency_key": f"receive-{key}"},
@@ -131,7 +133,8 @@ def test_bulk_reservation_loss_confirmation_and_void_conserve_both_amounts(clien
     )
     assert client.get(f"/api/material-transfers/{first['batch_no']}").json()["quantity"] == 100
     outgoing = group["items"][0]
-    receipt = client.post(
+    receipt = receipt_post(
+        client,
         f"/api/material-transfers/{outgoing['batch_no']}/confirm",
         headers=setup["third_headers"],
         json={"idempotency_key": "downstream-confirm", "expected_version": outgoing["version"]},
@@ -339,7 +342,8 @@ def test_pending_outbound_can_exceed_book_stock_but_cannot_be_forwarded_before_r
     assert totals(client, setup)["available_quantity"] == 30
     assert totals(client, setup)["available_weight"] == 3
     assert totals(client, setup)["owned_quantity"] == 100
-    received = client.post(
+    received = receipt_post(
+        client,
         f"/api/material-transfers/{first['batch_no']}/confirm",
         headers=setup["third_headers"],
         json={"idempotency_key": "receive-seventy"},

@@ -243,6 +243,8 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
         transferredBy.username,
       ) || null,
     transferred_at: textValue(raw.transferred_at, raw.created_at),
+    received_employee_id: optionalInteger(raw.received_employee_id, 1),
+    received_employee_name: textValue(raw.received_employee_name) || null,
     received_by:
       textValue(
         raw.received_by_name,
@@ -407,7 +409,7 @@ export const materialTransferApi = {
 
   async confirm(
     batchNo: string,
-    payload: ConfirmMaterialTransferPayload,
+    payload: ConfirmMaterialTransferPayload & { received_employee_id: number },
   ): Promise<MaterialTransfer> {
     return normalizeMaterialTransfer(
       await request<unknown>(`/material-transfers/${encodeURIComponent(batchNo)}/confirm`, {

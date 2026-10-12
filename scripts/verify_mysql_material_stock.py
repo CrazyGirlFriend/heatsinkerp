@@ -22,8 +22,8 @@ from app import material_stock as stock
 from app import material_transfer_workflow as workflow
 from app import warehouse_receipts
 from app import material_dispatch_workflow as batches
-from app.models import MaterialDispatch, MaterialLoss, MaterialTransfer, User, Team
-from app.schemas import MaterialTransferCreate, MaterialTransferConfirm, MaterialTransferUpdate, WarehouseReceiptCreate
+from app.models import MaterialDispatch, MaterialLoss, MaterialTransfer, User, Team, TeamEmployee
+from app.schemas import MaterialTransferCreate, MaterialTransferConfirm, MaterialReceiptConfirm, MaterialTransferUpdate, WarehouseReceiptCreate
 from app.record_filters import RecordFilters
 
 
@@ -133,6 +133,8 @@ def run():
     with SessionLocal.begin() as db:
         db.add_all(User(id=i, username=f"qa-{i}", display_name=f"测试班组长{i}",
                         password_hash="NO-LOGIN-DISPOSABLE-TEST", role="TEAM", team_id=i, active=True) for i in (1, 2, 3))
+    with SessionLocal.begin() as db:
+        db.add_all(TeamEmployee(id=i, team_id=i, name=f"收料员{i}", active=True) for i in (1, 2, 3))
     with SessionLocal() as db:
         users = {i: db.get(User, i) for i in (1, 2, 3)}
         db.expunge_all()
@@ -144,7 +146,7 @@ def run():
                 quantity=100, weight=Decimal("10.000"), idempotency_key=key), users[1])
         with SessionLocal() as db:
             return workflow.confirm_material_transfer(db, created["batch_no"],
-                MaterialTransferConfirm(idempotency_key=f"receive-{key}"), users[2])
+                MaterialReceiptConfirm(idempotency_key=f"receive-{key}", received_employee_id=2), users[2])
 
     def outgoing(lot, key, quantity=60):
         payload = stock.DispatchCreate(next_team_id=3, idempotency_key=key, lines=[{
@@ -321,7 +323,7 @@ def run():
         assert stock.create_dispatch(db, 2, independent_payload, users[2]) == independent
     first, second = independent['items']
     with SessionLocal() as db:
-        workflow.confirm_material_transfer(db, first['batch_no'], MaterialTransferConfirm(idempotency_key='independent-receive'), users[3])
+        workflow.confirm_material_transfer(db, first['batch_no'], MaterialReceiptConfirm(idempotency_key='independent-receive', received_employee_id=3), users[3])
         assert db.get(MaterialTransfer, second['id']).status == 'pending'
     with SessionLocal() as db:
         workflow.update_material_transfer(db, second['batch_no'], MaterialTransferUpdate(quantity=25, weight=Decimal('2.500'), expected_version=second['version']), users[2])
@@ -332,7 +334,7 @@ def run():
     results['independent_receive_edit_and_retry'] = 'passed'
 
     def batch_confirm(group, key, *, external=False):
-        payload = batches.DispatchConfirm(idempotency_key=key, expected_revision=group['revision'])
+        payload = (batches.DispatchConfirm if external else batches.DispatchReceiptConfirm)(idempotency_key=key, expected_revision=group['revision'], **({} if external else {'received_employee_id': 3}))
         return lambda db: batches.confirm_dispatch(db, group['dispatch_no'], payload, users[2 if external else 3], external=external)
 
     for external in (False, True):

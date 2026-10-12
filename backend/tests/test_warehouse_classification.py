@@ -7,6 +7,7 @@ import pytest
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from historical_dispatch import historical_response
+from receipt_helpers import receipt_post
 from sqlalchemy import create_engine, inspect
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
@@ -34,7 +35,8 @@ def confirm(client, setup, group, workshop=False, external=False):
         if external and item["status"] == "dispatched":
             response = client.get("/api/material-transfers/" + item["batch_no"])
             continue  # New external submissions already completed; no confirmation request.
-        response = client.post(
+        response = receipt_post(
+            client,
             "/api/material-transfers/"
             + item["batch_no"]
             + ("/confirm-outbound" if external else "/confirm"),
@@ -207,8 +209,8 @@ def test_warehouse_review_requires_source_correction_before_receipt(client, ware
     assert rejected.json()["history"][-1]["action"] == "rejected"
     assert client.get(base(s, True) + "/overview").json()["totals"]["available_quantity"] == 10
     assert (
-        client.post(
-            url + "/confirm", headers=s["headers"], json={"idempotency_key": "blocked"}
+        receipt_post(
+            client, url + "/confirm", headers=s["headers"], json={"idempotency_key": "blocked"}
         ).status_code
         == 409
     )
@@ -217,7 +219,8 @@ def test_warehouse_review_requires_source_correction_before_receipt(client, ware
     group_url = "/api/material-dispatches/" + group["dispatch_no"]
     assert "confirm" not in client.get(group_url, headers=s["headers"]).json()["allowed_actions"]
     assert (
-        client.post(
+        receipt_post(
+            client,
             group_url + "/confirm",
             headers=s["headers"],
             json={

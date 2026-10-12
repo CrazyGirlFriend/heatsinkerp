@@ -4,6 +4,7 @@ from datetime import datetime
 
 from app.database import SessionLocal
 from app.models import MaterialTransfer
+from receipt_helpers import receipt_post
 from test_material_stock import dispatch, endpoint, receive_lot  # noqa: F401
 from test_material_stock import stock_setup as stock_setup
 from test_material_transfers import _create
@@ -16,7 +17,8 @@ def test_confirmed_receipt_enters_team_ledger_and_survives_full_dispatch(client,
     before = client.get(url, headers=setup["stock_headers"])
     assert before.status_code == 200, before.text
     assert before.json()["total"] == 0
-    confirmed = client.post(
+    confirmed = receipt_post(
+        client,
         f"/api/material-transfers/{pending['batch_no']}/confirm",
         headers=setup["stock_headers"],
         json={"idempotency_key": "receipt-ledger-confirm"},
@@ -47,7 +49,8 @@ def test_confirmed_receipt_enters_team_ledger_and_survives_full_dispatch(client,
     assert sent.status_code == 201, sent.text
     child = sent.json()["items"][0]
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{child['batch_no']}/confirm",
             headers=setup["third_headers"],
             json={"idempotency_key": "receipt-ledger-downstream"},

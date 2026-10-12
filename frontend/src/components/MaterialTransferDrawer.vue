@@ -14,6 +14,8 @@ import MaterialTransferHistory from '@/components/MaterialTransferHistory.vue'
 import MaterialTransferFormDialog from '@/components/MaterialTransferFormDialog.vue'
 import MaterialDeliveryDialog from './MaterialDeliveryDialog.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
+import ReceiptPersonInput from './ReceiptPersonInput.vue'
+import type { TeamEmployee } from '@/types/teamBusiness'
 import MaterialTransferPrintSheet from '@/components/MaterialTransferPrintSheet.vue'
 import MaterialDispatchDrawer from '@/components/MaterialDispatchDrawer.vue'
 import { isDispatchNumber } from '@/types/teamMaterials'
@@ -78,6 +80,9 @@ const actionLabel = computed(() => externalActionLabel(current.value?.entry_kind
 const processed = computed(() => current.value?.entry_kind === 'processing_output')
 const loading = ref(false)
 const loadError = ref('')
+const receiver = ref<TeamEmployee | null>(null)
+const receiverRequired = ref(false)
+const selectingReceiver = ref(false)
 const confirming = ref(false)
 const voiding = ref(false)
 const editOpen = ref(false)
@@ -163,6 +168,13 @@ const canReject = computed(() =>
     current.value.allowed_actions.includes('reject'),
   ),
 )
+watch(
+  () => receiver.value?.id,
+  () => {
+    confirmKey = newIdempotencyKey()
+    if (receiver.value) receiverRequired.value = false
+  },
+)
 watch(effectiveBatchNo, () => {
   reviewNotice.value = ''
 })
@@ -211,6 +223,7 @@ function newIdempotencyKey(): string {
 const freezeLive = computed(
   () =>
     loading.value ||
+    selectingReceiver.value ||
     confirming.value ||
     voiding.value ||
     editOpen.value ||
@@ -274,11 +287,16 @@ async function confirmReceipt(): Promise<void> {
     showToast('仓位不能超过 80 个字符', 'error')
     return
   }
+  const person = receiver.value
+  if (!person) {
+    receiverRequired.value = true
+    return
+  }
   const epoch = ++actionVersion
   confirming.value = true
   try {
     await ElMessageBox.confirm(
-      `确认已收到 ${numberText(transfer.quantity, '件')}、${transfer.material_type === 'sludge' ? sludgeSummary(transfer) : numberText(transfer.weight, 'kg')}？确认后转出方不能修改。`,
+      `由 ${person.name} 接收：${numberText(transfer.quantity, '件')}、${transfer.material_type === 'sludge' ? sludgeSummary(transfer) : numberText(transfer.weight, 'kg')}？确认后转出方不能修改。`,
       '确认签收',
       { type: 'warning', confirmButtonText: '确认签收', cancelButtonText: '取消' },
     )
@@ -294,6 +312,7 @@ async function confirmReceipt(): Promise<void> {
   try {
     const confirmed = await materialTransferApi.confirm(transfer.batch_no, {
       idempotency_key: confirmKey || newIdempotencyKey(),
+      received_employee_id: person.id,
       ...materialTransferVersion(transfer),
       ...(warehouseReceiver.value
         ? {
@@ -479,6 +498,9 @@ watch(
   () => [props.modelValue, effectiveBatchNo.value, props.receiptOnly] as const,
   ([open]) => {
     groupOpen.value = false
+    receiver.value = null
+    receiverRequired.value = false
+    selectingReceiver.value = false
     ++actionVersion
     confirming.value = false
     voiding.value = false
@@ -617,6 +639,16 @@ watch(
           ><RouterLink :to="tracePath">{{ sharedSerialLabel(current) }}</RouterLink
           ><SerialUrgencyBadge :urgency="current.urgency" /></template
       ></MaterialTransferDocumentFields>
+      <section v-if="canConfirm" class="receipt-person-field">
+        <label><span aria-hidden="true">*</span> 接收人</label>
+        <ReceiptPersonInput
+          v-model="receiver"
+          :team-id="Number(current.next_team.id)"
+          :disabled="confirming"
+          :invalid="receiverRequired && !receiver"
+          @open-change="selectingReceiver = $event"
+        />
+      </section>
       <section v-if="canConfirm && warehouseReceiver" class="receipt-location">
         <label>入库仓位</label
         ><strong v-if="current.warehouse_location">{{ current.warehouse_location }}</strong
@@ -766,6 +798,19 @@ watch(
 </template>
 
 <style scoped>
+.receipt-person-field {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-block: 16px;
+}
+.receipt-person-field label {
+  font-size: 14px;
+}
+.receipt-person-field label span {
+  color: var(--el-color-danger);
+}
+
 .receipt-location {
   display: grid;
   grid-template-columns: 90px minmax(0, 460px);

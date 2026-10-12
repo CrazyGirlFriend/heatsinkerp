@@ -6,6 +6,7 @@ from threading import Barrier
 
 from app.database import SessionLocal
 from app.models import WarehousePlacement
+from receipt_helpers import receipt_post
 from sqlalchemy import select
 from test_transfer_list_loading import read_statements
 from test_warehouse_location_locks import claim, create_slot, state
@@ -119,8 +120,11 @@ def test_partial_edit_restores_only_difference_to_unassigned(client, warehouse):
     classified = client.get(base + "/inventory", params={"location_status": "unassigned"})
     assert classified.status_code == 200, classified.text
     assert classified.json()["total"] == 1
-    accepted = client.post(
-        url + "/confirm", headers=warehouse["other_headers"], json={"idempotency_key": "receive"}
+    accepted = receipt_post(
+        client,
+        url + "/confirm",
+        headers=warehouse["other_headers"],
+        json={"idempotency_key": "receive"},
     )
     assert accepted.status_code == 200, accepted.text
     row = stock(client, warehouse, source)

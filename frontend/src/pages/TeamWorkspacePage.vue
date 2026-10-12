@@ -1467,9 +1467,15 @@ onBeforeUnmount(() => {
                         :status="row.status"
                         :entry-kind="row.entry_kind" /></template
                   ></ElTableColumn>
-                  <ElTableColumn label="接收人" min-width="100" show-overflow-tooltip
+                  <ElTableColumn
+                    label="接收 / 登记人"
+                    min-width="120"
+                    align="center"
+                    show-overflow-tooltip
                     ><template #default="{ row }">{{
-                      row.received_by || '—'
+                      row.entry_kind === 'transfer'
+                        ? row.received_employee_name || '未登记'
+                        : row.received_by || '—'
                     }}</template></ElTableColumn
                   >
                   <ElTableColumn label="操作" width="100" fixed="right"

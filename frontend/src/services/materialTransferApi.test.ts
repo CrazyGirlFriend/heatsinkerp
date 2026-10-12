@@ -333,10 +333,12 @@ describe('material transfer API', () => {
     })
     await materialTransferApi.confirm('TL20260906000007', {
       idempotency_key: 'receipt-v4',
+      received_employee_id: 7,
       expected_version: 4,
     })
     expect(JSON.parse(String(configs[1]!.data))).toEqual({
       idempotency_key: 'receipt-v4',
+      received_employee_id: 7,
       expected_version: 4,
     })
     responder = () => ({
@@ -346,6 +348,7 @@ describe('material transfer API', () => {
     await expect(
       materialTransferApi.confirm('TL20260906000007', {
         idempotency_key: 'receipt-v4',
+        received_employee_id: 7,
         expected_version: 4,
       }),
     ).rejects.toMatchObject({ status: 409, message: '转料单已更新，请重新核对最新内容' })
@@ -465,13 +468,17 @@ describe('material transfer API', () => {
       }),
     })
     const received = await materialTransferApi.confirm('TL20260906000007', {
+      received_employee_id: 7,
       idempotency_key: 'confirm-transfer-7',
     })
     expect(configs[0]).toMatchObject({
       method: 'post',
       url: '/material-transfers/TL20260906000007/confirm',
     })
-    expect(JSON.parse(String(configs[0]!.data))).toEqual({ idempotency_key: 'confirm-transfer-7' })
+    expect(JSON.parse(String(configs[0]!.data))).toEqual({
+      received_employee_id: 7,
+      idempotency_key: 'confirm-transfer-7',
+    })
     expect(received).toMatchObject({ status: 'received', received_by: '退火班组长', locked: true })
     expect(canEditMaterialTransfer(received)).toBe(false)
     expect(canVoidMaterialTransfer(received)).toBe(false)

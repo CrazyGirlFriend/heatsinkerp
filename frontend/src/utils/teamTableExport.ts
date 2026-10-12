@@ -63,7 +63,14 @@ export function transferExportFields(
           ),
         ]),
     ...(section === 'receipts'
-      ? [field('received_by', '接收人', (row) => row.received_by)]
+      ? [
+          field('received_employee_name', '接收 / 登记人', (row) =>
+            row.entry_kind === 'transfer'
+              ? row.received_employee_name || '未登记'
+              : row.received_by,
+          ),
+          field('received_by', '操作账号', (row) => row.received_by),
+        ]
       : [
           field(
             'transferred_by',

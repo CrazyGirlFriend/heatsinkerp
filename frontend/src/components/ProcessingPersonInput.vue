@@ -3,9 +3,19 @@ import { computed, ref, watch } from 'vue'
 import { ElButton, ElDialog, ElIcon, ElInput, useFormDisabled } from 'element-plus'
 import { Check, Search, User } from '@element-plus/icons-vue'
 
-const props = defineProps<{ options?: string[]; label?: string }>()
+const props = withDefaults(
+  defineProps<{
+    options?: string[]
+    label?: string
+    disabled?: boolean
+    invalid?: boolean
+    loading?: boolean
+  }>(),
+  { disabled: undefined },
+)
+const emit = defineEmits<{ openChange: [boolean] }>()
 const name = defineModel<string>({ required: true })
-const disabled = useFormDisabled()
+const isDisabled = useFormDisabled()
 const opened = ref(false)
 const query = ref('')
 const trigger = ref<HTMLButtonElement>()
@@ -16,15 +26,16 @@ const matches = computed(() => {
 })
 watch(opened, (value) => {
   if (value) query.value = ''
+  emit('openChange', value)
 })
-watch(disabled, (value) => {
+watch(isDisabled, (value) => {
   if (value) opened.value = false
 })
 function close() {
   opened.value = false
 }
 function choose(person: string) {
-  if (disabled.value) return
+  if (isDisabled.value || props.loading) return
   name.value = person
   close()
 }
@@ -36,15 +47,16 @@ function choose(person: string) {
       ref="trigger"
       type="button"
       class="person-trigger el-select__wrapper"
-      :class="{ 'is-focused': opened, 'is-disabled': disabled }"
-      :disabled="disabled"
+      :class="{ 'is-focused': opened, 'is-disabled': isDisabled, 'is-invalid': invalid }"
+      :disabled="isDisabled"
       :aria-label="label || '加工人'"
       aria-haspopup="dialog"
       :aria-expanded="opened"
+      :aria-invalid="invalid || undefined"
       @click="opened = true"
     >
       <span class="person-value" :class="{ 'is-placeholder': !name }">{{
-        name || '请选择加工人'
+        name || `请选择${label || '加工人'}`
       }}</span>
       <ElIcon class="person-icon"><User /></ElIcon>
     </button>
@@ -59,11 +71,17 @@ function choose(person: string) {
       @opened="search?.focus()"
       @closed="trigger?.focus()"
     >
-      <section class="person-panel" @keydown.esc.stop.prevent="close">
+      <section
+        class="person-panel"
+        :aria-busy="loading || undefined"
+        @keydown.esc.stop.prevent="close"
+      >
         <header class="person-panel-header">
           <strong>本班组员工</strong>
           <span class="person-count">{{ matches.length }} 人</span>
-          <ElButton v-if="name" link type="primary" @click="choose('')">清除选择</ElButton>
+          <ElButton v-if="name" link type="primary" :disabled="loading" @click="choose('')"
+            >清除选择</ElButton
+          >
         </header>
         <ElInput
           ref="search"
@@ -75,7 +93,8 @@ function choose(person: string) {
           maxlength="80"
           @keydown.enter.prevent
         />
-        <div v-if="matches.length" class="person-grid" role="group" aria-label="员工名单">
+        <p v-if="loading" class="person-empty" role="status">加载员工…</p>
+        <div v-else-if="matches.length" class="person-grid" role="group" aria-label="员工名单">
           <button
             v-for="person in matches"
             :key="person"
@@ -120,6 +139,9 @@ function choose(person: string) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.person-trigger.is-invalid {
+  box-shadow: 0 0 0 1px var(--el-color-danger) inset;
 }
 .is-placeholder,
 .person-icon {

@@ -15,6 +15,7 @@ import TeamSerialHistory from '@/components/TeamSerialHistory.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
 import MaterialReceiptScanner from '@/components/MaterialReceiptScanner.vue'
+import ReceiptPersonInput from '@/components/ReceiptPersonInput.vue'
 import MaterialBatchPrintDialog from '@/components/MaterialBatchPrintDialog.vue'
 import { dispatchFixture } from '@/testFixtures/materialDispatch'
 import { ElPagination } from 'element-plus'
@@ -31,6 +32,7 @@ import { teamMaterialApi } from '@/services/teamMaterialApi'
 import * as inventoryStream from '@/services/inventoryStream'
 import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import type { StockBatch, TeamMaterialOverview } from '@/types/teamMaterials'
+const receivingPerson = { id: 1, team_id: 914, name: '王师傅', active: true, version: 1 }
 const state = vi.hoisted(() => ({
   auth: {
     isAdmin: false,
@@ -96,6 +98,7 @@ let wrapper: VueWrapper
 let subscription: inventoryStream.InventorySubscription<inventoryStream.InventoryChange>,
   stopStream: ReturnType<typeof vi.fn>
 beforeEach(() => {
+  vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([receivingPerson])
   vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
   stopStream = vi.fn()
   vi.spyOn(inventoryStream, 'subscribeInventoryChanges').mockImplementation((callbacks) => {
@@ -469,11 +472,11 @@ describe('team workspace material ledger', () => {
       })
       await router.push('/team-workspaces/914?tab=reallocations')
       await flushPromises()
-      expect(wrapper.text()).not.toContain('转投记录')
-      expect(wrapper.get('h1').text()).toBe('库存明细')
+      expect(wrapper.get('h1').text()).toBe('转投记录')
+      expect(teamMaterialApi.reallocations).toHaveBeenCalledWith(914, expect.any(Object))
     },
   )
-  it('opens reallocation only for designated own-team stock and refreshes inventory after saving', async () => {
+  it('opens reallocation only for own-team stock and refreshes inventory after saving', async () => {
     const previous = state.directory.items
     try {
       state.directory.items = [
@@ -1204,6 +1207,8 @@ describe('team workspace material ledger', () => {
     vi.spyOn(materialTransferApi, 'get').mockResolvedValue(
       normalizeMaterialTransfer({ ...source().transfer, next_team: { id: 900, name: '检验' } }),
     )
+    wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', receivingPerson)
+    await flushPromises()
     await wrapper.get('input[aria-label="扫描转料批次号"]').setValue('TL10')
     await wrapper.get('input[aria-label="扫描转料批次号"]').trigger('keyup.enter')
     await flushPromises()
@@ -1277,6 +1282,8 @@ describe('team workspace material ledger', () => {
     })
     wrapper.unmount()
     await render('/team-workspaces/914?tab=pending')
+    wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', receivingPerson)
+    await flushPromises()
     await wrapper.get('input[aria-label="扫描转料批次号"]').setValue('CK-GROUP')
     await wrapper.get('input[aria-label="扫描转料批次号"]').trigger('keyup.enter')
     await flushPromises()
@@ -1367,11 +1374,14 @@ describe('team workspace material ledger', () => {
       page_size: 10,
     })
     const router = await render('/team-workspaces/914?tab=pending')
+    wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', receivingPerson)
+    await flushPromises()
     await wrapper.get('input[aria-label="扫描转料批次号"]').setValue(transfer.batch_no)
     await wrapper.get('input[aria-label="扫描转料批次号"]').trigger('keyup.enter')
     await flushPromises()
     expect(wrapper.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
     expect(materialTransferApi.confirm).toHaveBeenCalledWith(transfer.batch_no, {
+      received_employee_id: receivingPerson.id,
       expected_version: 1,
       idempotency_key: expect.any(String),
     })

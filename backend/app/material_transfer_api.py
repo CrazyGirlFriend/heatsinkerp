@@ -17,6 +17,7 @@ from .record_filters import RecordFilters
 from .schemas import (
     DIRECT_MATERIAL_TYPE_PATTERN,
     MaterialDeliveryUpdate,
+    MaterialReceiptConfirm,
     MaterialTransferConfirm,
     MaterialTransferCreate,
     MaterialTransferList,
@@ -215,7 +216,7 @@ def void_material_transfer(
 )
 def confirm_material_transfer(
     batch_no: str,
-    payload: MaterialTransferConfirm,
+    payload: MaterialReceiptConfirm,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:

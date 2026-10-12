@@ -12,6 +12,7 @@ from app.main import app
 from app.models import Team
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from receipt_helpers import receipt_post
 from test_access_gate import make_gate
 from test_external_outbound import dispatch
 from test_external_outbound import outbound as outbound
@@ -146,7 +147,8 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
             assert moved["teams"][1]["pending_incoming"]["quantity"] == 30
             line = response.json()["items"][0]
             response = await asyncio.to_thread(
-                client.post,
+                receipt_post,
+                client,
                 f"/api/material-transfers/{line['batch_no']}/confirm",
                 headers=warehouse["other_headers"],
                 json={"idempotency_key": "stream-receive"},

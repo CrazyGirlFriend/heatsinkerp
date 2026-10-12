@@ -5,6 +5,7 @@ import {
   teamWorkspaceProfiles,
   teamWorkspaceSectionPath,
   teamWorkspaceSectionsFor,
+  teamCanReallocate,
 } from './teamWorkspaces'
 
 describe('eight official workspace profiles', () => {
@@ -69,7 +70,17 @@ describe('shared workspace navigation', () => {
       '/team-workspaces/7?tab=material-types',
     )
   })
-  it('exposes reallocation records only in designated workspaces', () => {
+  it('enables reallocation and its records for every factory team', () => {
+    for (const profile of teamWorkspaceProfiles) {
+      expect(
+        teamCanReallocate({
+          code: profile.code,
+          kind: profile.code === 'FACTORY-WAREHOUSE' ? 'warehouse' : 'production',
+        }),
+      ).toBe(true)
+    }
+    expect(teamCanReallocate({ code: 'NEW-TEAM', kind: 'production' })).toBe(true)
+    expect(teamCanReallocate()).toBe(false)
     expect(teamWorkspaceSectionsFor(true, true, true).map((item) => item.value)).toContain(
       'reallocations',
     )

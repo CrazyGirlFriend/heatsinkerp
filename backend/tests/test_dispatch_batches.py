@@ -8,6 +8,7 @@ from alembic.runtime.migration import MigrationContext
 from app import material_transfer_workflow as workflow
 from app.schemas import MaterialTransferResponse
 from historical_dispatch import historical_response
+from receipt_helpers import receipt_post
 from sqlalchemy import create_engine, inspect
 from test_external_outbound import confirm as legacy_confirm
 from test_external_outbound import dispatch as new_external_dispatch
@@ -31,7 +32,8 @@ def detail_url(group):
 
 
 def confirm(client, group, headers, *, external=True, **overrides):
-    return client.post(
+    return receipt_post(
+        client,
         detail_url(group) + ("/confirm-outbound" if external else "/confirm"),
         headers=headers,
         json={

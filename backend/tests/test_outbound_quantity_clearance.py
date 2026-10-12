@@ -9,6 +9,7 @@ from app.models import (
     NotificationOutbox,
 )
 from fastapi import HTTPException
+from receipt_helpers import receipt_post
 from sqlalchemy import func, select
 from test_external_outbound import dispatch as external_dispatch
 from test_external_outbound import outbound as outbound  # noqa: F401
@@ -90,7 +91,8 @@ def test_last_weight_clearance_is_optional_and_changes_only_on_hand_count(client
         and changes[0]["delta_quantity"] == -20
         and changes[0]["delta_weight"] == 0
     )
-    signed = client.post(
+    signed = receipt_post(
+        client,
         f"/api/material-transfers/{outgoing['batch_no']}/confirm",
         headers=s["third_headers"],
         json={"idempotency_key": "signed-clearance"},

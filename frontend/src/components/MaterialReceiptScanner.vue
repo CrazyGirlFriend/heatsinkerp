@@ -13,12 +13,17 @@ import {
 import { isDispatchNumber } from '@/types/teamMaterials'
 import { inventoryAmount } from '@/types/teamInventory'
 import { sludgeSummary } from '@/utils/sludgeWeight'
+import ReceiptPersonInput from './ReceiptPersonInput.vue'
+import type { TeamEmployee } from '@/types/teamBusiness'
 
 const props = defineProps<{ teamId: number; paused?: boolean }>()
 const emit = defineEmits<{ received: [transfer: MaterialTransfer] }>()
 const auth = useAuthStore()
 const input = ref<InputInstance>()
 const value = ref('')
+const receiver = ref<TeamEmployee | null>(null)
+const receiverRequired = ref(false)
+const selectingReceiver = ref(false)
 const queue = ref<string[]>([])
 const currentCode = ref('')
 const result = ref<{ message: string; tone: ToastTone } | null>(null)
@@ -45,9 +50,10 @@ function report(message: string, tone: ToastTone) {
 }
 
 async function receiveNext() {
-  if (currentCode.value || !allowed.value || props.paused || disposed) return
+  if (currentCode.value || !allowed.value || props.paused || disposed || !receiver.value) return
   const code = queue.value.shift()
   if (!code) return
+  const person = receiver.value
   const token = epoch
   const active = () => token === epoch && !disposed && allowed.value && !props.paused
   currentCode.value = code
@@ -68,21 +74,23 @@ async function receiveNext() {
     if (transfer.rejection_reason) throw new Error('单据已退回核对，需上序修改后再扫码')
     if (!canConfirmMaterialTransfer(transfer) || !transfer.version)
       throw new Error('该批物料当前不能签收入库，请刷新后重试')
-    let key = keys.get(code)
+    const requestIdentity = `${code}:${person.id}`
+    let key = keys.get(requestIdentity)
     if (!key) {
       key =
         globalThis.crypto?.randomUUID?.() ||
         `scan-receipt-${Date.now()}-${Math.random().toString(16).slice(2)}`
-      keys.set(code, key)
+      keys.set(requestIdentity, key)
     }
     // Keep the existing reserved location. A blank location stays unassigned.
     const received = await materialTransferApi.confirm(code, {
       idempotency_key: key,
+      received_employee_id: person.id,
       ...materialTransferVersion(transfer),
     })
     if (!active()) return
     report(
-      `${code} 已入库 · ${inventoryAmount(received.quantity)} 件 / ${received.material_type === 'sludge' ? sludgeSummary(received) : `${inventoryAmount(received.weight)} kg`}`,
+      `${code} 已入库 · 接收人 ${received.received_employee_name || person.name} · ${inventoryAmount(received.quantity)} 件 / ${received.material_type === 'sludge' ? sludgeSummary(received) : `${inventoryAmount(received.weight)} kg`}`,
       'success',
     )
     emit('received', received)
@@ -99,6 +107,11 @@ async function receiveNext() {
 
 function scan(raw = value.value) {
   if (!allowed.value || props.paused || disposed) return
+  if (selectingReceiver.value) return
+  if (!receiver.value) {
+    receiverRequired.value = true
+    return
+  }
   const code = raw.trim().toUpperCase()
   if (!code) return
   value.value = ''
@@ -114,6 +127,7 @@ function handleKey(event: KeyboardEvent) {
   if (
     !allowed.value ||
     props.paused ||
+    selectingReceiver.value ||
     document.hidden ||
     event.isComposing ||
     event.ctrlKey ||
@@ -142,6 +156,17 @@ function focus() {
 }
 defineExpose({ focus })
 watch(
+  () => `${auth.currentUser?.id}:${auth.currentUser?.team_id}:${props.teamId}:${allowed.value}`,
+  () => {
+    receiver.value = null
+    receiverRequired.value = false
+  },
+)
+watch(receiver, (value) => {
+  if (value) receiverRequired.value = false
+  hid = ''
+})
+watch(
   identity,
   () => {
     ++epoch
@@ -167,17 +192,32 @@ onBeforeUnmount(() => {
   <div class="receipt-scanner">
     <div class="incoming-scan">
       <strong>扫码入库</strong>
+      <div class="scanner-receiver">
+        <label><span aria-hidden="true">*</span> 接收人</label>
+        <ReceiptPersonInput
+          v-if="allowed"
+          :key="`${auth.currentUser?.id}:${teamId}`"
+          v-model="receiver"
+          :team-id="teamId"
+          :disabled="!!currentCode || queue.length > 0 || paused"
+          :invalid="receiverRequired && !receiver"
+          @open-change="selectingReceiver = $event"
+        />
+      </div>
       <div class="scanner-inline">
         <ElInput
           ref="input"
           v-model="value"
           aria-label="扫描转料批次号"
-          placeholder="扫描批次条码，自动签收入库"
+          :placeholder="receiver ? '扫描批次条码，自动签收入库' : '请先选择接收人'"
           autocomplete="off"
-          :disabled="!allowed || paused"
+          :disabled="!allowed || paused || !receiver || selectingReceiver"
           @keyup.enter="scan()"
         />
-        <ElButton :icon="FullScreen" :disabled="!allowed || paused || !value.trim()" @click="scan()"
+        <ElButton
+          :icon="FullScreen"
+          :disabled="!allowed || paused || !receiver || selectingReceiver || !value.trim()"
+          @click="scan()"
           >入库</ElButton
         >
       </div>
@@ -215,6 +255,18 @@ onBeforeUnmount(() => {
 .incoming-scan strong {
   font-size: 14px;
   font-weight: 500;
+}
+.scanner-receiver {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.scanner-receiver label {
+  white-space: nowrap;
+  font-size: 14px;
+}
+.scanner-receiver label span {
+  color: var(--el-color-danger);
 }
 .scanner-inline {
   display: flex;

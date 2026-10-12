@@ -5,6 +5,7 @@ from datetime import datetime
 from app import factory_overview, material_analytics
 from app.database import SessionLocal
 from app.models import MaterialTransfer
+from receipt_helpers import receipt_post
 from test_external_outbound import dispatch as bulk_dispatch
 from test_external_outbound import outbound as outbound
 from test_material_stock import dispatch, endpoint, receive_lot, totals
@@ -60,7 +61,8 @@ def test_factory_stock_plus_transit_conserves_and_acceptance_never_deducts_twice
         assert report["pending"]["batches"] == 2
     for _ in range(2):
         for item in group["items"]:
-            result = client.post(
+            result = receipt_post(
+                client,
                 "/api/material-transfers/" + item["batch_no"] + "/confirm",
                 headers=outbound["other_headers"],
                 json={

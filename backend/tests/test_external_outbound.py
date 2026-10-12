@@ -9,6 +9,7 @@ from alembic.runtime.migration import MigrationContext
 from app.database import SessionLocal
 from app.models import Team, User
 from fastapi import HTTPException
+from receipt_helpers import receipt_post
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.exc import IntegrityError
 from test_material_transfers import _leader, _team
@@ -82,7 +83,8 @@ def outbound(client, request):
             )
             assert response.status_code == 201, response.text
             lot = response.json()["items"][0]
-            response = client.post(
+            response = receipt_post(
+                client,
                 f"/api/material-transfers/{lot['batch_no']}/confirm",
                 headers=headers[qc["id"]],
                 json={"idempotency_key": f"qc-receive-{i}"},
@@ -240,7 +242,9 @@ def test_external_authorization_no_internal_self_receipt_loophole(client, outbou
     for headers in ({}, outbound["other_headers"]):
         assert (
             client.post(
-                url + "/confirm-outbound", headers=headers, json={"idempotency_key": "denied"}
+                url + "/confirm-outbound",
+                headers=headers,
+                json={"idempotency_key": "denied"},
             ).status_code
             == 403
         )
@@ -264,8 +268,11 @@ def test_external_authorization_no_internal_self_receipt_loophole(client, outbou
             == 403
         )
     assert (
-        client.post(
-            url + "/confirm", headers=outbound["headers"], json={"idempotency_key": "not-a-receipt"}
+        receipt_post(
+            client,
+            url + "/confirm",
+            headers=outbound["headers"],
+            json={"idempotency_key": "not-a-receipt"},
         ).status_code
         == 403
     )
@@ -327,7 +334,8 @@ def test_external_authorization_no_internal_self_receipt_loophole(client, outbou
     internal = response.json()["items"][0]
     assert confirm(client, outbound, internal).status_code == 403
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{internal['batch_no']}/confirm",
             headers=outbound["other_headers"],
             json={"idempotency_key": "internal-receive"},

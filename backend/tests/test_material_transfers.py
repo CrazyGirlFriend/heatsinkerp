@@ -8,6 +8,7 @@ from app.database import SessionLocal
 from app.legacy_models import Operation, OperationReport, WorkOrder
 from app.models import MaterialTransfer
 from app.seed_material_transfer_showcase import seed_material_transfer_showcase
+from receipt_helpers import receipt_post
 from sqlalchemy import create_engine, inspect, select, text
 
 
@@ -149,7 +150,8 @@ def test_permissions_whole_batch_confirmation_and_permanent_lock(client):
     for field in ("quantity", "weight", "status", "version", "history"):
         assert unchanged[field] == target_view.json()[field]
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{batch_no}/confirm",
             json={"idempotency_key": "wrong-source-confirm"},
             headers=setup["source_headers"],
@@ -172,14 +174,16 @@ def test_permissions_whole_batch_confirmation_and_permanent_lock(client):
     assert updated.json()["next_team"]["id"] == setup["third"]["id"]
     assert updated.json()["quantity"] == 9
 
-    forbidden_receipt_fields = client.post(
+    forbidden_receipt_fields = receipt_post(
+        client,
         f"/api/material-transfers/{batch_no}/confirm",
         json={"idempotency_key": "receive-001", "received_quantity": 8},
         headers=setup["third_headers"],
     )
     assert forbidden_receipt_fields.status_code == 422
 
-    confirmed = client.post(
+    confirmed = receipt_post(
+        client,
         f"/api/material-transfers/{batch_no}/confirm",
         json={"idempotency_key": "receive-001"},
         headers=setup["third_headers"],
@@ -194,7 +198,8 @@ def test_permissions_whole_batch_confirmation_and_permanent_lock(client):
     assert received["quantity"] == 9 and received["weight"] == 2.125
     assert received["allowed_actions"] == []
 
-    retry = client.post(
+    retry = receipt_post(
+        client,
         f"/api/material-transfers/{batch_no}/confirm",
         json={"idempotency_key": "receive-001"},
         headers=setup["third_headers"],
@@ -204,7 +209,8 @@ def test_permissions_whole_batch_confirmation_and_permanent_lock(client):
     assert retry.json()["id"] == received["id"]
 
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{batch_no}/confirm",
             json={"idempotency_key": "receive-002"},
             headers=setup["third_headers"],
@@ -251,7 +257,8 @@ def test_admin_is_read_only_and_source_only_can_void_pending_transfer(client):
     )
     assert client.delete(f"/api/material-transfers/{batch_no}").status_code == 403
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{batch_no}/confirm",
             json={"idempotency_key": "admin-receive"},
         ).status_code
@@ -390,7 +397,8 @@ def test_document_fields_round_trip_clear_audit_and_lock(client):
     assert event["changes"]["customer_code"] == {"before": "001440", "after": None}
     assert "technical_requirements" not in event["changes"]
 
-    confirmed = client.post(
+    confirmed = receipt_post(
+        client,
         url + "/confirm",
         headers=setup["target_headers"],
         json={
@@ -443,7 +451,8 @@ def test_versions_prevent_unseen_confirmation_and_lost_edits_with_retry_safety(c
         == 409
     )
     assert (
-        client.post(
+        receipt_post(
+            client,
             url + "/confirm",
             headers=setup["target_headers"],
             json={
@@ -457,8 +466,8 @@ def test_versions_prevent_unseen_confirmation_and_lost_edits_with_retry_safety(c
     assert unchanged["quantity"] == 12 and unchanged["status"] == "pending"
     assert len(unchanged["history"]) == 2
     payload = {"idempotency_key": "version-receive", "expected_version": 2}
-    received = client.post(url + "/confirm", headers=setup["target_headers"], json=payload)
-    retry = client.post(url + "/confirm", headers=setup["target_headers"], json=payload)
+    received = receipt_post(client, url + "/confirm", headers=setup["target_headers"], json=payload)
+    retry = receipt_post(client, url + "/confirm", headers=setup["target_headers"], json=payload)
     assert received.status_code == retry.status_code == 200
     assert retry.json() == received.json()
     assert retry.json()["version"] == 3 and len(retry.json()["history"]) == 3
@@ -578,7 +587,8 @@ def test_document_history_failure_rolls_back_business_changes(client, monkeypatc
     after = client.get(url, headers=setup["source_headers"]).json()
     assert after == created
     assert (
-        client.post(
+        receipt_post(
+            client,
             url + "/confirm",
             headers=setup["target_headers"],
             json={"idempotency_key": "audit-failure-confirm", "expected_version": 1},
@@ -698,7 +708,8 @@ def test_search_wildcards_are_literal_and_not_sql(client):
 def test_list_filters_pagination_and_chronological_serial_trace(client):
     setup = _setup_three_teams(client)
     first = _create(client, setup, idempotency_key="trace-1").json()
-    confirm = client.post(
+    confirm = receipt_post(
+        client,
         f"/api/material-transfers/{first['batch_no']}/confirm",
         json={"idempotency_key": "trace-receive-1"},
         headers=setup["target_headers"],
@@ -804,7 +815,8 @@ def test_team_workspace_directions_counts_pagination_and_intersecting_filters(cl
         == 204
     )
     assert (
-        client.post(
+        receipt_post(
+            client,
             f"/api/material-transfers/{incoming['batch_no']}/confirm",
             json={"idempotency_key": "workspace-receive"},
             headers=setup["source_headers"],
@@ -967,7 +979,8 @@ def test_warehouse_requires_classification_and_preserves_notes_audit_and_kind(cl
         "before": "semi_finished",
         "after": "finished",
     }
-    confirm = client.post(
+    confirm = receipt_post(
+        client,
         url + "/confirm",
         json={"idempotency_key": "warehouse-receipt", "expected_version": 2},
         headers=warehouse_headers,
@@ -1059,7 +1072,8 @@ def test_historical_warehouse_without_type_can_be_confirmed_without_inventing_fi
     url = f"/api/material-transfers/{created['batch_no']}"
     updated = client.patch(url, json={"notes": "历史入库单复核"}, headers=setup["source_headers"])
     assert updated.status_code == 200 and updated.json()["material_type"] is None
-    confirmed = client.post(
+    confirmed = receipt_post(
+        client,
         url + "/confirm",
         json={"idempotency_key": "legacy-warehouse-confirm"},
         headers=setup["target_headers"],
