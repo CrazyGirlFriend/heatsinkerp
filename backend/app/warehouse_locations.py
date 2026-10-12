@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .async_api import AsyncAPIRouter
 from .auth import actor_name, get_current_user
 from .database import get_db
+from .material_stock import StockAmounts
 from .models import (
     AdminAuditEvent,
     Team,
@@ -28,7 +29,6 @@ from .models import (
 )
 from .observability import record
 from .team_constants import WAREHOUSE_TEAM_CODE
-from .material_stock import StockAmounts
 
 LEASE_SECONDS = 180
 DRAFT_SECONDS = 600
@@ -58,8 +58,10 @@ class LeaseRequest(BaseModel):
 
 
 def material_identity(value):
-    return tuple((getattr(value, field, None) or "").strip()
-                 for field in ("serial_no", "material_name", "material_type"))
+    return tuple(
+        (getattr(value, field, None) or "").strip()
+        for field in ("serial_no", "material_name", "material_type")
+    )
 
 
 class PlacementWrite(StockAmounts):
@@ -68,7 +70,8 @@ class PlacementWrite(StockAmounts):
 
 def place_stock(db, location_id, payload, user):
     from decimal import Decimal
-    from .material_stock import lock_lot, _db_conflict
+
+    from .material_stock import _db_conflict, lock_lot
 
     try:
         with db.begin():
@@ -115,8 +118,14 @@ def place_stock(db, location_id, payload, user):
                 placement.quantity += payload.quantity
                 placement.weight += payload.weight
             else:
-                db.add(WarehousePlacement(location_id=location.id, transfer_id=lot.id,
-                                          quantity=payload.quantity, weight=payload.weight))
+                db.add(
+                    WarehousePlacement(
+                        location_id=location.id,
+                        transfer_id=lot.id,
+                        quantity=payload.quantity,
+                        weight=payload.weight,
+                    )
+                )
             location.version += 1
             db.add(
                 AdminAuditEvent(
@@ -191,7 +200,9 @@ def occupants(db, ids, *, locking=False):
             WarehouseLocation.id.label("location_id"),
             Transfer.id,
             Transfer.batch_no,
-            Transfer.serial_no, Transfer.shared_group_id, Transfer.shared_unallocated,
+            Transfer.serial_no,
+            Transfer.shared_group_id,
+            Transfer.shared_unallocated,
             Transfer.material_name,
             Transfer.material_type,
             Transfer.status,
@@ -216,6 +227,7 @@ def occupants(db, ids, *, locking=False):
         # concurrent submit/claim; any deadlock rolls the entire operation back.
         statement = statement.with_for_update()
     from .shared_material import annotate_groups
+
     return annotate_groups(db, [dict(row) for row in db.execute(statement).mappings()])
 
 
@@ -244,39 +256,70 @@ def location_dict(location, rows):
         "status": state,
         "draft_locked": leased(location),
         "has_stock": any(row["status"] == "received" for row in rows),
-        "batches": [{
-            **row,
-            "weight": float(row["weight"]),
-            "available_weight": float(row["available_weight"]),
-            **{key: row[key].replace(tzinfo=timezone.utc).isoformat() if row[key] else None
-               for key in ("created_at", "received_at")},
-        } for row in rows],
+        "batches": [
+            {
+                **row,
+                "weight": float(row["weight"]),
+                "available_weight": float(row["available_weight"]),
+                **{
+                    key: row[key].replace(tzinfo=timezone.utc).isoformat() if row[key] else None
+                    for key in ("created_at", "received_at")
+                },
+            }
+            for row in rows
+        ],
     }
 
 
 def list_locations(
-    db, team_id=None, *, query=None, page=1, page_size=100, available_only=False, selected=None,
-    identity=None, state=None,
+    db,
+    team_id=None,
+    *,
+    query=None,
+    page=1,
+    page_size=100,
+    available_only=False,
+    selected=None,
+    identity=None,
+    state=None,
 ):
     from .material_stock import literal_query
 
     team = warehouse(db, team_id)
     conditions = [WarehouseLocation.team_id == team.id]
-    busy = select(WarehousePlacement.transfer_id).where(
-        WarehousePlacement.location_id == WarehouseLocation.id,
-        or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0),
-    ).exists()
+    busy = (
+        select(WarehousePlacement.transfer_id)
+        .where(
+            WarehousePlacement.location_id == WarehouseLocation.id,
+            or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0),
+        )
+        .exists()
+    )
     if available_only:
         compatible = ~busy
         if identity and all(identity):
-            mismatch = select(WarehousePlacement.transfer_id).join(
-                Transfer, Transfer.id == WarehousePlacement.transfer_id,
-            ).where(
-                WarehousePlacement.location_id == WarehouseLocation.id,
-                or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0),
-                or_(*(getattr(Transfer, field).is_distinct_from(value)
-                      for field, value in zip(("serial_no", "material_name", "material_type"), identity))),
-            ).exists()
+            mismatch = (
+                select(WarehousePlacement.transfer_id)
+                .join(
+                    Transfer,
+                    Transfer.id == WarehousePlacement.transfer_id,
+                )
+                .where(
+                    WarehousePlacement.location_id == WarehouseLocation.id,
+                    or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0),
+                    or_(
+                        *(
+                            getattr(Transfer, field).is_distinct_from(value)
+                            for field, value in zip(
+                                ("serial_no", "material_name", "material_type"),
+                                identity,
+                                strict=True,
+                            )
+                        )
+                    ),
+                )
+                .exists()
+            )
             compatible = ~mismatch
         free = and_(
             WarehouseLocation.active.is_(True),
@@ -288,32 +331,53 @@ def list_locations(
         )
         conditions.append(or_(free, WarehouseLocation.name == selected) if selected else free)
     if query and query.strip():
-        material_match = select(WarehousePlacement.transfer_id).join(
-            Transfer, Transfer.id == WarehousePlacement.transfer_id,
-        ).where(
-            WarehousePlacement.location_id == WarehouseLocation.id,
-            or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0),
-            literal_query(query, [Transfer.serial_no, Transfer.material_name, Transfer.batch_no]),
-        ).exists()
+        material_match = (
+            select(WarehousePlacement.transfer_id)
+            .join(
+                Transfer,
+                Transfer.id == WarehousePlacement.transfer_id,
+            )
+            .where(
+                WarehousePlacement.location_id == WarehouseLocation.id,
+                or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0),
+                literal_query(
+                    query, [Transfer.serial_no, Transfer.material_name, Transfer.batch_no]
+                ),
+            )
+            .exists()
+        )
         name_match = literal_query(query, [WarehouseLocation.name])
         conditions.append(name_match if available_only else or_(name_match, material_match))
     if state:
         # Filter before pagination; pending documents and form leases are distinct markers.
-        draft = and_(WarehouseLocation.reservation_key.is_not(None), WarehouseLocation.reserved_until > utcnow())
-        stock = select(WarehousePlacement.transfer_id).join(
-            Transfer, Transfer.id == WarehousePlacement.transfer_id,
-        ).where(
-            WarehousePlacement.location_id == WarehouseLocation.id,
-            or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0),
-            Transfer.status == ("pending" if state == "pending" else "received"),
-        ).exists()
-        conditions.append({
-            "occupied": stock,
-            "available": and_(WarehouseLocation.active.is_(True), ~busy, ~func.coalesce(draft, False)),
-            "pending": stock,
-            "draft": draft,
-            "disabled": WarehouseLocation.active.is_(False),
-        }[state])
+        draft = and_(
+            WarehouseLocation.reservation_key.is_not(None),
+            WarehouseLocation.reserved_until > utcnow(),
+        )
+        stock = (
+            select(WarehousePlacement.transfer_id)
+            .join(
+                Transfer,
+                Transfer.id == WarehousePlacement.transfer_id,
+            )
+            .where(
+                WarehousePlacement.location_id == WarehouseLocation.id,
+                or_(WarehousePlacement.quantity > 0, WarehousePlacement.weight > 0),
+                Transfer.status == ("pending" if state == "pending" else "received"),
+            )
+            .exists()
+        )
+        conditions.append(
+            {
+                "occupied": stock,
+                "available": and_(
+                    WarehouseLocation.active.is_(True), ~busy, ~func.coalesce(draft, False)
+                ),
+                "pending": stock,
+                "draft": draft,
+                "disabled": WarehouseLocation.active.is_(False),
+            }[state]
+        )
     total = db.scalar(select(func.count()).select_from(WarehouseLocation).where(*conditions))
     order = [WarehouseLocation.name]
     if identity and all(identity):
@@ -344,16 +408,27 @@ def require_free(db, location):
 
 def require_compatible(db, location, identity, *, exclude_transfer_id=None):
     try:
-        rows = [row for row in occupants(db, [location.id], locking=True)
-                if row['id'] != exclude_transfer_id]
+        rows = [
+            row
+            for row in occupants(db, [location.id], locking=True)
+            if row["id"] != exclude_transfer_id
+        ]
     except OperationalError as exc:
         from .material_stock import _db_conflict
 
         _db_conflict(exc)
-    if rows and (not identity or not all(identity) or any(
-        tuple((row[field] or "").strip() for field in ("serial_no", "material_name", "material_type")) != identity
-        for row in rows
-    )):
+    if rows and (
+        not identity
+        or not all(identity)
+        or any(
+            tuple(
+                (row[field] or "").strip()
+                for field in ("serial_no", "material_name", "material_type")
+            )
+            != identity
+            for row in rows
+        )
+    ):
         raise HTTPException(409, "该仓位已有不同流水号、材质或类型的物料，请重新选择仓位")
 
 

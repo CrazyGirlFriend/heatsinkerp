@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { configuredTeamWorkspaces, resolveTeamWorkspaceSection, teamWorkspaceProfiles, teamWorkspaceSectionPath, teamWorkspaceSectionsFor } from './teamWorkspaces'
+import {
+  configuredTeamWorkspaces,
+  resolveTeamWorkspaceSection,
+  teamWorkspaceProfiles,
+  teamWorkspaceSectionPath,
+  teamWorkspaceSectionsFor,
+} from './teamWorkspaces'
 
 describe('eight official workspace profiles', () => {
   it('maps stable codes to actual database ids without substituting same-name demo teams', () => {
@@ -9,36 +15,70 @@ describe('eight official workspace profiles', () => {
       { id: 800, code: 'FACTORY-ANNEAL', name: '退火', active: false },
       { id: 900, code: 'FACTORY-QC', name: '检验', active: true, sort_order: 0 },
     ])
-    expect(entries.map(entry => entry.profile.name)).toEqual(['库房', '旧扎板名称', '退火', '研磨', '线切割', '雕刻', '电镀', '检验'])
+    expect(entries.map((entry) => entry.profile.name)).toEqual([
+      '库房',
+      '旧扎板名称',
+      '退火',
+      '研磨',
+      '线切割',
+      '雕刻',
+      '电镀',
+      '检验',
+    ])
     expect(entries[1]!.team?.id).toBe(914)
     expect(entries[2]!.team).toBeUndefined()
     expect(entries[7]!.team?.id).toBe(900)
-    expect(teamWorkspaceProfiles.some(profile => ['FACTORY-SHIP', 'FACTORY-SCRAP'].includes(profile.code))).toBe(false)
+    expect(
+      teamWorkspaceProfiles.some((profile) =>
+        ['FACTORY-SHIP', 'FACTORY-SCRAP'].includes(profile.code),
+      ),
+    ).toBe(false)
   })
 })
 
 describe('shared workspace navigation', () => {
   it('exposes processing records only when that capability is enabled', () => {
-    expect(teamWorkspaceSectionsFor(false, false, false, true).map(item => item.value)).toContain('processing')
-    expect(teamWorkspaceSectionsFor(false).map(item => item.value)).not.toContain('processing')
-    expect(resolveTeamWorkspaceSection({ tab: 'processing' }, false, false, false, true)).toBe('processing')
+    expect(teamWorkspaceSectionsFor(false, false, false, true).map((item) => item.value)).toContain(
+      'processing',
+    )
+    expect(teamWorkspaceSectionsFor(false).map((item) => item.value)).not.toContain('processing')
+    expect(resolveTeamWorkspaceSection({ tab: 'processing' }, false, false, false, true)).toBe(
+      'processing',
+    )
     expect(resolveTeamWorkspaceSection({ tab: 'processing' }, false)).toBe('stock')
   })
   it('offers receipt records to every team while keeping warehouse management scoped', () => {
-    expect(teamWorkspaceSectionsFor(false).map(item => item.label)).toEqual(['库存明细', '来料待签收', '入库记录', '出库记录', '丢失记录', '材质库存', '类型库存', '收发历史'])
-    expect(teamWorkspaceSectionsFor(true).map(item => item.value)).toContain('receipts')
-    expect(teamWorkspaceSectionsFor(true).map(item => item.value)).not.toContain('warehouse')
-    expect(teamWorkspaceSectionsFor(true, true).map(item => item.value)).toContain('warehouse')
+    expect(teamWorkspaceSectionsFor(false).map((item) => item.label)).toEqual([
+      '库存明细',
+      '来料待签收',
+      '入库记录',
+      '出库记录',
+      '丢失记录',
+      '材质库存',
+      '类型库存',
+      '收发历史',
+    ])
+    expect(teamWorkspaceSectionsFor(true).map((item) => item.value)).toContain('receipts')
+    expect(teamWorkspaceSectionsFor(true).map((item) => item.value)).not.toContain('warehouse')
+    expect(teamWorkspaceSectionsFor(true, true).map((item) => item.value)).toContain('warehouse')
     expect(resolveTeamWorkspaceSection({ tab: 'warehouse' }, true, true)).toBe('warehouse')
     expect(resolveTeamWorkspaceSection({ tab: 'warehouse' }, false, true)).toBe('stock')
     expect(teamWorkspaceSectionPath(7, 'stock')).toBe('/team-workspaces/7')
     expect(teamWorkspaceSectionPath(7, 'pending')).toBe('/team-workspaces/7?tab=pending')
-    expect(teamWorkspaceSectionPath(7, 'material-types')).toBe('/team-workspaces/7?tab=material-types')
+    expect(teamWorkspaceSectionPath(7, 'material-types')).toBe(
+      '/team-workspaces/7?tab=material-types',
+    )
   })
   it('exposes reallocation records only in designated workspaces', () => {
-    expect(teamWorkspaceSectionsFor(true, true, true).map(item => item.value)).toContain('reallocations')
-    expect(teamWorkspaceSectionsFor(false, false, false).map(item => item.value)).not.toContain('reallocations')
-    expect(resolveTeamWorkspaceSection({ tab: 'reallocations' }, false, false, true)).toBe('reallocations')
+    expect(teamWorkspaceSectionsFor(true, true, true).map((item) => item.value)).toContain(
+      'reallocations',
+    )
+    expect(teamWorkspaceSectionsFor(false, false, false).map((item) => item.value)).not.toContain(
+      'reallocations',
+    )
+    expect(resolveTeamWorkspaceSection({ tab: 'reallocations' }, false, false, true)).toBe(
+      'reallocations',
+    )
     expect(resolveTeamWorkspaceSection({ tab: 'reallocations' }, false)).toBe('stock')
   })
   it('uses the same selected section for legacy links, filters and unsupported tabs', () => {
@@ -49,7 +89,9 @@ describe('shared workspace navigation', () => {
     expect(resolveTeamWorkspaceSection({ tab: 'receipts' }, false)).toBe('receipts')
     expect(resolveTeamWorkspaceSection({ tab: 'receipts' }, true)).toBe('receipts')
     expect(resolveTeamWorkspaceSection({ direction: 'incoming' }, false)).toBe('pending')
-    expect(resolveTeamWorkspaceSection({ direction: 'incoming', status: 'received' }, false)).toBe('receipts')
+    expect(resolveTeamWorkspaceSection({ direction: 'incoming', status: 'received' }, false)).toBe(
+      'receipts',
+    )
     expect(resolveTeamWorkspaceSection({ direction: 'outgoing' }, false)).toBe('outgoing')
     expect(resolveTeamWorkspaceSection({ tab: ['stock', 'pending'] }, false)).toBe('stock')
   })

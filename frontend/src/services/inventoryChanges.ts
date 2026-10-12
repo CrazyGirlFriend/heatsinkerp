@@ -1,4 +1,9 @@
-import { subscribeInventoryChanges, type InventoryChange, type InventoryConnection, type InventorySubscription } from './inventoryStream'
+import {
+  subscribeInventoryChanges,
+  type InventoryChange,
+  type InventoryConnection,
+  type InventorySubscription,
+} from './inventoryStream'
 
 type Listener = InventorySubscription<InventoryChange>
 const listeners = new Set<Listener>()
@@ -6,7 +11,11 @@ let disconnect: (() => void) | undefined
 let connection: InventoryConnection = 'connecting'
 let received = false
 
-export function shouldRefreshInventory(change: InventoryChange, teamId?: number, scope: 'inventory' | 'directory' | 'accounts' = 'inventory') {
+export function shouldRefreshInventory(
+  change: InventoryChange,
+  teamId?: number,
+  scope: 'inventory' | 'directory' | 'accounts' = 'inventory',
+) {
   // Initial/reconnected streams and old servers require a full refresh.
   if (change.team_ids === undefined || change.current_user_changed) return true
   if (scope === 'accounts') return Boolean(change.accounts_changed || change.directory_changed)
@@ -22,8 +31,14 @@ export function subscribeSharedInventoryChanges(listener: Listener) {
     received = false
     connection = 'connecting'
     disconnect = subscribeInventoryChanges({
-      onData(data) { received = true; for (const entry of listeners) entry.onData(data) },
-      onState(state) { connection = state; for (const entry of listeners) entry.onState(state) },
+      onData(data) {
+        received = true
+        for (const entry of listeners) entry.onData(data)
+      },
+      onState(state) {
+        connection = state
+        for (const entry of listeners) entry.onState(state)
+      },
     })
   } else {
     listener.onState(connection)
@@ -31,6 +46,10 @@ export function subscribeSharedInventoryChanges(listener: Listener) {
   }
   return () => {
     listeners.delete(listener)
-    if (!listeners.size) { disconnect?.(); disconnect = undefined; received = false }
+    if (!listeners.size) {
+      disconnect?.()
+      disconnect = undefined
+      received = false
+    }
   }
 }

@@ -9,9 +9,8 @@ and safe to skip in that case. Existing work orders and legacy receipts remain
 unchanged; their new foreign keys are nullable.
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "20260905_0003"
 down_revision = "20260903_0002"
@@ -39,9 +38,7 @@ def _columns(table):
 
 def _has_index(table, columns, *, unique=None):
     for index in _inspector().get_indexes(table):
-        if index["column_names"] == columns and (
-            unique is None or bool(index["unique"]) is unique
-        ):
+        if index["column_names"] == columns and (unique is None or bool(index["unique"]) is unique):
             return True
     return False
 
@@ -118,7 +115,9 @@ def _create_new_tables():
             sa.Column("created_at", sa.DateTime(), nullable=False),
             sa.Column("updated_at", sa.DateTime(), nullable=False),
             sa.ForeignKeyConstraint(["work_order_id"], ["work_orders.id"], ondelete="CASCADE"),
-            sa.ForeignKeyConstraint(["operation_report_id"], ["operation_reports.id"], ondelete="CASCADE"),
+            sa.ForeignKeyConstraint(
+                ["operation_report_id"], ["operation_reports.id"], ondelete="CASCADE"
+            ),
             sa.ForeignKeyConstraint(["source_operation_id"], ["operations.id"], ondelete="CASCADE"),
             sa.ForeignKeyConstraint(["next_operation_id"], ["operations.id"], ondelete="CASCADE"),
             sa.ForeignKeyConstraint(["source_team_id"], ["teams.id"], ondelete="SET NULL"),
@@ -143,7 +142,9 @@ def _create_new_tables():
             sa.Column("weight_unit", sa.String(24), nullable=True),
             sa.Column("material_lot_no", sa.String(80), nullable=True),
             sa.Column("notes", sa.Text(), nullable=True),
-            sa.ForeignKeyConstraint(["transfer_batch_id"], ["transfer_batches.id"], ondelete="CASCADE"),
+            sa.ForeignKeyConstraint(
+                ["transfer_batch_id"], ["transfer_batches.id"], ondelete="CASCADE"
+            ),
         )
 
     if "external_inventory_movements" not in tables:
@@ -172,7 +173,8 @@ def _create_new_tables():
             sa.Column("updated_at", sa.DateTime(), nullable=False),
             sa.ForeignKeyConstraint(["work_order_id"], ["work_orders.id"], ondelete="CASCADE"),
             sa.UniqueConstraint(
-                "external_system_name", "external_message_id",
+                "external_system_name",
+                "external_message_id",
                 name="uq_external_inventory_system_message",
             ),
         )
@@ -199,7 +201,11 @@ def _create_new_tables():
         ],
         "external_inventory_movements": [
             ("ix_external_inventory_movements_work_order_id", ["work_order_id"], False),
-            ("ix_external_inventory_movements_external_document_no", ["external_document_no"], False),
+            (
+                "ix_external_inventory_movements_external_document_no",
+                ["external_document_no"],
+                False,
+            ),
             ("ix_external_inventory_movements_direction", ["direction"], False),
             ("ix_external_inventory_movements_sync_status", ["sync_status"], False),
             ("ix_external_inventory_order_direction", ["work_order_id", "direction"], False),
@@ -225,8 +231,11 @@ def _upgrade_receipts():
                 batch.add_column(column)
             if needs_fk:
                 batch.create_foreign_key(
-                    "fk_receipts_transfer_batch", "transfer_batches",
-                    ["transfer_batch_id"], ["id"], ondelete="RESTRICT",
+                    "fk_receipts_transfer_batch",
+                    "transfer_batches",
+                    ["transfer_batch_id"],
+                    ["id"],
+                    ondelete="RESTRICT",
                 )
     _ensure_index(table, "ix_operation_receipts_transfer_batch_id", ["transfer_batch_id"])
 
@@ -243,12 +252,12 @@ def _upgrade_print_records():
         missing.append(sa.Column("document_snapshot", sa.JSON(), nullable=True))
     uniques = _inspector().get_unique_constraints(table)
     old_uniques = [
-        item for item in uniques
+        item
+        for item in uniques
         if item["column_names"] == ["work_order_id", "print_type", "copy_number"]
     ]
     has_new_unique = any(
-        item["column_names"]
-        == ["work_order_id", "transfer_batch_id", "print_type", "copy_number"]
+        item["column_names"] == ["work_order_id", "transfer_batch_id", "print_type", "copy_number"]
         for item in uniques
     )
     needs_fk = not _has_fk(table, ["transfer_batch_id"], "transfer_batches")
@@ -263,8 +272,11 @@ def _upgrade_print_records():
                 )
             if needs_fk:
                 batch.create_foreign_key(
-                    "fk_print_records_transfer_batch", "transfer_batches",
-                    ["transfer_batch_id"], ["id"], ondelete="CASCADE",
+                    "fk_print_records_transfer_batch",
+                    "transfer_batches",
+                    ["transfer_batch_id"],
+                    ["id"],
+                    ondelete="CASCADE",
                 )
             if not has_new_unique:
                 batch.create_unique_constraint(

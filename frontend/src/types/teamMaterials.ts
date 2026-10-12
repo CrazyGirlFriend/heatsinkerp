@@ -1,16 +1,48 @@
 import type { SharedMaterialFields, SharedMaterialSerial } from './sharedMaterial'
-import { externalActionLabel, isExternalEntryKind, type ExternalEntryKind, type MaterialEntryKind, type MaterialTransfer, type MaterialTransferDocumentFields, type MaterialTransferTeam, type MaterialType, type SludgeMeasurement } from './materialTransfer'
+import {
+  externalActionLabel,
+  isExternalEntryKind,
+  type ExternalEntryKind,
+  type MaterialEntryKind,
+  type MaterialTransfer,
+  type MaterialTransferDocumentFields,
+  type MaterialTransferTeam,
+  type MaterialType,
+  type SludgeMeasurement,
+} from './materialTransfer'
 
-export const balanceFields = ['received', 'dispatched', 'reserved', 'in_transit', 'lost', 'on_hand', 'available'] as const
+export const balanceFields = [
+  'received',
+  'dispatched',
+  'reserved',
+  'in_transit',
+  'lost',
+  'on_hand',
+  'available',
+] as const
 export const ownershipFields = ['owned', 'external_pending'] as const
-export type MaterialBalance = Record<`${typeof balanceFields[number]}_${'quantity' | 'weight'}`, number | null> & Partial<Record<`${'scrap' | 'scrap_available' | 'shortage' | typeof ownershipFields[number]}_${'quantity' | 'weight'}`, number | null>> & { weight_difference?: number; max_weight_difference?: number }
+export type MaterialBalance = Record<
+  `${(typeof balanceFields)[number]}_${'quantity' | 'weight'}`,
+  number | null
+> &
+  Partial<
+    Record<
+      `${'scrap' | 'scrap_available' | 'shortage' | (typeof ownershipFields)[number]}_${'quantity' | 'weight'}`,
+      number | null
+    >
+  > & { weight_difference?: number; max_weight_difference?: number }
 export interface TeamMaterialOverview {
   team_id: number
   as_of?: string
   totals: MaterialBalance
   materials: (MaterialBalance & { material_name: string | null })[]
   material_types?: (MaterialBalance & { material_type: MaterialType | null })[]
-  pending_incoming: { quantity: number | null; weight: number | null; count: number | null; batch_count?: number | null }
+  pending_incoming: {
+    quantity: number | null
+    weight: number | null
+    count: number | null
+    batch_count?: number | null
+  }
   legacy_received_count: number
 }
 export interface StockBatch extends MaterialBalance {
@@ -21,69 +53,161 @@ export interface StockBatch extends MaterialBalance {
   weight_root_transfer_id?: number
   sludge_available_gross_weight?: number
   warehouse_positions?: { location_id: number; name: string; quantity: number; weight: number }[]
-  physical_quantity?: number; physical_weight?: number
-  unassigned_quantity?: number; unassigned_weight?: number
+  physical_quantity?: number
+  physical_weight?: number
+  unassigned_quantity?: number
+  unassigned_weight?: number
 }
 export interface QuantityAdjustment {
-  id: number; source_transfer_id: number; before_quantity: number; after_quantity: number; delta_quantity: number
-  weight: number; reason: string; created_by: string; created_at: string
+  id: number
+  source_transfer_id: number
+  before_quantity: number
+  after_quantity: number
+  delta_quantity: number
+  weight: number
+  reason: string
+  created_by: string
+  created_at: string
   operation_kind?: 'processing' | 'outbound_clearance'
   processing_status?: 'partial' | 'complete' | null
-  before_specification?: string | null; after_specification?: string | null
+  before_specification?: string | null
+  after_specification?: string | null
   after_weight?: number
   outputs?: ProcessingOutput[]
 }
 export interface CreateProcessingOutput extends SludgeMeasurement {
   serial_no?: string | null
-  role: import('./materialProcessing').ProcessingRole; quantity: number; weight: number; material_type: MaterialType; transfer_specification?: string | null
+  role: import('./materialProcessing').ProcessingRole
+  quantity: number
+  weight: number
+  material_type: MaterialType
+  transfer_specification?: string | null
 }
 export interface ProcessingOutput extends CreateProcessingOutput {
   shared_unallocated?: boolean
-  id: number; batch_no: string
-  on_hand_quantity?: number; on_hand_weight?: number; in_transit_quantity?: number; in_transit_weight?: number; owned_quantity?: number; owned_weight?: number
+  id: number
+  batch_no: string
+  on_hand_quantity?: number
+  on_hand_weight?: number
+  in_transit_quantity?: number
+  in_transit_weight?: number
+  owned_quantity?: number
+  owned_weight?: number
 }
-export interface QuantityAdjustmentContext extends MaterialPage<QuantityAdjustment>, SharedMaterialFields {
-  source_transfer_id: number; batch_no: string; quantity: number; weight: number; revision: number; as_of: string
-  serial_no?: string; material_name?: string | null; material_type?: MaterialType | null; purpose_name?: string | null
-  processing_status?: 'partial' | 'complete' | null; transfer_specification?: string | null
-  weight_difference?: number; weight_root_transfer_id?: number
+export interface QuantityAdjustmentContext
+  extends MaterialPage<QuantityAdjustment>, SharedMaterialFields {
+  source_transfer_id: number
+  batch_no: string
+  quantity: number
+  weight: number
+  revision: number
+  as_of: string
+  serial_no?: string
+  material_name?: string | null
+  material_type?: MaterialType | null
+  purpose_name?: string | null
+  processing_status?: 'partial' | 'complete' | null
+  transfer_specification?: string | null
+  weight_difference?: number
+  weight_root_transfer_id?: number
   origin_processing_record?: QuantityAdjustment | null
 }
 export interface CreateQuantityAdjustment {
-  source_transfer_id: number; quantity: number; expected_revision: number; reason?: string; idempotency_key: string
-  processing_status?: 'partial' | 'complete'; transfer_specification?: string | null
+  source_transfer_id: number
+  quantity: number
+  expected_revision: number
+  reason?: string
+  idempotency_key: string
+  processing_status?: 'partial' | 'complete'
+  transfer_specification?: string | null
   outputs?: CreateProcessingOutput[]
 }
 export interface MaterialLoss {
   urgency?: import('./recordFilters').SerialUrgency
-  id: number; loss_no: string; source_transfer_id: number; batch_no: string; serial_no: string
-  material_name: string | null; quantity: number; weight: number; reason: string
-  created_by: string; created_at: string; team_id: number
+  id: number
+  loss_no: string
+  source_transfer_id: number
+  batch_no: string
+  serial_no: string
+  material_name: string | null
+  quantity: number
+  weight: number
+  reason: string
+  created_by: string
+  created_at: string
+  team_id: number
 }
 export type DispatchKind = 'transfer' | ExternalEntryKind
 export type DispatchStatus = 'pending' | 'partial' | 'received' | 'voided' | 'dispatched'
 export interface MaterialDispatch {
-  id?: number; barcode_payload?: string; barcode_type?: string; source_team?: MaterialTransferTeam
-  revision?: string; allowed_actions?: string[]; pending_line_count?: number; locked?: boolean
-  confirmed_by?: string | null; confirmed_by_user_id?: number | null; confirmed_at?: string | null
-  entry_kind?: DispatchKind; external_destination?: string | null
-  dispatch_no: string; source_team_id: number; next_team: MaterialTransferTeam
-  created_by: string; created_at: string; notes: string | null; status: DispatchStatus
-  total_quantity: number; total_weight: number; line_count: number; items: MaterialTransfer[]
+  id?: number
+  barcode_payload?: string
+  barcode_type?: string
+  source_team?: MaterialTransferTeam
+  revision?: string
+  allowed_actions?: string[]
+  pending_line_count?: number
+  locked?: boolean
+  confirmed_by?: string | null
+  confirmed_by_user_id?: number | null
+  confirmed_at?: string | null
+  entry_kind?: DispatchKind
+  external_destination?: string | null
+  dispatch_no: string
+  source_team_id: number
+  next_team: MaterialTransferTeam
+  created_by: string
+  created_at: string
+  notes: string | null
+  status: DispatchStatus
+  total_quantity: number
+  total_weight: number
+  line_count: number
+  items: MaterialTransfer[]
 }
 export interface MaterialDispatchDocument extends MaterialDispatch {
-  id: number; barcode_payload: string; barcode_type: string; source_team: MaterialTransferTeam
-  revision: string; allowed_actions: string[]; pending_line_count: number; locked: boolean
+  id: number
+  barcode_payload: string
+  barcode_type: string
+  source_team: MaterialTransferTeam
+  revision: string
+  allowed_actions: string[]
+  pending_line_count: number
+  locked: boolean
 }
-export interface CreatedMaterialBatches { items: MaterialTransfer[] }
+export interface CreatedMaterialBatches {
+  items: MaterialTransfer[]
+}
 export const isDispatchNumber = (code: string): boolean => /^CK[A-Z0-9-]+$/i.test(code.trim())
-export const dispatchDocumentTitle = (kind?: MaterialEntryKind): string => kind === 'inspection_shipment' ? '批次发货单' : '批次出库单'
-export const dispatchConfirmLabel = (kind?: MaterialEntryKind): string => isExternalEntryKind(kind) ? `确认整批${externalActionLabel(kind)}` : '确认整批接收'
-export interface MaterialPage<T> { items: T[]; total: number; page: number; page_size: number; as_of?: string }
-export type MaterialPageParams = import('./recordFilters').RecordFilterParams & { query?: string; serial_no?: string; page?: number; page_size?: number }
-export interface StockParams extends MaterialPageParams { material_type?: MaterialType; availability?: 'available' | 'all' | 'dispatchable'; location_status?: 'unassigned'; source_ids?: string }
-export interface WarehouseReceiptParams extends MaterialPageParams { material_type?: MaterialType; receipt_source?: 'external' | 'internal' | 'return' }
-export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement {
+export const dispatchDocumentTitle = (kind?: MaterialEntryKind): string =>
+  kind === 'inspection_shipment' ? '批次发货单' : '批次出库单'
+export const dispatchConfirmLabel = (kind?: MaterialEntryKind): string =>
+  isExternalEntryKind(kind) ? `确认整批${externalActionLabel(kind)}` : '确认整批接收'
+export interface MaterialPage<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+  as_of?: string
+}
+export type MaterialPageParams = import('./recordFilters').RecordFilterParams & {
+  query?: string
+  serial_no?: string
+  page?: number
+  page_size?: number
+}
+export interface StockParams extends MaterialPageParams {
+  material_type?: MaterialType
+  availability?: 'available' | 'all' | 'dispatchable'
+  location_status?: 'unassigned'
+  source_ids?: string
+}
+export interface WarehouseReceiptParams extends MaterialPageParams {
+  material_type?: MaterialType
+  receipt_source?: 'external' | 'internal' | 'return'
+}
+export interface CreateWarehouseReceipt
+  extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement {
   shared_serials?: SharedMaterialSerial[]
   serial_no: string
   material_name: string
@@ -98,16 +222,64 @@ export interface CreateWarehouseReceipt extends Partial<MaterialTransferDocument
   warehouse_location?: string | null
   warehouse_location_reservation_key?: string | null
 }
-export interface DispatchParams extends MaterialPageParams { next_team_id?: string | number; status?: Exclude<DispatchStatus, 'partial'>; entry_kind?: DispatchKind; material_type?: MaterialType }
-export interface DispatchLine extends SludgeMeasurement { warehouse_location?: string | null; warehouse_location_reservation_key?: string | null; source_transfer_id: number; quantity: number; weight: number; material_type?: MaterialType | null; purpose_id?: number | null; transfer_specification?: string | null }
-export type CreateDispatch = { notes?: string | null; idempotency_key: string; lines: DispatchLine[]; quantity_adjustments?: Omit<CreateQuantityAdjustment, 'idempotency_key' | 'outputs'>[]; quantity_clearances?: import('./materialTransfer').OutboundQuantityClearance[] } & (
-  { entry_kind?: 'transfer'; next_team_id: number; external_destination?: never }
+export interface DispatchParams extends MaterialPageParams {
+  next_team_id?: string | number
+  status?: Exclude<DispatchStatus, 'partial'>
+  entry_kind?: DispatchKind
+  material_type?: MaterialType
+}
+export interface DispatchLine extends SludgeMeasurement {
+  warehouse_location?: string | null
+  warehouse_location_reservation_key?: string | null
+  source_transfer_id: number
+  quantity: number
+  weight: number
+  material_type?: MaterialType | null
+  purpose_id?: number | null
+  transfer_specification?: string | null
+}
+export type CreateDispatch = {
+  notes?: string | null
+  idempotency_key: string
+  lines: DispatchLine[]
+  quantity_adjustments?: Omit<CreateQuantityAdjustment, 'idempotency_key' | 'outputs'>[]
+  quantity_clearances?: import('./materialTransfer').OutboundQuantityClearance[]
+} & (
+  | { entry_kind?: 'transfer'; next_team_id: number; external_destination?: never }
   | { entry_kind: ExternalEntryKind; next_team_id?: null; external_destination: string }
 )
-export interface CreateLoss { source_transfer_id: number; quantity: number; weight: number; reason?: string; idempotency_key: string }
-export interface CreateSerialReallocation extends Omit<CreateLoss, 'reason'>, SludgeMeasurement { serial_no: string; reason?: string; warehouse_location?: string | null; warehouse_location_reservation_key?: string | null }
-export const dispatchStatusLabels: Record<DispatchStatus, string> = { pending: '待确认', partial: '部分完成', received: '已接收', dispatched: '已出库 / 发货', voided: '已作废' }
+export interface CreateLoss {
+  source_transfer_id: number
+  quantity: number
+  weight: number
+  reason?: string
+  idempotency_key: string
+}
+export interface CreateSerialReallocation extends Omit<CreateLoss, 'reason'>, SludgeMeasurement {
+  serial_no: string
+  reason?: string
+  warehouse_location?: string | null
+  warehouse_location_reservation_key?: string | null
+}
+export const dispatchStatusLabels: Record<DispatchStatus, string> = {
+  pending: '待确认',
+  partial: '部分完成',
+  received: '已接收',
+  dispatched: '已出库 / 发货',
+  voided: '已作废',
+}
 export function dispatchStatusLabel(status: DispatchStatus, kind?: MaterialEntryKind): string {
-  if (isExternalEntryKind(kind)) return status === 'pending' ? `待${externalActionLabel(kind)}确认` : status === 'partial' ? `部分${externalActionLabel(kind)}` : status === 'dispatched' ? `已${externalActionLabel(kind)}` : dispatchStatusLabels[status]
-  return status === 'pending' ? '待签收' : status === 'partial' ? '部分接收' : dispatchStatusLabels[status]
+  if (isExternalEntryKind(kind))
+    return status === 'pending'
+      ? `待${externalActionLabel(kind)}确认`
+      : status === 'partial'
+        ? `部分${externalActionLabel(kind)}`
+        : status === 'dispatched'
+          ? `已${externalActionLabel(kind)}`
+          : dispatchStatusLabels[status]
+  return status === 'pending'
+    ? '待签收'
+    : status === 'partial'
+      ? '部分接收'
+      : dispatchStatusLabels[status]
 }

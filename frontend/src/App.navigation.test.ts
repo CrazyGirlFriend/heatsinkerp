@@ -1,12 +1,19 @@
 // @vitest-environment jsdom
-import { AxiosHeaders, type AxiosAdapter, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
+import {
+  AxiosHeaders,
+  type AxiosAdapter,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ list: vi.fn() }))
-vi.mock('@/services/teamDirectoryApi', () => ({ teamDirectoryApi: { listTeamDirectory: mocks.list } }))
+vi.mock('@/services/teamDirectoryApi', () => ({
+  teamDirectoryApi: { listTeamDirectory: mocks.list },
+}))
 
 import App from './App.vue'
 import FactorySidebar from '@/components/FactorySidebar.vue'
@@ -16,17 +23,37 @@ import { authState, clearSession } from '@/stores/auth'
 
 const wrappers: VueWrapper[] = []
 const originalAccessAdapter = accessHttpClient.defaults.adapter
-const accessAdapter: AxiosAdapter = async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => ({
-  data: { enabled: true, unlocked: true }, status: 200, statusText: 'OK', headers: new AxiosHeaders(), config,
+const accessAdapter: AxiosAdapter = async (
+  config: InternalAxiosRequestConfig,
+): Promise<AxiosResponse> => ({
+  data: { enabled: true, unlocked: true },
+  status: 200,
+  statusText: 'OK',
+  headers: new AxiosHeaders(),
+  config,
 })
 
 beforeEach(async () => {
   clearSession()
   localStorage.clear()
-  mocks.list.mockReset().mockResolvedValue([{ id: 1, code: 'FACTORY-ROLL', name: '轧制', active: true }])
+  mocks.list
+    .mockReset()
+    .mockResolvedValue([{ id: 1, code: 'FACTORY-ROLL', name: '轧制', active: true }])
   accessHttpClient.defaults.adapter = accessAdapter
   await checkSiteAccess(true)
-  authState.session = { access_token: 'navigation-account', token_type: 'Bearer', user: { id: 1, username: 'test', display_name: '测试', role: 'ADMIN', team_id: null, team: null, active: true } }
+  authState.session = {
+    access_token: 'navigation-account',
+    token_type: 'Bearer',
+    user: {
+      id: 1,
+      username: 'test',
+      display_name: '测试',
+      role: 'ADMIN',
+      team_id: null,
+      team: null,
+      active: true,
+    },
+  }
 })
 
 afterEach(() => {
@@ -41,21 +68,28 @@ async function renderApp(mobile: boolean) {
   let viewportChanged: () => void = () => undefined
   const media = {
     matches: mobile,
-    addEventListener: vi.fn((_event: string, callback: () => void) => { viewportChanged = callback }),
+    addEventListener: vi.fn((_event: string, callback: () => void) => {
+      viewportChanged = callback
+    }),
     removeEventListener: vi.fn(),
   }
   vi.stubGlobal('matchMedia', vi.fn().mockReturnValue(media))
   const page = { template: '<div>转料记录</div>' }
-  const router = createRouter({ history: createMemoryHistory(), routes: [
-    { path: '/', name: 'home', component: page },
-    { path: '/factory-stock', redirect: '/' },
-    { path: '/transfer-batches', component: page }, { path: '/transfer-batches/scan', redirect: '/transfer-batches?scan=1' },
-    { path: '/material-trace', component: page },
-    { path: '/team-workspaces/:teamId', name: 'team-workspace', component: page },
-    { path: '/factory-live', redirect: '/' },
-    { path: '/settings/teams', component: page }, { path: '/settings/accounts', component: page },
-    { path: '/:pathMatch(.*)*', component: page },
-  ] })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', name: 'home', component: page },
+      { path: '/factory-stock', redirect: '/' },
+      { path: '/transfer-batches', component: page },
+      { path: '/transfer-batches/scan', redirect: '/transfer-batches?scan=1' },
+      { path: '/material-trace', component: page },
+      { path: '/team-workspaces/:teamId', name: 'team-workspace', component: page },
+      { path: '/factory-live', redirect: '/' },
+      { path: '/settings/teams', component: page },
+      { path: '/settings/accounts', component: page },
+      { path: '/:pathMatch(.*)*', component: page },
+    ],
+  })
   await router.push('/transfer-batches')
   await router.isReady()
   const wrapper = mount(App, { attachTo: document.body, global: { plugins: [router] } })
@@ -72,34 +106,67 @@ async function renderApp(mobile: boolean) {
 describe('application navigation shell', () => {
   it('does not reopen a previous profile dialog after logout and a new login', async () => {
     const { wrapper, router } = await renderApp(false)
-    await wrapper.get('.sidebar__user').trigger('click'); await flushPromises()
-    await wrapper.get('#factory-sidebar .factory-account-menu').findAll('[role="menuitem"]').find(item => item.text() === '个人信息')!.trigger('click'); await flushPromises()
+    await wrapper.get('.sidebar__user').trigger('click')
+    await flushPromises()
+    await wrapper
+      .get('#factory-sidebar .factory-account-menu')
+      .findAll('[role="menuitem"]')
+      .find((item) => item.text() === '个人信息')!
+      .trigger('click')
+    await flushPromises()
     expect(wrapper.getComponent(ProfileDialog).props('modelValue')).toBe(true)
     const previous = authState.session!
-    clearSession(); await flushPromises()
+    clearSession()
+    await flushPromises()
     authState.session = { ...previous, access_token: 'new-login' }
-    await router.push('/transfer-batches'); await flushPromises()
+    await router.push('/transfer-batches')
+    await flushPromises()
     expect(wrapper.getComponent(ProfileDialog).props('modelValue')).toBe(false)
   })
   it('labels the current workspace section while keeping the team selected in the sidebar', async () => {
     const { wrapper, router } = await renderApp(false)
-    await router.push('/team-workspaces/1?tab=pending'); await flushPromises()
+    await router.push('/team-workspaces/1?tab=pending')
+    await flushPromises()
     expect(wrapper.find('.topbar').exists()).toBe(false)
     expect(wrapper.get('#main-content').attributes('aria-label')).toBe('轧制 · 来料待签收')
-    expect(wrapper.get('.factory-nav [aria-current=page]').attributes('aria-label')).toBe('轧制工作台')
-    await router.push('/team-workspaces/1?tab=history'); await flushPromises()
+    expect(wrapper.get('.factory-nav [aria-current=page]').attributes('aria-label')).toBe(
+      '轧制工作台',
+    )
+    await router.push('/team-workspaces/1?tab=history')
+    await flushPromises()
     expect(wrapper.get('#main-content').attributes('aria-label')).toBe('轧制 · 收发历史')
-    expect(wrapper.get('.factory-nav [aria-current=page]').attributes('aria-label')).toBe('轧制工作台')
-    await router.push('/transfer-batches'); await flushPromises()
-    expect(wrapper.get('.factory-nav [aria-current=page]').attributes('aria-label')).toBe('转料记录')
+    expect(wrapper.get('.factory-nav [aria-current=page]').attributes('aria-label')).toBe(
+      '轧制工作台',
+    )
+    await router.push('/transfer-batches')
+    await flushPromises()
+    expect(wrapper.get('.factory-nav [aria-current=page]').attributes('aria-label')).toBe(
+      '转料记录',
+    )
   })
   it('keeps the same business shell and illustrated navigation across all normal pages', async () => {
     const { wrapper, router } = await renderApp(false)
-    for (const path of ['/', '/factory-stock', '/team-workspaces/1', '/transfer-batches', '/transfer-batches/scan', '/material-trace', '/settings/teams', '/settings/accounts', '/factory-analysis']) {
-      await router.push(path); await flushPromises()
+    for (const path of [
+      '/',
+      '/factory-stock',
+      '/team-workspaces/1',
+      '/transfer-batches',
+      '/transfer-batches/scan',
+      '/material-trace',
+      '/settings/teams',
+      '/settings/accounts',
+      '/factory-analysis',
+    ]) {
+      await router.push(path)
+      await flushPromises()
       expect(wrapper.get('.app-shell').classes()).toContain('app-shell--business')
       expect(wrapper.getComponent(FactorySidebar).props('illustrated')).toBe(true)
-      expect(wrapper.get('.factory-nav .el-menu').findAll(':scope > .el-sub-menu').map(group => group.attributes('aria-label'))).toEqual(['全厂总览', '班组工作台', '流转查询', '系统设置'])
+      expect(
+        wrapper
+          .get('.factory-nav .el-menu')
+          .findAll(':scope > .el-sub-menu')
+          .map((group) => group.attributes('aria-label')),
+      ).toEqual(['全厂总览', '班组工作台', '流转查询', '系统设置'])
       expect(wrapper.find('.factory-nav--overview').exists()).toBe(false)
       expect(wrapper.find('.topbar').exists()).toBe(false)
       expect(wrapper.find('.topbar-clock').exists()).toBe(false)
@@ -110,7 +177,8 @@ describe('application navigation shell', () => {
 
   it('redirects an old screen bookmark to the business homepage', async () => {
     const { wrapper, router } = await renderApp(false)
-    await router.push('/factory-live'); await flushPromises()
+    await router.push('/factory-live')
+    await flushPromises()
     expect(router.currentRoute.value.path).toBe('/')
     expect(wrapper.find('.app-shell--business').exists()).toBe(true)
     expect(wrapper.find('.sidebar__screen').exists()).toBe(false)
@@ -177,10 +245,16 @@ describe('application navigation shell', () => {
     const user = wrapper.get('#factory-sidebar .sidebar__user')
     expect(user.get('.sidebar__user-label').text()).toBe('测试')
     expect(user.attributes('aria-label')).toContain('系统管理员')
-    await user.trigger('click'); await flushPromises()
+    await user.trigger('click')
+    await flushPromises()
     expect(wrapper.get('#factory-sidebar .factory-account-menu').text()).toContain('退出登录')
     expect(wrapper.get('#factory-sidebar .factory-account-menu').text()).toContain('系统管理员')
-    await wrapper.get('#factory-sidebar .factory-account-menu').findAll('[role="menuitem"]').find(item => item.text() === '个人信息')!.trigger('click'); await flushPromises()
+    await wrapper
+      .get('#factory-sidebar .factory-account-menu')
+      .findAll('[role="menuitem"]')
+      .find((item) => item.text() === '个人信息')!
+      .trigger('click')
+    await flushPromises()
     expect(wrapper.find('input[aria-label="姓名"]').exists()).toBe(true)
   })
 
@@ -196,7 +270,9 @@ describe('application navigation shell', () => {
     expect(wrapper.get('.topbar__location').text()).toBe('流转查询 · 物料流转')
     expect(wrapper.find('.sidebar__user-label').exists()).toBe(false)
     expect(wrapper.get('.sidebar__user').attributes('aria-label')).toContain('测试')
-    expect(wrapper.get('.brand-mark img').attributes('src')).toBe('/brand/attl-official-favicon.ico')
+    expect(wrapper.get('.brand-mark img').attributes('src')).toBe(
+      '/brand/attl-official-favicon.ico',
+    )
     await wrapper.get('.sidebar__collapse').trigger('click')
     expect(wrapper.getComponent(FactorySidebar).props('compact')).toBe(false)
     expect(wrapper.find('.topbar').exists()).toBe(false)

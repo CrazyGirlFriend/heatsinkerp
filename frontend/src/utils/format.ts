@@ -16,3 +16,7 @@ export function formatDateTime(value?: string | null): string {
     .replaceAll('/', '-')
 }
 
+const materialAmountFormat = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 })
+export function formatAmount(value: number | null | undefined): string {
+  return value == null || !Number.isFinite(value) ? '—' : materialAmountFormat.format(value)
+}

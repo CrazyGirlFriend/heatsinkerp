@@ -7,7 +7,10 @@ import { factoryFixture } from '@/testFixtures/factoryOverview'
 
 describe('factory analysis charts', () => {
   it('uses readable canvas fonts and excludes internal flow from factory receipts', async () => {
-    const wrapper = mount(FactoryOverviewCharts, { props: { data: factoryFixture(), metric: 'weight' }, global: { stubs: { LedgerChart: true } } })
+    const wrapper = mount(FactoryOverviewCharts, {
+      props: { data: factoryFixture(), metric: 'weight' },
+      global: { stubs: { LedgerChart: true } },
+    })
     try {
       const charts = wrapper.findAllComponents(LedgerChart)
       expect(charts).toHaveLength(3)
@@ -16,19 +19,34 @@ describe('factory analysis charts', () => {
       ])
       expect(wrapper.get('.factory-chart--teams h2').attributes('title')).toContain('未转出库存')
       expect(wrapper.text()).not.toContain('不含内部在途')
-      expect(charts[0]!.props('option').textStyle).toMatchObject({ fontFamily: 'HeatSink Inter, PingFang SC, Microsoft YaHei, sans-serif', fontSize: 14 })
+      expect(charts[0]!.props('option').textStyle).toMatchObject({
+        fontFamily: 'HeatSink Inter, PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: 14,
+      })
       expect(charts[1]!.props('option').series).toEqual([
         expect.objectContaining({ name: '库房入库', data: [10] }),
         expect.objectContaining({ name: '库房对外出库' }),
         expect.objectContaining({ name: '检验发货' }),
       ])
       await wrapper.setProps({ metric: 'quantity' })
-      expect(charts[1]!.props('option').series).toEqual(expect.arrayContaining([expect.objectContaining({ name: '库房入库', data: [100] })]))
-      expect(charts[0]!.props('option')).toMatchObject({ textStyle: { fontSize: 14, fontFamily: 'HeatSink Inter, PingFang SC, Microsoft YaHei, sans-serif' } })
-    } finally { wrapper.unmount() }
+      expect(charts[1]!.props('option').series).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: '库房入库', data: [100] })]),
+      )
+      expect(charts[0]!.props('option')).toMatchObject({
+        textStyle: {
+          fontSize: 14,
+          fontFamily: 'HeatSink Inter, PingFang SC, Microsoft YaHei, sans-serif',
+        },
+      })
+    } finally {
+      wrapper.unmount()
+    }
   })
   it('separates stock and handoff analysis charts', async () => {
-    const wrapper = mount(FactoryOverviewCharts, { props: { data: factoryFixture(), metric: 'weight', scene: 'stock' }, global: { stubs: { LedgerChart: true } } })
+    const wrapper = mount(FactoryOverviewCharts, {
+      props: { data: factoryFixture(), metric: 'weight', scene: 'stock' },
+      global: { stubs: { LedgerChart: true } },
+    })
     try {
       expect(wrapper.findAll('.factory-chart')).toHaveLength(2)
       expect(wrapper.text()).toContain('流水号库存排行')
@@ -39,45 +57,80 @@ describe('factory analysis charts', () => {
       expect(wrapper.text()).toContain('待交接时长')
       expect(wrapper.text()).toContain('对外出库与发货')
       expect(wrapper.text()).not.toContain('流水号库存排行')
-    } finally { wrapper.unmount() }
+    } finally {
+      wrapper.unmount()
+    }
   })
   it('switches the single nature value column together with the chart unit', async () => {
     const data = factoryFixture()
-    data.material_types = [{ key: 'finished', quantity: 1200, weight: 345.678 }, { key: 'sludge', quantity: 0, weight: 8.5 }, { key: 'unknown', quantity: 2, weight: 0 }]
-    const wrapper = mount(FactoryOverviewCharts, { props: { data, metric: 'weight' }, global: { stubs: { LedgerChart: true } } })
+    data.material_types = [
+      { key: 'finished', quantity: 1200, weight: 345.678 },
+      { key: 'sludge', quantity: 0, weight: 8.5 },
+      { key: 'unknown', quantity: 2, weight: 0 },
+    ]
+    const wrapper = mount(FactoryOverviewCharts, {
+      props: { data, metric: 'weight' },
+      global: { stubs: { LedgerChart: true } },
+    })
     try {
       const card = wrapper.get('.factory-chart--types')
       expect(card.get('h2').text()).toBe('物料类型分布')
       expect(card.text()).not.toContain('重量占比')
-      const headers = () => card.findAll('thead th').map(cell => cell.text())
+      const headers = () => card.findAll('thead th').map((cell) => cell.text())
       expect(headers()).toEqual(['性质', '重量 (kg)'])
-      const values = () => card.findAll('tbody tr').map(row => row.findAll('th, td').map(cell => cell.text()))
-      const expected = [['成品', '345.678'], ['废泥', '8.5'], ['未填写性质', '0']]
+      const values = () =>
+        card.findAll('tbody tr').map((row) => row.findAll('th, td').map((cell) => cell.text()))
+      const expected = [
+        ['成品', '345.678'],
+        ['废泥', '8.5'],
+        ['未填写性质', '0'],
+      ]
       expect(values()).toEqual(expected)
       const chart = wrapper.findAllComponents(LedgerChart)[2]!
-      expect(chart.props('option').tooltip).toMatchObject({ renderMode: 'html', appendTo: 'body', confine: false, position: expect.any(Function) })
-      expect(chart.props('option')).toMatchObject({ series: [{ data: [{ value: 345.678 }, { value: 8.5 }, { value: 0 }] }] })
+      expect(chart.props('option').tooltip).toMatchObject({
+        renderMode: 'html',
+        appendTo: 'body',
+        confine: false,
+        position: expect.any(Function),
+      })
+      expect(chart.props('option')).toMatchObject({
+        series: [{ data: [{ value: 345.678 }, { value: 8.5 }, { value: 0 }] }],
+      })
       await wrapper.setProps({ metric: 'quantity' })
-      expect(chart.props('option')).toMatchObject({ series: [{ data: [{ value: 1200 }, { value: 0 }, { value: 2 }] }] })
+      expect(chart.props('option')).toMatchObject({
+        series: [{ data: [{ value: 1200 }, { value: 0 }, { value: 2 }] }],
+      })
       expect(headers()).toEqual(['性质', '件数'])
-      expect(values()).toEqual([['成品', '1,200'], ['废泥', '0'], ['未填写性质', '2']])
+      expect(values()).toEqual([
+        ['成品', '1,200'],
+        ['废泥', '0'],
+        ['未填写性质', '2'],
+      ])
       expect(card.text()).not.toContain('件数占比')
       await wrapper.setProps({ metric: 'weight' })
       expect(headers()).toEqual(['性质', '重量 (kg)'])
       expect(values()).toEqual(expected)
-    } finally { wrapper.unmount() }
+    } finally {
+      wrapper.unmount()
+    }
   })
   it('opens only a configured active team and does not treat other charts as teams', () => {
     const data = factoryFixture()
     data.teams[0]!.active = false
     data.teams[1]!.id = null
     data.teams[2]!.id = 914
-    const wrapper = mount(FactoryOverviewCharts, { props: { data, metric: 'weight' }, global: { stubs: { LedgerChart: true } } })
+    const wrapper = mount(FactoryOverviewCharts, {
+      props: { data, metric: 'weight' },
+      global: { stubs: { LedgerChart: true } },
+    })
     try {
       const charts = wrapper.findAllComponents(LedgerChart)
-      for (const dataIndex of [0, 1, 2]) charts[0]!.vm.$emit('select', { dataIndex, seriesIndex: 0 })
+      for (const dataIndex of [0, 1, 2])
+        charts[0]!.vm.$emit('select', { dataIndex, seriesIndex: 0 })
       charts[1]!.vm.$emit('select', { dataIndex: 2, seriesIndex: 0 })
       expect(wrapper.emitted('team')).toEqual([[data.teams[2]]])
-    } finally { wrapper.unmount() }
+    } finally {
+      wrapper.unmount()
+    }
   })
 })

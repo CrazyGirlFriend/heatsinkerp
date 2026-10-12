@@ -10,14 +10,13 @@ from datetime import timedelta
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select, update
-from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import get_db
 from .models import AuthSession, User, utcnow
 from .observability import record
-
 
 PBKDF2_ITERATIONS = 310_000
 MAX_ACTIVE_SESSIONS = 3
@@ -26,9 +25,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac(
-        "sha256", password.encode("utf-8"), salt, PBKDF2_ITERATIONS
-    )
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PBKDF2_ITERATIONS)
     return "$".join(
         (
             "pbkdf2_sha256",
@@ -46,9 +43,7 @@ def verify_password(password: str, encoded: str) -> bool:
             return False
         salt = base64.urlsafe_b64decode(salt_value.encode("ascii"))
         expected = base64.urlsafe_b64decode(expected_value.encode("ascii"))
-        actual = hashlib.pbkdf2_hmac(
-            "sha256", password.encode("utf-8"), salt, int(iterations)
-        )
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, int(iterations))
     except (ValueError, TypeError):
         return False
     return hmac.compare_digest(actual, expected)
@@ -67,13 +62,16 @@ def create_session(db: Session, user: User) -> tuple[str, AuthSession]:
     # A locking read sees newly committed sessions under MySQL REPEATABLE READ,
     # even when credential verification already opened an older read snapshot.
     active_sessions = db.scalars(
-        select(AuthSession).where(
+        select(AuthSession)
+        .where(
             AuthSession.user_id == user.id,
             AuthSession.revoked_at.is_(None),
             AuthSession.expires_at > now,
-        ).order_by(AuthSession.created_at.desc(), AuthSession.id.desc()).with_for_update()
+        )
+        .order_by(AuthSession.created_at.desc(), AuthSession.id.desc())
+        .with_for_update()
     ).all()
-    replaced = active_sessions[MAX_ACTIVE_SESSIONS - 1:]
+    replaced = active_sessions[MAX_ACTIVE_SESSIONS - 1 :]
     for previous in replaced:
         # ORM changes also notify the revoked clients through the existing outbox.
         previous.revoked_at = now
@@ -105,9 +103,7 @@ def read_auth_context(credentials, db: Session) -> AuthContext:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise unauthorized
     auth_session = db.scalar(
-        select(AuthSession).where(
-            AuthSession.token_hash == token_digest(credentials.credentials)
-        )
+        select(AuthSession).where(AuthSession.token_hash == token_digest(credentials.credentials))
     )
     if (
         auth_session is None
@@ -116,10 +112,7 @@ def read_auth_context(credentials, db: Session) -> AuthContext:
         or not auth_session.user.active
         or (
             auth_session.user.role == "TEAM"
-            and (
-                auth_session.user.team is None
-                or not auth_session.user.team.active
-            )
+            and (auth_session.user.team is None or not auth_session.user.team.active)
         )
     ):
         raise unauthorized
@@ -153,18 +146,15 @@ def actor_name(user: User) -> str:
 
 
 def ensure_initial_admin(db: Session) -> None:
-    if db.scalar(
-        select(User.id).where(User.role == "ADMIN", User.active.is_(True)).limit(1)
-    ) is not None:
+    if (
+        db.scalar(select(User.id).where(User.role == "ADMIN", User.active.is_(True)).limit(1))
+        is not None
+    ):
         return
-    user = db.scalar(
-        select(User).where(User.username == settings.seed_admin_username)
-    )
+    user = db.scalar(select(User).where(User.username == settings.seed_admin_username))
     if user is not None:
         if user.role != "ADMIN":
-            raise RuntimeError(
-                "SEED_ADMIN_USERNAME belongs to a non-administrator account"
-            )
+            raise RuntimeError("SEED_ADMIN_USERNAME belongs to a non-administrator account")
         user.active = True
         user.password_hash = hash_password(settings.seed_admin_password)
     else:

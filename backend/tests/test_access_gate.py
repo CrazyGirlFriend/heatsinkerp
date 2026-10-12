@@ -1,9 +1,6 @@
 from dataclasses import replace
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from app import access_gate
 from app.access_gate import (
     ACCESS_COOKIE_NAME,
@@ -16,7 +13,8 @@ from app.access_gate import (
 from app.api import public_router, router
 from app.config import get_settings, settings
 from app.main import app as production_app
-
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 TEST_PASSWORD = "local-test-password"
 TEST_SECRET = "test-only-signing-secret-with-at-least-32-bytes"
@@ -139,16 +137,22 @@ def test_existing_bearer_cannot_bypass_gate_and_unlock_does_not_replace_login(cl
     with TestClient(make_app(make_gate())) as locked:
         locked.headers.update(client.headers)
         assert locked.get("/api/material-transfers").status_code == 423
-        assert locked.post(
-            "/api/auth/login", json={"username": "admin", "password": "Admin123!"}
-        ).status_code == 423
+        assert (
+            locked.post(
+                "/api/auth/login", json={"username": "admin", "password": "Admin123!"}
+            ).status_code
+            == 423
+        )
         assert unlock(locked).status_code == 200
         assert locked.get("/api/material-transfers").status_code == 200
         locked.headers.pop("Authorization")
         assert locked.get("/api/material-transfers").status_code == 401
-        assert locked.post(
-            "/api/auth/login", json={"username": "admin", "password": "Admin123!"}
-        ).status_code == 200
+        assert (
+            locked.post(
+                "/api/auth/login", json={"username": "admin", "password": "Admin123!"}
+            ).status_code
+            == 200
+        )
 
 
 def test_disabled_gate_is_backward_compatible(client):
@@ -163,9 +167,12 @@ def test_disabled_gate_is_backward_compatible(client):
         result = unlocked.post("/api/access/unlock", json={"password": "anything"})
         assert result.status_code == 200
         assert "set-cookie" not in result.headers
-        assert unlocked.post(
-            "/api/auth/login", json={"username": "admin", "password": "Admin123!"}
-        ).status_code == 200
+        assert (
+            unlocked.post(
+                "/api/auth/login", json={"username": "admin", "password": "Admin123!"}
+            ).status_code
+            == 200
+        )
 
 
 @pytest.mark.parametrize("tamper", ["signature", "expiry", "malformed", "oversized"])

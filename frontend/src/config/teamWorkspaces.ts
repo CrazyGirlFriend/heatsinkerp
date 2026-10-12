@@ -1,3 +1,4 @@
+import { isProcessingTeamCode } from './materialRules'
 import type { Team } from '@/services/adminApi'
 import type { LocationQuery } from 'vue-router'
 
@@ -14,16 +15,37 @@ export const teamWorkspaceSections = [
   { value: 'history', label: '收发历史' },
   { value: 'warehouse', label: '仓库管理' },
 ] as const
-export type TeamWorkspaceSection = typeof teamWorkspaceSections[number]['value']
+export type TeamWorkspaceSection = (typeof teamWorkspaceSections)[number]['value']
 
-export function teamWorkspaceSectionsFor(warehouse: boolean, manageWarehouse = false, reallocations = false, processing = false) {
-  return teamWorkspaceSections.filter(section => (section.value !== 'warehouse' || warehouse && manageWarehouse) && (section.value !== 'reallocations' || reallocations) && (section.value !== 'processing' || processing))
+export function teamWorkspaceSectionsFor(
+  warehouse: boolean,
+  manageWarehouse = false,
+  reallocations = false,
+  processing = false,
+) {
+  return teamWorkspaceSections.filter(
+    (section) =>
+      (section.value !== 'warehouse' || (warehouse && manageWarehouse)) &&
+      (section.value !== 'reallocations' || reallocations) &&
+      (section.value !== 'processing' || processing),
+  )
 }
 
-export function resolveTeamWorkspaceSection(query: LocationQuery, warehouse: boolean, manageWarehouse = false, reallocations = false, processing = false): TeamWorkspaceSection {
+export function resolveTeamWorkspaceSection(
+  query: LocationQuery,
+  warehouse: boolean,
+  manageWarehouse = false,
+  reallocations = false,
+  processing = false,
+): TeamWorkspaceSection {
   if (query.tab === 'serials') return 'stock'
   if (query.tab === 'overview') return 'history'
-  const section = teamWorkspaceSectionsFor(warehouse, manageWarehouse, reallocations, processing).find(item => item.value === query.tab)
+  const section = teamWorkspaceSectionsFor(
+    warehouse,
+    manageWarehouse,
+    reallocations,
+    processing,
+  ).find((item) => item.value === query.tab)
   if (section) return section.value
   if (query.direction === 'outgoing') return 'outgoing'
   if (query.direction === 'incoming') return query.status === 'received' ? 'receipts' : 'pending'
@@ -47,17 +69,23 @@ export const teamWorkspaceProfiles = [
 ] as const
 
 export function teamWorkspaceProfile(code: string | null | undefined) {
-  return teamWorkspaceProfiles.find(profile => profile.code === code)
+  return teamWorkspaceProfiles.find((profile) => profile.code === code)
 }
 
 export function teamCanReallocate(team?: Pick<Team, 'code' | 'kind'>) {
-  return team?.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse'
-    || ['FACTORY-QC', 'FACTORY-PLATE'].includes(team?.code || '') && team?.kind === 'production'
+  return (
+    (team?.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse') ||
+    (['FACTORY-QC', 'FACTORY-PLATE'].includes(team?.code || '') && team?.kind === 'production')
+  )
 }
 
 export function configuredTeamWorkspaces(teams: readonly Team[]) {
-  return teamWorkspaceProfiles.map(profile => {
-    const team = teams.find(team => team.active && team.code === profile.code)
+  return teamWorkspaceProfiles.map((profile) => {
+    const team = teams.find((team) => team.active && team.code === profile.code)
     return { profile: { ...profile, name: team?.name || profile.name }, team }
   })
+}
+
+export function teamCanProcess(team?: Pick<Team, 'code' | 'kind'>) {
+  return team?.kind === 'production' && isProcessingTeamCode(team.code)
 }

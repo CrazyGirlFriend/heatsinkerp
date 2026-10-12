@@ -1,10 +1,9 @@
-import os
 import asyncio
+import os
 from tempfile import TemporaryDirectory
 
 import pytest
 from fastapi.testclient import TestClient
-
 
 # Configuration must be in place before app.database creates its global engine.
 _test_database = TemporaryDirectory(prefix="heatsink-async-tests-")
@@ -19,12 +18,14 @@ from app.main import app  # noqa: E402
 def client(monkeypatch):
     from app import factory_stream
     from app.inventory_snapshots import SnapshotFrames
+
     monkeypatch.setattr(factory_stream, "snapshot_frames", SnapshotFrames())
     from app import notification_queue
     from app.inventory_events import InventoryChange, inventory_events
 
     class TestTransport:
         """Unit transport double; real RabbitMQ is covered by integration probes."""
+
         ready = True
 
         async def publish(self, message_id, payload):
@@ -51,6 +52,7 @@ def client(monkeypatch):
             async def drain():
                 while await app.state.notifications.send_batch():
                     pass
+
             self.portal.call(drain)
 
     monkeypatch.setattr(notification_queue, "NotificationService", TestNotificationService)
@@ -62,7 +64,5 @@ def client(monkeypatch):
             json={"username": "admin", "password": "Admin123!"},
         )
         assert login.status_code == 200, login.text
-        test_client.headers.update(
-            {"Authorization": f"Bearer {login.json()['access_token']}"}
-        )
+        test_client.headers.update({"Authorization": f"Bearer {login.json()['access_token']}"})
         yield test_client

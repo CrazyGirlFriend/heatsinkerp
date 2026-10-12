@@ -113,7 +113,8 @@ export const useAuthStore = defineStore('auth', () => {
       initialized.value = true
       return authenticated.user
     } catch (loginError) {
-      const accessLocked = loginError instanceof Error && 'status' in loginError && loginError.status === 423
+      const accessLocked =
+        loginError instanceof Error && 'status' in loginError && loginError.status === 423
       if (!accessLocked) {
         session.value = null
         persistSession(null)
@@ -143,7 +144,8 @@ export const useAuthStore = defineStore('auth', () => {
     const version = ++profileRequestVersion
     try {
       const user = await adminApi.currentUser()
-      if (version !== profileRequestVersion || session.value?.access_token !== token) return currentUser.value
+      if (version !== profileRequestVersion || session.value?.access_token !== token)
+        return currentUser.value
       if (!user.active) {
         clearSession()
         return null
@@ -153,10 +155,16 @@ export const useAuthStore = defineStore('auth', () => {
       persistSession(session.value)
       return user
     } catch (refreshError) {
-      if (version !== profileRequestVersion || session.value?.access_token !== token) return currentUser.value
-      currentUserError.value = refreshError instanceof Error ? refreshError.message : '账号信息刷新失败'
-      if (refreshError instanceof Error && 'status' in refreshError
-        && (refreshError as { status?: number }).status === 401) clearSession()
+      if (version !== profileRequestVersion || session.value?.access_token !== token)
+        return currentUser.value
+      currentUserError.value =
+        refreshError instanceof Error ? refreshError.message : '账号信息刷新失败'
+      if (
+        refreshError instanceof Error &&
+        'status' in refreshError &&
+        (refreshError as { status?: number }).status === 401
+      )
+        clearSession()
       throw refreshError
     }
   }
@@ -171,11 +179,15 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function updateProfile(payload: { display_name: string; avatar_key: string }): Promise<Account | null> {
+  async function updateProfile(payload: {
+    display_name: string
+    avatar_key: string
+  }): Promise<Account | null> {
     const token = session.value?.access_token
     if (!token) return null
     const user = await adminApi.updateProfile(payload)
-    if (session.value?.access_token !== token || String(session.value.user.id) !== String(user.id)) return null
+    if (session.value?.access_token !== token || String(session.value.user.id) !== String(user.id))
+      return null
     // Discard any profile read started before this completed save.
     ++profileRequestVersion
     session.value = { ...session.value, user }

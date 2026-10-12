@@ -1,22 +1,23 @@
 """Authorized, atomic inventory entries; each submission adds independent lots."""
+
 from decimal import Decimal
+
 from fastapi import Depends, HTTPException, Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
+from . import material_stock as stock
+from . import material_transfer_workflow as workflow
+from .async_api import AsyncAPIRouter as APIRouter
 from .auth import actor_name, get_current_user
 from .batch_numbers import next_transfer_batch_number
 from .database import get_db
-from .models import Team, MaterialTransfer, OpeningStockSubmission, User, utcnow
+from .material_weight import sludge_measurement, validate_material_amounts
+from .models import MaterialTransfer, OpeningStockSubmission, Team, User, utcnow
 from .schemas import MaterialTransferDocumentFields, SludgeMeasurement
-from .material_weight import validate_material_amounts, sludge_measurement
-from . import material_stock as stock
-from . import material_transfer_workflow as workflow
 from .team_business import purpose_snapshot
-
-from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/team-materials", tags=["opening stock"])
 
@@ -60,53 +61,131 @@ class OpeningCreate(BaseModel):
 
 
 def result(db, submission, user):
-    rows = db.scalars(select(MaterialTransfer).where(MaterialTransfer.opening_stock_id == submission.id).order_by(MaterialTransfer.id)).all()
-    return {"id": submission.id, "items": [workflow.material_transfer_dict(row, user) for row in rows], "count": len(rows)}
+    rows = db.scalars(
+        select(MaterialTransfer)
+        .where(MaterialTransfer.opening_stock_id == submission.id)
+        .order_by(MaterialTransfer.id)
+    ).all()
+    return {
+        "id": submission.id,
+        "items": [workflow.material_transfer_dict(row, user) for row in rows],
+        "count": len(rows),
+    }
 
 
 @router.get("/{team_id}/opening-stock")
-def state(team_id: int = Path(ge=1), user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def state(
+    team_id: int = Path(ge=1), user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
     team = stock.require_team(db, team_id)
-    submission = db.scalar(select(OpeningStockSubmission.id).where(OpeningStockSubmission.team_id == team_id).limit(1))
-    has_stock_history = db.scalar(select(MaterialTransfer.id).where(MaterialTransfer.next_team_id == team_id,
-        MaterialTransfer.status == "received", MaterialTransfer.stock_tracked.is_(True)).limit(1)) is not None
-    return {"enabled": team.opening_stock_enabled, "completed": submission is not None,
-            "has_stock_history": has_stock_history,
-            "can_submit": user.role == "TEAM" and user.team_id == team_id and team.active and team.opening_stock_enabled,
-            "items": [workflow.material_transfer_dict(row, user) for row in db.scalars(select(MaterialTransfer).where(
-                MaterialTransfer.next_team_id == team_id, MaterialTransfer.opening_stock_id.is_not(None)).order_by(MaterialTransfer.id))] if submission else []}
+    submission = db.scalar(
+        select(OpeningStockSubmission.id).where(OpeningStockSubmission.team_id == team_id).limit(1)
+    )
+    has_stock_history = (
+        db.scalar(
+            select(MaterialTransfer.id)
+            .where(
+                MaterialTransfer.next_team_id == team_id,
+                MaterialTransfer.status == "received",
+                MaterialTransfer.stock_tracked.is_(True),
+            )
+            .limit(1)
+        )
+        is not None
+    )
+    return {
+        "enabled": team.opening_stock_enabled,
+        "completed": submission is not None,
+        "has_stock_history": has_stock_history,
+        "can_submit": user.role == "TEAM"
+        and user.team_id == team_id
+        and team.active
+        and team.opening_stock_enabled,
+        "items": [
+            workflow.material_transfer_dict(row, user)
+            for row in db.scalars(
+                select(MaterialTransfer)
+                .where(
+                    MaterialTransfer.next_team_id == team_id,
+                    MaterialTransfer.opening_stock_id.is_not(None),
+                )
+                .order_by(MaterialTransfer.id)
+            )
+        ]
+        if submission
+        else [],
+    }
 
 
 @router.post("/{team_id}/opening-stock", status_code=201)
-def create(payload: OpeningCreate, team_id: int = Path(ge=1), user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def create(
+    payload: OpeningCreate,
+    team_id: int = Path(ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     stock.require_actor(user, team_id)
     request_hash = stock.fingerprint(payload)
     try:
         with db.begin():
-            team = db.scalar(select(Team).where(Team.id == team_id).with_for_update().execution_options(populate_existing=True))
-            prior = db.scalar(select(OpeningStockSubmission).where(OpeningStockSubmission.idempotency_key == payload.idempotency_key).with_for_update())
+            team = db.scalar(
+                select(Team)
+                .where(Team.id == team_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            prior = db.scalar(
+                select(OpeningStockSubmission)
+                .where(OpeningStockSubmission.idempotency_key == payload.idempotency_key)
+                .with_for_update()
+            )
             if prior:
                 stock._replay(prior, user, request_hash, "team_id")
                 return result(db, prior, user)
             if not team.active or not team.opening_stock_enabled:
                 raise HTTPException(403, "管理员尚未开启本班组的初始库存录入权限")
-            submission = OpeningStockSubmission(team_id=team_id, idempotency_key=payload.idempotency_key,
-                request_hash=request_hash, created_by=actor_name(user))
+            submission = OpeningStockSubmission(
+                team_id=team_id,
+                idempotency_key=payload.idempotency_key,
+                request_hash=request_hash,
+                created_by=actor_name(user),
+            )
             db.add(submission)
             db.flush()
             now = utcnow()
             for line in payload.lines:
                 validate_material_amounts(line.material_type, line.quantity, line.weight)
-                measured = sludge_measurement(line.material_type, line.weight, line.sludge_gross_weight, line.sludge_content_percent)
+                measured = sludge_measurement(
+                    line.material_type,
+                    line.weight,
+                    line.sludge_gross_weight,
+                    line.sludge_content_percent,
+                )
                 purpose = purpose_snapshot(db, team_id, line.purpose_id, required=False)
-                transfer = MaterialTransfer(batch_no=next_transfer_batch_number(db), entry_kind="opening_stock",
-                    opening_stock_id=submission.id, serial_no=line.serial_no,
-                    **{field: getattr(line, field) for field in workflow.DOCUMENT_FIELDS}, **purpose,
-                    next_team_id=team.id, next_team_code=team.code, next_team_name=team.name,
-                    quantity=line.quantity, weight=line.weight, notes=line.notes, status="received", stock_tracked=True,
+                transfer = MaterialTransfer(
+                    batch_no=next_transfer_batch_number(db),
+                    entry_kind="opening_stock",
+                    opening_stock_id=submission.id,
+                    serial_no=line.serial_no,
+                    **{field: getattr(line, field) for field in workflow.DOCUMENT_FIELDS},
+                    **purpose,
+                    next_team_id=team.id,
+                    next_team_code=team.code,
+                    next_team_name=team.name,
+                    quantity=line.quantity,
+                    weight=line.weight,
+                    notes=line.notes,
+                    status="received",
+                    stock_tracked=True,
                     **measured,
-                    created_by=actor_name(user), created_by_user_id=user.id, received_by=actor_name(user), received_by_user_id=user.id,
-                    created_at=now, updated_at=now, received_at=now)
+                    created_by=actor_name(user),
+                    created_by_user_id=user.id,
+                    received_by=actor_name(user),
+                    received_by_user_id=user.id,
+                    created_at=now,
+                    updated_at=now,
+                    received_at=now,
+                )
                 db.add(transfer)
                 db.flush()
                 db.refresh(transfer, attribute_names=["created_at", "updated_at", "received_at"])
@@ -115,7 +194,11 @@ def create(payload: OpeningCreate, team_id: int = Path(ge=1), user: User = Depen
         return response
     except (IntegrityError, OperationalError) as exc:
         db.rollback()
-        prior = db.scalar(select(OpeningStockSubmission).where(OpeningStockSubmission.idempotency_key == payload.idempotency_key))
+        prior = db.scalar(
+            select(OpeningStockSubmission).where(
+                OpeningStockSubmission.idempotency_key == payload.idempotency_key
+            )
+        )
         if prior:
             stock._replay(prior, user, request_hash, "team_id")
             return result(db, prior, user)

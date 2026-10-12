@@ -1,4 +1,5 @@
 """Shared HTTP errors for the active API modules."""
+
 from fastapi import HTTPException
 
 

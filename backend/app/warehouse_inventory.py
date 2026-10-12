@@ -3,6 +3,7 @@
 Aggregate the shared stock ledger before filtering/pagination. A row's anchor is
 an actual received lot; it also scopes drill-down and outbound source selection.
 """
+
 from datetime import date, timezone
 from typing import Annotated, Literal
 
@@ -11,25 +12,44 @@ from pydantic import Field, model_validator
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
+from .async_api import AsyncAPIRouter as APIRouter
+from .async_read_response import team_read_response
 from .auth import get_current_user
 from .database import get_db
-from .material_analytics import META_FIELDS, SearchField, SerialFilters, age_conditions, serial_predicates, serial_table
+from .material_analytics import (
+    META_FIELDS,
+    SearchField,
+    SerialFilters,
+    age_conditions,
+    serial_predicates,
+    serial_table,
+)
 from .material_stock import BALANCE_KEYS, balance_dict, literal_query, require_team, stock_table
 from .material_transfer_workflow import material_transfer_dict, material_transfer_list_options
 from .models import MaterialLoss, MaterialTransfer, User, utcnow
-from .record_filters import RecordFilters, day_bounds, urgent_serials
-from .serial_urgency import urgency_dict, urgency_map
-from .schemas import SCRAP_MATERIAL_TYPES
-from .warehouse_receipts import require_warehouse
-from .async_read_response import team_read_response
 from .processing_records import annotate_source, registered_lots, source_metadata, summary_columns
 from .processing_statistics import difference_totals, weight_lineage, weight_roots
-
-from .async_api import AsyncAPIRouter as APIRouter
+from .record_filters import RecordFilters, day_bounds, numeric_search_predicate, urgent_serials
+from .schemas import SCRAP_MATERIAL_TYPES
+from .serial_urgency import urgency_dict, urgency_map
+from .warehouse_receipts import require_warehouse
 
 router = APIRouter(prefix="/api/team-materials", tags=["classified inventory"])
 mt = MaterialTransfer
-WarehouseSearchField = Literal[SearchField, "source", "purpose_name", "oldest_received_at", "on_hand_quantity", "on_hand_weight", "owned_quantity", "owned_weight", "in_transit_quantity", "in_transit_weight", "external_pending_quantity", "external_pending_weight"]
+WarehouseSearchField = Literal[
+    SearchField,
+    "source",
+    "purpose_name",
+    "oldest_received_at",
+    "on_hand_quantity",
+    "on_hand_weight",
+    "owned_quantity",
+    "owned_weight",
+    "in_transit_quantity",
+    "in_transit_weight",
+    "external_pending_quantity",
+    "external_pending_weight",
+]
 
 
 class WarehouseInventoryFilters(SerialFilters):
@@ -38,13 +58,21 @@ class WarehouseInventoryFilters(SerialFilters):
     receipt_source: Literal["external", "return", "internal", "opening", "processing"] | None = None
     location_status: Literal["unassigned"] | None = None
     source_team_id: int | None = Field(default=None, ge=1)
-    purpose_id: int | None = Field(default=None, ge=0, description="本班组业务编号；0 表示未指定业务")
+    purpose_id: int | None = Field(
+        default=None, ge=0, description="本班组业务编号；0 表示未指定业务"
+    )
 
     @model_validator(mode="after")
     def validate_search(self):
         # Share numeric/date validation without treating warehouse balances as
         # serial totals. The parent's field validator is deliberately overridden.
-        field = {"source": "material_name", "purpose_name": "material_name", "oldest_received_at": "last_activity_at", "on_hand_quantity": "available_quantity", "on_hand_weight": "available_weight"}.get(self.search_field, self.search_field)
+        field = {
+            "source": "material_name",
+            "purpose_name": "material_name",
+            "oldest_received_at": "last_activity_at",
+            "on_hand_quantity": "available_quantity",
+            "on_hand_weight": "available_weight",
+        }.get(self.search_field, self.search_field)
         if field.startswith(("owned_", "in_transit_", "external_pending_")):
             field = "available_weight" if field.endswith("_weight") else "available_quantity"
         SerialFilters(query=self.query, search_field=field, search_operator=self.search_operator)
@@ -63,7 +91,13 @@ def origin_columns():
         "processing_role": mt.processing_role,
         "purpose_id": mt.purpose_id,
         "purpose_name": func.coalesce(mt.purpose_name, ""),
-        "receipt_source": case((mt.entry_kind == "processing_output", "processing"), (mt.entry_kind == "opening_stock", "opening"), (~manual, "internal"), (mt.receipt_kind == "return", "return"), else_="external"),
+        "receipt_source": case(
+            (mt.entry_kind == "processing_output", "processing"),
+            (mt.entry_kind == "opening_stock", "opening"),
+            (~manual, "internal"),
+            (mt.receipt_kind == "return", "return"),
+            else_="external",
+        ),
         "source_team_id": case((~manual, mt.source_team_id), else_=None),
         "external_source": case((manual, func.coalesce(mt.external_source, "")), else_=""),
     }
@@ -74,10 +108,21 @@ def warehouse_groups(team_id, filters):
     registered = registered_lots(team_id)
     remaining = or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0)
     origins = origin_columns()
-    moves = select(mt.source_transfer_id.label("lot_id"), func.max(mt.updated_at).label("at")).where(
-        mt.source_team_id == team_id, mt.source_transfer_id.is_not(None)).group_by(mt.source_transfer_id).subquery()
-    losses = select(MaterialLoss.source_transfer_id.label("lot_id"), func.max(MaterialLoss.created_at).label("at")).where(
-        MaterialLoss.team_id == team_id).group_by(MaterialLoss.source_transfer_id).subquery()
+    moves = (
+        select(mt.source_transfer_id.label("lot_id"), func.max(mt.updated_at).label("at"))
+        .where(mt.source_team_id == team_id, mt.source_transfer_id.is_not(None))
+        .group_by(mt.source_transfer_id)
+        .subquery()
+    )
+    losses = (
+        select(
+            MaterialLoss.source_transfer_id.label("lot_id"),
+            func.max(MaterialLoss.created_at).label("at"),
+        )
+        .where(MaterialLoss.team_id == team_id)
+        .group_by(MaterialLoss.source_transfer_id)
+        .subquery()
+    )
     recent = case((moves.c.at > mt.updated_at, moves.c.at), else_=mt.updated_at)
     recent = case((losses.c.at > recent, losses.c.at), else_=recent)
     meta = []
@@ -85,25 +130,65 @@ def warehouse_groups(team_id, filters):
         if name in origins:
             continue
         column = getattr(mt, name)
-        meta.extend([case((func.count(func.distinct(column)) <= 1, func.min(column)), else_=None).label(name),
-                     func.count(func.distinct(column)).label(name + "_count")])
+        meta.extend(
+            [
+                case((func.count(func.distinct(column)) <= 1, func.min(column)), else_=None).label(
+                    name
+                ),
+                func.count(func.distinct(column)).label(name + "_count"),
+            ]
+        )
     calendar = RecordFilters(date_from=filters.date_from, date_to=filters.date_to)
     calendar.dates(mt.received_at)  # Validate the range even for an empty ledger.
     matching_dates = True
     if filters.date_from or filters.date_to:
-        movement_matches = select(mt.source_transfer_id).where(mt.source_team_id == team_id, or_(
-            *(and_(*calendar.dates(column)) for column in (mt.created_at, mt.received_at, mt.dispatched_at, mt.voided_at))))
-        loss_matches = select(MaterialLoss.source_transfer_id).where(MaterialLoss.team_id == team_id, *calendar.dates(MaterialLoss.created_at))
-        matching_dates = or_(and_(*calendar.dates(mt.received_at)), mt.id.in_(movement_matches), mt.id.in_(loss_matches))
-    return select(*(column.label(name) for name, column in origins.items()),
-        func.min(mt.id).label("group_id"), func.count(mt.id).label("batch_count"),
-        func.sum(case((remaining, 1), else_=0)).label("current_batch_count"),
-        func.min(case((remaining, mt.received_at), else_=None)).label("oldest_received_at"),
-        func.max(case((origins["receipt_source"].in_(("internal", "processing")), mt.source_team_name), else_=origins["external_source"])).label("source_name"),
-        func.max(recent).label("last_activity_at"), func.max(case((matching_dates, 1), else_=0)).label("matches_date"),
-        *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS), *summary_columns(stock, registered), *meta
-    ).select_from(stock).join(mt, mt.id == stock.c.transfer_id).outerjoin(moves, moves.c.lot_id == mt.id).outerjoin(
-        losses, losses.c.lot_id == mt.id).outerjoin(registered, registered.c.lot_id == mt.id).group_by(*origins.values()).subquery()
+        movement_matches = select(mt.source_transfer_id).where(
+            mt.source_team_id == team_id,
+            or_(
+                *(
+                    and_(*calendar.dates(column))
+                    for column in (mt.created_at, mt.received_at, mt.dispatched_at, mt.voided_at)
+                )
+            ),
+        )
+        loss_matches = select(MaterialLoss.source_transfer_id).where(
+            MaterialLoss.team_id == team_id, *calendar.dates(MaterialLoss.created_at)
+        )
+        matching_dates = or_(
+            and_(*calendar.dates(mt.received_at)),
+            mt.id.in_(movement_matches),
+            mt.id.in_(loss_matches),
+        )
+    return (
+        select(
+            *(column.label(name) for name, column in origins.items()),
+            func.min(mt.id).label("group_id"),
+            func.count(mt.id).label("batch_count"),
+            func.sum(case((remaining, 1), else_=0)).label("current_batch_count"),
+            func.min(case((remaining, mt.received_at), else_=None)).label("oldest_received_at"),
+            func.max(
+                case(
+                    (
+                        origins["receipt_source"].in_(("internal", "processing")),
+                        mt.source_team_name,
+                    ),
+                    else_=origins["external_source"],
+                )
+            ).label("source_name"),
+            func.max(recent).label("last_activity_at"),
+            func.max(case((matching_dates, 1), else_=0)).label("matches_date"),
+            *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS),
+            *summary_columns(stock, registered),
+            *meta,
+        )
+        .select_from(stock)
+        .join(mt, mt.id == stock.c.transfer_id)
+        .outerjoin(moves, moves.c.lot_id == mt.id)
+        .outerjoin(losses, losses.c.lot_id == mt.id)
+        .outerjoin(registered, registered.c.lot_id == mt.id)
+        .group_by(*origins.values())
+        .subquery()
+    )
 
 
 def group_conditions(table, anchor):
@@ -115,17 +200,36 @@ def list_inventory(db, team_id, filters):
     table = warehouse_groups(team_id, filters)
     conditions = [table.c.matches_date == 1]
     if filters.location_status:
-        from .warehouse_placements import unassigned_predicate
         from .team_constants import WAREHOUSE_TEAM_CODE
+        from .warehouse_placements import unassigned_predicate
+
         if require_team(db, team_id).code != WAREHOUSE_TEAM_CODE:
             raise HTTPException(422, "仅库房可以按仓位筛选")
         stock = stock_table(team_id)
-        matching = select(mt.id).join(stock, stock.c.transfer_id == mt.id).where(
-            *group_conditions(origin_columns(), table.c), unassigned_predicate(stock))
+        matching = (
+            select(mt.id)
+            .join(stock, stock.c.transfer_id == mt.id)
+            .where(*group_conditions(origin_columns(), table.c), unassigned_predicate(stock))
+        )
         conditions.append(matching.exists())
     if filters.availability != "all":
-        prefix = "on_hand" if filters.availability == "current" else "owned" if filters.availability == "owned" else "scrap" if filters.availability == "scrap" else "available"
-        conditions.append(or_(table.c[prefix + "_quantity"] != 0, table.c[prefix + "_weight"] != 0, table.c.shortage_quantity > 0, table.c.shortage_weight > 0))
+        prefix = (
+            "on_hand"
+            if filters.availability == "current"
+            else "owned"
+            if filters.availability == "owned"
+            else "scrap"
+            if filters.availability == "scrap"
+            else "available"
+        )
+        conditions.append(
+            or_(
+                table.c[prefix + "_quantity"] != 0,
+                table.c[prefix + "_weight"] != 0,
+                table.c.shortage_quantity > 0,
+                table.c.shortage_weight > 0,
+            )
+        )
         if filters.availability in ("available", "scrap"):
             scrap = table.c.material_type.in_(SCRAP_MATERIAL_TYPES)
             conditions.append(scrap if filters.availability == "scrap" else ~scrap)
@@ -135,9 +239,16 @@ def list_inventory(db, team_id, filters):
             if (key, value) in (("material_name", "未填写材质"), ("material_type", "unknown")):
                 value = ""
             from .shared_material import serial_match
-            conditions.append(serial_match(table.c[key], value) if key == "serial_no" else table.c[key] == value)
+
+            conditions.append(
+                serial_match(table.c[key], value) if key == "serial_no" else table.c[key] == value
+            )
     if filters.purpose_id is not None:
-        conditions.append(table.c.purpose_id.is_(None) if filters.purpose_id == 0 else table.c.purpose_id == filters.purpose_id)
+        conditions.append(
+            table.c.purpose_id.is_(None)
+            if filters.purpose_id == 0
+            else table.c.purpose_id == filters.purpose_id
+        )
     if filters.urgent_only:
         conditions.append(table.c.serial_no.in_(urgent_serials()))
     if filters.stock_age:
@@ -146,8 +257,12 @@ def list_inventory(db, team_id, filters):
         conditions.append(age_conditions(table.c.oldest_received_at, utcnow())[filters.stock_age])
     term = (filters.query or "").strip()
     field = filters.search_field
-    matching_sources = [*group_conditions(origin_columns(), table.c), mt.next_team_id == team_id,
-                        mt.status == "received", mt.stock_tracked.is_(True)]
+    matching_sources = [
+        *group_conditions(origin_columns(), table.c),
+        mt.next_team_id == team_id,
+        mt.status == "received",
+        mt.stock_tracked.is_(True),
+    ]
     if term:
         if field == "urgency":
             urgent = table.c.serial_no.in_(urgent_serials())
@@ -156,51 +271,127 @@ def list_inventory(db, team_id, filters):
             start, end = day_bounds(date.fromisoformat(term))
             conditions.append(and_(table.c[field] >= start, table.c[field] < end))
         elif field.endswith(("_quantity", "_weight")):
-            from decimal import Decimal
             # Pending incoming is intentionally not warehouse stock; outbound
             # pending belongs to the already-deducted source group's history.
-            column = mt.finished_quantity if field == "finished_quantity" else table.c.reserved_quantity if field == "pending_outgoing_quantity" else table.c.reserved_weight if field == "pending_outgoing_weight" else table.c[field] if field in table.c else None
+            column = (
+                mt.finished_quantity
+                if field == "finished_quantity"
+                else table.c.reserved_quantity
+                if field == "pending_outgoing_quantity"
+                else table.c.reserved_weight
+                if field == "pending_outgoing_weight"
+                else table.c[field]
+                if field in table.c
+                else None
+            )
             if column is None:
                 conditions.append(False)
             else:
-                if field.endswith("_weight"):
-                    column = func.round(column, 6)
-                value = Decimal(term)
-                predicate = column >= value if filters.search_operator == "gte" else column <= value if filters.search_operator == "lte" else column == value
-                conditions.append(select(mt.id).where(*matching_sources, predicate).exists() if field == "finished_quantity" else predicate)
+                predicate = numeric_search_predicate(
+                    column, term, filters.search_operator, weight=field.endswith("_weight")
+                )
+                conditions.append(
+                    select(mt.id).where(*matching_sources, predicate).exists()
+                    if field == "finished_quantity"
+                    else predicate
+                )
         elif field in ("all", "source"):
-            source_kind = case((table.c.receipt_source == "processing", "本班组加工"), (table.c.receipt_source == "opening", "初始库存"), (table.c.receipt_source == "internal", "车间转入"), (table.c.receipt_source == "return", "外部退回"), else_="外部来料")
+            source_kind = case(
+                (table.c.receipt_source == "processing", "本班组加工"),
+                (table.c.receipt_source == "opening", "初始库存"),
+                (table.c.receipt_source == "internal", "车间转入"),
+                (table.c.receipt_source == "return", "外部退回"),
+                else_="外部来料",
+            )
             columns = [table.c.source_name, source_kind]
             if field == "all":
-                columns += [table.c[name] for name in ("serial_no", "material_name", "transfer_specification", "purpose_name")]
+                columns += [
+                    table.c[name]
+                    for name in (
+                        "serial_no",
+                        "material_name",
+                        "transfer_specification",
+                        "purpose_name",
+                    )
+                ]
             matches = literal_query(term, columns)
             if field == "all":
-                matches = or_(matches, select(mt.id).where(*matching_sources,
-                    literal_query(term, [mt.customer_code, mt.product_code, mt.finished_specification])).exists())
+                matches = or_(
+                    matches,
+                    select(mt.id)
+                    .where(
+                        *matching_sources,
+                        literal_query(
+                            term, [mt.customer_code, mt.product_code, mt.finished_specification]
+                        ),
+                    )
+                    .exists(),
+                )
             conditions.append(matches)
         else:
-            conditions.append(select(mt.id).where(*matching_sources, literal_query(term, [getattr(mt, field)])).exists())
+            conditions.append(
+                select(mt.id)
+                .where(*matching_sources, literal_query(term, [getattr(mt, field)]))
+                .exists()
+            )
     # Existing chart deep links still select matching serials, while source/type
     # filters above constrain the displayed group quantities themselves.
-    if any((filters.waiting_direction, filters.activity_day, filters.has_loss, filters.flow_direction)):
+    if any(
+        (filters.waiting_direction, filters.activity_day, filters.has_loss, filters.flow_direction)
+    ):
         serial = serial_table(team_id)
-        scope_filters = SerialFilters(**{**filters.model_dump(exclude={"receipt_source", "source_team_id", "purpose_id", "location_status"}),
-            "query": None, "search_field": "all", "availability": "all", "material_type": None, "material_name": None,
-            "date_from": None, "date_to": None, "stock_age": None})
-        conditions.append(table.c.serial_no.in_(select(serial.c.serial_no).where(*serial_predicates(team_id, serial, scope_filters, utcnow()))))
+        scope_filters = SerialFilters(
+            **{
+                **filters.model_dump(
+                    exclude={"receipt_source", "source_team_id", "purpose_id", "location_status"}
+                ),
+                "query": None,
+                "search_field": "all",
+                "availability": "all",
+                "material_type": None,
+                "material_name": None,
+                "date_from": None,
+                "date_to": None,
+                "stock_age": None,
+            }
+        )
+        conditions.append(
+            table.c.serial_no.in_(
+                select(serial.c.serial_no).where(
+                    *serial_predicates(team_id, serial, scope_filters, utcnow())
+                )
+            )
+        )
     total = db.scalar(select(func.count()).select_from(table).where(*conditions)) or 0
-    rows = db.execute(select(table).where(*conditions).order_by(table.c.last_activity_at.desc(), table.c.group_id.desc())
-        .offset((filters.page - 1) * filters.page_size).limit(filters.page_size)).mappings().all()
+    rows = (
+        db.execute(
+            select(table)
+            .where(*conditions)
+            .order_by(table.c.last_activity_at.desc(), table.c.group_id.desc())
+            .offset((filters.page - 1) * filters.page_size)
+            .limit(filters.page_size)
+        )
+        .mappings()
+        .all()
+    )
     priorities = urgency_map(db, [row["serial_no"] for row in rows])
     origins = origin_columns()
     differences = {}
     if rows:
         lineage = weight_lineage(team_id)
         roots = weight_roots(lineage)
-        root_rows = db.execute(select(*(column.label(name) for name, column in origins.items()),
-            roots.c.root_id.label("weight_root_transfer_id"), roots.c.weight_difference).select_from(mt)
-            .join(lineage, lineage.c.transfer_id == mt.id).join(roots, roots.c.root_id == lineage.c.root_id)
-            .where(or_(*(and_(*group_conditions(origins, row)) for row in rows))).distinct()).mappings()
+        root_rows = db.execute(
+            select(
+                *(column.label(name) for name, column in origins.items()),
+                roots.c.root_id.label("weight_root_transfer_id"),
+                roots.c.weight_difference,
+            )
+            .select_from(mt)
+            .join(lineage, lineage.c.transfer_id == mt.id)
+            .join(roots, roots.c.root_id == lineage.c.root_id)
+            .where(or_(*(and_(*group_conditions(origins, row)) for row in rows)))
+            .distinct()
+        ).mappings()
         for row in root_rows:
             differences.setdefault(tuple(row[name] for name in origins), []).append(row)
     items = []
@@ -214,120 +405,305 @@ def list_inventory(db, team_id, filters):
             item[key] = row[key].replace(tzinfo=timezone.utc).isoformat() if row[key] else None
         items.append(item)
     from .shared_material import annotate_groups
+
     annotate_groups(db, items)
-    return {"items": items, "total": total, "page": filters.page, "page_size": filters.page_size,
-            "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
+    return {
+        "items": items,
+        "total": total,
+        "page": filters.page,
+        "page_size": filters.page_size,
+        "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat(),
+    }
 
 
-def list_group_sources(db, team_id, group_id, user, *, page=1, page_size=20, current_only=False, query=None, record_filters=None):
+def list_group_sources(
+    db,
+    team_id,
+    group_id,
+    user,
+    *,
+    page=1,
+    page_size=20,
+    current_only=False,
+    query=None,
+    record_filters=None,
+):
     require_team(db, team_id)
     origins = origin_columns()
-    anchor = db.execute(select(*(column.label(name) for name, column in origins.items())).where(
-        mt.id == group_id, mt.next_team_id == team_id, mt.status == "received", mt.stock_tracked.is_(True))).mappings().first()
+    anchor = (
+        db.execute(
+            select(*(column.label(name) for name, column in origins.items())).where(
+                mt.id == group_id,
+                mt.next_team_id == team_id,
+                mt.status == "received",
+                mt.stock_tracked.is_(True),
+            )
+        )
+        .mappings()
+        .first()
+    )
     if anchor is None:
         raise HTTPException(404, "未找到该班组的库存来源")
     stock = stock_table(team_id)
-    statement = select(mt, stock).join(stock, stock.c.transfer_id == mt.id).where(*group_conditions(origins, anchor))
+    statement = (
+        select(mt, stock)
+        .join(stock, stock.c.transfer_id == mt.id)
+        .where(*group_conditions(origins, anchor))
+    )
     if current_only:
         statement = statement.where(or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0))
     if query and query.strip():
-        statement = statement.where(literal_query(query, [mt.batch_no, mt.serial_no, mt.material_name, mt.source_batch_no]))
-    statement = statement.where(*(record_filters or RecordFilters()).predicates(mt.received_at, mt.serial_no))
+        statement = statement.where(
+            literal_query(query, [mt.batch_no, mt.serial_no, mt.material_name, mt.source_batch_no])
+        )
+    statement = statement.where(
+        *(record_filters or RecordFilters()).predicates(mt.received_at, mt.serial_no)
+    )
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
     metadata = source_metadata(team_id)
     statement = statement.add_columns(metadata).outerjoin(metadata, metadata.c.lot_id == mt.id)
-    rows = db.execute(statement.options(*material_transfer_list_options()).order_by(mt.received_at.desc(), mt.id.desc()).offset((page - 1) * page_size).limit(page_size)).unique().all()
-    from .warehouse_placements import stock_positions
+    rows = (
+        db.execute(
+            statement.options(*material_transfer_list_options())
+            .order_by(mt.received_at.desc(), mt.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        .unique()
+        .all()
+    )
     from .material_weight import stock_sludge_measurements
-    items = [annotate_source({"transfer": material_transfer_dict(row[0], user, include_history=False),
-        **balance_dict(row._mapping)}, row._mapping) for row in rows]
-    return {"items": stock_positions(db, stock_sludge_measurements(db, items)),
-            "total": total, "page": page, "page_size": page_size,
-            "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
+    from .warehouse_placements import stock_positions
+
+    items = [
+        annotate_source(
+            {
+                "transfer": material_transfer_dict(row[0], user, include_history=False),
+                **balance_dict(row._mapping),
+            },
+            row._mapping,
+        )
+        for row in rows
+    ]
+    return {
+        "items": stock_positions(db, stock_sludge_measurements(db, items)),
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat(),
+    }
 
 
 def list_group_pending(db, team_id, group_id, user, *, page=1, page_size=20):
     require_team(db, team_id)
     origins = origin_columns()
-    anchor = db.execute(select(*(column.label(name) for name, column in origins.items())).where(
-        mt.id == group_id, mt.next_team_id == team_id, mt.status == "received", mt.stock_tracked.is_(True))).mappings().first()
+    anchor = (
+        db.execute(
+            select(*(column.label(name) for name, column in origins.items())).where(
+                mt.id == group_id,
+                mt.next_team_id == team_id,
+                mt.status == "received",
+                mt.stock_tracked.is_(True),
+            )
+        )
+        .mappings()
+        .first()
+    )
     if anchor is None:
         raise HTTPException(404, "未找到该班组的库存来源")
-    sources = select(mt.id).where(*group_conditions(origins, anchor), mt.next_team_id == team_id,
-                                 mt.status == "received", mt.stock_tracked.is_(True))
-    conditions = [mt.source_team_id == team_id, mt.status == "pending", mt.source_transfer_id.in_(sources)]
+    sources = select(mt.id).where(
+        *group_conditions(origins, anchor),
+        mt.next_team_id == team_id,
+        mt.status == "received",
+        mt.stock_tracked.is_(True),
+    )
+    conditions = [
+        mt.source_team_id == team_id,
+        mt.status == "pending",
+        mt.source_transfer_id.in_(sources),
+    ]
     total = db.scalar(select(func.count()).select_from(mt).where(*conditions)) or 0
-    items = db.scalars(select(mt).where(*conditions).options(*material_transfer_list_options())
-        .order_by(mt.created_at.desc(), mt.id.desc()).offset((page - 1) * page_size).limit(page_size)).unique().all()
-    return {"items": [material_transfer_dict(item, user, include_history=False) for item in items],
-            "total": total, "page": page, "page_size": page_size,
-            "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
+    items = (
+        db.scalars(
+            select(mt)
+            .where(*conditions)
+            .options(*material_transfer_list_options())
+            .order_by(mt.created_at.desc(), mt.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        .unique()
+        .all()
+    )
+    return {
+        "items": [material_transfer_dict(item, user, include_history=False) for item in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat(),
+    }
 
 
 @router.get("/{team_id}/inventory/{group_id}/pending-outbound")
-def pending_endpoint(team_id: int = Path(ge=1), group_id: int = Path(ge=1),
-                     page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100),
-                     user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return team_read_response(db, lambda session: list_group_pending(session, team_id, group_id, user, page=page, page_size=page_size))
+def pending_endpoint(
+    team_id: int = Path(ge=1),
+    group_id: int = Path(ge=1),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return team_read_response(
+        db,
+        lambda session: list_group_pending(
+            session, team_id, group_id, user, page=page, page_size=page_size
+        ),
+    )
 
 
 def list_group_movements(db, team_id, group_id, user, *, page=1, page_size=20):
     require_team(db, team_id)
     origins = origin_columns()
-    anchor = db.execute(select(*(column.label(name) for name, column in origins.items())).where(
-        mt.id == group_id, mt.next_team_id == team_id, mt.status == "received", mt.stock_tracked.is_(True))).mappings().first()
+    anchor = (
+        db.execute(
+            select(*(column.label(name) for name, column in origins.items())).where(
+                mt.id == group_id,
+                mt.next_team_id == team_id,
+                mt.status == "received",
+                mt.stock_tracked.is_(True),
+            )
+        )
+        .mappings()
+        .first()
+    )
     if anchor is None:
         raise HTTPException(404, "未找到该班组的库存来源")
-    sources = select(mt.id).where(*group_conditions(origins, anchor), mt.next_team_id == team_id,
-                                 mt.status == "received", mt.stock_tracked.is_(True))
+    sources = select(mt.id).where(
+        *group_conditions(origins, anchor),
+        mt.next_team_id == team_id,
+        mt.status == "received",
+        mt.stock_tracked.is_(True),
+    )
     # Each actual receipt/outbound document appears once, with its own TL number.
     # Match children by source identity, not their destination nature or purpose.
-    scope = and_(mt.entry_kind != "processing_output",
-                 or_(mt.id.in_(sources), and_(mt.source_team_id == team_id, mt.source_transfer_id.in_(sources))))
-    occurred_at = case((mt.next_team_id == team_id, func.coalesce(mt.received_at, mt.created_at)), else_=mt.created_at)
+    scope = and_(
+        mt.entry_kind != "processing_output",
+        or_(
+            mt.id.in_(sources),
+            and_(mt.source_team_id == team_id, mt.source_transfer_id.in_(sources)),
+        ),
+    )
+    occurred_at = case(
+        (mt.next_team_id == team_id, func.coalesce(mt.received_at, mt.created_at)),
+        else_=mt.created_at,
+    )
     total = db.scalar(select(func.count()).select_from(mt).where(scope)) or 0
-    rows = db.scalars(select(mt).where(scope).options(*material_transfer_list_options())
-        .order_by(occurred_at.desc(), mt.id.desc()).offset((page - 1) * page_size).limit(page_size)).unique().all()
-    return {"items": [material_transfer_dict(row, user, include_history=False) for row in rows],
-            "total": total, "page": page, "page_size": page_size,
-            "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat()}
+    rows = (
+        db.scalars(
+            select(mt)
+            .where(scope)
+            .options(*material_transfer_list_options())
+            .order_by(occurred_at.desc(), mt.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        .unique()
+        .all()
+    )
+    return {
+        "items": [material_transfer_dict(row, user, include_history=False) for row in rows],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat(),
+    }
 
 
 @router.get("/{team_id}/inventory/{group_id}/movements")
-def movements_endpoint(team_id: int = Path(ge=1), group_id: int = Path(ge=1),
-                       page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100),
-                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return team_read_response(db, lambda session: list_group_movements(session, team_id, group_id, user, page=page, page_size=page_size))
+def movements_endpoint(
+    team_id: int = Path(ge=1),
+    group_id: int = Path(ge=1),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return team_read_response(
+        db,
+        lambda session: list_group_movements(
+            session, team_id, group_id, user, page=page, page_size=page_size
+        ),
+    )
 
 
 @router.get("/{team_id}/inventory")
-def inventory_endpoint(filters: Annotated[WarehouseInventoryFilters, Query()], team_id: int = Path(ge=1),
-                       _: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def inventory_endpoint(
+    filters: Annotated[WarehouseInventoryFilters, Query()],
+    team_id: int = Path(ge=1),
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     return team_read_response(db, lambda session: list_inventory(session, team_id, filters))
 
 
 @router.get("/{team_id}/inventory/{group_id}/sources")
-def sources_endpoint(record_filters: RecordFilters = Depends(), team_id: int = Path(ge=1), group_id: int = Path(ge=1),
-                     page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100),
-                     current_only: bool = False, query: str | None = Query(default=None, max_length=160),
-                     user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return list_group_sources(db, team_id, group_id, user, page=page, page_size=page_size,
-                              current_only=current_only, query=query, record_filters=record_filters)
+def sources_endpoint(
+    record_filters: RecordFilters = Depends(),
+    team_id: int = Path(ge=1),
+    group_id: int = Path(ge=1),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    current_only: bool = False,
+    query: str | None = Query(default=None, max_length=160),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return list_group_sources(
+        db,
+        team_id,
+        group_id,
+        user,
+        page=page,
+        page_size=page_size,
+        current_only=current_only,
+        query=query,
+        record_filters=record_filters,
+    )
 
 
 # Keep published warehouse URLs scoped to the warehouse for existing clients.
 @router.get("/{team_id}/warehouse-inventory", include_in_schema=False)
-def legacy_inventory_endpoint(filters: Annotated[WarehouseInventoryFilters, Query()], team_id: int = Path(ge=1),
-                              _: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def legacy_inventory_endpoint(
+    filters: Annotated[WarehouseInventoryFilters, Query()],
+    team_id: int = Path(ge=1),
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     require_warehouse(require_team(db, team_id))
     return list_inventory(db, team_id, filters)
 
 
 @router.get("/{team_id}/warehouse-inventory/{group_id}/sources", include_in_schema=False)
-def legacy_sources_endpoint(record_filters: RecordFilters = Depends(), team_id: int = Path(ge=1), group_id: int = Path(ge=1),
-                            page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100),
-                            current_only: bool = False, query: str | None = Query(default=None, max_length=160),
-                            user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def legacy_sources_endpoint(
+    record_filters: RecordFilters = Depends(),
+    team_id: int = Path(ge=1),
+    group_id: int = Path(ge=1),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    current_only: bool = False,
+    query: str | None = Query(default=None, max_length=160),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     require_warehouse(require_team(db, team_id))
-    return list_group_sources(db, team_id, group_id, user, page=page, page_size=page_size,
-                              current_only=current_only, query=query, record_filters=record_filters)
+    return list_group_sources(
+        db,
+        team_id,
+        group_id,
+        user,
+        page=page,
+        page_size=page_size,
+        current_only=current_only,
+        query=query,
+        record_filters=record_filters,
+    )

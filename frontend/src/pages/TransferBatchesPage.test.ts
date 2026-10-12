@@ -16,40 +16,86 @@ import { materialTransferApi, normalizeMaterialTransfer } from '@/services/mater
 import { appPinia } from '@/stores/access'
 import { showToast } from '@/stores/toast'
 const live = vi.hoisted(() => ({ refresh: async () => {} }))
-const state = vi.hoisted(() => ({ auth: { isAdmin: true, isTeamAccount: false, currentUser: { id: 1, team_id: null as number | null } } }))
+const state = vi.hoisted(() => ({
+  auth: {
+    isAdmin: true,
+    isTeamAccount: false,
+    currentUser: { id: 1, team_id: null as number | null },
+  },
+}))
 vi.mock('@/composables/useLiveRefresh', async () => {
   const { ref } = await import('vue')
-  return { useLiveRefresh: (refresh: () => Promise<void>) => { live.refresh = refresh; return { message: ref(''), request: vi.fn() } } }
+  return {
+    useLiveRefresh: (refresh: () => Promise<void>) => {
+      live.refresh = refresh
+      return { message: ref(''), request: vi.fn() }
+    },
+  }
 })
 
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/teamDirectory', () => ({
-  useTeamDirectoryStore: () => ({ items: [{ id: 1, name: '库房', active: true }], refreshTeamDirectory: vi.fn() }),
+  useTeamDirectoryStore: () => ({
+    items: [{ id: 1, name: '库房', active: true }],
+    refreshTeamDirectory: vi.fn(),
+  }),
 }))
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
 
 const transfer = normalizeMaterialTransfer({
-  id: 1, batch_no: 'TL20260906000001', serial_no: 'FLOW-001',
-  source_team: { id: 1, name: '库房' }, next_team: { id: 2, name: '加工组' },
-  quantity: 80, weight: 12.5, status: 'pending', allowed_actions: [],
+  id: 1,
+  batch_no: 'TL20260906000001',
+  serial_no: 'FLOW-001',
+  source_team: { id: 1, name: '库房' },
+  next_team: { id: 2, name: '加工组' },
+  quantity: 80,
+  weight: 12.5,
+  status: 'pending',
+  allowed_actions: [],
 })
 const result = { items: [transfer], total: 1, page: 1, page_size: 10 }
 let wrapper: VueWrapper | undefined
 
 beforeEach(() => {
-  state.auth = reactive({ isAdmin: true, isTeamAccount: false, currentUser: { id: 1, team_id: null } })
+  state.auth = reactive({
+    isAdmin: true,
+    isTeamAccount: false,
+    currentUser: { id: 1, team_id: null },
+  })
   vi.spyOn(materialTransferApi, 'list').mockResolvedValue(result)
-  vi.spyOn(materialTransferApi, 'counts').mockResolvedValue({ all: 28, pending: 12, received: 14, voided: 2, dispatched: 0 })
+  vi.spyOn(materialTransferApi, 'counts').mockResolvedValue({
+    all: 28,
+    pending: 12,
+    received: 14,
+    voided: 2,
+    dispatched: 0,
+  })
 })
-afterEach(() => { wrapper?.unmount(); wrapper = undefined; vi.restoreAllMocks() })
+afterEach(() => {
+  wrapper?.unmount()
+  wrapper = undefined
+  vi.restoreAllMocks()
+})
 
 async function renderList(path = '/transfer-batches?status=pending') {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/transfer-batches', component: TransferBatchesPage }, { path: '/material-trace', component: { template: '<div />' } }] })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: { template: '<div />' } },
+      { path: '/transfer-batches', component: TransferBatchesPage },
+      { path: '/material-trace', component: { template: '<div />' } },
+    ],
+  })
   await router.push(path)
   wrapper = mount(TransferBatchesPage, {
     global: {
       plugins: [appPinia, router],
-      stubs: { MaterialDispatchDrawer: true, BarcodeCard: true, MaterialTransferDrawer: true, MaterialTransferFormDialog: true },
+      stubs: {
+        MaterialDispatchDrawer: true,
+        BarcodeCard: true,
+        MaterialTransferDrawer: true,
+        MaterialTransferFormDialog: true,
+      },
     },
   })
   await flushPromises()
@@ -59,30 +105,55 @@ async function renderList(path = '/transfer-batches?status=pending') {
 }
 
 function statusCount(page: VueWrapper, value: string) {
-  const select = page.findAllComponents(ElSelect).find(item => item.find('input[aria-label="转料状态"]').exists())!
-  const option = select.findAllComponents(ElOption).find(item => item.props('value') === value)!
+  const select = page
+    .findAllComponents(ElSelect)
+    .find((item) => item.find('input[aria-label="转料状态"]').exists())!
+  const option = select.findAllComponents(ElOption).find((item) => item.props('value') === value)!
   return String(option.props('label')).match(/（(.*)）$/)![1]
 }
 
 describe('transfer list refresh continuity', () => {
   it('exports all applied filtered pages, ignoring an unsubmitted search draft', async () => {
-    const page = await renderList('/transfer-batches?status=pending&page=2&query=APPLIED&source_team_id=1')
+    const page = await renderList(
+      '/transfer-batches?status=pending&page=2&query=APPLIED&source_team_id=1',
+    )
     await page.get('input[aria-label="搜索转料记录"]').setValue('UNSENT')
     const source = page.getComponent(TableExportButton).props('source')()!
-    vi.mocked(materialTransferApi.list).mockImplementation(async params => ({
-      items: Array.from({ length: params?.page === 1 ? 100 : 5 }, (_, index) => ({ ...transfer, id: index + (params?.page === 1 ? 1 : 101), serial_no: '000012' })),
-      total: 105, page: params?.page || 1, page_size: 100,
+    vi.mocked(materialTransferApi.list).mockImplementation(async (params) => ({
+      items: Array.from({ length: params?.page === 1 ? 100 : 5 }, (_, index) => ({
+        ...transfer,
+        id: index + (params?.page === 1 ? 1 : 101),
+        serial_no: '000012',
+      })),
+      total: 105,
+      page: params?.page || 1,
+      page_size: 100,
     }))
     const rows = await source.load(new AbortController().signal, () => undefined)
     expect(rows).toHaveLength(105)
     expect(rows[0].serial_no).toBe('000012')
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ query: 'APPLIED', status: 'pending', source_team_id: '1', page: 2, page_size: 100 }))
-    expect(source.fields.slice(0, 2).map((field: { key: string }) => field.key)).toEqual(['serial_no', 'transferred_at'])
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        query: 'APPLIED',
+        status: 'pending',
+        source_team_id: '1',
+        page: 2,
+        page_size: 100,
+      }),
+    )
+    expect(source.fields.slice(0, 2).map((field: { key: string }) => field.key)).toEqual([
+      'serial_no',
+      'transferred_at',
+    ])
     expect(source.fields.at(-1)!.key).toBe('batch_no')
   })
   it('discards a late batch link lookup after the account changes', async () => {
     let finish!: (value: Awaited<ReturnType<typeof materialDispatchApi.get>>) => void
-    vi.spyOn(materialDispatchApi, 'get').mockReturnValue(new Promise(resolve => { finish = resolve }))
+    vi.spyOn(materialDispatchApi, 'get').mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
     const page = await renderList('/transfer-batches?batch_no=CK-GROUP')
     state.auth.currentUser.id = 99
     await flushPromises()
@@ -98,12 +169,26 @@ describe('transfer list refresh continuity', () => {
     const table = page.get('.el-table').element
     await page.get('input[aria-label="搜索转料记录"]').setValue('未提交文字')
     await page.get('.batch-link').trigger('click')
-    vi.mocked(materialTransferApi.list).mockResolvedValue({ ...result, items: [{ ...transfer, quantity: 99 }], total: 30, page: 2 })
-    await live.refresh(); await flushPromises()
+    vi.mocked(materialTransferApi.list).mockResolvedValue({
+      ...result,
+      items: [{ ...transfer, quantity: 99 }],
+      total: 30,
+      page: 2,
+    })
+    await live.refresh()
+    await flushPromises()
     expect(page.get('.el-table').element).toBe(table)
-    expect(page.get('input[aria-label="搜索转料记录"]').element).toHaveProperty('value', '未提交文字')
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, query: 'APPLIED', status: 'pending' }))
-    expect(page.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, transfer })
+    expect(page.get('input[aria-label="搜索转料记录"]').element).toHaveProperty(
+      'value',
+      '未提交文字',
+    )
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 2, query: 'APPLIED', status: 'pending' }),
+    )
+    expect(page.getComponent(MaterialTransferDrawer).props()).toMatchObject({
+      modelValue: true,
+      transfer,
+    })
     expect(page.find('.transfers-page--detail, .detail-slot').exists()).toBe(false)
     expect(page.getComponent(MaterialTransferDrawer).attributes('docked')).toBeUndefined()
     expect(page.text()).toContain('99')
@@ -115,26 +200,96 @@ describe('transfer list refresh continuity', () => {
   })
   it('uses separate source and destination columns for receipts, transfers and external outbound records', async () => {
     const items = [
-      normalizeMaterialTransfer({ ...transfer, id: 2, batch_no: 'TL-RECEIPT', entry_kind: 'warehouse_receipt', status: 'received', next_team: { id: 1, name: '库房' } }),
-      normalizeMaterialTransfer({ ...transfer, id: 3, batch_no: 'TL-INTERNAL', source_team: { id: 7, name: '电镀' }, next_team: { id: 8, name: '检验' }, purpose_name: '去毛刺' }),
-      normalizeMaterialTransfer({ ...transfer, id: 4, batch_no: 'TL-EXTERNAL', entry_kind: 'warehouse_outbound', external_destination: '外协收料单位', purpose_name: '旧来源业务' }),
-      normalizeMaterialTransfer({ ...transfer, id: 5, batch_no: 'TL-SHIPMENT', entry_kind: 'inspection_shipment', source_team: { id: 8, name: '检验' }, external_destination: '客户收货仓', status: 'dispatched' }),
+      normalizeMaterialTransfer({
+        ...transfer,
+        id: 2,
+        batch_no: 'TL-RECEIPT',
+        entry_kind: 'warehouse_receipt',
+        status: 'received',
+        next_team: { id: 1, name: '库房' },
+      }),
+      normalizeMaterialTransfer({
+        ...transfer,
+        id: 3,
+        batch_no: 'TL-INTERNAL',
+        source_team: { id: 7, name: '电镀' },
+        next_team: { id: 8, name: '检验' },
+        purpose_name: '去毛刺',
+      }),
+      normalizeMaterialTransfer({
+        ...transfer,
+        id: 4,
+        batch_no: 'TL-EXTERNAL',
+        entry_kind: 'warehouse_outbound',
+        external_destination: '外协收料单位',
+        purpose_name: '旧来源业务',
+      }),
+      normalizeMaterialTransfer({
+        ...transfer,
+        id: 5,
+        batch_no: 'TL-SHIPMENT',
+        entry_kind: 'inspection_shipment',
+        source_team: { id: 8, name: '检验' },
+        external_destination: '客户收货仓',
+        status: 'dispatched',
+      }),
     ]
     vi.mocked(materialTransferApi.list).mockResolvedValue({ ...result, items, total: items.length })
     const page = await renderList('/transfer-batches')
-    const headings = page.findAll('.el-table__header th .cell').map(cell => cell.text())
-    expect(headings).toEqual(['流水号', '转出时间', '材质', '来源', '去向', '接收业务', '数量', '重量', '状态', '批次号'])
-    expect(page.findAll('.el-table__header th.el-table__cell').every(cell => cell.classes().includes('is-center'))).toBe(true)
+    const headings = page.findAll('.el-table__header th .cell').map((cell) => cell.text())
+    expect(headings).toEqual([
+      '流水号',
+      '转出时间',
+      '材质',
+      '来源',
+      '去向',
+      '接收业务',
+      '数量',
+      '重量',
+      '状态',
+      '批次号',
+    ])
+    expect(
+      page
+        .findAll('.el-table__header th.el-table__cell')
+        .every((cell) => cell.classes().includes('is-center')),
+    ).toBe(true)
     expect(page.getComponent({ name: 'ElTable' }).props('border')).toBe(true)
     const tableRows = page.findAll('.el-table__body .el-table__row')
-    expect(tableRows.every(row => row.findAll('td').every(cell => cell.classes().includes('is-center')))).toBe(true)
-    expect(tableRows.map(row => row.get('.transfer-source-cell').text())).toEqual(['库房手工入库', '电镀', '库房', '检验'])
-    expect(tableRows.map(row => row.get('.transfer-destination-cell').text())).toEqual(['库房', '检验', '外协收料单位', '客户收货仓'])
-    expect(tableRows.map(row => row.get('.transfer-purpose-cell').text())).toEqual(['未指定', '去毛刺', '—', '—'])
-    expect(tableRows.map(row => row.get('.transfer-status-cell').text())).toEqual(['已入库', '待签收', '待出库', '已发货'])
+    expect(
+      tableRows.every((row) =>
+        row.findAll('td').every((cell) => cell.classes().includes('is-center')),
+      ),
+    ).toBe(true)
+    expect(tableRows.map((row) => row.get('.transfer-source-cell').text())).toEqual([
+      '库房手工入库',
+      '电镀',
+      '库房',
+      '检验',
+    ])
+    expect(tableRows.map((row) => row.get('.transfer-destination-cell').text())).toEqual([
+      '库房',
+      '检验',
+      '外协收料单位',
+      '客户收货仓',
+    ])
+    expect(tableRows.map((row) => row.get('.transfer-purpose-cell').text())).toEqual([
+      '未指定',
+      '去毛刺',
+      '—',
+      '—',
+    ])
+    expect(tableRows.map((row) => row.get('.transfer-status-cell').text())).toEqual([
+      '已入库',
+      '待签收',
+      '待出库',
+      '已发货',
+    ])
     expect(page.find('.transfer-flow, .receipt-flow, .flow-track').exists()).toBe(false)
     const mobileRows = page.findAll('.mobile-transfer-parties')
-    expect(mobileRows.map(row => row.findAll('small').map(label => label.text()))).toEqual(Array.from({ length: 4 }, () => ['来源', '去向', '接收业务']))
+    expect(mobileRows.map((row) => row.findAll('small').map((label) => label.text()))).toEqual(
+      Array.from({ length: 4 }, () => ['来源', '去向', '接收业务']),
+    )
     expect(mobileRows[0].text()).toContain('库房手工入库')
     expect(mobileRows[1].text()).toContain('去毛刺')
     expect(mobileRows[2].text()).toContain('外协收料单位')
@@ -142,7 +297,12 @@ describe('transfer list refresh continuity', () => {
   })
 
   it('separates quantities and weights into columns while keeping the timestamp on one line', async () => {
-    vi.mocked(materialTransferApi.list).mockResolvedValue({ ...result, items: [{ ...transfer, quantity: 12345, weight: 1234.567, transferred_at: '2026-09-14T01:36:00Z' }] })
+    vi.mocked(materialTransferApi.list).mockResolvedValue({
+      ...result,
+      items: [
+        { ...transfer, quantity: 12345, weight: 1234.567, transferred_at: '2026-09-14T01:36:00Z' },
+      ],
+    })
     const page = await renderList()
     const row = page.get('.el-table__body .el-table__row')
     expect(row.get('td.transfer-quantity-cell').text()).toBe('12,345 件')
@@ -157,40 +317,65 @@ describe('transfer list refresh continuity', () => {
   it('still opens the original detail from a source cell or the batch link', async () => {
     const page = await renderList()
     await page.get('.el-table__body .transfer-source-cell').trigger('click')
-    expect(page.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: transfer.batch_no })
+    expect(page.getComponent(MaterialTransferDrawer).props()).toMatchObject({
+      modelValue: true,
+      batchNo: transfer.batch_no,
+    })
     page.getComponent(MaterialTransferDrawer).vm.$emit('update:modelValue', false)
     await flushPromises()
     await page.get('.batch-link').trigger('click')
-    expect(page.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, batchNo: transfer.batch_no })
+    expect(page.getComponent(MaterialTransferDrawer).props()).toMatchObject({
+      modelValue: true,
+      batchNo: transfer.batch_no,
+    })
   })
 
   it('defaults to ten requested rows with selectable page sizes', async () => {
-    vi.mocked(materialTransferApi.list).mockResolvedValue({ items: Array.from({ length: 10 }, (_, index) => ({ ...transfer, id: index + 1, batch_no: `TL${index + 1}` })), total: 50, page: 1, page_size: 10 })
+    vi.mocked(materialTransferApi.list).mockResolvedValue({
+      items: Array.from({ length: 10 }, (_, index) => ({
+        ...transfer,
+        id: index + 1,
+        batch_no: `TL${index + 1}`,
+      })),
+      total: 50,
+      page: 1,
+      page_size: 10,
+    })
     const page = await renderList('/transfer-batches')
     expect(page.findAll('.el-table__body .el-table__row')).toHaveLength(10)
     expect(page.getComponent(ElPagination).props('pageSizes')).toEqual([10, 20, 50, 100])
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, page_size: 10 }))
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 1, page_size: 10 }),
+    )
     expect(page.getComponent({ name: 'ElTable' }).props('height')).toBeUndefined()
     page.getComponent(ElPagination).vm.$emit('size-change', 20)
     await flushPromises()
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, page_size: 20 }))
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 1, page_size: 20 }),
+    )
     expect(page.vm.$route.query.page_size).toBe('20')
   })
   async function choose(page: VueWrapper, label: string, value: string) {
-    const select = page.findAllComponents(ElSelect).find(component => component.props('ariaLabel') === label)!
+    const select = page
+      .findAllComponents(ElSelect)
+      .find((component) => component.props('ariaLabel') === label)!
     select.vm.$emit('update:modelValue', value)
     page.getComponent(FilterDialog).vm.$emit('apply')
     await flushPromises()
   }
 
   it('does not intercept scanner input or open documents from F2 on the records page', async () => {
-    const page = await renderList('/transfer-batches?query=001440&search_mode=exact&search_field=customer_code')
+    const page = await renderList(
+      '/transfer-batches?query=001440&search_mode=exact&search_field=customer_code',
+    )
     vi.spyOn(materialDispatchApi, 'get').mockResolvedValue(dispatchFixture())
     vi.spyOn(materialTransferApi, 'get').mockResolvedValue(transfer)
     vi.spyOn(materialTransferApi, 'confirm').mockResolvedValue(transfer)
-    for (const code of ['CK-GROUP', 'TL000001']) for (const suffix of ['Enter', 'Tab']) {
-      for (const key of [...code, suffix]) window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
-    }
+    for (const code of ['CK-GROUP', 'TL000001'])
+      for (const suffix of ['Enter', 'Tab']) {
+        for (const key of [...code, suffix])
+          window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+      }
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }))
     await flushPromises()
     expect(materialDispatchApi.get).not.toHaveBeenCalled()
@@ -200,15 +385,24 @@ describe('transfer list refresh continuity', () => {
     expect(page.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
     expect(page.find('[aria-label="扫码查询"]').exists()).toBe(false)
     expect(document.querySelector('.transfer-scan-popover')).toBeNull()
-    expect(page.vm.$route.query).toMatchObject({ query: '001440', search_mode: 'exact', search_field: 'customer_code' })
+    expect(page.vm.$route.query).toMatchObject({
+      query: '001440',
+      search_mode: 'exact',
+      search_field: 'customer_code',
+    })
   })
 
   it('opens the retained batch link without replacing list filters', async () => {
     vi.spyOn(materialTransferApi, 'get').mockResolvedValue(transfer)
     const page = await renderList('/transfer-batches?batch_no=tl000001&status=pending&query=0001')
     expect(materialTransferApi.get).toHaveBeenCalledWith('TL000001')
-    expect(page.getComponent(MaterialTransferDrawer).props()).toMatchObject({ modelValue: true, transfer })
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'pending', query: '0001' }))
+    expect(page.getComponent(MaterialTransferDrawer).props()).toMatchObject({
+      modelValue: true,
+      transfer,
+    })
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'pending', query: '0001' }),
+    )
   })
 
   it('keeps ordinary historical group links usable inside the list page', async () => {
@@ -217,7 +411,10 @@ describe('transfer list refresh continuity', () => {
     const page = await renderList('/transfer-batches?batch_no=CK-GROUP')
     expect(materialDispatchApi.get).toHaveBeenCalledWith('CK-GROUP')
     expect(materialTransferApi.get).not.toHaveBeenCalled()
-    expect(page.getComponent(MaterialDispatchDrawer).props()).toMatchObject({ modelValue: true, dispatchNo: 'CK-GROUP' })
+    expect(page.getComponent(MaterialDispatchDrawer).props()).toMatchObject({
+      modelValue: true,
+      dispatchNo: 'CK-GROUP',
+    })
   })
 
   it('reports a missing linked batch without opening a scanner or document', async () => {
@@ -229,24 +426,55 @@ describe('transfer list refresh continuity', () => {
   })
 
   it('restores the same field, mode and material type for list and status totals from a shared URL', async () => {
-    const page = await renderList('/transfer-batches?query=001440&search_mode=exact&search_field=customer_code&material_type=finished&page=3&page_size=10&status=received')
-    const scope = { query: '001440', search_mode: 'exact', search_field: 'customer_code', material_type: 'finished' }
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ ...scope, page: 3, page_size: 10, status: 'received' }))
+    const page = await renderList(
+      '/transfer-batches?query=001440&search_mode=exact&search_field=customer_code&material_type=finished&page=3&page_size=10&status=received',
+    )
+    const scope = {
+      query: '001440',
+      search_mode: 'exact',
+      search_field: 'customer_code',
+      material_type: 'finished',
+    }
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ...scope, page: 3, page_size: 10, status: 'received' }),
+    )
     expect(materialTransferApi.counts).toHaveBeenLastCalledWith(expect.objectContaining(scope))
-    expect(page.get('input[aria-label="搜索转料记录"]').attributes('placeholder')).toBe('搜索客户代码')
+    expect(page.get('input[aria-label="搜索转料记录"]').attributes('placeholder')).toBe(
+      '搜索客户代码',
+    )
     page.getComponent(ElPagination).vm.$emit('current-change', 4)
     await flushPromises()
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ ...scope, page: 4 }))
-    expect(page.vm.$route.query).toMatchObject({ search_mode: 'exact', search_field: 'customer_code', material_type: 'finished', page: '4' })
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ...scope, page: 4 }),
+    )
+    expect(page.vm.$route.query).toMatchObject({
+      search_mode: 'exact',
+      search_field: 'customer_code',
+      material_type: 'finished',
+      page: '4',
+    })
     page.getComponent(ElPagination).vm.$emit('size-change', 50)
     await flushPromises()
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ ...scope, page: 1, page_size: 50 }))
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ...scope, page: 1, page_size: 50 }),
+    )
   })
 
   it('preserves contains/all for existing URLs and rejects unknown search options', async () => {
-    const page = await renderList('/transfer-batches?query=旧备注&search_mode=typo&search_field=unknown&material_type=invalid')
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ query: '旧备注', search_mode: 'contains', search_field: 'all', material_type: undefined }))
-    expect(page.get('input[aria-label="搜索转料记录"]').attributes('placeholder')).toContain('班组或转料人')
+    const page = await renderList(
+      '/transfer-batches?query=旧备注&search_mode=typo&search_field=unknown&material_type=invalid',
+    )
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        query: '旧备注',
+        search_mode: 'contains',
+        search_field: 'all',
+        material_type: undefined,
+      }),
+    )
+    expect(page.get('input[aria-label="搜索转料记录"]').attributes('placeholder')).toContain(
+      '班组或转料人',
+    )
     await page.get('form').trigger('submit')
     await flushPromises()
     expect(page.vm.$route.query).toEqual({ query: '旧备注' })
@@ -258,34 +486,79 @@ describe('transfer list refresh continuity', () => {
     expect(page.vm.$route.query.search_mode).toBe('prefix')
     await choose(page, '搜索字段', 'material_name')
     await choose(page, '筛选物料类型', 'sludge')
-    const scope = { query: 'AL%_', search_mode: 'prefix', search_field: 'material_name', material_type: 'sludge', source_team_id: '1' }
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ ...scope, page: 1 }))
+    const scope = {
+      query: 'AL%_',
+      search_mode: 'prefix',
+      search_field: 'material_name',
+      material_type: 'sludge',
+      source_team_id: '1',
+    }
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ...scope, page: 1 }),
+    )
     expect(materialTransferApi.counts).toHaveBeenLastCalledWith(expect.objectContaining(scope))
-    expect(page.vm.$route.query).toMatchObject({ query: 'AL%_', search_mode: 'prefix', search_field: 'material_name', material_type: 'sludge' })
-    page.getComponent(FilterDialog).vm.$emit('reset'); page.getComponent(FilterDialog).vm.$emit('apply')
+    expect(page.vm.$route.query).toMatchObject({
+      query: 'AL%_',
+      search_mode: 'prefix',
+      search_field: 'material_name',
+      material_type: 'sludge',
+    })
+    page.getComponent(FilterDialog).vm.$emit('reset')
+    page.getComponent(FilterDialog).vm.$emit('apply')
     await flushPromises()
-    expect(materialTransferApi.counts).toHaveBeenLastCalledWith({ query: undefined, search_mode: 'contains', search_field: 'all', material_type: undefined, source_team_id: undefined, next_team_id: undefined })
+    expect(materialTransferApi.counts).toHaveBeenLastCalledWith({
+      query: undefined,
+      search_mode: 'contains',
+      search_field: 'all',
+      material_type: undefined,
+      source_team_id: undefined,
+      next_team_id: undefined,
+    })
     expect(page.vm.$route.query).toEqual({})
   })
 
   it('restores filters after route navigation without keeping stale fields or totals', async () => {
-    const page = await renderList('/transfer-batches?query=A&search_mode=exact&search_field=batch_no&material_type=finished')
-    await page.vm.$router.push('/transfer-batches?query=B&search_mode=prefix&search_field=source_batch_no&material_type=waste&page=2')
+    const page = await renderList(
+      '/transfer-batches?query=A&search_mode=exact&search_field=batch_no&material_type=finished',
+    )
+    await page.vm.$router.push(
+      '/transfer-batches?query=B&search_mode=prefix&search_field=source_batch_no&material_type=waste&page=2',
+    )
     await flushPromises()
-    const scope = { query: 'B', search_mode: 'prefix', search_field: 'source_batch_no', material_type: 'waste' }
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ ...scope, page: 2 }))
+    const scope = {
+      query: 'B',
+      search_mode: 'prefix',
+      search_field: 'source_batch_no',
+      material_type: 'waste',
+    }
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ...scope, page: 2 }),
+    )
     expect(materialTransferApi.counts).toHaveBeenLastCalledWith(expect.objectContaining(scope))
-    expect((page.get('input[aria-label="搜索转料记录"]').element as HTMLInputElement).value).toBe('B')
+    expect((page.get('input[aria-label="搜索转料记录"]').element as HTMLInputElement).value).toBe(
+      'B',
+    )
     await page.vm.$router.push('/transfer-batches?query=旧备注')
     await flushPromises()
-    expect(materialTransferApi.counts).toHaveBeenLastCalledWith(expect.objectContaining({ query: '旧备注', search_mode: 'contains', search_field: 'all', material_type: undefined }))
+    expect(materialTransferApi.counts).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        query: '旧备注',
+        search_mode: 'contains',
+        search_field: 'all',
+        material_type: undefined,
+      }),
+    )
   })
 
   it('keeps the existing table mounted while refreshing its data', async () => {
     const page = await renderList()
     const table = page.get('.el-table').element
     let finish!: (value: typeof result) => void
-    vi.mocked(materialTransferApi.list).mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    vi.mocked(materialTransferApi.list).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
 
     await page.get('form').trigger('submit')
     expect(page.get('.table-pane').attributes('aria-busy')).toBe('true')
@@ -302,12 +575,22 @@ describe('transfer list refresh continuity', () => {
   it('requeries the active filter and total after a drawer action changes a record', async () => {
     const page = await renderList()
     vi.mocked(materialTransferApi.list).mockResolvedValueOnce({ ...result, items: [], total: 0 })
-    vi.mocked(materialTransferApi.counts).mockResolvedValueOnce({ all: 28, pending: 11, received: 15, voided: 2, dispatched: 0 })
+    vi.mocked(materialTransferApi.counts).mockResolvedValueOnce({
+      all: 28,
+      pending: 11,
+      received: 15,
+      voided: 2,
+      dispatched: 0,
+    })
 
-    page.getComponent(MaterialTransferDrawer).vm.$emit('changed', { ...transfer, status: 'received', locked: true })
+    page
+      .getComponent(MaterialTransferDrawer)
+      .vm.$emit('changed', { ...transfer, status: 'received', locked: true })
     await flushPromises()
 
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'pending' }))
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'pending' }),
+    )
     expect(page.text()).toContain('共 0 条')
     expect(page.text()).not.toContain('FLOW-001')
     expect(page.text()).toContain('暂无转料记录')
@@ -321,7 +604,9 @@ describe('transfer list refresh continuity', () => {
     expect(statusCount(page, 'pending')).toBe('12')
     await choose(page, '转料状态', 'received')
     await flushPromises()
-    expect(materialTransferApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'received', page: 1 }))
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'received', page: 1 }),
+    )
     expect(materialTransferApi.counts).toHaveBeenCalledTimes(1)
     expect(page.vm.$route.query.status).toBe('received')
     expect(statusCount(page, 'all')).toBe('28')
@@ -333,15 +618,25 @@ describe('transfer list refresh continuity', () => {
     let finishOld!: (value: Counts) => void
     let finishNew!: (value: Counts) => void
     vi.mocked(materialTransferApi.counts)
-      .mockReturnValueOnce(new Promise((resolve) => { finishOld = resolve }))
-      .mockReturnValueOnce(new Promise((resolve) => { finishNew = resolve }))
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishOld = resolve
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishNew = resolve
+        }),
+      )
     await page.get('input[aria-label="搜索转料记录"]').setValue('OLD')
     await page.get('form').trigger('submit')
     await flushPromises()
     await page.get('input[aria-label="搜索转料记录"]').setValue('NEW')
     await page.get('form').trigger('submit')
     await flushPromises()
-    expect(materialTransferApi.counts).toHaveBeenLastCalledWith(expect.objectContaining({ query: 'NEW' }))
+    expect(materialTransferApi.counts).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: 'NEW' }),
+    )
     finishNew({ all: 7, pending: 3, received: 4, voided: 0, dispatched: 0 })
     await flushPromises()
     finishOld({ all: 18, pending: 9, received: 7, voided: 2, dispatched: 0 })

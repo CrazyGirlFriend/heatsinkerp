@@ -14,17 +14,42 @@ import { currentUser, isAuthenticated, logout, refreshCurrentUser } from '@/stor
 import { teamDirectory, refreshTeamDirectory } from '@/stores/teamDirectory'
 import { appPinia, canEnterSite } from '@/stores/access'
 import { useSidebarStore } from '@/stores/sidebar'
-import { resolveTeamWorkspaceSection, teamWorkspaceProfile, teamWorkspaceSections, teamCanReallocate } from '@/config/teamWorkspaces'
+import {
+  resolveTeamWorkspaceSection,
+  teamWorkspaceProfile,
+  teamWorkspaceSections,
+  teamCanReallocate,
+} from '@/config/teamWorkspaces'
 
-const teamLabel = computed(() => currentUser.value?.role === 'ADMIN' ? '系统管理员' : teamDirectory.items.find(team => String(team.id) === String(currentUser.value?.team_id))?.name || currentUser.value?.team?.name || '未配置班组')
+const teamLabel = computed(() =>
+  currentUser.value?.role === 'ADMIN'
+    ? '系统管理员'
+    : teamDirectory.items.find((team) => String(team.id) === String(currentUser.value?.team_id))
+        ?.name ||
+      currentUser.value?.team?.name ||
+      '未配置班组',
+)
 const route = useRoute()
 const router = useRouter()
 const breadcrumb = computed(() => {
   if (route.path.startsWith('/team-workspaces/')) {
-    const team = teamDirectory.items.find(item => String(item.id) === String(route.params.teamId))
-    const managesWarehouse = currentUser.value?.role === 'ADMIN' || currentUser.value?.role === 'TEAM' && currentUser.value.active && String(currentUser.value.team_id) === String(team?.id)
-    const section = resolveTeamWorkspaceSection(route.query, team?.code === 'FACTORY-WAREHOUSE' && team?.kind === 'warehouse', managesWarehouse, teamCanReallocate(team))
-    return ['班组工作台', team?.name || teamWorkspaceProfile(team?.code)?.name || '班组', teamWorkspaceSections.find(item => item.value === section)!.label]
+    const team = teamDirectory.items.find((item) => String(item.id) === String(route.params.teamId))
+    const managesWarehouse =
+      currentUser.value?.role === 'ADMIN' ||
+      (currentUser.value?.role === 'TEAM' &&
+        currentUser.value.active &&
+        String(currentUser.value.team_id) === String(team?.id))
+    const section = resolveTeamWorkspaceSection(
+      route.query,
+      team?.code === 'FACTORY-WAREHOUSE' && team?.kind === 'warehouse',
+      managesWarehouse,
+      teamCanReallocate(team),
+    )
+    return [
+      '班组工作台',
+      team?.name || teamWorkspaceProfile(team?.code)?.name || '班组',
+      teamWorkspaceSections.find((item) => item.value === section)!.label,
+    ]
   }
   const title = String(route.meta.title || '物料流转')
   if (route.path === '/factory-analysis') return ['全厂总览', title]
@@ -38,14 +63,23 @@ const { compact: compactSidebar } = storeToRefs(useSidebarStore(appPinia))
 const sidebarElement = ref<HTMLElement | null>(null)
 const mobileMenuButton = ref<HTMLButtonElement | null>(null)
 const mainContent = ref<HTMLElement | null>(null)
-const mobileViewport = ref(typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 640px)').matches)
+const mobileViewport = ref(
+  typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 640px)').matches,
+)
 const mobileDrawerOpen = computed(() => mobileViewport.value && mobileMenuOpen.value)
 const sidebarCompact = computed(() => compactSidebar.value && !mobileViewport.value)
 const currentLocation = computed(() => breadcrumb.value.slice(-2).join(' · '))
 let viewportQuery: MediaQueryList | undefined
 async function refreshWorkspaceIdentity(): Promise<void> {
   if (!isAuthenticated.value || !canEnterSite.value) return
-  try { await refreshCurrentUser(); await refreshTeamDirectory() } catch { /* Retry on navigation or the next focus. */ }
+  try {
+    await refreshCurrentUser()
+    await refreshTeamDirectory()
+  } catch {
+    /* Retry on navigation or the next focus. */
+  }
 }
 onMounted(() => window.addEventListener('focus', refreshWorkspaceIdentity))
 onBeforeUnmount(() => window.removeEventListener('focus', refreshWorkspaceIdentity))
@@ -59,7 +93,11 @@ async function toggleMobileMenu(): Promise<void> {
   mobileMenuOpen.value = !mobileMenuOpen.value
   if (mobileMenuOpen.value) {
     await nextTick()
-    sidebarElement.value?.querySelector<HTMLElement>('a, button, [role="menubar"][tabindex], [role="menu"][tabindex], [role="menuitem"][tabindex]')?.focus()
+    sidebarElement.value
+      ?.querySelector<HTMLElement>(
+        'a, button, [role="menubar"][tabindex], [role="menu"][tabindex], [role="menuitem"][tabindex]',
+      )
+      ?.focus()
   }
 }
 
@@ -81,12 +119,23 @@ function handleSidebarKeydown(event: KeyboardEvent): void {
     closeMobileMenu()
   }
   if (event.key !== 'Tab') return
-  const controls = Array.from(sidebarElement.value?.querySelectorAll<HTMLElement>('a, button, [role="menubar"][tabindex], [role="menu"][tabindex], [role="menuitem"][tabindex]') ?? [])
-    .filter((element) => element.getClientRects().length > 0 && element.getAttribute('aria-disabled') !== 'true')
+  const controls = Array.from(
+    sidebarElement.value?.querySelectorAll<HTMLElement>(
+      'a, button, [role="menubar"][tabindex], [role="menu"][tabindex], [role="menuitem"][tabindex]',
+    ) ?? [],
+  ).filter(
+    (element) =>
+      element.getClientRects().length > 0 && element.getAttribute('aria-disabled') !== 'true',
+  )
   const first = controls[0]
   const last = controls.at(-1)
-  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
-  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last?.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first?.focus()
+  }
 }
 
 onMounted(() => {
@@ -111,7 +160,8 @@ watch(
 
 watch(isAuthenticated, (authenticated) => {
   if (!authenticated) profileOpen.value = false
-  if (!authenticated && canEnterSite.value && !['login', 'access'].includes(String(route.name))) void router.replace('/login')
+  if (!authenticated && canEnterSite.value && !['login', 'access'].includes(String(route.name)))
+    void router.replace('/login')
 })
 
 const isAuthenticationPage = computed(() => ['login', 'access'].includes(String(route.name)))
@@ -129,9 +179,11 @@ async function signOut(): Promise<void> {
 
 function handleUserCommand(command: string | number | object): void {
   if (command === 'logout') void signOut()
-  if (command === 'profile') { mobileMenuOpen.value = false; profileOpen.value = true }
+  if (command === 'profile') {
+    mobileMenuOpen.value = false
+    profileOpen.value = true
+  }
 }
-
 </script>
 
 <template>
@@ -144,49 +196,145 @@ function handleUserCommand(command: string | number | object): void {
       <RouterView />
     </template>
 
-    <div v-else class="app-shell app-shell--business" :class="{ 'app-shell--compact': compactSidebar }">
-      <a class="skip-link" href="#main-content" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined" @click.prevent="focusMainContent">跳到正文</a>
+    <div
+      v-else
+      class="app-shell app-shell--business"
+      :class="{ 'app-shell--compact': compactSidebar }"
+    >
+      <a
+        class="skip-link"
+        href="#main-content"
+        :inert="mobileDrawerOpen ? true : undefined"
+        :aria-hidden="mobileDrawerOpen ? true : undefined"
+        @click.prevent="focusMainContent"
+        >跳到正文</a
+      >
 
       <header v-if="mobileViewport || compactSidebar" class="topbar">
-        <button ref="mobileMenuButton" class="topbar__menu" type="button" :aria-label="mobileMenuOpen ? '关闭导航' : '打开导航'" :aria-expanded="mobileMenuOpen" aria-controls="factory-sidebar" :title="mobileMenuOpen ? '关闭导航' : '打开导航'" @click="toggleMobileMenu">
+        <button
+          ref="mobileMenuButton"
+          class="topbar__menu"
+          type="button"
+          :aria-label="mobileMenuOpen ? '关闭导航' : '打开导航'"
+          :aria-expanded="mobileMenuOpen"
+          aria-controls="factory-sidebar"
+          :title="mobileMenuOpen ? '关闭导航' : '打开导航'"
+          @click="toggleMobileMenu"
+        >
           <Menu />
         </button>
-        <span class="topbar__location" :title="currentLocation" aria-label="当前位置" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined">{{ currentLocation }}</span>
+        <span
+          class="topbar__location"
+          :title="currentLocation"
+          aria-label="当前位置"
+          :inert="mobileDrawerOpen ? true : undefined"
+          :aria-hidden="mobileDrawerOpen ? true : undefined"
+          >{{ currentLocation }}</span
+        >
       </header>
 
-      <aside id="factory-sidebar" ref="sidebarElement" class="sidebar" :class="{ 'sidebar--open': mobileMenuOpen }" :inert="mobileViewport && !mobileMenuOpen ? true : undefined" :aria-hidden="mobileViewport && !mobileMenuOpen ? true : undefined" @keydown="handleSidebarKeydown">
+      <aside
+        id="factory-sidebar"
+        ref="sidebarElement"
+        class="sidebar"
+        :class="{ 'sidebar--open': mobileMenuOpen }"
+        :inert="mobileViewport && !mobileMenuOpen ? true : undefined"
+        :aria-hidden="mobileViewport && !mobileMenuOpen ? true : undefined"
+        @keydown="handleSidebarKeydown"
+      >
         <div class="brand-mark" aria-label="热沉事业部综合管理系统">
-          <img v-if="sidebarCompact" class="brand-mark__icon" src="/brand/attl-official-favicon.ico" alt="安泰天龙" width="32" height="32" />
-          <img v-else class="brand-mark__logo" src="/brand/attl-official-logo.png" alt="中国钢研 安泰科技 · 安泰天龙" width="1017" height="143" />
+          <img
+            v-if="sidebarCompact"
+            class="brand-mark__icon"
+            src="/brand/attl-official-favicon.ico"
+            alt="安泰天龙"
+            width="32"
+            height="32"
+          />
+          <img
+            v-else
+            class="brand-mark__logo"
+            src="/brand/attl-official-logo.png"
+            alt="中国钢研 安泰科技 · 安泰天龙"
+            width="1017"
+            height="143"
+          />
         </div>
         <FactorySidebar :compact="sidebarCompact" glass illustrated />
 
         <div class="sidebar__footer">
           <div class="sidebar__account">
-            <ElDropdown placement="top-start" trigger="click" :teleported="false" popper-class="factory-account-menu" @command="handleUserCommand">
-              <button class="sidebar__user" type="button" :title="userLabel" :aria-label="`${userLabel}，打开账户菜单`">
-                <AccountAvatar :avatar-key="currentUser?.avatar_key" :name="currentUser?.display_name || currentUser?.username" :size="28" />
-                <span v-if="!sidebarCompact" class="sidebar__user-label">{{ currentUser?.display_name || currentUser?.username }}</span>
+            <ElDropdown
+              placement="top-start"
+              trigger="click"
+              :teleported="false"
+              popper-class="factory-account-menu"
+              @command="handleUserCommand"
+            >
+              <button
+                class="sidebar__user"
+                type="button"
+                :title="userLabel"
+                :aria-label="`${userLabel}，打开账户菜单`"
+              >
+                <AccountAvatar
+                  :avatar-key="currentUser?.avatar_key"
+                  :name="currentUser?.display_name || currentUser?.username"
+                  :size="28"
+                />
+                <span v-if="!sidebarCompact" class="sidebar__user-label">{{
+                  currentUser?.display_name || currentUser?.username
+                }}</span>
                 <ElIcon v-if="!sidebarCompact" class="sidebar__chevron"><ArrowDown /></ElIcon>
               </button>
               <template #dropdown>
                 <ElDropdownMenu>
                   <ElDropdownItem disabled>{{ teamLabel }}</ElDropdownItem>
-                  <ElDropdownItem command="profile"><ElIcon><User /></ElIcon>个人信息</ElDropdownItem>
-                  <ElDropdownItem command="logout"><ElIcon><SwitchButton /></ElIcon>退出登录</ElDropdownItem>
+                  <ElDropdownItem command="profile"
+                    ><ElIcon><User /></ElIcon>个人信息</ElDropdownItem
+                  >
+                  <ElDropdownItem command="logout"
+                    ><ElIcon><SwitchButton /></ElIcon>退出登录</ElDropdownItem
+                  >
                 </ElDropdownMenu>
               </template>
             </ElDropdown>
           </div>
-          <button class="sidebar__collapse" type="button" :aria-label="compactSidebar ? '展开侧栏' : '收起侧栏'" :aria-expanded="!compactSidebar" aria-controls="factory-sidebar" :title="compactSidebar ? '展开侧栏' : '收起侧栏'" @click="compactSidebar = !compactSidebar"><Fold /></button>
+          <button
+            class="sidebar__collapse"
+            type="button"
+            :aria-label="compactSidebar ? '展开侧栏' : '收起侧栏'"
+            :aria-expanded="!compactSidebar"
+            aria-controls="factory-sidebar"
+            :title="compactSidebar ? '展开侧栏' : '收起侧栏'"
+            @click="compactSidebar = !compactSidebar"
+          >
+            <Fold />
+          </button>
         </div>
       </aside>
 
       <Transition name="overlay-fade">
-        <button v-if="mobileMenuOpen" class="sidebar-mask" type="button" aria-label="关闭导航" title="关闭导航" tabindex="-1" @click="closeMobileMenu" />
+        <button
+          v-if="mobileMenuOpen"
+          class="sidebar-mask"
+          type="button"
+          aria-label="关闭导航"
+          title="关闭导航"
+          tabindex="-1"
+          @click="closeMobileMenu"
+        />
       </Transition>
 
-      <main id="main-content" ref="mainContent" class="main-content" :aria-label="currentLocation" tabindex="-1" :inert="mobileDrawerOpen ? true : undefined" :aria-hidden="mobileDrawerOpen ? true : undefined">
+      <main
+        id="main-content"
+        ref="mainContent"
+        class="main-content"
+        :aria-label="currentLocation"
+        tabindex="-1"
+        :inert="mobileDrawerOpen ? true : undefined"
+        :aria-hidden="mobileDrawerOpen ? true : undefined"
+      >
         <RouterView v-slot="{ Component }">
           <Transition name="page-shift">
             <component :is="Component" :key="route.path" />
@@ -199,29 +347,139 @@ function handleUserCommand(command: string | number | object): void {
 </template>
 
 <style scoped>
-.skip-link { position: fixed; z-index: 110; top: 8px; left: 8px; padding: 9px 13px; border-radius: 4px; color: #fff; background: var(--navy-active); transform: translateY(calc(-100% - 12px)); }
-.skip-link:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; transform: translateY(0); }
-.main-content:focus { outline: none; }
-.app-shell--business { --sidebar-width: 220px; --topbar-height: 0px; color: var(--text); font-family: var(--font-body); }
-.app-shell--business.app-shell--compact { --sidebar-width: 76px; --topbar-height: 40px; }
-.app-shell--business .brand-mark { display: flex; flex-shrink: 0; height: 56px; justify-content: center; padding-inline: 14px; border-right: 0; }
-.brand-mark__logo { display: block; width: 100%; height: auto; object-fit: contain; }
-.brand-mark__icon { display: block; flex: none; width: 32px; height: 32px; object-fit: contain; }
-.topbar__location { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; }
-.app-shell--business .sidebar { grid-row: 1 / -1; background: #fff; }
-.sidebar__footer { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 4px; flex-shrink: 0; margin: 0 12px; padding: 8px 0; border-top: 1px solid var(--line); }
-.sidebar__user { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 0 8px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; font: inherit; font-size: 13px; text-align: left; }
-.sidebar__user:hover, .app-shell--business .sidebar__collapse:hover { color: var(--primary); background: var(--primary-soft); }
-.sidebar__user > .el-icon { flex-shrink: 0; font-size: 18px; }
-.sidebar__account { min-width: 0; }
-.sidebar__account :deep(.el-dropdown) { display: flex; width: 100%; }
-.sidebar__user-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar__user { gap: 6px; padding-inline: 4px; }
-.sidebar__user > .sidebar__chevron { margin-left: auto; font-size: 12px; }
-.app-shell--business .sidebar__collapse { width: 32px; height: 36px; padding: 0; justify-content: center; border-radius: 6px; }
-.app-shell--compact .sidebar__footer { grid-template-columns: minmax(0, 1fr); margin-inline: 8px; }
-.app-shell--compact .sidebar__user, .app-shell--compact .sidebar__collapse { justify-content: center; width: 100%; }
-.app-shell--business.app-shell--compact .brand-mark { padding: 0; }
+.skip-link {
+  position: fixed;
+  z-index: 110;
+  top: 8px;
+  left: 8px;
+  padding: 9px 13px;
+  border-radius: 4px;
+  color: #fff;
+  background: var(--navy-active);
+  transform: translateY(calc(-100% - 12px));
+}
+.skip-link:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+  transform: translateY(0);
+}
+.main-content:focus {
+  outline: none;
+}
+.app-shell--business {
+  --sidebar-width: 220px;
+  --topbar-height: 0px;
+  color: var(--text);
+  font-family: var(--font-body);
+}
+.app-shell--business.app-shell--compact {
+  --sidebar-width: 76px;
+  --topbar-height: 40px;
+}
+.app-shell--business .brand-mark {
+  display: flex;
+  flex-shrink: 0;
+  height: 56px;
+  justify-content: center;
+  padding-inline: 14px;
+  border-right: 0;
+}
+.brand-mark__logo {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+.brand-mark__icon {
+  display: block;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+.topbar__location {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+}
+.app-shell--business .sidebar {
+  grid-row: 1 / -1;
+  background: #fff;
+}
+.sidebar__footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 4px;
+  flex-shrink: 0;
+  margin: 0 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.sidebar__user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.sidebar__user:hover,
+.app-shell--business .sidebar__collapse:hover {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+.sidebar__user > .el-icon {
+  flex-shrink: 0;
+  font-size: 18px;
+}
+.sidebar__account {
+  min-width: 0;
+}
+.sidebar__account :deep(.el-dropdown) {
+  display: flex;
+  width: 100%;
+}
+.sidebar__user-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar__user {
+  gap: 6px;
+  padding-inline: 4px;
+}
+.sidebar__user > .sidebar__chevron {
+  margin-left: auto;
+  font-size: 12px;
+}
+.app-shell--business .sidebar__collapse {
+  width: 32px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 6px;
+}
+.app-shell--compact .sidebar__footer {
+  grid-template-columns: minmax(0, 1fr);
+  margin-inline: 8px;
+}
+.app-shell--compact .sidebar__user,
+.app-shell--compact .sidebar__collapse {
+  justify-content: center;
+  width: 100%;
+}
+.app-shell--business.app-shell--compact .brand-mark {
+  padding: 0;
+}
 .app-shell--business {
   background:
     linear-gradient(122deg, #ffffff00 0%, #ffffff96 12%, #ffffff00 24%),
@@ -236,40 +494,108 @@ function handleUserCommand(command: string | number | object): void {
   background: linear-gradient(145deg, #ffffff94, #ffffff38 48%, #ffffff73);
   -webkit-backdrop-filter: blur(20px) saturate(110%);
   backdrop-filter: blur(20px) saturate(110%);
-  box-shadow: 0 8px 28px #203b2e0c, 0 0 0 .5px #335d4614, inset 1px 1px 1px #fffffff2, inset -1px -1px 1px #ffffff78;
+  box-shadow:
+    0 8px 28px #203b2e0c,
+    0 0 0 0.5px #335d4614,
+    inset 1px 1px 1px #fffffff2,
+    inset -1px -1px 1px #ffffff78;
 }
-.app-shell--business .brand-mark { height: 84px; padding-inline: 15px; border-bottom: 0; background: transparent; }
-.app-shell--business .main-content { background: transparent; }
-.app-shell--business .topbar { border-bottom: 0; background: transparent; }
-.app-shell--business .sidebar__footer { min-height: 65px; align-items: center; margin-inline: 15px; padding: 16px 0 0; }
-.app-shell--business .sidebar__user, .app-shell--business .sidebar__collapse { border-radius: 11px; transition: color var(--motion-standard) ease, background-color var(--motion-standard) ease; }
-.app-shell--business .skip-link { background: var(--primary); }
-.app-shell--business.app-shell--compact .sidebar__footer { margin-inline: 8px; }
+.app-shell--business .brand-mark {
+  height: 84px;
+  padding-inline: 15px;
+  border-bottom: 0;
+  background: transparent;
+}
+.app-shell--business .main-content {
+  background: transparent;
+}
+.app-shell--business .topbar {
+  border-bottom: 0;
+  background: transparent;
+}
+.app-shell--business .sidebar__footer {
+  min-height: 65px;
+  align-items: center;
+  margin-inline: 15px;
+  padding: 16px 0 0;
+}
+.app-shell--business .sidebar__user,
+.app-shell--business .sidebar__collapse {
+  border-radius: 11px;
+  transition:
+    color var(--motion-standard) ease,
+    background-color var(--motion-standard) ease;
+}
+.app-shell--business .skip-link {
+  background: var(--primary);
+}
+.app-shell--business.app-shell--compact .sidebar__footer {
+  margin-inline: 8px;
+}
 @media (min-width: 1700px) {
-  .app-shell--business { --sidebar-width: 240px; }
-  .app-shell--business .brand-mark { padding-inline: 23px; }
+  .app-shell--business {
+    --sidebar-width: 240px;
+  }
+  .app-shell--business .brand-mark {
+    padding-inline: 23px;
+  }
 }
 @media (max-width: 1320px) and (min-width: 641px) {
-  .app-shell--business { --sidebar-width: 192px; }
-  .app-shell--business .brand-mark { padding-inline: 12px; }
+  .app-shell--business {
+    --sidebar-width: 192px;
+  }
+  .app-shell--business .brand-mark {
+    padding-inline: 12px;
+  }
 }
 @media (max-height: 820px) {
-  .app-shell--business .brand-mark { height: 76px; }
-  .app-shell--business .sidebar { padding-bottom: 12px; }
-  .app-shell--business .sidebar__footer { min-height: 50px; padding-top: 11px; }
+  .app-shell--business .brand-mark {
+    height: 76px;
+  }
+  .app-shell--business .sidebar {
+    padding-bottom: 12px;
+  }
+  .app-shell--business .sidebar__footer {
+    min-height: 50px;
+    padding-top: 11px;
+  }
 }
 @media (max-width: 640px) {
-  .app-shell--business, .app-shell--business.app-shell--compact { --topbar-height: 48px; }
-  .app-shell--business .topbar { gap: 10px; }
-  .app-shell--business .brand-mark { display: none; }
-  .sidebar__footer { grid-template-columns: minmax(0, 1fr); padding-bottom: max(8px, env(safe-area-inset-bottom)); }
-  .app-shell--compact .sidebar__user { justify-content: flex-start; }
-  .app-shell--business .sidebar { transform: translateX(calc(-100% - 12px)); }
-  .app-shell--business .sidebar--open { transform: translateX(0); }
-  .app-shell--business .sidebar__footer { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
-  .app-shell--business .sidebar-mask { background: rgb(24 40 29 / 28%); }
+  .app-shell--business,
+  .app-shell--business.app-shell--compact {
+    --topbar-height: 48px;
+  }
+  .app-shell--business .topbar {
+    gap: 10px;
+  }
+  .app-shell--business .brand-mark {
+    display: none;
+  }
+  .sidebar__footer {
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .app-shell--compact .sidebar__user {
+    justify-content: flex-start;
+  }
+  .app-shell--business .sidebar {
+    transform: translateX(calc(-100% - 12px));
+  }
+  .app-shell--business .sidebar--open {
+    transform: translateX(0);
+  }
+  .app-shell--business .sidebar__footer {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .app-shell--business .sidebar-mask {
+    background: rgb(24 40 29 / 28%);
+  }
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .app-shell--business .sidebar { background: #f7faf9; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .app-shell--business .sidebar {
+    background: #f7faf9;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 </style>

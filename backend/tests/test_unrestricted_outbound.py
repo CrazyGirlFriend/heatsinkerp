@@ -2,11 +2,10 @@
 
 from decimal import Decimal
 
-from sqlalchemy import select
-
 from app.database import SessionLocal
 from app.models import MaterialStockBalance, MaterialTransfer
-from test_material_stock import dispatch, endpoint, loss, receive_lot, stock_setup, totals  # noqa: F401
+from test_material_stock import dispatch, endpoint, loss, receive_lot, totals  # noqa: F401
+from test_material_stock import stock_setup as stock_setup
 
 
 def test_excess_split_receipt_replay_and_factory_conservation(client, stock_setup):
@@ -22,9 +21,7 @@ def test_excess_split_receipt_replay_and_factory_conservation(client, stock_setu
     balance = totals(client, s)
     assert (balance["on_hand_quantity"], balance["on_hand_weight"]) == (-20, -2)
     assert (balance["shortage_quantity"], balance["shortage_weight"]) == (20, 2)
-    trace = client.get(
-        "/api/material-trace", params={"serial_no": lot["serial_no"]}
-    ).json()
+    trace = client.get("/api/material-trace", params={"serial_no": lot["serial_no"]}).json()
     assert trace["shortage"] == {"quantity": 20, "weight": 2}
     # Internal pending is still owned upstream, without inventing extra receipt.
     assert (balance["owned_quantity"], balance["owned_weight"]) == (100, 10)

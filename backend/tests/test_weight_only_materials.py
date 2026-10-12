@@ -1,17 +1,22 @@
 """Weight-only material operations cannot create fictitious piece stock."""
+
 from decimal import Decimal
 
 import pytest
-
 from app.database import SessionLocal
 from app.models import MaterialStockBalance, MaterialTransfer
-from test_quantity_adjustments import base, change, dispatch, confirm
+from test_quantity_adjustments import base, change, confirm, dispatch
 from test_serial_reallocations import reallocate
-from test_warehouse_receipts import intake, warehouse  # noqa: F401
+from test_warehouse_receipts import intake  # noqa: F401
+from test_warehouse_receipts import warehouse as warehouse
 
 
 def measurement(kind, weight=3):
-    return {"sludge_gross_weight": weight * 2, "sludge_content_percent": 50} if kind == "sludge" else {}
+    return (
+        {"sludge_gross_weight": weight * 2, "sludge_content_percent": 50}
+        if kind == "sludge"
+        else {}
+    )
 
 
 @pytest.mark.parametrize("kind", ["sludge", "scrap_chips"])
@@ -32,7 +37,9 @@ def test_receipt_opening_and_external_exit_require_weight_without_pieces(client,
     opened = client.post(opening_url, headers=s["headers"], json=body)
     assert opened.status_code == 201, opened.text
     assert opened.json()["items"][0]["quantity"] == 0
-    external = dict(entry_kind="warehouse_outbound", next_team_id=None, external_destination="回收单位")
+    external = dict(
+        entry_kind="warehouse_outbound", next_team_id=None, external_destination="回收单位"
+    )
     portion = dict(source_transfer_id=lot["id"], quantity=1, weight=1, **measurement(kind, 1))
     assert dispatch(client, s, [portion], **external).status_code == 422
     portion["quantity"] = 0
@@ -49,11 +56,15 @@ def test_receipt_opening_and_external_exit_require_weight_without_pieces(client,
 def test_reallocation_and_loss_cannot_add_pieces_to_weight_only_stock(client, warehouse, kind):
     s = warehouse
     lot = intake(client, s, material_type=kind, quantity=0, weight=3, **measurement(kind)).json()
-    assert reallocate(client, s, lot, quantity=1, weight=1, **measurement(kind, 1)).status_code == 422
+    assert (
+        reallocate(client, s, lot, quantity=1, weight=1, **measurement(kind, 1)).status_code == 422
+    )
     result = reallocate(client, s, lot, quantity=0, weight=1, **measurement(kind, 1))
     assert result.status_code == 201, result.text
     assert result.json()["quantity"] == 0
-    body = dict(source_transfer_id=lot["id"], quantity=1, weight=1, idempotency_key="weight-only-loss")
+    body = dict(
+        source_transfer_id=lot["id"], quantity=1, weight=1, idempotency_key="weight-only-loss"
+    )
     assert client.post(base(s) + "/losses", headers=s["headers"], json=body).status_code == 422
     body["quantity"] = 0
     assert client.post(base(s) + "/losses", headers=s["headers"], json=body).status_code == 201
@@ -66,20 +77,50 @@ def test_reallocation_and_loss_cannot_add_pieces_to_weight_only_stock(client, wa
 @pytest.mark.parametrize("kind", ["sludge", "scrap_chips"])
 def test_direct_transfer_conversion_and_edit_cannot_introduce_pieces(client, warehouse, kind):
     s = warehouse
-    body = dict(serial_no="WEIGHT-ONLY", material_name="材料1", material_type=kind,
-                next_team_id=s["team"]["id"], quantity=1, weight=3, **measurement(kind))
-    assert client.post("/api/material-transfers", headers=s["other_headers"], json=body).status_code == 422
+    body = dict(
+        serial_no="WEIGHT-ONLY",
+        material_name="材料1",
+        material_type=kind,
+        next_team_id=s["team"]["id"],
+        quantity=1,
+        weight=3,
+        **measurement(kind),
+    )
+    assert (
+        client.post("/api/material-transfers", headers=s["other_headers"], json=body).status_code
+        == 422
+    )
     body["quantity"] = 0
     result = client.post("/api/material-transfers", headers=s["other_headers"], json=body)
     assert result.status_code == 201, result.text
     row = result.json()
     url = "/api/material-transfers/" + row["batch_no"]
-    assert client.patch(url, headers=s["other_headers"], json={"quantity": 1, "expected_version": row["version"]}).status_code == 422
-    assert client.patch(url, headers=s["other_headers"], json={"notes": "", "expected_version": row["version"]}).status_code == 200
+    assert (
+        client.patch(
+            url,
+            headers=s["other_headers"],
+            json={"quantity": 1, "expected_version": row["version"]},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.patch(
+            url, headers=s["other_headers"], json={"notes": "", "expected_version": row["version"]}
+        ).status_code
+        == 200
+    )
     origin = intake(client, s, quantity=100, weight=10).json()
-    sent = dispatch(client, s, [dict(source_transfer_id=origin["id"], quantity=100, weight=10)]).json()
+    sent = dispatch(
+        client, s, [dict(source_transfer_id=origin["id"], quantity=100, weight=10)]
+    ).json()
     assert confirm(client, s, sent, workshop=True).status_code == 200
-    portion = dict(source_transfer_id=sent["items"][0]["id"], material_type=kind, quantity=12, weight=3, **measurement(kind))
+    portion = dict(
+        source_transfer_id=sent["items"][0]["id"],
+        material_type=kind,
+        quantity=12,
+        weight=3,
+        **measurement(kind),
+    )
     assert dispatch(client, s, [portion], workshop=True).status_code == 422
     portion["quantity"] = 0
     converted = dispatch(client, s, [portion], workshop=True)
@@ -90,8 +131,17 @@ def test_direct_transfer_conversion_and_edit_cannot_introduce_pieces(client, war
 
 def test_legacy_counts_remain_readable_but_cannot_be_increased(client, warehouse):
     s = warehouse
-    response = client.post("/api/material-transfers", headers=s["other_headers"], json={
-        "serial_no": "LEGACY", "material_type": "scrap_chips", "next_team_id": s["team"]["id"], "quantity": 0, "weight": 3})
+    response = client.post(
+        "/api/material-transfers",
+        headers=s["other_headers"],
+        json={
+            "serial_no": "LEGACY",
+            "material_type": "scrap_chips",
+            "next_team_id": s["team"]["id"],
+            "quantity": 0,
+            "weight": 3,
+        },
+    )
     assert response.status_code == 201, response.text
     row = response.json()
     with SessionLocal.begin() as db:
@@ -99,9 +149,20 @@ def test_legacy_counts_remain_readable_but_cannot_be_increased(client, warehouse
     url = "/api/material-transfers/" + row["batch_no"]
     current = client.get(url).json()
     assert current["quantity"] == 4
-    edited = client.patch(url, headers=s["other_headers"], json={"notes": "历史资料补充", "expected_version": current["version"]})
+    edited = client.patch(
+        url,
+        headers=s["other_headers"],
+        json={"notes": "历史资料补充", "expected_version": current["version"]},
+    )
     assert edited.status_code == 200 and edited.json()["quantity"] == 4
-    assert client.patch(url, headers=s["other_headers"], json={"quantity": 5, "expected_version": edited.json()["version"]}).status_code == 422
+    assert (
+        client.patch(
+            url,
+            headers=s["other_headers"],
+            json={"quantity": 5, "expected_version": edited.json()["version"]},
+        ).status_code
+        == 422
+    )
 
 
 @pytest.mark.parametrize("kind", ["waste", "defective", "semi_finished"])

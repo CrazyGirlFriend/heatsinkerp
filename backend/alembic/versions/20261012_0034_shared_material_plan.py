@@ -1,7 +1,7 @@
 """Keep the original cutting plan alongside actual shared-lot processing."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "20261012_0034"
 down_revision = "20261012_0033"

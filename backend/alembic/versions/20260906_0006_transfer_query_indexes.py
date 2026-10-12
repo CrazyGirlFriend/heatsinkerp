@@ -4,9 +4,8 @@ Revision ID: 20260906_0006
 Revises: 20260906_0005
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "20260906_0006"
 down_revision = "20260906_0005"
@@ -48,10 +47,13 @@ def upgrade() -> None:
             f"ADD INDEX `{name}` (" + ", ".join(f"`{column}`" for column in columns) + ")"
             for name, columns in missing
         ]
-        op.execute(sa.text(
-            "ALTER TABLE `material_transfers` " + ", ".join(clauses)
-            + ", ALGORITHM=INPLACE, LOCK=NONE"
-        ))
+        op.execute(
+            sa.text(
+                "ALTER TABLE `material_transfers` "
+                + ", ".join(clauses)
+                + ", ALGORITHM=INPLACE, LOCK=NONE"
+            )
+        )
     else:
         for name, columns in missing:
             op.create_index(name, "material_transfers", list(columns))

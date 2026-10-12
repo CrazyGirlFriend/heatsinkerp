@@ -4,6 +4,7 @@ Run with production writers stopped and a verified backup. Preview is the
 default; --apply commits the reference changes, audit and directory notification
 in one transaction. Any other team reference blocks the whole operation.
 """
+
 import argparse
 import json
 
@@ -15,15 +16,30 @@ from .auth import actor_name
 from .database import SessionLocal
 from .models import AdminAuditEvent, Team, User
 
-
 TARGETS = (
-    ("FACTORY-SCRAP", "转废", "scrap", "FACTORY-WAREHOUSE", "库房", "warehouse", {
-        ("operation_reports", "scrap_destination_team_id"): "scrap_destination_team_name",
-    }),
-    ("FACTORY-SHIP", "发货", "production", "FACTORY-QC", "检验", "production", {
-        ("operations", "responsible_team_id"): "responsible_team_name",
-        ("product_route_operations", "responsible_team_id"): None,
-    }),
+    (
+        "FACTORY-SCRAP",
+        "转废",
+        "scrap",
+        "FACTORY-WAREHOUSE",
+        "库房",
+        "warehouse",
+        {
+            ("operation_reports", "scrap_destination_team_id"): "scrap_destination_team_name",
+        },
+    ),
+    (
+        "FACTORY-SHIP",
+        "发货",
+        "production",
+        "FACTORY-QC",
+        "检验",
+        "production",
+        {
+            ("operations", "responsible_team_id"): "responsible_team_name",
+            ("product_route_operations", "responsible_team_id"): None,
+        },
+    ),
 )
 
 
@@ -48,7 +64,11 @@ def retire_legacy_teams(db, actor_id: int) -> list[dict]:
         destination = db.scalar(select(Team).where(Team.code == destination_code).with_for_update())
         if (team.name, team.kind) != (name, kind):
             raise ValueError(f"Unexpected legacy team identity: {code}")
-        if destination is None or not destination.active or (destination.name, destination.kind) != (destination_name, destination_kind):
+        if (
+            destination is None
+            or not destination.active
+            or (destination.name, destination.kind) != (destination_name, destination_kind)
+        ):
             raise ValueError(f"Invalid destination: {destination_code}")
         changes = []
         for table, column in references:
@@ -63,21 +83,41 @@ def retire_legacy_teams(db, actor_id: int) -> list[dict]:
             columns = [table.c.id, table.c[column]]
             if name_column:
                 columns.append(table.c[name_column])
-            originals = [dict(row) for row in db.execute(select(*columns).where(condition).with_for_update()).mappings()]
+            originals = [
+                dict(row)
+                for row in db.execute(
+                    select(*columns).where(condition).with_for_update()
+                ).mappings()
+            ]
             values = {column: destination.id}
             if name_column:
                 values[name_column] = destination.name
             db.execute(table.update().where(condition).values(**values))
             changes.append({"table": table.name, "before": originals, "after": values})
-        db.add(AdminAuditEvent(
-            actor_user_id=actor.id, actor=actor_name(actor), target_type="team", target_id=team.id,
-            action="deleted", changes={"before": snapshot(team), "after": None,
-                "reason": "恢复八班组：转废归库房，发货归检验", "references": changes},
-        ))
+        db.add(
+            AdminAuditEvent(
+                actor_user_id=actor.id,
+                actor=actor_name(actor),
+                target_type="team",
+                target_id=team.id,
+                action="deleted",
+                changes={
+                    "before": snapshot(team),
+                    "after": None,
+                    "reason": "恢复八班组：转废归库房，发货归检验",
+                    "references": changes,
+                },
+            )
+        )
         db.delete(team)
         db.flush()
-        results.append({"removed": code, "destination": destination_code,
-                        "historical_rows_reassigned": sum(len(change["before"]) for change in changes)})
+        results.append(
+            {
+                "removed": code,
+                "destination": destination_code,
+                "historical_rows_reassigned": sum(len(change["before"]) for change in changes),
+            }
+        )
     return results
 
 

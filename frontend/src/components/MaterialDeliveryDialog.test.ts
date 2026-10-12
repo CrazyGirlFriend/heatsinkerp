@@ -61,12 +61,15 @@ describe('batch document delivery maintenance', () => {
     const update = vi.spyOn(materialTransferApi, 'updateDelivery')
     render()
     await wrapper.get('input[aria-label="要求发货日期"]').setValue('')
-    await wrapper.get('form').trigger('submit'); await flushPromises()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
     expect(wrapper.get('[data-validation-field="deliveryDate"]').classes()).toContain('is-error')
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
     expect(update).not.toHaveBeenCalled()
     await wrapper.get('input[aria-label="要求发货日期"]').setValue('2026-10-05')
-    expect(wrapper.get('[data-validation-field="deliveryDate"]').classes()).not.toContain('is-error')
+    expect(wrapper.get('[data-validation-field="deliveryDate"]').classes()).not.toContain(
+      'is-error',
+    )
   })
   it('requires review of current fields after a version conflict', async () => {
     vi.spyOn(materialTransferApi, 'updateDelivery').mockRejectedValue(

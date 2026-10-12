@@ -37,7 +37,11 @@ watch(() => [props.value, props.compact, props.textPosition], renderBarcode)
 </script>
 
 <template>
-  <div class="barcode-card barcode-card--scrollable" :class="{ 'barcode-card--compact': compact }" :aria-label="`${entityLabel}条形码：${value}`">
+  <div
+    class="barcode-card barcode-card--scrollable"
+    :class="{ 'barcode-card--compact': compact }"
+    :aria-label="`${entityLabel}条形码：${value}`"
+  >
     <svg ref="barcodeRef" />
   </div>
 </template>

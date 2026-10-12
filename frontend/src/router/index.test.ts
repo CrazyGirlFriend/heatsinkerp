@@ -1,15 +1,32 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const authMocks = vi.hoisted(() => ({ admin: true, authenticated: true, user: { role: 'ADMIN' as 'ADMIN' | 'TEAM', team_id: null as number | null }, refresh: vi.fn() }))
+const authMocks = vi.hoisted(() => ({
+  admin: true,
+  authenticated: true,
+  user: { role: 'ADMIN' as 'ADMIN' | 'TEAM', team_id: null as number | null },
+  refresh: vi.fn(),
+}))
 
 vi.mock('@/stores/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/stores/auth')>()
   return {
     ...actual,
-    isAdmin: { get value() { return authMocks.admin } },
-    isAuthenticated: { get value() { return authMocks.authenticated } },
-    currentUser: { get value() { return authMocks.user } },
+    isAdmin: {
+      get value() {
+        return authMocks.admin
+      },
+    },
+    isAuthenticated: {
+      get value() {
+        return authMocks.authenticated
+      },
+    },
+    currentUser: {
+      get value() {
+        return authMocks.user
+      },
+    },
     restoreSession: vi.fn(),
     refreshCurrentUser: authMocks.refresh,
   }
@@ -46,7 +63,9 @@ describe('phase-one routes', () => {
   it('enters factory analysis by default while retaining explicit safe destinations and team permissions', async () => {
     authMocks.admin = false
     authMocks.user = { role: 'TEAM', team_id: 2 }
-    authMocks.refresh.mockImplementationOnce(async () => { authMocks.user = { role: 'TEAM', team_id: 3 } })
+    authMocks.refresh.mockImplementationOnce(async () => {
+      authMocks.user = { role: 'TEAM', team_id: 3 }
+    })
     await router.push('/login')
     expect(router.currentRoute.value.path).toBe('/factory-analysis')
     await router.push('/login?redirect=%2Fmaterial-trace%3Fserial_no%3DFLOW-1')
@@ -67,16 +86,19 @@ describe('phase-one routes', () => {
     expect(router.currentRoute.value.path).toBe('/factory-analysis')
   })
 
-  it.each(['/team-workspaces/2?tab=outbound', '/factory-stock'])('retains an explicit protected destination %s through login', async path => {
-    authMocks.authenticated = false
-    await router.push(path)
-    const redirect = router.currentRoute.value.query.redirect
-    expect(router.currentRoute.value.path).toBe('/login')
-    expect(redirect).toBe(path === '/factory-stock' ? '/' : path)
-    authMocks.authenticated = true
-    await router.push({ path: '/login', query: router.currentRoute.value.query, force: true })
-    expect(router.currentRoute.value.fullPath).toBe(redirect)
-  })
+  it.each(['/team-workspaces/2?tab=outbound', '/factory-stock'])(
+    'retains an explicit protected destination %s through login',
+    async (path) => {
+      authMocks.authenticated = false
+      await router.push(path)
+      const redirect = router.currentRoute.value.query.redirect
+      expect(router.currentRoute.value.path).toBe('/login')
+      expect(redirect).toBe(path === '/factory-stock' ? '/' : path)
+      authMocks.authenticated = true
+      await router.push({ path: '/login', query: router.currentRoute.value.query, force: true })
+      expect(router.currentRoute.value.fullPath).toBe(redirect)
+    },
+  )
 
   it('opens the factory homepage for both roles and retains explicit team routes', async () => {
     await router.push('/')
@@ -109,24 +131,34 @@ describe('phase-one routes', () => {
     expect(router.currentRoute.value.path).toBe('/transfer-batches')
   })
 
-  it.each(['/scan', '/transfer-batches/scan'])('returns administrators from old scanner route %s to ordinary records', async (path) => {
-    await router.push(path + '?batch_no=TL001&status=pending#batch')
-    expect(router.currentRoute.value.path).toBe('/transfer-batches')
-    expect(router.currentRoute.value.query).toEqual({ batch_no: 'TL001', status: 'pending' })
-    expect(router.currentRoute.value.hash).toBe('#batch')
-  })
+  it.each(['/scan', '/transfer-batches/scan'])(
+    'returns administrators from old scanner route %s to ordinary records',
+    async (path) => {
+      await router.push(path + '?batch_no=TL001&status=pending#batch')
+      expect(router.currentRoute.value.path).toBe('/transfer-batches')
+      expect(router.currentRoute.value.query).toEqual({ batch_no: 'TL001', status: 'pending' })
+      expect(router.currentRoute.value.hash).toBe('#batch')
+    },
+  )
 
-  it.each(['/scan', '/transfer-batches/scan', '/transfer-batches?scan=1'])('routes team scanner bookmark %s to its own pending receipts without submitting URL batches', async path => {
-    authMocks.admin = false
-    authMocks.user = { role: 'TEAM', team_id: 2 }
-    await router.push(`${path}${path.includes('?') ? '&' : '?'}batch_no=TL001&team_id=999&next_team_id=999&status=received`)
-    expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/2?tab=pending')
-  })
+  it.each(['/scan', '/transfer-batches/scan', '/transfer-batches?scan=1'])(
+    'routes team scanner bookmark %s to its own pending receipts without submitting URL batches',
+    async (path) => {
+      authMocks.admin = false
+      authMocks.user = { role: 'TEAM', team_id: 2 }
+      await router.push(
+        `${path}${path.includes('?') ? '&' : '?'}batch_no=TL001&team_id=999&next_team_id=999&status=received`,
+      )
+      expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/2?tab=pending')
+    },
+  )
 
   it('resolves the receiving team after refreshing the account identity', async () => {
     authMocks.admin = false
     authMocks.user = { role: 'TEAM', team_id: 2 }
-    authMocks.refresh.mockImplementationOnce(async () => { authMocks.user = { role: 'TEAM', team_id: 3 } })
+    authMocks.refresh.mockImplementationOnce(async () => {
+      authMocks.user = { role: 'TEAM', team_id: 3 }
+    })
     await router.push('/scan')
     expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/3?tab=pending')
   })
@@ -136,13 +168,16 @@ describe('phase-one routes', () => {
     await router.push('/scan?batch_no=TL001')
     expect(router.currentRoute.value.path).toBe('/login')
     const redirect = router.currentRoute.value.query.redirect
-    authMocks.authenticated = true; authMocks.admin = false; authMocks.user = { role: 'TEAM', team_id: 2 }
+    authMocks.authenticated = true
+    authMocks.admin = false
+    authMocks.user = { role: 'TEAM', team_id: 2 }
     await router.push({ path: '/login', query: { redirect }, force: true })
     expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/2?tab=pending')
   })
 
   it('does not create a receiving target for an unbound team account', async () => {
-    authMocks.admin = false; authMocks.user = { role: 'TEAM', team_id: null }
+    authMocks.admin = false
+    authMocks.user = { role: 'TEAM', team_id: null }
     await router.push('/scan')
     expect(router.currentRoute.value.fullPath).toBe('/transfer-batches')
   })

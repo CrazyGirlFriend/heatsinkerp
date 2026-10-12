@@ -5,12 +5,12 @@ from datetime import timedelta
 from threading import Barrier
 from uuid import uuid4
 
-from sqlalchemy import func, select
-
 from app.database import SessionLocal
 from app.models import AdminAuditEvent, MaterialTransfer, WarehouseLocation, utcnow
-from test_warehouse_receipts import warehouse, intake  # noqa: F401
+from sqlalchemy import func, select
 from test_warehouse_locations import dispatch, location
+from test_warehouse_receipts import intake
+from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 
 def create_slot(client, name="A-01"):
@@ -228,20 +228,22 @@ def test_saved_transfer_retains_lock_through_receipt_and_void_releases(client, w
     assert location(client, warehouse, "A-02")
 
 
-def test_compatible_bulk_lines_share_one_form_lock_and_preserve_independent_batches(client, warehouse):
+def test_compatible_bulk_lines_share_one_form_lock_and_preserve_independent_batches(
+    client, warehouse
+):
     source = production_source(client, warehouse)
     selected = location(client, warehouse, "A-01", headers=warehouse["other_headers"])
     with SessionLocal() as db:
         before = db.scalar(select(func.count(MaterialTransfer.id)))
     response = return_rows(client, warehouse, source, "shared-slot", selected, count=2)
     assert response.status_code == 201, response.text
-    assert len({row['batch_no'] for row in response.json()['items']}) == 2
+    assert len({row["batch_no"] for row in response.json()["items"]}) == 2
     with SessionLocal() as db:
         assert db.scalar(select(func.count(MaterialTransfer.id))) == before + 2
         assert db.scalar(select(WarehouseLocation.reservation_key)) is None
-    row = client.get('/api/warehouse-locations').json()['items'][0]
-    assert len(row['batches']) == 2
-    assert sum(batch['quantity'] for batch in row['batches']) == 20
+    row = client.get("/api/warehouse-locations").json()["items"][0]
+    assert len(row["batches"]) == 2
+    assert sum(batch["quantity"] for batch in row["batches"]) == 20
     assert return_rows(client, warehouse, source, "stale-key", selected).status_code == 409
 
 
@@ -380,8 +382,8 @@ def test_all_split_outgoings_release_slot_before_either_is_received(client, ware
 
 
 def test_heartbeats_cannot_extend_a_draft_beyond_ten_minutes(client, warehouse):
-    from unittest.mock import patch
     from datetime import datetime, timezone
+    from unittest.mock import patch
 
     start = utcnow()
     slot = create_slot(client)

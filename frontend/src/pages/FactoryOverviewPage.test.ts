@@ -10,26 +10,55 @@ import TableExportButton from '@/components/TableExportButton.vue'
 import { factoryOverviewApi } from '@/services/factoryOverviewApi'
 import { factoryFixture } from '@/testFixtures/factoryOverview'
 let wrapper: VueWrapper
-beforeEach(() => { vi.useFakeTimers(); vi.spyOn(document, 'hidden', 'get').mockReturnValue(false); vi.spyOn(factoryOverviewApi, 'get').mockResolvedValue(factoryFixture()) })
-afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); vi.useRealTimers() })
+beforeEach(() => {
+  vi.useFakeTimers()
+  vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+  vi.spyOn(factoryOverviewApi, 'get').mockResolvedValue(factoryFixture())
+})
+afterEach(() => {
+  wrapper?.unmount()
+  vi.restoreAllMocks()
+  vi.useRealTimers()
+})
 async function render(path = '/') {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/team-workspaces/:teamId', component: { template: '<div/>' } }, { path: '/transfer-batches', component: { template: '<div/>' } }] })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: { template: '<div/>' } },
+      { path: '/team-workspaces/:teamId', component: { template: '<div/>' } },
+      { path: '/transfer-batches', component: { template: '<div/>' } },
+    ],
+  })
   await router.push(path)
-  wrapper = mount(FactoryOverviewPage, { global: { plugins: [router], stubs: { FactoryOverviewCharts: true } } })
+  wrapper = mount(FactoryOverviewPage, {
+    global: { plugins: [router], stubs: { FactoryOverviewCharts: true } },
+  })
   await flushPromises()
   return router
 }
-async function click(label: string) { await wrapper.findAll('button').find(button => button.text().trim() === label || button.attributes('aria-label') === label)!.trigger('click'); await flushPromises() }
+async function click(label: string) {
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text().trim() === label || button.attributes('aria-label') === label)!
+    .trigger('click')
+  await flushPromises()
+}
 describe('factory dashboard', () => {
   it('exports the displayed analysis, unit and period with readable material type names', async () => {
-    vi.mocked(factoryOverviewApi.get).mockImplementation(async days => ({ ...factoryFixture(), days: days || 30 }))
+    vi.mocked(factoryOverviewApi.get).mockImplementation(async (days) => ({
+      ...factoryFixture(),
+      days: days || 30,
+    }))
     await render('/?days=3&metric=weight')
     const source = wrapper.getComponent(TableExportButton).props('source')()!
     const rows = await source.load(new AbortController().signal, () => undefined)
     expect(source.title).toContain('近3天')
     expect(source.fields.at(-1)!.label).toBe('重量 (kg)')
-    expect(rows.find(row => row.category === '物料性质')).toMatchObject({ name: '半成品', value: 10 })
-    expect(rows.some(row => row.category === '全厂对外收发')).toBe(true)
+    expect(rows.find((row) => row.category === '物料性质')).toMatchObject({
+      name: '半成品',
+      value: 10,
+    })
+    expect(rows.some((row) => row.category === '全厂对外收发')).toBe(true)
   })
   it('loads a global report, keeps period in the URL and drills into a team without a fixed id', async () => {
     const router = await render('/?days=7&metric=quantity')
@@ -38,19 +67,26 @@ describe('factory dashboard', () => {
     expect(wrapper.text()).toContain('全厂在库物料')
     expect(wrapper.text()).toContain('在途 10 件')
     expect(wrapper.getComponent(FactoryOverviewCharts).props('metric')).toBe('quantity')
-    wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 30); await flushPromises()
+    wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 30)
+    await flushPromises()
     expect(router.currentRoute.value.query.days).toBe('30')
-    wrapper.getComponent(FactoryOverviewCharts).vm.$emit('team', { ...factoryFixture().teams[1], id: 914 }); await flushPromises()
+    wrapper
+      .getComponent(FactoryOverviewCharts)
+      .vm.$emit('team', { ...factoryFixture().teams[1], id: 914 })
+    await flushPromises()
     expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/914?tab=stock')
   })
   it('refreshes only while visible, keeps old data explicitly marked on failure, and clears its timer', async () => {
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
     await render()
     vi.mocked(factoryOverviewApi.get).mockRejectedValueOnce(new Error('offline'))
-    await vi.advanceTimersByTimeAsync(60000); await flushPromises()
+    await vi.advanceTimersByTimeAsync(60000)
+    await flushPromises()
     expect(factoryOverviewApi.get).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('当前显示上次成功读取的数据')
-    expect(wrapper.getComponent(FactoryOverviewCharts).props('data').as_of).toBe('2026-09-12T01:02:00Z')
+    expect(wrapper.getComponent(FactoryOverviewCharts).props('data').as_of).toBe(
+      '2026-09-12T01:02:00Z',
+    )
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
     await vi.advanceTimersByTimeAsync(60000)
     expect(factoryOverviewApi.get).toHaveBeenCalledTimes(2)
@@ -59,38 +95,50 @@ describe('factory dashboard', () => {
     expect(factoryOverviewApi.get).toHaveBeenCalledTimes(2)
   })
   it('applies arbitrary days to the URL, summary and charts while preserving the unit', async () => {
-    vi.mocked(factoryOverviewApi.get).mockImplementation(async (days = 30) => ({ ...factoryFixture(), days }))
+    vi.mocked(factoryOverviewApi.get).mockImplementation(async (days = 30) => ({
+      ...factoryFixture(),
+      days,
+    }))
     const router = await render('/?days=3&metric=quantity')
     expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(3)
     expect(wrapper.text()).toContain('近3天入库')
     expect(wrapper.getComponent(FactoryOverviewCharts).props('data').days).toBe(3)
-    wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 5); await flushPromises()
-    await wrapper.get('.factory-custom-period').trigger('submit'); await flushPromises()
+    wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 5)
+    await flushPromises()
+    await wrapper.get('.factory-custom-period').trigger('submit')
+    await flushPromises()
     expect(router.currentRoute.value.query).toEqual({ days: '5', metric: 'quantity' })
     expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(5)
     expect(wrapper.getComponent(ElSelect).props('modelValue')).toBe(5)
     expect(wrapper.text()).toContain('近5天入库')
     expect(wrapper.getComponent(FactoryOverviewCharts).props('data').days).toBe(5)
-    await vi.advanceTimersByTimeAsync(60000); await flushPromises()
+    await vi.advanceTimersByTimeAsync(60000)
+    await flushPromises()
     expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(5)
-    await router.push('/?days=365'); await flushPromises()
+    await router.push('/?days=365')
+    await flushPromises()
     expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(365)
   })
   it('does not submit an empty custom period and falls back safely for invalid bookmarks', async () => {
     const router = await render('/?days=366')
     expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(30)
-    wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', undefined); await flushPromises()
+    wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', undefined)
+    await flushPromises()
     expect(wrapper.get('.factory-custom-period button').attributes('disabled')).toBeDefined()
-    await wrapper.get('.factory-custom-period').trigger('submit'); await flushPromises()
+    await wrapper.get('.factory-custom-period').trigger('submit')
+    await flushPromises()
     expect(router.currentRoute.value.query.days).toBe('366')
     for (const value of ['0', '-1', '3.5', 'invalid', '5&days=7']) {
-      await router.push(`/?days=${value}`); await flushPromises()
+      await router.push(`/?days=${value}`)
+      await flushPromises()
       expect(wrapper.getComponent(ElSelect).props('modelValue')).toBe(30)
     }
     expect(factoryOverviewApi.get).toHaveBeenCalledTimes(1)
   })
   it('shows missing scope and legacy warnings without inventing configured teams', async () => {
-    const data = factoryFixture(); data.teams[0] = { ...data.teams[0]!, id: null, balance: null }; data.legacy_received_count = 3
+    const data = factoryFixture()
+    data.teams[0] = { ...data.teams[0]!, id: null, balance: null }
+    data.legacy_received_count = 3
     vi.mocked(factoryOverviewApi.get).mockResolvedValue(data)
     await render()
     expect(wrapper.text()).toContain('未配置：库房')
@@ -115,20 +163,49 @@ describe('factory dashboard', () => {
   })
   it('cycles through today’s batches and opens the selected detail', async () => {
     const data = factoryFixture()
-    data.recent_batches = Array.from({ length: 7 }, (_, i) => ({ batch_no: `TL-RECENT-${i}`, entry_kind: 'transfer', source_name: '库房', target_name: '轧制', external_destination: null, status: 'received', line_count: 1, quantity: 10, weight: 1, updated_at: data.as_of, received_at: data.as_of }))
+    data.recent_batches = Array.from({ length: 7 }, (_, i) => ({
+      batch_no: `TL-RECENT-${i}`,
+      entry_kind: 'transfer',
+      source_name: '库房',
+      target_name: '轧制',
+      external_destination: null,
+      status: 'received',
+      line_count: 1,
+      quantity: 10,
+      weight: 1,
+      updated_at: data.as_of,
+      received_at: data.as_of,
+    }))
     vi.mocked(factoryOverviewApi.get).mockResolvedValue(data)
     const router = await render()
     const recent = wrapper.getComponent(FactoryRecentBatches)
     expect(recent.text()).toContain('TL-RECENT-0')
-    expect(recent.findAll('tbody tr:not([aria-hidden])').map(row => row.text())).not.toEqual(expect.arrayContaining([expect.stringContaining('TL-RECENT-3')]))
+    expect(recent.findAll('tbody tr:not([aria-hidden])').map((row) => row.text())).not.toEqual(
+      expect.arrayContaining([expect.stringContaining('TL-RECENT-3')]),
+    )
     for (let i = 0; i < 6; i++) await recent.get('tbody').trigger('animationiteration')
     expect(recent.get('tbody tr:first-child').text()).toContain('TL-RECENT-6')
     await click('TL-RECENT-6')
     expect(router.currentRoute.value.fullPath).toBe('/transfer-batches?batch_no=TL-RECENT-6')
   })
   it('keeps rows still when motion is disabled and offers the complete list', async () => {
-    const rows = Array.from({ length: 4 }, (_, i) => ({ batch_no: `TL-REDUCED-${i}`, entry_kind: 'transfer' as const, source_name: '库房', target_name: '轧制', external_destination: null, status: 'received' as const, line_count: 1, quantity: 10, weight: 1, updated_at: factoryFixture().as_of, received_at: factoryFixture().as_of }))
-    vi.mocked(factoryOverviewApi.get).mockResolvedValue({ ...factoryFixture(), recent_batches: rows })
+    const rows = Array.from({ length: 4 }, (_, i) => ({
+      batch_no: `TL-REDUCED-${i}`,
+      entry_kind: 'transfer' as const,
+      source_name: '库房',
+      target_name: '轧制',
+      external_destination: null,
+      status: 'received' as const,
+      line_count: 1,
+      quantity: 10,
+      weight: 1,
+      updated_at: factoryFixture().as_of,
+      received_at: factoryFixture().as_of,
+    }))
+    vi.mocked(factoryOverviewApi.get).mockResolvedValue({
+      ...factoryFixture(),
+      recent_batches: rows,
+    })
     const router = await render()
     const recent = wrapper.getComponent(FactoryRecentBatches)
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)

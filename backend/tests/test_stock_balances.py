@@ -7,13 +7,13 @@ from pathlib import Path
 import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import delete, select, update
-
 from app.database import SessionLocal, engine
 from app.material_stock import stock_table
 from app.models import MaterialLoss, MaterialStockBalance, MaterialTransfer
+from sqlalchemy import delete, select, update
 from test_warehouse_classification import confirm, dispatch
-from test_warehouse_receipts import intake, warehouse  # noqa: F401
+from test_warehouse_receipts import intake  # noqa: F401
+from test_warehouse_receipts import warehouse as warehouse
 
 
 def reconcile():

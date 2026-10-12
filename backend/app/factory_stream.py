@@ -1,4 +1,5 @@
 """Authenticated SSE snapshots, emitted after inventory transactions commit."""
+
 import asyncio
 import json
 from time import monotonic
@@ -35,7 +36,9 @@ async def read_inventory(credentials, *, snapshot=True, view="inventory", change
     if not snapshot:
         return None
     if view == "inventory-changed":
-        if change is not None and not (change.inventory or change.directory or change.accounts or user_id in change.user_ids):
+        if change is not None and not (
+            change.inventory or change.directory or change.accounts or user_id in change.user_ids
+        ):
             return None
         return message(view, change.payload(user_id) if change is not None else {"changed": True})
     if change is not None and not change.inventory:
@@ -46,11 +49,16 @@ async def read_inventory(credentials, *, snapshot=True, view="inventory", change
             report = await db.run_sync(factory_overview)
             started = monotonic()
             frame = message(view, report)
-            record("inventory.snapshot.encoded", view=view,
-                   duration_ms=round((monotonic() - started) * 1000, 2))
+            record(
+                "inventory.snapshot.encoded",
+                view=view,
+                duration_ms=round((monotonic() - started) * 1000, 2),
+            )
             return frame
 
-    return await snapshot_frames.get(view, lambda: (inventory_events.revision, str(factory_day())), build)
+    return await snapshot_frames.get(
+        view, lambda: (inventory_events.revision, str(factory_day())), build
+    )
 
 
 def message(event, data):
@@ -70,15 +78,29 @@ async def inventory_stream(request, credentials, view="inventory"):
                     return  # EOF makes clients show reconnecting, never a false live state.
                 # Session-only changes don't make unrelated clients query auth
                 # or stock. Heartbeats continue to validate every connection.
-                session_only = change is not None and change.sessions and not (change.inventory or change.accounts or change.directory or change.user_ids)
-                if not session_only or credentials is None or token_digest(credentials.credentials) in change.sessions:
+                session_only = (
+                    change is not None
+                    and change.sessions
+                    and not (
+                        change.inventory or change.accounts or change.directory or change.user_ids
+                    )
+                )
+                if (
+                    not session_only
+                    or credentials is None
+                    or token_digest(credentials.credentials) in change.sessions
+                ):
                     options = {"change": change} if change is not None else {}
                     revision = inventory_events.revision
                     started = monotonic()
                     frame = await read_inventory(credentials, view=view, **options)
                     if frame is not None:
-                        record("inventory.frame.ready", view=view, revision=revision,
-                               duration_ms=round((monotonic() - started) * 1000, 2))
+                        record(
+                            "inventory.frame.ready",
+                            view=view,
+                            revision=revision,
+                            duration_ms=round((monotonic() - started) * 1000, 2),
+                        )
                         yield frame
                 while not changed.is_set():
                     try:
@@ -108,7 +130,9 @@ async def inventory_stream(request, credentials, view="inventory"):
 
 
 @router.get("/stream")
-async def inventory_endpoint(request: Request, credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+async def inventory_endpoint(
+    request: Request, credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)
+):
     return await stream_response(request, credentials, "inventory")
 
 
@@ -118,11 +142,16 @@ async def stream_response(request, credentials, view):
     await read_inventory(credentials, snapshot=False)
     if not request.app.state.notifications.transport.ready:
         raise HTTPException(503, "实时通知正在重连，请稍后重试", headers={"Retry-After": "3"})
-    return StreamingResponse(inventory_stream(request, credentials, view), media_type="text/event-stream",
-        headers={"Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        inventory_stream(request, credentials, view),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/changes")
-async def changes_endpoint(request: Request, credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+async def changes_endpoint(
+    request: Request, credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)
+):
     # Invalidate filtered ledgers without sending unbounded business lists.
     return await stream_response(request, credentials, "inventory-changed")

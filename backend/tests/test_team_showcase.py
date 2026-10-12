@@ -1,12 +1,18 @@
 import pytest
-from sqlalchemy import select
-
 from app.database import SessionLocal, engine
-from app.models import MaterialTransfer, Team, User, TransferBatchNumberSequence, WarehouseLocation, WarehousePlacement
-from app.material_stock import overview, list_stock, list_dispatches, list_losses
+from app.legacy_models import Operation, Product, ProductRouteOperation, WorkOrder
+from app.material_stock import list_dispatches, list_losses, list_stock, overview
+from app.models import (
+    MaterialTransfer,
+    Team,
+    TransferBatchNumberSequence,
+    User,
+    WarehouseLocation,
+    WarehousePlacement,
+)
 from app.reset_business_data import business_counts, reset_business_data
-from app.seed_team_material_showcase import seed_team_material_showcase, DEMO_USERS, summary
-from app.legacy_models import Product, WorkOrder, Operation, ProductRouteOperation
+from app.seed_team_material_showcase import DEMO_USERS, seed_team_material_showcase, summary
+from sqlalchemy import select
 
 
 @pytest.fixture(autouse=True)
@@ -28,10 +34,21 @@ def test_eight_team_showcase_and_reset_preserve_identity_and_counters(client):
         product = Product(code="LEGACY-TEST", name="旧演示产品")
         db.add(product)
         db.flush()
-        order = WorkOrder(order_no="LEGACY-WO", product_id=product.id, product_name=product.name, planned_quantity=10, created_by="旧演示")
+        order = WorkOrder(
+            order_no="LEGACY-WO",
+            product_id=product.id,
+            product_name=product.name,
+            planned_quantity=10,
+            created_by="旧演示",
+        )
         db.add(order)
         db.flush()
-        db.add_all([Operation(work_order_id=order.id, sequence=1, code="OLD", name="旧工序"), ProductRouteOperation(product_id=product.id, sequence=1, code="OLD", name="旧工艺")])
+        db.add_all(
+            [
+                Operation(work_order_id=order.id, sequence=1, code="OLD", name="旧工序"),
+                ProductRouteOperation(product_id=product.id, sequence=1, code="OLD", name="旧工艺"),
+            ]
+        )
         db.commit()
         result = seed_team_material_showcase(db, "LocalDemoOnly123!")
         assert result["material_transfers"] == 433
@@ -49,22 +66,53 @@ def test_eight_team_showcase_and_reset_preserve_identity_and_counters(client):
             assert stock["total"] >= 24
             assert len(list_losses(db, leader.team_id)["items"]) == 20
             assert len(list_dispatches(db, leader.team_id, leader)["items"]) == 20
-            assert all(row["available_quantity"] >= 0 and row["available_weight"] >= 0 for row in list_stock(db, leader.team_id, leader, page_size=100)["items"])
-        confirmed = db.scalars(select(MaterialTransfer).where(MaterialTransfer.status == "received", MaterialTransfer.entry_kind == "transfer")).all()
-        assert all(item.source_transfer_id and item.stock_tracked and item.received_by_user_id for item in confirmed)
+            assert all(
+                row["available_quantity"] >= 0 and row["available_weight"] >= 0
+                for row in list_stock(db, leader.team_id, leader, page_size=100)["items"]
+            )
+        confirmed = db.scalars(
+            select(MaterialTransfer).where(
+                MaterialTransfer.status == "received", MaterialTransfer.entry_kind == "transfer"
+            )
+        ).all()
+        assert all(
+            item.source_transfer_id and item.stock_tracked and item.received_by_user_id
+            for item in confirmed
+        )
         before = summary(db)
         rerun = seed_team_material_showcase(db, "")
         assert rerun["skipped"]
         assert summary(db) == before
-        lot = db.scalar(select(MaterialTransfer).where(MaterialTransfer.entry_kind == "warehouse_receipt").order_by(MaterialTransfer.id))
+        lot = db.scalar(
+            select(MaterialTransfer)
+            .where(MaterialTransfer.entry_kind == "warehouse_receipt")
+            .order_by(MaterialTransfer.id)
+        )
         location = WarehouseLocation(team_id=lot.next_team_id, name="RESET-A")
         db.add(location)
         db.flush()
-        db.add(WarehousePlacement(location_id=location.id, transfer_id=lot.id, quantity=1, weight="0.100"))
-        locations_before = [(row.id, row.name) for row in db.scalars(select(WarehouseLocation).order_by(WarehouseLocation.id))]
-        users_before = [(u.id, u.username, u.team_id, u.password_hash) for u in db.scalars(select(User).order_by(User.id))]
+        db.add(
+            WarehousePlacement(
+                location_id=location.id, transfer_id=lot.id, quantity=1, weight="0.100"
+            )
+        )
+        locations_before = [
+            (row.id, row.name)
+            for row in db.scalars(select(WarehouseLocation).order_by(WarehouseLocation.id))
+        ]
+        users_before = [
+            (u.id, u.username, u.team_id, u.password_hash)
+            for u in db.scalars(select(User).order_by(User.id))
+        ]
         teams_before = [(t.id, t.code, t.name) for t in db.scalars(select(Team).order_by(Team.id))]
-        counters = list(db.execute(select(TransferBatchNumberSequence.sequence_date, TransferBatchNumberSequence.last_value)))
+        counters = list(
+            db.execute(
+                select(
+                    TransferBatchNumberSequence.sequence_date,
+                    TransferBatchNumberSequence.last_value,
+                )
+            )
+        )
         db.commit()
         # Foreign-key checks remain enabled while deleting linked child lots.
         db.connection().exec_driver_sql("PRAGMA foreign_keys=ON")
@@ -76,11 +124,32 @@ def test_eight_team_showcase_and_reset_preserve_identity_and_counters(client):
         assert deleted["material_transfers"] == before["material_transfers"]
         assert deleted["warehouse_placements"] == 1
         assert all(count == 0 for count in business_counts(db).values())
-        assert [(row.id, row.name) for row in db.scalars(select(WarehouseLocation).order_by(WarehouseLocation.id))] == locations_before
-        assert [(u.id, u.username, u.team_id, u.password_hash) for u in db.scalars(select(User).order_by(User.id))] == users_before
-        assert [(t.id, t.code, t.name) for t in db.scalars(select(Team).order_by(Team.id))] == teams_before
-        assert list(db.execute(select(TransferBatchNumberSequence.sequence_date, TransferBatchNumberSequence.last_value))) == counters
-        assert db.scalar(select(User).where(User.username == "admin")).password_hash == original_password
+        assert [
+            (row.id, row.name)
+            for row in db.scalars(select(WarehouseLocation).order_by(WarehouseLocation.id))
+        ] == locations_before
+        assert [
+            (u.id, u.username, u.team_id, u.password_hash)
+            for u in db.scalars(select(User).order_by(User.id))
+        ] == users_before
+        assert [
+            (t.id, t.code, t.name) for t in db.scalars(select(Team).order_by(Team.id))
+        ] == teams_before
+        assert (
+            list(
+                db.execute(
+                    select(
+                        TransferBatchNumberSequence.sequence_date,
+                        TransferBatchNumberSequence.last_value,
+                    )
+                )
+            )
+            == counters
+        )
+        assert (
+            db.scalar(select(User).where(User.username == "admin")).password_hash
+            == original_password
+        )
         db.commit()
         db.connection().exec_driver_sql("PRAGMA foreign_keys=OFF")
         db.commit()

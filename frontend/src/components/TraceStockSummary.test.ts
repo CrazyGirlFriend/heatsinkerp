@@ -7,30 +7,67 @@ import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import type { MaterialTrace } from '@/types/materialTrace'
 
 let wrapper: VueWrapper | undefined
-afterEach(() => { wrapper?.unmount() })
+afterEach(() => {
+  wrapper?.unmount()
+})
 const amount = { quantity: 0, weight: 0 }
 const trace: MaterialTrace = {
-  serial_no: 'YS-017', positions: [], untracked_count: 0,
-  totals: { on_hand: amount, in_transit: amount, external_pending: amount, dispatched: amount, lost: amount },
+  serial_no: 'YS-017',
+  positions: [],
+  untracked_count: 0,
+  totals: {
+    on_hand: amount,
+    in_transit: amount,
+    external_pending: amount,
+    dispatched: amount,
+    lost: amount,
+  },
   holdings: [
-    { team_id: 1, team_code: 'FACTORY-WAREHOUSE', team_name: '库房班组', material_types: [
-      { material_type: 'finished_surplus', quantity: 6, weight: .96 },
-      { material_type: 'semi_finished_surplus', quantity: 12, weight: 1.92 },
-      { material_type: 'scrap_chips', quantity: 0, weight: 18.577 },
-      { material_type: 'defective', quantity: 6, weight: .96 },
-    ] },
-    { team_id: 8, team_code: 'FACTORY-QC', team_name: '检验', material_types: [
-      { material_type: 'finished', quantity: 317, weight: 47.229 },
-      { material_type: 'scrap_chips', quantity: 0, weight: 1 },
-    ] },
+    {
+      team_id: 1,
+      team_code: 'FACTORY-WAREHOUSE',
+      team_name: '库房班组',
+      material_types: [
+        { material_type: 'finished_surplus', quantity: 6, weight: 0.96 },
+        { material_type: 'semi_finished_surplus', quantity: 12, weight: 1.92 },
+        { material_type: 'scrap_chips', quantity: 0, weight: 18.577 },
+        { material_type: 'defective', quantity: 6, weight: 0.96 },
+      ],
+    },
+    {
+      team_id: 8,
+      team_code: 'FACTORY-QC',
+      team_name: '检验',
+      material_types: [
+        { material_type: 'finished', quantity: 317, weight: 47.229 },
+        { material_type: 'scrap_chips', quantity: 0, weight: 1 },
+      ],
+    },
   ],
-  items: ['dispatched', 'pending', 'voided'].flatMap((status, id) => ['finished', 'scrap_chips'].map(material_type => ({
-    ...normalizeMaterialTransfer({ id, status, material_type, quantity: 30, weight: 3, entry_kind: 'inspection_shipment' }),
-    on_hand_quantity: null, on_hand_weight: null,
-  }))),
+  items: ['dispatched', 'pending', 'voided'].flatMap((status, id) =>
+    ['finished', 'scrap_chips'].map((material_type) => ({
+      ...normalizeMaterialTransfer({
+        id,
+        status,
+        material_type,
+        quantity: 30,
+        weight: 3,
+        entry_kind: 'inspection_shipment',
+      }),
+      on_hand_quantity: null,
+      on_hand_weight: null,
+    })),
+  ),
 }
 function render(data = trace) {
-  wrapper = mount(TraceStockSummary, { props: { trace: data, teams: ['库房', '轧制', '检验', '外部 · 客户'], metric: 'quantity', range: { start: 0, end: 100 } } })
+  wrapper = mount(TraceStockSummary, {
+    props: {
+      trace: data,
+      teams: ['库房', '轧制', '检验', '外部 · 客户'],
+      metric: 'quantity',
+      range: { start: 0, end: 100 },
+    },
+  })
   return wrapper
 }
 it('totals reusable stock across batches and excludes waste and external shipments', async () => {
@@ -74,20 +111,46 @@ it('distinguishes an unavailable older response from a verified zero balance', a
   expect(page.get('.stock-total').text()).toBe('正常料合计0 件')
 })
 it('shows signed measured processing changes separately from actual shortages and warns on a root absolute difference', async () => {
-  const page = render({ ...trace, processing_delta_weight: -.5, weight_difference: -.5, max_weight_difference: .5 })
+  const page = render({
+    ...trace,
+    processing_delta_weight: -0.5,
+    weight_difference: -0.5,
+    max_weight_difference: 0.5,
+  })
   await page.setProps({ metric: 'weight', compact: true })
   expect(page.get('.stock-measured').text()).toBe('加工实测差额-0.5 kg')
   expect(page.find('.stock-gap').exists()).toBe(false)
   expect(page.find('.stock-measured--warning').exists()).toBe(false)
-  await page.setProps({ trace: { ...trace, processing_delta_weight: -1.1, weight_difference: 0, max_weight_difference: 1.1, shortage: { quantity: 0, weight: 1.1 } } })
+  await page.setProps({
+    trace: {
+      ...trace,
+      processing_delta_weight: -1.1,
+      weight_difference: 0,
+      max_weight_difference: 1.1,
+      shortage: { quantity: 0, weight: 1.1 },
+    },
+  })
   expect(page.get('.stock-measured--warning').text()).toContain('-1.1 kg')
   expect(page.get('.stock-gap').text()).toBe('重量差异1.1 kg')
   expect(page.get('.stock-measured').attributes('title')).toContain('不计丢失')
 })
 
 it('shows a book shortage separately from signed current normal stock', () => {
-  const data = { ...trace, shortage: { quantity: 20, weight: 2 }, holdings: [{ team_id: 1, team_code: 'FACTORY-WAREHOUSE', team_name: '库房', material_types: [{ material_type: 'finished', quantity: -20, weight: -2 }] }] }
-  wrapper = mount(TraceStockSummary, { props: { trace: data, teams: ['库房'], metric: 'weight', range: { start: 0, end: 100 } } })
+  const data = {
+    ...trace,
+    shortage: { quantity: 20, weight: 2 },
+    holdings: [
+      {
+        team_id: 1,
+        team_code: 'FACTORY-WAREHOUSE',
+        team_name: '库房',
+        material_types: [{ material_type: 'finished', quantity: -20, weight: -2 }],
+      },
+    ],
+  }
+  wrapper = mount(TraceStockSummary, {
+    props: { trace: data, teams: ['库房'], metric: 'weight', range: { start: 0, end: 100 } },
+  })
   expect(wrapper.get('.stock-gap').text()).toContain('重量差异2 kg')
   expect(wrapper.get('.stock-value--shortage').text()).toContain('-2')
   expect(wrapper.get('.stock-total').text()).toContain('-2')

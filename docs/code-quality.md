@@ -22,7 +22,9 @@ npm run build
 
 CI 使用 Python 3.12 和 Node 24；`.github/workflows/quality.yml` 在推送和 PR 时运行上述检查，并验证空库迁移。CI 不执行部署、不连接生产数据库。
 
-ESLint 检查全部前端源码及测试；TypeScript 严格检查保留。Ruff 对全部后端应用、测试检查语法和未定义名称，`scripts/quality-scope.json` 中的核心模块另外检查导入、常见错误和格式。Prettier 当前覆盖大屏、请求与推送、诊断等已整理模块；`npm run format` 只格式化该清单。新增或整理模块应加入清单，逐步扩大范围。不能把这一基线描述成“所有旧代码都已格式化”。
+ESLint 和 TypeScript 检查全部前端源码及测试。Prettier 检查整个 `frontend/src`，以及 ESLint 和格式检查脚本；`npm run format` 使用同一范围。Ruff 对整个 `backend/app`、`backend/tests` 和 `backend/alembic` 执行 `E4/E7/E9/F/I/B` 规则及格式检查，新文件自动纳入，不再维护文件白名单。测试跨模块导入的 pytest fixture 使用显式同名导出，避免被误删为未使用导入；ORM 关系的预加载访问保留为显式赋值。
+
+加工班组代码统一放在前端 `config/materialRules.ts` 与后端 `team_constants.py`；重量提醒前端统一使用 `materialWeightToleranceKg`，后端使用 `MATERIAL_WEIGHT_TOLERANCE`。前后端一致性测试核对这两项，调整规则时须同时更新；1 kg 仍是同一来源在本班组累计的提醒线，不是提交限制。数值显示复用 `utils/format.ts`，检索比较复用 `record_filters.numeric_search_predicate`，各查询保留自己的库存范围。
 
 ## 请求与错误诊断
 

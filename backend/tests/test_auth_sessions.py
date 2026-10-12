@@ -6,12 +6,11 @@ from threading import Barrier
 
 import httpx
 import pytest
-from sqlalchemy import func, select
-
 from app.auth import create_session, token_digest
 from app.database import SessionLocal
 from app.main import app
 from app.models import AuthSession, User, utcnow
+from sqlalchemy import func, select
 from test_material_transfers import _leader, _team
 
 
@@ -136,7 +135,9 @@ def test_simultaneous_logins_cannot_exceed_three(client, monkeypatch):
     assert active_count() == 3
     assert client.get("/api/auth/me").status_code == 401
     with SessionLocal() as db:
-        sessions = db.scalars(select(AuthSession).order_by(AuthSession.created_at.desc(), AuthSession.id.desc())).all()
+        sessions = db.scalars(
+            select(AuthSession).order_by(AuthSession.created_at.desc(), AuthSession.id.desc())
+        ).all()
         assert all(session.revoked_at is None for session in sessions[:3])
         assert all(session.revoked_at is not None for session in sessions[3:])
         active_tokens = {session.token_hash for session in sessions[:3]}
@@ -166,8 +167,14 @@ def test_login_reduces_legacy_sessions_to_three(client):
         user = db.scalar(select(User).where(User.username == "admin"))
         now = utcnow()
         for index in range(3):
-            db.add(AuthSession(user_id=user.id, token_hash=token_digest(f"legacy-{index}"),
-                               created_at=now - timedelta(minutes=index + 1), expires_at=now + timedelta(hours=1)))
+            db.add(
+                AuthSession(
+                    user_id=user.id,
+                    token_hash=token_digest(f"legacy-{index}"),
+                    created_at=now - timedelta(minutes=index + 1),
+                    expires_at=now + timedelta(hours=1),
+                )
+            )
         db.commit()
     new = headers(login(client))
     assert active_count() == 3

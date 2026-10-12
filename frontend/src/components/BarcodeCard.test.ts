@@ -2,10 +2,12 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 
-const renderBarcode = vi.hoisted(() => vi.fn((element: SVGSVGElement, value: string) => {
-  element.setAttribute('width', String(value.length * 24))
-  element.setAttribute('height', '72')
-}))
+const renderBarcode = vi.hoisted(() =>
+  vi.fn((element: SVGSVGElement, value: string) => {
+    element.setAttribute('width', String(value.length * 24))
+    element.setAttribute('height', '72')
+  }),
+)
 
 vi.mock('jsbarcode', () => ({ default: renderBarcode }))
 
@@ -19,7 +21,11 @@ describe('BarcodeCard', () => {
     const svg = wrapper.get('svg')
     expect(Number(svg.attributes('width'))).toBeGreaterThan(320)
     expect(wrapper.classes()).toContain('barcode-card--scrollable')
-    expect(renderBarcode).toHaveBeenLastCalledWith(expect.any(SVGSVGElement), 'TL202609050000000000000000000001', expect.objectContaining({ width: 1.7, height: 52 }))
+    expect(renderBarcode).toHaveBeenLastCalledWith(
+      expect.any(SVGSVGElement),
+      'TL202609050000000000000000000001',
+      expect.objectContaining({ width: 1.7, height: 52 }),
+    )
   })
 
   it('retains the compact rendering profile for list previews', async () => {
@@ -27,6 +33,10 @@ describe('BarcodeCard', () => {
     await flushPromises()
 
     expect(wrapper.classes()).toContain('barcode-card--compact')
-    expect(renderBarcode).toHaveBeenLastCalledWith(expect.any(SVGSVGElement), 'TL20260905000042', expect.objectContaining({ width: 1.15, height: 28 }))
+    expect(renderBarcode).toHaveBeenLastCalledWith(
+      expect.any(SVGSVGElement),
+      'TL20260905000042',
+      expect.objectContaining({ width: 1.15, height: 28 }),
+    )
   })
 })

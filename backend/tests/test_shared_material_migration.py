@@ -66,8 +66,11 @@ def test_plan_upgrade_preserves_legacy_members_without_inventing_allocations():
             connection.exec_driver_sql(
                 "UPDATE shared_material_members SET planned_weight=60.123456, planned_quantity=300, planned_specification='25 × 12 × 2 mm' WHERE id=1"
             )
-            assert connection.exec_driver_sql(
-                "SELECT planned_weight FROM shared_material_members WHERE id=1"
-            ).scalar() == 60.123456
+            assert (
+                connection.exec_driver_sql(
+                    "SELECT planned_weight FROM shared_material_members WHERE id=1"
+                ).scalar()
+                == 60.123456
+            )
     finally:
         engine.dispose()

@@ -4,6 +4,7 @@ Outbound creation deducts once, edits adjust the delta and void restores it.
 Recipient confirmation never deducts the source a second time. Classification
 always comes from the source lot received by THIS team, not its next destination.
 """
+
 from collections import defaultdict
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -12,13 +13,13 @@ from fastapi import Depends, HTTPException, Path, Query
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, lazyload, selectinload
 
+from .async_api import AsyncAPIRouter as APIRouter
 from .auth import get_current_user
 from .database import get_db
 from .material_stock import require_team, stock_table
-from .models import MaterialTransfer as MT, MaterialTransferEvent, MaterialLoss, User
+from .models import MaterialLoss, MaterialTransferEvent, User
+from .models import MaterialTransfer as MT
 from .record_filters import RecordFilters, day_bounds
-
-from .async_api import AsyncAPIRouter as APIRouter
 
 router = APIRouter(prefix="/api/team-materials", tags=["serial receipt and dispatch history"])
 
@@ -28,30 +29,65 @@ def iso(value):
 
 
 @router.get("/{team_id}/serial-history")
-def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_length=80),
-            date_from: date | None = None, date_to: date | None = None,
-            _: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def history(
+    team_id: int = Path(ge=1),
+    serial_no: str = Query(min_length=1, max_length=80),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     team = require_team(db, team_id)
     serial_no = serial_no.strip()
     if not serial_no:
         raise HTTPException(422, "请输入完整流水号")
     RecordFilters(date_from=date_from, date_to=date_to).dates(MT.created_at)
     # Exact identity, with leading zeroes; an exhausted serial is still found.
-    serial_scope = or_(MT.serial_no == serial_no, and_(MT.entry_kind == "serial_reallocation",
-        MT.source_transfer_id.in_(select(MT.id).where(MT.serial_no == serial_no))))
-    rows = db.scalars(select(MT).options(lazyload("*"), selectinload(MT.stock_source)).where(serial_scope,
-        or_(MT.next_team_id == team_id, MT.source_team_id == team_id)).order_by(MT.id)).all()
-    received = {row.id: row for row in rows if row.serial_no == serial_no and row.next_team_id == team_id and row.status == "received" and row.stock_tracked}
-    outgoing = [row for row in rows if row.source_team_id == team_id and row.source_transfer_id in received and row.entry_kind != "processing_output"]
+    serial_scope = or_(
+        MT.serial_no == serial_no,
+        and_(
+            MT.entry_kind == "serial_reallocation",
+            MT.source_transfer_id.in_(select(MT.id).where(MT.serial_no == serial_no)),
+        ),
+    )
+    rows = db.scalars(
+        select(MT)
+        .options(lazyload("*"), selectinload(MT.stock_source))
+        .where(serial_scope, or_(MT.next_team_id == team_id, MT.source_team_id == team_id))
+        .order_by(MT.id)
+    ).all()
+    received = {
+        row.id: row
+        for row in rows
+        if row.serial_no == serial_no
+        and row.next_team_id == team_id
+        and row.status == "received"
+        and row.stock_tracked
+    }
+    outgoing = [
+        row
+        for row in rows
+        if row.source_team_id == team_id
+        and row.source_transfer_id in received
+        and row.entry_kind != "processing_output"
+    ]
     processed = [lot for lot in received.values() if lot.entry_kind == "processing_output"]
-    losses = db.scalars(select(MaterialLoss).options(lazyload("*")).join(MT, MT.id == MaterialLoss.source_transfer_id)
-        .where(MaterialLoss.team_id == team_id, MT.serial_no == serial_no).order_by(MaterialLoss.id)).all()
+    losses = db.scalars(
+        select(MaterialLoss)
+        .options(lazyload("*"))
+        .join(MT, MT.id == MaterialLoss.source_transfer_id)
+        .where(MaterialLoss.team_id == team_id, MT.serial_no == serial_no)
+        .order_by(MaterialLoss.id)
+    ).all()
     audits = defaultdict(list)
     if outgoing or processed:
         # Join instead of an unbounded IN parameter list for long-lived serials.
-        for event in db.scalars(select(MaterialTransferEvent).join(MT, MT.id == MaterialTransferEvent.transfer_id)
+        for event in db.scalars(
+            select(MaterialTransferEvent)
+            .join(MT, MT.id == MaterialTransferEvent.transfer_id)
             .where(MT.source_team_id == team_id, serial_scope)
-            .order_by(MaterialTransferEvent.occurred_at, MaterialTransferEvent.id)):
+            .order_by(MaterialTransferEvent.occurred_at, MaterialTransferEvent.id)
+        ):
             audits[event.transfer_id].append(event)
     groups = {}
 
@@ -59,43 +95,113 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
         # A purpose rename never rewrites its old batch snapshot.
         key = f"{lot.purpose_id or 0}:{lot.purpose_name or ''}"
         if key not in groups:
-            groups[key] = {"key": key, "purpose_id": lot.purpose_id, "name": lot.purpose_name or "未分类",
-                "incoming_quantity": 0, "incoming_weight": Decimal(0), "outgoing_quantity": 0, "outgoing_weight": Decimal(0),
-                "lost_quantity": 0, "lost_weight": Decimal(0), "on_hand_quantity": 0, "on_hand_weight": Decimal(0),
-                "owned_quantity": 0, "owned_weight": Decimal(0),
-                "processing_delta_quantity": 0, "processing_delta_weight": Decimal(0), "events": []}
+            groups[key] = {
+                "key": key,
+                "purpose_id": lot.purpose_id,
+                "name": lot.purpose_name or "未分类",
+                "incoming_quantity": 0,
+                "incoming_weight": Decimal(0),
+                "outgoing_quantity": 0,
+                "outgoing_weight": Decimal(0),
+                "lost_quantity": 0,
+                "lost_weight": Decimal(0),
+                "on_hand_quantity": 0,
+                "on_hand_weight": Decimal(0),
+                "owned_quantity": 0,
+                "owned_weight": Decimal(0),
+                "processing_delta_quantity": 0,
+                "processing_delta_weight": Decimal(0),
+                "events": [],
+            }
         return groups[key]
 
-    def add(lot, row, kind, at, quantity, weight, counterpart, delta_quantity, delta_weight, event_id):
-        group(lot)["events"].append({"id": event_id, "at": iso(at), "kind": kind, "batch_no": row.batch_no,
-            "source_batch_no": lot.batch_no, "material_type": row.material_type, "source_material_type": lot.material_type,
-            "counterpart": counterpart, "quantity": int(quantity), "weight": float(weight),
-            "delta_quantity": int(delta_quantity), "delta_weight": float(delta_weight), "status": row.status,
-            "entry_kind": row.entry_kind, "processing_role": row.processing_role,
-            "transfer_specification": row.transfer_specification})
+    def add(
+        lot, row, kind, at, quantity, weight, counterpart, delta_quantity, delta_weight, event_id
+    ):
+        group(lot)["events"].append(
+            {
+                "id": event_id,
+                "at": iso(at),
+                "kind": kind,
+                "batch_no": row.batch_no,
+                "source_batch_no": lot.batch_no,
+                "material_type": row.material_type,
+                "source_material_type": lot.material_type,
+                "counterpart": counterpart,
+                "quantity": int(quantity),
+                "weight": float(weight),
+                "delta_quantity": int(delta_quantity),
+                "delta_weight": float(delta_weight),
+                "status": row.status,
+                "entry_kind": row.entry_kind,
+                "processing_role": row.processing_role,
+                "transfer_specification": row.transfer_specification,
+            }
+        )
 
     def source_label(lot):
-        return ("本班组加工产物" if lot.entry_kind == "processing_output" else
-                f"{lot.stock_source.serial_no} 转投入" if lot.entry_kind == "serial_reallocation" else
-                "初始库存" if lot.entry_kind == "opening_stock" else
-                (lot.external_source or "外部入库") if lot.entry_kind == "warehouse_receipt" else lot.source_team_name)
+        return (
+            "本班组加工产物"
+            if lot.entry_kind == "processing_output"
+            else f"{lot.stock_source.serial_no} 转投入"
+            if lot.entry_kind == "serial_reallocation"
+            else "初始库存"
+            if lot.entry_kind == "opening_stock"
+            else (lot.external_source or "外部入库")
+            if lot.entry_kind == "warehouse_receipt"
+            else lot.source_team_name
+        )
 
     for lot in received.values():
         item = group(lot)
         if lot.entry_kind == "processing_output":
             audit = next((event for event in audits[lot.id] if event.action == "processed"), None)
-            at, event_id = (audit.occurred_at, audit.id) if audit else (lot.received_at or lot.created_at, lot.id)
+            at, event_id = (
+                (audit.occurred_at, audit.id)
+                if audit
+                else (lot.received_at or lot.created_at, lot.id)
+            )
             parent = received.get(lot.source_transfer_id)
             if parent:
-                add(parent, lot, "processing_input", at, lot.quantity, lot.weight, "本班组加工分解",
-                    -lot.quantity, -lot.weight, f"processing-input-{event_id}")
-            add(lot, lot, "processing_output", at, lot.quantity, lot.weight, source_label(lot),
-                lot.quantity, lot.weight, f"processing-output-{event_id}")
+                add(
+                    parent,
+                    lot,
+                    "processing_input",
+                    at,
+                    lot.quantity,
+                    lot.weight,
+                    "本班组加工分解",
+                    -lot.quantity,
+                    -lot.weight,
+                    f"processing-input-{event_id}",
+                )
+            add(
+                lot,
+                lot,
+                "processing_output",
+                at,
+                lot.quantity,
+                lot.weight,
+                source_label(lot),
+                lot.quantity,
+                lot.weight,
+                f"processing-output-{event_id}",
+            )
         else:
             item["incoming_quantity"] += lot.quantity
             item["incoming_weight"] += lot.weight
-            add(lot, lot, "opening" if lot.entry_kind == "opening_stock" else "incoming", lot.received_at or lot.created_at,
-                lot.quantity, lot.weight, source_label(lot), lot.quantity, lot.weight, f"receipt-{lot.id}")
+            add(
+                lot,
+                lot,
+                "opening" if lot.entry_kind == "opening_stock" else "incoming",
+                lot.received_at or lot.created_at,
+                lot.quantity,
+                lot.weight,
+                source_label(lot),
+                lot.quantity,
+                lot.weight,
+                f"receipt-{lot.id}",
+            )
     for row in outgoing:
         lot = received[row.source_transfer_id]
         item = group(lot)
@@ -103,15 +209,41 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
             item["outgoing_quantity"] += row.quantity
             item["outgoing_weight"] += row.weight
         quantity, weight = 0, Decimal(0)
-        events = [event for event in audits[row.id] if event.action in ("created", "updated", "voided", "reallocated")]
+        events = [
+            event
+            for event in audits[row.id]
+            if event.action in ("created", "updated", "voided", "reallocated")
+        ]
         # Pre-audit imports can still be represented, but never claim the exact
         # intermediate edits that were not recorded.
         if not events:
-            add(lot, row, "outgoing", row.created_at, row.quantity, row.weight, f"转投至 {row.serial_no}" if row.entry_kind == "serial_reallocation" else row.next_team_name or row.external_destination,
-                -row.quantity, -row.weight, f"outbound-{row.id}")
+            add(
+                lot,
+                row,
+                "outgoing",
+                row.created_at,
+                row.quantity,
+                row.weight,
+                f"转投至 {row.serial_no}"
+                if row.entry_kind == "serial_reallocation"
+                else row.next_team_name or row.external_destination,
+                -row.quantity,
+                -row.weight,
+                f"outbound-{row.id}",
+            )
             if row.status == "voided":
-                add(lot, row, "voided", row.voided_at or row.updated_at, row.quantity, row.weight,
-                    row.next_team_name or row.external_destination, row.quantity, row.weight, f"void-{row.id}")
+                add(
+                    lot,
+                    row,
+                    "voided",
+                    row.voided_at or row.updated_at,
+                    row.quantity,
+                    row.weight,
+                    row.next_team_name or row.external_destination,
+                    row.quantity,
+                    row.weight,
+                    f"void-{row.id}",
+                )
             continue
         for event in events:
             changes = event.changes or {}
@@ -125,8 +257,20 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
                 amount_q, amount_w = abs(delta_q), abs(delta_w)
                 kind = "outgoing" if event.action in ("created", "reallocated") else "adjusted"
             if delta_q or delta_w:
-                add(lot, row, kind, event.occurred_at, amount_q, amount_w, f"转投至 {row.serial_no}" if row.entry_kind == "serial_reallocation" else row.next_team_name or row.external_destination,
-                    delta_q, delta_w, f"event-{event.id}")
+                add(
+                    lot,
+                    row,
+                    kind,
+                    event.occurred_at,
+                    amount_q,
+                    amount_w,
+                    f"转投至 {row.serial_no}"
+                    if row.entry_kind == "serial_reallocation"
+                    else row.next_team_name or row.external_destination,
+                    delta_q,
+                    delta_w,
+                    f"event-{event.id}",
+                )
             quantity, weight = next_quantity, next_weight
     for loss in losses:
         lot = received.get(loss.source_transfer_id)
@@ -135,36 +279,77 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
         item = group(lot)
         item["lost_quantity"] += loss.quantity
         item["lost_weight"] += loss.weight
-        add(lot, lot, "loss", loss.created_at, loss.quantity, loss.weight, loss.reason,
-            -loss.quantity, -loss.weight, f"loss-{loss.id}")
-    adjustments = db.scalars(select(MaterialTransferEvent).join(MT, MT.id == MaterialTransferEvent.transfer_id)
-        .where(MT.next_team_id == team_id, MT.serial_no == serial_no, MaterialTransferEvent.action == "quantity_changed")
-        .order_by(MaterialTransferEvent.id)).all()
+        add(
+            lot,
+            lot,
+            "loss",
+            loss.created_at,
+            loss.quantity,
+            loss.weight,
+            loss.reason,
+            -loss.quantity,
+            -loss.weight,
+            f"loss-{loss.id}",
+        )
+    adjustments = db.scalars(
+        select(MaterialTransferEvent)
+        .join(MT, MT.id == MaterialTransferEvent.transfer_id)
+        .where(
+            MT.next_team_id == team_id,
+            MT.serial_no == serial_no,
+            MaterialTransferEvent.action == "quantity_changed",
+        )
+        .order_by(MaterialTransferEvent.id)
+    ).all()
     for adjustment in adjustments:
         lot = received.get(adjustment.transfer_id)
         if lot:
             pieces = adjustment.changes["stock_quantity"]
             delta = pieces["after"] - pieces["before"]
             measured = adjustment.changes.get("stock_weight", {})
-            weight_delta = Decimal(str(measured.get("after", 0))) - Decimal(str(measured.get("before", 0)))
+            weight_delta = Decimal(str(measured.get("after", 0))) - Decimal(
+                str(measured.get("before", 0))
+            )
             group(lot)["processing_delta_quantity"] += delta
             group(lot)["processing_delta_weight"] += weight_delta
-            add(lot, lot, "quantity_changed", adjustment.occurred_at, abs(delta), abs(weight_delta), adjustment.changes["reason"]["after"],
-                delta, weight_delta, f"event-{adjustment.id}")
+            add(
+                lot,
+                lot,
+                "quantity_changed",
+                adjustment.occurred_at,
+                abs(delta),
+                abs(weight_delta),
+                adjustment.changes["reason"]["after"],
+                delta,
+                weight_delta,
+                f"event-{adjustment.id}",
+            )
     ledger = stock_table(team_id)
-    lots = {lot.batch_no: {
-        "batch_no": lot.batch_no, "group_key": group(lot)["key"],
-        "received_at": iso(lot.received_at or lot.created_at),
-        "from_name": source_label(lot), "entry_kind": lot.entry_kind, "processing_role": lot.processing_role,
-        "source_batch_no": lot.stock_source.batch_no if lot.source_transfer_id else None,
-        "material_type": lot.material_type, "transfer_specification": lot.transfer_specification,
-        "quantity": lot.quantity, "weight": float(lot.weight),
-        "on_hand_quantity": 0, "on_hand_weight": 0,
-        "owned_quantity": 0, "owned_weight": 0,
-        "baseline_quantity": 0, "baseline_weight": Decimal(0),
-        "closing_quantity": 0, "closing_weight": Decimal(0),
-        "last_event_at": iso(lot.received_at or lot.created_at),
-    } for lot in received.values()}
+    lots = {
+        lot.batch_no: {
+            "batch_no": lot.batch_no,
+            "group_key": group(lot)["key"],
+            "received_at": iso(lot.received_at or lot.created_at),
+            "from_name": source_label(lot),
+            "entry_kind": lot.entry_kind,
+            "processing_role": lot.processing_role,
+            "source_batch_no": lot.stock_source.batch_no if lot.source_transfer_id else None,
+            "material_type": lot.material_type,
+            "transfer_specification": lot.transfer_specification,
+            "quantity": lot.quantity,
+            "weight": float(lot.weight),
+            "on_hand_quantity": 0,
+            "on_hand_weight": 0,
+            "owned_quantity": 0,
+            "owned_weight": 0,
+            "baseline_quantity": 0,
+            "baseline_weight": Decimal(0),
+            "closing_quantity": 0,
+            "closing_weight": Decimal(0),
+            "last_event_at": iso(lot.received_at or lot.created_at),
+        }
+        for lot in received.values()
+    }
     for balance in db.execute(select(ledger).where(ledger.c.serial_no == serial_no)).mappings():
         lot = received[balance["transfer_id"]]
         item = group(lot)
@@ -189,25 +374,57 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
         stamp = iso(at)
         if (start and stamp < start) or (end and stamp >= end):
             return
-        flows.append({"id": f"{direction}-{row.id}", "group_key": group(lot)["key"],
-            "direction": direction, "batch_no": row.batch_no, "at": stamp,
-            "from_name": origin, "to_name": destination, "quantity": row.quantity,
-            "weight": float(row.weight), "status": row.status, "entry_kind": row.entry_kind})
+        flows.append(
+            {
+                "id": f"{direction}-{row.id}",
+                "group_key": group(lot)["key"],
+                "direction": direction,
+                "batch_no": row.batch_no,
+                "at": stamp,
+                "from_name": origin,
+                "to_name": destination,
+                "quantity": row.quantity,
+                "weight": float(row.weight),
+                "status": row.status,
+                "entry_kind": row.entry_kind,
+            }
+        )
 
     for lot in received.values():
         if lot.entry_kind != "processing_output":
-            add_flow(lot, lot, "incoming", lot.received_at or lot.created_at, source_label(lot), team.name)
+            add_flow(
+                lot,
+                lot,
+                "incoming",
+                lot.received_at or lot.created_at,
+                source_label(lot),
+                team.name,
+            )
     for row in outgoing:
         if row.status != "voided":
-            add_flow(received[row.source_transfer_id], row, "outgoing", row.created_at,
-                     team.name, f"转投至 {row.serial_no}" if row.entry_kind == "serial_reallocation" else row.next_team_name or row.external_destination or "外部出库")
+            add_flow(
+                received[row.source_transfer_id],
+                row,
+                "outgoing",
+                row.created_at,
+                team.name,
+                f"转投至 {row.serial_no}"
+                if row.entry_kind == "serial_reallocation"
+                else row.next_team_name or row.external_destination or "外部出库",
+            )
     result = []
     for item in groups.values():
         # MySQL timestamps can share a second. Numeric audit IDs preserve edit /
         # void order; receipts precede their deductions at equal timestamps.
-        events = sorted(item.pop("events"), key=lambda event: (event["at"],
-            0 if event["kind"] in ("incoming", "opening") else 1,
-            int(event["id"].rsplit("-", 1)[1]), event["kind"] == "processing_output"))
+        events = sorted(
+            item.pop("events"),
+            key=lambda event: (
+                event["at"],
+                0 if event["kind"] in ("incoming", "opening") else 1,
+                int(event["id"].rsplit("-", 1)[1]),
+                event["kind"] == "processing_output",
+            ),
+        )
         q, w = 0, Decimal(0)
         baseline_q, baseline_w = 0, Decimal(0)
         visible = []
@@ -227,14 +444,46 @@ def history(team_id: int = Path(ge=1), serial_no: str = Query(min_length=1, max_
             if end and event["at"] >= end:
                 continue
             visible.append({**event, "balance_quantity": q, "balance_weight": float(w)})
-        result.append({**{key: float(value) if isinstance(value, Decimal) else value for key, value in item.items()},
-                       "baseline_quantity": baseline_q, "baseline_weight": float(baseline_w), "events": visible})
-    return {"serial_no": serial_no, "team_name": team.name, "flows": flows,
-            "observed_at": observed_at, "closing_at": min(end, observed_at) if end else observed_at,
-            "lots": [{key: float(value) if isinstance(value, Decimal) else value for key, value in lot.items()}
-                     for lot in lots.values()],
-            "found": bool(rows), "date_from": date_from, "date_to": date_to,
-            "groups": result, "untracked_count": sum(1 for row in rows if (
-                row.next_team_id == team_id and row.status == "received" and not row.stock_tracked
-            ) or (row.source_team_id == team_id and row.status != "voided" and row.entry_kind != "serial_reallocation" and row.source_transfer_id not in received)),
-            "pending_incoming_count": sum(1 for row in rows if row.next_team_id == team_id and row.status == "pending")}
+        result.append(
+            {
+                **{
+                    key: float(value) if isinstance(value, Decimal) else value
+                    for key, value in item.items()
+                },
+                "baseline_quantity": baseline_q,
+                "baseline_weight": float(baseline_w),
+                "events": visible,
+            }
+        )
+    return {
+        "serial_no": serial_no,
+        "team_name": team.name,
+        "flows": flows,
+        "observed_at": observed_at,
+        "closing_at": min(end, observed_at) if end else observed_at,
+        "lots": [
+            {
+                key: float(value) if isinstance(value, Decimal) else value
+                for key, value in lot.items()
+            }
+            for lot in lots.values()
+        ],
+        "found": bool(rows),
+        "date_from": date_from,
+        "date_to": date_to,
+        "groups": result,
+        "untracked_count": sum(
+            1
+            for row in rows
+            if (row.next_team_id == team_id and row.status == "received" and not row.stock_tracked)
+            or (
+                row.source_team_id == team_id
+                and row.status != "voided"
+                and row.entry_kind != "serial_reallocation"
+                and row.source_transfer_id not in received
+            )
+        ),
+        "pending_incoming_count": sum(
+            1 for row in rows if row.next_team_id == team_id and row.status == "pending"
+        ),
+    }

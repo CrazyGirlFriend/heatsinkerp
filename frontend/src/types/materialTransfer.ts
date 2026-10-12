@@ -4,7 +4,13 @@ import type { MaterialLoss } from './teamMaterials'
 
 export type MaterialTransferStatus = 'pending' | 'received' | 'voided' | 'dispatched'
 export type ExternalEntryKind = 'warehouse_outbound' | 'inspection_shipment'
-export type MaterialEntryKind = 'transfer' | 'warehouse_receipt' | 'opening_stock' | 'serial_reallocation' | 'processing_output' | ExternalEntryKind
+export type MaterialEntryKind =
+  | 'transfer'
+  | 'warehouse_receipt'
+  | 'opening_stock'
+  | 'serial_reallocation'
+  | 'processing_output'
+  | ExternalEntryKind
 export type MaterialTransferAction = 'edit' | 'void' | 'confirm' | string
 
 export const materialTypeOptions = [
@@ -18,20 +24,29 @@ export const materialTypeOptions = [
   { value: 'sludge', label: '废泥' },
   { value: 'scrap_chips', label: '废屑' },
 ] as const
-export type MaterialType = typeof materialTypeOptions[number]['value']
-export const isScrapType = (type?: string | null) => ['defective', 'waste', 'sludge', 'scrap_chips'].includes(type || '')
-export const isWeightOnlyType = (type?: string | null) => ['sludge', 'scrap_chips'].includes(type || '')
+export type MaterialType = (typeof materialTypeOptions)[number]['value']
+export const isScrapType = (type?: string | null) =>
+  ['defective', 'waste', 'sludge', 'scrap_chips'].includes(type || '')
+export const isWeightOnlyType = (type?: string | null) =>
+  ['sludge', 'scrap_chips'].includes(type || '')
 export function receiptSourceLabel(transfer: MaterialTransfer): string {
   if (transfer.entry_kind === 'processing_output') return '本班组加工'
   if (transfer.entry_kind === 'serial_reallocation') return '转投入库'
   if (transfer.entry_kind === 'opening_stock') return '初始库存'
-  return transfer.entry_kind !== 'warehouse_receipt' ? '车间转入' : transfer.receipt_kind === 'return' ? '外部退回' : '外部入库'
+  return transfer.entry_kind !== 'warehouse_receipt'
+    ? '车间转入'
+    : transfer.receipt_kind === 'return'
+      ? '外部退回'
+      : '外部入库'
 }
 export function materialSourceLabel(transfer: MaterialTransfer): string {
   if (transfer.entry_kind === 'processing_output') return `${transfer.next_team.name} · 本班组加工`
-  if (transfer.entry_kind === 'serial_reallocation') return `${transfer.source_serial_no || '原流水号'} 转投入`
+  if (transfer.entry_kind === 'serial_reallocation')
+    return `${transfer.source_serial_no || '原流水号'} 转投入`
   if (transfer.entry_kind === 'opening_stock') return '初始库存'
-  return transfer.entry_kind === 'warehouse_receipt' ? transfer.external_source || '外部来源未登记' : transfer.source_team.name
+  return transfer.entry_kind === 'warehouse_receipt'
+    ? transfer.external_source || '外部来源未登记'
+    : transfer.source_team.name
 }
 
 export const materialSearchModes = [
@@ -48,27 +63,57 @@ export const materialSearchFields = [
   { value: 'customer_code', label: '客户代码' },
   { value: 'material_name', label: '材质' },
 ] as const
-export type MaterialSearchMode = typeof materialSearchModes[number]['value']
-export type MaterialSearchField = typeof materialSearchFields[number]['value']
+export type MaterialSearchMode = (typeof materialSearchModes)[number]['value']
+export type MaterialSearchField = (typeof materialSearchFields)[number]['value']
 
 export const materialDocumentTextFields = [
   { key: 'source_batch_no', label: '原单批号', maxLength: 80, group: 'basic', multiline: false },
   { key: 'material_name', label: '材质', maxLength: 160, group: 'basic', multiline: false },
-  { key: 'finished_specification', label: '成品规格', maxLength: 240, group: 'basic', multiline: false },
-  { key: 'transfer_specification', label: '转料规格', maxLength: 240, group: 'basic', multiline: false },
+  {
+    key: 'finished_specification',
+    label: '成品规格',
+    maxLength: 240,
+    group: 'basic',
+    multiline: false,
+  },
+  {
+    key: 'transfer_specification',
+    label: '转料规格',
+    maxLength: 240,
+    group: 'basic',
+    multiline: false,
+  },
   { key: 'customer_code', label: '客户代码', maxLength: 80, group: 'basic', multiline: false },
-  { key: 'technical_requirements', label: '技术要求', maxLength: 4000, group: 'basic', multiline: true },
+  {
+    key: 'technical_requirements',
+    label: '技术要求',
+    maxLength: 4000,
+    group: 'basic',
+    multiline: true,
+  },
   { key: 'product_code', label: '编号', maxLength: 80, group: 'extra', multiline: false },
   { key: 'part_no', label: '件号', maxLength: 80, group: 'extra', multiline: false },
   { key: 'material_shape', label: '形状', maxLength: 80, group: 'extra', multiline: false },
-  { key: 'material_description', label: '物料说明', maxLength: 2000, group: 'extra', multiline: true },
+  {
+    key: 'material_description',
+    label: '物料说明',
+    maxLength: 2000,
+    group: 'extra',
+    multiline: true,
+  },
   { key: 'outsourced_unit', label: '外委单位', maxLength: 160, group: 'extra', multiline: false },
   { key: 'purpose_category', label: '用途分类', maxLength: 80, group: 'extra', multiline: false },
   { key: 'category_level3', label: '三级类别', maxLength: 80, group: 'extra', multiline: false },
   { key: 'order_category', label: '订单分类', maxLength: 80, group: 'extra', multiline: false },
-  { key: 'special_process', label: '特殊工艺说明', maxLength: 2000, group: 'extra', multiline: true },
+  {
+    key: 'special_process',
+    label: '特殊工艺说明',
+    maxLength: 2000,
+    group: 'extra',
+    multiline: true,
+  },
 ] as const
-export type MaterialTransferTextField = typeof materialDocumentTextFields[number]['key']
+export type MaterialTransferTextField = (typeof materialDocumentTextFields)[number]['key']
 export type MaterialTransferDocumentFields = Record<MaterialTransferTextField, string | null> & {
   material_type: MaterialType | null
   finished_quantity: number | null
@@ -78,7 +123,17 @@ export type MaterialTransferDocumentFields = Record<MaterialTransferTextField, s
 
 export interface MaterialTransferHistoryEntry {
   id: number
-  action: 'created' | 'updated' | 'received' | 'voided' | 'stocked' | 'dispatched' | 'rejected' | 'quantity_changed' | 'reallocated' | 'processed'
+  action:
+    | 'created'
+    | 'updated'
+    | 'received'
+    | 'voided'
+    | 'stocked'
+    | 'dispatched'
+    | 'rejected'
+    | 'quantity_changed'
+    | 'reallocated'
+    | 'processed'
   actor: string
   occurred_at: string
   changes: Record<string, { before: unknown; after: unknown }>
@@ -91,8 +146,12 @@ export interface MaterialTransferTeam {
   kind?: TeamKind
 }
 
-export interface SludgeMeasurement { sludge_gross_weight?: number | null; sludge_content_percent?: number | null }
-export interface MaterialTransfer extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement, SharedMaterialFields {
+export interface SludgeMeasurement {
+  sludge_gross_weight?: number | null
+  sludge_content_percent?: number | null
+}
+export interface MaterialTransfer
+  extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement, SharedMaterialFields {
   sludge_percent_locked?: boolean
   delivery_origin_batch_no?: string | null
   can_edit_delivery?: boolean
@@ -144,7 +203,9 @@ export interface MaterialTransfer extends Partial<MaterialTransferDocumentFields
 }
 
 export interface MaterialTransferListParams {
-  date_from?: string; date_to?: string; urgent_only?: boolean
+  date_from?: string
+  date_to?: string
+  urgent_only?: boolean
   team_id?: EntityId
   direction?: MaterialTransferDirection
   query?: string
@@ -161,7 +222,10 @@ export interface MaterialTransferListParams {
 
 export type MaterialTransferDirection = 'all' | 'outgoing' | 'incoming'
 
-export type MaterialTransferFilterParams = Omit<MaterialTransferListParams, 'status' | 'page' | 'page_size'>
+export type MaterialTransferFilterParams = Omit<
+  MaterialTransferListParams,
+  'status' | 'page' | 'page_size'
+>
 
 export interface MaterialTransferListResponse {
   items: MaterialTransfer[]
@@ -172,7 +236,8 @@ export interface MaterialTransferListResponse {
 
 export type MaterialTransferStatusCounts = Record<MaterialTransferStatus | 'all', number>
 
-export interface CreateMaterialTransferPayload extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement, SharedMaterialFields {
+export interface CreateMaterialTransferPayload
+  extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement, SharedMaterialFields {
   warehouse_location?: string | null
   warehouse_location_reservation_key?: string | null
   purpose_id?: number | null
@@ -184,8 +249,14 @@ export interface CreateMaterialTransferPayload extends Partial<MaterialTransferD
   idempotency_key?: string
 }
 
-export interface OutboundQuantityClearance { source_transfer_id: number; quantity: number; reason?: string }
-export type UpdateMaterialTransferPayload = Partial<Omit<CreateMaterialTransferPayload, 'idempotency_key'>> & { expected_version?: number; quantity_clearance?: OutboundQuantityClearance }
+export interface OutboundQuantityClearance {
+  source_transfer_id: number
+  quantity: number
+  reason?: string
+}
+export type UpdateMaterialTransferPayload = Partial<
+  Omit<CreateMaterialTransferPayload, 'idempotency_key'>
+> & { expected_version?: number; quantity_clearance?: OutboundQuantityClearance }
 
 export interface ConfirmMaterialTransferPayload {
   warehouse_location_reservation_key?: string | null
@@ -195,14 +266,16 @@ export interface ConfirmMaterialTransferPayload {
 }
 
 export function materialTypeLabel(type: MaterialType | string | null | undefined): string {
-  return materialTypeOptions.find(option => option.value === type)?.label ?? (type || '未填写')
+  return materialTypeOptions.find((option) => option.value === type)?.label ?? (type || '未填写')
 }
 
 export function materialTransferNotesLabel(transfer: MaterialTransfer): string {
   if (transfer.entry_kind === 'processing_output') return '加工说明'
   if (transfer.entry_kind === 'serial_reallocation') return '转投原因'
   if (isExternalTransfer(transfer)) return `${externalActionLabel(transfer.entry_kind)}说明`
-  return isWarehouseReceipt(transfer) || transfer.next_team.kind === 'warehouse' ? '入库说明' : '备注'
+  return isWarehouseReceipt(transfer) || transfer.next_team.kind === 'warehouse'
+    ? '入库说明'
+    : '备注'
 }
 
 export function isWarehouseReceipt(transfer: MaterialTransfer): boolean {
@@ -222,28 +295,46 @@ export function materialEntryLabel(kind?: MaterialEntryKind): string {
   if (kind === 'processing_output') return '本班组加工'
   if (kind === 'serial_reallocation') return '流水号转投'
   if (kind === 'opening_stock') return '初始库存'
-  return kind === 'warehouse_receipt' ? '库房手工入库' : kind === 'warehouse_outbound' ? '对外出库' : kind === 'inspection_shipment' ? '检验发货' : '内部转料'
+  return kind === 'warehouse_receipt'
+    ? '库房手工入库'
+    : kind === 'warehouse_outbound'
+      ? '对外出库'
+      : kind === 'inspection_shipment'
+        ? '检验发货'
+        : '内部转料'
 }
 export function materialDocumentTitle(transfer: MaterialTransfer): string {
   if (transfer.entry_kind === 'processing_output') return '加工实物登记单'
   if (transfer.entry_kind === 'serial_reallocation') return '流水号转投单'
   if (transfer.entry_kind === 'opening_stock') return '初始库存登记单'
-  return isWarehouseReceipt(transfer) ? '库房入库单' : isExternalTransfer(transfer) ? `${externalActionLabel(transfer.entry_kind)}单` : '物料转料单'
+  return isWarehouseReceipt(transfer)
+    ? '库房入库单'
+    : isExternalTransfer(transfer)
+      ? `${externalActionLabel(transfer.entry_kind)}单`
+      : '物料转料单'
 }
 
 export function materialTransferVersion(transfer: MaterialTransfer): { expected_version?: number } {
-  return Number.isSafeInteger(transfer.version) && Number(transfer.version) > 0 ? { expected_version: Number(transfer.version) } : {}
+  return Number.isSafeInteger(transfer.version) && Number(transfer.version) > 0
+    ? { expected_version: Number(transfer.version) }
+    : {}
 }
 
-export function materialPurposeLabel(transfer: Pick<MaterialTransfer, 'entry_kind' | 'purpose_name'>): string {
+export function materialPurposeLabel(
+  transfer: Pick<MaterialTransfer, 'entry_kind' | 'purpose_name'>,
+): string {
   return isExternalEntryKind(transfer.entry_kind) ? '—' : transfer.purpose_name?.trim() || '未指定'
 }
 
-export function materialTransferStatusLabel(status: MaterialTransferStatus | string, entryKind?: MaterialEntryKind): string {
+export function materialTransferStatusLabel(
+  status: MaterialTransferStatus | string,
+  entryKind?: MaterialEntryKind,
+): string {
   if (entryKind === 'processing_output' && status === 'received') return '已登记加工'
   if (entryKind === 'serial_reallocation' && status === 'received') return '已转投'
   if (entryKind === 'opening_stock') return '已登记'
-  if (isExternalEntryKind(entryKind) && status === 'pending') return `待${externalActionLabel(entryKind)}`
+  if (isExternalEntryKind(entryKind) && status === 'pending')
+    return `待${externalActionLabel(entryKind)}`
   if (status === 'dispatched') return `已${externalActionLabel(entryKind)}`
   if (status === 'received' && entryKind === 'warehouse_receipt') return '已入库'
   const labels: Record<string, string> = {
@@ -276,9 +367,19 @@ export function canVoidMaterialTransfer(transfer: MaterialTransfer): boolean {
 }
 
 export function canConfirmMaterialTransfer(transfer: MaterialTransfer): boolean {
-  return !isExternalTransfer(transfer) && transfer.status === 'pending' && !transfer.locked && hasAction(transfer, 'confirm')
+  return (
+    !isExternalTransfer(transfer) &&
+    transfer.status === 'pending' &&
+    !transfer.locked &&
+    hasAction(transfer, 'confirm')
+  )
 }
 
 export function canConfirmOutbound(transfer: MaterialTransfer): boolean {
-  return isExternalTransfer(transfer) && transfer.status === 'pending' && !transfer.locked && hasAction(transfer, 'confirm_outbound')
+  return (
+    isExternalTransfer(transfer) &&
+    transfer.status === 'pending' &&
+    !transfer.locked &&
+    hasAction(transfer, 'confirm_outbound')
+  )
 }

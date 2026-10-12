@@ -4,12 +4,15 @@ from sqlalchemy import or_
 
 from .models import MaterialTransfer
 
-
 INDEXED_SEARCH_FIELDS = {
     name: getattr(MaterialTransfer, name)
     for name in (
-        "batch_no", "serial_no", "source_batch_no", "product_code",
-        "customer_code", "material_name",
+        "batch_no",
+        "serial_no",
+        "source_batch_no",
+        "product_code",
+        "customer_code",
+        "material_name",
     )
 }
 CONTAINS_SEARCH_FIELDS = (
@@ -37,12 +40,21 @@ def team_scope_predicate(team_id: int, direction: str = "all"):
 def search_predicate(query: str, search_field: str = "all", search_mode: str = "contains"):
     """Never infer a mode or silently narrow an existing contains search."""
     if search_field == "all":
-        fields = CONTAINS_SEARCH_FIELDS if search_mode == "contains" else tuple(INDEXED_SEARCH_FIELDS.values())
+        fields = (
+            CONTAINS_SEARCH_FIELDS
+            if search_mode == "contains"
+            else tuple(INDEXED_SEARCH_FIELDS.values())
+        )
     else:
         fields = (INDEXED_SEARCH_FIELDS[search_field],)
     term = query.strip()
     from .shared_material import serial_match
-    shared = serial_match(MaterialTransfer.serial_no, term, search_mode) if search_field in ("all", "serial_no") else False
+
+    shared = (
+        serial_match(MaterialTransfer.serial_no, term, search_mode)
+        if search_field in ("all", "serial_no")
+        else False
+    )
     if search_mode == "exact":
         return or_(shared, *(field == term for field in fields))
     # Treat user-supplied SQL wildcards literally, including the escape itself.

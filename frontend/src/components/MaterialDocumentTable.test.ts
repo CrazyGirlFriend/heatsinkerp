@@ -5,11 +5,17 @@ import MaterialDocumentTable from './MaterialDocumentTable.vue'
 
 describe('document field table', () => {
   it('pairs short fields while reserving a complete row for notes and odd fields', () => {
-    const wrapper = mount(MaterialDocumentTable, { props: { label: '单据资料', fields: [
-      { label: '流水号', value: 'LS-001' }, { label: '件数', value: '0 件' },
-      { label: '说明', value: '第一行\n第二行', fullWidth: true },
-      { label: '重量', value: '0.001 kg' },
-    ] } })
+    const wrapper = mount(MaterialDocumentTable, {
+      props: {
+        label: '单据资料',
+        fields: [
+          { label: '流水号', value: 'LS-001' },
+          { label: '件数', value: '0 件' },
+          { label: '说明', value: '第一行\n第二行', fullWidth: true },
+          { label: '重量', value: '0.001 kg' },
+        ],
+      },
+    })
     const rows = wrapper.findAll('tbody tr')
     expect(rows).toHaveLength(3)
     expect(rows[0]!.findAll('th')).toHaveLength(2)

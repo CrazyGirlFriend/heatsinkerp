@@ -9,7 +9,8 @@ from app.models import MaterialDispatch, MaterialTransfer
 from app.schemas import MaterialTransferResponse
 from sqlalchemy import event, inspect, select
 from test_warehouse_classification import confirm, dispatch
-from test_warehouse_receipts import intake, warehouse  # noqa: F401
+from test_warehouse_receipts import intake  # noqa: F401
+from test_warehouse_receipts import warehouse as warehouse
 
 
 @contextmanager

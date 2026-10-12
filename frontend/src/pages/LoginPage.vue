@@ -35,8 +35,13 @@ async function handleSubmit(): Promise<void> {
   try {
     await login({ username: username.value.trim(), password: password.value })
     // Cross-fade only after authentication succeeds; navigation still owns its guards.
-    if (document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      await document.startViewTransition(async () => { await router.replace(safeRedirect()) }).updateCallbackDone
+    if (
+      document.startViewTransition &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      await document.startViewTransition(async () => {
+        await router.replace(safeRedirect())
+      }).updateCallbackDone
     } else {
       await router.replace(safeRedirect())
     }
@@ -54,9 +59,22 @@ onMounted(() => {
 
 <template>
   <main class="login-page">
-    <img class="login-scene" src="/images/login-metal-background.webp" alt="" fetchpriority="high" width="1584" height="993" />
+    <img
+      class="login-scene"
+      src="/images/login-metal-background.webp"
+      alt=""
+      fetchpriority="high"
+      width="1584"
+      height="993"
+    />
     <section class="login-brand" aria-label="系统名称">
-      <span class="login-brand__mark"><img src="/brand/attl-official-logo.png" alt="中国钢研 安泰科技 · 安泰天龙" width="1017" height="143" /></span>
+      <span class="login-brand__mark"
+        ><img
+          src="/brand/attl-official-logo.png"
+          alt="中国钢研 安泰科技 · 安泰天龙"
+          width="1017"
+          height="143"
+      /></span>
       <h1><span>热沉事业部</span><span>综合管理系统</span></h1>
     </section>
 
@@ -79,7 +97,9 @@ onMounted(() => {
               size="large"
               autofocus
             >
-              <template #prefix><ElIcon><User /></ElIcon></template>
+              <template #prefix
+                ><ElIcon><User /></ElIcon
+              ></template>
             </ElInput>
           </ElFormItem>
 
@@ -95,22 +115,39 @@ onMounted(() => {
               placeholder="请输入密码"
               size="large"
             >
-              <template #prefix><ElIcon><Lock /></ElIcon></template>
+              <template #prefix
+                ><ElIcon><Lock /></ElIcon
+              ></template>
               <template #suffix>
-                <button class="login-password-toggle" type="button" :disabled="busy" :aria-label="passwordVisible ? '隐藏密码' : '显示密码'" :aria-pressed="passwordVisible" @click="passwordVisible = !passwordVisible">
+                <button
+                  class="login-password-toggle"
+                  type="button"
+                  :disabled="busy"
+                  :aria-label="passwordVisible ? '隐藏密码' : '显示密码'"
+                  :aria-pressed="passwordVisible"
+                  @click="passwordVisible = !passwordVisible"
+                >
                   <ElIcon><Hide v-if="passwordVisible" /><View v-else /></ElIcon>
                 </button>
               </template>
             </ElInput>
-            <p v-if="errorMessage" id="login-error" class="login-error" role="alert">{{ errorMessage }}</p>
+            <p v-if="errorMessage" id="login-error" class="login-error" role="alert">
+              {{ errorMessage }}
+            </p>
           </ElFormItem>
 
-          <ElButton class="login-submit" type="primary" size="large" native-type="submit" :loading="busy" :disabled="busy">
+          <ElButton
+            class="login-submit"
+            type="primary"
+            size="large"
+            native-type="submit"
+            :loading="busy"
+            :disabled="busy"
+          >
             {{ busy ? '正在登录' : '登录' }}
             <ElIcon v-if="!busy" class="login-submit__arrow" aria-hidden="true"><Right /></ElIcon>
           </ElButton>
         </ElForm>
-
       </div>
     </section>
   </main>

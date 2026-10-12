@@ -1,7 +1,18 @@
 <script setup lang="ts">
 import { currentLocations } from '@/utils/warehousePlacement'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElButton, ElCheckbox, ElDescriptions, ElDescriptionsItem, ElDialog, ElPagination, ElTable, ElTableColumn, ElTabs, ElTabPane } from 'element-plus'
+import {
+  ElButton,
+  ElCheckbox,
+  ElDescriptions,
+  ElDescriptionsItem,
+  ElDialog,
+  ElPagination,
+  ElTable,
+  ElTableColumn,
+  ElTabs,
+  ElTabPane,
+} from 'element-plus'
 import MaterialAmount from './MaterialAmount.vue'
 import { inventoryAmount } from '@/types/teamInventory'
 import MaterialTransferStatus from './MaterialTransferStatus.vue'
@@ -12,166 +23,661 @@ import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialTransferApi } from '@/services/materialTransferApi'
-import { materialSourceLabel, materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
+import {
+  materialSourceLabel,
+  materialTypeLabel,
+  type MaterialTransfer,
+} from '@/types/materialTransfer'
 import type { MaterialLoss, StockBatch } from '@/types/teamMaterials'
 import type { SerialMetaField, SerialSummary } from '@/types/materialAnalytics'
 import { formatDateTime } from '@/utils/format'
 import { stockAvailable, stockSelectable } from '@/utils/materialStock'
-const props = defineProps<{ modelValue: boolean; teamId: number; serialNo: string; canWrite?: boolean }>()
-const emit = defineEmits<{ 'update:modelValue': [value: boolean]; changed: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]] }>()
-const tab = ref('stock'), page = ref(1), pageSize = ref(10)
-const summary = ref<SerialSummary | null>(null), stock = ref<StockBatch[]>([]), records = ref<MaterialTransfer[]>([]), losses = ref<MaterialLoss[]>([])
-const loading = ref(false), error = ref(''), total = ref(0)
+const props = defineProps<{
+  modelValue: boolean
+  teamId: number
+  serialNo: string
+  canWrite?: boolean
+}>()
+const emit = defineEmits<{
+  'update:modelValue': [value: boolean]
+  changed: []
+  action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]
+}>()
+const tab = ref('stock'),
+  page = ref(1),
+  pageSize = ref(10)
+const summary = ref<SerialSummary | null>(null),
+  stock = ref<StockBatch[]>([]),
+  records = ref<MaterialTransfer[]>([]),
+  losses = ref<MaterialLoss[]>([])
+const loading = ref(false),
+  error = ref(''),
+  total = ref(0)
 const checked = ref<string[]>([])
 const availableRows = computed(() => stock.value.filter(stockSelectable))
-const selectedRows = computed(() => availableRows.value.filter(row => checked.value.includes(String(row.transfer.id))))
-const allChecked = computed(() => availableRows.value.length > 0 && selectedRows.value.length === availableRows.value.length)
-function asStock(row: unknown) { return row as StockBatch }
-function asTransfer(row: unknown) { return row as MaterialTransfer }
+const selectedRows = computed(() =>
+  availableRows.value.filter((row) => checked.value.includes(String(row.transfer.id))),
+)
+const allChecked = computed(
+  () => availableRows.value.length > 0 && selectedRows.value.length === availableRows.value.length,
+)
+function asStock(row: unknown) {
+  return row as StockBatch
+}
+function asTransfer(row: unknown) {
+  return row as MaterialTransfer
+}
 function toggle(row: StockBatch, value: string | number | boolean) {
   const id = String(row.transfer.id)
-  checked.value = value && stockSelectable(row) ? [...new Set([...checked.value, id])] : checked.value.filter(key => key !== id)
+  checked.value =
+    value && stockSelectable(row)
+      ? [...new Set([...checked.value, id])]
+      : checked.value.filter((key) => key !== id)
 }
-function toggleAll(value: string | number | boolean) { checked.value = value ? availableRows.value.map(row => String(row.transfer.id)) : [] }
+function toggleAll(value: string | number | boolean) {
+  checked.value = value ? availableRows.value.map((row) => String(row.transfer.id)) : []
+}
 function action(mode: 'dispatch' | 'loss', sources: StockBatch[]) {
-  if (!props.canWrite || loading.value || error.value || !sources.length || sources.some(row => !(mode === 'loss' ? stockAvailable(row) : stockSelectable(row)))) return
+  if (
+    !props.canWrite ||
+    loading.value ||
+    error.value ||
+    !sources.length ||
+    sources.some((row) => !(mode === 'loss' ? stockAvailable(row) : stockSelectable(row)))
+  )
+    return
   emit('action', mode, sources)
 }
-const selected = ref<MaterialTransfer | null>(null), batchNo = ref(''), batchOpen = ref(false)
-const meta = computed(() => ([['material_name', '材质'], ['transfer_specification', '转料规格'], ['finished_specification', '成品规格'], ['finished_quantity', '成品件数'], ['source_batch_no', '原单批号'], ['customer_code', '客户代码'], ['product_code', '编号']] as [SerialMetaField, string][]))
-function field(key: SerialMetaField) { return !summary.value ? '—' : summary.value[`${key}_count`] > 1 ? '各批不同，见批次明细' : summary.value[key] ?? '—' }
+const selected = ref<MaterialTransfer | null>(null),
+  batchNo = ref(''),
+  batchOpen = ref(false)
+const meta = computed(
+  () =>
+    [
+      ['material_name', '材质'],
+      ['transfer_specification', '转料规格'],
+      ['finished_specification', '成品规格'],
+      ['finished_quantity', '成品件数'],
+      ['source_batch_no', '原单批号'],
+      ['customer_code', '客户代码'],
+      ['product_code', '编号'],
+    ] as [SerialMetaField, string][],
+)
+function field(key: SerialMetaField) {
+  return !summary.value
+    ? '—'
+    : summary.value[`${key}_count`] > 1
+      ? '各批不同，见批次明细'
+      : (summary.value[key] ?? '—')
+}
 let version = 0
 const liveRefresh = useLiveRefresh(() => load(true), {
-  enabled: () => props.modelValue && Boolean(props.serialNo), busy: () => loading.value,
+  enabled: () => props.modelValue && Boolean(props.serialNo),
+  busy: () => loading.value,
 })
 async function load(background = false) {
   const current = ++version
   if (!props.modelValue || !props.serialNo) return
-  if (!background) { loading.value = true; stock.value = []; records.value = []; losses.value = [] }
+  if (!background) {
+    loading.value = true
+    stock.value = []
+    records.value = []
+    losses.value = []
+  }
   error.value = ''
   const params = { serial_no: props.serialNo, page: page.value, page_size: pageSize.value }
   try {
     const [info, result] = await Promise.all([
       teamMaterialApi.serials(props.teamId, { serial_no: props.serialNo, page_size: 1 }),
-      tab.value === 'stock' ? teamMaterialApi.stock(props.teamId, { ...params, availability: 'all' }) : tab.value === 'losses' ? teamMaterialApi.losses(props.teamId, params) : materialTransferApi.list({ ...params, team_id: props.teamId, direction: tab.value as 'incoming' | 'outgoing' }),
+      tab.value === 'stock'
+        ? teamMaterialApi.stock(props.teamId, { ...params, availability: 'all' })
+        : tab.value === 'losses'
+          ? teamMaterialApi.losses(props.teamId, params)
+          : materialTransferApi.list({
+              ...params,
+              team_id: props.teamId,
+              direction: tab.value as 'incoming' | 'outgoing',
+            }),
     ])
     if (current !== version) return
-    summary.value = info.items[0] || null; total.value = result.total
+    summary.value = info.items[0] || null
+    total.value = result.total
     if (tab.value === 'stock') stock.value = result.items as StockBatch[]
     else if (tab.value === 'losses') losses.value = result.items as MaterialLoss[]
     else records.value = result.items as MaterialTransfer[]
-  } catch (e) { if (current === version) { if (background) throw e; error.value = e instanceof Error ? e.message : '流水号详情加载失败' } }
-  finally { if (current === version) loading.value = false }
+  } catch (e) {
+    if (current === version) {
+      if (background) throw e
+      error.value = e instanceof Error ? e.message : '流水号详情加载失败'
+    }
+  } finally {
+    if (current === version) loading.value = false
+  }
 }
-function open(value: unknown) { const record = value as MaterialTransfer; selected.value = record; batchNo.value = record.batch_no; batchOpen.value = true }
-function openLoss(value: unknown) { const record = value as MaterialLoss; selected.value = null; batchNo.value = record.batch_no; batchOpen.value = true }
-function changed() { void load(); emit('changed') }
-watch(() => [props.modelValue, props.teamId, props.serialNo], () => { ++version; summary.value = null; tab.value = 'stock'; page.value = 1; batchOpen.value = false; void load() }, { immediate: true })
-watch([tab, page, pageSize, () => props.modelValue, () => props.teamId, () => props.serialNo, () => props.canWrite], () => { checked.value = [] })
-watch(tab, () => { page.value = 1; void load() })
-onBeforeUnmount(() => { ++version })
+function open(value: unknown) {
+  const record = value as MaterialTransfer
+  selected.value = record
+  batchNo.value = record.batch_no
+  batchOpen.value = true
+}
+function openLoss(value: unknown) {
+  const record = value as MaterialLoss
+  selected.value = null
+  batchNo.value = record.batch_no
+  batchOpen.value = true
+}
+function changed() {
+  void load()
+  emit('changed')
+}
+watch(
+  () => [props.modelValue, props.teamId, props.serialNo],
+  () => {
+    ++version
+    summary.value = null
+    tab.value = 'stock'
+    page.value = 1
+    batchOpen.value = false
+    void load()
+  },
+  { immediate: true },
+)
+watch(
+  [
+    tab,
+    page,
+    pageSize,
+    () => props.modelValue,
+    () => props.teamId,
+    () => props.serialNo,
+    () => props.canWrite,
+  ],
+  () => {
+    checked.value = []
+  },
+)
+watch(tab, () => {
+  page.value = 1
+  void load()
+})
+onBeforeUnmount(() => {
+  ++version
+})
 </script>
 <template>
-  <ElDialog :model-value="modelValue" title="流水号详情" width="min(1200px, calc(100vw - 32px))" align-center append-to-body class="material-detail-dialog serial-detail-dialog" @update:model-value="emit('update:modelValue', $event)">
-    <template #header><div class="serial-title"><span>流水号详情</span><strong>{{ serialNo }}<SerialUrgencyBadge :urgency="summary?.urgency" /></strong></div></template>
+  <ElDialog
+    :model-value="modelValue"
+    title="流水号详情"
+    width="min(1200px, calc(100vw - 32px))"
+    align-center
+    append-to-body
+    class="material-detail-dialog serial-detail-dialog"
+    @update:model-value="emit('update:modelValue', $event)"
+  >
+    <template #header
+      ><div class="serial-title">
+        <span>流水号详情</span
+        ><strong>{{ serialNo }}<SerialUrgencyBadge :urgency="summary?.urgency" /></strong></div
+    ></template>
     <div class="serial-detail-body">
       <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
       <template v-if="summary">
         <ElDescriptions :column="3" border>
-          <ElDescriptionsItem v-for="[key, label] in meta" :key="key" :label="label">{{ field(key) }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="来料待签收"><MaterialAmount :quantity="summary.pending_incoming_quantity" :weight="summary.pending_incoming_weight" /></ElDescriptionsItem>
-          <ElDescriptionsItem label="累计丢失"><MaterialAmount :quantity="summary.lost_quantity" :weight="summary.lost_weight" /></ElDescriptionsItem>
-          <ElDescriptionsItem label="最近更新">{{ formatDateTime(summary.last_activity_at) }}</ElDescriptionsItem>
+          <ElDescriptionsItem v-for="[key, label] in meta" :key="key" :label="label">{{
+            field(key)
+          }}</ElDescriptionsItem>
+          <ElDescriptionsItem label="来料待签收"
+            ><MaterialAmount
+              :quantity="summary.pending_incoming_quantity"
+              :weight="summary.pending_incoming_weight"
+          /></ElDescriptionsItem>
+          <ElDescriptionsItem label="累计丢失"
+            ><MaterialAmount :quantity="summary.lost_quantity" :weight="summary.lost_weight"
+          /></ElDescriptionsItem>
+          <ElDescriptionsItem label="最近更新">{{
+            formatDateTime(summary.last_activity_at)
+          }}</ElDescriptionsItem>
         </ElDescriptions>
         <dl class="serial-balances" aria-label="库存与转出状态">
           <div class="serial-balance-total">
             <dt>库存合计</dt>
-            <dd><MaterialAmount :quantity="summary.owned_quantity" :weight="summary.owned_weight" /></dd>
+            <dd>
+              <MaterialAmount :quantity="summary.owned_quantity" :weight="summary.owned_weight" />
+            </dd>
             <small>包含尚未确认的转出物料</small>
           </div>
           <div>
             <dt>正常料可转出</dt>
-            <dd><MaterialAmount :quantity="summary.available_quantity" :weight="summary.available_weight" /></dd>
+            <dd>
+              <MaterialAmount
+                :quantity="summary.available_quantity"
+                :weight="summary.available_weight"
+              />
+            </dd>
             <small>未转出的正常料，不含废料</small>
           </div>
           <div>
             <dt>废料未转出</dt>
-            <dd><MaterialAmount :quantity="summary.scrap_quantity" :weight="summary.scrap_weight" /></dd>
+            <dd>
+              <MaterialAmount :quantity="summary.scrap_quantity" :weight="summary.scrap_weight" />
+            </dd>
             <small>包括废品、废料、废屑、废泥</small>
           </div>
           <div>
             <dt>转出待确认</dt>
-            <dd><MaterialAmount :quantity="summary.pending_outgoing_quantity" :weight="summary.pending_outgoing_weight" /></dd>
+            <dd>
+              <MaterialAmount
+                :quantity="summary.pending_outgoing_quantity"
+                :weight="summary.pending_outgoing_weight"
+              />
+            </dd>
             <small>已转出，不能再次转出</small>
           </div>
         </dl>
       </template>
-      <ElTabs v-model="tab" class="serial-detail-tabs"><ElTabPane name="stock" label="当前库存" /><ElTabPane name="incoming" label="转入明细" /><ElTabPane name="outgoing" label="转出明细" /><ElTabPane name="losses" label="丢失记录" /></ElTabs>
-      <div v-if="tab === 'stock' && canWrite" class="serial-stock-actions"><span>已选 {{ selectedRows.length }} 个来源批次</span><ElButton type="primary" :disabled="!selectedRows.length || loading || !!error" @click="action('dispatch', selectedRows)">批量出库</ElButton></div>
+      <ElTabs v-model="tab" class="serial-detail-tabs"
+        ><ElTabPane name="stock" label="当前库存" /><ElTabPane
+          name="incoming"
+          label="转入明细" /><ElTabPane name="outgoing" label="转出明细" /><ElTabPane
+          name="losses"
+          label="丢失记录"
+      /></ElTabs>
+      <div v-if="tab === 'stock' && canWrite" class="serial-stock-actions">
+        <span>已选 {{ selectedRows.length }} 个来源批次</span
+        ><ElButton
+          type="primary"
+          :disabled="!selectedRows.length || loading || !!error"
+          @click="action('dispatch', selectedRows)"
+          >批量出库</ElButton
+        >
+      </div>
       <StatePanel v-if="error" state="error" :description="error" @retry="load" />
       <StatePanel v-else-if="loading" state="loading" title="正在读取明细" />
       <div v-else class="serial-record-table">
-        <ElTable class="business-table" v-if="tab === 'stock'" :data="stock" stripe size="small" empty-text="暂无已接收来源批次">
+        <ElTable
+          class="business-table"
+          v-if="tab === 'stock'"
+          :data="stock"
+          stripe
+          size="small"
+          empty-text="暂无已接收来源批次"
+        >
           <ElTableColumn v-if="canWrite" width="44" class-name="stock-selection-column">
-            <template #header><ElCheckbox aria-label="选择本页可用批次" :model-value="allChecked" :indeterminate="selectedRows.length > 0 && !allChecked" :disabled="!availableRows.length" @change="toggleAll" /></template>
-            <template #default="{ row }"><ElCheckbox :aria-label="'选择 ' + row.transfer.batch_no" :model-value="selectedRows.some(item => item.transfer.id === row.transfer.id)" :disabled="!stockSelectable(asStock(row))" @change="toggle(asStock(row), $event)" /></template>
+            <template #header
+              ><ElCheckbox
+                aria-label="选择本页可用批次"
+                :model-value="allChecked"
+                :indeterminate="selectedRows.length > 0 && !allChecked"
+                :disabled="!availableRows.length"
+                @change="toggleAll"
+            /></template>
+            <template #default="{ row }"
+              ><ElCheckbox
+                :aria-label="'选择 ' + row.transfer.batch_no"
+                :model-value="selectedRows.some((item) => item.transfer.id === row.transfer.id)"
+                :disabled="!stockSelectable(asStock(row))"
+                @change="toggle(asStock(row), $event)"
+            /></template>
           </ElTableColumn>
-          <ElTableColumn label="来源批次" min-width="170"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
-          <ElTableColumn v-if="stock.some(item => item.transfer.next_team.code === 'FACTORY-WAREHOUSE')" label="当前仓位" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ currentLocations(asStock(row)) }}</template></ElTableColumn>
-          <ElTableColumn label="材质" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ row.transfer.material_name || '—' }}</template></ElTableColumn>
-          <ElTableColumn label="物料类型" min-width="110"><template #default="{ row }">{{ materialTypeLabel(row.transfer.material_type) }}</template></ElTableColumn>
-          <ElTableColumn label="来源" min-width="140"><template #default="{ row }">{{ materialSourceLabel(row.transfer) }}</template></ElTableColumn>
-          <ElTableColumn label="库存件数" min-width="115" align="center"><template #default="{ row }">{{ inventoryAmount(row.owned_quantity) }}</template></ElTableColumn>
-          <ElTableColumn label="库存重量 (kg)" min-width="145" align="center"><template #default="{ row }">{{ inventoryAmount(row.owned_weight) }}</template></ElTableColumn>
-          <ElTableColumn label="可用件数" min-width="115" align="center"><template #default="{ row }">{{ inventoryAmount(row.available_quantity) }}</template></ElTableColumn>
-          <ElTableColumn label="可用重量 (kg)" min-width="145" align="center"><template #default="{ row }">{{ inventoryAmount(row.available_weight) }}</template></ElTableColumn>
-          <ElTableColumn label="废料可处理件数" min-width="150" align="center"><template #default="{ row }">{{ inventoryAmount(row.scrap_available_quantity) }}</template></ElTableColumn>
-          <ElTableColumn label="废料可处理重量 (kg)" min-width="180" align="center"><template #default="{ row }">{{ inventoryAmount(row.scrap_available_weight) }}</template></ElTableColumn>
-          <ElTableColumn label="待确认件数" min-width="125" align="center"><template #default="{ row }">{{ inventoryAmount(row.reserved_quantity) }}</template></ElTableColumn>
-          <ElTableColumn label="待确认重量 (kg)" min-width="155" align="center"><template #default="{ row }">{{ inventoryAmount(row.reserved_weight) }}</template></ElTableColumn>
-          <ElTableColumn label="接收时间" min-width="145"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>
-          <ElTableColumn v-if="canWrite" label="操作" width="160" fixed="right"><template #default="{ row }"><ElButton link type="primary" :disabled="!stockSelectable(asStock(row))" @click="action('dispatch', [asStock(row)])">出库</ElButton><ElButton link :disabled="!stockAvailable(asStock(row))" @click="action('loss', [asStock(row)])">登记丢失</ElButton></template></ElTableColumn>
+          <ElTableColumn label="来源批次" min-width="170"
+            ><template #default="{ row }"
+              ><ElButton link type="primary" @click="open(row.transfer)">{{
+                row.transfer.batch_no
+              }}</ElButton></template
+            ></ElTableColumn
+          >
+          <ElTableColumn
+            v-if="stock.some((item) => item.transfer.next_team.code === 'FACTORY-WAREHOUSE')"
+            label="当前仓位"
+            min-width="160"
+            show-overflow-tooltip
+            ><template #default="{ row }">{{
+              currentLocations(asStock(row))
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="材质" min-width="140" show-overflow-tooltip
+            ><template #default="{ row }">{{
+              row.transfer.material_name || '—'
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="物料类型" min-width="110"
+            ><template #default="{ row }">{{
+              materialTypeLabel(row.transfer.material_type)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="来源" min-width="140"
+            ><template #default="{ row }">{{
+              materialSourceLabel(row.transfer)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="库存件数" min-width="115" align="center"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.owned_quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="库存重量 (kg)" min-width="145" align="center"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.owned_weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="可用件数" min-width="115" align="center"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.available_quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="可用重量 (kg)" min-width="145" align="center"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.available_weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="废料可处理件数" min-width="150" align="center"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.scrap_available_quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="废料可处理重量 (kg)" min-width="180" align="center"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.scrap_available_weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="待确认件数" min-width="125" align="center"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.reserved_quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="待确认重量 (kg)" min-width="155" align="center"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.reserved_weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="接收时间" min-width="145"
+            ><template #default="{ row }">{{
+              formatDateTime(row.transfer.received_at)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn v-if="canWrite" label="操作" width="160" fixed="right"
+            ><template #default="{ row }"
+              ><ElButton
+                link
+                type="primary"
+                :disabled="!stockSelectable(asStock(row))"
+                @click="action('dispatch', [asStock(row)])"
+                >出库</ElButton
+              ><ElButton
+                link
+                :disabled="!stockAvailable(asStock(row))"
+                @click="action('loss', [asStock(row)])"
+                >登记丢失</ElButton
+              ></template
+            ></ElTableColumn
+          >
         </ElTable>
-        <ElTable class="business-table" v-else-if="tab === 'losses'" :data="losses" stripe size="small" empty-text="暂无丢失记录">
-          <ElTableColumn prop="loss_no" label="记录编号" min-width="200" /><ElTableColumn label="丢失件数" min-width="115" align="center"><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
-          <ElTableColumn label="丢失重量 (kg)" min-width="145" align="center"><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
-          <ElTableColumn prop="reason" class-name="table-prose" label="原因" min-width="180" show-overflow-tooltip /><ElTableColumn prop="created_by" label="登记人" min-width="110" /><ElTableColumn label="时间" min-width="140"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></ElTableColumn><ElTableColumn label="操作" width="90"><template #default="{ row }"><ElButton link type="primary" @click="openLoss(row)">查看来源</ElButton></template></ElTableColumn>
+        <ElTable
+          class="business-table"
+          v-else-if="tab === 'losses'"
+          :data="losses"
+          stripe
+          size="small"
+          empty-text="暂无丢失记录"
+        >
+          <ElTableColumn prop="loss_no" label="记录编号" min-width="200" /><ElTableColumn
+            label="丢失件数"
+            min-width="115"
+            align="center"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="丢失重量 (kg)" min-width="145" align="center"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn
+            prop="reason"
+            class-name="table-prose"
+            label="原因"
+            min-width="180"
+            show-overflow-tooltip
+          /><ElTableColumn prop="created_by" label="登记人" min-width="110" /><ElTableColumn
+            label="时间"
+            min-width="140"
+            ><template #default="{ row }">{{
+              formatDateTime(row.created_at)
+            }}</template></ElTableColumn
+          ><ElTableColumn label="操作" width="90"
+            ><template #default="{ row }"
+              ><ElButton link type="primary" @click="openLoss(row)">查看来源</ElButton></template
+            ></ElTableColumn
+          >
         </ElTable>
-        <ElTable class="business-table" v-else :data="records" stripe size="small" empty-text="暂无交接明细">
-          <ElTableColumn label="交接批次" min-width="200"><template #default="{ row }"><ElButton link type="primary" @click="open(row)">{{ row.batch_no }}</ElButton></template></ElTableColumn>
-          <ElTableColumn label="材质" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ row.material_name || '—' }}</template></ElTableColumn>
-          <ElTableColumn label="规格" min-width="150" show-overflow-tooltip><template #default="{ row }">{{ row.transfer_specification || '—' }}</template></ElTableColumn>
-          <ElTableColumn label="来源" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ materialSourceLabel(asTransfer(row)) }}</template></ElTableColumn>
-          <ElTableColumn label="去向" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ row.external_destination || row.next_team.name }}</template></ElTableColumn>
-          <ElTableColumn label="件数" min-width="100" align="center"><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
-          <ElTableColumn label="重量 (kg)" min-width="125" align="center"><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
-          <ElTableColumn label="状态" width="120"><template #default="{ row }"><MaterialTransferStatus :status="row.status" :entry-kind="row.entry_kind" /></template></ElTableColumn>
-          <ElTableColumn label="登记人" min-width="120" show-overflow-tooltip><template #default="{ row }">{{ row.transferred_by || '—' }}</template></ElTableColumn>
-          <ElTableColumn label="登记时间" min-width="180"><template #default="{ row }">{{ formatDateTime(row.transferred_at) }}</template></ElTableColumn>
+        <ElTable
+          class="business-table"
+          v-else
+          :data="records"
+          stripe
+          size="small"
+          empty-text="暂无交接明细"
+        >
+          <ElTableColumn label="交接批次" min-width="200"
+            ><template #default="{ row }"
+              ><ElButton link type="primary" @click="open(row)">{{
+                row.batch_no
+              }}</ElButton></template
+            ></ElTableColumn
+          >
+          <ElTableColumn label="材质" min-width="140" show-overflow-tooltip
+            ><template #default="{ row }">{{ row.material_name || '—' }}</template></ElTableColumn
+          >
+          <ElTableColumn label="规格" min-width="150" show-overflow-tooltip
+            ><template #default="{ row }">{{
+              row.transfer_specification || '—'
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="来源" min-width="140" show-overflow-tooltip
+            ><template #default="{ row }">{{
+              materialSourceLabel(asTransfer(row))
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="去向" min-width="140" show-overflow-tooltip
+            ><template #default="{ row }">{{
+              row.external_destination || row.next_team.name
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="件数" min-width="100" align="center"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="重量 (kg)" min-width="125" align="center"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="状态" width="120"
+            ><template #default="{ row }"
+              ><MaterialTransferStatus
+                :status="row.status"
+                :entry-kind="row.entry_kind" /></template
+          ></ElTableColumn>
+          <ElTableColumn label="登记人" min-width="120" show-overflow-tooltip
+            ><template #default="{ row }">{{ row.transferred_by || '—' }}</template></ElTableColumn
+          >
+          <ElTableColumn label="登记时间" min-width="180"
+            ><template #default="{ row }">{{
+              formatDateTime(row.transferred_at)
+            }}</template></ElTableColumn
+          >
         </ElTable>
       </div>
     </div>
-    <template #footer><div class="serial-detail-footer"><span>共 {{ total }} 条{{ tab === 'stock' ? '来源记录' : tab === 'losses' ? '丢失记录' : '交接明细' }}</span><ElPagination :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></div></template>
+    <template #footer
+      ><div class="serial-detail-footer">
+        <span
+          >共 {{ total }} 条{{
+            tab === 'stock' ? '来源记录' : tab === 'losses' ? '丢失记录' : '交接明细'
+          }}</span
+        ><ElPagination
+          :current-page="page"
+          :page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="total"
+          layout="sizes, prev, pager, next"
+          @current-change="
+            ($event) => {
+              page = $event
+              load()
+            }
+          "
+          @size-change="
+            ($event) => {
+              pageSize = $event
+              page = 1
+              load()
+            }
+          "
+        /></div
+    ></template>
   </ElDialog>
-  <MaterialTransferDrawer v-model="batchOpen" :transfer="selected" :batch-no="batchNo" :trace-scope="{ team_id: teamId, direction: 'all' }" @changed="changed" />
+  <MaterialTransferDrawer
+    v-model="batchOpen"
+    :transfer="selected"
+    :batch-no="batchNo"
+    :trace-scope="{ team_id: teamId, direction: 'all' }"
+    @changed="changed"
+  />
 </template>
 <style scoped>
-.serial-stock-actions { display: flex; flex-shrink: 0; justify-content: space-between; align-items: center; gap: 12px; color: var(--muted); }
-.serial-title { display: flex; flex-direction: column; gap: 5px; }.serial-title span { color: var(--subtle); font-size: 12px; }.serial-title strong { color: var(--text); font-size: 19px; overflow-wrap: anywhere; }
-.serial-detail-body { display: flex; flex-direction: column; min-height: 0; gap: 12px; }.serial-detail-body > .el-descriptions { flex-shrink: 0; }.serial-detail-tabs { flex-shrink: 0; }.serial-detail-tabs :deep(.el-tabs__header) { margin: 0; }.serial-record-table { flex-shrink: 0; min-width: 0; }.serial-detail-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; overflow-x: auto; }.serial-detail-footer > span { font-size: 12px; white-space: nowrap; color: var(--subtle); }
-.serial-balances { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border: 1px solid var(--el-border-color-light); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
-.serial-balances > div { min-width: 0; display: grid; align-content: start; gap: 8px; padding: 12px 16px; }
-.serial-balances > div + div { border-left: 1px solid var(--el-border-color-light); }
-.serial-balance-total { background: var(--primary-soft); }
-.serial-balances dt { color: var(--text); font-size: 14px; font-weight: 500; }
-.serial-balances dd { margin: 0; }
-.serial-balances :deep(.material-amount strong) { font-size: 17px; }
-.serial-balances small { color: var(--subtle); font-size: 12px; line-height: 1.5; }
-.serial-title span, .serial-detail-footer > span { font-size: 14px; }
-.serial-detail-body :deep(.el-descriptions__cell) { font-size: 14px; line-height: 22px; padding: 10px 12px; }
-.serial-record-table :deep(.el-table), .serial-record-table :deep(.el-button.is-link) { font-size: 15px; }
-.serial-record-table :deep(td.el-table__cell) { padding-block: 12px; }
-.serial-record-table :deep(.cell) { white-space: nowrap; }
-@media(max-width:900px) { .serial-balances { grid-template-columns: repeat(2, minmax(0, 1fr)); }.serial-balances > div:nth-child(3) { border-left: 0; }.serial-balances > div:nth-child(n+3) { border-top: 1px solid var(--el-border-color-light); } }
-@media(max-width:600px) { .serial-detail-body :deep(.el-descriptions__body) { overflow-x: auto; }.serial-detail-body :deep(.el-descriptions__table) { min-width: 720px; }.serial-balances > div { padding: 10px; } }
+.serial-stock-actions {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+}
+.serial-title {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.serial-title span {
+  color: var(--subtle);
+  font-size: 12px;
+}
+.serial-title strong {
+  color: var(--text);
+  font-size: 19px;
+  overflow-wrap: anywhere;
+}
+.serial-detail-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 12px;
+}
+.serial-detail-body > .el-descriptions {
+  flex-shrink: 0;
+}
+.serial-detail-tabs {
+  flex-shrink: 0;
+}
+.serial-detail-tabs :deep(.el-tabs__header) {
+  margin: 0;
+}
+.serial-record-table {
+  flex-shrink: 0;
+  min-width: 0;
+}
+.serial-detail-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  overflow-x: auto;
+}
+.serial-detail-footer > span {
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--subtle);
+}
+.serial-balances {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.serial-balances > div {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.serial-balances > div + div {
+  border-left: 1px solid var(--el-border-color-light);
+}
+.serial-balance-total {
+  background: var(--primary-soft);
+}
+.serial-balances dt {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+.serial-balances dd {
+  margin: 0;
+}
+.serial-balances :deep(.material-amount strong) {
+  font-size: 17px;
+}
+.serial-balances small {
+  color: var(--subtle);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.serial-title span,
+.serial-detail-footer > span {
+  font-size: 14px;
+}
+.serial-detail-body :deep(.el-descriptions__cell) {
+  font-size: 14px;
+  line-height: 22px;
+  padding: 10px 12px;
+}
+.serial-record-table :deep(.el-table),
+.serial-record-table :deep(.el-button.is-link) {
+  font-size: 15px;
+}
+.serial-record-table :deep(td.el-table__cell) {
+  padding-block: 12px;
+}
+.serial-record-table :deep(.cell) {
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .serial-balances {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .serial-balances > div:nth-child(3) {
+    border-left: 0;
+  }
+  .serial-balances > div:nth-child(n + 3) {
+    border-top: 1px solid var(--el-border-color-light);
+  }
+}
+@media (max-width: 600px) {
+  .serial-detail-body :deep(.el-descriptions__body) {
+    overflow-x: auto;
+  }
+  .serial-detail-body :deep(.el-descriptions__table) {
+    min-width: 720px;
+  }
+  .serial-balances > div {
+    padding: 10px;
+  }
+}
 </style>

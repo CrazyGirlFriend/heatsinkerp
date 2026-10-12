@@ -3,16 +3,29 @@
 Definitions are retained verbatim so existing data, foreign keys and Alembic
 history stay intact. Do not remove these as if they were unused UI code.
 """
-from __future__ import annotations
-from datetime import date, datetime
-from decimal import Decimal
-from typing import Any, TYPE_CHECKING
-from sqlalchemy import (Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index,
-                        Integer, JSON, Numeric, String, Text, UniqueConstraint)
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from .database import Base
-from .model_base import utcnow, TRANSFER_BATCH_NUMBER_TYPE, WORK_ORDER_NUMBER_TYPE
 
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+from typing import TYPE_CHECKING, Any
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .database import Base
+from .model_base import TRANSFER_BATCH_NUMBER_TYPE, WORK_ORDER_NUMBER_TYPE, utcnow
 
 if TYPE_CHECKING:
     from .models import Team
@@ -160,8 +173,10 @@ class Operation(Base):
         lazy="selectin",
     )
     exceptions: Mapped[list[OperationException]] = relationship(
-        back_populates="operation", cascade="all, delete-orphan",
-        order_by="OperationException.id", lazy="selectin",
+        back_populates="operation",
+        cascade="all, delete-orphan",
+        order_by="OperationException.id",
+        lazy="selectin",
     )
 
     @property
@@ -188,10 +203,14 @@ class OperationReport(Base):
     scrapped_quantity: Mapped[Decimal] = mapped_column(
         Numeric(14, 3), nullable=False, default=Decimal("0")
     )
-    lost_quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False, default=Decimal("0"), server_default="0")
+    lost_quantity: Mapped[Decimal] = mapped_column(
+        Numeric(14, 3), nullable=False, default=Decimal("0"), server_default="0"
+    )
     scrap_reason: Mapped[str | None] = mapped_column(Text)
     loss_reason: Mapped[str | None] = mapped_column(Text)
-    scrap_destination_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id", ondelete="SET NULL"), index=True)
+    scrap_destination_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"), index=True
+    )
     scrap_destination_team_name: Mapped[str | None] = mapped_column(String(120))
     idempotency_key: Mapped[str | None] = mapped_column(String(100))
     request_hash: Mapped[str | None] = mapped_column(String(64))
@@ -224,7 +243,9 @@ class OperationReport(Base):
         lazy="selectin",
     )
     exceptions: Mapped[list[OperationException]] = relationship(
-        back_populates="report", order_by="OperationException.id", lazy="selectin",
+        back_populates="report",
+        order_by="OperationException.id",
+        lazy="selectin",
     )
     transfer_batches: Mapped[list[TransferBatch]] = relationship(
         back_populates="operation_report",
@@ -412,17 +433,29 @@ class OperationException(Base):
     __table_args__ = (UniqueConstraint("idempotency_key", name="uq_exception_idempotency_key"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    work_order_id: Mapped[int] = mapped_column(ForeignKey("work_orders.id", ondelete="CASCADE"), nullable=False, index=True)
-    operation_id: Mapped[int] = mapped_column(ForeignKey("operations.id", ondelete="CASCADE"), nullable=False, index=True)
-    report_id: Mapped[int | None] = mapped_column(ForeignKey("operation_reports.id", ondelete="RESTRICT"), index=True)
+    work_order_id: Mapped[int] = mapped_column(
+        ForeignKey("work_orders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    operation_id: Mapped[int] = mapped_column(
+        ForeignKey("operations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    report_id: Mapped[int | None] = mapped_column(
+        ForeignKey("operation_reports.id", ondelete="RESTRICT"), index=True
+    )
     kind: Mapped[str] = mapped_column(String(16), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False, default=Decimal("0"))
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    destination_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id", ondelete="SET NULL"), index=True)
+    destination_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"), index=True
+    )
     destination_team_name: Mapped[str | None] = mapped_column(String(120))
     operator: Mapped[str] = mapped_column(String(80), nullable=False)
-    operator_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
-    operator_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id", ondelete="SET NULL"), index=True)
+    operator_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    operator_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"), index=True
+    )
     operator_team_name: Mapped[str | None] = mapped_column(String(120))
     idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -436,7 +469,10 @@ class PrintRecord(Base):
     __tablename__ = "print_records"
     __table_args__ = (
         UniqueConstraint(
-            "work_order_id", "transfer_batch_id", "print_type", "copy_number",
+            "work_order_id",
+            "transfer_batch_id",
+            "print_type",
+            "copy_number",
             name="uq_print_target_type_copy",
         ),
     )
@@ -505,7 +541,8 @@ class ExternalInventoryMovement(Base):
     __tablename__ = "external_inventory_movements"
     __table_args__ = (
         UniqueConstraint(
-            "external_system_name", "external_message_id",
+            "external_system_name",
+            "external_message_id",
             name="uq_external_inventory_system_message",
         ),
         Index("ix_external_inventory_order_direction", "work_order_id", "direction"),

@@ -3,6 +3,7 @@
 Only committed ORM changes wake subscribers. Each subscriber has one event,
 so bursts coalesce instead of accumulating an unbounded notification queue.
 """
+
 import asyncio
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -13,9 +14,23 @@ from uuid import uuid4
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
-from .models import AuthSession, MaterialDispatch, MaterialLoss, MaterialQuantityAdjustment, MaterialTransfer, SerialUrgency, SerialDeliveryPlan, Team, User, TeamPurpose, OpeningStockSubmission, NotificationOutbox, utcnow
+from .models import (
+    AuthSession,
+    MaterialDispatch,
+    MaterialLoss,
+    MaterialQuantityAdjustment,
+    MaterialTransfer,
+    NotificationOutbox,
+    OpeningStockSubmission,
+    SerialDeliveryPlan,
+    SerialUrgency,
+    Team,
+    TeamPurpose,
+    User,
+    WarehouseLocation,
+    utcnow,
+)
 from .observability import record
-from .models import WarehouseLocation
 
 
 @dataclass(frozen=True)
@@ -33,24 +48,42 @@ class InventoryChange:
 
     def merge(self, other):
         return InventoryChange(
-            None if self.team_ids is None or other.team_ids is None else self.team_ids | other.team_ids,
-            self.directory or other.directory, self.accounts or other.accounts,
-            self.user_ids | other.user_ids, self.sessions | other.sessions,
+            None
+            if self.team_ids is None or other.team_ids is None
+            else self.team_ids | other.team_ids,
+            self.directory or other.directory,
+            self.accounts or other.accounts,
+            self.user_ids | other.user_ids,
+            self.sessions | other.sessions,
         )
 
     def payload(self, user_id):
-        return {"changed": True, "team_ids": None if self.team_ids is None else sorted(self.team_ids),
-                "directory_changed": self.directory, "accounts_changed": self.accounts,
-                "current_user_changed": user_id in self.user_ids}
+        return {
+            "changed": True,
+            "team_ids": None if self.team_ids is None else sorted(self.team_ids),
+            "directory_changed": self.directory,
+            "accounts_changed": self.accounts,
+            "current_user_changed": user_id in self.user_ids,
+        }
 
     def envelope(self):
-        return {"team_ids": None if self.team_ids is None else sorted(self.team_ids),
-                "directory": self.directory, "accounts": self.accounts,
-                "user_ids": sorted(self.user_ids), "sessions": sorted(self.sessions)}
+        return {
+            "team_ids": None if self.team_ids is None else sorted(self.team_ids),
+            "directory": self.directory,
+            "accounts": self.accounts,
+            "user_ids": sorted(self.user_ids),
+            "sessions": sorted(self.sessions),
+        }
 
     @classmethod
     def from_envelope(cls, value):
-        if not isinstance(value, dict) or set(value) != {"team_ids", "directory", "accounts", "user_ids", "sessions"}:
+        if not isinstance(value, dict) or set(value) != {
+            "team_ids",
+            "directory",
+            "accounts",
+            "user_ids",
+            "sessions",
+        }:
             raise ValueError("Invalid notification envelope")
         for key in ("team_ids", "user_ids", "sessions"):
             items = value[key]
@@ -61,8 +94,13 @@ class InventoryChange:
                 raise ValueError("Invalid notification scope")
         if type(value["directory"]) is not bool or type(value["accounts"]) is not bool:
             raise ValueError("Invalid notification flags")
-        return cls(None if value["team_ids"] is None else frozenset(value["team_ids"]),
-                   value["directory"], value["accounts"], frozenset(value["user_ids"]), frozenset(value["sessions"]))
+        return cls(
+            None if value["team_ids"] is None else frozenset(value["team_ids"]),
+            value["directory"],
+            value["accounts"],
+            frozenset(value["user_ids"]),
+            frozenset(value["sessions"]),
+        )
 
 
 class ChangeSignal(asyncio.Event):
@@ -122,7 +160,20 @@ class InventoryEvents:
 
 inventory_events = InventoryEvents()
 outbox_wakeups = InventoryEvents()
-WATCHED = (MaterialTransfer, MaterialLoss, MaterialQuantityAdjustment, MaterialDispatch, SerialUrgency, SerialDeliveryPlan, Team, User, AuthSession, TeamPurpose, OpeningStockSubmission, WarehouseLocation)
+WATCHED = (
+    MaterialTransfer,
+    MaterialLoss,
+    MaterialQuantityAdjustment,
+    MaterialDispatch,
+    SerialUrgency,
+    SerialDeliveryPlan,
+    Team,
+    User,
+    AuthSession,
+    TeamPurpose,
+    OpeningStockSubmission,
+    WarehouseLocation,
+)
 PENDING = "inventory_changed_transactions"
 
 
@@ -135,18 +186,30 @@ def affected_teams(row):
         history = state.attrs[name].history
         if state.persistent and history.added and not history.deleted:
             return None  # An unloaded old assignment cannot be safely scoped.
-        result.update(value for value in (*history.deleted, getattr(row, name)) if value is not None)
+        result.update(
+            value for value in (*history.deleted, getattr(row, name)) if value is not None
+        )
         relation = name.removesuffix("_id")
         if relation in state.attrs:
             history = state.attrs[relation].history
             if state.persistent and history.added and not history.deleted:
                 return None
-            result.update(team.id for team in (*history.added, *history.deleted) if team is not None and team.id is not None)
+            result.update(
+                team.id
+                for team in (*history.added, *history.deleted)
+                if team is not None and team.id is not None
+            )
     return frozenset(result) if result else None
 
 
 def change_for(row, db):
-    if isinstance(row, WarehouseLocation) and row not in db.new and not any(inspect(row).attrs[name].history.has_changes() for name in ("name", "active", "version")):
+    if (
+        isinstance(row, WarehouseLocation)
+        and row not in db.new
+        and not any(
+            inspect(row).attrs[name].history.has_changes() for name in ("name", "active", "version")
+        )
+    ):
         return InventoryChange()  # Lease heartbeats do not refresh inventory views.
     if isinstance(row, AuthSession):
         # A new login affects no existing connection. Revocations still wake the
@@ -155,15 +218,21 @@ def change_for(row, db):
             return InventoryChange()
         return InventoryChange(sessions=frozenset((row.token_hash,)))
     if isinstance(row, User):
-        return InventoryChange(accounts=True, user_ids=frozenset((row.id,)) if row.id is not None else frozenset())
+        return InventoryChange(
+            accounts=True, user_ids=frozenset((row.id,)) if row.id is not None else frozenset()
+        )
     if isinstance(row, Team):
         return InventoryChange(team_ids=None, directory=True)
     if isinstance(row, (SerialUrgency, SerialDeliveryPlan)):
         # The serial may exist in several teams; refresh all affected views.
         return InventoryChange(team_ids=None)
-    if isinstance(row, MaterialTransfer) and row not in db.new and any(
-        inspect(row).attrs[field].history.has_changes()
-        for field in ("delivery_date", "delivery_quantity")
+    if (
+        isinstance(row, MaterialTransfer)
+        and row not in db.new
+        and any(
+            inspect(row).attrs[field].history.has_changes()
+            for field in ("delivery_date", "delivery_quantity")
+        )
     ):
         # Existing origins may have descendants in other teams. A new receipt or
         # split has no descendants yet and only affects its source/destination.
@@ -175,7 +244,9 @@ def change_for(row, db):
 def remember_inventory_change(db, *_):
     change = InventoryChange()
     for row in db.new | db.deleted | db.dirty:
-        if isinstance(row, WATCHED) and (row in db.new or row in db.deleted or db.is_modified(row, include_collections=False)):
+        if isinstance(row, WATCHED) and (
+            row in db.new or row in db.deleted or db.is_modified(row, include_collections=False)
+        ):
             change = change.merge(change_for(row, db))
     if change != InventoryChange():
         transaction = db.get_nested_transaction() or db.get_transaction()
@@ -195,12 +266,17 @@ def persist_notification(db):
     if change is not None:
         now = utcnow()
         message_id = uuid4().hex
-        db.connection().execute(NotificationOutbox.__table__.insert().values(
-            # DATETIME(0) rounds fractions; never schedule an immediate event into
-            # the next second and make the publisher fall back to its 1 s scan.
-            id=message_id, payload=change.envelope(), created_at=now,
-            available_at=now.replace(microsecond=0), attempts=0
-        ))
+        db.connection().execute(
+            NotificationOutbox.__table__.insert().values(
+                # DATETIME(0) rounds fractions; never schedule an immediate event into
+                # the next second and make the publisher fall back to its 1 s scan.
+                id=message_id,
+                payload=change.envelope(),
+                created_at=now,
+                available_at=now.replace(microsecond=0),
+                attempts=0,
+            )
+        )
         record("notification.staged", message_id=message_id)
 
 
@@ -215,8 +291,10 @@ def wake_notification_publisher(db):
         return
     if db.info.pop(PENDING, None):
         started = db.info.pop("notification_commit_started", None)
-        record("notification.transaction_committed",
-               commit_ms=round((monotonic() - started) * 1000, 2) if started is not None else None)
+        record(
+            "notification.transaction_committed",
+            commit_ms=round((monotonic() - started) * 1000, 2) if started is not None else None,
+        )
         outbox_wakeups.publish(InventoryChange())
     else:
         db.info.pop("notification_commit_started", None)

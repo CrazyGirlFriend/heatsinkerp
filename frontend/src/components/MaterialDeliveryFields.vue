@@ -7,7 +7,11 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
 
 <template>
   <div class="delivery-fields dialog-form-grid dialog-field-wide">
-    <ElFormItem label="要求发货日期" :required="quantity != null" :error="dateError" data-validation-field="deliveryDate"
+    <ElFormItem
+      label="要求发货日期"
+      :required="quantity != null"
+      :error="dateError"
+      data-validation-field="deliveryDate"
       ><ElInput
         v-model="date"
         type="date"
@@ -16,7 +20,11 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
         max="2100-12-31"
         :disabled="disabled"
     /></ElFormItem>
-    <ElFormItem label="应发成品件数" :required="Boolean(date)" :error="quantityError" data-validation-field="deliveryQuantity"
+    <ElFormItem
+      label="应发成品件数"
+      :required="Boolean(date)"
+      :error="quantityError"
+      data-validation-field="deliveryQuantity"
       ><ElInputNumber
         v-model="quantity"
         aria-label="应发成品件数"

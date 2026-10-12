@@ -1,4 +1,5 @@
 """Keep measured sludge weight and content percentage without revaluing old stock."""
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -19,11 +20,15 @@ def upgrade():
         if "sludge_content_percent" not in columns:
             batch.add_column(sa.Column("sludge_content_percent", sa.Numeric(5, 2), nullable=True))
         if "ck_mt_sludge_measurement" not in checks:
-            batch.create_check_constraint("ck_mt_sludge_measurement",
+            batch.create_check_constraint(
+                "ck_mt_sludge_measurement",
                 "(sludge_gross_weight IS NULL AND sludge_content_percent IS NULL) OR "
                 "(material_type IS NOT NULL AND material_type = 'sludge' AND sludge_gross_weight IS NOT NULL AND sludge_content_percent IS NOT NULL "
-                "AND sludge_gross_weight > 0 AND sludge_content_percent > 0 AND sludge_content_percent <= 100)")
+                "AND sludge_gross_weight > 0 AND sludge_content_percent > 0 AND sludge_content_percent <= 100)",
+            )
 
 
 def downgrade():
-    raise RuntimeError("Sludge measurements are audit data; retain them when rolling back application code")
+    raise RuntimeError(
+        "Sludge measurements are audit data; retain them when rolling back application code"
+    )

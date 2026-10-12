@@ -4,9 +4,8 @@ Revision ID: 20260906_0004
 Revises: 20260905_0003
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "20260906_0004"
 down_revision = "20260905_0003"
@@ -20,15 +19,12 @@ def _inspector():
 
 def _has_index(table: str, columns: list[str], *, unique: bool | None = None) -> bool:
     return any(
-        index["column_names"] == columns
-        and (unique is None or bool(index["unique"]) is unique)
+        index["column_names"] == columns and (unique is None or bool(index["unique"]) is unique)
         for index in _inspector().get_indexes(table)
     )
 
 
-def _ensure_index(
-    table: str, name: str, columns: list[str], *, unique: bool = False
-) -> None:
+def _ensure_index(table: str, name: str, columns: list[str], *, unique: bool = False) -> None:
     if not _has_index(table, columns, unique=unique):
         op.create_index(name, table, columns, unique=unique)
 
@@ -71,9 +67,7 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["received_by_user_id"], ["users.id"], ondelete="SET NULL"),
             sa.ForeignKeyConstraint(["voided_by_user_id"], ["users.id"], ondelete="SET NULL"),
             sa.UniqueConstraint("batch_no", name="uq_material_transfers_batch_no"),
-            sa.UniqueConstraint(
-                "idempotency_key", name="uq_material_transfers_idempotency_key"
-            ),
+            sa.UniqueConstraint("idempotency_key", name="uq_material_transfers_idempotency_key"),
             sa.UniqueConstraint(
                 "receipt_idempotency_key",
                 name="uq_material_transfers_receipt_idempotency_key",
@@ -106,4 +100,3 @@ def downgrade() -> None:
         "Material transfer audit rows cannot be safely downgraded in place. "
         "Restore a verified pre-upgrade backup instead."
     )
-

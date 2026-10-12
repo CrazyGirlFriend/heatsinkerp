@@ -8,7 +8,11 @@ afterEach(() => wrapper?.unmount())
 async function render(busy = false) {
   wrapper = mount(MaterialTransferDetailFrame, {
     props: { modelValue: true, busy },
-    slots: { header: '<h2>批次详情</h2>', default: '<p>原单资料</p>', footer: '<button>确认签收</button>' },
+    slots: {
+      header: '<h2>批次详情</h2>',
+      default: '<p>原单资料</p>',
+      footer: '<button>确认签收</button>',
+    },
     global: { stubs: { teleport: true } },
   })
   await flushPromises()
@@ -18,7 +22,13 @@ async function render(busy = false) {
 describe('centered material detail frame', () => {
   it('uses a centered modal with original header, document and footer rather than a side panel', async () => {
     const dialog = await render()
-    expect(dialog.props()).toMatchObject({ alignCenter: true, appendToBody: true, modal: true, lockScroll: true, width: 'min(1080px, calc(100vw - 32px))' })
+    expect(dialog.props()).toMatchObject({
+      alignCenter: true,
+      appendToBody: true,
+      modal: true,
+      lockScroll: true,
+      width: 'min(1080px, calc(100vw - 32px))',
+    })
     for (const text of ['批次详情', '原单资料', '确认签收']) expect(wrapper.text()).toContain(text)
     expect(wrapper.find('aside, .el-drawer').exists()).toBe(false)
     dialog.vm.$emit('update:modelValue', false)
@@ -27,11 +37,19 @@ describe('centered material detail frame', () => {
 
   it('retains confirmation and mutation close protection', async () => {
     const dialog = await render(true)
-    expect(dialog.props()).toMatchObject({ showClose: false, closeOnClickModal: false, closeOnPressEscape: false })
+    expect(dialog.props()).toMatchObject({
+      showClose: false,
+      closeOnClickModal: false,
+      closeOnPressEscape: false,
+    })
     dialog.vm.$emit('update:modelValue', false)
     expect(wrapper.emitted('close')).toBeUndefined()
     await wrapper.setProps({ busy: false })
-    expect(dialog.props()).toMatchObject({ showClose: true, closeOnClickModal: true, closeOnPressEscape: true })
+    expect(dialog.props()).toMatchObject({
+      showClose: true,
+      closeOnClickModal: true,
+      closeOnPressEscape: true,
+    })
     dialog.vm.$emit('update:modelValue', false)
     expect(wrapper.emitted('close')).toHaveLength(1)
   })

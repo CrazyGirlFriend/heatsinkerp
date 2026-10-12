@@ -1,4 +1,5 @@
 """Read-only company-system adapter. Never accepts a URL or credential from a client."""
+
 from __future__ import annotations
 
 import hashlib
@@ -19,8 +20,11 @@ from .schemas import MaterialDocumentFields
 
 
 class MainSystemDocument(MaterialDocumentFields):
-    model_config = ConfigDict(extra="forbid", strict=True,
-                              json_schema_extra={"required": list(MaterialDocumentFields.model_fields)})
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        json_schema_extra={"required": list(MaterialDocumentFields.model_fields)},
+    )
     material_name: str = Field(min_length=1, max_length=160)
 
     @model_validator(mode="after")
@@ -45,7 +49,9 @@ class MainSystemSerial(BaseModel):
     @model_validator(mode="after")
     def nonblank_identity(self):
         if self.serial_no != self.serial_no.strip() or not self.revision.strip():
-            raise ValueError("serial_no and revision must be nonblank; serial_no must not have outer spaces")
+            raise ValueError(
+                "serial_no and revision must be nonblank; serial_no must not have outer spaces"
+            )
         return self
 
 
@@ -55,8 +61,9 @@ class MainSystemLookup(MainSystemSerial):
 
 def snapshot_hash(record: MainSystemSerial) -> str:
     value = record.model_dump(mode="json")
-    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False,
-                                     separators=(",", ":")).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+    ).hexdigest()
 
 
 class NoRedirects(HTTPRedirectHandler):
@@ -66,14 +73,23 @@ class NoRedirects(HTTPRedirectHandler):
 
 def fetch_serial(serial_no: str, *, connection=None) -> MainSystemSerial:
     from .main_system_configuration import effective_settings
+
     connection = connection or effective_settings(settings)
     if not connection.main_system_base_url:
         raise HTTPException(503, "main system integration is not configured")
-    url = connection.main_system_base_url + "/api/integration/v1/serial-materials?" + urlencode({"serial_no": serial_no})
-    request = Request(url, headers={
-        "Authorization": "Bearer " + connection.main_system_token,
-        "Accept": "application/json", "X-Request-ID": str(uuid4()),
-    })
+    url = (
+        connection.main_system_base_url
+        + "/api/integration/v1/serial-materials?"
+        + urlencode({"serial_no": serial_no})
+    )
+    request = Request(
+        url,
+        headers={
+            "Authorization": "Bearer " + connection.main_system_token,
+            "Accept": "application/json",
+            "X-Request-ID": str(uuid4()),
+        },
+    )
     # Credentials only go to the configured origin, never to redirected hosts
     # or environment-configured proxies. Default HTTPS certificate validation stays on.
     opener = build_opener(ProxyHandler({}), NoRedirects())
@@ -108,7 +124,9 @@ def fetch_serial(serial_no: str, *, connection=None) -> MainSystemSerial:
     try:
         record = MainSystemSerial.model_validate_json(raw)
     except (ValidationError, ValueError):
-        raise HTTPException(502, "main system response does not match the serial-material contract") from None
+        raise HTTPException(
+            502, "main system response does not match the serial-material contract"
+        ) from None
     if record.serial_no != serial_no:
         raise HTTPException(502, "main system returned a different serial number")
     return record

@@ -1,15 +1,15 @@
-import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
-const scope = JSON.parse(readFileSync(new URL('../../scripts/quality-scope.json', import.meta.url)))
 const result = spawnSync(
   process.execPath,
   [
     fileURLToPath(new URL('../node_modules/prettier/bin/prettier.cjs', import.meta.url)),
     process.argv.includes('--write') ? '--write' : '--check',
-    ...scope.frontend,
+    'src',
+    'eslint.config.mjs',
+    'scripts/check-format.mjs',
   ],
   { cwd: root, stdio: 'inherit' },
 )

@@ -88,40 +88,68 @@ const teamLeaders = computed(() => accounts.value.filter((account) => account.ro
 const filteredLeaders = computed(() => {
   const needle = query.value.trim().toLowerCase()
   return teamLeaders.value.filter((account) => {
-    const matchesQuery = !needle || `${account.username} ${account.display_name} ${account.team?.name || ''}`.toLowerCase().includes(needle)
-    const matchesStatus = statusFilter.value === 'all' || (statusFilter.value === 'active' ? account.active : !account.active)
+    const matchesQuery =
+      !needle ||
+      `${account.username} ${account.display_name} ${account.team?.name || ''}`
+        .toLowerCase()
+        .includes(needle)
+    const matchesStatus =
+      statusFilter.value === 'all' ||
+      (statusFilter.value === 'active' ? account.active : !account.active)
     const matchesTeam = teamFilter.value === 'all' || String(account.team_id) === teamFilter.value
     return matchesQuery && matchesStatus && matchesTeam
   })
 })
 function exportSource() {
-  const rows = filteredLeaders.value.map(row => ({ ...row }))
-  return tableExportSource('班组长管理', rows.length, [
-    { key: 'username', label: '登录账号', value: (row: typeof rows[number]) => row.username },
-    { key: 'display_name', label: '姓名', value: row => row.display_name },
-    { key: 'team', label: '班组', value: row => row.team?.name },
-    { key: 'active', label: '状态', value: row => row.active ? '启用' : '停用' },
-  ], async () => rows)
+  const rows = filteredLeaders.value.map((row) => ({ ...row }))
+  return tableExportSource(
+    '班组长管理',
+    rows.length,
+    [
+      { key: 'username', label: '登录账号', value: (row: (typeof rows)[number]) => row.username },
+      { key: 'display_name', label: '姓名', value: (row) => row.display_name },
+      { key: 'team', label: '班组', value: (row) => row.team?.name },
+      { key: 'active', label: '状态', value: (row) => (row.active ? '启用' : '停用') },
+    ],
+    async () => rows,
+  )
 }
 const page = ref(1)
 const pageSize = ref(10)
-const pageRows = computed(() => filteredLeaders.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
-watch([query, statusFilter, teamFilter, pageSize], () => { page.value = 1 })
-watch(() => filteredLeaders.value.length, total => { page.value = Math.min(page.value, Math.max(1, Math.ceil(total / pageSize.value))) })
+const pageRows = computed(() =>
+  filteredLeaders.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value),
+)
+watch([query, statusFilter, teamFilter, pageSize], () => {
+  page.value = 1
+})
+watch(
+  () => filteredLeaders.value.length,
+  (total) => {
+    page.value = Math.min(page.value, Math.max(1, Math.ceil(total / pageSize.value)))
+  },
+)
 
 const selectableTeams = computed(() => teams.value.filter((team) => team.active))
 
 async function refreshDirectoryAndAccount(): Promise<void> {
   await refreshTeamDirectory()
-  await refreshCurrentUser().catch(() => showToast('账号已保存，当前账号信息刷新失败，请刷新页面重试', 'error'))
+  await refreshCurrentUser().catch(() =>
+    showToast('账号已保存，当前账号信息刷新失败，请刷新页面重试', 'error'),
+  )
 }
 
 let requestVersion = 0
 let disposed = false
-onBeforeUnmount(() => { disposed = true; ++requestVersion })
+onBeforeUnmount(() => {
+  disposed = true
+  ++requestVersion
+})
 async function loadData(background = false): Promise<void> {
   if (disposed) return
-  if (background && (loading.value || saving.value || deletingId.value !== null)) { liveRefresh.request(); return }
+  if (background && (loading.value || saving.value || deletingId.value !== null)) {
+    liveRefresh.request()
+    return
+  }
   const version = ++requestVersion
   if (!isAdmin.value) {
     loading.value = false
@@ -131,7 +159,10 @@ async function loadData(background = false): Promise<void> {
   if (!background) loading.value = true
   errorMessage.value = ''
   try {
-    const [accountRows, teamRows] = await Promise.all([adminApi.listAccounts(), adminApi.listTeams()])
+    const [accountRows, teamRows] = await Promise.all([
+      adminApi.listAccounts(),
+      adminApi.listTeams(),
+    ])
     if (version !== requestVersion) return
     accounts.value = accountRows
     teams.value = teamRows
@@ -143,12 +174,25 @@ async function loadData(background = false): Promise<void> {
     if (version === requestVersion) loading.value = false
   }
 }
-const liveRefresh = useLiveRefresh(async () => { await refreshCurrentUser(); await loadData(true) }, {
-  scope: 'accounts',
-  enabled: () => isAdmin.value,
-  busy: () => loading.value || saving.value || deletingId.value !== null,
+const liveRefresh = useLiveRefresh(
+  async () => {
+    await refreshCurrentUser()
+    await loadData(true)
+  },
+  {
+    scope: 'accounts',
+    enabled: () => isAdmin.value,
+    busy: () => loading.value || saving.value || deletingId.value !== null,
+  },
+)
+watch(isAdmin, (value) => {
+  if (!value) {
+    ++requestVersion
+    accounts.value = []
+    teams.value = []
+    editorOpen.value = false
+  }
 })
-watch(isAdmin, value => { if (!value) { ++requestVersion; accounts.value = []; teams.value = []; editorOpen.value = false } })
 
 function resetForm(): void {
   validation.reset()
@@ -176,7 +220,8 @@ function openEdit(account: Account): void {
   form.password = ''
   form.team_id = account.team_id
   form.active = account.active
-  formError.value = ''; validation.reset()
+  formError.value = ''
+  validation.reset()
   editorOpen.value = true
 }
 
@@ -187,10 +232,13 @@ function focusEditor(): void {
 
 const validation = useDialogValidation(() => {
   const issues: Record<string, string> = {}
-  if (!form.username.trim() || !/^[A-Za-z0-9._-]+$/.test(form.username.trim())) issues.username = '请输入有效登录账号'
+  if (!form.username.trim() || !/^[A-Za-z0-9._-]+$/.test(form.username.trim()))
+    issues.username = '请输入有效登录账号'
   if (!form.display_name.trim()) issues.display_name = '请输入班组长姓名'
-  if ((editingId.value === null || form.password) && form.password.length < 8) issues.password = '密码至少为 8 位'
-  if (!teams.value.some(team => team.active && String(team.id) === String(form.team_id))) issues.team_id = '请选择有效班组'
+  if ((editingId.value === null || form.password) && form.password.length < 8)
+    issues.password = '密码至少为 8 位'
+  if (!teams.value.some((team) => team.active && String(team.id) === String(form.team_id)))
+    issues.team_id = '请选择有效班组'
   return issues
 })
 const { formRef, fieldErrors } = validation
@@ -226,7 +274,9 @@ async function submitForm(): Promise<void> {
         ...(form.password ? { password: form.password } : {}),
       })
       ++requestVersion
-      const index = accounts.value.findIndex((account) => String(account.id) === String(editingId.value))
+      const index = accounts.value.findIndex(
+        (account) => String(account.id) === String(editingId.value),
+      )
       if (index >= 0) accounts.value.splice(index, 1, updated)
       showToast(`班组长“${updated.display_name}”已更新`, 'success')
     }
@@ -268,12 +318,16 @@ async function toggleLeader(account: Account): Promise<void> {
 async function deleteLeader(account: Account): Promise<void> {
   if (account.role !== 'TEAM') return
   try {
-    await ElMessageBox.confirm(`删除班组长“${account.display_name}”？历史流转记录不受影响。`, '删除班组长', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-      confirmButtonClass: 'el-button--danger',
-    })
+    await ElMessageBox.confirm(
+      `删除班组长“${account.display_name}”？历史流转记录不受影响。`,
+      '删除班组长',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger',
+      },
+    )
   } catch {
     return
   }
@@ -305,32 +359,64 @@ onMounted(() => void loadData())
 
 <template>
   <section class="page admin-workspace accounts-page reading-workspace">
-    <header class="workspace-heading"><div class="page-heading-start"><PageBackButton /><h1>班组长管理</h1></div></header>
+    <header class="workspace-heading">
+      <div class="page-heading-start">
+        <PageBackButton />
+        <h1>班组长管理</h1>
+      </div>
+    </header>
     <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
 
     <ElCard shadow="never" class="workspace-card">
       <div class="filter-bar">
-        <ElInput v-model="query" clearable class="search-input" placeholder="账号、姓名或班组" aria-label="搜索班组长">
-          <template #prefix><ElIcon><Search /></ElIcon></template>
+        <ElInput
+          v-model="query"
+          clearable
+          class="search-input"
+          placeholder="账号、姓名或班组"
+          aria-label="搜索班组长"
+        >
+          <template #prefix
+            ><ElIcon><Search /></ElIcon
+          ></template>
         </ElInput>
         <ElSelect v-model="teamFilter" filterable aria-label="班组筛选">
           <ElOption value="all" label="全部班组" />
-          <ElOption v-for="team in teams" :key="team.id" :value="String(team.id)" :label="team.name" />
+          <ElOption
+            v-for="team in teams"
+            :key="team.id"
+            :value="String(team.id)"
+            :label="team.name"
+          />
         </ElSelect>
         <ElSelect v-model="statusFilter" aria-label="状态筛选">
           <ElOption value="all" label="全部状态" />
           <ElOption value="active" label="启用" />
           <ElOption value="inactive" label="停用" />
         </ElSelect>
-        <TableExportButton :source="exportSource" :disabled="!isAdmin || loading || !!errorMessage" /><ElButton class="filter-primary-action" type="primary" :icon="Plus" :disabled="!isAdmin" @click="openCreate">新增班组长</ElButton>
+        <TableExportButton
+          :source="exportSource"
+          :disabled="!isAdmin || loading || !!errorMessage"
+        /><ElButton
+          class="filter-primary-action"
+          type="primary"
+          :icon="Plus"
+          :disabled="!isAdmin"
+          @click="openCreate"
+          >新增班组长</ElButton
+        >
       </div>
 
-      <div v-if="loading" class="state-region" aria-live="polite"><ElSkeleton :rows="6" animated /></div>
+      <div v-if="loading" class="state-region" aria-live="polite">
+        <ElSkeleton :rows="6" animated />
+      </div>
       <ElResult v-else-if="errorMessage" icon="error" title="加载失败" :sub-title="errorMessage">
         <template #extra><ElButton v-if="isAdmin" @click="loadData()">重新加载</ElButton></template>
       </ElResult>
       <ElEmpty v-else-if="!filteredLeaders.length" description="暂无班组长">
-        <ElButton v-if="isAdmin" type="primary" plain :icon="Plus" @click="openCreate">新增班组长</ElButton>
+        <ElButton v-if="isAdmin" type="primary" plain :icon="Plus" @click="openCreate"
+          >新增班组长</ElButton
+        >
       </ElEmpty>
 
       <div v-else class="table-region">
@@ -349,25 +435,60 @@ onMounted(() => void loadData())
               </div>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="班组长" min-width="150" show-overflow-tooltip><template #default="{ row }"><span class="account-cell"><AccountAvatar :avatar-key="row.avatar_key" :name="row.display_name" :size="30" /><strong>{{ row.display_name }}</strong></span></template></ElTableColumn>
+          <ElTableColumn label="班组长" min-width="150" show-overflow-tooltip
+            ><template #default="{ row }"
+              ><span class="account-cell"
+                ><AccountAvatar
+                  :avatar-key="row.avatar_key"
+                  :name="row.display_name"
+                  :size="30"
+                /><strong>{{ row.display_name }}</strong></span
+              ></template
+            ></ElTableColumn
+          >
           <ElTableColumn label="所属班组" min-width="170" show-overflow-tooltip>
             <template #default="{ row }">{{ row.team?.name || '未绑定' }}</template>
           </ElTableColumn>
           <ElTableColumn label="状态" width="100">
             <template #default="{ row }">
-              <ElTag :type="row.active ? 'success' : 'info'" effect="plain">{{ row.active ? '启用' : '停用' }}</ElTag>
+              <ElTag :type="row.active ? 'success' : 'info'" effect="plain">{{
+                row.active ? '启用' : '停用'
+              }}</ElTag>
             </template>
           </ElTableColumn>
           <ElTableColumn label="操作" width="260" fixed="right" align="center">
             <template #default="{ row }">
-              <ElButton link type="primary" :icon="EditPen" @click="openEdit(asAccount(row))">编辑</ElButton>
-              <ElButton link :type="row.active ? 'warning' : 'success'" :icon="row.active ? SwitchButton : CircleCheck" @click="toggleLeader(asAccount(row))">{{ row.active ? '停用' : '启用' }}</ElButton>
-              <ElButton link type="danger" :icon="Delete" :loading="String(deletingId) === String(row.id)" @click="deleteLeader(asAccount(row))">删除</ElButton>
+              <ElButton link type="primary" :icon="EditPen" @click="openEdit(asAccount(row))"
+                >编辑</ElButton
+              >
+              <ElButton
+                link
+                :type="row.active ? 'warning' : 'success'"
+                :icon="row.active ? SwitchButton : CircleCheck"
+                @click="toggleLeader(asAccount(row))"
+                >{{ row.active ? '停用' : '启用' }}</ElButton
+              >
+              <ElButton
+                link
+                type="danger"
+                :icon="Delete"
+                :loading="String(deletingId) === String(row.id)"
+                @click="deleteLeader(asAccount(row))"
+                >删除</ElButton
+              >
             </template>
           </ElTableColumn>
         </ElTable>
       </div>
-      <footer v-if="!loading && !errorMessage" class="admin-pagination"><ElPagination v-model:current-page="page" v-model:page-size="pageSize" :page-sizes="[10, 20, 50, 100]" :total="filteredLeaders.length" layout="total, sizes, prev, pager, next" /></footer>
+      <footer v-if="!loading && !errorMessage" class="admin-pagination">
+        <ElPagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="filteredLeaders.length"
+          layout="total, sizes, prev, pager, next"
+        />
+      </footer>
     </ElCard>
 
     <ElDialog
@@ -383,50 +504,128 @@ onMounted(() => void loadData())
       @opened="focusEditor"
     >
       <p v-if="formError" role="alert" class="account-error">{{ formError }}</p>
-      <ElForm ref="formRef" :model="form" label-position="left" label-width="100px" :show-message="false" @submit.prevent="submitForm">
-        <section class="dialog-form-section"><h3>账号资料</h3><div class="dialog-form-grid">
-          <ElFormItem label="登录账号" :error="fieldErrors.username" required>
-            <ElInput ref="usernameInput" v-model="form.username" maxlength="64" autocomplete="off" placeholder="例如 roll_leader" :disabled="editingId !== null">
-              <template #prefix><ElIcon><User /></ElIcon></template>
-            </ElInput>
-          </ElFormItem>
-          <ElFormItem label="班组长姓名" :error="fieldErrors.display_name" required>
-            <ElInput ref="displayNameInput" v-model="form.display_name" maxlength="80" autocomplete="off" placeholder="请输入姓名" />
-          </ElFormItem>
-          <ElFormItem label="所属班组" :error="fieldErrors.team_id" required>
-            <ElSelect v-model="form.team_id" class="full-width" filterable aria-label="所属班组" placeholder="请选择班组">
-              <ElOption v-for="team in selectableTeams" :key="team.id" :value="team.id" :label="team.name" />
-            </ElSelect>
-          </ElFormItem>
-          <ElFormItem :label="editingId === null ? '初始密码' : '重置密码'" :required="editingId === null" :error="fieldErrors.password">
-            <ElInput v-model="form.password" type="password" show-password minlength="8" maxlength="128" autocomplete="new-password" placeholder="至少 8 位">
-              <template #prefix><ElIcon><Key /></ElIcon></template>
-            </ElInput>
-            <p v-if="editingId !== null" class="dialog-field-hint">留空则保留原密码</p>
-          </ElFormItem>
-          <ElFormItem class="dialog-field-wide" label="账号状态">
-            <div class="switch-row">
-              <ElSwitch v-model="form.active" inline-prompt active-text="启" inactive-text="停" aria-label="启用班组长账号" />
-              <span>{{ form.active ? '允许登录' : '禁止登录' }}</span>
-            </div>
-          </ElFormItem>
-        </div>
+      <ElForm
+        ref="formRef"
+        :model="form"
+        label-position="left"
+        label-width="100px"
+        :show-message="false"
+        @submit.prevent="submitForm"
+      >
+        <section class="dialog-form-section">
+          <h3>账号资料</h3>
+          <div class="dialog-form-grid">
+            <ElFormItem label="登录账号" :error="fieldErrors.username" required>
+              <ElInput
+                ref="usernameInput"
+                v-model="form.username"
+                maxlength="64"
+                autocomplete="off"
+                placeholder="例如 roll_leader"
+                :disabled="editingId !== null"
+              >
+                <template #prefix
+                  ><ElIcon><User /></ElIcon
+                ></template>
+              </ElInput>
+            </ElFormItem>
+            <ElFormItem label="班组长姓名" :error="fieldErrors.display_name" required>
+              <ElInput
+                ref="displayNameInput"
+                v-model="form.display_name"
+                maxlength="80"
+                autocomplete="off"
+                placeholder="请输入姓名"
+              />
+            </ElFormItem>
+            <ElFormItem label="所属班组" :error="fieldErrors.team_id" required>
+              <ElSelect
+                v-model="form.team_id"
+                class="full-width"
+                filterable
+                aria-label="所属班组"
+                placeholder="请选择班组"
+              >
+                <ElOption
+                  v-for="team in selectableTeams"
+                  :key="team.id"
+                  :value="team.id"
+                  :label="team.name"
+                />
+              </ElSelect>
+            </ElFormItem>
+            <ElFormItem
+              :label="editingId === null ? '初始密码' : '重置密码'"
+              :required="editingId === null"
+              :error="fieldErrors.password"
+            >
+              <ElInput
+                v-model="form.password"
+                type="password"
+                show-password
+                minlength="8"
+                maxlength="128"
+                autocomplete="new-password"
+                placeholder="至少 8 位"
+              >
+                <template #prefix
+                  ><ElIcon><Key /></ElIcon
+                ></template>
+              </ElInput>
+              <p v-if="editingId !== null" class="dialog-field-hint">留空则保留原密码</p>
+            </ElFormItem>
+            <ElFormItem class="dialog-field-wide" label="账号状态">
+              <div class="switch-row">
+                <ElSwitch
+                  v-model="form.active"
+                  inline-prompt
+                  active-text="启"
+                  inactive-text="停"
+                  aria-label="启用班组长账号"
+                />
+                <span>{{ form.active ? '允许登录' : '禁止登录' }}</span>
+              </div>
+            </ElFormItem>
+          </div>
         </section>
-        <section class="dialog-form-section"><h3>头像</h3><AvatarPicker v-model="form.avatar_key" :name="form.display_name" :disabled="saving" /></section>
+        <section class="dialog-form-section">
+          <h3>头像</h3>
+          <AvatarPicker v-model="form.avatar_key" :name="form.display_name" :disabled="saving" />
+        </section>
         <button class="dialog-submit-proxy" type="submit" tabindex="-1" aria-hidden="true" />
       </ElForm>
       <template #footer>
         <ElButton :disabled="saving" @click="editorOpen = false">取消</ElButton>
-        <ElButton type="primary" :loading="saving" :icon="CircleCheck" @click="submitForm">{{ editingId !== null ? '保存修改' : '创建账号' }}</ElButton>
+        <ElButton type="primary" :loading="saving" :icon="CircleCheck" @click="submitForm">{{
+          editingId !== null ? '保存修改' : '创建账号'
+        }}</ElButton>
       </template>
     </ElDialog>
   </section>
 </template>
 
 <style scoped>
-.account-error { color: var(--danger); }
-.admin-pagination { display: flex; flex-shrink: 0; justify-content: flex-end; padding: 10px 0; overflow-x: auto; }
+.account-error {
+  color: var(--danger);
+}
+.admin-pagination {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  padding: 10px 0;
+  overflow-x: auto;
+}
 
-.account-cell { display: flex; align-items: center; justify-content: center; gap: 12px; }
-.account-cell strong { overflow: hidden; color: var(--text); font-weight: 500; text-overflow: ellipsis; }
+.account-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.account-cell strong {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
 </style>

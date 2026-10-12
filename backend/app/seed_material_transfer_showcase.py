@@ -20,7 +20,6 @@ from .material_transfer_workflow import (
 from .models import MaterialTransfer, Team, User
 from .schemas import MaterialTransferConfirm, MaterialTransferCreate
 
-
 DEMO_SERIAL_NO = "DEMO-DIRECT-FLOW-001"
 FIRST_CREATE_KEY = "material-transfer-showcase:v1:first"
 FIRST_CONFIRM_KEY = "material-transfer-showcase:v1:first-confirm"
@@ -43,7 +42,7 @@ def _eligible_leaders(db) -> dict[int, User]:
         if user.team_id is not None and user.team_id not in leaders:
             # User.team is joined eagerly and remains safe after commit because
             # the application session factory uses expire_on_commit=False.
-            user.team
+            _ = user.team
             leaders[user.team_id] = user
     return leaders
 
@@ -51,14 +50,10 @@ def _eligible_leaders(db) -> dict[int, User]:
 def seed_material_transfer_showcase(db) -> dict:
     leaders = _eligible_leaders(db)
     existing_first = db.scalar(
-        select(MaterialTransfer).where(
-            MaterialTransfer.idempotency_key == FIRST_CREATE_KEY
-        )
+        select(MaterialTransfer).where(MaterialTransfer.idempotency_key == FIRST_CREATE_KEY)
     )
     existing_second = db.scalar(
-        select(MaterialTransfer).where(
-            MaterialTransfer.idempotency_key == SECOND_CREATE_KEY
-        )
+        select(MaterialTransfer).where(MaterialTransfer.idempotency_key == SECOND_CREATE_KEY)
     )
     db.commit()
 
@@ -75,16 +70,12 @@ def seed_material_transfer_showcase(db) -> dict:
     else:
         candidates = list(leaders.values())
         if len(candidates) < 2:
-            summary["skipped"].append(
-                "首段演示：至少需要两个不同班组各有一个有效班组长账号"
-            )
+            summary["skipped"].append("首段演示：至少需要两个不同班组各有一个有效班组长账号")
             return summary
         source, target = candidates[0], candidates[1]
 
     if source is None or target is None:
-        summary["skipped"].append(
-            "首段演示：原演示流转的转出或接收班组没有有效班组长账号"
-        )
+        summary["skipped"].append("首段演示：原演示流转的转出或接收班组没有有效班组长账号")
         return summary
 
     try:
@@ -103,9 +94,7 @@ def seed_material_transfer_showcase(db) -> dict:
     except HTTPException as exc:
         summary["skipped"].append(f"首段演示：{exc.detail}")
         return summary
-    summary["reused" if existing_first is not None else "created"].append(
-        first["batch_no"]
-    )
+    summary["reused" if existing_first is not None else "created"].append(first["batch_no"])
 
     if first["status"] == "pending":
         try:
@@ -135,9 +124,7 @@ def seed_material_transfer_showcase(db) -> dict:
             None,
         )
     if second_source is None or second_target is None:
-        summary["skipped"].append(
-            "第二段演示：需要第三个有有效班组长账号的班组；未创建账号或密码"
-        )
+        summary["skipped"].append("第二段演示：需要第三个有有效班组长账号的班组；未创建账号或密码")
         return summary
     try:
         second = create_material_transfer(
@@ -152,9 +139,7 @@ def seed_material_transfer_showcase(db) -> dict:
             ),
             second_source,
         )
-        summary["reused" if existing_second is not None else "created"].append(
-            second["batch_no"]
-        )
+        summary["reused" if existing_second is not None else "created"].append(second["batch_no"])
     except HTTPException as exc:
         summary["skipped"].append(f"第二段演示：{exc.detail}")
     return summary

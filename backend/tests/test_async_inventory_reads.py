@@ -12,7 +12,8 @@ from app.models import MaterialTransfer
 from fastapi import HTTPException
 from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials
-from test_warehouse_receipts import intake, warehouse  # noqa: F401
+from test_warehouse_receipts import intake  # noqa: F401
+from test_warehouse_receipts import warehouse as warehouse
 
 
 def test_every_http_route_is_async_and_database_driver_is_async():

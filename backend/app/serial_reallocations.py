@@ -12,7 +12,7 @@ from . import material_stock as stock
 from . import material_transfer_workflow as workflow
 from .auth import actor_name
 from .batch_numbers import next_transfer_batch_number
-from .material_weight import validate_material_amounts, sludge_measurement
+from .material_weight import sludge_measurement, validate_material_amounts
 from .models import MaterialTransfer, Team, utcnow
 from .record_filters import RecordFilters
 from .schemas import SludgeMeasurement, WarehouseLocationChoice
@@ -48,7 +48,14 @@ def require_team(team):
 
 
 def list_records(
-    db, team_id, user, *, record_filters=None, query=None, material_type=None, page=1,
+    db,
+    team_id,
+    user,
+    *,
+    record_filters=None,
+    query=None,
+    material_type=None,
+    page=1,
     page_size=20,
 ):
     stock.require_team(db, team_id)
@@ -56,9 +63,12 @@ def list_records(
     filters = [mt.entry_kind == "serial_reallocation", mt.source_team_id == team_id]
     filters += (record_filters or RecordFilters()).predicates(mt.created_at, mt.serial_no)
     if query and query.strip():
-        filters.append(stock.literal_query(
-            query, [origin.serial_no, mt.serial_no, origin.batch_no, mt.batch_no, mt.material_name],
-        ))
+        filters.append(
+            stock.literal_query(
+                query,
+                [origin.serial_no, mt.serial_no, origin.batch_no, mt.batch_no, mt.material_name],
+            )
+        )
     if material_type:
         filters.append(mt.material_type == material_type)
     statement = select(mt).join(origin, origin.id == mt.source_transfer_id).where(*filters)
@@ -66,11 +76,16 @@ def list_records(
     items = db.scalars(
         statement.options(*workflow.material_transfer_list_options())
         .order_by(mt.created_at.desc(), mt.id.desc())
-        .offset((page - 1) * page_size).limit(page_size)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     ).all()
     return {
-        "items": [workflow.material_transfer_dict(item, user, include_history=False) for item in items],
-        "total": total, "page": page, "page_size": page_size,
+        "items": [
+            workflow.material_transfer_dict(item, user, include_history=False) for item in items
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
     }
 
 

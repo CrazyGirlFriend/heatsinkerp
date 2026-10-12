@@ -11,24 +11,74 @@
     text-align: center;
     vertical-align: middle;
   }
-  .material-detail-section { min-width: 0; margin-top: 24px; }
+  .material-detail-section {
+    min-width: 0;
+    margin-top: 24px;
+  }
   .material-detail-section > header,
-  .material-detail-section > footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-  .material-detail-section > header { min-height: 32px; margin-bottom: 12px; }
-  .material-detail-section h3 { margin: 0; font-size: 16px; font-weight: 550; color: var(--text); }
+  .material-detail-section > footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .material-detail-section > header {
+    min-height: 32px;
+    margin-bottom: 12px;
+  }
+  .material-detail-section h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 550;
+    color: var(--text);
+  }
   .material-detail-section .detail-section-heading,
-  .material-detail-section .detail-section-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
-  .material-detail-section .detail-section-actions { margin-left: auto; justify-content: flex-end; }
+  .material-detail-section .detail-section-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .material-detail-section .detail-section-actions {
+    margin-left: auto;
+    justify-content: flex-end;
+  }
   .material-detail-section .detail-section-heading > span,
   .material-detail-section > header > span,
-  .material-detail-section > footer > span { color: var(--muted); font-size: 13px; }
-  .material-detail-section > footer { padding: 14px 0; }
-  .material-detail-section .el-table.business-table { font-size: var(--business-table-font); font-variant-numeric: tabular-nums; }
-  .material-detail-section .el-table.business-table .el-table__cell { padding-block: 13px; }
-  .material-detail-section .el-table.business-table th.el-table__cell { color: var(--text); background: var(--table-header-bg); font-size: var(--business-table-font); font-weight: 550; }
-  .material-detail-section .el-table.business-table .cell { line-height: var(--business-table-line); }
-  .material-detail-section .el-table.business-table .el-scrollbar__bar.is-horizontal { opacity: 1; }
-  :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table {
+  .material-detail-section > footer > span {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .material-detail-section > footer {
+    padding: 14px 0;
+  }
+  .material-detail-section .el-table.business-table {
+    font-size: var(--business-table-font);
+    font-variant-numeric: tabular-nums;
+  }
+  .material-detail-section .el-table.business-table .el-table__cell {
+    padding-block: 13px;
+  }
+  .material-detail-section .el-table.business-table th.el-table__cell {
+    color: var(--text);
+    background: var(--table-header-bg);
+    font-size: var(--business-table-font);
+    font-weight: 550;
+  }
+  .material-detail-section .el-table.business-table .cell {
+    line-height: var(--business-table-line);
+  }
+  .material-detail-section .el-table.business-table .el-scrollbar__bar.is-horizontal {
+    opacity: 1;
+  }
+  :is(
+      .page.reading-workspace,
+      .team-workspace.team-workspace--reading,
+      .serial-detail-body,
+      .stock-source-picker
+    )
+    .el-table.business-table {
     font-family: inherit;
     font-size: var(--business-table-font);
     font-variant-numeric: tabular-nums;
@@ -38,14 +88,29 @@
     --el-table-border-color: var(--line);
     --el-table-row-hover-bg-color: var(--table-hover-bg);
   }
-  :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table .el-table__body td.el-table__cell {
+  :is(
+      .page.reading-workspace,
+      .team-workspace.team-workspace--reading,
+      .serial-detail-body,
+      .stock-source-picker
+    )
+    .el-table.business-table
+    .el-table__body
+    td.el-table__cell {
     height: auto;
     padding-block: var(--business-table-padding);
     text-align: center;
     vertical-align: middle;
     font-size: var(--business-table-font);
   }
-  :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table th.el-table__cell {
+  :is(
+      .page.reading-workspace,
+      .team-workspace.team-workspace--reading,
+      .serial-detail-body,
+      .stock-source-picker
+    )
+    .el-table.business-table
+    th.el-table__cell {
     height: 42px;
     padding-block: 10px;
     font-weight: 500;
@@ -54,25 +119,66 @@
     vertical-align: middle;
     border-bottom-color: var(--table-header-line);
   }
-  :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table .cell {
+  :is(
+      .page.reading-workspace,
+      .team-workspace.team-workspace--reading,
+      .serial-detail-body,
+      .stock-source-picker
+    )
+    .el-table.business-table
+    .cell {
     padding-inline: var(--business-table-padding);
     line-height: var(--business-table-line);
     text-align: center;
   }
-  :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table :is(.el-button.is-link, .batch-link, .serial-number-link, .material-amount strong, .ledger-number .cell) {
+  :is(
+      .page.reading-workspace,
+      .team-workspace.team-workspace--reading,
+      .serial-detail-body,
+      .stock-source-picker
+    )
+    .el-table.business-table
+    :is(
+      .el-button.is-link,
+      .batch-link,
+      .serial-number-link,
+      .material-amount strong,
+      .ledger-number .cell
+    ) {
     font-size: var(--business-table-font);
     line-height: var(--business-table-line);
     font-weight: 400;
   }
-  :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table :is(small, .picker-secondary) {
+  :is(
+      .page.reading-workspace,
+      .team-workspace.team-workspace--reading,
+      .serial-detail-body,
+      .stock-source-picker
+    )
+    .el-table.business-table
+    :is(small, .picker-secondary) {
     font-size: var(--business-table-meta);
     line-height: 22px;
   }
-  :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table :is(.material-amount, .transfer-serial, .team-transfer-serial) {
+  :is(
+      .page.reading-workspace,
+      .team-workspace.team-workspace--reading,
+      .serial-detail-body,
+      .stock-source-picker
+    )
+    .el-table.business-table
+    :is(.material-amount, .transfer-serial, .team-transfer-serial) {
     justify-content: center;
     align-items: center;
   }
-  :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table .material-amount {
+  :is(
+      .page.reading-workspace,
+      .team-workspace.team-workspace--reading,
+      .serial-detail-body,
+      .stock-source-picker
+    )
+    .el-table.business-table
+    .material-amount {
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -82,7 +188,9 @@
     white-space: nowrap;
     overflow-wrap: normal;
   }
-  .team-workspace.team-workspace--reading .el-table.business-table.single-line-table .material-amount {
+  .team-workspace.team-workspace--reading
+    .el-table.business-table.single-line-table
+    .material-amount {
     display: inline-flex;
     flex-direction: row;
     flex-wrap: nowrap;
@@ -90,38 +198,107 @@
     gap: 10px;
     white-space: nowrap;
   }
-  :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table .table-prose .cell {
+  :is(
+      .page.reading-workspace,
+      .team-workspace.team-workspace--reading,
+      .serial-detail-body,
+      .stock-source-picker
+    )
+    .el-table.business-table
+    .table-prose
+    .cell {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  :is(.drawer-content, .dispatch-detail-content) table.business-document-table:is(.document-table, .document-history, .loss-record-table, .dispatch-detail-lines) {
+  :is(.drawer-content, .dispatch-detail-content)
+    table.business-document-table:is(
+      .document-table,
+      .document-history,
+      .loss-record-table,
+      .dispatch-detail-lines
+    ) {
     font-family: inherit;
     font-size: var(--business-table-font);
     line-height: var(--business-table-line);
     font-variant-numeric: tabular-nums;
     color: var(--text);
   }
-  :is(.drawer-content, .dispatch-detail-content) table.business-document-table:is(.document-table, .document-history, .loss-record-table, .dispatch-detail-lines) :is(th, td) {
+  :is(.drawer-content, .dispatch-detail-content)
+    table.business-document-table:is(
+      .document-table,
+      .document-history,
+      .loss-record-table,
+      .dispatch-detail-lines
+    )
+    :is(th, td) {
     padding: var(--business-table-padding);
     border-color: var(--line);
     text-align: center;
     vertical-align: middle;
   }
-  :is(.drawer-content, .dispatch-detail-content) table.business-document-table:is(.document-table, .document-history, .loss-record-table, .dispatch-detail-lines) th {
+  :is(.drawer-content, .dispatch-detail-content)
+    table.business-document-table:is(
+      .document-table,
+      .document-history,
+      .loss-record-table,
+      .dispatch-detail-lines
+    )
+    th {
     background: var(--table-header-bg);
     font-size: var(--business-table-font);
     font-weight: 500;
   }
-  :is(.drawer-content, .dispatch-detail-content) table.business-document-table:is(.document-table, .document-history, .loss-record-table, .dispatch-detail-lines) small { font-size: var(--business-table-meta); }
-  .dispatch-detail-content .dispatch-line-actions { justify-content: center; }
-  .dispatch-detail-content .dispatch-line-actions .el-button { font-size: var(--business-table-font); }
+  :is(.drawer-content, .dispatch-detail-content)
+    table.business-document-table:is(
+      .document-table,
+      .document-history,
+      .loss-record-table,
+      .dispatch-detail-lines
+    )
+    small {
+    font-size: var(--business-table-meta);
+  }
+  .dispatch-detail-content .dispatch-line-actions {
+    justify-content: center;
+  }
+  .dispatch-detail-content .dispatch-line-actions .el-button {
+    font-size: var(--business-table-font);
+  }
   .serial-detail-body .el-descriptions .el-descriptions__body .el-descriptions__cell {
     padding: var(--business-table-padding);
     font-size: var(--business-table-font);
     line-height: var(--business-table-line);
     text-align: center;
   }
-  :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table .row-actions { justify-content: center; }
-  :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table .stock-selection-column .cell { padding-inline: 8px; }
-  :is(.page.reading-workspace, .team-workspace.team-workspace--reading, .serial-detail-body, .stock-source-picker) .el-table.business-table .el-tag { font-size: var(--business-table-meta); }
+  :is(
+      .page.reading-workspace,
+      .team-workspace.team-workspace--reading,
+      .serial-detail-body,
+      .stock-source-picker
+    )
+    .el-table.business-table
+    .row-actions {
+    justify-content: center;
+  }
+  :is(
+      .page.reading-workspace,
+      .team-workspace.team-workspace--reading,
+      .serial-detail-body,
+      .stock-source-picker
+    )
+    .el-table.business-table
+    .stock-selection-column
+    .cell {
+    padding-inline: 8px;
+  }
+  :is(
+      .page.reading-workspace,
+      .team-workspace.team-workspace--reading,
+      .serial-detail-body,
+      .stock-source-picker
+    )
+    .el-table.business-table
+    .el-tag {
+    font-size: var(--business-table-meta);
+  }
 }

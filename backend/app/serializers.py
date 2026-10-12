@@ -1,13 +1,20 @@
 """Directory/account snapshots for the supported API."""
+
 from __future__ import annotations
+
 from datetime import datetime, timezone
 from typing import Any
+
 from .models import Team, User
 
 
 def _utc(value: datetime) -> datetime:
     """Mark database UTC-naive values as UTC for unambiguous JSON (`Z`)."""
-    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    return (
+        value.replace(tzinfo=timezone.utc)
+        if value.tzinfo is None
+        else value.astimezone(timezone.utc)
+    )
 
 
 def team_dict(team: Team) -> dict[str, Any]:

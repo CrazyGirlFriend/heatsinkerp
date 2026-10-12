@@ -1,12 +1,11 @@
 """A demo-only correction must preserve stock, history and non-demo records."""
 
 import pytest
-from sqlalchemy import func, select
-
 from app.configure_material_teams import MATERIAL_TEAMS, configure_material_teams
 from app.database import SessionLocal
 from app.models import MaterialTransfer, MaterialTransferEvent, Team, TeamPurpose
 from app.repair_demo_purposes import LEGACY_NAMES, protected_fingerprints, repair_demo_purposes
+from sqlalchemy import func, select
 from test_material_transfers import _leader
 
 

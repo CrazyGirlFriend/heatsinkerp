@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { AxiosError, AxiosHeaders, type AxiosAdapter, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
+import {
+  AxiosError,
+  AxiosHeaders,
+  type AxiosAdapter,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { teamDirectoryApi } from './teamDirectoryApi'
 import { AUTH_SESSION_STORAGE_KEY, normalizeTeam } from './adminApi'
@@ -17,7 +23,13 @@ const adapter = vi.fn<AxiosAdapter>(async (config: InternalAxiosRequestConfig) =
     config,
   }
   if (responseStatus >= 400) {
-    throw new AxiosError(`Request failed with status code ${responseStatus}`, AxiosError.ERR_BAD_REQUEST, config, undefined, response)
+    throw new AxiosError(
+      `Request failed with status code ${responseStatus}`,
+      AxiosError.ERR_BAD_REQUEST,
+      config,
+      undefined,
+      response,
+    )
   }
   return response
 })
@@ -30,24 +42,49 @@ beforeEach(() => {
   adapter.mockClear()
   httpClient.defaults.adapter = adapter
 })
-afterEach(() => { httpClient.defaults.adapter = originalAdapter })
+afterEach(() => {
+  httpClient.defaults.adapter = originalAdapter
+})
 
 describe('team directory API', () => {
   it('normalizes kind and display order while remaining compatible with existing teams', () => {
-    expect(normalizeTeam({ id: 1, code: 'A', name: 'A', active: true, kind: 'warehouse', sort_order: 90 })).toMatchObject({ kind: 'warehouse', sort_order: 90 })
-    expect(normalizeTeam({ id: 2, code: 'B', name: 'B' })).toMatchObject({ kind: 'production', sort_order: 0 })
+    expect(
+      normalizeTeam({
+        id: 1,
+        code: 'A',
+        name: 'A',
+        active: true,
+        kind: 'warehouse',
+        sort_order: 90,
+      }),
+    ).toMatchObject({ kind: 'warehouse', sort_order: 90 })
+    expect(normalizeTeam({ id: 2, code: 'B', name: 'B' })).toMatchObject({
+      kind: 'production',
+      sort_order: 0,
+    })
   })
 
   it('reads the login-readable endpoint and sorts active groups without hardcoded names', async () => {
     responseBody = [
-      { id: 9, code: 'CUSTOM', name: '新增自定义班组', active: true, sort_order: 20, kind: 'production' },
+      {
+        id: 9,
+        code: 'CUSTOM',
+        name: '新增自定义班组',
+        active: true,
+        sort_order: 20,
+        kind: 'production',
+      },
       { id: 4, code: 'OLD', name: '停用组', active: false, sort_order: 0 },
       { id: 3, code: 'FIRST', name: '自定义首组', active: true, sort_order: 10 },
     ]
     const teams = await teamDirectoryApi.listTeamDirectory()
     expect(teams.map((team) => team.name)).toEqual(['自定义首组', '新增自定义班组'])
     expect(adapter).toHaveBeenCalledOnce()
-    expect(adapter.mock.calls[0]![0]).toMatchObject({ url: '/team-directory', baseURL: '/api', withCredentials: true })
+    expect(adapter.mock.calls[0]![0]).toMatchObject({
+      url: '/team-directory',
+      baseURL: '/api',
+      withCredentials: true,
+    })
   })
 
   it('closes the site gate on 423 without deleting account authentication', async () => {

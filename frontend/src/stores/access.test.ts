@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { AxiosError, AxiosHeaders, type AxiosAdapter, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
+import {
+  AxiosError,
+  AxiosHeaders,
+  type AxiosAdapter,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface AdapterReply {
@@ -22,10 +28,17 @@ function createAdapter(...replies: Array<AdapterReply | Error>) {
   let index = 0
   return vi.fn<AxiosAdapter>(async (config: InternalAxiosRequestConfig) => {
     const reply = replies[Math.min(index++, replies.length - 1)]
-    if (!reply || reply instanceof Error) throw new AxiosError(reply?.message || 'Network Error', AxiosError.ERR_NETWORK, config)
+    if (!reply || reply instanceof Error)
+      throw new AxiosError(reply?.message || 'Network Error', AxiosError.ERR_NETWORK, config)
     const response = responseFor(config, reply)
     if (response.status >= 400) {
-      throw new AxiosError(`Request failed with status code ${response.status}`, AxiosError.ERR_BAD_REQUEST, config, undefined, response)
+      throw new AxiosError(
+        `Request failed with status code ${response.status}`,
+        AxiosError.ERR_BAD_REQUEST,
+        config,
+        undefined,
+        response,
+      )
     }
     return response
   })
@@ -83,10 +96,9 @@ describe('server-owned site access', () => {
   })
 
   it('fails closed on network errors and allows a retry', async () => {
-    const { access } = await loadAccess(
-      new Error('offline'),
-      { data: { enabled: true, unlocked: false } },
-    )
+    const { access } = await loadAccess(new Error('offline'), {
+      data: { enabled: true, unlocked: false },
+    })
     expect(await access.checkSiteAccess()).toBe(false)
     expect(access.accessState.status).toBe('error')
     expect(access.accessState.error).toContain('重试')
@@ -95,7 +107,8 @@ describe('server-owned site access', () => {
   })
 
   it.each([{}, { enabled: 'false', unlocked: true }, { enabled: true, unlocked: 'true' }, null])(
-    'fails closed on malformed server status %j', async (status) => {
+    'fails closed on malformed server status %j',
+    async (status) => {
       const { access } = await loadAccess({ data: status })
       expect(await access.checkSiteAccess()).toBe(false)
       expect(access.accessState.status).toBe('error')
@@ -108,14 +121,20 @@ describe('server-owned site access', () => {
       { data: { enabled: true, unlocked: true } },
     )
     expect(await access.unlockSite('test-only-password')).toBe(true)
-    expect(adapter).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      baseURL: '/api/access',
-      url: '/unlock',
-      method: 'post',
-      data: JSON.stringify({ password: 'test-only-password' }),
-      withCredentials: true,
-    }))
-    expect(adapter).toHaveBeenNthCalledWith(2, expect.objectContaining({ url: '/status', method: 'get' }))
+    expect(adapter).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        baseURL: '/api/access',
+        url: '/unlock',
+        method: 'post',
+        data: JSON.stringify({ password: 'test-only-password' }),
+        withCredentials: true,
+      }),
+    )
+    expect(adapter).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ url: '/status', method: 'get' }),
+    )
     expect(localStorage.length).toBe(0)
   })
 
@@ -129,22 +148,28 @@ describe('server-owned site access', () => {
     expect(access.accessState.error).toContain('Cookie')
   })
 
-  it.each([401, 429])('shows a server error for HTTP %i and keeps the account session', async (status) => {
-    localStorage.setItem('heatsink-flow.auth-session.v1', 'existing-session')
-    const { access } = await loadAccess({ data: { detail: '口令错误或尝试过多' }, status })
-    expect(await access.unlockSite('wrong-password')).toBe(false)
-    expect(access.accessState.status).toBe('locked')
-    expect(access.accessState.error).toBe('口令错误或尝试过多')
-    expect(localStorage.getItem('heatsink-flow.auth-session.v1')).toBe('existing-session')
-  })
+  it.each([401, 429])(
+    'shows a server error for HTTP %i and keeps the account session',
+    async (status) => {
+      localStorage.setItem('heatsink-flow.auth-session.v1', 'existing-session')
+      const { access } = await loadAccess({ data: { detail: '口令错误或尝试过多' }, status })
+      expect(await access.unlockSite('wrong-password')).toBe(false)
+      expect(access.accessState.status).toBe('locked')
+      expect(access.accessState.error).toBe('口令错误或尝试过多')
+      expect(localStorage.getItem('heatsink-flow.auth-session.v1')).toBe('existing-session')
+    },
+  )
 
   it('closes immediately on expiry and a stale status response cannot reopen it', async () => {
     const access = await import('./access')
     let respond: (value: AxiosResponse) => void = () => undefined
-    const adapter = vi.fn<AxiosAdapter>((config: InternalAxiosRequestConfig) => new Promise((resolve) => {
-      respond = resolve
-      void config
-    }))
+    const adapter = vi.fn<AxiosAdapter>(
+      (config: InternalAxiosRequestConfig) =>
+        new Promise((resolve) => {
+          respond = resolve
+          void config
+        }),
+    )
     access.accessHttpClient.defaults.adapter = adapter
     const expiredListener = vi.fn()
     window.addEventListener(access.SITE_ACCESS_REQUIRED_EVENT, expiredListener)
@@ -161,27 +186,34 @@ describe('server-owned site access', () => {
 })
 
 describe('all API clients enforce site access expiry', () => {
-  it.each(['material-transfers', 'admin', 'team-materials'])('handles a 423 from %s without clearing account authentication', async (client) => {
-    const storedSession = JSON.stringify({ access_token: 'test-token', user: { username: 'test' } })
-    localStorage.setItem('heatsink-flow.auth-session.v1', storedSession)
-    const access = await import('./access')
-    const { httpClient } = await import('@/services/httpClient')
-    const originalAdapter = httpClient.defaults.adapter
-    httpClient.defaults.adapter = createAdapter({
-      data: { code: 'site_access_required', detail: '请先输入访问口令' },
-      status: 423,
-    })
-    try {
-      const call = client === 'material-transfers'
-        ? (await import('@/services/materialTransferApi')).materialTransferApi.list()
-        : client === 'admin'
-          ? (await import('@/services/adminApi')).adminApi.currentUser()
-          : (await import('@/services/teamMaterialApi')).teamMaterialApi.overview(2)
-      await expect(call).rejects.toMatchObject({ status: 423 })
-      expect(access.accessState.status).toBe('locked')
-      expect(localStorage.getItem('heatsink-flow.auth-session.v1')).toBe(storedSession)
-    } finally {
-      httpClient.defaults.adapter = originalAdapter
-    }
-  })
+  it.each(['material-transfers', 'admin', 'team-materials'])(
+    'handles a 423 from %s without clearing account authentication',
+    async (client) => {
+      const storedSession = JSON.stringify({
+        access_token: 'test-token',
+        user: { username: 'test' },
+      })
+      localStorage.setItem('heatsink-flow.auth-session.v1', storedSession)
+      const access = await import('./access')
+      const { httpClient } = await import('@/services/httpClient')
+      const originalAdapter = httpClient.defaults.adapter
+      httpClient.defaults.adapter = createAdapter({
+        data: { code: 'site_access_required', detail: '请先输入访问口令' },
+        status: 423,
+      })
+      try {
+        const call =
+          client === 'material-transfers'
+            ? (await import('@/services/materialTransferApi')).materialTransferApi.list()
+            : client === 'admin'
+              ? (await import('@/services/adminApi')).adminApi.currentUser()
+              : (await import('@/services/teamMaterialApi')).teamMaterialApi.overview(2)
+        await expect(call).rejects.toMatchObject({ status: 423 })
+        expect(access.accessState.status).toBe('locked')
+        expect(localStorage.getItem('heatsink-flow.auth-session.v1')).toBe(storedSession)
+      } finally {
+        httpClient.defaults.adapter = originalAdapter
+      }
+    },
+  )
 })

@@ -12,9 +12,8 @@ SQLite uses Alembic's documented batch-copy mechanism to preserve row IDs and
 foreign keys. MySQL only alters the relevant columns, constraints, and indexes.
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "20260903_0002"
 down_revision = "20260901_0001"
@@ -63,9 +62,13 @@ def _drop_legacy_unique(batch, table, column, constraints):
 def _upgrade_teams():
     existing = _column_names("teams")
     if "sort_order" not in existing:
-        op.add_column("teams", sa.Column("sort_order", sa.Integer(), nullable=False, server_default="0"))
+        op.add_column(
+            "teams", sa.Column("sort_order", sa.Integer(), nullable=False, server_default="0")
+        )
     if "kind" not in existing:
-        op.add_column("teams", sa.Column("kind", sa.String(16), nullable=False, server_default="production"))
+        op.add_column(
+            "teams", sa.Column("kind", sa.String(16), nullable=False, server_default="production")
+        )
 
 
 def _upgrade_reports():
@@ -100,13 +103,20 @@ def _upgrade_reports():
                 batch.add_column(column)
             _drop_legacy_unique(batch, table, "operation_id", legacy_uniques)
             if not has_request_unique:
-                batch.create_unique_constraint("uq_report_operation_key", ["operation_id", "idempotency_key"])
+                batch.create_unique_constraint(
+                    "uq_report_operation_key", ["operation_id", "idempotency_key"]
+                )
             if not has_destination_fk:
                 batch.create_foreign_key(
-                    "fk_reports_scrap_destination_team", "teams",
-                    ["scrap_destination_team_id"], ["id"], ondelete="SET NULL",
+                    "fk_reports_scrap_destination_team",
+                    "teams",
+                    ["scrap_destination_team_id"],
+                    ["id"],
+                    ondelete="SET NULL",
                 )
-    _ensure_index(table, "ix_operation_reports_scrap_destination_team_id", ["scrap_destination_team_id"])
+    _ensure_index(
+        table, "ix_operation_reports_scrap_destination_team_id", ["scrap_destination_team_id"]
+    )
 
 
 def _upgrade_receipts():
@@ -149,8 +159,12 @@ def _upgrade_exceptions():
             sa.UniqueConstraint("idempotency_key", name="uq_exception_idempotency_key"),
         )
     for column in (
-        "work_order_id", "operation_id", "report_id", "destination_team_id",
-        "operator_user_id", "operator_team_id",
+        "work_order_id",
+        "operation_id",
+        "report_id",
+        "destination_team_id",
+        "operator_user_id",
+        "operator_team_id",
     ):
         _ensure_index(table, f"ix_{table}_{column}", [column])
 
@@ -158,10 +172,9 @@ def _upgrade_exceptions():
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "sqlite":
-        needs_batch_copy = (
-            _single_column_uniques("operation_reports", "operation_id")
-            or _single_column_uniques("operation_receipts", "report_id")
-        )
+        needs_batch_copy = _single_column_uniques(
+            "operation_reports", "operation_id"
+        ) or _single_column_uniques("operation_receipts", "report_id")
         if needs_batch_copy and bind.exec_driver_sql("PRAGMA foreign_keys").scalar():
             # Do not disable integrity inside an existing transaction (SQLite
             # silently ignores that PRAGMA). Refuse before touching business data.

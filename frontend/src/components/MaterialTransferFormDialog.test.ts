@@ -3,34 +3,97 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { ElInputNumber, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialTransferFormDialog from './MaterialTransferFormDialog.vue'
-import { MaterialTransferApiError, materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
+import {
+  MaterialTransferApiError,
+  materialTransferApi,
+  normalizeMaterialTransfer,
+} from '@/services/materialTransferApi'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
-import { materialDocumentTextFields, materialTypeOptions, type MaterialTransfer } from '@/types/materialTransfer'
+import {
+  materialDocumentTextFields,
+  materialTypeOptions,
+  type MaterialTransfer,
+} from '@/types/materialTransfer'
 
-vi.mock('@/services/materialInputApi', () => ({ materialSuggestions: vi.fn().mockResolvedValue([]) }))
-vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isTeamAccount: true, currentUser: { team_id: 2, team: { id: 2, name: '研磨' } } }) }))
-vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => ({ items: [{ id: 2, name: '研磨', active: true }, { id: 3, name: '电镀', active: true }, { id: 1, name: '中央收发站', kind: 'warehouse', active: true }], loading: false, refreshTeamDirectory: vi.fn() }) }))
+vi.mock('@/services/materialInputApi', () => ({
+  materialSuggestions: vi.fn().mockResolvedValue([]),
+}))
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => ({
+    isTeamAccount: true,
+    currentUser: { team_id: 2, team: { id: 2, name: '研磨' } },
+  }),
+}))
+vi.mock('@/stores/teamDirectory', () => ({
+  useTeamDirectoryStore: () => ({
+    items: [
+      { id: 2, name: '研磨', active: true },
+      { id: 3, name: '电镀', active: true },
+      { id: 1, name: '中央收发站', kind: 'warehouse', active: true },
+    ],
+    loading: false,
+    refreshTeamDirectory: vi.fn(),
+  }),
+}))
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
 
 function fixture(overrides: Partial<MaterialTransfer> = {}): MaterialTransfer {
-  return normalizeMaterialTransfer({ id: 1, batch_no: 'TL20260906000001', serial_no: 'HS-001', source_team: { id: 2, name: '研磨' }, next_team: { id: 3, name: '电镀' }, quantity: 120, weight: 24.5, material_type: 'finished', finished_quantity: 132, status: 'pending', locked: false, allowed_actions: ['edit', 'void'], version: 6, ...overrides })
+  return normalizeMaterialTransfer({
+    id: 1,
+    batch_no: 'TL20260906000001',
+    serial_no: 'HS-001',
+    source_team: { id: 2, name: '研磨' },
+    next_team: { id: 3, name: '电镀' },
+    quantity: 120,
+    weight: 24.5,
+    material_type: 'finished',
+    finished_quantity: 132,
+    status: 'pending',
+    locked: false,
+    allowed_actions: ['edit', 'void'],
+    version: 6,
+    ...overrides,
+  })
 }
 let wrapper: VueWrapper
 beforeEach(() => {
   vi.spyOn(teamMaterialApi, 'warehouseLocations').mockResolvedValue({ items: [] })
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([])
-  vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({ source_transfer_id: 12, batch_no: 'TL-SOURCE', quantity: 100, weight: 10, revision: 1, as_of: '', items: [], total: 0, page: 1, page_size: 10 })
+  vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({
+    source_transfer_id: 12,
+    batch_no: 'TL-SOURCE',
+    quantity: 100,
+    weight: 10,
+    revision: 1,
+    as_of: '',
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 10,
+  })
   vi.spyOn(materialTransferApi, 'create').mockResolvedValue(fixture())
   vi.spyOn(materialTransferApi, 'update').mockResolvedValue(fixture({ version: 7 }))
   vi.spyOn(materialTransferApi, 'get').mockResolvedValue(fixture({ version: 7 }))
 })
-afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks() })
+afterEach(() => {
+  wrapper?.unmount()
+  vi.restoreAllMocks()
+})
 async function render(transfer: MaterialTransfer | null = null) {
-  wrapper = mount(MaterialTransferFormDialog, { props: { modelValue: true, transfer }, global: { stubs: { ElDialog: { template: '<div><slot name="header"/><slot/><slot name="footer"/></div>' } } } })
+  wrapper = mount(MaterialTransferFormDialog, {
+    props: { modelValue: true, transfer },
+    global: {
+      stubs: {
+        ElDialog: { template: '<div><slot name="header"/><slot/><slot name="footer"/></div>' },
+      },
+    },
+  })
   await flushPromises()
 }
 async function number(label: string, value: number | undefined) {
-  const field = wrapper.findAllComponents(ElInputNumber).find(item => item.find(`input[aria-label="${label}"]`).exists())!
+  const field = wrapper
+    .findAllComponents(ElInputNumber)
+    .find((item) => item.find(`input[aria-label="${label}"]`).exists())!
   expect(field, label).toBeTruthy()
   field.vm.$emit('update:modelValue', value)
   await flushPromises()
@@ -41,24 +104,40 @@ async function base(type: string | null = 'finished') {
   selects[1]!.vm.$emit('update:modelValue', 3)
   await wrapper.get('input[aria-label="流水号"]').setValue('HS-NEW')
   if (!['sludge', 'scrap_chips'].includes(type || '')) await number('转料件数', 0)
-  if (type === 'sludge') { await number('废泥实重', 16.5); await number('有效材料占比', 50) }
-  else await number('转料重量', 8.25)
+  if (type === 'sludge') {
+    await number('废泥实重', 16.5)
+    await number('有效材料占比', 50)
+  } else await number('转料重量', 8.25)
 }
-async function submit() { await wrapper.get('form').trigger('submit'); await flushPromises() }
+async function submit() {
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+}
 
 describe('material transfer document form', () => {
   it('shows every document group on one page without tabs or page navigation', async () => {
     await render()
-    expect(wrapper.findAll('.transfer-section h3').map(item => item.text())).toEqual(['转料信息', '物料资料', '规格工艺', '补充说明'])
+    expect(wrapper.findAll('.transfer-section h3').map((item) => item.text())).toEqual([
+      '转料信息',
+      '物料资料',
+      '规格工艺',
+      '补充说明',
+    ])
     expect(wrapper.find('.el-tabs').exists()).toBe(false)
     expect(wrapper.find('[aria-label="表单分页"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('研磨')
-    for (const field of materialDocumentTextFields) expect(wrapper.find(`[aria-label="${field.label}"]`).isVisible(), field.label).toBe(true)
+    for (const field of materialDocumentTextFields)
+      expect(wrapper.find(`[aria-label="${field.label}"]`).isVisible(), field.label).toBe(true)
     expect(wrapper.get('textarea[aria-label="备注"]').isVisible()).toBe(true)
   })
   it('locates missing input in the visible section instead of switching form pages', async () => {
-    await render(); await base(); await number('转料重量', undefined)
-    const focus = vi.spyOn(wrapper.get('input[aria-label="转料重量"]').element as HTMLInputElement, 'focus')
+    await render()
+    await base()
+    await number('转料重量', undefined)
+    const focus = vi.spyOn(
+      wrapper.get('input[aria-label="转料重量"]').element as HTMLInputElement,
+      'focus',
+    )
     await submit()
     expect(materialTransferApi.create).not.toHaveBeenCalled()
     expect(wrapper.get('[data-validation-field="weight"]').classes()).toContain('is-error')
@@ -68,15 +147,22 @@ describe('material transfer document form', () => {
   it('marks all missing required inputs after submitting and clears each mark when corrected', async () => {
     await render()
     expect(wrapper.find('.el-form-item.is-error').exists()).toBe(false)
-    const focus = vi.spyOn(wrapper.get('input[aria-label="流水号"]').element as HTMLInputElement, 'focus')
+    const focus = vi.spyOn(
+      wrapper.get('input[aria-label="流水号"]').element as HTMLInputElement,
+      'focus',
+    )
     await submit()
     expect(focus).toHaveBeenCalledWith({ preventScroll: true })
-    for (const field of ['serialNo', 'materialType', 'nextTeamId', 'quantity', 'weight']) expect(wrapper.get(`[data-validation-field="${field}"]`).classes(), field).toContain('is-error')
+    for (const field of ['serialNo', 'materialType', 'nextTeamId', 'quantity', 'weight'])
+      expect(wrapper.get(`[data-validation-field="${field}"]`).classes(), field).toContain(
+        'is-error',
+      )
     expect(wrapper.find('.el-form-item__error').exists()).toBe(false)
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
     expect(wrapper.get('[data-validation-field="notes"]').classes()).not.toContain('is-error')
     expect(materialTransferApi.create).not.toHaveBeenCalled()
-    await wrapper.get('input[aria-label="流水号"]').setValue('HS-NEW'); await flushPromises()
+    await wrapper.get('input[aria-label="流水号"]').setValue('HS-NEW')
+    await flushPromises()
     expect(wrapper.get('[data-validation-field="serialNo"]').classes()).not.toContain('is-error')
     expect(wrapper.get('[data-validation-field="materialType"]').classes()).toContain('is-error')
     await base()
@@ -84,85 +170,186 @@ describe('material transfer document form', () => {
     expect(wrapper.find('.el-form-item__error').exists()).toBe(false)
   })
   it('marks the missing half of a delivery requirement and clears it without another submit', async () => {
-    await render(); await base()
-    await wrapper.get('input[aria-label="要求发货日期"]').setValue('2026-10-18'); await submit()
-    expect(wrapper.get('[data-validation-field="deliveryQuantity"]').classes()).toContain('is-error')
-    expect(wrapper.get('[data-validation-field="deliveryDate"]').classes()).not.toContain('is-error')
+    await render()
+    await base()
+    await wrapper.get('input[aria-label="要求发货日期"]').setValue('2026-10-18')
+    await submit()
+    expect(wrapper.get('[data-validation-field="deliveryQuantity"]').classes()).toContain(
+      'is-error',
+    )
+    expect(wrapper.get('[data-validation-field="deliveryDate"]').classes()).not.toContain(
+      'is-error',
+    )
     await number('应发成品件数', 50)
     expect(wrapper.find('.el-form-item.is-error').exists()).toBe(false)
   })
   it('marks both missing sludge measurements without flagging hidden piece fields', async () => {
-    await render(); await base('sludge')
-    await number('废泥实重', undefined); await number('有效材料占比', undefined); await submit()
-    for (const field of ['gross', 'percent']) expect(wrapper.get(`[data-validation-field="${field}"]`).classes()).toContain('is-error')
+    await render()
+    await base('sludge')
+    await number('废泥实重', undefined)
+    await number('有效材料占比', undefined)
+    await submit()
+    for (const field of ['gross', 'percent'])
+      expect(wrapper.get(`[data-validation-field="${field}"]`).classes()).toContain('is-error')
     expect(wrapper.find('[data-validation-field="quantity"]').exists()).toBe(false)
-    await number('废泥实重', 16.5); await number('有效材料占比', 50)
+    await number('废泥实重', 16.5)
+    await number('有效材料占比', 50)
     expect(wrapper.find('.el-form-item.is-error').exists()).toBe(false)
   })
   it('submits actual sludge measurement and derived weight, never the wet weight as inventory', async () => {
-    await render(); await base('sludge'); await submit()
-    expect(materialTransferApi.create).toHaveBeenCalledWith(expect.objectContaining({ weight: 8.25, sludge_gross_weight: 16.5, sludge_content_percent: 50 }))
+    await render()
+    await base('sludge')
+    await submit()
+    expect(materialTransferApi.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        weight: 8.25,
+        sludge_gross_weight: 16.5,
+        sludge_content_percent: 50,
+      }),
+    )
   })
   it('recalculates edits and locks the percentage inherited from a sludge source', async () => {
-    await render(fixture({ material_type: 'sludge', weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30 }))
-    await number('有效材料占比', 20); await submit()
-    expect(materialTransferApi.update).toHaveBeenCalledWith('TL20260906000001', expect.objectContaining({ weight: 2, sludge_gross_weight: 10, sludge_content_percent: 20 }))
+    await render(
+      fixture({
+        material_type: 'sludge',
+        weight: 3,
+        sludge_gross_weight: 10,
+        sludge_content_percent: 30,
+      }),
+    )
+    await number('有效材料占比', 20)
+    await submit()
+    expect(materialTransferApi.update).toHaveBeenCalledWith(
+      'TL20260906000001',
+      expect.objectContaining({ weight: 2, sludge_gross_weight: 10, sludge_content_percent: 20 }),
+    )
     wrapper.unmount()
-    await render(fixture({ material_type: 'sludge', weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30, sludge_percent_locked: true }))
+    await render(
+      fixture({
+        material_type: 'sludge',
+        weight: 3,
+        sludge_gross_weight: 10,
+        sludge_content_percent: 30,
+        sludge_percent_locked: true,
+      }),
+    )
     expect(wrapper.get('input[aria-label="有效材料占比"]').attributes('disabled')).toBeDefined()
-    await number('废泥实重', 5); await submit()
-    expect(materialTransferApi.update).toHaveBeenLastCalledWith('TL20260906000001', expect.objectContaining({ weight: 1.5, sludge_gross_weight: 5, sludge_content_percent: 30 }))
+    await number('废泥实重', 5)
+    await submit()
+    expect(materialTransferApi.update).toHaveBeenLastCalledWith(
+      'TL20260906000001',
+      expect.objectContaining({ weight: 1.5, sludge_gross_weight: 5, sludge_content_percent: 30 }),
+    )
   })
   it('edits the final weighted shipment without automatically clearing remaining pieces', async () => {
     await render(fixture({ source_transfer_id: 12, quantity: 80, weight: 8 }))
-    await number('转料重量', 10); await submit()
-    expect(materialTransferApi.update).toHaveBeenCalledWith('TL20260906000001', expect.objectContaining({ weight: 10, quantity: 80 }))
-    expect(vi.mocked(materialTransferApi.update).mock.calls[0]![1]).not.toHaveProperty('quantity_clearance')
+    await number('转料重量', 10)
+    await submit()
+    expect(materialTransferApi.update).toHaveBeenCalledWith(
+      'TL20260906000001',
+      expect.objectContaining({ weight: 10, quantity: 80 }),
+    )
+    expect(vi.mocked(materialTransferApi.update).mock.calls[0]![1]).not.toHaveProperty(
+      'quantity_clearance',
+    )
   })
   it('permits excessive quantity and weight edits while retaining the linked source', async () => {
     await render(fixture({ source_transfer_id: 12, quantity: 80, weight: 8 }))
-    await number('转料重量', 110); await number('转料件数', 120); await submit()
-    expect(materialTransferApi.update).toHaveBeenCalledWith('TL20260906000001', expect.objectContaining({ weight: 110, quantity: 120 }))
-    expect(vi.mocked(materialTransferApi.update).mock.calls[0]![1]).not.toHaveProperty('quantity_clearance')
+    await number('转料重量', 110)
+    await number('转料件数', 120)
+    await submit()
+    expect(materialTransferApi.update).toHaveBeenCalledWith(
+      'TL20260906000001',
+      expect.objectContaining({ weight: 110, quantity: 120 }),
+    )
+    expect(vi.mocked(materialTransferApi.update).mock.calls[0]![1]).not.toHaveProperty(
+      'quantity_clearance',
+    )
   })
   it('cannot submit an incoming transfer even if its edit action flag is present', async () => {
-    await render(fixture({ source_team: { id: 3, name: '电镀', code: 'PLATE' }, next_team: { id: 2, name: '研磨', code: 'GRIND' } }))
-    expect(wrapper.findAll('button').find(button => button.text() === '保存修改')!.attributes('disabled')).toBeDefined()
+    await render(
+      fixture({
+        source_team: { id: 3, name: '电镀', code: 'PLATE' },
+        next_team: { id: 2, name: '研磨', code: 'GRIND' },
+      }),
+    )
+    expect(
+      wrapper
+        .findAll('button')
+        .find((button) => button.text() === '保存修改')!
+        .attributes('disabled'),
+    ).toBeDefined()
     await submit()
     expect(materialTransferApi.update).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('无编辑权限')
   })
 
   it('records a paired delivery requirement on the origin and never submits inherited values', async () => {
-    await render(); await base()
+    await render()
+    await base()
     await wrapper.get('input[aria-label="要求发货日期"]').setValue('2026-10-01')
     await submit()
     expect(materialTransferApi.create).not.toHaveBeenCalled()
-    expect(wrapper.get('[data-validation-field="deliveryQuantity"]').classes()).toContain('is-error')
-    await number('应发成品件数', 80); await submit()
-    expect(materialTransferApi.create).toHaveBeenCalledWith(expect.objectContaining({ delivery_date: '2026-10-01', delivery_quantity: 80, quantity: 0 }))
+    expect(wrapper.get('[data-validation-field="deliveryQuantity"]').classes()).toContain(
+      'is-error',
+    )
+    await number('应发成品件数', 80)
+    await submit()
+    expect(materialTransferApi.create).toHaveBeenCalledWith(
+      expect.objectContaining({ delivery_date: '2026-10-01', delivery_quantity: 80, quantity: 0 }),
+    )
     wrapper.unmount()
-    await render(fixture({ source_transfer_id: 12, delivery_date: '2026-10-01', delivery_quantity: 80, delivery_origin_batch_no: 'ORIGIN' }))
+    await render(
+      fixture({
+        source_transfer_id: 12,
+        delivery_date: '2026-10-01',
+        delivery_quantity: 80,
+        delivery_origin_batch_no: 'ORIGIN',
+      }),
+    )
     expect(wrapper.get('input[aria-label="要求发货日期"]').attributes('disabled')).toBeDefined()
     await submit()
     const body = vi.mocked(materialTransferApi.update).mock.calls[0]![1]
-    expect(body).not.toHaveProperty('delivery_date'); expect(body).not.toHaveProperty('delivery_quantity')
+    expect(body).not.toHaveProperty('delivery_date')
+    expect(body).not.toHaveProperty('delivery_quantity')
   })
 
   it('carries the upstream-selected destination purpose and preserves disabled historical snapshots', async () => {
-    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([{ id: 31, team_id: 3, name: '电镀', active: true, version: 1 }])
-    await render(); await base(); await submit()
-    expect(materialTransferApi.create).not.toHaveBeenCalled()
-    wrapper.findAllComponents(ElSelect).find(select => select.props('ariaLabel') === '接收业务')!.vm.$emit('update:modelValue', 31)
+    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
+      { id: 31, team_id: 3, name: '电镀', active: true, version: 1 },
+    ])
+    await render()
+    await base()
     await submit()
-    expect(materialTransferApi.create).toHaveBeenCalledWith(expect.objectContaining({ next_team_id: 3, purpose_id: 31 }))
+    expect(materialTransferApi.create).not.toHaveBeenCalled()
+    wrapper
+      .findAllComponents(ElSelect)
+      .find((select) => select.props('ariaLabel') === '接收业务')!
+      .vm.$emit('update:modelValue', 31)
+    await submit()
+    expect(materialTransferApi.create).toHaveBeenCalledWith(
+      expect.objectContaining({ next_team_id: 3, purpose_id: 31 }),
+    )
     wrapper.unmount()
-    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([{ id: 31, team_id: 3, name: '新名称', active: false, version: 2 }])
-    await render(fixture({ purpose_id: 31, purpose_name: '电镀' })); await submit()
-    expect(materialTransferApi.update).toHaveBeenCalledWith('TL20260906000001', expect.objectContaining({ purpose_id: 31 }))
+    vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
+      { id: 31, team_id: 3, name: '新名称', active: false, version: 2 },
+    ])
+    await render(fixture({ purpose_id: 31, purpose_name: '电镀' }))
+    await submit()
+    expect(materialTransferApi.update).toHaveBeenCalledWith(
+      'TL20260906000001',
+      expect.objectContaining({ purpose_id: 31 }),
+    )
   })
   it('keeps linked source identity and group destination fixed while allowing amount and notes changes', async () => {
-    await render(fixture({ source_transfer_id: 12, source_transfer_batch_no: 'TL-SOURCE', dispatch_no: 'CK-GROUP', material_name: '铜钼' }))
+    await render(
+      fixture({
+        source_transfer_id: 12,
+        source_transfer_batch_no: 'TL-SOURCE',
+        dispatch_no: 'CK-GROUP',
+        material_name: '铜钼',
+      }),
+    )
     expect(wrapper.get('input[aria-label="流水号"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('input[aria-label="材质"]').attributes('disabled')).toBeDefined()
     expect(wrapper.findAllComponents(ElSelect)[1]!.props('disabled')).toBe(true)
@@ -171,69 +358,99 @@ describe('material transfer document form', () => {
     await submit()
     const payload = vi.mocked(materialTransferApi.update).mock.calls[0]![1]
     expect(payload).toMatchObject({ quantity: 12, notes: '补充交接说明', expected_version: 6 })
-    expect(payload.serial_no).toBeUndefined(); expect(payload.material_name).toBeUndefined(); expect(payload.next_team_id).toBeUndefined()
+    expect(payload.serial_no).toBeUndefined()
+    expect(payload.material_name).toBeUndefined()
+    expect(payload.next_team_id).toBeUndefined()
   })
 
   it('uses warehouse kind for an optional inbound explanation and requires an explicit type on warehouse edits', async () => {
     await render(fixture({ material_type: null }))
     wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 1)
     await flushPromises()
-    expect(wrapper.get('textarea[aria-label="入库说明"]').attributes('placeholder')).toContain('转回库房')
+    expect(wrapper.get('textarea[aria-label="入库说明"]').attributes('placeholder')).toContain(
+      '转回库房',
+    )
     await submit()
     expect(materialTransferApi.update).not.toHaveBeenCalled()
     expect(wrapper.get('[data-validation-field="materialType"]').classes()).toContain('is-error')
     wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'semi_finished')
     await submit()
-    expect(materialTransferApi.update).toHaveBeenCalledWith('TL20260906000001', expect.objectContaining({ material_type: 'semi_finished', next_team_id: 1, notes: null }))
+    expect(materialTransferApi.update).toHaveBeenCalledWith(
+      'TL20260906000001',
+      expect.objectContaining({ material_type: 'semi_finished', next_team_id: 1, notes: null }),
+    )
   })
 
-  it.each(materialTypeOptions)('creates $label with the appropriate measurement fields', async ({ value }) => {
-    await render()
-    await base(value)
-    const weightOnly = ['sludge', 'scrap_chips'].includes(value)
-    if (!weightOnly) await number('成品件数', 0)
-    await wrapper.get('input[aria-label="原单批号"]').setValue('RAW-001')
-    await wrapper.get('input[aria-label="客户代码"]').setValue('001440')
-    await submit()
-    expect(materialTransferApi.create).toHaveBeenCalledWith(expect.objectContaining({ material_type: value, quantity: 0, weight: 8.25, finished_quantity: weightOnly ? null : 0, source_batch_no: 'RAW-001', customer_code: '001440' }))
-    expect(vi.mocked(materialTransferApi.create).mock.calls[0]![0]).not.toHaveProperty('batch_no')
-  })
+  it.each(materialTypeOptions)(
+    'creates $label with the appropriate measurement fields',
+    async ({ value }) => {
+      await render()
+      await base(value)
+      const weightOnly = ['sludge', 'scrap_chips'].includes(value)
+      if (!weightOnly) await number('成品件数', 0)
+      await wrapper.get('input[aria-label="原单批号"]').setValue('RAW-001')
+      await wrapper.get('input[aria-label="客户代码"]').setValue('001440')
+      await submit()
+      expect(materialTransferApi.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          material_type: value,
+          quantity: 0,
+          weight: 8.25,
+          finished_quantity: weightOnly ? null : 0,
+          source_batch_no: 'RAW-001',
+          customer_code: '001440',
+        }),
+      )
+      expect(vi.mocked(materialTransferApi.create).mock.calls[0]![0]).not.toHaveProperty('batch_no')
+    },
+  )
 
   it('requires an explicit type and both amounts, with at least one positive', async () => {
     await render()
     expect(wrapper.findAllComponents(ElSelect)[0]!.props('modelValue')).toBe('')
-    await base(null); await submit()
+    await base(null)
+    await submit()
     expect(wrapper.get('[data-validation-field="materialType"]').classes()).toContain('is-error')
     wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'semi_finished')
-    await number('转料重量', 0); await submit()
+    await number('转料重量', 0)
+    await submit()
     expect(wrapper.get('[data-validation-field="weight"]').classes()).toContain('is-error')
     expect(wrapper.get('[data-validation-field="quantity"]').classes()).toContain('is-error')
-    await number('转料件数', undefined); await number('转料重量', 5); await submit()
+    await number('转料件数', undefined)
+    await number('转料重量', 5)
+    await submit()
     expect(wrapper.get('[data-validation-field="quantity"]').classes()).toContain('is-error')
     expect(materialTransferApi.create).not.toHaveBeenCalled()
   })
 
   it('refills and explicitly clears all optional document fields without mixing either quantity or batch', async () => {
-    const document = Object.fromEntries(materialDocumentTextFields.map(field => [field.key, `旧${field.label}`]))
+    const document = Object.fromEntries(
+      materialDocumentTextFields.map((field) => [field.key, `旧${field.label}`]),
+    )
     await render(fixture({ ...document, finished_quantity: 132 }))
     expect(wrapper.get('input[aria-label="成品件数"]').element).toHaveProperty('value', '132')
     expect(wrapper.get('input[aria-label="转料件数"]').element).toHaveProperty('value', '120')
     for (const field of materialDocumentTextFields) {
-      const input = wrapper.get(`${field.multiline ? 'textarea' : 'input'}[aria-label="${field.label}"]`)
+      const input = wrapper.get(
+        `${field.multiline ? 'textarea' : 'input'}[aria-label="${field.label}"]`,
+      )
       expect(input.element).toHaveProperty('value', `旧${field.label}`)
       await input.setValue('')
     }
-    await number('成品件数', undefined); await submit()
+    await number('成品件数', undefined)
+    await submit()
     const payload = vi.mocked(materialTransferApi.update).mock.calls[0]![1]
     expect(payload).toMatchObject({ expected_version: 6, quantity: 120, finished_quantity: null })
-    materialDocumentTextFields.forEach(field => expect(payload[field.key]).toBeNull())
+    materialDocumentTextFields.forEach((field) => expect(payload[field.key]).toBeNull())
     expect(payload).not.toHaveProperty('batch_no')
   })
 
   it('reloads a version conflict and requires another deliberate save of the refreshed record', async () => {
     await render(fixture({ material_name: '旧材质' }))
     const latest = fixture({ version: 8, material_name: '新材质', quantity: 99 })
-    vi.mocked(materialTransferApi.update).mockRejectedValueOnce(new MaterialTransferApiError('单据已更新', 409))
+    vi.mocked(materialTransferApi.update).mockRejectedValueOnce(
+      new MaterialTransferApiError('单据已更新', 409),
+    )
     vi.mocked(materialTransferApi.get).mockResolvedValueOnce(latest)
     await submit()
     expect(materialTransferApi.update).toHaveBeenCalledTimes(1)
@@ -241,22 +458,37 @@ describe('material transfer document form', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('已载入最新内容')
     expect(wrapper.emitted('refreshed')?.[0]).toEqual([latest])
     await submit()
-    expect(materialTransferApi.update).toHaveBeenLastCalledWith(latest.batch_no, expect.objectContaining({ expected_version: 8, quantity: 99, material_name: '新材质' }))
+    expect(materialTransferApi.update).toHaveBeenLastCalledWith(
+      latest.batch_no,
+      expect.objectContaining({ expected_version: 8, quantity: 99, material_name: '新材质' }),
+    )
   })
 
   it('blocks saving when a conflict cannot be refreshed and permits a read retry', async () => {
     await render(fixture())
-    vi.mocked(materialTransferApi.update).mockRejectedValueOnce(new MaterialTransferApiError('单据已更新', 409))
+    vi.mocked(materialTransferApi.update).mockRejectedValueOnce(
+      new MaterialTransferApiError('单据已更新', 409),
+    )
     vi.mocked(materialTransferApi.get).mockRejectedValueOnce(new Error('offline'))
-    await submit(); await submit()
+    await submit()
+    await submit()
     expect(materialTransferApi.update).toHaveBeenCalledTimes(1)
-    const retry = wrapper.findAll('button').find(button => button.text() === '重新读取')!
-    await retry.trigger('click'); await flushPromises()
+    const retry = wrapper.findAll('button').find((button) => button.text() === '重新读取')!
+    await retry.trigger('click')
+    await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('已载入最新内容')
   })
 
   it('locks received records and leaves missing legacy fields blank', async () => {
-    await render(fixture({ status: 'received', locked: true, allowed_actions: [], material_type: null, version: null }))
+    await render(
+      fixture({
+        status: 'received',
+        locked: true,
+        allowed_actions: [],
+        material_type: null,
+        version: null,
+      }),
+    )
     expect(wrapper.get('input[aria-label="原单批号"]').element).toHaveProperty('value', '')
     await submit()
     expect(materialTransferApi.update).not.toHaveBeenCalled()
@@ -265,14 +497,27 @@ describe('material transfer document form', () => {
 })
 
 it('hides piece fields after converting a countable transfer and never submits the old pieces', async () => {
-  await render(); await base(); await number('转料件数', 80); await number('成品件数', 75)
-  wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'scrap_chips'); await flushPromises()
+  await render()
+  await base()
+  await number('转料件数', 80)
+  await number('成品件数', 75)
+  wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'scrap_chips')
+  await flushPromises()
   expect(wrapper.find('input[aria-label="转料件数"]').exists()).toBe(false)
   expect(wrapper.find('input[aria-label="成品件数"]').exists()).toBe(false)
   expect(wrapper.find('input[aria-label="应发成品件数"]').exists()).toBe(false)
-  await number('转料重量', 0); await submit()
+  await number('转料重量', 0)
+  await submit()
   expect(materialTransferApi.create).not.toHaveBeenCalled()
   expect(wrapper.get('[data-validation-field="weight"]').classes()).toContain('is-error')
-  await number('转料重量', 2); await submit()
-  expect(materialTransferApi.create).toHaveBeenCalledWith(expect.objectContaining({ quantity: 0, weight: 2, finished_quantity: null, delivery_quantity: null }))
+  await number('转料重量', 2)
+  await submit()
+  expect(materialTransferApi.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      quantity: 0,
+      weight: 2,
+      finished_quantity: null,
+      delivery_quantity: null,
+    }),
+  )
 })

@@ -1,4 +1,9 @@
-import { HTTP_AUTH_SESSION_STORAGE_KEY, httpRequest, HttpRequestError, type HttpRequestOptions } from '@/services/httpClient'
+import {
+  HTTP_AUTH_SESSION_STORAGE_KEY,
+  httpRequest,
+  HttpRequestError,
+  type HttpRequestOptions,
+} from '@/services/httpClient'
 
 export type UserRole = 'ADMIN' | 'TEAM'
 export type EntityId = string | number
@@ -127,12 +132,16 @@ function optionalString(...values: unknown[]): string | undefined {
 function booleanValue(value: unknown, fallback = true): boolean {
   if (typeof value === 'boolean') return value
   if (typeof value === 'number') return value !== 0
-  if (typeof value === 'string') return !['false', '0', 'disabled', 'inactive'].includes(value.toLowerCase())
+  if (typeof value === 'string')
+    return !['false', '0', 'disabled', 'inactive'].includes(value.toLowerCase())
   return fallback
 }
 
 export function normalizeRole(value: unknown): UserRole {
-  const normalized = String(value || '').trim().toUpperCase().replaceAll('-', '_')
+  const normalized = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replaceAll('-', '_')
   return ['ADMIN', 'ADMINISTRATOR', 'SUPER_ADMIN'].includes(normalized) ? 'ADMIN' : 'TEAM'
 }
 
@@ -163,21 +172,32 @@ export function normalizeAccount(value: unknown): Account {
   const nestedTeam = rawTeam && typeof rawTeam === 'object' ? normalizeTeam(rawTeam) : null
   const rawTeamId = raw.team_id ?? raw.teamId ?? raw.group_id ?? nestedTeam?.id
   const flatTeamName = optionalString(raw.team_name, raw.group_name)
-  const team = nestedTeam || (flatTeamName && rawTeamId !== undefined && rawTeamId !== null
-    ? {
-        id: rawTeamId as EntityId,
-        code: stringValue(raw.team_code, raw.group_code),
-        name: flatTeamName,
-        active: true,
-      }
-    : null)
+  const team =
+    nestedTeam ||
+    (flatTeamName && rawTeamId !== undefined && rawTeamId !== null
+      ? {
+          id: rawTeamId as EntityId,
+          code: stringValue(raw.team_code, raw.group_code),
+          name: flatTeamName,
+          active: true,
+        }
+      : null)
   return {
     id: (raw.id as EntityId | undefined) ?? stringValue(raw.username, raw.account),
     username: stringValue(raw.username, raw.account, raw.login_name),
-    display_name: stringValue(raw.display_name, raw.displayName, raw.full_name, raw.name, raw.username),
+    display_name: stringValue(
+      raw.display_name,
+      raw.displayName,
+      raw.full_name,
+      raw.name,
+      raw.username,
+    ),
     avatar_key: stringValue(raw.avatar_key),
     role,
-    team_id: role === 'TEAM' && rawTeamId !== undefined && rawTeamId !== null ? (rawTeamId as EntityId) : null,
+    team_id:
+      role === 'TEAM' && rawTeamId !== undefined && rawTeamId !== null
+        ? (rawTeamId as EntityId)
+        : null,
     team,
     active: booleanValue(raw.active ?? raw.is_active ?? raw.enabled),
     last_login_at: optionalString(raw.last_login_at, raw.lastLoginAt) ?? null,
@@ -189,7 +209,8 @@ export function normalizeAccount(value: unknown): Account {
 function messageFromBody(body: unknown, fallback: string): { message: string; code?: string } {
   const raw = objectValue(body)
   const detail = raw.detail
-  if (typeof detail === 'string') return { message: localizedMessage(detail), code: optionalString(raw.code) }
+  if (typeof detail === 'string')
+    return { message: localizedMessage(detail), code: optionalString(raw.code) }
   if (Array.isArray(detail)) {
     const first = objectValue(detail[0])
     return {
@@ -200,7 +221,9 @@ function messageFromBody(body: unknown, fallback: string): { message: string; co
   if (detail && typeof detail === 'object') {
     const detailRecord = objectValue(detail)
     return {
-      message: localizedMessage(optionalString(detailRecord.message, detailRecord.detail) || fallback),
+      message: localizedMessage(
+        optionalString(detailRecord.message, detailRecord.detail) || fallback,
+      ),
       code: optionalString(detailRecord.code, raw.code),
     }
   }
@@ -228,10 +251,19 @@ function localizedMessage(message: string): string {
 
 async function request<T>(path: string, options: HttpRequestOptions = {}): Promise<T> {
   try {
-    return await httpRequest<T>(path, { noCache: true, ...options, skipAuthExpiry: path === '/auth/login' })
+    return await httpRequest<T>(path, {
+      noCache: true,
+      ...options,
+      skipAuthExpiry: path === '/auth/login',
+    })
   } catch (error) {
-    const failure = error instanceof HttpRequestError ? error : new HttpRequestError(error instanceof Error ? error.message : '无法连接服务器')
-    const fallback = failure.status ? `请求失败（${failure.status}）` : failure.message || '无法连接服务器'
+    const failure =
+      error instanceof HttpRequestError
+        ? error
+        : new HttpRequestError(error instanceof Error ? error.message : '无法连接服务器')
+    const fallback = failure.status
+      ? `请求失败（${failure.status}）`
+      : failure.message || '无法连接服务器'
     const info = messageFromBody(failure.body, fallback)
     throw new AdminApiError(info.message, failure.status, info.code, failure.body)
   }
@@ -265,7 +297,8 @@ function normalizeSession(value: unknown): AuthSession {
   const raw = objectValue(value)
   const token = stringValue(raw.access_token, raw.accessToken, raw.token)
   const rawUser = raw.user ?? raw.account ?? raw.profile
-  if (!token || !rawUser) throw new AdminApiError('登录响应缺少令牌或账号信息', 500, 'INVALID_AUTH_RESPONSE')
+  if (!token || !rawUser)
+    throw new AdminApiError('登录响应缺少令牌或账号信息', 500, 'INVALID_AUTH_RESPONSE')
   let expiresAt = optionalString(raw.expires_at, raw.expiresAt)
   if (!expiresAt && typeof raw.expires_in === 'number') {
     expiresAt = new Date(Date.now() + raw.expires_in * 1000).toISOString()
@@ -280,7 +313,9 @@ function normalizeSession(value: unknown): AuthSession {
 
 export const adminApi = {
   async login(payload: LoginPayload): Promise<AuthSession> {
-    return normalizeSession(await request<unknown>('/auth/login', { method: 'POST', body: JSON.stringify(payload) }))
+    return normalizeSession(
+      await request<unknown>('/auth/login', { method: 'POST', body: JSON.stringify(payload) }),
+    )
   },
 
   async currentUser(): Promise<Account> {
@@ -290,7 +325,9 @@ export const adminApi = {
   },
 
   async updateProfile(payload: { display_name: string; avatar_key: string }): Promise<Account> {
-    return normalizeAccount(await request('/auth/me', { method: 'PATCH', body: JSON.stringify(payload) }))
+    return normalizeAccount(
+      await request('/auth/me', { method: 'PATCH', body: JSON.stringify(payload) }),
+    )
   },
 
   async changePassword(payload: PasswordChangePayload): Promise<void> {
@@ -302,7 +339,9 @@ export const adminApi = {
   },
 
   async listTeams(params: TeamListParams = {}): Promise<Team[]> {
-    const result = await request<unknown>(`/teams${queryString({ query: params.query, active: params.active })}`)
+    const result = await request<unknown>(
+      `/teams${queryString({ query: params.query, active: params.active })}`,
+    )
     return parseList(result, ['teams']).map(normalizeTeam)
   },
 
@@ -311,7 +350,12 @@ export const adminApi = {
   },
 
   async updateTeam(id: EntityId, payload: UpdateTeamPayload): Promise<Team> {
-    return normalizeTeam(await request(`/teams/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(payload) }))
+    return normalizeTeam(
+      await request(`/teams/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    )
   },
 
   async deleteTeam(id: EntityId): Promise<void> {
@@ -319,20 +363,29 @@ export const adminApi = {
   },
 
   async listAccounts(params: AccountListParams = {}): Promise<Account[]> {
-    const result = await request<unknown>(`/accounts${queryString({ query: params.query, role: params.role, team_id: params.team_id, active: params.active })}`)
+    const result = await request<unknown>(
+      `/accounts${queryString({ query: params.query, role: params.role, team_id: params.team_id, active: params.active })}`,
+    )
     return parseList(result, ['accounts', 'users']).map(normalizeAccount)
   },
 
   async createAccount(payload: CreateAccountPayload): Promise<Account> {
     validateTeamBinding(payload.role, payload.team_id)
     const normalized = { ...payload, team_id: payload.role === 'ADMIN' ? null : payload.team_id }
-    return normalizeAccount(await request('/accounts', { method: 'POST', body: JSON.stringify(normalized) }))
+    return normalizeAccount(
+      await request('/accounts', { method: 'POST', body: JSON.stringify(normalized) }),
+    )
   },
 
   async updateAccount(id: EntityId, payload: UpdateAccountPayload): Promise<Account> {
     if (payload.role) validateTeamBinding(payload.role, payload.team_id)
     const normalized = { ...payload, ...(payload.role === 'ADMIN' ? { team_id: null } : {}) }
-    return normalizeAccount(await request(`/accounts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(normalized) }))
+    return normalizeAccount(
+      await request(`/accounts/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(normalized),
+      }),
+    )
   },
 
   async deleteAccount(id: EntityId): Promise<void> {

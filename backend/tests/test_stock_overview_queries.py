@@ -7,7 +7,8 @@ from app.models import MaterialTransfer
 from sqlalchemy import select
 from test_transfer_list_loading import read_statements
 from test_warehouse_classification import confirm, dispatch
-from test_warehouse_receipts import intake, warehouse  # noqa: F401
+from test_warehouse_receipts import intake  # noqa: F401
+from test_warehouse_receipts import warehouse as warehouse
 
 
 def check_overview(client, team_id):

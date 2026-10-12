@@ -12,7 +12,13 @@ from decimal import Decimal
 from sqlalchemy import delete, event, func, select, update
 from sqlalchemy.orm import Session
 
-from .models import MaterialLoss, MaterialQuantityAdjustment, MaterialStockBalance, MaterialTransfer, utcnow
+from .models import (
+    MaterialLoss,
+    MaterialQuantityAdjustment,
+    MaterialStockBalance,
+    MaterialTransfer,
+    utcnow,
+)
 
 PREFIXES = ("received", "on_hand", "reserved", "in_transit", "dispatched", "lost")
 AMOUNTS = tuple(f"{prefix}_{amount}" for prefix in PREFIXES for amount in ("quantity", "weight"))
@@ -30,7 +36,14 @@ FIELDS = {
         "weight",
     ),
     MaterialLoss: ("id", "source_transfer_id", "team_id", "quantity", "weight"),
-    MaterialQuantityAdjustment: ("id", "source_transfer_id", "before_quantity", "after_quantity", "weight_snapshot", "after_weight"),
+    MaterialQuantityAdjustment: (
+        "id",
+        "source_transfer_id",
+        "before_quantity",
+        "after_quantity",
+        "weight_snapshot",
+        "after_weight",
+    ),
 }
 PENDING = "stock_balance_flush_changes"
 
@@ -120,7 +133,18 @@ def apply_balances(db, *_):
     changes = db.info.pop(PENDING, ())
     if not changes:
         return
-    deltas = defaultdict(lambda: {name: 0 for name in (*AMOUNTS, "adjusted_quantity", "adjusted_weight", "converted_quantity", "converted_weight")})
+    deltas = defaultdict(
+        lambda: {
+            name: 0
+            for name in (
+                *AMOUNTS,
+                "adjusted_quantity",
+                "adjusted_weight",
+                "converted_quantity",
+                "converted_weight",
+            )
+        }
+    )
     created, removed, teams, recounted = {}, set(), {}, set()
     for row, before, deleted in changes:
         model = type(row)
@@ -170,6 +194,7 @@ def apply_balances(db, *_):
                     f"Missing stock balance for lot {lot_id}; reconcile before writing"
                 )
     from .warehouse_placements import apply_changes
+
     apply_changes(connection, changes, FIELDS)
 
 

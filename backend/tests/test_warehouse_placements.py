@@ -4,14 +4,14 @@ from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from threading import Barrier
 
-from sqlalchemy import select
-
 from app.database import SessionLocal
 from app.models import WarehousePlacement
-from test_warehouse_receipts import warehouse, intake  # noqa: F401
-from test_warehouse_locations import location, dispatch
-from test_warehouse_location_locks import create_slot, state, claim
+from sqlalchemy import select
 from test_transfer_list_loading import read_statements
+from test_warehouse_location_locks import claim, create_slot, state
+from test_warehouse_locations import dispatch, location
+from test_warehouse_receipts import intake
+from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 
 def stock(client, setup, source):
@@ -53,8 +53,14 @@ def test_reused_slot_survives_void_of_old_batch_and_can_assign_return_elsewhere(
         },
     )
     assert excess.status_code == 201, excess.text
-    assert stock(client, warehouse, source)['on_hand_quantity'] == -1
-    assert client.delete('/api/material-transfers/' + excess.json()['items'][0]['batch_no'], headers=warehouse['headers']).status_code == 204
+    assert stock(client, warehouse, source)["on_hand_quantity"] == -1
+    assert (
+        client.delete(
+            "/api/material-transfers/" + excess.json()["items"][0]["batch_no"],
+            headers=warehouse["headers"],
+        ).status_code
+        == 204
+    )
     new = intake(
         client,
         warehouse,

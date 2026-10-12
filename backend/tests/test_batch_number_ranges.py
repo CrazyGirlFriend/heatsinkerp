@@ -1,12 +1,11 @@
 """Bulk TL allocation retains independent numbers, exhaustion and rollback."""
 
 import pytest
-from fastapi import HTTPException
-from sqlalchemy import select
-
 from app.batch_numbers import next_transfer_batch_number, next_transfer_batch_numbers
 from app.database import SessionLocal
 from app.models import TransferBatchNumberSequence
+from fastapi import HTTPException
+from sqlalchemy import select
 
 
 def test_bulk_numbers_share_counter_with_single_allocations(client):

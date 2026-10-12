@@ -37,7 +37,9 @@ def _async_options():
         return url.set(drivername="mysql+asyncmy"), _engine_options(settings.database_url)
     if url.get_backend_name() == "sqlite":
         if url.database in (None, "", ":memory:"):
-            raise ValueError("Use a SQLite file: async HTTP and maintenance connections must share one database")
+            raise ValueError(
+                "Use a SQLite file: async HTTP and maintenance connections must share one database"
+            )
         options = _engine_options(settings.database_url)
         options["poolclass"] = NullPool
         return url.set(drivername="sqlite+aiosqlite"), options

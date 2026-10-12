@@ -15,5 +15,7 @@ export interface SharedMaterialFields {
   shared_serials?: SharedMaterialSerial[]
 }
 export function sharedSerialLabel(item: SharedMaterialFields & { serial_no?: string }) {
-  return item.shared_unallocated ? `共投 · ${(item.shared_serials || []).map(member => member.serial_no).join(' / ')}` : item.serial_no || '—'
+  return item.shared_unallocated
+    ? `共投 · ${(item.shared_serials || []).map((member) => member.serial_no).join(' / ')}`
+    : item.serial_no || '—'
 }

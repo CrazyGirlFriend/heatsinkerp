@@ -33,11 +33,20 @@ def can_edit(transfer, user):
 
 def document(transfer, user):
     if transfer.shared_group_id:
-        member = next((member for member in transfer.shared_group.members if not transfer.shared_unallocated and member.serial_no == transfer.serial_no), None)
-        return {"delivery_date": member.delivery_date if member else None,
-                "delivery_quantity": member.delivery_quantity if member else None,
-                "delivery_origin_batch_no": transfer.shared_group.batch_no,
-                "can_edit_delivery": False}
+        member = next(
+            (
+                member
+                for member in transfer.shared_group.members
+                if not transfer.shared_unallocated and member.serial_no == transfer.serial_no
+            ),
+            None,
+        )
+        return {
+            "delivery_date": member.delivery_date if member else None,
+            "delivery_quantity": member.delivery_quantity if member else None,
+            "delivery_origin_batch_no": transfer.shared_group.batch_no,
+            "can_edit_delivery": False,
+        }
     origin = transfer.delivery_origin if transfer.delivery_origin_id else transfer
     return {
         "delivery_date": origin.delivery_date,

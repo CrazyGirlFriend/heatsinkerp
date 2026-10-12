@@ -6,10 +6,11 @@ from decimal import Decimal
 from app.database import SessionLocal
 from app.models import MaterialQuantityAdjustment, MaterialStockBalance, MaterialTransfer
 from sqlalchemy import func, select
-from test_processing_records import processing, receive  # noqa: F401
+from test_processing_records import processing as processing  # noqa: F401
+from test_processing_records import receive
 from test_quantity_adjustments import change
 from test_warehouse_classification import base, confirm, dispatch
-from test_warehouse_receipts import warehouse  # noqa: F401
+from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 
 def outputs():

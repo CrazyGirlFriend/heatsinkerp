@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { AxiosError, AxiosHeaders, type AxiosAdapter, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
+import {
+  AxiosError,
+  AxiosHeaders,
+  type AxiosAdapter,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -15,12 +21,20 @@ let accessBody: unknown = { enabled: true, unlocked: false }
 let accessNetworkFailure = false
 const originalAccessAdapter = accessHttpClient.defaults.adapter
 const originalHttpAdapter = httpClient.defaults.adapter
-const accessAdapter: AxiosAdapter = async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => {
+const accessAdapter: AxiosAdapter = async (
+  config: InternalAxiosRequestConfig,
+): Promise<AxiosResponse> => {
   if (accessNetworkFailure) throw new AxiosError('Network Error', AxiosError.ERR_NETWORK, config)
   return { data: accessBody, status: 200, statusText: 'OK', headers: new AxiosHeaders(), config }
 }
-const directoryAdapter: AxiosAdapter = async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => ({
-  data: [], status: 200, statusText: 'OK', headers: new AxiosHeaders(), config,
+const directoryAdapter: AxiosAdapter = async (
+  config: InternalAxiosRequestConfig,
+): Promise<AxiosResponse> => ({
+  data: [],
+  status: 200,
+  statusText: 'OK',
+  headers: new AxiosHeaders(),
+  config,
 })
 
 afterEach(() => {
@@ -40,7 +54,11 @@ describe('access gate rendering', () => {
       routes: [
         { path: '/login', name: 'login', component: LoginPage },
         { path: '/access', name: 'access', component: AccessPage },
-        { path: '/flows', name: 'flows', component: { template: '<div>private business content</div>' } },
+        {
+          path: '/flows',
+          name: 'flows',
+          component: { template: '<div>private business content</div>' },
+        },
         { path: '/:pathMatch(.*)*', redirect: '/flows' },
       ],
     })
@@ -73,12 +91,23 @@ describe('access gate rendering', () => {
     await nextTick()
     expect(wrapper.find('input[name="username"]').exists()).toBe(true)
     expect(wrapper.find('input[name="site-access-password"]').exists()).toBe(false)
-    expect(wrapper.get('.login-brand__mark img').attributes('src')).toBe('/brand/attl-official-logo.png')
+    expect(wrapper.get('.login-brand__mark img').attributes('src')).toBe(
+      '/brand/attl-official-logo.png',
+    )
     expect(wrapper.get('.login-brand__mark img').attributes('alt')).toContain('安泰天龙')
 
     authState.session = {
-      access_token: 'test-only-token', token_type: 'Bearer',
-      user: { id: 1, username: 'tester', display_name: 'Tester', role: 'TEAM', team_id: 1, team: null, active: true },
+      access_token: 'test-only-token',
+      token_type: 'Bearer',
+      user: {
+        id: 1,
+        username: 'tester',
+        display_name: 'Tester',
+        role: 'TEAM',
+        team_id: 1,
+        team: null,
+        active: true,
+      },
     }
     await router.push('/flows')
     expect(wrapper.find('.app-shell').exists()).toBe(true)

@@ -1,24 +1,56 @@
 // @vitest-environment jsdom
-import { AxiosHeaders, type AxiosAdapter, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
+import {
+  AxiosHeaders,
+  type AxiosAdapter,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios'
 import { flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Team } from '@/services/adminApi'
 
 const mocks = vi.hoisted(() => ({ list: vi.fn() }))
-vi.mock('@/services/teamDirectoryApi', () => ({ teamDirectoryApi: { listTeamDirectory: mocks.list } }))
+vi.mock('@/services/teamDirectoryApi', () => ({
+  teamDirectoryApi: { listTeamDirectory: mocks.list },
+}))
 
 import { authState, clearSession } from '@/stores/auth'
 import { accessHttpClient, checkSiteAccess, notifySiteAccessRequired } from '@/stores/access'
 import { teamDirectory, refreshTeamDirectory } from './teamDirectory'
 
-const team: Team = { id: 7, code: 'CUSTOM', name: '自定义生产班组', active: true, sort_order: 10, kind: 'production' }
+const team: Team = {
+  id: 7,
+  code: 'CUSTOM',
+  name: '自定义生产班组',
+  active: true,
+  sort_order: 10,
+  kind: 'production',
+}
 const originalAccessAdapter = accessHttpClient.defaults.adapter
-const accessAdapter: AxiosAdapter = async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => ({
-  data: { enabled: true, unlocked: true }, status: 200, statusText: 'OK', headers: new AxiosHeaders(), config,
+const accessAdapter: AxiosAdapter = async (
+  config: InternalAxiosRequestConfig,
+): Promise<AxiosResponse> => ({
+  data: { enabled: true, unlocked: true },
+  status: 200,
+  statusText: 'OK',
+  headers: new AxiosHeaders(),
+  config,
 })
 
 function signIn(token: string): void {
-  authState.session = { access_token: token, token_type: 'Bearer', user: { id: token, username: token, display_name: token, role: 'TEAM', team_id: 7, team, active: true } }
+  authState.session = {
+    access_token: token,
+    token_type: 'Bearer',
+    user: {
+      id: token,
+      username: token,
+      display_name: token,
+      role: 'TEAM',
+      team_id: 7,
+      team,
+      active: true,
+    },
+  }
 }
 
 beforeEach(async () => {
@@ -28,14 +60,22 @@ beforeEach(async () => {
   await checkSiteAccess(true)
 })
 
-afterEach(() => { clearSession(); accessHttpClient.defaults.adapter = originalAccessAdapter; vi.unstubAllGlobals() })
+afterEach(() => {
+  clearSession()
+  accessHttpClient.defaults.adapter = originalAccessAdapter
+  vi.unstubAllGlobals()
+})
 
 describe('session-scoped dynamic team directory', () => {
   it('retains a verified directory during same-account background refresh', async () => {
     signIn('account-a')
     await flushPromises()
     let finish!: (teams: Team[]) => void
-    mocks.list.mockReturnValueOnce(new Promise<Team[]>(resolve => { finish = resolve }))
+    mocks.list.mockReturnValueOnce(
+      new Promise<Team[]>((resolve) => {
+        finish = resolve
+      }),
+    )
     const pending = refreshTeamDirectory()
     expect(teamDirectory.loading).toBe(true)
     expect(teamDirectory.loaded).toBe(true)
@@ -72,7 +112,11 @@ describe('session-scoped dynamic team directory', () => {
 
   it('never restores an old account response after account switching or logout', async () => {
     let resolveOld: (teams: Team[]) => void = () => undefined
-    mocks.list.mockReturnValueOnce(new Promise<Team[]>((resolve) => { resolveOld = resolve }))
+    mocks.list.mockReturnValueOnce(
+      new Promise<Team[]>((resolve) => {
+        resolveOld = resolve
+      }),
+    )
     signIn('account-a')
     mocks.list.mockResolvedValueOnce([{ ...team, id: 8, name: '新账号可见班组' }])
     signIn('account-b')

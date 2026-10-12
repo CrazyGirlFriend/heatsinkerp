@@ -3,12 +3,12 @@
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
-
 from app.database import SessionLocal
 from app.models import MaterialStockBalance
-from test_warehouse_receipts import warehouse, intake  # noqa: F401
+from sqlalchemy import select
 from test_warehouse_classification import dispatch
+from test_warehouse_receipts import intake
+from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 
 def ship(client, setup, source, weight, *, quantity=1, key="ship"):

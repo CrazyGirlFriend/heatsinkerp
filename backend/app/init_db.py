@@ -1,7 +1,6 @@
 from . import models  # noqa: F401
-from .database import Base, engine
-from .database import SessionLocal
 from .auth import ensure_initial_admin
+from .database import Base, SessionLocal, engine
 
 
 def main() -> None:

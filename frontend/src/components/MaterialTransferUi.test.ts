@@ -31,10 +31,12 @@ describe('pure material transfer interface', () => {
 
   it('keeps the transfer list for ordinary queries and retains serial tracing', () => {
     expect(listSource).toContain('class="page workspace-page transfers-page reading-workspace"')
-    expect(listSource).toContain('<ElTable v-else')
+    expect(listSource).toMatch(/<ElTable\s+v-else\b/)
     expect(listSource).not.toContain('height="100%"')
     expect(listSource).not.toContain('aria-label="扫码查询"')
-    expect(traceSource).toContain('class="page workspace-page material-trace-page reading-workspace"')
+    expect(traceSource).toContain(
+      'class="page workspace-page material-trace-page reading-workspace"',
+    )
     expect(traceSource).toContain('<SerialBatchGraph')
     for (const source of [listSource, traceSource, drawerSource, formSource]) {
       expect(source).not.toContain("from '@ant-design/icons-vue'")
@@ -50,9 +52,11 @@ describe('pure material transfer interface', () => {
   })
 
   it('prints a teleported Code 128 transfer sheet containing only handoff facts', () => {
-    expect(drawerSource).toContain('<Teleport to="body">')
+    expect(drawerSource).toMatch(/<Teleport\s+to="body"\s*>/)
     expect(drawerSource).toContain("document.body.classList.add('material-transfer-printing')")
-    expect(printSource).toContain('body.material-transfer-printing > :not(.material-transfer-print-sheet)')
+    expect(printSource).toContain(
+      'body.material-transfer-printing > :not(.material-transfer-print-sheet)',
+    )
     expect(printSource).toContain('<MaterialTransferPrintDocument')
     expect(printCopySource).toContain('<BarcodeCard')
     expect(printModelSource).toContain('转出留存联')

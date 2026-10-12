@@ -35,12 +35,18 @@ defineEmits<{ retry: [] }>()
       :sub-title="description || '暂时无法获取数据。'"
     >
       <template #extra>
-        <ElButton type="primary" plain :icon="RefreshRight" @click="$emit('retry')">重新加载</ElButton>
+        <ElButton type="primary" plain :icon="RefreshRight" @click="$emit('retry')"
+          >重新加载</ElButton
+        >
       </template>
     </ElResult>
 
     <template v-else>
-      <ElEmpty class="state-empty" :image-size="compact ? 64 : 88" :description="title || '暂无数据'" />
+      <ElEmpty
+        class="state-empty"
+        :image-size="compact ? 64 : 88"
+        :description="title || '暂无数据'"
+      />
       <span v-if="description" class="state-description">{{ description }}</span>
       <slot />
     </template>
@@ -58,16 +64,53 @@ defineEmits<{ retry: [] }>()
   color: var(--muted);
   text-align: center;
 }
-.state-panel--compact { min-height: 180px; }
-.state-loading { color: var(--orange); font-size: 34px; animation: rotating 1.1s linear infinite; }
-.state-panel > strong { margin-top: 13px; color: var(--text); font-size: 15px; }
-.state-panel > span { margin-top: 5px; font-size: 13px; }
-.state-result { width: 100%; padding: 0; }
-.state-result :deep(.el-result__icon svg) { width: 54px; height: 54px; }
-.state-result :deep(.el-result__title p) { font-size: 16px; }
-.state-result :deep(.el-result__subtitle p) { font-size: 13px; }
-.state-empty { padding: 0; }
-.state-description { margin: -10px 0 14px; color: #718094; font-size: 13px; }
-@keyframes rotating { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .state-loading { animation-duration: 2.4s; } }
+.state-panel--compact {
+  min-height: 180px;
+}
+.state-loading {
+  color: var(--orange);
+  font-size: 34px;
+  animation: rotating 1.1s linear infinite;
+}
+.state-panel > strong {
+  margin-top: 13px;
+  color: var(--text);
+  font-size: 15px;
+}
+.state-panel > span {
+  margin-top: 5px;
+  font-size: 13px;
+}
+.state-result {
+  width: 100%;
+  padding: 0;
+}
+.state-result :deep(.el-result__icon svg) {
+  width: 54px;
+  height: 54px;
+}
+.state-result :deep(.el-result__title p) {
+  font-size: 16px;
+}
+.state-result :deep(.el-result__subtitle p) {
+  font-size: 13px;
+}
+.state-empty {
+  padding: 0;
+}
+.state-description {
+  margin: -10px 0 14px;
+  color: #718094;
+  font-size: 13px;
+}
+@keyframes rotating {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .state-loading {
+    animation-duration: 2.4s;
+  }
+}
 </style>

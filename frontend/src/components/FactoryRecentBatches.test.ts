@@ -4,7 +4,19 @@ import { afterEach, describe, expect, it } from 'vitest'
 import FactoryRecentBatches from './FactoryRecentBatches.vue'
 import type { FactoryRecentBatch } from '@/types/factoryOverview'
 
-const rows: FactoryRecentBatch[] = Array.from({ length: 7 }, (_, index) => ({ batch_no: `TL-${index}`, entry_kind: 'transfer', source_name: '库房', target_name: '轧制', external_destination: null, status: 'received', line_count: 1, quantity: 10, weight: 1, updated_at: '2026-09-27T12:00:00Z', received_at: '2026-09-27T10:00:00Z' }))
+const rows: FactoryRecentBatch[] = Array.from({ length: 7 }, (_, index) => ({
+  batch_no: `TL-${index}`,
+  entry_kind: 'transfer',
+  source_name: '库房',
+  target_name: '轧制',
+  external_destination: null,
+  status: 'received',
+  line_count: 1,
+  quantity: 10,
+  weight: 1,
+  updated_at: '2026-09-27T12:00:00Z',
+  received_at: '2026-09-27T10:00:00Z',
+}))
 let wrapper: VueWrapper
 afterEach(() => wrapper?.unmount())
 const first = () => wrapper.get('tbody tr:first-child button').text()
@@ -12,7 +24,12 @@ const state = () => wrapper.get('tbody').attributes('style')
 
 describe('recent batch playback', () => {
   it('shows the signed receipt time instead of the later update time, leaving unsigned rows blank', () => {
-    wrapper = mount(FactoryRecentBatches, { props: { rows: [rows[0]!, { ...rows[1]!, status: 'pending', received_at: null }], motion: false } })
+    wrapper = mount(FactoryRecentBatches, {
+      props: {
+        rows: [rows[0]!, { ...rows[1]!, status: 'pending', received_at: null }],
+        motion: false,
+      },
+    })
     expect(wrapper.get('h2').text()).toBe('今日转料动态')
     expect(wrapper.findAll('thead th').at(-1)!.text()).toBe('签收时间')
     const cells = wrapper.findAll('tbody tr td:last-child')
@@ -45,7 +62,9 @@ describe('recent batch playback', () => {
     expect(state()).toContain('running')
     await wrapper.get('.recent-table-scroll').trigger('focusin')
     expect(state()).toContain('paused')
-    await wrapper.get('.recent-table-scroll').trigger('focusout', { relatedTarget: wrapper.get('tbody button').element })
+    await wrapper
+      .get('.recent-table-scroll')
+      .trigger('focusout', { relatedTarget: wrapper.get('tbody button').element })
     expect(state()).toContain('paused')
     await wrapper.get('.recent-table-scroll').trigger('focusout', { relatedTarget: null })
     expect(state()).toContain('running')

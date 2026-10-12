@@ -12,7 +12,8 @@ from app.notification_queue import NotificationService, claim, complete, prune_p
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import func, select
 from test_inventory_stream import LiveRequest
-from test_warehouse_receipts import intake, warehouse  # noqa: F401
+from test_warehouse_receipts import intake  # noqa: F401
+from test_warehouse_receipts import warehouse as warehouse
 
 
 def pending_rows():

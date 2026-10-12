@@ -4,9 +4,8 @@ Revision ID: 20260906_0005
 Revises: 20260906_0004
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "20260906_0005"
 down_revision = "20260906_0004"
@@ -52,7 +51,10 @@ def upgrade() -> None:
         for column in additions:
             if column.name not in columns:
                 batch.add_column(column)
-        for name in ("ck_material_transfers_quantity_positive", "ck_material_transfers_weight_positive"):
+        for name in (
+            "ck_material_transfers_quantity_positive",
+            "ck_material_transfers_weight_positive",
+        ):
             if name in checks:
                 batch.drop_constraint(name, type_="check")
         for name, expression in new_checks.items():
@@ -69,16 +71,24 @@ def upgrade() -> None:
             sa.Column("actor_user_id", sa.Integer(), nullable=True),
             sa.Column("occurred_at", sa.DateTime(), nullable=False),
             sa.Column("changes", sa.JSON(), nullable=False),
-            sa.ForeignKeyConstraint(["transfer_id"], ["material_transfers.id"], ondelete="RESTRICT"),
+            sa.ForeignKeyConstraint(
+                ["transfer_id"], ["material_transfers.id"], ondelete="RESTRICT"
+            ),
             sa.ForeignKeyConstraint(["actor_user_id"], ["users.id"], ondelete="SET NULL"),
         )
-    indexes = {index["name"] for index in sa.inspect(connection).get_indexes("material_transfer_events")}
+    indexes = {
+        index["name"] for index in sa.inspect(connection).get_indexes("material_transfer_events")
+    }
     if "ix_material_transfer_events_transfer_id" not in indexes:
-        op.create_index("ix_material_transfer_events_transfer_id", "material_transfer_events", ["transfer_id"])
+        op.create_index(
+            "ix_material_transfer_events_transfer_id", "material_transfer_events", ["transfer_id"]
+        )
     if connection.dialect.name == "sqlite":
         if connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall():
             raise RuntimeError("Foreign-key violations after transfer-document migration")
 
 
 def downgrade() -> None:
-    raise RuntimeError("Restore a verified backup; downgrading would lose material document and audit data.")
+    raise RuntimeError(
+        "Restore a verified backup; downgrading would lose material document and audit data."
+    )

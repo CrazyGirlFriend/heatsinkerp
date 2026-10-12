@@ -1,7 +1,9 @@
 import type { MaterialTransfer } from './materialTransfer'
 
 export interface TraceBatch extends MaterialTransfer {
-  other_processing_outputs?: Array<TraceAmount & { batch_no: string; serial_no: string; at: string }>
+  other_processing_outputs?: Array<
+    TraceAmount & { batch_no: string; serial_no: string; at: string }
+  >
   on_hand_quantity: number | null
   on_hand_weight: number | null
   owned_quantity?: number | null
@@ -10,9 +12,14 @@ export interface TraceBatch extends MaterialTransfer {
   weight_difference?: number
   weight_root_transfer_id?: number
 }
-export interface TraceAmount { quantity: number; weight: number }
+export interface TraceAmount {
+  quantity: number
+  weight: number
+}
 export interface TraceHolding {
-  team_id: number; team_code: string; team_name: string
+  team_id: number
+  team_code: string
+  team_name: string
   material_types: Array<TraceAmount & { material_type: string | null }>
 }
 export interface MaterialTrace {
@@ -22,7 +29,15 @@ export interface MaterialTrace {
   weight_difference?: number
   max_weight_difference?: number
   shared_totals?: MaterialTrace['totals']
-  shared_positions?: Array<TraceAmount & { team_id: number; team_name: string; origin_batch_no: string; material_type: string | null; serials: string[] }>
+  shared_positions?: Array<
+    TraceAmount & {
+      team_id: number
+      team_name: string
+      origin_batch_no: string
+      material_type: string | null
+      serials: string[]
+    }
+  >
   shared_group_view?: boolean
   serial_no: string
   observed_at?: string

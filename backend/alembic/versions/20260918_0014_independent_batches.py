@@ -1,6 +1,7 @@
 """Independent batch identities; preserve historical CK references."""
-from alembic import op
+
 import sqlalchemy as sa
+from alembic import op
 
 revision = "20260918_0014"
 down_revision = "20260916_0013"

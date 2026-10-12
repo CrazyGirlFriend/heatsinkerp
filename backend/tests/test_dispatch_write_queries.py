@@ -1,9 +1,8 @@
 """Fresh outbound responses must not reread their own submission header/lines."""
 
-import pytest
 from datetime import datetime
-from sqlalchemy import func, select
 
+import pytest
 from app.database import SessionLocal, engine
 from app.models import (
     MaterialDispatch,
@@ -12,11 +11,12 @@ from app.models import (
     TransferBatchNumberSequence,
 )
 from app.schemas import MaterialTransferResponse
-
+from sqlalchemy import func, select
+from test_stock_balances import reconcile
 from test_transfer_list_loading import read_statements
 from test_warehouse_classification import dispatch
-from test_warehouse_receipts import intake, warehouse  # noqa: F401
-from test_stock_balances import reconcile
+from test_warehouse_receipts import intake  # noqa: F401
+from test_warehouse_receipts import warehouse as warehouse
 
 
 @pytest.mark.parametrize("line_count", [1, 12])
@@ -161,11 +161,21 @@ def test_mid_batch_audit_failure_rolls_back_numbers_balances_and_notification(
 
 @pytest.mark.parametrize("line_count", [1, 12, 100])
 def test_replay_loads_response_relationships_in_batches(client, warehouse, line_count):  # noqa: F811
-    origins = [intake(client, warehouse, serial_no=f"0000{index}",
-                      delivery_date=f"2026-10-0{index + 1}", delivery_quantity=80 + index,
-                      idempotency_key=f"replay-origin-{index}").json() for index in range(3)]
-    lines = [{"source_transfer_id": origins[index % 3]["id"], "quantity": 1, "weight": ".100"}
-             for index in range(line_count)]
+    origins = [
+        intake(
+            client,
+            warehouse,
+            serial_no=f"0000{index}",
+            delivery_date=f"2026-10-0{index + 1}",
+            delivery_quantity=80 + index,
+            idempotency_key=f"replay-origin-{index}",
+        ).json()
+        for index in range(3)
+    ]
+    lines = [
+        {"source_transfer_id": origins[index % 3]["id"], "quantity": 1, "weight": ".100"}
+        for index in range(line_count)
+    ]
     created = dispatch(client, warehouse, lines)
     assert created.status_code == 201, created.text
     with read_statements() as statements:
@@ -173,28 +183,56 @@ def test_replay_loads_response_relationships_in_batches(client, warehouse, line_
     assert replay.status_code == 201, replay.text
     assert replay.json() == created.json()
     assert len(statements) <= 9, len(statements)
-    assert any('LEFT OUTER JOIN serial_urgencies' in sql and 'material_transfers.id IN' in sql
-               for sql in statements)
-    assert not any('material_transfer_events' in sql or 'material_losses' in sql for sql in statements)
+    assert any(
+        "LEFT OUTER JOIN serial_urgencies" in sql and "material_transfers.id IN" in sql
+        for sql in statements
+    )
+    assert not any(
+        "material_transfer_events" in sql or "material_losses" in sql for sql in statements
+    )
 
-    first = created.json()['items'][0]
-    confirmed = client.post(f"/api/material-transfers/{first['batch_no']}/confirm",
-        headers=warehouse['other_headers'], json={"idempotency_key": "replay-confirm"})
+    first = created.json()["items"][0]
+    confirmed = client.post(
+        f"/api/material-transfers/{first['batch_no']}/confirm",
+        headers=warehouse["other_headers"],
+        json={"idempotency_key": "replay-confirm"},
+    )
     assert confirmed.status_code == 200, confirmed.text
-    assert client.put('/api/serial-urgency', json={
-        'serial_no': origins[0]['serial_no'], 'urgent': True, 'reason': '交期变更',
-        'expected_version': 0,
-    }).status_code == 200
-    assert client.patch(f"/api/material-transfers/{origins[0]['batch_no']}/delivery",
-        headers=warehouse['headers'], json={"delivery_date": "2026-10-05", "delivery_quantity": 90,
-                                            "expected_version": origins[0]['version']}).status_code == 200
-    latest = dispatch(client, warehouse, lines).json()['items']
-    assert latest[0]['status'] == 'received'
-    assert latest[0]['allowed_actions'] == []
+    assert (
+        client.put(
+            "/api/serial-urgency",
+            json={
+                "serial_no": origins[0]["serial_no"],
+                "urgent": True,
+                "reason": "交期变更",
+                "expected_version": 0,
+            },
+        ).status_code
+        == 200
+    )
+    assert (
+        client.patch(
+            f"/api/material-transfers/{origins[0]['batch_no']}/delivery",
+            headers=warehouse["headers"],
+            json={
+                "delivery_date": "2026-10-05",
+                "delivery_quantity": 90,
+                "expected_version": origins[0]["version"],
+            },
+        ).status_code
+        == 200
+    )
+    latest = dispatch(client, warehouse, lines).json()["items"]
+    assert latest[0]["status"] == "received"
+    assert latest[0]["allowed_actions"] == []
     for index, item in enumerate(latest):
-        assert item['urgency']['urgent'] == (index % 3 == 0)
-        assert item['source_transfer_batch_no'] == origins[index % 3]['batch_no']
-        assert item['delivery_origin_batch_no'] == origins[index % 3]['batch_no']
-        assert item['delivery_date'] == ('2026-10-05' if index % 3 == 0 else origins[index % 3]['delivery_date'])
-        assert item['delivery_quantity'] == (90 if index % 3 == 0 else origins[index % 3]['delivery_quantity'])
+        assert item["urgency"]["urgent"] == (index % 3 == 0)
+        assert item["source_transfer_batch_no"] == origins[index % 3]["batch_no"]
+        assert item["delivery_origin_batch_no"] == origins[index % 3]["batch_no"]
+        assert item["delivery_date"] == (
+            "2026-10-05" if index % 3 == 0 else origins[index % 3]["delivery_date"]
+        )
+        assert item["delivery_quantity"] == (
+            90 if index % 3 == 0 else origins[index % 3]["delivery_quantity"]
+        )
     assert sum(value[0] for value in reconcile().values()) == 301 - line_count

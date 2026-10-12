@@ -20,7 +20,9 @@ const date = ref(''),
   error = ref('')
 const validation = useDialogValidation(() => {
   const message = deliveryError(date.value, quantity.value)
-  return message ? { [!date.value || message.includes('有效的要求发货日期') ? 'date' : 'quantity']: message } : {}
+  return message
+    ? { [!date.value || message.includes('有效的要求发货日期') ? 'date' : 'quantity']: message }
+    : {}
 })
 const { formRef, fieldErrors } = validation
 let generation = 0
@@ -101,7 +103,12 @@ async function save() {
   >
     <p class="delivery-document">{{ transfer?.serial_no }} · {{ transfer?.batch_no }}</p>
     <ElForm ref="formRef" label-position="top" :show-message="false" @submit.prevent="save"
-      ><MaterialDeliveryFields v-model:date="date" v-model:quantity="quantity" :disabled="saving" :date-error="fieldErrors.date" :quantity-error="fieldErrors.quantity"
+      ><MaterialDeliveryFields
+        v-model:date="date"
+        v-model:quantity="quantity"
+        :disabled="saving"
+        :date-error="fieldErrors.date"
+        :quantity-error="fieldErrors.quantity"
     /></ElForm>
     <p v-if="error" role="alert" class="delivery-error">{{ error }}</p>
     <template #footer

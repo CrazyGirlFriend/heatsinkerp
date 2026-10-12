@@ -1,11 +1,11 @@
 import pytest
-from sqlalchemy import select
-
 from app.database import SessionLocal
 from app.models import AdminAuditEvent, MaterialStockBalance, MaterialTransfer, WarehousePlacement
 from app.warehouse_slot_cleanup import apply_plan, preview
-from test_warehouse_receipts import warehouse, intake  # noqa: F401
+from sqlalchemy import select
 from test_warehouse_location_locks import create_slot
+from test_warehouse_receipts import intake
+from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 
 def legacy(client, warehouse):

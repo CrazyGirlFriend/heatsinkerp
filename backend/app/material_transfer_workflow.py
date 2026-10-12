@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
-from decimal import Decimal
 import hashlib
 import json
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from fastapi import HTTPException
@@ -16,23 +16,62 @@ from sqlalchemy.orm.attributes import set_committed_value
 
 from .auth import actor_name
 from .batch_numbers import next_transfer_batch_number
-from .models import MaterialDispatch, MaterialTransfer, MaterialTransferEvent, Team, User, WarehousePlacement, utcnow
-from .schemas import MaterialTransferDocumentFields, SCRAP_MATERIAL_TYPES
+from .material_weight import SLUDGE_FIELDS, sludge_measurement, validate_material_amounts
+from .models import (
+    MaterialDispatch,
+    MaterialTransfer,
+    MaterialTransferEvent,
+    Team,
+    User,
+    WarehousePlacement,
+    utcnow,
+)
+from .schemas import SCRAP_MATERIAL_TYPES, MaterialTransferDocumentFields
 from .team_constants import EXTERNAL_ENTRY_KINDS, WAREHOUSE_TEAM_CODE
-from .material_weight import SLUDGE_FIELDS, validate_material_amounts, sludge_measurement
-
 
 DOCUMENT_FIELDS = tuple(MaterialTransferDocumentFields.model_fields)
-AUDITED_FIELDS = DOCUMENT_FIELDS + SLUDGE_FIELDS + (
-    "batch_no", "serial_no", "source_team_id", "source_team_code", "source_team_name",
-    "next_team_id", "next_team_code", "next_team_name", "quantity", "weight", "notes",
-    "status", "version", "created_by", "created_at", "received_by", "received_at",
-    "voided_by", "voided_at",
-    "source_transfer_id", "dispatch_id", "stock_tracked", "entry_kind",
-    "external_destination", "dispatched_by", "dispatched_at",
-    "receipt_kind", "external_source", "return_dispatch_no", "rejection_reason",
-    "purpose_id", "purpose_name", "opening_stock_id", "warehouse_location", "processing_role",
-    "shared_group_id", "shared_unallocated",
+AUDITED_FIELDS = (
+    DOCUMENT_FIELDS
+    + SLUDGE_FIELDS
+    + (
+        "batch_no",
+        "serial_no",
+        "source_team_id",
+        "source_team_code",
+        "source_team_name",
+        "next_team_id",
+        "next_team_code",
+        "next_team_name",
+        "quantity",
+        "weight",
+        "notes",
+        "status",
+        "version",
+        "created_by",
+        "created_at",
+        "received_by",
+        "received_at",
+        "voided_by",
+        "voided_at",
+        "source_transfer_id",
+        "dispatch_id",
+        "stock_tracked",
+        "entry_kind",
+        "external_destination",
+        "dispatched_by",
+        "dispatched_at",
+        "receipt_kind",
+        "external_source",
+        "return_dispatch_no",
+        "rejection_reason",
+        "purpose_id",
+        "purpose_name",
+        "opening_stock_id",
+        "warehouse_location",
+        "processing_role",
+        "shared_group_id",
+        "shared_unallocated",
+    )
 )
 
 
@@ -43,13 +82,23 @@ def _creation_fingerprint(payload) -> str:
         for field in ("planned_weight", "planned_quantity", "planned_specification"):
             if member.get(field) is None:
                 member.pop(field, None)
-    for field in ("receipt_kind", "external_source", "return_dispatch_no", "purpose_id", "warehouse_location", "warehouse_location_reservation_key", "shared_serials"):
+    for field in (
+        "receipt_kind",
+        "external_source",
+        "return_dispatch_no",
+        "purpose_id",
+        "warehouse_location",
+        "warehouse_location_reservation_key",
+        "shared_serials",
+    ):
         if field not in payload.model_fields_set:
             value.pop(field, None)
     for field in (*DOCUMENT_FIELDS, *SLUDGE_FIELDS):
         if value.get(field) is None:
             value.pop(field, None)
-    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
 
 
 def _snapshot(transfer: MaterialTransfer) -> dict[str, Any]:
@@ -73,19 +122,35 @@ def _record_event(db, transfer, user, action, before=None, *, flush=True, stock_
         for field, value in _snapshot(transfer).items()
         if previous.get(field) != value
     }
-    if transfer.source_transfer_id is not None and action in {"created", "updated", "voided", "dispatched", "reallocated"}:
+    if transfer.source_transfer_id is not None and action in {
+        "created",
+        "updated",
+        "voided",
+        "dispatched",
+        "reallocated",
+    }:
         from .material_stock import available_locked
-        quantity, weight = stock_after if stock_after is not None else available_locked(db, transfer.stock_source)
-        changes.update({
-            "stock_quantity": {"before": None, "after": quantity},
-            "stock_weight": {"before": None, "after": float(weight)},
-            "shortage_quantity": {"before": None, "after": max(0, -quantity)},
-            "shortage_weight": {"before": None, "after": float(max(0, -weight))},
-        })
-    transfer.history.append(MaterialTransferEvent(
-        action=action, actor=actor_name(user), actor_user_id=user.id,
-        occurred_at=transfer.updated_at, changes=changes,
-    ))
+
+        quantity, weight = (
+            stock_after if stock_after is not None else available_locked(db, transfer.stock_source)
+        )
+        changes.update(
+            {
+                "stock_quantity": {"before": None, "after": quantity},
+                "stock_weight": {"before": None, "after": float(weight)},
+                "shortage_quantity": {"before": None, "after": max(0, -quantity)},
+                "shortage_weight": {"before": None, "after": float(max(0, -weight))},
+            }
+        )
+    transfer.history.append(
+        MaterialTransferEvent(
+            action=action,
+            actor=actor_name(user),
+            actor_user_id=user.id,
+            occurred_at=transfer.updated_at,
+            changes=changes,
+        )
+    )
     if flush:
         db.flush()
 
@@ -106,7 +171,11 @@ def _forbidden(message: str) -> HTTPException:
 def _utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
-    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    return (
+        value.replace(tzinfo=timezone.utc)
+        if value.tzinfo is None
+        else value.astimezone(timezone.utc)
+    )
 
 
 def _require_team_actor(user: User) -> Team:
@@ -130,7 +199,10 @@ def _validate_warehouse_type(target: Team, material_type: str | None) -> None:
 
 
 def validate_material_route(source_type, material_type, target, entry_kind, notes):
-    source_scrap, result_scrap = source_type in SCRAP_MATERIAL_TYPES, material_type in SCRAP_MATERIAL_TYPES
+    source_scrap, result_scrap = (
+        source_type in SCRAP_MATERIAL_TYPES,
+        material_type in SCRAP_MATERIAL_TYPES,
+    )
     if source_scrap and not result_scrap:
         raise HTTPException(422, "废料不能直接改为正常物料出库")
     if result_scrap:
@@ -139,11 +211,14 @@ def validate_material_route(source_type, material_type, target, entry_kind, note
 
 
 def _locked_transfer(db, batch_no: str) -> MaterialTransfer:
-    source_id = db.scalar(select(MaterialTransfer.source_transfer_id).where(MaterialTransfer.batch_no == batch_no))
+    source_id = db.scalar(
+        select(MaterialTransfer.source_transfer_id).where(MaterialTransfer.batch_no == batch_no)
+    )
     if source_id is not None:
         # Lock the received source before the outbound line, like new dispatch
         # and loss creation. Deductions later use current/locking reads.
         from .material_stock import lock_lot
+
         lock_lot(db, source_id)
     transfer = db.scalar(
         select(MaterialTransfer)
@@ -169,28 +244,49 @@ def _assert_receiver(user: User, transfer: MaterialTransfer) -> None:
         raise _forbidden("only the target team can confirm this transfer")
 
 
-def material_transfer_allowed_actions(
-    transfer: MaterialTransfer, user: User | None
-) -> list[str]:
+def material_transfer_allowed_actions(transfer: MaterialTransfer, user: User | None) -> list[str]:
     if user is None or user.role != "TEAM" or transfer.status != "pending":
         return []
     if user.team_id == transfer.source_team_id:
-        return ["edit", "void", "confirm_outbound"] if transfer.entry_kind in EXTERNAL_ENTRY_KINDS else ["edit", "void"]
+        return (
+            ["edit", "void", "confirm_outbound"]
+            if transfer.entry_kind in EXTERNAL_ENTRY_KINDS
+            else ["edit", "void"]
+        )
     if user.team_id == transfer.next_team_id:
-        return (["reject"] if transfer.next_team and transfer.next_team.kind == "warehouse" else []) if transfer.rejection_reason is not None else ["confirm", *(["reject"] if transfer.next_team and transfer.next_team.kind == "warehouse" else [])]
+        return (
+            (["reject"] if transfer.next_team and transfer.next_team.kind == "warehouse" else [])
+            if transfer.rejection_reason is not None
+            else [
+                "confirm",
+                *(
+                    ["reject"]
+                    if transfer.next_team and transfer.next_team.kind == "warehouse"
+                    else []
+                ),
+            ]
+        )
     return []
 
 
 def material_loss_dict(loss):
     from .serial_urgency import urgency_dict
+
     source = loss.source_transfer
     return {
-        "id": loss.id, "loss_no": loss.loss_no, "team_id": loss.team_id,
-        "source_transfer_id": loss.source_transfer_id, "batch_no": source.batch_no,
-        "serial_no": source.serial_no, "material_name": source.material_name,
+        "id": loss.id,
+        "loss_no": loss.loss_no,
+        "team_id": loss.team_id,
+        "source_transfer_id": loss.source_transfer_id,
+        "batch_no": source.batch_no,
+        "serial_no": source.serial_no,
+        "material_name": source.material_name,
         "urgency": urgency_dict(source.urgency),
-        "quantity": loss.quantity, "weight": float(loss.weight), "reason": loss.reason,
-        "created_by": loss.created_by, "created_at": _utc(loss.created_at),
+        "quantity": loss.quantity,
+        "weight": float(loss.weight),
+        "reason": loss.reason,
+        "created_by": loss.created_by,
+        "created_at": _utc(loss.created_at),
     }
 
 
@@ -199,10 +295,20 @@ def material_transfer_list_options():
     # All joins are scalar/unique, so they preserve page limits and row counts.
     return (
         joinedload(MaterialTransfer.urgency),
-        joinedload(MaterialTransfer.delivery_origin).load_only(
-            MaterialTransfer.batch_no, MaterialTransfer.delivery_date, MaterialTransfer.delivery_quantity
-        ).raiseload("*"),
-        joinedload(MaterialTransfer.stock_source).load_only(MaterialTransfer.batch_no, MaterialTransfer.serial_no, MaterialTransfer.sludge_content_percent).raiseload("*"),
+        joinedload(MaterialTransfer.delivery_origin)
+        .load_only(
+            MaterialTransfer.batch_no,
+            MaterialTransfer.delivery_date,
+            MaterialTransfer.delivery_quantity,
+        )
+        .raiseload("*"),
+        joinedload(MaterialTransfer.stock_source)
+        .load_only(
+            MaterialTransfer.batch_no,
+            MaterialTransfer.serial_no,
+            MaterialTransfer.sludge_content_percent,
+        )
+        .raiseload("*"),
         joinedload(MaterialTransfer.dispatch).load_only(MaterialDispatch.dispatch_no),
         raiseload(MaterialTransfer.history),
         raiseload(MaterialTransfer.losses),
@@ -212,9 +318,10 @@ def material_transfer_list_options():
 def material_transfer_dict(
     transfer: MaterialTransfer, user: User | None = None, *, include_history: bool = True
 ) -> dict[str, Any]:
-    from .serial_urgency import urgency_dict
     from .material_delivery import document
+    from .serial_urgency import urgency_dict
     from .shared_material import document as shared_document
+
     locked_at = transfer.received_at or transfer.dispatched_at or transfer.voided_at
     return {
         "id": transfer.id,
@@ -239,34 +346,55 @@ def material_transfer_dict(
         "version": transfer.version,
         "stock_tracked": transfer.stock_tracked,
         "source_transfer_id": transfer.source_transfer_id,
-        "source_transfer_batch_no": transfer.stock_source.batch_no if transfer.source_transfer_id else None,
-        "source_serial_no": transfer.stock_source.serial_no if transfer.entry_kind == "serial_reallocation" and transfer.source_transfer_id else None,
+        "source_transfer_batch_no": transfer.stock_source.batch_no
+        if transfer.source_transfer_id
+        else None,
+        "source_serial_no": transfer.stock_source.serial_no
+        if transfer.entry_kind == "serial_reallocation" and transfer.source_transfer_id
+        else None,
         "dispatch_no": transfer.dispatch.dispatch_no if transfer.dispatch_id else None,
-        "loss_records": [material_loss_dict(loss) for loss in transfer.losses] if include_history else [],
+        "loss_records": [material_loss_dict(loss) for loss in transfer.losses]
+        if include_history
+        else [],
         "history": [
-            {"id": event.id, "action": event.action, "actor": event.actor,
-             "occurred_at": _utc(event.occurred_at), "changes": event.changes}
+            {
+                "id": event.id,
+                "action": event.action,
+                "actor": event.actor,
+                "occurred_at": _utc(event.occurred_at),
+                "changes": event.changes,
+            }
             for event in transfer.history
-        ] if include_history else [],
+        ]
+        if include_history
+        else [],
         "source_team_id": transfer.source_team_id,
         "source_team": {
             "id": transfer.source_team_id,
             "code": transfer.source_team_code,
             "name": transfer.source_team_name,
             "kind": transfer.source_team.kind if transfer.source_team is not None else None,
-        } if transfer.source_team_id is not None else None,
+        }
+        if transfer.source_team_id is not None
+        else None,
         "next_team_id": transfer.next_team_id,
         "next_team": {
             "id": transfer.next_team_id,
             "code": transfer.next_team_code,
             "name": transfer.next_team_name,
             "kind": transfer.next_team.kind if transfer.next_team is not None else None,
-        } if transfer.next_team_id is not None else None,
+        }
+        if transfer.next_team_id is not None
+        else None,
         "quantity": transfer.quantity,
         "quantity_unit": "件",
         "weight": float(transfer.weight),
-        **{field: float(getattr(transfer, field)) if getattr(transfer, field) is not None else None for field in SLUDGE_FIELDS},
-        "sludge_percent_locked": transfer.source_transfer_id is not None and transfer.stock_source.sludge_content_percent is not None,
+        **{
+            field: float(getattr(transfer, field)) if getattr(transfer, field) is not None else None
+            for field in SLUDGE_FIELDS
+        },
+        "sludge_percent_locked": transfer.source_transfer_id is not None
+        and transfer.stock_source.sludge_content_percent is not None,
         "weight_unit": "kg",
         "status": transfer.status,
         "notes": transfer.notes,
@@ -290,8 +418,9 @@ def material_transfer_dict(
 
 
 def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
-    from .team_business import purpose_snapshot
     from .material_delivery import validate_pair
+    from .team_business import purpose_snapshot
+
     validate_pair(payload.delivery_date, payload.delivery_quantity)
     source = _require_team_actor(user)
     request_hash = _creation_fingerprint(payload)
@@ -316,8 +445,14 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
             _validate_warehouse_type(target, payload.material_type)
             validate_material_route(None, payload.material_type, target, "transfer", payload.notes)
             validate_material_amounts(payload.material_type, payload.quantity, payload.weight)
-            measured = sludge_measurement(payload.material_type, payload.weight, payload.sludge_gross_weight, payload.sludge_content_percent)
+            measured = sludge_measurement(
+                payload.material_type,
+                payload.weight,
+                payload.sludge_gross_weight,
+                payload.sludge_content_percent,
+            )
             from .warehouse_locations import consume
+
             location_name = consume(db, target, payload, user)
             transfer = MaterialTransfer(
                 batch_no=next_transfer_batch_number(db),
@@ -364,9 +499,7 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
 
 
 def get_material_transfer(db, batch_no: str, user: User) -> dict[str, Any]:
-    transfer = db.scalar(
-        select(MaterialTransfer).where(MaterialTransfer.batch_no == batch_no)
-    )
+    transfer = db.scalar(select(MaterialTransfer).where(MaterialTransfer.batch_no == batch_no))
     if transfer is None:
         raise HTTPException(404, "material transfer not found")
     return material_transfer_dict(transfer, user)
@@ -382,19 +515,33 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
         before = _snapshot(transfer)
         supplied = payload.model_fields_set
         from .material_delivery import FIELDS, validate_pair
+
         if transfer.source_transfer_id or transfer.delivery_origin_id:
             if any(field in supplied for field in FIELDS):
                 raise HTTPException(422, "交期继承自源头批次，请在源头单据维护")
-        validate_pair(*(getattr(payload, field) if field in supplied else getattr(transfer, field)
-                        for field in FIELDS))
+        validate_pair(
+            *(
+                getattr(payload, field) if field in supplied else getattr(transfer, field)
+                for field in FIELDS
+            )
+        )
         quantity = payload.quantity if "quantity" in supplied else transfer.quantity
         weight = payload.weight if "weight" in supplied else transfer.weight
-        material_type = payload.material_type if "material_type" in supplied else transfer.material_type
+        material_type = (
+            payload.material_type if "material_type" in supplied else transfer.material_type
+        )
         validate_material_amounts(material_type, quantity, weight, existing=transfer)
-        sludge_measurement(material_type, weight,
-            *(getattr(payload, field) if field in supplied else getattr(transfer, field) for field in SLUDGE_FIELDS),
+        sludge_measurement(
+            material_type,
+            weight,
+            *(
+                getattr(payload, field) if field in supplied else getattr(transfer, field)
+                for field in SLUDGE_FIELDS
+            ),
             source=transfer.stock_source if transfer.source_transfer_id else None,
-            legacy=transfer.material_type == "sludge" and transfer.sludge_content_percent is None, existing=transfer)
+            legacy=transfer.material_type == "sludge" and transfer.sludge_content_percent is None,
+            existing=transfer,
+        )
         if quantity == 0 and weight == 0:
             raise HTTPException(422, "quantity or weight must be positive")
         amounts_changed = quantity != transfer.quantity or weight != transfer.weight
@@ -403,17 +550,30 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
             raise HTTPException(422, "剩余件数清零必须随来源批次的最后一次出库修改一起提交")
         if transfer.source_transfer_id is not None:
             from .material_stock import available_locked
-            from .quantity_adjustments import validate_outbound_clearance, record_outbound_clearance
-            if transfer.source_team_code == WAREHOUSE_TEAM_CODE and "material_type" in supplied and payload.material_type != transfer.stock_source.material_type:
+            from .quantity_adjustments import record_outbound_clearance, validate_outbound_clearance
+
+            if (
+                transfer.source_team_code == WAREHOUSE_TEAM_CODE
+                and "material_type" in supplied
+                and payload.material_type != transfer.stock_source.material_type
+            ):
                 raise HTTPException(422, "库房按原物料转出，不能更改物料类型")
             for field in ("serial_no", "material_name"):
                 if field in supplied and getattr(payload, field) != getattr(transfer, field):
-                    raise HTTPException(422, "stock-linked transfers must retain their source serial number and material")
+                    raise HTTPException(
+                        422,
+                        "stock-linked transfers must retain their source serial number and material",
+                    )
             if "next_team_id" in supplied and payload.next_team_id != transfer.next_team_id:
-                raise HTTPException(422, "a stock-linked batch's destination cannot be changed; void this batch and recreate")
+                raise HTTPException(
+                    422,
+                    "a stock-linked batch's destination cannot be changed; void this batch and recreate",
+                )
             available = available_locked(db, transfer.stock_source, exclude_transfer_id=transfer.id)
             if amounts_changed:
-                validate_outbound_clearance(transfer.stock_source, quantity, weight, available, clearance)
+                validate_outbound_clearance(
+                    transfer.stock_source, quantity, weight, available, clearance
+                )
         target = transfer.next_team
         if "next_team_id" in supplied:
             if transfer.warehouse_location and payload.next_team_id != transfer.next_team_id:
@@ -422,41 +582,72 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
             if target.id == transfer.source_team_id:
                 raise HTTPException(422, "source and target teams must be different")
         if target is not None and ("next_team_id" in supplied or "material_type" in supplied):
-            material_type = payload.material_type if "material_type" in supplied else transfer.material_type
+            material_type = (
+                payload.material_type if "material_type" in supplied else transfer.material_type
+            )
             _validate_warehouse_type(target, material_type)
-        validate_material_route(transfer.stock_source.material_type if transfer.source_transfer_id else None,
-            payload.material_type if "material_type" in supplied else transfer.material_type, target, transfer.entry_kind,
-            payload.notes if "notes" in supplied else transfer.notes)
+        validate_material_route(
+            transfer.stock_source.material_type if transfer.source_transfer_id else None,
+            payload.material_type if "material_type" in supplied else transfer.material_type,
+            target,
+            transfer.entry_kind,
+            payload.notes if "notes" in supplied else transfer.notes,
+        )
         if "next_team_id" in supplied:
             transfer.next_team_id = target.id
             transfer.next_team_code = target.code
             transfer.next_team_name = target.name
             transfer.next_team = target
-        if "purpose_id" in supplied or ("next_team_id" in supplied and before["next_team_id"] != target.id):
+        if "purpose_id" in supplied or (
+            "next_team_id" in supplied and before["next_team_id"] != target.id
+        ):
             from .team_business import purpose_snapshot
+
             if target is not None:
                 _active_target(db, target.id)
             # Keeping a historical/disabled selection preserves its snapshot.
-            if payload.purpose_id != transfer.purpose_id or before["next_team_id"] != transfer.next_team_id:
+            if (
+                payload.purpose_id != transfer.purpose_id
+                or before["next_team_id"] != transfer.next_team_id
+            ):
                 purpose = purpose_snapshot(db, target.id if target else None, payload.purpose_id)
-                transfer.purpose_id, transfer.purpose_name = purpose["purpose_id"], purpose["purpose_name"]
+                transfer.purpose_id, transfer.purpose_name = (
+                    purpose["purpose_id"],
+                    purpose["purpose_name"],
+                )
         if "warehouse_location" in supplied:
-            if transfer.warehouse_location and payload.warehouse_location != transfer.warehouse_location:
+            if (
+                transfer.warehouse_location
+                and payload.warehouse_location != transfer.warehouse_location
+            ):
                 raise _conflict("转料单已锁定仓位，请作废后重新选择")
             if not transfer.warehouse_location:
                 from .warehouse_locations import consume
-                identity = tuple(getattr(payload, field) if field in supplied else getattr(transfer, field)
-                                 for field in ("serial_no", "material_name", "material_type"))
+
+                identity = tuple(
+                    getattr(payload, field) if field in supplied else getattr(transfer, field)
+                    for field in ("serial_no", "material_name", "material_type")
+                )
                 transfer.warehouse_location = consume(db, target, payload, user, identity=identity)
-        if transfer.warehouse_location and supplied.intersection({"serial_no", "material_name", "material_type"}):
+        if transfer.warehouse_location and supplied.intersection(
+            {"serial_no", "material_name", "material_type"}
+        ):
             from .warehouse_locations import lock_location, require_compatible
-            identity = tuple(getattr(payload, field) if field in supplied else getattr(transfer, field)
-                             for field in ("serial_no", "material_name", "material_type"))
+
+            identity = tuple(
+                getattr(payload, field) if field in supplied else getattr(transfer, field)
+                for field in ("serial_no", "material_name", "material_type")
+            )
             # Document names are historical; renamed slots retain their actual placement IDs.
-            location_ids = db.scalars(select(WarehousePlacement.location_id).where(
-                WarehousePlacement.transfer_id == transfer.id).order_by(WarehousePlacement.location_id)).all()
+            location_ids = db.scalars(
+                select(WarehousePlacement.location_id)
+                .where(WarehousePlacement.transfer_id == transfer.id)
+                .order_by(WarehousePlacement.location_id)
+            ).all()
             for location_id in location_ids:
-                require_compatible(db, lock_location(db, location_id), identity, exclude_transfer_id=transfer.id)
+                require_compatible(
+                    db, lock_location(db, location_id), identity, exclude_transfer_id=transfer.id
+                )
         for field in ("serial_no", "quantity", "weight", "notes", *DOCUMENT_FIELDS, *SLUDGE_FIELDS):
             if field in supplied:
                 setattr(transfer, field, getattr(payload, field))
@@ -466,8 +657,14 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
             transfer.updated_at = utcnow()
             db.flush()
             if clearance is not None:
-                record_outbound_clearance(db, transfer.stock_source, clearance, user,
-                    f"transfer:{transfer.id}:{transfer.version}", [transfer.batch_no])
+                record_outbound_clearance(
+                    db,
+                    transfer.stock_source,
+                    clearance,
+                    user,
+                    f"transfer:{transfer.id}:{transfer.version}",
+                    [transfer.batch_no],
+                )
                 db.flush()
             _record_event(db, transfer, user, "updated", before)
         result = material_transfer_dict(transfer, user)
@@ -494,6 +691,7 @@ def void_material_transfer(db, batch_no: str, user: User) -> None:
 
 def _check_receipt_location(transfer, payload, *, replay=False):
     from .team_constants import WAREHOUSE_TEAM_CODE
+
     if "warehouse_location" not in payload.model_fields_set:
         return
     if transfer.next_team_code != WAREHOUSE_TEAM_CODE:
@@ -527,8 +725,13 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
             if transfer.rejection_reason is not None:
                 raise _conflict("该明细已退回核对，须上序修改后再接收")
             _active_target(db, transfer.next_team_id)  # Serialize initial stock and first receipt.
-            validate_material_route(transfer.stock_source.material_type if transfer.source_transfer_id else None,
-                transfer.material_type, transfer.next_team, transfer.entry_kind, transfer.notes)
+            validate_material_route(
+                transfer.stock_source.material_type if transfer.source_transfer_id else None,
+                transfer.material_type,
+                transfer.next_team,
+                transfer.entry_kind,
+                transfer.notes,
+            )
             before = _snapshot(transfer)
             now = utcnow()
             if "warehouse_location" in payload.model_fields_set:
@@ -536,9 +739,11 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
                     if payload.warehouse_location != transfer.warehouse_location:
                         raise _conflict("转料单已锁定仓位，不能在签收时更换")
                 elif payload.warehouse_location:
-                    from .warehouse_locations import consume
-                    from .warehouse_locations import material_identity
-                    transfer.warehouse_location = consume(db, transfer.next_team, payload, user, identity=material_identity(transfer))
+                    from .warehouse_locations import consume, material_identity
+
+                    transfer.warehouse_location = consume(
+                        db, transfer.next_team, payload, user, identity=material_identity(transfer)
+                    )
             transfer.status = "received"
             transfer.stock_tracked = True
             transfer.received_by = actor_name(user)
@@ -553,9 +758,7 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
         return result
     except IntegrityError as exc:
         db.rollback()
-        transfer = db.scalar(
-            select(MaterialTransfer).where(MaterialTransfer.batch_no == batch_no)
-        )
+        transfer = db.scalar(select(MaterialTransfer).where(MaterialTransfer.batch_no == batch_no))
         if (
             transfer is not None
             and transfer.next_team_id == user.team_id
@@ -573,7 +776,10 @@ def reject_material_transfer(db, batch_no, payload, user):
         _assert_receiver(user, transfer)
         if user.team.kind != "warehouse" or transfer.status != "pending":
             raise _conflict("仅库房可退回待接收明细，已接收单据不能修改")
-        if transfer.rejection_reason == payload.reason and transfer.version == payload.expected_version + 1:
+        if (
+            transfer.rejection_reason == payload.reason
+            and transfer.version == payload.expected_version + 1
+        ):
             return material_transfer_dict(transfer, user)
         _assert_version(transfer, payload)
         before = _snapshot(transfer)
@@ -589,7 +795,8 @@ def reject_material_transfer(db, batch_no, payload, user):
 
 def confirm_outbound(db, batch_no: str, payload, user: User) -> dict[str, Any]:
     """Finalize external stock leaving the loop; never manufacture a receipt lot."""
-    from .material_stock import require_outbound_actor, _db_conflict
+    from .material_stock import _db_conflict, require_outbound_actor
+
     if "warehouse_location" in payload.model_fields_set:
         raise HTTPException(422, "对外出库确认不能填写入库仓位")
     try:
@@ -599,17 +806,29 @@ def confirm_outbound(db, batch_no: str, payload, user: User) -> dict[str, Any]:
             # The source lookup can establish a REPEATABLE READ snapshot
             # before waiting for a concurrent confirmer. Load its audit with
             # a current read too, so an idempotent reply includes that event.
-            events = db.scalars(select(MaterialTransferEvent).where(
-                MaterialTransferEvent.transfer_id == transfer.id
-            ).order_by(MaterialTransferEvent.id).with_for_update().execution_options(populate_existing=True)).all()
+            events = db.scalars(
+                select(MaterialTransferEvent)
+                .where(MaterialTransferEvent.transfer_id == transfer.id)
+                .order_by(MaterialTransferEvent.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ).all()
             set_committed_value(transfer, "history", events)
-            if transfer.status == "dispatched" and transfer.outbound_idempotency_key == payload.idempotency_key:
+            if (
+                transfer.status == "dispatched"
+                and transfer.outbound_idempotency_key == payload.idempotency_key
+            ):
                 return material_transfer_dict(transfer, user)
             if transfer.status != "pending":
                 raise _conflict("only a pending external outbound can be confirmed")
             _assert_version(transfer, payload)
-            validate_material_route(transfer.stock_source.material_type if transfer.source_transfer_id else None,
-                                    transfer.material_type, None, transfer.entry_kind, transfer.notes)
+            validate_material_route(
+                transfer.stock_source.material_type if transfer.source_transfer_id else None,
+                transfer.material_type,
+                None,
+                transfer.entry_kind,
+                transfer.notes,
+            )
             before = _snapshot(transfer)
             now = utcnow()
             transfer.status = "dispatched"

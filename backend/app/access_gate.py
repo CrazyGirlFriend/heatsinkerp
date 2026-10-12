@@ -18,7 +18,6 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .config import Settings
 
-
 ACCESS_COOKIE_NAME = "heatsink_site_access"
 ACCESS_TTL_SECONDS = 12 * 60 * 60
 ACCESS_EXEMPT_PATHS = frozenset(
@@ -95,9 +94,7 @@ class SiteAccessGate:
     def __init__(self, config: Settings) -> None:
         self.enabled = bool(config.site_access_password)
         self.secure_cookie = config.site_access_secure_cookie
-        self._password_digest = hashlib.sha256(
-            config.site_access_password.encode("utf-8")
-        ).digest()
+        self._password_digest = hashlib.sha256(config.site_access_password.encode("utf-8")).digest()
         # Bind issued cookies to BOTH configuration values. Rotating either
         # password or signing secret invalidates every previously issued cookie.
         self._signing_key = hmac.digest(
@@ -112,9 +109,13 @@ class SiteAccessGate:
         return hmac.compare_digest(actual, self._password_digest)
 
     def _signature(self, payload: str) -> str:
-        return base64.urlsafe_b64encode(
-            hmac.digest(self._signing_key, payload.encode("ascii"), "sha256")
-        ).decode("ascii").rstrip("=")
+        return (
+            base64.urlsafe_b64encode(
+                hmac.digest(self._signing_key, payload.encode("ascii"), "sha256")
+            )
+            .decode("ascii")
+            .rstrip("=")
+        )
 
     def issue_cookie(self) -> str:
         issued_at = int(time.time())

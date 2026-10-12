@@ -3,14 +3,15 @@
 Legacy demo/shipping/scrap teams and all account and transfer references remain
 untouched. Only the explicitly requested 扎板 -> 轧制 directory rename is applied.
 """
+
 from __future__ import annotations
 
 import json
+
 from sqlalchemy import or_, select
 
 from .database import SessionLocal
 from .models import Team
-
 
 MATERIAL_TEAMS = (
     ("FACTORY-WAREHOUSE", "库房", "warehouse", "物料收发及转废接收"),
@@ -28,10 +29,20 @@ def configure_material_teams(db):
     inserted, renamed, kept = [], [], []
     with db.begin():
         for order, (code, name, kind, description) in enumerate(MATERIAL_TEAMS):
-            existing = db.scalars(select(Team).where(or_(Team.code == code, Team.name == name))).all()
+            existing = db.scalars(
+                select(Team).where(or_(Team.code == code, Team.name == name))
+            ).all()
             if not existing:
-                db.add(Team(code=code, name=name, kind=kind, description=description,
-                            active=True, sort_order=5 if order == 0 else order * 10))
+                db.add(
+                    Team(
+                        code=code,
+                        name=name,
+                        kind=kind,
+                        description=description,
+                        active=True,
+                        sort_order=5 if order == 0 else order * 10,
+                    )
+                )
                 inserted.append(name)
                 continue
             if len(existing) != 1 or existing[0].code != code or existing[0].kind != kind:

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { materialWeightToleranceKg } from '@/config/materialRules'
+
 import TableExportButton from './TableExportButton.vue'
 import SharedMaterialInfo from './SharedMaterialInfo.vue'
 import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
@@ -6,7 +8,16 @@ import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 import { globalTransferExportFields } from '@/utils/teamTableExport'
 import { currentLocations } from '@/utils/warehousePlacement'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElButton, ElDescriptions, ElDescriptionsItem, ElDialog, ElPagination, ElTable, ElTableColumn, ElTag } from 'element-plus'
+import {
+  ElButton,
+  ElDescriptions,
+  ElDescriptionsItem,
+  ElDialog,
+  ElPagination,
+  ElTable,
+  ElTableColumn,
+  ElTag,
+} from 'element-plus'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
@@ -14,105 +25,298 @@ import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import StatePanel from './StatePanel.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
-import { isScrapType, isWeightOnlyType, materialTypeLabel, materialTransferStatusLabel, materialTransferStatusTone, type MaterialTransfer } from '@/types/materialTransfer'
+import {
+  isScrapType,
+  isWeightOnlyType,
+  materialTypeLabel,
+  materialTransferStatusLabel,
+  materialTransferStatusTone,
+  type MaterialTransfer,
+} from '@/types/materialTransfer'
 import { inventorySourceLabel, inventoryAmount, type TeamInventoryRow } from '@/types/teamInventory'
 import type { StockBatch } from '@/types/teamMaterials'
 import { dispatchableAmounts, stockAvailable, stockSelectable } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
 import { processingRoleLabels } from '@/types/materialProcessing'
 
-const props = defineProps<{ teamId: number; group: TeamInventoryRow | null; canWrite?: boolean; canReallocate?: boolean; warehouse?: boolean; processing?: boolean }>()
-const emit = defineEmits<{ close: []; changed: []; pending: []; action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]; reallocate: [source: StockBatch] }>()
-const rows = ref<StockBatch[]>([]), total = ref(0), page = ref(1), pageSize = ref(10)
-const movements = ref<MaterialTransfer[]>([]), movementTotal = ref(0), movementPage = ref(1), movementPageSize = ref(10)
-const loading = ref(false), error = ref('')
-const batchOpen = ref(false), selected = ref<MaterialTransfer | null>(null)
+const props = defineProps<{
+  teamId: number
+  group: TeamInventoryRow | null
+  canWrite?: boolean
+  canReallocate?: boolean
+  warehouse?: boolean
+  processing?: boolean
+}>()
+const emit = defineEmits<{
+  close: []
+  changed: []
+  pending: []
+  action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]
+  reallocate: [source: StockBatch]
+}>()
+const rows = ref<StockBatch[]>([]),
+  total = ref(0),
+  page = ref(1),
+  pageSize = ref(10)
+const movements = ref<MaterialTransfer[]>([]),
+  movementTotal = ref(0),
+  movementPage = ref(1),
+  movementPageSize = ref(10)
+const loading = ref(false),
+  error = ref('')
+const batchOpen = ref(false),
+  selected = ref<MaterialTransfer | null>(null)
 const serialOpen = ref(false)
-const quantityOpen = ref(false), quantitySource = ref<number | null>(null)
-const hasLoss = computed(() => rows.value.some(row => Number(row.lost_quantity) > 0 || Number(row.lost_weight) > 0))
-const hasPending = computed(() => rows.value.some(row => Number(row.in_transit_quantity) > 0 || Number(row.in_transit_weight) > 0))
-const hasExternalPending = computed(() => rows.value.some(row => Number(row.external_pending_quantity) > 0 || Number(row.external_pending_weight) > 0))
-const availableLabel = computed(() => isScrapType(props.group?.material_type) ? '可处理' : '可转出')
+const quantityOpen = ref(false),
+  quantitySource = ref<number | null>(null)
+const hasLoss = computed(() =>
+  rows.value.some((row) => Number(row.lost_quantity) > 0 || Number(row.lost_weight) > 0),
+)
+const hasPending = computed(() =>
+  rows.value.some(
+    (row) => Number(row.in_transit_quantity) > 0 || Number(row.in_transit_weight) > 0,
+  ),
+)
+const hasExternalPending = computed(() =>
+  rows.value.some(
+    (row) => Number(row.external_pending_quantity) > 0 || Number(row.external_pending_weight) > 0,
+  ),
+)
+const availableLabel = computed(() =>
+  isScrapType(props.group?.material_type) ? '可处理' : '可转出',
+)
 let version = 0
-const live = useLiveRefresh(() => load(true), { teamId: () => props.teamId, enabled: () => !!props.group, busy: () => loading.value || quantityOpen.value || batchOpen.value })
+const live = useLiveRefresh(() => load(true), {
+  teamId: () => props.teamId,
+  enabled: () => !!props.group,
+  busy: () => loading.value || quantityOpen.value || batchOpen.value,
+})
 async function load(background = false) {
   const current = ++version
-  if (!props.group) { loading.value = false; return }
-  if (!background) { loading.value = true; rows.value = []; movements.value = [] }
+  if (!props.group) {
+    loading.value = false
+    return
+  }
+  if (!background) {
+    loading.value = true
+    rows.value = []
+    movements.value = []
+  }
   error.value = ''
   try {
     const [result, records] = await Promise.all([
-      teamMaterialApi.inventorySources(props.teamId, props.group.group_id, { page: page.value, page_size: pageSize.value }),
-      teamMaterialApi.inventoryMovements(props.teamId, props.group.group_id, { page: movementPage.value, page_size: movementPageSize.value }),
+      teamMaterialApi.inventorySources(props.teamId, props.group.group_id, {
+        page: page.value,
+        page_size: pageSize.value,
+      }),
+      teamMaterialApi.inventoryMovements(props.teamId, props.group.group_id, {
+        page: movementPage.value,
+        page_size: movementPageSize.value,
+      }),
     ])
     if (current !== version) return
-    const lastPage = Math.max(1, Math.ceil(result.total / pageSize.value)), lastMovementPage = Math.max(1, Math.ceil(records.total / movementPageSize.value))
+    const lastPage = Math.max(1, Math.ceil(result.total / pageSize.value)),
+      lastMovementPage = Math.max(1, Math.ceil(records.total / movementPageSize.value))
     if (page.value > lastPage || movementPage.value > lastMovementPage) {
-      page.value = Math.min(page.value, lastPage); movementPage.value = Math.min(movementPage.value, lastMovementPage)
-      await load(background); return
+      page.value = Math.min(page.value, lastPage)
+      movementPage.value = Math.min(movementPage.value, lastMovementPage)
+      await load(background)
+      return
     }
-    rows.value = result.items; total.value = result.total; movements.value = records.items; movementTotal.value = records.total
-  } catch (e) { if (current === version) { if (background) throw e; error.value = e instanceof Error ? e.message : '库存明细加载失败' } }
-  finally { if (current === version) loading.value = false }
+    rows.value = result.items
+    total.value = result.total
+    movements.value = records.items
+    movementTotal.value = records.total
+  } catch (e) {
+    if (current === version) {
+      if (background) throw e
+      error.value = e instanceof Error ? e.message : '库存明细加载失败'
+    }
+  } finally {
+    if (current === version) loading.value = false
+  }
 }
 function exportStock() {
-  const id = props.teamId, group = props.group
+  const id = props.teamId,
+    group = props.group
   if (!group) return null
-  return tableExportSource(`${group.serial_no} · 当前库存`, total.value, [
-    { key: 'batch_no', label: '来源批次号', value: (row: StockBatch) => row.transfer.batch_no },
-    { key: 'processing_role', label: '加工类别', value: row => row.processing_role ? processingRoleLabels[row.processing_role] : row.transfer.processing_role ? processingRoleLabels[row.transfer.processing_role] : '' },
-    { key: 'specification', label: '实际尺寸', value: row => row.current_specification ?? row.transfer.transfer_specification ?? '' },
-    { key: 'location', label: '仓位', value: currentLocations },
-    { key: 'quantity', label: '库存件数', value: row => row.owned_quantity },
-    { key: 'weight', label: '库存重量 (kg)', value: row => row.owned_weight },
-    { key: 'available_quantity', label: '可处理件数', value: row => dispatchableAmounts(row).quantity },
-    { key: 'available_weight', label: '可处理重量 (kg)', value: row => dispatchableAmounts(row).weight },
-    { key: 'received_at', label: '接收时间', value: row => formatDateTime(row.transfer.received_at) },
-  ], (signal, progress) => loadExportPages((page, pageSize) => teamMaterialApi.inventorySources(id, group.group_id, { page, page_size: pageSize }), signal, progress))
+  return tableExportSource(
+    `${group.serial_no} · 当前库存`,
+    total.value,
+    [
+      { key: 'batch_no', label: '来源批次号', value: (row: StockBatch) => row.transfer.batch_no },
+      {
+        key: 'processing_role',
+        label: '加工类别',
+        value: (row) =>
+          row.processing_role
+            ? processingRoleLabels[row.processing_role]
+            : row.transfer.processing_role
+              ? processingRoleLabels[row.transfer.processing_role]
+              : '',
+      },
+      {
+        key: 'specification',
+        label: '实际尺寸',
+        value: (row) => row.current_specification ?? row.transfer.transfer_specification ?? '',
+      },
+      { key: 'location', label: '仓位', value: currentLocations },
+      { key: 'quantity', label: '库存件数', value: (row) => row.owned_quantity },
+      { key: 'weight', label: '库存重量 (kg)', value: (row) => row.owned_weight },
+      {
+        key: 'available_quantity',
+        label: '可处理件数',
+        value: (row) => dispatchableAmounts(row).quantity,
+      },
+      {
+        key: 'available_weight',
+        label: '可处理重量 (kg)',
+        value: (row) => dispatchableAmounts(row).weight,
+      },
+      {
+        key: 'received_at',
+        label: '接收时间',
+        value: (row) => formatDateTime(row.transfer.received_at),
+      },
+    ],
+    (signal, progress) =>
+      loadExportPages(
+        (page, pageSize) =>
+          teamMaterialApi.inventorySources(id, group.group_id, { page, page_size: pageSize }),
+        signal,
+        progress,
+      ),
+  )
 }
 function exportMovements() {
-  const id = props.teamId, group = props.group
+  const id = props.teamId,
+    group = props.group
   if (!group) return null
-  return tableExportSource(`${group.serial_no} · 收发记录`, movementTotal.value, globalTransferExportFields,
-    (signal, progress) => loadExportPages((page, pageSize) => teamMaterialApi.inventoryMovements(id, group.group_id, { page, page_size: pageSize }), signal, progress))
+  return tableExportSource(
+    `${group.serial_no} · 收发记录`,
+    movementTotal.value,
+    globalTransferExportFields,
+    (signal, progress) =>
+      loadExportPages(
+        (page, pageSize) =>
+          teamMaterialApi.inventoryMovements(id, group.group_id, { page, page_size: pageSize }),
+        signal,
+        progress,
+      ),
+  )
 }
-function open(transfer: MaterialTransfer) { selected.value = transfer; batchOpen.value = true }
-function action(mode: 'dispatch' | 'loss', row: StockBatch) { if (props.canWrite && !loading.value && !error.value && (mode === 'loss' ? stockAvailable(row) : stockSelectable(row))) emit('action', mode, [row]) }
-function asStock(row: unknown) { return row as StockBatch }
-function asTransfer(row: unknown) { return row as MaterialTransfer }
-function incoming(row: MaterialTransfer) { return row.entry_kind === 'serial_reallocation' ? row.serial_no === props.group?.serial_no : Number(row.next_team.id) === props.teamId }
+function open(transfer: MaterialTransfer) {
+  selected.value = transfer
+  batchOpen.value = true
+}
+function action(mode: 'dispatch' | 'loss', row: StockBatch) {
+  if (
+    props.canWrite &&
+    !loading.value &&
+    !error.value &&
+    (mode === 'loss' ? stockAvailable(row) : stockSelectable(row))
+  )
+    emit('action', mode, [row])
+}
+function asStock(row: unknown) {
+  return row as StockBatch
+}
+function asTransfer(row: unknown) {
+  return row as MaterialTransfer
+}
+function incoming(row: MaterialTransfer) {
+  return row.entry_kind === 'serial_reallocation'
+    ? row.serial_no === props.group?.serial_no
+    : Number(row.next_team.id) === props.teamId
+}
 function movementLabel(row: MaterialTransfer) {
   if (row.entry_kind === 'processing_output') return '本班组加工'
   if (row.entry_kind === 'serial_reallocation') return incoming(row) ? '转投入' : '转投出'
-  if (incoming(row)) return row.entry_kind === 'opening_stock' ? '初始库存登记' : row.entry_kind === 'warehouse_receipt' ? '入库' : '收料'
-  return row.entry_kind === 'inspection_shipment' ? '发货' : row.entry_kind === 'warehouse_outbound' ? '对外出库' : '转出'
+  if (incoming(row))
+    return row.entry_kind === 'opening_stock'
+      ? '初始库存登记'
+      : row.entry_kind === 'warehouse_receipt'
+        ? '入库'
+        : '收料'
+  return row.entry_kind === 'inspection_shipment'
+    ? '发货'
+    : row.entry_kind === 'warehouse_outbound'
+      ? '对外出库'
+      : '转出'
 }
 function counterpart(row: MaterialTransfer) {
   if (row.entry_kind === 'processing_output') return `${row.next_team.name} · 加工实物`
-  if (row.entry_kind === 'serial_reallocation') return incoming(row) ? row.source_serial_no || '—' : row.serial_no
+  if (row.entry_kind === 'serial_reallocation')
+    return incoming(row) ? row.source_serial_no || '—' : row.serial_no
   if (!incoming(row)) return row.external_destination || row.next_team.name || '—'
-  return row.entry_kind === 'opening_stock' ? '初始库存' : row.external_source || row.source_team.name || '—'
+  return row.entry_kind === 'opening_stock'
+    ? '初始库存'
+    : row.external_source || row.source_team.name || '—'
 }
-function openQuantity(row: StockBatch) { quantitySource.value = Number(row.transfer.id); quantityOpen.value = true }
-function changed() { void load(); emit('changed') }
-watch([() => props.teamId, () => props.group?.group_id], () => {
-  page.value = movementPage.value = 1; rows.value = []; movements.value = []; total.value = movementTotal.value = 0
-  batchOpen.value = quantityOpen.value = serialOpen.value = false; selected.value = null; void load()
-}, { immediate: true })
-onBeforeUnmount(() => { ++version })
+function openQuantity(row: StockBatch) {
+  quantitySource.value = Number(row.transfer.id)
+  quantityOpen.value = true
+}
+function changed() {
+  void load()
+  emit('changed')
+}
+watch(
+  [() => props.teamId, () => props.group?.group_id],
+  () => {
+    page.value = movementPage.value = 1
+    rows.value = []
+    movements.value = []
+    total.value = movementTotal.value = 0
+    batchOpen.value = quantityOpen.value = serialOpen.value = false
+    selected.value = null
+    void load()
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => {
+  ++version
+})
 </script>
 
 <template>
-  <ElDialog :model-value="!!group" title="库存明细" width="min(1480px, calc(100vw - 32px))" align-center append-to-body class="material-detail-dialog warehouse-stock-detail" @update:model-value="!$event && emit('close')">
+  <ElDialog
+    :model-value="!!group"
+    title="库存明细"
+    width="min(1480px, calc(100vw - 32px))"
+    align-center
+    append-to-body
+    class="material-detail-dialog warehouse-stock-detail"
+    @update:model-value="!$event && emit('close')"
+  >
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <ElDescriptions v-if="group" class="stock-detail-overview" :column="3" border>
-      <ElDescriptionsItem label="流水号"><span v-if="group.shared_unallocated">共投料 · {{ group.shared_serials?.length || 0 }} 个流水号</span><ElButton v-else link type="primary" @click="serialOpen = true">{{ group.serial_no }}</ElButton></ElDescriptionsItem>
+      <ElDescriptionsItem label="流水号"
+        ><span v-if="group.shared_unallocated"
+          >共投料 · {{ group.shared_serials?.length || 0 }} 个流水号</span
+        ><ElButton v-else link type="primary" @click="serialOpen = true">{{
+          group.serial_no
+        }}</ElButton></ElDescriptionsItem
+      >
       <ElDescriptionsItem label="材质">{{ group.material_name || '—' }}</ElDescriptionsItem>
-      <ElDescriptionsItem label="规格">{{ group.transfer_specification || '—' }}</ElDescriptionsItem>
-      <ElDescriptionsItem label="物料类型">{{ materialTypeLabel(group.material_type || null) }}</ElDescriptionsItem>
-      <ElDescriptionsItem label="本班组业务">{{ group.purpose_name || '未指定业务' }}</ElDescriptionsItem>
-      <ElDescriptionsItem :label="warehouse ? '来源' : '上序班组'">{{ inventorySourceLabel(group, warehouse) }}</ElDescriptionsItem>
-      <ElDescriptionsItem v-if="(group.max_weight_difference || 0) > 1" label="同批累计重量差异">最大 {{ inventoryAmount(group.max_weight_difference) }} kg，超过 1 kg，请核对</ElDescriptionsItem>
+      <ElDescriptionsItem label="规格">{{
+        group.transfer_specification || '—'
+      }}</ElDescriptionsItem>
+      <ElDescriptionsItem label="物料类型">{{
+        materialTypeLabel(group.material_type || null)
+      }}</ElDescriptionsItem>
+      <ElDescriptionsItem label="本班组业务">{{
+        group.purpose_name || '未指定业务'
+      }}</ElDescriptionsItem>
+      <ElDescriptionsItem :label="warehouse ? '来源' : '上序班组'">{{
+        inventorySourceLabel(group, warehouse)
+      }}</ElDescriptionsItem>
+      <ElDescriptionsItem
+        v-if="(group.max_weight_difference || 0) > materialWeightToleranceKg"
+        label="同批累计重量差异"
+        >最大 {{ inventoryAmount(group.max_weight_difference) }} kg，超过
+        {{ materialWeightToleranceKg }} kg，请核对</ElDescriptionsItem
+      >
     </ElDescriptions>
     <SharedMaterialInfo v-if="group" :item="group" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
@@ -121,64 +325,376 @@ onBeforeUnmount(() => { ++version })
       <section class="stock-detail-section material-detail-section" aria-label="当前库存">
         <header>
           <h3>当前库存</h3>
-          <div class="detail-section-actions"><ElButton v-if="group && (Number(group.reserved_quantity) > 0 || Number(group.reserved_weight) > 0)" link type="primary" @click="emit('pending')">查看转出待确认批次</ElButton><TableExportButton :source="exportStock" :disabled="loading || !!error" :context="group?.group_id" /></div>
+          <div class="detail-section-actions">
+            <ElButton
+              v-if="
+                group && (Number(group.reserved_quantity) > 0 || Number(group.reserved_weight) > 0)
+              "
+              link
+              type="primary"
+              @click="emit('pending')"
+              >查看转出待确认批次</ElButton
+            ><TableExportButton
+              :source="exportStock"
+              :disabled="loading || !!error"
+              :context="group?.group_id"
+            />
+          </div>
         </header>
-        <ElTable class="business-table warehouse-source-table" :data="rows" row-key="transfer.id" empty-text="暂无来源记录">
-          <ElTableColumn label="来源批次号" min-width="205"><template #default="{ row }"><ElButton link type="primary" @click="open(row.transfer)">{{ row.transfer.batch_no }}</ElButton></template></ElTableColumn>
-          <ElTableColumn v-if="rows.some(row => row.processing_role || row.transfer.processing_role)" label="加工类别" min-width="110"><template #default="{ row }">{{ processingRoleLabels[(row.processing_role || row.transfer.processing_role) as keyof typeof processingRoleLabels] || '—' }}</template></ElTableColumn>
-          <ElTableColumn label="当前实际尺寸" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ row.current_specification ?? row.transfer.transfer_specification ?? '—' }}</template></ElTableColumn>
-          <ElTableColumn v-if="warehouse" label="当前仓位" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ currentLocations(asStock(row)) }}</template></ElTableColumn>
-          <ElTableColumn label="库存件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.owned_quantity) }}</template></ElTableColumn>
-          <ElTableColumn label="库存重量 (kg)" min-width="140" align="right"><template #default="{ row }">{{ inventoryAmount(row.owned_weight) }}</template></ElTableColumn>
-          <ElTableColumn v-if="rows.some(row => row.weight_difference)" label="同批累计差异 (kg)" min-width="175" align="right"><template #default="{ row }"><span :class="{ 'source-weight-warning': Math.abs(row.weight_difference || 0) > 1 }">{{ row.weight_difference > 0 ? '+' : '' }}{{ inventoryAmount(row.weight_difference) }}</span></template></ElTableColumn>
-          <ElTableColumn :label="`${availableLabel}件数`" min-width="120" align="right"><template #default="{ row }">{{ inventoryAmount(dispatchableAmounts(asStock(row)).quantity) }}</template></ElTableColumn>
-          <ElTableColumn :label="`${availableLabel}重量 (kg)`" min-width="150" align="right"><template #default="{ row }">{{ inventoryAmount(dispatchableAmounts(asStock(row)).weight) }}</template></ElTableColumn>
-          <ElTableColumn v-if="hasPending" label="待签收件数" min-width="120" align="right"><template #default="{ row }">{{ inventoryAmount(row.in_transit_quantity) }}</template></ElTableColumn>
-          <ElTableColumn v-if="hasPending" label="待签收重量 (kg)" min-width="150" align="right"><template #default="{ row }">{{ inventoryAmount(row.in_transit_weight) }}</template></ElTableColumn>
-          <ElTableColumn v-if="hasExternalPending" label="对外待确认件数" min-width="150" align="right"><template #default="{ row }">{{ inventoryAmount(row.external_pending_quantity) }}</template></ElTableColumn>
-          <ElTableColumn v-if="hasExternalPending" label="对外待确认重量 (kg)" min-width="180" align="right"><template #default="{ row }">{{ inventoryAmount(row.external_pending_weight) }}</template></ElTableColumn>
-          <ElTableColumn v-if="hasLoss" label="丢失件数" min-width="110" align="right"><template #default="{ row }">{{ inventoryAmount(row.lost_quantity) }}</template></ElTableColumn>
-          <ElTableColumn v-if="hasLoss" label="丢失重量 (kg)" min-width="140" align="right"><template #default="{ row }">{{ inventoryAmount(row.lost_weight) }}</template></ElTableColumn>
-          <ElTableColumn label="接收 / 加工时间" min-width="170"><template #default="{ row }">{{ formatDateTime(row.transfer.received_at) }}</template></ElTableColumn>
-          <ElTableColumn v-if="processing" label="加工状态" min-width="185" align="center"><template #default="{ row }"><ProcessingStockStatus :state="row.processing_state" :material-type="row.transfer.material_type" /></template></ElTableColumn>
-          <ElTableColumn label="操作" :width="canWrite ? canReallocate ? 310 : 250 : 110" fixed="right"><template #default="{ row }"><div class="source-actions"><ElButton v-if="!isWeightOnlyType(row.transfer.material_type)" link type="primary" @click="openQuantity(asStock(row))">{{ canWrite && !warehouse && stockAvailable(asStock(row)) ? processing ? '加工登记' : '加工件数变更' : processing ? '加工记录' : '件数记录' }}</ElButton><template v-if="canWrite"><ElButton link type="primary" :disabled="!stockSelectable(asStock(row))" @click="action('dispatch', asStock(row))">出库</ElButton><ElButton v-if="canReallocate" link type="primary" :disabled="!stockSelectable(asStock(row))" @click="emit('reallocate', asStock(row))">转投</ElButton><ElButton link type="primary" :disabled="!stockAvailable(asStock(row))" @click="action('loss', asStock(row))">登记丢失</ElButton></template></div></template></ElTableColumn>
+        <ElTable
+          class="business-table warehouse-source-table"
+          :data="rows"
+          row-key="transfer.id"
+          empty-text="暂无来源记录"
+        >
+          <ElTableColumn label="来源批次号" min-width="205"
+            ><template #default="{ row }"
+              ><ElButton link type="primary" @click="open(row.transfer)">{{
+                row.transfer.batch_no
+              }}</ElButton></template
+            ></ElTableColumn
+          >
+          <ElTableColumn
+            v-if="rows.some((row) => row.processing_role || row.transfer.processing_role)"
+            label="加工类别"
+            min-width="110"
+            ><template #default="{ row }">{{
+              processingRoleLabels[
+                (row.processing_role ||
+                  row.transfer.processing_role) as keyof typeof processingRoleLabels
+              ] || '—'
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="当前实际尺寸" min-width="180" show-overflow-tooltip
+            ><template #default="{ row }">{{
+              row.current_specification ?? row.transfer.transfer_specification ?? '—'
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn v-if="warehouse" label="当前仓位" min-width="160" show-overflow-tooltip
+            ><template #default="{ row }">{{
+              currentLocations(asStock(row))
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="库存件数" min-width="110" align="right"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.owned_quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="库存重量 (kg)" min-width="140" align="right"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.owned_weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn
+            v-if="rows.some((row) => row.weight_difference)"
+            label="同批累计差异 (kg)"
+            min-width="175"
+            align="right"
+            ><template #default="{ row }"
+              ><span
+                :class="{
+                  'source-weight-warning':
+                    Math.abs(row.weight_difference || 0) > materialWeightToleranceKg,
+                }"
+                >{{ row.weight_difference > 0 ? '+' : ''
+                }}{{ inventoryAmount(row.weight_difference) }}</span
+              ></template
+            ></ElTableColumn
+          >
+          <ElTableColumn :label="`${availableLabel}件数`" min-width="120" align="right"
+            ><template #default="{ row }">{{
+              inventoryAmount(dispatchableAmounts(asStock(row)).quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn :label="`${availableLabel}重量 (kg)`" min-width="150" align="right"
+            ><template #default="{ row }">{{
+              inventoryAmount(dispatchableAmounts(asStock(row)).weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn v-if="hasPending" label="待签收件数" min-width="120" align="right"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.in_transit_quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn v-if="hasPending" label="待签收重量 (kg)" min-width="150" align="right"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.in_transit_weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn
+            v-if="hasExternalPending"
+            label="对外待确认件数"
+            min-width="150"
+            align="right"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.external_pending_quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn
+            v-if="hasExternalPending"
+            label="对外待确认重量 (kg)"
+            min-width="180"
+            align="right"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.external_pending_weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn v-if="hasLoss" label="丢失件数" min-width="110" align="right"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.lost_quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn v-if="hasLoss" label="丢失重量 (kg)" min-width="140" align="right"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.lost_weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="接收 / 加工时间" min-width="170"
+            ><template #default="{ row }">{{
+              formatDateTime(row.transfer.received_at)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn v-if="processing" label="加工状态" min-width="185" align="center"
+            ><template #default="{ row }"
+              ><ProcessingStockStatus
+                :state="row.processing_state"
+                :material-type="row.transfer.material_type" /></template
+          ></ElTableColumn>
+          <ElTableColumn
+            label="操作"
+            :width="canWrite ? (canReallocate ? 310 : 250) : 110"
+            fixed="right"
+            ><template #default="{ row }"
+              ><div class="source-actions">
+                <ElButton
+                  v-if="!isWeightOnlyType(row.transfer.material_type)"
+                  link
+                  type="primary"
+                  @click="openQuantity(asStock(row))"
+                  >{{
+                    canWrite && !warehouse && stockAvailable(asStock(row))
+                      ? processing
+                        ? '加工登记'
+                        : '加工件数变更'
+                      : processing
+                        ? '加工记录'
+                        : '件数记录'
+                  }}</ElButton
+                ><template v-if="canWrite"
+                  ><ElButton
+                    link
+                    type="primary"
+                    :disabled="!stockSelectable(asStock(row))"
+                    @click="action('dispatch', asStock(row))"
+                    >出库</ElButton
+                  ><ElButton
+                    v-if="canReallocate"
+                    link
+                    type="primary"
+                    :disabled="!stockSelectable(asStock(row))"
+                    @click="emit('reallocate', asStock(row))"
+                    >转投</ElButton
+                  ><ElButton
+                    link
+                    type="primary"
+                    :disabled="!stockAvailable(asStock(row))"
+                    @click="action('loss', asStock(row))"
+                    >登记丢失</ElButton
+                  ></template
+                >
+              </div></template
+            ></ElTableColumn
+          >
         </ElTable>
-        <footer><span>共 {{ total }} 个来源批次（含零库存）</span><ElPagination aria-label="当前库存分页" :current-page="page" :page-size="pageSize" :page-sizes="[10,20,50,100]" :total="total" layout="sizes, prev, pager, next" @current-change="page = $event; load()" @size-change="pageSize = $event; page = 1; load()" /></footer>
+        <footer>
+          <span>共 {{ total }} 个来源批次（含零库存）</span
+          ><ElPagination
+            aria-label="当前库存分页"
+            :current-page="page"
+            :page-size="pageSize"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="total"
+            layout="sizes, prev, pager, next"
+            @current-change="
+              ($event) => {
+                page = $event
+                load()
+              }
+            "
+            @size-change="
+              ($event) => {
+                pageSize = $event
+                page = 1
+                load()
+              }
+            "
+          />
+        </footer>
       </section>
       <section class="stock-detail-section material-detail-section" aria-label="逐笔收发记录">
-        <header><div class="detail-section-heading"><h3>收发记录</h3><span>{{ movementTotal }} 笔</span></div><div class="detail-section-actions"><TableExportButton :source="exportMovements" :disabled="loading || !!error" :context="group?.group_id" /></div></header>
-        <ElTable class="business-table warehouse-movement-table" :data="movements" row-key="id" empty-text="暂无收发记录">
-          <ElTableColumn label="批次号" min-width="205"><template #default="{ row }"><ElButton link type="primary" @click="open(asTransfer(row))">{{ row.batch_no }}</ElButton></template></ElTableColumn>
-          <ElTableColumn label="业务" min-width="95"><template #default="{ row }">{{ movementLabel(asTransfer(row)) }}</template></ElTableColumn>
-          <ElTableColumn label="来源批次号" min-width="205"><template #default="{ row }">{{ incoming(asTransfer(row)) && !['serial_reallocation', 'processing_output'].includes(row.entry_kind) ? '—' : row.source_transfer_batch_no || '—' }}</template></ElTableColumn>
-          <ElTableColumn label="来源 / 去向" min-width="120"><template #default="{ row }">{{ counterpart(asTransfer(row)) }}</template></ElTableColumn>
-          <ElTableColumn label="件数" min-width="85" align="right"><template #default="{ row }">{{ inventoryAmount(row.quantity) }}</template></ElTableColumn>
-          <ElTableColumn label="重量 (kg)" min-width="115" align="right"><template #default="{ row }">{{ inventoryAmount(row.weight) }}</template></ElTableColumn>
-          <ElTableColumn label="状态" min-width="125"><template #default="{ row }"><ElTag effect="light" :type="materialTransferStatusTone(row.status)">{{ materialTransferStatusLabel(row.status, row.entry_kind) }}</ElTag></template></ElTableColumn>
-          <ElTableColumn label="收发时间" min-width="170"><template #default="{ row }">{{ formatDateTime(incoming(asTransfer(row)) ? row.received_at : row.transferred_at) }}</template></ElTableColumn>
+        <header>
+          <div class="detail-section-heading">
+            <h3>收发记录</h3>
+            <span>{{ movementTotal }} 笔</span>
+          </div>
+          <div class="detail-section-actions">
+            <TableExportButton
+              :source="exportMovements"
+              :disabled="loading || !!error"
+              :context="group?.group_id"
+            />
+          </div>
+        </header>
+        <ElTable
+          class="business-table warehouse-movement-table"
+          :data="movements"
+          row-key="id"
+          empty-text="暂无收发记录"
+        >
+          <ElTableColumn label="批次号" min-width="205"
+            ><template #default="{ row }"
+              ><ElButton link type="primary" @click="open(asTransfer(row))">{{
+                row.batch_no
+              }}</ElButton></template
+            ></ElTableColumn
+          >
+          <ElTableColumn label="业务" min-width="95"
+            ><template #default="{ row }">{{
+              movementLabel(asTransfer(row))
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="来源批次号" min-width="205"
+            ><template #default="{ row }">{{
+              incoming(asTransfer(row)) &&
+              !['serial_reallocation', 'processing_output'].includes(row.entry_kind)
+                ? '—'
+                : row.source_transfer_batch_no || '—'
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="来源 / 去向" min-width="120"
+            ><template #default="{ row }">{{
+              counterpart(asTransfer(row))
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="件数" min-width="85" align="right"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="重量 (kg)" min-width="115" align="right"
+            ><template #default="{ row }">{{
+              inventoryAmount(row.weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="状态" min-width="125"
+            ><template #default="{ row }"
+              ><ElTag effect="light" :type="materialTransferStatusTone(row.status)">{{
+                materialTransferStatusLabel(row.status, row.entry_kind)
+              }}</ElTag></template
+            ></ElTableColumn
+          >
+          <ElTableColumn label="收发时间" min-width="170"
+            ><template #default="{ row }">{{
+              formatDateTime(incoming(asTransfer(row)) ? row.received_at : row.transferred_at)
+            }}</template></ElTableColumn
+          >
         </ElTable>
-        <footer><span>共 {{ movementTotal }} 笔收发记录</span><ElPagination aria-label="收发记录分页" :current-page="movementPage" :page-size="movementPageSize" :page-sizes="[10,20,50,100]" :total="movementTotal" layout="sizes, prev, pager, next" @current-change="movementPage = $event; load()" @size-change="movementPageSize = $event; movementPage = 1; load()" /></footer>
+        <footer>
+          <span>共 {{ movementTotal }} 笔收发记录</span
+          ><ElPagination
+            aria-label="收发记录分页"
+            :current-page="movementPage"
+            :page-size="movementPageSize"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="movementTotal"
+            layout="sizes, prev, pager, next"
+            @current-change="
+              ($event) => {
+                movementPage = $event
+                load()
+              }
+            "
+            @size-change="
+              ($event) => {
+                movementPageSize = $event
+                movementPage = 1
+                load()
+              }
+            "
+          />
+        </footer>
       </section>
     </template>
   </ElDialog>
-  <MaterialTransferDrawer v-model="batchOpen" :transfer="selected" :trace-scope="{ team_id: teamId, direction: 'all' }" @changed="changed" />
-  <QuantityAdjustmentDialog v-model="quantityOpen" :team-id="teamId" :source-id="quantitySource" :can-write="canWrite && !warehouse" :processing="processing" @saved="changed" />
-  <SerialMaterialDrawer v-if="group && serialOpen" v-model="serialOpen" :team-id="teamId" :serial-no="group.serial_no" />
+  <MaterialTransferDrawer
+    v-model="batchOpen"
+    :transfer="selected"
+    :trace-scope="{ team_id: teamId, direction: 'all' }"
+    @changed="changed"
+  />
+  <QuantityAdjustmentDialog
+    v-model="quantityOpen"
+    :team-id="teamId"
+    :source-id="quantitySource"
+    :can-write="canWrite && !warehouse"
+    :processing="processing"
+    @saved="changed"
+  />
+  <SerialMaterialDrawer
+    v-if="group && serialOpen"
+    v-model="serialOpen"
+    :team-id="teamId"
+    :serial-no="group.serial_no"
+  />
 </template>
 
 <style scoped>
-.stock-detail-overview :deep(.el-descriptions__table) { table-layout: fixed; }
-.stock-detail-overview :deep(.el-descriptions__table .el-descriptions__cell) { padding: 10px; font-size: 14px; line-height: 22px; text-align: center; }
-.stock-detail-overview :deep(.el-descriptions__table .el-descriptions__label) { width: 110px; font-weight: 500; background: var(--table-header-bg); }
-.source-weight-warning { color: var(--el-color-danger); }
-.source-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 12px; }
-.source-actions :deep(.el-button + .el-button) { margin-left: 0; }
+.stock-detail-overview :deep(.el-descriptions__table) {
+  table-layout: fixed;
+}
+.stock-detail-overview :deep(.el-descriptions__table .el-descriptions__cell) {
+  padding: 10px;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: center;
+}
+.stock-detail-overview :deep(.el-descriptions__table .el-descriptions__label) {
+  width: 110px;
+  font-weight: 500;
+  background: var(--table-header-bg);
+}
+.source-weight-warning {
+  color: var(--el-color-danger);
+}
+.source-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.source-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
 @media (max-width: 760px) {
-  :deep(.el-descriptions__body) { overflow-x: auto; }
-  :deep(.el-descriptions__table) { min-width: 640px; }
-  .stock-detail-section > footer { overflow-x: auto; }
-  .stock-detail-section :deep(.el-scrollbar__bar.is-horizontal) { opacity: 1; }
-  .stock-detail-section :deep(.el-table-fixed-column--right) { position: relative !important; right: auto !important; }
-  .stock-detail-section :deep(.el-table-fixed-column--right::before) { box-shadow: none; }
+  :deep(.el-descriptions__body) {
+    overflow-x: auto;
+  }
+  :deep(.el-descriptions__table) {
+    min-width: 640px;
+  }
+  .stock-detail-section > footer {
+    overflow-x: auto;
+  }
+  .stock-detail-section :deep(.el-scrollbar__bar.is-horizontal) {
+    opacity: 1;
+  }
+  .stock-detail-section :deep(.el-table-fixed-column--right) {
+    position: relative !important;
+    right: auto !important;
+  }
+  .stock-detail-section :deep(.el-table-fixed-column--right::before) {
+    box-shadow: none;
+  }
 }
 </style>

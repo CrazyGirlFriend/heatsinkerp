@@ -3,11 +3,10 @@ from pathlib import Path
 
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
-from sqlalchemy import create_engine, inspect, select
-from sqlalchemy.dialects import mysql
-
 from app.material_transfer_query import search_predicate
 from app.models import MaterialTransfer
+from sqlalchemy import create_engine, inspect, select
+from sqlalchemy.dialects import mysql
 
 
 def load_migration():
@@ -34,8 +33,14 @@ def test_index_migration_preserves_rows_is_repeatable_and_matches_models(tmp_pat
             migration.upgrade()
             migration.upgrade()
         assert conn.exec_driver_sql("SELECT * FROM material_transfers").fetchall() == before
-        actual = {row["name"]: tuple(row["column_names"]) for row in inspect(conn).get_indexes("material_transfers")}
-        model = {index.name: tuple(column.name for column in index.columns) for index in MaterialTransfer.__table__.indexes}
+        actual = {
+            row["name"]: tuple(row["column_names"])
+            for row in inspect(conn).get_indexes("material_transfers")
+        }
+        model = {
+            index.name: tuple(column.name for column in index.columns)
+            for index in MaterialTransfer.__table__.indexes
+        }
         for name, columns in migration.INDEXES:
             assert actual[name] == model[name] == columns
         for where, index_name in (
@@ -61,8 +66,14 @@ def test_index_migration_preserves_rows_is_repeatable_and_matches_models(tmp_pat
 
 
 def test_mysql_search_compiles_bound_indexable_predicates_and_literal_wildcards():
-    for mode, expected in (("exact", "ID%_!001"), ("prefix", "ID!%!_!!001%"), ("contains", "%ID!%!_!!001%")):
-        statement = select(MaterialTransfer.id).where(search_predicate("ID%_!001", "serial_no", mode))
+    for mode, expected in (
+        ("exact", "ID%_!001"),
+        ("prefix", "ID!%!_!!001%"),
+        ("contains", "%ID!%!_!!001%"),
+    ):
+        statement = select(MaterialTransfer.id).where(
+            search_predicate("ID%_!001", "serial_no", mode)
+        )
         compiled = statement.compile(dialect=mysql.dialect())
         assert expected in compiled.params.values()
         assert "ID%" not in str(compiled)  # the input is bound, never SQL text

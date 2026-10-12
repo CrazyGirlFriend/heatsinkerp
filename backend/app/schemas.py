@@ -1,13 +1,21 @@
 """Supported material-transfer, authentication and administration contracts."""
+
 from __future__ import annotations
+
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
-DIRECT_MATERIAL_TYPE_PATTERN = (
-    "^(raw_material|finished|semi_finished|finished_surplus|semi_finished_surplus|defective|waste|sludge|scrap_chips)$"
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
 )
+
+DIRECT_MATERIAL_TYPE_PATTERN = "^(raw_material|finished|semi_finished|finished_surplus|semi_finished_surplus|defective|waste|sludge|scrap_chips)$"
 SCRAP_MATERIAL_TYPES = ("defective", "waste", "sludge", "scrap_chips")
 
 
@@ -20,7 +28,9 @@ class ProcessingOutput(BaseModel):
     material_type: str = Field(pattern=DIRECT_MATERIAL_TYPE_PATTERN)
     transfer_specification: str | None = Field(default=None, max_length=240)
     sludge_gross_weight: Decimal | None = Field(default=None, gt=0, max_digits=17, decimal_places=6)
-    sludge_content_percent: Decimal | None = Field(default=None, gt=0, le=100, max_digits=5, decimal_places=2)
+    sludge_content_percent: Decimal | None = Field(
+        default=None, gt=0, le=100, max_digits=5, decimal_places=2
+    )
 
     @field_validator("transfer_specification")
     @classmethod
@@ -83,10 +93,20 @@ class MaterialDocumentFields(APIModel):
     special_process: str | None = Field(default=None, max_length=2000)
 
     @field_validator(
-        "source_batch_no", "material_name", "finished_specification",
-        "transfer_specification", "customer_code", "technical_requirements",
-        "product_code", "part_no", "material_shape", "material_description",
-        "outsourced_unit", "purpose_category", "category_level3", "order_category",
+        "source_batch_no",
+        "material_name",
+        "finished_specification",
+        "transfer_specification",
+        "customer_code",
+        "technical_requirements",
+        "product_code",
+        "part_no",
+        "material_shape",
+        "material_description",
+        "outsourced_unit",
+        "purpose_category",
+        "category_level3",
+        "order_category",
         "special_process",
     )
     @classmethod
@@ -125,7 +145,9 @@ class SharedMaterialSerial(APIModel):
     def serialize_planned_weight(self, value):
         return float(value) if value is not None else None
 
-    @field_validator("serial_no", "customer_code", "finished_specification", "planned_specification")
+    @field_validator(
+        "serial_no", "customer_code", "finished_specification", "planned_specification"
+    )
     @classmethod
     def normalize_text(cls, value):
         return value.strip() if value is not None else None
@@ -146,7 +168,9 @@ class SharedMaterialSerial(APIModel):
 
 class WarehouseLocationChoice(APIModel):
     warehouse_location: str | None = Field(default=None, max_length=80)
-    warehouse_location_reservation_key: str | None = Field(default=None, min_length=16, max_length=100)
+    warehouse_location_reservation_key: str | None = Field(
+        default=None, min_length=16, max_length=100
+    )
 
     @field_validator("warehouse_location")
     @classmethod
@@ -162,10 +186,14 @@ class WarehouseLocationChoice(APIModel):
 
 class SludgeMeasurement(BaseModel):
     sludge_gross_weight: Decimal | None = Field(default=None, gt=0, max_digits=17, decimal_places=6)
-    sludge_content_percent: Decimal | None = Field(default=None, gt=0, le=100, max_digits=5, decimal_places=2)
+    sludge_content_percent: Decimal | None = Field(
+        default=None, gt=0, le=100, max_digits=5, decimal_places=2
+    )
 
 
-class MaterialTransferCreate(MaterialTransferDocumentFields, WarehouseLocationChoice, SludgeMeasurement):
+class MaterialTransferCreate(
+    MaterialTransferDocumentFields, WarehouseLocationChoice, SludgeMeasurement
+):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
 
     serial_no: str = Field(min_length=1, max_length=80)
@@ -203,7 +231,9 @@ class OutboundQuantityClearance(BaseModel):
         return value.strip()
 
 
-class MaterialTransferUpdate(MaterialTransferDocumentFields, WarehouseLocationChoice, SludgeMeasurement):
+class MaterialTransferUpdate(
+    MaterialTransferDocumentFields, WarehouseLocationChoice, SludgeMeasurement
+):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
 
     serial_no: str | None = Field(default=None, min_length=1, max_length=80)
@@ -235,12 +265,16 @@ class MaterialTransferUpdate(MaterialTransferDocumentFields, WarehouseLocationCh
         return self
 
 
-class WarehouseReceiptCreate(MaterialTransferDocumentFields, WarehouseLocationChoice, SludgeMeasurement):
+class WarehouseReceiptCreate(
+    MaterialTransferDocumentFields, WarehouseLocationChoice, SludgeMeasurement
+):
     """Explicit stock origin; never impersonate an upstream team or ERP event."""
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
     serial_no: str = Field(default="", max_length=80)
-    shared_serials: list[SharedMaterialSerial] | None = Field(default=None, min_length=2, max_length=20)
+    shared_serials: list[SharedMaterialSerial] | None = Field(
+        default=None, min_length=2, max_length=20
+    )
     material_name: str = Field(min_length=1, max_length=160)
     material_type: str = Field(pattern=DIRECT_MATERIAL_TYPE_PATTERN)
     quantity: int = Field(ge=0, le=2_147_483_647)
@@ -279,7 +313,13 @@ class WarehouseReceiptCreate(MaterialTransferDocumentFields, WarehouseLocationCh
             serials = [member.serial_no.casefold() for member in self.shared_serials]
             if len(set(serials)) != len(serials):
                 raise ValueError("共投流水号不能重复")
-            if self.serial_no or self.customer_code or self.finished_specification or self.delivery_date or self.delivery_quantity:
+            if (
+                self.serial_no
+                or self.customer_code
+                or self.finished_specification
+                or self.delivery_date
+                or self.delivery_quantity
+            ):
                 raise ValueError("共投料的流水号、客户、成品规格与交期须分别填写")
         elif not self.serial_no or self.serial_no.startswith("共投-"):
             raise ValueError("请输入有效流水号，共投编号由系统生成")
@@ -459,7 +499,17 @@ class TeamResponse(APIModel):
     updated_at: datetime
 
 
-AvatarKey = Literal["", "portrait-1", "portrait-2", "portrait-3", "portrait-4", "portrait-5", "portrait-6", "portrait-7", "portrait-8"]
+AvatarKey = Literal[
+    "",
+    "portrait-1",
+    "portrait-2",
+    "portrait-3",
+    "portrait-4",
+    "portrait-5",
+    "portrait-6",
+    "portrait-7",
+    "portrait-8",
+]
 
 
 class ProfileUpdate(APIModel):

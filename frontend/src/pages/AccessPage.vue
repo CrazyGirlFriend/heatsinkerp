@@ -16,11 +16,13 @@ const validationMessage = ref('')
 const checking = computed(() => ['unknown', 'checking'].includes(accessState.status))
 const busy = computed(() => checking.value || accessState.loading)
 const errorMessage = computed(() => validationMessage.value || accessState.error)
-const lockLabel = computed(() => accessState.status === 'error' ? '重新检查连接' : '解锁访问')
+const lockLabel = computed(() => (accessState.status === 'error' ? '重新检查连接' : '解锁访问'))
 
 async function continueToApp(): Promise<void> {
   const destination = safeInternalRedirect(route.query.redirect, DEFAULT_LOGIN_PATH)
-  await router.replace(isAuthenticated.value ? destination : { path: '/login', query: { redirect: destination } })
+  await router.replace(
+    isAuthenticated.value ? destination : { path: '/login', query: { redirect: destination } },
+  )
 }
 
 async function handleSubmit(): Promise<void> {
@@ -84,7 +86,9 @@ async function closeInput(): Promise<void> {
       </button>
 
       <span v-if="checking" class="access-gate__sr-only" role="status">正在检查访问权限…</span>
-      <span v-else-if="accessState.loading" class="access-gate__sr-only" role="status">正在验证…</span>
+      <span v-else-if="accessState.loading" class="access-gate__sr-only" role="status"
+        >正在验证…</span
+      >
 
       <form
         v-if="expanded && accessState.status !== 'error'"
@@ -109,7 +113,13 @@ async function closeInput(): Promise<void> {
           :disabled="busy"
           placeholder="访问口令"
         />
-        <button class="access-gate__submit" type="submit" aria-label="确认解锁" title="确认解锁" :disabled="busy">
+        <button
+          class="access-gate__submit"
+          type="submit"
+          aria-label="确认解锁"
+          title="确认解锁"
+          :disabled="busy"
+        >
           <Loading v-if="busy" class="access-gate__spinner" aria-hidden="true" />
           <ArrowRight v-else aria-hidden="true" />
         </button>
@@ -120,7 +130,9 @@ async function closeInput(): Promise<void> {
         id="access-password-error"
         class="access-gate__error"
         role="alert"
-      >{{ errorMessage }}</p>
+      >
+        {{ errorMessage }}
+      </p>
     </div>
   </main>
 </template>
@@ -159,14 +171,30 @@ async function closeInput(): Promise<void> {
   cursor: pointer;
 }
 
-.access-gate__lock { width: 56px; height: 56px; font-size: 32px; }
-.access-gate__submit { width: 44px; height: 44px; font-size: 18px; }
+.access-gate__lock {
+  width: 56px;
+  height: 56px;
+  font-size: 32px;
+}
+.access-gate__submit {
+  width: 44px;
+  height: 44px;
+  font-size: 18px;
+}
 .access-gate__lock:hover:not(:disabled),
-.access-gate__submit:hover:not(:disabled) { color: var(--text); }
+.access-gate__submit:hover:not(:disabled) {
+  color: var(--text);
+}
 .access-gate__lock:focus-visible,
-.access-gate__submit:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
+.access-gate__submit:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+}
 .access-gate__lock:disabled,
-.access-gate__submit:disabled { cursor: wait; opacity: 0.5; }
+.access-gate__submit:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
 
 .access-gate__form {
   display: flex;
@@ -175,7 +203,9 @@ async function closeInput(): Promise<void> {
   border-bottom: 1px solid var(--line);
 }
 
-.access-gate__form:focus-within { border-bottom-color: var(--primary); }
+.access-gate__form:focus-within {
+  border-bottom-color: var(--primary);
+}
 .access-gate__form input {
   flex: 1;
   min-width: 0;
@@ -188,10 +218,35 @@ async function closeInput(): Promise<void> {
   background: transparent;
   font-size: 16px;
 }
-.access-gate__form input::placeholder { color: var(--subtle); }
-.access-gate__error { margin: 0; color: #b55252; font-size: 13px; line-height: 1.6; text-align: center; }
-.access-gate__spinner { animation: access-spin 800ms linear infinite; }
-.access-gate__sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-@keyframes access-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .access-gate__spinner { animation: none; } }
+.access-gate__form input::placeholder {
+  color: var(--subtle);
+}
+.access-gate__error {
+  margin: 0;
+  color: #b55252;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+}
+.access-gate__spinner {
+  animation: access-spin 800ms linear infinite;
+}
+.access-gate__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@keyframes access-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .access-gate__spinner {
+    animation: none;
+  }
+}
 </style>

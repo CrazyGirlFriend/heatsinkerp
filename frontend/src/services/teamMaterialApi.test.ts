@@ -8,105 +8,370 @@ let status = 200
 const requests: InternalAxiosRequestConfig[] = []
 const originalAdapter = httpClient.defaults.adapter
 beforeEach(() => {
-  requests.length = 0; status = 200
-  httpClient.defaults.adapter = async config => {
+  requests.length = 0
+  status = 200
+  httpClient.defaults.adapter = async (config) => {
     requests.push(config)
     const response = { data, status, statusText: '', headers: new AxiosHeaders(), config }
-    if (status >= 400) throw new AxiosError('request failed', AxiosError.ERR_BAD_REQUEST, config, undefined, response)
+    if (status >= 400)
+      throw new AxiosError(
+        'request failed',
+        AxiosError.ERR_BAD_REQUEST,
+        config,
+        undefined,
+        response,
+      )
     return response
   }
 })
-afterEach(() => { httpClient.defaults.adapter = originalAdapter })
+afterEach(() => {
+  httpClient.defaults.adapter = originalAdapter
+})
 describe('team material API contract', () => {
   it('preserves current dimensions, processing roles and output identity on stock sources', async () => {
-    data = { items: [{ transfer: { id: 19, batch_no: 'JG19', entry_kind: 'processing_output', processing_role: 'remaining', source_transfer_id: 8, transfer_specification: 'original', status: 'received' }, processing_role: 'remaining', current_specification: '20 × 10 × 2 mm', weight_difference: '-1.1', weight_root_transfer_id: 8, available_quantity: 2, available_weight: 40 }], total: 1, page: 1, page_size: 10 }
+    data = {
+      items: [
+        {
+          transfer: {
+            id: 19,
+            batch_no: 'JG19',
+            entry_kind: 'processing_output',
+            processing_role: 'remaining',
+            source_transfer_id: 8,
+            transfer_specification: 'original',
+            status: 'received',
+          },
+          processing_role: 'remaining',
+          current_specification: '20 × 10 × 2 mm',
+          weight_difference: '-1.1',
+          weight_root_transfer_id: 8,
+          available_quantity: 2,
+          available_weight: 40,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    }
     const result = await teamMaterialApi.stock(2)
-    expect(result.items[0]).toMatchObject({ current_specification: '20 × 10 × 2 mm', processing_role: 'remaining', weight_difference: -1.1, weight_root_transfer_id: 8, transfer: { entry_kind: 'processing_output', source_transfer_id: 8, processing_role: 'remaining' } })
-    data = { items: [{ transfer: { id: 20 }, current_specification: '' }], total: 1, page: 1, page_size: 10 }
-    expect((await teamMaterialApi.inventorySources(2, 19)).items[0]).toHaveProperty('current_specification', '')
+    expect(result.items[0]).toMatchObject({
+      current_specification: '20 × 10 × 2 mm',
+      processing_role: 'remaining',
+      weight_difference: -1.1,
+      weight_root_transfer_id: 8,
+      transfer: {
+        entry_kind: 'processing_output',
+        source_transfer_id: 8,
+        processing_role: 'remaining',
+      },
+    })
+    data = {
+      items: [{ transfer: { id: 20 }, current_specification: '' }],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    }
+    expect((await teamMaterialApi.inventorySources(2, 19)).items[0]).toHaveProperty(
+      'current_specification',
+      '',
+    )
   })
   it('passes exact receiving business filters including unassigned receipts', async () => {
     data = { items: [], total: 0, page: 1, page_size: 10 }
     await teamMaterialApi.teamInventory(2, { purpose_id: 12, page: 2 })
     await teamMaterialApi.teamInventory(2, { purpose_id: 0 })
-    expect(requests.map(request => request.url)).toEqual(['/team-materials/2/inventory?purpose_id=12&page=2', '/team-materials/2/inventory?purpose_id=0'])
+    expect(requests.map((request) => request.url)).toEqual([
+      '/team-materials/2/inventory?purpose_id=12&page=2',
+      '/team-materials/2/inventory?purpose_id=0',
+    ])
   })
   it('normalizes ownership without recalculating it and retains observation time', async () => {
-    data = { items: [{ group_id: 19, on_hand_weight: '70', owned_weight: '100', external_pending_weight: '5' }], total: 1, page: 1, page_size: 10, as_of: '2026-09-27T00:00:00Z' }
+    data = {
+      items: [
+        { group_id: 19, on_hand_weight: '70', owned_weight: '100', external_pending_weight: '5' },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 10,
+      as_of: '2026-09-27T00:00:00Z',
+    }
     const result = await teamMaterialApi.teamInventory(2, { availability: 'owned' })
     expect(requests[0]!.url).toBe('/team-materials/2/inventory?availability=owned')
-    expect(result.items[0]).toMatchObject({ owned_weight: 100, on_hand_weight: 70, external_pending_weight: 5, owned_quantity: null, external_pending_quantity: null })
+    expect(result.items[0]).toMatchObject({
+      owned_weight: 100,
+      on_hand_weight: 70,
+      external_pending_weight: 5,
+      owned_quantity: null,
+      external_pending_quantity: null,
+    })
     expect(result.as_of).toBe('2026-09-27T00:00:00Z')
-    data = { items: [{ batch_no: 'TL19', quantity: 2, weight: 3 }], total: 1, page: 1, page_size: 10 }
+    data = {
+      items: [{ batch_no: 'TL19', quantity: 2, weight: 3 }],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    }
     const pending = await teamMaterialApi.inventoryPending(2, 19, { page_size: 10 })
     expect(requests[1]!.url).toBe('/team-materials/2/inventory/19/pending-outbound?page_size=10')
     expect(pending.items[0]).toMatchObject({ batch_no: 'TL19', quantity: 2, weight: 3 })
   })
   it('reads classified inventory and its exact source group through shared team endpoints', async () => {
-    data = { items: [{ group_id: 19, serial_no: '0000123', on_hand_quantity: '4', on_hand_weight: '0.333' }], total: 1, page: 1, page_size: 10 }
-    const result = await teamMaterialApi.teamInventory(2, { source_team_id: 1, material_type: 'finished', availability: 'current' })
-    expect(requests[0]!.url).toBe('/team-materials/2/inventory?source_team_id=1&material_type=finished&availability=current')
-    expect(result.items[0]).toMatchObject({ serial_no: '0000123', on_hand_quantity: 4, on_hand_weight: 0.333 })
-    data = { items: [{ transfer: { id: 19, batch_no: 'TL19' }, on_hand_quantity: '4', on_hand_weight: '0.333' }], total: 1, page: 1, page_size: 10 }
-    const sources = await teamMaterialApi.inventorySources(2, 19, { current_only: true, page_size: 10 })
-    expect(requests[1]!.url).toBe('/team-materials/2/inventory/19/sources?current_only=true&page_size=10')
+    data = {
+      items: [
+        { group_id: 19, serial_no: '0000123', on_hand_quantity: '4', on_hand_weight: '0.333' },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    }
+    const result = await teamMaterialApi.teamInventory(2, {
+      source_team_id: 1,
+      material_type: 'finished',
+      availability: 'current',
+    })
+    expect(requests[0]!.url).toBe(
+      '/team-materials/2/inventory?source_team_id=1&material_type=finished&availability=current',
+    )
+    expect(result.items[0]).toMatchObject({
+      serial_no: '0000123',
+      on_hand_quantity: 4,
+      on_hand_weight: 0.333,
+    })
+    data = {
+      items: [
+        { transfer: { id: 19, batch_no: 'TL19' }, on_hand_quantity: '4', on_hand_weight: '0.333' },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    }
+    const sources = await teamMaterialApi.inventorySources(2, 19, {
+      current_only: true,
+      page_size: 10,
+    })
+    expect(requests[1]!.url).toBe(
+      '/team-materials/2/inventory/19/sources?current_only=true&page_size=10',
+    )
     expect(sources.items[0]).toMatchObject({ transfer: { id: 19 }, on_hand_weight: 0.333 })
-    data = { items: [{ id: 20, batch_no: 'TL20', source_transfer_id: 19, source_transfer_batch_no: 'TL19', quantity: '2', weight: '0.125', status: 'pending' }], total: 11, page: 2, page_size: 10 }
+    data = {
+      items: [
+        {
+          id: 20,
+          batch_no: 'TL20',
+          source_transfer_id: 19,
+          source_transfer_batch_no: 'TL19',
+          quantity: '2',
+          weight: '0.125',
+          status: 'pending',
+        },
+      ],
+      total: 11,
+      page: 2,
+      page_size: 10,
+    }
     const records = await teamMaterialApi.inventoryMovements(2, 19, { page: 2, page_size: 10 })
     expect(requests[2]!.url).toBe('/team-materials/2/inventory/19/movements?page=2&page_size=10')
-    expect(records.items[0]).toMatchObject({ batch_no: 'TL20', source_transfer_batch_no: 'TL19', quantity: 2, weight: 0.125, status: 'pending' })
+    expect(records.items[0]).toMatchObject({
+      batch_no: 'TL20',
+      source_transfer_batch_no: 'TL19',
+      quantity: 2,
+      weight: 0.125,
+      status: 'pending',
+    })
   })
   it('posts an external group with no receiving team and preserves its filtered destination and completion state', async () => {
-    const raw = { dispatch_no: 'CK-EXTERNAL', entry_kind: 'inspection_shipment', external_destination: '客户仓库', next_team: null, status: 'dispatched', total_quantity: 4, total_weight: '0.005', items: [{ batch_no: 'TL-EXTERNAL', entry_kind: 'inspection_shipment', external_destination: '客户仓库', next_team: null, status: 'dispatched', stock_tracked: false }] }
+    const raw = {
+      dispatch_no: 'CK-EXTERNAL',
+      entry_kind: 'inspection_shipment',
+      external_destination: '客户仓库',
+      next_team: null,
+      status: 'dispatched',
+      total_quantity: 4,
+      total_weight: '0.005',
+      items: [
+        {
+          batch_no: 'TL-EXTERNAL',
+          entry_kind: 'inspection_shipment',
+          external_destination: '客户仓库',
+          next_team: null,
+          status: 'dispatched',
+          stock_tracked: false,
+        },
+      ],
+    }
     data = raw
-    const payload = { entry_kind: 'inspection_shipment' as const, external_destination: '客户仓库', idempotency_key: 'same-external-group', lines: [{ source_transfer_id: 9, quantity: 4, weight: 0.005 }] }
+    const payload = {
+      entry_kind: 'inspection_shipment' as const,
+      external_destination: '客户仓库',
+      idempotency_key: 'same-external-group',
+      lines: [{ source_transfer_id: 9, quantity: 4, weight: 0.005 }],
+    }
     const group = await teamMaterialApi.createDispatch(8, payload)
     expect(JSON.parse(requests[0]!.data)).toEqual(payload)
     expect(Object.keys(group)).toEqual(['items'])
     expect(requests[0]!.url).toBe('/team-materials/8/outbound-batches')
-    expect(group.items[0]).toMatchObject({ status: 'dispatched', next_team: { id: '', name: '客户仓库' }, stock_tracked: false })
+    expect(group.items[0]).toMatchObject({
+      status: 'dispatched',
+      next_team: { id: '', name: '客户仓库' },
+      stock_tracked: false,
+    })
     data = { items: raw.items, total: 1, page: 1, page_size: 20 }
-    await teamMaterialApi.dispatches(8, { entry_kind: 'inspection_shipment', status: 'dispatched', query: '客户' })
-    expect(requests[1]!.url).toBe('/team-materials/8/outbound-batches?entry_kind=inspection_shipment&status=dispatched&query=%E5%AE%A2%E6%88%B7')
+    await teamMaterialApi.dispatches(8, {
+      entry_kind: 'inspection_shipment',
+      status: 'dispatched',
+      query: '客户',
+    })
+    expect(requests[1]!.url).toBe(
+      '/team-materials/8/outbound-batches?entry_kind=inspection_shipment&status=dispatched&query=%E5%AE%A2%E6%88%B7',
+    )
   })
   it('posts warehouse receipts without a source or destination and reads a filtered receipt page', async () => {
-    const raw = { id: 50, batch_no: 'TL-ROOT', entry_kind: 'warehouse_receipt', source_team: null, source_team_id: null, next_team: { id: 901, name: '库房', kind: 'warehouse' }, status: 'received', stock_tracked: true, locked: true, history: [{ id: 10, action: 'stocked', actor: '库管', occurred_at: '2026-09-07T00:00:00Z', changes: {} }] }
+    const raw = {
+      id: 50,
+      batch_no: 'TL-ROOT',
+      entry_kind: 'warehouse_receipt',
+      source_team: null,
+      source_team_id: null,
+      next_team: { id: 901, name: '库房', kind: 'warehouse' },
+      status: 'received',
+      stock_tracked: true,
+      locked: true,
+      history: [
+        {
+          id: 10,
+          action: 'stocked',
+          actor: '库管',
+          occurred_at: '2026-09-07T00:00:00Z',
+          changes: {},
+        },
+      ],
+    }
     data = raw
-    const body = { serial_no: 'QA-IN', material_name: '铜钼', material_type: 'semi_finished' as const, quantity: 0, weight: 0.005, notes: '到货入库', idempotency_key: 'one-root' }
+    const body = {
+      serial_no: 'QA-IN',
+      material_name: '铜钼',
+      material_type: 'semi_finished' as const,
+      quantity: 0,
+      weight: 0.005,
+      notes: '到货入库',
+      idempotency_key: 'one-root',
+    }
     const saved = await teamMaterialApi.createReceipt(901, body)
     expect(requests[0]!.url).toBe('/team-materials/901/receipts')
     expect(JSON.parse(requests[0]!.data)).toEqual(body)
-    expect(saved).toMatchObject({ entry_kind: 'warehouse_receipt', source_team: { id: '', code: '', name: '库房手工入库' }, locked: true, stock_tracked: true, history: [{ action: 'stocked' }] })
+    expect(saved).toMatchObject({
+      entry_kind: 'warehouse_receipt',
+      source_team: { id: '', code: '', name: '库房手工入库' },
+      locked: true,
+      stock_tracked: true,
+      history: [{ action: 'stocked' }],
+    })
     data = { items: [raw], total: 1, page: 2, page_size: 10 }
-    const page = await teamMaterialApi.receipts(901, { query: '铜 钼', material_type: 'semi_finished', page: 2, page_size: 10 })
-    expect(requests[1]!.url).toBe('/team-materials/901/receipts?query=%E9%93%9C+%E9%92%BC&material_type=semi_finished&page=2&page_size=10')
+    const page = await teamMaterialApi.receipts(901, {
+      query: '铜 钼',
+      material_type: 'semi_finished',
+      page: 2,
+      page_size: 10,
+    })
+    expect(requests[1]!.url).toBe(
+      '/team-materials/901/receipts?query=%E9%93%9C+%E9%92%BC&material_type=semi_finished&page=2&page_size=10',
+    )
     expect(page.items[0]).toEqual(saved)
   })
-  it.each([[409, 'insufficient available stock for source transfer 12', '该批次可转出库存不足'], [403, 'only the owning team can write', '当前账号不能操作此班组物料']])('localizes English API error %s for the material workspace', async (code, detail, message) => {
-    status = Number(code); data = { detail }
-    await expect(teamMaterialApi.overview(2)).rejects.toMatchObject({ status: code, message: expect.stringContaining(String(message)) })
+  it.each([
+    [409, 'insufficient available stock for source transfer 12', '该批次可转出库存不足'],
+    [403, 'only the owning team can write', '当前账号不能操作此班组物料'],
+  ])('localizes English API error %s for the material workspace', async (code, detail, message) => {
+    status = Number(code)
+    data = { detail }
+    await expect(teamMaterialApi.overview(2)).rejects.toMatchObject({
+      status: code,
+      message: expect.stringContaining(String(message)),
+    })
   })
 
   it('preserves unknown balances, numeric decimals, and empty material names without inventing zero', async () => {
-    data = { totals: { available_quantity: 0, available_weight: '1.005' }, materials: [{ material_name: null, received_quantity: 0 }], pending_incoming: { count: 0, weight: '0.000' }, legacy_received_count: 2 }
+    data = {
+      totals: { available_quantity: 0, available_weight: '1.005' },
+      materials: [{ material_name: null, received_quantity: 0 }],
+      pending_incoming: { count: 0, weight: '0.000' },
+      legacy_received_count: 2,
+    }
     const result = await teamMaterialApi.overview(914)
     expect(requests[0]!.url).toBe('/team-materials/914/overview')
-    expect(result.totals).toMatchObject({ available_quantity: 0, available_weight: 1.005, received_quantity: null })
+    expect(result.totals).toMatchObject({
+      available_quantity: 0,
+      available_weight: 1.005,
+      received_quantity: null,
+    })
     expect(result.materials[0]).toMatchObject({ material_name: null, received_quantity: 0 })
     expect(result.pending_incoming).toEqual({ count: 0, quantity: null, weight: 0 })
   })
   it('keeps stock filters and linked transfer identity, and rejects invalid team ids', async () => {
-    data = { items: [{ transfer: { id: 19, batch_no: 'TL19', source_transfer_id: 8, source_transfer_batch_no: 'TL8', stock_tracked: true, dispatch_no: 'CK3', material_type: 'sludge', sludge_gross_weight: '1.005', sludge_content_percent: '10', sludge_percent_locked: true }, sludge_available_gross_weight: '1.005', available_quantity: '8', available_weight: '0.333' }], total: 1, page: 2, page_size: 10 }
-    const result = await teamMaterialApi.stock(914, { query: '铜 钼', material_type: 'sludge', availability: 'all', page: 2, page_size: 10 })
-    expect(requests[0]!.url).toBe('/team-materials/914/stock?query=%E9%93%9C+%E9%92%BC&material_type=sludge&availability=all&page=2&page_size=10')
-    expect(result.items[0]).toMatchObject({ available_quantity: 8, available_weight: 0.333, transfer: { source_transfer_id: 8, stock_tracked: true, dispatch_no: 'CK3' } })
-    expect(result.items[0]).toMatchObject({ sludge_available_gross_weight: 1.005, transfer: { sludge_gross_weight: 1.005, sludge_content_percent: 10, sludge_percent_locked: true } })
+    data = {
+      items: [
+        {
+          transfer: {
+            id: 19,
+            batch_no: 'TL19',
+            source_transfer_id: 8,
+            source_transfer_batch_no: 'TL8',
+            stock_tracked: true,
+            dispatch_no: 'CK3',
+            material_type: 'sludge',
+            sludge_gross_weight: '1.005',
+            sludge_content_percent: '10',
+            sludge_percent_locked: true,
+          },
+          sludge_available_gross_weight: '1.005',
+          available_quantity: '8',
+          available_weight: '0.333',
+        },
+      ],
+      total: 1,
+      page: 2,
+      page_size: 10,
+    }
+    const result = await teamMaterialApi.stock(914, {
+      query: '铜 钼',
+      material_type: 'sludge',
+      availability: 'all',
+      page: 2,
+      page_size: 10,
+    })
+    expect(requests[0]!.url).toBe(
+      '/team-materials/914/stock?query=%E9%93%9C+%E9%92%BC&material_type=sludge&availability=all&page=2&page_size=10',
+    )
+    expect(result.items[0]).toMatchObject({
+      available_quantity: 8,
+      available_weight: 0.333,
+      transfer: { source_transfer_id: 8, stock_tracked: true, dispatch_no: 'CK3' },
+    })
+    expect(result.items[0]).toMatchObject({
+      sludge_available_gross_weight: 1.005,
+      transfer: {
+        sludge_gross_weight: 1.005,
+        sludge_content_percent: 10,
+        sludge_percent_locked: true,
+      },
+    })
     expect(() => teamMaterialApi.stock(0)).toThrow('无效的班组编号')
   })
   it('passes idempotency and untouched source lines atomically and retains conflict status', async () => {
-    const payload = { next_team_id: 3, idempotency_key: 'unchanged-retry', lines: [{ source_transfer_id: 5, quantity: 0, weight: 1.005 }, { source_transfer_id: 8, quantity: 5, weight: 0 }] }
-    status = 409; data = { detail: '余额不足' }
-    await expect(teamMaterialApi.createDispatch(2, payload)).rejects.toMatchObject({ status: 409, message: '余额不足' } satisfies Partial<TeamMaterialApiError>)
+    const payload = {
+      next_team_id: 3,
+      idempotency_key: 'unchanged-retry',
+      lines: [
+        { source_transfer_id: 5, quantity: 0, weight: 1.005 },
+        { source_transfer_id: 8, quantity: 5, weight: 0 },
+      ],
+    }
+    status = 409
+    data = { detail: '余额不足' }
+    await expect(teamMaterialApi.createDispatch(2, payload)).rejects.toMatchObject({
+      status: 409,
+      message: '余额不足',
+    } satisfies Partial<TeamMaterialApiError>)
     expect(requests[0]!.url).toBe('/team-materials/2/outbound-batches')
     expect(JSON.parse(requests[0]!.data)).toEqual(payload)
   })

@@ -37,7 +37,10 @@ def test_fifty_card_pages_and_filtering_before_pagination(client, warehouse):
     assert catalog(client, state="disabled", page_size=50)["total"] == 50
     assert client.get("/api/warehouse-locations", params={"state": "unknown"}).status_code == 422
     assert client.get("/api/warehouse-locations", params={"page_size": 101}).status_code == 422
-    assert client.get("/api/warehouse-locations", headers=warehouse["other_headers"]).status_code == 403
+    assert (
+        client.get("/api/warehouse-locations", headers=warehouse["other_headers"]).status_code
+        == 403
+    )
 
 
 def test_current_stock_pending_documents_and_form_locks_remain_distinct(client, warehouse):
@@ -49,10 +52,16 @@ def test_current_stock_pending_documents_and_form_locks_remain_distinct(client, 
     pending_slot = create_slot(client, "B-待签收")
     source = production_source(client, warehouse)
     pending_lease = claim(client, pending_slot, warehouse["other_headers"]).json()
-    outgoing = return_rows(client, warehouse, source, "pending", {
-        "warehouse_location": pending_slot["name"],
-        "warehouse_location_reservation_key": pending_lease["key"],
-    })
+    outgoing = return_rows(
+        client,
+        warehouse,
+        source,
+        "pending",
+        {
+            "warehouse_location": pending_slot["name"],
+            "warehouse_location_reservation_key": pending_lease["key"],
+        },
+    )
     assert outgoing.status_code == 201, outgoing.text
     draft = create_slot(client, "C-填写中")
     assert claim(client, draft, warehouse["headers"]).status_code == 200
@@ -76,7 +85,9 @@ def test_current_stock_pending_documents_and_form_locks_remain_distinct(client, 
     current = catalog(client, state="occupied")["items"][0]
     assert current["has_stock"] and current["draft_locked"]
     for key in ("created_at", "received_at"):
-        assert datetime.fromisoformat(current["batches"][0][key]) == datetime.fromisoformat(first[key])
+        assert datetime.fromisoformat(current["batches"][0][key]) == datetime.fromisoformat(
+            first[key]
+        )
     incoming = catalog(client, state="pending")["items"][0]
     assert not incoming["has_stock"] and not incoming["draft_locked"]
     assert incoming["batches"][0]["received_at"] is None

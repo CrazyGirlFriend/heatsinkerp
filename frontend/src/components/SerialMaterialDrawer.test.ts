@@ -12,113 +12,362 @@ import type { StockBatch } from '@/types/teamMaterials'
 const live = vi.hoisted(() => ({ refresh: async () => {} }))
 vi.mock('@/composables/useLiveRefresh', async () => {
   const { ref } = await import('vue')
-  return { useLiveRefresh: (refresh: () => Promise<void>) => { live.refresh = refresh; return { message: ref(''), request: vi.fn() } } }
+  return {
+    useLiveRefresh: (refresh: () => Promise<void>) => {
+      live.refresh = refresh
+      return { message: ref(''), request: vi.fn() }
+    },
+  }
 })
 
 afterEach(() => vi.restoreAllMocks())
 
-it.each(['incoming', 'outgoing'])('separates all %s record fields inside serial detail', async tab => {
-  const transfer = normalizeMaterialTransfer({ id: 12, batch_no: 'TL-12', serial_no: '000128', material_name: '铜钼', transfer_specification: '10 × 20', quantity: 2, weight: 1.234, source_team: { id: 1, name: '库房' }, next_team: { id: 4, name: '研磨' }, transferred_by: '张师傅', transferred_at: '2026-09-27T00:00:00Z' })
-  vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({ items: [serialFixture('000128')], total: 1, page: 1, page_size: 1 })
-  vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
-  vi.spyOn(materialTransferApi, 'list').mockResolvedValue({ items: [transfer], total: 1, page: 1, page_size: 10 })
-  const wrapper = mount(SerialMaterialDrawer, { props: { modelValue: true, teamId: 4, serialNo: '000128' }, global: { stubs: { ElDialog: { template: '<section><slot/><slot name="footer"/></section>' }, MaterialTransferDrawer: true } } })
-  try {
-    await flushPromises()
-    wrapper.getComponent({ name: 'ElTabs' }).vm.$emit('update:modelValue', tab); await flushPromises()
-    expect(wrapper.findAll('.serial-record-table thead th').map(cell => cell.text())).toEqual(['交接批次', '材质', '规格', '来源', '去向', '件数', '重量 (kg)', '状态', '登记人', '登记时间'])
-    expect(wrapper.get('.serial-record-table tbody tr').findAll('td').map(cell => cell.text())).toEqual(['TL-12', '铜钼', '10 × 20', '库房', '研磨', '2', '1.234', '待签收', '张师傅', formatDateTime(transfer.transferred_at)])
-    expect(wrapper.find('.serial-record-table .material-amount, .serial-record-table small').exists()).toBe(false)
-  } finally { wrapper.unmount() }
-})
+it.each(['incoming', 'outgoing'])(
+  'separates all %s record fields inside serial detail',
+  async (tab) => {
+    const transfer = normalizeMaterialTransfer({
+      id: 12,
+      batch_no: 'TL-12',
+      serial_no: '000128',
+      material_name: '铜钼',
+      transfer_specification: '10 × 20',
+      quantity: 2,
+      weight: 1.234,
+      source_team: { id: 1, name: '库房' },
+      next_team: { id: 4, name: '研磨' },
+      transferred_by: '张师傅',
+      transferred_at: '2026-09-27T00:00:00Z',
+    })
+    vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({
+      items: [serialFixture('000128')],
+      total: 1,
+      page: 1,
+      page_size: 1,
+    })
+    vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 10,
+    })
+    vi.spyOn(materialTransferApi, 'list').mockResolvedValue({
+      items: [transfer],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    })
+    const wrapper = mount(SerialMaterialDrawer, {
+      props: { modelValue: true, teamId: 4, serialNo: '000128' },
+      global: {
+        stubs: {
+          ElDialog: { template: '<section><slot/><slot name="footer"/></section>' },
+          MaterialTransferDrawer: true,
+        },
+      },
+    })
+    try {
+      await flushPromises()
+      wrapper.getComponent({ name: 'ElTabs' }).vm.$emit('update:modelValue', tab)
+      await flushPromises()
+      expect(wrapper.findAll('.serial-record-table thead th').map((cell) => cell.text())).toEqual([
+        '交接批次',
+        '材质',
+        '规格',
+        '来源',
+        '去向',
+        '件数',
+        '重量 (kg)',
+        '状态',
+        '登记人',
+        '登记时间',
+      ])
+      expect(
+        wrapper
+          .get('.serial-record-table tbody tr')
+          .findAll('td')
+          .map((cell) => cell.text()),
+      ).toEqual([
+        'TL-12',
+        '铜钼',
+        '10 × 20',
+        '库房',
+        '研磨',
+        '2',
+        '1.234',
+        '待签收',
+        '张师傅',
+        formatDateTime(transfer.transferred_at),
+      ])
+      expect(
+        wrapper.find('.serial-record-table .material-amount, .serial-record-table small').exists(),
+      ).toBe(false)
+    } finally {
+      wrapper.unmount()
+    }
+  },
+)
 
 it('supports source-batch dispatch and loss only for writable available inventory', async () => {
-  const source = (id: number, quantity = 10): StockBatch => ({ transfer: normalizeMaterialTransfer({ id, batch_no: `TL-${id}`, serial_no: 'SERIAL-DETAIL', status: 'received' }), available_quantity: quantity, available_weight: 0, on_hand_quantity: quantity, on_hand_weight: 0, owned_quantity: quantity, owned_weight: 0, reserved_quantity: 0, reserved_weight: 0, lost_quantity: 0, lost_weight: 0, received_quantity: quantity, received_weight: 0, dispatched_quantity: 0, dispatched_weight: 0, in_transit_quantity: 0, in_transit_weight: 0 })
+  const source = (id: number, quantity = 10): StockBatch => ({
+    transfer: normalizeMaterialTransfer({
+      id,
+      batch_no: `TL-${id}`,
+      serial_no: 'SERIAL-DETAIL',
+      status: 'received',
+    }),
+    available_quantity: quantity,
+    available_weight: 0,
+    on_hand_quantity: quantity,
+    on_hand_weight: 0,
+    owned_quantity: quantity,
+    owned_weight: 0,
+    reserved_quantity: 0,
+    reserved_weight: 0,
+    lost_quantity: 0,
+    lost_weight: 0,
+    received_quantity: quantity,
+    received_weight: 0,
+    dispatched_quantity: 0,
+    dispatched_weight: 0,
+    in_transit_quantity: 0,
+    in_transit_weight: 0,
+  })
   const rows = [source(1), source(2), source(3, 0)]
-  vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({ items: [serialFixture('SERIAL-DETAIL')], total: 1, page: 1, page_size: 1 })
-  vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({ items: rows, total: 3, page: 1, page_size: 10 })
-  const wrapper = mount(SerialMaterialDrawer, { props: { modelValue: true, teamId: 914, serialNo: 'SERIAL-DETAIL', canWrite: false }, global: { stubs: { ElDialog: { name: 'ElDialog', props: { modelValue: Boolean, alignCenter: Boolean, appendToBody: Boolean }, template: '<section><slot/><slot name="footer"/></section>' }, MaterialTransferDrawer: true, MaterialDispatchDrawer: true } } })
-  const button = (label: string) => wrapper.findAll('button').find(item => item.text() === label)!
+  vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({
+    items: [serialFixture('SERIAL-DETAIL')],
+    total: 1,
+    page: 1,
+    page_size: 1,
+  })
+  vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({
+    items: rows,
+    total: 3,
+    page: 1,
+    page_size: 10,
+  })
+  const wrapper = mount(SerialMaterialDrawer, {
+    props: { modelValue: true, teamId: 914, serialNo: 'SERIAL-DETAIL', canWrite: false },
+    global: {
+      stubs: {
+        ElDialog: {
+          name: 'ElDialog',
+          props: { modelValue: Boolean, alignCenter: Boolean, appendToBody: Boolean },
+          template: '<section><slot/><slot name="footer"/></section>',
+        },
+        MaterialTransferDrawer: true,
+        MaterialDispatchDrawer: true,
+      },
+    },
+  })
+  const button = (label: string) => wrapper.findAll('button').find((item) => item.text() === label)!
   try {
     await flushPromises()
     const dialog = wrapper.getComponent({ name: 'ElDialog' })
-    expect(dialog.props()).toMatchObject({ modelValue: true, alignCenter: true, appendToBody: true })
+    expect(dialog.props()).toMatchObject({
+      modelValue: true,
+      alignCenter: true,
+      appendToBody: true,
+    })
     expect(dialog.classes()).toContain('material-detail-dialog')
-    expect(teamMaterialApi.stock).toHaveBeenCalledWith(914, expect.objectContaining({ serial_no: 'SERIAL-DETAIL', availability: 'all' }))
+    expect(teamMaterialApi.stock).toHaveBeenCalledWith(
+      914,
+      expect.objectContaining({ serial_no: 'SERIAL-DETAIL', availability: 'all' }),
+    )
     expect(wrapper.find('.serial-stock-actions').exists()).toBe(false)
     expect(wrapper.find('input[type=checkbox]').exists()).toBe(false)
-    const headings = wrapper.findAll('.serial-record-table thead th').map(cell => cell.text())
+    const headings = wrapper.findAll('.serial-record-table thead th').map((cell) => cell.text())
     const cells = wrapper.get('.serial-record-table tbody tr').findAll('td')
     expect(cells[headings.indexOf('库存件数')]!.text()).toBe('10')
     expect(cells[headings.indexOf('库存重量 (kg)')]!.text()).toBe('0')
     expect(wrapper.find('.serial-record-table .material-amount').exists()).toBe(false)
-    await wrapper.setProps({ canWrite: true }); await flushPromises()
-    expect(wrapper.get('label[aria-label="选择 TL-3"] input').attributes('disabled')).toBeUndefined()
+    await wrapper.setProps({ canWrite: true })
+    await flushPromises()
+    expect(
+      wrapper.get('label[aria-label="选择 TL-3"] input').attributes('disabled'),
+    ).toBeUndefined()
     await wrapper.get('label[aria-label="选择本页可用批次"] input').setValue(true)
     await button('批量出库').trigger('click')
     expect(wrapper.emitted('action')?.[0]).toEqual(['dispatch', rows])
     await button('登记丢失').trigger('click')
     expect(wrapper.emitted('action')?.[1]).toEqual(['loss', [rows[0]]])
-    vi.mocked(teamMaterialApi.stock).mockResolvedValue({ items: rows.map(row => ({ ...row, available_quantity: 0 })), total: 3, page: 1, page_size: 10 })
-    await live.refresh(); await flushPromises()
+    vi.mocked(teamMaterialApi.stock).mockResolvedValue({
+      items: rows.map((row) => ({ ...row, available_quantity: 0 })),
+      total: 3,
+      page: 1,
+      page_size: 10,
+    })
+    await live.refresh()
+    await flushPromises()
     expect(button('批量出库').attributes('disabled')).toBeUndefined()
     expect(wrapper.get('.serial-stock-actions').text()).toContain('已选 3')
     await wrapper.setProps({ canWrite: false })
     expect(wrapper.find('.serial-stock-actions').exists()).toBe(false)
-  } finally { wrapper.unmount() }
+  } finally {
+    wrapper.unmount()
+  }
 })
 
 it('keeps incoming and lost amounts separate from current stock and preserves live refresh', async () => {
   const summary = serialFixture('SERIAL-DETAIL')
-  vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({ items: [summary], total: 1, page: 1, page_size: 1 })
-  vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
-  const wrapper = mount(SerialMaterialDrawer, { props: { modelValue: false, teamId: 914, serialNo: summary.serial_no }, global: { stubs: { ElDialog: { props: ['modelValue'], template: '<section v-if="modelValue"><slot name="header"/><slot/><slot name="footer"/></section>' }, ElTabs: true, ElTable: true, ElPagination: true, MaterialTransferDrawer: true, MaterialDispatchDrawer: true } } })
+  vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({
+    items: [summary],
+    total: 1,
+    page: 1,
+    page_size: 1,
+  })
+  vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 10,
+  })
+  const wrapper = mount(SerialMaterialDrawer, {
+    props: { modelValue: false, teamId: 914, serialNo: summary.serial_no },
+    global: {
+      stubs: {
+        ElDialog: {
+          props: ['modelValue'],
+          template:
+            '<section v-if="modelValue"><slot name="header"/><slot/><slot name="footer"/></section>',
+        },
+        ElTabs: true,
+        ElTable: true,
+        ElPagination: true,
+        MaterialTransferDrawer: true,
+        MaterialDispatchDrawer: true,
+      },
+    },
+  })
   try {
     await wrapper.setProps({ modelValue: true })
     await flushPromises()
-    expect(teamMaterialApi.stock).toHaveBeenCalledWith(914, expect.objectContaining({ page_size: 10 }))
+    expect(teamMaterialApi.stock).toHaveBeenCalledWith(
+      914,
+      expect.objectContaining({ page_size: 10 }),
+    )
     expect(wrapper.getComponent(ElPagination).props('pageSizes')).toEqual([10, 20, 50, 100])
     const fields = wrapper.get('.el-descriptions')
     expect(fields.text()).toContain('来料待签收')
     expect(fields.text()).toContain('累计丢失')
-    expect(fields.findAllComponents(MaterialAmount).map((item: VueWrapper) => item.props())).toMatchObject([
+    expect(
+      fields.findAllComponents(MaterialAmount).map((item: VueWrapper) => item.props()),
+    ).toMatchObject([
       { quantity: summary.pending_incoming_quantity, weight: summary.pending_incoming_weight },
       { quantity: summary.lost_quantity, weight: summary.lost_weight },
     ])
     expect(fields.text()).toContain('最近更新')
     expect(fields.text()).toContain(formatDateTime(summary.last_activity_at))
     const table = wrapper.getComponent({ name: 'ElTable' }).element
-    vi.mocked(teamMaterialApi.serials).mockResolvedValue({ items: [{ ...summary, owned_quantity: 55, on_hand_quantity: 45 }], total: 1, page: 1, page_size: 1 })
-    await live.refresh(); await flushPromises()
+    vi.mocked(teamMaterialApi.serials).mockResolvedValue({
+      items: [{ ...summary, owned_quantity: 55, on_hand_quantity: 45 }],
+      total: 1,
+      page: 1,
+      page_size: 1,
+    })
+    await live.refresh()
+    await flushPromises()
     expect(wrapper.getComponent({ name: 'ElTable' }).element).toBe(table)
     expect(wrapper.get('.serial-balances').text()).toContain('55')
     vi.mocked(teamMaterialApi.stock).mockRejectedValueOnce(new Error('offline'))
     await expect(live.refresh()).rejects.toThrow()
-    await flushPromises(); expect(wrapper.getComponent({ name: 'ElTable' }).element).toBe(table)
-  } finally { wrapper.unmount() }
+    await flushPromises()
+    expect(wrapper.getComponent({ name: 'ElTable' }).element).toBe(table)
+  } finally {
+    wrapper.unmount()
+  }
 })
 
 it.each([
-  { label: 'normal stock and waste, without pending outbound', owned: [60, 89.206], available: [48, 7.68], scrap: [12, 81.526], pending: [0, 0] },
-  { label: 'normal stock, waste and pending outbound together', owned: [60, 89.206], available: [38, 6.08], scrap: [12, 81.526], pending: [10, 1.6] },
-  { label: 'all stock already sent but not confirmed', owned: [60, 89.206], available: [0, 0], scrap: [0, 0], pending: [60, 89.206] },
-  { label: 'weight-only waste', owned: [0, 81.526], available: [0, 0], scrap: [0, 81.526], pending: [0, 0] },
-  { label: 'unknown balances', owned: [null, null], available: [null, null], scrap: [null, null], pending: [0, 0] },
+  {
+    label: 'normal stock and waste, without pending outbound',
+    owned: [60, 89.206],
+    available: [48, 7.68],
+    scrap: [12, 81.526],
+    pending: [0, 0],
+  },
+  {
+    label: 'normal stock, waste and pending outbound together',
+    owned: [60, 89.206],
+    available: [38, 6.08],
+    scrap: [12, 81.526],
+    pending: [10, 1.6],
+  },
+  {
+    label: 'all stock already sent but not confirmed',
+    owned: [60, 89.206],
+    available: [0, 0],
+    scrap: [0, 0],
+    pending: [60, 89.206],
+  },
+  {
+    label: 'weight-only waste',
+    owned: [0, 81.526],
+    available: [0, 0],
+    scrap: [0, 81.526],
+    pending: [0, 0],
+  },
+  {
+    label: 'unknown balances',
+    owned: [null, null],
+    available: [null, null],
+    scrap: [null, null],
+    pending: [0, 0],
+  },
 ])('explains $label using separate API amounts', async ({ owned, available, scrap, pending }) => {
-  const summary = { ...serialFixture('YS-007'), owned_quantity: owned[0], owned_weight: owned[1], available_quantity: available[0]!, available_weight: available[1]!, scrap_quantity: scrap[0], scrap_weight: scrap[1], pending_outgoing_quantity: pending[0]!, pending_outgoing_weight: pending[1]! }
-  vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({ items: [summary], total: 1, page: 1, page_size: 1 })
-  vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({ items: [], total: 51, page: 1, page_size: 10 })
-  const wrapper = mount(SerialMaterialDrawer, { props: { modelValue: true, teamId: 1, serialNo: 'YS-007' }, global: { stubs: { ElDialog: { template: '<section><slot/></section>' }, ElTable: true, MaterialTransferDrawer: true } } })
+  const summary = {
+    ...serialFixture('YS-007'),
+    owned_quantity: owned[0],
+    owned_weight: owned[1],
+    available_quantity: available[0]!,
+    available_weight: available[1]!,
+    scrap_quantity: scrap[0],
+    scrap_weight: scrap[1],
+    pending_outgoing_quantity: pending[0]!,
+    pending_outgoing_weight: pending[1]!,
+  }
+  vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({
+    items: [summary],
+    total: 1,
+    page: 1,
+    page_size: 1,
+  })
+  vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({
+    items: [],
+    total: 51,
+    page: 1,
+    page_size: 10,
+  })
+  const wrapper = mount(SerialMaterialDrawer, {
+    props: { modelValue: true, teamId: 1, serialNo: 'YS-007' },
+    global: {
+      stubs: {
+        ElDialog: { template: '<section><slot/></section>' },
+        ElTable: true,
+        MaterialTransferDrawer: true,
+      },
+    },
+  })
   try {
     await flushPromises()
     const balances = wrapper.get('.serial-balances')
-    expect(balances.findAll('dt').map(item => item.text())).toEqual(['库存合计', '正常料可转出', '废料未转出', '转出待确认'])
-    expect(balances.findAllComponents(MaterialAmount).map((item: VueWrapper) => item.props())).toMatchObject([owned, available, scrap, pending].map(([quantity, weight]) => ({ quantity, weight })))
+    expect(balances.findAll('dt').map((item) => item.text())).toEqual([
+      '库存合计',
+      '正常料可转出',
+      '废料未转出',
+      '转出待确认',
+    ])
+    expect(
+      balances.findAllComponents(MaterialAmount).map((item: VueWrapper) => item.props()),
+    ).toMatchObject(
+      [owned, available, scrap, pending].map(([quantity, weight]) => ({ quantity, weight })),
+    )
     expect(balances.text()).toContain('未转出的正常料，不含废料')
     expect(balances.text()).toContain('包括废品、废料、废屑、废泥')
     expect(balances.text()).toContain('已转出，不能再次转出')
     expect(balances.text()).toContain('包含尚未确认的转出物料')
     expect(balances.text()).not.toContain('累计丢失')
     if (owned[0] === null) expect(balances.findAll('dd')[0]!.text()).toContain('—')
-  } finally { wrapper.unmount() }
+  } finally {
+    wrapper.unmount()
+  }
 })

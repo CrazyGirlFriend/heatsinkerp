@@ -1,11 +1,10 @@
 from datetime import datetime, timedelta
 
-import pytest
-
 from app import material_analytics
 from app.database import SessionLocal
 from app.models import MaterialTransfer
-from test_material_stock import stock_setup, receive_lot, dispatch, loss, endpoint
+from test_material_stock import dispatch, endpoint, loss, receive_lot
+from test_material_stock import stock_setup as stock_setup
 from test_material_transfers import _create
 
 
@@ -30,11 +29,33 @@ def test_serial_aggregates_before_pagination_and_preserves_real_balances(client,
     a = receive_lot(client, s, quantity=60, weight=6)
     b = receive_lot(client, s, key="second", quantity=40, weight=4)
     identify([a, b], "SERIAL-001", finished_quantity=300, transfer_specification="10×20")
-    confirmed = dispatch(client, s, [{"source_transfer_id": a["id"], "quantity": 60, "weight": 6}]).json()["items"][0]
-    assert client.post(f"/api/material-transfers/{confirmed['batch_no']}/confirm", headers=s["third_headers"], json={"idempotency_key": "confirmed"}).status_code == 200
-    assert dispatch(client, s, [{"source_transfer_id": b["id"], "quantity": 10, "weight": 1}], idempotency_key="pending").status_code == 201
+    confirmed = dispatch(
+        client, s, [{"source_transfer_id": a["id"], "quantity": 60, "weight": 6}]
+    ).json()["items"][0]
+    assert (
+        client.post(
+            f"/api/material-transfers/{confirmed['batch_no']}/confirm",
+            headers=s["third_headers"],
+            json={"idempotency_key": "confirmed"},
+        ).status_code
+        == 200
+    )
+    assert (
+        dispatch(
+            client,
+            s,
+            [{"source_transfer_id": b["id"], "quantity": 10, "weight": 1}],
+            idempotency_key="pending",
+        ).status_code
+        == 201
+    )
     assert loss(client, s, b).status_code == 201
-    assert _create(client, s, serial_no="SERIAL-001", idempotency_key="incoming", quantity=15, weight=1.5).status_code == 201
+    assert (
+        _create(
+            client, s, serial_no="SERIAL-001", idempotency_key="incoming", quantity=15, weight=1.5
+        ).status_code
+        == 201
+    )
     result = get(client, s, "serials")
     assert result["total"] == 1
     row = result["items"][0]
@@ -68,11 +89,34 @@ def test_serial_availability_filters_aggregated_balance_before_pagination(client
     s = stock_setup
     reserved = receive_lot(client, s, key="reserved", quantity=10, weight=1)
     identify([reserved], "RESERVED")
-    assert dispatch(client, s, [{"source_transfer_id": reserved["id"], "quantity": 10, "weight": 1}]).status_code == 201
+    assert (
+        dispatch(
+            client, s, [{"source_transfer_id": reserved["id"], "quantity": 10, "weight": 1}]
+        ).status_code
+        == 201
+    )
     weight_only = receive_lot(client, s, key="weight", quantity=10, weight=2)
     identify([weight_only], "WEIGHT-ONLY")
-    assert dispatch(client, s, [{"source_transfer_id": weight_only["id"], "quantity": 10, "weight": 1}], idempotency_key="reserve-pieces").status_code == 201
-    assert _create(client, s, serial_no="INCOMING-ONLY", idempotency_key="waiting-only", quantity=5, weight=1).status_code == 201
+    assert (
+        dispatch(
+            client,
+            s,
+            [{"source_transfer_id": weight_only["id"], "quantity": 10, "weight": 1}],
+            idempotency_key="reserve-pieces",
+        ).status_code
+        == 201
+    )
+    assert (
+        _create(
+            client,
+            s,
+            serial_no="INCOMING-ONLY",
+            idempotency_key="waiting-only",
+            quantity=5,
+            weight=1,
+        ).status_code
+        == 201
+    )
     assert get(client, s, "serials")["total"] == 3
     result = get(client, s, "serials?availability=available&page_size=1")
     assert result["total"] == 1 and len(result["items"]) == 1
@@ -90,22 +134,35 @@ def test_pagination_is_for_unique_serials_and_exact_detail_search(client, stock_
     first = get(client, stock_setup, "serials")
     second = get(client, stock_setup, "serials?page=2")
     assert first["total"] == 22 and len(first["items"]) == 20 and len(second["items"]) == 2
-    assert not ({row["serial_no"] for row in first["items"]} & {row["serial_no"] for row in second["items"]})
+    assert not (
+        {row["serial_no"] for row in first["items"]} & {row["serial_no"] for row in second["items"]}
+    )
     assert len(get(client, stock_setup, "serials?page_size=100")["items"]) == 22
     assert get(client, stock_setup, "serials?serial_no=FLOW-page-01")["total"] == 1
     assert get(client, stock_setup, "stock?serial_no=FLOW-page-01&availability=all")["total"] == 1
     assert get(client, stock_setup, "serials?query=%25")["total"] == 0
 
 
-def test_stock_age_uses_remaining_original_lots_not_latest_serial_activity(client, stock_setup, monkeypatch):
+def test_stock_age_uses_remaining_original_lots_not_latest_serial_activity(
+    client, stock_setup, monkeypatch
+):
     now = datetime(2026, 9, 12, 12)
     monkeypatch.setattr(material_analytics, "utcnow", lambda: now)
     old = receive_lot(client, stock_setup, quantity=100, weight=10)
     new = receive_lot(client, stock_setup, key="new", quantity=20, weight=2)
     identify([old], "SAME", received_at=now - timedelta(days=10))
     identify([new], "SAME", received_at=now - timedelta(hours=12))
-    item = dispatch(client, stock_setup, [{"source_transfer_id": old["id"], "quantity": 60, "weight": 6}]).json()["items"][0]
-    assert client.post(f"/api/material-transfers/{item['batch_no']}/confirm", headers=stock_setup["third_headers"], json={"idempotency_key": "age-out"}).status_code == 200
+    item = dispatch(
+        client, stock_setup, [{"source_transfer_id": old["id"], "quantity": 60, "weight": 6}]
+    ).json()["items"][0]
+    assert (
+        client.post(
+            f"/api/material-transfers/{item['batch_no']}/confirm",
+            headers=stock_setup["third_headers"],
+            json={"idempotency_key": "age-out"},
+        ).status_code
+        == 200
+    )
     report = get(client, stock_setup, "analytics?days=7")
     ages = {row["key"]: row for row in report["stock_age"]}
     assert ages["ge7"]["quantity"] == 40 and ages["lt1"]["quantity"] == 20
@@ -113,12 +170,21 @@ def test_stock_age_uses_remaining_original_lots_not_latest_serial_activity(clien
     assert get(client, stock_setup, "serials?stock_age=3_7")["total"] == 0
 
 
-def test_trend_uses_confirmation_and_factory_day_waiting_excludes_inventory(client, stock_setup, monkeypatch):
+def test_trend_uses_confirmation_and_factory_day_waiting_excludes_inventory(
+    client, stock_setup, monkeypatch
+):
     now = datetime(2026, 9, 12, 12)
     monkeypatch.setattr(material_analytics, "utcnow", lambda: now)
     lot = receive_lot(client, stock_setup, quantity=35, weight=3.5)
-    identify([lot], "CONFIRMED", created_at=now - timedelta(days=40), received_at=datetime(2026, 9, 11, 17))
-    pending = _create(client, stock_setup, serial_no="WAITING", idempotency_key="wait", quantity=50, weight=5).json()
+    identify(
+        [lot],
+        "CONFIRMED",
+        created_at=now - timedelta(days=40),
+        received_at=datetime(2026, 9, 11, 17),
+    )
+    pending = _create(
+        client, stock_setup, serial_no="WAITING", idempotency_key="wait", quantity=50, weight=5
+    ).json()
     identify([pending], "WAITING", created_at=now - timedelta(days=4))
     report = get(client, stock_setup, "analytics?days=7")
     assert len(report["trend"]) == 7
@@ -126,16 +192,36 @@ def test_trend_uses_confirmation_and_factory_day_waiting_excludes_inventory(clie
     assert report["trend"][-1]["incoming"]["quantity"] == 35
     assert sum(row["incoming"]["quantity"] for row in report["trend"]) == 35
     assert sum(row["quantity"] for row in report["material_types"]) == 35
-    assert next(row for row in report["waiting_age"] if row["key"] == "3_7")["incoming"]["quantity"] == 50
-    assert get(client, stock_setup, "serials?waiting_direction=incoming&waiting_age=3_7")["items"][0]["serial_no"] == "WAITING"
-    assert get(client, stock_setup, "serials?activity_kind=incoming&activity_day=2026-09-12")["items"][0]["serial_no"] == "CONFIRMED"
+    assert (
+        next(row for row in report["waiting_age"] if row["key"] == "3_7")["incoming"]["quantity"]
+        == 50
+    )
+    assert (
+        get(client, stock_setup, "serials?waiting_direction=incoming&waiting_age=3_7")["items"][0][
+            "serial_no"
+        ]
+        == "WAITING"
+    )
+    assert (
+        get(client, stock_setup, "serials?activity_kind=incoming&activity_day=2026-09-12")["items"][
+            0
+        ]["serial_no"]
+        == "CONFIRMED"
+    )
 
 
 def test_empty_and_validation_and_authentication(client, stock_setup):
     report = get(client, stock_setup, "analytics")
-    assert report["stock_ranking"] == [] and all(row["incoming"]["quantity"] == 0 for row in report["trend"])
+    assert report["stock_ranking"] == [] and all(
+        row["incoming"]["quantity"] == 0 for row in report["trend"]
+    )
     assert get(client, stock_setup, "serials")["total"] == 0
-    for suffix in ("analytics?days=99", "analytics?metric=money", "serials?page_size=101", "serials?stock_age=invalid"):
+    for suffix in (
+        "analytics?days=99",
+        "analytics?metric=money",
+        "serials?page_size=101",
+        "serials?stock_age=invalid",
+    ):
         assert client.get(endpoint(stock_setup, suffix)).status_code == 422
     assert client.get("/api/team-materials/999999/analytics").status_code == 404
     original = client.headers.pop("Authorization")

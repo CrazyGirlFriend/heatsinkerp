@@ -6,7 +6,7 @@ import pytest
 from test_processing_records import receive
 from test_quantity_adjustments import change
 from test_warehouse_classification import base, confirm, dispatch
-from test_warehouse_receipts import warehouse  # noqa: F401
+from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 
 @pytest.fixture

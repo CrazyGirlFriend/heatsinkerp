@@ -204,7 +204,7 @@ def test_two_origin_batches_keep_fifo_and_confirmed_shipment_dates(client, wareh
         sum(r["shipped"] for r in client.get("/api/factory-dashboard/deliveries").json()["items"])
         == 30
     )
-    assert sent['status'] == 'dispatched'
+    assert sent["status"] == "dispatched"
     with SessionLocal() as db:
         db.get(MaterialTransfer, sent["id"]).dispatched_at = datetime(2026, 9, 25, 2)
         db.commit()

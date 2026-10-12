@@ -1,7 +1,7 @@
 """Allow signed book stock while retaining ledger reconciliation and audit data."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "20261008_0026"
 down_revision = "20260929_0025"

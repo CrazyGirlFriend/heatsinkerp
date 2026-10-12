@@ -35,8 +35,13 @@ export const useTeamDirectoryStore = defineStore('teamDirectory', () => {
     error.value = ''
     try {
       const directory = await teamDirectoryApi.listTeamDirectory()
-      if (version !== requestVersion || token !== authStore.session?.access_token
-        || !canEnterSite.value || !isAuthenticated.value) return
+      if (
+        version !== requestVersion ||
+        token !== authStore.session?.access_token ||
+        !canEnterSite.value ||
+        !isAuthenticated.value
+      )
+        return
       items.value = directory
       loaded.value = true
     } catch (requestError) {

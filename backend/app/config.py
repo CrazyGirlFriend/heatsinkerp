@@ -20,10 +20,7 @@ def _database_url() -> str:
     host = os.getenv("MYSQL_HOST", "127.0.0.1")
     port = int(os.getenv("MYSQL_PORT", "3306"))
     database = quote(os.getenv("MYSQL_DATABASE", "heatsink_rep"), safe="")
-    return (
-        f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}"
-        "?charset=utf8mb4"
-    )
+    return f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}?charset=utf8mb4"
 
 
 def _message_queue_url() -> str:
@@ -60,12 +57,25 @@ class Settings:
     def __post_init__(self) -> None:
         if self.main_system_base_url:
             url = urlsplit(self.main_system_base_url)
-            if (url.scheme != "https" or not url.hostname or url.username or url.password or url.query or url.fragment
-                or any(c.isspace() for c in self.main_system_base_url)):
-                raise ValueError("MAIN_SYSTEM_BASE_URL must be an HTTPS URL without credentials, query or fragment")
+            if (
+                url.scheme != "https"
+                or not url.hostname
+                or url.username
+                or url.password
+                or url.query
+                or url.fragment
+                or any(c.isspace() for c in self.main_system_base_url)
+            ):
+                raise ValueError(
+                    "MAIN_SYSTEM_BASE_URL must be an HTTPS URL without credentials, query or fragment"
+                )
             _ = url.port  # Validate malformed/out-of-range ports at startup.
-            if not self.main_system_token or any(ord(c) < 33 or ord(c) > 126 for c in self.main_system_token):
-                raise ValueError("MAIN_SYSTEM_TOKEN must be a nonempty printable ASCII bearer token")
+            if not self.main_system_token or any(
+                ord(c) < 33 or ord(c) > 126 for c in self.main_system_token
+            ):
+                raise ValueError(
+                    "MAIN_SYSTEM_TOKEN must be a nonempty printable ASCII bearer token"
+                )
         if not 0.1 <= self.main_system_timeout_seconds <= 30:
             raise ValueError("MAIN_SYSTEM_TIMEOUT_SECONDS must be between 0.1 and 30")
         if self.site_access_password and len(self.site_access_secret.encode("utf-8")) < 32:
@@ -94,9 +104,7 @@ def get_settings() -> Settings:
         seed_admin_display_name=os.getenv("SEED_ADMIN_DISPLAY_NAME", "系统管理员"),
         site_access_password=os.getenv("SITE_ACCESS_PASSWORD", ""),
         site_access_secret=os.getenv("SITE_ACCESS_SECRET", ""),
-        site_access_secure_cookie=_as_bool(
-            os.getenv("SITE_ACCESS_SECURE_COOKIE"), default=False
-        ),
+        site_access_secure_cookie=_as_bool(os.getenv("SITE_ACCESS_SECURE_COOKIE"), default=False),
         main_system_base_url=os.getenv("MAIN_SYSTEM_BASE_URL", "").strip().rstrip("/"),
         main_system_token=os.getenv("MAIN_SYSTEM_TOKEN", ""),
         main_system_timeout_seconds=float(os.getenv("MAIN_SYSTEM_TIMEOUT_SECONDS", "5")),

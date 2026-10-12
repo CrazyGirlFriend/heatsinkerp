@@ -1,20 +1,50 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginPage from '@/pages/LoginPage.vue'
 import AccessPage from '@/pages/AccessPage.vue'
-import { currentUser, isAdmin, isAuthenticated, refreshCurrentUser, restoreSession } from '@/stores/auth'
+import {
+  currentUser,
+  isAdmin,
+  isAuthenticated,
+  refreshCurrentUser,
+  restoreSession,
+} from '@/stores/auth'
 import { canEnterSite, checkSiteAccess, SITE_ACCESS_REQUIRED_EVENT } from '@/stores/access'
-import { DEFAULT_LOGIN_PATH, defaultAuthenticatedPath, safeInternalRedirect } from '@/utils/navigation'
+import {
+  DEFAULT_LOGIN_PATH,
+  defaultAuthenticatedPath,
+  safeInternalRedirect,
+} from '@/utils/navigation'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
-    { path: '/access', name: 'access', component: AccessPage, meta: { title: '访问验证', public: true } },
+    {
+      path: '/access',
+      name: 'access',
+      component: AccessPage,
+      meta: { title: '访问验证', public: true },
+    },
     { path: '/login', name: 'login', component: LoginPage, meta: { title: '登录', public: true } },
-    { path: '/', name: 'home', component: () => import('@/pages/FactoryInventoryPage.vue'), meta: { title: '班组材质库存' } },
+    {
+      path: '/',
+      name: 'home',
+      component: () => import('@/pages/FactoryInventoryPage.vue'),
+      meta: { title: '班组材质库存' },
+    },
     { path: '/factory-stock', name: 'factory-stock', redirect: '/' },
-    { path: '/factory-analysis', name: 'factory-analysis', component: () => import('@/pages/FactoryOverviewPage.vue'), meta: { title: '全厂数据分析' } },
+    {
+      path: '/factory-analysis',
+      name: 'factory-analysis',
+      component: () => import('@/pages/FactoryOverviewPage.vue'),
+      meta: { title: '全厂数据分析' },
+    },
     { path: '/factory-live', redirect: '/' },
-    { path: '/flow-preview/:view(team|chain)', name: 'flow-preview', component: () => import('@/pages/FlowPreviewPage.vue'), meta: { title: '物料流向预览', standalone: true } },
+    {
+      path: '/flow-preview/:view(team|chain)',
+      name: 'flow-preview',
+      component: () => import('@/pages/FlowPreviewPage.vue'),
+      meta: { title: '物料流向预览', standalone: true },
+    },
     {
       path: '/team-workspaces/:teamId',
       name: 'team-workspace',
@@ -30,7 +60,11 @@ const router = createRouter({
     {
       path: '/transfer-batches/scan',
       name: 'transfer-batch-scan',
-      redirect: (to) => ({ path: '/transfer-batches', query: { ...to.query, scan: '1' }, hash: to.hash }),
+      redirect: (to) => ({
+        path: '/transfer-batches',
+        query: { ...to.query, scan: '1' },
+        hash: to.hash,
+      }),
     },
     {
       path: '/material-trace',
@@ -50,7 +84,12 @@ const router = createRouter({
       component: () => import('@/pages/AccountsPage.vue'),
       meta: { title: '班组长管理', adminOnly: true },
     },
-    { path: '/settings/main-system', name: 'main-system-configuration', component: () => import('@/pages/MainSystemConfigurationPage.vue'), meta: { title: '主系统对接', adminOnly: true } },
+    {
+      path: '/settings/main-system',
+      name: 'main-system-configuration',
+      component: () => import('@/pages/MainSystemConfigurationPage.vue'),
+      meta: { title: '主系统对接', adminOnly: true },
+    },
     { path: '/settings', redirect: '/settings/teams' },
     {
       path: '/scan',
@@ -72,15 +111,26 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   restoreSession()
   const unlocked = await checkSiteAccess()
-  let destination = safeInternalRedirect(to.name === 'login' || to.name === 'access' ? to.query.redirect : to.fullPath, DEFAULT_LOGIN_PATH)
-  if (!isAuthenticated.value && to.fullPath === '/' && !to.redirectedFrom) destination = DEFAULT_LOGIN_PATH
-  if (!unlocked) return to.name === 'access' ? true : { path: '/access', query: { redirect: destination } }
+  let destination = safeInternalRedirect(
+    to.name === 'login' || to.name === 'access' ? to.query.redirect : to.fullPath,
+    DEFAULT_LOGIN_PATH,
+  )
+  if (!isAuthenticated.value && to.fullPath === '/' && !to.redirectedFrom)
+    destination = DEFAULT_LOGIN_PATH
+  if (!unlocked)
+    return to.name === 'access' ? true : { path: '/access', query: { redirect: destination } }
   if (to.meta.public && isAuthenticated.value) {
-    try { await refreshCurrentUser() } catch { /* The guarded destination retries account verification. */ }
+    try {
+      await refreshCurrentUser()
+    } catch {
+      /* The guarded destination retries account verification. */
+    }
     destination = safeInternalRedirect(to.query.redirect, DEFAULT_LOGIN_PATH)
   }
   if (to.name === 'access') {
-    return isAuthenticated.value ? destination : { path: '/login', query: { redirect: destination } }
+    return isAuthenticated.value
+      ? destination
+      : { path: '/login', query: { redirect: destination } }
   }
   if (to.meta.public) {
     return to.name === 'login' && isAuthenticated.value ? destination : true
@@ -100,7 +150,12 @@ router.beforeEach(async (to) => {
     const user = currentUser.value
     const teamId = Number(user?.team_id)
     // Old scanner bookmarks only navigate. Never sign a batch from a URL.
-    if (user?.role === 'TEAM' && user.active !== false && Number.isSafeInteger(teamId) && teamId > 0) {
+    if (
+      user?.role === 'TEAM' &&
+      user.active !== false &&
+      Number.isSafeInteger(teamId) &&
+      teamId > 0
+    ) {
       return { path: `/team-workspaces/${teamId}`, query: { tab: 'pending' }, replace: true }
     }
     const { scan: _scan, ...query } = to.query
@@ -108,11 +163,15 @@ router.beforeEach(async (to) => {
   }
   if (to.name === 'material-trace' && to.query.team_id !== undefined) {
     const id = Number(to.query.team_id)
-    if (!Number.isSafeInteger(id) || id < 1) return { path: defaultAuthenticatedPath(currentUser.value) }
+    if (!Number.isSafeInteger(id) || id < 1)
+      return { path: defaultAuthenticatedPath(currentUser.value) }
     const { team_id: _team, ...query } = to.query
     return { path: `/team-workspaces/${id}`, query: { ...query, tab: 'history' } }
   }
-  if ((to.name === 'material-trace' || to.name === 'flow-preview' && to.params.view === 'chain') && !isAdmin.value) {
+  if (
+    (to.name === 'material-trace' || (to.name === 'flow-preview' && to.params.view === 'chain')) &&
+    !isAdmin.value
+  ) {
     return { path: defaultAuthenticatedPath(currentUser.value) }
   }
   if (to.meta.adminOnly && !isAdmin.value) return { path: '/transfer-batches' }
@@ -123,7 +182,10 @@ if (typeof window !== 'undefined') {
   window.addEventListener(SITE_ACCESS_REQUIRED_EVENT, () => {
     const current = router.currentRoute.value
     if (current.name === 'access') return
-    const destination = safeInternalRedirect(current.name === 'login' ? current.query.redirect : current.fullPath, DEFAULT_LOGIN_PATH)
+    const destination = safeInternalRedirect(
+      current.name === 'login' ? current.query.redirect : current.fullPath,
+      DEFAULT_LOGIN_PATH,
+    )
     void router.replace({ path: '/access', query: { redirect: destination } })
   })
 }

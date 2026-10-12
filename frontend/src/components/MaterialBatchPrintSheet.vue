@@ -8,14 +8,31 @@ defineExpose({ prepare: () => documentRef.value?.prepare() })
 </script>
 
 <template>
-  <article class="material-batches-print-sheet" aria-label="多批次转料打印单"><MaterialTransferPrintDocument ref="documentRef" :items="items" /></article>
+  <article class="material-batches-print-sheet" aria-label="多批次转料打印单">
+    <MaterialTransferPrintDocument ref="documentRef" :items="items" />
+  </article>
 </template>
 
 <style scoped>
-.material-batches-print-sheet { width: 186mm; margin-inline: auto; color: #111; background: #fff; }
+.material-batches-print-sheet {
+  width: 186mm;
+  margin-inline: auto;
+  color: #111;
+  background: #fff;
+}
 @media print {
-  @page { size: A4 portrait; margin: 12mm; }
-  :global(body.material-batches-printing > :not(.material-batches-print-sheet)) { display: none !important; }
-  .material-batches-print-sheet { display: block !important; width: 186mm; margin: 0; padding: 0; }
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+  :global(body.material-batches-printing > :not(.material-batches-print-sheet)) {
+    display: none !important;
+  }
+  .material-batches-print-sheet {
+    display: block !important;
+    width: 186mm;
+    margin: 0;
+    padding: 0;
+  }
 }
 </style>

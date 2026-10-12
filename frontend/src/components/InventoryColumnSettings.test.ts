@@ -3,90 +3,198 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElCheckbox, ElMessage, ElPopover } from 'element-plus'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
-import { defaultInventoryColumns, inventoryColumns, normalizeInventoryColumns, type InventoryColumnChoice } from '@/types/inventoryColumns'
+import {
+  defaultInventoryColumns,
+  inventoryColumns,
+  normalizeInventoryColumns,
+  type InventoryColumnChoice,
+} from '@/types/inventoryColumns'
 import { serialFixture } from '@/testFixtures/materialAnalytics'
 import { warehouseColumns, warehouseLegacyColumnKeys } from '@/types/teamInventory'
 
 let wrapper: VueWrapper
 const key = 'heatsink.inventory-columns.v1:1:914'
 beforeEach(() => localStorage.clear())
-afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); localStorage.clear() })
+afterEach(() => {
+  wrapper?.unmount()
+  vi.restoreAllMocks()
+  localStorage.clear()
+})
 async function render(storageKey: string | null = key) {
-  wrapper = mount(InventoryColumnSettings, { props: { storageKey }, global: { stubs: { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } } } })
+  wrapper = mount(InventoryColumnSettings, {
+    props: { storageKey },
+    global: { stubs: { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } } },
+  })
   await flushPromises()
 }
-function button(text: string) { return wrapper.findAll('button').find(item => item.text() === text)! }
-function check(label: string, value: boolean) { wrapper.findAllComponents(ElCheckbox).find(item => item.text() === label)!.vm.$emit('update:modelValue', value) }
+function button(text: string) {
+  return wrapper.findAll('button').find((item) => item.text() === text)!
+}
+function check(label: string, value: boolean) {
+  wrapper
+    .findAllComponents(ElCheckbox)
+    .find((item) => item.text() === label)!
+    .vm.$emit('update:modelValue', value)
+}
 const latest = () => wrapper.emitted('change')!.at(-1)![0] as InventoryColumnChoice<string>[]
 
 describe('inventory display columns', () => {
-  it.each([true, false])('carries the old material type visibility into split fields, then preserves independent choices (visible=%s)', async visible => {
-    const old = [{ key: 'material_type', visible }, { key: 'owned_weight', visible: true }]
-    localStorage.setItem(key, JSON.stringify(old))
-    const renderWarehouse = async () => {
-      wrapper = mount(InventoryColumnSettings, { props: { storageKey: key, columns: warehouseColumns, legacyKeys: warehouseLegacyColumnKeys }, global: { stubs: { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } } } })
-      await flushPromises()
-    }
-    await renderWarehouse()
-    expect(latest().slice(0, 4)).toEqual([{ key: 'material_type', visible }, { key: 'processing_role', visible }, { key: 'transfer_specification', visible }, { key: 'owned_weight', visible: true }])
-    expect(localStorage.getItem(key)).toBe(JSON.stringify(old))
-    check('物料类型', true); check('加工分类', false); check('实际尺寸', false)
-    await button('应用').trigger('click')
-    const saved = latest()
-    wrapper.unmount(); await renderWarehouse()
-    expect(latest()).toEqual(saved)
-    expect(latest().find(item => item.key === 'processing_role')?.visible).toBe(false)
-    expect(latest().find(item => item.key === 'transfer_specification')?.visible).toBe(false)
-  })
+  it.each([true, false])(
+    'carries the old material type visibility into split fields, then preserves independent choices (visible=%s)',
+    async (visible) => {
+      const old = [
+        { key: 'material_type', visible },
+        { key: 'owned_weight', visible: true },
+      ]
+      localStorage.setItem(key, JSON.stringify(old))
+      const renderWarehouse = async () => {
+        wrapper = mount(InventoryColumnSettings, {
+          props: {
+            storageKey: key,
+            columns: warehouseColumns,
+            legacyKeys: warehouseLegacyColumnKeys,
+          },
+          global: {
+            stubs: { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } },
+          },
+        })
+        await flushPromises()
+      }
+      await renderWarehouse()
+      expect(latest().slice(0, 4)).toEqual([
+        { key: 'material_type', visible },
+        { key: 'processing_role', visible },
+        { key: 'transfer_specification', visible },
+        { key: 'owned_weight', visible: true },
+      ])
+      expect(localStorage.getItem(key)).toBe(JSON.stringify(old))
+      check('物料类型', true)
+      check('加工分类', false)
+      check('实际尺寸', false)
+      await button('应用').trigger('click')
+      const saved = latest()
+      wrapper.unmount()
+      await renderWarehouse()
+      expect(latest()).toEqual(saved)
+      expect(latest().find((item) => item.key === 'processing_role')?.visible).toBe(false)
+      expect(latest().find((item) => item.key === 'transfer_specification')?.visible).toBe(false)
+    },
+  )
   it('keeps saved dimensions hidden and in place when migrating only the missing processing column', async () => {
-    localStorage.setItem(key, JSON.stringify([{ key: 'transfer_specification', visible: false }, { key: 'material_type', visible: true }]))
-    wrapper = mount(InventoryColumnSettings, { props: { storageKey: key, columns: warehouseColumns, legacyKeys: warehouseLegacyColumnKeys }, global: { stubs: { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } } } })
+    localStorage.setItem(
+      key,
+      JSON.stringify([
+        { key: 'transfer_specification', visible: false },
+        { key: 'material_type', visible: true },
+      ]),
+    )
+    wrapper = mount(InventoryColumnSettings, {
+      props: { storageKey: key, columns: warehouseColumns, legacyKeys: warehouseLegacyColumnKeys },
+      global: { stubs: { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } } },
+    })
     await flushPromises()
-    expect(latest().slice(0, 3)).toEqual([{ key: 'transfer_specification', visible: false }, { key: 'material_type', visible: true }, { key: 'processing_role', visible: true }])
+    expect(latest().slice(0, 3)).toEqual([
+      { key: 'transfer_specification', visible: false },
+      { key: 'material_type', visible: true },
+      { key: 'processing_role', visible: true },
+    ])
   })
   it('expands old combined balances without duplicates and saves quantity and weight independently', async () => {
-    const old = [{ key: 'on_hand_weight', visible: false }, { key: 'stock_balance', visible: true }, { key: 'on_hand_quantity', visible: false }, { key: 'owned_balance', visible: true }, { key: 'dispatchable_balance', visible: true }, { key: 'pending_transfer', visible: true }, { key: 'removed_field', visible: true }]
+    const old = [
+      { key: 'on_hand_weight', visible: false },
+      { key: 'stock_balance', visible: true },
+      { key: 'on_hand_quantity', visible: false },
+      { key: 'owned_balance', visible: true },
+      { key: 'dispatchable_balance', visible: true },
+      { key: 'pending_transfer', visible: true },
+      { key: 'removed_field', visible: true },
+    ]
     localStorage.setItem(key, JSON.stringify(old))
     const renderWarehouse = async () => {
-      wrapper = mount(InventoryColumnSettings, { props: { storageKey: key, columns: warehouseColumns, legacyKeys: warehouseLegacyColumnKeys }, global: { stubs: { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } } } })
+      wrapper = mount(InventoryColumnSettings, {
+        props: {
+          storageKey: key,
+          columns: warehouseColumns,
+          legacyKeys: warehouseLegacyColumnKeys,
+        },
+        global: {
+          stubs: { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } },
+        },
+      })
       await flushPromises()
     }
     await renderWarehouse()
-    expect(latest().filter(item => item.visible).map(item => item.key)).toEqual(['on_hand_weight', 'on_hand_quantity', 'owned_quantity', 'owned_weight', 'dispatchable_quantity', 'dispatchable_weight', 'in_transit_quantity', 'in_transit_weight'])
-    expect(new Set(latest().map(item => item.key)).size).toBe(warehouseColumns.length)
+    expect(
+      latest()
+        .filter((item) => item.visible)
+        .map((item) => item.key),
+    ).toEqual([
+      'on_hand_weight',
+      'on_hand_quantity',
+      'owned_quantity',
+      'owned_weight',
+      'dispatchable_quantity',
+      'dispatchable_weight',
+      'in_transit_quantity',
+      'in_transit_weight',
+    ])
+    expect(new Set(latest().map((item) => item.key)).size).toBe(warehouseColumns.length)
     expect(localStorage.getItem(key)).toBe(JSON.stringify(old))
     check('未转出件数', false)
     await button('应用').trigger('click')
     const saved = latest()
-    wrapper.unmount(); await renderWarehouse()
+    wrapper.unmount()
+    await renderWarehouse()
     expect(latest()).toEqual(saved)
-    expect(latest().find(item => item.key === 'on_hand_quantity')?.visible).toBe(false)
-    expect(latest().find(item => item.key === 'on_hand_weight')?.visible).toBe(true)
+    expect(latest().find((item) => item.key === 'on_hand_quantity')?.visible).toBe(false)
+    expect(latest().find((item) => item.key === 'on_hand_weight')?.visible).toBe(true)
     expect(JSON.parse(localStorage.getItem(key)!)).toEqual(saved)
   })
   it('keeps current defaults and never offers batch-level columns', async () => {
     await render()
-    expect(latest().filter(item => item.visible).map(item => item.key)).toEqual(['material_name', 'transfer_specification', 'available_quantity', 'available_weight'])
+    expect(
+      latest()
+        .filter((item) => item.visible)
+        .map((item) => item.key),
+    ).toEqual(['material_name', 'transfer_specification', 'available_quantity', 'available_weight'])
     expect(wrapper.text()).not.toMatch(/批次号|上序|下序|原单批号/)
-    expect(inventoryColumns.map(column => column.key)).not.toContain('source_batch_no')
+    expect(inventoryColumns.map((column) => column.key)).not.toContain('source_batch_no')
     expect(wrapper.text()).toContain('流水号、操作列始终显示')
   })
   it('saves only on apply, retains ordering and reloads by account and team', async () => {
     await render()
-    check('材质', false); check('客户编号', true)
+    check('材质', false)
+    check('客户编号', true)
     await wrapper.get('button[aria-label="上移客户编号"]').trigger('click')
     await button('取消').trigger('click')
     expect(localStorage.getItem(key)).toBeNull()
     expect(latest()).toEqual(defaultInventoryColumns())
-    wrapper.getComponent(ElPopover).vm.$emit('update:visible', true); await flushPromises()
-    expect(wrapper.findAllComponents(ElCheckbox).find(item => item.text() === '材质')!.props('modelValue')).toBe(true)
-    expect(wrapper.findAllComponents(ElCheckbox).find(item => item.text() === '客户编号')!.props('modelValue')).toBe(false)
-    check('材质', false); check('客户编号', true)
+    wrapper.getComponent(ElPopover).vm.$emit('update:visible', true)
+    await flushPromises()
+    expect(
+      wrapper
+        .findAllComponents(ElCheckbox)
+        .find((item) => item.text() === '材质')!
+        .props('modelValue'),
+    ).toBe(true)
+    expect(
+      wrapper
+        .findAllComponents(ElCheckbox)
+        .find((item) => item.text() === '客户编号')!
+        .props('modelValue'),
+    ).toBe(false)
+    check('材质', false)
+    check('客户编号', true)
     await wrapper.get('button[aria-label="上移客户编号"]').trigger('click')
     await button('应用').trigger('click')
-    expect(latest().filter(item => item.visible).map(item => item.key)).toEqual(['transfer_specification', 'available_quantity', 'customer_code', 'available_weight'])
+    expect(
+      latest()
+        .filter((item) => item.visible)
+        .map((item) => item.key),
+    ).toEqual(['transfer_specification', 'available_quantity', 'customer_code', 'available_weight'])
     const saved = latest()
-    wrapper.unmount(); await render()
+    wrapper.unmount()
+    await render()
     expect(latest()).toEqual(saved)
     await wrapper.setProps({ storageKey: 'heatsink.inventory-columns.v1:1:915' })
     expect(latest()).toEqual(defaultInventoryColumns())
@@ -94,34 +202,46 @@ describe('inventory display columns', () => {
     expect(latest()).toEqual(defaultInventoryColumns())
     await wrapper.setProps({ storageKey: key })
     expect(latest()).toEqual(saved)
-    await button('恢复默认').trigger('click'); await button('应用').trigger('click')
+    await button('恢复默认').trigger('click')
+    await button('应用').trigger('click')
     expect(JSON.parse(localStorage.getItem(key)!)).toEqual(defaultInventoryColumns())
   })
   it('allows all optional fields to be hidden and preserves the choice', async () => {
     await render()
-    for (const checkbox of wrapper.findAllComponents(ElCheckbox)) checkbox.vm.$emit('update:modelValue', false)
+    for (const checkbox of wrapper.findAllComponents(ElCheckbox))
+      checkbox.vm.$emit('update:modelValue', false)
     await button('应用').trigger('click')
-    wrapper.unmount(); await render()
-    expect(latest().some(item => item.visible)).toBe(false)
+    wrapper.unmount()
+    await render()
+    expect(latest().some((item) => item.visible)).toBe(false)
   })
   it('keeps newly introduced columns hidden for an existing customized layout', async () => {
     localStorage.setItem(key, JSON.stringify([{ key: 'product_code', visible: true }]))
     await render()
-    expect(latest().filter(item => item.visible).map(item => item.key)).toEqual(['product_code'])
-    await button('恢复默认').trigger('click'); await button('应用').trigger('click')
+    expect(
+      latest()
+        .filter((item) => item.visible)
+        .map((item) => item.key),
+    ).toEqual(['product_code'])
+    await button('恢复默认').trigger('click')
+    await button('应用').trigger('click')
     expect(latest()).toEqual(defaultInventoryColumns())
   })
   it('does not overwrite a quick edit when the opening animation finishes', async () => {
     await render()
     const popover = wrapper.getComponent(ElPopover)
-    popover.vm.$emit('update:visible', true); await flushPromises()
+    popover.vm.$emit('update:visible', true)
+    await flushPromises()
     check('产品编号', true)
-    popover.vm.$emit('show'); await flushPromises()
+    popover.vm.$emit('show')
+    await flushPromises()
     await button('应用').trigger('click')
-    expect(latest().find(item => item.key === 'product_code')?.visible).toBe(true)
-    popover.vm.$emit('update:visible', true); await flushPromises()
+    expect(latest().find((item) => item.key === 'product_code')?.visible).toBe(true)
+    popover.vm.$emit('update:visible', true)
+    await flushPromises()
     await button('恢复默认').trigger('click')
-    popover.vm.$emit('show'); await flushPromises()
+    popover.vm.$emit('show')
+    await flushPromises()
     await button('应用').trigger('click')
     expect(latest()).toEqual(defaultInventoryColumns())
   })
@@ -129,22 +249,35 @@ describe('inventory display columns', () => {
     localStorage.setItem(key, '{broken')
     await render()
     expect(latest()).toEqual(defaultInventoryColumns())
-    const normalized = normalizeInventoryColumns([{ key: 'product_code', visible: true }, { key: 'product_code', visible: false }, { key: 'batch_no', visible: true }, null, { key: 'available_weight', visible: 'yes' }])
+    const normalized = normalizeInventoryColumns([
+      { key: 'product_code', visible: true },
+      { key: 'product_code', visible: false },
+      { key: 'batch_no', visible: true },
+      null,
+      { key: 'available_weight', visible: 'yes' },
+    ])
     expect(normalized).toHaveLength(inventoryColumns.length)
     expect(normalized[0]).toEqual({ key: 'product_code', visible: true })
-    expect(normalized.some(item => String(item.key) === 'batch_no')).toBe(false)
+    expect(normalized.some((item) => String(item.key) === 'batch_no')).toBe(false)
   })
   it('does not fail rendering or applying when storage is blocked', async () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied') })
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota') })
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('denied')
+    })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota')
+    })
     const warn = vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({ close: () => {} }))
-    await render(); check('产品编号', true); await button('应用').trigger('click')
-    expect(latest().find(item => item.key === 'product_code')?.visible).toBe(true)
+    await render()
+    check('产品编号', true)
+    await button('应用').trigger('click')
+    expect(latest().find((item) => item.key === 'product_code')?.visible).toBe(true)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('未能保存'))
   })
   it('shows missing, conflicting and aggregate values without inventing a batch value', () => {
     const row = serialFixture()
-    const display = (key: string) => inventoryColumns.find(column => column.key === key)!.format(row)
+    const display = (key: string) =>
+      inventoryColumns.find((column) => column.key === key)!.format(row)
     expect(display('customer_code')).toBe('—')
     expect(display('transfer_specification')).toBe('多规格')
     expect(display('finished_quantity')).toBe('100')

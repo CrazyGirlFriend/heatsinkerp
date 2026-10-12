@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { AxiosError, AxiosHeaders, type AxiosAdapter, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
+import {
+  AxiosError,
+  AxiosHeaders,
+  type AxiosAdapter,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory, createRouter, type LocationQueryRaw } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,10 +16,20 @@ import { authState, clearSession } from '@/stores/auth'
 function adapterReply(data: unknown, status = 200): AxiosAdapter {
   return async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => {
     const response: AxiosResponse = {
-      data, status, statusText: status >= 400 ? 'Error' : 'OK', headers: new AxiosHeaders(), config,
+      data,
+      status,
+      statusText: status >= 400 ? 'Error' : 'OK',
+      headers: new AxiosHeaders(),
+      config,
     }
     if (status >= 400) {
-      throw new AxiosError(`Request failed with status code ${status}`, AxiosError.ERR_BAD_REQUEST, config, undefined, response)
+      throw new AxiosError(
+        `Request failed with status code ${status}`,
+        AxiosError.ERR_BAD_REQUEST,
+        config,
+        undefined,
+        response,
+      )
     }
     return response
   }
@@ -46,8 +62,16 @@ async function mountAccessPage(query: LocationQueryRaw = {}) {
       { path: '/access', name: 'access', component: AccessPage },
       { path: '/login', name: 'login', component: { template: '<div>Login</div>' } },
       { path: '/factory-analysis', component: { template: '<div>Factory analysis</div>' } },
-      { path: '/transfer-batches', name: 'transfer-batches', component: { template: '<div>Transfers</div>' } },
-      { path: '/transfer-batches/scan', name: 'transfer-batch-scan', component: { template: '<div>Scan</div>' } },
+      {
+        path: '/transfer-batches',
+        name: 'transfer-batches',
+        component: { template: '<div>Transfers</div>' },
+      },
+      {
+        path: '/transfer-batches/scan',
+        name: 'transfer-batch-scan',
+        component: { template: '<div>Scan</div>' },
+      },
     ],
   })
   await router.push({ path: '/access', query })
@@ -68,7 +92,9 @@ describe('minimal site access page', () => {
     expect(wrapper.find('button[aria-label="解锁访问"]').exists()).toBe(true)
     expect(wrapper.find('input').exists()).toBe(false)
     expect(wrapper.find('h1, h2, header, footer, .login-brand').exists()).toBe(false)
-    expect(wrapper.text()).not.toMatch(/热沉|HEATSINK|流转管理|扫码报工|访问保护|管理员|班组|验证通过/)
+    expect(wrapper.text()).not.toMatch(
+      /热沉|HEATSINK|流转管理|扫码报工|访问保护|管理员|班组|验证通过/,
+    )
     expect(wrapper.text().trim()).toBe('')
     expect(accessAdapter).not.toHaveBeenCalled()
   })
@@ -84,7 +110,9 @@ describe('minimal site access page', () => {
     await input.trigger('keydown', { key: 'Escape' })
     expect(wrapper.find('input[name="site-access-password"]').exists()).toBe(false)
     await expand(wrapper)
-    expect((wrapper.get('input[name="site-access-password"]').element as HTMLInputElement).value).toBe('')
+    expect(
+      (wrapper.get('input[name="site-access-password"]').element as HTMLInputElement).value,
+    ).toBe('')
     expect(accessAdapter).not.toHaveBeenCalled()
   })
 
@@ -101,15 +129,26 @@ describe('minimal site access page', () => {
     accessAdapter
       .mockImplementationOnce(adapterReply({ unlocked: true }))
       .mockImplementationOnce(adapterReply({ enabled: true, unlocked: true }))
-    const { wrapper, router } = await mountAccessPage({ redirect: '/transfer-batches/scan?mode=receive' })
+    const { wrapper, router } = await mountAccessPage({
+      redirect: '/transfer-batches/scan?mode=receive',
+    })
     await expand(wrapper)
     await wrapper.get('input[name="site-access-password"]').setValue('test-only-password')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(accessAdapter).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      baseURL: '/api/access', url: '/unlock', method: 'post', data: JSON.stringify({ password: 'test-only-password' }),
-    }))
-    expect(accessAdapter).toHaveBeenNthCalledWith(2, expect.objectContaining({ url: '/status', method: 'get' }))
+    expect(accessAdapter).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        baseURL: '/api/access',
+        url: '/unlock',
+        method: 'post',
+        data: JSON.stringify({ password: 'test-only-password' }),
+      }),
+    )
+    expect(accessAdapter).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ url: '/status', method: 'get' }),
+    )
     expect(router.currentRoute.value.path).toBe('/login')
     expect(router.currentRoute.value.query.redirect).toBe('/transfer-batches/scan?mode=receive')
   })
@@ -118,7 +157,15 @@ describe('minimal site access page', () => {
     authState.session = {
       access_token: 'test-only-token',
       token_type: 'Bearer',
-      user: { id: 1, username: 'test-user', display_name: 'Test', role: 'ADMIN', team_id: null, team: null, active: true },
+      user: {
+        id: 1,
+        username: 'test-user',
+        display_name: 'Test',
+        role: 'ADMIN',
+        team_id: null,
+        team: null,
+        active: true,
+      },
     }
     accessAdapter
       .mockImplementationOnce(adapterReply({ unlocked: true }))
@@ -138,7 +185,8 @@ describe('minimal site access page', () => {
     const { wrapper, router } = await mountAccessPage()
     await expand(wrapper)
     await wrapper.get('input[name="site-access-password"]').setValue('test-only-password')
-    await wrapper.get('form').trigger('submit'); await flushPromises()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
     expect(router.currentRoute.value.path).toBe('/login')
     expect(router.currentRoute.value.query.redirect).toBe('/factory-analysis')
   })
@@ -152,7 +200,9 @@ describe('minimal site access page', () => {
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('访问口令错误')
     expect(router.currentRoute.value.path).toBe('/access')
-    expect((wrapper.get('input[name="site-access-password"]').element as HTMLInputElement).value).toBe('')
+    expect(
+      (wrapper.get('input[name="site-access-password"]').element as HTMLInputElement).value,
+    ).toBe('')
     expect(accessAdapter).toHaveBeenCalledTimes(1)
   })
 
@@ -165,7 +215,9 @@ describe('minimal site access page', () => {
     await wrapper.get('button[aria-label="重新检查连接"]').trigger('click')
     await flushPromises()
     expect(accessAdapter).toHaveBeenCalledTimes(1)
-    expect(accessAdapter).toHaveBeenCalledWith(expect.objectContaining({ url: '/status', method: 'get' }))
+    expect(accessAdapter).toHaveBeenCalledWith(
+      expect.objectContaining({ url: '/status', method: 'get' }),
+    )
     expect(wrapper.find('button[aria-label="解锁访问"]').exists()).toBe(true)
     expect(router.currentRoute.value.path).toBe('/access')
     expect(wrapper.find('input[name="username"]').exists()).toBe(false)
@@ -173,14 +225,29 @@ describe('minimal site access page', () => {
 
   it('disables submission controls and sends only one unlock request while a submission is pending', async () => {
     let finishUnlock: () => void = () => undefined
-    accessAdapter.mockImplementationOnce((config: InternalAxiosRequestConfig) => new Promise((_resolve, reject) => {
-      finishUnlock = () => {
-        const response: AxiosResponse = {
-          data: { detail: '访问口令错误' }, status: 401, statusText: 'Error', headers: new AxiosHeaders(), config,
-        }
-        reject(new AxiosError('Request failed with status code 401', AxiosError.ERR_BAD_REQUEST, config, undefined, response))
-      }
-    }))
+    accessAdapter.mockImplementationOnce(
+      (config: InternalAxiosRequestConfig) =>
+        new Promise((_resolve, reject) => {
+          finishUnlock = () => {
+            const response: AxiosResponse = {
+              data: { detail: '访问口令错误' },
+              status: 401,
+              statusText: 'Error',
+              headers: new AxiosHeaders(),
+              config,
+            }
+            reject(
+              new AxiosError(
+                'Request failed with status code 401',
+                AxiosError.ERR_BAD_REQUEST,
+                config,
+                undefined,
+                response,
+              ),
+            )
+          }
+        }),
+    )
     const { wrapper } = await mountAccessPage()
     await expand(wrapper)
     await wrapper.get('input[name="site-access-password"]').setValue('test-only-password')

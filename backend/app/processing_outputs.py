@@ -39,6 +39,7 @@ def create_outputs(db, lot, payload, user, now):
     numbers = next_transfer_batch_numbers(db, len(payload.outputs))
     for output, number in zip(payload.outputs, numbers, strict=True):
         from .shared_material import allocate
+
         serial_no, unallocated, member_fields = allocate(lot, output)
         if (
             output.role == "remaining"

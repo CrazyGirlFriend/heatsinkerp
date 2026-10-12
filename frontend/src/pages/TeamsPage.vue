@@ -56,40 +56,74 @@ const errorMessage = ref('')
 const query = ref('')
 const status = ref<StatusFilter>('all')
 const editorOpen = ref(false)
-const businessTeam = ref<Team | null>(null), businessOpen = ref(false)
-const authorizationOpen = ref(false), authorizationTeam = ref<Team | null>(null)
+const businessTeam = ref<Team | null>(null),
+  businessOpen = ref(false)
+const authorizationOpen = ref(false),
+  authorizationTeam = ref<Team | null>(null)
 const editingId = ref<EntityId | null>(null)
-const editingWarehouse = computed(() => editingId.value !== null && teams.value.some(team => String(team.id) === String(editingId.value) && isWarehouse(team)))
+const editingWarehouse = computed(
+  () =>
+    editingId.value !== null &&
+    teams.value.some((team) => String(team.id) === String(editingId.value) && isWarehouse(team)),
+)
 const formError = ref('')
 const codeInput = ref<InputInstance | null>(null)
 const nameInput = ref<InputInstance | null>(null)
-const form = reactive<TeamForm>({ code: '', name: '', description: '', active: true, sort_order: 0, kind: 'production' })
+const form = reactive<TeamForm>({
+  code: '',
+  name: '',
+  description: '',
+  active: true,
+  sort_order: 0,
+  kind: 'production',
+})
 
 const filteredTeams = computed(() => {
   const needle = query.value.trim().toLowerCase()
-  return teams.value.filter((team) => {
-    const matchesQuery = !needle || `${team.code} ${team.name}`.toLowerCase().includes(needle)
-    const matchesStatus = status.value === 'all' || (status.value === 'active' ? team.active : !team.active)
-    return matchesQuery && matchesStatus
-  }).sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0) || String(left.id).localeCompare(String(right.id), undefined, { numeric: true }))
+  return teams.value
+    .filter((team) => {
+      const matchesQuery = !needle || `${team.code} ${team.name}`.toLowerCase().includes(needle)
+      const matchesStatus =
+        status.value === 'all' || (status.value === 'active' ? team.active : !team.active)
+      return matchesQuery && matchesStatus
+    })
+    .sort(
+      (left, right) =>
+        (left.sort_order ?? 0) - (right.sort_order ?? 0) ||
+        String(left.id).localeCompare(String(right.id), undefined, { numeric: true }),
+    )
 })
 
 function exportSource() {
-  const rows = filteredTeams.value.map(row => ({ ...row }))
-  return tableExportSource('班组管理', rows.length, [
-    { key: 'code', label: '班组编码', value: (row: Team) => row.code },
-    { key: 'name', label: '班组名称', value: row => row.name },
-    { key: 'kind', label: '班组属性', value: row => kindLabel(row) },
-    { key: 'sort_order', label: '显示顺序', value: row => row.sort_order },
-    { key: 'active', label: '状态', value: row => row.active ? '启用' : '停用' },
-    { key: 'description', label: '说明', value: row => row.description },
-  ], async () => rows)
+  const rows = filteredTeams.value.map((row) => ({ ...row }))
+  return tableExportSource(
+    '班组管理',
+    rows.length,
+    [
+      { key: 'code', label: '班组编码', value: (row: Team) => row.code },
+      { key: 'name', label: '班组名称', value: (row) => row.name },
+      { key: 'kind', label: '班组属性', value: (row) => kindLabel(row) },
+      { key: 'sort_order', label: '显示顺序', value: (row) => row.sort_order },
+      { key: 'active', label: '状态', value: (row) => (row.active ? '启用' : '停用') },
+      { key: 'description', label: '说明', value: (row) => row.description },
+    ],
+    async () => rows,
+  )
 }
 const page = ref(1)
 const pageSize = ref(10)
-const pageRows = computed(() => filteredTeams.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
-watch([query, status, pageSize], () => { page.value = 1 })
-watch(() => filteredTeams.value.length, total => { page.value = Math.min(page.value, Math.max(1, Math.ceil(total / pageSize.value))) })
+const pageRows = computed(() =>
+  filteredTeams.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value),
+)
+watch([query, status, pageSize], () => {
+  page.value = 1
+})
+watch(
+  () => filteredTeams.value.length,
+  (total) => {
+    page.value = Math.min(page.value, Math.max(1, Math.ceil(total / pageSize.value)))
+  },
+)
 
 function isWarehouse(team: Team): boolean {
   return team.kind === 'warehouse' || team.code === 'FACTORY-WAREHOUSE'
@@ -97,10 +131,16 @@ function isWarehouse(team: Team): boolean {
 
 let requestVersion = 0
 let disposed = false
-onBeforeUnmount(() => { disposed = true; ++requestVersion })
+onBeforeUnmount(() => {
+  disposed = true
+  ++requestVersion
+})
 async function loadTeams(background = false): Promise<void> {
   if (disposed) return
-  if (background && (loading.value || saving.value || deletingId.value !== null)) { liveRefresh.request(); return }
+  if (background && (loading.value || saving.value || deletingId.value !== null)) {
+    liveRefresh.request()
+    return
+  }
   const version = ++requestVersion
   if (!isAdmin.value) {
     loading.value = false
@@ -120,19 +160,34 @@ async function loadTeams(background = false): Promise<void> {
     if (version === requestVersion) loading.value = false
   }
 }
-const liveRefresh = useLiveRefresh(async () => { await refreshCurrentUser(); await loadTeams(true) }, {
-  scope: 'directory',
-  enabled: () => isAdmin.value,
-  busy: () => loading.value || saving.value || deletingId.value !== null,
+const liveRefresh = useLiveRefresh(
+  async () => {
+    await refreshCurrentUser()
+    await loadTeams(true)
+  },
+  {
+    scope: 'directory',
+    enabled: () => isAdmin.value,
+    busy: () => loading.value || saving.value || deletingId.value !== null,
+  },
+)
+watch(isAdmin, (value) => {
+  if (!value) {
+    ++requestVersion
+    teams.value = []
+    editorOpen.value = false
+    businessOpen.value = false
+  }
 })
-watch(isAdmin, value => { if (!value) { ++requestVersion; teams.value = []; editorOpen.value = false; businessOpen.value = false } })
 
 function resetForm(): void {
   form.code = ''
   form.name = ''
   form.description = ''
   form.active = true
-  form.sort_order = teams.value.length ? Math.min(1000000, Math.max(...teams.value.map((team) => team.sort_order ?? 0)) + 10) : 10
+  form.sort_order = teams.value.length
+    ? Math.min(1000000, Math.max(...teams.value.map((team) => team.sort_order ?? 0)) + 10)
+    : 10
   form.kind = 'production'
   formError.value = ''
 }
@@ -164,11 +219,14 @@ const validation = useDialogValidation(() => {
   const issues: Record<string, string> = {}
   if (!form.code.trim() || form.code.trim().length > 32) issues.code = '请输入有效班组编码'
   if (!form.name.trim() || form.name.trim().length > 80) issues.name = '请输入有效班组名称'
-  if (!Number.isInteger(form.sort_order) || form.sort_order < 0 || form.sort_order > 1000000) issues.sort_order = '请填写有效显示顺序'
+  if (!Number.isInteger(form.sort_order) || form.sort_order < 0 || form.sort_order > 1000000)
+    issues.sort_order = '请填写有效显示顺序'
   return issues
 })
 const { formRef, fieldErrors } = validation
-watch(editorOpen, open => { if (open) validation.reset() })
+watch(editorOpen, (open) => {
+  if (open) validation.reset()
+})
 async function submitForm(): Promise<void> {
   if (saving.value) return
   formError.value = ''
@@ -199,7 +257,9 @@ async function submitForm(): Promise<void> {
     }
     editorOpen.value = false
     await refreshTeamDirectory()
-    await refreshCurrentUser().catch(() => showToast('班组已保存，当前账号信息刷新失败，请刷新页面重试', 'error'))
+    await refreshCurrentUser().catch(() =>
+      showToast('班组已保存，当前账号信息刷新失败，请刷新页面重试', 'error'),
+    )
   } catch (error) {
     formError.value = error instanceof Error ? error.message : '班组保存失败'
   } finally {
@@ -231,7 +291,9 @@ async function toggleTeam(team: Team): Promise<void> {
     if (index >= 0) teams.value.splice(index, 1, updated)
     showToast(`${updated.name}已${updated.active ? '启用' : '停用'}`, 'success')
     await refreshTeamDirectory()
-    await refreshCurrentUser().catch(() => showToast('班组已保存，当前账号信息刷新失败，请刷新页面重试', 'error'))
+    await refreshCurrentUser().catch(() =>
+      showToast('班组已保存，当前账号信息刷新失败，请刷新页面重试', 'error'),
+    )
   } catch (error) {
     showToast(error instanceof Error ? error.message : '班组状态更新失败', 'error')
   }
@@ -243,12 +305,16 @@ async function deleteTeam(team: Team): Promise<void> {
     return
   }
   try {
-    await ElMessageBox.confirm(`删除班组“${team.name}”？已被账号或流转记录引用的班组不能删除。`, '删除班组', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-      confirmButtonClass: 'el-button--danger',
-    })
+    await ElMessageBox.confirm(
+      `删除班组“${team.name}”？已被账号或流转记录引用的班组不能删除。`,
+      '删除班组',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger',
+      },
+    )
   } catch {
     return
   }
@@ -260,7 +326,9 @@ async function deleteTeam(team: Team): Promise<void> {
     teams.value = teams.value.filter((item) => String(item.id) !== String(team.id))
     showToast(`班组“${team.name}”已删除`, 'success')
     await refreshTeamDirectory()
-    await refreshCurrentUser().catch(() => showToast('班组已保存，当前账号信息刷新失败，请刷新页面重试', 'error'))
+    await refreshCurrentUser().catch(() =>
+      showToast('班组已保存，当前账号信息刷新失败，请刷新页面重试', 'error'),
+    )
   } catch (error) {
     showToast(error instanceof Error ? error.message : '班组删除失败', 'error')
   } finally {
@@ -291,65 +359,164 @@ onMounted(() => void loadTeams())
 
 <template>
   <section class="page admin-workspace teams-page reading-workspace">
-    <header class="workspace-heading"><div class="page-heading-start"><PageBackButton /><h1>班组管理</h1></div></header>
+    <header class="workspace-heading">
+      <div class="page-heading-start">
+        <PageBackButton />
+        <h1>班组管理</h1>
+      </div>
+    </header>
     <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
 
     <ElCard shadow="never" class="workspace-card">
       <div class="filter-bar">
         <ElInput v-model="query" clearable placeholder="班组编码或名称" aria-label="搜索班组">
-          <template #prefix><ElIcon><Search /></ElIcon></template>
+          <template #prefix
+            ><ElIcon><Search /></ElIcon
+          ></template>
         </ElInput>
         <ElSelect v-model="status" aria-label="使用状态">
           <ElOption value="all" label="全部状态" />
           <ElOption value="active" label="启用" />
           <ElOption value="inactive" label="停用" />
         </ElSelect>
-        <TableExportButton :source="exportSource" :disabled="!isAdmin || loading || !!errorMessage" /><ElButton class="filter-primary-action" type="primary" :icon="Plus" :disabled="!isAdmin" @click="openCreate">新增班组</ElButton>
+        <TableExportButton
+          :source="exportSource"
+          :disabled="!isAdmin || loading || !!errorMessage"
+        /><ElButton
+          class="filter-primary-action"
+          type="primary"
+          :icon="Plus"
+          :disabled="!isAdmin"
+          @click="openCreate"
+          >新增班组</ElButton
+        >
       </div>
 
-      <div v-if="loading" class="state-region" aria-live="polite"><ElSkeleton :rows="6" animated /></div>
+      <div v-if="loading" class="state-region" aria-live="polite">
+        <ElSkeleton :rows="6" animated />
+      </div>
       <ElResult v-else-if="errorMessage" icon="error" title="加载失败" :sub-title="errorMessage">
-        <template #extra><ElButton v-if="isAdmin" @click="loadTeams()">重新加载</ElButton></template>
+        <template #extra
+          ><ElButton v-if="isAdmin" @click="loadTeams()">重新加载</ElButton></template
+        >
       </ElResult>
       <ElEmpty v-else-if="!filteredTeams.length" description="暂无班组">
-        <ElButton v-if="isAdmin" type="primary" plain :icon="Plus" @click="openCreate">新增班组</ElButton>
+        <ElButton v-if="isAdmin" type="primary" plain :icon="Plus" @click="openCreate"
+          >新增班组</ElButton
+        >
       </ElEmpty>
 
       <div v-else class="table-region">
         <span class="mobile-table-hint">左右滑动查看</span>
-        <ElTable class="business-table" :data="pageRows" row-key="id" :row-class-name="teamRowClass" table-layout="fixed">
+        <ElTable
+          class="business-table"
+          :data="pageRows"
+          row-key="id"
+          :row-class-name="teamRowClass"
+          table-layout="fixed"
+        >
           <ElTableColumn label="班组编码" min-width="220" show-overflow-tooltip>
-            <template #default="{ row }"><span class="code-cell">{{ row.code }}</span></template>
+            <template #default="{ row }"
+              ><span class="code-cell">{{ row.code }}</span></template
+            >
           </ElTableColumn>
           <ElTableColumn prop="name" label="班组名称" min-width="180" show-overflow-tooltip />
           <ElTableColumn label="班组属性" min-width="140">
             <template #default="{ row }">
-              <ElTag :type="kindTagType(asTeam(row))" effect="plain">{{ kindLabel(asTeam(row)) }}</ElTag>
+              <ElTag :type="kindTagType(asTeam(row))" effect="plain">{{
+                kindLabel(asTeam(row))
+              }}</ElTag>
             </template>
           </ElTableColumn>
           <ElTableColumn prop="sort_order" label="显示顺序" width="120" align="center" />
           <ElTableColumn label="状态" width="100">
-            <template #default="{ row }"><ElTag :type="row.active ? 'success' : 'info'" effect="plain">{{ row.active ? '启用' : '停用' }}</ElTag></template>
+            <template #default="{ row }"
+              ><ElTag :type="row.active ? 'success' : 'info'" effect="plain">{{
+                row.active ? '启用' : '停用'
+              }}</ElTag></template
+            >
           </ElTableColumn>
           <ElTableColumn label="操作" width="440" align="center">
             <template #default="{ row }">
-              <ElButton link type="primary" @click="authorizationTeam = asTeam(row); authorizationOpen = true">初始库存录入</ElButton>
-              <ElButton link type="primary" :disabled="!row.active" @click="businessTeam = asTeam(row); businessOpen = true">业务设置</ElButton>
-              <ElButton link type="primary" :icon="EditPen" @click="openEdit(asTeam(row))">编辑</ElButton>
-              <template v-if="isWarehouse(asTeam(row))"><ElTag type="info" effect="plain">系统项</ElTag></template>
+              <ElButton
+                link
+                type="primary"
+                @click="
+                  () => {
+                    authorizationTeam = asTeam(row)
+                    authorizationOpen = true
+                  }
+                "
+                >初始库存录入</ElButton
+              >
+              <ElButton
+                link
+                type="primary"
+                :disabled="!row.active"
+                @click="
+                  () => {
+                    businessTeam = asTeam(row)
+                    businessOpen = true
+                  }
+                "
+                >业务设置</ElButton
+              >
+              <ElButton link type="primary" :icon="EditPen" @click="openEdit(asTeam(row))"
+                >编辑</ElButton
+              >
+              <template v-if="isWarehouse(asTeam(row))"
+                ><ElTag type="info" effect="plain">系统项</ElTag></template
+              >
               <template v-else>
-                <ElButton link :type="row.active ? 'warning' : 'success'" :icon="row.active ? SwitchButton : CircleCheck" @click="toggleTeam(asTeam(row))">{{ row.active ? '停用' : '启用' }}</ElButton>
-                <ElButton link type="danger" :icon="Delete" :loading="String(deletingId) === String(row.id)" @click="deleteTeam(asTeam(row))">删除</ElButton>
+                <ElButton
+                  link
+                  :type="row.active ? 'warning' : 'success'"
+                  :icon="row.active ? SwitchButton : CircleCheck"
+                  @click="toggleTeam(asTeam(row))"
+                  >{{ row.active ? '停用' : '启用' }}</ElButton
+                >
+                <ElButton
+                  link
+                  type="danger"
+                  :icon="Delete"
+                  :loading="String(deletingId) === String(row.id)"
+                  @click="deleteTeam(asTeam(row))"
+                  >删除</ElButton
+                >
               </template>
             </template>
           </ElTableColumn>
         </ElTable>
       </div>
-      <footer v-if="!loading && !errorMessage" class="admin-pagination"><ElPagination v-model:current-page="page" v-model:page-size="pageSize" :page-sizes="[10, 20, 50, 100]" :total="filteredTeams.length" layout="total, sizes, prev, pager, next" /></footer>
+      <footer v-if="!loading && !errorMessage" class="admin-pagination">
+        <ElPagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="filteredTeams.length"
+          layout="total, sizes, prev, pager, next"
+        />
+      </footer>
     </ElCard>
 
-    <OpeningAuthorizationDialog v-model="authorizationOpen" :team="authorizationTeam" @saved="loadTeams(); refreshTeamDirectory()" />
-    <TeamBusinessDialog v-if="businessOpen && businessTeam && isAdmin" :key="businessTeam.id" v-model="businessOpen" :team-id="Number(businessTeam.id)" :team-name="businessTeam.name" business-only />
+    <OpeningAuthorizationDialog
+      v-model="authorizationOpen"
+      :team="authorizationTeam"
+      @saved="
+        () => {
+          loadTeams()
+          refreshTeamDirectory()
+        }
+      "
+    />
+    <TeamBusinessDialog
+      v-if="businessOpen && businessTeam && isAdmin"
+      :key="businessTeam.id"
+      v-model="businessOpen"
+      :team-id="Number(businessTeam.id)"
+      :team-name="businessTeam.name"
+      business-only
+    />
     <ElDialog
       v-model="editorOpen"
       class="editor-modal"
@@ -361,24 +528,68 @@ onMounted(() => void loadTeams())
       :show-close="!saving"
       @opened="focusEditor"
     >
-      <ElForm ref="formRef" :model="form" label-position="top" :show-message="false" @submit.prevent="submitForm">
+      <ElForm
+        ref="formRef"
+        :model="form"
+        label-position="top"
+        :show-message="false"
+        @submit.prevent="submitForm"
+      >
         <div class="form-grid">
           <ElFormItem label="班组编码" :error="fieldErrors.code" required>
-            <ElInput ref="codeInput" v-model="form.code" :disabled="editingWarehouse" maxlength="32" autocomplete="off" placeholder="请输入班组编码" aria-label="班组编码" />
+            <ElInput
+              ref="codeInput"
+              v-model="form.code"
+              :disabled="editingWarehouse"
+              maxlength="32"
+              autocomplete="off"
+              placeholder="请输入班组编码"
+              aria-label="班组编码"
+            />
           </ElFormItem>
           <ElFormItem label="班组名称" :error="fieldErrors.name" required>
-            <ElInput ref="nameInput" v-model="form.name" :disabled="editingWarehouse" maxlength="80" autocomplete="off" placeholder="请输入班组名称" aria-label="班组名称" />
+            <ElInput
+              ref="nameInput"
+              v-model="form.name"
+              :disabled="editingWarehouse"
+              maxlength="80"
+              autocomplete="off"
+              placeholder="请输入班组名称"
+              aria-label="班组名称"
+            />
           </ElFormItem>
           <ElFormItem label="显示顺序" :error="fieldErrors.sort_order">
-            <ElInputNumber v-model="form.sort_order" class="full-width" :min="0" :max="1000000" :step="10" controls-position="right" aria-label="显示顺序" />
+            <ElInputNumber
+              v-model="form.sort_order"
+              class="full-width"
+              :min="0"
+              :max="1000000"
+              :step="10"
+              controls-position="right"
+              aria-label="显示顺序"
+            />
           </ElFormItem>
           <ElFormItem label="班组状态">
             <div class="switch-row">
-              <ElSwitch v-model="form.active" :disabled="editingWarehouse" inline-prompt active-text="启" inactive-text="停" aria-label="启用班组" />
+              <ElSwitch
+                v-model="form.active"
+                :disabled="editingWarehouse"
+                inline-prompt
+                active-text="启"
+                inactive-text="停"
+                aria-label="启用班组"
+              />
               <span>{{ form.active ? '可接收转料、绑定账号' : '不再分配新业务' }}</span>
             </div>
           </ElFormItem>
-          <ElFormItem class="field-wide" label="班组说明"><ElInput v-model="form.description" type="textarea" :rows="3" maxlength="240" aria-label="班组说明" /></ElFormItem>
+          <ElFormItem class="field-wide" label="班组说明"
+            ><ElInput
+              v-model="form.description"
+              type="textarea"
+              :rows="3"
+              maxlength="240"
+              aria-label="班组说明"
+          /></ElFormItem>
         </div>
         <ElAlert v-if="formError" :title="formError" type="error" show-icon :closable="false" />
         <button class="dialog-submit-proxy" type="submit" tabindex="-1" aria-hidden="true" />
@@ -392,7 +603,17 @@ onMounted(() => void loadTeams())
 </template>
 
 <style scoped>
-.admin-pagination { display: flex; flex-shrink: 0; justify-content: flex-end; padding: 10px 0; overflow-x: auto; }
+.admin-pagination {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  padding: 10px 0;
+  overflow-x: auto;
+}
 
-.code-cell { color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; }
+.code-cell {
+  color: var(--text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
 </style>

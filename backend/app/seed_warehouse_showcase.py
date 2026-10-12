@@ -62,7 +62,7 @@ def seed_warehouse_showcase(db):
         )
         if not actor:
             raise RuntimeError(f"缺少启用的班组账号：{name}")
-        actor.team
+        _ = actor.team
         actors.append(actor)
         purposes[team.id] = {
             row.name: row.id

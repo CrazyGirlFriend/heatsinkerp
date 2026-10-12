@@ -5,6 +5,9 @@ defineEmits<{ retry: [] }>()
 </script>
 <template>
   <ElAlert v-if="message" type="warning" :closable="false" class="live-refresh-notice">
-    <template #title>{{ message }} <ElButton link type="primary" @click="$emit('retry')">重试同步</ElButton></template>
+    <template #title
+      >{{ message }}
+      <ElButton link type="primary" @click="$emit('retry')">重试同步</ElButton></template
+    >
   </ElAlert>
 </template>

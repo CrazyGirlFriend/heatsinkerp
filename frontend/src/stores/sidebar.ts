@@ -9,27 +9,50 @@ export const useSidebarStore = defineStore('sidebar', () => {
   let storageKey = ''
 
   // Preferences belong to the signed-in account, never to its permissions.
-  watch(() => currentUser.value ? `${currentUser.value.id}:${currentUser.value.role}` : '', (account) => {
-    storageKey = ''
-    compact.value = false; opened.value = []; page.value = ''
-    if (!account) return
-    const key = `heatsink-sidebar:${account}`
-    try {
-      const saved = JSON.parse(localStorage.getItem(key) || 'null')
-      if (saved && typeof saved === 'object') {
-        compact.value = saved.compact === true
-        opened.value = Array.isArray(saved.opened) ? saved.opened.filter((item: unknown) => typeof item === 'string' && /^(factory|teams|materials|settings)$/.test(item)) : []
-        page.value = typeof saved.page === 'string' ? saved.page.split('?')[0] : ''
+  watch(
+    () => (currentUser.value ? `${currentUser.value.id}:${currentUser.value.role}` : ''),
+    (account) => {
+      storageKey = ''
+      compact.value = false
+      opened.value = []
+      page.value = ''
+      if (!account) return
+      const key = `heatsink-sidebar:${account}`
+      try {
+        const saved = JSON.parse(localStorage.getItem(key) || 'null')
+        if (saved && typeof saved === 'object') {
+          compact.value = saved.compact === true
+          opened.value = Array.isArray(saved.opened)
+            ? saved.opened.filter(
+                (item: unknown) =>
+                  typeof item === 'string' && /^(factory|teams|materials|settings)$/.test(item),
+              )
+            : []
+          page.value = typeof saved.page === 'string' ? saved.page.split('?')[0] : ''
+        }
+      } catch {
+        /* Storage may be unavailable; navigation still works in memory. */
       }
-    } catch { /* Storage may be unavailable; navigation still works in memory. */ }
-    storageKey = key
-  }, { immediate: true, flush: 'sync' })
+      storageKey = key
+    },
+    { immediate: true, flush: 'sync' },
+  )
 
-  watch([compact, opened, page], () => {
-    if (!storageKey) return
-    try { localStorage.setItem(storageKey, JSON.stringify({ compact: compact.value, opened: opened.value, page: page.value })) }
-    catch { /* Private browsing must not prevent navigation. */ }
-  }, { deep: true, flush: 'sync' })
+  watch(
+    [compact, opened, page],
+    () => {
+      if (!storageKey) return
+      try {
+        localStorage.setItem(
+          storageKey,
+          JSON.stringify({ compact: compact.value, opened: opened.value, page: page.value }),
+        )
+      } catch {
+        /* Private browsing must not prevent navigation. */
+      }
+    },
+    { deep: true, flush: 'sync' },
+  )
 
   return { compact, opened, page }
 })

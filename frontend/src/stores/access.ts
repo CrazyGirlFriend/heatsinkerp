@@ -13,7 +13,10 @@ interface ServerAccessStatus {
 }
 
 class AccessError extends Error {
-  constructor(message: string, readonly status = 0) {
+  constructor(
+    message: string,
+    readonly status = 0,
+  ) {
     super(message)
   }
 }
@@ -51,15 +54,25 @@ async function accessRequest(path: string, options: AccessRequestOptions = {}): 
     const status = requestError.response.status
     const detail = body && typeof body === 'object' && 'detail' in body ? body.detail : null
     throw new AccessError(
-      typeof detail === 'string' ? detail : status === 429 ? '尝试次数过多，请稍后重试' : '访问验证失败，请重试',
+      typeof detail === 'string'
+        ? detail
+        : status === 429
+          ? '尝试次数过多，请稍后重试'
+          : '访问验证失败，请重试',
       status,
     )
   }
 }
 
 function validateStatus(value: unknown): ServerAccessStatus {
-  if (!value || typeof value !== 'object' || !('enabled' in value) || !('unlocked' in value)
-    || typeof value.enabled !== 'boolean' || typeof value.unlocked !== 'boolean') {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    !('enabled' in value) ||
+    !('unlocked' in value) ||
+    typeof value.enabled !== 'boolean' ||
+    typeof value.unlocked !== 'boolean'
+  ) {
     throw new AccessError('服务器未返回有效的访问状态，请重试')
   }
   return { enabled: value.enabled, unlocked: value.unlocked }
@@ -85,7 +98,8 @@ export const useAccessStore = defineStore('access', () => {
   /** Access is server-owned. Nothing in local/session storage is used to unlock it. */
   function checkSiteAccess(force = false): Promise<boolean> {
     if (pendingCheck) return pendingCheck
-    if (!force && status.value !== 'unknown' && status.value !== 'checking') return Promise.resolve(canEnterSite.value)
+    if (!force && status.value !== 'unknown' && status.value !== 'checking')
+      return Promise.resolve(canEnterSite.value)
     const checkRevision = revision
     status.value = 'checking'
     error.value = ''
@@ -116,10 +130,14 @@ export const useAccessStore = defineStore('access', () => {
       await accessRequest('/unlock', { method: 'POST', body: { password } })
       // Verify that the browser accepted the server cookie before revealing any page.
       const unlocked = await checkSiteAccess(true)
-      if (!unlocked && status.value !== 'error') error.value = '访问验证尚未生效，请允许本站 Cookie 后重试'
+      if (!unlocked && status.value !== 'error')
+        error.value = '访问验证尚未生效，请允许本站 Cookie 后重试'
       return unlocked
     } catch (requestError) {
-      status.value = requestError instanceof AccessError && [401, 422, 429].includes(requestError.status) ? 'locked' : 'error'
+      status.value =
+        requestError instanceof AccessError && [401, 422, 429].includes(requestError.status)
+          ? 'locked'
+          : 'error'
       error.value = requestError instanceof Error ? requestError.message : '访问验证失败，请重试'
       return false
     } finally {
@@ -135,7 +153,16 @@ export const useAccessStore = defineStore('access', () => {
     if (typeof window !== 'undefined') window.dispatchEvent(new Event(SITE_ACCESS_REQUIRED_EVENT))
   }
 
-  return { status, enabled, loading, error, canEnterSite, checkSiteAccess, unlockSite, notifySiteAccessRequired }
+  return {
+    status,
+    enabled,
+    loading,
+    error,
+    canEnterSite,
+    checkSiteAccess,
+    unlockSite,
+    notifySiteAccessRequired,
+  }
 })
 
 const defaultAccessStore = useAccessStore(appPinia)

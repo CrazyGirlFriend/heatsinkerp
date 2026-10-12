@@ -1,13 +1,9 @@
 <script setup lang="ts">
+import { formatAmount } from '@/utils/format'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { sludgeSummary } from '@/utils/sludgeWeight'
 import { CircleCheck, Delete, EditPen, Lock, Printer } from '@element-plus/icons-vue'
-import {
-  ElAlert,
-  ElButton,
-  ElIcon,
-  ElMessageBox,
-} from 'element-plus'
+import { ElAlert, ElButton, ElIcon, ElMessageBox } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import BarcodeCard from '@/components/BarcodeCard.vue'
@@ -42,15 +38,18 @@ import {
 } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
 
-const props = withDefaults(defineProps<{
-  modelValue: boolean
-  batchNo?: string
-  transfer?: MaterialTransfer | null
-  traceScope?: Pick<MaterialTransferFilterParams, 'team_id' | 'direction'>
-  showHistoryGroup?: boolean
-  allowPrint?: boolean
-  receiptOnly?: boolean
-}>(), { batchNo: '', transfer: null, showHistoryGroup: true, allowPrint: true, receiptOnly: false })
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    batchNo?: string
+    transfer?: MaterialTransfer | null
+    traceScope?: Pick<MaterialTransferFilterParams, 'team_id' | 'direction'>
+    showHistoryGroup?: boolean
+    allowPrint?: boolean
+    receiptOnly?: boolean
+  }>(),
+  { batchNo: '', transfer: null, showHistoryGroup: true, allowPrint: true, receiptOnly: false },
+)
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -62,10 +61,18 @@ const emit = defineEmits<{
 
 const authStore = useAuthStore()
 const current = ref<MaterialTransfer | null>(null)
-const grouped = computed(() => Boolean(props.showHistoryGroup && current.value?.dispatch_no && isDispatchNumber(current.value.dispatch_no)))
+const grouped = computed(() =>
+  Boolean(
+    props.showHistoryGroup &&
+    current.value?.dispatch_no &&
+    isDispatchNumber(current.value.dispatch_no),
+  ),
+)
 const groupOpen = ref(false)
 const opening = computed(() => current.value?.entry_kind === 'opening_stock')
-const receipt = computed(() => opening.value || Boolean(current.value && isWarehouseReceipt(current.value)))
+const receipt = computed(
+  () => opening.value || Boolean(current.value && isWarehouseReceipt(current.value)),
+)
 const external = computed(() => Boolean(current.value && isExternalTransfer(current.value)))
 const actionLabel = computed(() => externalActionLabel(current.value?.entry_kind))
 const processed = computed(() => current.value?.entry_kind === 'processing_output')
@@ -74,33 +81,97 @@ const loadError = ref('')
 const confirming = ref(false)
 const voiding = ref(false)
 const editOpen = ref(false)
-const deliveryOpen = ref(false), deliveryBusy = ref(false)
+const deliveryOpen = ref(false),
+  deliveryBusy = ref(false)
 const printReady = ref(false)
 const printSheet = ref<InstanceType<typeof MaterialTransferPrintSheet> | null>(null)
 const reviewNotice = ref('')
-const warehouseLocation = ref(''), warehouseLocationKey = ref(''), locationBusy = ref(false)
+const warehouseLocation = ref(''),
+  warehouseLocationKey = ref(''),
+  locationBusy = ref(false)
 const warehouseReceiver = computed(() => current.value?.next_team.code === 'FACTORY-WAREHOUSE')
 let requestVersion = 0
 let actionVersion = 0
 let confirmKey = ''
-onBeforeUnmount(() => { ++requestVersion; ++actionVersion })
-watch([confirming, voiding, deliveryBusy], ([confirmBusy, voidBusy, deadlineBusy]) => emit('busyChange', confirmBusy || voidBusy || deadlineBusy), { flush: 'sync' })
+onBeforeUnmount(() => {
+  ++requestVersion
+  ++actionVersion
+})
+watch(
+  [confirming, voiding, deliveryBusy],
+  ([confirmBusy, voidBusy, deadlineBusy]) =>
+    emit('busyChange', confirmBusy || voidBusy || deadlineBusy),
+  { flush: 'sync' },
+)
 
 const effectiveBatchNo = computed(() => props.batchNo.trim() || props.transfer?.batch_no || '')
-const teamActorReady = computed(() => authStore.isTeamAccount && authStore.currentUser?.team_id != null && authStore.currentUser?.active !== false && !authStore.currentUserError && !loadError.value && !loading.value)
-const isSource = computed(() => Boolean(teamActorReady.value && current.value && String(authStore.currentUser?.team_id) === String(current.value.source_team.id)))
-const isReceiver = computed(() => Boolean(teamActorReady.value && current.value && String(authStore.currentUser?.team_id) === String(current.value.next_team.id)))
-const canMaintainDelivery = computed(() => Boolean(!props.receiptOnly && teamActorReady.value && current.value?.can_edit_delivery && String(authStore.currentUser?.team_id) === String(current.value.source_team.id || current.value.next_team.id)))
-const canEdit = computed(() => Boolean(!props.receiptOnly && isSource.value && current.value && canEditMaterialTransfer(current.value)))
-const canVoid = computed(() => Boolean(!props.receiptOnly && isSource.value && current.value && canVoidMaterialTransfer(current.value)))
-const canConfirm = computed(() => Boolean(isReceiver.value && current.value && canConfirmMaterialTransfer(current.value)))
-const canConfirmExternal = computed(() => Boolean(!props.receiptOnly && isSource.value && current.value && canConfirmOutbound(current.value)))
-const canReject = computed(() => Boolean(isReceiver.value && current.value?.version && current.value.status === 'pending' && current.value.allowed_actions.includes('reject')))
-watch(effectiveBatchNo, () => { reviewNotice.value = '' })
+const teamActorReady = computed(
+  () =>
+    authStore.isTeamAccount &&
+    authStore.currentUser?.team_id != null &&
+    authStore.currentUser?.active !== false &&
+    !authStore.currentUserError &&
+    !loadError.value &&
+    !loading.value,
+)
+const isSource = computed(() =>
+  Boolean(
+    teamActorReady.value &&
+    current.value &&
+    String(authStore.currentUser?.team_id) === String(current.value.source_team.id),
+  ),
+)
+const isReceiver = computed(() =>
+  Boolean(
+    teamActorReady.value &&
+    current.value &&
+    String(authStore.currentUser?.team_id) === String(current.value.next_team.id),
+  ),
+)
+const canMaintainDelivery = computed(() =>
+  Boolean(
+    !props.receiptOnly &&
+    teamActorReady.value &&
+    current.value?.can_edit_delivery &&
+    String(authStore.currentUser?.team_id) ===
+      String(current.value.source_team.id || current.value.next_team.id),
+  ),
+)
+const canEdit = computed(() =>
+  Boolean(
+    !props.receiptOnly && isSource.value && current.value && canEditMaterialTransfer(current.value),
+  ),
+)
+const canVoid = computed(() =>
+  Boolean(
+    !props.receiptOnly && isSource.value && current.value && canVoidMaterialTransfer(current.value),
+  ),
+)
+const canConfirm = computed(() =>
+  Boolean(isReceiver.value && current.value && canConfirmMaterialTransfer(current.value)),
+)
+const canConfirmExternal = computed(() =>
+  Boolean(
+    !props.receiptOnly && isSource.value && current.value && canConfirmOutbound(current.value),
+  ),
+)
+const canReject = computed(() =>
+  Boolean(
+    isReceiver.value &&
+    current.value?.version &&
+    current.value.status === 'pending' &&
+    current.value.allowed_actions.includes('reject'),
+  ),
+)
+watch(effectiveBatchNo, () => {
+  reviewNotice.value = ''
+})
 const tracePath = computed(() => {
   if (!current.value?.serial_no) return ''
   const query = new URLSearchParams({ serial_no: current.value.serial_no })
-  const teamId = props.traceScope?.team_id ?? (authStore.isTeamAccount ? authStore.currentUser?.team_id : undefined)
+  const teamId =
+    props.traceScope?.team_id ??
+    (authStore.isTeamAccount ? authStore.currentUser?.team_id : undefined)
   if (teamId !== undefined && teamId !== null) {
     query.set('tab', 'history')
     query.set('direction', props.traceScope?.direction || 'all')
@@ -111,12 +182,14 @@ const tracePath = computed(() => {
 const stateMessage = computed(() => {
   if (!current.value) return ''
 
-  if (current.value.entry_kind === 'processing_output') return '本班组加工实物已登记，来源单据保持不变'
+  if (current.value.entry_kind === 'processing_output')
+    return '本班组加工实物已登记，来源单据保持不变'
   if (opening.value) return '初始库存已登记，单据已锁定'
   if (receipt.value) return '手工入库已完成，单据已锁定'
   if (authStore.isAdmin) return '管理员仅可查看转料记录'
   if (current.value.status === 'dispatched') return `${actionLabel.value}已确认，单据已锁定`
-  if (external.value && current.value.status === 'pending') return `由${current.value.source_team.name}确认实际${actionLabel.value}，确认后扣减库存`
+  if (external.value && current.value.status === 'pending')
+    return `由${current.value.source_team.name}确认实际${actionLabel.value}，确认后扣减库存`
   if (current.value.status === 'received') return '接收已确认，转料内容已锁定'
   if (current.value.status === 'voided') return '该转料单已作废'
   if (canConfirm.value) return '整单确认签收：无需重新录入数量或重量，请核对后确认。'
@@ -125,16 +198,30 @@ const stateMessage = computed(() => {
 })
 
 function numberText(value: number, unit: string): string {
-  return `${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(value)} ${unit}`
+  return `${formatAmount(value)} ${unit}`
 }
 
 function newIdempotencyKey(): string {
-  return globalThis.crypto?.randomUUID?.() || `confirm-transfer-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return (
+    globalThis.crypto?.randomUUID?.() ||
+    `confirm-transfer-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  )
 }
 
-const freezeLive = computed(() => loading.value || confirming.value || voiding.value || editOpen.value || deliveryOpen.value || printReady.value || groupOpen.value || (canConfirm.value && warehouseLocation.value !== (current.value?.warehouse_location || '')))
+const freezeLive = computed(
+  () =>
+    loading.value ||
+    confirming.value ||
+    voiding.value ||
+    editOpen.value ||
+    deliveryOpen.value ||
+    printReady.value ||
+    groupOpen.value ||
+    (canConfirm.value && warehouseLocation.value !== (current.value?.warehouse_location || '')),
+)
 const liveRefresh = useLiveRefresh(() => load(false, true), {
-  enabled: () => props.modelValue && Boolean(effectiveBatchNo.value), busy: () => freezeLive.value,
+  enabled: () => props.modelValue && Boolean(effectiveBatchNo.value),
+  busy: () => freezeLive.value,
 })
 async function load(resetKey: unknown = true, background = false): Promise<void> {
   const batchNo = effectiveBatchNo.value
@@ -150,8 +237,12 @@ async function load(resetKey: unknown = true, background = false): Promise<void>
   try {
     const result = await materialTransferApi.get(batchNo)
     if (version !== requestVersion || !props.modelValue) return
-    if (background && freezeLive.value) { liveRefresh.request(); return }
-    if (resetKey !== false || current.value?.version !== result.version) confirmKey = newIdempotencyKey()
+    if (background && freezeLive.value) {
+      liveRefresh.request()
+      return
+    }
+    if (resetKey !== false || current.value?.version !== result.version)
+      confirmKey = newIdempotencyKey()
     current.value = result
   } catch (error) {
     if (version !== requestVersion || !props.modelValue) return
@@ -165,7 +256,8 @@ async function load(resetKey: unknown = true, background = false): Promise<void>
 
 function close(): void {
   if (confirming.value || voiding.value || deliveryBusy.value) return
-  editOpen.value = false; deliveryOpen.value = false
+  editOpen.value = false
+  deliveryOpen.value = false
   ++requestVersion
   emit('update:modelValue', false)
 }
@@ -178,7 +270,10 @@ function updateCurrent(transfer: MaterialTransfer): void {
 async function confirmReceipt(): Promise<void> {
   const transfer = current.value
   if (!transfer || !canConfirm.value || confirming.value || locationBusy.value) return
-  if (warehouseReceiver.value && warehouseLocation.value.length > 80) { showToast('仓位不能超过 80 个字符', 'error'); return }
+  if (warehouseReceiver.value && warehouseLocation.value.length > 80) {
+    showToast('仓位不能超过 80 个字符', 'error')
+    return
+  }
   const epoch = ++actionVersion
   confirming.value = true
   try {
@@ -192,9 +287,24 @@ async function confirmReceipt(): Promise<void> {
     return
   }
   if (epoch !== actionVersion || !props.modelValue) return
-  if (!canConfirm.value) { confirming.value = false; return }
+  if (!canConfirm.value) {
+    confirming.value = false
+    return
+  }
   try {
-    const confirmed = await materialTransferApi.confirm(transfer.batch_no, { idempotency_key: confirmKey || newIdempotencyKey(), ...materialTransferVersion(transfer), ...(warehouseReceiver.value ? { warehouse_location: transfer.warehouse_location || warehouseLocation.value.trim() || null, ...(warehouseLocationKey.value ? { warehouse_location_reservation_key: warehouseLocationKey.value } : {}) } : {}) })
+    const confirmed = await materialTransferApi.confirm(transfer.batch_no, {
+      idempotency_key: confirmKey || newIdempotencyKey(),
+      ...materialTransferVersion(transfer),
+      ...(warehouseReceiver.value
+        ? {
+            warehouse_location:
+              transfer.warehouse_location || warehouseLocation.value.trim() || null,
+            ...(warehouseLocationKey.value
+              ? { warehouse_location_reservation_key: warehouseLocationKey.value }
+              : {}),
+          }
+        : {}),
+    })
     if (epoch !== actionVersion || !props.modelValue) return
     current.value = confirmed
     emit('changed', confirmed)
@@ -203,7 +313,12 @@ async function confirmReceipt(): Promise<void> {
     showToast(`转料单 ${confirmed.batch_no} 已确认签收`, 'success')
   } catch (error) {
     if (epoch !== actionVersion || !props.modelValue) return
-    const message = error instanceof MaterialTransferApiError ? error.message : error instanceof Error ? error.message : '接收确认失败'
+    const message =
+      error instanceof MaterialTransferApiError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : '接收确认失败'
     showToast(message, 'error')
     if (error instanceof MaterialTransferApiError && error.status === 409) {
       reviewNotice.value = '单据已更新，请重新核对最新内容后接收。'
@@ -218,48 +333,83 @@ async function confirmExternal() {
   const transfer = current.value
   if (!transfer || !canConfirmExternal.value || confirming.value) return
   const epoch = ++actionVersion
-  const active = () => epoch === actionVersion && props.modelValue && effectiveBatchNo.value === transfer.batch_no
+  const active = () =>
+    epoch === actionVersion && props.modelValue && effectiveBatchNo.value === transfer.batch_no
   const verb = externalActionLabel(transfer.entry_kind)
   confirming.value = true
   try {
     await ElMessageBox.confirm(
       `批次：${transfer.batch_no}\n材质：${transfer.material_name || '未填写'} · ${materialTypeLabel(transfer.material_type)}\n${verb}去向：${transfer.external_destination || '未填写'}\n数量：${numberText(transfer.quantity, '件')}、${numberText(transfer.weight, 'kg')}\n确认物料已实际${verb}？确认后扣减本班组库存，单据不可再修改。`,
       `确认${verb}`,
-      { type: 'warning', confirmButtonText: `确认${verb}`, cancelButtonText: '取消', customClass: 'outbound-confirmation' },
+      {
+        type: 'warning',
+        confirmButtonText: `确认${verb}`,
+        cancelButtonText: '取消',
+        customClass: 'outbound-confirmation',
+      },
     )
     if (!active()) return
     await authStore.refreshCurrentUser()
     if (!active() || !canConfirmExternal.value) return
     confirmKey ||= newIdempotencyKey()
-    const confirmed = await materialTransferApi.confirmOutbound(transfer.batch_no, { idempotency_key: confirmKey, ...materialTransferVersion(transfer) })
+    const confirmed = await materialTransferApi.confirmOutbound(transfer.batch_no, {
+      idempotency_key: confirmKey,
+      ...materialTransferVersion(transfer),
+    })
     if (!active()) return
-    current.value = confirmed; reviewNotice.value = ''
-    emit('changed', confirmed); emit('confirmed', confirmed)
+    current.value = confirmed
+    reviewNotice.value = ''
+    emit('changed', confirmed)
+    emit('confirmed', confirmed)
     showToast(`${verb}单 ${confirmed.batch_no} 已确认${verb}`, 'success')
   } catch (failure) {
     if (!active() || failure === 'cancel' || failure === 'close') return
     showToast(failure instanceof Error ? failure.message : `${verb}确认失败`, 'error')
     const conflict = failure instanceof MaterialTransferApiError && failure.status === 409
-    if (conflict) { reviewNotice.value = `单据已更新，请重新核对最新内容后确认${verb}。` }
+    if (conflict) {
+      reviewNotice.value = `单据已更新，请重新核对最新内容后确认${verb}。`
+    }
     await load(conflict)
-  } finally { if (active()) confirming.value = false }
+  } finally {
+    if (active()) confirming.value = false
+  }
 }
 
 async function rejectTransfer() {
   const transfer = current.value
   if (!transfer || !canReject.value || confirming.value || voiding.value) return
   const epoch = ++actionVersion
-  const active = () => epoch === actionVersion && props.modelValue && effectiveBatchNo.value === transfer.batch_no
+  const active = () =>
+    epoch === actionVersion && props.modelValue && effectiveBatchNo.value === transfer.batch_no
   confirming.value = true
   try {
-    const { value } = await ElMessageBox.prompt('退回原因选填，上序修正后才能接收。', '退回核对', { inputType: 'textarea', inputValue: transfer.rejection_reason || '', inputValidator: value => (value?.trim().length ?? 0) <= 2000 || '原因不能超过 2000 个字符', confirmButtonText: '退回核对', cancelButtonText: '取消' })
+    const { value } = await ElMessageBox.prompt('退回原因选填，上序修正后才能接收。', '退回核对', {
+      inputType: 'textarea',
+      inputValue: transfer.rejection_reason || '',
+      inputValidator: (value) => (value?.trim().length ?? 0) <= 2000 || '原因不能超过 2000 个字符',
+      confirmButtonText: '退回核对',
+      cancelButtonText: '取消',
+    })
     if (!active()) return
     await authStore.refreshCurrentUser()
     if (!active() || !canReject.value) return
-    const result = await materialTransferApi.reject(transfer.batch_no, value.trim(), transfer.version!)
-    if (active()) { current.value = result; emit('changed', result) }
-  } catch (error) { if (active() && error !== 'cancel' && error !== 'close') { showToast(error instanceof Error ? error.message : '退回核对失败', 'error'); await load() } }
-  finally { if (active()) confirming.value = false }
+    const result = await materialTransferApi.reject(
+      transfer.batch_no,
+      value.trim(),
+      transfer.version!,
+    )
+    if (active()) {
+      current.value = result
+      emit('changed', result)
+    }
+  } catch (error) {
+    if (active() && error !== 'cancel' && error !== 'close') {
+      showToast(error instanceof Error ? error.message : '退回核对失败', 'error')
+      await load()
+    }
+  } finally {
+    if (active()) confirming.value = false
+  }
 }
 
 async function voidTransfer(): Promise<void> {
@@ -268,17 +418,20 @@ async function voidTransfer(): Promise<void> {
   const epoch = ++actionVersion
   voiding.value = true
   try {
-    await ElMessageBox.confirm(
-      '作废后不能恢复或接收。',
-      `作废转料单 ${transfer.batch_no}`,
-      { type: 'warning', confirmButtonText: '确认作废', cancelButtonText: '取消' },
-    )
+    await ElMessageBox.confirm('作废后不能恢复或接收。', `作废转料单 ${transfer.batch_no}`, {
+      type: 'warning',
+      confirmButtonText: '确认作废',
+      cancelButtonText: '取消',
+    })
   } catch {
     if (epoch === actionVersion) voiding.value = false
     return
   }
   if (epoch !== actionVersion || !props.modelValue) return
-  if (!canVoid.value) { voiding.value = false; return }
+  if (!canVoid.value) {
+    voiding.value = false
+    return
+  }
   try {
     const voided = await materialTransferApi.void(transfer.batch_no)
     if (epoch !== actionVersion || !props.modelValue) return
@@ -296,7 +449,8 @@ async function voidTransfer(): Promise<void> {
 
 async function printTransfer(): Promise<void> {
   if (!current.value || !props.allowPrint || printReady.value) return
-  const batchNo = current.value.batch_no, epoch = requestVersion
+  const batchNo = current.value.batch_no,
+    epoch = requestVersion
   printReady.value = true
   try {
     const latest = await materialTransferApi.get(batchNo)
@@ -325,108 +479,404 @@ watch(
   () => [props.modelValue, effectiveBatchNo.value, props.receiptOnly] as const,
   ([open]) => {
     groupOpen.value = false
-    ++actionVersion; confirming.value = false; voiding.value = false
+    ++actionVersion
+    confirming.value = false
+    voiding.value = false
     if (!open) {
       ++requestVersion
-      editOpen.value = false; deliveryOpen.value = false
+      editOpen.value = false
+      deliveryOpen.value = false
       return
     }
     current.value = props.transfer || null
-    warehouseLocation.value = props.transfer?.warehouse_location || ''; warehouseLocationKey.value = ''
-    editOpen.value = false; deliveryOpen.value = false
+    warehouseLocation.value = props.transfer?.warehouse_location || ''
+    warehouseLocationKey.value = ''
+    editOpen.value = false
+    deliveryOpen.value = false
     confirmKey = newIdempotencyKey()
     void load()
   },
   { immediate: true },
 )
-watch(() => props.transfer, (transfer) => {
-  if (transfer?.batch_no !== effectiveBatchNo.value || !transfer) return
-  if (freezeLive.value) { liveRefresh.request(); return }
-  const previous = current.value
-  if (previous?.version && transfer.version && transfer.version < previous.version) return
-  if (previous && previous.version !== transfer.version && !transfer.history?.length) {
-    void load()
-    return
-  }
-  // List responses intentionally omit audit events; keep the detail history for this same version.
-  current.value = { ...transfer, history: transfer.history?.length ? transfer.history : previous?.history ?? [], loss_records: transfer.loss_records?.length ? transfer.loss_records : previous?.loss_records ?? [] }
-})
+watch(
+  () => props.transfer,
+  (transfer) => {
+    if (transfer?.batch_no !== effectiveBatchNo.value || !transfer) return
+    if (freezeLive.value) {
+      liveRefresh.request()
+      return
+    }
+    const previous = current.value
+    if (previous?.version && transfer.version && transfer.version < previous.version) return
+    if (previous && previous.version !== transfer.version && !transfer.history?.length) {
+      void load()
+      return
+    }
+    // List responses intentionally omit audit events; keep the detail history for this same version.
+    current.value = {
+      ...transfer,
+      history: transfer.history?.length ? transfer.history : (previous?.history ?? []),
+      loss_records: transfer.loss_records?.length
+        ? transfer.loss_records
+        : (previous?.loss_records ?? []),
+    }
+  },
+)
 
-watch(() => `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id ?? ''}:${authStore.isTeamAccount}:${authStore.currentUser?.active}:${authStore.currentUserError}`, () => {
-  groupOpen.value = false
-  ++requestVersion
-  ++actionVersion; confirming.value = false; voiding.value = false
-  editOpen.value = false; deliveryOpen.value = false
-  current.value = null
-  emit('update:modelValue', false)
-})
-
+watch(
+  () =>
+    `${authStore.currentUser?.id ?? ''}:${authStore.currentUser?.team_id ?? ''}:${authStore.isTeamAccount}:${authStore.currentUser?.active}:${authStore.currentUserError}`,
+  () => {
+    groupOpen.value = false
+    ++requestVersion
+    ++actionVersion
+    confirming.value = false
+    voiding.value = false
+    editOpen.value = false
+    deliveryOpen.value = false
+    current.value = null
+    emit('update:modelValue', false)
+  },
+)
 </script>
 
 <template>
-  <MaterialTransferDetailFrame :model-value="modelValue && !groupOpen" :busy="confirming || voiding || deliveryBusy" @close="close">
+  <MaterialTransferDetailFrame
+    :model-value="modelValue && !groupOpen"
+    :busy="confirming || voiding || deliveryBusy"
+    @close="close"
+  >
     <template #header>
       <header class="drawer-heading">
-        <span>{{ processed ? '加工实物登记单' : opening ? '初始库存' : receipt ? '库房手工入库' : external ? `${actionLabel}详情` : '转料详情' }}</span>
+        <span>{{
+          processed
+            ? '加工实物登记单'
+            : opening
+              ? '初始库存'
+              : receipt
+                ? '库房手工入库'
+                : external
+                  ? `${actionLabel}详情`
+                  : '转料详情'
+        }}</span>
         <h2>{{ current?.batch_no || effectiveBatchNo || '正在读取…' }}</h2>
-        <MaterialTransferStatus v-if="current" :status="current.status" :entry-kind="current.entry_kind" />
+        <MaterialTransferStatus
+          v-if="current"
+          :status="current.status"
+          :entry-kind="current.entry_kind"
+        />
       </header>
     </template>
 
     <StatePanel v-if="loading && !current" state="loading" title="正在读取转料单" />
-    <StatePanel v-else-if="loadError && !current" state="error" :description="loadError" @retry="load" />
+    <StatePanel
+      v-else-if="loadError && !current"
+      state="error"
+      :description="loadError"
+      @retry="load"
+    />
     <div v-else-if="current" class="drawer-content">
       <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
-      <ElAlert v-if="loadError" type="warning" :closable="false" title="最新数据刷新失败，当前显示上次加载结果" show-icon />
+      <ElAlert
+        v-if="loadError"
+        type="warning"
+        :closable="false"
+        title="最新数据刷新失败，当前显示上次加载结果"
+        show-icon
+      />
       <ElButton v-if="loadError" :loading="loading" @click="load">重新读取</ElButton>
-      <ElAlert v-if="reviewNotice" class="review-notice" type="warning" :closable="false" :title="reviewNotice" show-icon />
-      <ElAlert v-if="current.rejection_reason != null && current.status === 'pending'" type="warning" :closable="false" :title="current.rejection_reason ? '待上序修正：' + current.rejection_reason : '已退回核对，待上序修正'" />
-      <div class="document-barcode"><BarcodeCard :value="current.batch_no" :entity-label="processed ? '加工批次号' : receipt ? '入库批次号' : '转料批次号'" compact /><ElButton v-if="grouped" link type="primary" @click="groupOpen = true">历史合并记录 · {{ current.dispatch_no }}</ElButton></div>
-      <MaterialTransferDocumentFields :transfer="current" group="all"><template #serial><RouterLink :to="tracePath">{{ sharedSerialLabel(current) }}</RouterLink><SerialUrgencyBadge :urgency="current.urgency" /></template></MaterialTransferDocumentFields>
-      <section v-if="canConfirm && warehouseReceiver" class="receipt-location"><label>入库仓位</label><strong v-if="current.warehouse_location">{{ current.warehouse_location }}</strong><WarehouseLocationSelect v-else v-model="warehouseLocation" v-model:reservation-key="warehouseLocationKey" :team-id="Number(current.next_team.id)" :serial-no="current.serial_no" :material-name="current.material_name || ''" :material-type="current.material_type || ''" :active="modelValue && !groupOpen" :disabled="confirming" @busy-change="locationBusy = $event" /></section>
-      <section class="document-records"><h3>{{ processed ? '加工记录' : receipt ? '入库记录' : '流转记录' }}</h3><MaterialTransferHistory :transfer="current" /></section>
-      <section v-if="current.loss_records?.length" class="document-records"><h3>来源批次丢失记录</h3><div class="document-table-scroll"><table class="loss-record-table business-document-table" aria-label="来源批次丢失记录"><thead><tr><th scope="col">记录号</th><th scope="col">件数</th><th scope="col">重量（kg）</th><th scope="col">原因</th><th scope="col">登记人 / 时间</th></tr></thead><tbody><tr v-for="loss in current.loss_records" :key="loss.id"><td>{{ loss.loss_no }}</td><td>{{ loss.quantity }}</td><td>{{ loss.weight }}</td><td class="table-prose">{{ loss.reason }}</td><td>{{ loss.created_by }}<br />{{ formatDateTime(loss.created_at) }}</td></tr></tbody></table></div></section>
+      <ElAlert
+        v-if="reviewNotice"
+        class="review-notice"
+        type="warning"
+        :closable="false"
+        :title="reviewNotice"
+        show-icon
+      />
+      <ElAlert
+        v-if="current.rejection_reason != null && current.status === 'pending'"
+        type="warning"
+        :closable="false"
+        :title="
+          current.rejection_reason
+            ? '待上序修正：' + current.rejection_reason
+            : '已退回核对，待上序修正'
+        "
+      />
+      <div class="document-barcode">
+        <BarcodeCard
+          :value="current.batch_no"
+          :entity-label="processed ? '加工批次号' : receipt ? '入库批次号' : '转料批次号'"
+          compact
+        /><ElButton v-if="grouped" link type="primary" @click="groupOpen = true"
+          >历史合并记录 · {{ current.dispatch_no }}</ElButton
+        >
+      </div>
+      <MaterialTransferDocumentFields :transfer="current" group="all"
+        ><template #serial
+          ><RouterLink :to="tracePath">{{ sharedSerialLabel(current) }}</RouterLink
+          ><SerialUrgencyBadge :urgency="current.urgency" /></template
+      ></MaterialTransferDocumentFields>
+      <section v-if="canConfirm && warehouseReceiver" class="receipt-location">
+        <label>入库仓位</label
+        ><strong v-if="current.warehouse_location">{{ current.warehouse_location }}</strong
+        ><WarehouseLocationSelect
+          v-else
+          v-model="warehouseLocation"
+          v-model:reservation-key="warehouseLocationKey"
+          :team-id="Number(current.next_team.id)"
+          :serial-no="current.serial_no"
+          :material-name="current.material_name || ''"
+          :material-type="current.material_type || ''"
+          :active="modelValue && !groupOpen"
+          :disabled="confirming"
+          @busy-change="locationBusy = $event"
+        />
+      </section>
+      <section class="document-records">
+        <h3>{{ processed ? '加工记录' : receipt ? '入库记录' : '流转记录' }}</h3>
+        <MaterialTransferHistory :transfer="current" />
+      </section>
+      <section v-if="current.loss_records?.length" class="document-records">
+        <h3>来源批次丢失记录</h3>
+        <div class="document-table-scroll">
+          <table class="loss-record-table business-document-table" aria-label="来源批次丢失记录">
+            <thead>
+              <tr>
+                <th scope="col">记录号</th>
+                <th scope="col">件数</th>
+                <th scope="col">重量（kg）</th>
+                <th scope="col">原因</th>
+                <th scope="col">登记人 / 时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="loss in current.loss_records" :key="loss.id">
+                <td>{{ loss.loss_no }}</td>
+                <td>{{ loss.quantity }}</td>
+                <td>{{ loss.weight }}</td>
+                <td class="table-prose">{{ loss.reason }}</td>
+                <td>{{ loss.created_by }}<br />{{ formatDateTime(loss.created_at) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
 
     <template v-if="current" #footer>
       <div class="drawer-footer">
-        <ElButton v-if="canReject" type="warning" plain :disabled="confirming || voiding" @click="rejectTransfer">退回核对</ElButton>
-        <ElButton v-if="canConfirm" type="primary" :icon="CircleCheck" :loading="confirming" :disabled="locationBusy" @click="confirmReceipt">确认签收</ElButton>
-        <ElButton v-if="canConfirmExternal" type="primary" :icon="CircleCheck" :loading="confirming" @click="confirmExternal">确认{{ actionLabel }}</ElButton>
-        <ElButton v-if="canMaintainDelivery" :disabled="confirming || voiding" @click="deliveryOpen = true">维护交期</ElButton>
-        <a v-if="current.delivery_origin_batch_no && current.delivery_origin_batch_no !== current.batch_no" :href="'/transfer-batches?batch_no=' + encodeURIComponent(current.delivery_origin_batch_no)">查看交期源单</a>
-        <ElButton v-if="canEdit" type="primary" :icon="EditPen" :disabled="voiding" @click="editOpen = true">编辑</ElButton>
-        <ElButton v-if="allowPrint" :icon="Printer" @click="printTransfer">{{ processed ? '打印加工登记单' : receipt ? '打印入库单' : external ? `打印${actionLabel}单` : '打印转料单' }}</ElButton>
-        <ElButton v-if="canVoid" type="danger" plain :icon="Delete" :loading="voiding" @click="voidTransfer">作废</ElButton>
+        <ElButton
+          v-if="canReject"
+          type="warning"
+          plain
+          :disabled="confirming || voiding"
+          @click="rejectTransfer"
+          >退回核对</ElButton
+        >
+        <ElButton
+          v-if="canConfirm"
+          type="primary"
+          :icon="CircleCheck"
+          :loading="confirming"
+          :disabled="locationBusy"
+          @click="confirmReceipt"
+          >确认签收</ElButton
+        >
+        <ElButton
+          v-if="canConfirmExternal"
+          type="primary"
+          :icon="CircleCheck"
+          :loading="confirming"
+          @click="confirmExternal"
+          >确认{{ actionLabel }}</ElButton
+        >
+        <ElButton
+          v-if="canMaintainDelivery"
+          :disabled="confirming || voiding"
+          @click="deliveryOpen = true"
+          >维护交期</ElButton
+        >
+        <a
+          v-if="
+            current.delivery_origin_batch_no &&
+            current.delivery_origin_batch_no !== current.batch_no
+          "
+          :href="
+            '/transfer-batches?batch_no=' + encodeURIComponent(current.delivery_origin_batch_no)
+          "
+          >查看交期源单</a
+        >
+        <ElButton
+          v-if="canEdit"
+          type="primary"
+          :icon="EditPen"
+          :disabled="voiding"
+          @click="editOpen = true"
+          >编辑</ElButton
+        >
+        <ElButton v-if="allowPrint" :icon="Printer" @click="printTransfer">{{
+          processed
+            ? '打印加工登记单'
+            : receipt
+              ? '打印入库单'
+              : external
+                ? `打印${actionLabel}单`
+                : '打印转料单'
+        }}</ElButton>
+        <ElButton
+          v-if="canVoid"
+          type="danger"
+          plain
+          :icon="Delete"
+          :loading="voiding"
+          @click="voidTransfer"
+          >作废</ElButton
+        >
       </div>
-      <p class="permission-note" :title="stateMessage" aria-live="polite"><ElIcon><Lock /></ElIcon>{{ canConfirm ? '接收后本单将锁定。' : stateMessage }}</p>
+      <p class="permission-note" :title="stateMessage" aria-live="polite">
+        <ElIcon><Lock /></ElIcon>{{ canConfirm ? '接收后本单将锁定。' : stateMessage }}
+      </p>
     </template>
   </MaterialTransferDetailFrame>
-  <MaterialDispatchDrawer v-model="groupOpen" :dispatch-no="current?.dispatch_no || ''" :allow-print="allowPrint" :receipt-only="receiptOnly" @changed="groupChanged" @busy-change="emit('busyChange', $event)" />
-  <MaterialDeliveryDialog v-model="deliveryOpen" :transfer="current" @saved="updateCurrent" @refreshed="updateCurrent" @busy="deliveryBusy = $event" />
-  <MaterialTransferFormDialog v-model="editOpen" :transfer="current" @saved="updateCurrent" @refreshed="updateCurrent" />
-  <Teleport to="body"><MaterialTransferPrintSheet v-if="current && printReady" ref="printSheet" :transfer="current" /></Teleport>
+  <MaterialDispatchDrawer
+    v-model="groupOpen"
+    :dispatch-no="current?.dispatch_no || ''"
+    :allow-print="allowPrint"
+    :receipt-only="receiptOnly"
+    @changed="groupChanged"
+    @busy-change="emit('busyChange', $event)"
+  />
+  <MaterialDeliveryDialog
+    v-model="deliveryOpen"
+    :transfer="current"
+    @saved="updateCurrent"
+    @refreshed="updateCurrent"
+    @busy="deliveryBusy = $event"
+  />
+  <MaterialTransferFormDialog
+    v-model="editOpen"
+    :transfer="current"
+    @saved="updateCurrent"
+    @refreshed="updateCurrent"
+  />
+  <Teleport to="body"
+    ><MaterialTransferPrintSheet v-if="current && printReady" ref="printSheet" :transfer="current"
+  /></Teleport>
 </template>
 
 <style scoped>
-.receipt-location { display: grid; grid-template-columns: 90px minmax(0, 460px); align-items: start; gap: 12px; padding: 18px 0; }
-.receipt-location > label { padding-top: 8px; color: var(--text); }
-@media (max-width: 560px) { .receipt-location { grid-template-columns: 1fr; } }
-:global(.outbound-confirmation .el-message-box__message p) { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.8; }
-.drawer-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; padding-right: 24px; }
-.drawer-heading > span:first-child { font-size: 22px; font-weight: 600; }
-.drawer-heading h2 { margin: 0; font-size: 16px; font-weight: 400; overflow-wrap: anywhere; }
-.drawer-content { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
-.document-barcode { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; justify-items: center; padding: 0 0 4px; }
-.document-records { min-width: 0; }
-.document-records h3 { margin: 6px 0 12px; font-size: 16px; font-weight: 600; }
-.document-table-scroll { overflow-x: auto; }
-.loss-record-table { width: 100%; min-width: 620px; table-layout: fixed; border-collapse: collapse; font-size: 14px; line-height: 1.7; }
-.loss-record-table th, .loss-record-table td { border: 1px solid #cdd3dc; padding: 10px; text-align: left; overflow-wrap: anywhere; white-space: pre-wrap; }
-.loss-record-table th { background: var(--table-header-bg); font-weight: 500; }
-.drawer-footer { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-.drawer-footer :deep(.el-button) { margin: 0; height: 40px; font-size: 15px; }
-.permission-note { display: flex; align-items: baseline; gap: 7px; margin: 10px 0 0; color: var(--subtle); font-size: 13px; line-height: 1.6; }
-.permission-note .el-icon { flex-shrink: 0; }
-@media (max-width: 560px) { .drawer-heading { gap: 8px; } .drawer-heading h2 { flex-basis: 100%; } }
+.receipt-location {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 460px);
+  align-items: start;
+  gap: 12px;
+  padding: 18px 0;
+}
+.receipt-location > label {
+  padding-top: 8px;
+  color: var(--text);
+}
+@media (max-width: 560px) {
+  .receipt-location {
+    grid-template-columns: 1fr;
+  }
+}
+:global(.outbound-confirmation .el-message-box__message p) {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+}
+.drawer-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding-right: 24px;
+}
+.drawer-heading > span:first-child {
+  font-size: 22px;
+  font-weight: 600;
+}
+.drawer-heading h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.drawer-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
+}
+.document-barcode {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  justify-items: center;
+  padding: 0 0 4px;
+}
+.document-records {
+  min-width: 0;
+}
+.document-records h3 {
+  margin: 6px 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.document-table-scroll {
+  overflow-x: auto;
+}
+.loss-record-table {
+  width: 100%;
+  min-width: 620px;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.loss-record-table th,
+.loss-record-table td {
+  border: 1px solid #cdd3dc;
+  padding: 10px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.loss-record-table th {
+  background: var(--table-header-bg);
+  font-weight: 500;
+}
+.drawer-footer {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.drawer-footer :deep(.el-button) {
+  margin: 0;
+  height: 40px;
+  font-size: 15px;
+}
+.permission-note {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 10px 0 0;
+  color: var(--subtle);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.permission-note .el-icon {
+  flex-shrink: 0;
+}
+@media (max-width: 560px) {
+  .drawer-heading {
+    gap: 8px;
+  }
+  .drawer-heading h2 {
+    flex-basis: 100%;
+  }
+}
 </style>

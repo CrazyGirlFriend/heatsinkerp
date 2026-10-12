@@ -13,13 +13,33 @@ import { useAuthStore } from '@/stores/auth'
 import { materialDispatchApi } from '@/services/materialDispatchApi'
 import { materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import type { MaterialDispatchDocument } from '@/types/teamMaterials'
-const props = withDefaults(defineProps<{ modelValue: boolean; dispatchNo?: string; allowPrint?: boolean; receiptOnly?: boolean }>(), { dispatchNo: '', allowPrint: true, receiptOnly: false })
-const emit = defineEmits<{ 'update:modelValue': [boolean]; changed: [MaterialDispatchDocument]; busyChange: [boolean] }>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    dispatchNo?: string
+    allowPrint?: boolean
+    receiptOnly?: boolean
+  }>(),
+  { dispatchNo: '', allowPrint: true, receiptOnly: false },
+)
+const emit = defineEmits<{
+  'update:modelValue': [boolean]
+  changed: [MaterialDispatchDocument]
+  busyChange: [boolean]
+}>()
 const auth = useAuthStore()
-const current = ref<MaterialDispatchDocument | null>(null), loading = ref(false), error = ref('')
-const selected = ref<MaterialTransfer | null>(null), batchOpen = ref(false), printOpen = ref(false), batchBusy = ref(false)
+const current = ref<MaterialDispatchDocument | null>(null),
+  loading = ref(false),
+  error = ref('')
+const selected = ref<MaterialTransfer | null>(null),
+  batchOpen = ref(false),
+  printOpen = ref(false),
+  batchBusy = ref(false)
 let version = 0
-const live = useLiveRefresh(() => load(true), { enabled: () => props.modelValue && !!props.dispatchNo, busy: () => loading.value || batchOpen.value || printOpen.value })
+const live = useLiveRefresh(() => load(true), {
+  enabled: () => props.modelValue && !!props.dispatchNo,
+  busy: () => loading.value || batchOpen.value || printOpen.value,
+})
 async function load(background = false) {
   const request = ++version
   if (!props.modelValue || !props.dispatchNo) return
@@ -33,38 +53,144 @@ async function load(background = false) {
       if (background) throw reason
       error.value = reason instanceof Error ? reason.message : '历史记录读取失败'
     }
-  } finally { if (request === version) loading.value = false }
+  } finally {
+    if (request === version) loading.value = false
+  }
 }
-function openBatch(item: MaterialTransfer) { selected.value = item; batchOpen.value = true }
-function setBusy(value: boolean) { batchBusy.value = value; emit('busyChange', value) }
-function close() { if (!batchBusy.value) emit('update:modelValue', false) }
-async function changed() { await load(); if (current.value) emit('changed', current.value) }
-function reset() { ++version; current.value = null; selected.value = null; batchOpen.value = printOpen.value = loading.value = false; setBusy(false); error.value = '' }
-watch(() => [props.modelValue, props.dispatchNo], () => { reset(); if (props.modelValue) void load() }, { immediate: true })
-watch(() => `${auth.currentUser?.id}:${auth.currentUser?.team_id}:${auth.currentUser?.active}`, () => { reset(); emit('update:modelValue', false) })
+function openBatch(item: MaterialTransfer) {
+  selected.value = item
+  batchOpen.value = true
+}
+function setBusy(value: boolean) {
+  batchBusy.value = value
+  emit('busyChange', value)
+}
+function close() {
+  if (!batchBusy.value) emit('update:modelValue', false)
+}
+async function changed() {
+  await load()
+  if (current.value) emit('changed', current.value)
+}
+function reset() {
+  ++version
+  current.value = null
+  selected.value = null
+  batchOpen.value = printOpen.value = loading.value = false
+  setBusy(false)
+  error.value = ''
+}
+watch(
+  () => [props.modelValue, props.dispatchNo],
+  () => {
+    reset()
+    if (props.modelValue) void load()
+  },
+  { immediate: true },
+)
+watch(
+  () => `${auth.currentUser?.id}:${auth.currentUser?.team_id}:${auth.currentUser?.active}`,
+  () => {
+    reset()
+    emit('update:modelValue', false)
+  },
+)
 onBeforeUnmount(reset)
 </script>
 
 <template>
-  <MaterialTransferDetailFrame :model-value="modelValue" :busy="batchBusy" title="历史合并记录" @close="close">
+  <MaterialTransferDetailFrame
+    :model-value="modelValue"
+    :busy="batchBusy"
+    title="历史合并记录"
+    @close="close"
+  >
     <template #header><h2>历史合并记录</h2></template>
     <StatePanel v-if="loading && !current" state="loading" title="正在读取历史记录" />
     <StatePanel v-else-if="!current" state="error" :description="error" @retry="load()" />
     <template v-else>
-      <p>历史编号：{{ dispatchNo }}。以下批次分别核对、分别接收。<template v-if="allowPrint">合并打印不合并批次。</template></p>
+      <p>
+        历史编号：{{ dispatchNo }}。以下批次分别核对、分别接收。<template v-if="allowPrint"
+          >合并打印不合并批次。</template
+        >
+      </p>
       <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
       <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-      <div class="historical-table"><table class="business-document-table" aria-label="历史记录中的独立批次">
-        <thead><tr><th>批次号</th><th>流水号</th><th>材质</th><th>物料类型</th><th>件数</th><th>重量 (kg)</th><th>状态</th><th>操作</th></tr></thead>
-        <tbody><tr v-for="item in current.items" :key="item.batch_no"><td>{{ item.batch_no }}</td><td>{{ item.serial_no }}</td><td>{{ item.material_name || '—' }}</td><td>{{ materialTypeLabel(item.material_type) }}</td><td>{{ item.quantity }}</td><td>{{ item.weight }}</td><td><MaterialTransferStatus :status="item.status" :entry-kind="item.entry_kind" /></td><td><ElButton link type="primary" :disabled="loading || !!error" :aria-label="'查看批次 ' + item.batch_no" @click="openBatch(item)">查看批次</ElButton></td></tr></tbody>
-      </table></div>
+      <div class="historical-table">
+        <table class="business-document-table" aria-label="历史记录中的独立批次">
+          <thead>
+            <tr>
+              <th>批次号</th>
+              <th>流水号</th>
+              <th>材质</th>
+              <th>物料类型</th>
+              <th>件数</th>
+              <th>重量 (kg)</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in current.items" :key="item.batch_no">
+              <td>{{ item.batch_no }}</td>
+              <td>{{ item.serial_no }}</td>
+              <td>{{ item.material_name || '—' }}</td>
+              <td>{{ materialTypeLabel(item.material_type) }}</td>
+              <td>{{ item.quantity }}</td>
+              <td>{{ item.weight }}</td>
+              <td>
+                <MaterialTransferStatus :status="item.status" :entry-kind="item.entry_kind" />
+              </td>
+              <td>
+                <ElButton
+                  link
+                  type="primary"
+                  :disabled="loading || !!error"
+                  :aria-label="'查看批次 ' + item.batch_no"
+                  @click="openBatch(item)"
+                  >查看批次</ElButton
+                >
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </template>
-    <template v-if="allowPrint" #footer><ElButton :disabled="!current || loading || !!error" @click="printOpen = true">合并打印</ElButton></template>
+    <template v-if="allowPrint" #footer
+      ><ElButton :disabled="!current || loading || !!error" @click="printOpen = true"
+        >合并打印</ElButton
+      ></template
+    >
   </MaterialTransferDetailFrame>
-  <MaterialTransferDrawer v-if="selected" v-model="batchOpen" :transfer="selected" :batch-no="selected.batch_no" :show-history-group="false" :allow-print="allowPrint" :receipt-only="receiptOnly" @changed="changed" @busy-change="setBusy" />
+  <MaterialTransferDrawer
+    v-if="selected"
+    v-model="batchOpen"
+    :transfer="selected"
+    :batch-no="selected.batch_no"
+    :show-history-group="false"
+    :allow-print="allowPrint"
+    :receipt-only="receiptOnly"
+    @changed="changed"
+    @busy-change="setBusy"
+  />
   <MaterialBatchPrintDialog v-if="allowPrint" v-model="printOpen" :items="current?.items || []" />
 </template>
 <style scoped>
-h2 { margin: 0; font-size: 22px; } p { color: var(--el-text-color-secondary); line-height: 1.7; }
-.historical-table { overflow-x: auto; margin-top: 16px; } table { width: 100%; min-width: 980px; white-space: nowrap; }
+h2 {
+  margin: 0;
+  font-size: 22px;
+}
+p {
+  color: var(--el-text-color-secondary);
+  line-height: 1.7;
+}
+.historical-table {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+table {
+  width: 100%;
+  min-width: 980px;
+  white-space: nowrap;
+}
 </style>

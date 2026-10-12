@@ -1,6 +1,7 @@
 """One encrypted configuration, optimistic writes, and saved-configuration testing."""
-from dataclasses import replace
+
 from asyncio import to_thread
+from dataclasses import replace
 from urllib.parse import urlsplit
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -8,18 +9,20 @@ from fastapi import Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
+from .async_api import AsyncAPIRouter as APIRouter
 from .auth import actor_name, require_admin
 from .config import settings
 from .database import SessionLocal, get_db
 from .models import MainSystemConfiguration, User, utcnow
 
-from .async_api import AsyncAPIRouter as APIRouter
-
-router = APIRouter(prefix="/api/main-system/configuration", tags=["main system configuration"],
-                   dependencies=[Depends(require_admin)])
+router = APIRouter(
+    prefix="/api/main-system/configuration",
+    tags=["main system configuration"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 def cipher():
@@ -35,7 +38,9 @@ def origin(url):
 
 
 def allowed_origins():
-    values = [v.strip().rstrip('/') for v in settings.main_system_allowed_origins.split(',') if v.strip()]
+    values = [
+        v.strip().rstrip("/") for v in settings.main_system_allowed_origins.split(",") if v.strip()
+    ]
     if settings.main_system_base_url:
         values.append(settings.main_system_base_url)
     return values
@@ -72,8 +77,12 @@ def settings_from_db(db, fallback=None):
     if not row.enabled:
         return replace(fallback, main_system_base_url="", main_system_token="")
     validate_target(row.base_url)
-    return replace(fallback, main_system_base_url=row.base_url, main_system_token=decode(row),
-                   main_system_timeout_seconds=float(row.timeout_seconds))
+    return replace(
+        fallback,
+        main_system_base_url=row.base_url,
+        main_system_token=decode(row),
+        main_system_timeout_seconds=float(row.timeout_seconds),
+    )
 
 
 def public_config(row):
@@ -85,14 +94,17 @@ def public_config(row):
     return {
         "enabled": row.enabled if row else bool(settings.main_system_base_url),
         "base_url": row.base_url if row else settings.main_system_base_url,
-        "timeout_seconds": float(row.timeout_seconds) if row else settings.main_system_timeout_seconds,
+        "timeout_seconds": float(row.timeout_seconds)
+        if row
+        else settings.main_system_timeout_seconds,
         "has_token": bool(row.token_ciphertext) if row else bool(settings.main_system_token),
         "version": row.version if row else 0,
         "source": "database" if row else "environment",
-        "key_ready": key_ready, "allowed_origins": allowed_origins(),
+        "key_ready": key_ready,
+        "allowed_origins": allowed_origins(),
         "updated_by": row.updated_by if row else None,
-        "updated_at": row.updated_at.isoformat() + 'Z' if row else None,
-        "last_test_at": row.last_test_at.isoformat() + 'Z' if row and row.last_test_at else None,
+        "updated_at": row.updated_at.isoformat() + "Z" if row else None,
+        "last_test_at": row.last_test_at.isoformat() + "Z" if row and row.last_test_at else None,
         "last_test_ok": row.last_test_ok if row else None,
         "last_test_message": row.last_test_message if row else None,
     }
@@ -106,29 +118,37 @@ class ConfigurationSave(BaseModel):
     timeout_seconds: float = Field(ge=0.1, le=30, multiple_of=0.1)
     expected_version: int = Field(ge=0)
 
-    @field_validator('base_url')
+    @field_validator("base_url")
     @classmethod
     def clean_url(cls, value):
-        return value.strip().rstrip('/')
+        return value.strip().rstrip("/")
 
 
 @router.get("")
 def get_configuration(response: Response, db: Session = Depends(get_db)):
-    response.headers['Cache-Control'] = 'no-store'
+    response.headers["Cache-Control"] = "no-store"
     return public_config(db.get(MainSystemConfiguration, 1))
 
 
 @router.put("")
-def save_configuration(payload: ConfigurationSave, response: Response,
-                       user: User = Depends(require_admin), db: Session = Depends(get_db)):
-    response.headers['Cache-Control'] = 'no-store'
+def save_configuration(
+    payload: ConfigurationSave,
+    response: Response,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    response.headers["Cache-Control"] = "no-store"
     validate_target(payload.base_url)
     encryptor = cipher()
     if payload.enabled and not payload.base_url:
         raise HTTPException(422, "启用前请填写主系统地址")
     try:
         with db.begin():
-            row = db.scalar(select(MainSystemConfiguration).where(MainSystemConfiguration.id == 1).with_for_update())
+            row = db.scalar(
+                select(MainSystemConfiguration)
+                .where(MainSystemConfiguration.id == 1)
+                .with_for_update()
+            )
             if (row.version if row else 0) != payload.expected_version:
                 raise HTTPException(409, "配置已被更新，请重新加载后再保存")
             old_url = row.base_url if row else settings.main_system_base_url
@@ -165,22 +185,37 @@ class ConfigurationTest(BaseModel):
 
 
 @router.post("/test")
-async def test_configuration(payload: ConfigurationTest, response: Response, db: AsyncSession = Depends(get_db)):
+async def test_configuration(
+    payload: ConfigurationTest, response: Response, db: AsyncSession = Depends(get_db)
+):
     from . import main_system
-    response.headers['Cache-Control'] = 'no-store'
+
+    response.headers["Cache-Control"] = "no-store"
     connection, serial_no = await db.run_sync(lambda session: prepare_test(session, payload))
     data = None
     try:
         record = await to_thread(main_system.fetch_serial, serial_no, connection=connection)
-        data = {**record.model_dump(mode="json"), "snapshot_hash": main_system.snapshot_hash(record)}
+        data = {
+            **record.model_dump(mode="json"),
+            "snapshot_hash": main_system.snapshot_hash(record),
+        }
         ok, message = True, "查询成功" if record.active else "查询成功，流水号已停用"
     except HTTPException as exc:
-        messages = {404:"主系统未找到该流水号", 502:"主系统连接、鉴权或返回格式异常，请核对接口规范",
-                    503:"主系统暂不可用或请求受限", 504:"主系统请求超时"}
-        details = {"main system credentials were rejected": "主系统认证失败，访问令牌无效或已过期",
-                   "main system credentials lack read permission": "认证凭证无资料读取权限，请联系主系统管理员授权",
-                   "main system response does not match the serial-material contract": "主系统返回字段不符合约定，请核对接口规范"}
-        ok, message = False, details.get(str(exc.detail), messages.get(exc.status_code, "测试失败，请检查配置"))
+        messages = {
+            404: "主系统未找到该流水号",
+            502: "主系统连接、鉴权或返回格式异常，请核对接口规范",
+            503: "主系统暂不可用或请求受限",
+            504: "主系统请求超时",
+        }
+        details = {
+            "main system credentials were rejected": "主系统认证失败，访问令牌无效或已过期",
+            "main system credentials lack read permission": "认证凭证无资料读取权限，请联系主系统管理员授权",
+            "main system response does not match the serial-material contract": "主系统返回字段不符合约定，请核对接口规范",
+        }
+        ok, message = (
+            False,
+            details.get(str(exc.detail), messages.get(exc.status_code, "测试失败，请检查配置")),
+        )
     return await db.run_sync(lambda session: finish_test(session, payload, ok, message, data))
 
 
@@ -194,19 +229,28 @@ def prepare_test(db, payload):
     serial_no = payload.serial_no.strip()
     if not serial_no:
         raise HTTPException(422, "请输入测试流水号")
-    connection = replace(settings, main_system_base_url=row.base_url, main_system_token=decode(row),
-                         main_system_timeout_seconds=float(row.timeout_seconds))
+    connection = replace(
+        settings,
+        main_system_base_url=row.base_url,
+        main_system_token=decode(row),
+        main_system_timeout_seconds=float(row.timeout_seconds),
+    )
     db.commit()
     return connection, serial_no
 
 
 def finish_test(db, payload, ok, message, data):
     at = utcnow()
-    changed = db.execute(update(MainSystemConfiguration).where(MainSystemConfiguration.id == 1,
-        MainSystemConfiguration.version == payload.expected_version).values(
-            last_test_at=at, last_test_ok=ok, last_test_message=message))
+    changed = db.execute(
+        update(MainSystemConfiguration)
+        .where(
+            MainSystemConfiguration.id == 1,
+            MainSystemConfiguration.version == payload.expected_version,
+        )
+        .values(last_test_at=at, last_test_ok=ok, last_test_message=message)
+    )
     if changed.rowcount != 1:
         db.rollback()
         raise HTTPException(409, "测试期间配置已改变，请重新加载后测试")
     db.commit()
-    return {"ok": ok, "message": message, "tested_at": at.isoformat() + 'Z', "data": data}
+    return {"ok": ok, "message": message, "tested_at": at.isoformat() + "Z", "data": data}

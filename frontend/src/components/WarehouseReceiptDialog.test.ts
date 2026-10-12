@@ -9,28 +9,75 @@ import MaterialInput from './MaterialInput.vue'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 const state = vi.hoisted(() => ({
-  auth: { isTeamAccount: true, currentUser: { id: 41, team_id: 901, active: true }, currentUserError: '', refreshCurrentUser: vi.fn() },
-  directory: { items: [{ id: 901, code: 'FACTORY-WAREHOUSE', kind: 'warehouse', name: '库房', active: true }], loaded: true, error: '', refreshTeamDirectory: vi.fn() },
+  auth: {
+    isTeamAccount: true,
+    currentUser: { id: 41, team_id: 901, active: true },
+    currentUserError: '',
+    refreshCurrentUser: vi.fn(),
+  },
+  directory: {
+    items: [{ id: 901, code: 'FACTORY-WAREHOUSE', kind: 'warehouse', name: '库房', active: true }],
+    loaded: true,
+    error: '',
+    refreshTeamDirectory: vi.fn(),
+  },
 }))
-vi.mock('@/services/materialInputApi', () => ({ materialSuggestions: vi.fn().mockResolvedValue([]) }))
+vi.mock('@/services/materialInputApi', () => ({
+  materialSuggestions: vi.fn().mockResolvedValue([]),
+}))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => state.directory }))
-const receipt = () => normalizeMaterialTransfer({ id: 51, batch_no: 'TL-RECEIPT', serial_no: 'QA-IN', entry_kind: 'warehouse_receipt', source_team: null, next_team: { id: 901, name: '库房', kind: 'warehouse' }, status: 'received', locked: true, stock_tracked: true })
+const receipt = () =>
+  normalizeMaterialTransfer({
+    id: 51,
+    batch_no: 'TL-RECEIPT',
+    serial_no: 'QA-IN',
+    entry_kind: 'warehouse_receipt',
+    source_team: null,
+    next_team: { id: 901, name: '库房', kind: 'warehouse' },
+    status: 'received',
+    locked: true,
+    stock_tracked: true,
+  })
 let wrapper: VueWrapper
 beforeEach(() => {
   vi.spyOn(teamMaterialApi, 'warehouseLocations').mockResolvedValue({ items: [] })
   sessionStorage.clear()
-  state.auth = reactive({ isTeamAccount: true, currentUser: { id: 41, team_id: 901, active: true }, currentUserError: '', refreshCurrentUser: vi.fn().mockResolvedValue(undefined) })
-  state.directory = reactive({ items: [{ id: 901, code: 'FACTORY-WAREHOUSE', kind: 'warehouse', name: '库房', active: true }], loaded: true, error: '', refreshTeamDirectory: vi.fn().mockResolvedValue(undefined) })
+  state.auth = reactive({
+    isTeamAccount: true,
+    currentUser: { id: 41, team_id: 901, active: true },
+    currentUserError: '',
+    refreshCurrentUser: vi.fn().mockResolvedValue(undefined),
+  })
+  state.directory = reactive({
+    items: [{ id: 901, code: 'FACTORY-WAREHOUSE', kind: 'warehouse', name: '库房', active: true }],
+    loaded: true,
+    error: '',
+    refreshTeamDirectory: vi.fn().mockResolvedValue(undefined),
+  })
   vi.spyOn(teamMaterialApi, 'createReceipt').mockResolvedValue(receipt())
 })
-afterEach(() => { wrapper?.unmount(); vi.restoreAllMocks(); sessionStorage.clear() })
+afterEach(() => {
+  wrapper?.unmount()
+  vi.restoreAllMocks()
+  sessionStorage.clear()
+})
 async function render() {
-  wrapper = mount(WarehouseReceiptDialog, { props: { modelValue: true, teamId: 901 }, global: { stubs: { ElDialog: { template: '<div><slot name="header"/><slot/><slot name="footer"/></div>' } } } })
+  wrapper = mount(WarehouseReceiptDialog, {
+    props: { modelValue: true, teamId: 901 },
+    global: {
+      stubs: {
+        ElDialog: { template: '<div><slot name="header"/><slot/><slot name="footer"/></div>' },
+      },
+    },
+  })
   await flushPromises()
 }
 async function amount(label: string, value: number) {
-  wrapper.findAllComponents(ElInputNumber).find(item => item.find(`input[aria-label="${label}"]`).exists())!.vm.$emit('update:modelValue', value)
+  wrapper
+    .findAllComponents(ElInputNumber)
+    .find((item) => item.find(`input[aria-label="${label}"]`).exists())!
+    .vm.$emit('update:modelValue', value)
   await flushPromises()
 }
 async function fill() {
@@ -38,114 +85,246 @@ async function fill() {
   await wrapper.get('input[aria-label="流水号"]').setValue('  QA-IN  ')
   await wrapper.get('input[aria-label="材质"]').setValue('  铜钼  ')
   wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'semi_finished')
-  await amount('入库件数', 0); await amount('入库重量', 0.005)
+  await amount('入库件数', 0)
+  await amount('入库重量', 0.005)
   await wrapper.get('textarea[aria-label="入库说明"]').setValue('  实物到货登记  ')
 }
-async function submit() { await wrapper.get('form').trigger('submit'); await flushPromises() }
+async function submit() {
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+}
 
 describe('warehouse manual receipt', () => {
   it('submits one shared physical batch with distinct order requirements, validates duplicate identities and preserves retries', async () => {
-    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(new TeamMaterialApiError('网络中断'))
-    await render(); await fill()
-    wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', true); await flushPromises()
+    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(
+      new TeamMaterialApiError('网络中断'),
+    )
+    await render()
+    await fill()
+    wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', true)
+    await flushPromises()
     expect(wrapper.find('input[aria-label="流水号"]').exists()).toBe(false)
     await wrapper.get('input[aria-label="共投流水号1"]').setValue(' A ')
     await wrapper.get('input[aria-label="共投流水号2"]').setValue('a')
     await submit()
     expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
-    expect(wrapper.get('input[aria-label="共投流水号2"]').element.closest('.el-form-item')?.classList.contains('is-error')).toBe(true)
+    expect(
+      wrapper
+        .get('input[aria-label="共投流水号2"]')
+        .element.closest('.el-form-item')
+        ?.classList.contains('is-error'),
+    ).toBe(true)
     await wrapper.get('input[aria-label="共投流水号2"]').setValue('B')
     await submit()
     expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
-    expect(wrapper.get('input[aria-label="共投计划重量1"]').element.closest('.el-form-item')?.classList.contains('is-error')).toBe(true)
+    expect(
+      wrapper
+        .get('input[aria-label="共投计划重量1"]')
+        .element.closest('.el-form-item')
+        ?.classList.contains('is-error'),
+    ).toBe(true)
     for (const index of [1, 2]) {
-      await amount(`共投计划重量${index}`, .0025)
+      await amount(`共投计划重量${index}`, 0.0025)
       await amount(`共投计划件数${index}`, 30)
       await wrapper.get(`input[aria-label="共投计划切割尺寸${index}"]`).setValue('25 × 12 × 2 mm')
     }
     await wrapper.get('input[aria-label="共投客户1"]').setValue('CA')
     await wrapper.get('input[aria-label="共投成品规格1"]').setValue('20 × 10 × 2 mm')
     wrapper.findAllComponents(ElDatePicker)[0]!.vm.$emit('update:modelValue', '2026-11-01')
-    wrapper.findAllComponents(ElInputNumber).find(input => input.props('ariaLabel') === '共投应发件数1')!.vm.$emit('update:modelValue', 30)
+    wrapper
+      .findAllComponents(ElInputNumber)
+      .find((input) => input.props('ariaLabel') === '共投应发件数1')!
+      .vm.$emit('update:modelValue', 30)
     await submit()
     const original = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
-    expect(original).toMatchObject({ serial_no: '', quantity: 0, weight: .005, customer_code: null, finished_specification: null, delivery_date: null, delivery_quantity: null,
-      shared_serials: [{ serial_no: 'A', customer_code: 'CA', finished_specification: '20 × 10 × 2 mm', delivery_date: '2026-11-01', delivery_quantity: 30, planned_weight: .0025, planned_quantity: 30, planned_specification: '25 × 12 × 2 mm' }, { serial_no: 'B', customer_code: null, finished_specification: null, delivery_date: null, delivery_quantity: null, planned_weight: .0025, planned_quantity: 30, planned_specification: '25 × 12 × 2 mm' }] })
-    wrapper.unmount(); await render(); await submit()
+    expect(original).toMatchObject({
+      serial_no: '',
+      quantity: 0,
+      weight: 0.005,
+      customer_code: null,
+      finished_specification: null,
+      delivery_date: null,
+      delivery_quantity: null,
+      shared_serials: [
+        {
+          serial_no: 'A',
+          customer_code: 'CA',
+          finished_specification: '20 × 10 × 2 mm',
+          delivery_date: '2026-11-01',
+          delivery_quantity: 30,
+          planned_weight: 0.0025,
+          planned_quantity: 30,
+          planned_specification: '25 × 12 × 2 mm',
+        },
+        {
+          serial_no: 'B',
+          customer_code: null,
+          finished_specification: null,
+          delivery_date: null,
+          delivery_quantity: null,
+          planned_weight: 0.0025,
+          planned_quantity: 30,
+          planned_specification: '25 × 12 × 2 mm',
+        },
+      ],
+    })
+    wrapper.unmount()
+    await render()
+    await submit()
     expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]).toEqual(original)
   })
 
   it('marks selected metadata, preserves manual edits and keeps receipt amounts independent', async () => {
     await render()
     await wrapper.get('input[aria-label="流水号"]').setValue('YS-007')
-    const serial = wrapper.findAllComponents(MaterialInput).find(item => item.props('field') === 'serial_no')!
-    serial.vm.$emit('selected', { value: 'YS-007', source_batch_no: 'TL-7', details: { material_name: '材料2', customer_code: 'C-7', finished_specification: '100 × 80 × 5 mm' } })
+    const serial = wrapper
+      .findAllComponents(MaterialInput)
+      .find((item) => item.props('field') === 'serial_no')!
+    serial.vm.$emit('selected', {
+      value: 'YS-007',
+      source_batch_no: 'TL-7',
+      details: {
+        material_name: '材料2',
+        customer_code: 'C-7',
+        finished_specification: '100 × 80 × 5 mm',
+      },
+    })
     await flushPromises()
     expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '材料2')
     expect(wrapper.text()).toContain('已带入')
-    expect(wrapper.findAllComponents(ElInputNumber).find(item => item.find('input[aria-label="入库件数"]').exists())!.props('modelValue')).toBe(0)
+    expect(
+      wrapper
+        .findAllComponents(ElInputNumber)
+        .find((item) => item.find('input[aria-label="入库件数"]').exists())!
+        .props('modelValue'),
+    ).toBe(0)
     await wrapper.get('input[aria-label="材质"]').setValue('手填材料')
-    serial.vm.$emit('selected', { value: 'YS-007', source_batch_no: 'TL-8', details: { material_name: '材料3', customer_code: 'C-8', finished_specification: '100 × 80 × 5 mm' } })
+    serial.vm.$emit('selected', {
+      value: 'YS-007',
+      source_batch_no: 'TL-8',
+      details: {
+        material_name: '材料3',
+        customer_code: 'C-8',
+        finished_specification: '100 × 80 × 5 mm',
+      },
+    })
     await flushPromises()
     expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '手填材料')
     await wrapper.get('input[aria-label="外部来源单位"]').setValue('供应商')
     wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'semi_finished')
-    await amount('入库件数', 3); await amount('入库重量', 1.5)
+    await amount('入库件数', 3)
+    await amount('入库重量', 1.5)
     await wrapper.get('textarea[aria-label="入库说明"]').setValue('实物到货')
     await submit()
-    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(901, expect.objectContaining({ serial_no: 'YS-007', material_name: '手填材料', customer_code: 'C-8', finished_specification: '100 × 80 × 5 mm', quantity: 3, weight: 1.5 }))
+    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(
+      901,
+      expect.objectContaining({
+        serial_no: 'YS-007',
+        material_name: '手填材料',
+        customer_code: 'C-8',
+        finished_specification: '100 × 80 × 5 mm',
+        quantity: 3,
+        weight: 1.5,
+      }),
+    )
   })
 
   it('keeps measured sludge and percentage in a retried receipt without double conversion', async () => {
-    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(new TeamMaterialApiError('网络中断'))
-    await render(); await fill()
-    wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'sludge'); await flushPromises()
-    await amount('废泥实重', 10); await amount('有效材料占比', 30); await submit()
+    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(
+      new TeamMaterialApiError('网络中断'),
+    )
+    await render()
+    await fill()
+    wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'sludge')
+    await flushPromises()
+    await amount('废泥实重', 10)
+    await amount('有效材料占比', 30)
+    await submit()
     const original = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
-    expect(original).toMatchObject({ material_type: 'sludge', weight: 3, sludge_gross_weight: 10, sludge_content_percent: 30 })
-    wrapper.unmount(); await render(); await submit()
+    expect(original).toMatchObject({
+      material_type: 'sludge',
+      weight: 3,
+      sludge_gross_weight: 10,
+      sludge_content_percent: 30,
+    })
+    wrapper.unmount()
+    await render()
+    await submit()
     expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]).toEqual(original)
   })
   it('keeps a manually selected location in the persisted retry payload', async () => {
-    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(new TeamMaterialApiError('网络中断'))
-    await render(); await fill()
+    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(
+      new TeamMaterialApiError('网络中断'),
+    )
+    await render()
+    await fill()
     wrapper.getComponent(WarehouseLocationSelect).vm.$emit('update:modelValue', 'A区-03')
-    wrapper.getComponent(WarehouseLocationSelect).vm.$emit('update:reservationKey', 'test-lease-key-for-intake')
+    wrapper
+      .getComponent(WarehouseLocationSelect)
+      .vm.$emit('update:reservationKey', 'test-lease-key-for-intake')
     await submit()
     const original = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
     expect(original.warehouse_location).toBe('A区-03')
     expect(original.warehouse_location_reservation_key).toBe('test-lease-key-for-intake')
     expect(wrapper.getComponent(WarehouseLocationSelect).props('disabled')).toBe(true)
-    wrapper.unmount(); await render(); await submit()
+    wrapper.unmount()
+    await render()
+    await submit()
     expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]).toEqual(original)
   })
   it('saves the origin requirement together with the receipt and preserves it in an uncertain retry', async () => {
-    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(new TeamMaterialApiError('网络中断'))
-    await render(); await fill()
+    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(
+      new TeamMaterialApiError('网络中断'),
+    )
+    await render()
+    await fill()
     await wrapper.get('input[aria-label="要求发货日期"]').setValue('2026-10-01')
-    await amount('应发成品件数', 80); await submit()
+    await amount('应发成品件数', 80)
+    await submit()
     const body = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
     expect(body).toMatchObject({ delivery_date: '2026-10-01', delivery_quantity: 80 })
-    wrapper.unmount(); await render()
-    expect((wrapper.get('input[aria-label="要求发货日期"]').element as HTMLInputElement).value).toBe('2026-10-01')
+    wrapper.unmount()
+    await render()
+    expect(
+      (wrapper.get('input[aria-label="要求发货日期"]').element as HTMLInputElement).value,
+    ).toBe('2026-10-01')
     await submit()
     expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]).toEqual(body)
   })
 
   it('records an external return against the existing serial and optional CK', async () => {
-    await render(); await fill()
-    wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'return'); await flushPromises()
+    await render()
+    await fill()
+    wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 'return')
+    await flushPromises()
     await wrapper.get('input[aria-label="原出库批次"]').setValue(' CK-ORIGINAL ')
     await submit()
-    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(901, expect.objectContaining({ receipt_kind: 'return', serial_no: 'QA-IN', external_source: '来料单位', return_dispatch_no: 'CK-ORIGINAL' }))
+    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(
+      901,
+      expect.objectContaining({
+        receipt_kind: 'return',
+        serial_no: 'QA-IN',
+        external_source: '来料单位',
+        return_dispatch_no: 'CK-ORIGINAL',
+      }),
+    )
   })
   it('requires the external source unit', async () => {
-    await render(); await fill(); await wrapper.get('input[aria-label="外部来源单位"]').setValue(' '); await submit()
+    await render()
+    await fill()
+    await wrapper.get('input[aria-label="外部来源单位"]').setValue(' ')
+    await submit()
     expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
-    expect(wrapper.get('input[aria-label="外部来源单位"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
+    expect(
+      wrapper
+        .get('input[aria-label="外部来源单位"]')
+        .element.closest('.el-form-item')!
+        .classList.contains('is-error'),
+    ).toBe(true)
   })
   it('creates a root receipt for the bound warehouse with no transfer destination or status fields', async () => {
-    await render(); await fill()
+    await render()
+    await fill()
     expect(wrapper.get('.receipt-heading strong').text()).toBe('库房')
     expect(wrapper.find('nav[aria-label="表单分页"]').exists()).toBe(false)
     expect(wrapper.findAllComponents(ElSelect)).toHaveLength(5)
@@ -154,97 +333,188 @@ describe('warehouse manual receipt', () => {
     await submit()
     const [id, body] = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]!
     expect(id).toBe(901)
-    expect(body).toMatchObject({ receipt_kind: 'external', external_source: '来料单位', return_dispatch_no: null })
-    expect(body).toMatchObject({ serial_no: 'QA-IN', material_name: '铜钼', material_type: 'semi_finished', quantity: 0, weight: 0.005, notes: '实物到货登记', source_batch_no: 'RAW-91', idempotency_key: expect.any(String) })
-    expect(body).not.toHaveProperty('next_team_id'); expect(body).not.toHaveProperty('source_team_id'); expect(body).not.toHaveProperty('status')
-    expect(state.auth.refreshCurrentUser).toHaveBeenCalledOnce(); expect(state.directory.refreshTeamDirectory).toHaveBeenCalledOnce()
+    expect(body).toMatchObject({
+      receipt_kind: 'external',
+      external_source: '来料单位',
+      return_dispatch_no: null,
+    })
+    expect(body).toMatchObject({
+      serial_no: 'QA-IN',
+      material_name: '铜钼',
+      material_type: 'semi_finished',
+      quantity: 0,
+      weight: 0.005,
+      notes: '实物到货登记',
+      source_batch_no: 'RAW-91',
+      idempotency_key: expect.any(String),
+    })
+    expect(body).not.toHaveProperty('next_team_id')
+    expect(body).not.toHaveProperty('source_team_id')
+    expect(body).not.toHaveProperty('status')
+    expect(state.auth.refreshCurrentUser).toHaveBeenCalledOnce()
+    expect(state.directory.refreshTeamDirectory).toHaveBeenCalledOnce()
     expect(wrapper.emitted('saved')).toEqual([[receipt()]])
     expect(sessionStorage.length).toBe(0)
   })
   it('requires material and a positive amount and accepts small measured weights', async () => {
-    await render(); await fill()
-    await wrapper.get('input[aria-label="材质"]').setValue(' '); await submit(); expect(wrapper.get('input[aria-label="材质"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
+    await render()
+    await fill()
+    await wrapper.get('input[aria-label="材质"]').setValue(' ')
+    await submit()
+    expect(
+      wrapper
+        .get('input[aria-label="材质"]')
+        .element.closest('.el-form-item')!
+        .classList.contains('is-error'),
+    ).toBe(true)
     await wrapper.get('input[aria-label="材质"]').setValue('铜钼')
-    await amount('入库重量', 0); await submit(); expect(wrapper.get('input[aria-label="入库重量"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
+    await amount('入库重量', 0)
+    await submit()
+    expect(
+      wrapper
+        .get('input[aria-label="入库重量"]')
+        .element.closest('.el-form-item')!
+        .classList.contains('is-error'),
+    ).toBe(true)
     expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
-    await amount('入库重量', 0.0005); await submit()
-    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(901, expect.objectContaining({ weight: 0.0005 }))
+    await amount('入库重量', 0.0005)
+    await submit()
+    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(
+      901,
+      expect.objectContaining({ weight: 0.0005 }),
+    )
   })
   it('accepts an empty optional intake explanation', async () => {
-    await render(); await fill()
+    await render()
+    await fill()
     await wrapper.get('textarea[aria-label="入库说明"]').setValue(' ')
     await submit()
-    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(901, expect.objectContaining({ notes: '' }))
+    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(
+      901,
+      expect.objectContaining({ notes: '' }),
+    )
     expect(wrapper.text()).not.toContain('请填写入库说明')
   })
-  it.each(['admin', 'other-team', 'inactive', 'inactive-account', 'wrong-code', 'wrong-kind'])('blocks %s from creating a warehouse receipt', async kind => {
-    if (kind === 'admin') state.auth.isTeamAccount = false
-    if (kind === 'other-team') state.auth.currentUser.team_id = 2
-    if (kind === 'inactive') state.directory.items[0]!.active = false
-    if (kind === 'inactive-account') state.auth.currentUser.active = false
-    if (kind === 'wrong-code') state.directory.items[0]!.code = 'OLD-WAREHOUSE'
-    if (kind === 'wrong-kind') state.directory.items[0]!.kind = 'production'
-    await render(); await submit()
-    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
-    expect(wrapper.findAll('button').find(button => button.text() === '确认入库')!.attributes('disabled')).toBeDefined()
-  })
+  it.each(['admin', 'other-team', 'inactive', 'inactive-account', 'wrong-code', 'wrong-kind'])(
+    'blocks %s from creating a warehouse receipt',
+    async (kind) => {
+      if (kind === 'admin') state.auth.isTeamAccount = false
+      if (kind === 'other-team') state.auth.currentUser.team_id = 2
+      if (kind === 'inactive') state.directory.items[0]!.active = false
+      if (kind === 'inactive-account') state.auth.currentUser.active = false
+      if (kind === 'wrong-code') state.directory.items[0]!.code = 'OLD-WAREHOUSE'
+      if (kind === 'wrong-kind') state.directory.items[0]!.kind = 'production'
+      await render()
+      await submit()
+      expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+      expect(
+        wrapper
+          .findAll('button')
+          .find((button) => button.text() === '确认入库')!
+          .attributes('disabled'),
+      ).toBeDefined()
+    },
+  )
   it('reuses an uncertain request after reopening, freezes its content and suppresses double submission', async () => {
     let fail!: (failure: Error) => void
-    vi.mocked(teamMaterialApi.createReceipt).mockReturnValueOnce(new Promise((_resolve, reject) => { fail = reject }))
-    await render(); await fill(); await submit(); await submit()
+    vi.mocked(teamMaterialApi.createReceipt).mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        fail = reject
+      }),
+    )
+    await render()
+    await fill()
+    await submit()
+    await submit()
     expect(teamMaterialApi.createReceipt).toHaveBeenCalledTimes(1)
     const original = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
-    fail(new TeamMaterialApiError('网络中断')); await flushPromises()
+    fail(new TeamMaterialApiError('网络中断'))
+    await flushPromises()
     expect(wrapper.get('input[aria-label="流水号"]').attributes('disabled')).toBeDefined()
-    wrapper.unmount(); await render()
+    wrapper.unmount()
+    await render()
     expect(wrapper.text()).toContain('上次提交结果待确认')
     await submit()
     expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]).toEqual(original)
     expect(sessionStorage.length).toBe(0)
   })
   it('permits correction after a definitive validation failure', async () => {
-    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(new TeamMaterialApiError('说明不完整', 422))
-    await render(); await fill(); await submit()
+    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(
+      new TeamMaterialApiError('说明不完整', 422),
+    )
+    await render()
+    await fill()
+    await submit()
     expect(wrapper.get('input[aria-label="流水号"]').attributes('disabled')).toBeUndefined()
     expect(sessionStorage.length).toBe(0)
-    await wrapper.get('textarea[aria-label="入库说明"]').setValue('补充完整到货说明'); await submit()
-    expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1].notes).toBe('补充完整到货说明')
+    await wrapper.get('textarea[aria-label="入库说明"]').setValue('补充完整到货说明')
+    await submit()
+    expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1].notes).toBe(
+      '补充完整到货说明',
+    )
     expect(wrapper.emitted('saved')).toHaveLength(1)
   })
   it('does not replace an unreadable pending entry with a new posting', async () => {
     sessionStorage.setItem('heatsink-flow.pending-warehouse-receipt.v1:41:901', '{broken')
-    await render(); await submit()
+    await render()
+    await submit()
     expect(wrapper.text()).toContain('上次入库草稿读取失败')
     expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
-    expect(sessionStorage.getItem('heatsink-flow.pending-warehouse-receipt.v1:41:901')).toBe('{broken')
+    expect(sessionStorage.getItem('heatsink-flow.pending-warehouse-receipt.v1:41:901')).toBe(
+      '{broken',
+    )
   })
   it('makes no write when account binding changes during server verification', async () => {
-    await render(); await fill()
-    state.auth.refreshCurrentUser.mockImplementation(async () => { state.auth.currentUser.team_id = 2 })
+    await render()
+    await fill()
+    state.auth.refreshCurrentUser.mockImplementation(async () => {
+      state.auth.currentUser.team_id = 2
+    })
     await submit()
     expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('当前不能入库')
   })
   it('does not apply a late receipt to another workspace and clears the confirmed retry only for its original identity', async () => {
     let finish!: (value: ReturnType<typeof receipt>) => void
-    vi.mocked(teamMaterialApi.createReceipt).mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
-    await render(); await fill(); await submit()
+    vi.mocked(teamMaterialApi.createReceipt).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    await render()
+    await fill()
+    await submit()
     await wrapper.setProps({ teamId: 2, modelValue: false })
-    finish(receipt()); await flushPromises()
+    finish(receipt())
+    await flushPromises()
     expect(wrapper.emitted('saved')).toBeUndefined()
     expect(sessionStorage.length).toBe(0)
   })
 })
 
 it('replaces old piece fields with weight-only intake and rejects an empty weight', async () => {
-  await render(); await fill(); await amount('入库件数', 50); await amount('成品件数', 40)
-  wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'scrap_chips'); await flushPromises()
+  await render()
+  await fill()
+  await amount('入库件数', 50)
+  await amount('成品件数', 40)
+  wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'scrap_chips')
+  await flushPromises()
   expect(wrapper.find('input[aria-label="入库件数"]').exists()).toBe(false)
   expect(wrapper.find('input[aria-label="成品件数"]').exists()).toBe(false)
   expect(wrapper.find('input[aria-label="应发成品件数"]').exists()).toBe(false)
-  await amount('入库重量', 0); await submit()
+  await amount('入库重量', 0)
+  await submit()
   expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
-  expect(wrapper.get('input[aria-label="入库重量"]').element.closest('.el-form-item')!.classList.contains('is-error')).toBe(true)
-  await amount('入库重量', 5); await submit()
-  expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(901, expect.objectContaining({ quantity: 0, weight: 5, finished_quantity: null }))
+  expect(
+    wrapper
+      .get('input[aria-label="入库重量"]')
+      .element.closest('.el-form-item')!
+      .classList.contains('is-error'),
+  ).toBe(true)
+  await amount('入库重量', 5)
+  await submit()
+  expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(
+    901,
+    expect.objectContaining({ quantity: 0, weight: 5, finished_quantity: null }),
+  )
 })
