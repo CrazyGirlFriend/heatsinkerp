@@ -129,6 +129,11 @@ def test_gap_is_not_cancelled_by_another_positive_lot_and_piece_correction_is_au
     # Use the public adjustment route, including its optimistic revision guard.
     with SessionLocal() as db:
         revision = db.get(MaterialStockBalance, lot["id"]).revision
+    from app.models import TeamEmployee
+
+    with SessionLocal() as db:
+        db.add(TeamEmployee(team_id=lot["next_team"]["id"], name="张师傅"))
+        db.commit()
     correction = client.post(
         endpoint(s, "quantity-adjustments"),
         headers=s["stock_headers"],
@@ -136,6 +141,7 @@ def test_gap_is_not_cancelled_by_another_positive_lot_and_piece_correction_is_au
             "source_transfer_id": lot["id"],
             "quantity": 0,
             "expected_revision": revision,
+            "processor_name": "张师傅",
             "reason": "清点后修正负数件数",
             "idempotency_key": "piece-gap-correction",
         },

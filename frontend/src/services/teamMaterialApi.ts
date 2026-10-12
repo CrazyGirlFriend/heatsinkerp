@@ -1,6 +1,12 @@
 import type { WarehouseLocation } from './warehouseLocationApi'
 import { httpRequest, HttpRequestError, type HttpRequestOptions } from './httpClient'
-import type { TeamPurpose, OpeningLine, OpeningState, SerialHistory } from '@/types/teamBusiness'
+import type {
+  TeamEmployee,
+  TeamPurpose,
+  OpeningLine,
+  OpeningState,
+  SerialHistory,
+} from '@/types/teamBusiness'
 import { normalizeMaterialTransfer } from './materialTransferApi'
 import type {
   CreateWarehouseReceipt,
@@ -225,6 +231,19 @@ export const teamMaterialApi = {
     id?: number,
   ) {
     return request<TeamPurpose>(path(teamId, id ? `purposes/${id}` : 'purposes'), {
+      method: id ? 'PATCH' : 'POST',
+      body: payload,
+    })
+  },
+  employees(teamId: number) {
+    return request<TeamEmployee[]>(path(teamId, 'employees'))
+  },
+  saveEmployee(
+    teamId: number,
+    payload: { name: string; active: boolean; expected_version?: number },
+    id?: number,
+  ) {
+    return request<TeamEmployee>(path(teamId, id ? `employees/${id}` : 'employees'), {
       method: id ? 'PATCH' : 'POST',
       body: payload,
     })

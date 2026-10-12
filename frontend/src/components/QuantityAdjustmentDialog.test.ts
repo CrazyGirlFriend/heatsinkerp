@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
 import { ElInputNumber, ElSelect, ElSwitch } from 'element-plus'
 import WeightInput from './WeightInput.vue'
+import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -20,6 +21,7 @@ const state = vi.hoisted(() => ({
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 const context = (revision = 0): QuantityAdjustmentContext => ({
   source_transfer_id: 10,
+  processor_options: ['王师傅', '李师傅'],
   batch_no: 'TL001',
   quantity: 10,
   weight: 100,
@@ -54,12 +56,14 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render(canWrite = true) {
+async function render(canWrite = true, person = '王师傅') {
   wrapper = mount(QuantityAdjustmentDialog, {
     props: { modelValue: true, teamId: 2, sourceId: 10, canWrite },
     global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
   })
   await flushPromises()
+  if (wrapper.findComponent(ProcessingPersonInput).exists())
+    wrapper.getComponent(ProcessingPersonInput).vm.$emit('update:modelValue', person)
 }
 async function click(label: string) {
   await wrapper
@@ -74,6 +78,25 @@ async function edit() {
 }
 
 describe('processing piece adjustment', () => {
+  it('marks an empty processing person and preserves the entered name on save', async () => {
+    await render(true, '')
+    await wrapper.setProps({ processing: true })
+    await click('保存加工登记')
+    expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+    const person = wrapper.getComponent(ProcessingPersonInput)
+    expect(person.element.closest('.el-form-item')?.classList.contains('is-error')).toBe(true)
+    person.vm.$emit('update:modelValue', '  李师傅  ')
+    await click('保存加工登记')
+    expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ processor_name: '李师傅' }),
+    )
+    await wrapper.setProps({ modelValue: false })
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+    expect(wrapper.getComponent(ProcessingPersonInput).props('modelValue')).toBe('')
+  })
+
   it('requires an order only for shared produced output and keeps remainder and scrap unallocated', async () => {
     vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
       ...context(),
@@ -86,6 +109,7 @@ describe('processing piece adjustment', () => {
       global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
     })
     await flushPromises()
+    wrapper.getComponent(ProcessingPersonInput).vm.$emit('update:modelValue', '王师傅')
     expect(wrapper.getComponent(ElSwitch).props('disabled')).toBe(true)
     pieces(1, 1)
     weight(1, 40)
@@ -433,6 +457,7 @@ describe('processing piece adjustment', () => {
       source_transfer_id: 10,
       quantity: 100,
       expected_revision: 0,
+      processor_name: '王师傅',
       reason: '切割为100件',
       idempotency_key: expect.any(String),
     })

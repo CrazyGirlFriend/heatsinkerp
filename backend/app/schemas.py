@@ -51,10 +51,16 @@ class ProcessingQuantity(BaseModel):
     source_transfer_id: int = Field(ge=1)
     quantity: int = Field(ge=0, le=2_147_483_647)
     expected_revision: int = Field(ge=0)
+    processor_name: str = Field(min_length=1, max_length=80)
     reason: str = Field(default="", max_length=2000)
     processing_status: Literal["partial", "complete"] | None = None
     transfer_specification: str | None = Field(default=None, max_length=240)
     outputs: list[ProcessingOutput] | None = Field(default=None, min_length=1, max_length=100)
+
+    @field_validator("processor_name", mode="before")
+    @classmethod
+    def normalize_processor_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
 
     @field_validator("transfer_specification")
     @classmethod

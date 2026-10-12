@@ -4,13 +4,15 @@ import type {
   MaterialEntryKind,
   SludgeMeasurement,
 } from './materialTransfer'
-export interface TeamPurpose {
+export interface TeamDirectoryItem {
   id: number
   team_id: number
   name: string
   active: boolean
   version: number
 }
+export type TeamPurpose = TeamDirectoryItem
+export type TeamEmployee = TeamDirectoryItem
 export interface OpeningLine extends SludgeMeasurement {
   serial_no: string
   material_name: string

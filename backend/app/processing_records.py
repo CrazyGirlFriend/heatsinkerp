@@ -296,7 +296,7 @@ def list_records(db, team_id, *, record_filters=None, query=None, page=1, page_s
                     Transfer.serial_no,
                     Transfer.batch_no,
                     Transfer.material_name,
-                    Adjustment.created_by,
+                    Adjustment.processor_name,
                     Adjustment.reason,
                 ],
             )

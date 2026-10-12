@@ -20,6 +20,7 @@ def change(client, setup, lot, quantity, *, workshop=False, revision=None, key="
             "source_transfer_id": lot["id"],
             "quantity": quantity,
             "expected_revision": revision,
+            "processor_name": "张师傅",
             "reason": "板材切割后按实数更新件数，重量不变",
             "idempotency_key": key,
             **extra,
@@ -136,6 +137,7 @@ def test_only_bound_team_may_change_and_weight_only_stock_allowed(client, wareho
                 "source_transfer_id": lot["id"],
                 "quantity": 10,
                 "expected_revision": 0,
+                "processor_name": "张师傅",
                 "reason": "切割",
                 "idempotency_key": "admin",
             },
@@ -286,6 +288,7 @@ def test_piece_change_can_be_saved_without_description(client, warehouse, reason
         "source_transfer_id": lot["id"],
         "quantity": 20,
         "expected_revision": 0,
+        "processor_name": "张师傅",
         "idempotency_key": "optional-adjustment",
     }
     if reason is not None:

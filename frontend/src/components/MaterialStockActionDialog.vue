@@ -24,6 +24,7 @@ import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import OutboundQuantityClearance from './OutboundQuantityClearance.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import SpecificationInput from './SpecificationInput.vue'
+import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import { processingProgressLabels } from '@/types/materialProcessing'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { useAuthStore } from '@/stores/auth'
@@ -123,6 +124,8 @@ const processing = reactive<
       original?: number
       revision?: number
       reason: string
+      processorName: string
+      processorOptions: string[]
       status?: 'partial' | 'complete'
       loading: boolean
       error: string
@@ -312,7 +315,13 @@ watch(
 async function loadProcessing(source: StockBatch) {
   const id = Number(source.transfer.id),
     current = generation
-  processing[id] ||= { reason: '', loading: false, error: '' }
+  processing[id] ||= {
+    reason: '',
+    processorName: '',
+    processorOptions: [],
+    loading: false,
+    error: '',
+  }
   const draft = processing[id]!
   draft.loading = true
   draft.error = ''
@@ -322,6 +331,7 @@ async function loadProcessing(source: StockBatch) {
     draft.quantity ??= context.quantity
     draft.original = context.quantity
     draft.revision = context.revision
+    draft.processorOptions = context.processor_options || []
     if (processingTeam.value) draft.status ??= context.processing_status || 'partial'
     lines.value
       .filter((line) => line.source.transfer.id === source.transfer.id)
@@ -467,6 +477,8 @@ const validation = useDialogValidation(() => {
       add('purposeId', '请选择接收业务')
     const draft = processing[Number(line.source.transfer.id)]
     if (draft) {
+      if (!draft.processorName.trim() || draft.processorName.trim().length > 80)
+        add('processorName', '请选择加工人')
       if (
         !Number.isSafeInteger(draft.quantity) ||
         draft.quantity! < 0 ||
@@ -690,6 +702,7 @@ async function submit() {
       source_transfer_id: Number(id),
       quantity: draft.quantity!,
       expected_revision: draft.revision!,
+      processor_name: draft.processorName.trim(),
       reason: draft.reason.trim(),
       ...(draft.status ? { processing_status: draft.status } : {}),
     }))
@@ -952,6 +965,13 @@ async function submit() {
                     :value="value"
                     :label="label" /></ElSelect
               ></ElFormItem>
+              <ElFormItem label="加工人" required :error="lineError(line, 'processorName')">
+                <ProcessingPersonInput
+                  v-model="processing[Number(line.source.transfer.id)]!.processorName"
+                  :options="processing[Number(line.source.transfer.id)]!.processorOptions"
+                  :label="`${line.source.transfer.batch_no}加工人`"
+                />
+              </ElFormItem>
               <ElFormItem label="加工说明（选填）" :error="lineError(line, 'processingReason')"
                 ><ElInput
                   v-model="processing[Number(line.source.transfer.id)]!.reason"

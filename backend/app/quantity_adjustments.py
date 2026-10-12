@@ -11,7 +11,7 @@ from .material_transfer_workflow import _utc
 from .material_weight import WEIGHT_ONLY_TYPES
 from .models import MaterialQuantityAdjustment as Adjustment
 from .models import MaterialStockBalance as Balance
-from .models import MaterialTransfer, MaterialTransferEvent, utcnow
+from .models import MaterialTransfer, MaterialTransferEvent, TeamEmployee, utcnow
 from .schemas import ProcessingQuantity
 
 
@@ -87,6 +87,7 @@ def record_dict(row):
         "delta_quantity": row.after_quantity - row.before_quantity,
         "weight": float(row.weight_snapshot),
         "reason": row.reason,
+        "processor_name": row.processor_name,
         "operation_kind": "outbound_clearance"
         if row.idempotency_key.startswith("outbound-clear:")
         else "processing",
@@ -115,6 +116,16 @@ def latest_records(db, lot_ids):
         row.source_transfer_id: row
         for row in db.scalars(select(Adjustment).join(latest, latest.c.id == Adjustment.id))
     }
+
+
+def processor_options(db, team_id):
+    return list(
+        db.scalars(
+            select(TeamEmployee.name)
+            .where(TeamEmployee.team_id == team_id, TeamEmployee.active.is_(True))
+            .order_by(TeamEmployee.id)
+        )
+    )
 
 
 def context(db, team_id, lot_id, page=1, page_size=10):
@@ -197,6 +208,7 @@ def context(db, team_id, lot_id, page=1, page_size=10):
         "quantity": balance.on_hand_quantity,
         "weight": float(balance.on_hand_weight),
         "processing_status": progress,
+        "processor_options": processor_options(db, team_id),
         "origin_processing_record": record_dict(origin) if origin else None,
         **weight_differences(db, [lot_id], team_id).get(lot_id, {}),
         "transfer_specification": latest.after_specification
@@ -266,6 +278,18 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     # count is permitted only while a measured weight remains.
     if payload.quantity == 0 and balance.on_hand_weight == 0 and balance.on_hand_quantity > 0:
         raise HTTPException(422, "无重量物料清零请登记丢失或出库")
+    employee = db.scalar(
+        select(TeamEmployee)
+        .where(
+            TeamEmployee.team_id == lot.next_team_id,
+            TeamEmployee.name == payload.processor_name,
+            TeamEmployee.active.is_(True),
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if employee is None:
+        raise HTTPException(422, "请选择本班组启用的加工人；员工名单可在班组设置中维护")
     now = utcnow()
     # Preserve the source snapshot before children debit its current balance.
     before_quantity, before_weight, revision = (
@@ -283,6 +307,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         team_id=lot.next_team_id,
         before_quantity=before_quantity,
         after_quantity=payload.quantity,
+        processor_name=employee.name,
         processing_status=status,
         before_specification=before_specification or "",
         after_specification=after_specification or "",
@@ -339,6 +364,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
                     else {}
                 ),
                 "reason": {"before": None, "after": row.reason},
+                "processor_name": {"before": None, "after": row.processor_name},
             },
         )
     )

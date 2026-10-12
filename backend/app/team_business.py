@@ -10,12 +10,12 @@ from .async_api import AsyncAPIRouter as APIRouter
 from .auth import actor_name, get_current_user, require_admin
 from .database import get_db
 from .material_stock import require_actor, require_team
-from .models import Team, TeamPurpose, TeamSettingEvent, User, utcnow
+from .models import Team, TeamEmployee, TeamPurpose, TeamSettingEvent, User, utcnow
 
 router = APIRouter(prefix="/api/team-materials", tags=["team business settings"])
 
 
-class PurposeInput(BaseModel):
+class DirectoryItemInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=80)
     active: bool = True
@@ -25,11 +25,11 @@ class PurposeInput(BaseModel):
     @classmethod
     def trim(cls, value):
         if not value.strip():
-            raise ValueError("业务名称不能为空")
+            raise ValueError("名称不能为空")
         return value.strip()
 
 
-def purpose_dict(row):
+def directory_item_dict(row):
     return {
         "id": row.id,
         "team_id": row.team_id,
@@ -73,14 +73,19 @@ def list_purposes(
 ):
     require_team(db, team_id)
     return [
-        purpose_dict(row)
+        directory_item_dict(row)
         for row in db.scalars(
             select(TeamPurpose).where(TeamPurpose.team_id == team_id).order_by(TeamPurpose.id)
         )
     ]
 
 
-def save_purpose(db, team_id, user, payload, purpose_id=None):
+def save_directory_item(db, team_id, user, payload, item_id=None, *, employee=False):
+    model, label, action = (
+        (TeamEmployee, "员工", "employee_changed")
+        if employee
+        else (TeamPurpose, "业务", "purpose_changed")
+    )
     if user.role != "ADMIN":
         require_actor(user, team_id)
     try:
@@ -97,29 +102,27 @@ def save_purpose(db, team_id, user, payload, purpose_id=None):
                 raise HTTPException(403, "班组已停用")
             row = (
                 None
-                if purpose_id is None
-                else db.scalar(
-                    select(TeamPurpose).where(TeamPurpose.id == purpose_id).with_for_update()
-                )
+                if item_id is None
+                else db.scalar(select(model).where(model.id == item_id).with_for_update())
             )
-            if purpose_id is not None and (row is None or row.team_id != team_id):
-                raise HTTPException(404, "未找到本班组业务")
-            before = purpose_dict(row) if row else None
+            if item_id is not None and (row is None or row.team_id != team_id):
+                raise HTTPException(404, f"未找到本班组{label}")
+            before = directory_item_dict(row) if row else None
             if row and payload.expected_version != row.version:
-                raise HTTPException(409, "业务配置已变化，请刷新后重试")
+                raise HTTPException(409, f"{label}配置已变化，请刷新后重试")
             if row is None:
-                row = TeamPurpose(team_id=team_id, name=payload.name, active=payload.active)
+                row = model(team_id=team_id, name=payload.name, active=payload.active)
                 db.add(row)
             else:
                 row.name, row.active = payload.name, payload.active
                 row.version += 1
                 row.updated_at = utcnow()
             db.flush()
-            result = purpose_dict(row)
+            result = directory_item_dict(row)
             db.add(
                 TeamSettingEvent(
                     team_id=team_id,
-                    action="purpose_changed",
+                    action=action,
                     actor=actor_name(user),
                     changes={"before": before, "after": result},
                 )
@@ -127,28 +130,64 @@ def save_purpose(db, team_id, user, payload, purpose_id=None):
         return result
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "本班组已存在同名业务") from exc
+        raise HTTPException(409, f"本班组已存在同名{label}") from exc
 
 
 @router.post("/{team_id}/purposes", status_code=201)
 def create_purpose(
-    payload: PurposeInput,
+    payload: DirectoryItemInput,
     team_id: int = Path(ge=1),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return save_purpose(db, team_id, user, payload)
+    return save_directory_item(db, team_id, user, payload)
 
 
 @router.patch("/{team_id}/purposes/{purpose_id}")
 def update_purpose(
-    payload: PurposeInput,
+    payload: DirectoryItemInput,
     team_id: int = Path(ge=1),
     purpose_id: int = Path(ge=1),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return save_purpose(db, team_id, user, payload, purpose_id)
+    return save_directory_item(db, team_id, user, payload, purpose_id)
+
+
+@router.get("/{team_id}/employees")
+def list_employees(
+    team_id: int = Path(ge=1), user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    if user.role != "ADMIN":
+        require_actor(user, team_id)
+    require_team(db, team_id)
+    return [
+        directory_item_dict(row)
+        for row in db.scalars(
+            select(TeamEmployee).where(TeamEmployee.team_id == team_id).order_by(TeamEmployee.id)
+        )
+    ]
+
+
+@router.post("/{team_id}/employees", status_code=201)
+def create_employee(
+    payload: DirectoryItemInput,
+    team_id: int = Path(ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return save_directory_item(db, team_id, user, payload, employee=True)
+
+
+@router.patch("/{team_id}/employees/{employee_id}")
+def update_employee(
+    payload: DirectoryItemInput,
+    team_id: int = Path(ge=1),
+    employee_id: int = Path(ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return save_directory_item(db, team_id, user, payload, employee_id, employee=True)
 
 
 class OpeningAuthorization(BaseModel):

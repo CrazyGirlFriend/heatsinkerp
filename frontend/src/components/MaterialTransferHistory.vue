@@ -43,6 +43,7 @@ const labels: Record<string, string> = {
   reason: '加工说明',
   outbound_batches: '关联出库批次',
   processing_status: '本批加工进度',
+  processor_name: '加工人',
   processing_outputs: '加工实物明细',
   processing_role: '加工类别',
   source_transfer_id: '来源批次编号',

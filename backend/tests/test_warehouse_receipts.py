@@ -13,6 +13,7 @@ from app.models import (
     MaterialTransfer,
     MaterialTransferEvent,
     Team,
+    TeamEmployee,
     TransferBatchNumberSequence,
     User,
 )
@@ -31,6 +32,9 @@ def warehouse(client):
     _, headers = _leader(client, "warehouse-leader", team["id"])
     other = _team(client, "ROLL", "轧制")
     _, other_headers = _leader(client, "rolling-leader", other["id"])
+    with SessionLocal() as db:
+        db.add_all([TeamEmployee(team_id=item["id"], name="张师傅") for item in (team, other)])
+        db.commit()
     return {
         "team": team,
         "headers": headers,

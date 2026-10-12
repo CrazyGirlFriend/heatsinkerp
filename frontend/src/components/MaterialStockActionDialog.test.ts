@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialStockActionDialog from './MaterialStockActionDialog.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import SpecificationInput from './SpecificationInput.vue'
+import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import type { MaterialDispatch, MaterialLoss, StockBatch } from '@/types/teamMaterials'
@@ -174,6 +175,7 @@ describe('source batch dispatch and loss drafts', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('账面仍有 20 件')
     await wrapper.get('[aria-label="TL10清零剩余件数"] input').setValue(true)
+    wrapper.getComponent(ProcessingPersonInput).vm.$emit('update:modelValue', '王师傅')
     await submit()
     expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1]).toMatchObject({
       quantity_adjustments: [{ quantity: 120 }],
@@ -234,6 +236,15 @@ describe('source batch dispatch and loss drafts', () => {
       .trigger('click')
     await flushPromises()
     await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    expect(
+      wrapper
+        .getComponent(ProcessingPersonInput)
+        .element.closest('.el-form-item')
+        ?.classList.contains('is-error'),
+    ).toBe(true)
+    wrapper.getComponent(ProcessingPersonInput).vm.$emit('update:modelValue', '王师傅')
+    await submit()
     expect(
       vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].quantity_adjustments,
     ).toEqual([
@@ -241,6 +252,7 @@ describe('source batch dispatch and loss drafts', () => {
         source_transfer_id: 10,
         quantity: 100,
         expected_revision: 7,
+        processor_name: '王师傅',
         reason: '',
         processing_status: 'partial',
       },
@@ -594,13 +606,20 @@ describe('source batch dispatch and loss drafts', () => {
       .findAllComponents(ElInputNumber)
       .find((input) => input.props('ariaLabel')?.endsWith('加工后未转出件数'))!
       .vm.$emit('update:modelValue', 120)
+    wrapper.getComponent(ProcessingPersonInput).vm.$emit('update:modelValue', '王师傅')
     await submit()
     expect(change).not.toHaveBeenCalled()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
       2,
       expect.objectContaining({
         quantity_adjustments: [
-          { source_transfer_id: 10, quantity: 120, expected_revision: 7, reason: '' },
+          {
+            source_transfer_id: 10,
+            quantity: 120,
+            expected_revision: 7,
+            processor_name: '王师傅',
+            reason: '',
+          },
         ],
         lines: [
           { source_transfer_id: 10, quantity: 3, weight: 0.3, material_type: 'semi_finished' },

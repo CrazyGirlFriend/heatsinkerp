@@ -238,6 +238,7 @@ def test_invalid_outputs_are_atomic_and_cannot_bypass_team_or_inline_permissions
                 {
                     "source_transfer_id": lot["id"],
                     "expected_revision": 0,
+                    "processor_name": "张师傅",
                     "quantity": 21,
                     "processing_status": "partial",
                     "outputs": outputs(),

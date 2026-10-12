@@ -22,6 +22,7 @@ import {
   ElTableColumn,
 } from 'element-plus'
 import SpecificationInput from './SpecificationInput.vue'
+import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import WeightInput from './WeightInput.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import {
@@ -66,6 +67,7 @@ const historyRecords = computed(() =>
     : records.value,
 )
 const quantity = ref<number | undefined>(),
+  processorName = ref(''),
   reason = ref(''),
   error = ref('')
 const progress = ref<'partial' | 'complete'>('partial'),
@@ -245,6 +247,7 @@ async function save() {
     return
   error.value = ''
   submitted.value = true
+  if (!processorName.value.trim() || processorName.value.trim().length > 80) return
   const byOutput = props.processing && detailed.value
   const count = byOutput ? outputTotal.value : quantity.value
   if (
@@ -287,6 +290,7 @@ async function save() {
     source_transfer_id: props.sourceId,
     quantity: count!,
     expected_revision: snapshot.value.revision,
+    processor_name: processorName.value.trim(),
     reason: reason.value.trim(),
     ...(props.processing
       ? {
@@ -329,6 +333,7 @@ watch(
     total.value = 0
     page.value = 1
     quantity.value = undefined
+    processorName.value = ''
     reason.value = error.value = requestKey = fingerprint = ''
     progress.value = 'partial'
     specification.value = ''
@@ -617,6 +622,15 @@ onBeforeUnmount(() => {
             ></ElFormItem
           >
           <ElFormItem
+            label="加工人"
+            required
+            :class="{
+              'is-error': submitted && (!processorName.trim() || processorName.trim().length > 80),
+            }"
+          >
+            <ProcessingPersonInput v-model="processorName" :options="snapshot.processor_options" />
+          </ElFormItem>
+          <ElFormItem
             v-if="processing && !detailed"
             label="加工后实际尺寸（选填）"
             class="dialog-field-wide"
@@ -660,11 +674,14 @@ onBeforeUnmount(() => {
                   : '件数变更'
           }}</template></ElTableColumn
         >
-        <ElTableColumn label="时间 / 操作人" min-width="160" align="center"
-          ><template #default="{ row }"
-            >{{ formatDateTime(row.created_at) }}<br />{{ row.created_by }}</template
-          ></ElTableColumn
-        >
+        <ElTableColumn label="时间" min-width="170" align="center">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="加工人" min-width="110" align="center">
+          <template #default="{ row }">{{
+            row.operation_kind === 'outbound_clearance' ? '—' : row.processor_name || '未登记'
+          }}</template>
+        </ElTableColumn>
         <ElTableColumn label="变更前 → 变更后" min-width="140" align="center"
           ><template #default="{ row }"
             >{{ row.before_quantity }} → {{ row.after_quantity }} 件</template

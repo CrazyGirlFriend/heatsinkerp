@@ -68,6 +68,7 @@ async function mountTeams() {
 describe('team management directory ordering', () => {
   it('offers administrators business settings and preserves a team description while editing', async () => {
     vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([])
+    vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([])
     const opening = vi.spyOn(teamMaterialApi, 'openingState')
     vi.mocked(adminApi.listTeams).mockResolvedValue([{ ...team, description: '原说明' }])
     const update = vi
@@ -77,7 +78,7 @@ describe('team management directory ordering', () => {
     await wrapper
       .get('tbody tr')
       .findAll('button')
-      .find((button) => button.text() === '业务设置')!
+      .find((button) => button.text() === '班组设置')!
       .trigger('click')
     await flushPromises()
     expect(wrapper.getComponent(TeamBusinessDialog).props()).toMatchObject({

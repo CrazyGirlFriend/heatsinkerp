@@ -67,6 +67,7 @@ export interface QuantityAdjustment {
   weight: number
   reason: string
   created_by: string
+  processor_name?: string | null
   created_at: string
   operation_kind?: 'processing' | 'outbound_clearance'
   processing_status?: 'partial' | 'complete' | null
@@ -101,6 +102,7 @@ export interface QuantityAdjustmentContext
   quantity: number
   weight: number
   revision: number
+  processor_options?: string[]
   as_of: string
   serial_no?: string
   material_name?: string | null
@@ -116,6 +118,7 @@ export interface CreateQuantityAdjustment {
   source_transfer_id: number
   quantity: number
   expected_revision: number
+  processor_name: string
   reason?: string
   idempotency_key: string
   processing_status?: 'partial' | 'complete'

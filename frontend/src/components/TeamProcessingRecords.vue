@@ -156,7 +156,7 @@ function exportSource() {
         label: '当前状态',
         value: (row) => processingStateLabels[row.processing_state],
       },
-      { key: 'created_by', label: '登记人', value: (row) => row.created_by },
+      { key: 'processor_name', label: '加工人', value: (row) => row.processor_name || '未登记' },
       { key: 'reason', label: '加工说明', value: (row) => row.reason },
       { key: 'batch_no', label: '来源批次号', value: (row) => row.batch_no },
     ],
@@ -206,7 +206,7 @@ onBeforeUnmount(() => {
         :prefix-icon="Search"
         clearable
         aria-label="加工记录搜索"
-        placeholder="流水号、批次号或加工说明"
+        placeholder="流水号、批次号、加工人或加工说明"
         @keyup.enter="apply()"
         @clear="apply()"
       />
@@ -314,7 +314,9 @@ onBeforeUnmount(() => {
         min-width="180"
         show-overflow-tooltip
       />
-      <ElTableColumn prop="created_by" label="登记人" min-width="110" show-overflow-tooltip />
+      <ElTableColumn prop="processor_name" label="加工人" min-width="110" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.processor_name || '未登记' }}</template>
+      </ElTableColumn>
       <ElTableColumn prop="reason" label="加工说明" min-width="170" show-overflow-tooltip />
       <ElTableColumn prop="batch_no" label="来源批次号" min-width="205" show-overflow-tooltip />
       <ElTableColumn label="操作" width="85" fixed="right" align="center"

@@ -20,6 +20,7 @@ const allowed = {
 }
 beforeEach(() => {
   localStorage.clear()
+  vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([])
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([
     { id: 1, team_id: 2, name: '检验', active: true, version: 1 },
   ])
@@ -57,6 +58,36 @@ async function click(text: string) {
 }
 
 describe('team business settings', () => {
+  it('maintains employees separately from businesses without a login account', async () => {
+    vi.mocked(teamMaterialApi.employees).mockResolvedValue([
+      { id: 4, team_id: 2, name: '王师傅', active: true, version: 1 },
+    ])
+    const save = vi.spyOn(teamMaterialApi, 'saveEmployee').mockResolvedValue({
+      id: 4,
+      team_id: 2,
+      name: '王工',
+      active: false,
+      version: 2,
+    })
+    await render('employees')
+    expect(wrapper.find('[aria-label="业务名称 1"]').exists()).toBe(false)
+    await wrapper.get('input[aria-label="员工名称 4"]').setValue('王工')
+    wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', false)
+    await click('保存')
+    expect(save).toHaveBeenCalledWith(2, { name: '王工', active: false, expected_version: 1 }, 4)
+    expect(teamMaterialApi.savePurpose).not.toHaveBeenCalled()
+    await click('新增员工')
+    expect(
+      wrapper
+        .get('input[aria-label="新增员工名称"]')
+        .element.closest('.el-input')!
+        .classList.contains('is-error'),
+    ).toBe(true)
+    await wrapper.get('input[aria-label="新增员工名称"]').setValue('李师傅')
+    await click('新增员工')
+    expect(save).toHaveBeenLastCalledWith(2, { name: '李师傅', active: true }, undefined)
+  })
+
   it('shows all batches together, preserves values and marks each invalid field', async () => {
     await render()
     await wrapper.get('input[aria-label="第1行流水号"]').setValue('000017')

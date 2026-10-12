@@ -153,6 +153,17 @@ class TeamPurpose(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class TeamEmployee(Base):
+    __tablename__ = "team_employees"
+    __table_args__ = (UniqueConstraint("team_id", "name", name="uq_team_employee_name"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class TeamSettingEvent(Base):
     __tablename__ = "team_setting_events"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -602,6 +613,7 @@ class MaterialQuantityAdjustment(Base):
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
     before_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     after_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    processor_name: Mapped[str | None] = mapped_column(String(80))
     processing_status: Mapped[str | None] = mapped_column(String(20))
     before_specification: Mapped[str | None] = mapped_column(String(240))
     after_specification: Mapped[str | None] = mapped_column(String(240))

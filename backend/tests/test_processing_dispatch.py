@@ -22,7 +22,14 @@ def workshop_lot(client, setup):
 def test_recount_partial_dispatch_replay_and_stale_revision(client, warehouse):
     lot = workshop_lot(client, warehouse)
     amounts = [{"source_transfer_id": lot["id"], "quantity": 8, "weight": "0.4"}]
-    adjustments = [{"source_transfer_id": lot["id"], "quantity": 20, "expected_revision": 0}]
+    adjustments = [
+        {
+            "source_transfer_id": lot["id"],
+            "quantity": 20,
+            "expected_revision": 0,
+            "processor_name": "张师傅",
+        }
+    ]
     first = dispatch(client, warehouse, amounts, workshop=True, quantity_adjustments=adjustments)
     assert first.status_code == 201, first.text
     assert (
@@ -54,7 +61,12 @@ def test_invalid_outbound_rolls_back_recount_and_duplicate_or_foreign_sources_re
     client, warehouse
 ):
     lot = workshop_lot(client, warehouse)
-    update = {"source_transfer_id": lot["id"], "quantity": 20, "expected_revision": 0}
+    update = {
+        "source_transfer_id": lot["id"],
+        "quantity": 20,
+        "expected_revision": 0,
+        "processor_name": "张师傅",
+    }
     amounts = [
         {"source_transfer_id": lot["id"], "quantity": 8, "weight": ".4", "purpose_id": 999999}
     ]

@@ -459,7 +459,7 @@ onMounted(() => void loadTeams())
                     businessOpen = true
                   }
                 "
-                >业务设置</ElButton
+                >班组设置</ElButton
               >
               <ElButton link type="primary" :icon="EditPen" @click="openEdit(asTeam(row))"
                 >编辑</ElButton

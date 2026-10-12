@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElPagination } from 'element-plus'
 import TeamProcessingRecords from './TeamProcessingRecords.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
+import TableExportButton from './TableExportButton.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { ProcessingRecord } from '@/types/materialProcessing'
 
@@ -64,6 +65,25 @@ async function render(canWrite = true, path = '/team-workspaces/5?tab=processing
 }
 
 describe('cutting processing records', () => {
+  it('shows and exports the processing person without substituting the login account', async () => {
+    vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+      items: [{ ...record(), processor_name: '王师傅' }, record(2)],
+      total: 2,
+      page: 1,
+      page_size: 10,
+    })
+    await render()
+    expect(wrapper.text()).toContain('加工人')
+    expect(wrapper.text()).toContain('王师傅')
+    expect(wrapper.text()).toContain('未登记')
+    expect(wrapper.text()).not.toContain('线切割班组长')
+    expect(wrapper.text()).not.toContain('登记人')
+    const source = wrapper.getComponent(TableExportButton).props('source')()!
+    expect(source.fields.find((field) => field.key === 'processor_name')?.label).toBe('加工人')
+    const exported = await source.load(new AbortController().signal, () => {})
+    expect(exported.map((row) => row.processor_name)).toEqual(['王师傅', '未登记'])
+  })
+
   it('separates registered pieces from the current twelve-piece inventory', async () => {
     await render()
     expect(wrapper.text()).toContain('加工前件数')

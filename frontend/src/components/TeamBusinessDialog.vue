@@ -4,7 +4,7 @@ import { useDialogValidation } from '@/composables/useDialogValidation'
 import OpeningMaterialFields from './OpeningMaterialFields.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
-import { onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   ElAlert,
   ElButton,
@@ -26,7 +26,13 @@ import {
   materialTypeOptions,
   type MaterialTransfer,
 } from '@/types/materialTransfer'
-import type { OpeningLine, OpeningState, TeamPurpose } from '@/types/teamBusiness'
+import type {
+  OpeningLine,
+  OpeningState,
+  TeamDirectoryItem,
+  TeamEmployee,
+  TeamPurpose,
+} from '@/types/teamBusiness'
 import { materialRequestKey } from '@/utils/materialStock'
 import { showToast } from '@/stores/toast'
 
@@ -47,6 +53,10 @@ const tab = ref('purposes'),
   loading = ref(false),
   saving = ref(false),
   error = ref('')
+const employees = ref<TeamEmployee[]>([])
+const editingEmployees = computed(() => tab.value === 'employees')
+const directoryItems = computed(() => (editingEmployees.value ? employees.value : purposes.value))
+const itemLabel = computed(() => (editingEmployees.value ? '员工' : '业务'))
 const purposes = ref<TeamPurpose[]>([]),
   newName = ref(''),
   opening = ref<OpeningState | null>(null)
@@ -113,12 +123,14 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [options, state] = await Promise.all([
+    const [options, state, staff] = await Promise.all([
       teamMaterialApi.purposes(props.teamId),
       props.businessOnly ? Promise.resolve(null) : teamMaterialApi.openingState(props.teamId),
+      teamMaterialApi.employees(props.teamId),
     ])
     if (current !== epoch) return
     purposes.value = options
+    employees.value = staff
     opening.value = state
   } catch (e) {
     if (current === epoch) error.value = e instanceof Error ? e.message : '班组设置加载失败'
@@ -169,6 +181,10 @@ watch(
 onBeforeUnmount(() => {
   ++epoch
 })
+watch(tab, () => {
+  newName.value = ''
+  invalidPurpose.value = null
+})
 function saveDraft() {
   try {
     localStorage.setItem(key(), JSON.stringify(lines.value))
@@ -177,7 +193,7 @@ function saveDraft() {
     error.value = '无法保存本机草稿，请检查浏览器存储权限'
   }
 }
-async function savePurpose(item?: TeamPurpose) {
+async function saveDirectoryItem(item?: TeamDirectoryItem) {
   if (saving.value || loading.value) return
   const name = (item ? item.name : newName.value).trim()
   if (!name) {
@@ -188,7 +204,7 @@ async function savePurpose(item?: TeamPurpose) {
   saving.value = true
   error.value = ''
   try {
-    await teamMaterialApi.savePurpose(
+    await (editingEmployees.value ? teamMaterialApi.saveEmployee : teamMaterialApi.savePurpose)(
       props.teamId,
       { name, active: item?.active ?? true, ...(item ? { expected_version: item.version } : {}) },
       item?.id,
@@ -258,7 +274,7 @@ async function submitOpening() {
 <template>
   <ElDialog
     :model-value="modelValue"
-    :title="businessOnly ? (teamName ? `${teamName} · 业务设置` : '班组业务设置') : '班组设置'"
+    :title="teamName ? `${teamName} · 班组设置` : '班组设置'"
     top="16px"
     :width="businessOnly ? 'min(760px, 94vw)' : 'min(1180px, 96vw)'"
     :close-on-click-modal="!saving"
@@ -266,20 +282,22 @@ async function submitOpening() {
     :show-close="!saving"
     @close="close"
   >
-    <ElTabs v-if="!businessOnly" v-model="tab"
-      ><ElTabPane name="purposes" label="本组业务" /><ElTabPane name="opening" label="初始库存"
-    /></ElTabs>
+    <ElTabs v-model="tab">
+      <ElTabPane name="purposes" label="本组业务" :disabled="saving" />
+      <ElTabPane name="employees" label="班组员工" :disabled="saving" />
+      <ElTabPane v-if="!businessOnly" name="opening" label="初始库存" :disabled="saving" />
+    </ElTabs>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <p v-if="loading">正在读取班组设置…</p>
-    <section v-else-if="tab === 'purposes'" class="purpose-settings">
-      <p class="settings-note">
+    <section v-else-if="tab === 'purposes' || editingEmployees" class="purpose-settings">
+      <p v-if="!editingEmployees" class="settings-note">
         设置本班组可以做的业务，如检验、去毛刺。上序转料时选择；修改后需保存，历史单据保留原名称。
       </p>
-      <div v-for="item in purposes" :key="item.id" class="purpose-editor">
+      <div v-for="item in directoryItems" :key="item.id" class="purpose-editor">
         <ElInput
           :class="{ 'is-error': invalidPurpose === item.id && !item.name.trim() }"
           v-model="item.name"
-          :aria-label="`业务名称 ${item.id}`"
+          :aria-label="`${itemLabel}名称 ${item.id}`"
           maxlength="80"
           :disabled="saving"
         />
@@ -289,10 +307,10 @@ async function submitOpening() {
           active-text="启用"
           :disabled="saving"
         />
-        <ElButton :disabled="saving" @click="savePurpose(item)">保存</ElButton>
+        <ElButton :disabled="saving" @click="saveDirectoryItem(item)">保存</ElButton>
       </div>
       <ElAlert
-        v-if="purposes.length && !purposes.some((item) => item.active)"
+        v-if="!editingEmployees && purposes.length && !purposes.some((item) => item.active)"
         title="业务全部停用后，上序无法新建转给本班组的转料单。"
         type="info"
         :closable="false"
@@ -301,14 +319,16 @@ async function submitOpening() {
         <ElInput
           :class="{ 'is-error': invalidPurpose === 'new' && !newName.trim() }"
           v-model="newName"
-          aria-label="新增业务名称"
-          placeholder="例如：检验、去毛刺"
+          :aria-label="`新增${itemLabel}名称`"
+          :placeholder="editingEmployees ? '请输入员工姓名' : '例如：检验、去毛刺'"
           maxlength="80"
           :disabled="saving"
-          @keyup.enter="savePurpose()"
-        /><ElButton type="primary" :loading="saving" @click="savePurpose()">新增业务</ElButton>
+          @keyup.enter="saveDirectoryItem()"
+        /><ElButton type="primary" :loading="saving" @click="saveDirectoryItem()"
+          >新增{{ itemLabel }}</ElButton
+        >
       </div>
-      <p v-if="!purposes.length" class="settings-note">
+      <p v-if="!editingEmployees && !purposes.length" class="settings-note">
         尚未配置时，新单暂归“未分类”；配置后，上序新开单必须选择启用的业务。
       </p>
     </section>
