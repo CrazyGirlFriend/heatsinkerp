@@ -30,6 +30,7 @@ import TeamInventoryDetail from './TeamInventoryDetail.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import StatePanel from './StatePanel.vue'
 import { useAuthStore } from '@/stores/auth'
+import { showToast } from '@/stores/toast'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import {
@@ -61,6 +62,7 @@ import type { StockBatch, TeamMaterialOverview } from '@/types/teamMaterials'
 import type { TeamPurpose } from '@/types/teamBusiness'
 import type { AgeBand } from '@/types/materialAnalytics'
 import { formatDateTime } from '@/utils/format'
+import { stockSelectable } from '@/utils/materialStock'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 
 const props = defineProps<{
@@ -540,9 +542,46 @@ const detail = ref<TeamInventoryRow | null>(null),
   picker = ref<TeamInventoryRow | null>(null),
   pending = ref<TeamInventoryRow | null>(null)
 const pickerMode = ref<'dispatch' | 'reallocate'>('dispatch')
-function openPicker(row: TeamInventoryRow, mode: 'dispatch' | 'reallocate') {
+const openingSource = ref<{ groupId: number; mode: 'dispatch' | 'reallocate' } | null>(null)
+let sourceVersion = 0
+async function openPicker(row: TeamInventoryRow, mode: 'dispatch' | 'reallocate') {
+  if (
+    !props.canWrite ||
+    openingSource.value ||
+    (mode === 'reallocate' && (!props.canReallocate || row.shared_unallocated))
+  )
+    return
   pickerMode.value = mode
-  picker.value = row
+  if (row.batch_count !== 1) {
+    picker.value = row
+    return
+  }
+  const current = ++sourceVersion
+  openingSource.value = { groupId: row.group_id, mode }
+  try {
+    const result = await teamMaterialApi.inventorySources(props.teamId, row.group_id, {
+      current_only: false,
+      page: 1,
+      page_size: 2,
+    })
+    if (current !== sourceVersion) return
+    const source = result.items[0]
+    if (
+      result.total === 1 &&
+      result.items.length === 1 &&
+      source &&
+      stockSelectable(source) &&
+      (mode !== 'reallocate' || !source.transfer.shared_unallocated)
+    ) {
+      if (mode === 'reallocate') reallocate(source)
+      else action('dispatch', [source])
+    } else picker.value = row
+  } catch (e) {
+    if (current === sourceVersion)
+      showToast(e instanceof Error ? e.message : '来源批次加载失败，请重试', 'error')
+  } finally {
+    if (current === sourceVersion) openingSource.value = null
+  }
 }
 function selectedSources(sources: StockBatch[]) {
   if (pickerMode.value === 'reallocate') {
@@ -581,6 +620,8 @@ function reallocate(source: StockBatch) {
   }
 }
 function resetDetails() {
+  ++sourceVersion
+  openingSource.value = null
   detail.value = picker.value = pending.value = null
   serialOpen.value = urgencyOpen.value = false
 }
@@ -651,10 +692,14 @@ watch(
     void loadPurposes()
   },
 )
-watch([() => props.teamId, () => props.canWrite, () => auth.currentUser?.id], resetDetails)
+watch(
+  [() => props.teamId, () => props.canWrite, () => props.canReallocate, () => auth.currentUser?.id],
+  resetDetails,
+)
 onBeforeUnmount(() => {
   ++version
   ++purposeVersion
+  ++sourceVersion
 })
 </script>
 
@@ -1122,13 +1167,20 @@ onBeforeUnmount(() => {
               v-if="canWrite && inventoryCanDispatch(asRow(row))"
               link
               class="action-warm"
+              :loading="
+                openingSource?.groupId === row.group_id && openingSource?.mode === 'dispatch'
+              "
+              :disabled="!!openingSource"
               @click="openPicker(asRow(row), 'dispatch')"
               >出库</ElButton
             ><ElButton
               v-if="canWrite && canReallocate && inventoryCanDispatch(asRow(row))"
               link
               type="primary"
-              :disabled="row.shared_unallocated"
+              :loading="
+                openingSource?.groupId === row.group_id && openingSource?.mode === 'reallocate'
+              "
+              :disabled="!!openingSource || row.shared_unallocated"
               :title="row.shared_unallocated ? '共投料请通过加工登记拆分归属' : undefined"
               @click="openPicker(asRow(row), 'reallocate')"
               >转投</ElButton

@@ -21,10 +21,14 @@ import InventoryPendingDialog from './InventoryPendingDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import { warehouseColumns } from '@/types/teamInventory'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
+import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { warehouseFixture } from '@/testFixtures/teamInventory'
 import type { StockBatch } from '@/types/teamMaterials'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { useAuthStore } from '@/stores/auth'
+import { showToast } from '@/stores/toast'
+
+vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
 
 let wrapper: VueWrapper
 const data = () => [
@@ -106,6 +110,161 @@ async function submit(term: string) {
 }
 
 describe('warehouse grouped stock', () => {
+  describe('single-source row actions', () => {
+    const source = (): StockBatch => ({
+      ...warehouseFixture(),
+      transfer: normalizeMaterialTransfer({
+        id: 11,
+        batch_no: 'TL11',
+        status: 'received',
+        material_type: 'raw_material',
+        next_team: { id: 901, name: '库房' },
+      }),
+      available_quantity: 20,
+      available_weight: 12,
+    })
+    const result = (items = [source()], total = items.length) => ({
+      items,
+      total,
+      page: 1,
+      page_size: 2,
+    })
+    const button = (label = '出库') =>
+      wrapper.findAll('.inventory-row-actions button').find((item) => item.text() === label)!
+    beforeEach(() => {
+      vi.mocked(showToast).mockClear()
+      vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
+        items: [warehouseFixture({ batch_count: 1, current_batch_count: 1 })],
+        total: 1,
+        page: 1,
+        page_size: 10,
+      })
+      vi.spyOn(teamMaterialApi, 'inventorySources').mockResolvedValue(result())
+    })
+    it.each([
+      ['出库', false],
+      ['出库', true],
+      ['转投', false],
+      ['转投', true],
+    ] as const)(
+      'opens %s directly with fresh stock in fullscreen=%s',
+      async (label, fullscreen) => {
+        await render()
+        await wrapper.setProps({ canReallocate: true, fullscreen })
+        await button(label).trigger('click')
+        await flushPromises()
+        expect(teamMaterialApi.inventorySources).toHaveBeenCalledWith(901, 11, {
+          current_only: false,
+          page: 1,
+          page_size: 2,
+        })
+        expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
+        expect(wrapper.emitted(label === '出库' ? 'action' : 'reallocate')).toEqual([
+          label === '出库' ? ['dispatch', [source()]] : [source()],
+        ])
+      },
+    )
+    it.each(['出库', '转投'])(
+      'keeps selection for %s when another source has appeared',
+      async (label) => {
+        vi.mocked(teamMaterialApi.inventorySources).mockResolvedValue(result([source()], 2))
+        await render()
+        await wrapper.setProps({ canReallocate: true })
+        await button(label).trigger('click')
+        await flushPromises()
+        expect(wrapper.getComponent(StockSourcePicker).props()).toMatchObject({
+          groupId: 11,
+          mode: label === '出库' ? 'dispatch' : 'reallocate',
+        })
+        expect(wrapper.emitted('action')).toBeUndefined()
+        expect(wrapper.emitted('reallocate')).toBeUndefined()
+      },
+    )
+    it('still permits direct entry with zero balances and weight-only scrap', async () => {
+      await render()
+      for (const stock of [
+        { ...source(), available_quantity: 0, available_weight: 0 },
+        {
+          ...source(),
+          transfer: { ...source().transfer, material_type: 'scrap_chips' as const },
+          scrap_available_quantity: 0,
+          scrap_available_weight: 4,
+        },
+      ]) {
+        vi.mocked(teamMaterialApi.inventorySources).mockResolvedValue(result([stock]))
+        await button().trigger('click')
+        await flushPromises()
+        expect(wrapper.emitted('action')?.at(-1)).toEqual(['dispatch', [stock]])
+      }
+      expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
+    })
+    it.each(['missing', 'unknown-balance', 'shared'])(
+      'does not auto-select %s stock',
+      async (state) => {
+        const stock = source()
+        if (state === 'unknown-balance') stock.available_weight = null
+        if (state === 'shared') stock.transfer.shared_unallocated = true
+        vi.mocked(teamMaterialApi.inventorySources).mockResolvedValue(
+          result(state === 'missing' ? [] : [stock]),
+        )
+        await render()
+        await wrapper.setProps({ canReallocate: true })
+        await button('转投').trigger('click')
+        await flushPromises()
+        expect(wrapper.emitted('reallocate')).toBeUndefined()
+        expect(wrapper.getComponent(StockSourcePicker).props('mode')).toBe('reallocate')
+      },
+    )
+    it('blocks repeat clicks while loading and allows retry after failure', async () => {
+      let reject!: (reason: Error) => void
+      vi.mocked(teamMaterialApi.inventorySources).mockReturnValueOnce(
+        new Promise((_, fail) => {
+          reject = fail
+        }),
+      )
+      await render()
+      await button().trigger('click')
+      await button().trigger('click')
+      expect(teamMaterialApi.inventorySources).toHaveBeenCalledTimes(1)
+      expect(button().classes()).toContain('is-loading')
+      reject(new Error('网络连接失败'))
+      await flushPromises()
+      expect(showToast).toHaveBeenCalledWith('网络连接失败', 'error')
+      expect(wrapper.emitted('action')).toBeUndefined()
+      expect(button().attributes('disabled')).toBeUndefined()
+      await button().trigger('click')
+      await flushPromises()
+      expect(wrapper.emitted('action')).toHaveLength(1)
+    })
+    it.each(['team', 'write', 'reallocate', 'account', 'unmount'])(
+      'ignores late stock responses after changing %s',
+      async (change) => {
+        let finish!: (value: ReturnType<typeof result>) => void
+        vi.mocked(teamMaterialApi.inventorySources).mockReturnValueOnce(
+          new Promise((resolve) => {
+            finish = resolve
+          }),
+        )
+        await render()
+        await wrapper.setProps({ canReallocate: true })
+        await button('转投').trigger('click')
+        if (change === 'team') await wrapper.setProps({ teamId: 902 })
+        if (change === 'write') await wrapper.setProps({ canWrite: false })
+        if (change === 'reallocate') await wrapper.setProps({ canReallocate: false })
+        if (change === 'account') {
+          useAuthStore().session = {
+            user: { id: 42 },
+          } as ReturnType<typeof useAuthStore>['session']
+          await flushPromises()
+        }
+        if (change === 'unmount') wrapper.unmount()
+        finish(result())
+        await flushPromises()
+        expect(wrapper.emitted('action')).toBeUndefined()
+        expect(wrapper.emitted('reallocate')).toBeUndefined()
+      },
+    )
+  })
   it('exposes reallocation on each stock row in normal and fullscreen modes and enforces write access', async () => {
     await render('/team-workspaces/901?tab=stock', true, false)
     await wrapper.setProps({ canReallocate: true })
