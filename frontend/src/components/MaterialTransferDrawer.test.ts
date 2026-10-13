@@ -124,6 +124,57 @@ async function confirm() {
 }
 
 describe('material transfer receipt review', () => {
+  it('selects the receiver in its document cell and replaces the picker with the saved receipt', async () => {
+    await render({}, false)
+    const table = wrapper.get('table[aria-label="转料单据资料"]')
+    const receiverCell = () =>
+      table.findAll('th').find((cell) => cell.text() === '接收人')!.element.nextElementSibling!
+    expect(receiverCell().querySelector('button[aria-label="接收人"]')).not.toBeNull()
+    expect(wrapper.findAll('button[aria-label="接收人"]')).toHaveLength(1)
+
+    await wrapper.get('button[aria-label="接收人"]').trigger('click')
+    await flushPromises()
+    const choice = [...document.body.querySelectorAll<HTMLButtonElement>('.person-choice')].find(
+      (button) => button.textContent?.trim() === person.name,
+    )!
+    choice.click()
+    await flushPromises()
+    expect(receiverCell().textContent).toContain(person.name)
+    expect(materialTransferApi.confirm).not.toHaveBeenCalled()
+    expect(table.text()).not.toContain('接收时间2026-10-13')
+
+    vi.mocked(materialTransferApi.confirm).mockResolvedValueOnce(
+      fixture({
+        status: 'received',
+        locked: true,
+        allowed_actions: [],
+        received_employee_id: person.id,
+        received_employee_name: person.name,
+        received_by: '签收操作账号',
+        received_at: '2026-10-13T04:30:00Z',
+        version: 5,
+      }),
+    )
+    await confirm()
+    expect(materialTransferApi.confirm).toHaveBeenCalledWith(
+      'TL20260906000001',
+      expect.objectContaining({ received_employee_id: person.id }),
+    )
+    expect(receiverCell().textContent).toBe(person.name)
+    expect(wrapper.findComponent(ReceiptPersonInput).exists()).toBe(false)
+    expect(table.text()).toContain('2026-10-13')
+  })
+
+  it('keeps the inline choice after cancelling confirmation without saving a receipt', async () => {
+    await render()
+    vi.mocked(ElMessageBox.confirm).mockRejectedValueOnce('cancel')
+    await confirm()
+    expect(materialTransferApi.confirm).not.toHaveBeenCalled()
+    const table = wrapper.get('table[aria-label="转料单据资料"]')
+    expect(table.get('button[aria-label="接收人"]').text()).toContain(person.name)
+    expect(wrapper.emitted('confirmed')).toBeUndefined()
+  })
+
   it('requires an employee and marks just the picker before any receipt confirmation', async () => {
     await render({}, false)
     await confirm()

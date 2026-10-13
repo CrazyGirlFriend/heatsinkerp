@@ -157,6 +157,7 @@ const fields = computed<DocumentField[]>(() => {
           { label: '开单操作账号', value: t.transferred_by || '—' },
           {
             label: external ? `${verb}确认人` : '接收人',
+            key: external ? undefined : 'receiver',
             value: external
               ? t.dispatched_by || '—'
               : t.received_employee_name || (t.status === 'received' ? '未登记' : '—'),
@@ -188,6 +189,9 @@ const fields = computed<DocumentField[]>(() => {
   >
     <template #serial="{ field }"
       ><slot name="serial">{{ field.value }}</slot></template
+    >
+    <template #receiver="{ field }"
+      ><slot name="receiver">{{ field.value }}</slot></template
     >
   </MaterialDocumentTable>
   <SharedMaterialInfo v-if="group !== 'extra'" :item="transfer" />

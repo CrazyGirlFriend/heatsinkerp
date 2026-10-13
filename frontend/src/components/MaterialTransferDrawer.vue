@@ -634,21 +634,24 @@ watch(
           >历史合并记录 · {{ current.dispatch_no }}</ElButton
         >
       </div>
-      <MaterialTransferDocumentFields :transfer="current" group="all"
-        ><template #serial
-          ><RouterLink :to="tracePath">{{ sharedSerialLabel(current) }}</RouterLink
-          ><SerialUrgencyBadge :urgency="current.urgency" /></template
-      ></MaterialTransferDocumentFields>
-      <section v-if="canConfirm" class="receipt-person-field">
-        <label><span aria-hidden="true">*</span> 接收人</label>
-        <ReceiptPersonInput
-          v-model="receiver"
-          :team-id="Number(current.next_team.id)"
-          :disabled="confirming"
-          :invalid="receiverRequired && !receiver"
-          @open-change="selectingReceiver = $event"
-        />
-      </section>
+      <MaterialTransferDocumentFields :transfer="current" group="all">
+        <template #serial>
+          <RouterLink :to="tracePath">{{ sharedSerialLabel(current) }}</RouterLink>
+          <SerialUrgencyBadge :urgency="current.urgency" />
+        </template>
+        <template v-if="canConfirm" #receiver>
+          <div class="receipt-person-cell">
+            <span class="required-mark" aria-hidden="true">*</span>
+            <ReceiptPersonInput
+              v-model="receiver"
+              :team-id="Number(current.next_team.id)"
+              :disabled="confirming"
+              :invalid="receiverRequired && !receiver"
+              @open-change="selectingReceiver = $event"
+            />
+          </div>
+        </template>
+      </MaterialTransferDocumentFields>
       <section v-if="canConfirm && warehouseReceiver" class="receipt-location">
         <label>入库仓位</label
         ><strong v-if="current.warehouse_location">{{ current.warehouse_location }}</strong
@@ -798,16 +801,13 @@ watch(
 </template>
 
 <style scoped>
-.receipt-person-field {
+.receipt-person-cell {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-block: 16px;
+  justify-content: center;
+  gap: 8px;
 }
-.receipt-person-field label {
-  font-size: 14px;
-}
-.receipt-person-field label span {
+.receipt-person-cell .required-mark {
   color: var(--el-color-danger);
 }
 
