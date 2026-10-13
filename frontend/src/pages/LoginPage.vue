@@ -14,14 +14,57 @@ const passwordVisible = ref(false)
 const submitting = ref(false)
 const busy = computed(() => submitting.value || authState.loading)
 const validationMessage = ref('')
-const errorMessage = computed(() => validationMessage.value || authState.error)
+const navigationFailed = ref(false)
+const needsRefresh = computed(() => navigationFailed.value && isAuthenticated.value)
+const errorMessage = computed(() =>
+  needsRefresh.value
+    ? '登录成功，页面加载失败，请刷新并进入'
+    : validationMessage.value || authState.error,
+)
+const refreshHref = computed(
+  () => router.resolve({ path: '/login', query: { redirect: safeRedirect() } }).href,
+)
 
 function safeRedirect(): string {
   return safeInternalRedirect(route.query.redirect, DEFAULT_LOGIN_PATH)
 }
 
+async function enterWorkspace(animate = false): Promise<void> {
+  submitting.value = true
+  navigationFailed.value = false
+  const destination = safeRedirect()
+  const navigate = async () => {
+    const failure = await router.replace(destination)
+    if (failure) throw failure
+  }
+  try {
+    if (
+      animate &&
+      document.startViewTransition &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      const transition = document.startViewTransition(navigate)
+      // A failed route rejects all three promises; only the callback decides recovery.
+      void transition.ready.catch(() => undefined)
+      void transition.finished.catch(() => undefined)
+      await transition.updateCallbackDone
+    } else {
+      await navigate()
+    }
+  } catch {
+    // Keep the valid session; a document reload can fetch the latest release's chunks.
+    navigationFailed.value = true
+  } finally {
+    submitting.value = false
+  }
+}
+
 async function handleSubmit(): Promise<void> {
   if (busy.value) return
+  if (isAuthenticated.value) {
+    await enterWorkspace()
+    return
+  }
   validationMessage.value = ''
   if (!username.value.trim()) {
     validationMessage.value = '请输入登录账号'
@@ -34,17 +77,7 @@ async function handleSubmit(): Promise<void> {
   submitting.value = true
   try {
     await login({ username: username.value.trim(), password: password.value })
-    // Cross-fade only after authentication succeeds; navigation still owns its guards.
-    if (
-      document.startViewTransition &&
-      !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    ) {
-      await document.startViewTransition(async () => {
-        await router.replace(safeRedirect())
-      }).updateCallbackDone
-    } else {
-      await router.replace(safeRedirect())
-    }
+    await enterWorkspace(true)
   } catch {
     // 登录状态统一由 store 返回。
   } finally {
@@ -53,7 +86,7 @@ async function handleSubmit(): Promise<void> {
 }
 
 onMounted(() => {
-  if (isAuthenticated.value) void router.replace(safeRedirect())
+  if (isAuthenticated.value) void enterWorkspace()
 })
 </script>
 
@@ -92,7 +125,7 @@ onMounted(() => {
               name="username"
               autocomplete="username"
               autocapitalize="none"
-              :disabled="busy"
+              :disabled="busy || needsRefresh"
               placeholder="请输入账号"
               size="large"
               autofocus
@@ -110,7 +143,7 @@ onMounted(() => {
               :type="passwordVisible ? 'text' : 'password'"
               name="password"
               autocomplete="current-password"
-              :disabled="busy"
+              :disabled="busy || needsRefresh"
               :aria-describedby="errorMessage ? 'login-error' : undefined"
               placeholder="请输入密码"
               size="large"
@@ -122,7 +155,7 @@ onMounted(() => {
                 <button
                   class="login-password-toggle"
                   type="button"
-                  :disabled="busy"
+                  :disabled="busy || needsRefresh"
                   :aria-label="passwordVisible ? '隐藏密码' : '显示密码'"
                   :aria-pressed="passwordVisible"
                   @click="passwordVisible = !passwordVisible"
@@ -137,12 +170,22 @@ onMounted(() => {
           </ElFormItem>
 
           <ElButton
+            v-if="needsRefresh"
+            tag="a"
+            :href="refreshHref"
+            class="login-submit"
+            type="primary"
+            size="large"
+            >刷新并进入</ElButton
+          >
+          <ElButton
+            v-else
             class="login-submit"
             type="primary"
             size="large"
             native-type="submit"
             :loading="busy"
-            :disabled="busy"
+            :disabled="busy || needsRefresh"
           >
             {{ busy ? '正在登录' : '登录' }}
             <ElIcon v-if="!busy" class="login-submit__arrow" aria-hidden="true"><Right /></ElIcon>
