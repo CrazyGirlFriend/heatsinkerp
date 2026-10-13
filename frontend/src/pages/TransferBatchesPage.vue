@@ -730,6 +730,16 @@ onBeforeUnmount(() => {
               }}</template></ElTableColumn
             >
             <ElTableColumn
+              label="物料类型"
+              min-width="120"
+              align="center"
+              class-name="transfer-material-type-cell"
+              show-overflow-tooltip
+              ><template #default="{ row }">{{
+                materialTypeLabel(row.material_type)
+              }}</template></ElTableColumn
+            >
+            <ElTableColumn
               label="数量"
               min-width="120"
               align="center"

@@ -204,6 +204,7 @@ describe('transfer list refresh continuity', () => {
         ...transfer,
         id: 2,
         batch_no: 'TL-RECEIPT',
+        material_type: 'raw_material',
         entry_kind: 'warehouse_receipt',
         status: 'received',
         next_team: { id: 1, name: '库房' },
@@ -212,6 +213,7 @@ describe('transfer list refresh continuity', () => {
         ...transfer,
         id: 3,
         batch_no: 'TL-INTERNAL',
+        material_type: 'semi_finished',
         source_team: { id: 7, name: '电镀' },
         next_team: { id: 8, name: '检验' },
         purpose_name: '去毛刺',
@@ -220,6 +222,7 @@ describe('transfer list refresh continuity', () => {
         ...transfer,
         id: 4,
         batch_no: 'TL-EXTERNAL',
+        material_type: 'waste',
         entry_kind: 'warehouse_outbound',
         external_destination: '外协收料单位',
         purpose_name: '旧来源业务',
@@ -244,6 +247,7 @@ describe('transfer list refresh continuity', () => {
       '来源',
       '去向',
       '接收业务',
+      '物料类型',
       '数量',
       '重量',
       '状态',
@@ -278,6 +282,12 @@ describe('transfer list refresh continuity', () => {
       '去毛刺',
       '—',
       '—',
+    ])
+    expect(tableRows.map((row) => row.get('.transfer-material-type-cell').text())).toEqual([
+      '原材料',
+      '半成品',
+      '废料',
+      '未填写',
     ])
     expect(tableRows.map((row) => row.get('.transfer-status-cell').text())).toEqual([
       '已入库',
