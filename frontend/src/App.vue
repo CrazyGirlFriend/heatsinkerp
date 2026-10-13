@@ -488,14 +488,21 @@ function handleUserCommand(command: string | number | object): void {
   padding-bottom: 16px;
   border: 1px solid var(--glass-border);
   border-radius: 22px;
-  background: linear-gradient(145deg, #ffffff94, #ffffff38 48%, #ffffff73);
+  background:
+    radial-gradient(ellipse at 8% 0%, #fffffff2, transparent 58%),
+    radial-gradient(
+      ellipse at 100% 100%,
+      color-mix(in srgb, var(--primary-soft) 70%, transparent),
+      transparent 72%
+    ),
+    var(--glass-shell-fill);
   -webkit-backdrop-filter: blur(20px) saturate(110%);
   backdrop-filter: blur(20px) saturate(110%);
   box-shadow:
     0 8px 28px #203b2e0c,
     0 0 0 0.5px #335d4614,
-    inset 1px 1px 1px #fffffff2,
-    inset -1px -1px 1px #ffffff78;
+    inset 1px 1px 1px #fff,
+    inset -1px -1px 1px var(--glass-edge);
 }
 .app-shell--business .brand-mark {
   height: 84px;

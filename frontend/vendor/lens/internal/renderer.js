@@ -299,8 +299,7 @@ export class GlassRenderer {
       this.contextExtension=this.gl.getExtension('WEBGL_lose_context');
       this.suspended=false;this.lost=false;this.initGL();this.resize();
       if(!this.hasPointer){this.pointer={x:this.width*.25,y:this.height*.85};this.smoothPointer={...this.pointer};this.hasPointer=true;}
-      this.canvas.hidden=false;this.canvas.dataset.gpuState='active';this.stage.classList.add('webgl-ready');this.stage.classList.remove('fallback');
-      this.onState?.('ready');this.lastTime=0;this.invalidate(150);
+      this.canvas.dataset.gpuState='rendering';this.lastTime=0;this.invalidate(150);
     }catch(error){this.suspendGPU();this.onState?.('lost');console.warn('Glass initialization failed',error);}
   }
 
@@ -343,6 +342,8 @@ export class GlassRenderer {
     this.dpr=Math.min(devicePixelRatio||1,1.75);
     const width=Math.max(1,Math.round(rect.width*this.dpr)),height=Math.max(1,Math.round(rect.height*this.dpr));
     if (width===this.width&&height===this.height)return;
+    // Resizing clears the opaque drawing buffer; keep it hidden until redrawn.
+    this.canvas.hidden=true;
     this.width=width;this.height=height;this.canvas.width=width;this.canvas.height=height;
     const gl=this.gl;
     for(const target of this.targets){
@@ -528,9 +529,15 @@ export class GlassRenderer {
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.bindTexture(gl.TEXTURE_2D,source.texture);
     this.use(p.copy);gl.uniform1i(p.copy.uniforms.uScene,0);gl.drawArrays(gl.TRIANGLES,0,6);
+    // Present only after a complete frame, including activation and restoration.
+    const ready=this.canvas.hidden&&this.canvas.dataset.gpuState!=='active';
+    if(this.canvas.hidden){
+      this.canvas.hidden=false;this.canvas.dataset.gpuState='active';this.stage.classList.add('webgl-ready');this.stage.classList.remove('fallback');
+    }
     this.dirty=false;
     const moving=this.settings.motion&&!this.reducedMotion&&this.settings.scene!=='grid';
     if(moving||opticalMoving||now<this.animatingUntil)this.frame=requestAnimationFrame(t=>this.render(t));
+    if(ready)this.onState?.('ready');
   }
 
   destroy() {

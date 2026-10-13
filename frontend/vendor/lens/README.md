@@ -1,5 +1,13 @@
 # Lens Design System
 
+## HeatSinkREP local patch
+
+`SOURCE.json` records the original upstream commit and file hashes. The local
+`internal/renderer.js` patch keeps the opaque canvas hidden until its first
+complete frame after activation, context restoration, or a backing-buffer resize.
+This prevents a cleared black buffer from flashing over dialog surfaces. Regression
+coverage is in `src/utils/glassRenderer.test.ts` relative to the frontend directory.
+
 一套可复制、可扩展的原生 Web 设计系统。默认「厚润 / Thick」，包含真实背景折射、弹性手势、18 类语义化控件和 13 种原创合成交互音效。运行时无依赖、无 CDN、无音频下载。
 
 所有固定名称和展示入口见 [组件清单](COMPONENTS.md)，页面入口为 `examples/optics.html#component-index`。`componentCatalog` 从公共入口导出中英文名称、工厂标识和示例参数；新增组件时同步这份清单。
