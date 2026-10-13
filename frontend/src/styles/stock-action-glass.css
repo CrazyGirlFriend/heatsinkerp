@@ -1,0 +1,225 @@
+.el-overlay.stock-action-overlay {
+  background: rgb(24 41 33 / 15%);
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+}
+.el-dialog.stock-action-dialog {
+  --text: #24352e;
+  --muted: #6e7c75;
+  --subtle: #718078;
+  --line: #dde7e0;
+  --line-light: #edf1ee;
+  --stock-dialog-inset-x: 26px;
+  --stock-dialog-inset-y: 22px;
+  position: relative;
+  isolation: isolate;
+  border: 1px solid #ffffffd9;
+  border-radius: 28px;
+  background: #f8fcfa;
+  box-shadow:
+    0 28px 80px #173d2826,
+    0 8px 20px #173d2814,
+    inset 0 1px 0 #fff;
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+}
+.stock-action-dialog > .lg-canvas,
+.stock-action-dialog .stock-source-popover > .lg-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -2;
+  pointer-events: none;
+}
+.stock-action-dialog > .lens-shell,
+.stock-action-dialog .stock-source-popover > .lens-shell {
+  position: absolute;
+  inset: 3px;
+  z-index: -1;
+  border-radius: 25px;
+  pointer-events: none;
+}
+.stock-action-dialog .el-dialog__header {
+  margin: calc(-1 * var(--stock-dialog-inset-y)) calc(-1 * var(--stock-dialog-inset-x)) 0;
+  padding-inline: var(--stock-dialog-inset-x) calc(var(--stock-dialog-inset-x) + 28px);
+  background: rgb(255 255 255 / 16%);
+  padding-block: 22px 18px;
+  border-bottom: 1px solid #ffffff91;
+}
+.stock-action-dialog .el-dialog__body {
+  padding-block: 20px 28px;
+  scroll-padding-block: 16px;
+  scrollbar-color: #b6cbbf transparent;
+}
+.stock-action-dialog .el-dialog__footer {
+  position: relative;
+  border-radius: 20px;
+  margin: 0 -14px -10px;
+  padding: 14px 18px;
+  border: 1px solid #ffffffba;
+  background: #ffffff66;
+  box-shadow:
+    0 1px 0 #fff inset,
+    0 4px 14px #31553e0a;
+}
+.stock-action-dialog.webgl-ready .el-dialog__footer {
+  background: transparent;
+  box-shadow: none;
+}
+.stock-action-dialog :is(.el-input__wrapper, .el-select__wrapper, .person-picker-trigger) {
+  border-radius: 10px;
+  background: #fff;
+  box-shadow:
+    inset 0 0 0 1px #dce5df,
+    0 1px 2px #203b2c04;
+  transition:
+    box-shadow 180ms,
+    background 180ms;
+}
+.stock-action-dialog :is(.el-input__wrapper, .el-select__wrapper):hover {
+  box-shadow: inset 0 0 0 1px #aabfb3;
+}
+.stock-action-dialog :is(.el-input__wrapper.is-focus, .el-select__wrapper.is-focused) {
+  box-shadow:
+    inset 0 0 0 1px #41846a,
+    0 0 0 3px #41846a14;
+}
+.stock-action-dialog
+  .is-error
+  :is(.el-input__wrapper, .el-select__wrapper, .person-picker-trigger) {
+  box-shadow:
+    inset 0 0 0 1px var(--el-color-danger),
+    0 0 0 3px #d1555510;
+}
+.stock-action-dialog .el-button {
+  border-radius: 10px;
+  transition:
+    background 180ms,
+    box-shadow 180ms,
+    border-color 180ms,
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.stock-action-dialog .source-actions > .el-button:not(.is-text) {
+  background: #eef5f0;
+  border-color: #e4ede7;
+  color: #28644c;
+}
+.stock-action-dialog .source-actions > .el-button.is-text {
+  background: #f2f5f3;
+  color: #556a5e;
+}
+.stock-action-dialog .el-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.stock-action-dialog .el-button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.stock-action-dialog .action-footer .el-button {
+  height: 40px;
+  padding-inline: 20px;
+  border-radius: 12px;
+  transform: var(--jelly-matrix, none);
+  transition:
+    box-shadow 180ms,
+    background 180ms;
+  background: #ffffffad;
+  border: 1px solid #fff;
+  box-shadow:
+    0 2px 6px #1a372816,
+    inset 0 1px 0 #fff;
+}
+.stock-action-dialog .action-footer .el-button--primary {
+  background: linear-gradient(170deg, #37745c, #225741);
+  border-color: #316b51;
+  color: #fff;
+  box-shadow:
+    0 3px 8px #24583c26,
+    inset 0 1px 0 #ffffff40;
+}
+.stock-action-dialog .action-footer .el-button--primary:hover:not(:disabled) {
+  background: linear-gradient(170deg, #3b8063, #245c44);
+}
+.stock-action-dialog .el-button:disabled,
+.stock-action-dialog .el-button.is-disabled {
+  opacity: 0.48;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.stock-action-dialog .el-dialog__headerbtn {
+  transform: var(--jelly-matrix, none);
+  background: #ffffff9c;
+  border: 1px solid #fff;
+  box-shadow:
+    0 2px 5px #2846350a,
+    inset 0 1px 0 #fff;
+}
+.stock-action-dialog .source-actions .stock-source-popover {
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 16px;
+  padding: 6px;
+  background: #ffffffc7;
+  border: 1px solid #fff;
+  -webkit-backdrop-filter: blur(24px) saturate(110%);
+  backdrop-filter: blur(24px) saturate(110%);
+  box-shadow:
+    0 14px 34px #294a351f,
+    inset 0 1px 0 #fff;
+}
+.stock-action-dialog .stock-source-popover > .lens-shell {
+  border-radius: 13px;
+}
+.stock-action-dialog .stock-source-popover .el-popper__arrow {
+  display: none;
+}
+.stock-action-dialog .source-actions .stock-source-popover.webgl-ready {
+  background: #fff;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.stock-action-dialog .source-action-menu .el-button {
+  height: 36px;
+  padding: 8px 12px;
+  background: transparent;
+  border-radius: 10px;
+  color: #344e40;
+}
+.stock-action-dialog .source-action-menu .el-button--danger {
+  color: var(--el-color-danger);
+}
+.stock-action-dialog .source-action-menu .el-button:hover:not(:disabled) {
+  background: #eaf2ed;
+  transform: none;
+}
+@media (max-width: 1200px), (max-height: 800px) {
+  .el-dialog.stock-action-dialog {
+    --stock-dialog-inset-x: 20px;
+    --stock-dialog-inset-y: 18px;
+    padding: 18px 20px;
+  }
+  .stock-action-dialog .el-dialog__header {
+    padding-block: 18px 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stock-action-dialog * {
+    transition-duration: 0s !important;
+  }
+  .stock-action-dialog .el-button {
+    transform: none !important;
+  }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .el-dialog.stock-action-dialog,
+  .stock-action-dialog .el-dialog__footer,
+  .stock-action-dialog .source-actions .stock-source-popover {
+    background: #fff;
+  }
+  .el-dialog.stock-action-dialog,
+  .stock-action-dialog .source-actions .stock-source-popover,
+  .el-overlay.stock-action-overlay {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}

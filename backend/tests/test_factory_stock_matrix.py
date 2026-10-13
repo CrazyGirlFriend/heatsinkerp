@@ -122,8 +122,11 @@ def test_matrix_external_dispatch_confirmation_and_loss_do_not_double_deduct(cli
 def test_matrix_missing_and_disabled_teams_unknown_grade_and_legacy(client, warehouse):
     empty = assert_totals(report(client))
     assert empty["materials"] == [] and empty["total"] == {"quantity": 0, "weight": 0}
-    assert empty["rows"][0]["total"] == {"quantity": 0, "weight": 0}
-    assert empty["rows"][1]["total"] is None
+    empty_teams = {row["team_code"]: row for row in empty["rows"]}
+    assert empty_teams["FACTORY-WAREHOUSE"]["total"] == {"quantity": 0, "weight": 0}
+    assert empty_teams["FACTORY-ROLL"]["total"] == {"quantity": 0, "weight": 0}
+    assert empty_teams["FACTORY-ANNEAL"]["team_id"] is None
+    assert empty_teams["FACTORY-ANNEAL"]["total"] is None
     lots = [intake(client, warehouse, idempotency_key=f"unknown-{i}").json() for i in range(2)]
     with SessionLocal() as db:
         db.get(Team, warehouse["team"]["id"]).active = False
@@ -136,5 +139,8 @@ def test_matrix_missing_and_disabled_teams_unknown_grade_and_legacy(client, ware
         legacy.stock_tracked = False
         db.commit()
     matrix = assert_totals(report(client))
-    assert matrix["rows"][0]["active"] is False
+    assert (
+        next(row for row in matrix["rows"] if row["team_code"] == "FACTORY-WAREHOUSE")["active"]
+        is False
+    )
     assert matrix["materials"] == [{"name": "未填写材质", "quantity": 100, "weight": 10.125}]

@@ -1,0 +1,5 @@
+Lens design system
+https://github.com/ruiqichenbiec/design-systems
+Commit: 7a424c93b9be13cf835b91ea67495fec2ec0584e
+Path: lens/lab/design-system
+License: lens-MIT.txt

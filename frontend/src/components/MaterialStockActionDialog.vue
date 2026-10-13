@@ -2,6 +2,7 @@
 import { materialWeightToleranceKg, isProcessingTeamCode } from '@/config/materialRules'
 
 import { ArrowDown } from '@element-plus/icons-vue'
+import '@/styles/stock-action-glass.css'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import WeightInput from './WeightInput.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
@@ -118,6 +119,35 @@ const form = reactive({
   reason: '',
 })
 const sender = ref<TeamEmployee | null>(null)
+const dialogHeading = ref<HTMLElement>()
+let glassGeneration = 0
+let releaseGlass: (() => void) | undefined
+function stopGlass() {
+  ++glassGeneration
+  releaseGlass?.()
+  releaseGlass = undefined
+}
+async function startGlass() {
+  stopGlass()
+  const current = glassGeneration
+  const dialog = dialogHeading.value?.closest<HTMLElement>('.el-dialog')
+  if (!dialog || !props.modelValue) return
+  try {
+    const { enhanceGlassDialog } = await import('@/utils/glassDialog')
+    if (current !== glassGeneration || !props.modelValue || !dialog.isConnected) return
+    releaseGlass = enhanceGlassDialog(dialog)
+  } catch {
+    // Keep the standard form usable if the optional effect cannot load.
+  }
+}
+watch(
+  () => props.modelValue,
+  (open) => {
+    if (!open) stopGlass()
+  },
+)
+onBeforeUnmount(stopGlass)
+
 const activeActions = ref('')
 function setLineActions(key: string, open: boolean) {
   if (open) activeActions.value = key
@@ -795,9 +825,11 @@ async function submit() {
     :close-on-press-escape="!busy"
     :show-close="!busy"
     @close="close"
+    @opened="startGlass"
+    @closed="stopGlass"
   >
     <template #header="{ titleId, titleClass }">
-      <div class="stock-dialog-heading">
+      <div ref="dialogHeading" class="stock-dialog-heading">
         <h2 :id="titleId" :class="titleClass">{{ dialogTitle }}</h2>
         <span>{{ lines.length }} 项物料</span>
       </div>
@@ -1073,7 +1105,13 @@ async function submit() {
               >
             </div>
           </template>
-          <div class="source-inputs dialog-form-grid">
+          <div
+            class="source-inputs dialog-form-grid"
+            :class="{
+              'source-inputs-weight-only': isWeightOnlyType(line.materialType),
+              'source-inputs-sludge': converted(line),
+            }"
+          >
             <ElFormItem
               class="source-quantity-field"
               v-if="!isWeightOnlyType(line.materialType)"
@@ -1135,6 +1173,7 @@ async function submit() {
             </p>
             <ElFormItem
               v-if="!isLoss"
+              class="source-material-type-field"
               :label="`${actionLabel}物料类型`"
               :error="lineError(line, 'materialType')"
               :required="warehouse"
@@ -1158,6 +1197,7 @@ async function submit() {
             ></ElFormItem>
             <ElFormItem
               v-if="!isLoss && !external"
+              class="source-purpose-field"
               label="下序接收业务"
               :error="lineError(line, 'purposeId')"
               :required="purposes.items.value.length > 0"
@@ -1353,57 +1393,6 @@ async function submit() {
 </template>
 
 <style scoped>
-:global(.el-dialog.stock-action-dialog) {
-  --stock-dialog-inset-x: 24px;
-  --stock-dialog-inset-y: 20px;
-  background:
-    linear-gradient(145deg, #ffffffc7, #ffffffa8 58%, #ffffffc2) padding-box,
-    linear-gradient(140deg, #fff, #ffffff70 45%, #fffffff0) border-box;
-  -webkit-backdrop-filter: blur(24px) saturate(108%) brightness(1.06);
-  backdrop-filter: blur(24px) saturate(108%) brightness(1.06);
-}
-:global(.stock-action-dialog .el-dialog__header) {
-  margin: calc(-1 * var(--stock-dialog-inset-y)) calc(-1 * var(--stock-dialog-inset-x)) 0;
-  padding: var(--stock-dialog-inset-y) calc(var(--stock-dialog-inset-x) + 28px) 14px
-    var(--stock-dialog-inset-x);
-  border-bottom: 1px solid rgb(255 255 255 / 64%);
-  background: linear-gradient(180deg, rgb(255 255 255 / 38%), rgb(255 255 255 / 10%));
-}
-:global(.stock-action-dialog .el-dialog__footer) {
-  margin: 0 calc(-1 * var(--stock-dialog-inset-x)) calc(-1 * var(--stock-dialog-inset-y));
-  padding: 14px var(--stock-dialog-inset-x) var(--stock-dialog-inset-y);
-  border-top: 1px solid rgb(255 255 255 / 72%);
-  background: linear-gradient(180deg, rgb(255 255 255 / 18%), rgb(255 255 255 / 46%));
-  box-shadow: 0 -1px 0 rgb(61 76 69 / 5%);
-}
-:global(.stock-action-dialog .el-dialog__headerbtn) {
-  border: 1px solid rgb(255 255 255 / 70%);
-  background: rgb(255 255 255 / 44%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 70%);
-}
-:global(.stock-action-dialog .el-dialog__headerbtn:hover) {
-  background: rgb(255 255 255 / 76%);
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :global(.el-dialog.stock-action-dialog) {
-    background: var(--surface);
-    border-color: var(--line);
-  }
-}
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  :global(.el-dialog.stock-action-dialog) {
-    background: var(--surface);
-    border-color: var(--line);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-}
-@media (max-width: 560px), (max-height: 800px) {
-  :global(.el-dialog.stock-action-dialog) {
-    --stock-dialog-inset-x: 16px;
-    --stock-dialog-inset-y: 16px;
-  }
-}
 .stock-dialog-heading {
   display: flex;
   align-items: baseline;
@@ -1412,15 +1401,20 @@ async function submit() {
 .stock-dialog-heading h2 {
   margin: 0;
   color: var(--text);
-  font-size: 22px;
+  font-size: 23px;
   font-weight: 650;
+  letter-spacing: -0.4px;
 }
 .stock-dialog-heading > span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
+  padding: 3px 9px;
+  background: #ffffff82;
+  border: 1px solid #ffffffcc;
+  border-radius: 12px;
 }
 .dispatch-context {
-  padding-bottom: 16px;
+  padding: 0 3px 20px;
 }
 .dispatch-context-heading {
   display: flex;
@@ -1431,9 +1425,10 @@ async function submit() {
 }
 .dispatch-context-heading h3 {
   margin: 0;
-  color: var(--text);
-  font-size: 13px;
+  color: #65786e;
+  font-size: 12px;
   font-weight: 600;
+  letter-spacing: 1px;
 }
 .dispatch-context-fields {
   grid-template-columns: 240px repeat(2, minmax(0, 1fr));
@@ -1458,31 +1453,30 @@ async function submit() {
 }
 .source-lines {
   display: grid;
-  gap: 10px;
+  gap: 14px;
   padding: 1px;
 }
 .source-line {
   --el-component-size: 36px;
   min-width: 0;
-  padding: 10px 16px 4px;
-  border: 1px solid rgb(255 255 255 / 88%);
-  border-radius: 12px;
-  background: rgb(255 255 255 / 97%);
+  padding: 14px 16px 6px;
+  border: 1px solid #fff;
+  border-radius: 16px;
+  background: #fffffff5;
   box-shadow:
-    0 0 0 1px rgb(64 80 72 / 7%),
-    0 3px 10px rgb(28 40 35 / 4%),
-    inset 0 1px 0 #fff;
+    0 0 0 1px #3760480e,
+    0 2px 5px #233f2c05;
 }
 .source-line :deep(.el-input__wrapper),
 .source-line :deep(.el-select__wrapper) {
   --surface: rgb(255 255 255 / 96%);
 }
 .source-line header {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 20px;
+  gap: 8px 12px;
 }
 .source-identity,
 .source-balance,
@@ -1495,6 +1489,7 @@ async function submit() {
 }
 .source-identity {
   flex: 1;
+  column-gap: 10px;
 }
 .source-balance,
 .source-actions {
@@ -1503,27 +1498,33 @@ async function submit() {
 }
 .source-identity strong {
   color: var(--text);
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 650;
+  letter-spacing: 0.1px;
   overflow-wrap: anywhere;
 }
 .source-index {
-  color: var(--muted);
-  font-size: 11px;
+  color: #99aaa0;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 .source-material {
   color: var(--text);
   font-size: 13px;
 }
-.source-balance > span,
-.source-meta {
+.source-balance {
+  gap: 8px;
+}
+.source-balance > span:first-child {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
+}
+.source-balance :deep(.material-amount) {
+  gap: 10px;
 }
 .source-actions {
   border-left: 1px solid var(--line);
-  padding-left: 16px;
+  padding-left: 12px;
 }
 .source-actions :deep(.el-button) {
   margin-left: 0;
@@ -1543,7 +1544,7 @@ async function submit() {
   transform: rotate(180deg);
 }
 .source-actions :deep(.el-popover.stock-source-popover) {
-  --el-popover-border-radius: 12px;
+  --el-popover-border-radius: 16px;
   --el-popover-padding: 6px;
 }
 .source-action-menu {
@@ -1553,16 +1554,13 @@ async function submit() {
 .source-action-menu :deep(.el-button) {
   justify-content: flex-start;
   min-height: 32px;
-  padding: 6px 8px;
   margin: 0;
-  border-radius: 8px;
   font-size: 13px;
-}
-.source-action-menu :deep(.el-button:hover:not(:disabled):not(.is-loading)) {
-  background: var(--surface-soft);
 }
 .source-meta {
   display: contents;
+  font-size: 11px;
+  color: #7b8981;
 }
 .source-meta > span,
 .source-material {
@@ -1572,6 +1570,12 @@ async function submit() {
 .source-inputs {
   grid-template-columns: 144px 208px repeat(2, minmax(0, 1fr));
   gap: 8px 16px;
+}
+.source-inputs.source-inputs-weight-only {
+  grid-template-columns: 208px repeat(2, minmax(0, 1fr));
+}
+.source-inputs.source-inputs-sludge {
+  grid-template-columns: 208px 144px minmax(120px, 0.8fr) minmax(128px, 0.8fr) minmax(180px, 1fr);
 }
 .source-inputs :deep(.el-form-item),
 .dispatch-context-fields :deep(.el-form-item) {
@@ -1601,7 +1605,8 @@ async function submit() {
 .source-weight-field :deep(.weight-input) {
   max-width: 208px;
 }
-.source-weight-field :deep(.weight-input select) {
+.source-weight-field :deep(.weight-input select),
+.source-inputs-sludge :deep(.weight-input select) {
   flex-basis: 56px;
   width: 56px;
   padding-inline: 6px;
@@ -1620,6 +1625,7 @@ async function submit() {
 }
 .source-specification-field {
   grid-column: 1 / -1;
+  margin-top: 2px;
   min-width: 0;
   border-top: 1px solid var(--line-light);
 }
@@ -1668,7 +1674,8 @@ details[open] > summary > .el-icon {
   padding-bottom: 6px;
 }
 .action-notes-section {
-  margin-top: 8px;
+  margin-top: 14px;
+  padding-inline: 3px;
 }
 .action-notes-section summary {
   font-size: 13px;
@@ -1706,7 +1713,8 @@ details[open] > summary > .el-icon {
   font-size: 13px;
 }
 .action-footer :deep(.material-amount strong) {
-  font-size: 21px;
+  font-size: 24px;
+  color: #1f3a2c;
   font-weight: 600;
   letter-spacing: -0.4px;
 }
@@ -1715,22 +1723,52 @@ details[open] > summary > .el-icon {
 }
 .action-footer .el-button {
   min-width: 76px;
-  height: 38px;
   margin-left: 0;
 }
 .action-footer .el-button--primary {
   min-width: 108px;
 }
+@media (max-width: 1200px), (max-height: 800px) {
+  .source-line header {
+    row-gap: 6px;
+  }
+  .source-lines {
+    gap: 10px;
+  }
+}
 @media (max-width: 1100px) {
+  .source-identity {
+    flex-basis: 100%;
+  }
+  .source-balance {
+    margin-right: auto;
+  }
   .source-inputs {
     grid-template-columns: 128px 208px repeat(2, minmax(0, 1fr));
     column-gap: 12px;
   }
+  .source-inputs.source-inputs-sludge {
+    grid-template-columns: 208px 144px minmax(0, 1fr);
+  }
+  .source-inputs-sludge .source-material-type-field {
+    grid-column: 1;
+  }
+  .source-inputs-sludge .source-purpose-field {
+    grid-column: 2 / -1;
+  }
 }
 @media (max-width: 900px) {
   .dispatch-context-fields,
-  .source-inputs {
+  .source-inputs,
+  .source-inputs.source-inputs-weight-only,
+  .source-inputs.source-inputs-sludge {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .source-inputs-sludge .source-material-type-field {
+    grid-column: auto;
+  }
+  .source-inputs-sludge .source-purpose-field {
+    grid-column: 1 / -1;
   }
   .external-destination-field {
     grid-column: auto;
@@ -1744,7 +1782,9 @@ details[open] > summary > .el-icon {
     padding-inline: 12px;
   }
   .dispatch-context-fields,
-  .source-inputs {
+  .source-inputs,
+  .source-inputs.source-inputs-weight-only,
+  .source-inputs.source-inputs-sludge {
     grid-template-columns: minmax(0, 1fr);
   }
   .source-identity {

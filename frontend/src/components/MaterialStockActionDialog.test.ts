@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { reactive } from 'vue'
+import { defineComponent, reactive } from 'vue'
 import { ElInputNumber, ElPopover, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialStockActionDialog from './MaterialStockActionDialog.vue'
@@ -11,6 +11,8 @@ import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import type { MaterialDispatch, MaterialLoss, StockBatch } from '@/types/teamMaterials'
+const glass = vi.hoisted(() => ({ enhance: vi.fn() }))
+vi.mock('@/utils/glassDialog', () => ({ enhanceGlassDialog: glass.enhance }))
 const state = vi.hoisted(() => ({
   auth: {
     isTeamAccount: true,
@@ -50,6 +52,7 @@ function source(id = 10, type: 'semi_finished' | null = 'semi_finished'): StockB
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  glass.enhance.mockReset()
   vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([
     { id: 22, team_id: 2, name: '发送王师傅', active: true, version: 1 },
   ])
@@ -1121,4 +1124,95 @@ it('records a chips loss using only weight', async () => {
     2,
     expect.objectContaining({ quantity: 0, weight: 1 }),
   )
+})
+
+const GlassDialogStub = defineComponent({
+  name: 'ElDialog',
+  props: ['modelValue'],
+  emits: ['opened', 'closed', 'close'],
+  template: `<section v-if="modelValue" class="el-dialog">
+    <header><slot name="header" title-id="stock-test-title" title-class="el-dialog__title" /></header>
+    <slot /><footer class="el-dialog__footer"><slot name="footer" /></footer>
+  </section>`,
+})
+
+async function renderGlassDialog(host: HTMLElement) {
+  wrapper = mount(MaterialStockActionDialog, {
+    attachTo: host,
+    props: { modelValue: true, teamId: 2, mode: 'dispatch', sources: [source()] },
+    global: { stubs: { ElDialog: GlassDialogStub } },
+  })
+  await flushPromises()
+  return wrapper.getComponent(GlassDialogStub)
+}
+
+it('enhances its own connected dialog after opening and releases each instance on close or unmount', async () => {
+  const host = document.createElement('div')
+  const otherDialog = document.createElement('section')
+  otherDialog.className = 'el-dialog'
+  document.body.append(otherDialog, host)
+  const firstCleanup = vi.fn()
+  const nextCleanup = vi.fn()
+  const replacementCleanup = vi.fn()
+  glass.enhance
+    .mockReturnValueOnce(firstCleanup)
+    .mockReturnValueOnce(nextCleanup)
+    .mockReturnValueOnce(replacementCleanup)
+  try {
+    const dialog = await renderGlassDialog(host)
+    expect(glass.enhance).not.toHaveBeenCalled()
+    expect(wrapper.get('.stock-dialog-heading').element.isConnected).toBe(true)
+    dialog.vm.$emit('opened')
+    await flushPromises()
+    expect(glass.enhance).toHaveBeenCalledOnce()
+    expect(glass.enhance).toHaveBeenCalledWith(wrapper.get('.el-dialog').element)
+    expect(glass.enhance).not.toHaveBeenCalledWith(otherDialog)
+
+    await wrapper.setProps({ modelValue: false })
+    dialog.vm.$emit('closed')
+    expect(firstCleanup).toHaveBeenCalledOnce()
+    await wrapper.setProps({ modelValue: true })
+    dialog.vm.$emit('opened')
+    await flushPromises()
+    expect(glass.enhance).toHaveBeenCalledTimes(2)
+    dialog.vm.$emit('opened')
+    expect(nextCleanup).toHaveBeenCalledOnce()
+    await flushPromises()
+    expect(glass.enhance).toHaveBeenCalledTimes(3)
+    wrapper.unmount()
+    expect(firstCleanup).toHaveBeenCalledOnce()
+    expect(nextCleanup).toHaveBeenCalledOnce()
+    expect(replacementCleanup).toHaveBeenCalledOnce()
+  } finally {
+    host.remove()
+    otherDialog.remove()
+  }
+})
+
+it('discards an opening closed during lazy import and permits a later opening to enhance normally', async () => {
+  const host = document.createElement('div')
+  document.body.append(host)
+  const cleanup = vi.fn()
+  glass.enhance.mockReturnValue(cleanup)
+  try {
+    const dialog = await renderGlassDialog(host)
+    dialog.vm.$emit('opened')
+    dialog.vm.$emit('closed')
+    await wrapper.setProps({ modelValue: false })
+    await vi.dynamicImportSettled()
+    await flushPromises()
+    expect(glass.enhance).not.toHaveBeenCalled()
+
+    await wrapper.setProps({ modelValue: true })
+    expect(wrapper.get('.stock-dialog-heading').element.isConnected).toBe(true)
+    dialog.vm.$emit('opened')
+    await vi.dynamicImportSettled()
+    await flushPromises()
+    expect(glass.enhance).toHaveBeenCalledOnce()
+    expect(glass.enhance).toHaveBeenCalledWith(wrapper.get('.el-dialog').element)
+    wrapper.unmount()
+    expect(cleanup).toHaveBeenCalledOnce()
+  } finally {
+    host.remove()
+  }
 })

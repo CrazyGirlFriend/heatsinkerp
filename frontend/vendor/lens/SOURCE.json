@@ -1,0 +1,25 @@
+{
+  "repository": "https://github.com/ruiqichenbiec/design-systems",
+  "path": "lens/lab/design-system",
+  "retrieved": "2026-10-13",
+  "files": {
+    "card-list.js": "2b3318aa980665223debc409ea9c263342151d04f84c285d146faa326490020e",
+    "component-catalog.js": "1e01587ea6141f4b7b8fc2dcace2ef99ecf53da524d3d07941b238ac9f3fabb2",
+    "component-patterns.js": "cd9efb234e7e1b423ab9e8017be84bf00ebceb940520fe185339c3785a5f041d",
+    "components.js": "0557fdbcae6476956a1cbc5aaa176306ac983a08ff8c5a515a23e5c992445a7f",
+    "focus.js": "e79dd91979c538a89c120503ac20accd61756dc54c46e48de37ddeffdb4f800e",
+    "index.js": "c3f33cabaf947f67ba70b580047411cb24142ad425dc92a23b4909dc4b945eb0",
+    "internal/context-budget.js": "2ed60f51a34521705e2e25c7504712dbcd2ccdf5dbe2443193de9b41a4b796b5",
+    "internal/jelly-physics.js": "f8d24909d85684d434d356bea4cf9e3e8fece4440cb444d1d5f633c7ce9e3372",
+    "internal/jelly.js": "ef653f2b4b508c4ae62c78b28ad4397fa7222bba95b5d021bf64930ddc1b2753",
+    "internal/lens-surface.js": "fa2e2a08b02b59d4cb56dc9f12e1a096bffca378bf332013c6d72625a56812b4",
+    "internal/optical-motion.js": "758496516c89b5a851c4c80bae561625634d1188e6b23800212fa18da7439af6",
+    "internal/optics.js": "9360788350361a01b6d77552ebca2385f2b9bb7ebe01f6855a1628cc1845a688",
+    "internal/renderer.js": "3f6e4ec3e0c458ea7018c4381f22e7d2468959b3f904685318c1f89d3413ee6e",
+    "optical-components.js": "d3059c911acd5e1977def4fbbc1dbfea46b07d717f1beee1e4af098112003d65",
+    "runtime.js": "b8f8bc7f16729c1f8eec07b6da4f600e4c5c7b0c0e499d2f0a2d9efe0fe9127f",
+    "sound.js": "40025f1b9feeb36ef9dc937a182f589377d255d4c735f8883d1b89f1feb815cc",
+    "tokens.js": "4b83d0bf9d9a41074f77e31a6e80d3739225ed78968b24384c8a6c12f652c200"
+  },
+  "commit": "7a424c93b9be13cf835b91ea67495fec2ec0584e"
+}
