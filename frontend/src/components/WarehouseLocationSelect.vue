@@ -355,7 +355,7 @@ onBeforeUnmount(() => {
         {{ materialTypeLabel(selectedStock.batches[0]?.material_type) }}</span
       >
       <div class="location-batches">
-        <table>
+        <table class="business-table">
           <thead>
             <tr>
               <th>批次号</th>

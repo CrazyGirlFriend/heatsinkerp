@@ -77,7 +77,7 @@ const label = (row: FactoryRecentBatch) =>
       @focusout="focusOut"
     >
       <div class="recent-table-window">
-        <table class="recent-table">
+        <table class="recent-table business-table">
           <thead>
             <tr>
               <th scope="col">批次号</th>
@@ -216,7 +216,7 @@ const label = (row: FactoryRecentBatch) =>
   height: var(--recent-head-height);
   white-space: nowrap;
   padding: 8px 16px;
-  background: var(--table-header-bg);
+  background-color: var(--table-header-bg);
   color: var(--dashboard-muted);
   font-size: 12px;
   line-height: 18px;
@@ -244,10 +244,10 @@ const label = (row: FactoryRecentBatch) =>
   line-height: 22px;
 }
 .recent-table tbody tr {
-  transition: background var(--motion-fast) ease;
+  transition: background-color var(--motion-fast) ease;
 }
 .recent-table tbody tr:hover {
-  background: var(--table-hover-bg);
+  background-color: var(--table-hover-bg);
 }
 .recent-table :is(th, td):first-child {
   padding-left: 20px;

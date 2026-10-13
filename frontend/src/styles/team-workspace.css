@@ -94,13 +94,6 @@
 .team-workspace
   :is(.serial-table, .team-table, .ledger-table, .processing-records-table)
   .el-table__body
-  tr.hover-row
-  > td.el-table__cell {
-  background: var(--table-hover-bg);
-}
-.team-workspace
-  :is(.serial-table, .team-table, .ledger-table, .processing-records-table)
-  .el-table__body
   td.ledger-number
   .cell {
   color: var(--workspace-ink);

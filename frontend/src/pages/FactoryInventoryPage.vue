@@ -267,7 +267,7 @@ onBeforeUnmount(() => {
         aria-label="班组材质库存表"
       >
         <table
-          class="stock-table"
+          class="stock-table business-table"
           :aria-label="`班组材质库存（${stockUnit === 'weight' ? 'kg' : '件'}）`"
           @mouseleave="hoveredMaterial = null"
         >
@@ -593,7 +593,7 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--line-light);
   white-space: nowrap;
   text-align: center;
-  background: var(--surface);
+  background-color: var(--surface);
   transition: background-color var(--motion-fast) ease;
 }
 .stock-table th {
@@ -622,7 +622,7 @@ onBeforeUnmount(() => {
   height: var(--stock-header-height);
   font-size: clamp(16px, calc(var(--stock-material-width) * 0.14), 17px);
   color: var(--muted);
-  background: var(--table-header-bg);
+  background-color: var(--table-header-bg);
   border-bottom-color: var(--table-header-line);
 }
 .stock-table thead th:first-child {
@@ -644,7 +644,7 @@ onBeforeUnmount(() => {
   line-height: 1.3;
 }
 .stock-table tbody th {
-  background: var(--surface);
+  background-color: var(--surface);
   border-right: 1px solid var(--line-light);
 }
 .stock-table .sum-col {
@@ -652,7 +652,7 @@ onBeforeUnmount(() => {
   position: sticky;
   right: 0;
   z-index: 2;
-  background: var(--surface-soft);
+  background-color: var(--surface-soft);
   border-left: 1px solid var(--line);
   font-weight: 550;
   color: var(--primary);
@@ -668,11 +668,11 @@ onBeforeUnmount(() => {
 .stock-table tbody tr:hover > *,
 .stock-table tbody tr:focus-within > *,
 .stock-table .is-column-active {
-  background: var(--table-hover-bg);
+  background-color: var(--table-hover-bg);
 }
 .stock-table tbody td:hover,
 .stock-table tbody td:focus-within {
-  background: var(--primary-soft);
+  background-color: var(--primary-soft);
   color: var(--primary);
   box-shadow: inset 0 0 0 1px var(--el-color-primary-light-7);
 }

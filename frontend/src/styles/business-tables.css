@@ -302,3 +302,88 @@
     font-size: var(--business-table-meta);
   }
 }
+
+/* Lens-inspired optical feedback, shared by screen data tables only.
+   Rows never transform: sticky columns and cell boundaries must stay aligned. */
+@media screen {
+  .business-table {
+    --table-glass-header: linear-gradient(180deg, #ffffffed, #f1f7f3e8);
+    --table-glass-hover: linear-gradient(180deg, #ffffff75, #ffffff00 70%);
+    --table-glass-selected: #e5f2eb;
+    --table-glass-edge: inset 0 1px 0 #ffffffd9, inset 0 -1px 0 #dae8df66;
+  }
+  .el-table.business-table {
+    border-radius: var(--card-radius);
+    box-shadow:
+      0 2px 8px #203b2e06,
+      0 0 0 1px #dae5de80;
+  }
+  .el-table.business-table .el-table__header-wrapper th.el-table__cell,
+  table.business-table > thead > tr > th {
+    background-image: var(--table-glass-header);
+    box-shadow: var(--table-glass-edge);
+  }
+  .el-table.business-table .el-table__body > tbody > tr > td.el-table__cell,
+  table.business-table > tbody > tr > :is(td, th) {
+    transition:
+      background-color var(--motion-standard) var(--motion-ease),
+      box-shadow var(--motion-standard) var(--motion-ease);
+  }
+  .el-table.business-table
+    .el-table__body
+    > tbody
+    > tr:is(.hover-row, :hover, :focus-within)
+    > td.el-table__cell,
+  table.business-table > tbody > tr:is(:hover, :focus-within) > :is(td, th) {
+    background-color: var(--table-hover-bg);
+    background-image: var(--table-glass-hover);
+    box-shadow: var(--table-glass-edge);
+  }
+  /* Only actual row selectors count, never checkboxes that edit a record's fields. */
+  .el-table.business-table
+    .el-table__body
+    > tbody
+    > tr:is(
+      .current-row,
+      .shared-current-serial,
+      :has(> :is(.el-table-column--selection, .stock-selection-column) .el-checkbox.is-checked)
+    )
+    > td.el-table__cell {
+    background-color: var(--table-glass-selected);
+    background-image: var(--table-glass-hover);
+    box-shadow: var(--table-glass-edge);
+  }
+  .el-table.business-table
+    .el-table__body
+    > tbody
+    > tr:is(
+      .current-row,
+      .shared-current-serial,
+      :has(> :is(.el-table-column--selection, .stock-selection-column) .el-checkbox.is-checked)
+    )
+    > td.el-table__cell:first-child {
+    box-shadow:
+      inset 3px 0 0 var(--primary),
+      var(--table-glass-edge);
+  }
+  .el-table.business-table .el-table__body > tbody > tr:has(:focus-visible) > td.el-table__cell {
+    border-bottom-color: var(--primary);
+  }
+  .el-table.business-table .el-table__header-wrapper th.is-sortable:hover {
+    background-color: var(--primary-soft);
+    color: var(--primary);
+  }
+}
+@media screen and (prefers-reduced-motion: reduce) {
+  .el-table.business-table .el-table__body > tbody > tr > td.el-table__cell,
+  table.business-table > tbody > tr > :is(td, th) {
+    transition: none;
+  }
+}
+@media screen and (prefers-reduced-transparency: reduce), screen and (prefers-contrast: more) {
+  .business-table {
+    --table-glass-header: none;
+    --table-glass-hover: none;
+    --table-glass-edge: 0 0 0 transparent;
+  }
+}

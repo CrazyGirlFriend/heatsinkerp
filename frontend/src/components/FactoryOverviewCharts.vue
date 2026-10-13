@@ -403,7 +403,7 @@ function pick(key: string, index: number) {
           role="region"
           aria-label="物料类型库存明细"
         >
-          <table class="nature-table">
+          <table class="nature-table business-table">
             <thead>
               <tr>
                 <th scope="col">性质</th>
@@ -530,7 +530,7 @@ function pick(key: string, index: number) {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--table-header-bg);
+  background-color: var(--table-header-bg);
   backdrop-filter: blur(12px);
   color: var(--dashboard-muted);
   font-weight: 400;
