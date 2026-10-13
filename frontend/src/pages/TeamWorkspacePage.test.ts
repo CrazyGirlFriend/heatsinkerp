@@ -1465,6 +1465,59 @@ describe('team workspace material ledger', () => {
       expect(wrapper.text()).toContain('OPENING-001')
     },
   )
+  it('shares the page receiver with receipt review and blocks the row action until selected', async () => {
+    const router = await render('/team-workspaces/914?tab=pending')
+    const review = () => wrapper.findAll('button').find((button) => button.text() === '核对接收')!
+    expect(review().attributes('disabled')).toBeDefined()
+    await review().trigger('click')
+    expect(wrapper.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
+    await wrapper.get('.team-table .batch-link').trigger('click')
+    await flushPromises()
+    expect(wrapper.getComponent(MaterialTransferDrawer).props('receiptReceiver')).toBeNull()
+    wrapper.getComponent(MaterialTransferDrawer).vm.$emit('update:modelValue', false)
+    await flushPromises()
+    wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', receivingPerson)
+    await flushPromises()
+    expect(review().attributes('disabled')).toBeUndefined()
+    await review().trigger('click')
+    await flushPromises()
+    expect(wrapper.getComponent(MaterialTransferDrawer).props()).toMatchObject({
+      modelValue: true,
+      receiptReceiver: receivingPerson,
+    })
+    await router.push('/team-workspaces/914?tab=pending&query=YS')
+    await flushPromises()
+    expect(wrapper.getComponent(MaterialReceiptScanner).props('receiver')).toEqual(receivingPerson)
+    wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', null)
+    await flushPromises()
+    expect(review().attributes('disabled')).toBeDefined()
+  })
+
+  it.each(['account', 'team', 'permission'])(
+    'clears the shared receiver on %s changes even when the scanner is unmounted',
+    async (change) => {
+      const router = await render('/team-workspaces/914?tab=pending')
+      wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', receivingPerson)
+      await flushPromises()
+      await router.push('/team-workspaces/914?tab=outgoing')
+      await flushPromises()
+      if (change === 'account') state.auth.currentUser.id = 42
+      if (change === 'team') await router.push('/team-workspaces/900?tab=outgoing')
+      if (change === 'permission') state.auth.currentUserError = '权限失效'
+      await flushPromises()
+      state.auth.currentUserError = ''
+      await router.push('/team-workspaces/914?tab=pending')
+      await flushPromises()
+      expect(wrapper.getComponent(MaterialReceiptScanner).props('receiver')).toBeNull()
+      expect(
+        wrapper
+          .findAll('button')
+          .find((button) => button.text() === '核对接收')!
+          .attributes('disabled'),
+      ).toBeDefined()
+    },
+  )
+
   it('opens each pending batch independently even when historically printed together', async () => {
     vi.mocked(materialTransferApi.list).mockResolvedValue({
       items: [{ ...source().transfer, status: 'pending', dispatch_no: 'CK-PENDING' }],
@@ -1473,6 +1526,8 @@ describe('team workspace material ledger', () => {
       page_size: 10,
     })
     await render('/team-workspaces/914?tab=pending')
+    wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', receivingPerson)
+    await flushPromises()
     await wrapper
       .findAll('button')
       .find((button) => button.text() === '核对接收')!

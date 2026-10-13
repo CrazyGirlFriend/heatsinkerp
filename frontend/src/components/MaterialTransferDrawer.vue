@@ -49,6 +49,7 @@ const props = withDefaults(
     showHistoryGroup?: boolean
     allowPrint?: boolean
     receiptOnly?: boolean
+    receiptReceiver?: TeamEmployee | null
   }>(),
   { batchNo: '', transfer: null, showHistoryGroup: true, allowPrint: true, receiptOnly: false },
 )
@@ -81,6 +82,13 @@ const processed = computed(() => current.value?.entry_kind === 'processing_outpu
 const loading = ref(false)
 const loadError = ref('')
 const receiver = ref<TeamEmployee | null>(null)
+const pageReceiver = computed(() => props.receiptReceiver !== undefined)
+const selectedReceiver = computed(() => {
+  const person = pageReceiver.value ? props.receiptReceiver : receiver.value
+  return person?.active && Number(person.team_id) === Number(current.value?.next_team.id)
+    ? person
+    : null
+})
 const receiverRequired = ref(false)
 const selectingReceiver = ref(false)
 const confirming = ref(false)
@@ -169,7 +177,7 @@ const canReject = computed(() =>
   ),
 )
 watch(
-  () => receiver.value?.id,
+  () => selectedReceiver.value?.id,
   () => {
     confirmKey = newIdempotencyKey()
     if (receiver.value) receiverRequired.value = false
@@ -287,7 +295,7 @@ async function confirmReceipt(): Promise<void> {
     showToast('仓位不能超过 80 个字符', 'error')
     return
   }
-  const person = receiver.value
+  const person = selectedReceiver.value
   if (!person) {
     receiverRequired.value = true
     return
@@ -305,7 +313,7 @@ async function confirmReceipt(): Promise<void> {
     return
   }
   if (epoch !== actionVersion || !props.modelValue) return
-  if (!canConfirm.value) {
+  if (!canConfirm.value || selectedReceiver.value?.id !== person.id) {
     confirming.value = false
     return
   }
@@ -640,7 +648,8 @@ watch(
           <SerialUrgencyBadge :urgency="current.urgency" />
         </template>
         <template v-if="canConfirm" #receiver>
-          <div class="receipt-person-cell">
+          <span v-if="pageReceiver">{{ selectedReceiver?.name || '未选择' }}</span>
+          <div v-else class="receipt-person-cell">
             <span class="required-mark" aria-hidden="true">*</span>
             <ReceiptPersonInput
               v-model="receiver"
@@ -714,7 +723,7 @@ watch(
           type="primary"
           :icon="CircleCheck"
           :loading="confirming"
-          :disabled="locationBusy"
+          :disabled="locationBusy || (pageReceiver && !selectedReceiver)"
           @click="confirmReceipt"
           >确认签收</ElButton
         >
@@ -779,6 +788,7 @@ watch(
     :dispatch-no="current?.dispatch_no || ''"
     :allow-print="allowPrint"
     :receipt-only="receiptOnly"
+    :receipt-receiver="receiptReceiver"
     @changed="groupChanged"
     @busy-change="emit('busyChange', $event)"
   />

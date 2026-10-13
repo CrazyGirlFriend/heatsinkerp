@@ -31,6 +31,7 @@ import TeamSerialHistory from '@/components/TeamSerialHistory.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
 import SerialReallocationDialog from '@/components/SerialReallocationDialog.vue'
 import { inventoryAmount } from '@/types/teamInventory'
+import type { TeamEmployee } from '@/types/teamBusiness'
 import MaterialStockActionDialog from '@/components/MaterialStockActionDialog.vue'
 import WarehouseManagement from '@/components/WarehouseManagement.vue'
 import WarehouseReceiptDialog from '@/components/WarehouseReceiptDialog.vue'
@@ -489,6 +490,14 @@ const openingDispatch = ref(false)
 const actionMode = ref<'dispatch' | 'loss'>('dispatch')
 const actionSources = ref<StockBatch[]>([])
 const scanner = ref<InstanceType<typeof MaterialReceiptScanner>>()
+const receiptReceiver = ref<TeamEmployee | null>(null)
+watch(
+  [teamKey, () => auth.currentUser?.id, canWrite],
+  () => {
+    receiptReceiver.value = null
+  },
+  { flush: 'sync' },
+)
 const traceScope = computed(() => ({ team_id: teamId.value, direction: 'all' as const }))
 const actionBindings = computed(() => ({
   canWrite: canWrite.value,
@@ -1287,6 +1296,7 @@ onBeforeUnmount(() => {
                 v-if="tab === 'pending' && canWrite"
                 :key="teamId"
                 ref="scanner"
+                v-model:receiver="receiptReceiver"
                 :team-id="teamId"
                 :paused="
                   fullscreen ||
@@ -1401,9 +1411,14 @@ onBeforeUnmount(() => {
                   >
                   <ElTableColumn label="操作" width="110" fixed="right"
                     ><template #default="{ row }"
-                      ><ElButton link type="primary" @click="openIncoming(asTransfer(row))">{{
-                        canWrite ? '核对接收' : '查看详情'
-                      }}</ElButton></template
+                      ><ElButton
+                        link
+                        type="primary"
+                        :disabled="canWrite && !receiptReceiver"
+                        :title="canWrite && !receiptReceiver ? '请先选择接收人' : undefined"
+                        @click="openIncoming(asTransfer(row))"
+                        >{{ canWrite ? '核对接收' : '查看详情' }}</ElButton
+                      ></template
                     ></ElTableColumn
                   >
                 </ElTable>
@@ -1787,6 +1802,7 @@ onBeforeUnmount(() => {
               :trace-scope="traceScope"
               :allow-print="tab !== 'pending'"
               :receipt-only="tab === 'pending'"
+              :receipt-receiver="tab === 'pending' ? receiptReceiver : undefined"
               @changed="loadView"
             />
           </div>

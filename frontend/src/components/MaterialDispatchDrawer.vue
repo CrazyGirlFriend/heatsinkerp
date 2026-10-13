@@ -13,12 +13,14 @@ import { useAuthStore } from '@/stores/auth'
 import { materialDispatchApi } from '@/services/materialDispatchApi'
 import { materialTypeLabel, type MaterialTransfer } from '@/types/materialTransfer'
 import type { MaterialDispatchDocument } from '@/types/teamMaterials'
+import type { TeamEmployee } from '@/types/teamBusiness'
 const props = withDefaults(
   defineProps<{
     modelValue: boolean
     dispatchNo?: string
     allowPrint?: boolean
     receiptOnly?: boolean
+    receiptReceiver?: TeamEmployee | null
   }>(),
   { dispatchNo: '', allowPrint: true, receiptOnly: false },
 )
@@ -170,6 +172,7 @@ onBeforeUnmount(reset)
     :show-history-group="false"
     :allow-print="allowPrint"
     :receipt-only="receiptOnly"
+    :receipt-receiver="receiptReceiver"
     @changed="changed"
     @busy-change="setBusy"
   />

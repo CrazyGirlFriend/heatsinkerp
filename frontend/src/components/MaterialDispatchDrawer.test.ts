@@ -6,6 +6,7 @@ import MaterialBatchPrintDialog from './MaterialBatchPrintDialog.vue'
 import { materialDispatchApi } from '@/services/materialDispatchApi'
 import { dispatchFixture } from '@/testFixtures/materialDispatch'
 import type { MaterialDispatchDocument } from '@/types/teamMaterials'
+import type { TeamEmployee } from '@/types/teamBusiness'
 vi.mock('@/stores/auth', async () => {
   const { computed, reactive } = await import('vue')
   const auth = reactive({
@@ -27,7 +28,13 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render(props: { allowPrint?: boolean; receiptOnly?: boolean } = {}) {
+async function render(
+  props: {
+    allowPrint?: boolean
+    receiptOnly?: boolean
+    receiptReceiver?: TeamEmployee | null
+  } = {},
+) {
   wrapper = mount(MaterialDispatchDrawer, {
     props: { modelValue: true, dispatchNo: 'CK-GROUP', ...props },
     global: {
@@ -37,7 +44,14 @@ async function render(props: { allowPrint?: boolean; receiptOnly?: boolean } = {
         },
         MaterialTransferDrawer: {
           name: 'MaterialTransferDrawer',
-          props: ['modelValue', 'batchNo', 'showHistoryGroup', 'allowPrint', 'receiptOnly'],
+          props: [
+            'modelValue',
+            'batchNo',
+            'showHistoryGroup',
+            'allowPrint',
+            'receiptOnly',
+            'receiptReceiver',
+          ],
           template: '<div />',
         },
         MaterialBatchPrintDialog: true,
@@ -87,7 +101,8 @@ it('co-prints actual batches without restoring a group barcode', async () => {
   })
 })
 it('keeps nested batches in receipt-only mode without printing when opened from incoming receipts', async () => {
-  await render({ allowPrint: false, receiptOnly: true })
+  const person = { id: 31, team_id: 3, name: '李师傅', active: true, version: 1 }
+  await render({ allowPrint: false, receiptOnly: true, receiptReceiver: person })
   expect(wrapper.findAll('button').some((button) => button.text().includes('打印'))).toBe(false)
   expect(wrapper.findComponent(MaterialBatchPrintDialog).exists()).toBe(false)
   await wrapper.get('button[aria-label="查看批次 TL-GROUP-2"]').trigger('click')
@@ -97,6 +112,7 @@ it('keeps nested batches in receipt-only mode without printing when opened from 
     batchNo: 'TL-GROUP-2',
     allowPrint: false,
     receiptOnly: true,
+    receiptReceiver: person,
   })
 })
 it('ignores an old lookup after changing the historical identifier', async () => {

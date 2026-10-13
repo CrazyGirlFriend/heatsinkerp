@@ -14,6 +14,7 @@ import {
 } from '@/services/materialTransferApi'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { MaterialTransfer } from '@/types/materialTransfer'
+import type { TeamEmployee } from '@/types/teamBusiness'
 import { showToast } from '@/stores/toast'
 const live = vi.hoisted(() => ({
   refresh: async () => {},
@@ -91,7 +92,11 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 async function render(
-  props: { allowPrint?: boolean; receiptOnly?: boolean } = {},
+  props: {
+    allowPrint?: boolean
+    receiptOnly?: boolean
+    receiptReceiver?: TeamEmployee | null
+  } = {},
   selectReceiver = true,
 ) {
   wrapper = mount(MaterialTransferDrawer, {
@@ -124,6 +129,72 @@ async function confirm() {
 }
 
 describe('material transfer receipt review', () => {
+  it('uses the page receiver without a second picker and shows the saved receipt afterwards', async () => {
+    await render({ receiptOnly: true, receiptReceiver: person }, false)
+    expect(wrapper.findComponent(ReceiptPersonInput).exists()).toBe(false)
+    expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain(person.name)
+    vi.mocked(materialTransferApi.confirm).mockResolvedValueOnce(
+      fixture({
+        status: 'received',
+        locked: true,
+        allowed_actions: [],
+        received_employee_id: person.id,
+        received_employee_name: person.name,
+        received_at: '2026-10-13T04:30:00Z',
+      }),
+    )
+    await confirm()
+    expect(materialTransferApi.confirm).toHaveBeenCalledWith(
+      'TL20260906000001',
+      expect.objectContaining({ received_employee_id: person.id }),
+    )
+    await wrapper.setProps({ receiptReceiver: { ...person, id: 32, name: '王师傅' } })
+    expect(wrapper.get('table[aria-label="转料单据资料"]').text()).toContain(person.name)
+    expect(wrapper.get('table[aria-label="转料单据资料"]').text()).not.toContain('王师傅')
+  })
+
+  it.each([null, { ...person, team_id: 99 }, { ...person, active: false }])(
+    'blocks receipt without an active page receiver from this team: %s',
+    async (receiptReceiver) => {
+      await render({ receiptOnly: true, receiptReceiver }, false)
+      expect(wrapper.findComponent(ReceiptPersonInput).exists()).toBe(false)
+      const button = wrapper.findAll('button').find((button) => button.text() === '确认签收')!
+      expect(button.attributes('disabled')).toBeDefined()
+      await button.trigger('click')
+      expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+      expect(materialTransferApi.confirm).not.toHaveBeenCalled()
+    },
+  )
+
+  it('uses a changed page receiver and disables receipt when the selection is cleared', async () => {
+    await render({ receiptOnly: true, receiptReceiver: person }, false)
+    await wrapper.setProps({ receiptReceiver: null })
+    await confirm()
+    expect(materialTransferApi.confirm).not.toHaveBeenCalled()
+    await wrapper.setProps({ receiptReceiver: { ...person, id: 32, name: '王师傅' } })
+    await confirm()
+    expect(materialTransferApi.confirm).toHaveBeenCalledWith(
+      'TL20260906000001',
+      expect.objectContaining({ received_employee_id: 32 }),
+    )
+  })
+
+  it('does not submit if the page selection changes during confirmation', async () => {
+    let finish!: (value: Awaited<ReturnType<typeof ElMessageBox.confirm>>) => void
+    vi.mocked(ElMessageBox.confirm).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    await render({ receiptOnly: true, receiptReceiver: person }, false)
+    await confirm()
+    await wrapper.setProps({ receiptReceiver: null })
+    finish('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>)
+    await flushPromises()
+    expect(materialTransferApi.confirm).not.toHaveBeenCalled()
+  })
+
   it('selects the receiver in its document cell and replaces the picker with the saved receipt', async () => {
     await render({}, false)
     const table = wrapper.get('table[aria-label="转料单据资料"]')
