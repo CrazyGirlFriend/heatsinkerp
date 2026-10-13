@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException, Query, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from . import material_transfer_workflow
@@ -11,7 +11,7 @@ from .api_errors import not_found as _not_found
 from .async_api import AsyncAPIRouter as APIRouter
 from .auth import get_current_user, require_admin
 from .database import get_db
-from .material_transfer_query import search_predicate, team_scope_predicate
+from .material_transfer_query import TransferColumnFilters, search_predicate, team_scope_predicate
 from .models import MaterialTransfer, Team, User
 from .record_filters import RecordFilters
 from .schemas import (
@@ -77,6 +77,7 @@ def create_material_transfer(
 )
 def list_material_transfers(
     record_filters: RecordFilters = Depends(),
+    column_filters: TransferColumnFilters = Depends(),
     query: str | None = Query(default=None, max_length=160),
     search_mode: str = Query(default="contains", pattern="^(contains|exact|prefix)$"),
     search_field: str = Query(
@@ -95,6 +96,7 @@ def list_material_transfers(
     ),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    include_summary: bool = Query(default=False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -102,6 +104,7 @@ def list_material_transfers(
         raise HTTPException(422, "next_team_id and target_team_id must match")
     target_id = next_team_id if next_team_id is not None else target_team_id
     filters = [MaterialTransfer.entry_kind != "processing_output"]
+    filters.extend(column_filters.predicates())
     if direction != "all" and team_id is None:
         raise HTTPException(422, "team_id is required when direction is incoming or outgoing")
     if team_id is not None:
@@ -125,7 +128,28 @@ def list_material_transfers(
     filters.extend(
         record_filters.predicates(MaterialTransfer.created_at, MaterialTransfer.serial_no)
     )
-    total = db.scalar(select(func.count(MaterialTransfer.id)).where(*filters)) or 0
+    summary = None
+    if include_summary:
+        # Aggregate the same filtered set before pagination, in the existing count query.
+        amounts = db.execute(
+            select(
+                func.count(MaterialTransfer.id),
+                *(
+                    func.coalesce(
+                        func.sum(case((MaterialTransfer.status == state, column), else_=0)), 0
+                    )
+                    for state in ("received", "pending")
+                    for column in (MaterialTransfer.quantity, MaterialTransfer.weight)
+                ),
+            ).where(*filters)
+        ).one()
+        total = amounts[0]
+        summary = {
+            "received": {"quantity": amounts[1], "weight": amounts[2]},
+            "pending": {"quantity": amounts[3], "weight": amounts[4]},
+        }
+    else:
+        total = db.scalar(select(func.count(MaterialTransfer.id)).where(*filters)) or 0
     order_columns = (
         (MaterialTransfer.created_at.asc(), MaterialTransfer.id.asc())
         if serial_no is not None
@@ -149,6 +173,7 @@ def list_material_transfers(
         "total": total,
         "page": page,
         "page_size": page_size,
+        "summary": summary,
     }
 
 

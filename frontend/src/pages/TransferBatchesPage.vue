@@ -2,6 +2,8 @@
 import { formatAmount } from '@/utils/format'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import FilterDialog from '@/components/FilterDialog.vue'
+import TableColumnFilter from '@/components/TableColumnFilter.vue'
+import { invalidNumberRange } from '@/utils/numberFilterRange'
 import TableExportButton from '@/components/TableExportButton.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 import { globalTransferExportFields } from '@/utils/teamTableExport'
@@ -49,11 +51,11 @@ import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import type {
   MaterialSearchField,
   MaterialSearchMode,
-  MaterialType,
   MaterialTransfer,
   MaterialTransferFilterParams,
-  MaterialTransferStatus as TransferStatusValue,
   MaterialTransferStatusCounts,
+  MaterialTransferStatus as TransferStatusValue,
+  MaterialTransferSummary,
 } from '@/types/materialTransfer'
 import {
   isWarehouseReceipt,
@@ -74,6 +76,11 @@ const rows = ref<MaterialTransfer[]>([])
 const loading = ref(true)
 const errorMessage = ref('')
 const total = ref(0)
+const summary = ref<MaterialTransferSummary | null>(null)
+const summaryStates = [
+  { key: 'received', label: '已签收' },
+  { key: 'pending', label: '待签收' },
+] as const
 const statusCounts = ref<MaterialTransferStatusCounts | null>(null)
 const countsLoading = ref(true)
 const statusOptions = [
@@ -83,6 +90,26 @@ const statusOptions = [
   { value: 'dispatched', label: '已出库 / 发货', icon: CircleCheck },
   { value: 'voided', label: '已作废', icon: Remove },
 ] as const
+const columnKeys = [
+  'serial_query',
+  'material_query',
+  'batch_query',
+  'purpose_query',
+  'quantity_min',
+  'quantity_max',
+  'weight_min',
+  'weight_max',
+] as const
+type ColumnKey = (typeof columnKeys)[number]
+function readChoices(value: string, allowed?: readonly string[]) {
+  return [
+    ...new Set(
+      value
+        .split(',')
+        .filter((item) => (allowed ? allowed.includes(item) : /^[1-9]\d*$/.test(item))),
+    ),
+  ].join(',')
+}
 let countsVersion = 0
 function readRouteFilters() {
   const text = (key: string) =>
@@ -97,17 +124,26 @@ function readRouteFilters() {
     dateFrom: text('date_from'),
     dateTo: text('date_to'),
     urgentOnly: text('urgent_only') === 'true',
-    status: statusOptions.find((option) => option.value === text('status'))?.value ?? 'all',
-    sourceTeamId: text('source_team_id'),
-    nextTeamId: text('next_team_id'),
+    status:
+      readChoices(
+        text('statuses') || text('status'),
+        statusOptions.filter((item) => item.value !== 'all').map((item) => item.value),
+      ) || 'all',
+    sourceTeamId: readChoices(text('source_team_ids') || text('source_team_id')),
+    nextTeamId: readChoices(text('next_team_ids') || text('next_team_id')),
     searchMode:
       materialSearchModes.find((option) => option.value === text('search_mode'))?.value ??
       'contains',
     searchField:
       materialSearchFields.find((option) => option.value === text('search_field'))?.value ?? 'all',
-    materialType:
-      materialTypeOptions.find((option) => option.value === text('material_type'))?.value ??
-      ('' as const),
+    materialType: readChoices(
+      text('material_types') || text('material_type'),
+      materialTypeOptions.map((item) => item.value),
+    ),
+    columns: Object.fromEntries(columnKeys.map((key) => [key, text(key)])) as Record<
+      ColumnKey,
+      string
+    >,
   }
 }
 const initialFilters = readRouteFilters()
@@ -118,12 +154,12 @@ const dates = ref({ ...dateDraft.value }),
 const page = ref(initialFilters.page)
 const pageSize = ref(initialFilters.pageSize)
 const queryDraft = ref(initialFilters.query)
-const statusDraft = ref<TransferStatusValue | 'all'>(initialFilters.status)
+const statusDraft = ref(initialFilters.status)
 const sourceTeamDraft = ref<string | number>(initialFilters.sourceTeamId)
 const nextTeamDraft = ref<string | number>(initialFilters.nextTeamId)
 const searchModeDraft = ref<MaterialSearchMode>(initialFilters.searchMode)
 const searchFieldDraft = ref<MaterialSearchField>(initialFilters.searchField)
-const materialTypeDraft = ref<MaterialType | ''>(initialFilters.materialType)
+const materialTypeDraft = ref(initialFilters.materialType)
 const query = ref(queryDraft.value)
 const status = ref(statusDraft.value)
 const sourceTeamId = ref(sourceTeamDraft.value)
@@ -131,6 +167,48 @@ const nextTeamId = ref(nextTeamDraft.value)
 const searchMode = ref(searchModeDraft.value)
 const searchField = ref(searchFieldDraft.value)
 const materialType = ref(materialTypeDraft.value)
+const columns = ref({ ...initialFilters.columns })
+const columnDraft = ref({ ...columns.value })
+const quantityRangeInvalid = computed(() =>
+  invalidNumberRange(columnDraft.value.quantity_min, columnDraft.value.quantity_max, true),
+)
+const weightRangeInvalid = computed(() =>
+  invalidNumberRange(columnDraft.value.weight_min, columnDraft.value.weight_max),
+)
+function selections(model: { value: string | number }, empty = '') {
+  return computed({
+    get: () =>
+      String(model.value) === empty ? [] : String(model.value).split(',').filter(Boolean),
+    set: (values: string[] | string | number) => {
+      model.value = Array.isArray(values)
+        ? values.includes('all')
+          ? empty
+          : values.join(',') || empty
+        : String(values) || empty
+    },
+  })
+}
+const sourceChoices = selections(sourceTeamDraft),
+  nextChoices = selections(nextTeamDraft)
+const typeChoices = selections(materialTypeDraft),
+  statusChoices = selections(statusDraft, 'all')
+const teamOptions = computed(() =>
+  teamStore.items.map((team) => ({ value: String(team.id), label: team.name })),
+)
+const columnStatusOptions = computed(() =>
+  statusOptions
+    .filter((option) => option.value !== 'all')
+    .map((option) => ({ value: option.value, label: option.label })),
+)
+function choiceParams(single: string, multiple: string, value: string | number) {
+  const text = String(value)
+  return text && text !== 'all' ? { [text.includes(',') ? multiple : single]: text } : {}
+}
+const statusParams = computed(() =>
+  status.value.includes(',')
+    ? { statuses: status.value, status: 'all' as const }
+    : { status: status.value as TransferStatusValue | 'all' },
+)
 const filterParams = computed<MaterialTransferFilterParams>(() => ({
   query: query.value || undefined,
   date_from: dates.value.from || undefined,
@@ -138,12 +216,16 @@ const filterParams = computed<MaterialTransferFilterParams>(() => ({
   urgent_only: urgentOnly.value || undefined,
   search_mode: searchMode.value,
   search_field: searchField.value,
-  material_type: materialType.value || undefined,
-  source_team_id: sourceTeamId.value || undefined,
-  next_team_id: nextTeamId.value || undefined,
+  material_type: undefined,
+  source_team_id: undefined,
+  next_team_id: undefined,
+  ...choiceParams('material_type', 'material_types', materialType.value),
+  ...choiceParams('source_team_id', 'source_team_ids', sourceTeamId.value),
+  ...choiceParams('next_team_id', 'next_team_ids', nextTeamId.value),
+  ...Object.fromEntries(Object.entries(columns.value).filter(([, value]) => value !== '')),
 }))
 function exportSource() {
-  const params = { ...filterParams.value, status: status.value }
+  const params = { ...filterParams.value, ...statusParams.value }
   return tableExportSource(
     '转料记录',
     total.value,
@@ -211,6 +293,12 @@ const appliedFilterCount = computed(
       status.value !== 'all',
       searchMode.value !== 'contains',
       searchField.value !== 'all',
+      columns.value.serial_query,
+      columns.value.material_query,
+      columns.value.batch_query,
+      columns.value.purpose_query,
+      columns.value.quantity_min || columns.value.quantity_max,
+      columns.value.weight_min || columns.value.weight_max,
     ].filter(Boolean).length,
 )
 const queryBeforeFilters = ref('')
@@ -231,8 +319,10 @@ function syncFilterDrafts() {
   searchFieldDraft.value = searchField.value
   materialTypeDraft.value = materialType.value
   statusDraft.value = status.value
+  columnDraft.value = { ...columns.value }
 }
 function applyDialogFilters() {
+  if (quantityRangeInvalid.value || weightRangeInvalid.value) return
   applyFilters()
   filtersOpen.value = false
 }
@@ -245,6 +335,10 @@ function clearFilterDrafts() {
   materialTypeDraft.value = ''
   statusDraft.value = 'all'
   queryDraft.value = ''
+  columnDraft.value = Object.fromEntries(columnKeys.map((key) => [key, ''])) as Record<
+    ColumnKey,
+    string
+  >
 }
 
 function numberText(value: number, unit: string): string {
@@ -280,10 +374,13 @@ async function loadCounts(background = false): Promise<void> {
   }
 }
 
-watch(filterParams, () => {
-  statusCounts.value = null
-  void loadCounts()
-})
+watch(
+  () => JSON.stringify(filterParams.value),
+  () => {
+    statusCounts.value = null
+    void loadCounts()
+  },
+)
 
 function updateRoute(): void {
   void router.replace({
@@ -295,10 +392,11 @@ function updateRoute(): void {
       ...(query.value ? { query: query.value } : {}),
       ...(searchMode.value !== 'contains' ? { search_mode: searchMode.value } : {}),
       ...(searchField.value !== 'all' ? { search_field: searchField.value } : {}),
-      ...(materialType.value ? { material_type: materialType.value } : {}),
-      ...(status.value !== 'all' ? { status: status.value } : {}),
-      ...(sourceTeamId.value !== '' ? { source_team_id: String(sourceTeamId.value) } : {}),
-      ...(nextTeamId.value !== '' ? { next_team_id: String(nextTeamId.value) } : {}),
+      ...choiceParams('material_type', 'material_types', materialType.value),
+      ...(status.value !== 'all' ? statusParams.value : {}),
+      ...choiceParams('source_team_id', 'source_team_ids', sourceTeamId.value),
+      ...choiceParams('next_team_id', 'next_team_ids', nextTeamId.value),
+      ...Object.fromEntries(Object.entries(columns.value).filter(([, value]) => value !== '')),
       ...(page.value > 1 ? { page: String(page.value) } : {}),
       ...(pageSize.value !== 10 ? { page_size: String(pageSize.value) } : {}),
     },
@@ -307,18 +405,23 @@ function updateRoute(): void {
 
 async function loadRows(background = false): Promise<void> {
   const version = ++requestVersion
-  if (!background) loading.value = true
+  if (!background) {
+    loading.value = true
+    summary.value = null
+  }
   errorMessage.value = ''
   try {
     const result = await materialTransferApi.list({
       ...filterParams.value,
-      status: status.value as TransferStatusValue | 'all',
+      ...statusParams.value,
       page: page.value,
       page_size: pageSize.value,
+      include_summary: true,
     })
     if (disposed || version !== requestVersion) return
     rows.value = result.items
     total.value = result.total
+    summary.value = result.summary ?? null
     const refreshed = result.items.find((item) => item.batch_no === selected.value?.batch_no)
     if (!background && refreshed && !detailBusy.value) selected.value = refreshed
   } catch (error) {
@@ -342,6 +445,7 @@ const liveRefresh = useLiveRefresh(
 )
 
 function applyFilters(): void {
+  if (quantityRangeInvalid.value || weightRangeInvalid.value) return
   if (dates.value.from !== dateDraft.value.from || dates.value.to !== dateDraft.value.to)
     dates.value = { ...dateDraft.value }
   urgentOnly.value = urgentDraft.value
@@ -352,6 +456,30 @@ function applyFilters(): void {
   searchMode.value = searchModeDraft.value
   searchField.value = searchFieldDraft.value
   materialType.value = materialTypeDraft.value
+  columns.value = Object.fromEntries(
+    Object.entries(columnDraft.value).map(([key, value]) => [key, value.trim()]),
+  ) as Record<ColumnKey, string>
+  page.value = 1
+  updateRoute()
+  void loadRows()
+}
+
+function applyColumn(
+  key: ColumnKey | 'date' | 'source' | 'next' | 'type' | 'status',
+  value: string,
+  end = '',
+) {
+  if (key === 'date') dates.value = { from: value, to: end }
+  else if (key === 'source') sourceTeamId.value = value
+  else if (key === 'next') nextTeamId.value = value
+  else if (key === 'type') materialType.value = value
+  else if (key === 'status') status.value = value || 'all'
+  else {
+    columns.value = { ...columns.value, [key]: value }
+    if (key === 'quantity_min') columns.value.quantity_max = end
+    if (key === 'weight_min') columns.value.weight_max = end
+  }
+  syncFilterDrafts()
   page.value = 1
   updateRoute()
   void loadRows()
@@ -376,6 +504,7 @@ function clearWorkspace(): void {
   ++linkedBatchVersion
   rows.value = []
   total.value = 0
+  summary.value = null
   statusCounts.value = null
   selected.value = null
   drawerOpen.value = false
@@ -403,6 +532,7 @@ watch(
       searchMode: searchMode.value,
       searchField: searchField.value,
       materialType: materialType.value,
+      columns: columns.value,
     }
     if (JSON.stringify(restored) === JSON.stringify(current)) return
     page.value = restored.page
@@ -416,6 +546,8 @@ watch(
     searchMode.value = searchModeDraft.value = restored.searchMode
     searchField.value = searchFieldDraft.value = restored.searchField
     materialType.value = materialTypeDraft.value = restored.materialType
+    columns.value = { ...restored.columns }
+    columnDraft.value = { ...restored.columns }
     void loadRows()
   },
 )
@@ -581,7 +713,12 @@ onBeforeUnmount(() => {
               ></label>
               <label>登记日期<RecordDateFilter v-model="dateDraft" /></label>
               <label
-                >状态<ElSelect v-model="statusDraft" aria-label="转料状态"
+                >状态<ElSelect
+                  v-model="statusChoices"
+                  multiple
+                  collapse-tags
+                  clearable
+                  aria-label="转料状态"
                   ><ElOption
                     v-for="option in statusOptions"
                     :key="option.value"
@@ -593,7 +730,9 @@ onBeforeUnmount(() => {
               >
               <label
                 >物料类型<ElSelect
-                  v-model="materialTypeDraft"
+                  v-model="typeChoices"
+                  multiple
+                  collapse-tags
                   clearable
                   placeholder="全部物料类型"
                   aria-label="筛选物料类型"
@@ -605,7 +744,9 @@ onBeforeUnmount(() => {
               ></label>
               <label
                 >转出班组<ElSelect
-                  v-model="sourceTeamDraft"
+                  v-model="sourceChoices"
+                  multiple
+                  collapse-tags
                   clearable
                   filterable
                   placeholder="全部转出班组"
@@ -614,11 +755,13 @@ onBeforeUnmount(() => {
                     v-for="team in teamStore.items"
                     :key="team.id"
                     :label="team.name"
-                    :value="team.id" /></ElSelect
+                    :value="String(team.id)" /></ElSelect
               ></label>
               <label
                 >接收班组<ElSelect
-                  v-model="nextTeamDraft"
+                  v-model="nextChoices"
+                  multiple
+                  collapse-tags
                   clearable
                   filterable
                   placeholder="全部接收班组"
@@ -627,7 +770,62 @@ onBeforeUnmount(() => {
                     v-for="team in teamStore.items"
                     :key="team.id"
                     :label="team.name"
-                    :value="team.id" /></ElSelect
+                    :value="String(team.id)" /></ElSelect
+              ></label>
+              <label
+                >流水号关键词<ElInput v-model="columnDraft.serial_query" maxlength="160" clearable
+              /></label>
+              <label
+                >材质关键词<ElInput v-model="columnDraft.material_query" maxlength="160" clearable
+              /></label>
+              <label
+                >接收业务关键词<ElInput
+                  v-model="columnDraft.purpose_query"
+                  maxlength="160"
+                  clearable
+              /></label>
+              <label
+                >批次号关键词<ElInput v-model="columnDraft.batch_query" maxlength="160" clearable
+              /></label>
+              <label
+                >数量范围
+                <div class="transfer-filter-range" :class="{ 'is-invalid': quantityRangeInvalid }">
+                  <ElInput
+                    v-model="columnDraft.quantity_min"
+                    inputmode="numeric"
+                    placeholder="最少件数"
+                    aria-label="最少件数"
+                    :aria-invalid="quantityRangeInvalid"
+                    clearable
+                  /><span>至</span
+                  ><ElInput
+                    v-model="columnDraft.quantity_max"
+                    inputmode="numeric"
+                    placeholder="最多件数"
+                    aria-label="最多件数"
+                    :aria-invalid="quantityRangeInvalid"
+                    clearable
+                  /></div
+              ></label>
+              <label
+                >重量范围 (kg)
+                <div class="transfer-filter-range" :class="{ 'is-invalid': weightRangeInvalid }">
+                  <ElInput
+                    v-model="columnDraft.weight_min"
+                    inputmode="decimal"
+                    placeholder="最小重量"
+                    aria-label="最小重量"
+                    :aria-invalid="weightRangeInvalid"
+                    clearable
+                  /><span>至</span
+                  ><ElInput
+                    v-model="columnDraft.weight_max"
+                    inputmode="decimal"
+                    placeholder="最大重量"
+                    aria-label="最大重量"
+                    :aria-invalid="weightRangeInvalid"
+                    clearable
+                  /></div
               ></label>
               <ElCheckbox v-model="urgentDraft">仅看加急</ElCheckbox>
             </FilterDialog>
@@ -661,7 +859,7 @@ onBeforeUnmount(() => {
             @retry="loadRows"
           />
           <StatePanel
-            v-else-if="!hasRows"
+            v-else-if="!hasRows && !appliedFilterCount && !query"
             state="empty"
             title="暂无转料记录"
             description="请调整筛选条件。"
@@ -675,11 +873,18 @@ onBeforeUnmount(() => {
             class="business-table transfer-table"
             border
             row-key="batch_no"
+            empty-text="暂无转料记录"
             :current-row-key="drawerOpen ? selected?.batch_no : undefined"
             highlight-current-row
             @row-click="openDetail"
           >
             <ElTableColumn label="流水号" min-width="220" align="center" show-overflow-tooltip
+              ><template #header
+                ><TableColumnFilter
+                  label="流水号"
+                  :context="route.fullPath"
+                  :value="columns.serial_query"
+                  @apply="(value) => applyColumn('serial_query', value)" /></template
               ><template #default="{ row }"
                 ><div class="transfer-serial">
                   <RouterLink class="serial-number" :to="traceLink(row.serial_no)" @click.stop>{{
@@ -688,6 +893,14 @@ onBeforeUnmount(() => {
                   ><SerialUrgencyBadge :urgency="row.urgency" @click.stop /></div></template
             ></ElTableColumn>
             <ElTableColumn label="转出时间" min-width="180" align="center"
+              ><template #header
+                ><TableColumnFilter
+                  label="转出时间"
+                  :context="route.fullPath"
+                  kind="date"
+                  :value="dates.from"
+                  :end="dates.to"
+                  @apply="(value, end) => applyColumn('date', value, end)" /></template
               ><template #default="{ row }"
                 ><time class="transfer-time" :title="formatDateTime(row.transferred_at)">{{
                   formatDateTime(row.transferred_at)
@@ -700,13 +913,27 @@ onBeforeUnmount(() => {
               align="center"
               show-overflow-tooltip
               prop="material_name"
-            />
+              ><template #header
+                ><TableColumnFilter
+                  label="材质"
+                  :context="route.fullPath"
+                  :value="columns.material_query"
+                  @apply="(value) => applyColumn('material_query', value)" /></template
+            ></ElTableColumn>
             <ElTableColumn
               label="来源"
               min-width="156"
               align="center"
               class-name="transfer-source-cell"
               show-overflow-tooltip
+              ><template #header
+                ><TableColumnFilter
+                  label="来源"
+                  :context="route.fullPath"
+                  kind="select"
+                  :value="String(sourceTeamId)"
+                  :options="teamOptions"
+                  @apply="(value) => applyColumn('source', value)" /></template
               ><template #default="{ row }">{{
                 isWarehouseReceipt(asTransfer(row)) ? '库房手工入库' : row.source_team.name
               }}</template></ElTableColumn
@@ -718,13 +945,27 @@ onBeforeUnmount(() => {
               class-name="transfer-destination-cell"
               show-overflow-tooltip
               prop="next_team.name"
-            />
+              ><template #header
+                ><TableColumnFilter
+                  label="去向"
+                  :context="route.fullPath"
+                  kind="select"
+                  :value="String(nextTeamId)"
+                  :options="teamOptions"
+                  @apply="(value) => applyColumn('next', value)" /></template
+            ></ElTableColumn>
             <ElTableColumn
               label="接收业务"
               min-width="125"
               align="center"
               class-name="transfer-purpose-cell"
               show-overflow-tooltip
+              ><template #header
+                ><TableColumnFilter
+                  label="接收业务"
+                  :context="route.fullPath"
+                  :value="columns.purpose_query"
+                  @apply="(value) => applyColumn('purpose_query', value)" /></template
               ><template #default="{ row }">{{
                 materialPurposeLabel(asTransfer(row))
               }}</template></ElTableColumn
@@ -735,6 +976,14 @@ onBeforeUnmount(() => {
               align="center"
               class-name="transfer-material-type-cell"
               show-overflow-tooltip
+              ><template #header
+                ><TableColumnFilter
+                  label="物料类型"
+                  :context="route.fullPath"
+                  kind="select"
+                  :value="materialType"
+                  :options="materialTypeOptions"
+                  @apply="(value) => applyColumn('type', value)" /></template
               ><template #default="{ row }">{{
                 materialTypeLabel(row.material_type)
               }}</template></ElTableColumn
@@ -744,6 +993,15 @@ onBeforeUnmount(() => {
               min-width="120"
               align="center"
               class-name="transfer-quantity-cell"
+              ><template #header
+                ><TableColumnFilter
+                  label="数量"
+                  :context="route.fullPath"
+                  kind="number"
+                  integer
+                  :value="columns.quantity_min"
+                  :end="columns.quantity_max"
+                  @apply="(value, end) => applyColumn('quantity_min', value, end)" /></template
               ><template #default="{ row }">{{
                 numberText(row.quantity, row.quantity_unit)
               }}</template></ElTableColumn
@@ -753,6 +1011,14 @@ onBeforeUnmount(() => {
               min-width="140"
               align="center"
               class-name="transfer-weight-cell"
+              ><template #header
+                ><TableColumnFilter
+                  label="重量"
+                  :context="route.fullPath"
+                  kind="number"
+                  :value="columns.weight_min"
+                  :end="columns.weight_max"
+                  @apply="(value, end) => applyColumn('weight_min', value, end)" /></template
               ><template #default="{ row }">{{
                 numberText(row.weight, row.weight_unit)
               }}</template></ElTableColumn
@@ -762,13 +1028,28 @@ onBeforeUnmount(() => {
               min-width="140"
               align="center"
               class-name="transfer-status-cell"
+              ><template #header
+                ><TableColumnFilter
+                  label="状态"
+                  :context="route.fullPath"
+                  kind="select"
+                  :value="status === 'all' ? '' : status"
+                  :options="columnStatusOptions"
+                  @apply="(value) => applyColumn('status', value)" /></template
               ><template #default="{ row }"
                 ><MaterialTransferStatus
                   :status="row.status"
                   :entry-kind="row.entry_kind"
                   plain /></template
             ></ElTableColumn>
-            <ElTableColumn label="批次号" min-width="210" align="center" show-overflow-tooltip>
+            <ElTableColumn label="批次号" min-width="210" align="center" show-overflow-tooltip
+              ><template #header
+                ><TableColumnFilter
+                  label="批次号"
+                  :context="route.fullPath"
+                  :value="columns.batch_query"
+                  @apply="(value) => applyColumn('batch_query', value)"
+              /></template>
               <template #default="{ row }"
                 ><ElButton
                   text
@@ -825,6 +1106,30 @@ onBeforeUnmount(() => {
             </ElButton>
           </div>
         </div>
+        <div
+          v-if="!errorMessage"
+          class="transfer-summary"
+          aria-label="全部筛选结果汇总"
+          :aria-busy="loading"
+        >
+          <span class="summary-caption">全部筛选合计</span>
+          <div
+            v-for="state in summaryStates"
+            :key="state.key"
+            class="summary-group"
+            :data-status="state.key"
+          >
+            <span class="summary-status">{{ state.label }}</span>
+            <span class="summary-amount"
+              ><small>件数</small><strong>{{ formatAmount(summary?.[state.key].quantity) }}</strong
+              ><small>件</small></span
+            >
+            <span class="summary-amount"
+              ><small>重量</small><strong>{{ formatAmount(summary?.[state.key].weight) }}</strong
+              ><small>kg</small></span
+            >
+          </div>
+        </div>
         <footer v-if="!errorMessage" class="pagination-bar">
           <span>共 {{ total }} 条</span
           ><ElPagination
@@ -863,6 +1168,15 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.transfer-filter-range.is-invalid :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--el-color-danger) inset;
+}
+.transfer-filter-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
 .mobile-material-brief {
   display: block;
   color: var(--muted);
@@ -1026,6 +1340,45 @@ onBeforeUnmount(() => {
 .serial-number:hover {
   color: var(--primary);
   text-decoration: underline;
+}
+.transfer-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px 24px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line-light);
+  font-size: 13px;
+}
+.summary-caption,
+.summary-amount small {
+  color: var(--subtle);
+  font-size: inherit;
+}
+.summary-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+}
+.summary-status {
+  color: var(--primary);
+  font-weight: 500;
+}
+.summary-group[data-status='pending'] .summary-status {
+  color: var(--el-color-warning-dark-2);
+}
+.summary-amount {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+.summary-amount strong {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .pagination-bar {
   display: flex;

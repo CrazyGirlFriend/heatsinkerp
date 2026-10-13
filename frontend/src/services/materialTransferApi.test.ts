@@ -395,6 +395,39 @@ describe('material transfer API', () => {
     expect(exact.barcode_type).toBe('CODE128')
   })
 
+  it('keeps server summary amounts independent from the current page', async () => {
+    responder = () => ({
+      data: {
+        items: [rawTransfer()],
+        total: 105,
+        page: 2,
+        page_size: 10,
+        summary: {
+          received: { quantity: '3784', weight: '1.134100' },
+          pending: { quantity: 2882, weight: 0.865 },
+        },
+      },
+    })
+    const result = await materialTransferApi.list({
+      query: '805881-5',
+      page: 2,
+      include_summary: true,
+    })
+    expect(result.summary).toEqual({
+      received: { quantity: 3784, weight: 1.1341 },
+      pending: { quantity: 2882, weight: 0.865 },
+    })
+    expect(configs[0]!.url).toContain('include_summary=true')
+  })
+
+  it.each([undefined, null, {}, { received: { quantity: 1, weight: 2 }, pending: {} }])(
+    'does not report missing summary data as zero: %s',
+    async (summary) => {
+      responder = () => ({ data: { items: [], total: 0, summary } })
+      expect((await materialTransferApi.list({ include_summary: true })).summary).toBeNull()
+    },
+  )
+
   it('creates and edits only the material handoff fields', async () => {
     await materialTransferApi.create({
       serial_no: 'LS-2026-008',

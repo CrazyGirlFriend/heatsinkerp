@@ -457,11 +457,22 @@ class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement
     history: list[MaterialTransferEventResponse] = Field(default_factory=list)
 
 
+class MaterialTransferAmounts(APIModel):
+    quantity: int
+    weight: float
+
+
+class MaterialTransferSummary(APIModel):
+    received: MaterialTransferAmounts
+    pending: MaterialTransferAmounts
+
+
 class MaterialTransferList(APIModel):
     items: list[MaterialTransferResponse]
     total: int
     page: int
     page_size: int
+    summary: MaterialTransferSummary | None = None
 
 
 class HealthResponse(APIModel):

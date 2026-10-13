@@ -204,7 +204,18 @@ export interface MaterialTransfer
   loss_records?: MaterialLoss[]
 }
 
-export interface MaterialTransferListParams {
+export interface MaterialTransferColumnParams {
+  serial_query?: string
+  material_query?: string
+  batch_query?: string
+  purpose_query?: string
+  quantity_min?: string
+  quantity_max?: string
+  weight_min?: string
+  weight_max?: string
+}
+
+export interface MaterialTransferListParams extends MaterialTransferColumnParams {
   date_from?: string
   date_to?: string
   urgent_only?: boolean
@@ -217,23 +228,34 @@ export interface MaterialTransferListParams {
   serial_no?: string
   source_team_id?: EntityId
   next_team_id?: EntityId
+  source_team_ids?: string
+  next_team_ids?: string
+  material_types?: string
+  statuses?: string
   status?: MaterialTransferStatus | 'all'
   page?: number
   page_size?: number
+  include_summary?: boolean
 }
 
 export type MaterialTransferDirection = 'all' | 'outgoing' | 'incoming'
 
 export type MaterialTransferFilterParams = Omit<
   MaterialTransferListParams,
-  'status' | 'page' | 'page_size'
+  'status' | 'page' | 'page_size' | 'include_summary'
 >
+
+export interface MaterialTransferSummary {
+  received: { quantity: number; weight: number }
+  pending: { quantity: number; weight: number }
+}
 
 export interface MaterialTransferListResponse {
   items: MaterialTransfer[]
   total: number
   page: number
   page_size: number
+  summary?: MaterialTransferSummary | null
 }
 
 export type MaterialTransferStatusCounts = Record<MaterialTransferStatus | 'all', number>

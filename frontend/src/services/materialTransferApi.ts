@@ -8,6 +8,7 @@ import type {
   MaterialTransferListResponse,
   MaterialTransferStatus,
   MaterialTransferStatusCounts,
+  MaterialTransferSummary,
   MaterialTransferTeam,
   MaterialTransferDocumentFields,
   MaterialTransferHistoryEntry,
@@ -48,6 +49,19 @@ function numberValue(...values: unknown[]): number {
   const value = values.find((item) => item !== undefined && item !== null && item !== '')
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function normalizeSummary(value: unknown): MaterialTransferSummary | null {
+  const raw = objectValue(value)
+  const received = objectValue(raw.received)
+  const pending = objectValue(raw.pending)
+  const values = [received.quantity, received.weight, pending.quantity, pending.weight]
+  if (values.some((amount) => amount == null || amount === '' || !Number.isFinite(Number(amount))))
+    return null
+  return {
+    received: { quantity: Number(received.quantity), weight: Number(received.weight) },
+    pending: { quantity: Number(pending.quantity), weight: Number(pending.weight) },
+  }
 }
 
 function normalizeTeam(
@@ -357,6 +371,7 @@ export const materialTransferApi = {
       total: Number(raw.total ?? rawItems.length),
       page: Number(raw.page ?? params.page ?? 1),
       page_size: Number(raw.page_size ?? params.page_size ?? 20),
+      summary: normalizeSummary(raw.summary),
     }
   },
 

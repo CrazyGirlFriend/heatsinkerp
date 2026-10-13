@@ -1,8 +1,14 @@
 """Explicit search semantics shared by list filters and query-plan verification."""
 
+from decimal import Decimal
+
+from fastapi import HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import or_
 
 from .models import MaterialTransfer
+from .schemas import DIRECT_MATERIAL_TYPE_PATTERN
+from .team_constants import EXTERNAL_ENTRY_KINDS
 
 INDEXED_SEARCH_FIELDS = {
     name: getattr(MaterialTransfer, name)
@@ -61,3 +67,68 @@ def search_predicate(query: str, search_field: str = "all", search_mode: str = "
     escaped = term.replace("!", "!!").replace("%", "!%").replace("_", "!_")
     pattern = f"{escaped}%" if search_mode == "prefix" else f"%{escaped}%"
     return or_(shared, *(field.like(pattern, escape="!") for field in fields))
+
+
+class TransferColumnFilters(BaseModel):
+    """Column filters are intersected in SQL before counting and pagination."""
+
+    serial_query: str = Field(default="", max_length=160)
+    material_query: str = Field(default="", max_length=160)
+    batch_query: str = Field(default="", max_length=160)
+    purpose_query: str = Field(default="", max_length=160)
+    source_team_ids: str = Field(default="", max_length=1000, pattern=r"^(\d+(,\d+)*)?$")
+    next_team_ids: str = Field(default="", max_length=1000, pattern=r"^(\d+(,\d+)*)?$")
+    statuses: str = Field(
+        default="",
+        max_length=100,
+        pattern=r"^((pending|received|dispatched|voided)(,(pending|received|dispatched|voided))*)?$",
+    )
+    material_types: str = Field(default="", max_length=500)
+    quantity_min: int | None = Field(default=None, ge=0, le=2147483647)
+    quantity_max: int | None = Field(default=None, ge=0, le=2147483647)
+    weight_min: Decimal | None = Field(default=None, ge=0, max_digits=17, decimal_places=6)
+    weight_max: Decimal | None = Field(default=None, ge=0, max_digits=17, decimal_places=6)
+
+    def predicates(self):
+        import re
+
+        filters = []
+        for value, field in (
+            (self.serial_query, "serial_no"),
+            (self.material_query, "material_name"),
+            (self.batch_query, "batch_no"),
+        ):
+            if value.strip():
+                filters.append(search_predicate(value, field))
+        if self.purpose_query.strip():
+            filters.extend(
+                [
+                    MaterialTransfer.entry_kind.not_in(EXTERNAL_ENTRY_KINDS),
+                    MaterialTransfer.purpose_name.contains(
+                        self.purpose_query.strip(), autoescape=True
+                    ),
+                ]
+            )
+        for name in ("source_team", "next_team"):
+            value = getattr(self, name + "_ids")
+            if value:
+                ids = {int(part) for part in value.split(",")}
+                if any(item < 1 or item > 2147483647 for item in ids):
+                    raise HTTPException(422, "班组编号无效")
+                filters.append(getattr(MaterialTransfer, name + "_id").in_(ids))
+        if self.statuses:
+            filters.append(MaterialTransfer.status.in_(self.statuses.split(",")))
+        if self.material_types:
+            values = self.material_types.split(",")
+            if any(not re.fullmatch(DIRECT_MATERIAL_TYPE_PATTERN, item) for item in values):
+                raise HTTPException(422, "物料类型无效")
+            filters.append(MaterialTransfer.material_type.in_(values))
+        for field in ("quantity", "weight"):
+            lower, upper = getattr(self, field + "_min"), getattr(self, field + "_max")
+            if lower is not None and upper is not None and lower > upper:
+                raise HTTPException(422, "最小值不能大于最大值")
+            if lower is not None:
+                filters.append(getattr(MaterialTransfer, field) >= lower)
+            if upper is not None:
+                filters.append(getattr(MaterialTransfer, field) <= upper)
+        return filters

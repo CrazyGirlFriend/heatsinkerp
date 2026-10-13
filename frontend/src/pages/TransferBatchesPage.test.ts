@@ -3,9 +3,10 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ElPagination, ElSelect } from 'element-plus'
+import { ElInput, ElPagination, ElSelect } from 'element-plus'
 import FilterDialog from '@/components/FilterDialog.vue'
 import TableExportButton from '@/components/TableExportButton.vue'
+import TableColumnFilter from '@/components/TableColumnFilter.vue'
 import { ElOption } from 'element-plus'
 import TransferBatchesPage from './TransferBatchesPage.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
@@ -111,6 +112,239 @@ function statusCount(page: VueWrapper, value: string) {
   const option = select.findAllComponents(ElOption).find((item) => item.props('value') === value)!
   return String(option.props('label')).match(/（(.*)）$/)![1]
 }
+
+async function filterColumn(page: VueWrapper, label: string, value: string, end = '') {
+  page
+    .findAllComponents(TableColumnFilter)
+    .find((filter) => filter.props('label') === label)!
+    .vm.$emit('apply', value, end)
+  await flushPromises()
+}
+
+describe('transfer header filtering', () => {
+  it('combines columns and top filters, resets pagination, and exports only applied criteria', async () => {
+    const page = await renderList('/transfer-batches?query=APPLIED&page=3')
+    page.getComponent(FilterDialog).vm.$emit('update:modelValue', false)
+    await page.get('input[aria-label="搜索转料记录"]').setValue('UNSENT')
+    for (const [label, value, end] of [
+      ['流水号', 'YS-001'],
+      ['材质', '材料1'],
+      ['接收业务', '业务1'],
+      ['批次号', 'TL-'],
+      ['来源', '1,2'],
+      ['去向', '7,8'],
+      ['物料类型', 'finished,semi_finished'],
+      ['数量', '0', '20'],
+      ['重量', '1.352', '2'],
+      ['转出时间', '2026-10-12', '2026-10-13'],
+      ['状态', 'pending,received'],
+    ])
+      await filterColumn(page, label!, value!, end)
+    const scope = {
+      query: 'APPLIED',
+      serial_query: 'YS-001',
+      material_query: '材料1',
+      purpose_query: '业务1',
+      batch_query: 'TL-',
+      source_team_ids: '1,2',
+      next_team_ids: '7,8',
+      material_types: 'finished,semi_finished',
+      quantity_min: '0',
+      quantity_max: '20',
+      weight_min: '1.352',
+      weight_max: '2',
+      date_from: '2026-10-12',
+      date_to: '2026-10-13',
+    }
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ...scope, statuses: 'pending,received', page: 1 }),
+    )
+    expect(materialTransferApi.counts).toHaveBeenLastCalledWith(expect.objectContaining(scope))
+    expect(vi.mocked(materialTransferApi.counts).mock.lastCall![0]).not.toHaveProperty('statuses')
+    expect(page.vm.$route.query).toMatchObject({ ...scope, statuses: 'pending,received' })
+    expect(page.vm.$route.query).not.toHaveProperty('page')
+    page.getComponent(ElPagination).vm.$emit('current-change', 2)
+    await flushPromises()
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ...scope, page: 2 }),
+    )
+    const source = page.getComponent(TableExportButton).props('source')()!
+    await source.load(new AbortController().signal, () => undefined)
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ...scope, statuses: 'pending,received', page: 1, page_size: 100 }),
+    )
+    expect(page.get('input[aria-label="搜索转料记录"]').element).toHaveProperty('value', 'UNSENT')
+  })
+
+  it('preserves filter headers with no results and can clear one column without losing others', async () => {
+    const page = await renderList('/transfer-batches?serial_query=YS-001&material_query=材料1')
+    vi.mocked(materialTransferApi.list).mockResolvedValue({ ...result, items: [], total: 0 })
+    await filterColumn(page, '材质', '不存在')
+    expect(page.get('.el-table').text()).toContain('暂无转料记录')
+    expect(page.findAllComponents(TableColumnFilter)).toHaveLength(11)
+    await filterColumn(page, '材质', '')
+    const last = vi.mocked(materialTransferApi.list).mock.lastCall![0]!
+    expect(last.serial_query).toBe('YS-001')
+    expect(last).not.toHaveProperty('material_query')
+    expect(page.vm.$route.query).toEqual({ serial_query: 'YS-001' })
+  })
+
+  it('restores multiple choices from URLs and clears all column criteria from the existing dialog', async () => {
+    const page = await renderList(
+      '/transfer-batches?source_team_ids=1,2&statuses=pending,received&quantity_min=0&weight_max=2',
+    )
+    const source = page
+      .findAllComponents(TableColumnFilter)
+      .find((filter) => filter.props('label') === '来源')!
+    expect(source.props('value')).toBe('1,2')
+    await page.vm.$router.push('/transfer-batches?material_query=W80')
+    await flushPromises()
+    expect(source.props('value')).toBe('')
+    const last = vi.mocked(materialTransferApi.list).mock.lastCall![0]!
+    expect(last.material_query).toBe('W80')
+    expect(last).not.toHaveProperty('quantity_min')
+    expect(last).not.toHaveProperty('statuses')
+    page.getComponent(FilterDialog).vm.$emit('reset')
+    page.getComponent(FilterDialog).vm.$emit('apply')
+    await flushPromises()
+    expect(page.vm.$route.query).toEqual({})
+    expect(
+      page
+        .findAllComponents(TableColumnFilter)
+        .every((filter) => !filter.props('value') && !filter.props('end')),
+    ).toBe(true)
+  })
+
+  it('shares numeric validation with the advanced dialog and keeps invalid drafts open', async () => {
+    const page = await renderList('/transfer-batches')
+    const minimum = page
+      .findAllComponents(ElInput)
+      .find((input) => input.find('input[aria-label="最少件数"]').exists())!
+      .get('input')
+    const maximum = page
+      .findAllComponents(ElInput)
+      .find((input) => input.find('input[aria-label="最多件数"]').exists())!
+      .get('input')
+    await minimum.setValue('20')
+    await maximum.setValue('10')
+    const requests = vi.mocked(materialTransferApi.list).mock.calls.length
+    page.getComponent(FilterDialog).vm.$emit('apply')
+    await flushPromises()
+    expect(materialTransferApi.list).toHaveBeenCalledTimes(requests)
+    expect(minimum.attributes('aria-invalid')).toBe('true')
+    expect(page.getComponent(FilterDialog).props('modelValue')).toBe(true)
+    await maximum.setValue('30')
+    page.getComponent(FilterDialog).vm.$emit('apply')
+    await flushPromises()
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ quantity_min: '20', quantity_max: '30' }),
+    )
+  })
+})
+
+describe('transfer amount summary', () => {
+  const summary = {
+    received: { quantity: 3784, weight: 1.1341 },
+    pending: { quantity: 2882, weight: 0.865 },
+  }
+  const summarized = { ...result, total: 105, summary }
+
+  it('shows all filtered totals in separate fields and retains them across pages', async () => {
+    vi.mocked(materialTransferApi.list).mockResolvedValue(summarized)
+    const page = await renderList('/transfer-batches?query=805881-5')
+    const totals = page.get('.transfer-summary')
+    expect(totals.get('[data-status="received"]').text()).toContain('已签收')
+    expect(totals.get('[data-status="pending"]').text()).toContain('待签收')
+    expect(totals.findAll('strong').map((item) => item.text())).toEqual([
+      '3,784',
+      '1.1341',
+      '2,882',
+      '0.865',
+    ])
+    await page.get('input[aria-label="搜索转料记录"]').setValue('未提交搜索')
+    page.getComponent(ElPagination).vm.$emit('current-change', 2)
+    await flushPromises()
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: '805881-5', page: 2, include_summary: true }),
+    )
+    expect(totals.findAll('strong').map((item) => item.text())).toEqual([
+      '3,784',
+      '1.1341',
+      '2,882',
+      '0.865',
+    ])
+  })
+
+  it('clears totals while changing filters and discards stale results', async () => {
+    vi.mocked(materialTransferApi.list).mockResolvedValue(summarized)
+    const page = await renderList('/transfer-batches?query=A')
+    let resolveB!: (value: typeof summarized) => void
+    vi.mocked(materialTransferApi.list).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveB = resolve
+      }),
+    )
+    await page.vm.$router.push('/transfer-batches?query=B')
+    await flushPromises()
+    expect(page.get('.transfer-summary').attributes('aria-busy')).toBe('true')
+    expect(page.findAll('.transfer-summary strong').map((item) => item.text())).toEqual([
+      '—',
+      '—',
+      '—',
+      '—',
+    ])
+    const zeroSummary = {
+      received: { quantity: 0, weight: 0 },
+      pending: { quantity: 0, weight: 0 },
+    }
+    vi.mocked(materialTransferApi.list).mockResolvedValue({
+      ...result,
+      items: [],
+      total: 0,
+      summary: zeroSummary,
+    })
+    await page.vm.$router.push('/transfer-batches?query=C&status=voided')
+    await flushPromises()
+    resolveB(summarized)
+    await flushPromises()
+    expect(page.findAll('.transfer-summary strong').map((item) => item.text())).toEqual([
+      '0',
+      '0',
+      '0',
+      '0',
+    ])
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: 'C', status: 'voided', include_summary: true }),
+    )
+  })
+
+  it('refreshes totals with records and retains the last result on a background failure', async () => {
+    vi.mocked(materialTransferApi.list).mockResolvedValue(summarized)
+    const page = await renderList('/transfer-batches')
+    vi.mocked(materialTransferApi.list).mockResolvedValue({
+      ...summarized,
+      summary: {
+        received: { quantity: 6666, weight: 1.9991 },
+        pending: { quantity: 0, weight: 0 },
+      },
+    })
+    await live.refresh()
+    await flushPromises()
+    expect(page.findAll('.transfer-summary strong').map((item) => item.text())).toEqual([
+      '6,666',
+      '1.9991',
+      '0',
+      '0',
+    ])
+    vi.mocked(materialTransferApi.list).mockRejectedValueOnce(new Error('offline'))
+    await expect(live.refresh()).rejects.toThrow()
+    expect(page.get('.transfer-summary').text()).toContain('6,666')
+    vi.mocked(materialTransferApi.list).mockRejectedValueOnce(new Error('offline'))
+    await page.vm.$router.push('/transfer-batches?query=NEW')
+    await flushPromises()
+    expect(page.find('.transfer-summary').exists()).toBe(false)
+  })
+})
 
 describe('transfer list refresh continuity', () => {
   it('exports all applied filtered pages, ignoring an unsubmitted search draft', async () => {
