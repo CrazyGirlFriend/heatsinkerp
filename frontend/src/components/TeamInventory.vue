@@ -73,6 +73,7 @@ const props = defineProps<{
   warehouse?: boolean
   fullscreen?: boolean
   processing?: boolean
+  processingLoadingGroupId?: number
 }>()
 const emit = defineEmits<{
   changed: []
@@ -949,6 +950,7 @@ onBeforeUnmount(() => {
         class="inventory-process"
         type="primary"
         :icon="Operation"
+        :disabled="processingLoadingGroupId != null"
         @click="emit('process')"
         >加工登记</ElButton
       >
@@ -1161,6 +1163,8 @@ onBeforeUnmount(() => {
               "
               link
               class="action-cool"
+              :loading="processingLoadingGroupId === row.group_id"
+              :disabled="processingLoadingGroupId != null"
               @click="emit('process', row.group_id)"
               >加工登记</ElButton
             ><ElButton

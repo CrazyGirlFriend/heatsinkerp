@@ -21,6 +21,7 @@ import { dispatchFixture } from '@/testFixtures/materialDispatch'
 import { ElPagination } from 'element-plus'
 import { analyticsFixture } from '@/testFixtures/materialAnalytics'
 import { warehouseFixture } from '@/testFixtures/teamInventory'
+import { showToast } from '@/stores/toast'
 import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
 import MaterialStockActionDialog from '@/components/MaterialStockActionDialog.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
@@ -43,8 +44,8 @@ const state = vi.hoisted(() => ({
   },
   directory: {
     items: [
-      { id: 914, code: 'FACTORY-ROLL', name: '扎板', active: true },
-      { id: 900, code: 'FACTORY-QC', name: '检验', active: true },
+      { id: 914, code: 'FACTORY-ROLL', name: '扎板', kind: 'production', active: true },
+      { id: 900, code: 'FACTORY-QC', name: '检验', kind: 'production', active: true },
       { id: 901, code: 'FACTORY-WAREHOUSE', name: '库房', kind: 'warehouse', active: true },
     ],
     loaded: true,
@@ -256,14 +257,13 @@ describe('team workspace material ledger', () => {
         }
         wrapper.getComponent(TeamInventory).vm.$emit('process', 10)
         await flushPromises()
-        expect(wrapper.findComponent(ProcessingBatchPicker).exists()).toBe(canWrite)
+        expect(wrapper.findComponent(ProcessingBatchPicker).exists()).toBe(false)
         if (canWrite) {
-          expect(wrapper.getComponent(ProcessingBatchPicker).props()).toMatchObject({
-            teamId: 914,
-            groupId: 10,
+          expect(teamMaterialApi.processingSources).toHaveBeenLastCalledWith(914, {
+            group_id: 10,
+            page: 1,
+            page_size: 2,
           })
-          wrapper.getComponent(ProcessingBatchPicker).vm.$emit('selected', 10)
-          await flushPromises()
           const dialog = wrapper
             .findAllComponents(QuantityAdjustmentDialog)
             .find((component) => component.props('modelValue'))!
@@ -301,6 +301,135 @@ describe('team workspace material ledger', () => {
       }
     },
   )
+  describe('processing row shortcuts', () => {
+    const sources = (items = [source(42)], total = items.length) => ({
+      items,
+      total,
+      page: 1,
+      page_size: 2,
+    })
+    const rowButton = () =>
+      wrapper
+        .findAll('.inventory-row-actions button')
+        .find((button) => button.text() === '加工登记')!
+    const activeDialog = () =>
+      wrapper
+        .findAllComponents(QuantityAdjustmentDialog)
+        .find((dialog) => dialog.props('modelValue'))
+    beforeEach(() => {
+      vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
+        items: [warehouseFixture({ group_id: 10 })],
+        total: 1,
+        page: 1,
+        page_size: 10,
+      })
+      vi.spyOn(teamMaterialApi, 'processingSources').mockResolvedValue(sources())
+      vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({
+        source_transfer_id: 42,
+        batch_no: 'TL42',
+        quantity: 1,
+        weight: 100,
+        revision: 0,
+        as_of: '2026-10-12T00:00:00Z',
+        items: [],
+        total: 0,
+        page: 1,
+        page_size: 10,
+      })
+    })
+    it.each(['FACTORY-ROLL', 'FACTORY-WIRE', 'FACTORY-ENGRAVE'])(
+      'opens the sole eligible batch directly from the fullscreen %s stock row',
+      async (code) => {
+        const previous = state.directory.items
+        try {
+          state.directory.items = [
+            { id: 914, code, name: '加工班组', kind: 'production', active: true },
+          ]
+          await render('/team-workspaces/914?tab=stock')
+          await wrapper.get('.team-workspace__fullscreen').trigger('click')
+          await rowButton().trigger('click')
+          await flushPromises()
+          expect(wrapper.findComponent(ProcessingBatchPicker).exists()).toBe(false)
+          expect(activeDialog()?.props('sourceId')).toBe(42)
+          expect(teamMaterialApi.quantityContext).toHaveBeenCalledWith(914, 42, 1)
+        } finally {
+          state.directory.items = previous
+        }
+      },
+    )
+    it('keeps multiple eligible batches scoped to the clicked row and opens the chosen one', async () => {
+      vi.mocked(teamMaterialApi.processingSources).mockResolvedValue(
+        sources([source(42), source(43)]),
+      )
+      await render('/team-workspaces/914?tab=stock')
+      await rowButton().trigger('click')
+      await flushPromises()
+      const picker = wrapper.getComponent(ProcessingBatchPicker)
+      expect(picker.props('groupId')).toBe(10)
+      expect(activeDialog()).toBeUndefined()
+      picker.vm.$emit('selected', 42)
+      await flushPromises()
+      expect(activeDialog()?.props('sourceId')).toBe(42)
+      expect(wrapper.findComponent(ProcessingBatchPicker).exists()).toBe(false)
+    })
+    it('does not open an empty second picker when the batch is no longer eligible', async () => {
+      vi.mocked(teamMaterialApi.processingSources).mockResolvedValue(sources([]))
+      await render('/team-workspaces/914?tab=stock')
+      await rowButton().trigger('click')
+      await flushPromises()
+      expect(wrapper.findComponent(ProcessingBatchPicker).exists()).toBe(false)
+      expect(activeDialog()).toBeUndefined()
+      expect(showToast).toHaveBeenCalledWith(
+        '该物料暂无可登记加工的在库批次，请刷新库存后重试',
+        'info',
+      )
+    })
+    it('prevents repeat entry while resolving a source and recovers from a failed lookup', async () => {
+      let reject!: (reason: Error) => void
+      vi.mocked(teamMaterialApi.processingSources).mockReturnValueOnce(
+        new Promise((_, fail) => {
+          reject = fail
+        }),
+      )
+      await render('/team-workspaces/914?tab=stock')
+      await rowButton().trigger('click')
+      wrapper.getComponent(TeamInventory).vm.$emit('process', 10)
+      await flushPromises()
+      expect(teamMaterialApi.processingSources).toHaveBeenCalledTimes(1)
+      expect(rowButton().classes()).toContain('is-loading')
+      expect(wrapper.get('.inventory-process').attributes('disabled')).toBeDefined()
+      reject(new Error('网络中断'))
+      await flushPromises()
+      expect(showToast).toHaveBeenCalledWith('网络中断', 'error')
+      expect(rowButton().attributes('disabled')).toBeUndefined()
+      await rowButton().trigger('click')
+      await flushPromises()
+      expect(activeDialog()?.props('sourceId')).toBe(42)
+    })
+    it.each(['team', 'account', 'permission', 'tab', 'unmount'])(
+      'ignores late batch selection after changing %s',
+      async (change) => {
+        let finish!: (value: ReturnType<typeof sources>) => void
+        vi.mocked(teamMaterialApi.processingSources).mockReturnValueOnce(
+          new Promise((resolve) => {
+            finish = resolve
+          }),
+        )
+        const router = await render('/team-workspaces/914?tab=stock')
+        await rowButton().trigger('click')
+        if (change === 'team') await router.push('/team-workspaces/901?tab=stock')
+        if (change === 'tab') await router.push('/team-workspaces/914?tab=outgoing')
+        if (change === 'account') state.auth.currentUser.id = 99
+        if (change === 'permission') state.auth.currentUserError = '权限刷新失败'
+        if (change === 'unmount') wrapper.unmount()
+        await flushPromises()
+        finish(sources())
+        await flushPromises()
+        expect(teamMaterialApi.quantityContext).not.toHaveBeenCalled()
+        expect(wrapper.findComponent(ProcessingBatchPicker).exists()).toBe(false)
+      },
+    )
+  })
   it.each(['pending', 'receipts', 'outgoing', 'reallocations', 'losses'])(
     'exports %s with the same filters and team scope, closing on navigation',
     async (tab) => {
@@ -519,7 +648,7 @@ describe('team workspace material ledger', () => {
           code: profile.code,
           name: profile.name,
           active: true,
-          ...(profile.code === 'FACTORY-WAREHOUSE' ? { kind: 'warehouse' } : {}),
+          kind: profile.code === 'FACTORY-WAREHOUSE' ? 'warehouse' : 'production',
         },
       ]
       vi.mocked(teamMaterialApi.teamInventory).mockResolvedValue({
@@ -558,7 +687,11 @@ describe('team workspace material ledger', () => {
             .some((button) => button.text() === '出库'),
         ).toBe(true)
         expect(wrapper.get('.inventory-row-actions').text()).toContain('在途转出')
-        expect(wrapper.get('.warehouse-table').text()).toContain('全部待签收')
+        expect(wrapper.get('.warehouse-table').text()).toContain(
+          ['FACTORY-ROLL', 'FACTORY-WIRE', 'FACTORY-ENGRAVE'].includes(profile.code)
+            ? '已转出 · 待签收'
+            : '全部待签收',
+        )
       } finally {
         state.directory.items = previous
       }
@@ -1599,7 +1732,7 @@ describe('warehouse intake workspace', () => {
           code: profile.code,
           name: profile.name,
           active: true,
-          ...(warehouse ? { kind: 'warehouse' } : {}),
+          kind: warehouse ? 'warehouse' : 'production',
         },
       ]
       vi.mocked(teamMaterialApi.receipts).mockResolvedValue({

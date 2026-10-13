@@ -417,12 +417,42 @@ const receiptOpen = ref(false)
 const businessOpen = ref(false)
 const processingPickerOpen = ref(false),
   processingGroupId = ref<number | undefined>()
+const openingProcessing = ref(0)
 const processingOpen = ref(false),
   processingSourceId = ref<number | null>(null)
-function openProcessing(groupId?: number) {
-  if (!canWrite.value || !hasProcessing.value) return
+async function openProcessing(groupId?: number) {
+  if (!canWrite.value || !hasProcessing.value || openingProcessing.value) return
   processingGroupId.value = groupId
-  processingPickerOpen.value = true
+  if (groupId == null) {
+    processingPickerOpen.value = true
+    return
+  }
+  const current = ++actionVersion,
+    scope = teamKey.value
+  openingProcessing.value = current
+  try {
+    const result = await teamMaterialApi.processingSources(teamId.value, {
+      group_id: groupId,
+      page: 1,
+      page_size: 2,
+    })
+    if (
+      current !== actionVersion ||
+      scope !== teamKey.value ||
+      !canWrite.value ||
+      !hasProcessing.value
+    )
+      return
+    if (result.total === 1 && result.items.length === 1)
+      selectProcessingSource(Number(result.items[0]!.transfer.id))
+    else if (result.total > 1) processingPickerOpen.value = true
+    else showToast('该物料暂无可登记加工的在库批次，请刷新库存后重试', 'info')
+  } catch (error) {
+    if (current === actionVersion && scope === teamKey.value)
+      showToast(error instanceof Error ? error.message : '加工批次读取失败，请重试', 'error')
+  } finally {
+    if (openingProcessing.value === current) openingProcessing.value = 0
+  }
 }
 function selectProcessingSource(sourceId: number) {
   if (!canWrite.value || !hasProcessing.value) return
@@ -597,6 +627,7 @@ function closeDetails() {
   receiptOpen.value = false
   actionSources.value = []
   processingPickerOpen.value = processingOpen.value = false
+  openingProcessing.value = 0
   processingSourceId.value = null
 }
 function openDetail(transfer: MaterialTransfer) {
@@ -1090,6 +1121,7 @@ onBeforeUnmount(() => {
             :can-reallocate="canReallocate"
             :fullscreen="fullscreen"
             :processing="hasProcessing"
+            :processing-loading-group-id="openingProcessing ? processingGroupId : undefined"
             @process="openProcessing"
             @reallocate="openReallocation"
             @refresh="loadView"
