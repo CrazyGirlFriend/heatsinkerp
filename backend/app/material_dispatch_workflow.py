@@ -176,9 +176,7 @@ def confirm_dispatch(db, dispatch_no, payload, user, *, external=False):
                     item.notes,
                 )
             employee = (
-                workflow.require_receipt_employee(
-                    db, group.next_team_id, payload.received_employee_id
-                )
+                workflow.require_team_employee(db, group.next_team_id, payload.received_employee_id)
                 if not external
                 else None
             )

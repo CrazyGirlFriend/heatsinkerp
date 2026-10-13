@@ -163,6 +163,7 @@ def seed_warehouse_showcase(db):
                 create_dispatch,
                 actor.team_id,
                 DispatchCreate(
+                    sent_employee_id=demo_receiving_employee(db, actor.team_id, "演示转料员"),
                     next_team_id=target.team_id if target else None,
                     entry_kind="transfer" if target else "inspection_shipment",
                     external_destination=None if target else "演示客户",

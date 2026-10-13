@@ -84,7 +84,7 @@ describe('unified multi-batch printing', () => {
   })
   it('separates incompatible teams, senders and external documents instead of sharing signatures', async () => {
     const items = dispatchFixture(4).items
-    items[1]!.transferred_by = '另一位转料人'
+    items[1]!.sent_employee_name = '另一位转料人'
     items[2]!.next_team = { id: 8, code: 'FACTORY-QC', name: '检验' }
     Object.assign(items[3]!, {
       entry_kind: 'inspection_shipment',

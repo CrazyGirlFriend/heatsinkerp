@@ -8,6 +8,7 @@ import {
   materialTransferApi,
   normalizeMaterialTransfer,
 } from '@/services/materialTransferApi'
+import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import {
   materialDocumentTextFields,
@@ -57,6 +58,9 @@ function fixture(overrides: Partial<MaterialTransfer> = {}): MaterialTransfer {
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([
+    { id: 22, team_id: 2, name: '发送王师傅', active: true, version: 1 },
+  ])
   vi.spyOn(teamMaterialApi, 'warehouseLocations').mockResolvedValue({ items: [] })
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([])
   vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({
@@ -89,6 +93,17 @@ async function render(transfer: MaterialTransfer | null = null) {
     },
   })
   await flushPromises()
+  const picker = wrapper.findComponent(TeamEmployeeInput)
+  if (picker.exists()) {
+    picker.vm.$emit('update:modelValue', {
+      id: 22,
+      team_id: 2,
+      name: '发送王师傅',
+      active: true,
+      version: 1,
+    })
+    await flushPromises()
+  }
 }
 async function number(label: string, value: number | undefined) {
   const field = wrapper
@@ -115,6 +130,34 @@ async function submit() {
 }
 
 describe('material transfer document form', () => {
+  it('requires an explicit sender for creation but keeps the issued sender fixed on edit', async () => {
+    await render()
+    await base()
+    wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:modelValue', null)
+    await submit()
+    expect(materialTransferApi.create).not.toHaveBeenCalled()
+    expect(wrapper.get('button[aria-label="转料人"]').attributes('aria-invalid')).toBe('true')
+    wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:modelValue', {
+      id: 22,
+      team_id: 2,
+      name: '发送王师傅',
+      active: true,
+      version: 1,
+    })
+    await submit()
+    expect(materialTransferApi.create).toHaveBeenCalledWith(
+      expect.objectContaining({ sent_employee_id: 22 }),
+    )
+    wrapper.unmount()
+    await render(fixture({ sent_employee_id: 22, sent_employee_name: '发送王师傅' }))
+    expect(wrapper.findComponent(TeamEmployeeInput).exists()).toBe(false)
+    expect(wrapper.text()).toContain('发送王师傅')
+    await submit()
+    expect(materialTransferApi.update).toHaveBeenCalled()
+    expect(vi.mocked(materialTransferApi.update).mock.calls[0]![1]).not.toHaveProperty(
+      'sent_employee_id',
+    )
+  })
   it('shows every document group on one page without tabs or page navigation', async () => {
     await render()
     expect(wrapper.findAll('.transfer-section h3').map((item) => item.text())).toEqual([

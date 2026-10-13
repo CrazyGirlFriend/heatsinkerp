@@ -4,6 +4,7 @@ from app import factory_overview
 from app.database import SessionLocal
 from app.models import MaterialTransfer, Team
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from test_external_outbound import dispatch
 from test_external_outbound import outbound as outbound
 from test_material_stock import receive_lot
@@ -339,7 +340,8 @@ def test_inventory_cards_count_remaining_serials_and_urgency_once(client, wareho
     assert d["serial_count"] == d["urgent_serial_count"] == 2
     assert d["balance"]["on_hand_quantity"] == 5 and d["balance"]["on_hand_weight"] == 0.505
     assert d["pending_incoming"] == {"batches": 0, "quantity": 0, "weight": 0}
-    result = client.post(
+    result = sender_post(
+        client,
         f"/api/team-materials/{warehouse['team']['id']}/dispatches",
         headers=warehouse["headers"],
         json={

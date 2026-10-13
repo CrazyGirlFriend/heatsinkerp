@@ -9,6 +9,7 @@ from app.inventory_events import InventoryChange, InventoryEvents, inventory_eve
 from app.models import User
 from fastapi.security import HTTPAuthorizationCredentials
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from sqlalchemy import select
 from test_inventory_stream import LiveRequest
 from test_material_transfers import _create, _setup_three_teams
@@ -179,7 +180,8 @@ def test_receipt_dispatch_loss_and_confirmation_identify_affected_teams(
     source, target = warehouse["team"]["id"], warehouse["other"]["id"]
     lot = intake(client, warehouse, **delivery).json()
     assert publish.call_args.args[0].team_ids == {source}
-    response = client.post(
+    response = sender_post(
+        client,
         f"/api/team-materials/{source}/dispatches",
         headers=warehouse["headers"],
         json={

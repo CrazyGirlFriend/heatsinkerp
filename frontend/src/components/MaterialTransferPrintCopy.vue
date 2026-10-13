@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import BarcodeCard from './BarcodeCard.vue'
-import { isWeightOnlyType, materialPurposeLabel, materialTypeLabel } from '@/types/materialTransfer'
+import {
+  materialSenderName,
+  isWeightOnlyType,
+  materialPurposeLabel,
+  materialTypeLabel,
+} from '@/types/materialTransfer'
 import {
   printMaterialValue,
   transferPrintProfile,
@@ -42,7 +47,7 @@ const totals = computed(() => transferPrintTotals(props.group.items))
           </tr>
           <tr>
             <th>{{ profile.senderLabel }}</th>
-            <td>{{ group.items[0]!.transferred_by || '—' }}</td>
+            <td>{{ materialSenderName(group.items[0]!) }}</td>
             <th>单据日期</th>
             <td>{{ formatDateTime(group.items[0]!.transferred_at).slice(0, 10) }}</td>
           </tr>

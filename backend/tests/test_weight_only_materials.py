@@ -5,6 +5,7 @@ from decimal import Decimal
 import pytest
 from app.database import SessionLocal
 from app.models import MaterialStockBalance, MaterialTransfer
+from sender_helpers import sender_post
 from test_quantity_adjustments import base, change, confirm, dispatch
 from test_serial_reallocations import reallocate
 from test_warehouse_receipts import intake  # noqa: F401
@@ -87,11 +88,13 @@ def test_direct_transfer_conversion_and_edit_cannot_introduce_pieces(client, war
         **measurement(kind),
     )
     assert (
-        client.post("/api/material-transfers", headers=s["other_headers"], json=body).status_code
+        sender_post(
+            client, "/api/material-transfers", headers=s["other_headers"], json=body
+        ).status_code
         == 422
     )
     body["quantity"] = 0
-    result = client.post("/api/material-transfers", headers=s["other_headers"], json=body)
+    result = sender_post(client, "/api/material-transfers", headers=s["other_headers"], json=body)
     assert result.status_code == 201, result.text
     row = result.json()
     url = "/api/material-transfers/" + row["batch_no"]
@@ -131,7 +134,8 @@ def test_direct_transfer_conversion_and_edit_cannot_introduce_pieces(client, war
 
 def test_legacy_counts_remain_readable_but_cannot_be_increased(client, warehouse):
     s = warehouse
-    response = client.post(
+    response = sender_post(
+        client,
         "/api/material-transfers",
         headers=s["other_headers"],
         json={

@@ -419,6 +419,10 @@ class MaterialTransfer(Base):
     created_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
+    sent_employee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("team_employees.id", name="fk_mt_sent_employee", ondelete="RESTRICT")
+    )
+    sent_employee_name: Mapped[str | None] = mapped_column(String(80))
     received_by: Mapped[str | None] = mapped_column(String(80))
     received_employee_id: Mapped[int | None] = mapped_column(
         ForeignKey("team_employees.id", name="fk_mt_received_employee", ondelete="RESTRICT")

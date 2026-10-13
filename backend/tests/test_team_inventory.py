@@ -6,6 +6,7 @@ import pytest
 from app.database import SessionLocal
 from app.models import MaterialTransfer, utcnow
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from test_material_transfers import _leader, _team
 from test_warehouse_classification import confirm, dispatch
 from test_warehouse_receipts import intake
@@ -19,7 +20,8 @@ def get_inventory(client, team_id, **params):
 
 
 def incoming(client, source_headers, target_headers, target_id, key, **overrides):
-    response = client.post(
+    response = sender_post(
+        client,
         "/api/material-transfers",
         headers=source_headers,
         json={
@@ -180,7 +182,8 @@ def test_seven_workshops_share_classified_inventory(client, warehouse, name):
         == 403
     )
     assert (
-        client.post(
+        sender_post(
+            client,
             "/api/material-transfers",
             headers=s["headers"],
             json={

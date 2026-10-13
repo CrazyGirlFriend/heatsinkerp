@@ -257,6 +257,8 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
         transferredBy.username,
       ) || null,
     transferred_at: textValue(raw.transferred_at, raw.created_at),
+    sent_employee_id: optionalInteger(raw.sent_employee_id, 1),
+    sent_employee_name: textValue(raw.sent_employee_name) || null,
     received_employee_id: optionalInteger(raw.received_employee_id, 1),
     received_employee_name: textValue(raw.received_employee_name) || null,
     received_by:

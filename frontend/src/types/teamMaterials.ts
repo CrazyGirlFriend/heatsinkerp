@@ -242,6 +242,7 @@ export interface DispatchLine extends SludgeMeasurement {
   transfer_specification?: string | null
 }
 export type CreateDispatch = {
+  sent_employee_id: number
   notes?: string | null
   idempotency_key: string
   lines: DispatchLine[]

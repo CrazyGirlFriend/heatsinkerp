@@ -11,7 +11,7 @@ import {
 describe('print grouping and pagination', () => {
   it('groups the same route/date/person but never combines different senders or destinations', () => {
     const items = dispatchFixture(5).items
-    items[1]!.transferred_by = '张三'
+    items[1]!.sent_employee_name = '张三'
     items[2]!.next_team = { ...items[2]!.next_team, id: 99 }
     items[3]!.source_team = { ...items[3]!.source_team, id: 98 }
     items[4]!.transferred_at = '2026-10-12T12:00:00Z'

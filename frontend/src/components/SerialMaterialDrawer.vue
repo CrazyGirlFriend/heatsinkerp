@@ -25,6 +25,7 @@ import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialTransferApi } from '@/services/materialTransferApi'
 import {
   materialSourceLabel,
+  materialSenderName,
   materialTypeLabel,
   type MaterialTransfer,
 } from '@/types/materialTransfer'
@@ -500,8 +501,10 @@ onBeforeUnmount(() => {
                 :status="row.status"
                 :entry-kind="row.entry_kind" /></template
           ></ElTableColumn>
-          <ElTableColumn label="登记人" min-width="120" show-overflow-tooltip
-            ><template #default="{ row }">{{ row.transferred_by || '—' }}</template></ElTableColumn
+          <ElTableColumn label="转料 / 登记人" min-width="120" show-overflow-tooltip
+            ><template #default="{ row }">{{
+              materialSenderName(row as MaterialTransfer)
+            }}</template></ElTableColumn
           >
           <ElTableColumn label="登记时间" min-width="180"
             ><template #default="{ row }">{{

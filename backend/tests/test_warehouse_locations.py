@@ -8,6 +8,7 @@ from uuid import uuid4
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from sqlalchemy import create_engine, inspect, text
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
@@ -16,7 +17,8 @@ from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 def dispatch(client, setup, source, key, *, returning=False):
     team = setup["other"] if returning else setup["team"]
     target = setup["team"] if returning else setup["other"]
-    response = client.post(
+    response = sender_post(
+        client,
         f"/api/team-materials/{team['id']}/outbound-batches",
         headers=setup["other_headers"] if returning else setup["headers"],
         json={

@@ -11,6 +11,7 @@ from alembic.operations import Operations
 from app.database import SessionLocal
 from app.models import MaterialTransfer
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from sqlalchemy import create_engine
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
@@ -27,7 +28,8 @@ def test_origin_date_follows_two_handoffs_and_revision_never_changes_stock(clien
     assert origin["can_edit_delivery"] is True
     assert origin["delivery_origin_batch_no"] == origin["batch_no"]
     dispatch_url = warehouse["url"].replace("/receipts", "/dispatches")
-    response = client.post(
+    response = sender_post(
+        client,
         dispatch_url,
         headers=warehouse["headers"],
         json={
@@ -54,7 +56,8 @@ def test_origin_date_follows_two_handoffs_and_revision_never_changes_stock(clien
         ).status_code
         == 200
     )
-    response = client.post(
+    response = sender_post(
+        client,
         f"/api/team-materials/{warehouse['other']['id']}/dispatches",
         headers=warehouse["other_headers"],
         json={
@@ -133,7 +136,8 @@ def test_origin_date_follows_two_handoffs_and_revision_never_changes_stock(clien
 def test_invalid_origin_requirement_is_rejected_atomically(client, warehouse, fields):
     assert intake(client, warehouse, **fields).status_code == 422
     assert client.get(warehouse["url"]).json()["total"] == 0
-    response = client.post(
+    response = sender_post(
+        client,
         "/api/material-transfers",
         headers=warehouse["headers"],
         json={
@@ -148,7 +152,8 @@ def test_invalid_origin_requirement_is_rejected_atomically(client, warehouse, fi
 
 
 def test_new_origin_date_and_voiding_remove_only_that_requirement(client, warehouse):
-    response = client.post(
+    response = sender_post(
+        client,
         "/api/material-transfers",
         headers=warehouse["headers"],
         json={
@@ -190,7 +195,8 @@ def test_two_origin_batches_keep_fifo_and_confirmed_shipment_dates(client, wareh
         delivery_quantity=20,
         idempotency_key="second-origin",
     ).json()
-    response = client.post(
+    response = sender_post(
+        client,
         warehouse["url"].replace("/receipts", "/dispatches"),
         headers=warehouse["headers"],
         json={

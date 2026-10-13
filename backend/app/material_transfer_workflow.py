@@ -49,6 +49,7 @@ AUDITED_FIELDS = (
         "status",
         "version",
         "created_by",
+        "sent_employee_name",
         "created_at",
         "received_by",
         "received_employee_name",
@@ -400,6 +401,8 @@ def material_transfer_dict(
         "weight_unit": "kg",
         "status": transfer.status,
         "notes": transfer.notes,
+        "sent_employee_id": transfer.sent_employee_id,
+        "sent_employee_name": transfer.sent_employee_name,
         "created_by": transfer.created_by,
         "created_by_user_id": transfer.created_by_user_id,
         "created_at": _utc(transfer.created_at),
@@ -443,6 +446,7 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
                         raise _conflict("idempotency key was used with a different payload")
                     return material_transfer_dict(prior, user)
 
+            employee = require_team_employee(db, source.id, payload.sent_employee_id, "转料人")
             target = _active_target(db, payload.next_team_id)
             if target.id == source.id:
                 raise HTTPException(422, "source and target teams must be different")
@@ -477,6 +481,8 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
                 notes=payload.notes,
                 idempotency_key=payload.idempotency_key,
                 request_hash=request_hash,
+                sent_employee_id=employee.id,
+                sent_employee_name=employee.name,
                 created_by=actor_name(user),
                 created_by_user_id=user.id,
             )
@@ -693,7 +699,7 @@ def void_material_transfer(db, batch_no: str, user: User) -> None:
         _record_event(db, transfer, user, "voided", before)
 
 
-def require_receipt_employee(db, team_id, employee_id):
+def require_team_employee(db, team_id, employee_id, label="接收人"):
     employee = db.scalar(
         select(TeamEmployee)
         .where(
@@ -705,7 +711,7 @@ def require_receipt_employee(db, team_id, employee_id):
         .execution_options(populate_existing=True)
     )
     if employee is None:
-        raise HTTPException(422, "请选择本班组启用的接收人；员工名单可在班组设置中维护")
+        raise HTTPException(422, f"请选择本班组启用的{label}；员工名单可在班组设置中维护")
     return employee
 
 
@@ -766,7 +772,7 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
                     transfer.warehouse_location = consume(
                         db, transfer.next_team, payload, user, identity=material_identity(transfer)
                     )
-            employee = require_receipt_employee(
+            employee = require_team_employee(
                 db, transfer.next_team_id, payload.received_employee_id
             )
             transfer.received_employee_id = employee.id

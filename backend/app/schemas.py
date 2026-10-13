@@ -202,6 +202,7 @@ class MaterialTransferCreate(
 ):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, extra="forbid")
 
+    sent_employee_id: int = Field(ge=1)
     serial_no: str = Field(min_length=1, max_length=80)
     next_team_id: int = Field(ge=1)
     purpose_id: int | None = Field(default=None, ge=1)
@@ -434,6 +435,8 @@ class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement
     created_at: datetime
     updated_at: datetime
     received_by: str | None
+    sent_employee_id: int | None = None
+    sent_employee_name: str | None = None
     received_employee_id: int | None = None
     received_employee_name: str | None = None
     received_by_user_id: int | None

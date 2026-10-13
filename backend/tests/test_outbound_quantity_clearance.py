@@ -10,6 +10,7 @@ from app.models import (
 )
 from fastapi import HTTPException
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from sqlalchemy import func, select
 from test_external_outbound import dispatch as external_dispatch
 from test_external_outbound import outbound as outbound  # noqa: F401
@@ -275,7 +276,8 @@ def test_external_final_shipment_clears_pieces_without_touching_other_lots(clien
 
 def test_final_weight_and_piece_clearance_frees_warehouse_slot(client, warehouse):
     lot = intake(client, warehouse, weight=10, **location(client, warehouse, "CLEAR-01")).json()
-    response = client.post(
+    response = sender_post(
+        client,
         f"/api/team-materials/{warehouse['team']['id']}/outbound-batches",
         headers=warehouse["headers"],
         json={

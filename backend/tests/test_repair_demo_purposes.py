@@ -6,6 +6,7 @@ from app.database import SessionLocal
 from app.models import MaterialTransfer, MaterialTransferEvent, Team, TeamPurpose
 from app.repair_demo_purposes import LEGACY_NAMES, protected_fingerprints, repair_demo_purposes
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from sqlalchemy import func, select
 from test_material_transfers import _leader
 
@@ -45,7 +46,8 @@ def demo(client):
         assert response.status_code == 201, response.text
         lot = response.json()
         for source, target in zip(route, route[1:] + [warehouse], strict=True):
-            response = client.post(
+            response = sender_post(
+                client,
                 f"/api/team-materials/{teams[source]}/dispatches",
                 headers=headers[source],
                 json={

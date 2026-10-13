@@ -8,6 +8,7 @@ from uuid import uuid4
 from app.database import SessionLocal
 from app.models import AdminAuditEvent, MaterialTransfer, WarehouseLocation, utcnow
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from sqlalchemy import func, select
 from test_warehouse_locations import dispatch, location
 from test_warehouse_receipts import intake
@@ -185,7 +186,8 @@ def production_source(client, setup):
 
 
 def return_rows(client, setup, source, key, selected, count=1):
-    return client.post(
+    return sender_post(
+        client,
         f"/api/team-materials/{setup['other']['id']}/outbound-batches",
         headers=setup["other_headers"],
         json={
@@ -294,14 +296,14 @@ def test_direct_transfer_and_edit_require_a_lease_and_preserve_assigned_slot(cli
         "idempotency_key": "direct",
         **selected,
     }
-    created = client.post(
-        "/api/material-transfers", headers=warehouse["other_headers"], json=payload
+    created = sender_post(
+        client, "/api/material-transfers", headers=warehouse["other_headers"], json=payload
     )
     assert created.status_code == 201, created.text
     transfer = created.json()
     assert (
-        client.post(
-            "/api/material-transfers", headers=warehouse["other_headers"], json=payload
+        sender_post(
+            client, "/api/material-transfers", headers=warehouse["other_headers"], json=payload
         ).json()["id"]
         == transfer["id"]
     )
@@ -320,7 +322,8 @@ def test_direct_transfer_and_edit_require_a_lease_and_preserve_assigned_slot(cli
         ).status_code
         == 200
     )
-    second = client.post(
+    second = sender_post(
+        client,
         "/api/material-transfers",
         headers=warehouse["other_headers"],
         json={
@@ -351,7 +354,8 @@ def test_direct_transfer_and_edit_require_a_lease_and_preserve_assigned_slot(cli
 def test_all_split_outgoings_release_slot_before_either_is_received(client, warehouse):
     origin = intake(client, warehouse, **location(client, warehouse, "A-01")).json()
     slot = client.get("/api/warehouse-locations").json()["items"][0]
-    response = client.post(
+    response = sender_post(
+        client,
         f"/api/team-materials/{warehouse['team']['id']}/outbound-batches",
         headers=warehouse["headers"],
         json={

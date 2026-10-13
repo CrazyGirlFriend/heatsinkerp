@@ -8,6 +8,7 @@ from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from historical_dispatch import historical_response
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from sqlalchemy import create_engine, inspect
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
@@ -18,7 +19,8 @@ def base(setup, workshop=False):
 
 
 def dispatch(client, setup, lines, workshop=False, **extra):
-    return client.post(
+    return sender_post(
+        client,
         base(setup, workshop) + "/dispatches",
         headers=setup["other_headers" if workshop else "headers"],
         json={

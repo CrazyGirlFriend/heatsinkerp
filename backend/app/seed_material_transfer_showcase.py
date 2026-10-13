@@ -26,14 +26,12 @@ FIRST_CONFIRM_KEY = "material-transfer-showcase:v1:first-confirm"
 SECOND_CREATE_KEY = "material-transfer-showcase:v1:second"
 
 
-def demo_receiving_employee(db, team_id):
+def demo_receiving_employee(db, team_id, name="演示收料员"):
     employee = db.scalar(
-        select(TeamEmployee).where(
-            TeamEmployee.team_id == team_id, TeamEmployee.name == "演示收料员"
-        )
+        select(TeamEmployee).where(TeamEmployee.team_id == team_id, TeamEmployee.name == name)
     )
     if employee is None:
-        employee = TeamEmployee(team_id=team_id, name="演示收料员", active=True)
+        employee = TeamEmployee(team_id=team_id, name=name, active=True)
         db.add(employee)
         db.flush()
     employee_id = employee.id
@@ -97,6 +95,7 @@ def seed_material_transfer_showcase(db) -> dict:
         first = create_material_transfer(
             db,
             MaterialTransferCreate(
+                sent_employee_id=demo_receiving_employee(db, source.team_id, "演示转料员"),
                 serial_no=DEMO_SERIAL_NO,
                 next_team_id=target.team_id,
                 quantity=24,
@@ -148,6 +147,7 @@ def seed_material_transfer_showcase(db) -> dict:
         second = create_material_transfer(
             db,
             MaterialTransferCreate(
+                sent_employee_id=demo_receiving_employee(db, second_source.team_id, "演示转料员"),
                 serial_no=DEMO_SERIAL_NO,
                 next_team_id=second_target.team_id,
                 quantity=24,

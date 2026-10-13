@@ -84,6 +84,7 @@ class DispatchLine(StockAmounts, WarehouseLocationChoice, SludgeMeasurement):
 
 class DispatchCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    sent_employee_id: int = Field(ge=1)
     next_team_id: int | None = Field(default=None, ge=1)
     entry_kind: str = Field(
         default="transfer", pattern="^(transfer|warehouse_outbound|inspection_shipment)$"
@@ -347,6 +348,9 @@ def create_dispatch(db, team_id, payload, user):
             if prior is not None:
                 _replay(prior, user, request_hash, "source_team_id")
                 return dispatch_dict(db, prior, user)
+            employee = workflow.require_team_employee(
+                db, source.id, payload.sent_employee_id, "转料人"
+            )
             target = None if external else workflow._active_target(db, payload.next_team_id)
             if target is not None and target.id == source.id:
                 raise HTTPException(422, "source and target teams must be different")
@@ -508,6 +512,8 @@ def create_dispatch(db, team_id, payload, user):
                     sludge_gross_weight=line.sludge_gross_weight,
                     sludge_content_percent=line.sludge_content_percent,
                     warehouse_location=location_name,
+                    sent_employee_id=employee.id,
+                    sent_employee_name=employee.name,
                     created_by=actor_name(user),
                     created_by_user_id=user.id,
                     history=[],

@@ -127,8 +127,8 @@ function choose(person: string) {
 }
 .person-trigger {
   width: 100%;
-  height: 36px;
-  min-height: 36px;
+  height: var(--el-component-size);
+  min-height: var(--el-component-size);
   padding-block: 0;
   border: 0;
   font: inherit;

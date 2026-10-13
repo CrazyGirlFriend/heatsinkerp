@@ -20,6 +20,9 @@ import {
   ElOption,
   ElSelect,
 } from 'element-plus'
+import TeamEmployeeInput from './TeamEmployeeInput.vue'
+import type { TeamEmployee } from '@/types/teamBusiness'
+import { materialSenderName } from '@/types/materialTransfer'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { MaterialTransferApiError, materialTransferApi } from '@/services/materialTransferApi'
 import SludgeWeightFields from './SludgeWeightFields.vue'
@@ -62,6 +65,7 @@ const authStore = useAuthStore()
 const teamStore = useTeamDirectoryStore()
 const saving = ref(false),
   locationBusy = ref(false)
+const sender = ref<TeamEmployee | null>(null)
 const formError = ref('')
 const transferForm = ref<InstanceType<typeof ElForm>>()
 const validationAttempted = ref(false)
@@ -224,6 +228,7 @@ const validationIssues = computed(() => {
   const serialNo = form.serialNo.trim(),
     quantity = Number(enteredQuantity.value),
     weight = Number(form.weight)
+  if (!isEditing.value && !sender.value) add('sender', '请选择转料人')
   if (!serialNo) add('serialNo', '请输入流水号')
   else if (serialNo.length > 80) add('serialNo', '流水号不能超过 80 个字符')
   if ((!isEditing.value || toWarehouse.value) && !form.materialType)
@@ -306,6 +311,7 @@ function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
   specificationValidity.finished_specification = specificationValidity.transfer_specification = true
   openedSourceTeamId.value = authStore.currentUser?.team_id ?? null
   editingSnapshot.value = transfer
+  sender.value = null
   form.warehouseLocation = transfer?.warehouse_location || ''
   form.warehouseLocationKey = ''
   form.serialNo = transfer?.serial_no ?? ''
@@ -361,7 +367,7 @@ function locateError() {
   const input =
     emptyDimension ||
     item.querySelector<HTMLElement>(
-      'input:not([disabled]):not([type="hidden"]), textarea:not([disabled])',
+      'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), button:not([disabled])',
     )
   input?.focus({ preventScroll: true })
 }
@@ -449,7 +455,7 @@ async function submit(): Promise<void> {
       ]),
     ),
   }
-  const requestFingerprint = JSON.stringify(payload)
+  const requestFingerprint = JSON.stringify({ ...payload, sent_employee_id: sender.value?.id })
   if (
     !props.transfer &&
     (!createRequestKey.value || createRequestFingerprint.value !== requestFingerprint)
@@ -487,7 +493,11 @@ async function submit(): Promise<void> {
               }),
           ...materialTransferVersion(editingSnapshot.value),
         })
-      : await materialTransferApi.create({ ...payload, idempotency_key: createRequestKey.value })
+      : await materialTransferApi.create({
+          sent_employee_id: sender.value!.id,
+          ...payload,
+          idempotency_key: createRequestKey.value,
+        })
     if (epoch !== formGeneration || !props.modelValue) return
     createRequestKey.value = ''
     createRequestFingerprint.value = ''
@@ -613,6 +623,22 @@ onBeforeUnmount(() => {
       >
         <h3 id="transfer-handoff-heading">转料信息</h3>
         <div class="transfer-section-fields dialog-form-grid">
+          <ElFormItem
+            label="转料人"
+            :required="!isEditing"
+            :error="fieldErrors.sender"
+            data-validation-field="sender"
+          >
+            <span v-if="editingSnapshot">{{ materialSenderName(editingSnapshot) }}</span>
+            <TeamEmployeeInput
+              v-else-if="modelValue && sourceTeam"
+              v-model="sender"
+              :team-id="Number(sourceTeam.id)"
+              label="转料人"
+              :disabled="!canSubmit"
+              :invalid="!!fieldErrors.sender"
+            />
+          </ElFormItem>
           <ElFormItem
             label="流水号"
             required

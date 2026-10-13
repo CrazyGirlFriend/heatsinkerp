@@ -6,6 +6,7 @@ import {
   materialDocumentTitle,
   materialPurposeLabel,
   materialSourceLabel,
+  materialSenderName,
   materialTransferStatusLabel,
   receiptSourceLabel,
   type MaterialTransfer,
@@ -82,19 +83,19 @@ export function transferPrintProfile(item: MaterialTransfer) {
     warehouse_outbound: [
       `${verb}班组`,
       `${verb}去向`,
-      '登记人',
+      '转料人',
       `${verb}留存联`,
       `${verb}凭证联`,
-      '登记人签字',
+      '转料人签字',
       `${verb}确认人签字`,
     ],
     inspection_shipment: [
       `${verb}班组`,
       `${verb}去向`,
-      '登记人',
+      '转料人',
       `${verb}留存联`,
       `${verb}凭证联`,
-      '登记人签字',
+      '转料人签字',
       `${verb}确认人签字`,
     ],
   }
@@ -312,7 +313,8 @@ export function groupTransferPrintItems(items: MaterialTransfer[]): TransferPrin
       profile.source,
       item.next_team.id,
       profile.target,
-      item.transferred_by || '',
+      item.sent_employee_id ?? null,
+      materialSenderName(item),
       formatDateTime(item.transferred_at).slice(0, 10),
     ])
     if (!groups.has(key)) groups.set(key, { key, items: [], blocks: [] })

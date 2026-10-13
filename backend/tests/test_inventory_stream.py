@@ -13,6 +13,7 @@ from app.models import Team
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from test_access_gate import make_gate
 from test_external_outbound import dispatch
 from test_external_outbound import outbound as outbound
@@ -131,7 +132,8 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
             stocked = await snapshot()
             assert stocked["totals"]["on_hand_quantity"] == 100
             response = await asyncio.to_thread(
-                client.post,
+                sender_post,
+                client,
                 f"/api/team-materials/{warehouse['team']['id']}/dispatches",
                 headers=warehouse["headers"],
                 json={
@@ -185,7 +187,8 @@ def test_stream_emits_initial_state_then_actual_committed_receipt_dispatch_and_l
             assert urgent["teams"][0]["urgent_serial_count"] == 1
             # A new outbound draft and its void both push their committed state.
             response = await asyncio.to_thread(
-                client.post,
+                sender_post,
+                client,
                 f"/api/team-materials/{warehouse['team']['id']}/dispatches",
                 headers=warehouse["headers"],
                 json={

@@ -9,6 +9,7 @@ from app.legacy_models import Operation, OperationReport, WorkOrder
 from app.models import MaterialTransfer
 from app.seed_material_transfer_showcase import seed_material_transfer_showcase
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from sqlalchemy import create_engine, inspect, select, text
 
 
@@ -66,7 +67,8 @@ def _create(client, setup, **overrides):
         "idempotency_key": "create-001",
         **overrides,
     }
-    return client.post(
+    return sender_post(
+        client,
         "/api/material-transfers",
         json=payload,
         headers=setup["source_headers"],
@@ -242,7 +244,8 @@ def test_admin_is_read_only_and_source_only_can_void_pending_transfer(client):
         _create(client, setup, serial_no="ADMIN-CREATE", idempotency_key="admin-create").status_code
         == 201
     )
-    admin_attempt = client.post(
+    admin_attempt = sender_post(
+        client,
         "/api/material-transfers",
         json={
             "serial_no": "ADMIN-DENIED",
@@ -327,7 +330,8 @@ def test_creation_idempotency_and_validation(client):
         "operation_report_id": 999,
     }
     assert (
-        client.post(
+        sender_post(
+            client,
             "/api/material-transfers",
             json=payload,
             headers=setup["source_headers"],
@@ -715,7 +719,8 @@ def test_list_filters_pagination_and_chronological_serial_trace(client):
         headers=setup["target_headers"],
     )
     assert confirm.status_code == 200
-    second = client.post(
+    second = sender_post(
+        client,
         "/api/material-transfers",
         json={
             "serial_no": "SERIAL-001",

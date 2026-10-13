@@ -12,6 +12,7 @@ from app.models import (
 )
 from app.schemas import MaterialTransferResponse
 from receipt_helpers import receipt_post
+from sender_helpers import sending_employee_id
 from sqlalchemy import func, select
 from test_stock_balances import reconcile
 from test_transfer_list_loading import read_statements
@@ -29,8 +30,9 @@ def test_new_dispatch_reuses_created_rows_but_replay_reads_current_state(
         {"source_transfer_id": origin["id"], "quantity": 1, "weight": ".100"}
         for _ in range(line_count)
     ]
+    sender_id = sending_employee_id(client, warehouse["headers"])
     with read_statements() as statements:
-        created = dispatch(client, warehouse, lines)
+        created = dispatch(client, warehouse, lines, sent_employee_id=sender_id)
     assert created.status_code == 201, created.text
     assert len(created.json()["items"]) == line_count
     assert not any("WHERE material_transfers.dispatch_id =" in sql for sql in statements)
@@ -86,11 +88,13 @@ def test_dispatch_shared_reads_do_not_grow_with_line_count(client, warehouse, li
         }
         for index in range(line_count)
     ]
+    sender_id = sending_employee_id(client, warehouse["headers"])
     with read_statements() as statements:
-        response = dispatch(client, warehouse, lines)
+        response = dispatch(client, warehouse, lines, sent_employee_id=sender_id)
     assert response.status_code == 201, response.text
     # Latest processing specifications add one shared read, never one per line.
-    assert len(statements) <= 13, len(statements)
+    # Validate the chosen employee once per submission, independent of line count.
+    assert len(statements) <= 14, len(statements)
     assert sum("FROM material_quantity_adjustments" in sql for sql in statements) == 1
     assert any("LEFT OUTER JOIN serial_urgencies" in sql for sql in statements)
     assert not any("material_transfer_events" in sql for sql in statements)
@@ -180,8 +184,9 @@ def test_replay_loads_response_relationships_in_batches(client, warehouse, line_
     ]
     created = dispatch(client, warehouse, lines)
     assert created.status_code == 201, created.text
+    sender_id = sending_employee_id(client, warehouse["headers"])
     with read_statements() as statements:
-        replay = dispatch(client, warehouse, lines)
+        replay = dispatch(client, warehouse, lines, sent_employee_id=sender_id)
     assert replay.status_code == 201, replay.text
     assert replay.json() == created.json()
     assert len(statements) <= 9, len(statements)

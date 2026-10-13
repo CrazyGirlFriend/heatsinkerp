@@ -87,6 +87,7 @@ def seed_team_material_showcase(db, password):
         actor, target, lots, key, *, quantity=10, weight="1.000", confirm=False, external=None
     ):
         payload = DispatchCreate(
+            sent_employee_id=demo_receiving_employee(db, actor.team_id, "演示转料员"),
             next_team_id=None if external else target.team_id,
             entry_kind=external or "transfer",
             external_destination="测试客户 A" if external else None,

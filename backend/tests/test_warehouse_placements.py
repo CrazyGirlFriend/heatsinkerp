@@ -7,6 +7,7 @@ from threading import Barrier
 from app.database import SessionLocal
 from app.models import WarehousePlacement
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from sqlalchemy import select
 from test_transfer_list_loading import read_statements
 from test_warehouse_location_locks import claim, create_slot, state
@@ -44,7 +45,8 @@ def test_reused_slot_survives_void_of_old_batch_and_can_assign_return_elsewhere(
     assert stock(client, warehouse, source)["on_hand_quantity"] == 0
     assert stock(client, warehouse, source)["owned_quantity"] == 100
     assert stock(client, warehouse, source)["warehouse_positions"] == []
-    excess = client.post(
+    excess = sender_post(
+        client,
         f"/api/team-materials/{warehouse['team']['id']}/outbound-batches",
         headers=warehouse["headers"],
         json={
@@ -203,14 +205,14 @@ def test_external_submission_completes_and_releases_physical_slot_once(client, w
         ],
     }
     url = f"/api/team-materials/{warehouse['team']['id']}/outbound-batches"
-    result = client.post(url, headers=warehouse["headers"], json=body)
+    result = sender_post(client, url, headers=warehouse["headers"], json=body)
     assert result.status_code == 201, result.text
     assert result.json()["items"][0]["status"] == "dispatched"
     row = stock(client, warehouse, source)
     assert row["owned_quantity"] == 0 and row["warehouse_positions"] == []
     assert row["unassigned_weight"] == 0 and row["dispatched_weight"] == source["weight"]
     assert client.get("/api/warehouse-locations").json()["items"][0]["status"] == "available"
-    assert client.post(url, headers=warehouse["headers"], json=body).json() == result.json()
+    assert sender_post(client, url, headers=warehouse["headers"], json=body).json() == result.json()
 
 
 def test_concurrent_assignments_only_one_batch_claims_slot(client, warehouse):
@@ -251,9 +253,9 @@ def test_three_selected_materials_are_three_batches_and_types_cannot_be_changed(
         ],
     }
     bad = {**body, "lines": [{**body["lines"][0], "material_type": "finished"}]}
-    assert client.post(url, headers=warehouse["headers"], json=bad).status_code == 422
+    assert sender_post(client, url, headers=warehouse["headers"], json=bad).status_code == 422
     with read_statements() as statements:
-        result = client.post(url, headers=warehouse["headers"], json=body)
+        result = sender_post(client, url, headers=warehouse["headers"], json=body)
     assert result.status_code == 201, result.text
     assert sum("FROM warehouse_placements" in sql for sql in statements) == 1
     rows = result.json()["items"]
@@ -262,7 +264,7 @@ def test_three_selected_materials_are_three_batches_and_types_cannot_be_changed(
         row["barcode_payload"] == row["batch_no"] and row["dispatch_no"] is None for row in rows
     )
     assert all(stock(client, warehouse, source)["warehouse_positions"] == [] for source in sources)
-    assert client.post(url, headers=warehouse["headers"], json=body).json() == result.json()
+    assert sender_post(client, url, headers=warehouse["headers"], json=body).json() == result.json()
     assert (
         client.patch(
             "/api/material-transfers/" + rows[0]["batch_no"],

@@ -25,6 +25,8 @@ import OutboundQuantityClearance from './OutboundQuantityClearance.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
+import TeamEmployeeInput from './TeamEmployeeInput.vue'
+import type { TeamEmployee } from '@/types/teamBusiness'
 import { processingProgressLabels } from '@/types/materialProcessing'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { useAuthStore } from '@/stores/auth'
@@ -111,6 +113,7 @@ const form = reactive({
   notes: '',
   reason: '',
 })
+const sender = ref<TeamEmployee | null>(null)
 const saving = ref(false)
 const refreshing = ref(false)
 const errorMessage = ref('')
@@ -432,6 +435,7 @@ function splitLine(index: number) {
 }
 const validation = useDialogValidation(() => {
   const issues: Record<string, string> = {}
+  if (!isLoss.value && !sender.value) issues.sender = '请选择转料人'
   if (
     external.value &&
     (!form.externalDestination.trim() || form.externalDestination.trim().length > 240)
@@ -529,6 +533,7 @@ watch(
     form.externalDestination = ''
     form.notes = ''
     form.reason = ''
+    sender.value = null
     Object.keys(clearanceReasons).forEach((key) => delete clearanceReasons[key])
     Object.keys(clearanceSelected).forEach((key) => delete clearanceSelected[key])
     errorMessage.value = ''
@@ -663,6 +668,7 @@ async function submit() {
     reason: form.reason.trim(),
   }
   const dispatchBody: Omit<CreateDispatch, 'idempotency_key'> = {
+    sent_employee_id: sender.value?.id ?? 0,
     ...(isExternalEntryKind(form.entryKind)
       ? { entry_kind: form.entryKind, external_destination: form.externalDestination.trim() }
       : { next_team_id: Number(form.nextTeamId) }),
@@ -779,6 +785,16 @@ async function submit() {
       <section v-if="!isLoss" class="dialog-form-section">
         <h3>收发信息</h3>
         <div class="dialog-form-grid">
+          <ElFormItem label="转料人" :error="fieldErrors.sender" required>
+            <TeamEmployeeInput
+              v-if="modelValue"
+              v-model="sender"
+              :team-id="teamId"
+              label="转料人"
+              :disabled="busy || !canWrite"
+              :invalid="!!fieldErrors.sender"
+            />
+          </ElFormItem>
           <ElFormItem v-if="!isLoss && externalOption" label="出库方式" class="dialog-field-wide">
             <ElRadioGroup v-model="form.entryKind" aria-label="出库方式"
               ><ElRadioButton value="transfer">内部转料</ElRadioButton

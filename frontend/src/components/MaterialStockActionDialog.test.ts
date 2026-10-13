@@ -8,6 +8,7 @@ import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
+import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import type { MaterialDispatch, MaterialLoss, StockBatch } from '@/types/teamMaterials'
 const state = vi.hoisted(() => ({
@@ -48,6 +49,9 @@ function source(id = 10, type: 'semi_finished' | null = 'semi_finished'): StockB
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([
+    { id: 22, team_id: 2, name: '发送王师傅', active: true, version: 1 },
+  ])
   vi.spyOn(teamMaterialApi, 'warehouseLocations').mockResolvedValue({ items: [] })
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([])
   state.auth = reactive({
@@ -77,6 +81,17 @@ async function render(mode: 'dispatch' | 'loss' = 'dispatch', sources = [source(
     global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
   })
   await flushPromises()
+  const picker = wrapper.findComponent(TeamEmployeeInput)
+  if (picker.exists()) {
+    picker.vm.$emit('update:modelValue', {
+      id: 22,
+      team_id: 2,
+      name: '发送王师傅',
+      active: true,
+      version: 1,
+    })
+    await flushPromises()
+  }
 }
 async function submit() {
   await wrapper
@@ -91,6 +106,36 @@ async function destination(id = 3) {
 }
 
 describe('source batch dispatch and loss drafts', () => {
+  it('requires a sender from the team picker and submits one employee for all lines', async () => {
+    await render()
+    await destination()
+    const picker = wrapper.getComponent(TeamEmployeeInput)
+    picker.vm.$emit('update:modelValue', null)
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    expect(wrapper.get('button[aria-label="转料人"]').attributes('aria-invalid')).toBe('true')
+    await wrapper.get('button[aria-label="转料人"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('input[aria-label="搜索转料人"]').setValue('王')
+    await wrapper.get('.person-choice').trigger('click')
+    await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ sent_employee_id: 22, lines: expect.any(Array) }),
+    )
+    expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].lines).toHaveLength(2)
+  })
+  it('clears the selected sender when the outbound form is reopened', async () => {
+    await render()
+    await wrapper.setProps({ modelValue: false })
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+    expect(wrapper.get('button[aria-label="转料人"]').text()).toContain('请选择转料人')
+  })
+  it('does not ask for a sending employee when registering a loss', async () => {
+    await render('loss')
+    expect(wrapper.findComponent(TeamEmployeeInput).exists()).toBe(false)
+  })
   it('shares the existing tolerance across sibling outputs once instead of granting one kg per child', async () => {
     const first = source(),
       second = source(11)
@@ -175,7 +220,10 @@ describe('source batch dispatch and loss drafts', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('账面仍有 20 件')
     await wrapper.get('[aria-label="TL10清零剩余件数"] input').setValue(true)
-    wrapper.getComponent(ProcessingPersonInput).vm.$emit('update:modelValue', '王师傅')
+    wrapper
+      .findAllComponents(ProcessingPersonInput)
+      .find((picker) => picker.props('label') === 'TL10加工人')!
+      .vm.$emit('update:modelValue', '王师傅')
     await submit()
     expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1]).toMatchObject({
       quantity_adjustments: [{ quantity: 120 }],
@@ -239,11 +287,15 @@ describe('source batch dispatch and loss drafts', () => {
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
     expect(
       wrapper
-        .getComponent(ProcessingPersonInput)
+        .findAllComponents(ProcessingPersonInput)
+        .find((picker) => picker.props('label') === 'TL10加工人')!
         .element.closest('.el-form-item')
         ?.classList.contains('is-error'),
     ).toBe(true)
-    wrapper.getComponent(ProcessingPersonInput).vm.$emit('update:modelValue', '王师傅')
+    wrapper
+      .findAllComponents(ProcessingPersonInput)
+      .find((picker) => picker.props('label') === 'TL10加工人')!
+      .vm.$emit('update:modelValue', '王师傅')
     await submit()
     expect(
       vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].quantity_adjustments,
@@ -440,6 +492,13 @@ describe('source batch dispatch and loss drafts', () => {
     )
     await wrapper.setProps({ modelValue: false })
     await wrapper.setProps({ modelValue: true })
+    wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:modelValue', {
+      id: 22,
+      team_id: 2,
+      name: '发送王师傅',
+      active: true,
+      version: 1,
+    })
     await destination()
     wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 80)
     await flushPromises()
@@ -606,7 +665,10 @@ describe('source batch dispatch and loss drafts', () => {
       .findAllComponents(ElInputNumber)
       .find((input) => input.props('ariaLabel')?.endsWith('加工后未转出件数'))!
       .vm.$emit('update:modelValue', 120)
-    wrapper.getComponent(ProcessingPersonInput).vm.$emit('update:modelValue', '王师傅')
+    wrapper
+      .findAllComponents(ProcessingPersonInput)
+      .find((picker) => picker.props('label') === 'TL10加工人')!
+      .vm.$emit('update:modelValue', '王师傅')
     await submit()
     expect(change).not.toHaveBeenCalled()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
@@ -865,6 +927,7 @@ describe('source batch dispatch and loss drafts', () => {
     inputs[3]!.vm.$emit('update:modelValue', 1.005)
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(2, {
+      sent_employee_id: 22,
       next_team_id: 3,
       notes: null,
       idempotency_key: expect.any(String),

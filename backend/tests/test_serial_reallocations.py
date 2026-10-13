@@ -4,6 +4,7 @@ import pytest
 from app.database import SessionLocal
 from app.models import MaterialStockBalance, MaterialTransfer
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from test_material_transfers import _leader
 from test_shared_warehouse_locations import reserve
 from test_warehouse_location_locks import state
@@ -30,7 +31,8 @@ def reallocate(client, setup, lot, **values):
 
 def test_received_production_lot_reallocation_keeps_both_serial_traces(client, warehouse):
     lot = intake(client, warehouse, serial_no="TRACE-A").json()
-    sent = client.post(
+    sent = sender_post(
+        client,
         f"/api/team-materials/{warehouse['team']['id']}/dispatches",
         headers=warehouse["headers"],
         json={
@@ -260,7 +262,8 @@ def test_reallocated_finished_shipments_use_target_serial_input_without_inflatin
 ):
     lot = intake(client, warehouse, serial_no="A", material_type="finished", weight=20).json()
     target = reallocate(client, warehouse, lot).json()
-    sent = client.post(
+    sent = sender_post(
+        client,
         f"/api/team-materials/{warehouse['team']['id']}/dispatches",
         headers=warehouse["headers"],
         json={

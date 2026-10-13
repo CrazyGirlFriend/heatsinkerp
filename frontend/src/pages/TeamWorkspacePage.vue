@@ -61,6 +61,7 @@ import {
   isExternalEntryKind,
   materialEntryLabel,
   materialSourceLabel,
+  materialSenderName,
   materialPurposeLabel,
   receiptSourceLabel,
   materialTypeOptions,
@@ -1390,7 +1391,7 @@ onBeforeUnmount(() => {
                   >
                   <ElTableColumn label="转出人" min-width="100" show-overflow-tooltip
                     ><template #default="{ row }">{{
-                      row.transferred_by || '—'
+                      materialSenderName(asTransfer(row))
                     }}</template></ElTableColumn
                   >
                   <ElTableColumn label="转出时间" min-width="170" show-overflow-tooltip
@@ -1607,9 +1608,9 @@ onBeforeUnmount(() => {
                         :entry-kind="row.entry_kind"
                         outgoing /></template
                   ></ElTableColumn>
-                  <ElTableColumn label="登记人" min-width="100" show-overflow-tooltip
+                  <ElTableColumn label="转料 / 登记人" min-width="120" show-overflow-tooltip
                     ><template #default="{ row }">{{
-                      row.transferred_by || '—'
+                      materialSenderName(asTransfer(row))
                     }}</template></ElTableColumn
                   >
                   <ElTableColumn label="登记时间" min-width="170" show-overflow-tooltip

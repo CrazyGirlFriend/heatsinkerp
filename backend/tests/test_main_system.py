@@ -13,6 +13,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models import MaterialTransfer
 from app.schemas import MaterialDocumentFields
+from sender_helpers import sender_post
 from sqlalchemy import func, select
 from test_warehouse_receipts import warehouse as warehouse
 
@@ -246,7 +247,8 @@ def test_intake_snapshots_full_master_and_retries_without_upstream(client, wareh
     )
     assert client.get(warehouse["url"]).json()["total"] == 1
     # Existing dispatch workflow inherits all customer fields without another main-system request.
-    dispatched = client.post(
+    dispatched = sender_post(
+        client,
         f"/api/team-materials/{warehouse['team']['id']}/dispatches",
         headers=warehouse["headers"],
         json={

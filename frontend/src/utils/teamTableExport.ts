@@ -5,6 +5,7 @@ import {
   materialEntryLabel,
   materialPurposeLabel,
   materialSourceLabel,
+  materialSenderName,
   materialTransferStatusLabel,
   materialTypeLabel,
   receiptSourceLabel,
@@ -73,10 +74,11 @@ export function transferExportFields(
         ]
       : [
           field(
-            'transferred_by',
-            section === 'pending' ? '转出人' : '登记人',
-            (row) => row.transferred_by,
+            'sent_employee_name',
+            section === 'pending' ? '转料人' : '转料 / 登记人',
+            materialSenderName,
           ),
+          field('transferred_by', '操作账号', (row) => row.transferred_by),
           field('transferred_at', section === 'pending' ? '转出时间' : '登记时间', (row) =>
             formatDateTime(row.transferred_at),
           ),

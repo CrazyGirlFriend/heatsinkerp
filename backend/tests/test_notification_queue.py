@@ -10,6 +10,7 @@ from app.main import app
 from app.models import MaterialStockBalance, NotificationOutbox, utcnow
 from app.notification_queue import NotificationService, claim, complete, prune_published
 from fastapi.security import HTTPAuthorizationCredentials
+from sender_helpers import sender_post
 from sqlalchemy import func, select
 from test_inventory_stream import LiveRequest
 from test_warehouse_receipts import intake  # noqa: F401
@@ -65,7 +66,8 @@ def test_many_flushes_in_one_dispatch_emit_one_committed_notification(
 ):
     lot = intake(client, warehouse).json()
     monkeypatch.setattr(app.state.notifications.transport, "ready", False)
-    response = client.post(
+    response = sender_post(
+        client,
         f"/api/team-materials/{warehouse['team']['id']}/dispatches",
         headers=warehouse["headers"],
         json={

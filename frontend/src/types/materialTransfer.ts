@@ -182,6 +182,8 @@ export interface MaterialTransfer
   weight_unit: 'kg' | string
   status: MaterialTransferStatus
   notes: string | null
+  sent_employee_id?: number | null
+  sent_employee_name?: string | null
   transferred_by: string | null
   transferred_at: string
   received_by: string | null
@@ -265,6 +267,7 @@ export interface CreateMaterialTransferPayload
   warehouse_location?: string | null
   warehouse_location_reservation_key?: string | null
   purpose_id?: number | null
+  sent_employee_id: number
   serial_no: string
   next_team_id: EntityId
   quantity: number
@@ -279,7 +282,7 @@ export interface OutboundQuantityClearance {
   reason?: string
 }
 export type UpdateMaterialTransferPayload = Partial<
-  Omit<CreateMaterialTransferPayload, 'idempotency_key'>
+  Omit<CreateMaterialTransferPayload, 'idempotency_key' | 'sent_employee_id'>
 > & { expected_version?: number; quantity_clearance?: OutboundQuantityClearance }
 
 export interface ConfirmMaterialTransferPayload {
@@ -291,6 +294,12 @@ export interface ConfirmMaterialTransferPayload {
 
 export function materialTypeLabel(type: MaterialType | string | null | undefined): string {
   return materialTypeOptions.find((option) => option.value === type)?.label ?? (type || '未填写')
+}
+
+export function materialSenderName(transfer: MaterialTransfer): string {
+  return !transfer.entry_kind || transfer.entry_kind === 'transfer' || isExternalTransfer(transfer)
+    ? transfer.sent_employee_name || '未登记'
+    : transfer.transferred_by || '—'
 }
 
 export function materialTransferNotesLabel(transfer: MaterialTransfer): string {

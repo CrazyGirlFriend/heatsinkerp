@@ -6,6 +6,7 @@ import pytest
 from app.database import SessionLocal
 from app.models import WarehouseLocation
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from sqlalchemy import select
 from test_warehouse_location_locks import create_slot, production_source, return_rows, state
 from test_warehouse_locations import dispatch, location
@@ -141,7 +142,8 @@ def test_manual_placement_adds_same_lot_and_compatible_lot_with_versions(client,
 def test_mixed_types_in_one_bulk_submit_roll_back_every_line_and_keep_lease(client, warehouse):
     source = production_source(client, warehouse)
     chosen = location(client, warehouse, "A-01", headers=warehouse["other_headers"])
-    response = client.post(
+    response = sender_post(
+        client,
         f"/api/team-materials/{warehouse['other']['id']}/outbound-batches",
         headers=warehouse["other_headers"],
         json={

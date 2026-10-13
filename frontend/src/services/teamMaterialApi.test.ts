@@ -203,6 +203,7 @@ describe('team material API contract', () => {
     const payload = {
       entry_kind: 'inspection_shipment' as const,
       external_destination: '客户仓库',
+      sent_employee_id: 22,
       idempotency_key: 'same-external-group',
       lines: [{ source_transfer_id: 9, quantity: 4, weight: 0.005 }],
     }
@@ -360,6 +361,7 @@ describe('team material API contract', () => {
   it('passes idempotency and untouched source lines atomically and retains conflict status', async () => {
     const payload = {
       next_team_id: 3,
+      sent_employee_id: 22,
       idempotency_key: 'unchanged-retry',
       lines: [
         { source_transfer_id: 5, quantity: 0, weight: 1.005 },

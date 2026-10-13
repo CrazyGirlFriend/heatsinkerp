@@ -35,7 +35,9 @@ it.each(['incoming', 'outgoing'])(
       weight: 1.234,
       source_team: { id: 1, name: '库房' },
       next_team: { id: 4, name: '研磨' },
-      transferred_by: '张师傅',
+      transferred_by: '开单账号',
+      sent_employee_id: 7,
+      sent_employee_name: '张师傅',
       transferred_at: '2026-09-27T00:00:00Z',
     })
     vi.spyOn(teamMaterialApi, 'serials').mockResolvedValue({
@@ -78,7 +80,7 @@ it.each(['incoming', 'outgoing'])(
         '件数',
         '重量 (kg)',
         '状态',
-        '登记人',
+        '转料 / 登记人',
         '登记时间',
       ])
       expect(

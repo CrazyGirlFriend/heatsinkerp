@@ -7,6 +7,7 @@ import pytest
 from app.database import SessionLocal
 from app.models import MaterialTransfer, NotificationOutbox, SerialDeliveryPlan, Team
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from sqlalchemy import select
 from test_external_outbound import confirm
 from test_external_outbound import legacy_dispatch as dispatch
@@ -226,7 +227,8 @@ def test_stock_axes_follow_configured_teams_and_effective_materials(client, ware
         client, warehouse, material_name="特殊牌号 A", idempotency_key="axis-first"
     ).json()
     # A different grade may have no balance yet, but is already in the system.
-    pending = client.post(
+    pending = sender_post(
+        client,
         "/api/material-transfers",
         headers=warehouse["headers"],
         json={

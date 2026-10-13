@@ -142,14 +142,14 @@ def run():
     def received(key):
         with SessionLocal() as db:
             created = workflow.create_material_transfer(db, MaterialTransferCreate(
-                serial_no=key, next_team_id=2, material_name="铜钼", material_type="semi_finished",
+                sent_employee_id=1, serial_no=key, next_team_id=2, material_name="铜钼", material_type="semi_finished",
                 quantity=100, weight=Decimal("10.000"), idempotency_key=key), users[1])
         with SessionLocal() as db:
             return workflow.confirm_material_transfer(db, created["batch_no"],
                 MaterialReceiptConfirm(idempotency_key=f"receive-{key}", received_employee_id=2), users[2])
 
     def outgoing(lot, key, quantity=60):
-        payload = stock.DispatchCreate(next_team_id=3, idempotency_key=key, lines=[{
+        payload = stock.DispatchCreate(sent_employee_id=2, next_team_id=3, idempotency_key=key, lines=[{
             "source_transfer_id": lot["id"], "quantity": quantity, "weight": Decimal(quantity) / 10}])
         return lambda db: stock.create_dispatch(db, 2, payload, users[2])
 
@@ -186,7 +186,7 @@ def run():
         lost(lot2, "atomic-loss", 95)(db)
     with SessionLocal() as db:
         try:
-            stock.create_dispatch(db, 2, stock.DispatchCreate(next_team_id=3, idempotency_key="atomic-fail", lines=[
+            stock.create_dispatch(db, 2, stock.DispatchCreate(sent_employee_id=2, next_team_id=3, idempotency_key="atomic-fail", lines=[
                 {"source_transfer_id": lot1["id"], "quantity": 10, "weight": 1},
                 {"source_transfer_id": lot2["id"], "quantity": 10, "weight": 1}]), users[2])
             raise AssertionError("Expected whole submission rejection")
@@ -206,6 +206,7 @@ def run():
     with SessionLocal.begin() as db:
         db.add(Team(id=4, code="FACTORY-WAREHOUSE", name="库房", kind="warehouse", active=True))
         db.flush()
+        db.add(TeamEmployee(id=4, team_id=4, name="转料员4", active=True))
         db.add(User(id=4, username="qa-warehouse", display_name="隔离库房班组长", role="TEAM", team_id=4,
                     password_hash="NO-LOGIN-DISPOSABLE-TEST", active=True))
     with SessionLocal() as db:
@@ -239,7 +240,7 @@ def run():
         results[key] = [row["status"] for row in raced]
 
     def external(lot, key, quantity=60):
-        payload = stock.DispatchCreate(entry_kind="inspection_shipment", external_destination="并发测试客户",
+        payload = stock.DispatchCreate(sent_employee_id=2, entry_kind="inspection_shipment", external_destination="并发测试客户",
             idempotency_key=key, lines=[{"source_transfer_id": lot["id"], "quantity": quantity, "weight": Decimal(quantity)/10}])
         return lambda db: stock.create_dispatch(db, 2, payload, users[2])
 
@@ -284,13 +285,13 @@ def run():
         receipt = warehouse_receipts.create_receipt(db, 4, WarehouseReceiptCreate(serial_no='warehouse-exit', material_name='铜钼',
             material_type='semi_finished', quantity=10, weight=1, notes='库房对外出库验证', idempotency_key='warehouse-exit'), warehouse_user)
     with SessionLocal() as db:
-        line = stock.create_dispatch(db, 4, stock.DispatchCreate(entry_kind='warehouse_outbound', external_destination='外部仓库',
+        line = stock.create_dispatch(db, 4, stock.DispatchCreate(sent_employee_id=4, entry_kind='warehouse_outbound', external_destination='外部仓库',
             idempotency_key='warehouse-outbound', lines=[{'source_transfer_id': receipt['id'], 'quantity': 10, 'weight': 1}]), warehouse_user)['items'][0]
     assert line['status'] == 'dispatched' and line['next_team'] is None and not line['stock_tracked']
     def batch(key, *, lots=None, external=False, reverse=False):
         lots = lots or [received(key+'-lot-1'), received(key+'-lot-2')]
         fields = {'entry_kind': 'inspection_shipment', 'external_destination': '整批客户'} if external else {'next_team_id': 3}
-        payload = stock.DispatchCreate(**fields, idempotency_key=key, lines=[
+        payload = stock.DispatchCreate(sent_employee_id=2, **fields, idempotency_key=key, lines=[
             {'source_transfer_id': lot['id'], 'quantity': 20, 'weight': Decimal('2.125')}
             for lot in (list(reversed(lots)) if reverse else lots)])
         with SessionLocal() as db:
@@ -314,7 +315,7 @@ def run():
             return stock.dispatch_dict(db, header, users[2])
 
     independent_lots = [received('independent-1'), received('independent-2')]
-    independent_payload = stock.DispatchCreate(next_team_id=3, idempotency_key='independent-pair', lines=[
+    independent_payload = stock.DispatchCreate(sent_employee_id=2, next_team_id=3, idempotency_key='independent-pair', lines=[
         {'source_transfer_id': lot['id'], 'quantity': 20, 'weight': 2} for lot in independent_lots])
     with SessionLocal() as db:
         independent = stock.create_dispatch(db, 2, independent_payload, users[2])

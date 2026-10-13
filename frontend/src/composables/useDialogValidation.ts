@@ -13,7 +13,7 @@ export function useDialogValidation(issues: () => Record<string, string>) {
       const field = formRef.value?.$el.querySelector<HTMLElement>('.is-error')
       field?.scrollIntoView?.({ block: 'nearest' })
       field
-        ?.querySelector<HTMLElement>('input, textarea, [role="combobox"]')
+        ?.querySelector<HTMLElement>('input, textarea, [role="combobox"], button:not([disabled])')
         ?.focus({ preventScroll: true })
     })
     return false

@@ -16,12 +16,26 @@ const transfer = {
   batch_no: 'TL20261012000027',
   serial_no: 'YS-027',
   material_name: '材料2',
-  transferred_by: '张建国',
+  sent_employee_id: 22,
+  sent_employee_name: '张建国',
+  transferred_by: '开单账号',
   transferred_at: '2026-10-12T01:00:00Z',
   source_transfer_batch_no: 'TL-PARENT',
 }
 
 describe('shared transfer print template', () => {
+  it('prints the sending employee instead of the login account and leaves legacy identity unfilled', async () => {
+    const wrapper = mount(MaterialTransferPrintSheet, { props: { transfer } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('张建国')
+    expect(wrapper.text()).not.toContain('开单账号')
+    await wrapper.setProps({
+      transfer: { ...transfer, sent_employee_name: null, sent_employee_id: null },
+    })
+    expect(wrapper.text()).toContain('未登记')
+    expect(wrapper.text()).not.toContain('开单账号')
+    wrapper.unmount()
+  })
   it('uses identical fields and layout for one selected batch and single-batch printing', async () => {
     const single = mount(MaterialTransferPrintSheet, { props: { transfer } })
     const batch = mount(MaterialBatchPrintSheet, { props: { items: [transfer] } })
@@ -114,6 +128,11 @@ describe('shared transfer print template', () => {
     expect(copy.text()).toContain(label)
     expect(copy.text()).not.toContain('接收方签字')
     expect(copy.text()).toContain('A-01')
+    if (kind === 'warehouse_outbound' || kind === 'inspection_shipment') {
+      expect(copy.text()).toContain('转料人签字')
+      expect(copy.text()).toContain('张建国')
+      expect(copy.text()).not.toContain('开单账号')
+    }
     wrapper.unmount()
   })
   it('retains every optional document field and every character of long notes in both copies', async () => {

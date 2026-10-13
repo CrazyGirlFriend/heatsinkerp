@@ -9,6 +9,7 @@ import {
   isExternalTransfer,
   isWarehouseReceipt,
   materialSourceLabel,
+  materialSenderName,
   materialPurposeLabel,
   receiptSourceLabel,
   materialDocumentTextFields,
@@ -136,8 +137,8 @@ const fields = computed<DocumentField[]>(() => {
       ? [{ label: '退回核对原因', value: t.rejection_reason, fullWidth: true }]
       : []),
     {
-      label: processed || reallocated || receipt || external ? '登记人' : '转料人',
-      value: t.transferred_by || '—',
+      label: processed || reallocated || receipt ? '登记人' : '转料人',
+      value: materialSenderName(t),
     },
     {
       label: processed
@@ -153,6 +154,7 @@ const fields = computed<DocumentField[]>(() => {
     },
     ...(!processed && !receipt && !reallocated
       ? [
+          { label: '开单操作账号', value: t.transferred_by || '—' },
           {
             label: external ? `${verb}确认人` : '接收人',
             value: external

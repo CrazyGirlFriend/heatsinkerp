@@ -7,6 +7,7 @@ from alembic.runtime.migration import MigrationContext
 from app.database import SessionLocal
 from app.models import MaterialDispatch, MaterialTransfer
 from historical_dispatch import historical_response
+from sender_helpers import sender_post
 from sqlalchemy import create_engine, func, inspect, select
 from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import intake, migration
@@ -61,11 +62,11 @@ def test_split_materials_and_serials_create_independent_batches_and_replay_once(
         ],
     }
     url = base(s) + "/outbound-batches"
-    response = client.post(url, headers=s["headers"], json=payload)
+    response = sender_post(client, url, headers=s["headers"], json=payload)
     assert response.status_code == 201, response.text
     result = response.json()
     assert set(result) == {"items"}
-    assert client.post(url, headers=s["headers"], json=payload).json() == result
+    assert sender_post(client, url, headers=s["headers"], json=payload).json() == result
     rows = result["items"]
     assert len({row["batch_no"] for row in rows}) == 3
     assert all(
@@ -98,7 +99,9 @@ def test_split_materials_and_serials_create_independent_batches_and_replay_once(
     assert client.get(url, params={"status": "received"}).json()["total"] == 1
     assert client.get(url, params={"status": "partial"}).status_code == 422
     assert (
-        client.post(url, headers=s["headers"], json={**payload, "notes": "changed"}).status_code
+        sender_post(
+            client, url, headers=s["headers"], json={**payload, "notes": "changed"}
+        ).status_code
         == 409
     )
 

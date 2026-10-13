@@ -78,6 +78,24 @@ afterEach(() => {
 })
 
 describe('material transfer API', () => {
+  it('keeps the sending employee snapshot separate from the operation account', () => {
+    const row = normalizeMaterialTransfer(
+      rawTransfer({
+        sent_employee_id: 22,
+        sent_employee_name: '王师傅',
+        created_by: '开单账号',
+      }),
+    )
+    expect(row).toMatchObject({
+      sent_employee_id: 22,
+      sent_employee_name: '王师傅',
+      transferred_by: '开单账号',
+    })
+    expect(normalizeMaterialTransfer(rawTransfer())).toMatchObject({
+      sent_employee_id: null,
+      sent_employee_name: null,
+    })
+  })
   it('preserves internal processing batches, linkage and audits without granting receipt or edit permissions', () => {
     const row = normalizeMaterialTransfer(
       rawTransfer({
@@ -430,6 +448,7 @@ describe('material transfer API', () => {
 
   it('creates and edits only the material handoff fields', async () => {
     await materialTransferApi.create({
+      sent_employee_id: 22,
       serial_no: 'LS-2026-008',
       next_team_id: 3,
       quantity: 80,
@@ -446,6 +465,7 @@ describe('material transfer API', () => {
     })
     expect(configs[0]).toMatchObject({ method: 'post', url: '/material-transfers' })
     expect(JSON.parse(String(configs[0]!.data))).toEqual({
+      sent_employee_id: 22,
       serial_no: 'LS-2026-008',
       next_team_id: 3,
       quantity: 80,

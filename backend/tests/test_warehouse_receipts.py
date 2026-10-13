@@ -18,6 +18,7 @@ from app.models import (
     User,
 )
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from sqlalchemy import create_engine, func, inspect, select
 from sqlalchemy.exc import IntegrityError
 from test_material_transfers import _leader, _team
@@ -106,7 +107,8 @@ def test_manual_intake_is_a_locked_stock_origin_not_a_self_transfer(client, ware
 
 def test_downstream_excess_uses_received_lot_link_and_signed_balance(client, warehouse):
     origin = intake(client, warehouse, quantity=0, weight="100.000").json()
-    response = client.post(
+    response = sender_post(
+        client,
         warehouse["url"].replace("/receipts", "/dispatches"),
         headers=warehouse["headers"],
         json={
@@ -129,7 +131,8 @@ def test_downstream_excess_uses_received_lot_link_and_signed_balance(client, war
     url = f"/api/team-materials/{warehouse['other']['id']}/dispatches"
 
     def send(weight, key):
-        return client.post(
+        return sender_post(
+            client,
             url,
             headers=warehouse["other_headers"],
             json={
@@ -253,7 +256,8 @@ def test_intake_retry_is_idempotent_and_different_payload_conflicts(client, ware
         assert db.scalar(select(func.count(MaterialTransferEvent.id))) == 1
         assert db.scalar(select(TransferBatchNumberSequence.last_value)) == 1
     # An idempotency key belonging to another kind of operation is not reused.
-    created = client.post(
+    created = sender_post(
+        client,
         "/api/material-transfers",
         headers=warehouse["headers"],
         json={
@@ -344,7 +348,8 @@ def test_first_response_and_audit_use_persisted_database_time_precision(client, 
 def test_intake_dispatch_loss_receipt_and_return_keep_source_and_balances(client, warehouse):
     receipt = intake(client, warehouse).json()
     base = f"/api/team-materials/{warehouse['team']['id']}"
-    outgoing = client.post(
+    outgoing = sender_post(
+        client,
         base + "/dispatches",
         headers=warehouse["headers"],
         json={
@@ -381,7 +386,8 @@ def test_intake_dispatch_loss_receipt_and_return_keep_source_and_balances(client
     )
     assert confirmed.status_code == 200, confirmed.text
     assert client.get(base + "/overview").json()["totals"]["dispatched_quantity"] == 30
-    back = client.post(
+    back = sender_post(
+        client,
         f"/api/team-materials/{warehouse['other']['id']}/dispatches",
         headers=warehouse["other_headers"],
         json={

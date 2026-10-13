@@ -10,6 +10,7 @@ from app.database import SessionLocal
 from app.models import Team, User
 from fastapi import HTTPException
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.exc import IntegrityError
 from test_material_transfers import _leader, _team
@@ -72,7 +73,8 @@ def outbound(client, request):
         assert response.status_code == 201, response.text
         lot = response.json()
         if team == qc:
-            response = client.post(
+            response = sender_post(
+                client,
                 f"/api/team-materials/{warehouse['id']}/dispatches",
                 headers=headers[warehouse["id"]],
                 json={
@@ -105,7 +107,8 @@ def outbound(client, request):
 
 
 def dispatch(client, setup, **overrides):
-    return client.post(
+    return sender_post(
+        client,
         setup["url"] + "/dispatches",
         headers=setup["headers"],
         json={
@@ -249,7 +252,8 @@ def test_external_authorization_no_internal_self_receipt_loophole(client, outbou
             == 403
         )
         assert (
-            client.post(
+            sender_post(
+                client,
                 outbound["url"] + "/dispatches",
                 headers=headers,
                 json={
@@ -286,7 +290,8 @@ def test_external_authorization_no_internal_self_receipt_loophole(client, outbou
         == 403
     )
     assert (
-        client.post(
+        sender_post(
+            client,
             f"/api/team-materials/{outbound['other']['id']}/dispatches",
             headers=outbound["other_headers"],
             json={

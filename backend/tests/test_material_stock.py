@@ -3,6 +3,7 @@ from app.configure_material_teams import MATERIAL_TEAMS, configure_material_team
 from app.database import SessionLocal
 from app.models import MaterialDispatch, MaterialLoss, MaterialTransfer, Team
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from sqlalchemy import func, select
 from test_material_transfers import _create, _setup_three_teams
 
@@ -42,7 +43,8 @@ def endpoint(setup, suffix):
 
 
 def dispatch(client, setup, lines, **overrides):
-    return client.post(
+    return sender_post(
+        client,
         endpoint(setup, "dispatches"),
         headers=setup["stock_headers"],
         json={
@@ -196,7 +198,8 @@ def test_stock_idempotency_atomic_failure_and_permission_checks(client, stock_se
     assert loss(client, setup, first, idempotency_key="too-much", quantity=39).status_code == 409
     assert loss(client, setup, first, idempotency_key="too-heavy", weight=4).status_code == 409
     for headers in ({}, setup["source_headers"], setup["third_headers"]):
-        attempt = client.post(
+        attempt = sender_post(
+            client,
             endpoint(setup, "dispatches"),
             headers=headers,
             json={
@@ -323,7 +326,8 @@ def test_pending_outbound_can_exceed_book_stock_but_cannot_be_forwarded_before_r
         == 1
     )
     # The receiver cannot forward a batch it has not signed for.
-    blocked = client.post(
+    blocked = sender_post(
+        client,
         f"/api/team-materials/{setup['third']['id']}/dispatches",
         headers=setup["third_headers"],
         json={

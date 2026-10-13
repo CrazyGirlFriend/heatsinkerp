@@ -4,6 +4,7 @@ import pytest
 from app.database import SessionLocal
 from app.material_stock import BALANCE_KEYS, balance_dict, stock_table
 from app.models import MaterialTransfer
+from sender_helpers import sender_post
 from sqlalchemy import select
 from test_transfer_list_loading import read_statements
 from test_warehouse_classification import confirm, dispatch
@@ -64,7 +65,8 @@ def test_reused_totals_preserve_scrap_decimal_precision_and_legacy_boundaries(cl
         )
         assert response.status_code == 201, response.text
         origins.append(response.json())
-    legacy_response = client.post(
+    legacy_response = sender_post(
+        client,
         "/api/material-transfers",
         headers=warehouse["other_headers"],
         json={

@@ -5,6 +5,7 @@ from decimal import Decimal
 from app.database import SessionLocal
 from app.models import MaterialTransfer
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from test_external_outbound import confirm as external_confirm
 from test_external_outbound import legacy_dispatch as external_dispatch
 from test_external_outbound import outbound as outbound
@@ -41,7 +42,8 @@ def test_split_pending_receipt_return_void_and_losses_share_the_stock_ledger(cli
         ).status_code
         == 200
     )
-    back = client.post(
+    back = sender_post(
+        client,
         f"/api/team-materials/{s['third']['id']}/dispatches",
         headers=s["third_headers"],
         json={

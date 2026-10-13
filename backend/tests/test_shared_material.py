@@ -2,6 +2,7 @@
 
 import pytest
 from receipt_helpers import receipt_post
+from sender_helpers import sender_post
 from test_quantity_adjustments import change
 from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import intake  # noqa: F401
@@ -302,9 +303,9 @@ def test_shared_allocation_to_inspection_shipping_and_void_keep_single_stock(cli
         "lines": [{"source_transfer_id": to_inspection["id"], "quantity": 30, "weight": 60.5}],
     }
     url = f"/api/team-materials/{inspection['id']}/dispatches"
-    shipped = client.post(url, headers=headers, json=payload)
+    shipped = sender_post(client, url, headers=headers, json=payload)
     assert shipped.status_code == 201, shipped.text
-    assert client.post(url, headers=headers, json=payload).json() == shipped.json()
+    assert sender_post(client, url, headers=headers, json=payload).json() == shipped.json()
     final = trace(client, "ORDER-A")
     assert final["totals"]["on_hand"]["weight"] == 0
     assert final["totals"]["dispatched"] == {"quantity": 30, "weight": 60.5}
