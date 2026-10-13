@@ -363,7 +363,7 @@ onBeforeUnmount(() => {
 }
 .team-workspace__section.el-button:not(:disabled):not(.is-disabled):not(.is-loading):active {
   box-shadow:
-    inset 0 2px 4px rgb(30 40 35 / 13%),
+    inset 0 1px 2px rgb(30 40 35 / 8%),
     inset 0 0 0 1px var(--glass-interaction-edge);
 }
 .team-workspace__section.el-button:focus-visible {

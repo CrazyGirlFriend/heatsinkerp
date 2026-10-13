@@ -376,7 +376,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
 .timeline-controls .el-icon {
   font-size: 19px;
 }
-.timeline-controls button:hover {
+.timeline-controls button:not(:disabled):hover {
   background: var(--primary-soft);
 }
 .timeline-controls button:focus-visible {

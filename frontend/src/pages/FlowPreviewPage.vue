@@ -1356,7 +1356,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   font: inherit;
 }
-.selection-batches button:hover {
+.selection-batches button:not(:disabled):hover {
   border-color: var(--el-color-primary-light-5);
   background: var(--primary-soft);
 }
@@ -1851,6 +1851,9 @@ onBeforeUnmount(() => {
   .canvas-controls button,
   .canvas-mode::before {
     transition: none;
+  }
+  .canvas-controls button:active {
+    transform: none;
   }
 }
 .chain-page--embedded {

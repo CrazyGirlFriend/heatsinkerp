@@ -312,8 +312,8 @@
     --table-glass-selected-fill: var(--glass-selected-fill);
     --table-glass-selected: #e5f2eb;
     --table-glass-edge: inset 0 1px 0 #ffffffd9, inset 0 -1px 0 #dae8df66;
-    --table-glass-hover-edge: inset 0 1px 0 #fff, inset 0 -1px 0 #9bbda980;
-    --table-glass-selected-edge: inset 0 1px 0 #fff, inset 0 -2px 1px #80ac9499;
+    --table-glass-hover-edge: inset 0 1px 0 #ffffff99;
+    --table-glass-selected-edge: inset 0 1px 0 #ffffffb3, inset 0 -1px 0 #80ac9433;
   }
   .el-table.business-table {
     border-radius: var(--card-radius);

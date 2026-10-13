@@ -520,13 +520,15 @@ onBeforeUnmount(() => {
     background var(--motion-standard) ease,
     box-shadow var(--motion-standard) ease;
 }
-.factory-sections button:hover {
+.factory-sections button:not([aria-pressed='true']):hover {
   color: var(--primary);
+  background: var(--glass-hover-fill);
+  box-shadow: var(--glass-hover-shadow);
 }
 .factory-sections button[aria-pressed='true'] {
   color: var(--primary);
-  background: var(--glass-surface);
-  box-shadow: var(--glass-shadow);
+  background: var(--glass-selected-fill);
+  box-shadow: var(--glass-selected-shadow);
   font-weight: 550;
 }
 /* Keep every record row visible; let the charts absorb the remaining height. */

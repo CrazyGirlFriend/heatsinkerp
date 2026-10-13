@@ -5,11 +5,11 @@
   --glass-chrome-fill: linear-gradient(135deg, #ffffffb8, #ffffff73);
   --glass-popover-fill: linear-gradient(145deg, #ffffffeb, #ffffffca);
   --glass-edge: #ffffffd9;
-  --glass-hover-fill: linear-gradient(180deg, #fffffff2, #eff9f4ed 42%, #d9eee5e6);
-  --glass-selected-fill: linear-gradient(180deg, #fffffff5, #e3f3eaf2 42%, #bfdfd0ed);
-  --glass-interaction-edge: #a8cbb880;
-  --glass-hover-shadow: inset 0 1px 0 #fff, inset 0 -1px 1px #93bca766, 0 3px 8px #23483812;
-  --glass-selected-shadow: inset 0 1px 0 #fff, inset 0 -1px 1px #7fae9699, 0 3px 10px #244e3921;
+  --glass-hover-fill: linear-gradient(180deg, #ffffffed, #f4faf7ed 56%, #eaf4eeeb);
+  --glass-selected-fill: linear-gradient(180deg, #f8fcfaf2, #edf6f0f2 56%, #dceee2ed);
+  --glass-interaction-edge: #aac8b64d;
+  --glass-hover-shadow: inset 0 1px 0 #ffffffa6, 0 1px 3px #2348380a;
+  --glass-selected-shadow: inset 0 1px 0 #ffffffbf, 0 1px 4px #244e390f;
   --glass-surface-shadow:
     0 24px 68px #203b2e24, 0 5px 18px #203b2e0e, inset 0 1px 0 #fff, inset 0 -1px 0 #ffffffb8;
 }
@@ -119,7 +119,7 @@
     --el-button-active-border-color: #a7c0b2;
     box-shadow:
       inset 0 1px 0 #fff,
-      0 2px 6px #1a37280c;
+      0 1px 3px #1a372808;
   }
   :is(.app-glass-surface, .stock-action-dialog)
     :is(.el-dialog__footer, .el-drawer__footer)
@@ -132,8 +132,8 @@
     .el-button:not(:disabled):not(.is-loading):active,
   .el-message-box__btns .el-button:not(:disabled):not(.is-loading):active {
     box-shadow:
-      inset 0 1px 3px #284d3626,
-      inset 0 -1px 0 #ffffffa6;
+      inset 0 1px 2px #284d3614,
+      inset 0 -1px 0 #ffffff66;
   }
   :is(.app-glass-surface, .stock-action-dialog) [data-jelly] {
     transform: var(--jelly-matrix, none);
@@ -187,7 +187,7 @@
     border-radius: var(--glass-surface-radius);
     background: var(--glass-popover-fill);
     box-shadow:
-      0 14px 34px #294a351f,
+      0 8px 22px #294a3517,
       inset 0 1px 0 #fff;
     -webkit-backdrop-filter: blur(24px) saturate(108%);
     backdrop-filter: blur(24px) saturate(108%);
@@ -241,7 +241,7 @@
   .el-dropdown__popper .el-dropdown-menu__item:not(.is-disabled):active,
   .el-select-dropdown__item:not(.is-disabled):active {
     box-shadow:
-      inset 0 1px 3px #284d3626,
+      inset 0 1px 2px #284d3614,
       inset 0 0 0 1px var(--glass-interaction-edge);
   }
   .el-picker__popper .el-picker-panel {
