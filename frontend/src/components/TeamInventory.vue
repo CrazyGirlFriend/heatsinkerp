@@ -843,6 +843,19 @@ onBeforeUnmount(() => {
                   :value="team.id"
                   :label="team.name" /></ElSelect
             ></label>
+            <label v-if="warehouse && sourceDraft === 'internal'"
+              >来源班组<ElSelect
+                v-model="sourceTeamDraft"
+                aria-label="库房来源班组"
+                placeholder="全部来源班组"
+                clearable
+                filterable
+                ><ElOption
+                  v-for="team in sourceTeams"
+                  :key="team.id"
+                  :value="team.id"
+                  :label="team.name" /></ElSelect
+            ></label>
             <label
               >物料类型<ElSelect
                 v-model="typeDraft"
@@ -893,14 +906,6 @@ onBeforeUnmount(() => {
                   label="正常料可转出" /><ElOption value="scrap" label="废料可处理" /><ElOption
                   value="all"
                   label="全部（含零库存）" /></ElSelect
-            ></label>
-            <label v-if="warehouse && sourceDraft === 'internal'"
-              >来源班组<ElSelect v-model="sourceTeamDraft" aria-label="库房来源班组" clearable
-                ><ElOption
-                  v-for="team in sourceTeams"
-                  :key="team.id"
-                  :value="team.id"
-                  :label="team.name" /></ElSelect
             ></label>
             <label
               >分析条件<ElSelect
