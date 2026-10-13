@@ -77,10 +77,14 @@ function hid(code: string, target: EventTarget = document) {
 describe('scan directly into receiving inventory', () => {
   it('requires an explicit employee before HID receipt and keeps the selection for later scans', async () => {
     await render(false)
+    const receiver = wrapper.get<HTMLButtonElement>('button[aria-label="接收人"]').element
+    receiver.animate = vi.fn()
     hid('TL000001')
     await flushPromises()
     expect(materialTransferApi.confirm).not.toHaveBeenCalled()
     expect(wrapper.get('button[aria-label="接收人"]').attributes('aria-invalid')).toBe('true')
+    expect(document.activeElement).toBe(receiver)
+    expect(receiver.animate).toHaveBeenCalledOnce()
     wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', person)
     await flushPromises()
     await scan('TL000001')

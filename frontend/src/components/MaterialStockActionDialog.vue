@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { materialWeightToleranceKg, isProcessingTeamCode } from '@/config/materialRules'
 
+import { ArrowDown } from '@element-plus/icons-vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import WeightInput from './WeightInput.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
@@ -14,6 +15,8 @@ import {
   ElFormItem,
   ElInput,
   ElInputNumber,
+  ElIcon,
+  ElPopover,
   ElOption,
   ElRadioButton,
   ElRadioGroup,
@@ -91,6 +94,7 @@ const lines = ref<
     specification: string
     originalSpecification: string
     specificationValid: boolean
+    specificationOpen: boolean
   }[]
 >([])
 function enteredQuantity(line: (typeof lines.value)[number]) {
@@ -114,6 +118,11 @@ const form = reactive({
   reason: '',
 })
 const sender = ref<TeamEmployee | null>(null)
+const activeActions = ref('')
+function setLineActions(key: string, open: boolean) {
+  if (open) activeActions.value = key
+  else if (activeActions.value === key) activeActions.value = ''
+}
 const saving = ref(false)
 const refreshing = ref(false)
 const errorMessage = ref('')
@@ -144,8 +153,14 @@ const sourceWarehouse = computed(
     props.sources.length > 0 &&
     props.sources.every((source) => source.transfer.next_team.code === 'FACTORY-WAREHOUSE'),
 )
-const processingTeam = computed(() =>
-  props.sources.every((source) => isProcessingTeamCode(source.transfer.next_team.code)),
+const processingTeam = computed(
+  () =>
+    props.sources.length > 0 &&
+    props.sources.every(
+      (source) =>
+        Number(source.transfer.next_team.id) === props.teamId &&
+        isProcessingTeamCode(source.transfer.next_team.code),
+    ),
 )
 const canWrite = computed(
   () =>
@@ -192,6 +207,15 @@ function applyBatchPurpose(value: number) {
   })
 }
 const actionLabel = computed(() => externalActionLabel(form.entryKind))
+const dialogTitle = computed(() =>
+  isLoss.value
+    ? '登记物料丢失'
+    : external.value
+      ? `${props.sources.length > 1 ? '批量' : ''}${actionLabel.value}`
+      : props.sources.length > 1
+        ? '批量出库'
+        : '物料出库',
+)
 const containsScrap = computed(() =>
   lines.value.some(
     (line) => isScrapType(line.materialType) || isScrapType(line.source.transfer.material_type),
@@ -316,6 +340,7 @@ watch(
   },
 )
 async function loadProcessing(source: StockBatch) {
+  if (!processingTeam.value || isLoss.value || !canWrite.value) return
   const id = Number(source.transfer.id),
     current = generation
   processing[id] ||= {
@@ -522,6 +547,7 @@ watch(
       originalSpecification:
         source.current_specification ?? source.transfer.transfer_specification ?? '',
       specificationValid: true,
+      specificationOpen: false,
     }))
     lines.value.forEach((line, index) => {
       line.percent = line.source.transfer.sludge_content_percent ?? undefined
@@ -534,6 +560,7 @@ watch(
     form.notes = ''
     form.reason = ''
     sender.value = null
+    activeActions.value = ''
     Object.keys(clearanceReasons).forEach((key) => delete clearanceReasons[key])
     Object.keys(clearanceSelected).forEach((key) => delete clearanceSelected[key])
     errorMessage.value = ''
@@ -607,6 +634,9 @@ async function submit() {
     errorMessage.value = purposes.error.value || '请等待下序业务加载完成'
     return
   }
+  lines.value.forEach((line) => {
+    if (!line.specificationValid) line.specificationOpen = true
+  })
   if (!validation.validate()) return
   if (
     !isLoss.value &&
@@ -756,23 +786,22 @@ async function submit() {
 <template>
   <ElDialog
     :model-value="modelValue"
-    :title="
-      isLoss
-        ? '登记物料丢失'
-        : external
-          ? `${sources.length > 1 ? '批量' : ''}${actionLabel}`
-          : sources.length > 1
-            ? '批量出库'
-            : '物料出库'
-    "
+    :title="dialogTitle"
     width="min(1180px, 96vw)"
     top="16px"
     class="stock-action-dialog"
+    modal-class="stock-action-overlay"
     :close-on-click-modal="!busy"
     :close-on-press-escape="!busy"
     :show-close="!busy"
     @close="close"
   >
+    <template #header="{ titleId, titleClass }">
+      <div class="stock-dialog-heading">
+        <h2 :id="titleId" :class="titleClass">{{ dialogTitle }}</h2>
+        <span>{{ lines.length }} 项物料</span>
+      </div>
+    </template>
     <ElAlert v-if="errorMessage" :title="errorMessage" type="error" :closable="false" />
     <ElForm
       ref="formRef"
@@ -782,9 +811,17 @@ async function submit() {
       :disabled="busy || !canWrite"
       @submit.prevent="submit"
     >
-      <section v-if="!isLoss" class="dialog-form-section">
-        <h3>收发信息</h3>
-        <div class="dialog-form-grid">
+      <section v-if="!isLoss" class="dispatch-context">
+        <div class="dispatch-context-heading">
+          <h3>收发信息</h3>
+          <ElRadioGroup v-if="externalOption" v-model="form.entryKind" aria-label="出库方式">
+            <ElRadioButton value="transfer">内部转料</ElRadioButton>
+            <ElRadioButton :value="externalOption">{{
+              externalOption === 'warehouse_outbound' ? '对外出库' : '发货'
+            }}</ElRadioButton>
+          </ElRadioGroup>
+        </div>
+        <div class="dialog-form-grid dispatch-context-fields">
           <ElFormItem label="转料人" :error="fieldErrors.sender" required>
             <TeamEmployeeInput
               v-if="modelValue"
@@ -795,16 +832,8 @@ async function submit() {
               :invalid="!!fieldErrors.sender"
             />
           </ElFormItem>
-          <ElFormItem v-if="!isLoss && externalOption" label="出库方式" class="dialog-field-wide">
-            <ElRadioGroup v-model="form.entryKind" aria-label="出库方式"
-              ><ElRadioButton value="transfer">内部转料</ElRadioButton
-              ><ElRadioButton :value="externalOption">{{
-                externalOption === 'warehouse_outbound' ? '对外出库' : '发货'
-              }}</ElRadioButton></ElRadioGroup
-            >
-          </ElFormItem>
           <ElFormItem
-            class="dialog-field-wide"
+            class="external-destination-field"
             v-if="external"
             :label="`${actionLabel}去向`"
             :error="fieldErrors.externalDestination"
@@ -863,69 +892,102 @@ async function submit() {
       <div class="source-lines">
         <article v-for="(line, index) in lines" :key="line.key" class="source-line">
           <header>
-            <div>
+            <div class="source-identity">
+              <span class="source-index">{{ String(index + 1).padStart(2, '0') }}</span>
               <strong>{{ sharedSerialLabel(line.source.transfer) }}</strong
               ><span class="source-material">{{
                 line.source.transfer.material_name || '未填写材质'
-              }}</span
-              ><span>上一批次 {{ line.source.transfer.batch_no }}</span>
+              }}</span>
+              <div class="source-meta">
+                <span>上一批次 {{ line.source.transfer.batch_no }}</span>
+                <span>来自 {{ line.source.transfer.source_team.name }}</span
+                ><span v-if="line.source.transfer.purpose_name"
+                  >业务 {{ line.source.transfer.purpose_name }}</span
+                ><span v-if="line.source.transfer.source_batch_no"
+                  >原单批号 {{ line.source.transfer.source_batch_no }}</span
+                ><span v-if="sourceWarehouse"
+                  >当前仓位 {{ currentLocations(line.latest || line.source) }}</span
+                >
+              </div>
             </div>
-            <div class="source-actions">
-              <ElButton link type="primary" :disabled="!line.latest" @click="fillAll(index)"
-                >全部填入</ElButton
-              ><ElButton
-                v-if="!isLoss && !sourceWarehouse"
-                link
-                type="primary"
-                :disabled="lines.length >= 100"
-                @click="splitLine(index)"
-                >拆分物料</ElButton
-              ><ElButton
-                v-if="!isLoss && lines.length > 1"
-                link
-                type="danger"
-                @click="removeLine(index)"
-                >移除</ElButton
-              ><ElButton
-                v-if="
-                  !isLoss &&
-                  !sourceWarehouse &&
-                  !isWeightOnlyType(line.source.transfer.material_type) &&
-                  !isWeightOnlyType(line.materialType) &&
-                  !processing[Number(line.source.transfer.id)] &&
-                  lines.findIndex(
-                    (other) => other.source.transfer.id === line.source.transfer.id,
-                  ) === index
-                "
-                link
-                type="primary"
-                @click="openQuantity(line.source)"
-                >登记加工后件数</ElButton
-              >
-            </div>
-          </header>
-          <div class="source-meta">
-            <span>来自 {{ line.source.transfer.source_team.name }}</span
-            ><span v-if="line.source.transfer.purpose_name"
-              >业务 {{ line.source.transfer.purpose_name }}</span
-            ><span v-if="line.source.transfer.source_batch_no"
-              >原单批号 {{ line.source.transfer.source_batch_no }}</span
-            ><span v-if="sourceWarehouse"
-              >当前仓位 {{ currentLocations(line.latest || line.source) }}</span
-            >
             <div class="source-balance">
-              <span>账面库存</span
-              ><MaterialAmount
+              <span>账面库存</span>
+              <MaterialAmount
+                animate
                 :weight-only="isWeightOnlyType(line.source.transfer.material_type)"
                 :quantity="dispatchableAmounts(line.latest).quantity"
                 :weight="dispatchableAmounts(line.latest).weight"
               />
             </div>
-          </div>
+            <div class="source-actions">
+              <ElButton
+                size="small"
+                type="primary"
+                plain
+                :disabled="!line.latest"
+                @click="fillAll(index)"
+                >全部填入</ElButton
+              >
+              <ElPopover
+                v-if="!isLoss && (!sourceWarehouse || lines.length > 1)"
+                :visible="activeActions === line.key"
+                @update:visible="setLineActions(line.key, $event)"
+                trigger="click"
+                placement="bottom-end"
+                popper-class="stock-source-popover"
+                :width="180"
+                :teleported="false"
+                :show-arrow="false"
+                persistent
+              >
+                <template #reference>
+                  <ElButton size="small" :aria-label="`${line.source.transfer.batch_no}更多操作`">
+                    更多<ElIcon
+                      class="source-action-chevron"
+                      :class="{ 'is-open': activeActions === line.key }"
+                      ><ArrowDown
+                    /></ElIcon>
+                  </ElButton>
+                </template>
+                <div class="source-action-menu" @click="activeActions = ''">
+                  <ElButton
+                    v-if="!isLoss && !sourceWarehouse"
+                    link
+                    type="primary"
+                    :disabled="lines.length >= 100"
+                    @click="splitLine(index)"
+                    >拆分物料</ElButton
+                  ><ElButton
+                    v-if="!isLoss && lines.length > 1"
+                    link
+                    type="danger"
+                    @click="removeLine(index)"
+                    >移除</ElButton
+                  ><ElButton
+                    v-if="
+                      !isLoss &&
+                      processingTeam &&
+                      !isWeightOnlyType(line.source.transfer.material_type) &&
+                      !isWeightOnlyType(line.materialType) &&
+                      !processing[Number(line.source.transfer.id)] &&
+                      lines.findIndex(
+                        (other) => other.source.transfer.id === line.source.transfer.id,
+                      ) === index
+                    "
+                    link
+                    type="primary"
+                    @click="openQuantity(line.source)"
+                    >登记加工后件数</ElButton
+                  >
+                </div>
+              </ElPopover>
+            </div>
+          </header>
+
           <template
             v-if="
               !isLoss &&
-              !sourceWarehouse &&
+              processingTeam &&
               !isWeightOnlyType(line.source.transfer.material_type) &&
               (!isWeightOnlyType(line.materialType) ||
                 processing[Number(line.source.transfer.id)]) &&
@@ -1119,17 +1181,29 @@ async function submit() {
                   :value="purpose.id"
                   :label="purpose.name" /></ElSelect
             ></ElFormItem>
-            <ElFormItem
+            <details
               v-if="!isLoss && !isScrapType(line.materialType)"
-              label="实际尺寸（选填）"
               class="source-specification-field"
-              :error="lineError(line, 'specification')"
-              ><SpecificationInput
-                class="source-specification"
-                v-model="line.specification"
-                :label="`${line.source.transfer.batch_no}实际尺寸`"
-                @validity-change="line.specificationValid = $event"
-            /></ElFormItem>
+              :open="line.specificationOpen"
+              @toggle="line.specificationOpen = ($event.target as HTMLDetailsElement).open"
+            >
+              <summary>
+                <span>实际尺寸</span>
+                <span class="specification-summary">{{ line.specification || '选填' }}</span>
+                <span class="source-disclosure-action">{{
+                  line.specificationOpen ? '收起' : '编辑'
+                }}</span>
+                <ElIcon><ArrowDown /></ElIcon>
+              </summary>
+              <ElFormItem label-width="0" :error="lineError(line, 'specification')">
+                <SpecificationInput
+                  class="source-specification"
+                  v-model="line.specification"
+                  :label="`${line.source.transfer.batch_no}实际尺寸`"
+                  @validity-change="line.specificationValid = $event"
+                />
+              </ElFormItem>
+            </details>
             <ElFormItem v-if="!isLoss && warehouse" label="入库仓位" class="dialog-field-wide"
               ><WarehouseLocationSelect
                 v-model="line.warehouseLocation"
@@ -1161,20 +1235,24 @@ async function submit() {
           />
         </article>
       </div>
-      <section class="dialog-form-section action-notes-section">
-        <h3>
-          {{
-            isLoss
-              ? '丢失原因'
-              : containsScrap
-                ? '废料处理原因'
-                : external
-                  ? `${actionLabel}说明`
-                  : warehouse
-                    ? '入库说明'
-                    : '出库说明'
-          }}
-        </h3>
+      <details class="action-notes-section">
+        <summary>
+          <span>
+            {{
+              isLoss
+                ? '丢失原因'
+                : containsScrap
+                  ? '废料处理原因'
+                  : external
+                    ? `${actionLabel}说明`
+                    : warehouse
+                      ? '入库说明'
+                      : '出库说明'
+            }}
+          </span>
+          <span class="notes-summary">{{ (isLoss ? form.reason : form.notes) || '选填' }}</span>
+          <ElIcon><ArrowDown /></ElIcon>
+        </summary>
         <div class="dialog-form-grid">
           <ElFormItem
             v-if="isLoss"
@@ -1209,7 +1287,7 @@ async function submit() {
               placeholder="选填"
           /></ElFormItem>
         </div>
-      </section>
+      </details>
     </ElForm>
     <ElAlert v-if="weightNotice" :title="weightNotice" type="warning" :closable="false" show-icon />
     <ElAlert
@@ -1249,8 +1327,9 @@ async function submit() {
     <template #footer
       ><div class="action-footer">
         <div>
-          <span>{{ isLoss ? '本次丢失' : `共 ${lines.length} 条物料明细` }}</span
+          <span>{{ isLoss ? '本次丢失' : '本次合计' }}</span
           ><MaterialAmount
+            animate
             :weight-only="
               lines.length > 0 && lines.every((line) => isWeightOnlyType(line.materialType))
             "
@@ -1274,9 +1353,101 @@ async function submit() {
 </template>
 
 <style scoped>
-.processing-count {
-  padding: 10px 0;
+:global(.el-dialog.stock-action-dialog) {
+  --stock-dialog-inset-x: 24px;
+  --stock-dialog-inset-y: 20px;
+  background:
+    linear-gradient(145deg, #ffffffc7, #ffffffa8 58%, #ffffffc2) padding-box,
+    linear-gradient(140deg, #fff, #ffffff70 45%, #fffffff0) border-box;
+  -webkit-backdrop-filter: blur(24px) saturate(108%) brightness(1.06);
+  backdrop-filter: blur(24px) saturate(108%) brightness(1.06);
+}
+:global(.stock-action-dialog .el-dialog__header) {
+  margin: calc(-1 * var(--stock-dialog-inset-y)) calc(-1 * var(--stock-dialog-inset-x)) 0;
+  padding: var(--stock-dialog-inset-y) calc(var(--stock-dialog-inset-x) + 28px) 14px
+    var(--stock-dialog-inset-x);
+  border-bottom: 1px solid rgb(255 255 255 / 64%);
+  background: linear-gradient(180deg, rgb(255 255 255 / 38%), rgb(255 255 255 / 10%));
+}
+:global(.stock-action-dialog .el-dialog__footer) {
+  margin: 0 calc(-1 * var(--stock-dialog-inset-x)) calc(-1 * var(--stock-dialog-inset-y));
+  padding: 14px var(--stock-dialog-inset-x) var(--stock-dialog-inset-y);
+  border-top: 1px solid rgb(255 255 255 / 72%);
+  background: linear-gradient(180deg, rgb(255 255 255 / 18%), rgb(255 255 255 / 46%));
+  box-shadow: 0 -1px 0 rgb(61 76 69 / 5%);
+}
+:global(.stock-action-dialog .el-dialog__headerbtn) {
+  border: 1px solid rgb(255 255 255 / 70%);
+  background: rgb(255 255 255 / 44%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 70%);
+}
+:global(.stock-action-dialog .el-dialog__headerbtn:hover) {
+  background: rgb(255 255 255 / 76%);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :global(.el-dialog.stock-action-dialog) {
+    background: var(--surface);
+    border-color: var(--line);
+  }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :global(.el-dialog.stock-action-dialog) {
+    background: var(--surface);
+    border-color: var(--line);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (max-width: 560px), (max-height: 800px) {
+  :global(.el-dialog.stock-action-dialog) {
+    --stock-dialog-inset-x: 16px;
+    --stock-dialog-inset-y: 16px;
+  }
+}
+.stock-dialog-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.stock-dialog-heading h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 650;
+}
+.stock-dialog-heading > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.dispatch-context {
+  padding-bottom: 16px;
+}
+.dispatch-context-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 10px;
+}
+.dispatch-context-heading h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.dispatch-context-fields {
+  grid-template-columns: 240px repeat(2, minmax(0, 1fr));
+  gap: 12px 18px;
+}
+.external-destination-field {
+  grid-column: span 2;
+}
+.dispatch-context-fields :deep(.team-employee) {
+  width: 100%;
+}
+.processing-count {
+  padding: 12px 0;
+  margin-bottom: 12px;
   border-block: 1px solid var(--line);
 }
 .processing-count-notice {
@@ -1288,101 +1459,136 @@ async function submit() {
 .source-lines {
   display: grid;
   gap: 10px;
-  margin-bottom: 14px;
   padding: 1px;
 }
 .source-line {
-  --el-component-size: 32px;
-  overflow: hidden;
-  padding: 12px 16px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
+  --el-component-size: 36px;
+  min-width: 0;
+  padding: 10px 16px 4px;
+  border: 1px solid rgb(255 255 255 / 88%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 97%);
+  box-shadow:
+    0 0 0 1px rgb(64 80 72 / 7%),
+    0 3px 10px rgb(28 40 35 / 4%),
+    inset 0 1px 0 #fff;
+}
+.source-line :deep(.el-input__wrapper),
+.source-line :deep(.el-select__wrapper) {
+  --surface: rgb(255 255 255 / 96%);
 }
 .source-line header {
+  margin-bottom: 12px;
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 6px 16px;
   align-items: center;
-  margin: -12px -16px 0;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--line);
-  background: var(--workspace-bg);
+  gap: 8px 20px;
 }
-.source-line header > div {
+.source-identity,
+.source-balance,
+.source-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   min-width: 0;
 }
-.source-line header strong,
-.source-line header span,
-.source-meta > span {
+.source-identity {
+  flex: 1;
+}
+.source-balance,
+.source-actions {
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+}
+.source-identity strong {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 650;
   overflow-wrap: anywhere;
 }
+.source-index {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.source-material {
+  color: var(--text);
+  font-size: 13px;
+}
+.source-balance > span,
+.source-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
 .source-actions {
-  margin-left: auto;
+  border-left: 1px solid var(--line);
+  padding-left: 16px;
 }
 .source-actions :deep(.el-button) {
   margin-left: 0;
   font-size: 12px;
 }
-.source-line header strong {
-  color: var(--primary);
-  font-size: 16px;
-  font-weight: 600;
+.source-actions :deep(.el-button:not(.is-link)) {
+  height: 28px;
+  padding-inline: 10px;
+  border-radius: 8px;
 }
-.source-line header span {
-  font-size: 12px;
-  color: var(--subtle);
+.source-action-chevron {
+  margin-left: 4px;
+  font-size: 11px;
+  transition: transform var(--motion-fast) var(--motion-ease);
 }
-.source-material {
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: var(--primary-soft);
-  color: var(--primary) !important;
+.source-action-chevron.is-open {
+  transform: rotate(180deg);
+}
+.source-actions :deep(.el-popover.stock-source-popover) {
+  --el-popover-border-radius: 12px;
+  --el-popover-padding: 6px;
+}
+.source-action-menu {
+  display: grid;
+  gap: 4px;
+}
+.source-action-menu :deep(.el-button) {
+  justify-content: flex-start;
+  min-height: 32px;
+  padding: 6px 8px;
+  margin: 0;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.source-action-menu :deep(.el-button:hover:not(:disabled):not(.is-loading)) {
+  background: var(--surface-soft);
 }
 .source-meta {
-  display: flex;
-  gap: 6px 16px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin: 6px 0 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--line-light);
-  color: var(--subtle);
-  font-size: 12px;
+  display: contents;
 }
-.source-balance {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  color: var(--text);
-}
-.source-balance > span {
-  color: var(--subtle);
+.source-meta > span,
+.source-material {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .source-inputs {
-  grid-template-columns: 156px 208px repeat(2, minmax(0, 1fr));
+  grid-template-columns: 144px 208px repeat(2, minmax(0, 1fr));
   gap: 8px 16px;
 }
-.source-inputs :deep(.el-form-item) {
+.source-inputs :deep(.el-form-item),
+.dispatch-context-fields :deep(.el-form-item) {
   margin-bottom: 0;
   flex-direction: column;
 }
-.source-inputs :deep(.el-form-item__label) {
+.source-inputs :deep(.el-form-item__label),
+.dispatch-context-fields :deep(.el-form-item__label) {
   width: 100% !important;
   justify-content: flex-start;
   height: auto;
   line-height: 20px;
-  padding: 0 0 4px;
+  padding: 0 0 6px;
   font-size: 12px;
 }
-.source-inputs :deep(.el-form-item__content) {
+.source-inputs :deep(.el-form-item__content),
+.dispatch-context-fields :deep(.el-form-item__content) {
   width: 100%;
   margin-left: 0 !important;
 }
@@ -1390,14 +1596,15 @@ async function submit() {
   text-align: left;
 }
 .source-quantity-field :deep(.el-input-number) {
-  max-width: 156px;
+  max-width: 144px;
 }
 .source-weight-field :deep(.weight-input) {
   max-width: 208px;
 }
-.source-inputs :deep(.el-input__wrapper),
-.source-inputs :deep(.el-select__wrapper) {
-  min-height: 32px;
+.source-weight-field :deep(.weight-input select) {
+  flex-basis: 56px;
+  width: 56px;
+  padding-inline: 6px;
 }
 .source-inputs :deep(.sludge-measurement) {
   display: contents;
@@ -1405,7 +1612,7 @@ async function submit() {
 .source-inputs :deep(.sludge-result) {
   grid-column: auto;
   margin: 0;
-  padding: 6px 10px;
+  padding: 8px 10px;
   align-self: end;
 }
 .source-inputs :deep(.sludge-result small) {
@@ -1413,72 +1620,138 @@ async function submit() {
 }
 .source-specification-field {
   grid-column: 1 / -1;
-  padding-top: 2px;
+  min-width: 0;
+  border-top: 1px solid var(--line-light);
+}
+.source-specification-field summary,
+.action-notes-section summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-block: 5px;
+  list-style: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
+summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+summary > .el-icon {
+  flex-shrink: 0;
+  font-size: 12px;
+  transition: transform var(--motion-fast) ease;
+}
+details[open] > summary > .el-icon {
+  transform: rotate(180deg);
+}
+.specification-summary,
+.notes-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.specification-summary {
+  color: var(--text);
+}
+.source-disclosure-action {
+  color: var(--muted);
+}
+.source-specification-field[open] {
+  padding-bottom: 6px;
 }
 .action-notes-section {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 4px;
-  padding-inline: 18px;
+  margin-top: 8px;
 }
-.action-notes-section > h3 {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--subtle);
+.action-notes-section summary {
+  font-size: 13px;
+}
+.action-notes-section summary > span:first-child {
+  color: var(--text);
+  font-weight: 550;
+}
+.action-notes-section[open] .notes-summary {
+  visibility: hidden;
+}
+.action-notes-section :deep(.el-form-item) {
+  margin: 4px 0 0;
 }
 .action-notes-section :deep(.el-textarea__inner) {
-  padding-inline: 15px;
+  padding: 10px 12px 22px;
 }
 .action-footer {
   width: 100%;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 20px;
+  gap: 16px;
   align-items: center;
   text-align: left;
 }
-.action-footer > div:last-child {
-  display: flex;
-  gap: 10px;
-}
-.action-footer > div:last-child .el-button {
-  margin-left: 0;
-}
-.action-footer > div:first-of-type {
+.action-footer > div {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 16px;
+  gap: 10px 20px;
 }
-.action-footer > div:first-of-type > span {
-  color: var(--subtle);
-  font-size: 12px;
+.action-footer > div:first-child > span {
+  color: var(--muted);
+  font-size: 13px;
 }
-@media (max-width: 1000px) {
+.action-footer :deep(.material-amount strong) {
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+}
+.action-footer > div:last-child {
+  gap: 10px;
+}
+.action-footer .el-button {
+  min-width: 76px;
+  height: 38px;
+  margin-left: 0;
+}
+.action-footer .el-button--primary {
+  min-width: 108px;
+}
+@media (max-width: 1100px) {
+  .source-inputs {
+    grid-template-columns: 128px 208px repeat(2, minmax(0, 1fr));
+    column-gap: 12px;
+  }
+}
+@media (max-width: 900px) {
+  .dispatch-context-fields,
   .source-inputs {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .external-destination-field {
+    grid-column: auto;
+  }
+  .source-balance {
+    margin-left: auto;
   }
 }
 @media (max-width: 640px) {
   .source-line {
-    padding: 12px;
-  }
-  .source-line header {
-    margin-inline: -12px;
     padding-inline: 12px;
   }
-  .source-actions {
-    margin-left: 0;
-  }
-  .source-balance {
-    margin-left: 0;
-  }
+  .dispatch-context-fields,
   .source-inputs {
     grid-template-columns: minmax(0, 1fr);
   }
-  .action-footer {
-    flex-wrap: wrap;
+  .source-identity {
+    flex-basis: 100%;
+  }
+  .source-balance {
+    margin-left: 0;
   }
   .action-footer > div:last-child {
     margin-left: auto;

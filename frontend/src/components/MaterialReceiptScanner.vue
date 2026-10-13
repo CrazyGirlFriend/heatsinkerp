@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 import { ElButton, ElInput, type InputInstance } from 'element-plus'
 import { FullScreen } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
@@ -23,6 +24,7 @@ const input = ref<InputInstance>()
 const value = ref('')
 const receiver = defineModel<TeamEmployee | null>('receiver', { default: null })
 const receiverRequired = ref(false)
+const scannerReceiver = ref<HTMLElement>()
 const selectingReceiver = ref(false)
 const queue = ref<string[]>([])
 const currentCode = ref('')
@@ -110,6 +112,7 @@ function scan(raw = value.value) {
   if (selectingReceiver.value) return
   if (!receiver.value) {
     receiverRequired.value = true
+    void nextTick(() => focusFirstInvalidField(scannerReceiver.value))
     return
   }
   const code = raw.trim().toUpperCase()
@@ -192,7 +195,7 @@ onBeforeUnmount(() => {
   <div class="receipt-scanner">
     <div class="incoming-scan">
       <strong>扫码入库</strong>
-      <div class="scanner-receiver">
+      <div ref="scannerReceiver" class="scanner-receiver">
         <label><span aria-hidden="true">*</span> 接收人</label>
         <ReceiptPersonInput
           v-if="allowed"

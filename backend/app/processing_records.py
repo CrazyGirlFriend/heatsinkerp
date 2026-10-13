@@ -151,7 +151,7 @@ def annotate_source(item, metadata):
 def require_processing_team(db, team_id):
     team = stock.require_team(db, team_id)
     if team.code not in PROCESSING_TEAM_CODES or team.kind != "production":
-        raise HTTPException(422, "当前加工登记页面用于轧制、线切割和雕刻班组")
+        raise HTTPException(422, "仅轧制、线切割和雕刻班组可以登记加工")
 
 
 def list_sources(db, team_id, user, *, group_id=None, query=None, page=1, page_size=20):

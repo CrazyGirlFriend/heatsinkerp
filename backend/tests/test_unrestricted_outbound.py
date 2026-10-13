@@ -118,6 +118,10 @@ def test_gap_is_not_cancelled_by_another_positive_lot_and_piece_correction_is_au
     client, stock_setup
 ):
     s = stock_setup
+    response = client.patch(
+        f"/api/teams/{s['stock_team_id']}", json={"code": "FACTORY-ROLL", "name": "轧制"}
+    )
+    assert response.status_code == 200, response.text
     lot = receive_lot(client, s)
     receive_lot(client, s, key="positive", quantity=20, weight=2)
     result = dispatch(client, s, [{"source_transfer_id": lot["id"], "quantity": 120, "weight": 12}])

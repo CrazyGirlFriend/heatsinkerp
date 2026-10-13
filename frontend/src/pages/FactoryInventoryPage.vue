@@ -446,9 +446,9 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--line);
   border-radius: 22px;
-  background: var(--glass-surface);
+  background: var(--surface);
   box-shadow: var(--glass-shadow);
 }
 .stock-heading {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 import { formatAmount } from '@/utils/format'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { sludgeSummary } from '@/utils/sludgeWeight'
@@ -90,6 +91,7 @@ const selectedReceiver = computed(() => {
     : null
 })
 const receiverRequired = ref(false)
+const receiptPersonCell = ref<HTMLElement>()
 const selectingReceiver = ref(false)
 const confirming = ref(false)
 const voiding = ref(false)
@@ -298,6 +300,8 @@ async function confirmReceipt(): Promise<void> {
   const person = selectedReceiver.value
   if (!person) {
     receiverRequired.value = true
+    await nextTick()
+    focusFirstInvalidField(receiptPersonCell.value)
     return
   }
   const epoch = ++actionVersion
@@ -649,7 +653,7 @@ watch(
         </template>
         <template v-if="canConfirm" #receiver>
           <span v-if="pageReceiver">{{ selectedReceiver?.name || '未选择' }}</span>
-          <div v-else class="receipt-person-cell">
+          <div v-else ref="receiptPersonCell" class="receipt-person-cell">
             <span class="required-mark" aria-hidden="true">*</span>
             <ReceiptPersonInput
               v-model="receiver"

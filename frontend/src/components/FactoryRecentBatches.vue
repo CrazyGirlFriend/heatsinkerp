@@ -57,7 +57,6 @@ const label = (row: FactoryRecentBatch) =>
         <div v-if="scrollable" class="recent-pagination">
           <small>{{ start + 1 }} / {{ rows.length }}</small
           ><ElButton
-            text
             :disabled="!motion"
             :aria-label="paused || !motion ? '播放今日转料' : '暂停今日转料'"
             @click="paused = !paused"

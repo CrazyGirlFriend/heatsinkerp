@@ -189,33 +189,38 @@ const dates = computed(() => ({
   from: text('date_from') || text('activity_day'),
   to: text('date_to') || text('activity_day'),
 }))
+const sourceOptions = computed(() =>
+  Object.entries(warehouseSourceNames).filter(([key]) => props.processing || key !== 'processing'),
+)
 const sourceTeams = computed(() => directory.items.filter((team) => team.id !== props.teamId))
 const sourceLabel = (row: TeamInventoryRow) => inventorySourceLabel(row, props.warehouse)
 const columns = computed(() =>
-  warehouseColumns.map((column) => ({
-    ...column,
-    label:
-      props.processing && column.key === 'stock_status'
-        ? '加工状态'
-        : column.key === 'source'
-          ? props.warehouse
-            ? '来源'
-            : '上序班组'
-          : column.label,
-    width:
-      (
-        {
-          material_name: 140,
-          material_type: props.processing ? 120 : 110,
-          purpose_name: props.processing ? 95 : 120,
-          source: props.processing ? 85 : 120,
-          owned_quantity: props.processing ? 80 : 90,
-          owned_weight: props.processing ? 100 : 110,
-          stock_status: props.processing ? 135 : 110,
-        } as Partial<Record<WarehouseColumnKey, number>>
-      )[column.key] || column.width,
-    format: column.key === 'source' ? sourceLabel : column.format,
-  })),
+  warehouseColumns
+    .filter((column) => props.processing || column.key !== 'processing_role')
+    .map((column) => ({
+      ...column,
+      label:
+        props.processing && column.key === 'stock_status'
+          ? '加工状态'
+          : column.key === 'source'
+            ? props.warehouse
+              ? '来源'
+              : '上序班组'
+            : column.label,
+      width:
+        (
+          {
+            material_name: 140,
+            material_type: props.processing ? 120 : 110,
+            purpose_name: props.processing ? 95 : 120,
+            source: props.processing ? 85 : 120,
+            owned_quantity: props.processing ? 80 : 90,
+            owned_weight: props.processing ? 100 : 110,
+            stock_status: props.processing ? 135 : 110,
+          } as Partial<Record<WarehouseColumnKey, number>>
+        )[column.key] || column.width,
+      format: column.key === 'source' ? sourceLabel : column.format,
+    })),
 )
 const selectableColumns = computed(() =>
   columns.value.filter((column) => column.key !== 'material_name'),
@@ -245,7 +250,12 @@ const visibleColumns = computed(() => {
     { ...warehouseSerialColumn, width: 200 },
     columns.value.find((column) => column.key === 'material_name')!,
     ...columnChoices.value
-      .filter((choice) => choice.visible && choice.key !== 'material_name')
+      .filter(
+        (choice) =>
+          choice.visible &&
+          choice.key !== 'material_name' &&
+          columns.value.some((column) => column.key === choice.key),
+      )
       .map((choice) => columns.value.find((column) => column.key === choice.key)!),
   ]
   return searchedColumn.value
@@ -824,7 +834,7 @@ onBeforeUnmount(() => {
                 placeholder="全部来源"
                 clearable
                 ><ElOption
-                  v-for="(label, value) in warehouseSourceNames"
+                  v-for="[value, label] in sourceOptions"
                   :key="value"
                   :value="value"
                   :label="label" /></ElSelect
@@ -948,7 +958,9 @@ onBeforeUnmount(() => {
             />
           </div>
         </FilterDialog>
-        <div class="inventory-query-actions"><ElButton @click="search">查询</ElButton></div>
+        <div class="inventory-query-actions">
+          <ElButton class="action-warm" @click="search">查询</ElButton>
+        </div>
       </div>
       <ElButton
         v-if="processing && canWrite"
@@ -961,6 +973,7 @@ onBeforeUnmount(() => {
       >
       <div class="inventory-table-tools" role="group" aria-label="表格工具">
         <InventoryColumnSettings
+          :key="`${teamId}:${Boolean(processing)}`"
           :storage-key="storageKey"
           :columns="selectableColumns"
           :legacy-keys="warehouseLegacyColumnKeys"
@@ -969,7 +982,6 @@ onBeforeUnmount(() => {
         <ElButton
           :icon="Refresh"
           :loading="loading"
-          text
           aria-label="刷新工作台"
           title="刷新"
           @click="emit('refresh')"
@@ -1245,6 +1257,7 @@ onBeforeUnmount(() => {
     <StockSourcePicker
       v-if="picker && canWrite"
       :team-id="teamId"
+      :processing="processing"
       :group-id="picker.group_id"
       :mode="pickerMode"
       :group-label="

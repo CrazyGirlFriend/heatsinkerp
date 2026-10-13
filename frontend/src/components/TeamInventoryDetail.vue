@@ -82,6 +82,9 @@ const hasExternalPending = computed(() =>
     (row) => Number(row.external_pending_quantity) > 0 || Number(row.external_pending_weight) > 0,
   ),
 )
+const canRegisterProcessing = computed(
+  () => !!(props.canWrite && props.processing && !props.warehouse),
+)
 const availableLabel = computed(() =>
   isScrapType(props.group?.material_type) ? '可处理' : '可转出',
 )
@@ -145,16 +148,20 @@ function exportStock() {
     total.value,
     [
       { key: 'batch_no', label: '来源批次号', value: (row: StockBatch) => row.transfer.batch_no },
-      {
-        key: 'processing_role',
-        label: '加工类别',
-        value: (row) =>
-          row.processing_role
-            ? processingRoleLabels[row.processing_role]
-            : row.transfer.processing_role
-              ? processingRoleLabels[row.transfer.processing_role]
-              : '',
-      },
+      ...(props.processing
+        ? [
+            {
+              key: 'processing_role',
+              label: '加工类别',
+              value: (row: StockBatch) =>
+                row.processing_role
+                  ? processingRoleLabels[row.processing_role]
+                  : row.transfer.processing_role
+                    ? processingRoleLabels[row.transfer.processing_role]
+                    : '',
+            },
+          ]
+        : []),
       {
         key: 'specification',
         label: '实际尺寸',
@@ -355,7 +362,9 @@ onBeforeUnmount(() => {
             ></ElTableColumn
           >
           <ElTableColumn
-            v-if="rows.some((row) => row.processing_role || row.transfer.processing_role)"
+            v-if="
+              processing && rows.some((row) => row.processing_role || row.transfer.processing_role)
+            "
             label="加工类别"
             min-width="110"
             ><template #default="{ row }">{{
@@ -449,7 +458,7 @@ onBeforeUnmount(() => {
               inventoryAmount(row.lost_weight)
             }}</template></ElTableColumn
           >
-          <ElTableColumn label="接收 / 加工时间" min-width="170"
+          <ElTableColumn :label="processing ? '接收 / 加工时间' : '接收时间'" min-width="170"
             ><template #default="{ row }">{{
               formatDateTime(row.transfer.received_at)
             }}</template></ElTableColumn
@@ -472,10 +481,8 @@ onBeforeUnmount(() => {
                   type="primary"
                   @click="openQuantity(asStock(row))"
                   >{{
-                    canWrite && !warehouse && stockAvailable(asStock(row))
-                      ? processing
-                        ? '加工登记'
-                        : '加工件数变更'
+                    canRegisterProcessing && stockAvailable(asStock(row))
+                      ? '加工登记'
                       : processing
                         ? '加工记录'
                         : '件数记录'
@@ -636,7 +643,7 @@ onBeforeUnmount(() => {
     v-model="quantityOpen"
     :team-id="teamId"
     :source-id="quantitySource"
-    :can-write="canWrite && !warehouse"
+    :can-write="canRegisterProcessing"
     :processing="processing"
     @saved="changed"
   />

@@ -1027,7 +1027,7 @@ onBeforeUnmount(() => {
     @fullscreen-change="fullscreen = $event"
   >
     <template v-if="canManageBusiness" #settings
-      ><ElButton :icon="Setting" text aria-label="班组设置" @click="businessOpen = true"
+      ><ElButton :icon="Setting" aria-label="班组设置" @click="businessOpen = true"
         >班组设置</ElButton
       ></template
     >
@@ -1264,13 +1264,12 @@ onBeforeUnmount(() => {
                   </FilterDialog>
                 </div>
                 <div class="list-query-actions">
-                  <ElButton @click="applyFilters()">查询</ElButton>
+                  <ElButton class="action-warm" @click="applyFilters()">查询</ElButton>
                 </div>
                 <ElButton
                   class="list-refresh"
                   :icon="Refresh"
                   :loading="loading"
-                  text
                   aria-label="刷新工作台"
                   title="刷新"
                   @click="loadView()"
@@ -1830,6 +1829,7 @@ onBeforeUnmount(() => {
       <StockSourcePicker
         v-if="pickerOpen && canWrite"
         :team-id="teamId"
+        :processing="hasProcessing"
         @close="closeDetails"
         @selected="openAction('dispatch', $event)"
         @outbound="
@@ -1910,7 +1910,7 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 .list-toolbar {
-  background: #fafcfb;
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -2041,7 +2041,7 @@ onBeforeUnmount(() => {
 }
 @container (max-width: 560px) {
   .list-toolbar {
-    background: #fafcfb;
+    background: var(--surface);
     border-bottom: 1px solid var(--line);
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;

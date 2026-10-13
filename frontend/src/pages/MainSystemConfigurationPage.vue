@@ -342,12 +342,11 @@ onBeforeUnmount(() => {
 }
 .integration-panel {
   min-width: 0;
-  background: var(--glass-surface);
-  border: 1px solid var(--glass-border);
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 16px;
   padding: 20px;
   box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(18px);
 }
 .integration-panel-heading {
   display: flex;

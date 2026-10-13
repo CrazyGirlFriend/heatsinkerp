@@ -95,16 +95,14 @@ watch(
           :icon="ZoomOut"
           aria-label="缩小链路"
           :disabled="scale <= 0.6"
-          text
           @click="scale = Math.max(0.6, scale - 0.1)"
         /><button class="graph-scale" @click="scale = 1">{{ Math.round(scale * 100) }}%</button
         ><ElButton
           :icon="ZoomIn"
           aria-label="放大链路"
           :disabled="scale >= 1.3"
-          text
           @click="scale = Math.min(1.3, scale + 0.1)"
-        /><ElButton :icon="RefreshRight" text @click="replay++">重播</ElButton>
+        /><ElButton :icon="RefreshRight" @click="replay++">重播</ElButton>
       </div>
     </header>
     <div
@@ -308,7 +306,6 @@ watch(
 }
 .graph-tools :deep(.el-button) {
   margin: 0;
-  color: var(--muted);
 }
 .graph-scale {
   border: 0;

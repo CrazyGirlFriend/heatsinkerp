@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import WeightInput from './WeightInput.vue'
-import { useDialogValidation } from '@/composables/useDialogValidation'
+import { focusFirstInvalidField, useDialogValidation } from '@/composables/useDialogValidation'
 import OpeningMaterialFields from './OpeningMaterialFields.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   ElAlert,
   ElButton,
@@ -63,6 +63,7 @@ const purposes = ref<TeamPurpose[]>([]),
 const lines = ref<OpeningLine[]>([])
 const invalidSpecifications = reactive(new Set<OpeningLine>())
 const invalidPurpose = ref<number | 'new' | null>(null)
+const purposeSettings = ref<HTMLElement>()
 const validation = useDialogValidation(() => {
   const issues: Record<string, string> = {}
   lines.value.forEach((line, index) => {
@@ -198,6 +199,8 @@ async function saveDirectoryItem(item?: TeamDirectoryItem) {
   const name = (item ? item.name : newName.value).trim()
   if (!name) {
     invalidPurpose.value = item?.id ?? 'new'
+    await nextTick()
+    focusFirstInvalidField(purposeSettings.value)
     return
   }
   const current = epoch
@@ -289,7 +292,11 @@ async function submitOpening() {
     </ElTabs>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <p v-if="loading">正在读取班组设置…</p>
-    <section v-else-if="tab === 'purposes' || editingEmployees" class="purpose-settings">
+    <section
+      v-else-if="tab === 'purposes' || editingEmployees"
+      ref="purposeSettings"
+      class="purpose-settings"
+    >
       <p v-if="!editingEmployees" class="settings-note">
         设置本班组可以做的业务，如检验、去毛刺。上序转料时选择；修改后需保存，历史单据保留原名称。
       </p>

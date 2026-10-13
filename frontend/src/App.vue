@@ -481,10 +481,7 @@ function handleUserCommand(command: string | number | object): void {
   padding: 0;
 }
 .app-shell--business {
-  background:
-    linear-gradient(122deg, #ffffff00 0%, #ffffff96 12%, #ffffff00 24%),
-    radial-gradient(ellipse 400px 75% at -90px 62%, #84b39c57, #c5d8ce00 100%),
-    linear-gradient(115deg, #e0ece5 0%, #eff4f0 23%, #f6f7f5 65%, #f2f3ee 100%);
+  background: var(--workspace-bg);
 }
 .app-shell--business .sidebar {
   margin: 12px 0 12px 12px;
@@ -593,7 +590,7 @@ function handleUserCommand(command: string | number | object): void {
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .app-shell--business .sidebar {
-    background: #f7faf9;
+    background: var(--surface);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }

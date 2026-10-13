@@ -55,7 +55,7 @@ function choose(person: string) {
       :aria-invalid="invalid || undefined"
       @click="opened = true"
     >
-      <span class="person-value" :class="{ 'is-placeholder': !name }">{{
+      <span :key="name" class="person-value" :class="{ 'is-placeholder': !name }">{{
         name || `请选择${label || '加工人'}`
       }}</span>
       <ElIcon class="person-icon"><User /></ElIcon>
@@ -133,12 +133,39 @@ function choose(person: string) {
   border: 0;
   font: inherit;
   text-align: left;
+  transition:
+    box-shadow var(--motion-fast) ease,
+    background-color var(--motion-fast) ease,
+    transform var(--motion-fast) var(--motion-ease);
+}
+.person-trigger:not(:disabled):not(.is-invalid):hover {
+  background-color: var(--el-fill-color-light);
+}
+.person-trigger:not(:disabled):active {
+  transform: scale(0.99);
+}
+.person-trigger:not(.is-invalid):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 .person-value {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.person-value:not(.is-placeholder) {
+  animation: person-value-in var(--motion-standard) ease-out;
+}
+@keyframes person-value-in {
+  from {
+    opacity: 0.45;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .is-placeholder,
 .person-icon {
@@ -185,15 +212,24 @@ function choose(person: string) {
   color: var(--text);
   font: inherit;
   transition:
-    background var(--motion-fast),
-    border-color var(--motion-fast);
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    transform var(--motion-fast) var(--motion-ease);
 }
 .person-choice span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.person-choice:hover,
+.person-choice:hover:not(.is-selected) {
+  border-color: var(--el-border-color-hover);
+  background: var(--el-fill-color-light);
+  box-shadow: 0 2px 5px rgb(35 45 40 / 6%);
+}
+.person-choice:active {
+  transform: scale(0.97);
+}
 .person-choice.is-selected {
   border-color: var(--primary);
   background: var(--primary-soft);
@@ -214,5 +250,15 @@ function choose(person: string) {
   padding: 24px 8px;
   color: var(--muted);
   text-align: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .person-trigger,
+  .person-choice {
+    transition: none;
+    transform: none !important;
+  }
+  .person-value {
+    animation: none !important;
+  }
 }
 </style>

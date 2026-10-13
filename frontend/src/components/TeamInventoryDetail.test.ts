@@ -5,6 +5,7 @@ import { ElPagination } from 'element-plus'
 import TeamInventoryDetail from './TeamInventoryDetail.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
+import TableExportButton from './TableExportButton.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { warehouseFixture } from '@/testFixtures/teamInventory'
@@ -54,6 +55,18 @@ const movement = (id: number, status = 'pending') =>
     received_at: status === 'received' ? '2026-09-27T05:30:00Z' : null,
   })
 beforeEach(() => {
+  vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({
+    source_transfer_id: 11,
+    batch_no: 'TL11',
+    quantity: 5,
+    weight: 0.5,
+    revision: 0,
+    as_of: '2026-09-27T05:30:00Z',
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 10,
+  })
   vi.spyOn(teamMaterialApi, 'inventorySources').mockResolvedValue({
     items: [source(11, 5), source(12, 0, 'CK20260917000001')],
     total: 21,
@@ -121,13 +134,65 @@ describe('warehouse source detail', () => {
     expect(wrapper.text()).toContain('000128')
     expect(wrapper.text()).toContain('TL11')
   })
-  it('keeps warehouse quantity history read-only without a processing action', async () => {
-    await render()
-    expect(wrapper.text()).not.toContain('加工件数变更')
-    expect(wrapper.getComponent(QuantityAdjustmentDialog).props('canWrite')).toBe(false)
-    await wrapper.setProps({ warehouse: false })
-    expect(wrapper.text()).toContain('加工件数变更')
+  it.each([true, false])(
+    'keeps nonprocessing team history read-only (warehouse: %s)',
+    async (warehouse) => {
+      await render(true, warehouse)
+      expect(wrapper.text()).not.toContain('加工件数变更')
+      expect(wrapper.text()).not.toContain('加工登记')
+      expect(wrapper.getComponent(QuantityAdjustmentDialog).props('canWrite')).toBe(false)
+      await wrapper
+        .findAll('button')
+        .find((button) => button.text() === '件数记录')!
+        .trigger('click')
+      expect(wrapper.getComponent(QuantityAdjustmentDialog).props()).toMatchObject({
+        modelValue: true,
+        sourceId: 11,
+        canWrite: false,
+      })
+    },
+  )
+  it('allows registration only for writable processing teams and keeps exhausted batches readable', async () => {
+    await render(true, false)
+    await wrapper.setProps({ processing: true })
+    const actions = wrapper
+      .get('.warehouse-source-table')
+      .findAll('button')
+      .map((button) => button.text())
+    expect(actions.filter((label) => label === '加工登记')).toHaveLength(1)
+    expect(actions.filter((label) => label === '加工记录')).toHaveLength(1)
     expect(wrapper.getComponent(QuantityAdjustmentDialog).props('canWrite')).toBe(true)
+    await wrapper.setProps({ canWrite: false })
+    expect(wrapper.text()).not.toContain('加工登记')
+    expect(wrapper.getComponent(QuantityAdjustmentDialog).props('canWrite')).toBe(false)
+  })
+  it('shows processing columns and export fields only for processing teams', async () => {
+    const stock = source(11, 5)
+    stock.processing_role = 'produced'
+    vi.mocked(teamMaterialApi.inventorySources).mockResolvedValue({
+      items: [stock],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    })
+    await render()
+    const labels = () =>
+      wrapper
+        .get('.warehouse-source-table')
+        .findAll('th')
+        .map((cell) => cell.text())
+    const exportedFields = () =>
+      wrapper
+        .findAllComponents(TableExportButton)[0]!
+        .props('source')()!
+        .fields.map((field) => field.key)
+    expect(labels()).not.toContain('加工类别')
+    expect(labels()).toContain('接收时间')
+    expect(exportedFields()).not.toContain('processing_role')
+    await wrapper.setProps({ warehouse: false, processing: true })
+    expect(labels()).toContain('加工类别')
+    expect(labels()).toContain('接收 / 加工时间')
+    expect(exportedFields()).toContain('processing_role')
   })
   it('separates stock, dispatchable, internal pending and external pending amounts', async () => {
     vi.mocked(teamMaterialApi.inventorySources).mockResolvedValue({

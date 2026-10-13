@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
-import { ElInputNumber, ElSelect } from 'element-plus'
+import { ElInputNumber, ElPopover, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialStockActionDialog from './MaterialStockActionDialog.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
@@ -40,6 +40,7 @@ function source(id = 10, type: 'semi_finished' | null = 'semi_finished'): StockB
       serial_no: `SERIAL${id}`,
       material_name: id === 10 ? '铜钼' : '钨铜',
       source_team: { id: 1, name: '库房' },
+      next_team: { id: 2, name: '轧制', code: 'FACTORY-ROLL' },
       material_type: type,
       source_batch_no: `RAW${id}`,
     }),
@@ -106,6 +107,35 @@ async function destination(id = 3) {
 }
 
 describe('source batch dispatch and loss drafts', () => {
+  it.each([
+    ['FACTORY-ROLL', true],
+    ['FACTORY-WIRE', true],
+    ['FACTORY-ENGRAVE', true],
+    ['FACTORY-WAREHOUSE', false],
+    ['FACTORY-ANNEAL', false],
+    ['FACTORY-GRIND', false],
+    ['FACTORY-PLATE', false],
+    ['FACTORY-QC', false],
+  ])('limits inline processing to the configured teams: %s', async (code, allowed) => {
+    const row = source()
+    row.transfer.next_team.code = code
+    await render('dispatch', [row])
+    expect(wrapper.findAll('button').some((button) => button.text() === '登记加工后件数')).toBe(
+      allowed,
+    )
+    await destination()
+    wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 120)
+    await flushPromises()
+    expect(wrapper.find('.processing-count-notice').exists()).toBe(allowed)
+    if (!allowed) {
+      // Ordinary outbound remains available; it must not create a processing registration.
+      await submit()
+      expect(teamMaterialApi.createDispatch).toHaveBeenCalled()
+      expect(
+        vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].quantity_adjustments,
+      ).toBeUndefined()
+    }
+  })
   it('requires a sender from the team picker and submits one employee for all lines', async () => {
     await render()
     await destination()
@@ -309,6 +339,46 @@ describe('source batch dispatch and loss drafts', () => {
         processing_status: 'partial',
       },
     ])
+  })
+  it('keeps the next source menu open when the previous menu finishes closing', async () => {
+    await render()
+    const [first, second] = wrapper
+      .findAll('.source-actions')
+      .map((actions) => actions.getComponent(ElPopover))
+    first!.vm.$emit('update:visible', true)
+    await flushPromises()
+    second!.vm.$emit('update:visible', true)
+    first!.vm.$emit('update:visible', false)
+    await flushPromises()
+    expect(first!.props('visible')).toBe(false)
+    expect(second!.props('visible')).toBe(true)
+  })
+  it('reveals invalid collapsed dimensions and retains edited dimensions after collapsing', async () => {
+    await render('dispatch', [source()])
+    await destination()
+    const dimensions = wrapper.getComponent(SpecificationInput)
+    const section = wrapper.get<HTMLDetailsElement>('.source-specification-field')
+    expect(section.element.open).toBe(false)
+    dimensions.vm.$emit('validity-change', false)
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    expect(section.element.open).toBe(true)
+    expect(section.find('.el-form-item.is-error').exists()).toBe(true)
+
+    dimensions.vm.$emit('update:modelValue', '30 × 20 × 2 mm')
+    dimensions.vm.$emit('validity-change', true)
+    await flushPromises()
+    expect(section.element.open).toBe(true)
+    section.element.open = false
+    await section.trigger('toggle')
+    expect(section.get('summary').text()).toContain('30 × 20 × 2 mm')
+    await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({
+        lines: [expect.objectContaining({ transfer_specification: '30 × 20 × 2 mm' })],
+      }),
+    )
   })
   it('refreshes inherited specifications after conflict without overwriting an edited line', async () => {
     const first = source(),
@@ -680,6 +750,7 @@ describe('source batch dispatch and loss drafts', () => {
             quantity: 120,
             expected_revision: 7,
             processor_name: '王师傅',
+            processing_status: 'partial',
             reason: '',
           },
         ],

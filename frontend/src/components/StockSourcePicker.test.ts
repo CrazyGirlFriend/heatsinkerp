@@ -110,6 +110,7 @@ describe('stock selection for new outbound', () => {
       page_size: 20,
     })
     await render()
+    await wrapper.setProps({ processing: true })
     const headings = wrapper.findAll('thead th').map((cell) => cell.text())
     const column = (label: string) =>
       wrapper.findAll('tbody tr').map((item) => item.findAll('td')[headings.indexOf(label)]!.text())
@@ -119,6 +120,33 @@ describe('stock selection for new outbound', () => {
     expect(wrapper.get('tbody tr').text()).toContain('100 × 80 × 5 mm')
     expect(wrapper.get('tbody tr').text()).not.toContain('old')
   })
+  it.each(['dispatch', 'reallocate'] as const)(
+    'hides historical processing classification in non-processing teams during %s selection',
+    async (mode) => {
+      const row = {
+        ...source(1),
+        current_specification: '100 × 80 × 5 mm',
+        processing_role: 'remaining' as const,
+        transfer: {
+          ...source(1).transfer,
+          entry_kind: 'processing_output' as const,
+          processing_role: 'remaining' as const,
+        },
+      }
+      vi.mocked(teamMaterialApi.stock).mockResolvedValue({
+        items: [row],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      })
+      await render()
+      await wrapper.setProps({ mode })
+      expect(wrapper.findAll('thead th').map((cell) => cell.text())).not.toContain('加工分类')
+      expect(wrapper.get('tbody tr').text()).not.toContain('剩余大料')
+      expect(wrapper.get('tbody tr').text()).toContain('100 × 80 × 5 mm')
+      expect(wrapper.get('tbody tr').text()).toContain(row.transfer.batch_no)
+    },
+  )
   it('shows no signed source batch when the team has no historical receipts', async () => {
     vi.mocked(teamMaterialApi.stock).mockResolvedValue({
       items: [],

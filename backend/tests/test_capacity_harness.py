@@ -6,9 +6,8 @@ from pathlib import Path
 
 import pytest
 from app.database import SessionLocal
-from test_quantity_adjustments import change
+from test_quantity_adjustments import change, processing_lot
 from test_warehouse_classification import confirm, dispatch
-from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 spec = importlib.util.spec_from_file_location(
@@ -26,10 +25,10 @@ def test_load_harness_rejects_production_environment(monkeypatch):
 
 def test_oracle_counts_processing_and_pending_without_double_counting(client, warehouse):
     s = warehouse
-    lot = intake(client, s, quantity=10, weight=100).json()
-    assert change(client, s, lot, 100).status_code == 201
+    lot = processing_lot(client, s, quantity=10, weight=100)
+    assert change(client, s, lot, 100, workshop=True).status_code == 201
     outgoing = dispatch(
-        client, s, [{"source_transfer_id": lot["id"], "quantity": 30, "weight": 30}]
+        client, s, [{"source_transfer_id": lot["id"], "quantity": 30, "weight": 30}], workshop=True
     ).json()
     qa = object.__new__(module.Harness)
     qa.Session = SessionLocal
@@ -45,12 +44,12 @@ def test_oracle_counts_processing_and_pending_without_double_counting(client, wa
     assert qa.balances()[0][lot["id"]] == [70, Decimal(70)]
     assert qa.reconcile()["quantity"] == 100
     assert qa.reconcile()["weight"] == 100
-    assert confirm(client, s, outgoing, workshop=True).status_code == 200
+    assert confirm(client, s, outgoing).status_code == 200
     assert qa.reconcile()["quantity"] == 100
     external = dispatch(
         client,
         s,
-        [{"source_transfer_id": lot["id"], "quantity": 10, "weight": 10}],
+        [{"source_transfer_id": outgoing["items"][0]["id"], "quantity": 10, "weight": 10}],
         next_team_id=None,
         entry_kind="warehouse_outbound",
         external_destination="隔离验证",

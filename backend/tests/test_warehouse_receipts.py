@@ -32,7 +32,7 @@ def warehouse(client):
     assert response.status_code == 201, response.text
     team = response.json()
     _, headers = _leader(client, "warehouse-leader", team["id"])
-    other = _team(client, "ROLL", "轧制")
+    other = _team(client, "FACTORY-ROLL", "轧制")
     _, other_headers = _leader(client, "rolling-leader", other["id"])
     with SessionLocal() as db:
         db.add_all([TeamEmployee(team_id=item["id"], name="张师傅") for item in (team, other)])

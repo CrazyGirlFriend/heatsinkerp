@@ -177,7 +177,7 @@ onBeforeUnmount(() => {
         placeholder="输入完整流水号"
         maxlength="80"
         aria-label="流水号"
-      /><ElButton type="primary" native-type="submit" :loading="loading">查询</ElButton>
+      /><ElButton class="action-warm" native-type="submit" :loading="loading">查询</ElButton>
     </form>
     <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
     <StatePanel v-if="loading" class="trace-state" state="loading" title="正在查询完整批次链路" />

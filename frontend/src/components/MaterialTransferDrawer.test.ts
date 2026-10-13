@@ -248,7 +248,12 @@ describe('material transfer receipt review', () => {
 
   it('requires an employee and marks just the picker before any receipt confirmation', async () => {
     await render({}, false)
+    const receiver = wrapper.get<HTMLButtonElement>('button[aria-label="接收人"]').element
+    receiver.animate = vi.fn()
+    const focus = vi.spyOn(receiver, 'focus')
     await confirm()
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true })
+    expect(receiver.animate).toHaveBeenCalledOnce()
     expect(materialTransferApi.confirm).not.toHaveBeenCalled()
     expect(ElMessageBox.confirm).not.toHaveBeenCalled()
     expect(wrapper.get('button[aria-label="接收人"]').attributes('aria-invalid')).toBe('true')

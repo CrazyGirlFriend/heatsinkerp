@@ -367,8 +367,8 @@ onBeforeUnmount(() => {
 </template>
 <style scoped>
 .factory-overview {
-  --dashboard-surface: var(--glass-surface);
-  --dashboard-line: var(--glass-border);
+  --dashboard-surface: var(--surface);
+  --dashboard-line: var(--line);
   --dashboard-muted: var(--muted);
   display: flex;
   flex-direction: column;

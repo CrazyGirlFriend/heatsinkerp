@@ -459,7 +459,7 @@ onBeforeUnmount(() => {
           maxlength="80"
           :disabled="example"
           ><template #prepend>流水号</template></ElInput
-        ><ElButton type="primary" native-type="submit" :loading="loading" :disabled="example"
+        ><ElButton class="action-warm" native-type="submit" :loading="loading" :disabled="example"
           >查询</ElButton
         >
       </form>
@@ -477,7 +477,7 @@ onBeforeUnmount(() => {
           >{{ traceTime(chainModel.closing).slice(0, 10) }}</span
         >
         <span v-if="hasData" class="batch-count">{{ trace?.items.length }} 批次</span>
-        <ElButton v-if="reallocations.length" text type="primary" @click="reallocationsOpen = true"
+        <ElButton v-if="reallocations.length" class="action-cool" @click="reallocationsOpen = true"
           >转投记录 {{ reallocations.length }}</ElButton
         >
         <span v-if="example" class="sample-label">演示数据 · 非实时</span>
@@ -495,12 +495,11 @@ onBeforeUnmount(() => {
           :loading="loading"
           aria-label="刷新数据"
           title="刷新数据"
-          text
           @click="load()"
         />
         <ElButton
           v-if="embedded"
-          class="chain-fullscreen"
+          class="chain-fullscreen action-cool"
           :icon="FullScreen"
           :aria-pressed="fullscreen"
           @click="toggleFullscreen"
@@ -592,7 +591,7 @@ onBeforeUnmount(() => {
                 v-model="dateDraft"
                 :append-to="pageRoot"
                 label="收发日期" /></label></FilterDialog
-          ><ElButton type="primary" native-type="submit" :loading="loading" :disabled="example"
+          ><ElButton class="action-warm" native-type="submit" :loading="loading" :disabled="example"
             >查询</ElButton
           ><TableExportButton
             :source="exportSource"
@@ -1102,13 +1101,9 @@ onBeforeUnmount(() => {
   height: 42px;
   margin-left: 0;
 }
-.preview-heading .el-button--primary {
-  background: var(--primary);
-  border-color: var(--primary);
-}
 .flow-workspace {
-  background: var(--glass-surface);
-  border: 1px solid var(--glass-border);
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: var(--card-radius);
   box-shadow: var(--glass-shadow);
   overflow: hidden;
@@ -1252,11 +1247,6 @@ onBeforeUnmount(() => {
 .chart-tools :deep(.el-switch) {
   --el-switch-on-color: var(--primary);
 }
-.chart-tools .el-button {
-  background: transparent;
-  color: var(--muted);
-  border-color: var(--line);
-}
 .flow-column-labels {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1286,7 +1276,7 @@ onBeforeUnmount(() => {
   color: var(--subtle);
   border: 1px solid var(--line);
   border-radius: var(--card-radius);
-  background: var(--glass-surface);
+  background: var(--surface);
   margin-top: 24px;
 }
 .empty-orbit {
@@ -1861,9 +1851,9 @@ onBeforeUnmount(() => {
   min-height: 64px;
   padding: 12px 16px;
   gap: 16px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--line);
   border-radius: 22px 22px 0 0;
-  background: var(--glass-surface);
+  background: var(--surface);
 }
 .chain-page--embedded .chain-query {
   width: 420px;
@@ -1878,10 +1868,10 @@ onBeforeUnmount(() => {
 }
 .chain-page--embedded .preview-main {
   padding: 0 16px 12px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--line);
   border-top: 0;
   border-radius: 0 0 22px 22px;
-  background: var(--glass-surface);
+  background: var(--surface);
   box-shadow: var(--glass-shadow);
 }
 .chain-page--embedded .chain-legends {
@@ -2131,10 +2121,9 @@ onBeforeUnmount(() => {
 .chain-page .chart-toolbar {
   margin-top: 10px;
   padding: 12px 14px;
-  border: 1px solid #dce8e3;
-  border-bottom-color: #e3ece8;
+  border: 1px solid var(--line);
   border-radius: 14px 14px 0 0;
-  background: linear-gradient(110deg, #f0f7f3, #fcfdfc);
+  background: var(--surface);
   gap: 12px;
 }
 .chain-page .path-heading {
@@ -2197,7 +2186,7 @@ onBeforeUnmount(() => {
   border-bottom-color: #e8efef;
 }
 .chain-flow-region :deep(.stock-row:nth-child(odd)) {
-  background: #f5f8f8;
+  background: var(--table-header-bg);
 }
 .chain-page :deep(.trace-detail) {
   box-shadow: none;

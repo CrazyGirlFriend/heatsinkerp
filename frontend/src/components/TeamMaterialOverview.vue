@@ -158,7 +158,7 @@ defineExpose({ exportSource })
               value="difference"
               label="有重量差异" /></ElSelect></label
       ></FilterDialog>
-      <ElButton native-type="submit" class="workspace-query">查询</ElButton>
+      <ElButton native-type="submit" class="workspace-query action-warm">查询</ElButton>
       <div v-show="!fullscreen" class="workspace-toolbar-actions"><slot name="actions" /></div>
     </form>
     <ElTable

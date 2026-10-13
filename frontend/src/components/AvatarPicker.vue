@@ -53,16 +53,20 @@ const emit = defineEmits<{ 'update:modelValue': [string] }>()
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #f8faf9;
+  background: var(--surface);
   cursor: pointer;
   transition:
-    border-color 0.15s,
-    background 0.15s;
+    border-color var(--motion-fast),
+    background var(--motion-fast),
+    transform var(--motion-fast);
 }
-.avatar-choice:hover,
+.avatar-choice:not(:disabled):hover,
 .avatar-choice--selected {
   border-color: var(--primary);
   background: var(--primary-soft);
+}
+.avatar-choice:not(:disabled):active {
+  transform: scale(0.97);
 }
 .avatar-choice:focus-visible,
 .avatar-default:focus-visible {
@@ -103,5 +107,13 @@ const emit = defineEmits<{ 'update:modelValue': [string] }>()
 .avatar-default:disabled {
   cursor: default;
   opacity: 0.7;
+}
+@media (prefers-reduced-motion: reduce) {
+  .avatar-choice {
+    transition: none;
+  }
+  .avatar-choice:not(:disabled):active {
+    transform: none;
+  }
 }
 </style>

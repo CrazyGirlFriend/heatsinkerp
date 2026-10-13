@@ -35,7 +35,11 @@ const emit = defineEmits<{ dispatch: []; receipt: []; scan: []; refresh: [] }>()
       @click="emit('dispatch')"
       >新建出库</ElButton
     >
-    <ElButton v-if="canWrite && showScan" text :icon="FullScreen" @click="emit('scan')"
+    <ElButton
+      v-if="canWrite && showScan"
+      class="action-cool"
+      :icon="FullScreen"
+      @click="emit('scan')"
       >扫码入库</ElButton
     >
     <ElButton
@@ -43,7 +47,6 @@ const emit = defineEmits<{ dispatch: []; receipt: []; scan: []; refresh: [] }>()
       class="workspace-refresh"
       :icon="Refresh"
       :loading="loading"
-      text
       aria-label="刷新工作台"
       title="刷新"
       @click="emit('refresh')"
@@ -63,6 +66,10 @@ const emit = defineEmits<{ dispatch: []; receipt: []; scan: []; refresh: [] }>()
 }
 .workspace-actions :deep(.el-button + .el-button) {
   margin-left: 0;
+}
+.workspace-actions .workspace-refresh.el-button {
+  width: var(--workspace-control-height);
+  padding-inline: 0;
 }
 @media (max-width: 760px) {
   .workspace-actions {

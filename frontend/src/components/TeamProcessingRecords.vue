@@ -220,18 +220,12 @@ onBeforeUnmount(() => {
         @reset="dates = { from: '', to: '' }"
         ><label>登记日期<RecordDateFilter v-model="dates" label="登记日期" /></label
       ></FilterDialog>
-      <ElButton class="workspace-query" @click="apply()">查询</ElButton
+      <ElButton class="workspace-query action-warm" @click="apply()">查询</ElButton
       ><TableExportButton
         :source="exportSource"
         :disabled="loading || !!error"
         :context="route.fullPath"
-      /><ElButton
-        :icon="Refresh"
-        :loading="loading"
-        text
-        aria-label="刷新加工记录"
-        @click="load()"
-      />
+      /><ElButton :icon="Refresh" :loading="loading" aria-label="刷新加工记录" @click="load()" />
       <ElButton v-if="canWrite && !fullscreen" type="primary" @click="emit('register')"
         >加工登记</ElButton
       >

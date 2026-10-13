@@ -530,7 +530,7 @@ function pick(key: string, index: number) {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: #f8fcf9e6;
+  background: var(--table-header-bg);
   backdrop-filter: blur(12px);
   color: var(--dashboard-muted);
   font-weight: 400;

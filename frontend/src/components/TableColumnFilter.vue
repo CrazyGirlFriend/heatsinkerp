@@ -179,7 +179,7 @@ watch(
         :aria-label="`${label}筛选内容`"
       />
       <footer>
-        <ElButton text @click="apply(true)">清除</ElButton>
+        <ElButton @click="apply(true)">清除</ElButton>
         <ElButton @click="close">取消</ElButton>
         <ElButton type="primary" native-type="submit" :disabled="invalid">筛选</ElButton>
       </footer>

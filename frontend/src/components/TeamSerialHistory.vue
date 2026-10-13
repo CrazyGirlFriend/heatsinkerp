@@ -151,7 +151,7 @@ if (serial.value) search()
               :append-to="historyRoot"
               v-model="dates"
               label="收发日期" /></label></FilterDialog
-        ><ElButton native-type="submit" type="primary" :loading="loading">查询</ElButton
+        ><ElButton native-type="submit" class="action-warm" :loading="loading">查询</ElButton
         ><TableExportButton
           :append-to="historyRoot"
           :source="exportSource"

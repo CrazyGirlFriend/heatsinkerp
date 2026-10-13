@@ -95,7 +95,7 @@ onBeforeUnmount(() => {
         placeholder="流水号、批次号或材质"
         @keyup.enter="search"
         @clear="search"
-      /><ElButton @click="search">查询</ElButton>
+      /><ElButton class="action-warm" @click="search">查询</ElButton>
     </div>
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
     <ElTable

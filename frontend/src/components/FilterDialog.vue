@@ -27,7 +27,7 @@ function cancel() {
 <template>
   <ElButton
     class="filter-dialog-trigger"
-    :class="{ 'is-filtered': count > 0 }"
+    :class="{ 'is-filtered': count > 0, 'action-cool': count > 0 }"
     :icon="Filter"
     :aria-label="title"
     :aria-expanded="modelValue"
@@ -45,7 +45,7 @@ function cancel() {
   >
     <div class="filter-dialog-fields"><slot /></div>
     <template #footer
-      ><ElButton class="filter-reset" text @click="emit('reset')">重置</ElButton
+      ><ElButton class="filter-reset" @click="emit('reset')">重置</ElButton
       ><ElButton @click="cancel">取消</ElButton
       ><ElButton type="primary" @click="emit('apply')">应用筛选</ElButton></template
     >
@@ -54,11 +54,6 @@ function cancel() {
 <style>
 .filter-dialog-trigger.el-button {
   margin: 0;
-}
-.filter-dialog-trigger.is-filtered {
-  color: var(--primary);
-  border-color: #bed3c7;
-  background: var(--primary-soft);
 }
 .filter-count {
   margin-left: 7px;

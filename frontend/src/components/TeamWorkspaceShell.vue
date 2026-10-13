@@ -159,14 +159,12 @@ onBeforeUnmount(() => {
         <div v-if="canFullscreen" class="team-workspace__view-actions">
           <ElButton
             v-if="exportable"
-            class="team-workspace__export"
-            text
+            class="team-workspace__export action-warm"
             :icon="Upload"
             @click="emit('export')"
             >导出</ElButton
           ><ElButton
-            class="team-workspace__fullscreen"
-            text
+            class="team-workspace__fullscreen action-cool"
             :icon="fullscreen ? ScaleToOriginal : FullScreen"
             :aria-pressed="fullscreen"
             :disabled="fullscreenBusy"
@@ -291,28 +289,13 @@ onBeforeUnmount(() => {
   height: 32px;
   margin: 0;
   padding-inline: 13px;
-  border: 0;
   border-radius: 20px;
-  background: transparent;
-  color: var(--muted);
   font-size: 13px;
   font-weight: 500;
-}
-.team-workspace__commands :deep(.el-button:hover:not(:disabled)) {
-  background: #ffffff85;
-  color: var(--primary);
 }
 .team-workspace__commands :deep(.el-button:focus-visible) {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
-}
-.team-workspace__commands .team-workspace__export.el-button {
-  background: var(--action-warm-soft);
-  color: var(--action-warm);
-  box-shadow: inset 0 1px 0 #ffffffa3;
-}
-.team-workspace__commands .team-workspace__export.el-button:hover {
-  background: #eee2cc;
 }
 .team-workspace__team {
   align-self: center;
@@ -342,7 +325,7 @@ onBeforeUnmount(() => {
   padding: 5px;
   overflow-x: auto;
   border-radius: 24px;
-  background: linear-gradient(180deg, #c7d6ce45, #e0e9e359);
+  background: var(--surface);
   box-shadow:
     inset 0 1px 2px #2f4f3b10,
     0 1px 0 #ffffffe6;
@@ -366,11 +349,11 @@ onBeforeUnmount(() => {
     box-shadow var(--motion-standard) ease;
 }
 .team-workspace__section.el-button:not(.is-current):hover {
-  background: #ffffff3b;
+  background: var(--primary-soft);
   color: var(--primary);
 }
 .team-workspace__section.el-button.is-current {
-  background: linear-gradient(165deg, #fffffff0, #dceee2bd);
+  background: var(--primary-soft);
   color: var(--primary);
   font-weight: 620;
   box-shadow:

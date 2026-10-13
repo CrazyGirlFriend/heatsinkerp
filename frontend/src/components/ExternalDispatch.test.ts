@@ -48,6 +48,13 @@ vi.mock('@/services/materialInputApi', () => ({
   materialSuggestions: vi.fn().mockResolvedValue([]),
 }))
 const dialogStub = { template: '<div><slot name="header"/><slot/><slot name="footer"/></div>' }
+const senderEmployee = (teamId: number) => ({
+  id: 1000 + teamId,
+  team_id: teamId,
+  name: '发送王师傅',
+  active: true,
+  version: 1,
+})
 const record = (
   kind: ExternalEntryKind = 'warehouse_outbound',
   extra: Record<string, unknown> = {},
@@ -114,6 +121,9 @@ beforeEach(() => {
     error: '',
     refreshTeamDirectory: vi.fn().mockResolvedValue(undefined),
   })
+  vi.spyOn(teamMaterialApi, 'employees').mockImplementation(async (teamId) => [
+    senderEmployee(teamId),
+  ])
   vi.spyOn(teamMaterialApi, 'createDispatch').mockResolvedValue({
     dispatch_no: 'CK-EXTERNAL',
     entry_kind: 'warehouse_outbound',
@@ -167,6 +177,10 @@ async function stockDialog() {
     },
     global: { stubs: { ElDialog: dialogStub } },
   })
+  await flushPromises()
+  await wrapper.get('button[aria-label="转料人"]').trigger('click')
+  await flushPromises()
+  await wrapper.get('.person-choice').trigger('click')
   await flushPromises()
 }
 async function mode(kind: ExternalEntryKind) {
@@ -232,6 +246,7 @@ describe('external dispatch creation', () => {
       expect(id).toBe(teamId)
       expect(body).toMatchObject({
         entry_kind: kind,
+        sent_employee_id: senderEmployee(teamId).id,
         external_destination: '客户收货仓',
         lines: [{ source_transfer_id: 3 }, { source_transfer_id: 4 }],
       })

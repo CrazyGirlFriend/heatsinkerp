@@ -24,8 +24,8 @@
   --el-border-color: #dfe8e3;
   --el-border-color-light: var(--line);
   --el-border-color-lighter: var(--line-light);
-  --el-fill-color-light: #f2f6f3;
-  --el-fill-color-lighter: #fafcfb;
+  --el-fill-color-light: var(--surface-soft);
+  --el-fill-color-lighter: var(--surface);
   --el-fill-color-blank: #fff;
   --el-bg-color-page: var(--workspace-bg);
   --el-border-radius-base: 9px;
@@ -46,20 +46,83 @@
     border-color var(--motion-fast) ease;
 }
 
-.el-button:not(.is-text):not(.is-link) {
-  box-shadow: none;
+/* Filled actions share one hierarchy; inline links and navigation keep their own treatment. */
+.el-button:not(.is-text):not(.is-link):where(
+    :not(
+      .el-button--primary,
+      .el-button--success,
+      .el-button--warning,
+      .el-button--danger,
+      .el-button--info,
+      .action-warm,
+      .action-cool
+    )
+  ) {
+  --el-button-text-color: var(--text);
+  --el-button-bg-color: #edf1ef;
+  --el-button-border-color: #dce3df;
+  --el-button-hover-text-color: var(--text);
+  --el-button-hover-bg-color: #e2e9e5;
+  --el-button-hover-border-color: #cbd7cf;
+  --el-button-active-text-color: var(--text);
+  --el-button-active-bg-color: #d6e1da;
+  --el-button-active-border-color: #bbcbbf;
+  --el-button-disabled-text-color: #9ba49f;
+  --el-button-disabled-bg-color: #f0f3f1;
+  --el-button-disabled-border-color: #e5eae7;
 }
-.el-button--primary:not(.is-plain):not(.is-text):not(.is-link) {
+.el-button:not(.is-text):not(.is-link) {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 65%);
+}
+.el-button--primary.is-plain:not(.is-text):not(.is-link) {
+  --el-button-text-color: var(--primary);
+  --el-button-bg-color: #e7f0eb;
+  --el-button-border-color: #cfded5;
+  --el-button-hover-text-color: #194a39;
+  --el-button-hover-bg-color: #d8e8df;
+  --el-button-hover-border-color: #b7d0c1;
+  --el-button-active-text-color: #194a39;
+  --el-button-active-bg-color: #c7ddd0;
+  --el-button-active-border-color: #a5c3b1;
+}
+.el-button--primary:not(.is-text):not(.is-link) {
+  --el-button-disabled-text-color: #75897d;
+  --el-button-disabled-bg-color: #dce6df;
+  --el-button-disabled-border-color: #dce6df;
+}
+.el-button--danger:not(.is-text):not(.is-link) {
+  --el-button-text-color: #b23840;
+  --el-button-bg-color: #fae9e9;
+  --el-button-border-color: #edcecf;
+  --el-button-hover-text-color: #982e36;
+  --el-button-hover-bg-color: #f4d8da;
+  --el-button-hover-border-color: #e5b6bb;
+  --el-button-active-text-color: #982e36;
+  --el-button-active-bg-color: #ecc8cd;
+  --el-button-active-border-color: #dca0a7;
+  --el-button-disabled-text-color: #ba999b;
+  --el-button-disabled-bg-color: #f7eeef;
+  --el-button-disabled-border-color: #eee2e3;
+}
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled) {
   border-color: var(--primary);
   background: linear-gradient(175deg, #28654f, var(--primary));
   box-shadow: inset 0 1px #ffffff40;
 }
-.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):hover:not(:disabled) {
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):hover:not(:disabled):not(
+    .is-loading
+  ) {
   background: var(--el-color-primary-dark-2);
   border-color: var(--el-color-primary-dark-2);
 }
-.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):disabled {
-  opacity: 0.5;
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):active:not(:disabled):not(
+    .is-loading
+  ) {
+  background: #153f30;
+  border-color: #153f30;
+}
+.el-button:focus-visible {
+  outline-offset: 3px;
 }
 .el-pager li {
   border-radius: 6px;
@@ -69,6 +132,9 @@
 .el-select__wrapper,
 .el-textarea__inner {
   box-shadow: 0 0 0 1px var(--el-border-color) inset;
+  transition:
+    box-shadow var(--motion-fast) ease,
+    background-color var(--motion-fast) ease;
 }
 
 .el-input__wrapper.is-focus,
@@ -95,14 +161,59 @@
 .el-dialog,
 .el-message-box,
 .el-drawer {
-  border: 1px solid var(--glass-border);
-  background: var(--glass-surface);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    var(--glass-surface) border-box;
   -webkit-backdrop-filter: blur(18px) saturate(115%);
   backdrop-filter: blur(18px) saturate(115%);
   box-shadow:
     var(--glass-shadow),
     0 22px 68px rgb(26 49 35 / 16%);
 }
+.el-overlay {
+  background-color: rgb(30 39 35 / 16%);
+}
+.el-popover.el-popper,
+.el-dropdown__popper.el-popper {
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: var(--glass-surface);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(108%);
+  backdrop-filter: blur(18px) saturate(108%);
+}
+.el-dropdown__popper .el-dropdown-menu {
+  padding: 6px;
+  border-radius: inherit;
+  background: transparent;
+}
+.el-dropdown__popper .el-dropdown-menu__item {
+  border-radius: 8px;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .el-dialog,
+  .el-message-box,
+  .el-drawer,
+  .el-popover.el-popper,
+  .el-dropdown__popper.el-popper {
+    background: var(--surface);
+    border-color: var(--line);
+  }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .el-dialog,
+  .el-message-box,
+  .el-drawer,
+  .el-popover.el-popper,
+  .el-dropdown__popper.el-popper {
+    background: var(--surface);
+    border-color: var(--line);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 .el-dialog {
   --el-component-size: 36px;
   display: flex;
@@ -556,7 +667,7 @@
   --el-table-header-bg-color: var(--table-header-bg);
   --el-table-header-text-color: var(--muted);
   --el-table-row-hover-bg-color: var(--table-hover-bg);
-  --el-table-current-row-bg-color: var(--surface-soft);
+  --el-table-current-row-bg-color: var(--primary-soft);
   --el-table-border-color: var(--line-light);
 }
 
@@ -570,8 +681,8 @@
   --el-table-text-color: var(--text);
   --el-table-border-color: var(--line);
   --el-table-row-hover-bg-color: var(--table-hover-bg);
-  --el-table-current-row-bg-color: var(--surface-soft);
-  --el-fill-color-lighter: #fafcfb;
+  --el-table-current-row-bg-color: var(--primary-soft);
+  --el-fill-color-lighter: var(--surface);
 }
 .el-table:not(.live-table) th.el-table__cell {
   font-weight: 550;
@@ -673,7 +784,12 @@
   --el-button-hover-text-color: #705735;
   --el-button-hover-bg-color: #eee2cc;
   --el-button-hover-border-color: #d9c7a8;
+  --el-button-active-text-color: #705735;
   --el-button-active-bg-color: #e8d9bd;
+  --el-button-active-border-color: #ceb991;
+  --el-button-disabled-text-color: #aaa18f;
+  --el-button-disabled-bg-color: #f3f0e9;
+  --el-button-disabled-border-color: #e9e4d9;
 }
 .el-button.action-cool {
   --el-button-text-color: var(--action-cool);
@@ -682,32 +798,94 @@
   --el-button-hover-text-color: var(--primary);
   --el-button-hover-bg-color: var(--primary-soft);
   --el-button-hover-border-color: #bed3c7;
+  --el-button-active-text-color: var(--primary);
+  --el-button-active-bg-color: #d6e3da;
+  --el-button-active-border-color: #afc5b7;
+  --el-button-disabled-text-color: #9aa79e;
+  --el-button-disabled-bg-color: #f0f3f1;
+  --el-button-disabled-border-color: #e5eae7;
 }
-.el-button.action-warm.is-link {
+.el-button.action-warm.is-link:not(:disabled) {
   color: var(--action-warm);
   background: transparent;
   border: 0;
 }
-.el-button:not(.is-link):not(.is-text) {
+.el-button,
+.el-dialog__headerbtn {
   transition:
-    color 160ms ease,
-    background-color 160ms ease,
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    transform 160ms ease;
+    color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    transform var(--motion-fast) var(--motion-ease);
+}
+.el-dialog .el-button:is(.is-link, .is-text) {
+  border-radius: 6px;
+}
+.el-dialog .weight-input select {
+  transition:
+    border-color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease;
 }
 @media (hover: hover) {
-  .el-button:not(.is-link):not(.is-text):not(:disabled):hover {
+  .el-dialog .el-button:is(.is-link, .is-text):not(:disabled):not(.is-loading):hover {
+    background-color: color-mix(in srgb, currentColor 7%, transparent);
+  }
+  .el-dialog .weight-input select:not(:disabled):hover {
+    border-color: var(--el-border-color-hover);
+  }
+  .el-button:not(.is-link):not(.is-text):not(:disabled):not(.is-loading):hover:not(:active) {
     box-shadow: 0 3px 8px rgb(39 70 59 / 10%);
     transform: translateY(-1px);
   }
 }
-.el-button:not(.is-link):not(.is-text):not(:disabled):active {
-  transform: translateY(0);
+.el-button:not(:disabled):not(.is-loading):active,
+.el-dialog__headerbtn:active {
+  transform: translateY(0) scale(0.98);
   box-shadow: none;
 }
+.el-dialog__headerbtn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.el-dialog details > summary {
+  border-radius: 6px;
+  transition:
+    color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease;
+}
+.el-dialog details > summary:hover {
+  background-color: rgb(70 77 73 / 5%);
+}
+.el-dialog details > summary:active {
+  background-color: rgb(70 77 73 / 9%);
+}
+/* Keep native disclosure behavior on browsers without intrinsic-size transitions. */
+@supports (interpolate-size: allow-keywords) and selector(details::details-content) {
+  .el-dialog details {
+    interpolate-size: allow-keywords;
+  }
+  .el-dialog details::details-content {
+    block-size: 0;
+    opacity: 0;
+    overflow: clip;
+    overflow-clip-margin: 4px;
+    transition:
+      block-size var(--motion-standard) var(--motion-ease),
+      opacity var(--motion-fast) ease,
+      content-visibility var(--motion-standard) allow-discrete;
+  }
+  .el-dialog details[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .el-button {
+  .el-dialog details::details-content {
+    transition: none !important;
+  }
+  .el-button,
+  .el-dialog__headerbtn {
     transition: none !important;
     transform: none !important;
   }

@@ -425,8 +425,8 @@ onBeforeUnmount(() => {
                     label="填写中"
                     value="draft" /><ElOption label="停用" value="disabled" /></ElSelect></label
             ></FilterDialog>
-            <ElButton type="primary" @click="search">查询</ElButton
-            ><ElButton text @click="reset">重置</ElButton>
+            <ElButton class="action-warm" @click="search">查询</ElButton
+            ><ElButton @click="reset">重置</ElButton>
           </template>
           <div class="warehouse-actions">
             <TableExportButton
@@ -453,7 +453,6 @@ onBeforeUnmount(() => {
               class="warehouse-refresh"
               :icon="Refresh"
               :loading="loading"
-              text
               aria-label="刷新仓位"
               title="刷新"
               @click="load()"

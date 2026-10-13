@@ -225,6 +225,9 @@ def context(db, team_id, lot_id, page=1, page_size=10):
 
 def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     """Recount only untransferred stock inside the caller's locked transaction."""
+    from .processing_records import require_processing_team
+
+    require_processing_team(db, lot.next_team_id)
     if lot.material_type in WEIGHT_ONLY_TYPES:
         raise HTTPException(422, "废泥、废屑只按重量计量，不能修改加工件数")
     balance = db.scalar(
@@ -263,10 +266,6 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
             else None
         )
     )
-    if payload.processing_status is not None or payload.outputs is not None:
-        from .processing_records import require_processing_team
-
-        require_processing_team(db, lot.next_team_id)
     if (
         payload.quantity == balance.on_hand_quantity
         and payload.processing_status is None

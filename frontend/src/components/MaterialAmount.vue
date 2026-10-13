@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AnimatedMetric from './AnimatedMetric.vue'
 import { formatAmount as amount } from '@/utils/format'
 withDefaults(
   defineProps<{
@@ -6,8 +7,9 @@ withDefaults(
     weight?: number | null
     prominent?: boolean
     weightOnly?: boolean
+    animate?: boolean
   }>(),
-  { prominent: false },
+  { prominent: false, animate: false },
 )
 </script>
 
@@ -20,11 +22,25 @@ withDefaults(
     }"
   >
     <span v-if="!weightOnly"
-      ><strong>{{ amount(quantity) }}</strong
+      ><strong
+        ><AnimatedMetric
+          v-if="animate"
+          :value="quantity ?? null"
+          :animate="animate"
+          :precision="6"
+          mode="roll"
+        /><template v-else>{{ amount(quantity) }}</template></strong
       ><small>件</small></span
     >
     <span
-      ><strong>{{ amount(weight) }}</strong
+      ><strong
+        ><AnimatedMetric
+          v-if="animate"
+          :value="weight ?? null"
+          :animate="animate"
+          :precision="6"
+          mode="roll"
+        /><template v-else>{{ amount(weight) }}</template></strong
       ><small>kg</small></span
     >
     <small v-if="(weight ?? 0) < 0" class="shortage-label">重量差异</small>

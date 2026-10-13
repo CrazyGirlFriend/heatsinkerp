@@ -726,7 +726,7 @@ onBeforeUnmount(() => {
             >
           </div>
           <ElButton
-            text
+            class="action-cool"
             :disabled="readonly || members.length >= 20"
             @click="members.push(newMember())"
             >添加流水号</ElButton

@@ -1,7 +1,7 @@
 import type { TooltipComponentOption } from 'echarts'
 
 export const glassTooltip = {
-  backgroundColor: '#f8fcf9e8',
+  backgroundColor: '#fffffff2',
   borderColor: '#ffffff',
   borderWidth: 1,
   borderRadius: 12,

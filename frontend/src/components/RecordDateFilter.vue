@@ -98,7 +98,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
       ><ElButton
         ref="trigger"
         class="record-date-trigger"
-        :class="{ 'is-filtered': active }"
+        :class="{ 'is-filtered': active, 'action-cool': active }"
         :icon="Calendar"
         :aria-label="`${label}：${display}`"
         :title="`${label}：${display}`"
@@ -162,7 +162,6 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
           : '选择某一天'
       }}</span
       ><ElButton
-        text
         size="small"
         @click="
           () => {
@@ -185,11 +184,6 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
   white-space: nowrap;
   margin-left: 0 !important;
   font-size: 13px;
-}
-.record-date-trigger.is-filtered {
-  color: var(--primary);
-  border-color: var(--primary);
-  background: var(--el-color-primary-light-9);
 }
 .date-chevron {
   margin-left: 10px;

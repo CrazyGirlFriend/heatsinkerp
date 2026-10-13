@@ -359,6 +359,44 @@ describe('warehouse grouped stock', () => {
     ])
   })
   it.each([true, false])(
+    'hides processing columns and export fields for non-processing teams (warehouse=%s)',
+    async (warehouse) => {
+      await render(undefined, true, warehouse)
+      const settings = wrapper.getComponent({ name: 'InventoryColumnSettings' })
+      expect(
+        settings
+          .props('columns')
+          .some((column: { key: string }) => column.key === 'processing_role'),
+      ).toBe(false)
+      // An old saved layout must not reintroduce an unavailable column.
+      settings.vm.$emit(
+        'change',
+        warehouseColumns.map((column) => ({
+          key: column.key,
+          visible: true,
+        })),
+      )
+      await flushPromises()
+      for (const fullscreen of [false, true]) {
+        await wrapper.setProps({ fullscreen })
+        expect(headers()).not.toContain('加工分类')
+      }
+      const source = (
+        wrapper.vm as unknown as {
+          exportSource: () => import('@/utils/tableExport').TableExportSource
+        }
+      ).exportSource()
+      expect(source.fields.some((field) => field.key === 'processing_role')).toBe(false)
+      if (warehouse) {
+        expect(
+          select('库存来源筛选')
+            .findAllComponents(ElOption)
+            .map((option) => option.props('label')),
+        ).toEqual(['外部来料', '外部退回', '车间转入', '初始库存'])
+      }
+    },
+  )
+  it.each([true, false])(
     'keeps the processing toolbar entry visible in fullscreen=%s and respects permissions',
     async (fullscreen) => {
       await render('/team-workspaces/901?tab=stock', true, false)
@@ -856,7 +894,6 @@ describe('warehouse grouped stock', () => {
       '流水号',
       '材质',
       '物料类型',
-      '加工分类',
       '实际尺寸',
       '本班组业务',
       '上序班组',
@@ -1057,7 +1094,6 @@ describe('warehouse grouped stock', () => {
       '流水号',
       '材质',
       '物料类型',
-      '加工分类',
       '实际尺寸',
       '本班组业务',
       '上序班组',
@@ -1236,7 +1272,6 @@ describe('warehouse grouped stock', () => {
       '流水号',
       '材质',
       '物料类型',
-      '加工分类',
       '实际尺寸',
       '本班组业务',
       '来源',

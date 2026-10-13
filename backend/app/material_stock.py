@@ -367,8 +367,6 @@ def create_dispatch(db, team_id, payload, user):
             ):
                 raise HTTPException(422, "每个来源批次只能登记一次加工件数，且必须属于本次出库")
             for source_id, adjustment in adjustments.items():
-                if source.code == WAREHOUSE_TEAM_CODE:
-                    raise HTTPException(422, "库房不登记加工件数")
                 record_quantity_change(
                     db,
                     lots[source_id],

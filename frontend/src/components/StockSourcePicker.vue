@@ -31,8 +31,9 @@ const props = withDefaults(
     groupId?: number
     groupLabel?: string
     mode?: 'dispatch' | 'reallocate'
+    processing?: boolean
   }>(),
-  { mode: 'dispatch' },
+  { mode: 'dispatch', processing: false },
 )
 const emit = defineEmits<{ close: []; selected: [sources: StockBatch[]]; outbound: [] }>()
 const query = ref(''),
@@ -172,7 +173,7 @@ onBeforeUnmount(() => {
         ><label>接收日期<RecordDateFilter v-model="dateDraft" label="接收日期" /></label
         ><ElCheckbox v-model="urgentDraft">仅看加急</ElCheckbox></FilterDialog
       >
-      <ElButton @click="search">查询</ElButton>
+      <ElButton class="action-warm" @click="search">查询</ElButton>
     </div>
     <BatchSelectionBar
       v-if="mode === 'dispatch'"
@@ -255,7 +256,9 @@ onBeforeUnmount(() => {
           }}</template></ElTableColumn
         >
         <ElTableColumn
-          v-if="rows.some((row) => row.processing_role || row.transfer.processing_role)"
+          v-if="
+            processing && rows.some((row) => row.processing_role || row.transfer.processing_role)
+          "
           label="加工分类"
           min-width="110"
           show-overflow-tooltip

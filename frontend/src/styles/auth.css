@@ -171,9 +171,6 @@
   --el-button-hover-border-color: #438a70;
   --el-button-active-bg-color: #194a39;
   --el-button-active-border-color: #2c6852;
-  --el-button-disabled-bg-color: #316c56;
-  --el-button-disabled-border-color: #578a73;
-  --el-button-disabled-text-color: #fff;
   position: relative;
   width: 100%;
   min-height: clamp(52px, 4vw, 56px);

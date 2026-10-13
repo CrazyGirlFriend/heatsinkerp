@@ -559,7 +559,8 @@ onBeforeUnmount(() => {
             </table>
           </div>
           <footer>
-            <ElButton text :disabled="outputs.length >= 100" @click="addOutput()">增加明细</ElButton
+            <ElButton class="action-cool" :disabled="outputs.length >= 100" @click="addOutput()"
+              >增加明细</ElButton
             ><span
               >共 {{ activeOutputs.length }} 行 · {{ outputTotal }} 件 ·
               {{ outputWeight }} kg；空白或全零行不提交</span

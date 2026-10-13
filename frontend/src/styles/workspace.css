@@ -58,9 +58,9 @@
 }
 .admin-workspace > .metric-strip {
   margin-bottom: 12px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--line);
   border-radius: var(--card-radius);
-  background: var(--glass-surface);
+  background: var(--surface);
   box-shadow: var(--glass-shadow);
 }
 .metric-cell {

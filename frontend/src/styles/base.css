@@ -26,15 +26,15 @@
   --line: #e8edef;
   --line-light: #eff3f0;
   --surface: #fff;
-  --surface-soft: #e7f0eb;
-  --primary-soft: var(--surface-soft);
-  --workspace-bg: #f4f7f4;
-  --table-header-bg: #f9fbf9;
+  --surface-soft: #f4f6f5;
+  --primary-soft: #e7f2eb;
+  --workspace-bg: #fff;
+  --table-header-bg: #fff;
   --table-header-line: #e0e8e2;
   --table-hover-bg: #f2faf6;
   --panel-line: var(--line);
   --panel-shadow: 0 5px 18px rgb(32 59 46 / 3%);
-  --glass-surface: linear-gradient(160deg, #fffffff0, #ffffffb8);
+  --glass-surface: linear-gradient(160deg, #fffffff5, #ffffffe0);
   --glass-border: #ffffffb8;
   --glass-shadow:
     0 5px 18px #203b2e0b, 0 0 0 0.5px #4b6c5814, inset 0 1px 1px #fff, inset 0 -1px 1px #ffffffb8;
@@ -215,7 +215,7 @@ a {
   font-size: 13px;
 }
 .factory-nav-popup .el-menu-item.is-active {
-  background: var(--surface-soft);
+  background: var(--primary-soft);
 }
 .main-content {
   grid-column: 2;
@@ -279,9 +279,7 @@ a {
 }
 .chart-glass {
   border: 1px solid #ffffffd9;
-  background:
-    radial-gradient(ellipse at 8% 0%, #ffffffd9, transparent 62%),
-    linear-gradient(145deg, #ffffff9c, #ffffff61 55%, #e3efe896);
+  background: radial-gradient(ellipse at 8% 0%, #ffffffd9, transparent 62%), var(--glass-surface);
   box-shadow:
     0 8px 24px #203b2e0c,
     0 0 0 0.5px #335d461a,

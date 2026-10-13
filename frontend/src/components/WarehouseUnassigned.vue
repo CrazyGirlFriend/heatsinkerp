@@ -237,7 +237,7 @@ onBeforeUnmount(() => {
         clearable
         @keyup.enter="search"
         @clear="search"
-      /><ElButton :loading="loading" @click="search">查询</ElButton
+      /><ElButton class="action-warm" :loading="loading" @click="search">查询</ElButton
       ><TableExportButton :source="exportSource" :disabled="loading || !!error" :context="teamId" />
     </div>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />

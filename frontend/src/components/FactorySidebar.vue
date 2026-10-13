@@ -476,7 +476,7 @@ const materialLinks = computed(() => [
   --el-menu-item-height: 44px;
   --el-menu-sub-item-height: 38px;
   --el-menu-text-color: var(--muted);
-  --el-menu-hover-bg-color: var(--surface-soft);
+  --el-menu-hover-bg-color: var(--primary-soft);
   --el-menu-active-color: var(--primary);
 }
 .factory-nav :deep(.el-sub-menu__title) {
@@ -539,7 +539,7 @@ const materialLinks = computed(() => [
 }
 .factory-nav :deep(.el-menu-item.is-active) {
   color: var(--primary);
-  background: var(--surface-soft);
+  background: var(--primary-soft);
   font-weight: 550;
 }
 .factory-nav :deep(.el-sub-menu .el-menu-item.is-active::before) {
@@ -605,7 +605,7 @@ const materialLinks = computed(() => [
   --el-menu-item-height: 42px;
   --el-menu-sub-item-height: 36px;
   --el-menu-level-padding: 20px;
-  --el-menu-hover-bg-color: #ffffff50;
+  --el-menu-hover-bg-color: var(--primary-soft);
 }
 .factory-nav--glass :deep(.el-sub-menu__title) {
   border-radius: 8px;
@@ -654,11 +654,11 @@ const materialLinks = computed(() => [
 }
 .factory-nav--glass :deep(.el-menu-item:not(.is-active):hover) {
   color: var(--primary);
-  background: #ffffff70;
+  background: var(--primary-soft);
 }
 .factory-nav--glass :deep(.el-menu-item.is-active) {
   color: var(--primary);
-  background: #205c4812;
+  background: var(--primary-soft);
   box-shadow: inset 0 0 0 1px #205c480b;
   font-weight: 550;
 }
@@ -678,7 +678,7 @@ const materialLinks = computed(() => [
 }
 .factory-nav--glass .factory-nav__scroll-hint {
   border-radius: 8px;
-  background: #f0f6f2ed;
+  background: var(--glass-surface);
 }
 .factory-nav--glass.factory-nav--compact .factory-nav__scroll {
   padding-inline: 6px;

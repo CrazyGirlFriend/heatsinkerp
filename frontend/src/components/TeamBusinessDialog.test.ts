@@ -76,7 +76,13 @@ describe('team business settings', () => {
     await click('保存')
     expect(save).toHaveBeenCalledWith(2, { name: '王工', active: false, expected_version: 1 }, 4)
     expect(teamMaterialApi.savePurpose).not.toHaveBeenCalled()
+    const nameInput = wrapper.get<HTMLInputElement>('input[aria-label="新增员工名称"]').element
+    const nameField = nameInput.closest<HTMLElement>('.el-input')!
+    nameField.animate = vi.fn()
+    const focus = vi.spyOn(nameInput, 'focus')
     await click('新增员工')
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true })
+    expect(nameField.animate).toHaveBeenCalledOnce()
     expect(
       wrapper
         .get('input[aria-label="新增员工名称"]')
@@ -164,7 +170,13 @@ describe('team business settings', () => {
     await render('purposes')
     await wrapper.get('input[aria-label="新增业务名称"]').setValue('去毛刺')
     await wrapper.get('input[aria-label="业务名称 1"]').setValue('')
+    const nameInput = wrapper.get<HTMLInputElement>('input[aria-label="业务名称 1"]').element
+    const nameField = nameInput.closest<HTMLElement>('.el-input')!
+    nameField.animate = vi.fn()
+    const focus = vi.spyOn(nameInput, 'focus')
     await click('保存')
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true })
+    expect(nameField.animate).toHaveBeenCalledOnce()
     expect(
       wrapper
         .get('input[aria-label="业务名称 1"]')

@@ -829,13 +829,8 @@ onBeforeUnmount(() => {
               ></label>
               <ElCheckbox v-model="urgentDraft">仅看加急</ElCheckbox>
             </FilterDialog>
-            <ElButton native-type="submit">查询</ElButton
-            ><ElButton
-              :icon="Refresh"
-              text
-              aria-label="刷新转料记录"
-              @click="liveRefresh.request"
-            />
+            <ElButton class="action-warm" native-type="submit">查询</ElButton
+            ><ElButton :icon="Refresh" aria-label="刷新转料记录" @click="liveRefresh.request" />
           </div>
         </form>
         <div
@@ -1217,9 +1212,9 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--line);
   border-radius: var(--card-radius);
-  background: var(--glass-surface);
+  background: var(--surface);
   box-shadow: var(--glass-shadow);
 }
 .transfers-card :deep(.el-card__body) {

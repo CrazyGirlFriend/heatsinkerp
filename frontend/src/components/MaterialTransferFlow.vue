@@ -183,7 +183,7 @@ watch(
   overflow-wrap: anywhere;
 }
 .receipt-flow > .el-icon {
-  color: #a99abb;
+  color: var(--subtle);
   flex-shrink: 0;
 }
 .receipt-flow--compact {
@@ -217,11 +217,11 @@ watch(
 .flow-node__icon {
   width: 56px;
   height: 56px;
-  border: 1px solid #e9e3f6;
+  border: 1px solid var(--line);
   border-radius: 17px;
-  color: #9283ab;
-  background: linear-gradient(150deg, #fff, #f5f2fa);
-  box-shadow: 0 5px 14px rgb(70 49 109 / 3%);
+  color: var(--muted);
+  background: var(--surface);
+  box-shadow: 0 5px 14px rgb(39 51 46 / 4%);
   font-size: 25px;
 }
 .flow-node--current .flow-node__icon {
@@ -252,7 +252,7 @@ watch(
   content: '';
   height: 1px;
   flex: 1;
-  background: #e9e3f4;
+  background: var(--line);
 }
 .flow-cluster {
   display: flex;

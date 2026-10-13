@@ -73,7 +73,7 @@ onBeforeUnmount(() => {
         aria-label="搜索交期明细"
         @keyup.enter="searchPlans"
         @clear="searchPlans"
-      /><ElButton @click="searchPlans">查询</ElButton>
+      /><ElButton class="action-warm" @click="searchPlans">查询</ElButton>
     </div>
     <p v-if="error" role="alert">{{ error }}<ElButton link @click="load">重试</ElButton></p>
     <ElTable
