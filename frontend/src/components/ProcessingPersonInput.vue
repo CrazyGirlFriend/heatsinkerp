@@ -140,9 +140,6 @@ function choose(person: string) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.person-trigger.is-invalid {
-  box-shadow: 0 0 0 1px var(--el-color-danger) inset;
-}
 .is-placeholder,
 .person-icon {
   color: var(--el-text-color-placeholder);

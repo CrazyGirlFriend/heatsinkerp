@@ -4,6 +4,7 @@ import FormValidationNotice from './FormValidationNotice.vue'
 import MaterialInput from './MaterialInput.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import AutofillBadge from './AutofillBadge.vue'
+import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 import { useMaterialAutofill } from '@/composables/useMaterialAutofill'
 import type { MaterialInputField } from '@/services/materialInputApi'
 
@@ -302,9 +303,6 @@ const fieldErrors = computed<Record<string, string>>(() =>
     ? Object.fromEntries(validationIssues.value.map((issue) => [issue.field, issue.message]))
     : {},
 )
-const firstValidationIssue = computed(() =>
-  validationAttempted.value ? validationIssues.value[0] : undefined,
-)
 
 function resetForm(transfer: MaterialTransfer | null = props.transfer): void {
   autofill.reset()
@@ -353,25 +351,6 @@ function validate(): boolean {
   return !validationIssues.value.length
 }
 
-function locateError() {
-  const issue = firstValidationIssue.value
-  if (!issue) return
-  const item = (transferForm.value?.$el as HTMLElement | undefined)?.querySelector<HTMLElement>(
-    `[data-validation-field="${issue.field}"]`,
-  )
-  if (!item) return
-  item.scrollIntoView?.({ block: 'center' })
-  const emptyDimension = Array.from(
-    item.querySelectorAll<HTMLInputElement>('.specification-dimensions input:not([disabled])'),
-  ).find((input) => !input.value)
-  const input =
-    emptyDimension ||
-    item.querySelector<HTMLElement>(
-      'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), button:not([disabled])',
-    )
-  input?.focus({ preventScroll: true })
-}
-
 async function refreshAfterConflict(): Promise<void> {
   const batchNo = editingSnapshot.value?.batch_no
   if (!batchNo || refreshing.value) return
@@ -401,7 +380,7 @@ function idempotencyKey(): string {
 async function submit(): Promise<void> {
   if (!validate()) {
     await nextTick()
-    locateError()
+    focusFirstInvalidField(transferForm.value?.$el)
     return
   }
   if (saving.value || locationBusy.value) return

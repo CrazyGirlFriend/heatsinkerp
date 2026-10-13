@@ -81,11 +81,18 @@ describe('processing piece adjustment', () => {
   it('marks an empty processing person and preserves the entered name on save', async () => {
     await render(true, '')
     await wrapper.setProps({ processing: true })
+    const trigger = wrapper.get('button[aria-label="加工人"]')
+    const focus = vi.spyOn(trigger.element as HTMLButtonElement, 'focus')
     await click('保存加工登记')
     expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true })
+    expect(trigger.attributes('aria-invalid')).toBe('true')
     const person = wrapper.getComponent(ProcessingPersonInput)
     expect(person.element.closest('.el-form-item')?.classList.contains('is-error')).toBe(true)
     person.vm.$emit('update:modelValue', '  李师傅  ')
+    await flushPromises()
+    expect(person.element.closest('.el-form-item')?.classList.contains('is-error')).toBe(false)
+    expect(trigger.attributes('aria-invalid')).toBeUndefined()
     await click('保存加工登记')
     expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
       2,

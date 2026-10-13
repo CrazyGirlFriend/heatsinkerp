@@ -3,7 +3,8 @@ import { materialWeightToleranceKg } from '@/config/materialRules'
 
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import SharedMaterialInfo from './SharedMaterialInfo.vue'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 import {
   ElAlert,
   ElButton,
@@ -57,6 +58,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [QuantityAdjustment] }>()
 const auth = useAuthStore()
+const formRef = ref<InstanceType<typeof ElForm>>()
 const snapshot = ref<QuantityAdjustmentContext | null>(null)
 const records = ref<QuantityAdjustment[]>([]),
   total = ref(0),
@@ -247,10 +249,9 @@ async function save() {
     return
   error.value = ''
   submitted.value = true
-  if (!processorName.value.trim() || processorName.value.trim().length > 80) return
   const byOutput = props.processing && detailed.value
   const count = byOutput ? outputTotal.value : quantity.value
-  if (
+  const invalidOutputs =
     byOutput &&
     (!activeOutputs.value.length ||
       activeOutputs.value.some((line) =>
@@ -258,21 +259,25 @@ async function save() {
           outputError(line, field as 'quantity' | 'weight' | 'specification' | 'serial'),
         ),
       ))
-  )
-    return
-  if (props.processing && !byOutput && !specificationValid.value) return
   if (
+    !processorName.value.trim() ||
+    processorName.value.trim().length > 80 ||
+    invalidOutputs ||
+    (props.processing && !byOutput && !specificationValid.value) ||
     !Number.isSafeInteger(count) ||
     count! < 0 ||
     count! > 2147483647 ||
-    (props.processing && progressInvalid.value)
-  )
+    (props.processing && progressInvalid.value) ||
+    reason.value.trim().length > 2000
+  ) {
+    await nextTick()
+    focusFirstInvalidField(formRef.value?.$el)
     return
+  }
   if (!props.processing && quantity.value === snapshot.value.quantity) {
     error.value = '件数未发生变化'
     return
   }
-  if (reason.value.trim().length > 2000) return
   const outputLines: CreateProcessingOutput[] = activeOutputs.value.map((line) => ({
     role: line.role,
     ...(snapshot.value?.shared_unallocated && line.role === 'produced'
@@ -393,6 +398,7 @@ onBeforeUnmount(() => {
       <SharedMaterialInfo :item="snapshot" />
       <ElForm
         v-if="editable && hasStock"
+        ref="formRef"
         class="processing-registration-form"
         label-position="top"
         :show-message="false"
@@ -628,7 +634,11 @@ onBeforeUnmount(() => {
               'is-error': submitted && (!processorName.trim() || processorName.trim().length > 80),
             }"
           >
-            <ProcessingPersonInput v-model="processorName" :options="snapshot.processor_options" />
+            <ProcessingPersonInput
+              v-model="processorName"
+              :options="snapshot.processor_options"
+              :invalid="submitted && (!processorName.trim() || processorName.trim().length > 80)"
+            />
           </ElFormItem>
           <ElFormItem
             v-if="processing && !detailed"

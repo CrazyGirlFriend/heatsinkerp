@@ -221,13 +221,31 @@
   line-height: 20px;
   font-size: 13px;
 }
-.el-dialog .el-input.is-error .el-input__wrapper,
-.el-dialog .dialog-field.is-error :is(.el-input__wrapper, .el-select__wrapper),
-.el-dialog .el-form-item.is-error :is(.el-input__wrapper, .el-select__wrapper) {
-  box-shadow: 0 0 0 1px var(--el-color-danger) inset;
+/* Keep validation visible on composite controls, including hover and focus. */
+:is(
+    .el-form .el-form-item.is-error .el-form-item__content,
+    .dialog-field.is-error,
+    .el-input.is-error
+  )
+  :is(.el-input__wrapper, .el-select__wrapper, .el-textarea__inner),
+.el-select__wrapper.is-invalid {
+  box-shadow: 0 0 0 2px var(--el-color-danger) inset;
+  background: #fff6f6;
 }
-.el-dialog :is(.dialog-field, .el-form-item).is-error .el-textarea__inner {
-  box-shadow: 0 0 0 1px var(--el-color-danger) inset;
+:is(
+    .el-form .el-form-item.is-error .el-form-item__content,
+    .dialog-field.is-error,
+    .el-input.is-error
+  )
+  :is(.el-input__wrapper, .el-select__wrapper, .el-textarea__inner):focus-within,
+.el-select__wrapper.is-invalid:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--el-color-danger) inset,
+    0 0 0 3px rgb(196 71 77 / 14%);
+  outline-color: var(--el-color-danger);
+}
+:is(.el-form-item, .dialog-field).is-error > :is(.el-form-item__label, .dialog-field-label) {
+  color: var(--el-color-danger);
 }
 .dialog-field {
   display: flex;
