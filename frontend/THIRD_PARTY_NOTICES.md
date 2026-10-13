@@ -37,13 +37,9 @@ SOFTWARE.
   `scripts/subset-home-font.py` takes the original font and UTF-8 UI text on stdin.
   Characters outside the subset use the declared system CJK fallback. The subset covers frontend
   Vue/TypeScript UI text; standalone presentation screens and print layouts retain their own typography.
-- `public/assets/factory-inventory/ambient.png`, `stock.png`, `transit.png`: individually generated
-  project assets from the earlier homepage design; the current page reuses `transit.png`.
-- `public/assets/factory-inventory/*-v2.png`: individually generated project assets matching the
-  user's exact reselected image, including eight distinct team equipment illustrations, a stock
-  cube and the blue/lilac background. Source reference and generation brief are recorded in
-  `../docs/design-references/factory-inventory-v2-assets.md`. Sidebar and control symbols remain
-  from the existing Element Plus Icons library; the page itself is live HTML, not a mockup image.
+- Earlier `ambient.png`, `stock.png`, `transit.png` and `*-v2.png` illustrations were removed
+  from the shipped assets on 2026-10-13 because current code no longer references them.
+  Their historical design references remain under `docs/design-references/`.
 - `public/assets/factory-inventory/ambient-white-purple.png`: built-in Image Gen color edit of
   `ambient-v2.png`, preserving composition and replacing blue/cyan with pearl white and lavender.
   This is the local white-purple trial requested after the blue-purple deployment; final prompt

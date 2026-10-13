@@ -26,6 +26,8 @@ sudo bash scripts/backup/build-client.sh
 sudo python3 scripts/install_database_backup.py --apply
 ```
 
+内网迁移时，使用程序包内已导入的同版本客户端镜像：`sudo python3 migration-tools/install_database_backup.py --apply --client-image <镜像ID>`。该入口不联网，并检查客户端版本；目标不得已有归档凭据或恢复链。不要复制旧 `backup-client.cnf`，业务 SQL 不包含旧 MySQL 归档账号。完整步骤见 [离线迁移](server-migration.md#45-离线建立新服务器的持续备份链)。
+
 安装器创建专用归档账号、保存私密连接文件、生成首份完整备份，再启用归档和定时器。数据库主机 UUID 改变时，先保全旧目录、人工建立新的恢复链，不能复用旧文件名覆盖已有日志。
 
 ## 运维命令

@@ -11,7 +11,7 @@
 
 迁移现有系统时，不要同时升级程序、MySQL 或数据库结构。先搬迁实际运行的同一版本，验收后再单独升级。GitHub 中只有代码和示例配置，没有业务数据库、实际密码或密钥。
 
-当前线上 `20260923T110054Z` 已包含 RabbitMQ，迁移还必须搬迁消息队列镜像、配置和停机备份的数据卷，具体见 [异步/MQ 迁移补充](async-notifications.md#迁移到另一台机器时的补充)。第 4 节原有三服务命令只适用于不含 MQ 的旧版本，不能直接当作当前四服务的完整备份。
+当前系统包含前端、后端、MySQL、RabbitMQ 四个业务服务，以及独立的持续备份客户端和 systemd 定时任务。第 4 节是完整离线迁移流程，包含 MQ 停机备份和新备份链安装。
 
 ## 2. 文件和数据分别放在哪里
 
@@ -31,7 +31,7 @@
 
 以下命令在 Linux 服务器的 **Bash、root 管理会话**中分段执行（可先运行 `sudo -i`）。它们不是自动化一键脚本，不要整篇一次粘贴。命令报错时立即停下，不要跳过校验继续启动业务。
 
-新服务器须安装 Git、Docker Engine、Docker Compose v2；先检查 `docker version`、`docker compose version`。镜像搬迁要求新旧 CPU 架构兼容。跨架构时需要为目标平台重新构建并单独验证，不能直接套用本手册的镜像导入步骤。
+联网源码安装需要 Git；离线迁移不需要 Git。新服务器须安装 Docker Engine、Docker Compose v2；先检查 `docker version`、`docker compose version`。镜像搬迁要求新旧 CPU 架构兼容。跨架构时需要为目标平台重新构建并单独验证，不能直接套用本手册的镜像导入步骤。
 
 ## 3. 全新空系统部署
 
@@ -115,135 +115,219 @@ ln -s /opt/heatsinkrep/releases/initial /opt/heatsinkrep/current
 
 只开放需要的网页端口及受限 SSH 入口，不公开 MySQL `3306` 或后端 `8000`。访问 `http://新服务器IP:8082`，先输入访问口令，再用 `admin` 和设置的初始密码登录。正式使用前配置域名、HTTPS、反向代理及相应 Cookie/来源设置。
 
-## 4. 现有系统完整迁移
+## 4. 现有系统离线迁移（四个业务服务 + 持续备份）
 
-### 4.1 先演练，不直接切换
+### 4.1 先准备程序包，不停业务
 
-先用一份备份在隔离的新环境恢复、核对。新站点暂不向用户开放，也不要在演练库中录入正式数据。
-
-正式切换必须重新停写并生成最终备份，不能用几小时前的演练备份直接上线。下面旧服务器命令从停写开始，会造成当前站点短暂停用，应安排好时间窗口。
-
-### 4.2 在旧服务器备份
-
-确认当前目录和运行镜像。源码目录必须与镜像配套，不能拿待发布目录替代当前目录。
+在旧服务器使用本次修订后的工具，先导出**正在运行的版本**。不从开发主目录打包，不构建最新镜像；本步骤不停止服务、不导出数据库或密码。目录必须是新目录，导出与发布共用锁。
 
 ```bash
-set -euo pipefail
-umask 077
-source_dir=$(readlink -f /opt/heatsinkrep/current)
-migration_dir="/opt/heatsinkrep/backups/migration-$(date -u +%Y%m%dT%H%M%SZ)"
-mkdir -m 700 "$migration_dir"
-dc() {
-  docker compose --env-file /opt/heatsinkrep/.env -p heatsinkrep \
-    -f "$source_dir/docker-compose.server.yml" "$@"
-}
-backend_image=$(docker inspect heatsinkrep-backend-1 --format '{{.Config.Image}}')
-frontend_image=$(docker inspect heatsinkrep-frontend-1 --format '{{.Config.Image}}')
-mysql_image=$(docker inspect heatsinkrep-db-1 --format '{{.Config.Image}}')
-docker inspect heatsinkrep-backend-1 heatsinkrep-frontend-1 heatsinkrep-db-1 \
-  --format '{{.Name}} {{.Config.Image}} {{.Image}}' > "$migration_dir/images.txt"
-cp -p /opt/heatsinkrep/.env "$migration_dir/server.env"
-
-# 阻止新业务写入，数据库继续运行以便导出。
-dc stop frontend backend
-dc exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root --single-transaction --routines --triggers --events --set-gtid-purged=OFF --no-tablespaces "$MYSQL_DATABASE"' \
-  | gzip > "$migration_dir/database.sql.gz"
-gzip -t "$migration_dir/database.sql.gz"
-
-docker image save "$backend_image" "$frontend_image" "$mysql_image" \
-  | gzip > "$migration_dir/images.tar.gz"
-tar --exclude=.env --exclude='*.pem' --exclude='*.key' \
-  --exclude=node_modules --exclude=__pycache__ \
-  -czf "$migration_dir/source.tar.gz" -C "$source_dir" \
-  backend frontend docker-compose.server.yml README.md
-cd "$migration_dir"
-sha256sum database.sql.gz images.tar.gz source.tar.gz server.env images.txt > SHA256SUMS
-printf '迁移包目录：%s\n' "$migration_dir"
+sudo python3 scripts/export_offline_release.py --output /opt/heatsinkrep/offline/program-bundle
+sudo python3 scripts/export_offline_release.py --output /opt/heatsinkrep/offline/program-bundle --apply
+sudo python3 scripts/export_offline_release.py --verify /opt/heatsinkrep/offline/program-bundle
 ```
 
-备份期间也不能从其他通道直接写数据库或执行结构变更。口令由容器环境传给数据库工具，不在命令中手写真实密码。
+程序包包含前端、后端、MySQL、RabbitMQ、mysqlbinlog 五个实际镜像 ID、对应源码、离线 Compose 镜像覆盖文件、已验证的 Compose 二进制、备份工具和本手册。`manifest.json` 记录程序提交、平台及每个文件的 SHA256。源码不含 `node_modules`、`dist`、本地草稿、输出目录或私密配置；运行时直接使用已导出的镜像。
 
-通过 SSH/SCP/SFTP 把整个迁移包安全传到新服务器的 `/opt/heatsinkrep/migration-bundle/`，限制目录权限为 `700`。包中有真实业务数据和密钥，禁止提交到 Git、放公开下载地址或发送到公共聊天。
+目标服务器需要预装同架构的 Docker Engine、Python 3、Bash、gzip、tar、sha256sum、flock。**程序包不含操作系统或 Docker Engine 离线安装包**，须根据目标 Linux 发行版另外准备。当前实测为 Linux amd64，不能直接导入 ARM 或 Windows 容器环境。目标端不执行 npm、pip、curl、Git clone 或 `docker build/pull`。
 
-导出或传输失败时，保留旧数据，确认新端尚未承接写入后可在旧端执行 `dc up -d --no-build --no-deps backend frontend` 恢复原服务；不要删除旧数据卷。
+### 4.2 在维护窗口捕获最终数据
 
-### 4.3 在新服务器准备同版本程序
-
-以下仅用于没有本项目现存数据的新目标服务器。先核实没有 `heatsinkrep_mysql_data` 卷及同名容器；若已存在，停止操作，调查它属于谁，不能删除后继续。
+先用隔离环境演练，确认后安排正式停写窗口。以下在旧服务器 root Bash 会话逐段执行。程序包准备后若又发布过应用，先重新导出程序包；不能用旧程序配新结构的数据。
 
 ```bash
 set -euo pipefail
 umask 077
-cd /opt/heatsinkrep/migration-bundle
-sha256sum -c SHA256SUMS
-gzip -t database.sql.gz images.tar.gz source.tar.gz
-if docker volume inspect heatsinkrep_mysql_data >/dev/null 2>&1; then
-  printf '%s\n' '目标服务器已有本项目数据卷，停止恢复，请先核实。'
-  exit 1
-fi
+bundle=/opt/heatsinkrep/offline/program-bundle
+python3 "$bundle/migration-tools/export_offline_release.py" --verify "$bundle"
+exec 9>/opt/heatsinkrep/.deploy.lock
+flock -n 9
+source_dir=$(readlink -f /opt/heatsinkrep/current)
+python3 - "$bundle" "$source_dir" <<'PY'
+import json, pathlib, subprocess, sys
+manifest = json.loads((pathlib.Path(sys.argv[1]) / 'manifest.json').read_text())
+assert pathlib.Path(sys.argv[2]).name == manifest['release'], '程序版本已变化，重新导出'
+for service in ('db', 'mq', 'backend', 'frontend'):
+    actual = subprocess.check_output(['docker', 'inspect', 'heatsinkrep-' + service + '-1',
+                                     '--format', '{{.Image}}'], text=True).strip()
+    assert actual == manifest['images'][service]['id'], '运行镜像已变化，重新导出'
+PY
+data_dir="/opt/heatsinkrep/backups/migration-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -m 700 "$data_dir"
+cp -p /opt/heatsinkrep/.env "$data_dir/server.env"
+cp "$bundle/manifest.json" "$data_dir/program-manifest.json"
+dc() {
+  /opt/heatsinkrep/bin/docker-compose --env-file /opt/heatsinkrep/.env -p heatsinkrep \
+    -f "$source_dir/docker-compose.server.yml" "$@"
+}
+db_sql() {
+  docker exec -i heatsinkrep-db-1 sh -c \
+    'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysql -uroot -N --batch "$MYSQL_DATABASE"'
+}
+dc stop frontend
+# 前端入口已停，后端暂时保留以发送数据库中的待发通知。最多等待 60 秒。
+for attempt in $(seq 1 30); do
+  pending=$(printf '%s\n' 'SELECT COUNT(*) FROM notification_outbox WHERE published_at IS NULL;' | db_sql)
+  [ "$pending" = 0 ] && break
+  sleep 2
+done
+test "$pending" = 0
+dc stop backend mq
+printf '%s\n' 'SELECT version_num FROM alembic_version;' | db_sql > "$data_dir/schema.txt"
+docker exec heatsinkrep-db-1 sh -c \
+  'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysqldump -uroot --single-transaction --quick --source-data=2 --routines --triggers --events --hex-blob --set-gtid-purged=OFF --no-tablespaces "$MYSQL_DATABASE"' \
+  | gzip > "$data_dir/database.sql.gz"
+# MQ 必须已停止；同版本容器以 root 保留文件属主、权限及 Erlang cookie。
+test "$(docker inspect heatsinkrep-mq-1 --format '{{.State.Running}}')" = false
+mq_image=$(docker inspect heatsinkrep-mq-1 --format '{{.Image}}')
+docker run --rm --pull never --network none --user 0 --entrypoint tar \
+  -v heatsinkrep_rabbitmq_data:/data:ro "$mq_image" -C /data -czf - . \
+  > "$data_dir/rabbitmq-data.tar.gz"
+python3 - "$data_dir" <<'PY'
+import gzip, pathlib, sys
+path = pathlib.Path(sys.argv[1]) / 'database.sql.gz'
+with gzip.open(path, 'rt') as stream:
+    completed = any(line.startswith('-- Dump completed on ') for line in stream)
+assert completed, 'SQL 备份缺少完成标记'
+PY
+gzip -t "$data_dir/database.sql.gz" "$data_dir/rabbitmq-data.tar.gz"
+(cd "$data_dir" && sha256sum server.env program-manifest.json schema.txt database.sql.gz rabbitmq-data.tar.gz > SHA256SUMS)
+printf '最终数据包：%s\n' "$data_dir"
+flock -u 9
+```
+
+`notification_outbox` 是通知发送记录，不是待签收物料；不要求工厂清空所有待签收单据。任一步失败就停止后续操作，不能以残缺包继续恢复。若取消切换，先确认新端没有业务写入，再执行 `dc up -d --no-build --pull never mq backend frontend` 恢复旧端；正式切换时旧端保持停写。
+
+将程序包和最终数据包分别安全传输为目标服务器的 `/opt/heatsinkrep/migration-bundle/`、`/opt/heatsinkrep/migration-data/`，目录权限 700。数据包有业务数据、密码和 cookie，不上传 Git，不放公开下载地址。旧全备和连续日志保存在源端或独立归档位置，不直接覆盖目标端的 `backups/continuous`。
+
+### 4.3 在空目标服务器导入同版本程序
+
+仅用于没有本项目容器、卷、配置或备份服务的新目标环境。遇到同名资源立即停止，不能删掉后重试。
+
+```bash
+set -euo pipefail
+umask 077
+bundle=/opt/heatsinkrep/migration-bundle
+data_dir=/opt/heatsinkrep/migration-data
+python3 "$bundle/migration-tools/export_offline_release.py" --verify "$bundle"
+(cd "$data_dir" && sha256sum -c SHA256SUMS)
+cmp "$bundle/manifest.json" "$data_dir/program-manifest.json"
+gzip -t "$data_dir/database.sql.gz" "$data_dir/rabbitmq-data.tar.gz"
+for volume in heatsinkrep_mysql_data heatsinkrep_rabbitmq_data; do
+  if docker volume inspect "$volume" >/dev/null 2>&1; then
+    printf '目标已有数据卷 %s，停止恢复\n' "$volume"; exit 1
+  fi
+done
 test -z "$(docker ps -aq --filter label=com.docker.compose.project=heatsinkrep)"
+test -z "$(docker ps -aq --filter name=heatsinkrep-binlog-backup)"
 test ! -e /opt/heatsinkrep/.env
-test ! -e /opt/heatsinkrep/releases/migrated
-mkdir -p /opt/heatsinkrep/releases/migrated
-tar -xzf source.tar.gz -C /opt/heatsinkrep/releases/migrated
-gzip -dc images.tar.gz | docker image load
-cp server.env /opt/heatsinkrep/.env
+test ! -e /opt/heatsinkrep/current
+test ! -e /opt/heatsinkrep/backups/continuous
+test ! -e /opt/heatsinkrep/backup-client.cnf
+test ! -e /etc/systemd/system/heatsinkrep-backup-stream.service
+python3 - "$bundle" <<'PY'
+import json, pathlib, platform, sys
+manifest = json.loads((pathlib.Path(sys.argv[1]) / 'manifest.json').read_text())
+arch = {'x86_64': 'amd64', 'aarch64': 'arm64'}.get(platform.machine())
+assert platform.system() == 'Linux' and arch, '需要受支持的 Linux 架构'
+assert all(i['platform'] == 'linux/' + arch for i in manifest['images'].values()), '镜像架构不匹配'
+PY
+gzip -dc "$bundle/images.tar.gz" | docker image load
+python3 - "$bundle" <<'PY'
+import json, pathlib, subprocess, sys
+manifest = json.loads((pathlib.Path(sys.argv[1]) / 'manifest.json').read_text())
+for image in manifest['images'].values():
+    actual = subprocess.check_output(['docker', 'image', 'inspect', image['id'], '--format', '{{.Id}}'], text=True).strip()
+    assert actual == image['id'], '未导入正确镜像'
+PY
+release_tag=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["release"])' "$bundle/manifest.json")
+release_dir="/opt/heatsinkrep/releases/$release_tag"
+test ! -e "$release_dir"
+mkdir -p "$release_dir" /opt/heatsinkrep/bin
+tar -xzf "$bundle/source.tar.gz" -C "$release_dir"
+cp "$bundle/compose.offline.json" "$release_dir/compose.offline.json"
+install -m 700 "$bundle/docker-compose" /opt/heatsinkrep/bin/docker-compose
+cp "$data_dir/server.env" /opt/heatsinkrep/.env
 chmod 600 /opt/heatsinkrep/.env
 nano /opt/heatsinkrep/.env
 ```
 
-在新 `.env` 中只调整新站点的地址、端口、HTTPS 等环境差异。确保 `RELEASE_TAG`、`FRONTEND_RELEASE_TAG`、`MYSQL_IMAGE` 与 `images.txt` 中三个镜像引用一致；前后端标签可能不同，不要强行设成同一个。
+必须修改 `APP_ORIGIN` 为新站点实际地址，核对 `FRONTEND_PORT`、Cookie/HTTPS 配置及主系统对接地址。首次恢复将 `PUBLIC_BIND_ADDRESS=127.0.0.1`，验收前只允许本机/受控隧道访问，避免用户误写。保留数据库、MQ 密码、签名密钥和 `MAIN_SYSTEM_CONFIG_KEY`；修改初始管理员环境变量不会重置已恢复账号密码。
 
-数据库名、应用账号及密码要与恢复方案保持一致。签名密钥和已使用的 `MAIN_SYSTEM_CONFIG_KEY` 必须保留原值；丢失加密密钥会导致已有主系统令牌无法解密。恢复已有账号后，不能靠修改 `SEED_ADMIN_PASSWORD` 来重设其密码。
-
-### 4.4 先恢复数据库，再启动应用
+### 4.4 先恢复 MySQL 和 RabbitMQ，再启动应用
 
 ```bash
 dc() {
-  docker compose --env-file /opt/heatsinkrep/.env -p heatsinkrep \
-    -f /opt/heatsinkrep/releases/migrated/docker-compose.server.yml "$@"
+  /opt/heatsinkrep/bin/docker-compose --env-file /opt/heatsinkrep/.env -p heatsinkrep \
+    -f "$release_dir/docker-compose.server.yml" -f "$release_dir/compose.offline.json" "$@"
 }
 dc config --quiet
 dc up -d --no-build --pull never db
+```
+
+等 MySQL 为 `healthy` 后执行下一段。镜像覆盖文件用 ID 固定四个服务，并禁止自动拉取，不依赖可变标签。
+
+```bash
+test "$(dc exec -T db sh -c 'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; mysql -uroot -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()" "$MYSQL_DATABASE"')" = 0
+gzip -dc "$data_dir/database.sql.gz" \
+  | dc exec -T db sh -c 'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysql -uroot "$MYSQL_DATABASE"'
+dc exec -T db sh -c 'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; mysql -uroot -N -e "SELECT version_num FROM alembic_version" "$MYSQL_DATABASE"' \
+  > "$data_dir/restored-schema.txt"
+cmp "$data_dir/schema.txt" "$data_dir/restored-schema.txt"
+mq_image=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["images"]["mq"]["id"])' "$bundle/manifest.json")
+docker volume create heatsinkrep_rabbitmq_data
+docker run --rm -i --pull never --network none --user 0 --entrypoint sh \
+  -v heatsinkrep_rabbitmq_data:/data "$mq_image" \
+  -c 'test -z "$(ls -A /data)" && tar -xzpf - -C /data' < "$data_dir/rabbitmq-data.tar.gz"
+dc up -d --no-build --pull never mq
 dc ps
 ```
 
-等数据库显示 `healthy` 后再执行下一段。先检查目标业务数据库没有表；如果检查失败，说明不是空库，禁止直接覆盖恢复。
-
-```bash
-test "$(dc exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -u root -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()" "$MYSQL_DATABASE"')" = 0
-cd /opt/heatsinkrep/migration-bundle
-gzip -dc database.sql.gz \
-  | dc exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -u root "$MYSQL_DATABASE"'
-dc exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -u root -e "SELECT version_num FROM alembic_version; SHOW TABLES;" "$MYSQL_DATABASE"'
-```
-
-这里不恢复旧服务器整个 MySQL 系统库；业务库导入新数据卷，数据库连接账号由新 MySQL 容器按 `.env` 初始化。应用中的管理员、班组长和会话则随业务库恢复。
-
-确认导入成功、数据库迁移版本与源端一致，然后启动**已导入的同版本镜像**，不要重新构建最新代码：
+等待 MQ 也为 `healthy`。必须保留 Compose 的 `hostname: heatsink-mq`，卷内 cookie 和节点数据不可重建或覆盖。数据库和 MQ 恢复完成前，不启动后端消费者或任何演示/清库脚本。
 
 ```bash
 dc up -d --no-build --pull never backend frontend
 dc ps
-ln -s /opt/heatsinkrep/releases/migrated /opt/heatsinkrep/current
+ln -s "$release_dir" /opt/heatsinkrep/current
 ```
 
-不要对恢复出来的现有系统重复运行演示数据导入或清库脚本。
+将本次恢复的程序提交、镜像 ID、源端数据包 SHA256、验收结果写入目标发布目录的部署记录；未验收之前不能标为成功，也不能把旧服务器的成功结果直接当作新服务器验收通过。
 
-### 4.5 核验通过后再开放
+### 4.5 离线建立新服务器的持续备份链
 
-至少核对以下项目，并记录新旧两端结果：
+SQL 导出仅含业务库，**不会带走 MySQL 系统库中的 `heatsink_backup` 账号**。不要复制旧的 `backup-client.cnf`，也不要把旧 binlog 放进新服务器的活动归档目录。保全旧恢复链后，在新主库创建独立归档账号及全备：
 
-- 表结构/迁移版本、业务表行数及关键记录；数据要求高时再比较逐表内容摘要。
-- 账号和八班组绑定；管理员、班组长的权限及访问锁。
-- 各班组库存件数、重量、内部在途数量，与源端最终备份前一致。
-- 流水号、批次、出库、丢失、加急记录和条码计数器，不能只核对首页合计。
-- 页面、条码、打印预览、机器人及分析大屏、SSE 实时连接。
-- 已配置的主系统对接还需检查新出口 IP 是否在对方白名单中，不擅自修改业务数据测试。
+```bash
+backup_image=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["images"]["backup"]["id"])' "$bundle/manifest.json")
+python3 "$bundle/migration-tools/install_database_backup.py" --apply --client-image "$backup_image"
+python3 /opt/heatsinkrep/bin/database_backup.py check
+systemctl list-timers 'heatsinkrep-backup-*'
+```
 
-验收先使用只读查询。若要实际测试出入库，使用隔离演练环境，不能为了测试随意新增正式库存。登录验证可能新增会话记录，应与业务数据变化区分。
+安装器只使用已导入镜像、核对 mysqlbinlog 与数据库版本，创建新凭据和第一份全备，再启用归档和定时器；无需访问 MySQL 下载站。旧主机 UUID 对应的恢复链继续独立保留。
 
-使用 IP 访问时通知用户新地址；使用域名时调整解析和证书/代理配置。切换期间旧端保持停止写入，防止旧书签或 DNS 缓存访问旧站后形成两套账。
+### 4.6 验收及开放
+
+核对两端迁移版本、38 张表（以实际快照为准）的行数及关键表内容摘要、八班组库存件数/重量、在途、共投计划、加工产出、人员、仓位、转投及批次关系。只读验证搜索、分页、导出、追踪和打印；写操作只在隔离演练环境执行。检查四个业务服务健康、新备份 `status.json` 无异常、日志连续且能恢复；同时确认页面字体、图片和脚本在断网环境正常加载。
+
+验收通过后，保存本次恢复结果，供后续发布和离线导出识别：
+
+```bash
+python3 - "$bundle" "$release_dir" "$data_dir" <<'PYRESULT'
+import datetime, json, pathlib, sys
+bundle, release, data = map(pathlib.Path, sys.argv[1:])
+manifest = json.loads((bundle / 'manifest.json').read_text())
+result = {'status': 'success', 'phase': 'restored-and-verified',
+          'revision': manifest['revision'], 'tag': manifest['release'],
+          'backup': str(data), 'images': manifest['images'],
+          'verified_at': datetime.datetime.now(datetime.timezone.utc).isoformat()}
+(release / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
+PYRESULT
+```
+
+所有验收通过后，设置受控的 `PUBLIC_BIND_ADDRESS`，配置内网访问地址及防火墙，再执行 `dc up -d --no-build --pull never --no-deps frontend` 开放访问。不要用开发版 Compose 开放数据库和后端端口。
+
+切换期间旧端保持停止写入；新端一旦承接业务，不允许直接恢复旧端继续使用，避免两套账。后续程序升级仍使用服务器版 Compose，新版本应重新准备离线镜像，不能依赖本次旧镜像覆盖文件发布新代码。
 
 ## 5. 回退与日常注意事项
 

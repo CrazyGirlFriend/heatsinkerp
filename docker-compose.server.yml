@@ -67,7 +67,7 @@ services:
       MQ_HOST: mq
       MQ_USER: ${MQ_USER:-heatsink}
       MQ_PASSWORD: ${MQ_PASSWORD:?Set a separate message queue password}
-      CORS_ORIGINS: ${APP_ORIGIN:-http://122.200.93.68:8082}
+      CORS_ORIGINS: ${APP_ORIGIN:?Set the actual site origin for this server}
       AUTO_CREATE_TABLES: "false"
       SESSION_TTL_HOURS: 24
       FACTORY_TIMEZONE: Asia/Shanghai
