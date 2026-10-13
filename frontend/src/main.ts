@@ -10,6 +10,7 @@ import './styles/element-theme.css'
 import './styles/workspace.css'
 import './styles/reading-workspace.css'
 import './styles/business-tables.css'
+import './styles/glass-surfaces.css'
 
 const app = createApp(App)
 const disposeDiagnostics = installDiagnostics(app)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import WeightInput from './WeightInput.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import MaterialInput from './MaterialInput.vue'
@@ -13,7 +14,6 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   ElAlert,
   ElButton,
-  ElDialog,
   ElForm,
   ElFormItem,
   ElInput,
@@ -481,7 +481,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="modelValue"
     title="库房手工入库"
     width="min(1180px, 96vw)"
@@ -876,7 +876,7 @@ onBeforeUnmount(() => {
         >{{ attempt ? '重试核对入库' : '确认入库' }}</ElButton
       ></template
     >
-  </ElDialog>
+  </AppDialog>
 </template>
 
 <style scoped>

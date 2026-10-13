@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppDrawer from '@/components/AppDrawer.vue'
+import AppDialog from '@/components/AppDialog.vue'
 import SharedTraceStock from '@/components/SharedTraceStock.vue'
 import {
   Close,
@@ -17,8 +19,6 @@ import {
 import {
   ElAlert,
   ElButton,
-  ElDialog,
-  ElDrawer,
   ElIcon,
   ElInput,
   ElOption,
@@ -364,8 +364,21 @@ function canvasShortcut(event: KeyboardEvent) {
   }
   if (key === 'escape') clearSelection()
 }
-function openBatch(code: string) {
-  if (example.value) return
+async function leaveFullscreenForDialog() {
+  if (document.fullscreenElement !== pageRoot.value) return true
+  try {
+    await document.exitFullscreen()
+    return true
+  } catch {
+    error.value = '请退出全屏后查看详情。'
+    return false
+  }
+}
+async function openReallocations() {
+  if (await leaveFullscreenForDialog()) reallocationsOpen.value = true
+}
+async function openBatch(code: string) {
+  if (example.value || !(await leaveFullscreenForDialog())) return
   batchNo.value = code
   drawerOpen.value = true
 }
@@ -477,7 +490,7 @@ onBeforeUnmount(() => {
           >{{ traceTime(chainModel.closing).slice(0, 10) }}</span
         >
         <span v-if="hasData" class="batch-count">{{ trace?.items.length }} 批次</span>
-        <ElButton v-if="reallocations.length" class="action-cool" @click="reallocationsOpen = true"
+        <ElButton v-if="reallocations.length" class="action-cool" @click="openReallocations"
           >转投记录 {{ reallocations.length }}</ElButton
         >
         <span v-if="example" class="sample-label">演示数据 · 非实时</span>
@@ -879,7 +892,7 @@ onBeforeUnmount(() => {
         </p>
       </div>
     </div>
-    <ElDrawer
+    <AppDrawer
       v-if="mode === 'team'"
       :model-value="Boolean(selected)"
       title="流向明细"
@@ -911,8 +924,8 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </div>
-    </ElDrawer>
-    <ElDialog
+    </AppDrawer>
+    <AppDialog
       v-model="reallocationsOpen"
       title="流水号转投记录"
       width="min(1180px, calc(100vw - 32px))"
@@ -975,7 +988,7 @@ onBeforeUnmount(() => {
         :page-size="10"
         layout="prev, pager, next"
       />
-    </ElDialog>
+    </AppDialog>
     <MaterialTransferDrawer
       v-if="mode === 'team' || drawerOpen"
       v-model="drawerOpen"

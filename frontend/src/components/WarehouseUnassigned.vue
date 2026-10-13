@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { formatAmount } from '@/utils/format'
 import { useDialogValidation } from '@/composables/useDialogValidation'
@@ -10,7 +11,6 @@ import {
   ElAlert,
   ElButton,
   ElCheckbox,
-  ElDialog,
   ElForm,
   ElFormItem,
   ElInput,
@@ -325,7 +325,7 @@ onBeforeUnmount(() => {
         @current-change="load"
       />
     </footer>
-    <ElDialog
+    <AppDialog
       :model-value="!!selected"
       title="安排仓位"
       width="min(480px, 94vw)"
@@ -382,7 +382,7 @@ onBeforeUnmount(() => {
         ><ElButton :disabled="saving" @click="selected = null">取消</ElButton
         ><ElButton type="primary" :loading="saving" @click="assign">确认安排</ElButton></template
       >
-    </ElDialog>
+    </AppDialog>
   </section>
 </template>
 

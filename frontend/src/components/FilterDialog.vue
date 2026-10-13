@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { Filter } from '@element-plus/icons-vue'
-import { ElButton, ElDialog } from 'element-plus'
+import { ElButton } from 'element-plus'
 withDefaults(
   defineProps<{ modelValue: boolean; count?: number; title?: string; appendTo?: HTMLElement }>(),
   {
@@ -34,7 +35,7 @@ function cancel() {
     @click="open"
     >筛选<span v-if="count" class="filter-count">{{ count }}</span></ElButton
   >
-  <ElDialog
+  <AppDialog
     :model-value="modelValue"
     :title="title"
     width="min(640px, 94vw)"
@@ -49,7 +50,7 @@ function cancel() {
       ><ElButton @click="cancel">取消</ElButton
       ><ElButton type="primary" @click="emit('apply')">应用筛选</ElButton></template
     >
-  </ElDialog>
+  </AppDialog>
 </template>
 <style>
 .filter-dialog-trigger.el-button {

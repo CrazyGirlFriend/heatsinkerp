@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElButton, ElDialog } from 'element-plus'
+import { ElAlert, ElButton } from 'element-plus'
 import MaterialBatchPrintSheet from './MaterialBatchPrintSheet.vue'
 import { materialTransferApi } from '@/services/materialTransferApi'
 import type { MaterialTransfer } from '@/types/materialTransfer'
@@ -58,7 +59,7 @@ async function print() {
 }
 </script>
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="modelValue"
     title="合并打印"
     width="min(1000px, 95vw)"
@@ -76,7 +77,7 @@ async function print() {
         >打印 {{ rows.length }} 个批次</ElButton
       ></template
     >
-  </ElDialog>
+  </AppDialog>
   <Teleport to="body"
     ><MaterialBatchPrintSheet v-if="printing" ref="printSheet" :items="rows"
   /></Teleport>

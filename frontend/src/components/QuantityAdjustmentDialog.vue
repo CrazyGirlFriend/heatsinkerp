@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { materialWeightToleranceKg } from '@/config/materialRules'
 
 import { sharedSerialLabel } from '@/types/sharedMaterial'
@@ -10,7 +11,6 @@ import {
   ElButton,
   ElDescriptions,
   ElDescriptionsItem,
-  ElDialog,
   ElForm,
   ElFormItem,
   ElInput,
@@ -364,7 +364,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="modelValue"
     :title="
       processing ? (editable ? '加工登记' : '加工记录') : editable ? '加工件数变更' : '件数变更记录'
@@ -769,7 +769,7 @@ onBeforeUnmount(() => {
         >{{ processing ? '保存加工登记' : '保存件数' }}</ElButton
       >
     </template>
-  </ElDialog>
+  </AppDialog>
 </template>
 
 <style scoped>

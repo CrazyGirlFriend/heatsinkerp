@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import WeightInput from './WeightInput.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import MaterialInput from './MaterialInput.vue'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { ElButton, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElTag } from 'element-plus'
+import { ElButton, ElForm, ElFormItem, ElInput, ElInputNumber, ElTag } from 'element-plus'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -176,7 +177,7 @@ async function submit() {
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="modelValue"
     title="流水号转投"
     width="min(620px, calc(100vw - 32px))"
@@ -278,7 +279,7 @@ async function submit() {
         >确认转投</ElButton
       ></template
     >
-  </ElDialog>
+  </AppDialog>
 </template>
 
 <style scoped>

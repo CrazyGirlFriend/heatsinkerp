@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import WeightInput from './WeightInput.vue'
 import { focusFirstInvalidField, useDialogValidation } from '@/composables/useDialogValidation'
 import OpeningMaterialFields from './OpeningMaterialFields.vue'
@@ -8,7 +9,6 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   ElAlert,
   ElButton,
-  ElDialog,
   ElForm,
   ElInput,
   ElInputNumber,
@@ -275,7 +275,7 @@ async function submitOpening() {
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="modelValue"
     :title="teamName ? `${teamName} · 班组设置` : '班组设置'"
     top="16px"
@@ -482,7 +482,7 @@ async function submitOpening() {
         >
       </template>
     </template>
-  </ElDialog>
+  </AppDialog>
 </template>
 
 <style scoped>

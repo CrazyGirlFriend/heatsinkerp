@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { formatAmount } from '@/utils/format'
 import { useDialogValidation } from '@/composables/useDialogValidation'
@@ -11,7 +12,6 @@ import {
   ElButton,
   ElCard,
   ElCheckbox,
-  ElDialog,
   ElEmpty,
   ElForm,
   ElFormItem,
@@ -534,7 +534,7 @@ onBeforeUnmount(() => {
           </footer>
         </template>
       </ElCard>
-      <ElDialog
+      <AppDialog
         v-model="detailOpen"
         :title="(detail?.name || '') + ' · 仓位明细'"
         width="min(760px, 94vw)"
@@ -679,8 +679,8 @@ onBeforeUnmount(() => {
             >编辑仓位</ElButton
           ><ElButton type="primary" @click="detailOpen = false">关闭</ElButton></template
         >
-      </ElDialog>
-      <ElDialog
+      </AppDialog>
+      <AppDialog
         v-model="editorOpen"
         :title="editingTitle"
         width="min(440px, 94vw)"
@@ -709,7 +709,7 @@ onBeforeUnmount(() => {
           ><ElButton :disabled="saving" @click="editorOpen = false">取消</ElButton
           ><ElButton type="primary" :loading="saving" @click="save">保存</ElButton></template
         >
-      </ElDialog>
+      </AppDialog>
     </template>
   </section>
 </template>

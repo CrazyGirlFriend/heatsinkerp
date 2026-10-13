@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElButton, ElCheckbox, ElCheckboxGroup, ElDialog } from 'element-plus'
+import { ElAlert, ElButton, ElCheckbox, ElCheckboxGroup } from 'element-plus'
 import {
   assertExportSize,
   createExportWorkbook,
@@ -74,7 +75,7 @@ onBeforeUnmount(cancel)
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="Boolean(source)"
     title="导出数据"
     width="560px"
@@ -128,7 +129,7 @@ onBeforeUnmount(cancel)
         >导出 Excel</ElButton
       ></template
     >
-  </ElDialog>
+  </AppDialog>
 </template>
 
 <style>

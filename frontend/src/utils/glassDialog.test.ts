@@ -261,3 +261,53 @@ it('falls back safely when the runtime cannot initialize and still permits idemp
   expect(motion.listeners.size).toBe(0)
   expect(transparency.listeners.size).toBe(0)
 })
+
+it('keeps nested dialogs, their menus and footer motion owned by the nearest surface', async () => {
+  const { dialog, menu: outerMenu } = fixture()
+  const inner = document.createElement('section')
+  inner.className = 'el-dialog'
+  inner.innerHTML = `<main><div class="source-actions">
+    <button class="el-tooltip__trigger">内层更多</button>
+    <div class="stock-source-popover" aria-hidden="false"><div class="source-action-menu"><button>内层操作</button></div></div>
+  </div></main><footer class="el-dialog__footer"><button>内层确认</button></footer>`
+  dialog.querySelector('main')!.append(inner)
+  const innerMenu = inner.querySelector<HTMLElement>('.stock-source-popover')!
+  const innerTrigger = inner.querySelector<HTMLButtonElement>('.el-tooltip__trigger')!
+  const innerFooter = inner.querySelector<HTMLButtonElement>('footer button')!
+  Object.defineProperty(innerMenu, 'offsetWidth', { get: () => 180 })
+  innerTrigger.addEventListener('click', () => innerMenu.setAttribute('aria-hidden', 'true'))
+  outerMenu.setAttribute('aria-hidden', 'false')
+  const closeOuter = enhance(dialog)
+  expect(systems.map((system) => system.stage)).toEqual([dialog, outerMenu])
+  const closeInner = enhance(inner)
+  expect(systems.map((system) => system.stage)).toEqual([dialog, outerMenu, inner, innerMenu])
+  expect(systems[0]!.register.mock.calls.map(([button]) => button)).not.toContain(innerFooter)
+  expect(systems[2]!.register).toHaveBeenCalledWith(innerFooter, { mode: 'press' })
+
+  const action = innerMenu.querySelector<HTMLButtonElement>('button')!
+  action.focus()
+  key(action, 'Escape')
+  await flushMenus()
+  expect(innerMenu.getAttribute('aria-hidden')).toBe('true')
+  expect(outerMenu.getAttribute('aria-hidden')).toBe('false')
+  expect(document.activeElement).toBe(innerTrigger)
+  closeOuter()
+  expect(innerFooter.dataset.jelly).toBe('press')
+  expect(inner.querySelector('canvas')).not.toBeNull()
+  closeInner()
+  expect(dialog.querySelector('canvas')).toBeNull()
+})
+
+it('enhances an ordinary drawer footer without requiring batch-action markup', () => {
+  document.body.innerHTML = `<aside class="el-drawer"><header><button>关闭</button></header>
+    <main><button>明细</button></main><footer class="el-drawer__footer"><button>确认</button></footer></aside>`
+  const drawer = document.querySelector<HTMLElement>('.el-drawer')!
+  const footer = drawer.querySelector<HTMLElement>('footer')!
+  const button = footer.querySelector('button')!
+  const cleanup = enhance(drawer)
+  expect(footer.dataset.glass).toBe('panel')
+  expect(systems[0]!.register.mock.calls.map(([registered]) => registered)).toEqual([button])
+  cleanup()
+  expect(footer.hasAttribute('data-glass')).toBe(false)
+  expect(button.hasAttribute('data-jelly')).toBe(false)
+})

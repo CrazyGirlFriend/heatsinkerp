@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { currentLocations } from '@/utils/warehousePlacement'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
@@ -6,7 +7,6 @@ import {
   ElCheckbox,
   ElDescriptions,
   ElDescriptionsItem,
-  ElDialog,
   ElPagination,
   ElTable,
   ElTableColumn,
@@ -206,7 +206,7 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="modelValue"
     title="流水号详情"
     width="min(1200px, calc(100vw - 32px))"
@@ -541,7 +541,7 @@ onBeforeUnmount(() => {
           "
         /></div
     ></template>
-  </ElDialog>
+  </AppDialog>
   <MaterialTransferDrawer
     v-model="batchOpen"
     :transfer="selected"

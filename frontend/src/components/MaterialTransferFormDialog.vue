@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import WeightInput from './WeightInput.vue'
 import FormValidationNotice from './FormValidationNotice.vue'
 import MaterialInput from './MaterialInput.vue'
@@ -12,7 +13,6 @@ import { ArrowRight } from '@element-plus/icons-vue'
 import {
   ElAlert,
   ElButton,
-  ElDialog,
   ElForm,
   ElFormItem,
   ElIcon,
@@ -522,7 +522,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="modelValue"
     width="min(1180px, 96vw)"
     top="16px"
@@ -909,7 +909,7 @@ onBeforeUnmount(() => {
         isEditing ? '保存修改' : '生成转料单'
       }}</ElButton>
     </template>
-  </ElDialog>
+  </AppDialog>
 </template>
 
 <style scoped>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import TableExportButton from '@/components/TableExportButton.vue'
 import { tableExportSource } from '@/utils/tableExport'
 import PageBackButton from '@/components/PageBackButton.vue'
@@ -18,7 +19,6 @@ import {
 import {
   ElButton,
   ElCard,
-  ElDialog,
   ElEmpty,
   ElForm,
   ElFormItem,
@@ -325,7 +325,7 @@ async function deleteLeader(account: Account): Promise<void> {
         confirmButtonText: '删除',
         cancelButtonText: '取消',
         type: 'warning',
-        confirmButtonClass: 'el-button--danger',
+        confirmButtonType: 'danger',
       },
     )
   } catch {
@@ -491,7 +491,7 @@ onMounted(() => void loadData())
       </footer>
     </ElCard>
 
-    <ElDialog
+    <AppDialog
       v-model="editorOpen"
       class="account-editor"
       :title="editingId === null ? '新增班组长' : '编辑班组长'"
@@ -600,7 +600,7 @@ onMounted(() => void loadData())
           editingId !== null ? '保存修改' : '创建账号'
         }}</ElButton>
       </template>
-    </ElDialog>
+    </AppDialog>
   </section>
 </template>
 

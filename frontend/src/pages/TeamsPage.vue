@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import TableExportButton from '@/components/TableExportButton.vue'
 import { tableExportSource } from '@/utils/tableExport'
@@ -8,7 +9,6 @@ import {
   ElAlert,
   ElButton,
   ElCard,
-  ElDialog,
   ElEmpty,
   ElForm,
   ElFormItem,
@@ -312,7 +312,7 @@ async function deleteTeam(team: Team): Promise<void> {
         confirmButtonText: '删除',
         cancelButtonText: '取消',
         type: 'warning',
-        confirmButtonClass: 'el-button--danger',
+        confirmButtonType: 'danger',
       },
     )
   } catch {
@@ -517,7 +517,7 @@ onMounted(() => void loadTeams())
       :team-name="businessTeam.name"
       business-only
     />
-    <ElDialog
+    <AppDialog
       v-model="editorOpen"
       class="editor-modal"
       :title="editingId === null ? '新增班组' : '编辑班组'"
@@ -598,7 +598,7 @@ onMounted(() => void loadTeams())
         <ElButton :disabled="saving" @click="editorOpen = false">取消</ElButton>
         <ElButton type="primary" :loading="saving" @click="submitForm">保存班组</ElButton>
       </template>
-    </ElDialog>
+    </AppDialog>
   </section>
 </template>
 

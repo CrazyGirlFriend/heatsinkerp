@@ -1,15 +1,8 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import {
-  ElButton,
-  ElDialog,
-  ElInput,
-  ElLoading,
-  ElPagination,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus'
+import { ElButton, ElInput, ElLoading, ElPagination, ElTable, ElTableColumn } from 'element-plus'
 import StatePanel from './StatePanel.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
@@ -77,7 +70,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="true"
     title="加工登记 · 选择库存批次"
     width="min(1040px, calc(100vw - 24px))"
@@ -183,7 +176,7 @@ onBeforeUnmount(() => {
       />
     </div>
     <template #footer><ElButton @click="emit('close')">取消</ElButton></template>
-  </ElDialog>
+  </AppDialog>
 </template>
 
 <style>

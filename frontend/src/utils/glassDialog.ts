@@ -1,7 +1,7 @@
 import { createGlassSystem } from '../../vendor/lens/index.js'
 
 // Optical surfaces enhance the existing DOM form without replacing its controls.
-function createLayer(dialog: HTMLElement, footer?: HTMLElement) {
+function createLayer(dialog: HTMLElement, footer?: HTMLElement, buttons: HTMLElement[] = []) {
   const shell = document.createElement('div')
   shell.className = 'lens-shell'
   shell.dataset.glass = 'panel'
@@ -11,7 +11,6 @@ function createLayer(dialog: HTMLElement, footer?: HTMLElement) {
   const media = matchMedia('(prefers-reduced-motion: reduce)')
   const opaque = matchMedia('(prefers-reduced-transparency: reduce), (prefers-contrast: more)')
   let system: ReturnType<typeof createGlassSystem> | undefined
-  const buttons = [...dialog.querySelectorAll<HTMLElement>('.action-footer button')]
   let disposed = false
   let canvas: HTMLCanvasElement | undefined
 
@@ -108,17 +107,27 @@ function createLayer(dialog: HTMLElement, footer?: HTMLElement) {
   }
 }
 
+const surfaceSelector = '.app-glass-surface, .el-dialog, .el-drawer, .el-message-box'
+
 export function enhanceGlassDialog(dialog: HTMLElement) {
-  const releaseDialog = createLayer(
-    dialog,
-    dialog.querySelector<HTMLElement>('.el-dialog__footer')!,
-  )
+  const owns = (element: Element) => element.closest(surfaceSelector) === dialog
+  const footer = [
+    ...dialog.querySelectorAll<HTMLElement>(
+      '.el-dialog__footer, .el-drawer__footer, .el-message-box__btns, [data-glass-footer]',
+    ),
+  ].find(owns)
+  const buttons = footer
+    ? [...footer.querySelectorAll<HTMLButtonElement>('button')].filter(owns)
+    : []
+  const releaseDialog = createLayer(dialog, footer, buttons)
   const menus = new Map<HTMLElement, () => void>()
   let disposed = false
   // Keep Escape local to the open action menu, before the dialog's document handler.
   function menuKey(event: KeyboardEvent) {
-    if (!dialog.contains(event.target as Node)) return
-    const menu = dialog.querySelector<HTMLElement>('.stock-source-popover[aria-hidden="false"]')
+    if (!(event.target instanceof Element) || !owns(event.target)) return
+    const menu = [
+      ...dialog.querySelectorAll<HTMLElement>('.stock-source-popover[aria-hidden="false"]'),
+    ].find(owns)
     if (!menu) return
     const trigger = menu
       .closest('.source-actions')
@@ -156,13 +165,18 @@ export function enhanceGlassDialog(dialog: HTMLElement) {
   function syncMenus() {
     if (disposed) return
     for (const [menu, release] of menus) {
-      if (!menu.isConnected || menu.getAttribute('aria-hidden') === 'true') {
+      if (!menu.isConnected || !owns(menu) || menu.getAttribute('aria-hidden') === 'true') {
         release()
         menus.delete(menu)
       }
     }
     for (const menu of dialog.querySelectorAll<HTMLElement>('.stock-source-popover')) {
-      if (menu.getAttribute('aria-hidden') !== 'true' && menu.offsetWidth && !menus.has(menu)) {
+      if (
+        owns(menu) &&
+        menu.getAttribute('aria-hidden') !== 'true' &&
+        menu.offsetWidth &&
+        !menus.has(menu)
+      ) {
         menus.set(menu, createLayer(menu))
       }
     }

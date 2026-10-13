@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import TableExportButton from '@/components/TableExportButton.vue'
 import { tableExportSource } from '@/utils/tableExport'
 import PageBackButton from '@/components/PageBackButton.vue'
@@ -6,7 +7,6 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   ElAlert,
   ElButton,
-  ElDialog,
   ElLoading,
   ElPagination,
   ElPopover,
@@ -372,7 +372,7 @@ onBeforeUnmount(() => {
         <p v-if="!report.stock.materials.length" class="stock-empty">暂无材质库存</p>
       </div>
     </section>
-    <ElDialog
+    <AppDialog
       v-model="stockOpen"
       :title="stockTitle"
       width="min(950px, 96vw)"
@@ -418,7 +418,7 @@ onBeforeUnmount(() => {
         layout="total, prev, pager, next"
         @current-change="loadStock"
       />
-    </ElDialog>
+    </AppDialog>
     <SerialMaterialDrawer
       v-if="stockOpen && stockSerial"
       :model-value="true"

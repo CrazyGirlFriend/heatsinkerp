@@ -1,17 +1,10 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import FilterDialog from './FilterDialog.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import {
-  ElButton,
-  ElCheckbox,
-  ElDialog,
-  ElInput,
-  ElPagination,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus'
+import { ElButton, ElCheckbox, ElInput, ElPagination, ElTable, ElTableColumn } from 'element-plus'
 import { inventoryAmount } from '@/types/teamInventory'
 import RecordDateFilter from './RecordDateFilter.vue'
 import SerialUrgencyBadge from './SerialUrgencyBadge.vue'
@@ -138,7 +131,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="true"
     :title="mode === 'reallocate' ? '流水号转投 · 选择来源批次' : '新建出库 · 选择来源批次'"
     width="min(1040px, 94vw)"
@@ -333,7 +326,7 @@ onBeforeUnmount(() => {
         >下一步：填写出库</ElButton
       ></template
     >
-  </ElDialog>
+  </AppDialog>
 </template>
 
 <style scoped>

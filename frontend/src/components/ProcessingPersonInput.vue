@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { computed, ref, watch } from 'vue'
-import { ElButton, ElDialog, ElIcon, ElInput, useFormDisabled } from 'element-plus'
+import { ElButton, ElIcon, ElInput, useFormDisabled } from 'element-plus'
 import { Check, Search, User } from '@element-plus/icons-vue'
 
 const props = withDefaults(
@@ -60,7 +61,7 @@ function choose(person: string) {
       }}</span>
       <ElIcon class="person-icon"><User /></ElIcon>
     </button>
-    <ElDialog
+    <AppDialog
       v-model="opened"
       :title="`选择${label || '加工人'}`"
       width="min(560px, calc(100vw - 48px))"
@@ -116,7 +117,7 @@ function choose(person: string) {
       <template #footer>
         <ElButton @click="close">取消</ElButton>
       </template>
-    </ElDialog>
+    </AppDialog>
   </div>
 </template>
 

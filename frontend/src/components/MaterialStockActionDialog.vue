@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { materialWeightToleranceKg, isProcessingTeamCode } from '@/config/materialRules'
 
 import { ArrowDown } from '@element-plus/icons-vue'
@@ -11,7 +12,6 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   ElAlert,
   ElButton,
-  ElDialog,
   ElForm,
   ElFormItem,
   ElInput,
@@ -119,35 +119,6 @@ const form = reactive({
   reason: '',
 })
 const sender = ref<TeamEmployee | null>(null)
-const dialogHeading = ref<HTMLElement>()
-let glassGeneration = 0
-let releaseGlass: (() => void) | undefined
-function stopGlass() {
-  ++glassGeneration
-  releaseGlass?.()
-  releaseGlass = undefined
-}
-async function startGlass() {
-  stopGlass()
-  const current = glassGeneration
-  const dialog = dialogHeading.value?.closest<HTMLElement>('.el-dialog')
-  if (!dialog || !props.modelValue) return
-  try {
-    const { enhanceGlassDialog } = await import('@/utils/glassDialog')
-    if (current !== glassGeneration || !props.modelValue || !dialog.isConnected) return
-    releaseGlass = enhanceGlassDialog(dialog)
-  } catch {
-    // Keep the standard form usable if the optional effect cannot load.
-  }
-}
-watch(
-  () => props.modelValue,
-  (open) => {
-    if (!open) stopGlass()
-  },
-)
-onBeforeUnmount(stopGlass)
-
 const activeActions = ref('')
 function setLineActions(key: string, open: boolean) {
   if (open) activeActions.value = key
@@ -814,7 +785,7 @@ async function submit() {
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="modelValue"
     :title="dialogTitle"
     width="min(1180px, 96vw)"
@@ -825,11 +796,9 @@ async function submit() {
     :close-on-press-escape="!busy"
     :show-close="!busy"
     @close="close"
-    @opened="startGlass"
-    @closed="stopGlass"
   >
     <template #header="{ titleId, titleClass }">
-      <div ref="dialogHeading" class="stock-dialog-heading">
+      <div class="stock-dialog-heading">
         <h2 :id="titleId" :class="titleClass">{{ dialogTitle }}</h2>
         <span>{{ lines.length }} 项物料</span>
       </div>
@@ -1389,7 +1358,7 @@ async function submit() {
         </div>
       </div></template
     >
-  </ElDialog>
+  </AppDialog>
 </template>
 
 <style scoped>

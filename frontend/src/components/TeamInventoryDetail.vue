@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { materialWeightToleranceKg } from '@/config/materialRules'
 
 import TableExportButton from './TableExportButton.vue'
@@ -12,7 +13,6 @@ import {
   ElButton,
   ElDescriptions,
   ElDescriptionsItem,
-  ElDialog,
   ElPagination,
   ElTable,
   ElTableColumn,
@@ -287,7 +287,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="!!group"
     title="库存明细"
     width="min(1480px, calc(100vw - 32px))"
@@ -632,7 +632,7 @@ onBeforeUnmount(() => {
         </footer>
       </section>
     </template>
-  </ElDialog>
+  </AppDialog>
   <MaterialTransferDrawer
     v-model="batchOpen"
     :transfer="selected"

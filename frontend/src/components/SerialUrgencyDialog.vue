@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElButton, ElDialog, ElInput } from 'element-plus'
+import { ElAlert, ElButton, ElInput } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { HttpRequestError, httpRequest } from '@/services/httpClient'
 import type { SerialUrgency } from '@/types/recordFilters'
@@ -81,7 +82,7 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="modelValue"
     :title="state?.urgent ? '取消加急' : '标记加急'"
     class="serial-urgency-dialog"
@@ -122,13 +123,13 @@ onBeforeUnmount(() => {
         state?.urgent ? '确认取消加急' : '确认加急'
       }}</ElButton>
     </template>
-  </ElDialog>
+  </AppDialog>
 </template>
 <style>
 .serial-urgency-dialog.el-dialog {
   --el-component-size: 32px;
   padding: 18px;
-  border-radius: 16px;
+  --glass-surface-radius: 16px;
 }
 .serial-urgency-dialog .el-dialog__header {
   padding-bottom: 12px;

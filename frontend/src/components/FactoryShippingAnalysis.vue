@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Close, RefreshLeft, Search, TrendCharts } from '@element-plus/icons-vue'
+import { useGlassSurface } from '@/composables/useGlassSurface'
 import FactoryShipmentChart from './FactoryShipmentChart.vue'
 import { factoryDashboardApi as api } from '@/services/factoryDashboardApi'
 import type { SerialChoice, Shipments } from '@/types/factoryDashboard'
@@ -26,6 +27,10 @@ const data = ref<Shipments>({ dates: [], series: [] }),
   error = ref('')
 const closeEl = ref<HTMLButtonElement>(),
   container = ref<HTMLElement>()
+const glass = useGlassSurface(
+  () => container.value,
+  () => true,
+)
 let listVersion = 0,
   chartVersion = 0,
   debounce: ReturnType<typeof setTimeout> | undefined
@@ -138,6 +143,7 @@ watch(search, () => {
 })
 watch([chosen, from, to], loadChart)
 onMounted(() => {
+  void glass.start()
   document.body.style.overflow = 'hidden'
   loadList()
   loadChart()
@@ -152,10 +158,10 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <Teleport to="body">
-    <div class="analysis-overlay" @keydown.esc.stop="emit('close')">
+    <div class="analysis-overlay app-glass-overlay" @keydown.esc.stop="emit('close')">
       <section
         ref="container"
-        class="analysis-canvas"
+        class="analysis-canvas app-glass-surface"
         role="dialog"
         aria-modal="true"
         aria-labelledby="analysis-title"
@@ -303,7 +309,6 @@ onBeforeUnmount(() => {
   inset: 0;
   z-index: 2100;
   background: rgb(30 39 35 / 16%);
-  backdrop-filter: blur(5px);
   padding: 24px;
   display: flex;
   align-items: center;
@@ -314,9 +319,8 @@ onBeforeUnmount(() => {
   width: 1400px;
   max-width: 100%;
   height: min(920px, calc(100dvh - 48px));
-  background: var(--surface);
   border: 1px solid var(--glass-border);
-  border-radius: 18px;
+  border-radius: var(--glass-surface-radius);
   overflow: hidden;
   box-shadow:
     0 24px 90px #17291f29,
@@ -332,7 +336,7 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--surface);
+  background: transparent;
   border-bottom: 1px solid var(--line);
 }
 .analysis-header > div {

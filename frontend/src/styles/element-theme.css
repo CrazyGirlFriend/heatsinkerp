@@ -104,20 +104,22 @@
   --el-button-disabled-bg-color: #f7eeef;
   --el-button-disabled-border-color: #eee2e3;
 }
-.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled) {
+.el-button--primary:not(.el-button--danger):not(.is-plain):not(.is-text):not(.is-link):not(
+    .is-disabled
+  ) {
   border-color: var(--primary);
-  background: linear-gradient(175deg, #28654f, var(--primary));
+  background: linear-gradient(170deg, #37745c, #225741);
   box-shadow: inset 0 1px #ffffff40;
 }
-.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):hover:not(:disabled):not(
-    .is-loading
-  ) {
-  background: var(--el-color-primary-dark-2);
-  border-color: var(--el-color-primary-dark-2);
+.el-button--primary:not(.el-button--danger):not(.is-plain):not(.is-text):not(.is-link):hover:not(
+    :disabled
+  ):not(.is-loading) {
+  background: linear-gradient(170deg, #3b8063, #245c44);
+  border-color: #316b51;
 }
-.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):active:not(:disabled):not(
-    .is-loading
-  ) {
+.el-button--primary:not(.el-button--danger):not(.is-plain):not(.is-text):not(.is-link):active:not(
+    :disabled
+  ):not(.is-loading) {
   background: #153f30;
   border-color: #153f30;
 }
@@ -153,65 +155,6 @@
   border-bottom-color: var(--el-border-color-lighter);
   color: var(--text);
   font-weight: 550;
-}
-
-.el-overlay {
-  background-color: rgb(24 40 29 / 20%);
-}
-.el-dialog,
-.el-message-box,
-.el-drawer {
-  border: 1px solid transparent;
-  background:
-    linear-gradient(var(--surface), var(--surface)) padding-box,
-    var(--glass-surface) border-box;
-  -webkit-backdrop-filter: blur(18px) saturate(115%);
-  backdrop-filter: blur(18px) saturate(115%);
-  box-shadow:
-    var(--glass-shadow),
-    0 22px 68px rgb(26 49 35 / 16%);
-}
-.el-overlay {
-  background-color: rgb(30 39 35 / 16%);
-}
-.el-popover.el-popper,
-.el-dropdown__popper.el-popper {
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  background: var(--glass-surface);
-  box-shadow: var(--glass-shadow);
-  -webkit-backdrop-filter: blur(18px) saturate(108%);
-  backdrop-filter: blur(18px) saturate(108%);
-}
-.el-dropdown__popper .el-dropdown-menu {
-  padding: 6px;
-  border-radius: inherit;
-  background: transparent;
-}
-.el-dropdown__popper .el-dropdown-menu__item {
-  border-radius: 8px;
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .el-dialog,
-  .el-message-box,
-  .el-drawer,
-  .el-popover.el-popper,
-  .el-dropdown__popper.el-popper {
-    background: var(--surface);
-    border-color: var(--line);
-  }
-}
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .el-dialog,
-  .el-message-box,
-  .el-drawer,
-  .el-popover.el-popper,
-  .el-dropdown__popper.el-popper {
-    background: var(--surface);
-    border-color: var(--line);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
 }
 
 .el-dialog {
@@ -732,13 +675,7 @@
 }
 
 .factory-account-menu.el-popper {
-  overflow: hidden;
   min-width: 150px;
-  border-color: var(--glass-border);
-  background: var(--glass-surface);
-  -webkit-backdrop-filter: blur(14px) saturate(115%);
-  backdrop-filter: blur(14px) saturate(115%);
-  box-shadow: var(--glass-shadow);
 }
 
 .factory-account-menu .el-dropdown-menu {
@@ -748,7 +685,7 @@
 
 .factory-account-menu .el-dropdown-menu__item {
   min-height: 38px;
-  border-radius: 5px;
+  border-radius: 10px;
   gap: 8px;
 }
 
@@ -834,13 +771,15 @@
   .el-dialog .weight-input select:not(:disabled):hover {
     border-color: var(--el-border-color-hover);
   }
-  .el-button:not(.is-link):not(.is-text):not(:disabled):not(.is-loading):hover:not(:active) {
+  .el-button:not(.is-link):not(.is-text):not(:disabled):not(.is-loading):not(
+      [data-jelly]
+    ):hover:not(:active) {
     box-shadow: 0 3px 8px rgb(39 70 59 / 10%);
     transform: translateY(-1px);
   }
 }
-.el-button:not(:disabled):not(.is-loading):active,
-.el-dialog__headerbtn:active {
+.el-button:not(:disabled):not(.is-loading):not([data-jelly]):active,
+.el-dialog__headerbtn:not([data-jelly]):active {
   transform: translateY(0) scale(0.98);
   box-shadow: none;
 }

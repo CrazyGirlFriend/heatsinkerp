@@ -4,6 +4,7 @@ import { defineComponent, reactive } from 'vue'
 import { ElInputNumber, ElPopover, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialStockActionDialog from './MaterialStockActionDialog.vue'
+import AppDialog from './AppDialog.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
@@ -1143,10 +1144,10 @@ async function renderGlassDialog(host: HTMLElement) {
     global: { stubs: { ElDialog: GlassDialogStub } },
   })
   await flushPromises()
-  return wrapper.getComponent(GlassDialogStub)
+  return wrapper.getComponent(AppDialog).getComponent(GlassDialogStub)
 }
 
-it('enhances its own connected dialog after opening and releases each instance on close or unmount', async () => {
+it('uses the shared shell to enhance its own dialog and release each instance on close or unmount', async () => {
   const host = document.createElement('div')
   const otherDialog = document.createElement('section')
   otherDialog.className = 'el-dialog'

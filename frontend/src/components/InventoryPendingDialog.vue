@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { ElButton, ElDialog, ElPagination, ElTable, ElTableColumn } from 'element-plus'
+import { ElButton, ElPagination, ElTable, ElTableColumn } from 'element-plus'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import StatePanel from './StatePanel.vue'
@@ -92,7 +93,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="!!group"
     title="转出待确认"
     width="min(1040px, calc(100vw - 32px))"
@@ -164,7 +165,7 @@ onBeforeUnmount(() => {
           "
         /></div
     ></template>
-  </ElDialog>
+  </AppDialog>
   <MaterialTransferDrawer
     v-model="batchOpen"
     :transfer="selected"

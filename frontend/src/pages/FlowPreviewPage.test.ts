@@ -445,3 +445,42 @@ it('opens only the embedded canvas fullscreen without navigating or resetting th
   expect(page.get('input[aria-label="流水号"]').element).toHaveProperty('value', '000012')
   expect(materialTransferApi.trace).toHaveBeenCalledOnce()
 })
+
+it('leaves native fullscreen before opening a batch dialog and keeps it closed if exit fails', async () => {
+  vi.spyOn(materialTransferApi, 'trace').mockResolvedValue({
+    ...snapshot.trace,
+    items: snapshot.trace.items.map((item) => ({
+      ...normalizeMaterialTransfer(item),
+      on_hand_quantity: item.on_hand_quantity,
+      on_hand_weight: item.on_hand_weight,
+    })),
+  })
+  const { page } = await render('/material-trace?serial_no=000012')
+  Object.defineProperty(document, 'fullscreenElement', {
+    configurable: true,
+    get: () => page.element,
+  })
+  const exit = vi.fn().mockRejectedValue(new Error('denied'))
+  Object.defineProperty(document, 'exitFullscreen', { configurable: true, value: exit })
+  try {
+    const canvas = page.getComponent(FlowPreviewCanvas)
+    const batch = snapshot.trace.items[0]!
+    canvas.vm.$emit('select', { dataIndex: 0, data: { batchId: String(batch.id) } })
+    await flushPromises()
+    const detailButton = page.get('[aria-label="选中批次收发详情"] header button')
+    await detailButton.trigger('click')
+    await flushPromises()
+    expect(exit).toHaveBeenCalledOnce()
+    expect(page.findComponent(MaterialTransferDrawer).exists()).toBe(false)
+    expect(page.text()).toContain('请退出全屏后查看详情')
+    exit.mockResolvedValue(undefined)
+    await detailButton.trigger('click')
+    await flushPromises()
+    expect(exit).toHaveBeenCalledTimes(2)
+    expect(page.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(true)
+    expect(page.getComponent(MaterialTransferDrawer).props('batchNo')).toBe(batch.batch_no)
+  } finally {
+    Reflect.deleteProperty(document, 'fullscreenElement')
+    Reflect.deleteProperty(document, 'exitFullscreen')
+  }
+})

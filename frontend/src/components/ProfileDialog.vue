@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { nextTick, ref, watch } from 'vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import {
   ElAlert,
   ElButton,
-  ElDialog,
   ElForm,
   ElFormItem,
   ElInput,
@@ -132,7 +132,7 @@ async function savePassword() {
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="modelValue"
     title="个人信息"
     width="min(520px, 94vw)"
@@ -229,7 +229,7 @@ async function savePassword() {
         mode === 'password' ? '确认修改' : '保存修改'
       }}</ElButton></template
     >
-  </ElDialog>
+  </AppDialog>
 </template>
 
 <style scoped>

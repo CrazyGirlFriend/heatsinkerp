@@ -219,7 +219,6 @@ watch(
 .table-column-filter-popover.el-popover {
   max-width: calc(100vw - 24px);
   padding: 16px;
-  border-radius: 14px;
 }
 .table-column-filter-form {
   display: flex;

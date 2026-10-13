@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { ElButton, ElDialog, ElForm } from 'element-plus'
+import { ElButton, ElForm } from 'element-plus'
 import MaterialDeliveryFields from './MaterialDeliveryFields.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import { MaterialTransferApiError, materialTransferApi } from '@/services/materialTransferApi'
@@ -91,7 +92,7 @@ async function save() {
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="modelValue"
     title="维护本批交期"
     width="min(540px, 94vw)"
@@ -121,7 +122,7 @@ async function save() {
         >保存</ElButton
       ></template
     >
-  </ElDialog>
+  </AppDialog>
 </template>
 
 <style scoped>

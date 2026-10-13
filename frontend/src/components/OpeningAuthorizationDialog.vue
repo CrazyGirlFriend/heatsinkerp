@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElButton, ElDialog, ElSwitch } from 'element-plus'
+import { ElAlert, ElButton, ElSwitch } from 'element-plus'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { Team } from '@/services/adminApi'
 import type { OpeningState } from '@/types/teamBusiness'
@@ -56,7 +57,7 @@ async function save() {
 }
 </script>
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="modelValue"
     :title="`${team?.name || ''} · 初始库存授权`"
     width="min(520px, 94vw)"
@@ -83,7 +84,7 @@ async function save() {
         >保存授权</ElButton
       ></template
     >
-  </ElDialog>
+  </AppDialog>
 </template>
 <style scoped>
 p {

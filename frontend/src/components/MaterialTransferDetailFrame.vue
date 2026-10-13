@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ElDialog } from 'element-plus'
+import AppDialog from '@/components/AppDialog.vue'
 
 const props = withDefaults(defineProps<{ modelValue: boolean; busy: boolean; title?: string }>(), {
   title: '转料单详情',
@@ -11,7 +11,7 @@ function close() {
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="modelValue"
     class="material-detail-dialog"
     :title="title"
@@ -27,5 +27,5 @@ function close() {
     <template v-if="$slots.header" #header><slot name="header" /></template>
     <slot />
     <template v-if="$slots.footer" #footer><slot name="footer" /></template>
-  </ElDialog>
+  </AppDialog>
 </template>

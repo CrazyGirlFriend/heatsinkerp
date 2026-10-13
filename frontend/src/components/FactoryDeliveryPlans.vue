@@ -1,14 +1,7 @@
 <script setup lang="ts">
+import AppDialog from '@/components/AppDialog.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import {
-  ElButton,
-  ElDialog,
-  ElInput,
-  ElLoading,
-  ElPagination,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus'
+import { ElButton, ElInput, ElLoading, ElPagination, ElTable, ElTableColumn } from 'element-plus'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import { factoryDashboardApi as api } from '@/services/factoryDashboardApi'
 import type { Delivery } from '@/types/factoryDashboard'
@@ -58,7 +51,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ElDialog
+  <AppDialog
     :model-value="true"
     title="批次交期与完成情况"
     width="1000px"
@@ -118,7 +111,7 @@ onBeforeUnmount(() => {
       layout="total, prev, pager, next"
       @current-change="load"
     />
-  </ElDialog>
+  </AppDialog>
   <MaterialTransferDrawer v-model="sourceOpen" :batch-no="sourceBatch" @changed="changed" />
 </template>
 
