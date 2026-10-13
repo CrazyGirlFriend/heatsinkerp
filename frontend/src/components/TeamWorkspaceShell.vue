@@ -348,18 +348,23 @@ onBeforeUnmount(() => {
     color var(--motion-standard) ease,
     box-shadow var(--motion-standard) ease;
 }
-.team-workspace__section.el-button:not(.is-current):hover {
-  background: var(--primary-soft);
+.team-workspace__section.el-button:where(:not(.is-current)):not(:disabled):not(.is-disabled):not(
+    .is-loading
+  ):hover {
+  background: var(--glass-hover-fill);
   color: var(--primary);
+  box-shadow: var(--glass-hover-shadow);
 }
 .team-workspace__section.el-button.is-current {
-  background: var(--primary-soft);
+  background: var(--glass-selected-fill);
   color: var(--primary);
   font-weight: 620;
+  box-shadow: var(--glass-selected-shadow);
+}
+.team-workspace__section.el-button:not(:disabled):not(.is-disabled):not(.is-loading):active {
   box-shadow:
-    0 3px 8px #1d35241a,
-    inset 0 1px 0.5px #fff,
-    inset 0 -1px 0.5px #ffffffbf;
+    inset 0 2px 4px rgb(30 40 35 / 13%),
+    inset 0 0 0 1px var(--glass-interaction-edge);
 }
 .team-workspace__section.el-button:focus-visible {
   outline: 2px solid var(--primary);

@@ -210,7 +210,10 @@ watch(
 }
 .table-column-filter.el-button.is-filtered {
   color: var(--primary);
-  background: var(--primary-soft);
+  background: var(--glass-selected-fill);
+  box-shadow:
+    inset 0 0 0 1px var(--glass-interaction-edge),
+    var(--glass-selected-shadow);
 }
 .table-column-filter.is-filtered svg,
 .table-column-filter:hover svg {

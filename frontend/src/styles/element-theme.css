@@ -74,6 +74,15 @@
 .el-button:not(.is-text):not(.is-link) {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 65%);
 }
+.el-button:not(.is-text):not(.is-link):where(
+    :not(:disabled):not(.is-disabled):not(.is-loading)
+  ):where(:not(.el-button--primary), .is-plain) {
+  background-image: linear-gradient(180deg, #ffffff80, #ffffff14 56%, transparent);
+  box-shadow:
+    inset 0 1px 0 #ffffffd9,
+    inset 0 0 0 1px #ffffff80,
+    0 1px 3px rgb(30 40 35 / 5%);
+}
 .el-button--primary.is-plain:not(.is-text):not(.is-link) {
   --el-button-text-color: var(--primary);
   --el-button-bg-color: #e7f0eb;
@@ -771,17 +780,25 @@
   .el-dialog .weight-input select:not(:disabled):hover {
     border-color: var(--el-border-color-hover);
   }
-  .el-button:not(.is-link):not(.is-text):not(:disabled):not(.is-loading):not(
+  .el-button:not(.is-link):not(.is-text):not(:disabled):not(.is-disabled):not(
+      .is-loading
+    ):hover:not(:active) {
+    box-shadow: var(--glass-hover-shadow);
+  }
+  .el-button:not(.is-link):not(.is-text):not(:disabled):not(.is-disabled):not(.is-loading):not(
       [data-jelly]
     ):hover:not(:active) {
-    box-shadow: 0 3px 8px rgb(39 70 59 / 10%);
     transform: translateY(-1px);
   }
 }
-.el-button:not(:disabled):not(.is-loading):not([data-jelly]):active,
+.el-button:not(.is-link):not(.is-text):not(:disabled):not(.is-disabled):not(.is-loading):active {
+  box-shadow:
+    inset 0 2px 4px rgb(30 40 35 / 13%),
+    inset 0 0 0 1px #ffffff80;
+}
+.el-button:not(:disabled):not(.is-disabled):not(.is-loading):not([data-jelly]):active,
 .el-dialog__headerbtn:not([data-jelly]):active {
   transform: translateY(0) scale(0.98);
-  box-shadow: none;
 }
 .el-dialog__headerbtn:focus-visible {
   outline: 2px solid var(--primary);

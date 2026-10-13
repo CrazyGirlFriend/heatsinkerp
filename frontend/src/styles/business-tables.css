@@ -308,9 +308,12 @@
 @media screen {
   .business-table {
     --table-glass-header: linear-gradient(180deg, #ffffffed, #f1f7f3e8);
-    --table-glass-hover: linear-gradient(180deg, #ffffff75, #ffffff00 70%);
+    --table-glass-hover: var(--glass-hover-fill);
+    --table-glass-selected-fill: var(--glass-selected-fill);
     --table-glass-selected: #e5f2eb;
     --table-glass-edge: inset 0 1px 0 #ffffffd9, inset 0 -1px 0 #dae8df66;
+    --table-glass-hover-edge: inset 0 1px 0 #fff, inset 0 -1px 0 #9bbda980;
+    --table-glass-selected-edge: inset 0 1px 0 #fff, inset 0 -2px 1px #80ac9499;
   }
   .el-table.business-table {
     border-radius: var(--card-radius);
@@ -337,7 +340,7 @@
   table.business-table > tbody > tr:is(:hover, :focus-within) > :is(td, th) {
     background-color: var(--table-hover-bg);
     background-image: var(--table-glass-hover);
-    box-shadow: var(--table-glass-edge);
+    box-shadow: var(--table-glass-hover-edge);
   }
   /* Only actual row selectors count, never checkboxes that edit a record's fields. */
   .el-table.business-table
@@ -350,8 +353,8 @@
     )
     > td.el-table__cell {
     background-color: var(--table-glass-selected);
-    background-image: var(--table-glass-hover);
-    box-shadow: var(--table-glass-edge);
+    background-image: var(--table-glass-selected-fill);
+    box-shadow: var(--table-glass-selected-edge);
   }
   .el-table.business-table
     .el-table__body
@@ -364,7 +367,7 @@
     > td.el-table__cell:first-child {
     box-shadow:
       inset 3px 0 0 var(--primary),
-      var(--table-glass-edge);
+      var(--table-glass-selected-edge);
   }
   .el-table.business-table .el-table__body > tbody > tr:has(:focus-visible) > td.el-table__cell {
     border-bottom-color: var(--primary);
@@ -384,6 +387,9 @@
   .business-table {
     --table-glass-header: none;
     --table-glass-hover: none;
+    --table-glass-selected-fill: none;
     --table-glass-edge: 0 0 0 transparent;
+    --table-glass-hover-edge: 0 0 0 transparent;
+    --table-glass-selected-edge: 0 0 0 transparent;
   }
 }

@@ -5,6 +5,11 @@
   --glass-chrome-fill: linear-gradient(135deg, #ffffffb8, #ffffff73);
   --glass-popover-fill: linear-gradient(145deg, #ffffffeb, #ffffffca);
   --glass-edge: #ffffffd9;
+  --glass-hover-fill: linear-gradient(180deg, #fffffff2, #eff9f4ed 42%, #d9eee5e6);
+  --glass-selected-fill: linear-gradient(180deg, #fffffff5, #e3f3eaf2 42%, #bfdfd0ed);
+  --glass-interaction-edge: #a8cbb880;
+  --glass-hover-shadow: inset 0 1px 0 #fff, inset 0 -1px 1px #93bca766, 0 3px 8px #23483812;
+  --glass-selected-shadow: inset 0 1px 0 #fff, inset 0 -1px 1px #7fae9699, 0 3px 10px #244e3921;
   --glass-surface-shadow:
     0 24px 68px #203b2e24, 0 5px 18px #203b2e0e, inset 0 1px 0 #fff, inset 0 -1px 0 #ffffffb8;
 }
@@ -116,6 +121,20 @@
       inset 0 1px 0 #fff,
       0 2px 6px #1a37280c;
   }
+  :is(.app-glass-surface, .stock-action-dialog)
+    :is(.el-dialog__footer, .el-drawer__footer)
+    .el-button:not(:disabled):not(.is-loading):is(:hover, :focus-visible),
+  .el-message-box__btns .el-button:not(:disabled):not(.is-loading):is(:hover, :focus-visible) {
+    box-shadow: var(--glass-hover-shadow);
+  }
+  :is(.app-glass-surface, .stock-action-dialog)
+    :is(.el-dialog__footer, .el-drawer__footer)
+    .el-button:not(:disabled):not(.is-loading):active,
+  .el-message-box__btns .el-button:not(:disabled):not(.is-loading):active {
+    box-shadow:
+      inset 0 1px 3px #284d3626,
+      inset 0 -1px 0 #ffffffa6;
+  }
   :is(.app-glass-surface, .stock-action-dialog) [data-jelly] {
     transform: var(--jelly-matrix, none);
     transition-property: color, background-color, border-color, box-shadow;
@@ -194,7 +213,36 @@
     border-radius: 10px;
     transition:
       background-color var(--motion-fast),
+      box-shadow var(--motion-fast),
       color var(--motion-fast);
+  }
+  .el-select-dropdown__item {
+    margin-inline: 6px;
+    border-radius: 10px;
+    transition:
+      background-color var(--motion-fast),
+      box-shadow var(--motion-fast),
+      color var(--motion-fast);
+  }
+  .el-dropdown__popper .el-dropdown-menu__item:not(.is-disabled):is(:hover, :focus),
+  .el-select-dropdown__item:not(.is-disabled):is(:hover, .is-hovering) {
+    color: var(--primary);
+    background: var(--glass-hover-fill);
+    box-shadow:
+      inset 0 0 0 1px var(--glass-interaction-edge),
+      var(--glass-hover-shadow);
+  }
+  .el-select-dropdown__item.is-selected:not(.is-disabled) {
+    background: var(--glass-selected-fill);
+    box-shadow:
+      inset 0 0 0 1px var(--glass-interaction-edge),
+      var(--glass-selected-shadow);
+  }
+  .el-dropdown__popper .el-dropdown-menu__item:not(.is-disabled):active,
+  .el-select-dropdown__item:not(.is-disabled):active {
+    box-shadow:
+      inset 0 1px 3px #284d3626,
+      inset 0 0 0 1px var(--glass-interaction-edge);
   }
   .el-picker__popper .el-picker-panel {
     border-radius: inherit;
@@ -217,6 +265,13 @@
   }
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root {
+    --glass-hover-fill: linear-gradient(#edf5f0, #edf5f0);
+    --glass-selected-fill: linear-gradient(#d3e7db, #d3e7db);
+    --glass-interaction-edge: #789d89;
+    --glass-hover-shadow: 0 0 0 transparent;
+    --glass-selected-shadow: 0 0 0 transparent;
+  }
   :is(.app-glass-surface, .el-dialog, .el-drawer, .el-message-box),
   :is(
     .el-popover,
@@ -242,6 +297,10 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .el-dropdown__popper .el-dropdown-menu__item,
+  .el-select-dropdown__item {
+    transition: none;
+  }
   :is(.app-glass-surface, .stock-action-dialog) [data-jelly] {
     transform: none;
     transition: none;
