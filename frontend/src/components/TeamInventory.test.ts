@@ -745,7 +745,7 @@ describe('warehouse grouped stock', () => {
     expect(wrapper.get('tbody tr').text()).not.toContain('未指定业务')
   })
 
-  it('keeps the serial, urgency badge and accessible urgency action together', async () => {
+  it('combines the administrator urgency status and action while keeping the team badge read-only', async () => {
     const row = warehouseFixture({
       serial_no: '000000092700001',
       urgency: {
@@ -771,12 +771,19 @@ describe('warehouse grouped stock', () => {
     await flushPromises()
     const serial = wrapper.get('.inventory-serial')
     expect(serial.get('.serial-number-link').text()).toBe('000000092700001')
-    expect(serial.get('.serial-urgency-badge').text()).toBe('加急')
-    await serial.get('button[aria-label="取消加急"]').trigger('click')
+    expect(serial.findAll('.serial-urgency-badge')).toHaveLength(1)
+    const action = serial.get('button[aria-label="取消加急"]')
+    expect(action.text()).toBe('加急')
+    expect(action.attributes('aria-pressed')).toBe('true')
+    await action.trigger('click')
     expect(wrapper.getComponent({ name: 'SerialUrgencyDialog' }).props()).toMatchObject({
       modelValue: true,
       serialNo: row.serial_no,
     })
+    useAuthStore().session!.user.role = 'TEAM'
+    await flushPromises()
+    expect(serial.find('button[aria-label="取消加急"]').exists()).toBe(false)
+    expect(serial.get('button[aria-label="查看加急原因"]').text()).toBe('加急')
   })
 
   it('renders optional ownership and pending balances inline and retains the pending link', async () => {

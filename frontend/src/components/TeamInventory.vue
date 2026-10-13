@@ -2,7 +2,7 @@
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Close, Flag, Operation, Refresh, Search } from '@element-plus/icons-vue'
+import { Operation, Refresh, Search } from '@element-plus/icons-vue'
 import {
   ElAlert,
   ElButton,
@@ -1033,19 +1033,12 @@ onBeforeUnmount(() => {
               type="primary"
               @click="openSerial(row)"
               ><strong>{{ sharedSerialLabel(row) }}</strong></ElButton
-            ><SerialUrgencyBadge :urgency="row.urgency" />
-            <ElTooltip
-              v-if="canManageUrgency"
-              :content="row.urgency?.urgent ? '取消加急' : '标记加急'"
-              placement="top"
-              ><ElButton
-                class="warehouse-urgency-action"
-                link
-                type="primary"
-                :icon="row.urgency?.urgent ? Close : Flag"
-                :aria-label="row.urgency?.urgent ? '取消加急' : '标记加急'"
-                @click="flag(row)"
-            /></ElTooltip>
+            >
+            <SerialUrgencyBadge
+              :urgency="row.urgency"
+              :editable="canManageUrgency"
+              @manage="flag(row)"
+            />
           </div>
           <ElTooltip
             v-else-if="column.key === 'material_name'"
@@ -1455,13 +1448,6 @@ onBeforeUnmount(() => {
 }
 .inventory-serial .serial-number-link {
   flex: 0 1 auto;
-}
-.warehouse-table :deep(.el-button.warehouse-urgency-action) {
-  flex: 0 0 26px;
-  width: 26px;
-  height: 26px;
-  margin: 0;
-  font-size: 15px;
 }
 .inventory-serial :deep(.serial-urgency-badge) {
   flex-shrink: 0;
