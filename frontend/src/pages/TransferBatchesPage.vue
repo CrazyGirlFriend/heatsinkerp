@@ -9,6 +9,7 @@ import { invalidNumberRange } from '@/utils/numberFilterRange'
 import TableExportButton from '@/components/TableExportButton.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 import { globalTransferExportFields } from '@/utils/teamTableExport'
+import { transferRecordColumns as displayColumns } from '@/utils/transferRecordColumns'
 import PageBackButton from '@/components/PageBackButton.vue'
 import {
   CircleCheck,
@@ -60,7 +61,7 @@ import type {
   MaterialTransferSummary,
 } from '@/types/materialTransfer'
 import {
-  isWarehouseReceipt,
+  materialSourceLabel,
   materialPurposeLabel,
   materialSearchFields,
   materialSearchModes,
@@ -74,58 +75,6 @@ const vLoading = ElLoading.directive
 const router = useRouter()
 const authStore = useAuthStore()
 const teamStore = useTeamDirectoryStore()
-const displayColumns = [
-  { key: 'material', label: '材质', minWidth: 150, className: '', defaultVisible: true },
-  {
-    key: 'source',
-    label: '来源',
-    minWidth: 156,
-    className: 'transfer-source-cell',
-    defaultVisible: true,
-  },
-  {
-    key: 'destination',
-    label: '去向',
-    minWidth: 110,
-    className: 'transfer-destination-cell',
-    defaultVisible: true,
-  },
-  {
-    key: 'purpose',
-    label: '接收业务',
-    minWidth: 125,
-    className: 'transfer-purpose-cell',
-    defaultVisible: true,
-  },
-  {
-    key: 'material_type',
-    label: '物料类型',
-    minWidth: 120,
-    className: 'transfer-material-type-cell',
-    defaultVisible: true,
-  },
-  {
-    key: 'quantity',
-    label: '数量',
-    minWidth: 120,
-    className: 'transfer-quantity-cell',
-    defaultVisible: true,
-  },
-  {
-    key: 'weight',
-    label: '重量',
-    minWidth: 140,
-    className: 'transfer-weight-cell',
-    defaultVisible: true,
-  },
-  {
-    key: 'status',
-    label: '状态',
-    minWidth: 140,
-    className: 'transfer-status-cell',
-    defaultVisible: true,
-  },
-] as const
 type DisplayColumnKey = (typeof displayColumns)[number]['key']
 const columnChoices = ref<InventoryColumnChoice<DisplayColumnKey>[]>(
   displayColumns.map((column) => ({ key: column.key, visible: column.defaultVisible })),
@@ -1056,33 +1005,22 @@ onBeforeUnmount(() => {
                   :options="columnStatusOptions"
                   @apply="(value) => applyColumn('status', value)"
                 />
+                <span v-else>{{ column.label }}</span>
               </template>
               <template #default="{ row }">
-                <template v-if="column.key === 'material'">{{ row.material_name }}</template>
-                <template v-else-if="column.key === 'source'">{{
-                  isWarehouseReceipt(asTransfer(row)) ? '库房手工入库' : row.source_team.name
-                }}</template>
-                <template v-else-if="column.key === 'destination'">{{
-                  row.next_team.name
-                }}</template>
-                <template v-else-if="column.key === 'purpose'">{{
-                  materialPurposeLabel(asTransfer(row))
-                }}</template>
-                <template v-else-if="column.key === 'material_type'">{{
-                  materialTypeLabel(row.material_type)
-                }}</template>
-                <template v-else-if="column.key === 'quantity'">{{
+                <template v-if="column.key === 'quantity'">{{
                   numberText(row.quantity, row.quantity_unit)
                 }}</template>
                 <template v-else-if="column.key === 'weight'">{{
                   numberText(row.weight, row.weight_unit)
                 }}</template>
                 <MaterialTransferStatus
-                  v-else
+                  v-else-if="column.key === 'status'"
                   :status="row.status"
                   :entry-kind="row.entry_kind"
                   plain
                 />
+                <template v-else>{{ column.value(asTransfer(row)) }}</template>
               </template>
             </ElTableColumn>
             <ElTableColumn label="批次号" min-width="210" align="center" show-overflow-tooltip
@@ -1124,10 +1062,7 @@ onBeforeUnmount(() => {
               }}</time>
               <span class="mobile-transfer-parties"
                 ><span
-                  ><small>来源</small
-                  ><span>{{
-                    isWarehouseReceipt(transfer) ? '库房手工入库' : transfer.source_team.name
-                  }}</span></span
+                  ><small>来源</small><span>{{ materialSourceLabel(transfer) }}</span></span
                 ><span
                   ><small>去向</small><span>{{ transfer.next_team.name }}</span></span
                 ><span

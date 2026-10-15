@@ -14,6 +14,7 @@ import {
 import type { MaterialLoss } from '@/types/teamMaterials'
 import { formatDateTime } from '@/utils/format'
 import type { TableExportField } from './tableExport'
+import { transferRecordColumns } from './transferRecordColumns'
 
 export function transferExportFields(
   section: 'pending' | 'receipts' | 'outgoing',
@@ -107,17 +108,12 @@ export const reallocationExportFields: TableExportField<MaterialTransfer>[] = [
 export const globalTransferExportFields: TableExportField<MaterialTransfer>[] = [
   { key: 'serial_no', label: '流水号', value: sharedSerialLabel },
   { key: 'transferred_at', label: '日期', value: (row) => formatDateTime(row.transferred_at) },
-  ...transferExportFields('outgoing', false).filter(
-    (field) => !['serial_no', 'transferred_at', 'batch_no'].includes(field.key),
-  ),
-  { key: 'source', label: '来源', value: materialSourceLabel },
-  { key: 'received_at', label: '签收时间', value: (row) => formatDateTime(row.received_at) },
-  { key: 'notes', label: '说明', value: (row) => row.notes },
-  {
-    key: 'source_transfer_batch_no',
-    label: '上一批次号',
-    value: (row) => row.source_transfer_batch_no,
-  },
+  ...transferRecordColumns.map((column) => ({
+    key: column.exportKey,
+    label:
+      column.key === 'weight' ? '重量 (kg)' : column.key === 'quantity' ? '件数' : column.label,
+    value: column.value,
+  })),
   { key: 'batch_no', label: '批次号', value: (row) => row.batch_no },
 ]
 

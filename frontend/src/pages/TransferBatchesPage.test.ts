@@ -134,6 +134,10 @@ const defaultHeaders = [
   '数量',
   '重量',
   '状态',
+  '实际尺寸',
+  '转料人',
+  '接收人',
+  '签收时间',
   '批次号',
 ]
 function tableHeaders(page: VueWrapper) {
@@ -141,6 +145,99 @@ function tableHeaders(page: VueWrapper) {
 }
 
 describe('transfer display columns', () => {
+  it('shows dimensions and actual receiving and sending employees by default, separately from accounts', async () => {
+    const received = normalizeMaterialTransfer({
+      ...transfer,
+      entry_kind: 'transfer',
+      status: 'received',
+      transfer_specification: '30 × 20 × 2 mm',
+      sent_employee_name: '张师傅',
+      received_employee_name: '李师傅',
+      transferred_by: '库房账号',
+      received_by: '轧制账号',
+      received_at: '2026-10-15T02:10:00Z',
+    })
+    vi.mocked(materialTransferApi.list).mockResolvedValue({ ...result, items: [received] })
+    const page = await renderList('/transfer-batches')
+    expect(tableHeaders(page)).toEqual(defaultHeaders)
+    const row = page.get('.el-table__body .el-table__row')
+    expect(row.get('.transfer-transfer-specification-cell').text()).toBe('30 × 20 × 2 mm')
+    expect(row.get('.transfer-sent-employee-name-cell').text()).toBe('张师傅')
+    expect(row.get('.transfer-received-employee-name-cell').text()).toBe('李师傅')
+    expect(row.get('.transfer-received-at-cell').text()).toBe('2026-10-15 10:10')
+    expect(row.text()).not.toContain('库房账号')
+    expect(row.text()).not.toContain('轧制账号')
+  })
+
+  it('offers all missing document fields and keeps each field in its own centered column', async () => {
+    const record = normalizeMaterialTransfer({
+      ...transfer,
+      entry_kind: 'transfer',
+      status: 'received',
+      transfer_specification: '30 × 20 × 2 mm',
+      finished_specification: '25 × 18 × 1 mm',
+      sent_employee_name: '张师傅',
+      received_employee_name: '李师傅',
+      received_at: '2026-10-15T02:10:00Z',
+      source_transfer_batch_no: 'TL-PARENT',
+      source_batch_no: 'SUPPLIER-001',
+      customer_code: 'CUSTOMER-A',
+      delivery_date: '2026-10-20',
+      delivery_quantity: 200,
+      warehouse_location: '成品区-C02',
+      notes: '同一批物料的说明',
+      transferred_by: '库房操作账号',
+    })
+    vi.mocked(materialTransferApi.list).mockResolvedValue({ ...result, items: [record] })
+    const page = await renderList('/transfer-batches')
+    const settings = page.getComponent({ name: 'InventoryColumnSettings' })
+    const choices = settings.props('columns') as { key: string; label: string }[]
+    expect(choices).toHaveLength(22)
+    const expected = {
+      transfer_specification: ['实际尺寸', '30 × 20 × 2 mm'],
+      sent_employee_name: ['转料人', '张师傅'],
+      received_employee_name: ['接收人', '李师傅'],
+      received_at: ['签收时间', '2026-10-15 10:10'],
+      entry_kind: ['转料方式', '内部转料'],
+      finished_specification: ['成品规格', '25 × 18 × 1 mm'],
+      source_transfer_batch_no: ['上一批次号', 'TL-PARENT'],
+      source_batch_no: ['原单批号', 'SUPPLIER-001'],
+      customer_code: ['客户代码', 'CUSTOMER-A'],
+      delivery_date: ['要求发货日期', '2026-10-20'],
+      delivery_quantity: ['应发成品件数', '200'],
+      warehouse_location: ['仓位', '成品区-C02'],
+      notes: ['说明', '同一批物料的说明'],
+      transferred_by: ['开单操作账号', '库房操作账号'],
+    }
+    settings.vm.$emit(
+      'change',
+      choices.map((column) => ({ key: column.key, visible: true })),
+    )
+    await flushPromises()
+    expect(tableHeaders(page)).toEqual([
+      '流水号',
+      '转出时间',
+      ...choices.map((column) => column.label),
+      '批次号',
+    ])
+    const row = page.get('.el-table__body .el-table__row')
+    expect(row.findAll('td')).toHaveLength(25)
+    for (const [key, [label, value]] of Object.entries(expected)) {
+      expect(choices.find((column) => column.key === key)?.label).toBe(label)
+      const cell = row.get(`.transfer-${key.replaceAll('_', '-')}-cell`)
+      expect(cell.text()).toBe(value)
+      expect(cell.classes()).toContain('is-center')
+    }
+    const exported = page.getComponent(TableExportButton).props('source')()!
+    expect(exported.fields).toHaveLength(25)
+    expect(materialTransferApi.list).toHaveBeenCalledTimes(1)
+    const [exportedRow] = await exported.load(new AbortController().signal, () => undefined)
+    for (const [key, [, value]] of Object.entries(expected)) {
+      expect(exported.fields.some((field) => field.key === key)).toBe(true)
+      expect(String(exportedRow?.[key])).toBe(value)
+    }
+  })
+
   it('restores the chosen order and visibility per account while keeping identity columns in place', async () => {
     localStorage.setItem(
       'heatsink.transfer-columns.v1:1',
@@ -516,6 +613,7 @@ describe('transfer list refresh continuity', () => {
         ...transfer,
         id: 2,
         batch_no: 'TL-RECEIPT',
+        external_source: '供应商 A',
         material_type: 'raw_material',
         entry_kind: 'warehouse_receipt',
         status: 'received',
@@ -552,19 +650,7 @@ describe('transfer list refresh continuity', () => {
     vi.mocked(materialTransferApi.list).mockResolvedValue({ ...result, items, total: items.length })
     const page = await renderList('/transfer-batches')
     const headings = page.findAll('.el-table__header th .cell').map((cell) => cell.text())
-    expect(headings).toEqual([
-      '流水号',
-      '转出时间',
-      '材质',
-      '来源',
-      '去向',
-      '接收业务',
-      '物料类型',
-      '数量',
-      '重量',
-      '状态',
-      '批次号',
-    ])
+    expect(headings).toEqual(defaultHeaders)
     expect(
       page
         .findAll('.el-table__header th.el-table__cell')
@@ -578,7 +664,7 @@ describe('transfer list refresh continuity', () => {
       ),
     ).toBe(true)
     expect(tableRows.map((row) => row.get('.transfer-source-cell').text())).toEqual([
-      '库房手工入库',
+      '供应商 A',
       '电镀',
       '库房',
       '检验',
@@ -612,7 +698,7 @@ describe('transfer list refresh continuity', () => {
     expect(mobileRows.map((row) => row.findAll('small').map((label) => label.text()))).toEqual(
       Array.from({ length: 4 }, () => ['来源', '去向', '接收业务']),
     )
-    expect(mobileRows[0].text()).toContain('库房手工入库')
+    expect(mobileRows[0].text()).toContain('供应商 A')
     expect(mobileRows[1].text()).toContain('去毛刺')
     expect(mobileRows[2].text()).toContain('外协收料单位')
     expect(mobileRows[2].text()).not.toContain('旧来源业务')
