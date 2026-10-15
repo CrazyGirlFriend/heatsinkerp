@@ -52,7 +52,7 @@ def test_oracle_counts_processing_and_pending_without_double_counting(client, wa
         [{"source_transfer_id": outgoing["items"][0]["id"], "quantity": 10, "weight": 10}],
         next_team_id=None,
         entry_kind="warehouse_outbound",
-        external_destination="隔离验证",
+        external_destination="对外转料",
         idempotency_key="external",
     ).json()
     assert external["items"][0]["status"] == "dispatched"

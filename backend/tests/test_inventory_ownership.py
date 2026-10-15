@@ -139,7 +139,7 @@ def test_external_submission_releases_ownership_without_a_pending_step(client, w
         [{"source_transfer_id": origin["id"], "quantity": 30, "weight": 30}],
         entry_kind="warehouse_outbound",
         next_team_id=None,
-        external_destination="客户",
+        external_destination="对外转料",
     ).json()
     assert_amounts(totals(client, s), 70, 70, 0)
     rows = client.get(base(s) + f"/inventory/{origin['id']}/pending-outbound").json()["items"]

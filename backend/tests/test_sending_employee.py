@@ -109,7 +109,7 @@ def test_external_shipment_records_selected_sender_and_account(client, outbound)
     payload = {
         "sent_employee_id": person["id"],
         "entry_kind": s["kind"],
-        "external_destination": "客户",
+        "external_destination": "对外转料",
         "idempotency_key": "external-sender",
         "lines": [{"source_transfer_id": s["lots"][0]["id"], "quantity": 1, "weight": 0.1}],
     }

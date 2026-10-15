@@ -4,6 +4,7 @@ import type { MaterialLoss } from './teamMaterials'
 
 export type MaterialTransferStatus = 'pending' | 'received' | 'voided' | 'dispatched'
 export type ExternalEntryKind = 'warehouse_outbound' | 'inspection_shipment'
+export const externalDestinationOptions = ['库房成品', '外委库', '对外转料'] as const
 export type MaterialEntryKind =
   | 'transfer'
   | 'warehouse_receipt'

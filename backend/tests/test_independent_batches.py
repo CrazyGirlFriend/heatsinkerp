@@ -123,7 +123,7 @@ def test_scrap_receipt_and_outbound_filters_keep_exhausted_zero_piece_batches(cl
         ],
         next_team_id=None,
         entry_kind="warehouse_outbound",
-        external_destination="回收及外部交接",
+        external_destination="对外转料",
         notes="废屑回收",
     )
     rows = response.json()["items"]

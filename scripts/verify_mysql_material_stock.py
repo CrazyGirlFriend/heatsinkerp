@@ -240,7 +240,7 @@ def run():
         results[key] = [row["status"] for row in raced]
 
     def external(lot, key, quantity=60):
-        payload = stock.DispatchCreate(sent_employee_id=2, entry_kind="inspection_shipment", external_destination="并发测试客户",
+        payload = stock.DispatchCreate(sent_employee_id=2, entry_kind="inspection_shipment", external_destination="对外转料",
             idempotency_key=key, lines=[{"source_transfer_id": lot["id"], "quantity": quantity, "weight": Decimal(quantity)/10}])
         return lambda db: stock.create_dispatch(db, 2, payload, users[2])
 
@@ -285,12 +285,12 @@ def run():
         receipt = warehouse_receipts.create_receipt(db, 4, WarehouseReceiptCreate(serial_no='warehouse-exit', material_name='铜钼',
             material_type='semi_finished', quantity=10, weight=1, notes='库房对外出库验证', idempotency_key='warehouse-exit'), warehouse_user)
     with SessionLocal() as db:
-        line = stock.create_dispatch(db, 4, stock.DispatchCreate(sent_employee_id=4, entry_kind='warehouse_outbound', external_destination='外部仓库',
+        line = stock.create_dispatch(db, 4, stock.DispatchCreate(sent_employee_id=4, entry_kind='warehouse_outbound', external_destination='外委库',
             idempotency_key='warehouse-outbound', lines=[{'source_transfer_id': receipt['id'], 'quantity': 10, 'weight': 1}]), warehouse_user)['items'][0]
     assert line['status'] == 'dispatched' and line['next_team'] is None and not line['stock_tracked']
     def batch(key, *, lots=None, external=False, reverse=False):
         lots = lots or [received(key+'-lot-1'), received(key+'-lot-2')]
-        fields = {'entry_kind': 'inspection_shipment', 'external_destination': '整批客户'} if external else {'next_team_id': 3}
+        fields = {'entry_kind': 'inspection_shipment', 'external_destination': '对外转料'} if external else {'next_team_id': 3}
         payload = stock.DispatchCreate(sent_employee_id=2, **fields, idempotency_key=key, lines=[
             {'source_transfer_id': lot['id'], 'quantity': 20, 'weight': Decimal('2.125')}
             for lot in (list(reversed(lots)) if reverse else lots)])

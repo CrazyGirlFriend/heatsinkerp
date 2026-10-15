@@ -12,6 +12,8 @@ const props = defineProps<{
   storageKey: string | null
   columns?: readonly { key: K; label: string; defaultVisible?: boolean }[]
   legacyKeys?: Record<string, readonly K[]>
+  description?: string
+  choicesLabel?: string
 }>()
 const emit = defineEmits<{ change: [columns: InventoryColumnChoice<K>[]] }>()
 const options = computed(
@@ -121,8 +123,8 @@ function apply() {
         <strong>显示列</strong
         ><ElButton link type="primary" @click="draft = defaults()">恢复默认</ElButton>
       </header>
-      <p>流水号、操作列始终显示。仅保存在当前浏览器。</p>
-      <div class="column-choices" aria-label="库存明细可选列">
+      <p>{{ description ?? '流水号、操作列始终显示。仅保存在当前浏览器。' }}</p>
+      <div class="column-choices" :aria-label="choicesLabel ?? '库存明细可选列'">
         <div v-for="(column, index) in draft" :key="column.key" class="column-choice">
           <ElCheckbox
             :model-value="column.visible"

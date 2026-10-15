@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
-import { ElInputNumber, ElMessageBox, ElRadioGroup } from 'element-plus'
+import { ElInputNumber, ElMessageBox, ElOption, ElRadioGroup, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialStockActionDialog from './MaterialStockActionDialog.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
@@ -187,6 +187,17 @@ async function mode(kind: ExternalEntryKind) {
   wrapper.getComponent(ElRadioGroup).vm.$emit('update:modelValue', kind)
   await flushPromises()
 }
+function destinationSelect() {
+  return wrapper
+    .findAllComponents(ElSelect)
+    .find((select) =>
+      select.find('input[aria-label="出库去向"], input[aria-label="发货去向"]').exists(),
+    )!
+}
+async function destination(value: string) {
+  destinationSelect().vm.$emit('update:modelValue', value)
+  await flushPromises()
+}
 async function submit() {
   await wrapper.get('form').trigger('submit')
   await flushPromises()
@@ -240,14 +251,20 @@ describe('external dispatch creation', () => {
           .element.closest('.el-form-item')!
           .classList.contains('is-error'),
       ).toBe(true)
-      await wrapper.get(`input[aria-label="${verb}去向"]`).setValue('  客户收货仓  ')
+      expect(destinationSelect().props()).toMatchObject({ filterable: false, allowCreate: false })
+      expect(
+        destinationSelect()
+          .findAllComponents(ElOption)
+          .map((option) => option.props('value')),
+      ).toEqual(['库房成品', '外委库', '对外转料'])
+      await destination('外委库')
       await submit()
       const [id, body] = vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]!
       expect(id).toBe(teamId)
       expect(body).toMatchObject({
         entry_kind: kind,
         sent_employee_id: senderEmployee(teamId).id,
-        external_destination: '客户收货仓',
+        external_destination: '外委库',
         lines: [{ source_transfer_id: 3 }, { source_transfer_id: 4 }],
       })
       expect(body).not.toHaveProperty('next_team_id')
@@ -259,6 +276,30 @@ describe('external dispatch creation', () => {
         items: [{ status: 'dispatched' }],
       })
       expect(wrapper.find('[aria-label="出库接收班组"]').exists()).toBe(false)
+    },
+  )
+  it.each(['', '客户仓库', '库房成品库', ' 外委库 '])(
+    'rejects an unselected or unsupported destination: %s',
+    async (value) => {
+      await stockDialog()
+      await mode('warehouse_outbound')
+      await destination(value)
+      await submit()
+      expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+      expect(wrapper.get('.external-destination-field').classes()).toContain('is-error')
+    },
+  )
+  it.each(['库房成品', '外委库', '对外转料'])(
+    'submits the selected destination unchanged: %s',
+    async (value) => {
+      await stockDialog()
+      await mode('warehouse_outbound')
+      await destination(value)
+      await submit()
+      expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ external_destination: value }),
+      )
     },
   )
   it('keeps ordinary production teams on internal transfers', async () => {
@@ -274,12 +315,10 @@ describe('external dispatch creation', () => {
     )
     await stockDialog()
     await mode('warehouse_outbound')
-    await wrapper.get('input[aria-label="出库去向"]').setValue('外部仓库')
+    await destination('外委库')
     await submit()
     expect(teamMaterialApi.refreshSource).toHaveBeenCalledTimes(2)
-    expect((wrapper.get('input[aria-label="出库去向"]').element as HTMLInputElement).value).toBe(
-      '外部仓库',
-    )
+    expect(destinationSelect().props('modelValue')).toBe('外委库')
     expect(wrapper.getComponent(ElRadioGroup).props('modelValue')).toBe('warehouse_outbound')
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledTimes(2)
@@ -297,7 +336,7 @@ describe('external dispatch creation', () => {
     )
     await stockDialog()
     await mode('warehouse_outbound')
-    await wrapper.get('input[aria-label="出库去向"]').setValue('外部仓库')
+    await destination('外委库')
     await submit()
     await submit()
     expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].idempotency_key).toBe(

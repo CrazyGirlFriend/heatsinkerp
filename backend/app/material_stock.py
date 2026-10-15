@@ -45,7 +45,12 @@ from .schemas import (
     SludgeMeasurement,
     WarehouseLocationChoice,
 )
-from .team_constants import EXTERNAL_ENTRY_KINDS, INSPECTION_TEAM_CODE, WAREHOUSE_TEAM_CODE
+from .team_constants import (
+    EXTERNAL_DESTINATIONS,
+    EXTERNAL_ENTRY_KINDS,
+    INSPECTION_TEAM_CODE,
+    WAREHOUSE_TEAM_CODE,
+)
 
 
 class StockAmounts(BaseModel):
@@ -115,6 +120,8 @@ class DispatchCreate(BaseModel):
                     "external outbound requires external_destination and no next_team_id"
                 )
             self.external_destination = self.external_destination.strip()
+            if self.external_destination not in EXTERNAL_DESTINATIONS:
+                raise ValueError("出库去向只能选择：" + "、".join(EXTERNAL_DESTINATIONS))
         return self
 
 

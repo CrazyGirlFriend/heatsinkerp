@@ -268,7 +268,7 @@ def test_reallocated_finished_shipments_use_target_serial_input_without_inflatin
         headers=warehouse["headers"],
         json={
             "entry_kind": "warehouse_outbound",
-            "external_destination": "客户",
+            "external_destination": "对外转料",
             "idempotency_key": "ship-B",
             "lines": [{"source_transfer_id": target["id"], "quantity": 30, "weight": 6}],
         },

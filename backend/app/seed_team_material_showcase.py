@@ -90,7 +90,7 @@ def seed_team_material_showcase(db, password):
             sent_employee_id=demo_receiving_employee(db, actor.team_id, "演示转料员"),
             next_team_id=None if external else target.team_id,
             entry_kind=external or "transfer",
-            external_destination="测试客户 A" if external else None,
+            external_destination="对外转料" if external else None,
             notes="测试数据：" + ("本班组对外出库" if external else "同一下序批量转料"),
             idempotency_key=f"{PREFIX}:{key}",
             lines=[

@@ -201,7 +201,7 @@ def test_two_origin_batches_keep_fifo_and_confirmed_shipment_dates(client, wareh
         headers=warehouse["headers"],
         json={
             "entry_kind": "warehouse_outbound",
-            "external_destination": "客户",
+            "external_destination": "对外转料",
             "idempotency_key": "ship-date",
             "lines": [{"source_transfer_id": second["id"], "quantity": 30, "weight": 3}],
         },

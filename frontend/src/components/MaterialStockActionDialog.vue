@@ -7,7 +7,6 @@ import '@/styles/stock-action-glass.css'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import WeightInput from './WeightInput.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
-import MaterialInput from './MaterialInput.vue'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   ElAlert,
@@ -39,6 +38,7 @@ import { teamWorkspaceProfile } from '@/config/teamWorkspaces'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import {
   externalActionLabel,
+  externalDestinationOptions,
   isExternalEntryKind,
   isScrapType,
   isWeightOnlyType,
@@ -464,9 +464,9 @@ const validation = useDialogValidation(() => {
   if (!isLoss.value && !sender.value) issues.sender = '请选择转料人'
   if (
     external.value &&
-    (!form.externalDestination.trim() || form.externalDestination.trim().length > 240)
+    !externalDestinationOptions.some((option) => option === form.externalDestination)
   )
-    issues.externalDestination = '请填写外部去向'
+    issues.externalDestination = '请选择去向'
   if (
     !isLoss.value &&
     !external.value &&
@@ -839,14 +839,21 @@ async function submit() {
             :label="`${actionLabel}去向`"
             :error="fieldErrors.externalDestination"
             required
-            ><MaterialInput
-              field="external_source"
-              :label="`${actionLabel}去向`"
+          >
+            <ElSelect
               v-model="form.externalDestination"
+              :aria-label="`${actionLabel}去向`"
               :disabled="saving || !modelValue"
-              :maxlength="240"
-              placeholder="填写客户、收货单位或实际去向"
-          /></ElFormItem>
+              placeholder="请选择去向"
+            >
+              <ElOption
+                v-for="destination in externalDestinationOptions"
+                :key="destination"
+                :label="destination"
+                :value="destination"
+              />
+            </ElSelect>
+          </ElFormItem>
           <ElFormItem
             v-if="!isLoss && !external"
             label="接收班组"

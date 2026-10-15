@@ -39,6 +39,17 @@ function check(label: string, value: boolean) {
 const latest = () => wrapper.emitted('change')!.at(-1)![0] as InventoryColumnChoice<string>[]
 
 describe('inventory display columns', () => {
+  it('uses context-specific instructions without changing inventory defaults', async () => {
+    await render()
+    expect(wrapper.get('.column-choices').attributes('aria-label')).toBe('库存明细可选列')
+    await wrapper.setProps({
+      description: '流水号、转出时间、批次号始终显示。',
+      choicesLabel: '转料记录可选列',
+    })
+    expect(wrapper.text()).toContain('流水号、转出时间、批次号始终显示。')
+    expect(wrapper.text()).not.toContain('操作列始终显示')
+    expect(wrapper.get('.column-choices').attributes('aria-label')).toBe('转料记录可选列')
+  })
   it.each([true, false])(
     'carries the old material type visibility into split fields, then preserves independent choices (visible=%s)',
     async (visible) => {

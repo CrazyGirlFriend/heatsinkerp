@@ -250,7 +250,7 @@ def test_measured_weight_delta_is_separate_from_input_yield_and_loss(client, mac
         [{"source_transfer_id": child["id"], "quantity": 10, "weight": 100.5}],
         next_team_id=None,
         entry_kind="warehouse_outbound",
-        external_destination="客户",
+        external_destination="对外转料",
         idempotency_key="ship-finished",
     )
     assert shipment.status_code == 201, shipment.text

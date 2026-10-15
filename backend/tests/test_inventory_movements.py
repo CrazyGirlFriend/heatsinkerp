@@ -129,12 +129,12 @@ def test_external_outbound_is_a_separate_batch_and_does_not_double_count_confirm
         [{"source_transfer_id": origin["id"], "quantity": 10, "weight": 1}],
         next_team_id=None,
         entry_kind="warehouse_outbound",
-        external_destination="客户",
+        external_destination="对外转料",
     ).json()
     assert confirm(client, s, external, external=True).status_code == 200
     rows = movements(client, s, origin["id"])["items"]
     assert len(rows) == 2
     shipped = next(row for row in rows if row["id"] != origin["id"])
     assert shipped["batch_no"] == external["items"][0]["batch_no"]
-    assert shipped["status"] == "dispatched" and shipped["external_destination"] == "客户"
+    assert shipped["status"] == "dispatched" and shipped["external_destination"] == "对外转料"
     assert shipped["quantity"] == 10 and float(shipped["weight"]) == 1

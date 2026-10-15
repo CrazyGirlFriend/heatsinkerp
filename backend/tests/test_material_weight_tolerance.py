@@ -18,7 +18,7 @@ def ship(client, setup, source, weight, *, quantity=1, key="ship"):
         [{"source_transfer_id": source["id"], "quantity": quantity, "weight": str(weight)}],
         next_team_id=None,
         entry_kind="warehouse_outbound",
-        external_destination="客户",
+        external_destination="对外转料",
         idempotency_key=key,
     )
     assert response.status_code == 201, response.text

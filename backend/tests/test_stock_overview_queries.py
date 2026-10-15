@@ -109,7 +109,7 @@ def test_reused_totals_preserve_scrap_decimal_precision_and_legacy_boundaries(cl
         ],
         next_team_id=None,
         entry_kind="warehouse_outbound",
-        external_destination="外部单位",
+        external_destination="对外转料",
         idempotency_key="summary-exit",
     )
     assert exit_response.status_code == 201, exit_response.text

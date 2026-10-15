@@ -58,6 +58,7 @@ const result = { items: [transfer], total: 1, page: 1, page_size: 10 }
 let wrapper: VueWrapper | undefined
 
 beforeEach(() => {
+  localStorage.clear()
   state.auth = reactive({
     isAdmin: true,
     isTeamAccount: false,
@@ -76,6 +77,7 @@ afterEach(() => {
   wrapper?.unmount()
   wrapper = undefined
   vi.restoreAllMocks()
+  localStorage.clear()
 })
 
 async function renderList(path = '/transfer-batches?status=pending') {
@@ -120,6 +122,82 @@ async function filterColumn(page: VueWrapper, label: string, value: string, end 
     .vm.$emit('apply', value, end)
   await flushPromises()
 }
+
+const defaultHeaders = [
+  '流水号',
+  '转出时间',
+  '材质',
+  '来源',
+  '去向',
+  '接收业务',
+  '物料类型',
+  '数量',
+  '重量',
+  '状态',
+  '批次号',
+]
+function tableHeaders(page: VueWrapper) {
+  return page.findAll('.el-table__header-wrapper th:not(.gutter)').map((cell) => cell.text())
+}
+
+describe('transfer display columns', () => {
+  it('restores the chosen order and visibility per account while keeping identity columns in place', async () => {
+    localStorage.setItem(
+      'heatsink.transfer-columns.v1:1',
+      JSON.stringify([
+        { key: 'weight', visible: true },
+        { key: 'material', visible: false },
+        { key: 'source', visible: true },
+      ]),
+    )
+    const page = await renderList()
+    expect(tableHeaders(page)).toEqual(['流水号', '转出时间', '重量', '来源', '批次号'])
+    const row = page.get('.el-table__body .el-table__row')
+    expect(row.get('td.transfer-weight-cell').text()).toBe('12.5 kg')
+    expect(row.get('td.transfer-source-cell').text()).toBe('库房')
+    await row.get('.batch-link').trigger('click')
+    expect(page.getComponent(MaterialTransferDrawer).props('batchNo')).toBe(transfer.batch_no)
+
+    state.auth.currentUser = { id: 2, team_id: 2 }
+    await flushPromises()
+    expect(tableHeaders(page)).toEqual(defaultHeaders)
+    expect(page.getComponent({ name: 'InventoryColumnSettings' }).props('storageKey')).toBe(
+      'heatsink.transfer-columns.v1:2',
+    )
+    state.auth.currentUser = { id: 1, team_id: null }
+    await flushPromises()
+    expect(tableHeaders(page)).toEqual(['流水号', '转出时间', '重量', '来源', '批次号'])
+  })
+
+  it('changes display without reloading, losing hidden filters, changing pagination or narrowing export fields', async () => {
+    const page = await renderList('/transfer-batches?material_query=W80&page=3')
+    expect(tableHeaders(page)).toEqual(defaultHeaders)
+    await page.get('.batch-link').trigger('click')
+    const exportBefore = page.getComponent(TableExportButton).props('source')()!
+    const routeBefore = page.vm.$route.fullPath
+    const listCalls = vi.mocked(materialTransferApi.list).mock.calls.length
+    const countCalls = vi.mocked(materialTransferApi.counts).mock.calls.length
+    page.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', [
+      { key: 'weight', visible: true },
+      { key: 'material', visible: false },
+      { key: 'source', visible: true },
+    ])
+    await flushPromises()
+    expect(tableHeaders(page)).toEqual(['流水号', '转出时间', '重量', '来源', '批次号'])
+    expect(materialTransferApi.list).toHaveBeenCalledTimes(listCalls)
+    expect(materialTransferApi.counts).toHaveBeenCalledTimes(countCalls)
+    expect(page.vm.$route.fullPath).toBe(routeBefore)
+    expect(page.getComponent(ElPagination).props('currentPage')).toBe(3)
+    expect(page.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(true)
+    expect(page.getComponent(FilterDialog).props('count')).toBeGreaterThan(0)
+    const exported = page.getComponent(TableExportButton).props('source')()!
+    expect(exported.fields).toEqual(exportBefore.fields)
+    await exported.load(new AbortController().signal, () => undefined)
+    expect(materialTransferApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ material_query: 'W80', page: 1, page_size: 100 }),
+    )
+  })
+})
 
 describe('transfer header filtering', () => {
   it('combines columns and top filters, resets pagination, and exports only applied criteria', async () => {

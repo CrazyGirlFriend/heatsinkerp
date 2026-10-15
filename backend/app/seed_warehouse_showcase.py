@@ -166,7 +166,7 @@ def seed_warehouse_showcase(db):
                     sent_employee_id=demo_receiving_employee(db, actor.team_id, "演示转料员"),
                     next_team_id=target.team_id if target else None,
                     entry_kind="transfer" if target else "inspection_shipment",
-                    external_destination=None if target else "演示客户",
+                    external_destination=None if target else "对外转料",
                     notes=f"{PREFIX}：仓位与批次流转演示",
                     idempotency_key=key,
                     lines=[line],

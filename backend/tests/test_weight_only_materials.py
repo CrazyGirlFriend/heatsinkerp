@@ -39,7 +39,7 @@ def test_receipt_opening_and_external_exit_require_weight_without_pieces(client,
     assert opened.status_code == 201, opened.text
     assert opened.json()["items"][0]["quantity"] == 0
     external = dict(
-        entry_kind="warehouse_outbound", next_team_id=None, external_destination="回收单位"
+        entry_kind="warehouse_outbound", next_team_id=None, external_destination="对外转料"
     )
     portion = dict(source_transfer_id=lot["id"], quantity=1, weight=1, **measurement(kind, 1))
     assert dispatch(client, s, [portion], **external).status_code == 422

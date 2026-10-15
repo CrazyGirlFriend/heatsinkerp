@@ -113,7 +113,7 @@ def dispatch(client, setup, **overrides):
         headers=setup["headers"],
         json={
             "entry_kind": setup["kind"],
-            "external_destination": " 客户 A / 外部仓库 ",
+            "external_destination": " 对外转料 ",
             "notes": "清点发运",
             "idempotency_key": "outbound-1",
             "lines": [
@@ -152,7 +152,7 @@ def test_legacy_external_submission_self_confirmation_and_no_phantom_receipt(cli
         item["entry_kind"] == outbound["kind"] and item["next_team"] is None
         for item in group["items"]
     )
-    assert all(item["external_destination"] == "客户 A / 外部仓库" for item in group["items"])
+    assert all(item["external_destination"] == "对外转料" for item in group["items"])
     first, second = group["items"]
     assert first["allowed_actions"] == ["edit", "void", "confirm_outbound"]
     assert first["next_team_id"] is None and first["next_team"] is None
@@ -190,7 +190,7 @@ def test_legacy_external_submission_self_confirmation_and_no_phantom_receipt(cli
     assert confirm(client, outbound, second).status_code == 200
     rows = client.get(
         outbound["url"] + "/outbound-batches",
-        params={"status": "dispatched", "entry_kind": outbound["kind"], "query": "客户 A"},
+        params={"status": "dispatched", "entry_kind": outbound["kind"], "query": "对外转料"},
     ).json()
     assert rows["total"] == 2 and all(row["status"] == "dispatched" for row in rows["items"])
     assert (
@@ -258,7 +258,7 @@ def test_external_authorization_no_internal_self_receipt_loophole(client, outbou
                 headers=headers,
                 json={
                     "entry_kind": outbound["kind"],
-                    "external_destination": "外部",
+                    "external_destination": "外委库",
                     "idempotency_key": "denied-create",
                     "lines": [
                         {
@@ -296,7 +296,7 @@ def test_external_authorization_no_internal_self_receipt_loophole(client, outbou
             headers=outbound["other_headers"],
             json={
                 "entry_kind": outbound["kind"],
-                "external_destination": "外部",
+                "external_destination": "外委库",
                 "idempotency_key": "wrong-team",
                 "lines": [
                     {"source_transfer_id": outbound["lots"][0]["id"], "quantity": 1, "weight": 1}

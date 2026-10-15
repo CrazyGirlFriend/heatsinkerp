@@ -63,7 +63,7 @@ def test_external_sources_and_return_original_document_validation(client, wareho
         [{"source_transfer_id": origin["id"], "quantity": 10, "weight": 1}],
         next_team_id=None,
         entry_kind="warehouse_outbound",
-        external_destination="外委单位",
+        external_destination="外委库",
     ).json()
     params = dict(
         receipt_kind="return",
@@ -158,7 +158,7 @@ def test_scrap_is_not_production_stock_and_can_only_be_disposed_externally(clien
         lines,
         next_team_id=None,
         entry_kind="warehouse_outbound",
-        external_destination="回收单位",
+        external_destination="对外转料",
         notes="废料处理",
     )
     assert response.status_code == 201, response.text
@@ -304,7 +304,7 @@ def test_signed_gaps_preserve_normal_and_scrap_filters_even_when_totals_cancel(c
         ],
         entry_kind="warehouse_outbound",
         next_team_id=None,
-        external_destination="客户",
+        external_destination="对外转料",
         notes="实际出库",
     )
     assert sent.status_code == 201, sent.text

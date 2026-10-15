@@ -183,7 +183,7 @@ describe('team material API contract', () => {
     const raw = {
       dispatch_no: 'CK-EXTERNAL',
       entry_kind: 'inspection_shipment',
-      external_destination: '客户仓库',
+      external_destination: '外委库',
       next_team: null,
       status: 'dispatched',
       total_quantity: 4,
@@ -192,7 +192,7 @@ describe('team material API contract', () => {
         {
           batch_no: 'TL-EXTERNAL',
           entry_kind: 'inspection_shipment',
-          external_destination: '客户仓库',
+          external_destination: '外委库',
           next_team: null,
           status: 'dispatched',
           stock_tracked: false,
@@ -202,7 +202,7 @@ describe('team material API contract', () => {
     data = raw
     const payload = {
       entry_kind: 'inspection_shipment' as const,
-      external_destination: '客户仓库',
+      external_destination: '外委库',
       sent_employee_id: 22,
       idempotency_key: 'same-external-group',
       lines: [{ source_transfer_id: 9, quantity: 4, weight: 0.005 }],
@@ -213,7 +213,7 @@ describe('team material API contract', () => {
     expect(requests[0]!.url).toBe('/team-materials/8/outbound-batches')
     expect(group.items[0]).toMatchObject({
       status: 'dispatched',
-      next_team: { id: '', name: '客户仓库' },
+      next_team: { id: '', name: '外委库' },
       stock_tracked: false,
     })
     data = { items: raw.items, total: 1, page: 1, page_size: 20 }

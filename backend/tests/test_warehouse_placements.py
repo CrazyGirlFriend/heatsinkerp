@@ -194,7 +194,7 @@ def test_external_submission_completes_and_releases_physical_slot_once(client, w
     source = intake(client, warehouse, **location(client, warehouse, "A")).json()
     body = {
         "entry_kind": "warehouse_outbound",
-        "external_destination": "外部收货方",
+        "external_destination": "对外转料",
         "idempotency_key": "external-slot",
         "lines": [
             {

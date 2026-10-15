@@ -72,7 +72,7 @@ def test_sludge_return_and_external_exit_count_material_mass_once(client, wareho
     external = dict(
         entry_kind="warehouse_outbound",
         next_team_id=None,
-        external_destination="回收单位",
+        external_destination="对外转料",
         notes="废泥处理",
         idempotency_key="sludge-exit",
     )
@@ -233,7 +233,7 @@ def test_receipt_decimal_rounding_and_legacy_unconverted_stock(client, warehouse
     payload = dict(
         entry_kind="warehouse_outbound",
         next_team_id=None,
-        external_destination="回收单位",
+        external_destination="对外转料",
         notes="历史废泥处理",
         idempotency_key="legacy",
     )
@@ -267,7 +267,7 @@ def test_measured_sludge_excess_exits_keep_gross_and_signed_book_stock(client, w
     external = dict(
         entry_kind="warehouse_outbound",
         next_team_id=None,
-        external_destination="回收单位",
+        external_destination="对外转料",
         notes="废泥处理",
     )
     first = [line(receipt, gross=6, percent=50, weight=3)]
@@ -355,7 +355,7 @@ def test_rounding_preserves_actual_sludge_gap_separately_from_book_weight(client
     external = dict(
         entry_kind="warehouse_outbound",
         next_team_id=None,
-        external_destination="回收单位",
+        external_destination="对外转料",
         notes="废泥处理",
     )
     # Preserve both the actual and accounted difference at the new precision.

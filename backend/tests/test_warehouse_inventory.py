@@ -117,7 +117,7 @@ def test_internal_pending_not_stock_and_outbound_immediately_deducts(client, war
         idempotency_key="external",
         next_team_id=None,
         entry_kind="warehouse_outbound",
-        external_destination="客户",
+        external_destination="对外转料",
     ).json()
     good = inventory(client, s, receipt_source="internal", material_type="finished")["items"][0]
     assert good["on_hand_quantity"] == 20 and good["reserved_quantity"] == 0

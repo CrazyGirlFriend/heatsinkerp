@@ -2,6 +2,8 @@
 import { formatAmount } from '@/utils/format'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import FilterDialog from '@/components/FilterDialog.vue'
+import InventoryColumnSettings from '@/components/InventoryColumnSettings.vue'
+import type { InventoryColumnChoice } from '@/types/inventoryColumns'
 import TableColumnFilter from '@/components/TableColumnFilter.vue'
 import { invalidNumberRange } from '@/utils/numberFilterRange'
 import TableExportButton from '@/components/TableExportButton.vue'
@@ -72,6 +74,70 @@ const vLoading = ElLoading.directive
 const router = useRouter()
 const authStore = useAuthStore()
 const teamStore = useTeamDirectoryStore()
+const displayColumns = [
+  { key: 'material', label: '材质', minWidth: 150, className: '', defaultVisible: true },
+  {
+    key: 'source',
+    label: '来源',
+    minWidth: 156,
+    className: 'transfer-source-cell',
+    defaultVisible: true,
+  },
+  {
+    key: 'destination',
+    label: '去向',
+    minWidth: 110,
+    className: 'transfer-destination-cell',
+    defaultVisible: true,
+  },
+  {
+    key: 'purpose',
+    label: '接收业务',
+    minWidth: 125,
+    className: 'transfer-purpose-cell',
+    defaultVisible: true,
+  },
+  {
+    key: 'material_type',
+    label: '物料类型',
+    minWidth: 120,
+    className: 'transfer-material-type-cell',
+    defaultVisible: true,
+  },
+  {
+    key: 'quantity',
+    label: '数量',
+    minWidth: 120,
+    className: 'transfer-quantity-cell',
+    defaultVisible: true,
+  },
+  {
+    key: 'weight',
+    label: '重量',
+    minWidth: 140,
+    className: 'transfer-weight-cell',
+    defaultVisible: true,
+  },
+  {
+    key: 'status',
+    label: '状态',
+    minWidth: 140,
+    className: 'transfer-status-cell',
+    defaultVisible: true,
+  },
+] as const
+type DisplayColumnKey = (typeof displayColumns)[number]['key']
+const columnChoices = ref<InventoryColumnChoice<DisplayColumnKey>[]>(
+  displayColumns.map((column) => ({ key: column.key, visible: column.defaultVisible })),
+)
+const columnStorageKey = computed(() =>
+  authStore.currentUser?.id ? `heatsink.transfer-columns.v1:${authStore.currentUser.id}` : null,
+)
+const visibleColumns = computed(() =>
+  columnChoices.value
+    .filter((choice) => choice.visible)
+    .flatMap((choice) => displayColumns.filter((column) => column.key === choice.key)),
+)
 const rows = ref<MaterialTransfer[]>([])
 const loading = ref(true)
 const errorMessage = ref('')
@@ -829,8 +895,17 @@ onBeforeUnmount(() => {
               ></label>
               <ElCheckbox v-model="urgentDraft">仅看加急</ElCheckbox>
             </FilterDialog>
-            <ElButton class="action-warm" native-type="submit">查询</ElButton
-            ><ElButton :icon="Refresh" aria-label="刷新转料记录" @click="liveRefresh.request" />
+            <ElButton class="action-warm" native-type="submit">查询</ElButton>
+            <div class="transfer-column-settings">
+              <InventoryColumnSettings
+                :storage-key="columnStorageKey"
+                :columns="displayColumns"
+                description="流水号、转出时间、批次号始终显示。仅保存在当前浏览器。"
+                choices-label="转料记录可选列"
+                @change="columnChoices = $event"
+              />
+            </div>
+            <ElButton :icon="Refresh" aria-label="刷新转料记录" @click="liveRefresh.request" />
           </div>
         </form>
         <div
@@ -903,140 +978,113 @@ onBeforeUnmount(() => {
               ></ElTableColumn
             >
             <ElTableColumn
-              label="材质"
-              min-width="150"
+              v-for="column in visibleColumns"
+              :key="column.key"
+              :label="column.label"
+              :min-width="column.minWidth"
+              :class-name="column.className"
               align="center"
-              show-overflow-tooltip
-              prop="material_name"
-              ><template #header
-                ><TableColumnFilter
+              :show-overflow-tooltip="!['quantity', 'weight', 'status'].includes(column.key)"
+            >
+              <template #header>
+                <TableColumnFilter
+                  v-if="column.key === 'material'"
                   label="材质"
                   :context="route.fullPath"
                   :value="columns.material_query"
-                  @apply="(value) => applyColumn('material_query', value)" /></template
-            ></ElTableColumn>
-            <ElTableColumn
-              label="来源"
-              min-width="156"
-              align="center"
-              class-name="transfer-source-cell"
-              show-overflow-tooltip
-              ><template #header
-                ><TableColumnFilter
+                  @apply="(value) => applyColumn('material_query', value)"
+                />
+                <TableColumnFilter
+                  v-else-if="column.key === 'source'"
                   label="来源"
                   :context="route.fullPath"
                   kind="select"
                   :value="String(sourceTeamId)"
                   :options="teamOptions"
-                  @apply="(value) => applyColumn('source', value)" /></template
-              ><template #default="{ row }">{{
-                isWarehouseReceipt(asTransfer(row)) ? '库房手工入库' : row.source_team.name
-              }}</template></ElTableColumn
-            >
-            <ElTableColumn
-              label="去向"
-              min-width="110"
-              align="center"
-              class-name="transfer-destination-cell"
-              show-overflow-tooltip
-              prop="next_team.name"
-              ><template #header
-                ><TableColumnFilter
+                  @apply="(value) => applyColumn('source', value)"
+                />
+                <TableColumnFilter
+                  v-else-if="column.key === 'destination'"
                   label="去向"
                   :context="route.fullPath"
                   kind="select"
                   :value="String(nextTeamId)"
                   :options="teamOptions"
-                  @apply="(value) => applyColumn('next', value)" /></template
-            ></ElTableColumn>
-            <ElTableColumn
-              label="接收业务"
-              min-width="125"
-              align="center"
-              class-name="transfer-purpose-cell"
-              show-overflow-tooltip
-              ><template #header
-                ><TableColumnFilter
+                  @apply="(value) => applyColumn('next', value)"
+                />
+                <TableColumnFilter
+                  v-else-if="column.key === 'purpose'"
                   label="接收业务"
                   :context="route.fullPath"
                   :value="columns.purpose_query"
-                  @apply="(value) => applyColumn('purpose_query', value)" /></template
-              ><template #default="{ row }">{{
-                materialPurposeLabel(asTransfer(row))
-              }}</template></ElTableColumn
-            >
-            <ElTableColumn
-              label="物料类型"
-              min-width="120"
-              align="center"
-              class-name="transfer-material-type-cell"
-              show-overflow-tooltip
-              ><template #header
-                ><TableColumnFilter
+                  @apply="(value) => applyColumn('purpose_query', value)"
+                />
+                <TableColumnFilter
+                  v-else-if="column.key === 'material_type'"
                   label="物料类型"
                   :context="route.fullPath"
                   kind="select"
                   :value="materialType"
                   :options="materialTypeOptions"
-                  @apply="(value) => applyColumn('type', value)" /></template
-              ><template #default="{ row }">{{
-                materialTypeLabel(row.material_type)
-              }}</template></ElTableColumn
-            >
-            <ElTableColumn
-              label="数量"
-              min-width="120"
-              align="center"
-              class-name="transfer-quantity-cell"
-              ><template #header
-                ><TableColumnFilter
+                  @apply="(value) => applyColumn('type', value)"
+                />
+                <TableColumnFilter
+                  v-else-if="column.key === 'quantity'"
                   label="数量"
                   :context="route.fullPath"
                   kind="number"
                   integer
                   :value="columns.quantity_min"
                   :end="columns.quantity_max"
-                  @apply="(value, end) => applyColumn('quantity_min', value, end)" /></template
-              ><template #default="{ row }">{{
-                numberText(row.quantity, row.quantity_unit)
-              }}</template></ElTableColumn
-            >
-            <ElTableColumn
-              label="重量"
-              min-width="140"
-              align="center"
-              class-name="transfer-weight-cell"
-              ><template #header
-                ><TableColumnFilter
+                  @apply="(value, end) => applyColumn('quantity_min', value, end)"
+                />
+                <TableColumnFilter
+                  v-else-if="column.key === 'weight'"
                   label="重量"
                   :context="route.fullPath"
                   kind="number"
                   :value="columns.weight_min"
                   :end="columns.weight_max"
-                  @apply="(value, end) => applyColumn('weight_min', value, end)" /></template
-              ><template #default="{ row }">{{
-                numberText(row.weight, row.weight_unit)
-              }}</template></ElTableColumn
-            >
-            <ElTableColumn
-              label="状态"
-              min-width="140"
-              align="center"
-              class-name="transfer-status-cell"
-              ><template #header
-                ><TableColumnFilter
+                  @apply="(value, end) => applyColumn('weight_min', value, end)"
+                />
+                <TableColumnFilter
+                  v-else-if="column.key === 'status'"
                   label="状态"
                   :context="route.fullPath"
                   kind="select"
                   :value="status === 'all' ? '' : status"
                   :options="columnStatusOptions"
-                  @apply="(value) => applyColumn('status', value)" /></template
-              ><template #default="{ row }"
-                ><MaterialTransferStatus
+                  @apply="(value) => applyColumn('status', value)"
+                />
+              </template>
+              <template #default="{ row }">
+                <template v-if="column.key === 'material'">{{ row.material_name }}</template>
+                <template v-else-if="column.key === 'source'">{{
+                  isWarehouseReceipt(asTransfer(row)) ? '库房手工入库' : row.source_team.name
+                }}</template>
+                <template v-else-if="column.key === 'destination'">{{
+                  row.next_team.name
+                }}</template>
+                <template v-else-if="column.key === 'purpose'">{{
+                  materialPurposeLabel(asTransfer(row))
+                }}</template>
+                <template v-else-if="column.key === 'material_type'">{{
+                  materialTypeLabel(row.material_type)
+                }}</template>
+                <template v-else-if="column.key === 'quantity'">{{
+                  numberText(row.quantity, row.quantity_unit)
+                }}</template>
+                <template v-else-if="column.key === 'weight'">{{
+                  numberText(row.weight, row.weight_unit)
+                }}</template>
+                <MaterialTransferStatus
+                  v-else
                   :status="row.status"
                   :entry-kind="row.entry_kind"
-                  plain /></template
-            ></ElTableColumn>
+                  plain
+                />
+              </template>
+            </ElTableColumn>
             <ElTableColumn label="批次号" min-width="210" align="center" show-overflow-tooltip
               ><template #header
                 ><TableColumnFilter
@@ -1252,6 +1300,9 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 4px;
 }
+.transfer-column-settings {
+  display: flex;
+}
 .filter-bar :deep(.el-input__prefix-inner) {
   margin-right: 8px;
   font-size: 18px;
@@ -1398,7 +1449,8 @@ onBeforeUnmount(() => {
   .status-toolbar .heading-actions {
     margin-left: auto;
   }
-  .transfer-table {
+  .transfer-table,
+  .transfer-column-settings {
     display: none;
   }
   .table-pane {

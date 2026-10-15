@@ -298,7 +298,7 @@ def test_shared_allocation_to_inspection_shipping_and_void_keep_single_stock(cli
     )
     payload = {
         "entry_kind": "inspection_shipment",
-        "external_destination": "客户A",
+        "external_destination": "对外转料",
         "idempotency_key": "ship-shared-a",
         "lines": [{"source_transfer_id": to_inspection["id"], "quantity": 30, "weight": 60.5}],
     }
