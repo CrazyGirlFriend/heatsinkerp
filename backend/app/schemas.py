@@ -52,6 +52,12 @@ class ProcessingQuantity(BaseModel):
     quantity: int = Field(ge=0, le=2_147_483_647)
     expected_revision: int = Field(ge=0)
     processor_name: str = Field(min_length=1, max_length=80)
+    processor_employee_id: int | None = Field(default=None, ge=1)
+    processing_date: date | None = None
+    processing_mode: Literal["unit", "split"] | None = None
+    input_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647)
+    completed_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647)
+    completed_weight: Decimal | None = Field(default=None, ge=0, max_digits=17, decimal_places=6)
     reason: str = Field(default="", max_length=2000)
     processing_status: Literal["partial", "complete"] | None = None
     transfer_specification: str | None = Field(default=None, max_length=240)
@@ -412,6 +418,7 @@ class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement
     serial_no: str
     entry_kind: str = "transfer"
     processing_role: Literal["remaining", "produced", "scrap"] | None = None
+    sent_processing_status: str | None = None
     purpose_id: int | None = None
     purpose_name: str | None = None
     external_destination: str | None = None

@@ -338,6 +338,7 @@ class MaterialTransfer(Base):
         String(24), nullable=False, default="transfer", server_default="transfer"
     )
     processing_role: Mapped[str | None] = mapped_column(String(16))
+    sent_processing_status: Mapped[str | None] = mapped_column(String(20))
     purpose_id: Mapped[int | None] = mapped_column(
         ForeignKey("team_purposes.id", ondelete="RESTRICT")
     )
@@ -613,6 +614,7 @@ class MaterialQuantityAdjustment(Base):
             name="ck_mqa_changed",
         ),
         Index("ix_mqa_lot_created", "source_transfer_id", "created_at", "id"),
+        Index("ix_mqa_team_day_worker", "team_id", "processing_date", "processor_employee_id"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source_transfer_id: Mapped[int] = mapped_column(
@@ -622,6 +624,17 @@ class MaterialQuantityAdjustment(Base):
     before_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     after_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     processor_name: Mapped[str | None] = mapped_column(String(80))
+    processor_employee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("team_employees.id", ondelete="RESTRICT")
+    )
+    processing_date: Mapped[date | None] = mapped_column(Date)
+    processing_mode: Mapped[str | None] = mapped_column(String(16))
+    input_quantity: Mapped[int | None] = mapped_column(Integer)
+    input_weight: Mapped[Decimal | None] = mapped_column(Numeric(17, 6))
+    completed_quantity: Mapped[int | None] = mapped_column(Integer)
+    completed_weight: Mapped[Decimal | None] = mapped_column(Numeric(17, 6))
+    scrap_quantity: Mapped[int | None] = mapped_column(Integer)
+    scrap_weight: Mapped[Decimal | None] = mapped_column(Numeric(17, 6))
     processing_status: Mapped[str | None] = mapped_column(String(20))
     before_specification: Mapped[str | None] = mapped_column(String(240))
     after_specification: Mapped[str | None] = mapped_column(String(240))

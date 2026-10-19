@@ -289,7 +289,7 @@ describe('team workspace material ledger', () => {
         await flushPromises()
         expect(wrapper.getComponent(TeamProcessingRecords).props('fullscreen')).toBe(true)
         state.directory.items = [
-          { id: 914, code: 'FACTORY-ANNEAL', name: '退火', kind: 'production', active: true },
+          { id: 914, code: 'FACTORY-WAREHOUSE', name: '库房', kind: 'warehouse', active: true },
         ]
         await router.push('/team-workspaces/914?tab=processing')
         await flushPromises()
@@ -337,26 +337,31 @@ describe('team workspace material ledger', () => {
         page_size: 10,
       })
     })
-    it.each(['FACTORY-ROLL', 'FACTORY-WIRE', 'FACTORY-ENGRAVE'])(
-      'opens the sole eligible batch directly from the fullscreen %s stock row',
-      async (code) => {
-        const previous = state.directory.items
-        try {
-          state.directory.items = [
-            { id: 914, code, name: '加工班组', kind: 'production', active: true },
-          ]
-          await render('/team-workspaces/914?tab=stock')
-          await wrapper.get('.team-workspace__fullscreen').trigger('click')
-          await rowButton().trigger('click')
-          await flushPromises()
-          expect(wrapper.findComponent(ProcessingBatchPicker).exists()).toBe(false)
-          expect(activeDialog()?.props('sourceId')).toBe(42)
-          expect(teamMaterialApi.quantityContext).toHaveBeenCalledWith(914, 42, 1)
-        } finally {
-          state.directory.items = previous
-        }
-      },
-    )
+    it.each([
+      'FACTORY-ROLL',
+      'FACTORY-WIRE',
+      'FACTORY-ENGRAVE',
+      'FACTORY-ANNEAL',
+      'FACTORY-GRIND',
+      'FACTORY-PLATE',
+      'FACTORY-QC',
+    ])('opens the sole eligible batch directly from the fullscreen %s stock row', async (code) => {
+      const previous = state.directory.items
+      try {
+        state.directory.items = [
+          { id: 914, code, name: '加工班组', kind: 'production', active: true },
+        ]
+        await render('/team-workspaces/914?tab=stock')
+        await wrapper.get('.team-workspace__fullscreen').trigger('click')
+        await rowButton().trigger('click')
+        await flushPromises()
+        expect(wrapper.findComponent(ProcessingBatchPicker).exists()).toBe(false)
+        expect(activeDialog()?.props('sourceId')).toBe(42)
+        expect(teamMaterialApi.quantityContext).toHaveBeenCalledWith(914, 42, 1)
+      } finally {
+        state.directory.items = previous
+      }
+    })
     it('keeps multiple eligible batches scoped to the clicked row and opens the chosen one', async () => {
       vi.mocked(teamMaterialApi.processingSources).mockResolvedValue(
         sources([source(42), source(43)]),
@@ -688,9 +693,7 @@ describe('team workspace material ledger', () => {
         ).toBe(true)
         expect(wrapper.get('.inventory-row-actions').text()).toContain('在途转出')
         expect(wrapper.get('.warehouse-table').text()).toContain(
-          ['FACTORY-ROLL', 'FACTORY-WIRE', 'FACTORY-ENGRAVE'].includes(profile.code)
-            ? '已转出 · 待签收'
-            : '全部待签收',
+          profile.code !== 'FACTORY-WAREHOUSE' ? '已转出 · 待签收' : '全部待签收',
         )
       } finally {
         state.directory.items = previous

@@ -8,6 +8,7 @@ import AppDialog from './AppDialog.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
+import { factoryToday } from '@/utils/format'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
@@ -342,6 +343,62 @@ describe('source batch dispatch and loss drafts', () => {
         reason: '',
         processing_status: 'partial',
       },
+    ])
+  })
+  it('requires a team employee and actual work date for whole-lot processing during outbound', async () => {
+    vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({
+      source_transfer_id: 10,
+      batch_no: 'TL10',
+      quantity: 100,
+      weight: 10,
+      revision: 7,
+      processing_mode: 'split',
+      as_of: '',
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 10,
+    })
+    await render('dispatch', [source()])
+    await destination()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '登记加工后件数')!
+      .trigger('click')
+    await flushPromises()
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    const picker = wrapper
+      .findAllComponents(TeamEmployeeInput)
+      .find((item) => item.props('label') === '加工人')!
+    expect(picker.props('invalid')).toBe(true)
+    picker.vm.$emit('update:modelValue', {
+      id: 22,
+      team_id: 2,
+      name: '发送王师傅',
+      active: true,
+      version: 1,
+    })
+    await flushPromises()
+    await wrapper.get('input[aria-label="实际加工日期"]').setValue('')
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    await wrapper.get('input[aria-label="实际加工日期"]').setValue(factoryToday())
+    await submit()
+    expect(
+      vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].quantity_adjustments,
+    ).toEqual([
+      expect.objectContaining({
+        source_transfer_id: 10,
+        quantity: 100,
+        expected_revision: 7,
+        processor_employee_id: 22,
+        processor_name: '发送王师傅',
+        processing_mode: 'split',
+        processing_date: factoryToday(),
+        input_quantity: 100,
+        processing_status: 'complete',
+      }),
     ])
   })
   it('keeps the next source menu open when the previous menu finishes closing', async () => {

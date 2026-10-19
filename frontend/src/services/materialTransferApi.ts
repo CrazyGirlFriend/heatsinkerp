@@ -176,6 +176,9 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
       isExternalEntryKind(String(raw.entry_kind))
         ? (raw.entry_kind as MaterialTransfer['entry_kind'])
         : 'transfer',
+    sent_processing_status: textValue(
+      raw.sent_processing_status,
+    ) as MaterialTransfer['sent_processing_status'],
     processing_role: ['remaining', 'produced', 'scrap'].includes(String(raw.processing_role))
       ? (raw.processing_role as MaterialTransfer['processing_role'])
       : null,

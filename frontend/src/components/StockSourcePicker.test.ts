@@ -115,8 +115,8 @@ describe('stock selection for new outbound', () => {
     const column = (label: string) =>
       wrapper.findAll('tbody tr').map((item) => item.findAll('td')[headings.indexOf(label)]!.text())
     expect(column('物料类型').slice(0, 2)).toEqual(['半成品', '半成品'])
-    expect(column('加工分类')).toEqual(['剩余大料', '加工产出', '—'])
-    expect(wrapper.get('tbody tr').text()).toContain('剩余大料')
+    expect(column('加工分类')).toEqual(['未加工余料', '加工产出', '—'])
+    expect(wrapper.get('tbody tr').text()).toContain('未加工余料')
     expect(wrapper.get('tbody tr').text()).toContain('100 × 80 × 5 mm')
     expect(wrapper.get('tbody tr').text()).not.toContain('old')
   })
@@ -142,7 +142,7 @@ describe('stock selection for new outbound', () => {
       await render()
       await wrapper.setProps({ mode })
       expect(wrapper.findAll('thead th').map((cell) => cell.text())).not.toContain('加工分类')
-      expect(wrapper.get('tbody tr').text()).not.toContain('剩余大料')
+      expect(wrapper.get('tbody tr').text()).not.toContain('未加工余料')
       expect(wrapper.get('tbody tr').text()).toContain('100 × 80 × 5 mm')
       expect(wrapper.get('tbody tr').text()).toContain(row.transfer.batch_no)
     },

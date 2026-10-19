@@ -1,5 +1,7 @@
 """Team stock workspace HTTP routes. Business writes remain transaction services."""
 
+from datetime import date
+
 from fastapi import Depends, Path, Query
 from sqlalchemy.orm import Session
 
@@ -23,6 +25,8 @@ router = APIRouter(prefix="/api/team-materials", tags=["team material stock"])
 
 @router.get("/{team_id}/processing-records")
 def list_processing_records(
+    processor_id: int | None = Query(default=None, ge=1),
+    work_date: date | None = None,
     record_filters: RecordFilters = Depends(),
     team_id: int = Path(ge=1),
     query: str | None = Query(default=None, max_length=160),
@@ -37,6 +41,41 @@ def list_processing_records(
             session,
             team_id,
             record_filters=record_filters,
+            processor_id=processor_id,
+            work_date=work_date,
+            query=query,
+            page=page,
+            page_size=page_size,
+        ),
+    )
+
+
+@router.get("/{team_id}/processing-daily")
+def processing_daily_report(
+    team_id: int = Path(ge=1),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    work_date: date | None = None,
+    urgent_only: bool = False,
+    processor_id: int | None = Query(default=None, ge=1),
+    query: str | None = Query(default=None, max_length=160),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from .processing_daily import list_daily
+
+    return team_read_response(
+        db,
+        lambda session: list_daily(
+            session,
+            team_id,
+            date_from=date_from,
+            date_to=date_to,
+            work_date=work_date,
+            urgent_only=urgent_only,
+            processor_id=processor_id,
             query=query,
             page=page,
             page_size=page_size,

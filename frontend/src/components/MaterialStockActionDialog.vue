@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import AppDialog from '@/components/AppDialog.vue'
-import { materialWeightToleranceKg, isProcessingTeamCode } from '@/config/materialRules'
+import {
+  materialWeightToleranceKg,
+  isSplittingTeamCode,
+  isProcessingTeamCode,
+} from '@/config/materialRules'
 
 import { ArrowDown } from '@element-plus/icons-vue'
 import '@/styles/stock-action-glass.css'
@@ -30,6 +34,8 @@ import SpecificationInput from './SpecificationInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import type { TeamEmployee } from '@/types/teamBusiness'
+import { factoryToday } from '@/utils/format'
+import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import { processingProgressLabels } from '@/types/materialProcessing'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { useAuthStore } from '@/stores/auth'
@@ -137,6 +143,9 @@ const processing = reactive<
       original?: number
       revision?: number
       reason: string
+      employee?: TeamEmployee | null
+      date?: string
+      structured?: boolean
       processorName: string
       processorOptions: string[]
       status?: 'partial' | 'complete'
@@ -160,7 +169,7 @@ const processingTeam = computed(
     props.sources.every(
       (source) =>
         Number(source.transfer.next_team.id) === props.teamId &&
-        isProcessingTeamCode(source.transfer.next_team.code),
+        isSplittingTeamCode(source.transfer.next_team.code),
     ),
 )
 const canWrite = computed(
@@ -361,7 +370,10 @@ async function loadProcessing(source: StockBatch) {
     draft.original = context.quantity
     draft.revision = context.revision
     draft.processorOptions = context.processor_options || []
-    if (processingTeam.value) draft.status ??= context.processing_status || 'partial'
+    draft.structured = !!context.processing_mode
+    draft.date ||= factoryToday()
+    if (processingTeam.value)
+      draft.status ??= draft.structured ? 'complete' : context.processing_status || 'partial'
     lines.value
       .filter((line) => line.source.transfer.id === source.transfer.id)
       .forEach((line) => {
@@ -375,6 +387,13 @@ async function loadProcessing(source: StockBatch) {
     }
   } finally {
     if (current === generation) draft.loading = false
+  }
+}
+function selectProcessor(sourceId: number, person: TeamEmployee | null) {
+  const draft = processing[sourceId]
+  if (draft) {
+    draft.employee = person
+    draft.processorName = person?.name || ''
   }
 }
 function openQuantity(source: StockBatch) {
@@ -515,6 +534,9 @@ const validation = useDialogValidation(() => {
         draft.quantity! > 2147483647
       )
         add('processingQuantity', '请填写有效非负整数')
+      if (draft.structured && !draft.employee) add('processorName', '请选择加工人')
+      if (draft.structured && (!draft.date || draft.date > factoryToday()))
+        add('processingDate', '请填写实际加工日期')
       if (processingTeam.value && !draft.status) add('processingStatus', '请选择加工进度')
       if (draft.reason.trim().length > 2000) add('processingReason', '内容过长')
     }
@@ -740,6 +762,14 @@ async function submit() {
       quantity: draft.quantity!,
       expected_revision: draft.revision!,
       processor_name: draft.processorName.trim(),
+      ...(draft.structured
+        ? {
+            processor_employee_id: draft.employee!.id,
+            processing_mode: 'split' as const,
+            processing_date: draft.date!,
+            input_quantity: draft.original!,
+          }
+        : {}),
       reason: draft.reason.trim(),
       ...(draft.status ? { processing_status: draft.status } : {}),
     }))
@@ -975,6 +1005,7 @@ async function submit() {
                     v-if="
                       !isLoss &&
                       processingTeam &&
+                      line.source.processing_state !== 'complete' &&
                       !isWeightOnlyType(line.source.transfer.material_type) &&
                       !isWeightOnlyType(line.materialType) &&
                       !processing[Number(line.source.transfer.id)] &&
@@ -1049,13 +1080,38 @@ async function submit() {
                     v-for="(label, value) in processingProgressLabels"
                     :key="value"
                     :value="value"
-                    :label="label" /></ElSelect
+                    :label="label"
+                    :disabled="
+                      processing[Number(line.source.transfer.id)]!.structured && value === 'partial'
+                    " /></ElSelect
               ></ElFormItem>
               <ElFormItem label="加工人" required :error="lineError(line, 'processorName')">
+                <TeamEmployeeInput
+                  v-if="processing[Number(line.source.transfer.id)]!.structured"
+                  :model-value="processing[Number(line.source.transfer.id)]!.employee || null"
+                  :team-id="teamId"
+                  label="加工人"
+                  :invalid="!!lineError(line, 'processorName')"
+                  @update:model-value="selectProcessor(Number(line.source.transfer.id), $event)"
+                />
                 <ProcessingPersonInput
+                  v-else
                   v-model="processing[Number(line.source.transfer.id)]!.processorName"
                   :options="processing[Number(line.source.transfer.id)]!.processorOptions"
                   :label="`${line.source.transfer.batch_no}加工人`"
+                />
+              </ElFormItem>
+              <ElFormItem
+                v-if="processing[Number(line.source.transfer.id)]!.structured"
+                label="实际加工日期"
+                required
+                :error="lineError(line, 'processingDate')"
+              >
+                <ElInput
+                  v-model="processing[Number(line.source.transfer.id)]!.date"
+                  type="date"
+                  aria-label="实际加工日期"
+                  :max="factoryToday()"
                 />
               </ElFormItem>
               <ElFormItem label="加工说明（选填）" :error="lineError(line, 'processingReason')"
@@ -1065,7 +1121,7 @@ async function submit() {
                   placeholder="例如：1 块切成 20 件"
               /></ElFormItem>
               <p class="dialog-field-hint dialog-field-wide">
-                仅登记尚未转出的实际总件数，与本次出库一起保存。大料、小料或废料需要分别记账时，请先在库存中按明细登记，再选择实际子批出库。<ElButton
+                此处登记本批全部加工完成，与本次出库一起保存。部分加工请先从库存登记，分别选择已加工与未加工库存。大料、小料或废料需要分别记账时，请先在库存中按明细登记，再选择实际子批出库。<ElButton
                   link
                   @click="delete processing[Number(line.source.transfer.id)]"
                   >取消登记</ElButton
@@ -1081,6 +1137,14 @@ async function submit() {
               >
             </div>
           </template>
+          <ProcessingStockStatus
+            v-if="
+              isProcessingTeamCode(line.source.transfer.next_team.code) &&
+              line.latest?.processing_state
+            "
+            :state="line.latest.processing_state"
+            :material-type="line.source.transfer.material_type"
+          />
           <div
             class="source-inputs dialog-form-grid"
             :class="{

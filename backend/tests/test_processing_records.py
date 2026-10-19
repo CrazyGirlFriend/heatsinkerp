@@ -139,7 +139,9 @@ def test_processing_records_are_filtered_paged_and_sorted_by_registration_time(
     assert client.get(url, params={"query": "复核"}).json()["total"] == 1
     assert client.get(url, params={"query": "%"}).json()["total"] == 0
     filtered = client.get(url, params={"date_from": "2026-10-05", "date_to": "2026-10-05"}).json()
-    assert filtered["total"] == 1 and filtered["items"][0]["after_quantity"] == 20
+    # Legacy recounts have only registration time, not an actual work date.
+    assert filtered["total"] == 0
+    assert first["summary"]["unreported_count"] == 2
     assert (
         client.get(url, params={"date_from": "2026-10-07", "date_to": "2026-10-05"}).status_code
         == 422
@@ -169,7 +171,7 @@ def test_outbound_clearance_is_not_a_processing_record_and_scope_is_checked(clie
     assert client.get(base(s) + "/processing-records").status_code == 422
     unsupported = _team(client, "FACTORY-ANNEAL", "退火")
     for suffix in ("processing-stock", "processing-records"):
-        assert client.get(f"/api/team-materials/{unsupported['id']}/{suffix}").status_code == 422
+        assert client.get(f"/api/team-materials/{unsupported['id']}/{suffix}").status_code == 200
     assert client.get(url + "/processing-stock", params={"group_id": 99999}).status_code == 404
     assert client.get(url + "/processing-stock", params={"page_size": 101}).status_code == 422
     assert client.get(url + "/processing-records", headers={"Authorization": ""}).status_code == 401

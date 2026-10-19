@@ -21,7 +21,7 @@ describe('transfer destination fields', () => {
       },
     })
     expect(wrapper.text()).toContain('本班组加工')
-    expect(wrapper.text()).toContain('剩余大料')
+    expect(wrapper.text()).toContain('未加工余料')
     expect(wrapper.text()).toContain('TL-1')
     expect(wrapper.findAll('th').map((th) => th.text())).toEqual(
       expect.arrayContaining(['加工班组', '实物件数', '实际尺寸', '加工时间']),

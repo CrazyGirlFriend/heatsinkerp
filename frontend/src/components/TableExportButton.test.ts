@@ -47,3 +47,28 @@ describe('shared export entry', () => {
     expect(makeSource).toHaveBeenCalledTimes(2)
   })
 })
+
+it('captures alternate export formats and discards them when the context changes', async () => {
+  const source = {
+    title: '逐笔明细',
+    total: 3,
+    fields: [{ key: 'id', label: '记录编号' }],
+    load: vi.fn(),
+  }
+  const grouped = {
+    title: '按加工人汇总',
+    total: 1,
+    fields: [{ key: 'person', label: '加工人' }],
+    load: vi.fn(),
+  }
+  const variants = vi.fn(() => [grouped])
+  wrapper = mount(TableExportButton, {
+    props: { source: () => source, variants, context: 'one' },
+    global: { stubs: { TableExportDialog: true } },
+  })
+  expect(variants).not.toHaveBeenCalled()
+  await wrapper.get('button').trigger('click')
+  expect(wrapper.getComponent(TableExportDialog).props('variants')).toEqual([grouped])
+  await wrapper.setProps({ context: 'two' })
+  expect(wrapper.getComponent(TableExportDialog).props('variants')).toEqual([])
+})

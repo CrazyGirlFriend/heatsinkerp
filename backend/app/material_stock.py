@@ -105,7 +105,10 @@ class DispatchCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_destination(self):
-        if any(item.outputs is not None for item in self.quantity_adjustments):
+        if any(
+            item.outputs is not None or item.processing_mode == "unit"
+            for item in self.quantity_adjustments
+        ):
             raise ValueError("请先保存加工明细，再选择加工后的批次出库")
         if not self.idempotency_key.strip():
             raise ValueError("idempotency_key cannot be blank")
@@ -496,7 +499,10 @@ def create_dispatch(db, team_id, payload, user):
                 fields.update(delivery_date=None, delivery_quantity=None)
                 if "material_type" in line.model_fields_set:
                     fields["material_type"] = line.material_type
+                from .processing_registration import sent_status
+
                 transfer = MaterialTransfer(
+                    sent_processing_status=sent_status(lot, record),
                     batch_no=batch_no,
                     serial_no=lot.serial_no,
                     **fields,

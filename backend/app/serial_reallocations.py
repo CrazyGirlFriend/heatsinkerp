@@ -147,8 +147,14 @@ def create(db, team_id, payload, user):
                 ),
                 user,
             )
+            from .processing_registration import sent_status
+            from .quantity_adjustments import latest_records
+
+            progress = sent_status(lot, latest_records(db, [lot.id]).get(lot.id))
             now = utcnow()
             item = MaterialTransfer(
+                sent_processing_status=progress,
+                processing_role="produced" if progress == "complete" else lot.processing_role,
                 batch_no=next_transfer_batch_number(db),
                 entry_kind="serial_reallocation",
                 serial_no=payload.serial_no,

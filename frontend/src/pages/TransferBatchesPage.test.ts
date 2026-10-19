@@ -192,7 +192,7 @@ describe('transfer display columns', () => {
     const page = await renderList('/transfer-batches')
     const settings = page.getComponent({ name: 'InventoryColumnSettings' })
     const choices = settings.props('columns') as { key: string; label: string }[]
-    expect(choices).toHaveLength(22)
+    expect(choices).toHaveLength(23)
     const expected = {
       transfer_specification: ['实际尺寸', '30 × 20 × 2 mm'],
       sent_employee_name: ['转料人', '张师傅'],
@@ -221,7 +221,7 @@ describe('transfer display columns', () => {
       '批次号',
     ])
     const row = page.get('.el-table__body .el-table__row')
-    expect(row.findAll('td')).toHaveLength(25)
+    expect(row.findAll('td')).toHaveLength(26)
     for (const [key, [label, value]] of Object.entries(expected)) {
       expect(choices.find((column) => column.key === key)?.label).toBe(label)
       const cell = row.get(`.transfer-${key.replaceAll('_', '-')}-cell`)
@@ -229,7 +229,7 @@ describe('transfer display columns', () => {
       expect(cell.classes()).toContain('is-center')
     }
     const exported = page.getComponent(TableExportButton).props('source')()!
-    expect(exported.fields).toHaveLength(25)
+    expect(exported.fields).toHaveLength(26)
     expect(materialTransferApi.list).toHaveBeenCalledTimes(1)
     const [exportedRow] = await exported.load(new AbortController().signal, () => undefined)
     for (const [key, [, value]] of Object.entries(expected)) {

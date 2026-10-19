@@ -53,9 +53,9 @@ describe('global transfer record columns', () => {
       'received_employee_name',
       'received_at',
     ])
-    expect(transferRecordColumns).toHaveLength(22)
-    expect(new Set(transferRecordColumns.map(({ key }) => key)).size).toBe(22)
-    expect(new Set(globalTransferExportFields.map(({ key }) => key)).size).toBe(25)
+    expect(transferRecordColumns).toHaveLength(23)
+    expect(new Set(transferRecordColumns.map(({ key }) => key)).size).toBe(23)
+    expect(new Set(globalTransferExportFields.map(({ key }) => key)).size).toBe(26)
   })
 
   it('exports every selectable column once between the fixed serial/date and batch columns', async () => {
@@ -103,6 +103,7 @@ describe('global transfer record columns', () => {
         received_employee_name: '实际接收员工',
         received_at: formatDateTime(row.received_at),
         entry_kind: '内部转料',
+        sent_processing_status: '未登记',
         finished_specification: '成品 75 × 25 × 3 mm',
         source_transfer_batch_no: 'TL-PREVIOUS',
         source_batch_no: '0000088',

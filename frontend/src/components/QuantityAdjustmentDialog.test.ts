@@ -287,7 +287,7 @@ describe('processing piece adjustment', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('创建本批的加工登记')
     expect(wrapper.text()).toContain('父批加工分解')
-    expect(wrapper.text()).toContain('TL001 · 剩余大料')
+    expect(wrapper.text()).toContain('TL001 · 未加工余料')
     expect(wrapper.find('.el-pagination').exists()).toBe(false)
   })
   it('requires real sludge measurements and sends only the derived material weight with zero pieces', async () => {
@@ -370,7 +370,7 @@ describe('processing piece adjustment', () => {
     progress.vm.$emit('update:modelValue', 'complete')
     await click('保存加工登记')
     expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('仍有剩余大料，请选择部分加工')
+    expect(wrapper.text()).toContain('仍有未加工余料，请选择部分加工')
     progress.vm.$emit('update:modelValue', 'partial')
     const type = wrapper
       .findAllComponents(ElSelect)

@@ -19,7 +19,7 @@ import {
   type MaterialTransfer,
 } from '@/types/materialTransfer'
 import { formatDateTime } from '@/utils/format'
-import { processingRoleLabels } from '@/types/materialProcessing'
+import { processingRoleLabels, processingStateLabels } from '@/types/materialProcessing'
 
 const props = withDefaults(
   defineProps<{ transfer: MaterialTransfer; group?: 'basic' | 'extra' | 'all' }>(),
@@ -89,6 +89,9 @@ const fields = computed<DocumentField[]>(() => {
       ? [{ label: '入库仓位', value: t.warehouse_location || '未填写' }]
       : []),
     { label: '上一批次', value: t.source_transfer_batch_no || '—' },
+    ...(t.sent_processing_status
+      ? [{ label: '转出时加工状态', value: processingStateLabels[t.sent_processing_status] }]
+      : []),
     ...(t.processing_role
       ? [{ label: '加工类别', value: processingRoleLabels[t.processing_role] }]
       : []),

@@ -10,6 +10,8 @@ import StatePanel from './StatePanel.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
+import ProcessingPersonInput from './ProcessingPersonInput.vue'
+import type { ProcessingDailyRow, ProcessingRecordSummary } from '@/types/materialProcessing'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { ProcessingRecord } from '@/types/materialProcessing'
@@ -42,7 +44,20 @@ const pageSize = computed(() =>
 const query = ref(''),
   dates = ref({ from: '', to: '' }),
   filtersOpen = ref(false)
-const filterCount = computed(() => Number(Boolean(text('date_from') || text('date_to'))))
+const processorId = ref<number | null>(null)
+const processors = ref<{ id: number; name: string }[]>([])
+const processorName = computed({
+  get: () => processors.value.find((person) => person.id === processorId.value)?.name || '',
+  set: (name: string) => {
+    processorId.value = processors.value.find((person) => person.name === name)?.id || null
+  },
+})
+const summary = ref<ProcessingRecordSummary | null>(null)
+const filterCount = computed(
+  () =>
+    Number(Boolean(text('date_from') || text('date_to') || text('work_date'))) +
+    Number(Boolean(text('processor_id'))),
+)
 const rows = ref<ProcessingRecord[]>([]),
   total = ref(0),
   loading = ref(false),
@@ -55,19 +70,50 @@ const live = useLiveRefresh(() => load(true), {
   busy: () => loading.value || detailOpen.value,
 })
 function syncFilters() {
-  dates.value = { from: text('date_from'), to: text('date_to') }
+  dates.value = {
+    from: text('date_from') || text('work_date'),
+    to: text('date_to') || text('work_date'),
+  }
+  processorId.value = Number(text('processor_id')) || null
 }
-function apply(nextPage = 1, size = pageSize.value) {
+function resetFilters() {
+  dates.value = { from: '', to: '' }
+  processorId.value = null
+}
+function filters() {
+  return {
+    query: text('query') || undefined,
+    processor_id: Number(text('processor_id')) || undefined,
+    work_date: text('work_date') || undefined,
+    date_from: text('date_from') || undefined,
+    date_to: text('date_to') || undefined,
+  }
+}
+function apply(nextPage = 1, size = pageSize.value, applyFilters = false) {
   filtersOpen.value = false
   void router.replace({
     path: route.path,
     query: {
       tab: 'processing',
-      ...(query.value.trim() ? { query: query.value.trim() } : {}),
-      ...(dates.value.from ? { date_from: dates.value.from } : {}),
-      ...(dates.value.to ? { date_to: dates.value.to } : {}),
-      ...(nextPage > 1 ? { page: String(nextPage) } : {}),
-      ...(size !== 10 ? { page_size: String(size) } : {}),
+      query: query.value.trim() || undefined,
+      processor_id: applyFilters
+        ? processorId.value || undefined
+        : text('processor_id') || undefined,
+      work_date: applyFilters ? undefined : text('work_date') || undefined,
+      date_from: applyFilters ? dates.value.from || undefined : text('date_from') || undefined,
+      date_to: applyFilters ? dates.value.to || undefined : text('date_to') || undefined,
+      page: nextPage > 1 ? String(nextPage) : undefined,
+      page_size: size !== 10 ? String(size) : undefined,
+    },
+  })
+}
+function paginate(nextPage: number, size = pageSize.value) {
+  void router.replace({
+    path: route.path,
+    query: {
+      ...route.query,
+      page: nextPage > 1 ? String(nextPage) : undefined,
+      page_size: size !== 10 ? String(size) : undefined,
     },
   })
 }
@@ -76,24 +122,25 @@ async function load(background = false) {
   if (!background) {
     loading.value = true
     rows.value = []
+    summary.value = null
   }
   error.value = ''
   try {
     const result = await teamMaterialApi.processingRecords(props.teamId, {
-      query: text('query') || undefined,
-      date_from: text('date_from') || undefined,
-      date_to: text('date_to') || undefined,
+      ...filters(),
       page: page.value,
       page_size: pageSize.value,
     })
     if (current !== generation) return
     const last = Math.max(1, Math.ceil(result.total / pageSize.value))
     if (page.value > last) {
-      apply(last)
+      paginate(last)
       return
     }
     rows.value = result.items
     total.value = result.total
+    summary.value = result.summary || null
+    processors.value = result.processors || []
   } catch (e) {
     if (current === generation) {
       if (background) throw e
@@ -105,13 +152,9 @@ async function load(background = false) {
 }
 function exportSource() {
   const id = props.teamId,
-    params = {
-      query: text('query') || undefined,
-      date_from: text('date_from') || undefined,
-      date_to: text('date_to') || undefined,
-    }
+    params = filters()
   return tableExportSource(
-    '加工记录',
+    '逐笔加工明细',
     total.value,
     [
       {
@@ -119,7 +162,24 @@ function exportSource() {
         label: '流水号',
         value: (row: ProcessingRecord) => sharedSerialLabel(row),
       },
+      { key: 'material_name', label: '材质', value: (row) => row.material_name },
       { key: 'created_at', label: '登记时间', value: (row) => formatDateTime(row.created_at) },
+      {
+        key: 'processing_date',
+        label: '实际加工日期',
+        value: (row) => row.processing_date || '未登记',
+      },
+      { key: 'completed_quantity', label: '本次完成件数', value: (row) => row.completed_quantity },
+      { key: 'completed_weight', label: '本次完成重量 (kg)', value: (row) => row.completed_weight },
+      { key: 'input_quantity', label: '本次投入件数', value: (row) => row.input_quantity },
+      { key: 'input_weight', label: '本次投入重量 (kg)', value: (row) => row.input_weight },
+      { key: 'scrap_quantity', label: '本次废料件数', value: (row) => row.scrap_quantity },
+      { key: 'scrap_weight', label: '本次废料重量 (kg)', value: (row) => row.scrap_weight },
+      {
+        key: 'processor_employee_id',
+        label: '员工编号',
+        value: (row) => row.processor_employee_id,
+      },
       { key: 'before_quantity', label: '加工前件数', value: (row) => row.before_quantity },
       { key: 'after_quantity', label: '加工后件数', value: (row) => row.after_quantity },
       {
@@ -169,13 +229,102 @@ function exportSource() {
       ),
   )
 }
+const dailyColumns = [
+  { key: 'team_name', label: '班组', value: (r: ProcessingDailyRow) => r.team_name },
+  {
+    key: 'processing_date',
+    label: '加工日期',
+    value: (r: ProcessingDailyRow) => r.processing_date,
+  },
+  {
+    key: 'processor_name',
+    label: '加工人',
+    value: (r: ProcessingDailyRow) => r.processor_name,
+  },
+  {
+    key: 'processor_employee_id',
+    label: '员工编号',
+    value: (r: ProcessingDailyRow) => r.processor_employee_id,
+  },
+  {
+    key: 'processing_mode',
+    label: '加工方式',
+    value: (r: ProcessingDailyRow) => (r.processing_mode === 'unit' ? '按件加工' : '拆分加工'),
+  },
+  {
+    key: 'record_count',
+    label: '登记笔数',
+    value: (r: ProcessingDailyRow) => r.record_count,
+  },
+  {
+    key: 'input_quantity',
+    label: '投入件数',
+    value: (r: ProcessingDailyRow) => r.input_quantity,
+  },
+  {
+    key: 'completed_quantity',
+    label: '完成件数',
+    value: (r: ProcessingDailyRow) => r.completed_quantity,
+  },
+  {
+    key: 'input_weight',
+    label: '投入重量 (kg)',
+    value: (r: ProcessingDailyRow) => r.input_weight,
+  },
+  {
+    key: 'completed_weight',
+    label: '完成重量 (kg)',
+    value: (r: ProcessingDailyRow) => r.completed_weight,
+  },
+  {
+    key: 'scrap_quantity',
+    label: '废料件数',
+    value: (r: ProcessingDailyRow) => r.scrap_quantity,
+  },
+  {
+    key: 'scrap_weight',
+    label: '废料重量 (kg)',
+    value: (r: ProcessingDailyRow) => r.scrap_weight,
+  },
+]
+function exportVariants() {
+  if (!summary.value) return []
+  const id = props.teamId,
+    params = filters()
+  return [
+    tableExportSource(
+      '按加工人汇总',
+      summary.value.employee_day_count,
+      dailyColumns,
+      (signal, progress) =>
+        loadExportPages(
+          (page, pageSize) =>
+            teamMaterialApi.processingDaily(id, { ...params, page, page_size: pageSize }),
+          signal,
+          progress,
+        ),
+    ),
+  ]
+}
 function detail(row: unknown) {
   sourceId.value = (row as ProcessingRecord).source_transfer_id
   detailOpen.value = true
 }
 watch(
   () => [props.teamId, route.fullPath],
-  () => {
+  (values, previous) => {
+    if (previous && values[0] !== previous[0]) {
+      ++generation
+      processors.value = []
+      summary.value = null
+      if (text('processor_id')) {
+        void router.replace({
+          path: route.path,
+          query: { ...route.query, processor_id: undefined, page: undefined },
+        })
+        return
+      }
+    }
     detailOpen.value = false
     query.value = text('query')
     syncFilters()
@@ -216,18 +365,42 @@ onBeforeUnmount(() => {
         :count="filterCount"
         @open="syncFilters"
         @cancel="syncFilters"
-        @apply="apply()"
-        @reset="dates = { from: '', to: '' }"
-        ><label>登记日期<RecordDateFilter v-model="dates" label="登记日期" /></label
-      ></FilterDialog>
+        @apply="apply(1, pageSize, true)"
+        @reset="resetFilters"
+      >
+        <label>实际加工日期<RecordDateFilter v-model="dates" label="加工日期" /></label>
+        <label
+          >加工人（不选为全部）<ProcessingPersonInput
+            v-model="processorName"
+            :options="processors.map((person) => person.name)"
+            label="加工人"
+            :loading="loading"
+        /></label>
+      </FilterDialog>
       <ElButton class="workspace-query action-warm" @click="apply()">查询</ElButton
       ><TableExportButton
         :source="exportSource"
+        :variants="exportVariants"
         :disabled="loading || !!error"
         :context="route.fullPath"
       /><ElButton :icon="Refresh" :loading="loading" aria-label="刷新加工记录" @click="load()" />
       <ElButton v-if="canWrite && !fullscreen" type="primary" @click="emit('register')"
         >加工登记</ElButton
+      >
+    </div>
+    <div v-if="summary && !error" class="processing-totals" aria-label="筛选结果产量合计">
+      <span class="summary-label">筛选结果合计</span>
+      <span
+        >完成 <strong>{{ inventoryAmount(summary.completed_quantity) }}</strong> 件 /
+        <strong>{{ inventoryAmount(summary.completed_weight) }}</strong> kg</span
+      >
+      <span
+        >废料 <strong>{{ inventoryAmount(summary.scrap_quantity) }}</strong> 件 /
+        <strong>{{ inventoryAmount(summary.scrap_weight) }}</strong> kg</span
+      >
+      <span class="summary-note">{{ summary.record_count }} 笔有效加工 · 按实际加工日期</span>
+      <span v-if="summary.unreported_count" class="summary-note"
+        >{{ summary.unreported_count }} 笔历史记录信息不全，未计入产量</span
       >
     </div>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
@@ -246,12 +419,29 @@ onBeforeUnmount(() => {
       <ElTableColumn label="流水号" min-width="150" fixed show-overflow-tooltip
         ><template #default="{ row }">{{ sharedSerialLabel(row) }}</template></ElTableColumn
       >
-      <ElTableColumn label="登记时间" min-width="170" show-overflow-tooltip
-        ><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></ElTableColumn
+      <ElTableColumn prop="processing_date" label="实际加工日期" min-width="145" align="center" />
+      <ElTableColumn
+        prop="processor_name"
+        label="加工人"
+        min-width="110"
+        align="center"
+        show-overflow-tooltip
       >
+        <template #default="{ row }">{{ row.processor_name || '未登记' }}</template>
+      </ElTableColumn>
       <ElTableColumn label="物料类型" min-width="115"
         ><template #default="{ row }">{{
           materialTypeLabel(row.material_type)
+        }}</template></ElTableColumn
+      >
+      <ElTableColumn label="本次完成件数" min-width="135" align="center"
+        ><template #default="{ row }">{{
+          inventoryAmount(row.completed_quantity)
+        }}</template></ElTableColumn
+      >
+      <ElTableColumn label="本次完成重量 (kg)" min-width="175" align="center"
+        ><template #default="{ row }">{{
+          inventoryAmount(row.completed_weight)
         }}</template></ElTableColumn
       >
       <ElTableColumn label="加工前件数" min-width="110" align="right"
@@ -308,10 +498,10 @@ onBeforeUnmount(() => {
         min-width="180"
         show-overflow-tooltip
       />
-      <ElTableColumn prop="processor_name" label="加工人" min-width="110" show-overflow-tooltip>
-        <template #default="{ row }">{{ row.processor_name || '未登记' }}</template>
-      </ElTableColumn>
       <ElTableColumn prop="reason" label="加工说明" min-width="170" show-overflow-tooltip />
+      <ElTableColumn label="登记时间" min-width="170" show-overflow-tooltip
+        ><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></ElTableColumn
+      >
       <ElTableColumn prop="batch_no" label="来源批次号" min-width="205" show-overflow-tooltip />
       <ElTableColumn label="操作" width="85" fixed="right" align="center"
         ><template #default="{ row }"
@@ -327,8 +517,8 @@ onBeforeUnmount(() => {
         :page-sizes="[10, 20, 50, 100]"
         :total="total"
         layout="sizes, prev, pager, next"
-        @current-change="apply($event)"
-        @size-change="apply(1, $event)"
+        @current-change="paginate($event)"
+        @size-change="paginate(1, $event)"
       />
     </footer>
     <QuantityAdjustmentDialog
@@ -367,6 +557,24 @@ onBeforeUnmount(() => {
 }
 .processing-records-toolbar .el-button {
   margin-left: 0;
+}
+.processing-totals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  flex-shrink: 0;
+  gap: 8px 24px;
+  padding: 0 0 14px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.processing-totals strong {
+  color: var(--primary);
+  font-size: 16px;
+}
+.summary-label,
+.summary-note {
+  color: var(--muted);
 }
 .processing-records-table {
   flex: 1;

@@ -18,7 +18,7 @@ import {
 import { historyNumber as num, purposePalette } from './serialHistoryChart'
 import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
 import { materialWeightToleranceKg } from '@/config/materialRules'
-import { processingProgressLabels } from '@/types/materialProcessing'
+import { processingProgressLabels, processingStateLabels } from '@/types/materialProcessing'
 import { glassTooltip } from './chartGlass'
 
 export type FlowMetric = 'quantity' | 'weight'
@@ -1580,8 +1580,15 @@ export function traceFlowOption(
           const progress = event.changes.processing_status?.after as
             keyof typeof processingProgressLabels | undefined
           const measured = event.changes.stock_weight
+          const completed = event.changes.completed_quantity?.after
+          const work =
+            completed == null
+              ? `加工 ${num(Number(pieces.before))} → ${num(Number(pieces.after))} 件`
+              : `本次完成 ${num(Number(completed))} 件 / ${num(Number(event.changes.completed_weight?.after || 0))} kg`
+          const worker = event.changes.processor_name?.after
+          const workDate = event.changes.processing_date?.after
           return chainTooltip(
-            `${node.batch.batch_no}\n${node.batch.next_team.name} · 加工登记\n加工 ${num(Number(pieces.before))} → ${num(Number(pieces.after))} 件${measured ? `\n实测重量 ${num(Number(measured.before))} → ${num(Number(measured.after))} kg` : ''}${progress ? `\n${processingProgressLabels[progress] || '进度未标明'}` : ''}${event.changes.transfer_specification ? `\n实际尺寸 ${event.changes.transfer_specification.after || '未填写'}` : ''}\n${traceTime(at)} · ${event.actor}${event.changes.reason?.after ? `\n${event.changes.reason.after}` : ''}`,
+            `${node.batch.batch_no}\n${node.batch.next_team.name} · 加工登记\n${work}${worker ? `\n加工人 ${worker}` : ''}${workDate ? `\n实际加工日期 ${workDate}` : ''}${measured ? `\n实测重量 ${num(Number(measured.before))} → ${num(Number(measured.after))} kg` : ''}${progress ? `\n${processingProgressLabels[progress] || '进度未标明'}` : ''}${event.changes.transfer_specification ? `\n实际尺寸 ${event.changes.transfer_specification.after || '未填写'}` : ''}\n${traceTime(at)} · ${event.actor}${event.changes.reason?.after ? `\n${event.changes.reason.after}` : ''}`,
           )
         }
         const interval = item.seriesId === 'residence-bars' ? residences[item.dataIndex] : undefined
@@ -1589,12 +1596,15 @@ export function traceFlowOption(
           batch = node.batch,
           stay = interval?.stay
         const difference = batch.weight_difference ?? Math.max(0, -(batch.on_hand_weight || 0))
+        const sentState = batch.sent_processing_status
+          ? `\n转出时加工状态：${processingStateLabels[batch.sent_processing_status]}`
+          : ''
         const variance = difference
           ? `\n重量差异 ${num(difference)} kg · ${Math.abs(difference) <= materialWeightToleranceKg ? `在 ${materialWeightToleranceKg} kg 允许误差内` : `超过 ${materialWeightToleranceKg} kg，请核对`}`
           : ''
         if (originColors)
           return chainTooltip(
-            `${batch.batch_no}\n${sharedSerialLabel(batch)}\n${node.intake ? (batch.entry_kind === 'processing_output' ? `本班组加工 · ${batch.next_team.name}` : batch.entry_kind === 'serial_reallocation' ? `${batch.source_serial_no || '原流水号'} 转投入 · ${batch.next_team.name}` : batch.entry_kind === 'opening_stock' ? '初始库存登记' : '库房入库') : `${batch.source_team.name} → ${batch.next_team.name}`}\n${materialTypeLabel(batch.material_type)} · ${metricLabel(stay || batch, metric)}\n${stay ? '在库停留' : materialTransferStatusLabel(batch.status, batch.entry_kind)} · 点击查看详情${variance}`,
+            `${batch.batch_no}\n${sharedSerialLabel(batch)}\n${node.intake ? (batch.entry_kind === 'processing_output' ? `本班组加工 · ${batch.next_team.name}` : batch.entry_kind === 'serial_reallocation' ? `${batch.source_serial_no || '原流水号'} 转投入 · ${batch.next_team.name}` : batch.entry_kind === 'opening_stock' ? '初始库存登记' : '库房入库') : `${batch.source_team.name} → ${batch.next_team.name}`}\n${materialTypeLabel(batch.material_type)} · ${metricLabel(stay || batch, metric)}\n${stay ? '在库停留' : materialTransferStatusLabel(batch.status, batch.entry_kind)} · 点击查看详情${sentState}${variance}`,
           )
         const balance =
           batch.on_hand_quantity == null || batch.on_hand_weight == null
@@ -1602,10 +1612,10 @@ export function traceFlowOption(
             : `\n未转出库存 ${amountLabel({ quantity: Math.max(0, batch.on_hand_quantity), weight: Math.max(0, batch.on_hand_weight) })}`
         if (stay)
           return chainTooltip(
-            `${batch.batch_no}\n${sharedSerialLabel(batch)}\n${batch.next_team.name} · 在库停留\n这段时间的未转出库存 ${amountLabel(stay)}\n${traceTime(stay.start)}\n至 ${traceTime(stay.end)}\n累计停留 ${traceDuration(node.finishedAt, stay.end)}${balance}${variance}`,
+            `${batch.batch_no}\n${sharedSerialLabel(batch)}\n${batch.next_team.name} · 在库停留\n这段时间的未转出库存 ${amountLabel(stay)}\n${traceTime(stay.start)}\n至 ${traceTime(stay.end)}\n累计停留 ${traceDuration(node.finishedAt, stay.end)}${balance}${sentState}${variance}`,
           )
         return chainTooltip(
-          `${batch.batch_no}\n${sharedSerialLabel(batch)}\n${batch.entry_kind === 'processing_output' ? `本班组加工 · ${batch.next_team.name}` : `${batch.source_team.name} → ${batch.next_team.name}`}\n${amountLabel(batch)}\n${batch.entry_kind === 'processing_output' ? '加工' : node.intake ? '入库' : '转出'} ${traceTime(node.startedAt)}${node.intake ? '' : `\n${isExternalTransfer(batch) ? '对外确认' : '接收'} ${traceTime(node.finishedAt)}`}\n${batch.entry_kind === 'processing_output' ? '本班组业务' : '接收业务'} ${batch.purpose_name || '未分类'} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}${balance}${variance}${batch.notes ? `\n备注 ${batch.notes}` : ''}${node.timingIssue ? '\n时间记录不完整或异常' : ''}${node.residenceIssue ? '\n历史收发记录与库存对不上，暂不显示停留时间' : ''}`,
+          `${batch.batch_no}\n${sharedSerialLabel(batch)}\n${batch.entry_kind === 'processing_output' ? `本班组加工 · ${batch.next_team.name}` : `${batch.source_team.name} → ${batch.next_team.name}`}\n${amountLabel(batch)}\n${batch.entry_kind === 'processing_output' ? '加工' : node.intake ? '入库' : '转出'} ${traceTime(node.startedAt)}${node.intake ? '' : `\n${isExternalTransfer(batch) ? '对外确认' : '接收'} ${traceTime(node.finishedAt)}`}\n${batch.entry_kind === 'processing_output' ? '本班组业务' : '接收业务'} ${batch.purpose_name || '未分类'} · ${materialTransferStatusLabel(batch.status, batch.entry_kind)}${balance}${sentState}${variance}${batch.notes ? `\n备注 ${batch.notes}` : ''}${node.timingIssue ? '\n时间记录不完整或异常' : ''}${node.residenceIssue ? '\n历史收发记录与库存对不上，暂不显示停留时间' : ''}`,
         )
       },
     },

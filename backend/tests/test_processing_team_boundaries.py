@@ -1,4 +1,4 @@
-"""Only the three cutting/count-changing workshops may record processing."""
+"""Only splitting workshops may change the piece count; other teams record work."""
 
 import pytest
 from app.database import SessionLocal
@@ -70,7 +70,11 @@ def test_processing_capability_covers_all_write_paths(client, warehouse, code, a
         with SessionLocal() as db:
             assert db.scalar(select(func.count()).select_from(MaterialQuantityAdjustment)) == 1
         return
-    assert response.json()["detail"] == "仅轧制、线切割和雕刻班组可以登记加工"
+    assert response.json()["detail"] == (
+        "本班组按件登记加工，不能修改加工件数或拆分产出"
+        if workshop
+        else "库房不登记加工，请选择生产班组"
+    )
     with SessionLocal() as db:
         balance = db.get(MaterialStockBalance, lot["id"])
         assert (balance.on_hand_quantity, balance.on_hand_weight) == (1, 100)

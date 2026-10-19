@@ -336,6 +336,7 @@ def material_transfer_dict(
         "urgency": urgency_dict(transfer.urgency),
         "entry_kind": transfer.entry_kind,
         "processing_role": transfer.processing_role,
+        "sent_processing_status": transfer.sent_processing_status,
         "purpose_id": transfer.purpose_id,
         "purpose_name": transfer.purpose_name,
         "external_destination": transfer.external_destination,

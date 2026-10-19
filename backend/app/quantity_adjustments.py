@@ -12,7 +12,9 @@ from .material_weight import WEIGHT_ONLY_TYPES
 from .models import MaterialQuantityAdjustment as Adjustment
 from .models import MaterialStockBalance as Balance
 from .models import MaterialTransfer, MaterialTransferEvent, TeamEmployee, utcnow
+from .processing_registration import METRICS, prepare
 from .schemas import ProcessingQuantity
+from .team_constants import SPLITTING_TEAM_CODES
 
 
 def validate_outbound_clearance(lot, quantity, weight, available, clearance):
@@ -88,6 +90,15 @@ def record_dict(row):
         "weight": float(row.weight_snapshot),
         "reason": row.reason,
         "processor_name": row.processor_name,
+        "processor_employee_id": row.processor_employee_id,
+        "processing_date": row.processing_date.isoformat() if row.processing_date else None,
+        "processing_mode": row.processing_mode,
+        **{
+            key: float(getattr(row, key))
+            if key.endswith("weight") and getattr(row, key) is not None
+            else getattr(row, key)
+            for key in METRICS
+        },
         "operation_kind": "outbound_clearance"
         if row.idempotency_key.startswith("outbound-clear:")
         else "processing",
@@ -134,6 +145,7 @@ def context(db, team_id, lot_id, page=1, page_size=10):
     lot = db.execute(
         select(
             MaterialTransfer.id,
+            MaterialTransfer.next_team_code,
             MaterialTransfer.batch_no,
             MaterialTransfer.serial_no,
             MaterialTransfer.material_name,
@@ -190,7 +202,7 @@ def context(db, team_id, lot_id, page=1, page_size=10):
         latest.processing_status
         if latest and latest.processing_status is not None
         else (
-            "partial"
+            None
             if lot.processing_role == "remaining"
             else "complete"
             if lot.processing_role == "produced"
@@ -209,6 +221,9 @@ def context(db, team_id, lot_id, page=1, page_size=10):
         "weight": float(balance.on_hand_weight),
         "processing_status": progress,
         "processor_options": processor_options(db, team_id),
+        "processing_mode": "split"
+        if stock.require_team(db, team_id).code in SPLITTING_TEAM_CODES
+        else "unit",
         "origin_processing_record": record_dict(origin) if origin else None,
         **weight_differences(db, [lot_id], team_id).get(lot_id, {}),
         "transfer_specification": latest.after_specification
@@ -227,7 +242,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     """Recount only untransferred stock inside the caller's locked transaction."""
     from .processing_records import require_processing_team
 
-    require_processing_team(db, lot.next_team_id)
+    team = require_processing_team(db, lot.next_team_id)
     if lot.material_type in WEIGHT_ONLY_TYPES:
         raise HTTPException(422, "废泥、废屑只按重量计量，不能修改加工件数")
     balance = db.scalar(
@@ -245,6 +260,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     ):
         raise HTTPException(409, "本批已无在库物料，不能增加件数")
     latest = latest_records(db, [lot.id]).get(lot.id)
+    payload, production = prepare(lot, balance, latest, payload, team.code)
     before_specification = (
         latest.after_specification
         if latest and latest.after_specification is not None
@@ -259,7 +275,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         payload.processing_status
         or (latest.processing_status if latest else None)
         or (
-            "partial"
+            None
             if lot.processing_role == "remaining"
             else "complete"
             if lot.processing_role == "produced"
@@ -281,7 +297,9 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         select(TeamEmployee)
         .where(
             TeamEmployee.team_id == lot.next_team_id,
-            TeamEmployee.name == payload.processor_name,
+            TeamEmployee.id == payload.processor_employee_id
+            if payload.processor_employee_id is not None
+            else TeamEmployee.name == payload.processor_name,
             TeamEmployee.active.is_(True),
         )
         .with_for_update()
@@ -307,6 +325,8 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         before_quantity=before_quantity,
         after_quantity=payload.quantity,
         processor_name=employee.name,
+        processor_employee_id=employee.id,
+        **production,
         processing_status=status,
         before_specification=before_specification or "",
         after_specification=after_specification or "",
@@ -364,6 +384,18 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
                 ),
                 "reason": {"before": None, "after": row.reason},
                 "processor_name": {"before": None, "after": row.processor_name},
+                **(
+                    {
+                        "processing_date": {
+                            "before": None,
+                            "after": row.processing_date.isoformat(),
+                        },
+                        "completed_quantity": {"before": None, "after": row.completed_quantity},
+                        "completed_weight": {"before": None, "after": float(row.completed_weight)},
+                    }
+                    if row.processing_date
+                    else {}
+                ),
             },
         )
     )

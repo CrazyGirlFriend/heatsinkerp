@@ -1169,6 +1169,11 @@ onBeforeUnmount(() => {
                 processing &&
                 canWrite &&
                 !isScrapMaterialType(row.material_type) &&
+                !(
+                  row.processing_complete_batch_count > 0 &&
+                  row.processing_complete_batch_count === row.processing_registered_batch_count &&
+                  !row.processing_unregistered_batch_count
+                ) &&
                 (row.on_hand_quantity > 0 || row.on_hand_weight > 0)
               "
               link

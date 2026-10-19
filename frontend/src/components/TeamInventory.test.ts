@@ -322,7 +322,7 @@ describe('warehouse grouped stock', () => {
       wrapper
         .findAll('tbody tr')
         .map((row) => row.findAll('td')[headers().indexOf('加工分类')]!.text())
-    expect(roles()).toEqual(['剩余大料', '加工产出', '加工废料'])
+    expect(roles()).toEqual(['未加工余料', '加工产出', '加工废料'])
     const dimensions = () =>
       wrapper
         .findAll('tbody tr')
@@ -340,7 +340,7 @@ describe('warehouse grouped stock', () => {
     await flushPromises()
     expect(headers()).not.toContain('实际尺寸')
     expect(wrapper.findAll('.inventory-material-kind').map((row) => row.text())).toEqual(kinds)
-    expect(roles()).toEqual(['剩余大料', '加工产出', '加工废料'])
+    expect(roles()).toEqual(['未加工余料', '加工产出', '加工废料'])
     expect(wrapper.text()).toContain('本班组加工')
     const source = (
       wrapper.vm as unknown as {
@@ -353,7 +353,7 @@ describe('warehouse grouped stock', () => {
     })
     const exported = await source.load(new AbortController().signal, vi.fn())
     expect(exported.map((row) => [row.material_type, row.processing_role])).toEqual([
-      ['原材料', '剩余大料'],
+      ['原材料', '未加工余料'],
       ['原材料', '加工产出'],
       ['废屑', '加工废料'],
     ])

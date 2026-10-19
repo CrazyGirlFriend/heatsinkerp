@@ -5,7 +5,7 @@ import type { QuantityAdjustment } from './teamMaterials'
 export type ProcessingState =
   'registered' | 'partial' | 'complete' | 'unregistered' | 'pending' | 'cleared' | 'not_applicable'
 export const processingRoleLabels = {
-  remaining: '剩余大料',
+  remaining: '未加工余料',
   produced: '加工产出',
   scrap: '加工废料',
 } as const
@@ -41,4 +41,30 @@ export interface ProcessingRecord extends QuantityAdjustment, SharedMaterialFiel
   in_transit_quantity: number
   in_transit_weight: number
   processing_state: ProcessingState
+}
+
+export interface ProcessingDailyRow {
+  team_id: number
+  team_name: string
+  processing_date: string
+  processor_employee_id: number
+  processor_name: string
+  processing_mode: 'unit' | 'split'
+  record_count: number
+  input_quantity: number
+  input_weight: number
+  completed_quantity: number
+  completed_weight: number
+  scrap_quantity: number
+  scrap_weight: number
+}
+
+export interface ProcessingRecordSummary {
+  employee_day_count: number
+  record_count: number
+  unreported_count: number
+  completed_quantity: number
+  completed_weight: number
+  scrap_quantity: number
+  scrap_weight: number
 }

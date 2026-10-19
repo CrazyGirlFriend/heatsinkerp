@@ -20,3 +20,12 @@ const materialAmountFormat = new Intl.NumberFormat('zh-CN', { maximumFractionDig
 export function formatAmount(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? '—' : materialAmountFormat.format(value)
 }
+
+export function factoryToday() {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}

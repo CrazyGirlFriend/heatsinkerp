@@ -8,12 +8,18 @@ import type { TableExportSource } from '@/utils/tableExport'
 
 const props = defineProps<{
   source: () => TableExportSource | null
+  variants?: () => TableExportSource[]
   disabled?: boolean
   context?: unknown
   appendTo?: HTMLElement
 }>()
 const auth = useAuthStore()
 const taskSource = ref<TableExportSource | null>(null)
+const taskVariants = ref<TableExportSource[]>([])
+function open() {
+  taskSource.value = props.source()
+  taskVariants.value = props.variants?.() || []
+}
 watch(
   () => [
     props.context,
@@ -26,6 +32,7 @@ watch(
   ],
   () => {
     taskSource.value = null
+    taskVariants.value = []
   },
 )
 </script>
@@ -35,8 +42,13 @@ watch(
     class="table-export-button action-warm"
     :icon="Download"
     :disabled="disabled"
-    @click="taskSource = props.source()"
+    @click="open"
     >导出</ElButton
   >
-  <TableExportDialog :source="taskSource" :append-to="appendTo" @close="taskSource = null" />
+  <TableExportDialog
+    :source="taskSource"
+    :variants="taskVariants"
+    :append-to="appendTo"
+    @close="taskSource = null"
+  />
 </template>

@@ -18,12 +18,15 @@ import {
   ElOption,
   ElSelect,
   ElSwitch,
+  ElDatePicker,
   ElPagination,
   ElTable,
   ElTableColumn,
 } from 'element-plus'
 import SpecificationInput from './SpecificationInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
+import TeamEmployeeInput from './TeamEmployeeInput.vue'
+import type { TeamEmployee } from '@/types/teamBusiness'
 import WeightInput from './WeightInput.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import {
@@ -39,7 +42,7 @@ import type {
   QuantityAdjustmentContext,
 } from '@/types/teamMaterials'
 import { materialRequestKey } from '@/utils/materialStock'
-import { formatDateTime } from '@/utils/format'
+import { factoryToday, formatDateTime } from '@/utils/format'
 import {
   isScrapType,
   isWeightOnlyType,
@@ -91,6 +94,17 @@ type OutputDraft = {
   specification: string
   specificationValid: boolean
 }
+const employee = ref<TeamEmployee | null>(null)
+const processingDate = ref(factoryToday())
+const inputQuantity = ref<number>()
+const completedWeight = ref<number>()
+const structured = computed(() => props.processing && !!snapshot.value?.processing_mode)
+const unitProcessing = computed(
+  () => structured.value && snapshot.value?.processing_mode === 'unit',
+)
+watch(employee, (value) => {
+  processorName.value = value?.name || ''
+})
 const detailed = ref(false),
   outputs = ref<OutputDraft[]>([])
 const activeOutputs = computed(() =>
@@ -116,9 +130,14 @@ const measuredOutputs = computed(
     activeOutputs.value.length > 0 &&
     activeOutputs.value.every((line) => line.weight != null && Number.isFinite(line.weight)),
 )
-const weightDifference = computed(
-  () => Math.round((outputWeight.value - (snapshot.value?.weight || 0)) * 1000000) / 1000000,
-)
+const weightDifference = computed(() => {
+  const after = unitProcessing.value
+    ? quantity.value === snapshot.value?.quantity
+      ? completedWeight.value
+      : snapshot.value?.weight
+    : outputWeight.value
+  return Math.round(((after || 0) - (snapshot.value?.weight || 0)) * 1000000) / 1000000
+})
 const cumulativeWeightDifference = computed(
   () =>
     Math.round(((snapshot.value?.weight_difference || 0) + weightDifference.value) * 1000000) /
@@ -202,7 +221,10 @@ const editable = computed(
     Number(auth.currentUser?.team_id) === props.teamId,
 )
 const hasStock = computed(
-  () => !!snapshot.value && (snapshot.value.quantity > 0 || snapshot.value.weight > 0),
+  () =>
+    !!snapshot.value &&
+    snapshot.value.processing_status !== 'complete' &&
+    (snapshot.value.quantity > 0 || snapshot.value.weight > 0),
 )
 let generation = 0,
   requestKey = '',
@@ -218,6 +240,8 @@ async function load(refreshSnapshot = false) {
     if (current !== generation) return
     if (!snapshot.value) {
       quantity.value = result.quantity
+      inputQuantity.value = result.quantity
+      completedWeight.value = result.weight
       progress.value = result.processing_status || 'partial'
       specification.value = result.transfer_specification || ''
     }
@@ -225,7 +249,11 @@ async function load(refreshSnapshot = false) {
       snapshot.value = result
       conflict.value = false
     }
-    if (result.shared_unallocated && props.processing) detailed.value = true
+    if (
+      props.processing &&
+      (result.processing_mode === 'split' || (!result.processing_mode && result.shared_unallocated))
+    )
+      detailed.value = true
     records.value = result.items
     total.value = result.total
   } catch (e) {
@@ -249,7 +277,7 @@ async function save() {
     return
   error.value = ''
   submitted.value = true
-  const byOutput = props.processing && detailed.value
+  const byOutput = props.processing && detailed.value && !unitProcessing.value
   const count = byOutput ? outputTotal.value : quantity.value
   const invalidOutputs =
     byOutput &&
@@ -260,6 +288,18 @@ async function save() {
         ),
       ))
   if (
+    (structured.value &&
+      (!employee.value || !processingDate.value || processingDate.value > factoryToday())) ||
+    (structured.value &&
+      !unitProcessing.value &&
+      (!Number.isSafeInteger(inputQuantity.value) ||
+        inputQuantity.value! <= 0 ||
+        inputQuantity.value! > snapshot.value.quantity)) ||
+    (unitProcessing.value &&
+      (count! <= 0 ||
+        count! > snapshot.value.quantity ||
+        completedWeight.value == null ||
+        completedWeight.value < 0)) ||
     !processorName.value.trim() ||
     processorName.value.trim().length > 80 ||
     invalidOutputs ||
@@ -267,7 +307,7 @@ async function save() {
     !Number.isSafeInteger(count) ||
     count! < 0 ||
     count! > 2147483647 ||
-    (props.processing && progressInvalid.value) ||
+    (props.processing && !structured.value && progressInvalid.value) ||
     reason.value.trim().length > 2000
   ) {
     await nextTick()
@@ -297,9 +337,24 @@ async function save() {
     expected_revision: snapshot.value.revision,
     processor_name: processorName.value.trim(),
     reason: reason.value.trim(),
+    ...(structured.value
+      ? {
+          processor_employee_id: employee.value!.id,
+          processing_date: processingDate.value,
+          processing_mode: snapshot.value.processing_mode,
+          ...(unitProcessing.value
+            ? { completed_quantity: count!, completed_weight: completedWeight.value! }
+            : { input_quantity: inputQuantity.value! }),
+        }
+      : {}),
     ...(props.processing
       ? {
-          processing_status: progress.value,
+          processing_status: structured.value
+            ? (unitProcessing.value && count! < snapshot.value.quantity) ||
+              (byOutput && activeOutputs.value.some((line) => line.role === 'remaining'))
+              ? ('partial' as const)
+              : ('complete' as const)
+            : progress.value,
           ...(byOutput
             ? { outputs: outputLines }
             : { transfer_specification: specification.value.trim() }),
@@ -339,6 +394,9 @@ watch(
     page.value = 1
     quantity.value = undefined
     processorName.value = ''
+    employee.value = null
+    processingDate.value = factoryToday()
+    inputQuantity.value = completedWeight.value = undefined
     reason.value = error.value = requestKey = fingerprint = ''
     progress.value = 'partial'
     specification.value = ''
@@ -369,7 +427,7 @@ onBeforeUnmount(() => {
     :title="
       processing ? (editable ? '加工登记' : '加工记录') : editable ? '加工件数变更' : '件数变更记录'
     "
-    :width="processing ? 'min(1440px, calc(100vw - 32px))' : 'min(780px, 94vw)'"
+    :width="processing && !unitProcessing ? 'min(1440px, calc(100vw - 32px))' : 'min(980px, 94vw)'"
     align-center
     append-to-body
     class="processing-registration-dialog"
@@ -408,8 +466,9 @@ onBeforeUnmount(() => {
         <p v-if="!processing" class="quantity-note">
           只修改本批未转出的件数，重量、原签收单和已转出件数不变。保存后立即生效，取消出库不会撤销本次修改。
         </p>
-        <div v-if="processing" class="processing-mode">
+        <div v-if="processing && !unitProcessing" class="processing-mode">
           <ElSwitch
+            v-if="!structured"
             v-model="detailed"
             :disabled="snapshot.shared_unallocated"
             aria-label="按明细登记"
@@ -421,7 +480,7 @@ onBeforeUnmount(() => {
           }}</span>
         </div>
         <section
-          v-if="processing && detailed"
+          v-if="processing && detailed && !unitProcessing"
           class="processing-outputs"
           :class="{ 'is-error': submitted && !activeOutputs.length }"
           aria-label="加工后完整实物明细"
@@ -570,8 +629,7 @@ onBeforeUnmount(() => {
         <p
           v-if="
             processing &&
-            detailed &&
-            measuredOutputs &&
+            ((detailed && measuredOutputs) || (unitProcessing && completedWeight != null)) &&
             (weightDifference || cumulativeWeightDifference)
           "
           class="quantity-note processing-weight-notice"
@@ -587,15 +645,22 @@ onBeforeUnmount(() => {
               : `超过每批 ${materialWeightToleranceKg} kg，请核对实测值，仍可提交`
           }}。拆分和继续加工沿用同一批提醒额度，不按件数换算重量或自动记作损耗。
         </p>
-        <div class="dialog-form-grid">
+        <div
+          class="dialog-form-grid"
+          :class="{
+            'processing-unit-grid': unitProcessing,
+            'processing-split-grid': structured && !unitProcessing,
+          }"
+        >
           <ElFormItem
-            label="加工后本批未转出总件数"
+            :label="unitProcessing ? '本次完成件数' : '加工后本批未转出总件数'"
             required
             :class="{
               'is-error':
                 submitted &&
                 (!Number.isSafeInteger(detailed ? outputTotal : quantity) ||
                   (detailed ? outputTotal : quantity!) < 0 ||
+                  (unitProcessing && (!quantity || quantity > snapshot.quantity)) ||
                   (detailed ? outputTotal : quantity!) > 2147483647),
             }"
             ><strong v-if="processing && detailed" class="dialog-readonly"
@@ -603,7 +668,7 @@ onBeforeUnmount(() => {
             ><ElInputNumber
               v-else
               v-model="quantity"
-              aria-label="加工后未转出件数"
+              :aria-label="unitProcessing ? '本次完成件数' : '加工后未转出件数'"
               :min="0"
               :max="2147483647"
               :precision="0"
@@ -612,7 +677,7 @@ onBeforeUnmount(() => {
             ></ElFormItem
           >
           <ElFormItem
-            v-if="processing"
+            v-if="processing && !structured"
             label="本批加工进度"
             required
             :class="{ 'is-error': submitted && progressInvalid }"
@@ -625,9 +690,53 @@ onBeforeUnmount(() => {
             ><small
               v-if="detailed && activeOutputs.some((line) => line.role === 'remaining')"
               class="dialog-field-hint"
-              >仍有剩余大料，请选择部分加工。</small
+              >仍有未加工余料，请选择部分加工。</small
             ></ElFormItem
           >
+          <ElFormItem
+            v-if="unitProcessing"
+            label="本次完成重量"
+            required
+            :class="{ 'is-error': submitted && (completedWeight == null || completedWeight < 0) }"
+          >
+            <WeightInput v-model="completedWeight" ariaLabel="本次完成重量" />
+            <small class="dialog-field-hint"
+              >部分加工请核对本次重量，剩余部分自动保留为未加工库存。</small
+            >
+          </ElFormItem>
+          <ElFormItem
+            v-if="structured && !unitProcessing"
+            label="本次投入件数"
+            required
+            :class="{
+              'is-error': submitted && (!inputQuantity || inputQuantity > snapshot.quantity),
+            }"
+          >
+            <ElInputNumber
+              v-model="inputQuantity"
+              :min="1"
+              :max="snapshot.quantity"
+              :precision="0"
+              aria-label="本次投入件数"
+              controls-position="right"
+            />
+          </ElFormItem>
+          <ElFormItem
+            v-if="structured"
+            label="实际加工日期"
+            required
+            :class="{
+              'is-error': submitted && (!processingDate || processingDate > factoryToday()),
+            }"
+          >
+            <ElDatePicker
+              v-model="processingDate"
+              type="date"
+              value-format="YYYY-MM-DD"
+              aria-label="实际加工日期"
+              :clearable="false"
+            />
+          </ElFormItem>
           <ElFormItem
             label="加工人"
             required
@@ -635,14 +744,22 @@ onBeforeUnmount(() => {
               'is-error': submitted && (!processorName.trim() || processorName.trim().length > 80),
             }"
           >
+            <TeamEmployeeInput
+              v-if="structured"
+              v-model="employee"
+              :team-id="teamId"
+              label="加工人"
+              :invalid="submitted && !employee"
+            />
             <ProcessingPersonInput
+              v-else
               v-model="processorName"
               :options="snapshot.processor_options"
               :invalid="submitted && (!processorName.trim() || processorName.trim().length > 80)"
             />
           </ElFormItem>
           <ElFormItem
-            v-if="processing && !detailed"
+            v-if="processing && !detailed && !unitProcessing"
             label="加工后实际尺寸（选填）"
             class="dialog-field-wide"
             :class="{ 'is-error': submitted && !specificationValid }"
@@ -662,13 +779,20 @@ onBeforeUnmount(() => {
               :rows="2"
               maxlength="2000"
               show-word-limit
-              placeholder="选填，例如：10 块板材切割为 100 件"
+              :placeholder="unitProcessing ? '选填' : '选填，例如：10 块板材切割为 100 件'"
           /></ElFormItem>
         </div>
       </ElForm>
-      <p v-else-if="editable" class="quantity-note">本批没有未转出的库存，不能修改件数。</p>
-      <h3 class="quantity-history-title">本批操作记录</h3>
+      <p v-else-if="editable" class="quantity-note">
+        {{
+          snapshot.processing_status === 'complete'
+            ? '本批已完成加工，下面可查看加工记录。'
+            : '本批没有未转出的库存，不能登记加工。'
+        }}
+      </p>
+      <h3 v-if="historyRecords.length || !editable" class="quantity-history-title">本批操作记录</h3>
       <ElTable
+        v-if="historyRecords.length || !editable"
         :data="historyRecords"
         class="business-table"
         empty-text="暂无件数变更"
@@ -773,6 +897,24 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.processing-registration-form > .dialog-form-grid.processing-unit-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.processing-registration-form > .dialog-form-grid.processing-split-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.processing-split-grid > .el-form-item:not(.dialog-field-wide),
+.processing-unit-grid > .el-form-item:not(.dialog-field-wide) {
+  grid-column: auto;
+}
+.processing-split-grid :deep(.el-date-editor),
+.processing-unit-grid :deep(.el-date-editor) {
+  width: 220px;
+  max-width: 100%;
+}
+.processing-unit-grid .weight-input {
+  max-width: 280px;
+}
 .quantity-summary {
   margin-block: 16px;
 }

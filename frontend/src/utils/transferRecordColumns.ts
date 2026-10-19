@@ -1,3 +1,4 @@
+import { processingStateLabels } from '@/types/materialProcessing'
 import { teamWorkspaceProfile } from '@/config/teamWorkspaces'
 import {
   isExternalEntryKind,
@@ -88,6 +89,9 @@ export const transferRecordColumns = [
     170,
     (row) => (isInternalTransfer(row) ? formatDateTime(row.received_at) : '—'),
     true,
+  ),
+  column('sent_processing_status', '转出时加工状态', 170, (row) =>
+    row.sent_processing_status ? processingStateLabels[row.sent_processing_status] : '未登记',
   ),
   column('entry_kind', '转料方式', 130, (row) => materialEntryLabel(row.entry_kind)),
   column('finished_specification', '成品规格', 180, (row) => row.finished_specification),

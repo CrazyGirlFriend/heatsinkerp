@@ -13,15 +13,20 @@ describe('material policy contract', () => {
     expect(Number(value)).toBe(materialWeightToleranceKg)
   })
   it('uses the same processing teams for entries and server authorization', () => {
-    const declaration =
-      backendSource('team_constants.py').match(/PROCESSING_TEAM_CODES\s*=\s*\(([^)]+)\)/)?.[1] || ''
+    const declaration = [
+      ...backendSource('team_constants.py').matchAll(
+        /(?:SPLITTING|PROCESSING)_TEAM_CODES\s*=\s*\(([^)]+)\)/g,
+      ),
+    ]
+      .map((match) => match[1])
+      .join(' ')
     const codes = [...declaration.matchAll(/"(FACTORY-[A-Z]+)"/g)].map((match) => match[1])
     expect([...processingTeamCodes].sort()).toEqual(codes.sort())
     for (const code of processingTeamCodes) {
       expect(teamCanProcess({ code, kind: 'production' })).toBe(true)
       expect(teamCanProcess({ code, kind: 'warehouse' })).toBe(false)
     }
-    expect(teamCanProcess({ code: 'FACTORY-QC', kind: 'production' })).toBe(false)
+    expect(teamCanProcess({ code: 'FACTORY-WAREHOUSE', kind: 'warehouse' })).toBe(false)
     expect(teamCanProcess()).toBe(false)
   })
 })

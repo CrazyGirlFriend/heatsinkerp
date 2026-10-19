@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ElCheckboxGroup } from 'element-plus'
+import { ElCheckboxGroup, ElRadioGroup } from 'element-plus'
 import TableExportDialog from './TableExportDialog.vue'
 import * as exports from '@/utils/tableExport'
 
@@ -92,4 +92,44 @@ describe('export field picker', () => {
     expect(create).not.toHaveBeenCalled()
     expect(wrapper.emitted('close')).toEqual([[]])
   })
+})
+
+it('switches export content, resets fields and exports the selected worker summary', async () => {
+  const create = vi.spyOn(exports, 'createExportWorkbook').mockResolvedValue(new Blob())
+  const download = vi.spyOn(exports, 'downloadExportWorkbook').mockImplementation(() => undefined)
+  const detail = source()
+  const grouped = {
+    title: '按加工人汇总',
+    total: 2,
+    fields: [
+      { key: 'person', label: '加工人' },
+      { key: 'quantity', label: '完成件数' },
+    ],
+    load: vi.fn().mockResolvedValue([
+      { person: '张师傅', quantity: 100 },
+      { person: '李师傅', quantity: 20 },
+    ]),
+  }
+  wrapper = mount(TableExportDialog, {
+    props: { source: detail, variants: [grouped] },
+    attachTo: document.body,
+  })
+  await flushPromises()
+  wrapper.getComponent(ElRadioGroup).vm.$emit('update:modelValue', 1)
+  await flushPromises()
+  expect(document.body.textContent).toContain('当前筛选 · 全部 2 条')
+  expect(wrapper.getComponent(ElCheckboxGroup).props('modelValue')).toEqual(['person', 'quantity'])
+  wrapper.getComponent(ElCheckboxGroup).vm.$emit('update:modelValue', ['quantity'])
+  await button('导出 Excel').trigger('click')
+  await flushPromises()
+  expect(detail.load).not.toHaveBeenCalled()
+  expect(grouped.load).toHaveBeenCalledOnce()
+  expect(create).toHaveBeenCalledWith(
+    [{ key: 'quantity', label: '完成件数' }],
+    [
+      { person: '张师傅', quantity: 100 },
+      { person: '李师傅', quantity: 20 },
+    ],
+  )
+  expect(download).toHaveBeenCalledWith(expect.any(Blob), '按加工人汇总')
 })

@@ -160,6 +160,7 @@ export interface MaterialTransfer
   purpose_name?: string | null
   urgency?: import('./recordFilters').SerialUrgency
   entry_kind?: MaterialEntryKind
+  sent_processing_status?: import('./materialProcessing').ProcessingState | null
   processing_role?: import('./materialProcessing').ProcessingRole | null
   external_destination?: string | null
   receipt_kind?: 'external' | 'return' | null

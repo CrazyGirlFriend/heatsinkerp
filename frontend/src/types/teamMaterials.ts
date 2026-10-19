@@ -67,6 +67,15 @@ export interface QuantityAdjustment {
   weight: number
   reason: string
   created_by: string
+  processor_employee_id?: number | null
+  processing_date?: string | null
+  processing_mode?: 'unit' | 'split' | null
+  input_quantity?: number | null
+  input_weight?: number | null
+  completed_quantity?: number | null
+  completed_weight?: number | null
+  scrap_quantity?: number | null
+  scrap_weight?: number | null
   processor_name?: string | null
   created_at: string
   operation_kind?: 'processing' | 'outbound_clearance'
@@ -103,6 +112,7 @@ export interface QuantityAdjustmentContext
   weight: number
   revision: number
   processor_options?: string[]
+  processing_mode?: 'unit' | 'split'
   as_of: string
   serial_no?: string
   material_name?: string | null
@@ -119,6 +129,12 @@ export interface CreateQuantityAdjustment {
   quantity: number
   expected_revision: number
   processor_name: string
+  processor_employee_id?: number
+  processing_date?: string
+  processing_mode?: 'unit' | 'split'
+  input_quantity?: number
+  completed_quantity?: number
+  completed_weight?: number
   reason?: string
   idempotency_key: string
   processing_status?: 'partial' | 'complete'

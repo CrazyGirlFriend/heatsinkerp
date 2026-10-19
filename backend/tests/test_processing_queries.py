@@ -88,14 +88,13 @@ def test_processing_stock_classifications_and_statistics_do_not_duplicate_intake
     assert all(row["receipt_source"] == "processing" for row in inventory)
     assert get(client, url + "/inventory", receipt_source="processing")["total"] == 4
     sources = get(client, url + "/processing-stock")["items"]
-    assert len(sources) == 3
+    assert len(sources) == 1
     assert {row["transfer"]["processing_role"]: row["processing_state"] for row in sources} == {
-        "remaining": "partial",
-        "produced": "complete",
+        "remaining": "unregistered",
     }
     for source in sources:
         context = get(client, f"{url}/stock/{source['transfer']['id']}/quantity-adjustments")
-        assert context["processing_status"] == source["processing_state"]
+        assert context["processing_status"] is None
         assert context["origin_processing_record"]["id"] == record["id"]
         assert context["total"] == 0 and context["items"] == []
     current = get(client, url + "/processing-records")["items"][0]
@@ -291,7 +290,8 @@ def test_repeated_processing_uses_one_signed_weight_difference_for_its_received_
     context = get(client, f"{url}/stock/{child['id']}/quantity-adjustments")
     assert context["weight_root_transfer_id"] == lot["id"]
     assert context["weight_difference"] == float(2 * step)
-    source = get(client, url + "/processing-stock")["items"][0]
+    assert get(client, url + "/processing-stock")["items"] == []
+    source = get(client, url + "/stock")["items"][0]
     assert source["weight_difference"] == float(2 * step)
     inventory = get(client, url + "/inventory")["items"][0]
     assert inventory["weight_difference"] == float(2 * step)

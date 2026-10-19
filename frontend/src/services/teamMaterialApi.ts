@@ -19,7 +19,11 @@ import type {
   QuantityAdjustmentContext,
   CreateQuantityAdjustment,
 } from '@/types/teamMaterials'
-import type { ProcessingRecord } from '@/types/materialProcessing'
+import type {
+  ProcessingDailyRow,
+  ProcessingRecord,
+  ProcessingRecordSummary,
+} from '@/types/materialProcessing'
 import { isExternalEntryKind } from '@/types/materialTransfer'
 import type {
   MaterialAnalytics,
@@ -213,8 +217,22 @@ export const teamMaterialApi = {
       body: payload,
     })
   },
-  processingRecords(teamId: number, params: MaterialPageParams = {}) {
-    return request<MaterialPage<ProcessingRecord>>(path(teamId, 'processing-records', params))
+  processingDaily(
+    teamId: number,
+    params: MaterialPageParams & { processor_id?: number; work_date?: string } = {},
+  ) {
+    return request<MaterialPage<ProcessingDailyRow>>(path(teamId, 'processing-daily', params))
+  },
+  processingRecords(
+    teamId: number,
+    params: MaterialPageParams & { processor_id?: number; work_date?: string } = {},
+  ) {
+    return request<
+      MaterialPage<ProcessingRecord> & {
+        summary?: ProcessingRecordSummary
+        processors?: { id: number; name: string }[]
+      }
+    >(path(teamId, 'processing-records', params))
   },
   processingSources(
     teamId: number,

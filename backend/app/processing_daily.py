@@ -1,0 +1,53 @@
+"""SQL-paginated daily worker totals from immutable production facts."""
+
+from sqlalchemy import func, select
+
+from .models import MaterialQuantityAdjustment as Work
+from .processing_records import production_groups, record_conditions, require_processing_team
+from .processing_registration import METRICS
+from .record_filters import RecordFilters
+
+
+def list_daily(
+    db,
+    team_id,
+    *,
+    date_from=None,
+    date_to=None,
+    processor_id=None,
+    query=None,
+    work_date=None,
+    urgent_only=False,
+    page=1,
+    page_size=20,
+):
+    team = require_processing_team(db, team_id)
+    conditions = record_conditions(
+        team_id,
+        RecordFilters(date_from=date_from, date_to=date_to, urgent_only=urgent_only),
+        query,
+        processor_id,
+        work_date,
+    )
+    statement = production_groups(conditions)
+    total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
+    rows = db.execute(
+        statement.order_by(
+            Work.processing_date.desc(), Work.processor_employee_id, Work.processing_mode
+        )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).mappings()
+    items = [
+        {
+            **dict(row),
+            "team_id": team.id,
+            "team_name": team.name,
+            "processing_date": row["processing_date"].isoformat(),
+            **{
+                key: float(row[key]) if key.endswith("weight") else int(row[key]) for key in METRICS
+            },
+        }
+        for row in rows
+    ]
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
