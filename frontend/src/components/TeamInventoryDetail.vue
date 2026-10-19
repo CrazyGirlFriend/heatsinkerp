@@ -466,13 +466,13 @@ onBeforeUnmount(() => {
               formatDateTime(row.transfer.received_at)
             }}</template></ElTableColumn
           >
-          <ElTableColumn v-if="processing" label="巡检" min-width="155" align="center"
+          <ElTableColumn v-if="processing" label="质量检查" min-width="155" align="center"
             ><template #default="{ row }"
               ><ElButton
                 link
                 :type="row.inspection_hold_id ? 'danger' : 'primary'"
                 @click="inspectionSource = Number(row.transfer.id)"
-                >{{ row.inspection_hold_id ? '待处理 · 禁止转出' : '巡检记录' }}</ElButton
+                >{{ row.inspection_hold_id ? '待处理 · 禁止转出' : '检查记录' }}</ElButton
               ></template
             ></ElTableColumn
           >
@@ -667,7 +667,7 @@ onBeforeUnmount(() => {
   />
   <AppDialog
     :model-value="inspectionSource != null"
-    title="本批巡检记录"
+    title="本批检查记录"
     width="min(1380px, calc(100vw - 40px))"
     align-center
     append-to-body

@@ -1605,7 +1605,7 @@ export function traceFlowOption(
         const sentState = batch.sent_processing_status
           ? `\n转出时加工状态：${processingStateLabels[batch.sent_processing_status]}`
           : ''
-        const quality = `${batch.inspection_hold_id ? '\n巡检锁定 · 禁止转出' : batch.inspection_status === 'released' ? '\n已复检放行' : ''}${batch.rework_pending ? '\n待返工' : batch.rework_count ? `\n已返工 ${batch.rework_count} 次` : ''}${batch.context_only ? '\n跨流水号来源 · 不计入当前库存' : ''}`
+        const quality = `${batch.inspection_hold_id ? '\n巡检锁定 · 禁止转出' : batch.inspection_status ? `\n${batch.inspection_scope === 'full' ? '全检' : '抽检'} ${batch.inspection_sample_quantity ?? '—'} 件 · 不合格 ${batch.inspection_failed_quantity ?? '—'} 件` : ''}${batch.rework_pending ? '\n待返工' : batch.rework_count ? `\n已返工 ${batch.rework_count} 次` : ''}${batch.context_only ? '\n跨流水号来源 · 不计入当前库存' : ''}`
         const variance = difference
           ? `\n重量差异 ${num(difference)} kg · ${Math.abs(difference) <= materialWeightToleranceKg ? `在 ${materialWeightToleranceKg} kg 允许误差内` : `超过 ${materialWeightToleranceKg} kg，请核对`}`
           : ''

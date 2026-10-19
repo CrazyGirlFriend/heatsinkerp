@@ -1,6 +1,7 @@
-"""Inspection facts and a lot-level outbound hold, without stock or output writes."""
+"""Patrol and QC inspection facts. No stock movements or automatic disposition."""
 
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -9,8 +10,9 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import aliased
 
 from .auth import actor_name
-from .models import MaterialInspection as Inspection
+from .material_lineage import relatives
 from .models import (
+    InspectionFeedbackTeam,
     MaterialQuantityAdjustment,
     MaterialStockBalance,
     MaterialTransfer,
@@ -18,6 +20,7 @@ from .models import (
     Team,
     utcnow,
 )
+from .models import MaterialInspection as Inspection
 from .record_filters import RecordFilters
 from .team_constants import INSPECTION_TEAM_CODE, PROCESSING_TEAM_CODES
 
@@ -30,6 +33,13 @@ class InspectionCreate(BaseModel):
     checked_at: datetime
     sample_quantity: int = Field(gt=0, le=2147483647)
     failed_quantity: int = Field(ge=0, le=2147483647)
+    kind: Literal["patrol", "inspection"] = "patrol"
+    scope: Literal["sample", "full"] = "sample"
+    methods: list[Literal["visual", "microscope"]] = Field(min_length=1, max_length=2)
+    items: list[Literal["appearance", "dimension", "weight"]] = Field(min_length=1, max_length=3)
+    dimension_result: str = Field(default="", max_length=2000)
+    weight_result: str = Field(default="", max_length=2000)
+    involved_team_ids: list[int] = Field(default_factory=list, max_length=50)
     notes: str = Field(default="", max_length=2000)
     parent_id: int | None = Field(default=None, ge=1)
     idempotency_key: str = Field(min_length=1, max_length=100)
@@ -45,18 +55,29 @@ class InspectionCreate(BaseModel):
     @classmethod
     def timestamp(cls, value):
         if value.tzinfo is None:
-            raise ValueError("巡检时间须带时区")
+            raise ValueError("检查时间须带时区")
         return value.astimezone(timezone.utc)
 
     @model_validator(mode="after")
     def counts(self):
         if self.failed_quantity > self.sample_quantity:
-            raise ValueError("不合格件数不能超过抽检件数")
+            raise ValueError("不合格件数不能超过检查件数")
+        if len(set(self.methods)) != len(self.methods) or len(set(self.items)) != len(self.items):
+            raise ValueError("检查手段和项目不能重复")
+        if len(set(self.involved_team_ids)) != len(self.involved_team_ids) or any(
+            i < 1 for i in self.involved_team_ids
+        ):
+            raise ValueError("问题涉及班组不能重复或无效")
+        if self.failed_quantity and not self.parent_id and not self.involved_team_ids:
+            raise ValueError("请选择问题涉及班组")
+        if not self.failed_quantity and self.involved_team_ids:
+            raise ValueError("没有不合格物料时无需指定问题班组")
         return self
 
 
 def hold_conditions():
     return (
+        Inspection.blocks_outbound.is_(True),
         Inspection.parent_id.is_(None),
         Inspection.failed_quantity > 0,
         Inspection.released_at.is_(None),
@@ -98,7 +119,9 @@ def lock_hold(db, lot_id):
 
 def require_clear(db, lot_id):
     if lock_hold(db, lot_id) is not None:
-        raise HTTPException(409, "本批巡检不合格，整批暂停转出；请由检验班组复检合格后放行")
+        raise HTTPException(
+            409, "本批巡检不合格，整批暂停转出；请由检验班组长在质量反馈中确认处理并手动解除锁定"
+        )
 
 
 def require_clear_lots(db, lots):
@@ -112,7 +135,9 @@ def require_clear_lots(db, lots):
         .with_for_update()
     )
     if held is not None:
-        raise HTTPException(409, "本批巡检不合格，整批暂停转出；请由检验班组复检合格后放行")
+        raise HTTPException(
+            409, "本批巡检不合格，整批暂停转出；请由检验班组长在质量反馈中确认处理并手动解除锁定"
+        )
 
 
 def held_quantity(db, root_id, *, lock=False):
@@ -138,8 +163,8 @@ def held_quantity(db, root_id, *, lock=False):
 
 def recheck_context(db, inspection_id):
     row = db.get(Inspection, inspection_id)
-    if row is None or row.parent_id or row.released_at or not row.failed_quantity:
-        raise HTTPException(409, "待处理巡检已变化，请刷新后重试")
+    if row is None or row.parent_id or not row.failed_quantity:
+        raise HTTPException(409, "请选择原不合格检查记录")
     lot = db.get(MaterialTransfer, row.source_transfer_id)
     balance = db.get(MaterialStockBalance, lot.id)
     return dict(
@@ -149,11 +174,15 @@ def recheck_context(db, inspection_id):
         batch_no=lot.batch_no,
         material_name=lot.material_name,
         specification=lot.transfer_specification,
-        quantity=held_quantity(db, lot.id),
-        revision=balance.revision,
-        hold_id=row.id,
+        quantity=balance.on_hand_quantity if balance else 0,
+        revision=balance.revision if balance else 0,
+        hold_id=hold_column_value(db, lot.id),
         processing_status="complete",
     )
+
+
+def hold_column_value(db, lot_id):
+    return db.scalar(select(hold_column(lot_id)))
 
 
 def record_dict(row, lot, team):
@@ -161,7 +190,7 @@ def record_dict(row, lot, team):
         "released"
         if row.released_at
         else "pending"
-        if row.failed_quantity and not row.parent_id
+        if row.failed_quantity and not row.parent_id and row.blocks_outbound
         else "failed"
         if row.failed_quantity
         else "passed"
@@ -185,6 +214,20 @@ def record_dict(row, lot, team):
         passed_quantity=row.sample_quantity - row.failed_quantity,
         failed_quantity=row.failed_quantity,
         status=status,
+        kind=row.kind,
+        scope=row.scope,
+        methods=row.methods or [],
+        items=row.items or [],
+        dimension_result=row.dimension_result or "",
+        weight_result=row.weight_result or "",
+        blocks_outbound=bool(row.blocks_outbound and not row.released_at and row.failed_quantity),
+        feedback_status=row.feedback_status,
+        disposition=row.disposition,
+        decision_notes=row.decision_notes or "",
+        feedback_version=row.feedback_version,
+        quality_issue_id=(row.parent_id or row.id)
+        if row.failed_quantity or row.parent_id
+        else None,
         notes=row.notes,
         parent_id=row.parent_id,
         released_at=row.released_at.replace(tzinfo=timezone.utc).isoformat()
@@ -201,7 +244,7 @@ def create(db, payload, user):
 
     actor_team = _require_team_actor(user)
     if actor_team.code != INSPECTION_TEAM_CODE:
-        raise HTTPException(403, "仅检验班组可登记巡检与复检放行")
+        raise HTTPException(403, "仅检验班组可登记巡检和检验结果")
     digest = stock.fingerprint(payload)
 
     def replay(row):
@@ -227,6 +270,8 @@ def create(db, payload, user):
             target = stock.require_team(db, lot.next_team_id)
             if not target.active or target.code not in PROCESSING_TEAM_CODES:
                 raise HTTPException(422, "请选择生产班组的已加工在库批次")
+            if payload.kind == "inspection" and target.id != actor_team.id:
+                raise HTTPException(422, "检验登记请选择检验班组的在库批次")
             balance = db.scalar(
                 select(MaterialStockBalance)
                 .where(MaterialStockBalance.transfer_id == lot.id)
@@ -235,16 +280,27 @@ def create(db, payload, user):
             )
             if balance is None or balance.revision != payload.expected_revision:
                 raise HTTPException(409, "库存已变化，请重新选择巡检批次")
-            hold = lock_hold(db, lot.id)
-            if hold is not None and payload.parent_id != hold.id:
-                raise HTTPException(409, "本批已有待处理巡检，请从该记录发起复检")
-            if payload.parent_id is not None and (
-                hold is None or hold.id != payload.parent_id or hold.source_transfer_id != lot.id
+            parent = db.get(Inspection, payload.parent_id) if payload.parent_id else None
+            if payload.parent_id and (
+                parent is None
+                or parent.parent_id
+                or not parent.failed_quantity
+                or parent.kind != payload.kind
             ):
-                raise HTTPException(409, "请从原巡检记录复检整批返工物料")
-            quantity = held_quantity(db, lot.id, lock=True) if hold else balance.on_hand_quantity
-            if payload.sample_quantity > quantity:
-                raise HTTPException(422, "抽检件数超过本批当前在库件数")
+                raise HTTPException(409, "复检必须关联本批次的原不合格检查")
+            if parent:
+                family = relatives([parent.source_transfer_id], name="recheck_family")
+                if not db.scalar(select(family.c.id).where(family.c.id == lot.id)):
+                    raise HTTPException(409, "复检批次不属于原检查物料的后续批次")
+            quantity = balance.on_hand_quantity
+            if quantity <= 0 or payload.sample_quantity > quantity:
+                raise HTTPException(422, "检查件数超过本批当前在库件数，请选择现存批次")
+            if payload.scope == "full" and payload.sample_quantity != quantity:
+                raise HTTPException(422, "全检件数须等于当前在库件数")
+            for team_id in payload.involved_team_ids:
+                involved = db.get(Team, team_id)
+                if involved is None or not involved.active:
+                    raise HTTPException(422, "问题涉及班组不存在或已停用")
             progress = registered_lots(target.id)
             registered = db.execute(
                 select(progress.c.processing_status, progress.c.latest_id).where(
@@ -252,26 +308,21 @@ def create(db, payload, user):
                 )
             ).first()
             state = registered.processing_status if registered else None
-            if state not in ("complete", "partial", "registered"):
+            if payload.kind == "patrol" and state not in ("complete", "partial", "registered"):
                 raise HTTPException(422, "只能抽检已登记加工的物料")
             now = utcnow()
             if payload.checked_at.replace(tzinfo=None) > now:
-                raise HTTPException(422, "巡检时间不能晚于当前时间")
+                raise HTTPException(422, "检查时间不能晚于当前时间")
             if lot.received_at and payload.checked_at.replace(tzinfo=None) < lot.received_at:
-                raise HTTPException(422, "巡检时间不能早于本批入库时间")
+                raise HTTPException(422, "检查时间不能早于本批入库时间")
             employee = require_team_employee(
-                db, actor_team.id, payload.inspector_employee_id, "巡检人"
+                db, actor_team.id, payload.inspector_employee_id, "检验人"
             )
-            # The inherited root hold above remains authoritative through rework.
-            if hold is not None and payload.parent_id != hold.id:
-                raise HTTPException(409, "本批已有待处理巡检，请从该记录发起复检")
-            if payload.parent_id is not None and (hold is None or hold.id != payload.parent_id):
-                raise HTTPException(409, "待处理巡检已变化，请刷新后重试")
-            if hold and payload.checked_at.replace(tzinfo=None) < hold.checked_at:
-                raise HTTPException(422, "复检时间不能早于原巡检")
+            if parent and payload.checked_at.replace(tzinfo=None) < parent.checked_at:
+                raise HTTPException(422, "复检时间不能早于原检查")
             work = (
                 db.get(MaterialQuantityAdjustment, registered.latest_id)
-                if registered.latest_id
+                if registered and registered.latest_id
                 else None
             )
             row = Inspection(
@@ -286,6 +337,13 @@ def create(db, payload, user):
                 batch_quantity=quantity,
                 sample_quantity=payload.sample_quantity,
                 failed_quantity=payload.failed_quantity,
+                kind=payload.kind,
+                scope=payload.scope,
+                methods=payload.methods,
+                items=payload.items,
+                dimension_result=payload.dimension_result.strip(),
+                weight_result=payload.weight_result.strip(),
+                blocks_outbound=False,
                 notes=payload.notes.strip(),
                 parent_id=payload.parent_id,
                 idempotency_key=payload.idempotency_key,
@@ -295,13 +353,20 @@ def create(db, payload, user):
                 created_at=now,
             )
             db.add(row)
-            if hold and payload.failed_quantity == 0:
-                hold.released_at = now
+            db.flush()
+            # A recheck belongs to the original issue; it does not create another defect count.
+            if payload.failed_quantity and not parent:
+                db.add_all(
+                    [
+                        InspectionFeedbackTeam(inspection_id=row.id, team_id=i)
+                        for i in payload.involved_team_ids
+                    ]
+                )
             db.flush()
             db.add(
                 MaterialTransferEvent(
                     transfer_id=lot.id,
-                    action="inspection_rechecked" if hold else "inspection_recorded",
+                    action="inspection_rechecked" if parent else "inspection_recorded",
                     actor=actor_name(user),
                     actor_user_id=user.id,
                     occurred_at=now,
@@ -314,7 +379,13 @@ def create(db, payload, user):
                                 sample=payload.sample_quantity,
                                 failed=payload.failed_quantity,
                                 parent_id=payload.parent_id,
-                                released=bool(hold and payload.failed_quantity == 0),
+                                released=False,
+                                blocks_outbound=False,
+                                kind=payload.kind,
+                                scope=payload.scope,
+                                methods=payload.methods,
+                                items=payload.items,
+                                involved_team_ids=payload.involved_team_ids,
                             ),
                         }
                     },
@@ -340,6 +411,8 @@ def list_records(
     query=None,
     inspector_id=None,
     status=None,
+    kind=None,
+    scope=None,
     date_from=None,
     date_to=None,
     page=1,
@@ -352,16 +425,19 @@ def list_records(
     )
     for column, value in (
         (Inspection.team_id, team_id),
+        (Inspection.kind, kind),
+        (Inspection.scope, scope),
         (Inspection.inspector_employee_id, inspector_id),
     ):
         if value is not None:
             conditions.append(column == value)
     if source_transfer_id is not None:
-        physical = db.get(MaterialTransfer, source_transfer_id)
-        ids = [source_transfer_id]
-        if physical and physical.inspection_hold_root_id:
-            ids.append(physical.inspection_hold_root_id)
-        conditions.append(Inspection.source_transfer_id.in_(ids))
+        ancestry = relatives([source_transfer_id], ancestors=True, name="inspection_ancestry")
+        ancestors = select(ancestry.c.id)
+        roots = select(Inspection.id).where(Inspection.source_transfer_id.in_(ancestors))
+        conditions.append(
+            or_(Inspection.source_transfer_id.in_(ancestors), Inspection.parent_id.in_(roots))
+        )
     if query and query.strip():
         conditions.append(
             literal_query(
@@ -381,7 +457,7 @@ def list_records(
     elif status == "passed":
         conditions.append(Inspection.failed_quantity == 0)
     elif status == "failed":
-        conditions.extend((Inspection.parent_id.is_not(None), Inspection.failed_quantity > 0))
+        conditions.append(Inspection.failed_quantity > 0)
     stmt = (
         select(Inspection, MaterialTransfer, Team)
         .join(MaterialTransfer, MaterialTransfer.id == Inspection.source_transfer_id)
@@ -399,11 +475,15 @@ def list_records(
     )
 
 
-def list_sources(db, team_id, query=None, page=1, page_size=20):
+def list_sources(
+    db, team_id, query=None, page=1, page_size=20, kind="patrol", recheck_id=None, group_id=None
+):
     from .material_stock import literal_query
     from .processing_records import registered_lots, require_processing_team
 
-    require_processing_team(db, team_id)
+    team = require_processing_team(db, team_id)
+    if kind == "inspection" and team.code != INSPECTION_TEAM_CODE:
+        raise HTTPException(422, "检验登记请选择检验班组库存")
     registered = registered_lots(team_id)
     stmt = (
         select(
@@ -413,13 +493,40 @@ def list_sources(db, team_id, query=None, page=1, page_size=20):
             hold_column(MaterialTransfer.id).label("hold_id"),
         )
         .join(MaterialStockBalance, MaterialStockBalance.transfer_id == MaterialTransfer.id)
-        .join(registered, registered.c.lot_id == MaterialTransfer.id)
+        .outerjoin(registered, registered.c.lot_id == MaterialTransfer.id)
         .where(
             MaterialStockBalance.team_id == team_id,
             MaterialStockBalance.on_hand_quantity > 0,
-            registered.c.processing_status.in_(("complete", "partial", "registered")),
+            registered.c.processing_status.in_(("complete", "partial", "registered"))
+            if kind == "patrol"
+            else True,
         )
     )
+    if recheck_id:
+        root = db.get(Inspection, recheck_id)
+        if root is None or root.parent_id or not root.failed_quantity or root.kind != kind:
+            raise HTTPException(422, "请选择原不合格检查")
+        family = relatives([root.source_transfer_id], name="recheck_sources")
+        stmt = stmt.where(MaterialTransfer.id.in_(select(family.c.id)))
+    if group_id is not None:
+        from .warehouse_inventory import group_conditions, origin_columns
+
+        origins = origin_columns()
+        anchor = (
+            db.execute(
+                select(*(column.label(name) for name, column in origins.items())).where(
+                    MaterialTransfer.id == group_id,
+                    MaterialTransfer.next_team_id == team_id,
+                    MaterialTransfer.status == "received",
+                    MaterialTransfer.stock_tracked.is_(True),
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if anchor is None:
+            raise HTTPException(404, "未找到本班组库存来源")
+        stmt = stmt.where(*group_conditions(origins, anchor))
     if query and query.strip():
         stmt = stmt.where(
             literal_query(

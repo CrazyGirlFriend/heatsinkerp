@@ -11,11 +11,13 @@ from threading import Lock
 from time import monotonic
 from uuid import uuid4
 
-from sqlalchemy import event, inspect
+from sqlalchemy import event, inspect, select
 from sqlalchemy.orm import Session
 
 from .models import (
     AuthSession,
+    InspectionFeedbackEvent,
+    InspectionFeedbackTeam,
     MaterialDispatch,
     MaterialInspection,
     MaterialLoss,
@@ -166,6 +168,8 @@ WATCHED = (
     MaterialLoss,
     MaterialQuantityAdjustment,
     MaterialInspection,
+    InspectionFeedbackTeam,
+    InspectionFeedbackEvent,
     MaterialDispatch,
     SerialUrgency,
     SerialDeliveryPlan,
@@ -205,6 +209,16 @@ def affected_teams(row):
 
 
 def change_for(row, db):
+    if isinstance(row, InspectionFeedbackEvent):
+        teams = set(
+            db.scalars(
+                select(InspectionFeedbackTeam.team_id).where(
+                    InspectionFeedbackTeam.inspection_id == row.inspection_id
+                )
+            )
+        )
+        teams.update(affected_teams(row) or ())
+        return InventoryChange(team_ids=frozenset(teams))
     if (
         isinstance(row, WarehouseLocation)
         and row not in db.new

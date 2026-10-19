@@ -24,6 +24,9 @@ import TeamWorkspaceActions from '@/components/TeamWorkspaceActions.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
 import TeamMaterialOverviewPanel from '@/components/TeamMaterialOverview.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
+import InspectionRegistrationDialog from '@/components/InspectionRegistrationDialog.vue'
+import TeamQualityFeedback from '@/components/TeamQualityFeedback.vue'
+import { qualityFeedbackApi } from '@/services/qualityFeedbackApi'
 import TeamInspectionRecords from '@/components/TeamInspectionRecords.vue'
 import TeamProcessingRecords from '@/components/TeamProcessingRecords.vue'
 import ProcessingBatchPicker from '@/components/ProcessingBatchPicker.vue'
@@ -127,6 +130,30 @@ const isWarehouse = computed(
     team.value?.kind === 'warehouse',
 )
 const canManageWarehouse = computed(() => isWarehouse.value && (auth.isAdmin || canWrite.value))
+const overview = ref<TeamMaterialOverview | null>(null)
+const qualityCount = ref(0)
+watch(
+  () => [teamId.value, team.value?.code, overview.value] as const,
+  async ([id], _, onCleanup) => {
+    let current = true
+    onCleanup(() => {
+      current = false
+    })
+    qualityCount.value = 0
+    if (!id) return
+    try {
+      const result = await qualityFeedbackApi.records({
+        team_id: team.value?.code === 'FACTORY-QC' ? undefined : id,
+        page: 1,
+        page_size: 1,
+      })
+      if (current) qualityCount.value = result.pending_count
+    } catch {
+      /* The feedback page provides retry and error details. */
+    }
+  },
+  { immediate: true },
+)
 const hasProcessing = computed(() => scopeReady.value && teamCanProcess(team.value))
 const canReceive = computed(
   () => isWarehouse.value && canWrite.value && auth.currentUser?.active !== false,
@@ -143,6 +170,7 @@ const tab = computed(() =>
     canManageWarehouse.value,
     teamCanReallocate(team.value),
     hasProcessing.value,
+    team.value?.code === 'FACTORY-QC',
   ),
 )
 const fullscreen = ref(false)
@@ -395,7 +423,6 @@ function resetListFilters() {
   statusDraft.value = ''
   nextTeamDraft.value = ''
 }
-const overview = ref<TeamMaterialOverview | null>(null)
 const pendingCount = computed(() =>
   scopeReady.value && overview.value && Number(overview.value.team_id) === teamId.value
     ? isWarehouse.value
@@ -418,6 +445,17 @@ const receipts = ref<MaterialTransfer[]>([])
 const reallocations = ref<MaterialTransfer[]>([])
 const receiptOpen = ref(false)
 const businessOpen = ref(false)
+const inspectionOpen = ref(false),
+  inspectionGroupId = ref<number>()
+function openInspection(groupId?: number) {
+  if (!canWrite.value || team.value?.code !== 'FACTORY-QC') return
+  inspectionGroupId.value = groupId
+  inspectionOpen.value = true
+}
+function inspectionSaved() {
+  inspectionOpen.value = false
+  void loadView()
+}
 const processingPickerOpen = ref(false),
   processingGroupId = ref<number | undefined>()
 const openingProcessing = ref(0)
@@ -638,6 +676,7 @@ function closeDetails() {
   receiptOpen.value = false
   actionSources.value = []
   processingPickerOpen.value = processingOpen.value = false
+  inspectionOpen.value = false
   openingProcessing.value = 0
   processingSourceId.value = null
 }
@@ -1021,6 +1060,8 @@ onBeforeUnmount(() => {
     :manage-warehouse="canManageWarehouse"
     :reallocations="teamCanReallocate(team)"
     :processing="hasProcessing"
+    :inspection="team?.code === 'FACTORY-QC'"
+    :quality-count="qualityCount"
     :pending-count="pendingCount"
     :exportable="exportable"
     @export="openExport"
@@ -1098,6 +1139,20 @@ onBeforeUnmount(() => {
           @dispatch="dispatchWarehouseMaterial"
           @batch-dispatch="dispatchWarehouseBatches"
         />
+        <TeamQualityFeedback
+          v-else-if="tab === 'quality-feedback'"
+          :key="teamId"
+          :team-id="teamId"
+          :show-all="team?.code === 'FACTORY-QC'"
+          @count="qualityCount = $event"
+        />
+        <TeamInspectionRecords
+          v-else-if="tab === 'inspection-results'"
+          :key="`inspection-${teamId}`"
+          :team-id="teamId"
+          kind="inspection"
+          :fullscreen="fullscreen"
+        />
         <TeamInspectionRecords
           v-else-if="tab === 'inspections'"
           :key="teamId"
@@ -1141,6 +1196,8 @@ onBeforeUnmount(() => {
             :processing="hasProcessing"
             :processing-loading-group-id="openingProcessing ? processingGroupId : undefined"
             @process="openProcessing"
+            :inspection="team?.code === 'FACTORY-QC'"
+            @inspect="openInspection"
             @reallocate="openReallocation"
             @refresh="loadView"
             @changed="loadView"
@@ -1817,6 +1874,14 @@ onBeforeUnmount(() => {
       </template>
     </div>
     <template #dialogs>
+      <InspectionRegistrationDialog
+        v-if="inspectionOpen && canWrite"
+        :inspection-team-id="teamId"
+        :group-id="inspectionGroupId"
+        kind="inspection"
+        @close="inspectionOpen = false"
+        @saved="inspectionSaved"
+      />
       <ProcessingBatchPicker
         v-if="processingPickerOpen && canWrite && hasProcessing"
         :team-id="teamId"

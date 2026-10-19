@@ -3,7 +3,10 @@ import type { MaterialTransfer } from './materialTransfer'
 export interface TraceBatch extends MaterialTransfer {
   context_only?: boolean
   inspection_hold_id?: number | null
-  inspection_status?: 'held' | 'released' | 'passed' | null
+  inspection_status?: 'held' | 'released' | 'passed' | 'failed' | null
+  inspection_scope?: 'sample' | 'full' | null
+  inspection_sample_quantity?: number | null
+  inspection_failed_quantity?: number | null
   inspection_source_batch_no?: string | null
   inspection_checked_at?: string | null
   inspection_inspector?: string | null

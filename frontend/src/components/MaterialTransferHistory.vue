@@ -29,11 +29,13 @@ const actions = {
   quantity_changed: '加工件数变更',
   reallocated: '流水号转投',
   processed: '本班组加工实物登记',
-  inspection_recorded: '现场巡检登记',
-  inspection_rechecked: '复检与放行',
+  inspection_recorded: '检查登记',
+  inspection_rechecked: '复检登记',
+  quality_feedback: '质量反馈',
 }
 const labels: Record<string, string> = {
-  inspection: '巡检结果',
+  inspection: '检查结果',
+  quality_feedback: '质量反馈',
   work_kind: '加工性质',
   rework_of_id: '关联原加工记录',
   rework_round: '返工次数',
@@ -182,8 +184,20 @@ function valueText(field: string, value: unknown): string {
   if (value == null || value === '') return '—'
   if (field === 'work_kind') return value === 'rework' ? '返工' : '首次加工'
   if (field === 'inspection' && typeof value === 'object') {
-    const result = value as { inspector: string; sample: number; failed: number; released: boolean }
-    return `${result.inspector} · 抽检 ${result.sample} 件 · 不合格 ${result.failed} 件${result.released ? ' · 已复检放行' : result.failed > 0 ? ' · 整批暂停转出' : ''}`
+    const result = value as {
+      inspector: string
+      sample: number
+      failed: number
+      released: boolean
+      blocks_outbound?: boolean
+      scope?: string
+      kind?: string
+    }
+    return `${result.inspector} · ${result.scope === 'full' ? '全检' : '抽检'} ${result.sample} 件 · 不合格 ${result.failed} 件${result.released ? ' · 历史锁定已解除' : result.blocks_outbound ? ' · 历史巡检锁定' : ''}`
+  }
+  if (field === 'quality_feedback' && typeof value === 'object') {
+    const record = value as { issue_id: number; notes?: string }
+    return `问题 #${record.issue_id} · ${record.notes || '已记录处理操作'}`
   }
   if (field === 'entry_kind')
     return materialEntryLabel(String(value) as MaterialTransfer['entry_kind'])

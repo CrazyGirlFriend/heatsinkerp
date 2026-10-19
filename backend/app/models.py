@@ -763,7 +763,7 @@ class AuthSession(Base):
 
 
 class MaterialInspection(Base):
-    """On-site sampling; failed root checks hold their lot until a passing recheck."""
+    """Inspection facts; disposition and legacy hold release are explicit decisions."""
 
     __tablename__ = "material_inspections"
     __table_args__ = (
@@ -773,6 +773,8 @@ class MaterialInspection(Base):
         ),
         Index("ix_inspection_team_checked", "team_id", "checked_at", "id"),
         Index("ix_inspection_checked", "checked_at", "id"),
+        Index("ix_inspection_kind_checked", "kind", "checked_at", "id"),
+        Index("ix_inspection_feedback_status", "feedback_status", "checked_at", "id"),
         Index("ix_inspection_lot_hold", "source_transfer_id", "parent_id", "released_at"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -793,6 +795,22 @@ class MaterialInspection(Base):
     batch_quantity: Mapped[int] = mapped_column(Integer)
     sample_quantity: Mapped[int] = mapped_column(Integer)
     failed_quantity: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(16), default="patrol", server_default="patrol")
+    scope: Mapped[str] = mapped_column(String(16), default="sample", server_default="sample")
+    methods: Mapped[list | None] = mapped_column(JSON)
+    items: Mapped[list | None] = mapped_column(JSON)
+    dimension_result: Mapped[str | None] = mapped_column(Text, default="")
+    weight_result: Mapped[str | None] = mapped_column(Text, default="")
+    # Existing holds survive migration. New inspections explicitly set this false.
+    blocks_outbound: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    feedback_status: Mapped[str] = mapped_column(
+        String(16), default="pending", server_default="pending"
+    )
+    disposition: Mapped[str] = mapped_column(
+        String(16), default="pending", server_default="pending"
+    )
+    decision_notes: Mapped[str | None] = mapped_column(Text, default="")
+    feedback_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     notes: Mapped[str] = mapped_column(Text, default="")
     parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("material_inspections.id", ondelete="RESTRICT")
@@ -805,6 +823,34 @@ class MaterialInspection(Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class InspectionFeedbackTeam(Base):
+    __tablename__ = "inspection_feedback_teams"
+    inspection_id: Mapped[int] = mapped_column(
+        ForeignKey("material_inspections.id", ondelete="RESTRICT"), primary_key=True
+    )
+    team_id: Mapped[int] = mapped_column(
+        ForeignKey("teams.id", ondelete="RESTRICT"), primary_key=True, index=True
+    )
+
+
+class InspectionFeedbackEvent(Base):
+    __tablename__ = "inspection_feedback_events"
+    __table_args__ = (Index("ix_feedback_event_issue", "inspection_id", "id"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    inspection_id: Mapped[int] = mapped_column(
+        ForeignKey("material_inspections.id", ondelete="RESTRICT")
+    )
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
+    kind: Mapped[str] = mapped_column(String(16))
+    notes: Mapped[str] = mapped_column(Text)
+    details: Mapped[dict | None] = mapped_column(JSON)
+    actor: Mapped[str] = mapped_column(String(80))
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    idempotency_key: Mapped[str] = mapped_column(String(100), unique=True)
+    request_hash: Mapped[str] = mapped_column(String(64))
 
 
 # Register ledger/outbox hooks for HTTP and maintenance ORM writers alike.

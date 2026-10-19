@@ -1,4 +1,4 @@
-"""Sampling holds physical lots without manufacturing stock or production."""
+"""Quality checks and feedback preserve physical stock and production totals."""
 
 from datetime import datetime, timezone
 
@@ -37,85 +37,115 @@ def inspection(client, warehouse):
             checked_at=datetime.now(timezone.utc).isoformat(),
             sample_quantity=5,
             failed_quantity=1,
+            methods=["visual"],
+            items=["appearance"],
+            involved_team_ids=[s["other"]["id"]],
             idempotency_key="inspection-one",
         ),
     )
 
 
-def test_failed_sample_holds_whole_lot_and_passing_recheck_releases(client, inspection):
-    s, lot, headers, body = inspection
-    before = client.get(base(s, True) + "/overview").json()["totals"]
-    first = client.post("/api/inspections", headers=headers, json=body)
-    assert first.status_code == 201, first.text
-    root = first.json()
-    assert (
-        root["status"] == "pending"
-        and root["passed_quantity"] == 4
-        and root["batch_quantity"] == 10
-    )
-    assert client.post("/api/inspections", headers=headers, json=body).json() == root
-    overview = client.get(base(s, True) + "/overview").json()
-    assert overview["totals"] == {**before, "available_quantity": 0, "available_weight": 0}
-    for category in ("materials", "material_types"):
-        assert overview[category][0]["on_hand_quantity"] == 10
-        assert overview[category][0]["on_hand_weight"] == 100
-        assert overview[category][0]["available_quantity"] == 0
-        assert overview[category][0]["available_weight"] == 0
-    assert client.get(base(s, True) + "/stock?availability=available").json()["total"] == 0
-    stock = client.get(base(s, True) + "/stock?availability=all").json()["items"]
-    assert (
-        next(row for row in stock if row["transfer"]["id"] == lot["id"])["inspection_hold_id"]
-        == root["id"]
-    )
-    group = client.get(base(s, True) + "/inventory").json()["items"][0]
-    assert group["inspection_hold_count"] == 1
-    lines = [dict(source_transfer_id=lot["id"], quantity=1, weight=10)]
-    assert dispatch(client, s, lines, workshop=True).status_code == 409
-    reallocation = client.post(
-        base(s, True) + "/serial-reallocations",
-        headers=s["other_headers"],
+def create_check(client, inspection, **overrides):
+    _, _, headers, body = inspection
+    return client.post("/api/inspections", headers=headers, json={**body, **overrides})
+
+
+def decide(client, headers, row, **extra):
+    return client.post(
+        f"/api/quality-feedback/{row['id']}/decision",
+        headers=headers,
         json=dict(
-            source_transfer_id=lot["id"],
-            serial_no="OTHER",
-            quantity=1,
-            weight=10,
-            idempotency_key="held-reallocate",
+            expected_version=row["feedback_version"],
+            disposition="other",
+            status="processing",
+            involved_team_ids=[row["team_id"]],
+            idempotency_key="decision-one",
+            **extra,
         ),
     )
-    assert reallocation.status_code == 409
+
+
+def test_failed_sample_creates_one_shared_problem_without_changing_stock(client, inspection):
+    s, lot, headers, body = inspection
+    before = client.get(base(s, True) + "/overview").json()["totals"]
+    created = create_check(
+        client, inspection, involved_team_ids=[s["team"]["id"], s["other"]["id"]]
+    )
+    assert created.status_code == 201, created.text
+    row = created.json()
     assert (
-        client.post(
-            "/api/inspections",
-            headers=headers,
-            json={**body, "failed_quantity": 0, "idempotency_key": "not-a-recheck"},
-        ).status_code
-        == 409
+        row["failed_quantity"] == 1 and row["passed_quantity"] == 4 and row["batch_quantity"] == 10
     )
-    failed = client.post(
-        "/api/inspections",
-        headers=headers,
-        json={**body, "parent_id": root["id"], "idempotency_key": "failed-recheck"},
-    )
-    assert failed.status_code == 201 and failed.json()["status"] == "failed"
-    assert dispatch(client, s, lines, workshop=True).status_code == 409
-    passed = client.post(
-        "/api/inspections",
-        headers=headers,
-        json={
-            **body,
-            "parent_id": root["id"],
-            "failed_quantity": 0,
-            "idempotency_key": "passing-recheck",
-        },
-    )
-    assert passed.status_code == 201, passed.text
+    assert row["status"] == "failed" and not row["blocks_outbound"]
     assert client.get(base(s, True) + "/overview").json()["totals"] == before
-    assert client.get("/api/inspections", params={"status": "pending"}).json()["total"] == 0
-    assert client.get("/api/inspections", params={"status": "released"}).json()["total"] == 1
-    assert client.get("/api/inspections", params={"query": "巡检员李"}).json()["total"] == 3
-    assert dispatch(client, s, lines, workshop=True).status_code == 201
-    records = client.get(base(s, True) + "/processing-records").json()
-    assert records["summary"]["completed_quantity"] == 10 and records["total"] == 1
+    for h in (headers, s["headers"], s["other_headers"]):
+        issues = client.get("/api/quality-feedback", headers=h).json()
+        assert issues["total"] == 1 and issues["pending_count"] == 1
+        assert len(issues["items"][0]["involved_teams"]) == 2
+    from app.inventory_events import change_for
+    from app.models import InspectionFeedbackEvent
+
+    with SessionLocal() as db:
+        change = change_for(
+            InspectionFeedbackEvent(inspection_id=row["id"], team_id=s["other"]["id"]), db
+        )
+        assert change.team_ids == {s["team"]["id"], s["other"]["id"]}
+    assert (
+        client.get(base(s, True) + "/processing-records").json()["summary"]["completed_quantity"]
+        == 10
+    )
+    assert (
+        dispatch(
+            client, s, [dict(source_transfer_id=lot["id"], quantity=1, weight=10)], workshop=True
+        ).status_code
+        == 201
+    )
+
+
+def test_permissions_feedback_decision_and_recheck_are_independent(client, inspection):
+    s, lot, headers, body = inspection
+    root = create_check(client, inspection).json()
+    rid = root["id"]
+    response = client.post(
+        f"/api/quality-feedback/{rid}/reply",
+        headers=s["other_headers"],
+        json=dict(
+            notes="本班组已核查，待确认处理", expected_version=0, idempotency_key="reply-one"
+        ),
+    )
+    assert response.status_code == 200, response.text
+    row = response.json()
+    assert row["feedback_status"] == "processing" and row["feedback_version"] == 1
+    assert row["involved_teams"][0]["replied"]
+    assert decide(client, s["other_headers"], row).status_code == 403
+    assert (
+        decide(client, {}, row).status_code == 403
+    )  # administrator reads but cannot impersonate QC
+    assert client.get(f"/api/quality-feedback/{rid}", headers=s["headers"]).status_code == 404
+    assert (
+        client.get(
+            "/api/quality-feedback", headers=s["headers"], params={"team_id": s["other"]["id"]}
+        ).json()["total"]
+        == 0
+    )
+    selected = decide(client, headers, row)
+    assert selected.status_code == 200, selected.text
+    assert selected.json()["feedback_status"] == "processing"
+    assert decide(client, headers, row).status_code == 200  # idempotent replay
+    assert decide(client, headers, root, notes="stale").status_code == 409
+    rechecked = create_check(
+        client,
+        inspection,
+        parent_id=rid,
+        failed_quantity=0,
+        involved_team_ids=[],
+        idempotency_key="recheck",
+    )
+    assert rechecked.status_code == 201, rechecked.text
+    saved = client.get(f"/api/quality-feedback/{rid}", headers=headers).json()
+    assert saved["failed_quantity"] == 1 and saved["feedback_status"] == "processing"
+    assert len(saved["rechecks"]) == 1 and saved["rechecks"][0]["failed_quantity"] == 0
+    assert client.get("/api/quality-feedback", headers=headers).json()["total"] == 1
 
 
 @pytest.mark.parametrize(
@@ -128,283 +158,148 @@ def test_failed_sample_holds_whole_lot_and_passing_recheck_releases(client, insp
         dict(expected_revision=999),
         dict(checked_at="2099-01-01T00:00:00Z"),
         dict(checked_at="2026-10-19T00:00:00"),
+        dict(scope="full", sample_quantity=5),
+        dict(methods=[]),
+        dict(items=[]),
+        dict(methods=["visual", "visual"]),
+        dict(involved_team_ids=[]),
+        dict(involved_team_ids=[99999]),
+        dict(kind="inspection"),
+        dict(blocks_outbound=True),
     ],
 )
-def test_invalid_inspection_cannot_create_a_hold(client, inspection, change):
-    s, lot, headers, body = inspection
-    response = client.post("/api/inspections", headers=headers, json={**body, **change})
+def test_invalid_inspection_cannot_write_stock_or_feedback(client, inspection, change):
+    response = create_check(client, inspection, **change)
     assert response.status_code in (422, 409), response.text
     assert client.get("/api/inspections").json()["total"] == 0
+    assert client.get("/api/quality-feedback").json()["total"] == 0
 
 
-def test_only_qc_personnel_and_processed_lots_can_be_inspected(client, inspection):
-    s, lot, headers, body = inspection
-    assert client.post("/api/inspections", headers=s["other_headers"], json=body).status_code == 403
-    assert client.post("/api/inspections", json=body).status_code == 403
-    wrong_person = client.get(base(s, True) + "/employees").json()[0]
-    assert (
-        client.post(
-            "/api/inspections",
-            headers=headers,
-            json={**body, "inspector_employee_id": wrong_person["id"]},
-        ).status_code
-        == 422
-    )
-    sources = client.get("/api/inspections/sources", params={"team_id": s["other"]["id"]}).json()
-    assert sources["total"] == 1 and sources["items"][0]["source_transfer_id"] == lot["id"]
-    assert (
-        client.get("/api/inspections/sources", params={"team_id": s["team"]["id"]}).status_code
-        == 422
-    )
-
-
-def test_hold_cannot_be_bypassed_and_other_lots_are_unaffected(client, inspection):
-    from test_quantity_adjustments import change
-
-    s, lot, headers, body = inspection
-    registered = client.post("/api/inspections", headers=headers, json=body)
-    assert registered.status_code == 201
-    original = registered.json()
-    assert original["processing_record_id"] and original["processor_name"]
-    assert change(client, s, lot, 20, workshop=True, key="held-count-change").status_code == 409
-    fresh, employee = setup_lot(client, s, idempotency_key="another-material")
-    allowed = dispatch(
-        client,
-        s,
-        [dict(source_transfer_id=fresh["id"], quantity=1, weight=10)],
-        workshop=True,
-        idempotency_key="other-out",
-    )
-    assert allowed.status_code == 201, allowed.text
-    # Ordinary incoming, unprocessed stock cannot be claimed as sampled processed work.
-    current = client.get(base(s, True) + f"/stock/{fresh['id']}/quantity-adjustments").json()
-    denied = client.post(
-        "/api/inspections",
-        headers=headers,
-        json={
-            **body,
-            "source_transfer_id": fresh["id"],
-            "expected_revision": current["revision"],
-            "idempotency_key": "unprocessed",
-        },
-    )
-    assert denied.status_code == 422
-    assert client.get("/api/inspections").json()["total"] == 1
-
-
-def test_rechecks_require_current_hold_and_preserve_original_result(client, inspection):
-    s, lot, headers, body = inspection
-    root = client.post("/api/inspections", headers=headers, json=body).json()
-    assert (
-        client.post(
-            "/api/inspections", headers=headers, json={**body, "failed_quantity": 0}
-        ).status_code
-        == 409
-    )
-    assert (
-        client.post(
-            "/api/inspections",
-            headers=headers,
-            json={**body, "parent_id": root["id"] + 1, "idempotency_key": "wrong-parent"},
-        ).status_code
-        == 409
-    )
-    passing = {
-        **body,
-        "parent_id": root["id"],
-        "failed_quantity": 0,
-        "idempotency_key": "release-one",
-    }
-    released = client.post("/api/inspections", headers=headers, json=passing)
-    assert released.status_code == 201
-    assert client.post("/api/inspections", headers=headers, json=passing).json() == released.json()
-    assert (
-        client.post(
-            "/api/inspections", headers=headers, json={**passing, "idempotency_key": "stale-repeat"}
-        ).status_code
-        == 409
-    )
-    records = client.get("/api/inspections", params={"source_transfer_id": lot["id"]}).json()
-    assert records["total"] == 2
-    saved = next(r for r in records["items"] if r["id"] == root["id"])
-    assert saved["sample_quantity"] == 5 and saved["failed_quantity"] == 1 and saved["released_at"]
-    again = client.post(
-        "/api/inspections", headers=headers, json={**body, "idempotency_key": "second-hold"}
-    )
-    assert again.status_code == 201 and again.json()["status"] == "pending"
-    assert client.get("/api/inspections", params={"status": "pending"}).json()["total"] == 1
-
-
-def test_inspection_search_dates_paging_and_deactivated_person(client, inspection):
-    from datetime import timedelta
-
-    from app.models import MaterialTransferEvent
-    from sqlalchemy import select
-
-    s, lot, headers, body = inspection
-    root = client.post("/api/inspections", headers=headers, json=body).json()
-    history = client.get(
-        "/api/inspections",
-        params={
-            "team_id": s["other"]["id"],
-            "source_transfer_id": lot["id"],
-            "inspector_id": body["inspector_employee_id"],
-            "query": lot["batch_no"],
-            "page_size": 1,
-        },
+def test_formal_qc_full_inspection_does_not_require_processing_or_create_output(client, warehouse):
+    s = warehouse
+    lot, worker = setup_lot(client, s, "FACTORY-QC")
+    context = client.get(base(s, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
+    before = client.get(base(s, True) + "/overview").json()["totals"]
+    sources = client.get(
+        "/api/inspections/sources", params={"team_id": s["other"]["id"], "kind": "inspection"}
     ).json()
-    assert history["total"] == 1 and history["items"][0]["id"] == root["id"]
-    assert client.get("/api/inspections", params={"page": 2, "page_size": 1}).json()["items"] == []
-    assert client.get("/api/inspections", params={"team_id": s["team"]["id"]}).json()["total"] == 0
-    assert client.get("/api/inspections", params={"query": "%"}).json()["total"] == 0
-    assert client.get("/api/inspections", params={"date_from": "2099-01-01"}).json()["total"] == 0
+    assert sources["items"][0]["source_transfer_id"] == lot["id"]
+    grouped = client.get(
+        "/api/inspections/sources",
+        params={"team_id": s["other"]["id"], "kind": "inspection", "group_id": lot["id"]},
+    )
+    assert grouped.status_code == 200, grouped.text
+    assert grouped.json()["items"] == sources["items"]
     assert (
         client.get(
-            "/api/inspections", params={"date_from": "2026-10-02", "date_to": "2026-10-01"}
+            "/api/inspections/sources",
+            params={"team_id": s["other"]["id"], "kind": "inspection", "group_id": 99999},
         ).status_code
-        == 422
+        == 404
     )
-    earlier = (datetime.fromisoformat(body["checked_at"]) - timedelta(seconds=1)).isoformat()
+    payload = dict(
+        source_transfer_id=lot["id"],
+        expected_revision=context["revision"],
+        inspector_employee_id=worker["id"],
+        checked_at=datetime.now(timezone.utc).isoformat(),
+        sample_quantity=10,
+        failed_quantity=2,
+        kind="inspection",
+        scope="full",
+        methods=["visual", "microscope"],
+        items=["appearance", "dimension", "weight"],
+        dimension_result="要求30±0.1 mm，实测30.2 mm",
+        weight_result="要求10 kg，实测9.9 kg",
+        involved_team_ids=[s["team"]["id"]],
+        idempotency_key="qc-full",
+    )
+    response = client.post("/api/inspections", headers=s["other_headers"], json=payload)
+    assert response.status_code == 201, response.text
     assert (
-        client.post(
-            "/api/inspections",
-            headers=headers,
-            json={
-                **body,
-                "parent_id": root["id"],
-                "checked_at": earlier,
-                "idempotency_key": "before-first",
-            },
-        ).status_code
-        == 422
+        client.post("/api/inspections", headers=s["other_headers"], json=payload).json()
+        == response.json()
     )
-    with SessionLocal() as db:
-        db.get(TeamEmployee, body["inspector_employee_id"]).active = False
-        db.commit()
-        events = list(
-            db.scalars(
-                select(MaterialTransferEvent).where(
-                    MaterialTransferEvent.transfer_id == lot["id"],
-                    MaterialTransferEvent.action == "inspection_recorded",
-                )
-            )
-        )
-        assert len(events) == 1 and events[0].changes["inspection"]["after"]["failed"] == 1
-    assert (
-        client.post(
-            "/api/inspections",
-            headers=headers,
-            json={
-                **body,
-                "parent_id": root["id"],
-                "failed_quantity": 0,
-                "idempotency_key": "inactive-inspector",
-            },
-        ).status_code
-        == 422
-    )
-
-
-def test_inspection_migration_matches_model_and_keeps_existing_stock():
-    import importlib.util
-    from pathlib import Path
-
-    from alembic.migration import MigrationContext
-    from alembic.operations import Operations
-    from app.models import MaterialInspection
-    from sqlalchemy import create_engine, inspect
-
-    path = Path(__file__).parents[1] / "alembic/versions/20261019_0039_inspections.py"
-    spec = importlib.util.spec_from_file_location("inspection_migration", path)
-    migration = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migration)
-    engine = create_engine("sqlite://")
-    try:
-        with engine.begin() as conn:
-            for name in (
-                "teams",
-                "team_employees",
-                "users",
-                "material_quantity_adjustments",
-                "material_transfers",
-            ):
-                conn.exec_driver_sql(f"CREATE TABLE {name} (id INTEGER PRIMARY KEY)")
-            conn.exec_driver_sql("INSERT INTO material_transfers VALUES (1)")
-            with Operations.context(MigrationContext.configure(conn)):
-                migration.upgrade()
-                migration.upgrade()
-            schema = inspect(conn)
-            assert {c["name"] for c in schema.get_columns("material_inspections")} == set(
-                MaterialInspection.__table__.columns.keys()
-            )
-            assert (
-                schema.get_check_constraints("material_inspections")[0]["name"]
-                == "ck_inspection_sample"
-            )
-            assert len(schema.get_foreign_keys("material_inspections")) == 7
-            assert conn.exec_driver_sql("SELECT id FROM material_transfers").all() == [(1,)]
-    finally:
-        engine.dispose()
-
-
-def test_increasing_pending_order_obeys_hold(client, inspection):
-    s, lot, headers, body = inspection
-    outgoing = dispatch(
+    assert response.json()["passed_quantity"] == 8
+    assert client.get(base(s, True) + "/overview").json()["totals"] == before
+    assert client.get(base(s, True) + "/processing-records").json()["total"] == 0
+    trace = client.get("/api/material-trace", params={"serial_no": lot["batch_no"]}).json()
+    batch = next(r for r in trace["items"] if r["id"] == lot["id"])
+    assert batch["inspection_status"] == "failed" and batch["inspection_sample_quantity"] == 10
+    external = dispatch(
         client,
         s,
         [dict(source_transfer_id=lot["id"], quantity=1, weight=10)],
         workshop=True,
-        idempotency_key="before-inspection",
-    )
-    assert outgoing.status_code == 201
-    document = outgoing.json()["items"][0]
-    context = client.get(base(s, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
-    root = client.post(
-        "/api/inspections", headers=headers, json={**body, "expected_revision": context["revision"]}
-    )
-    assert root.status_code == 201, root.text
-    increased = client.patch(
-        "/api/material-transfers/" + document["batch_no"],
-        headers=s["other_headers"],
-        json={"quantity": 2, "weight": 20, "expected_version": document["version"]},
-    )
-    assert increased.status_code == 409, increased.text
-
-
-def test_external_shipping_cannot_bypass_a_hold(client, warehouse):
-    s = warehouse
-    lot, employee = setup_lot(client, s, "FACTORY-QC")
-    produced = work(client, s, lot, employee).json()["outputs"][0]
-    context = client.get(base(s, True) + f"/stock/{produced['id']}/quantity-adjustments").json()
-    response = client.post(
-        "/api/inspections",
-        headers=s["other_headers"],
-        json=dict(
-            source_transfer_id=produced["id"],
-            expected_revision=context["revision"],
-            inspector_employee_id=employee["id"],
-            checked_at=datetime.now(timezone.utc).isoformat(),
-            sample_quantity=1,
-            failed_quantity=1,
-            idempotency_key="qc-on-site-check",
-        ),
-    )
-    assert response.status_code == 201, response.text
-    external = dispatch(
-        client,
-        s,
-        [dict(source_transfer_id=produced["id"], quantity=1, weight=10)],
-        workshop=True,
-        idempotency_key="held-external",
+        idempotency_key="qc-manual-shipment",
         entry_kind="inspection_shipment",
         next_team_id=None,
         external_destination="库房成品",
     )
-    assert external.status_code == 409, external.text
+    assert external.status_code == 201, external.text
+
+
+def test_only_qc_can_register_and_employee_must_belong_to_qc(client, inspection):
+    s, lot, headers, body = inspection
+    assert client.post("/api/inspections", headers=s["other_headers"], json=body).status_code == 403
+    assert client.post("/api/inspections", json=body).status_code == 403
+    other = client.get(base(s, True) + "/employees").json()[0]
+    assert create_check(client, inspection, inspector_employee_id=other["id"]).status_code == 422
+    fresh, worker = setup_lot(client, s, idempotency_key="unworked")
+    ctx = client.get(base(s, True) + f"/stock/{fresh['id']}/quantity-adjustments").json()
+    assert (
+        create_check(
+            client, inspection, source_transfer_id=fresh["id"], expected_revision=ctx["revision"]
+        ).status_code
+        == 422
+    )
+
+
+def test_feedback_filters_dates_and_paging(client, inspection):
+    s, lot, headers, body = inspection
+    assert create_check(client, inspection).status_code == 201
+    for params, total in [
+        ({"kind": "patrol"}, 1),
+        ({"kind": "inspection"}, 0),
+        ({"status": "pending"}, 1),
+        ({"query": lot["batch_no"]}, 1),
+        ({"query": "%"}, 0),
+        ({"date_from": "2099-01-01"}, 0),
+    ]:
+        r = client.get("/api/quality-feedback", headers=headers, params=params)
+        assert r.status_code == 200, r.text
+        assert r.json()["total"] == total
+    assert (
+        client.get("/api/quality-feedback", params={"page": 2, "page_size": 1}).json()["items"]
+        == []
+    )
     assert (
         client.get(
-            base(s, True) + "/stock",
-            params={"source_ids": str(produced["id"]), "availability": "all"},
-        ).json()["items"][0]["on_hand_quantity"]
-        == 10
+            "/api/quality-feedback", params={"date_from": "2026-10-02", "date_to": "2026-10-01"}
+        ).status_code
+        == 422
     )
+
+
+def test_legacy_hold_requires_explicit_qc_release_not_a_passing_recheck(client, inspection):
+    from app.models import MaterialInspection
+
+    s, lot, headers, body = inspection
+    root = create_check(client, inspection).json()
+    with SessionLocal() as db:
+        db.get(MaterialInspection, root["id"]).blocks_outbound = True
+        db.commit()
+    lines = [dict(source_transfer_id=lot["id"], quantity=1, weight=10)]
+    assert dispatch(client, s, lines, workshop=True).status_code == 409
+    passed = create_check(
+        client,
+        inspection,
+        parent_id=root["id"],
+        failed_quantity=0,
+        involved_team_ids=[],
+        idempotency_key="pass-no-release",
+    )
+    assert passed.status_code == 201, passed.text
+    assert dispatch(client, s, lines, workshop=True).status_code == 409
+    release = decide(client, headers, root, release_legacy_hold=True)
+    assert release.status_code == 200, release.text
+    assert dispatch(client, s, lines, workshop=True).status_code == 201

@@ -53,6 +53,7 @@ describe('shared workspace navigation', () => {
       '库存明细',
       '来料待签收',
       '入库记录',
+      '质量反馈',
       '出库记录',
       '丢失记录',
       '材质库存',

@@ -78,7 +78,7 @@ def serial_trace(db, serial_no, user):
             select(
                 MaterialTransfer.id,
                 hold_column(MaterialTransfer.id).label("hold_id"),
-                select(func.max(MaterialInspection.id))
+                select(MaterialInspection.id)
                 .where(
                     or_(
                         MaterialInspection.source_transfer_id == MaterialTransfer.id,
@@ -86,6 +86,8 @@ def serial_trace(db, serial_no, user):
                         == MaterialTransfer.inspection_hold_root_id,
                     )
                 )
+                .order_by(MaterialInspection.checked_at.desc(), MaterialInspection.id.desc())
+                .limit(1)
                 .correlate(MaterialTransfer)
                 .scalar_subquery()
                 .label("latest_id"),
@@ -190,13 +192,18 @@ def serial_trace(db, serial_no, user):
         item["inspection_status"] = (
             "held"
             if state.hold_id
-            else "released"
-            if latest_inspection
-            and latest_inspection.parent_id
-            and not latest_inspection.failed_quantity
+            else "failed"
+            if latest_inspection and latest_inspection.failed_quantity
             else "passed"
             if latest_inspection and not latest_inspection.failed_quantity
             else None
+        )
+        item["inspection_scope"] = latest_inspection.scope if latest_inspection else None
+        item["inspection_sample_quantity"] = (
+            latest_inspection.sample_quantity if latest_inspection else None
+        )
+        item["inspection_failed_quantity"] = (
+            latest_inspection.failed_quantity if latest_inspection else None
         )
         item["inspection_source_batch_no"] = (
             batch_numbers.get(latest_inspection.source_transfer_id) if latest_inspection else None

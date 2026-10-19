@@ -19,6 +19,7 @@ import {
   teamWorkspaceProfile,
   teamWorkspaceSections,
   teamCanReallocate,
+  teamCanProcess,
 } from '@/config/teamWorkspaces'
 
 const teamLabel = computed(() =>
@@ -44,6 +45,8 @@ const breadcrumb = computed(() => {
       team?.code === 'FACTORY-WAREHOUSE' && team?.kind === 'warehouse',
       managesWarehouse,
       teamCanReallocate(team),
+      teamCanProcess(team),
+      team?.code === 'FACTORY-QC',
     )
     return [
       '班组工作台',

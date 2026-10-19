@@ -86,9 +86,15 @@ def test_partial_rework_keeps_remaining_as_rework_not_initial_output(client, war
     assert totals["on_hand_quantity"] == 10 and totals["on_hand_weight"] == 100
 
 
-def test_inspection_hold_survives_rework_and_root_recheck_releases_children(client, inspection):
+def test_historical_hold_survives_rework_and_recheck_until_manual_release(client, inspection):
     s, lot, headers, body = inspection
     hold = client.post("/api/inspections", headers=headers, json=body).json()
+    from app.database import SessionLocal
+    from app.models import MaterialInspection
+
+    with SessionLocal() as db:
+        db.get(MaterialInspection, hold["id"]).blocks_outbound = True
+        db.commit()
     worker = client.get(base(s, True) + "/employees").json()[0]
     result = work(client, s, lot, worker, work_kind="rework", idempotency_key="held-rework")
     assert result.status_code == 201, result.text
@@ -104,7 +110,7 @@ def test_inspection_hold_survives_rework_and_root_recheck_releases_children(clie
     trace = client.get("/api/material-trace", params={"serial_no": child["batch_no"]}).json()
     selected = next(row for row in trace["items"] if row["id"] == child["id"])
     assert selected["inspection_status"] == "held" and selected["inspection_hold_id"] == hold["id"]
-    context = client.get(f"/api/inspections/{hold['id']}/recheck-context").json()
+    context = client.get(base(s, True) + f"/stock/{child['id']}/quantity-adjustments").json()
     assert context["quantity"] == 10
     recheck = client.post(
         "/api/inspections",
@@ -112,6 +118,8 @@ def test_inspection_hold_survives_rework_and_root_recheck_releases_children(clie
         json={
             **body,
             "parent_id": hold["id"],
+            "source_transfer_id": child["id"],
+            "involved_team_ids": [],
             "failed_quantity": 0,
             "expected_revision": context["revision"],
             "idempotency_key": "root-pass",
@@ -119,11 +127,33 @@ def test_inspection_hold_survives_rework_and_root_recheck_releases_children(clie
         },
     )
     assert recheck.status_code == 201, recheck.text
+    history = client.get("/api/inspections", params={"source_transfer_id": child["id"]})
+    assert history.status_code == 200, history.text
+    assert {row["id"] for row in history.json()["items"]} == {hold["id"], recheck.json()["id"]}
+    sources = client.get(
+        "/api/inspections/sources",
+        params={"team_id": s["other"]["id"], "recheck_id": hold["id"]},
+    ).json()
+    assert [row["source_transfer_id"] for row in sources["items"]] == [child["id"]]
+    assert dispatch(client, s, lines, workshop=True).status_code == 409
+    released = client.post(
+        f"/api/quality-feedback/{hold['id']}/decision",
+        headers=headers,
+        json=dict(
+            expected_version=0,
+            disposition="rework",
+            status="closed",
+            involved_team_ids=[s["other"]["id"]],
+            release_legacy_hold=True,
+            idempotency_key="manual-release",
+        ),
+    )
+    assert released.status_code == 200, released.text
     assert dispatch(client, s, lines, workshop=True).status_code == 201
     trace = client.get("/api/material-trace", params={"serial_no": child["batch_no"]}).json()
     assert (
         next(row for row in trace["items"] if row["id"] == child["id"])["inspection_status"]
-        == "released"
+        == "passed"
     )
 
 

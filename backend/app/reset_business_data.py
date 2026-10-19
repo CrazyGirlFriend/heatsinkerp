@@ -21,6 +21,8 @@ RESET_TABLES = (
     "material_stock_balances",
     "material_transfer_events",
     "material_losses",
+    "inspection_feedback_events",
+    "inspection_feedback_teams",
     "material_inspections",
     "material_quantity_adjustments",
     "material_transfers",

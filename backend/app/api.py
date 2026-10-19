@@ -16,6 +16,7 @@ from .material_stock_api import router as stock_router
 from .material_transfer_api import router as material_router
 from .notification_api import router as notification_router
 from .opening_stock import router as opening_stock_router
+from .quality_feedback_api import router as quality_feedback_router
 from .serial_urgency import router as urgency_router
 from .team_business import router as team_business_router
 from .team_serial_history import router as serial_history_router
@@ -27,6 +28,7 @@ router.include_router(admin_router)
 router.include_router(material_router)
 router.include_router(stock_router)
 router.include_router(inspection_router)
+router.include_router(quality_feedback_router)
 router.include_router(dispatch_router)
 router.include_router(analytics_router)
 router.include_router(warehouse_inventory_router)

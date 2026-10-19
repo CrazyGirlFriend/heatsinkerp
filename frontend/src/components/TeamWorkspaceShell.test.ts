@@ -66,7 +66,7 @@ describe('workspace with in-page navigation', () => {
     }
     expect(wrapper.find('.workspace-statistics').exists()).toBe(false)
     expect(wrapper.get('nav').attributes('aria-label')).toBe('库房功能')
-    expect(wrapper.findAll('nav button')).toHaveLength(8)
+    expect(wrapper.findAll('nav button')).toHaveLength(9)
   })
   it('keeps actions inside the data toolbar and hides warehouse-only sections for other teams', async () => {
     wrapper = mount(TeamWorkspaceShell, {
@@ -77,6 +77,7 @@ describe('workspace with in-page navigation', () => {
       '库存明细',
       '来料待签收',
       '入库记录',
+      '质量反馈',
       '出库记录',
       '丢失记录',
       '材质库存',
@@ -114,7 +115,7 @@ describe('workspace with in-page navigation', () => {
         processing: true,
       },
     })
-    expect(wrapper.findAll('nav button')).toHaveLength(12)
+    expect(wrapper.findAll('nav button')).toHaveLength(13)
     expect(wrapper.get('nav').text()).toContain('巡检记录')
     await wrapper.findAll('nav button').at(-1)!.trigger('click')
     expect(wrapper.emitted('update:modelValue')).toEqual([['warehouse']])
@@ -126,7 +127,7 @@ describe('workspace with in-page navigation', () => {
       processing: false,
       modelValue: 'stock',
     })
-    expect(wrapper.findAll('nav button')).toHaveLength(8)
+    expect(wrapper.findAll('nav button')).toHaveLength(9)
   })
   it('preserves export and settings permissions in the header and fullscreen commands', async () => {
     nativeFullscreen()

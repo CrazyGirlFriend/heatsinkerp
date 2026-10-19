@@ -22,6 +22,18 @@ vi.mock('@/composables/useLiveRefresh', () => ({
   useLiveRefresh: () => ({ message: { value: '' }, request: vi.fn() }),
 }))
 const record: InspectionRecord = {
+  kind: 'patrol',
+  scope: 'sample',
+  methods: ['visual'],
+  items: ['appearance'],
+  dimension_result: '',
+  weight_result: '',
+  blocks_outbound: true,
+  quality_issue_id: 13,
+  feedback_status: 'pending',
+  feedback_version: 0,
+  disposition: 'pending',
+  decision_notes: '',
   id: 13,
   source_transfer_id: 42,
   team_id: 2,
@@ -89,7 +101,7 @@ it('shows QC cross-team inspection records and rechecks without choosing the bat
     expect.objectContaining({ team_id: undefined }),
   )
   expect(wrapper.text()).toContain('待处理 · 禁止转出')
-  await button('复检 / 放行').trigger('click')
+  await button('复检').trigger('click')
   expect(wrapper.getComponent(InspectionRegistrationDialog).props('recheck')).toEqual(record)
   expect(wrapper.getComponent(InspectionRegistrationDialog).props('inspectionTeamId')).toBe(8)
 })
@@ -98,11 +110,17 @@ it('keeps production users read-only and scopes their record list', async () => 
   await render({ teamId: 2 })
   expect(inspectionApi.records).toHaveBeenCalledWith(expect.objectContaining({ team_id: 2 }))
   expect(button('巡检登记')).toBeUndefined()
-  expect(button('复检 / 放行')).toBeUndefined()
+  expect(button('复检')).toBeUndefined()
   await button('本批记录').trigger('click')
   await flushPromises()
   expect(inspectionApi.records).toHaveBeenLastCalledWith(
     expect.objectContaining({ team_id: 2, source_transfer_id: 42 }),
+  )
+})
+it('includes upstream checks when opened from a current stock lot', async () => {
+  await render({ teamId: 8, sourceId: 42 })
+  expect(inspectionApi.records).toHaveBeenCalledWith(
+    expect.objectContaining({ team_id: undefined, source_transfer_id: 42, kind: undefined }),
   )
 })
 it('uses the same search and filters for records and export and retains them in fullscreen', async () => {
@@ -130,6 +148,6 @@ it('uses the same search and filters for records and export and retains them in 
     inspector_name: '王检验',
     processor_name: '李师傅',
   })
-  expect(wrapper.find('input[aria-label="巡检搜索"]').exists()).toBe(true)
+  expect(wrapper.find('input[aria-label="检查搜索"]').exists()).toBe(true)
   expect(wrapper.getComponent(ElPagination).props('total')).toBe(1)
 })

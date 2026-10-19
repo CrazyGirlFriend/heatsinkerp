@@ -28,6 +28,9 @@ def recheck_context(
 @router.get("/sources")
 def sources(
     team_id: int = Query(ge=1),
+    kind: Literal["patrol", "inspection"] = "patrol",
+    recheck_id: int | None = Query(default=None, ge=1),
+    group_id: int | None = Query(default=None, ge=1),
     query: str | None = Query(default=None, max_length=160),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
@@ -35,12 +38,17 @@ def sources(
     db: Session = Depends(get_db),
 ):
     return team_read_response(
-        db, lambda session: inspections.list_sources(session, team_id, query, page, page_size)
+        db,
+        lambda session: inspections.list_sources(
+            session, team_id, query, page, page_size, kind, recheck_id, group_id
+        ),
     )
 
 
 @router.get("")
 def records(
+    kind: Literal["patrol", "inspection"] | None = None,
+    scope: Literal["sample", "full"] | None = None,
     team_id: int | None = Query(default=None, ge=1),
     source_transfer_id: int | None = Query(default=None, ge=1),
     query: str | None = Query(default=None, max_length=160),
@@ -62,6 +70,8 @@ def records(
             query=query,
             inspector_id=inspector_id,
             status=status,
+            kind=kind,
+            scope=scope,
             date_from=date_from,
             date_to=date_to,
             page=page,

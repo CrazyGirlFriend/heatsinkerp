@@ -73,6 +73,7 @@ const props = defineProps<{
   warehouse?: boolean
   fullscreen?: boolean
   processing?: boolean
+  inspection?: boolean
   processingLoadingGroupId?: number
 }>()
 const emit = defineEmits<{
@@ -81,6 +82,7 @@ const emit = defineEmits<{
   action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]
   reallocate: [source: StockBatch]
   process: [groupId?: number]
+  inspect: [groupId?: number]
 }>()
 const route = useRoute(),
   router = useRouter(),
@@ -278,6 +280,7 @@ const actionWidth = computed(
           ? 112
           : 88) +
     (props.processing && props.canWrite ? 45 : 0) +
+    (props.inspection && props.canWrite ? 45 : 0) +
     (props.canWrite && props.canReallocate ? 48 : 0),
 )
 function ownershipHint(row: TeamInventoryRow) {
@@ -988,6 +991,9 @@ onBeforeUnmount(() => {
         @click="emit('process')"
         >加工登记</ElButton
       >
+      <ElButton v-if="inspection && canWrite" class="action-cool" @click="emit('inspect')"
+        >检验登记</ElButton
+      >
       <div class="inventory-table-tools" role="group" aria-label="表格工具">
         <InventoryColumnSettings
           :key="`${teamId}:${Boolean(processing)}`"
@@ -1187,6 +1193,12 @@ onBeforeUnmount(() => {
         ><template #default="{ row }"
           ><div class="inventory-row-actions">
             <ElButton link type="primary" @click="detail = asRow(row)">明细</ElButton
+            ><ElButton
+              v-if="inspection && canWrite && row.on_hand_quantity > 0"
+              link
+              class="action-cool"
+              @click="emit('inspect', row.group_id)"
+              >检验</ElButton
             ><ElButton
               v-if="
                 processing &&

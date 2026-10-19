@@ -7,6 +7,8 @@ export const teamWorkspaceSections = [
   { value: 'pending', label: '来料待签收' },
   { value: 'receipts', label: '入库记录' },
   { value: 'processing', label: '加工记录' },
+  { value: 'inspection-results', label: '检验记录' },
+  { value: 'quality-feedback', label: '质量反馈' },
   { value: 'inspections', label: '巡检记录' },
   { value: 'outgoing', label: '出库记录' },
   { value: 'reallocations', label: '转投记录' },
@@ -23,11 +25,13 @@ export function teamWorkspaceSectionsFor(
   manageWarehouse = false,
   reallocations = false,
   processing = false,
+  inspection = false,
 ) {
   return teamWorkspaceSections.filter(
     (section) =>
       (section.value !== 'warehouse' || (warehouse && manageWarehouse)) &&
       (section.value !== 'reallocations' || reallocations) &&
+      (section.value !== 'inspection-results' || inspection) &&
       (section.value !== 'processing' || processing) &&
       (section.value !== 'inspections' || processing),
   )
@@ -39,6 +43,7 @@ export function resolveTeamWorkspaceSection(
   manageWarehouse = false,
   reallocations = false,
   processing = false,
+  inspection = false,
 ): TeamWorkspaceSection {
   if (query.tab === 'serials') return 'stock'
   if (query.tab === 'overview') return 'history'
@@ -47,6 +52,7 @@ export function resolveTeamWorkspaceSection(
     manageWarehouse,
     reallocations,
     processing,
+    inspection,
   ).find((item) => item.value === query.tab)
   if (section) return section.value
   if (query.direction === 'outgoing') return 'outgoing'

@@ -56,6 +56,11 @@ const state = vi.hoisted(() => ({
 }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => state.directory }))
+vi.mock('@/services/qualityFeedbackApi', () => ({
+  qualityFeedbackApi: {
+    records: vi.fn().mockResolvedValue({ items: [], total: 0, pending_count: 0 }),
+  },
+}))
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
 const source = (id = 10): StockBatch =>
   ({
@@ -1214,7 +1219,7 @@ describe('team workspace material ledger', () => {
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(1)
     expect(wrapper.find('.team-workspace__settings [aria-label="班组设置"]').exists()).toBe(true)
     expect(actions.find('[aria-label="班组设置"]').exists()).toBe(false)
-    expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(10)
+    expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(11)
     expect(wrapper.find('.team-workspace__heading').exists()).toBe(true)
   })
   it.each(['administrator', 'other-team', 'inactive'])(

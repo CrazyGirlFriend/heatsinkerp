@@ -39,11 +39,13 @@ defineEmits<{ open: [code: string] }>()
       <p v-if="batch.inspection_status" :class="{ 'inspection-held': batch.inspection_hold_id }">
         {{
           batch.inspection_hold_id
-            ? '巡检不合格 · 整批禁止转出，返工后仍须复检放行'
-            : batch.inspection_status === 'released'
-              ? '已复检放行'
-              : '抽检合格'
+            ? '历史巡检锁定 · 待检验班组长处理'
+            : batch.inspection_status === 'failed'
+              ? '发现不合格 · 查看质量反馈'
+              : '检查范围内合格'
         }}
+        · {{ batch.inspection_scope === 'full' ? '全检' : '抽检' }}
+        {{ batch.inspection_sample_quantity }} 件，不合格 {{ batch.inspection_failed_quantity }} 件
         · {{ batch.inspection_inspector }} · {{ formatDateTime(batch.inspection_checked_at) }}
       </p>
       <button

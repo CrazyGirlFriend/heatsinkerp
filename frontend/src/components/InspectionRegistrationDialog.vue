@@ -3,6 +3,10 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   ElAlert,
   ElButton,
+  ElCheckboxGroup,
+  ElCheckboxButton,
+  ElRadioGroup,
+  ElRadioButton,
   ElDatePicker,
   ElForm,
   ElFormItem,
@@ -25,18 +29,34 @@ import {
   inspectionApi,
   type InspectionSource,
   type InspectionRecord,
+  inspectionMethodLabels,
+  inspectionItemLabels,
 } from '@/services/inspectionApi'
 import type { TeamEmployee } from '@/types/teamBusiness'
 const props = defineProps<{
   inspectionTeamId: number
   initialTeamId?: number
   recheck?: InspectionRecord | null
+  kind?: InspectionRecord['kind']
+  groupId?: number
 }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
 const directory = useTeamDirectoryStore(),
   auth = useAuthStore()
 const teams = computed(() => directory.items.filter((team) => team.active && teamCanProcess(team)))
-const teamId = ref(props.recheck?.team_id ?? props.initialTeamId)
+const kind = computed(() => props.recheck?.kind || props.kind || 'patrol')
+const title = computed(() => (kind.value === 'inspection' ? '检验' : '巡检'))
+const teamId = ref(
+  props.recheck?.team_id ??
+    (kind.value === 'inspection' ? props.inspectionTeamId : props.initialTeamId),
+)
+const scope = ref<InspectionRecord['scope']>('sample')
+const methods = ref<InspectionRecord['methods']>([])
+const items = ref<InspectionRecord['items']>([])
+const involved = ref<number[]>([])
+const dimension = ref(''),
+  weight = ref('')
+const involvedTeams = computed(() => directory.items.filter((t) => t.active))
 const source = ref<InspectionSource | null>(null),
   rows = ref<InspectionSource[]>([])
 const search = ref(''),
@@ -73,20 +93,18 @@ async function load() {
   if (!teamId.value) return
   loading.value = true
   try {
-    if (props.recheck) {
-      const context = await inspectionApi.recheckContext(props.recheck.id)
-      if (token !== generation) return
-      source.value = context
-      if (!context.quantity) error.value = '本批当前无可抽检库存，请刷新核对'
-      return
-    }
     const result = await inspectionApi.sources({
       team_id: teamId.value,
+      kind: kind.value,
+      recheck_id: props.recheck?.id,
+      group_id: props.groupId,
       query: applied.value || undefined,
       page: page.value,
       page_size: 8,
     })
     if (token !== generation) return
+    if ((props.recheck || props.groupId != null) && result.total === 1 && result.items[0])
+      selectSource(result.items[0])
     rows.value = result.items
     total.value = result.total
   } catch (e) {
@@ -106,7 +124,7 @@ function changePage(value: number) {
 }
 function selectSource(row: InspectionSource) {
   source.value = row
-  sample.value = undefined
+  sample.value = scope.value === 'full' ? row.quantity : undefined
   submitted.value = false
 }
 async function submit() {
@@ -116,6 +134,9 @@ async function submit() {
     !source.value ||
     !person.value ||
     !checkedAt.value ||
+    !methods.value.length ||
+    !items.value.length ||
+    (failed.value > 0 && !props.recheck && !involved.value.length) ||
     !sample.value ||
     sample.value > source.value.quantity ||
     failed.value == null ||
@@ -127,6 +148,13 @@ async function submit() {
     return
   }
   const body = {
+    kind: kind.value,
+    scope: scope.value,
+    methods: methods.value,
+    items: items.value,
+    involved_team_ids: failed.value > 0 && !props.recheck ? involved.value : [],
+    dimension_result: items.value.includes('dimension') ? dimension.value.trim() : '',
+    weight_result: items.value.includes('weight') ? weight.value.trim() : '',
     source_transfer_id: source.value.source_transfer_id,
     expected_revision: source.value.revision,
     inspector_employee_id: person.value.id,
@@ -152,6 +180,9 @@ async function submit() {
     saving.value = false
   }
 }
+watch(scope, (value) => {
+  if (value === 'full' && source.value) sample.value = source.value.quantity
+})
 watch(
   teamId,
   () => {
@@ -168,7 +199,7 @@ onBeforeUnmount(() => {
 <template>
   <AppDialog
     :model-value="true"
-    :title="recheck ? '复检与放行' : '现场巡检登记'"
+    :title="recheck ? `${title}复检登记` : `${title}登记`"
     width="min(1060px, calc(100vw - 40px))"
     align-center
     append-to-body
@@ -185,7 +216,7 @@ onBeforeUnmount(() => {
           <ElFormItem label="被检班组" required :class="{ 'is-error': submitted && !teamId }"
             ><ElSelect
               v-model="teamId"
-              :disabled="!!recheck"
+              :disabled="kind === 'inspection'"
               aria-label="被检班组"
               placeholder="选择班组"
               ><ElOption
@@ -194,7 +225,7 @@ onBeforeUnmount(() => {
                 :value="Number(team.id)"
                 :label="team.name" /></ElSelect
           ></ElFormItem>
-          <ElFormItem label="查找已加工批次"
+          <ElFormItem :label="kind === 'inspection' ? '查找在库批次' : '查找已加工批次'"
             ><ElInput
               v-model="search"
               placeholder="流水号、批次号、材质"
@@ -206,7 +237,9 @@ onBeforeUnmount(() => {
           :data="rows"
           class="business-table"
           height="240"
-          empty-text="请选择班组，查询已加工的在库批次"
+          :empty-text="
+            kind === 'inspection' ? '暂无可检验的在库批次' : '请选择班组，查询已加工的在库批次'
+          "
         >
           <ElTableColumn
             prop="serial_no"
@@ -220,13 +253,8 @@ onBeforeUnmount(() => {
           <ElTableColumn prop="batch_no" label="批次号" min-width="205" align="center" />
           <ElTableColumn label="操作" width="130" align="center"
             ><template #default="{ row }"
-              ><ElButton
-                link
-                type="primary"
-                :disabled="!!row.hold_id"
-                :title="row.hold_id ? '请从待处理巡检记录发起复检' : undefined"
-                @click="selectSource(row as InspectionSource)"
-                >{{ row.hold_id ? '待复检' : '选择' }}</ElButton
+              ><ElButton link type="primary" @click="selectSource(row as InspectionSource)"
+                >选择</ElButton
               ></template
             ></ElTableColumn
           >
@@ -247,35 +275,72 @@ onBeforeUnmount(() => {
         </div>
         <div>
           <span>当前库存 {{ source.quantity }} 件</span
-          ><ElButton v-if="!recheck" link @click="source = null">更换批次</ElButton>
+          ><ElButton
+            v-if="rows.length > 1 || (groupId == null && !recheck)"
+            link
+            @click="source = null"
+            >更换批次</ElButton
+          >
         </div>
       </div>
+      <div class="inspection-check-options">
+        <ElFormItem label="检验范围" required>
+          <ElRadioGroup v-model="scope"
+            ><ElRadioButton value="sample">抽检</ElRadioButton
+            ><ElRadioButton value="full">全检</ElRadioButton></ElRadioGroup
+          >
+        </ElFormItem>
+        <ElFormItem label="检查手段" required :class="{ 'is-error': submitted && !methods.length }">
+          <ElCheckboxGroup v-model="methods"
+            ><ElCheckboxButton
+              v-for="(name, key) in inspectionMethodLabels"
+              :key="key"
+              :value="key"
+              >{{ name }}</ElCheckboxButton
+            ></ElCheckboxGroup
+          >
+        </ElFormItem>
+        <ElFormItem label="检查项目" required :class="{ 'is-error': submitted && !items.length }">
+          <ElCheckboxGroup v-model="items"
+            ><ElCheckboxButton
+              v-for="(name, key) in inspectionItemLabels"
+              :key="key"
+              :value="key"
+              >{{ name }}</ElCheckboxButton
+            ></ElCheckboxGroup
+          >
+        </ElFormItem>
+      </div>
       <div class="inspection-fields">
-        <ElFormItem label="巡检人" required :class="{ 'is-error': submitted && !person }"
+        <ElFormItem :label="`${title}人`" required :class="{ 'is-error': submitted && !person }"
           ><TeamEmployeeInput
             v-model="person"
             :team-id="inspectionTeamId"
-            label="巡检人"
+            :label="`${title}人`"
             :invalid="submitted && !person"
         /></ElFormItem>
-        <ElFormItem label="巡检时间" required :class="{ 'is-error': submitted && !checkedAt }"
+        <ElFormItem
+          :label="`${title}时间`"
+          required
+          :class="{ 'is-error': submitted && !checkedAt }"
           ><ElDatePicker
             v-model="checkedAt"
             type="datetime"
-            aria-label="巡检时间"
+            aria-:label="`${title}时间`"
             format="YYYY-MM-DD HH:mm"
         /></ElFormItem>
         <ElFormItem
-          label="抽检件数"
+          :label="scope === 'full' ? '全检件数' : '抽检件数'"
           required
           :class="{ 'is-error': submitted && (!sample || (source && sample > source.quantity)) }"
           ><ElInputNumber
             v-model="sample"
+            :disabled="scope === 'full'"
             :min="1"
             :max="source?.quantity"
             :precision="0"
             controls-position="right"
-            aria-label="抽检件数"
+            aria-:label="scope === 'full' ? '全检件数' : '抽检件数'"
         /></ElFormItem>
         <ElFormItem
           label="不合格件数"
@@ -294,15 +359,52 @@ onBeforeUnmount(() => {
         /></ElFormItem>
       </div>
       <div class="inspection-result" :class="{ 'inspection-result--failed': failed > 0 }">
-        <strong>抽检合格 {{ Math.max(0, (sample || 0) - (failed || 0)) }} 件</strong
-        ><span>{{
-          failed > 0
-            ? '提交后整批暂停转出，需复检合格后放行'
-            : recheck
-              ? '提交复检合格结果后，解除本次巡检锁定'
-              : '仅代表抽样结果，不增加库存或加工产量'
+        <strong
+          >{{ scope === 'sample' ? '样本合格' : '检验合格' }}
+          {{ Math.max(0, (sample || 0) - (failed || 0)) }} 件</strong
+        >
+        <span>{{
+          scope === 'sample'
+            ? '结果仅代表样本；处理方式由检验班组长决定'
+            : '保存检查结果，不执行发货、返工或库存变更'
         }}</span>
       </div>
+      <div
+        v-if="items.includes('dimension') || items.includes('weight')"
+        class="inspection-measurements"
+      >
+        <ElFormItem v-if="items.includes('dimension')" label="尺寸要求与实测结果（选填）"
+          ><ElInput
+            v-model="dimension"
+            type="textarea"
+            :rows="2"
+            maxlength="2000"
+            placeholder="例如：要求 30 ± 0.1 mm；实测 30.2 mm"
+        /></ElFormItem>
+        <ElFormItem v-if="items.includes('weight')" label="重量要求与实测结果（选填）"
+          ><ElInput
+            v-model="weight"
+            type="textarea"
+            :rows="2"
+            maxlength="2000"
+            placeholder="填写要求、实测重量及单位"
+        /></ElFormItem>
+      </div>
+      <ElFormItem
+        v-if="failed > 0 && !recheck"
+        label="问题涉及班组（可多选）"
+        required
+        :class="{ 'is-error': submitted && !involved.length }"
+      >
+        <ElCheckboxGroup v-model="involved"
+          ><ElCheckboxButton
+            v-for="team in involvedTeams"
+            :key="team.id"
+            :value="Number(team.id)"
+            >{{ team.name }}</ElCheckboxButton
+          ></ElCheckboxGroup
+        >
+      </ElFormItem>
       <ElFormItem :label="recheck ? '处理与复检说明（选填）' : '检查与问题说明（选填）'"
         ><ElInput v-model="notes" type="textarea" :rows="2" maxlength="2000" show-word-limit
       /></ElFormItem>
@@ -314,7 +416,7 @@ onBeforeUnmount(() => {
         :loading="saving"
         :disabled="!source || !writable"
         @click="submit"
-        >{{ recheck && failed === 0 ? '复检合格并放行' : '保存巡检' }}</ElButton
+        >{{ recheck ? '保存复检结果' : `保存${title}` }}</ElButton
       ></template
     >
   </AppDialog>
@@ -345,6 +447,18 @@ onBeforeUnmount(() => {
 .inspection-selected span {
   color: var(--muted);
   font-size: 13px;
+}
+.inspection-check-options,
+.inspection-measurements {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.inspection-measurements {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.inspection-check-options .is-error :deep(.el-checkbox-button__inner) {
+  border-color: var(--el-color-danger);
 }
 .inspection-fields {
   display: grid;

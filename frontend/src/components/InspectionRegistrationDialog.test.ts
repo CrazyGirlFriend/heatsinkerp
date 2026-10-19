@@ -2,7 +2,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { ElInputNumber } from 'element-plus'
+import { ElInputNumber, ElCheckboxGroup, ElRadioGroup } from 'element-plus'
 import InspectionRegistrationDialog from './InspectionRegistrationDialog.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import { inspectionApi, type InspectionRecord } from '@/services/inspectionApi'
@@ -72,7 +72,14 @@ function fillCounts() {
   wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 5)
   wrapper.findAllComponents(ElInputNumber)[1]!.vm.$emit('update:modelValue', 1)
 }
+function chooseChecks() {
+  const groups = wrapper.findAllComponents(ElCheckboxGroup)
+  groups[0]!.vm.$emit('update:modelValue', ['visual', 'microscope'])
+  groups[1]!.vm.$emit('update:modelValue', ['appearance', 'dimension', 'weight'])
+  groups[2]?.vm.$emit('update:modelValue', [2])
+}
 function choosePerson() {
+  chooseChecks()
   wrapper
     .getComponent(TeamEmployeeInput)
     .vm.$emit('update:modelValue', { id: 9, name: '王检验', team_id: 8 })
@@ -89,9 +96,10 @@ it('submits selected lot, real inspector, revision, and samples while preserving
   vi.mocked(inspectionApi.create).mockRejectedValueOnce(new Error('连接中断'))
   await render()
   fillCounts()
+  await flushPromises()
   choosePerson()
   await flushPromises()
-  expect(wrapper.text()).toContain('抽检合格 4 件')
+  expect(wrapper.text()).toContain('样本合格 4 件')
   await button('保存巡检').trigger('click')
   await flushPromises()
   const first = vi.mocked(inspectionApi.create).mock.calls[0]![0]
@@ -109,7 +117,7 @@ it('submits selected lot, real inspector, revision, and samples while preserving
   expect(inspectionApi.create).toHaveBeenLastCalledWith(first)
   expect(wrapper.emitted('saved')).toHaveLength(1)
 })
-it('loads the held lot automatically for recheck and releases through the original record', async () => {
+it('loads the only descendant lot for recheck without requesting automatic release', async () => {
   vi.mocked(inspectionApi.sources).mockResolvedValue({
     items: [{ ...source, hold_id: 13 }],
     total: 1,
@@ -118,12 +126,11 @@ it('loads the held lot automatically for recheck and releases through the origin
   })
   await render({ id: 13, team_id: 2, source_transfer_id: 42, batch_no: 'TL42' } as InspectionRecord)
   expect(wrapper.find('.inspection-source-picker').exists()).toBe(false)
-  expect(inspectionApi.recheckContext).toHaveBeenCalledWith(13)
-  expect(inspectionApi.sources).not.toHaveBeenCalled()
+  expect(inspectionApi.sources).toHaveBeenCalledWith(expect.objectContaining({ recheck_id: 13 }))
   choosePerson()
   wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 5)
   await flushPromises()
-  await button('复检合格并放行').trigger('click')
+  await button('保存复检结果').trigger('click')
   await flushPromises()
   expect(inspectionApi.create).toHaveBeenCalledWith(
     expect.objectContaining({ parent_id: 13, source_transfer_id: 42, failed_quantity: 0 }),
@@ -132,9 +139,31 @@ it('loads the held lot automatically for recheck and releases through the origin
 it('cannot submit after the actor loses inspection-team permissions', async () => {
   await render()
   fillCounts()
+  await flushPromises()
   choosePerson()
   state.auth.isTeamAccount = false
   await flushPromises()
   expect(button('保存巡检').attributes('disabled')).toBeDefined()
   expect(inspectionApi.create).not.toHaveBeenCalled()
+})
+
+it('full inspection fills the current lot quantity and still requires explicit checking methods', async () => {
+  await render()
+  wrapper.getComponent(ElRadioGroup).vm.$emit('update:modelValue', 'full')
+  await flushPromises()
+  expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(100)
+  expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('disabled')).toBe(true)
+  await button('保存巡检').trigger('click')
+  expect(inspectionApi.create).not.toHaveBeenCalled()
+  choosePerson()
+  await button('保存巡检').trigger('click')
+  await flushPromises()
+  expect(inspectionApi.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      scope: 'full',
+      sample_quantity: 100,
+      methods: ['visual', 'microscope'],
+      items: ['appearance', 'dimension', 'weight'],
+    }),
+  )
 })

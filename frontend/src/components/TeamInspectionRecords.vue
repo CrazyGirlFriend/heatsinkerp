@@ -14,6 +14,7 @@ import {
 } from 'element-plus'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import AppDialog from './AppDialog.vue'
+import QualityFeedbackDetail from './QualityFeedbackDetail.vue'
 import FilterDialog from './FilterDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import StatePanel from './StatePanel.vue'
@@ -27,6 +28,8 @@ import { teamCanProcess } from '@/config/teamWorkspaces'
 import {
   inspectionApi,
   inspectionStatusLabels,
+  inspectionMethodLabels,
+  inspectionItemLabels,
   type InspectionFilters,
   type InspectionRecord,
 } from '@/services/inspectionApi'
@@ -38,7 +41,12 @@ const props = defineProps<{
   showAll?: boolean
   fullscreen?: boolean
   compact?: boolean
+  kind?: InspectionRecord['kind']
 }>()
+const title = computed(() =>
+  props.kind === 'inspection' ? '检验' : props.sourceId ? '检查' : '巡检',
+)
+const feedbackId = ref<number>()
 const auth = useAuthStore(),
   directory = useTeamDirectoryStore()
 const teams = computed(() => directory.items.filter((team) => team.active && teamCanProcess(team)))
@@ -81,7 +89,8 @@ const filterCount = computed(
 function params(): InspectionFilters {
   return {
     ...applied.value,
-    team_id: props.showAll ? applied.value.team_id : props.teamId,
+    kind: props.kind ?? (props.sourceId ? undefined : 'patrol'),
+    team_id: props.sourceId ? undefined : props.showAll ? applied.value.team_id : props.teamId,
     source_transfer_id: props.sourceId ?? sourceFilter.value,
   }
 }
@@ -173,21 +182,38 @@ function batchRecords(row: InspectionRecord) {
 function exportSource() {
   const filters = params()
   return tableExportSource(
-    '现场巡检记录',
+    `${title.value}记录`,
     total.value,
     [
       { key: 'serial_no', label: '流水号', value: (row: InspectionRecord) => row.serial_no },
-      { key: 'checked_at', label: '巡检时间', value: (row) => formatDateTime(row.checked_at) },
+      { key: 'checked_at', label: '检查时间', value: (row) => formatDateTime(row.checked_at) },
       { key: 'team_name', label: '被检班组', value: (row) => row.team_name },
       { key: 'material_name', label: '材质', value: (row) => row.material_name },
-      { key: 'inspector_name', label: '巡检人', value: (row) => row.inspector_name },
+      { key: 'inspector_name', label: '检验人', value: (row) => row.inspector_name },
       { key: 'processor_name', label: '原加工人', value: (row) => row.processor_name || '未登记' },
-      { key: 'kind', label: '检查类型', value: (row) => (row.parent_id ? '复检' : '巡检') },
+      {
+        key: 'kind',
+        label: '检查类型',
+        value: (row) => (row.parent_id ? '复检' : row.kind === 'inspection' ? '检验' : '巡检'),
+      },
       { key: 'batch_quantity', label: '检查时在库件数', value: (row) => row.batch_quantity },
-      { key: 'sample_quantity', label: '抽检件数', value: (row) => row.sample_quantity },
-      { key: 'passed_quantity', label: '抽检合格件数', value: (row) => row.passed_quantity },
-      { key: 'failed_quantity', label: '抽检不合格件数', value: (row) => row.failed_quantity },
+      { key: 'sample_quantity', label: '检查件数', value: (row) => row.sample_quantity },
+      { key: 'passed_quantity', label: '检查合格件数', value: (row) => row.passed_quantity },
+      { key: 'failed_quantity', label: '检查不合格件数', value: (row) => row.failed_quantity },
       { key: 'status', label: '处理状态', value: (row) => inspectionStatusLabels[row.status] },
+      { key: 'scope', label: '检验范围', value: (row) => (row.scope === 'full' ? '全检' : '抽检') },
+      {
+        key: 'methods',
+        label: '检查手段',
+        value: (row) => (row.methods || []).map((m) => inspectionMethodLabels[m]).join('、'),
+      },
+      {
+        key: 'items',
+        label: '检查项目',
+        value: (row) => (row.items || []).map((i) => inspectionItemLabels[i]).join('、'),
+      },
+      { key: 'dimension_result', label: '尺寸要求与实测', value: (row) => row.dimension_result },
+      { key: 'weight_result', label: '重量要求与实测', value: (row) => row.weight_result },
       { key: 'notes', label: '检查与处理说明', value: (row) => row.notes },
       { key: 'parent_id', label: '原巡检记录编号', value: (row) => row.parent_id },
       { key: 'batch_no', label: '批次号', value: (row) => row.batch_no },
@@ -201,7 +227,7 @@ function exportSource() {
   )
 }
 watch(
-  () => [props.teamId, props.sourceId, props.showAll],
+  () => [props.teamId, props.sourceId, props.showAll, props.kind],
   () => {
     ++generation
     rows.value = []
@@ -235,8 +261,8 @@ onBeforeUnmount(() => {
         v-model="query"
         :prefix-icon="Search"
         clearable
-        placeholder="流水号、批次、材质或巡检人"
-        aria-label="巡检搜索"
+        placeholder="流水号、批次、材质或检验人"
+        aria-label="检查搜索"
         @keyup.enter="search"
         @clear="search"
       />
@@ -263,7 +289,7 @@ onBeforeUnmount(() => {
               :value="key"
               :label="label" /></ElSelect
         ></label>
-        <label>巡检日期<RecordDateFilter v-model="draftDates" label="巡检日期" /></label>
+        <label>检查日期<RecordDateFilter v-model="draftDates" label="检查日期" /></label>
       </FilterDialog>
       <ElButton class="action-warm" @click="search">查询</ElButton>
       <TableExportButton
@@ -271,11 +297,18 @@ onBeforeUnmount(() => {
         :disabled="loading || !!error"
         :context="JSON.stringify(params())"
       />
-      <ElButton :icon="Refresh" :loading="loading" aria-label="刷新巡检记录" @click="load()" />
-      <ElButton v-if="canWrite && !sourceId" type="primary" @click="register()">巡检登记</ElButton>
+      <ElButton
+        :icon="Refresh"
+        :loading="loading"
+        :aria-label="`刷新${title}记录`"
+        @click="load()"
+      />
+      <ElButton v-if="canWrite && !sourceId" type="primary" @click="register()"
+        >{{ title }}登记</ElButton
+      >
     </div>
     <div v-if="sourceFilter && !sourceId" class="inspection-scope">
-      <span>当前显示所选批次的全部巡检与复检记录</span
+      <span>当前显示所选批次的检查与复检记录</span
       ><ElButton link @click="clearSource">返回全部记录</ElButton>
     </div>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
@@ -287,8 +320,8 @@ onBeforeUnmount(() => {
       height="100%"
       flexible
       row-key="id"
-      empty-text="暂无巡检记录"
-      aria-label="巡检记录"
+      :empty-text="`暂无${title}记录`"
+      :aria-label="`${title}记录`"
     >
       <ElTableColumn
         prop="serial_no"
@@ -297,7 +330,7 @@ onBeforeUnmount(() => {
         align="center"
         show-overflow-tooltip
       />
-      <ElTableColumn label="巡检时间" min-width="170" align="center"
+      <ElTableColumn label="检查时间" min-width="170" align="center"
         ><template #default="{ row }">{{ formatDateTime(row.checked_at) }}</template></ElTableColumn
       >
       <ElTableColumn prop="team_name" label="被检班组" min-width="105" align="center" />
@@ -308,16 +341,21 @@ onBeforeUnmount(() => {
         align="center"
         show-overflow-tooltip
       />
-      <ElTableColumn prop="inspector_name" label="巡检人" min-width="110" align="center" />
+      <ElTableColumn prop="inspector_name" label="检验人" min-width="110" align="center" />
       <ElTableColumn label="检查类型" width="90" align="center"
         ><template #default="{ row }">{{
-          row.parent_id ? '复检' : '巡检'
+          row.parent_id ? '复检' : row.kind === 'inspection' ? '检验' : '巡检'
         }}</template></ElTableColumn
       >
-      <ElTableColumn prop="sample_quantity" label="抽检件数" width="100" align="center" />
-      <ElTableColumn prop="passed_quantity" label="抽检合格" width="100" align="center" />
-      <ElTableColumn prop="failed_quantity" label="抽检不合格" width="115" align="center" />
-      <ElTableColumn label="处理状态" min-width="175" align="center"
+      <ElTableColumn label="检验范围" width="90" align="center"
+        ><template #default="{ row }">{{
+          row.scope === 'full' ? '全检' : '抽检'
+        }}</template></ElTableColumn
+      >
+      <ElTableColumn prop="sample_quantity" label="检查件数" width="100" align="center" />
+      <ElTableColumn prop="passed_quantity" label="合格件数" width="100" align="center" />
+      <ElTableColumn prop="failed_quantity" label="不合格件数" width="115" align="center" />
+      <ElTableColumn label="检查结果" min-width="175" align="center"
         ><template #default="{ row }"
           ><ElTag
             :type="row.status === 'pending' || row.status === 'failed' ? 'danger' : 'success'"
@@ -327,17 +365,23 @@ onBeforeUnmount(() => {
         ></ElTableColumn
       >
       <ElTableColumn prop="batch_no" label="批次号" min-width="205" align="center" />
-      <ElTableColumn label="操作" :width="canWrite ? 225 : 150" align="center" fixed="right"
+      <ElTableColumn label="操作" :width="canWrite ? 300 : 225" align="center" fixed="right"
         ><template #default="{ row }"
           ><ElButton link type="primary" @click="detail = row as InspectionRecord">明细</ElButton
           ><ElButton v-if="!sourceId" link @click="batchRecords(row as InspectionRecord)"
             >本批记录</ElButton
           ><ElButton
-            v-if="canWrite && row.status === 'pending'"
+            v-if="canWrite && row.failed_quantity > 0 && !row.parent_id"
             link
             type="primary"
             @click="register(row as InspectionRecord)"
-            >复检 / 放行</ElButton
+            >复检</ElButton
+          ><ElButton
+            v-if="row.quality_issue_id"
+            link
+            type="primary"
+            @click="feedbackId = row.quality_issue_id"
+            >质量反馈</ElButton
           ></template
         ></ElTableColumn
       >
@@ -357,14 +401,15 @@ onBeforeUnmount(() => {
     <InspectionRegistrationDialog
       v-if="registration && canWrite && qc"
       :inspection-team-id="Number(qc.id)"
-      :initial-team-id="showAll ? applied.team_id : teamId"
+      :kind="kind || 'patrol'"
+      :initial-team-id="kind === 'inspection' ? teamId : showAll ? applied.team_id : teamId"
       :recheck="recheck"
       @close="registration = false"
       @saved="saved"
     />
     <AppDialog
       :model-value="!!detail"
-      title="巡检明细"
+      :title="`${title}明细`"
       width="min(900px, calc(100vw - 40px))"
       align-center
       append-to-body
@@ -377,8 +422,8 @@ onBeforeUnmount(() => {
         ><ElDescriptionsItem label="材质 / 尺寸"
           >{{ detail.material_name }} / {{ detail.specification || '—' }}</ElDescriptionsItem
         >
-        <ElDescriptionsItem label="巡检人">{{ detail.inspector_name }}</ElDescriptionsItem
-        ><ElDescriptionsItem label="巡检时间">{{
+        <ElDescriptionsItem label="检验人">{{ detail.inspector_name }}</ElDescriptionsItem
+        ><ElDescriptionsItem label="检查时间">{{
           formatDateTime(detail.checked_at)
         }}</ElDescriptionsItem>
         <ElDescriptionsItem label="原加工人">{{
@@ -388,24 +433,45 @@ onBeforeUnmount(() => {
           detail.processing_record_id || '历史未关联'
         }}</ElDescriptionsItem>
         <ElDescriptionsItem label="检查时在库">{{ detail.batch_quantity }} 件</ElDescriptionsItem
-        ><ElDescriptionsItem label="抽检结果"
+        ><ElDescriptionsItem label="检查结果"
           >{{ detail.sample_quantity }} 件中，合格 {{ detail.passed_quantity }} 件，不合格
           {{ detail.failed_quantity }} 件</ElDescriptionsItem
         >
         <ElDescriptionsItem label="状态">{{
           inspectionStatusLabels[detail.status]
         }}</ElDescriptionsItem
-        ><ElDescriptionsItem label="原巡检编号">{{
-          detail.parent_id || '首次巡检'
+        ><ElDescriptionsItem label="原检查编号">{{
+          detail.parent_id || '首次检查'
         }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="放行时间">{{
+        <ElDescriptionsItem label="历史锁定解除时间">{{
           formatDateTime(detail.released_at)
         }}</ElDescriptionsItem
         ><ElDescriptionsItem label="登记账号">{{ detail.created_by }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="范围">{{
+          detail.scope === 'full' ? '全检' : '抽检'
+        }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="检查手段">{{
+          (detail.methods || []).map((m) => inspectionMethodLabels[m]).join('、') || '历史未记录'
+        }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="检查项目" :span="2">{{
+          (detail.items || []).map((i) => inspectionItemLabels[i]).join('、') || '历史未记录'
+        }}</ElDescriptionsItem>
+        <ElDescriptionsItem v-if="detail.dimension_result" label="尺寸要求 / 实测" :span="2">{{
+          detail.dimension_result
+        }}</ElDescriptionsItem>
+        <ElDescriptionsItem v-if="detail.weight_result" label="重量要求 / 实测" :span="2">{{
+          detail.weight_result
+        }}</ElDescriptionsItem>
         <ElDescriptionsItem label="说明" :span="2">{{ detail.notes || '—' }}</ElDescriptionsItem>
       </ElDescriptions>
       <template #footer><ElButton @click="detail = null">关闭</ElButton></template>
     </AppDialog>
+    <QualityFeedbackDetail
+      v-if="feedbackId"
+      :issue-id="feedbackId"
+      @close="feedbackId = undefined"
+      @changed="load()"
+    />
   </section>
 </template>
 <style scoped>

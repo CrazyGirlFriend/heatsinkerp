@@ -17,6 +17,8 @@ const props = defineProps<{
   manageWarehouse?: boolean
   reallocations?: boolean
   processing?: boolean
+  inspection?: boolean
+  qualityCount?: number
   pendingCount?: number | null
   exportable?: boolean
 }>()
@@ -31,6 +33,7 @@ const sections = computed(() =>
     Boolean(props.manageWarehouse),
     Boolean(props.reallocations),
     Boolean(props.processing),
+    Boolean(props.inspection),
   ),
 )
 const sectionLabel = computed(
@@ -48,6 +51,8 @@ const canFullscreen = computed(() =>
     'receipts',
     'processing',
     'inspections',
+    'inspection-results',
+    'quality-feedback',
     'outgoing',
     'reallocations',
     'losses',
@@ -201,9 +206,12 @@ onBeforeUnmount(() => {
       >
         {{ section.label
         }}<span
-          v-if="section.value === 'pending' && pendingCount"
+          v-if="
+            (section.value === 'pending' && pendingCount) ||
+            (section.value === 'quality-feedback' && qualityCount)
+          "
           class="team-workspace__pending"
-          >{{ pendingCount }}</span
+          >{{ section.value === 'pending' ? pendingCount : qualityCount }}</span
         >
       </ElButton>
     </nav>
