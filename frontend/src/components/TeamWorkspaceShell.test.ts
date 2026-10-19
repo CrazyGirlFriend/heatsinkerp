@@ -114,7 +114,8 @@ describe('workspace with in-page navigation', () => {
         processing: true,
       },
     })
-    expect(wrapper.findAll('nav button')).toHaveLength(11)
+    expect(wrapper.findAll('nav button')).toHaveLength(12)
+    expect(wrapper.get('nav').text()).toContain('巡检记录')
     await wrapper.findAll('nav button').at(-1)!.trigger('click')
     expect(wrapper.emitted('update:modelValue')).toEqual([['warehouse']])
     await wrapper.setProps({ modelValue: 'warehouse' })

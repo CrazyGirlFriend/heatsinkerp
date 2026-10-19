@@ -5,6 +5,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { ElButton, ElInput, ElLoading, ElPagination, ElTable, ElTableColumn } from 'element-plus'
 import FilterDialog from './FilterDialog.vue'
+import ProcessingBatchPicker from './ProcessingBatchPicker.vue'
+import { ElSelect, ElOption, ElMessage } from 'element-plus'
 import RecordDateFilter from './RecordDateFilter.vue'
 import StatePanel from './StatePanel.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
@@ -44,6 +46,10 @@ const pageSize = computed(() =>
 const query = ref(''),
   dates = ref({ from: '', to: '' }),
   filtersOpen = ref(false)
+const workKind = ref('')
+const reworkMode = ref(false),
+  reworkRecordId = ref<number | null>(null),
+  reworkBusy = ref(false)
 const processorId = ref<number | null>(null)
 const processors = ref<{ id: number; name: string }[]>([])
 const processorName = computed({
@@ -56,7 +62,8 @@ const summary = ref<ProcessingRecordSummary | null>(null)
 const filterCount = computed(
   () =>
     Number(Boolean(text('date_from') || text('date_to') || text('work_date'))) +
-    Number(Boolean(text('processor_id'))),
+    Number(Boolean(text('processor_id'))) +
+    Number(Boolean(text('work_kind'))),
 )
 const rows = ref<ProcessingRecord[]>([]),
   total = ref(0),
@@ -70,6 +77,7 @@ const live = useLiveRefresh(() => load(true), {
   busy: () => loading.value || detailOpen.value,
 })
 function syncFilters() {
+  workKind.value = text('work_kind')
   dates.value = {
     from: text('date_from') || text('work_date'),
     to: text('date_to') || text('work_date'),
@@ -77,12 +85,14 @@ function syncFilters() {
   processorId.value = Number(text('processor_id')) || null
 }
 function resetFilters() {
+  workKind.value = ''
   dates.value = { from: '', to: '' }
   processorId.value = null
 }
 function filters() {
   return {
     query: text('query') || undefined,
+    work_kind: text('work_kind') || undefined,
     processor_id: Number(text('processor_id')) || undefined,
     work_date: text('work_date') || undefined,
     date_from: text('date_from') || undefined,
@@ -95,6 +105,7 @@ function apply(nextPage = 1, size = pageSize.value, applyFilters = false) {
     path: route.path,
     query: {
       tab: 'processing',
+      work_kind: (applyFilters ? workKind.value : text('work_kind')) || undefined,
       query: query.value.trim() || undefined,
       processor_id: applyFilters
         ? processorId.value || undefined
@@ -163,6 +174,13 @@ function exportSource() {
         value: (row: ProcessingRecord) => sharedSerialLabel(row),
       },
       { key: 'material_name', label: '材质', value: (row) => row.material_name },
+      {
+        key: 'work_kind',
+        label: '加工性质',
+        value: (row) => (row.work_kind === 'rework' ? '返工' : '首次加工'),
+      },
+      { key: 'rework_of_id', label: '关联加工记录', value: (row) => row.rework_of_id },
+      { key: 'rework_round', label: '返工次数', value: (row) => row.rework_round },
       { key: 'created_at', label: '登记时间', value: (row) => formatDateTime(row.created_at) },
       {
         key: 'processing_date',
@@ -230,6 +248,21 @@ function exportSource() {
   )
 }
 const dailyColumns = [
+  {
+    key: 'rework_quantity',
+    label: '返工件次',
+    value: (r: ProcessingDailyRow) => r.rework_quantity || 0,
+  },
+  {
+    key: 'rework_weight',
+    label: '返工工作量 (kg)',
+    value: (r: ProcessingDailyRow) => r.rework_weight || 0,
+  },
+  {
+    key: 'work_quantity',
+    label: '总加工件次',
+    value: (r: ProcessingDailyRow) => r.work_quantity ?? r.completed_quantity,
+  },
   { key: 'team_name', label: '班组', value: (r: ProcessingDailyRow) => r.team_name },
   {
     key: 'processing_date',
@@ -263,7 +296,7 @@ const dailyColumns = [
   },
   {
     key: 'completed_quantity',
-    label: '完成件数',
+    label: '首次加工完成件数',
     value: (r: ProcessingDailyRow) => r.completed_quantity,
   },
   {
@@ -273,7 +306,7 @@ const dailyColumns = [
   },
   {
     key: 'completed_weight',
-    label: '完成重量 (kg)',
+    label: '首次加工完成重量 (kg)',
     value: (r: ProcessingDailyRow) => r.completed_weight,
   },
   {
@@ -306,7 +339,35 @@ function exportVariants() {
     ),
   ]
 }
+function saved() {
+  void load()
+  emit('changed')
+}
+async function startRework(recordId: number) {
+  if (reworkBusy.value) return
+  reworkBusy.value = true
+  try {
+    const result = await teamMaterialApi.processingSources(props.teamId, {
+      rework_record_id: recordId,
+      page_size: 2,
+    })
+    if (!result.total) ElMessage.info('本记录已无可返工的在库料')
+    else if (result.total === 1) selectRework(Number(result.items[0]!.transfer.id))
+    else reworkRecordId.value = recordId
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '返工批次读取失败')
+  } finally {
+    reworkBusy.value = false
+  }
+}
+function selectRework(id: number) {
+  reworkRecordId.value = null
+  sourceId.value = id
+  reworkMode.value = true
+  detailOpen.value = true
+}
 function detail(row: unknown) {
+  reworkMode.value = false
   sourceId.value = (row as ProcessingRecord).source_transfer_id
   detailOpen.value = true
 }
@@ -368,6 +429,16 @@ onBeforeUnmount(() => {
         @apply="apply(1, pageSize, true)"
         @reset="resetFilters"
       >
+        <label
+          >加工性质<ElSelect
+            v-model="workKind"
+            clearable
+            placeholder="全部加工"
+            aria-label="加工性质筛选"
+            ><ElOption label="首次加工" value="initial" /><ElOption
+              label="返工"
+              value="rework" /></ElSelect
+        ></label>
         <label>实际加工日期<RecordDateFilter v-model="dates" label="加工日期" /></label>
         <label
           >加工人（不选为全部）<ProcessingPersonInput
@@ -391,12 +462,16 @@ onBeforeUnmount(() => {
     <div v-if="summary && !error" class="processing-totals" aria-label="筛选结果产量合计">
       <span class="summary-label">筛选结果合计</span>
       <span
-        >完成 <strong>{{ inventoryAmount(summary.completed_quantity) }}</strong> 件 /
+        >首次完成 <strong>{{ inventoryAmount(summary.completed_quantity) }}</strong> 件 /
         <strong>{{ inventoryAmount(summary.completed_weight) }}</strong> kg</span
       >
       <span
         >废料 <strong>{{ inventoryAmount(summary.scrap_quantity) }}</strong> 件 /
         <strong>{{ inventoryAmount(summary.scrap_weight) }}</strong> kg</span
+      >
+      <span
+        >返工 <strong>{{ inventoryAmount(summary.rework_quantity || 0) }}</strong> 件次 /
+        {{ inventoryAmount(summary.rework_weight || 0) }} kg</span
       >
       <span class="summary-note">{{ summary.record_count }} 笔有效加工 · 按实际加工日期</span>
       <span v-if="summary.unreported_count" class="summary-note"
@@ -418,6 +493,11 @@ onBeforeUnmount(() => {
     >
       <ElTableColumn label="流水号" min-width="150" fixed show-overflow-tooltip
         ><template #default="{ row }">{{ sharedSerialLabel(row) }}</template></ElTableColumn
+      >
+      <ElTableColumn label="加工性质" width="125" align="center"
+        ><template #default="{ row }">{{
+          row.work_kind === 'rework' ? `返工 · 第 ${row.rework_round} 次` : '首次加工'
+        }}</template></ElTableColumn
       >
       <ElTableColumn prop="processing_date" label="实际加工日期" min-width="145" align="center" />
       <ElTableColumn
@@ -503,9 +583,17 @@ onBeforeUnmount(() => {
         ><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></ElTableColumn
       >
       <ElTableColumn prop="batch_no" label="来源批次号" min-width="205" show-overflow-tooltip />
-      <ElTableColumn label="操作" width="85" fixed="right" align="center"
+      <ElTableColumn label="操作" width="140" fixed="right" align="center"
         ><template #default="{ row }"
-          ><ElButton link type="primary" @click="detail(row)">记录</ElButton></template
+          ><ElButton link type="primary" @click="detail(row)">记录</ElButton
+          ><ElButton
+            v-if="canWrite"
+            link
+            type="primary"
+            :disabled="reworkBusy || row.on_hand_quantity <= 0"
+            @click="startRework(row.id)"
+            >返工</ElButton
+          ></template
         ></ElTableColumn
       >
     </ElTable>
@@ -526,7 +614,16 @@ onBeforeUnmount(() => {
       :team-id="teamId"
       :source-id="sourceId"
       processing
-      :can-write="false"
+      :can-write="canWrite && reworkMode"
+      :rework="reworkMode"
+      @saved="saved"
+    />
+    <ProcessingBatchPicker
+      v-if="reworkRecordId"
+      :team-id="teamId"
+      :rework-record-id="reworkRecordId"
+      @close="reworkRecordId = null"
+      @selected="selectRework"
     />
   </section>
 </template>

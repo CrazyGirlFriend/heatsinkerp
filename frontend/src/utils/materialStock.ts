@@ -10,6 +10,7 @@ export function dispatchableAmounts(stock?: StockBatch | null) {
 }
 
 export function stockSelectable(stock: StockBatch): boolean {
+  if (stock.inspection_hold_id) return false
   const { quantity, weight } = dispatchableAmounts(stock)
   return quantity !== null && weight !== null
 }

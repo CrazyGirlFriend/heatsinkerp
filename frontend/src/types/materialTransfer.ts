@@ -135,6 +135,8 @@ export interface MaterialTransferHistoryEntry {
     | 'quantity_changed'
     | 'reallocated'
     | 'processed'
+    | 'inspection_recorded'
+    | 'inspection_rechecked'
   actor: string
   occurred_at: string
   changes: Record<string, { before: unknown; after: unknown }>
@@ -160,6 +162,8 @@ export interface MaterialTransfer
   purpose_name?: string | null
   urgency?: import('./recordFilters').SerialUrgency
   entry_kind?: MaterialEntryKind
+  rework_pending?: boolean
+  rework_count?: number
   sent_processing_status?: import('./materialProcessing').ProcessingState | null
   processing_role?: import('./materialProcessing').ProcessingRole | null
   external_destination?: string | null

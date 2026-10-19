@@ -56,6 +56,7 @@ class WarehouseInventoryFilters(SerialFilters):
     search_field: WarehouseSearchField = "all"
     availability: Literal["current", "owned", "all", "available", "scrap"] = "current"
     receipt_source: Literal["external", "return", "internal", "opening", "processing"] | None = None
+    rework: Literal["pending", "worked"] | None = None
     location_status: Literal["unassigned"] | None = None
     source_team_id: int | None = Field(default=None, ge=1)
     purpose_id: int | None = Field(
@@ -89,6 +90,8 @@ def origin_columns():
         "transfer_specification": func.coalesce(mt.transfer_specification, ""),
         "material_type": func.coalesce(mt.material_type, ""),
         "processing_role": mt.processing_role,
+        "rework_pending": mt.rework_pending,
+        "rework_count": mt.rework_count,
         "purpose_id": mt.purpose_id,
         "purpose_name": func.coalesce(mt.purpose_name, ""),
         "receipt_source": case(
@@ -104,6 +107,8 @@ def origin_columns():
 
 
 def warehouse_groups(team_id, filters):
+    from .inspections import hold_column
+
     stock = stock_table(team_id)
     registered = registered_lots(team_id)
     remaining = or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0)
@@ -179,6 +184,9 @@ def warehouse_groups(team_id, filters):
             func.max(case((matching_dates, 1), else_=0)).label("matches_date"),
             *(func.sum(stock.c[key]).label(key) for key in BALANCE_KEYS),
             *summary_columns(stock, registered),
+            func.sum(case((hold_column(mt.id).is_not(None), 1), else_=0)).label(
+                "inspection_hold_count"
+            ),
             *meta,
         )
         .select_from(stock)
@@ -199,6 +207,12 @@ def list_inventory(db, team_id, filters):
     require_team(db, team_id)
     table = warehouse_groups(team_id, filters)
     conditions = [table.c.matches_date == 1]
+    if filters.rework:
+        conditions.append(
+            table.c.rework_pending.is_(True)
+            if filters.rework == "pending"
+            else table.c.rework_count > 0
+        )
     if filters.location_status:
         from .team_constants import WAREHOUSE_TEAM_CODE
         from .warehouse_placements import unassigned_predicate

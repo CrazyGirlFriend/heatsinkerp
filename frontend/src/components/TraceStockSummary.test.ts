@@ -155,3 +155,44 @@ it('shows a book shortage separately from signed current normal stock', () => {
   expect(wrapper.get('.stock-value--shortage').text()).toContain('-2')
   expect(wrapper.get('.stock-total').text()).toContain('-2')
 })
+
+it('includes shared scrap only in the whole-board view, not a single order', async () => {
+  const data: MaterialTrace = {
+    ...trace,
+    holdings: [],
+    items: [],
+    shared_group_view: true,
+    shared_positions: [
+      {
+        team_id: 1,
+        team_name: '库房',
+        origin_batch_no: 'SHARED-1',
+        serials: ['A', 'B'],
+        material_type: 'scrap_chips',
+        quantity: 0,
+        weight: 7,
+      },
+    ],
+  }
+  const page = render(data)
+  expect(page.get('.stock-waste').text()).toContain('7 kg')
+  await page.setProps({ trace: { ...data, shared_group_view: false } })
+  expect(page.get('.stock-waste').text()).toContain('0 kg')
+})
+
+it('shows held physical inventory without describing it as transferable', () => {
+  const item = {
+    ...trace.items[0]!,
+    status: 'received' as const,
+    material_type: 'finished' as const,
+    on_hand_quantity: 5,
+    on_hand_weight: 1,
+    inspection_hold_id: 19,
+  }
+  const page = render({
+    ...trace,
+    items: [item, { ...item, material_type: 'waste', on_hand_quantity: 50, on_hand_weight: 10 }],
+  })
+  expect(page.text()).toContain('其中巡检锁定')
+  expect(page.get('.stock-gap').text()).toBe('其中巡检锁定5 件')
+})

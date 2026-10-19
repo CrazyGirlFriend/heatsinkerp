@@ -4,7 +4,15 @@ import { sharedSerialLabel } from '@/types/sharedMaterial'
 import FilterDialog from './FilterDialog.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import { ElButton, ElCheckbox, ElInput, ElPagination, ElTable, ElTableColumn } from 'element-plus'
+import {
+  ElButton,
+  ElCheckbox,
+  ElInput,
+  ElPagination,
+  ElTable,
+  ElTableColumn,
+  ElTag,
+} from 'element-plus'
 import { inventoryAmount } from '@/types/teamInventory'
 import RecordDateFilter from './RecordDateFilter.vue'
 import SerialUrgencyBadge from './SerialUrgencyBadge.vue'
@@ -272,6 +280,17 @@ onBeforeUnmount(() => {
             row.current_specification ?? row.transfer.transfer_specification ?? '—'
           }}</template></ElTableColumn
         >
+        <ElTableColumn
+          v-if="rows.some((row) => row.inspection_hold_id)"
+          label="巡检状态"
+          min-width="180"
+          align="center"
+        >
+          <template #default="{ row }"
+            ><ElTag v-if="row.inspection_hold_id" type="danger">待处理 · 禁止转出</ElTag
+            ><span v-else>—</span></template
+          >
+        </ElTableColumn>
         <ElTableColumn label="账面件数" min-width="130" align="center"
           ><template #default="{ row }">{{
             inventoryAmount(dispatchableAmounts(asStock(row)).quantity)

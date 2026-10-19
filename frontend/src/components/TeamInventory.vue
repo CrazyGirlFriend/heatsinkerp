@@ -120,6 +120,7 @@ const queryDraft = ref(''),
 const fieldDraft = ref<WarehouseSearchField>('all'),
   operatorDraft = ref<'eq' | 'gte' | 'lte'>('eq'),
   inputError = ref('')
+const reworkDraft = ref<'pending' | 'worked' | ''>('')
 const availabilityDraft = ref<TeamInventoryParams['availability']>('owned'),
   sourceTeamDraft = ref<number | undefined>()
 const purposeDraft = ref<number | undefined>(),
@@ -313,6 +314,7 @@ const filters = computed<TeamInventoryParams>(() => {
     'days',
   ])
     if (text(key)) params[key] = text(key)
+  if (text('rework')) params.rework = text('rework')
   if (props.warehouse && text('receipt_source')) params.receipt_source = text('receipt_source')
   if (props.warehouse && text('location_status') === 'unassigned')
     params.location_status = 'unassigned'
@@ -360,6 +362,8 @@ const activeFilters = computed(() => {
       key: 'receipt_source',
       label: `来源：${warehouseSourceNames[text('receipt_source') as WarehouseSource] || text('receipt_source')}`,
     })
+  if (text('rework'))
+    chips.push({ key: 'rework', label: text('rework') === 'pending' ? '待返工' : '有返工历史' })
   if (text('source_team_id'))
     chips.push({
       key: 'source_team_id',
@@ -436,6 +440,7 @@ function draftFilters(): TeamInventoryParams {
       queryDraft.value.trim() && fieldDraft.value !== 'all' ? fieldDraft.value : undefined,
     search_operator:
       queryDraft.value.trim() && searchKind.value === 'number' ? operatorDraft.value : undefined,
+    rework: reworkDraft.value || undefined,
     receipt_source: props.warehouse ? sourceDraft.value || undefined : undefined,
     source_team_id:
       !props.warehouse || sourceDraft.value === 'internal' ? sourceTeamDraft.value : undefined,
@@ -493,6 +498,7 @@ function applyDialogFilters() {
 function resetDialogFilters() {
   filterResetRequested.value = true
   daysDraft.value = 30
+  reworkDraft.value = ''
   sourceDraft.value = ''
   sourceTeamDraft.value = undefined
   typeDraft.value = ''
@@ -662,6 +668,7 @@ function cancelFilters() {
 function syncFilterDrafts() {
   filterResetRequested.value = false
   queryDraft.value = text('query')
+  reworkDraft.value = text('rework') as 'pending' | 'worked' | ''
   sourceDraft.value = text('receipt_source') as WarehouseSource | ''
   typeDraft.value = text('material_type')
   materialDraft.value = text('material_name')
@@ -852,6 +859,16 @@ onBeforeUnmount(() => {
                   :key="team.id"
                   :value="team.id"
                   :label="team.name" /></ElSelect
+            ></label>
+            <label
+              >返工属性<ElSelect
+                v-model="reworkDraft"
+                clearable
+                placeholder="全部"
+                aria-label="库存返工筛选"
+                ><ElOption label="待返工" value="pending" /><ElOption
+                  label="有返工历史"
+                  value="worked" /></ElSelect
             ></label>
             <label v-if="warehouse && sourceDraft === 'internal'"
               >来源班组<ElSelect
@@ -1078,6 +1095,12 @@ onBeforeUnmount(() => {
               >{{ column.format(asRow(row)) }}</ElTag
             >
           </div>
+          <ElTag
+            v-else-if="column.key === 'stock_status' && row.inspection_hold_count"
+            type="danger"
+            effect="light"
+            >{{ column.format(asRow(row)) }}</ElTag
+          >
           <ProcessingStockStatus
             v-else-if="column.key === 'stock_status' && processing"
             :summary="asRow(row)"

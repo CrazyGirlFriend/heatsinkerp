@@ -7,6 +7,7 @@ from .auth_api import router as public_router
 from .factory_dashboard import router as dashboard_router
 from .factory_overview import router as factory_router
 from .factory_stream import router as stream_router
+from .inspection_api import router as inspection_router
 from .main_system_api import router as main_system_router
 from .main_system_configuration import router as main_system_configuration_router
 from .material_analytics import router as analytics_router
@@ -25,6 +26,7 @@ router = APIRouter()
 router.include_router(admin_router)
 router.include_router(material_router)
 router.include_router(stock_router)
+router.include_router(inspection_router)
 router.include_router(dispatch_router)
 router.include_router(analytics_router)
 router.include_router(warehouse_inventory_router)

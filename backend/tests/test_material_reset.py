@@ -55,6 +55,17 @@ def database(monkeypatch):
             columns += [
                 Column("transfer_id", ForeignKey("material_transfers.id", ondelete="RESTRICT"))
             ]
+        reference = {
+            "material_quantity_adjustments": "rework_of_id",
+            "material_inspections": "parent_id",
+        }.get(name)
+        if reference:
+            columns += [
+                Column(reference, ForeignKey(f"{name}.id", ondelete="RESTRICT")),
+                Column(
+                    "source_transfer_id", ForeignKey("material_transfers.id", ondelete="RESTRICT")
+                ),
+            ]
         if name == "shared_material_members":
             columns += [
                 Column("group_id", ForeignKey("shared_material_groups.id", ondelete="RESTRICT"))
@@ -107,6 +118,37 @@ def test_reset_respects_delivery_origin_reference_without_stock_source(database)
         )
     with Session(engine) as db:
         assert reset.reset_business_data(db)["material_transfers"] == 3
+
+
+def test_reset_removes_rechecks_and_rework_before_their_original_records(database):
+    engine, metadata = database
+    with engine.begin() as connection:
+        for name, reference in (
+            ("material_inspections", "parent_id"),
+            ("material_quantity_adjustments", "rework_of_id"),
+        ):
+            table = metadata.tables[name]
+            connection.execute(table.update().values(source_transfer_id=2))
+            for row_id in (2, 3):
+                connection.execute(
+                    table.insert(),
+                    {
+                        "id": row_id,
+                        reference: row_id - 1,
+                        "source_transfer_id": 2,
+                    },
+                )
+            # Model MySQL's immediate per-row RESTRICT check, including self references.
+            connection.exec_driver_sql(f"""CREATE TRIGGER restrict_{name} BEFORE DELETE ON {name}
+                WHEN EXISTS (SELECT 1 FROM {name} WHERE {reference} = OLD.id)
+                BEGIN SELECT RAISE(ABORT, 'history still referenced'); END""")
+    before = contents(engine, metadata)
+    with Session(engine) as db:
+        deleted = reset.reset_business_data(db)
+    assert deleted["material_inspections"] == deleted["material_quantity_adjustments"] == 3
+    after = contents(engine, metadata)
+    for name in metadata.tables:
+        assert after[name] == ([] if name in reset.RESET_TABLES else before[name])
 
 
 @pytest.mark.parametrize("failure", ["cycle", "dependent", "trigger"])

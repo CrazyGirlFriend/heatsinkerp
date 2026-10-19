@@ -27,6 +27,7 @@ def test_only_supported_business_routes_are_registered(client):
         "/api/material-input-suggestions",
         "/api/material-dispatches",
         "/api/team-materials/",
+        "/api/inspections",
         "/api/factory-dashboard",
         "/api/factory-overview",
         "/api/serial-urgency",

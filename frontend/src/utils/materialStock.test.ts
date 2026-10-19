@@ -62,3 +62,10 @@ describe('independent stock quantity and weight limits', () => {
     expect(amountError(undefined, 1, stock)).toContain('整数')
   })
 })
+
+it('prevents held lots from outbound selection while retaining physical balance', () => {
+  const held = { ...stock, inspection_hold_id: 13 }
+  expect(stockSelectable(held)).toBe(false)
+  expect(stockAvailable(held)).toBe(true)
+  expect(stockSelectable({ ...held, inspection_hold_id: null })).toBe(true)
+})

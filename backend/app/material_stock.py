@@ -90,6 +90,7 @@ class DispatchLine(StockAmounts, WarehouseLocationChoice, SludgeMeasurement):
 class DispatchCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     sent_employee_id: int = Field(ge=1)
+    rework_return: bool = False
     next_team_id: int | None = Field(default=None, ge=1)
     entry_kind: str = Field(
         default="transfer", pattern="^(transfer|warehouse_outbound|inspection_shipment)$"
@@ -358,12 +359,23 @@ def create_dispatch(db, team_id, payload, user):
             if prior is not None:
                 _replay(prior, user, request_hash, "source_team_id")
                 return dispatch_dict(db, prior, user)
+            from .inspections import require_clear_lots
+
+            require_clear_lots(db, lots.values())
             employee = workflow.require_team_employee(
                 db, source.id, payload.sent_employee_id, "转料人"
             )
             target = None if external else workflow._active_target(db, payload.next_team_id)
             if target is not None and target.id == source.id:
                 raise HTTPException(422, "source and target teams must be different")
+            if payload.rework_return:
+                from .rework import previous_work
+                from .team_constants import PROCESSING_TEAM_CODES
+
+                if target is None or target.code not in PROCESSING_TEAM_CODES:
+                    raise HTTPException(422, "返工退料须选择生产班组")
+                if any(previous_work(db, lot) is None for lot in lots.values()):
+                    raise HTTPException(422, "返工退料必须关联已有加工记录")
             clearances = {item.source_transfer_id: item for item in payload.quantity_clearances}
             if (
                 len(clearances) != len(payload.quantity_clearances)
@@ -503,6 +515,8 @@ def create_dispatch(db, team_id, payload, user):
 
                 transfer = MaterialTransfer(
                     sent_processing_status=sent_status(lot, record),
+                    rework_pending=payload.rework_return or lot.rework_pending,
+                    rework_count=lot.rework_count,
                     batch_no=batch_no,
                     serial_no=lot.serial_no,
                     **fields,
@@ -717,9 +731,11 @@ def dispatch_dict(db, dispatch, user, *, items=None, include_history=False):
 
 def stock_table(team_id=None):
     """Read committed lot balances; pending outbound is already deducted."""
+    from .inspections import hold_column
     from .stock_balances import AMOUNTS
 
     balance = MaterialStockBalance
+    held = hold_column(MaterialTransfer.id).is_not(None)
     # Internal machining reallocates the same stock. It is neither a new
     # receipt nor a handoff, although its child lots share the stock ledger.
     columns = {name: getattr(balance, name) for name in AMOUNTS}
@@ -741,9 +757,9 @@ def stock_table(team_id=None):
             columns[f"reserved_{amount}"] - columns[f"in_transit_{amount}"]
         )
         scrap = MaterialTransfer.material_type.in_(SCRAP_MATERIAL_TYPES)
-        columns[f"available_{amount}"] = case((scrap, 0), else_=free)
+        columns[f"available_{amount}"] = case((or_(scrap, held), 0), else_=free)
         columns[f"scrap_{amount}"] = case((scrap, free), else_=0)
-        columns[f"scrap_available_{amount}"] = case((scrap, free), else_=0)
+        columns[f"scrap_available_{amount}"] = case((held, 0), (scrap, free), else_=0)
     return (
         select(
             balance.transfer_id,

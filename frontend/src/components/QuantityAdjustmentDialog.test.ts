@@ -4,6 +4,7 @@ import { reactive } from 'vue'
 import { ElInputNumber, ElSelect, ElSwitch } from 'element-plus'
 import WeightInput from './WeightInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
+import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -564,4 +565,54 @@ describe('processing piece adjustment', () => {
     await wrapper.setProps({ modelValue: false })
     expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
   })
+})
+
+it('reworks completed stock with a required employee and the original record, without initial output', async () => {
+  vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
+    ...context(),
+    processing_mode: 'unit',
+    processing_status: 'complete',
+    rework_count: 2,
+    rework_of_id: 8,
+  })
+  vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([])
+  wrapper = mount(QuantityAdjustmentDialog, {
+    props: {
+      modelValue: true,
+      teamId: 2,
+      sourceId: 10,
+      canWrite: true,
+      processing: true,
+      rework: true,
+    },
+    global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
+  })
+  await flushPromises()
+  expect(wrapper.text()).toContain('返工第 3 次')
+  await click('保存返工登记')
+  expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+  const employee = wrapper.getComponent(TeamEmployeeInput)
+  expect(employee.props('invalid')).toBe(true)
+  employee.vm.$emit('update:modelValue', {
+    id: 7,
+    name: '李师傅',
+    active: true,
+    team_id: 2,
+    version: 1,
+  })
+  await flushPromises()
+  expect(employee.props('invalid')).toBe(false)
+  await click('保存返工登记')
+  expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
+    2,
+    expect.objectContaining({
+      work_kind: 'rework',
+      rework_of_id: 8,
+      processor_employee_id: 7,
+      processor_name: '李师傅',
+      completed_quantity: 10,
+      completed_weight: 100,
+      expected_revision: 0,
+    }),
+  )
 })

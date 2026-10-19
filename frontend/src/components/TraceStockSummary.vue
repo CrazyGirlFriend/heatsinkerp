@@ -39,7 +39,23 @@ const stock = computed(() => {
     string,
     { quantity: number; weight: number; teams: Array<TraceAmount & { name: string }> }
   >()
-  for (const holding of props.trace.holdings || []) {
+  const holdings = [...(props.trace.holdings || [])]
+  if (props.trace.shared_group_view) {
+    for (const position of props.trace.shared_positions || [])
+      holdings.push({
+        team_id: position.team_id,
+        team_code: '',
+        team_name: position.team_name,
+        material_types: [
+          {
+            material_type: position.material_type,
+            quantity: position.quantity,
+            weight: position.weight,
+          },
+        ],
+      })
+  }
+  for (const holding of holdings) {
     const name =
       teamWorkspaceProfiles.find((team) => team.code === holding.team_code)?.name ||
       holding.team_name
@@ -62,7 +78,8 @@ const stock = computed(() => {
   }
   const shipped = { quantity: 0, weight: 0 }
   for (const batch of props.trace.items) {
-    if (batch.status === 'dispatched' && batch.material_type === 'finished') add(shipped, batch)
+    if (!batch.context_only && batch.status === 'dispatched' && batch.material_type === 'finished')
+      add(shipped, batch)
   }
   return {
     teams,
@@ -72,6 +89,24 @@ const stock = computed(() => {
     shipped,
   }
 })
+const held = computed(() =>
+  props.trace.items
+    .filter(
+      (batch) =>
+        !batch.context_only &&
+        batch.inspection_hold_id &&
+        !isScrapType(batch.material_type) &&
+        (!batch.shared_unallocated || props.trace.shared_group_view) &&
+        ((batch.on_hand_quantity || 0) > 0 || (batch.on_hand_weight || 0) > 0),
+    )
+    .reduce(
+      (sum, batch) => ({
+        quantity: sum.quantity + (batch.on_hand_quantity || 0),
+        weight: sum.weight + (batch.on_hand_weight || 0),
+      }),
+      { quantity: 0, weight: 0 },
+    ),
+)
 const rows = computed(() =>
   props.teams.map((name, index) => ({
     name,
@@ -91,8 +126,10 @@ const rows = computed(() =>
     :class="{
       compact,
       'has-gap':
-        metric === 'weight' &&
-        (!!measured || exceedsTolerance || (trace.shortage && trace.shortage.weight > 0)),
+        !!held.weight ||
+        !!held.quantity ||
+        (metric === 'weight' &&
+          (!!measured || exceedsTolerance || (trace.shortage && trace.shortage.weight > 0))),
     }"
     aria-label="流水号当前库存"
   >
@@ -160,6 +197,9 @@ const rows = computed(() =>
       </div>
     </div>
     <footer class="stock-totals">
+      <div v-if="held.quantity || held.weight" class="stock-gap">
+        <span>其中巡检锁定</span><b>{{ num(held[metric]) }} {{ unit }}</b>
+      </div>
       <div class="stock-total">
         <span>正常料合计</span
         ><strong

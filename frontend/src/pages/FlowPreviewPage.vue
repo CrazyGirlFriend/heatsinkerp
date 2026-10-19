@@ -268,7 +268,10 @@ async function load(background = false) {
       if (request === epoch) history.value = data
     } else {
       const data = await materialTransferApi.trace(serial.value)
-      if (request === epoch) trace.value = data
+      if (request === epoch) {
+        trace.value = data
+        if (data.focus_batch_id) selectedId.value = String(data.focus_batch_id)
+      }
     }
   } catch (reason) {
     if (request !== epoch) return
@@ -280,7 +283,7 @@ async function load(background = false) {
 }
 function search() {
   if (!serialDraft.value.trim()) {
-    error.value = '请输入完整流水号'
+    error.value = '请输入完整流水号或批次号'
     return
   }
   const next = serialDraft.value.trim()
@@ -466,7 +469,7 @@ onBeforeUnmount(() => {
       <form class="chain-query" @submit.prevent="search">
         <ElInput
           v-model="serialDraft"
-          placeholder="输入完整流水号"
+          placeholder="输入完整流水号或批次号"
           aria-label="流水号"
           clearable
           maxlength="80"
@@ -578,7 +581,7 @@ onBeforeUnmount(() => {
               :label="team.name" /></ElSelect
           ><ElInput
             v-model="serialDraft"
-            placeholder="输入完整流水号"
+            placeholder="输入完整流水号或批次号"
             aria-label="流水号"
             :prefix-icon="Search"
             clearable
@@ -703,6 +706,9 @@ onBeforeUnmount(() => {
               >
             </div>
             <div class="mark-legend" aria-label="图形说明">
+              <span v-if="trace?.items.some((batch) => batch.inspection_hold_id)"
+                ><i class="inspection-mark" />巡检锁定</span
+              >
               <span><i class="stay-mark" />在库停留</span
               ><span><i class="departure-mark" />转出</span
               ><span><i class="receipt-mark" />签收</span
@@ -1413,7 +1419,8 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 12px;
   width: 440px;
-  min-width: 0;
+  flex: 1 1 300px;
+  min-width: 280px;
 }
 .chain-query .el-input {
   flex: 1;
@@ -1531,6 +1538,12 @@ onBeforeUnmount(() => {
   height: 14px;
   border: 2px solid #926de2;
   border-radius: 50%;
+}
+.mark-legend .inspection-mark {
+  width: 10px;
+  height: 10px;
+  border-color: #be4c49;
+  background: #be4c49;
 }
 .mark-legend .processing-mark {
   width: 10px;
@@ -1674,7 +1687,7 @@ onBeforeUnmount(() => {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
-@media (max-width: 1000px) {
+@media (max-width: 1280px) {
   .chain-header {
     gap: 12px;
     flex-wrap: wrap;

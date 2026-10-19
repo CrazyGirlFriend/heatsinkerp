@@ -24,6 +24,7 @@ import TeamWorkspaceActions from '@/components/TeamWorkspaceActions.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
 import TeamMaterialOverviewPanel from '@/components/TeamMaterialOverview.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
+import TeamInspectionRecords from '@/components/TeamInspectionRecords.vue'
 import TeamProcessingRecords from '@/components/TeamProcessingRecords.vue'
 import ProcessingBatchPicker from '@/components/ProcessingBatchPicker.vue'
 import QuantityAdjustmentDialog from '@/components/QuantityAdjustmentDialog.vue'
@@ -1096,6 +1097,13 @@ onBeforeUnmount(() => {
           @view="openWarehouseMaterial"
           @dispatch="dispatchWarehouseMaterial"
           @batch-dispatch="dispatchWarehouseBatches"
+        />
+        <TeamInspectionRecords
+          v-else-if="tab === 'inspections'"
+          :key="teamId"
+          :team-id="teamId"
+          :show-all="team?.code === 'FACTORY-QC'"
+          :fullscreen="fullscreen"
         />
         <TeamProcessingRecords
           v-else-if="tab === 'processing'"

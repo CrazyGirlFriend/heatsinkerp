@@ -93,6 +93,9 @@ def record_dict(row):
         "processor_employee_id": row.processor_employee_id,
         "processing_date": row.processing_date.isoformat() if row.processing_date else None,
         "processing_mode": row.processing_mode,
+        "work_kind": row.work_kind,
+        "rework_of_id": row.rework_of_id,
+        "rework_round": row.rework_round,
         **{
             key: float(getattr(row, key))
             if key.endswith("weight") and getattr(row, key) is not None
@@ -164,9 +167,12 @@ def context(db, team_id, lot_id, page=1, page_size=10):
     ).one_or_none()
     if lot is None:
         raise HTTPException(404, "未找到本班组已签收的库存批次")
+    from .rework import previous_work
     from .shared_material import document as shared_document
 
-    shared = shared_document(db.get(MaterialTransfer, lot_id))
+    physical_lot = db.get(MaterialTransfer, lot_id)
+    previous = previous_work(db, physical_lot)
+    shared = shared_document(physical_lot)
     balance = db.get(Balance, lot_id)
     if balance is None:
         raise HTTPException(409, "未找到该批次的库存记录，请先核对")
@@ -225,6 +231,9 @@ def context(db, team_id, lot_id, page=1, page_size=10):
         if stock.require_team(db, team_id).code in SPLITTING_TEAM_CODES
         else "unit",
         "origin_processing_record": record_dict(origin) if origin else None,
+        "rework_of_id": previous.id if previous else None,
+        "rework_pending": physical_lot.rework_pending,
+        "rework_count": physical_lot.rework_count,
         **weight_differences(db, [lot_id], team_id).get(lot_id, {}),
         "transfer_specification": latest.after_specification
         if latest and latest.after_specification is not None
@@ -240,8 +249,13 @@ def context(db, team_id, lot_id, page=1, page_size=10):
 
 def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     """Recount only untransferred stock inside the caller's locked transaction."""
+    from .inspections import lock_hold
     from .processing_records import require_processing_team
 
+    # Serialize held-family work before locking its balances, as rechecks do.
+    hold = lock_hold(db, lot.id)
+    if hold and payload.work_kind != "rework":
+        raise HTTPException(409, "本批巡检不合格，请登记返工；处理后须由检验班组复检放行")
     team = require_processing_team(db, lot.next_team_id)
     if lot.material_type in WEIGHT_ONLY_TYPES:
         raise HTTPException(422, "废泥、废屑只按重量计量，不能修改加工件数")
@@ -260,6 +274,9 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     ):
         raise HTTPException(409, "本批已无在库物料，不能增加件数")
     latest = latest_records(db, [lot.id]).get(lot.id)
+    from .rework import validate
+
+    prior_work = validate(db, lot, payload, latest)
     payload, production = prepare(lot, balance, latest, payload, team.code)
     before_specification = (
         latest.after_specification
@@ -318,7 +335,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     if payload.outputs is not None:
         from .processing_outputs import create_outputs
 
-        items, snapshots, after_weight = create_outputs(db, lot, payload, user, now)
+        items, snapshots, after_weight = create_outputs(db, lot, payload, user, now, hold)
     row = Adjustment(
         source_transfer_id=lot.id,
         team_id=lot.next_team_id,
@@ -327,6 +344,9 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         processor_name=employee.name,
         processor_employee_id=employee.id,
         **production,
+        work_kind=payload.work_kind,
+        rework_of_id=prior_work.id if prior_work else None,
+        rework_round=lot.rework_count + 1 if prior_work else 0,
         processing_status=status,
         before_specification=before_specification or "",
         after_specification=after_specification or "",
@@ -382,6 +402,9 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
                     if after_specification != before_specification
                     else {}
                 ),
+                "work_kind": {"before": None, "after": row.work_kind},
+                "rework_of_id": {"before": None, "after": row.rework_of_id},
+                "rework_round": {"before": None, "after": row.rework_round},
                 "reason": {"before": None, "after": row.reason},
                 "processor_name": {"before": None, "after": row.processor_name},
                 **(
@@ -399,6 +422,9 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
             },
         )
     )
+    if prior_work and not items:
+        lot.rework_count += 1
+        lot.rework_pending = False
     db.flush()
     if items:
         from .processing_outputs import record_events

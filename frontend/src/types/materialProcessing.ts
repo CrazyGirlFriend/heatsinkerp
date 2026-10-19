@@ -53,6 +53,11 @@ export interface ProcessingDailyRow {
   record_count: number
   input_quantity: number
   input_weight: number
+  rework_quantity?: number
+  rework_weight?: number
+  rework_record_count?: number
+  work_quantity?: number
+  work_weight?: number
   completed_quantity: number
   completed_weight: number
   scrap_quantity: number
@@ -63,6 +68,11 @@ export interface ProcessingRecordSummary {
   employee_day_count: number
   record_count: number
   unreported_count: number
+  rework_quantity?: number
+  rework_weight?: number
+  rework_record_count?: number
+  work_quantity?: number
+  work_weight?: number
   completed_quantity: number
   completed_weight: number
   scrap_quantity: number

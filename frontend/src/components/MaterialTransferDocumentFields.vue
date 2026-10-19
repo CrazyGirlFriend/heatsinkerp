@@ -89,6 +89,12 @@ const fields = computed<DocumentField[]>(() => {
       ? [{ label: '入库仓位', value: t.warehouse_location || '未填写' }]
       : []),
     { label: '上一批次', value: t.source_transfer_batch_no || '—' },
+    ...(t.rework_pending || t.rework_count
+      ? [
+          { label: '返工属性', value: t.rework_pending ? '待返工' : '有返工历史' },
+          { label: '已完成返工次数', value: `${t.rework_count || 0} 次` },
+        ]
+      : []),
     ...(t.sent_processing_status
       ? [{ label: '转出时加工状态', value: processingStateLabels[t.sent_processing_status] }]
       : []),

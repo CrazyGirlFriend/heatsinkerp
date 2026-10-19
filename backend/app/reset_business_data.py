@@ -21,6 +21,7 @@ RESET_TABLES = (
     "material_stock_balances",
     "material_transfer_events",
     "material_losses",
+    "material_inspections",
     "material_quantity_adjustments",
     "material_transfers",
     "shared_material_members",
@@ -73,7 +74,12 @@ def reset_business_data(db: Session) -> dict[str, int]:
         before = business_counts(db)
         for name in RESET_TABLES:
             table = Base.metadata.tables[name]
-            if name == "material_transfers":
+            references = {
+                "material_transfers": ("source_transfer_id", "delivery_origin_id"),
+                "material_quantity_adjustments": ("rework_of_id",),
+                "material_inspections": ("parent_id",),
+            }.get(name)
+            if references:
                 child = table.alias("child")
                 # Keep RESTRICT FKs enabled; remove descendants before sources.
                 while db.scalar(select(func.count()).select_from(table)):
@@ -83,10 +89,7 @@ def reset_business_data(db: Session) -> dict[str, int]:
                             .where(
                                 ~exists(
                                     select(child.c.id).where(
-                                        or_(
-                                            child.c.source_transfer_id == table.c.id,
-                                            child.c.delivery_origin_id == table.c.id,
-                                        )
+                                        or_(*(child.c[key] == table.c.id for key in references))
                                     )
                                 )
                             )
@@ -94,7 +97,7 @@ def reset_business_data(db: Session) -> dict[str, int]:
                         )
                     )
                     if not ids:
-                        raise RuntimeError("Cyclic stock sources; reset rolled back")
+                        raise RuntimeError("Cyclic material history; reset rolled back")
                     db.execute(delete(table).where(table.c.id.in_(ids)))
             else:
                 db.execute(delete(table))

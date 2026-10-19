@@ -309,3 +309,54 @@ describe('unified production records', () => {
     )
   })
 })
+
+it('opens the sole current descendant directly for rework without a second source choice', async () => {
+  vi.spyOn(teamMaterialApi, 'processingSources').mockResolvedValue({
+    items: [{ transfer: { id: 88 } } as never],
+    total: 1,
+    page: 1,
+    page_size: 2,
+  })
+  await render()
+  await wrapper
+    .findAll('button')
+    .find((b) => b.text() === '返工')!
+    .trigger('click')
+  await flushPromises()
+  expect(teamMaterialApi.processingSources).toHaveBeenCalledWith(5, {
+    rework_record_id: 1,
+    page_size: 2,
+  })
+  expect(wrapper.getComponent(QuantityAdjustmentDialog).props()).toMatchObject({
+    sourceId: 88,
+    rework: true,
+    canWrite: true,
+    modelValue: true,
+  })
+})
+
+it('separates rework totals and exports rework identity alongside initial production', async () => {
+  vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+    items: [{ ...record(), work_kind: 'rework', rework_round: 3, rework_of_id: 9 }],
+    total: 1,
+    page: 1,
+    page_size: 10,
+    summary: {
+      completed_quantity: 1,
+      completed_weight: 1,
+      rework_quantity: 3,
+      rework_weight: 3,
+      record_count: 4,
+      employee_day_count: 1,
+      unreported_count: 0,
+      scrap_quantity: 0,
+      scrap_weight: 0,
+    },
+  })
+  await render()
+  expect(wrapper.text()).toContain('首次完成')
+  expect(wrapper.text()).toContain('返工 · 第 3 次')
+  const source = wrapper.getComponent(TableExportButton).props('source')()!
+  const exported = await source.load(new AbortController().signal, () => {})
+  expect(exported[0]).toMatchObject({ work_kind: '返工', rework_of_id: 9, rework_round: 3 })
+})

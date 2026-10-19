@@ -111,6 +111,8 @@ function normalizeHistory(value: unknown): MaterialTransferHistoryEntry[] {
         'quantity_changed',
         'reallocated',
         'processed',
+        'inspection_recorded',
+        'inspection_rechecked',
       ].includes(String(event.action))
     )
       return []
@@ -179,6 +181,8 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
     sent_processing_status: textValue(
       raw.sent_processing_status,
     ) as MaterialTransfer['sent_processing_status'],
+    rework_pending: raw.rework_pending === true,
+    rework_count: optionalInteger(raw.rework_count) || 0,
     processing_role: ['remaining', 'produced', 'scrap'].includes(String(raw.processing_role))
       ? (raw.processing_role as MaterialTransfer['processing_role'])
       : null,
@@ -337,6 +341,12 @@ export const materialTransferApi = {
       reallocations: result.reallocations?.map(normalizeMaterialTransfer),
       items: result.items.map((item) => ({
         ...normalizeMaterialTransfer(item),
+        context_only: item.context_only,
+        inspection_hold_id: item.inspection_hold_id,
+        inspection_status: item.inspection_status,
+        inspection_source_batch_no: item.inspection_source_batch_no,
+        inspection_checked_at: item.inspection_checked_at,
+        inspection_inspector: item.inspection_inspector,
         other_processing_outputs: item.other_processing_outputs,
         on_hand_quantity: item.on_hand_quantity,
         on_hand_weight: item.on_hand_weight,

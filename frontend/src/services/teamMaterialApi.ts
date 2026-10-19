@@ -81,6 +81,7 @@ function stock(value: unknown): StockBatch {
   return {
     ...balance(value),
     transfer: normalizeMaterialTransfer(raw.transfer),
+    inspection_hold_id: numeric(raw.inspection_hold_id),
     ...(numeric(raw.weight_root_transfer_id) != null
       ? { weight_root_transfer_id: Number(raw.weight_root_transfer_id) }
       : {}),
@@ -219,13 +220,21 @@ export const teamMaterialApi = {
   },
   processingDaily(
     teamId: number,
-    params: MaterialPageParams & { processor_id?: number; work_date?: string } = {},
+    params: MaterialPageParams & {
+      processor_id?: number
+      work_date?: string
+      work_kind?: string
+    } = {},
   ) {
     return request<MaterialPage<ProcessingDailyRow>>(path(teamId, 'processing-daily', params))
   },
   processingRecords(
     teamId: number,
-    params: MaterialPageParams & { processor_id?: number; work_date?: string } = {},
+    params: MaterialPageParams & {
+      processor_id?: number
+      work_date?: string
+      work_kind?: string
+    } = {},
   ) {
     return request<
       MaterialPage<ProcessingRecord> & {
@@ -236,7 +245,13 @@ export const teamMaterialApi = {
   },
   processingSources(
     teamId: number,
-    params: { group_id?: number; query?: string; page?: number; page_size?: number } = {},
+    params: {
+      group_id?: number
+      rework_record_id?: number
+      query?: string
+      page?: number
+      page_size?: number
+    } = {},
   ) {
     return page(path(teamId, 'processing-stock', params), stock)
   },

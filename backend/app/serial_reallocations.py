@@ -113,6 +113,9 @@ def create(db, team_id, payload, user):
             )
             if prior is not None:
                 return replay(prior, user, request_hash)
+            from .inspections import require_clear
+
+            require_clear(db, lot.id)
             team = require_team(
                 db.scalar(
                     select(Team)
@@ -154,6 +157,8 @@ def create(db, team_id, payload, user):
             now = utcnow()
             item = MaterialTransfer(
                 sent_processing_status=progress,
+                rework_pending=lot.rework_pending,
+                rework_count=lot.rework_count,
                 processing_role="produced" if progress == "complete" else lot.processing_role,
                 batch_no=next_transfer_batch_number(db),
                 entry_kind="serial_reallocation",

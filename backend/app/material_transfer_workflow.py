@@ -337,6 +337,8 @@ def material_transfer_dict(
         "entry_kind": transfer.entry_kind,
         "processing_role": transfer.processing_role,
         "sent_processing_status": transfer.sent_processing_status,
+        "rework_pending": transfer.rework_pending,
+        "rework_count": transfer.rework_count,
         "purpose_id": transfer.purpose_id,
         "purpose_name": transfer.purpose_name,
         "external_destination": transfer.external_destination,
@@ -581,6 +583,10 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
                     "a stock-linked batch's destination cannot be changed; void this batch and recreate",
                 )
             available = available_locked(db, transfer.stock_source, exclude_transfer_id=transfer.id)
+            if quantity > transfer.quantity or weight > transfer.weight:
+                from .inspections import require_clear
+
+                require_clear(db, transfer.source_transfer_id)
             if amounts_changed:
                 validate_outbound_clearance(
                     transfer.stock_source, quantity, weight, available, clearance

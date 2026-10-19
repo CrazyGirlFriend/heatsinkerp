@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from .models import (
     AuthSession,
     MaterialDispatch,
+    MaterialInspection,
     MaterialLoss,
     MaterialQuantityAdjustment,
     MaterialTransfer,
@@ -164,6 +165,7 @@ WATCHED = (
     MaterialTransfer,
     MaterialLoss,
     MaterialQuantityAdjustment,
+    MaterialInspection,
     MaterialDispatch,
     SerialUrgency,
     SerialDeliveryPlan,
@@ -180,7 +182,7 @@ PENDING = "inventory_changed_transactions"
 def affected_teams(row):
     state = inspect(row)
     result = set()
-    for name in ("source_team_id", "next_team_id", "team_id"):
+    for name in ("source_team_id", "next_team_id", "team_id", "inspection_team_id"):
         if name not in state.attrs:
             continue
         history = state.attrs[name].history

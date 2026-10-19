@@ -1,6 +1,12 @@
 import type { MaterialTransfer } from './materialTransfer'
 
 export interface TraceBatch extends MaterialTransfer {
+  context_only?: boolean
+  inspection_hold_id?: number | null
+  inspection_status?: 'held' | 'released' | 'passed' | null
+  inspection_source_batch_no?: string | null
+  inspection_checked_at?: string | null
+  inspection_inspector?: string | null
   other_processing_outputs?: Array<
     TraceAmount & { batch_no: string; serial_no: string; at: string }
   >
@@ -38,6 +44,8 @@ export interface MaterialTrace {
       serials: string[]
     }
   >
+  focus_batch_id?: number | null
+  query_kind?: 'serial' | 'batch' | 'shared'
   shared_group_view?: boolean
   serial_no: string
   observed_at?: string

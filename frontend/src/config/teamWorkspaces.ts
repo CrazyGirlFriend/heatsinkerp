@@ -7,6 +7,7 @@ export const teamWorkspaceSections = [
   { value: 'pending', label: '来料待签收' },
   { value: 'receipts', label: '入库记录' },
   { value: 'processing', label: '加工记录' },
+  { value: 'inspections', label: '巡检记录' },
   { value: 'outgoing', label: '出库记录' },
   { value: 'reallocations', label: '转投记录' },
   { value: 'losses', label: '丢失记录' },
@@ -27,7 +28,8 @@ export function teamWorkspaceSectionsFor(
     (section) =>
       (section.value !== 'warehouse' || (warehouse && manageWarehouse)) &&
       (section.value !== 'reallocations' || reallocations) &&
-      (section.value !== 'processing' || processing),
+      (section.value !== 'processing' || processing) &&
+      (section.value !== 'inspections' || processing),
   )
 }
 

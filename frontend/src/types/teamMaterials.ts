@@ -47,6 +47,7 @@ export interface TeamMaterialOverview {
 }
 export interface StockBatch extends MaterialBalance {
   transfer: MaterialTransfer
+  inspection_hold_id?: number | null
   processing_state?: import('./materialProcessing').ProcessingState
   current_specification?: string | null
   processing_role?: import('./materialProcessing').ProcessingRole | null
@@ -59,6 +60,9 @@ export interface StockBatch extends MaterialBalance {
   unassigned_weight?: number
 }
 export interface QuantityAdjustment {
+  work_kind?: 'initial' | 'rework'
+  rework_of_id?: number | null
+  rework_round?: number
   id: number
   source_transfer_id: number
   before_quantity: number
@@ -123,8 +127,13 @@ export interface QuantityAdjustmentContext
   weight_difference?: number
   weight_root_transfer_id?: number
   origin_processing_record?: QuantityAdjustment | null
+  rework_of_id?: number | null
+  rework_pending?: boolean
+  rework_count?: number
 }
 export interface CreateQuantityAdjustment {
+  work_kind?: 'initial' | 'rework'
+  rework_of_id?: number
   source_transfer_id: number
   quantity: number
   expected_revision: number
@@ -258,6 +267,7 @@ export interface DispatchLine extends SludgeMeasurement {
   transfer_specification?: string | null
 }
 export type CreateDispatch = {
+  rework_return?: boolean
   sent_employee_id: number
   notes?: string | null
   idempotency_key: string

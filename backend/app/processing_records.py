@@ -8,7 +8,7 @@ from .material_transfer_workflow import _utc, material_transfer_dict, material_t
 from .models import MaterialQuantityAdjustment as Adjustment
 from .models import MaterialTransfer as Transfer
 from .models import TeamEmployee, utcnow
-from .processing_registration import METRICS
+from .processing_registration import METRICS, SUMMARY_METRICS
 from .processing_statistics import weight_difference_table
 from .quantity_adjustments import record_dict
 from .record_filters import RecordFilters, urgent_serials
@@ -36,6 +36,7 @@ def registered_lots(team_id):
             Transfer.id.label("lot_id"),
             func.coalesce(latest.c.latest_id, parent.c.latest_id).label("latest_id"),
             case(
+                (Transfer.rework_pending.is_(True), "unregistered"),
                 (own.c.processing_status.is_not(None), own.c.processing_status),
                 (Transfer.entry_kind == "serial_reallocation", Transfer.sent_processing_status),
                 (Transfer.processing_role == "remaining", "unregistered"),
@@ -62,6 +63,7 @@ def registered_lots(team_id):
         .where(
             Transfer.next_team_id == team_id,
             or_(
+                Transfer.rework_pending.is_(True),
                 latest.c.latest_id.is_not(None),
                 parent.c.latest_id.is_not(None),
                 and_(
@@ -81,13 +83,22 @@ def summary_columns(balance, registered):
     for name, predicate in (
         (
             "registered",
-            or_(registered.c.latest_id.is_not(None), registered.c.processing_status == "complete"),
+            and_(
+                func.coalesce(registered.c.processing_status, "") != "unregistered",
+                or_(
+                    registered.c.latest_id.is_not(None),
+                    registered.c.processing_status == "complete",
+                ),
+            ),
         ),
         (
             "unregistered",
-            and_(
-                registered.c.latest_id.is_(None),
-                func.coalesce(registered.c.processing_status, "") != "complete",
+            or_(
+                registered.c.processing_status == "unregistered",
+                and_(
+                    registered.c.latest_id.is_(None),
+                    func.coalesce(registered.c.processing_status, "") != "complete",
+                ),
             ),
         ),
     ):
@@ -127,11 +138,14 @@ def state(
 
 def source_metadata(team_id):
     """Join processing and weight-family facts into the existing page read."""
+    from .inspections import hold_column
+
     registered = registered_lots(team_id)
     differences = weight_difference_table(team_id)
     return (
         select(
             differences.c.transfer_id.label("lot_id"),
+            hold_column(differences.c.transfer_id).label("inspection_hold_id"),
             differences.c.weight_root_transfer_id,
             differences.c.weight_difference,
             registered.c.latest_id,
@@ -145,6 +159,7 @@ def source_metadata(team_id):
 
 
 def annotate_source(item, metadata):
+    item["inspection_hold_id"] = metadata.get("inspection_hold_id")
     item["processing_state"] = state(
         item["transfer"]["material_type"],
         item["on_hand_quantity"],
@@ -174,7 +189,9 @@ def require_processing_team(db, team_id):
     return team
 
 
-def list_sources(db, team_id, user, *, group_id=None, query=None, page=1, page_size=20):
+def list_sources(
+    db, team_id, user, *, group_id=None, rework_record_id=None, query=None, page=1, page_size=20
+):
     require_processing_team(db, team_id)
     balance = stock.stock_table(team_id)
     registered = registered_lots(team_id)
@@ -183,6 +200,17 @@ def list_sources(db, team_id, user, *, group_id=None, query=None, page=1, page_s
         ~func.coalesce(balance.c.material_type, "").in_(SCRAP_MATERIAL_TYPES),
         or_(balance.c.on_hand_quantity > 0, balance.c.on_hand_weight > 0),
     ]
+    if rework_record_id is not None:
+        from .material_lineage import relatives
+
+        record = db.get(Adjustment, rework_record_id)
+        if record is None or record.team_id != team_id:
+            raise HTTPException(404, "未找到本班组加工记录")
+        family = relatives([record.source_transfer_id], name="rework_candidates")
+        conditions[0] = or_(
+            Transfer.rework_pending.is_(True), registered.c.processing_status == "complete"
+        )
+        conditions.append(Transfer.id.in_(select(family.c.id)))
     if group_id is not None:
         from .warehouse_inventory import group_conditions, origin_columns
 
@@ -312,7 +340,9 @@ def output_balances(db, team_id, lot_ids):
     }
 
 
-def record_conditions(team_id, record_filters=None, query=None, processor_id=None, work_date=None):
+def record_conditions(
+    team_id, record_filters=None, query=None, processor_id=None, work_date=None, work_kind=None
+):
     filters = record_filters or RecordFilters()
     if filters.date_from and filters.date_to and filters.date_from > filters.date_to:
         raise HTTPException(422, "开始日期不能晚于结束日期")
@@ -321,6 +351,8 @@ def record_conditions(team_id, record_filters=None, query=None, processor_id=Non
         ~Adjustment.idempotency_key.like("outbound-clear:%"),
         ~func.coalesce(Transfer.material_type, "").in_(SCRAP_MATERIAL_TYPES),
     ]
+    if work_kind:
+        conditions.append(Adjustment.work_kind == work_kind)
     if filters.date_from:
         conditions.append(Adjustment.processing_date >= filters.date_from)
     if filters.date_to:
@@ -359,7 +391,25 @@ def production_groups(conditions):
             ),
             Adjustment.processing_mode,
             func.count().label("record_count"),
-            *(func.sum(getattr(Adjustment, key)).label(key) for key in METRICS),
+            *(
+                func.sum(
+                    case((Adjustment.work_kind == "initial", getattr(Adjustment, key)), else_=0)
+                ).label(key)
+                if key.startswith(("completed", "input"))
+                else func.sum(getattr(Adjustment, key)).label(key)
+                for key in METRICS
+            ),
+            func.sum(
+                case((Adjustment.work_kind == "rework", Adjustment.completed_quantity), else_=0)
+            ).label("rework_quantity"),
+            func.sum(
+                case((Adjustment.work_kind == "rework", Adjustment.completed_weight), else_=0)
+            ).label("rework_weight"),
+            func.sum(case((Adjustment.work_kind == "rework", 1), else_=0)).label(
+                "rework_record_count"
+            ),
+            func.sum(Adjustment.completed_quantity).label("work_quantity"),
+            func.sum(Adjustment.completed_weight).label("work_weight"),
         )
         .join(Transfer, Transfer.id == Adjustment.source_transfer_id)
         .outerjoin(TeamEmployee, TeamEmployee.id == Adjustment.processor_employee_id)
@@ -386,13 +436,16 @@ def list_records(
     query=None,
     processor_id=None,
     work_date=None,
+    work_kind=None,
     page=1,
     page_size=20,
 ):
     require_processing_team(db, team_id)
     balance = stock.stock_table(team_id)
     registered = registered_lots(team_id)
-    conditions = record_conditions(team_id, record_filters, query, processor_id, work_date)
+    conditions = record_conditions(
+        team_id, record_filters, query, processor_id, work_date, work_kind
+    )
     statement = (
         select(
             Adjustment,
@@ -423,7 +476,7 @@ def list_records(
             select(
                 func.count().label("employee_day_count"),
                 func.coalesce(func.sum(groups.c.record_count), 0).label("record_count"),
-                *(func.coalesce(func.sum(groups.c[key]), 0).label(key) for key in METRICS),
+                *(func.coalesce(func.sum(groups.c[key]), 0).label(key) for key in SUMMARY_METRICS),
             )
         )
         .mappings()

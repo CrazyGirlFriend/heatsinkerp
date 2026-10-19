@@ -33,6 +33,26 @@ defineEmits<{ open: [code: string] }>()
           查看单据
         </button>
       </header>
+      <p v-if="batch.context_only" class="shared-split-context">
+        跨流水号来源，仅作追溯，不计入本次库存合计。
+      </p>
+      <p v-if="batch.inspection_status" :class="{ 'inspection-held': batch.inspection_hold_id }">
+        {{
+          batch.inspection_hold_id
+            ? '巡检不合格 · 整批禁止转出，返工后仍须复检放行'
+            : batch.inspection_status === 'released'
+              ? '已复检放行'
+              : '抽检合格'
+        }}
+        · {{ batch.inspection_inspector }} · {{ formatDateTime(batch.inspection_checked_at) }}
+      </p>
+      <button
+        v-if="batch.inspection_source_batch_no"
+        type="button"
+        @click="$emit('open', batch.inspection_source_batch_no)"
+      >
+        查看原批次巡检与复检记录
+      </button>
       <SharedMaterialInfo :item="batch" />
       <p v-if="batch.other_processing_outputs?.length" class="shared-split-context">
         同批还分配给
@@ -92,6 +112,13 @@ defineEmits<{ open: [code: string] }>()
             }}
           </dd>
         </div>
+        <div v-if="batch.rework_pending || batch.rework_count">
+          <dt>返工属性</dt>
+          <dd>
+            {{ batch.rework_pending ? '待返工' : '返工完成' }} · 累计
+            {{ batch.rework_count || 0 }} 次
+          </dd>
+        </div>
         <div v-if="batch.processing_role">
           <dt>加工类别</dt>
           <dd>{{ processingRoleLabels[batch.processing_role] }}</dd>
@@ -104,7 +131,9 @@ defineEmits<{ open: [code: string] }>()
           <dt>来源批次</dt>
           <dd>
             {{
-              origin?.entry_kind === 'warehouse_receipt' ? origin.batch_no : '未关联库房入库批次'
+              origin
+                ? `${origin.batch_no}${origin.entry_kind === 'opening_stock' ? '（初始库存）' : ''}`
+                : '来源信息缺失'
             }}
           </dd>
         </div>
@@ -130,6 +159,9 @@ defineEmits<{ open: [code: string] }>()
 </template>
 
 <style scoped>
+.inspection-held {
+  color: var(--el-color-danger);
+}
 .trace-detail {
   flex-shrink: 0;
   margin-top: 8px;

@@ -23,6 +23,7 @@ import {
   ElPopover,
   ElOption,
   ElRadioButton,
+  ElCheckbox,
   ElRadioGroup,
   ElSelect,
 } from 'element-plus'
@@ -118,6 +119,7 @@ function converted(line: (typeof lines.value)[number]) {
   )
 }
 const form = reactive({
+  reworkReturn: false,
   nextTeamId: '' as string | number,
   entryKind: 'transfer' as DispatchKind,
   externalDestination: '',
@@ -580,6 +582,7 @@ watch(
     form.nextTeamId = ''
     form.entryKind = 'transfer'
     form.externalDestination = ''
+    form.reworkReturn = false
     form.notes = ''
     form.reason = ''
     sender.value = null
@@ -722,6 +725,7 @@ async function submit() {
   }
   const dispatchBody: Omit<CreateDispatch, 'idempotency_key'> = {
     sent_employee_id: sender.value?.id ?? 0,
+    ...(!external.value && form.reworkReturn ? { rework_return: true } : {}),
     ...(isExternalEntryKind(form.entryKind)
       ? { entry_kind: form.entryKind, external_destination: form.externalDestination.trim() }
       : { next_team_id: Number(form.nextTeamId) }),
@@ -851,6 +855,10 @@ async function submit() {
               externalOption === 'warehouse_outbound' ? '对外出库' : '发货'
             }}</ElRadioButton>
           </ElRadioGroup>
+        </div>
+        <div v-if="!external" class="dispatch-rework">
+          <ElCheckbox v-model="form.reworkReturn">退回返工</ElCheckbox
+          ><span v-if="form.reworkReturn">接收后按返工登记，关联原加工记录</span>
         </div>
         <div class="dialog-form-grid dispatch-context-fields">
           <ElFormItem label="转料人" :error="fieldErrors.sender" required>

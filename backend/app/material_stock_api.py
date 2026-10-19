@@ -1,6 +1,7 @@
 """Team stock workspace HTTP routes. Business writes remain transaction services."""
 
 from datetime import date
+from typing import Literal
 
 from fastapi import Depends, Path, Query
 from sqlalchemy.orm import Session
@@ -27,6 +28,7 @@ router = APIRouter(prefix="/api/team-materials", tags=["team material stock"])
 def list_processing_records(
     processor_id: int | None = Query(default=None, ge=1),
     work_date: date | None = None,
+    work_kind: Literal["initial", "rework"] | None = None,
     record_filters: RecordFilters = Depends(),
     team_id: int = Path(ge=1),
     query: str | None = Query(default=None, max_length=160),
@@ -43,6 +45,7 @@ def list_processing_records(
             record_filters=record_filters,
             processor_id=processor_id,
             work_date=work_date,
+            work_kind=work_kind,
             query=query,
             page=page,
             page_size=page_size,
@@ -56,6 +59,7 @@ def processing_daily_report(
     date_from: date | None = None,
     date_to: date | None = None,
     work_date: date | None = None,
+    work_kind: Literal["initial", "rework"] | None = None,
     urgent_only: bool = False,
     processor_id: int | None = Query(default=None, ge=1),
     query: str | None = Query(default=None, max_length=160),
@@ -74,6 +78,7 @@ def processing_daily_report(
             date_from=date_from,
             date_to=date_to,
             work_date=work_date,
+            work_kind=work_kind,
             urgent_only=urgent_only,
             processor_id=processor_id,
             query=query,
@@ -87,6 +92,7 @@ def processing_daily_report(
 def processing_sources(
     team_id: int = Path(ge=1),
     group_id: int | None = Query(default=None, ge=1),
+    rework_record_id: int | None = Query(default=None, ge=1),
     query: str | None = Query(default=None, max_length=160),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
@@ -96,7 +102,14 @@ def processing_sources(
     return team_read_response(
         db,
         lambda session: processing_records.list_sources(
-            session, team_id, user, group_id=group_id, query=query, page=page, page_size=page_size
+            session,
+            team_id,
+            user,
+            group_id=group_id,
+            rework_record_id=rework_record_id,
+            query=query,
+            page=page,
+            page_size=page_size,
         ),
     )
 

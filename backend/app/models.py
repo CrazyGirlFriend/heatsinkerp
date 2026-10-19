@@ -339,6 +339,13 @@ class MaterialTransfer(Base):
     )
     processing_role: Mapped[str | None] = mapped_column(String(16))
     sent_processing_status: Mapped[str | None] = mapped_column(String(20))
+    rework_pending: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    rework_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    inspection_hold_root_id: Mapped[int | None] = mapped_column(Integer, index=True)
     purpose_id: Mapped[int | None] = mapped_column(
         ForeignKey("team_purposes.id", ondelete="RESTRICT")
     )
@@ -629,6 +636,15 @@ class MaterialQuantityAdjustment(Base):
     )
     processing_date: Mapped[date | None] = mapped_column(Date)
     processing_mode: Mapped[str | None] = mapped_column(String(16))
+    work_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="initial", server_default="initial"
+    )
+    rework_of_id: Mapped[int | None] = mapped_column(
+        ForeignKey("material_quantity_adjustments.id", ondelete="RESTRICT")
+    )
+    rework_round: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     input_quantity: Mapped[int | None] = mapped_column(Integer)
     input_weight: Mapped[Decimal | None] = mapped_column(Numeric(17, 6))
     completed_quantity: Mapped[int | None] = mapped_column(Integer)
@@ -660,7 +676,7 @@ class MaterialTransferEvent(Base):
     transfer_id: Mapped[int] = mapped_column(
         ForeignKey("material_transfers.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
     actor: Mapped[str] = mapped_column(String(80), nullable=False)
     actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     occurred_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
@@ -744,6 +760,51 @@ class AuthSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     user: Mapped[User] = relationship(back_populates="sessions", lazy="joined")
+
+
+class MaterialInspection(Base):
+    """On-site sampling; failed root checks hold their lot until a passing recheck."""
+
+    __tablename__ = "material_inspections"
+    __table_args__ = (
+        CheckConstraint(
+            "sample_quantity > 0 AND failed_quantity >= 0 AND failed_quantity <= sample_quantity",
+            name="ck_inspection_sample",
+        ),
+        Index("ix_inspection_team_checked", "team_id", "checked_at", "id"),
+        Index("ix_inspection_checked", "checked_at", "id"),
+        Index("ix_inspection_lot_hold", "source_transfer_id", "parent_id", "released_at"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_transfer_id: Mapped[int] = mapped_column(
+        ForeignKey("material_transfers.id", ondelete="RESTRICT")
+    )
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
+    processing_record_id: Mapped[int | None] = mapped_column(
+        ForeignKey("material_quantity_adjustments.id", ondelete="RESTRICT")
+    )
+    processor_name: Mapped[str | None] = mapped_column(String(80))
+    inspection_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
+    inspector_employee_id: Mapped[int] = mapped_column(
+        ForeignKey("team_employees.id", ondelete="RESTRICT")
+    )
+    inspector_name: Mapped[str] = mapped_column(String(80))
+    checked_at: Mapped[datetime] = mapped_column(DateTime)
+    batch_quantity: Mapped[int] = mapped_column(Integer)
+    sample_quantity: Mapped[int] = mapped_column(Integer)
+    failed_quantity: Mapped[int] = mapped_column(Integer)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("material_inspections.id", ondelete="RESTRICT")
+    )
+    released_at: Mapped[datetime | None] = mapped_column(DateTime)
+    idempotency_key: Mapped[str] = mapped_column(String(100), unique=True)
+    request_hash: Mapped[str] = mapped_column(String(64))
+    created_by: Mapped[str] = mapped_column(String(80))
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 # Register ledger/outbox hooks for HTTP and maintenance ORM writers alike.

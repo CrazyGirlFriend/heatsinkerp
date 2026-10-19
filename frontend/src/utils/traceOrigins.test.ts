@@ -192,3 +192,24 @@ describe('warehouse origin scope', () => {
     ).toBe(100)
   })
 })
+
+it('keeps cross-serial origins visible without adding their stock or losses to scoped totals', () => {
+  const ancestor = lot(1, null, {
+    context_only: true,
+    serial_no: 'A',
+    on_hand_quantity: 70,
+    on_hand_weight: 14,
+  })
+  const current = lot(2, 1, {
+    serial_no: 'B',
+    entry_kind: 'serial_reallocation',
+    on_hand_quantity: 10,
+    on_hand_weight: 2,
+  })
+  const rows = [ancestor, current]
+  expect(traceOrigins(rows).originById.get('2')?.id).toBe(1)
+  const scoped = traceOriginScope(trace(rows), rows)
+  expect(scoped.items).toHaveLength(2)
+  expect(scoped.totals.on_hand).toEqual({ quantity: 10, weight: 2 })
+  expect(scoped.holdings?.[0]?.material_types[0]?.weight).toBe(2)
+})

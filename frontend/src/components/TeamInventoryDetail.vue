@@ -3,6 +3,7 @@ import AppDialog from '@/components/AppDialog.vue'
 import { materialWeightToleranceKg } from '@/config/materialRules'
 
 import TableExportButton from './TableExportButton.vue'
+import TeamInspectionRecords from './TeamInspectionRecords.vue'
 import SharedMaterialInfo from './SharedMaterialInfo.vue'
 import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
@@ -66,6 +67,7 @@ const loading = ref(false),
   error = ref('')
 const batchOpen = ref(false),
   selected = ref<MaterialTransfer | null>(null)
+const inspectionSource = ref<number | null>(null)
 const serialOpen = ref(false)
 const quantityOpen = ref(false),
   quantitySource = ref<number | null>(null)
@@ -277,6 +279,7 @@ watch(
     total.value = movementTotal.value = 0
     batchOpen.value = quantityOpen.value = serialOpen.value = false
     selected.value = null
+    inspectionSource.value = null
     void load()
   },
   { immediate: true },
@@ -463,6 +466,25 @@ onBeforeUnmount(() => {
               formatDateTime(row.transfer.received_at)
             }}</template></ElTableColumn
           >
+          <ElTableColumn v-if="processing" label="巡检" min-width="155" align="center"
+            ><template #default="{ row }"
+              ><ElButton
+                link
+                :type="row.inspection_hold_id ? 'danger' : 'primary'"
+                @click="inspectionSource = Number(row.transfer.id)"
+                >{{ row.inspection_hold_id ? '待处理 · 禁止转出' : '巡检记录' }}</ElButton
+              ></template
+            ></ElTableColumn
+          >
+          <ElTableColumn label="返工属性" min-width="130" align="center"
+            ><template #default="{ row }">{{
+              row.transfer.rework_pending
+                ? '待返工'
+                : row.transfer.rework_count
+                  ? `已返工 ${row.transfer.rework_count} 次`
+                  : '—'
+            }}</template></ElTableColumn
+          >
           <ElTableColumn v-if="processing" label="加工状态" min-width="185" align="center"
             ><template #default="{ row }"
               ><ProcessingStockStatus
@@ -484,7 +506,9 @@ onBeforeUnmount(() => {
                     canRegisterProcessing &&
                     row.processing_state !== 'complete' &&
                     stockAvailable(asStock(row))
-                      ? '加工登记'
+                      ? row.transfer.rework_pending
+                        ? '返工登记'
+                        : '加工登记'
                       : processing
                         ? '加工记录'
                         : '件数记录'
@@ -641,6 +665,22 @@ onBeforeUnmount(() => {
     :trace-scope="{ team_id: teamId, direction: 'all' }"
     @changed="changed"
   />
+  <AppDialog
+    :model-value="inspectionSource != null"
+    title="本批巡检记录"
+    width="min(1380px, calc(100vw - 40px))"
+    align-center
+    append-to-body
+    @close="inspectionSource = null"
+  >
+    <TeamInspectionRecords
+      v-if="inspectionSource != null"
+      :team-id="teamId"
+      :source-id="inspectionSource"
+      compact
+    />
+    <template #footer><ElButton @click="inspectionSource = null">关闭</ElButton></template>
+  </AppDialog>
   <QuantityAdjustmentDialog
     v-model="quantityOpen"
     :team-id="teamId"

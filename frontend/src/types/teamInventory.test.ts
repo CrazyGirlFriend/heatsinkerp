@@ -98,3 +98,11 @@ describe('classified stock presentation', () => {
     )
   })
 })
+
+it('exports the same inspection hold status shown in the stock table', () => {
+  const row = warehouseFixture({ inspection_hold_count: 2 })
+  expect(inventoryStockStatus(row)).toBe('巡检待处理 · 2 批')
+  expect(warehouseColumns.find((column) => column.key === 'stock_status')!.format(row)).toBe(
+    '巡检待处理 · 2 批',
+  )
+})

@@ -4,7 +4,7 @@ from sqlalchemy import func, select
 
 from .models import MaterialQuantityAdjustment as Work
 from .processing_records import production_groups, record_conditions, require_processing_team
-from .processing_registration import METRICS
+from .processing_registration import SUMMARY_METRICS
 from .record_filters import RecordFilters
 
 
@@ -17,6 +17,7 @@ def list_daily(
     processor_id=None,
     query=None,
     work_date=None,
+    work_kind=None,
     urgent_only=False,
     page=1,
     page_size=20,
@@ -28,6 +29,7 @@ def list_daily(
         query,
         processor_id,
         work_date,
+        work_kind,
     )
     statement = production_groups(conditions)
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
@@ -45,7 +47,8 @@ def list_daily(
             "team_name": team.name,
             "processing_date": row["processing_date"].isoformat(),
             **{
-                key: float(row[key]) if key.endswith("weight") else int(row[key]) for key in METRICS
+                key: float(row[key]) if key.endswith("weight") else int(row[key])
+                for key in SUMMARY_METRICS
             },
         }
         for row in rows

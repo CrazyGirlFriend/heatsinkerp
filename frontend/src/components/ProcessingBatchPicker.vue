@@ -11,7 +11,7 @@ import { materialTypeLabel } from '@/types/materialTransfer'
 import type { StockBatch } from '@/types/teamMaterials'
 import { processingRoleLabels, type ProcessingRole } from '@/types/materialProcessing'
 
-const props = defineProps<{ teamId: number; groupId?: number }>()
+const props = defineProps<{ teamId: number; groupId?: number; reworkRecordId?: number }>()
 const vLoading = ElLoading.directive
 const emit = defineEmits<{ close: []; selected: [sourceId: number] }>()
 const query = ref(''),
@@ -31,6 +31,7 @@ async function load() {
   try {
     const result = await teamMaterialApi.processingSources(props.teamId, {
       group_id: props.groupId,
+      rework_record_id: props.reworkRecordId,
       query: applied.value || undefined,
       page: page.value,
       page_size: pageSize.value,
@@ -72,7 +73,7 @@ onBeforeUnmount(() => {
 <template>
   <AppDialog
     :model-value="true"
-    title="加工登记 · 选择库存批次"
+    :title="reworkRecordId ? '返工 · 选择现有库存批次' : '加工登记 · 选择库存批次'"
     width="min(1040px, calc(100vw - 24px))"
     align-center
     append-to-body

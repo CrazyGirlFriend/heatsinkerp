@@ -55,6 +55,8 @@ class ProcessingQuantity(BaseModel):
     processor_employee_id: int | None = Field(default=None, ge=1)
     processing_date: date | None = None
     processing_mode: Literal["unit", "split"] | None = None
+    work_kind: Literal["initial", "rework"] = "initial"
+    rework_of_id: int | None = Field(default=None, ge=1)
     input_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647)
     completed_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647)
     completed_weight: Decimal | None = Field(default=None, ge=0, max_digits=17, decimal_places=6)
@@ -419,6 +421,8 @@ class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement
     entry_kind: str = "transfer"
     processing_role: Literal["remaining", "produced", "scrap"] | None = None
     sent_processing_status: str | None = None
+    rework_pending: bool = False
+    rework_count: int = 0
     purpose_id: int | None = None
     purpose_name: str | None = None
     external_destination: str | None = None

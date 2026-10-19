@@ -20,6 +20,15 @@ METRICS = (
 )
 
 
+SUMMARY_METRICS = METRICS + (
+    "rework_quantity",
+    "rework_weight",
+    "rework_record_count",
+    "work_quantity",
+    "work_weight",
+)
+
+
 def prepare(lot, balance, latest, payload, team_code):
     splitting = team_code in SPLITTING_TEAM_CODES
     if payload.processing_mode is None:
@@ -32,7 +41,9 @@ def prepare(lot, balance, latest, payload, team_code):
         raise HTTPException(422, "请选择加工人并填写实际加工日期")
     if payload.processing_date > datetime.now(ZoneInfo(settings.factory_timezone)).date():
         raise HTTPException(422, "实际加工日期不能晚于今天")
-    if lot.processing_role == "produced" or (latest and latest.processing_status == "complete"):
+    if payload.work_kind != "rework" and (
+        lot.processing_role == "produced" or (latest and latest.processing_status == "complete")
+    ):
         raise HTTPException(409, "本班组已加工完成，请选择未加工库存，避免重复登记产量")
     q, w = balance.on_hand_quantity, balance.on_hand_weight
     if q < 0 or w < 0:

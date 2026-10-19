@@ -58,6 +58,7 @@ const props = defineProps<{
   sourceId: number | null
   canWrite?: boolean
   processing?: boolean
+  rework?: boolean
 }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [QuantityAdjustment] }>()
 const auth = useAuthStore()
@@ -98,6 +99,7 @@ const employee = ref<TeamEmployee | null>(null)
 const processingDate = ref(factoryToday())
 const inputQuantity = ref<number>()
 const completedWeight = ref<number>()
+const isRework = computed(() => props.rework || snapshot.value?.rework_pending === true)
 const structured = computed(() => props.processing && !!snapshot.value?.processing_mode)
 const unitProcessing = computed(
   () => structured.value && snapshot.value?.processing_mode === 'unit',
@@ -223,7 +225,7 @@ const editable = computed(
 const hasStock = computed(
   () =>
     !!snapshot.value &&
-    snapshot.value.processing_status !== 'complete' &&
+    (isRework.value || snapshot.value.processing_status !== 'complete') &&
     (snapshot.value.quantity > 0 || snapshot.value.weight > 0),
 )
 let generation = 0,
@@ -332,6 +334,9 @@ async function save() {
       : {}),
   }))
   const body = {
+    ...(isRework.value
+      ? { work_kind: 'rework' as const, rework_of_id: snapshot.value.rework_of_id || undefined }
+      : {}),
     source_transfer_id: props.sourceId,
     quantity: count!,
     expected_revision: snapshot.value.revision,
@@ -425,7 +430,15 @@ onBeforeUnmount(() => {
   <AppDialog
     :model-value="modelValue"
     :title="
-      processing ? (editable ? '加工登记' : '加工记录') : editable ? '加工件数变更' : '件数变更记录'
+      processing
+        ? editable
+          ? isRework
+            ? '返工登记'
+            : '加工登记'
+          : '加工记录'
+        : editable
+          ? '加工件数变更'
+          : '件数变更记录'
     "
     :width="processing && !unitProcessing ? 'min(1440px, calc(100vw - 32px))' : 'min(980px, 94vw)'"
     align-center
@@ -436,6 +449,10 @@ onBeforeUnmount(() => {
     :show-close="!saving"
     @close="close"
   >
+    <p v-if="isRework && snapshot" class="quantity-rework-note">
+      返工第 {{ (snapshot.rework_count || 0) + 1 }} 次 · 关联加工记录 #{{ snapshot.rework_of_id }} ·
+      本次完成量单独计为返工工作量
+    </p>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <div v-if="loading" role="status" class="quantity-loading">正在读取件数记录…</div>
     <template v-if="snapshot">
@@ -701,7 +718,9 @@ onBeforeUnmount(() => {
           >
             <WeightInput v-model="completedWeight" ariaLabel="本次完成重量" />
             <small class="dialog-field-hint"
-              >部分加工请核对本次重量，剩余部分自动保留为未加工库存。</small
+              >部分{{ isRework ? '返工' : '加工' }}请核对本次重量，剩余部分保留为{{
+                isRework ? '待返工' : '未加工'
+              }}库存。</small
             >
           </ElFormItem>
           <ElFormItem
@@ -823,6 +842,16 @@ onBeforeUnmount(() => {
           ></ElTableColumn
         >
         <ElTableColumn prop="reason" label="加工说明" min-width="220" align="center" />
+        <ElTableColumn v-if="processing" label="加工性质" min-width="130"
+          ><template #default="{ row }">{{
+            row.work_kind === 'rework' ? `返工第 ${row.rework_round} 次` : '首次加工'
+          }}</template></ElTableColumn
+        >
+        <ElTableColumn v-if="processing" label="原加工记录" min-width="120"
+          ><template #default="{ row }">{{
+            row.rework_of_id ? `#${row.rework_of_id}` : '—'
+          }}</template></ElTableColumn
+        >
         <ElTableColumn v-if="processing" label="登记后尺寸" min-width="180" show-overflow-tooltip
           ><template #default="{ row }">{{
             row.after_specification || '—'
@@ -890,7 +919,7 @@ onBeforeUnmount(() => {
         :loading="saving"
         :disabled="loading || conflict || !hasStock"
         @click="save"
-        >{{ processing ? '保存加工登记' : '保存件数' }}</ElButton
+        >{{ processing ? (isRework ? '保存返工登记' : '保存加工登记') : '保存件数' }}</ElButton
       >
     </template>
   </AppDialog>

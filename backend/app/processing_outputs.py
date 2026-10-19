@@ -14,7 +14,7 @@ from .processing_records import require_processing_team
 from .schemas import SCRAP_MATERIAL_TYPES
 
 
-def create_outputs(db, lot, payload, user, now):
+def create_outputs(db, lot, payload, user, now, hold):
     """Caller owns the source lock and commits outputs plus adjustment atomically."""
     require_processing_team(db, lot.next_team_id)
     if lot.material_type in SCRAP_MATERIAL_TYPES:
@@ -73,6 +73,12 @@ def create_outputs(db, lot, payload, user, now):
             shared_unallocated=unallocated,
             entry_kind="processing_output",
             processing_role=output.role,
+            rework_pending=payload.work_kind == "rework" and output.role == "remaining",
+            rework_count=lot.rework_count
+            + (1 if payload.work_kind == "rework" and output.role != "remaining" else 0),
+            inspection_hold_root_id=hold.source_transfer_id
+            if hold
+            else lot.inspection_hold_root_id,
             source_transfer_id=lot.id,
             delivery_origin_id=lot.delivery_origin_id or lot.id,
             source_team_id=team.id,

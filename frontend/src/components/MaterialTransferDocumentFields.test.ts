@@ -99,3 +99,16 @@ describe('transfer destination fields', () => {
     wrapper.unmount()
   })
 })
+
+it('shows returned rework state during receiving without inventing completed rounds', () => {
+  const wrapper = mount(MaterialTransferDocumentFields, {
+    props: {
+      group: 'all',
+      transfer: normalizeMaterialTransfer({ rework_pending: true, rework_count: 0 }),
+    },
+  })
+  expect(wrapper.text()).toContain('待返工')
+  expect(wrapper.text()).toContain('已完成返工次数')
+  expect(wrapper.text()).toContain('0 次')
+  wrapper.unmount()
+})

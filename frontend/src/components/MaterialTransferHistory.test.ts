@@ -37,3 +37,31 @@ describe('quantity clearance audit', () => {
     }
   })
 })
+
+it('preserves and displays inspection audit facts in batch history', () => {
+  const transfer = normalizeMaterialTransfer({
+    id: 1,
+    batch_no: 'TL42',
+    history: [
+      {
+        id: 2,
+        action: 'inspection_rechecked',
+        actor: '检验班组长',
+        occurred_at: '2026-10-19T01:00:00Z',
+        changes: {
+          inspection: {
+            before: null,
+            after: { inspector: '王检验', sample: 5, failed: 0, released: true },
+          },
+        },
+      },
+    ],
+  })
+  const wrapper = mount(MaterialTransferHistory, { props: { transfer } })
+  try {
+    expect(wrapper.text()).toContain('复检与放行')
+    expect(wrapper.text()).toContain('王检验 · 抽检 5 件 · 不合格 0 件 · 已复检放行')
+  } finally {
+    wrapper.unmount()
+  }
+})

@@ -15,6 +15,9 @@ import { formatDateTime } from '@/utils/format'
 export type WarehouseSource = 'external' | 'return' | 'internal' | 'opening' | 'processing'
 export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary, SharedMaterialFields {
   group_id: number
+  rework_pending?: boolean
+  rework_count?: number
+  inspection_hold_count?: number
   batch_count: number
   current_batch_count: number
   purpose_id: number | null
@@ -77,6 +80,7 @@ export const inventoryHasPending = (row: TeamInventoryRow) =>
     row.external_pending_weight,
   ].some((value) => value != null && value > 0)
 export function inventoryStockStatus(row: TeamInventoryRow) {
+  if (row.inspection_hold_count) return `巡检待处理 · ${row.inspection_hold_count} 批`
   if (
     (row.max_weight_difference ?? 0) > materialWeightToleranceKg ||
     (row.shortage_weight ?? 0) > 0 ||
@@ -144,6 +148,14 @@ export const warehouseColumns = [
     width: 140,
     defaultVisible: true,
     format: (row: TeamInventoryRow) => materialTypeLabel(row.material_type || null),
+  },
+  {
+    key: 'rework',
+    label: '返工属性',
+    width: 130,
+    defaultVisible: true,
+    format: (row: TeamInventoryRow) =>
+      row.rework_pending ? '待返工' : row.rework_count ? `已返工 ${row.rework_count} 次` : '—',
   },
   {
     key: 'processing_role',
@@ -306,6 +318,7 @@ export const warehouseSearchKind = (field: WarehouseSearchField) =>
 export interface TeamInventoryParams extends Omit<SerialParams, 'availability' | 'search_field'> {
   availability?: 'current' | 'owned' | 'all' | 'available' | 'scrap'
   search_field?: WarehouseSearchField
+  rework?: 'pending' | 'worked'
   receipt_source?: WarehouseSource
   location_status?: 'unassigned'
   source_team_id?: number

@@ -92,6 +92,7 @@ export function traceOriginScope(trace: MaterialTrace, items: TraceBatch[]): Mat
   }
   const sharedPositions: NonNullable<MaterialTrace['shared_positions']> = []
   for (const item of items) {
+    if (item.context_only) continue
     if (item.shared_unallocated) {
       add(sharedTotals.on_hand, {
         quantity: item.on_hand_quantity || 0,
@@ -193,7 +194,8 @@ export function traceOriginScope(trace: MaterialTrace, items: TraceBatch[]): Mat
     max_weight_difference: Math.max(0, ...[...differences.values()].map(Math.abs)),
     holdings: [...holdings.values()],
     positions: [...positions.values()],
-    untracked_count: items.filter((item) => item.status === 'received' && !item.stock_tracked)
-      .length,
+    untracked_count: items.filter(
+      (item) => !item.context_only && item.status === 'received' && !item.stock_tracked,
+    ).length,
   }
 }

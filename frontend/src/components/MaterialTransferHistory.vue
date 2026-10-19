@@ -29,8 +29,16 @@ const actions = {
   quantity_changed: '加工件数变更',
   reallocated: '流水号转投',
   processed: '本班组加工实物登记',
+  inspection_recorded: '现场巡检登记',
+  inspection_rechecked: '复检与放行',
 }
 const labels: Record<string, string> = {
+  inspection: '巡检结果',
+  work_kind: '加工性质',
+  rework_of_id: '关联原加工记录',
+  rework_round: '返工次数',
+  rework_pending: '待返工',
+  rework_count: '已完成返工次数',
   source_serial_no: '原流水号',
   source_transfer_batch_no: '来源批次',
   warehouse_location: '入库仓位',
@@ -172,6 +180,11 @@ function fieldLabel(field: string, clearance = false): string {
 }
 function valueText(field: string, value: unknown): string {
   if (value == null || value === '') return '—'
+  if (field === 'work_kind') return value === 'rework' ? '返工' : '首次加工'
+  if (field === 'inspection' && typeof value === 'object') {
+    const result = value as { inspector: string; sample: number; failed: number; released: boolean }
+    return `${result.inspector} · 抽检 ${result.sample} 件 · 不合格 ${result.failed} 件${result.released ? ' · 已复检放行' : result.failed > 0 ? ' · 整批暂停转出' : ''}`
+  }
   if (field === 'entry_kind')
     return materialEntryLabel(String(value) as MaterialTransfer['entry_kind'])
   if (field === 'material_type') return materialTypeLabel(String(value))
@@ -239,11 +252,13 @@ function valueText(field: string, value: unknown): string {
           <td>{{ event.actor || '—' }}</td>
           <td>
             {{
-              event.action === 'quantity_changed' && event.changes.outbound_batches
-                ? '出库余数清零'
-                : event.action === 'quantity_changed' && event.changes.processing_status
-                  ? '加工登记'
-                  : actionLabel(event.action)
+              event.changes.work_kind?.after === 'rework'
+                ? '返工登记'
+                : event.action === 'quantity_changed' && event.changes.outbound_batches
+                  ? '出库余数清零'
+                  : event.action === 'quantity_changed' && event.changes.processing_status
+                    ? '加工登记'
+                    : actionLabel(event.action)
             }}
           </td>
           <td class="table-prose">

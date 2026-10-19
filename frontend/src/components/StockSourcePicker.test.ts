@@ -381,3 +381,18 @@ describe('stock selection for new outbound', () => {
     expect(nextButton().attributes('disabled')).toBeDefined()
   })
 })
+
+it('explains inspection holds and selects only unaffected lots', async () => {
+  vi.mocked(teamMaterialApi.stock).mockResolvedValue({
+    items: [{ ...source(1), inspection_hold_id: 13 }, source(2)],
+    total: 2,
+    page: 1,
+    page_size: 20,
+  })
+  await render()
+  expect(wrapper.text()).toContain('待处理 · 禁止转出')
+  expect(wrapper.get('[aria-label="选择出库 TL1"] input').attributes('disabled')).toBeDefined()
+  await wrapper.get('[aria-label="选择本页出库物料"] input').setValue(true)
+  await nextButton().trigger('click')
+  expect(wrapper.emitted('selected')![0]![0]).toEqual([source(2)])
+})

@@ -7,7 +7,7 @@ from .models import MaterialStockBalance as Balance
 from .models import MaterialTransfer as Transfer
 
 
-def weight_lineage(team_id=None):
+def weight_lineage(team_id=None, root_ids=None):
     # An ordinary handoff (including a return to the same team) starts a new
     # measurement allowance. Only internal processing preserves the input root.
     roots = select(
@@ -19,6 +19,8 @@ def weight_lineage(team_id=None):
         Transfer.stock_tracked.is_(True),
         Transfer.entry_kind != "processing_output",
     )
+    if root_ids is not None:
+        roots = roots.where(Transfer.id.in_(root_ids))
     if team_id is not None:
         roots = roots.where(Transfer.next_team_id == team_id)
     lineage = roots.cte("processing_weight_lineage", recursive=True)
@@ -58,8 +60,8 @@ def weight_roots(lineage):
     )
 
 
-def weight_difference_table(team_id=None):
-    lineage = weight_lineage(team_id)
+def weight_difference_table(team_id=None, root_ids=None):
+    lineage = weight_lineage(team_id, root_ids)
     roots = weight_roots(lineage)
     return (
         select(
@@ -76,7 +78,18 @@ def weight_difference_table(team_id=None):
 def weight_differences(db, lot_ids, team_id=None):
     if not lot_ids:
         return {}
-    differences = weight_difference_table(team_id)
+    path = (
+        select(Transfer.id, Transfer.source_transfer_id, Transfer.entry_kind)
+        .where(Transfer.id.in_(lot_ids))
+        .cte("weight_ancestors", recursive=True)
+    )
+    path = path.union(
+        select(Transfer.id, Transfer.source_transfer_id, Transfer.entry_kind)
+        .join(path, Transfer.id == path.c.source_transfer_id)
+        .where(path.c.entry_kind == "processing_output")
+    )
+    roots = select(path.c.id).where(path.c.entry_kind != "processing_output")
+    differences = weight_difference_table(team_id, roots)
     rows = db.execute(select(differences).where(differences.c.transfer_id.in_(lot_ids)))
     return {
         row.transfer_id: {
