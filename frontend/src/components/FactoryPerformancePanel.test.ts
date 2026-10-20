@@ -8,6 +8,7 @@ import FactoryPerformanceCharts from './FactoryPerformanceCharts.vue'
 import AnimatedMetric from './AnimatedMetric.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import TableExportButton from './TableExportButton.vue'
+import MaterialInput from './MaterialInput.vue'
 import { factoryPerformanceApi } from '@/services/factoryPerformanceApi'
 import { performanceFixture } from '@/testFixtures/factoryPerformance'
 import type { FactoryPerformance } from '@/types/factoryPerformance'
@@ -37,7 +38,12 @@ async function render(scene: 'production' | 'quality' = 'production') {
     props: { scene, motion: false },
     global: {
       plugins: [router],
-      stubs: { FactoryPerformanceCharts: true, RecordDateFilter: true, TableExportButton: true },
+      stubs: {
+        FactoryPerformanceCharts: true,
+        RecordDateFilter: true,
+        TableExportButton: true,
+        MaterialInput: true,
+      },
     },
   })
   await flushPromises()
@@ -71,10 +77,16 @@ describe('factory production and quality reporting', () => {
       date_from: '2026-09-21',
       date_to: '2026-10-20',
       team_id: undefined,
+      period: 'day',
+      serial_no: undefined,
+      work_id: undefined,
+      material_name: undefined,
     })
     const metrics = wrapper.findAllComponents(AnimatedMetric)
-    expect(metrics.map((metric) => metric.props('value'))).toEqual([110, 30, 5, 0.2])
-    expect(wrapper.text()).toContain('跨班组工作量不能作为全厂成品产量')
+    expect(metrics.map((metric) => metric.props('value'))).toEqual([110, 30, 2, 3])
+    expect(wrapper.text()).toContain('805881-5')
+    expect(wrapper.text()).toContain('压制')
+    expect(wrapper.text()).not.toContain('班组完成量')
     const exporter = wrapper.getComponent(TableExportButton)
     const source = exporter.props('source')()
     expect(source?.fields).toEqual(
@@ -85,19 +97,25 @@ describe('factory production and quality reporting', () => {
     )
     expect(await loadExport(source)).toEqual([
       expect.objectContaining({
-        name: '轧制',
+        team_name: '轧制',
+        serial_no: '805881-5',
+        processing_task_name: '压制',
         completed_quantity: 110,
         rework_quantity: 30,
-        work_quantity: 140,
+        material_name: 'W80',
       }),
     ])
-    expect(exporter.props('variants')!()[0]?.title).toBe('每日加工汇总')
-    wrapper.getComponent(FactoryPerformanceCharts).vm.$emit('team', 2)
+    expect(exporter.props('variants')!()[0]?.title).toBe('每日流水号加工明细')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '加工记录')!
+      .trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.query).toEqual({
       tab: 'processing',
       date_from: '2026-09-21',
       date_to: '2026-10-20',
+      query: '805881-5',
     })
     expect(router.currentRoute.value.path).toBe('/team-workspaces/2')
   })
@@ -105,7 +123,9 @@ describe('factory production and quality reporting', () => {
   it('uses weighted actual checked quantities and keeps full inspections/rechecks separate', async () => {
     await render('quality')
     let values = wrapper.findAllComponents(AnimatedMetric).map((metric) => metric.props('value'))
-    expect(values[0]).toBeCloseTo((95 / 110) * 100)
+    expect(values[0]).toBe(2)
+    expect(wrapper.text()).toContain('受检材质')
+    expect(wrapper.text()).not.toContain('86.36%')
     expect(values.slice(1)).toEqual([110, 15, 2])
     expect(wrapper.text()).toContain('质量问题 2 条')
     expect(wrapper.text()).not.toContain('质量问题 3 条')
@@ -142,6 +162,10 @@ describe('factory production and quality reporting', () => {
       date_from: '2026-10-01',
       date_to: '2026-10-10',
       team_id: 3,
+      period: 'day',
+      serial_no: undefined,
+      work_id: undefined,
+      material_name: undefined,
     })
     picker.vm.$emit('update:modelValue', { from: '2020-01-01', to: '2026-10-20' })
     await flushPromises()
@@ -153,6 +177,10 @@ describe('factory production and quality reporting', () => {
       date_from: '2026-09-21',
       date_to: '2026-10-20',
       team_id: 3,
+      period: 'day',
+      serial_no: undefined,
+      work_id: undefined,
+      material_name: undefined,
     })
   })
 
@@ -187,6 +215,67 @@ describe('factory production and quality reporting', () => {
     wrapper.unmount()
     await vi.advanceTimersByTimeAsync(60000)
     expect(factoryPerformanceApi.get).toHaveBeenCalledTimes(calls)
+  })
+
+  it('filters exact serials and materials, switches calendar periods, and resets task on team change', async () => {
+    await render()
+    const input = wrapper.getComponent(MaterialInput)
+    input.vm.$emit('update:modelValue', '805881-5')
+    input.vm.$emit('selected', { value: '805881-5', source_batch_no: '', details: {} })
+    await flushPromises()
+    expect(factoryPerformanceApi.get).toHaveBeenLastCalledWith(
+      expect.objectContaining({ serial_no: '805881-5', period: 'day' }),
+    )
+    wrapper
+      .findAllComponents(ElSelect)
+      .find((component) => component.props('modelValue') === 10)!
+      .vm.$emit('update:modelValue', 10)
+    await flushPromises()
+    expect(factoryPerformanceApi.get).toHaveBeenLastCalledWith(
+      expect.objectContaining({ work_id: 10 }),
+    )
+    selection('统计周期').vm.$emit('update:modelValue', 'week')
+    await flushPromises()
+    expect(factoryPerformanceApi.get).toHaveBeenLastCalledWith(
+      expect.objectContaining({ period: 'week', work_id: 10 }),
+    )
+    wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 3)
+    await flushPromises()
+    expect(factoryPerformanceApi.get).toHaveBeenLastCalledWith(
+      expect.objectContaining({ team_id: 3, work_id: undefined }),
+    )
+    await wrapper.setProps({ scene: 'quality' })
+    const materialInput = wrapper.getComponent(MaterialInput)
+    materialInput.vm.$emit('update:modelValue', 'W80')
+    materialInput.vm.$emit('selected', { value: 'W80', source_batch_no: '', details: {} })
+    selection('统计周期').vm.$emit('update:modelValue', 'month')
+    await flushPromises()
+    expect(factoryPerformanceApi.get).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        serial_no: undefined,
+        work_id: undefined,
+        material_name: 'W80',
+        period: 'month',
+      }),
+    )
+    const source = wrapper.getComponent(TableExportButton).props('source')()
+    expect(source!.fields).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'material_name', label: '材质' })]),
+    )
+    const exportRows = await loadExport(source)
+    expect(exportRows[0]).toMatchObject({ material_name: 'W80', period: '每月' })
+  })
+  it('does not replace a missing serial with invented zero totals or unrelated recent work', async () => {
+    const empty = performanceFixture()
+    empty.production.scope = null
+    empty.production.scopes = []
+    empty.production.trend = []
+    vi.mocked(factoryPerformanceApi.get).mockResolvedValueOnce(empty)
+    await render()
+    expect(wrapper.text()).toContain('当前范围没有加工记录')
+    expect(wrapper.findAllComponents(AnimatedMetric)).toHaveLength(0)
+    expect(wrapper.getComponent(TableExportButton).props('disabled')).toBe(true)
+    expect(wrapper.findComponent(FactoryPerformanceCharts).exists()).toBe(false)
   })
 
   it('offers a retryable first-load error without reporting invented zero production', async () => {

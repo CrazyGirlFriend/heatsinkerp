@@ -11,8 +11,6 @@ export function productionFixture(): ProductionMetrics {
     rework_weight: 3,
     work_quantity: 140,
     work_weight: 14,
-    scrap_quantity: 0,
-    scrap_weight: 0.2,
   }
 }
 
@@ -20,6 +18,7 @@ export function performanceFixture(): FactoryPerformance {
   const quality = {
     team_id: 2,
     team_name: '轧制',
+    material_name: 'W80',
     kind: 'patrol' as const,
     scope: 'sample' as const,
     phase: 'first' as const,
@@ -30,6 +29,8 @@ export function performanceFixture(): FactoryPerformance {
     pass_rate: 90,
   }
   return {
+    period: 'day',
+    period_dates: ['2026-10-19', '2026-10-20'],
     date_from: '2026-10-19',
     date_to: '2026-10-20',
     generated_at: '2026-10-20T04:00:00Z',
@@ -40,19 +41,73 @@ export function performanceFixture(): FactoryPerformance {
     ],
     production: {
       totals: productionFixture(),
-      teams: [{ ...productionFixture(), team_id: 2, team_name: '轧制' }],
+      scope: {
+        ...productionFixture(),
+        scope_id: 10,
+        team_id: 2,
+        team_name: '轧制',
+        serial_no: '805881-5',
+        material_name: 'W80',
+        purpose_name: '轧制业务1',
+        processing_task_name: '压制',
+      },
+      scopes: [
+        {
+          ...productionFixture(),
+          scope_id: 10,
+          team_id: 2,
+          team_name: '轧制',
+          serial_no: '805881-5',
+          material_name: 'W80',
+          purpose_name: '轧制业务1',
+          processing_task_name: '压制',
+        },
+      ],
       trend: [
         { ...productionFixture(), date: '2026-10-19' },
-        { ...productionFixture(), date: '2026-10-20', record_count: 0 },
+        {
+          ...productionFixture(),
+          date: '2026-10-20',
+          record_count: 0,
+          initial_record_count: 0,
+          rework_record_count: 0,
+          completed_quantity: 0,
+          completed_weight: 0,
+          rework_quantity: 0,
+          rework_weight: 0,
+          work_quantity: 0,
+          work_weight: 0,
+        },
       ],
     },
     quality: {
+      materials: [
+        quality,
+        {
+          ...quality,
+          material_name: '铜铝',
+          checked_quantity: 10,
+          passed_quantity: 5,
+          failed_quantity: 5,
+          pass_rate: 50,
+        },
+        { ...quality, scope: 'full', passed_quantity: 100, failed_quantity: 0, pass_rate: 100 },
+        {
+          ...quality,
+          kind: 'inspection',
+          passed_quantity: 100,
+          failed_quantity: 0,
+          pass_rate: 100,
+        },
+        { ...quality, phase: 'recheck', passed_quantity: 100, failed_quantity: 0, pass_rate: 100 },
+      ],
       groups: [
         quality,
         {
           ...quality,
           team_id: 3,
           team_name: '研磨',
+          material_name: '铜铝',
           checked_quantity: 10,
           passed_quantity: 5,
           failed_quantity: 5,

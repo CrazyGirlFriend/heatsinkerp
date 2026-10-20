@@ -11,6 +11,7 @@ from app.models import (
     InspectionProblemType,
     MaterialInspection,
     MaterialQuantityAdjustment,
+    MaterialTransfer,
     Team,
     TeamEmployee,
 )
@@ -127,10 +128,17 @@ def report(client, **params):
 
 
 def test_actual_work_is_not_stock_delta_and_rework_remains_separate(client, facts):
-    processing(facts, processing_task_name="粗磨", completed_quantity=100, completed_weight=10)
+    rough = processing(
+        facts, processing_task_name="粗磨", completed_quantity=100, completed_weight=10
+    )
     processing(facts, processing_task_name="精磨", completed_quantity=100, completed_weight=9.8)
     processing(
-        facts, work_kind="rework", completed_quantity=10, completed_weight=0.98, scrap_weight=0.02
+        facts,
+        work_kind="rework",
+        processing_task_name="精磨",
+        completed_quantity=10,
+        completed_weight=0.98,
+        scrap_weight=0.02,
     )
     processing(facts, processor_employee_id=None, completed_quantity=999)
     processing(facts, completed_quantity=None)
@@ -138,21 +146,20 @@ def test_actual_work_is_not_stock_delta_and_rework_remains_separate(client, fact
     processing(facts, processing_date=date(2026, 10, 19), completed_quantity=999)
     production = report(client)["production"]
     assert production["totals"] == {
-        "record_count": 3,
-        "initial_record_count": 2,
+        "record_count": 2,
+        "initial_record_count": 1,
         "rework_record_count": 1,
-        "completed_quantity": 200,
-        "completed_weight": 19.8,
+        "completed_quantity": 100,
+        "completed_weight": 9.8,
         "rework_quantity": 10,
         "rework_weight": 0.98,
-        "work_quantity": 210,
-        "work_weight": 20.78,
-        "scrap_quantity": 0,
-        "scrap_weight": 0.02,
+        "work_quantity": 110,
+        "work_weight": 10.78,
     }
     assert production["trend"] == [{"date": "2026-10-20", **production["totals"]}]
-    rolling = next(row for row in production["teams"] if row["team_id"] == facts["other"]["id"])
-    assert rolling["work_quantity"] == 210
+    assert production["scope"]["processing_task_name"] == "精磨"
+    assert len(production["scopes"]) == 2
+    assert report(client, work_id=rough)["production"]["totals"]["completed_quantity"] == 100
     assert (
         report(client, team_id=facts["grind"]["id"])["production"]["totals"]["work_quantity"] == 0
     )
@@ -263,11 +270,13 @@ def test_local_day_boundaries_empty_data_and_inactive_history(client, facts):
     assert data["issues"]["summary"]["total"] == 2
     assert not next(row for row in data["teams"] if row["id"] == facts["other"]["id"])["active"]
     empty = report(client, date_from="2026-10-22", date_to="2026-10-23")
-    assert empty["quality"] == {"groups": [], "trend": []}
+    assert empty["quality"] == {"groups": [], "materials": [], "trend": []}
     assert empty["production"]["totals"]["work_quantity"] == 0
     assert empty["issues"]["summary"]["total"] == 0
     assert empty["issues"]["problems"] == []
-    assert len(empty["production"]["trend"]) == len(empty["issues"]["trend"]) == 2
+    assert empty["production"]["scope"] is None
+    assert empty["production"]["trend"] == []
+    assert len(empty["period_dates"]) == len(empty["issues"]["trend"]) == 2
 
 
 @pytest.mark.parametrize(
@@ -292,6 +301,113 @@ def test_requires_login_and_valid_team(client):
 
 def test_complete_year_is_bounded_and_fills_zero_work_days(client):
     data = report(client, date_from="2025-10-20", date_to="2026-10-20")
-    assert len(data["production"]["trend"]) == 366
+    assert len(data["period_dates"]) == 366
     assert len(data["issues"]["trend"]) == 366
     assert data["quality"]["groups"] == []
+
+
+def another_lot(facts, serial, material):
+    with SessionLocal() as db:
+        original = db.get(MaterialTransfer, facts["lot"]["id"])
+        values = {
+            column.name: getattr(original, column.name)
+            for column in MaterialTransfer.__table__.columns
+            if column.name != "id"
+        }
+        values.update(
+            batch_no=f"STATS-{serial}",
+            serial_no=serial,
+            material_name=material,
+            receipt_idempotency_key=f"stats-receipt-{serial}",
+        )
+        row = MaterialTransfer(**values)
+        db.add(row)
+        db.commit()
+        return row.id
+
+
+def test_serial_and_task_are_independent_and_common_outputs_are_not_duplicated(client, facts):
+    other = another_lot(facts, "OTHER-100", "铜铝")
+    processing(facts, source_transfer_id=other, completed_quantity=900, processing_task_name="压制")
+    shared = processing(
+        facts,
+        processing_task_name="开料",
+        completed_quantity=110,
+        outputs=[
+            {"role": "produced", "serial_no": "000001", "quantity": 60, "weight": 6},
+            {"role": "produced", "serial_no": "000001", "quantity": 40, "weight": 4},
+            {"role": "produced", "serial_no": "000002", "quantity": 10, "weight": 1},
+            {"role": "remaining", "serial_no": "共投板", "quantity": 1, "weight": 80},
+            {"role": "scrap", "serial_no": "共投板", "quantity": 0, "weight": 9},
+        ],
+    )
+    first = report(client, serial_no="000001")["production"]
+    assert first["scope"]["serial_no"] == "000001"
+    assert first["scope"]["processing_task_name"] == "开料"
+    assert first["totals"]["completed_quantity"] == 100
+    assert first["totals"]["completed_weight"] == 10
+    assert first["totals"]["record_count"] == 1
+    second = report(client, serial_no="000002")["production"]
+    assert second["totals"]["completed_quantity"] == 10
+    assert report(client, serial_no="共投板")["production"]["scope"] is None
+    assert (
+        report(client, serial_no="OTHER-100")["production"]["totals"]["completed_quantity"] == 900
+    )
+    assert report(client, serial_no="不存在")["production"]["scope"] is None
+    assert (
+        report(client, team_id=facts["grind"]["id"], work_id=shared)["production"]["scope"] is None
+    )
+
+
+def test_material_rates_and_calendar_periods_use_counts_not_average_percentages(client, facts):
+    with SessionLocal() as db:
+        db.get(MaterialTransfer, facts["lot"]["id"]).material_name = "W80"
+        db.commit()
+    copper = another_lot(facts, "CU-100", "铜铝")
+    inspection(
+        facts,
+        sample_quantity=1,
+        failed_quantity=1,
+        checked_at=datetime(2026, 10, 18, 4),
+        members=[facts["other"]["id"]],
+    )
+    inspection(facts, sample_quantity=99, failed_quantity=0, checked_at=datetime(2026, 10, 19, 4))
+    inspection(
+        facts,
+        source_transfer_id=copper,
+        sample_quantity=10,
+        failed_quantity=5,
+        checked_at=datetime(2026, 10, 19, 4),
+        members=[facts["other"]["id"]],
+    )
+    args = dict(date_from="2026-10-01", date_to="2026-10-31")
+    weekly = report(client, period="week", **args)
+    groups = {row["material_name"]: row for row in weekly["quality"]["materials"]}
+    assert groups["W80"]["pass_rate"] == 99
+    assert groups["铜铝"]["pass_rate"] == 50
+    trend = {(row["material_name"], row["date"]): row for row in weekly["quality"]["trend"]}
+    assert trend[("W80", "2026-10-12")]["pass_rate"] == 0
+    assert trend[("W80", "2026-10-19")]["pass_rate"] == 100
+    monthly = report(client, period="month", material_name="W80", **args)
+    assert monthly["period_dates"] == ["2026-10-01"]
+    assert len(monthly["quality"]["trend"]) == 1
+    assert monthly["quality"]["trend"][0]["pass_rate"] == 99
+    assert monthly["issues"]["summary"]["total"] == 1
+    assert {row["material_name"] for row in monthly["quality"]["groups"]} == {"W80"}
+
+
+def test_week_year_boundary_and_month_buckets_keep_work_on_actual_date(client, facts):
+    processing(
+        facts, processing_date=date(2025, 12, 31), completed_quantity=3, processing_task_name="精磨"
+    )
+    processing(
+        facts, processing_date=date(2026, 1, 1), completed_quantity=4, processing_task_name="精磨"
+    )
+    args = dict(date_from="2025-12-29", date_to="2026-01-05")
+    weekly = report(client, period="week", **args)
+    assert weekly["period_dates"] == ["2025-12-29", "2026-01-05"]
+    assert [row["completed_quantity"] for row in weekly["production"]["trend"]] == [7, 0]
+    monthly = report(client, period="month", **args)
+    assert [row["date"] for row in monthly["production"]["trend"]] == ["2025-12-01", "2026-01-01"]
+    assert [row["completed_quantity"] for row in monthly["production"]["trend"]] == [3, 4]
+    assert client.get("/api/factory-performance", params={"period": "quarter"}).status_code == 422

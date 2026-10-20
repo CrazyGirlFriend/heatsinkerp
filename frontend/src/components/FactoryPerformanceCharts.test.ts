@@ -11,7 +11,7 @@ function series(option: EChartsCoreOption) {
 }
 
 describe('production and quality chart meanings', () => {
-  it('shows separate normal/rework series with work units and links only production bars', async () => {
+  it('only charts the current serial/task and keeps normal work and rework separate', async () => {
     const wrapper = mount(FactoryPerformanceCharts, {
       props: {
         data: performanceFixture(),
@@ -23,21 +23,23 @@ describe('production and quality chart meanings', () => {
       global: { stubs: { LedgerChart: true } },
     })
     try {
-      const chart = wrapper.findAllComponents(LedgerChart)[0]!
+      expect(wrapper.findAllComponents(LedgerChart)).toHaveLength(1)
+      expect(wrapper.text()).toContain('仅当前班组、流水号和任务')
+      expect(wrapper.text()).not.toContain('班组完成量')
+      const chart = wrapper.getComponent(LedgerChart)
       expect(chart.props('option').series).toEqual([
-        expect.objectContaining({ name: '正常加工', data: [110] }),
-        expect.objectContaining({ name: '返工', data: [30] }),
+        expect.objectContaining({ name: '正常加工', data: [110, 0] }),
+        expect.objectContaining({ name: '返工', data: [30, 0] }),
       ])
-      expect(wrapper.text()).toContain('件次')
-      chart.vm.$emit('select', { dataIndex: 0, seriesIndex: 1 })
-      expect(wrapper.emitted('team')).toEqual([[2]])
+      expect(chart.props('option').yAxis).toMatchObject({ minInterval: 1 })
       await wrapper.setProps({ metric: 'weight' })
-      expect(series(chart.props('option'))[0]!.data).toEqual([11])
+      expect(series(chart.props('option'))[0]!.data).toEqual([11, 0])
+      expect(chart.props('option').yAxis).not.toHaveProperty('minInterval')
     } finally {
       wrapper.unmount()
     }
   })
-  it('keeps unobserved days null and uses deduplicated backend issue counts without stacked totals', () => {
+  it('compares materials and keeps isolated inspection days visible, with unobserved days null and uses deduplicated backend issue counts without stacked totals', () => {
     const wrapper = mount(FactoryPerformanceCharts, {
       props: {
         data: performanceFixture(),
@@ -52,7 +54,10 @@ describe('production and quality chart meanings', () => {
       const charts = wrapper.findAllComponents(LedgerChart)
       expect(charts).toHaveLength(4)
       expect(series(charts[0]!.props('option'))[0]!.data).toEqual([90, 50])
+      expect(charts[0]!.props('option').yAxis).toMatchObject({ data: ['W80', '铜铝'] })
       expect(series(charts[1]!.props('option'))[0]!).toMatchObject({
+        name: 'W80',
+        showSymbol: true,
         data: [90, null],
         connectNulls: false,
       })
@@ -63,6 +68,7 @@ describe('production and quality chart meanings', () => {
       expect(series(charts[2]!.props('option'))[0]!.stack).toBeUndefined()
       charts[0]!.vm.$emit('select', { dataIndex: 0, seriesIndex: 0 })
       expect(wrapper.emitted('team')).toBeUndefined()
+      expect(charts[2]!.props('option').xAxis).toMatchObject({ minInterval: 1 })
     } finally {
       wrapper.unmount()
     }

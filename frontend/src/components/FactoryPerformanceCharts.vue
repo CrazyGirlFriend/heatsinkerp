@@ -14,10 +14,12 @@ const props = defineProps<{
   basis: QualityBasis
   motion: boolean
 }>()
-const emit = defineEmits<{ team: [id: number] }>()
 const green = '#58986f',
   amber = '#bf9658',
   rose = '#b87d72'
+const periodLabel = computed(
+  () => ({ day: '每日', week: '每周', month: '每月' })[props.data.period],
+)
 const unit = computed(() => (props.metric === 'quantity' ? '件次' : 'kg'))
 
 function plot(
@@ -45,6 +47,7 @@ function plot(
     min: 0,
     ...(percentage ? { max: 100 } : {}),
     splitNumber: 4,
+    ...(['件次', '条'].includes(suffix) ? { minInterval: 1 } : {}),
     axisLabel: { color: '#64726a', fontSize: 12 },
     splitLine: { lineStyle: { color: '#75978620', type: 'dashed' } },
   }
@@ -58,6 +61,7 @@ function plot(
         value == null ? '未检查' : `${formatAmount(value)} ${suffix}`,
     },
     legend: {
+      type: 'scroll',
       top: 0,
       right: 0,
       icon: 'circle',
@@ -75,6 +79,21 @@ function plot(
     },
     xAxis: horizontal ? numeric : category,
     yAxis: horizontal ? category : numeric,
+    ...(horizontal && names.length > 8
+      ? {
+          dataZoom: [
+            {
+              type: 'slider',
+              yAxisIndex: 0,
+              startValue: 0,
+              endValue: 7,
+              width: 8,
+              right: 0,
+              showDetail: false,
+            },
+          ],
+        }
+      : {}),
     series,
   }
 }
@@ -98,8 +117,8 @@ function line(name: string, data: (number | null)[], color: string) {
     type: 'line',
     data,
     connectNulls: false,
-    showSymbol: data.length <= 1,
-    symbolSize: 7,
+    showSymbol: true,
+    symbolSize: data.filter((value) => value != null).length > 60 ? 3 : 6,
     itemStyle: { color },
     lineStyle: { color, width: 2.5 },
     areaStyle: { color: glassArea(color) },
@@ -108,39 +127,15 @@ function line(name: string, data: (number | null)[], color: string) {
 const cards = computed(() => {
   const d = props.data
   if (props.scene === 'production') {
-    const teams = d.production.teams,
-      trend = d.production.trend
+    const trend = d.production.trend
     return [
       {
-        key: 'production-teams',
-        title: '班组完成量',
-        hint: '按完成任务累计 · 点击班组查看加工记录',
-        empty: !teams.some((row) => row.record_count),
-        option: plot(
-          teams.map((row) => row.team_name),
-          [
-            bar(
-              '正常加工',
-              teams.map((row) => row[`completed_${props.metric}`]),
-              green,
-            ),
-            bar(
-              '返工',
-              teams.map((row) => row[`rework_${props.metric}`]),
-              amber,
-            ),
-          ],
-          unit.value,
-          true,
-        ),
-      },
-      {
         key: 'production-trend',
-        title: '每日完成量',
-        hint: '按实际加工日期统计 · 出库不重复计产',
+        title: `${periodLabel.value}加工完成量`,
+        hint: '仅当前班组、流水号和任务 · 正常加工与返工分列',
         empty: !trend.some((row) => row.record_count),
         option: plot(
-          trend.map((row) => row.date.slice(5)),
+          trend.map((row) => row.date),
           [
             line(
               '正常加工',
@@ -162,22 +157,23 @@ const cards = computed(() => {
     row.kind === props.basis.kind &&
     row.scope === props.basis.scope &&
     row.phase === props.basis.phase
-  const groups = d.quality.groups.filter(matches),
-    byDate = new Map(d.quality.trend.filter(matches).map((row) => [row.date, row])),
-    dates = d.production.trend.map((row) => row.date),
+  const materials = d.quality.materials.filter(matches),
+    trend = d.quality.trend.filter(matches),
+    dates = d.period_dates,
+    palette = [green, amber, rose, '#7a9c90', '#8f8c78', '#7f91a1'],
     problems = d.issues.problems.slice(0, 10)
   return [
     {
-      key: 'quality-teams',
-      title: '受检班组合格率',
-      hint: '仅依据实际受检件数 · 不推算责任班组合格率',
-      empty: !groups.some((row) => row.checked_quantity),
+      key: 'quality-materials',
+      title: '各材质合格率',
+      hint: '合格件次 ÷ 实际受检件次 · 不按班组百分比求平均',
+      empty: !materials.some((row) => row.checked_quantity),
       option: plot(
-        groups.map((row) => row.team_name),
+        materials.map((row) => row.material_name || '未填写材质'),
         [
           bar(
             '合格率',
-            groups.map((row) => row.pass_rate),
+            materials.map((row) => row.pass_rate),
             green,
           ),
         ],
@@ -188,18 +184,23 @@ const cards = computed(() => {
     },
     {
       key: 'quality-trend',
-      title: '每日合格率',
-      hint: '没有检查的日期留空 · 不按 100% 计入',
-      empty: !byDate.size,
+      title: `${periodLabel.value}材质合格率`,
+      hint: '各材质独立统计 · 周一至周日 / 自然月 · 未检日期留空',
+      empty: !trend.length,
       option: plot(
-        dates.map((date) => date.slice(5)),
-        [
-          line(
-            '合格率',
-            dates.map((date) => byDate.get(date)?.pass_rate ?? null),
-            green,
-          ),
-        ],
+        dates,
+        materials.map((material, index) => {
+          const values = new Map(
+            trend
+              .filter((row) => row.material_name === material.material_name)
+              .map((row) => [row.date, row.pass_rate]),
+          )
+          return line(
+            material.material_name || '未填写材质',
+            dates.map((day) => values.get(day) ?? null),
+            palette[index % palette.length]!,
+          )
+        }),
         '%',
         false,
         true,
@@ -253,15 +254,11 @@ const cards = computed(() => {
     },
   ]
 })
-function select(key: string, index: number) {
-  if (key !== 'production-teams') return
-  const team = props.data.production.teams[index]
-  if (team) emit('team', team.team_id)
-}
 </script>
 <template>
   <section
     class="performance-charts"
+    :class="{ 'performance-charts--production': scene === 'production' }"
     :aria-label="scene === 'production' ? '加工统计图' : '质量统计图'"
   >
     <article
@@ -277,13 +274,7 @@ function select(key: string, index: number) {
         }}</span>
       </header>
       <p>{{ card.hint }}</p>
-      <LedgerChart
-        :option="card.option"
-        :empty="card.empty"
-        :label="card.title"
-        :motion="motion"
-        @select="select(card.key, $event.dataIndex)"
-      />
+      <LedgerChart :option="card.option" :empty="card.empty" :label="card.title" :motion="motion" />
     </article>
   </section>
 </template>
@@ -292,6 +283,9 @@ function select(key: string, index: number) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+.performance-charts--production {
+  grid-template-columns: minmax(0, 1fr);
 }
 .performance-chart {
   min-width: 0;

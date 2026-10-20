@@ -8,8 +8,6 @@ export interface ProductionMetrics {
   rework_weight: number
   work_quantity: number
   work_weight: number
-  scrap_quantity: number
-  scrap_weight: number
 }
 
 export interface QualityMetrics {
@@ -26,25 +24,45 @@ export interface QualityBasis {
   phase: 'first' | 'recheck'
 }
 
+export type PerformancePeriod = 'day' | 'week' | 'month'
+export interface ProductionScope extends ProductionMetrics {
+  scope_id: number
+  team_id: number
+  team_name: string
+  serial_no: string
+  material_name: string | null
+  purpose_name: string | null
+  processing_task_name: string | null
+}
+
 export interface PerformanceFilters {
   date_from: string
   date_to: string
   team_id?: number
+  period?: PerformancePeriod
+  serial_no?: string
+  work_id?: number
+  material_name?: string
 }
 
 export interface FactoryPerformance {
+  period: PerformancePeriod
+  period_dates: string[]
   date_from: string
   date_to: string
   generated_at: string
   teams: { id: number; code: string; name: string; active: boolean }[]
   production: {
     totals: ProductionMetrics
-    teams: (ProductionMetrics & { team_id: number; team_name: string })[]
+    scope: ProductionScope | null
+    scopes: ProductionScope[]
     trend: (ProductionMetrics & { date: string })[]
   }
   quality: {
-    groups: (QualityMetrics & QualityBasis & { team_id: number; team_name: string })[]
-    trend: (QualityMetrics & QualityBasis & { date: string })[]
+    groups: (QualityMetrics &
+      QualityBasis & { team_id: number; team_name: string; material_name: string | null })[]
+    materials: (QualityMetrics & QualityBasis & { material_name: string | null })[]
+    trend: (QualityMetrics & QualityBasis & { date: string; material_name: string | null })[]
   }
   issues: {
     summary: {
