@@ -6,6 +6,7 @@ from .admin_api import router as admin_router
 from .auth_api import router as public_router
 from .factory_dashboard import router as dashboard_router
 from .factory_overview import router as factory_router
+from .factory_performance import router as performance_router
 from .factory_stream import router as stream_router
 from .inspection_api import router as inspection_router
 from .main_system_api import router as main_system_router
@@ -33,6 +34,7 @@ router.include_router(dispatch_router)
 router.include_router(analytics_router)
 router.include_router(warehouse_inventory_router)
 router.include_router(factory_router)
+router.include_router(performance_router)
 router.include_router(urgency_router)
 router.include_router(stream_router)
 router.include_router(main_system_router)

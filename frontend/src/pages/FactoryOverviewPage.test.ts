@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElInputNumber, ElSelect } from 'element-plus'
 import FactoryOverviewPage from './FactoryOverviewPage.vue'
 import FactoryOverviewCharts from '@/components/FactoryOverviewCharts.vue'
+import FactoryPerformancePanel from '@/components/FactoryPerformancePanel.vue'
 import FactoryRecentBatches from '@/components/FactoryRecentBatches.vue'
 import TableExportButton from '@/components/TableExportButton.vue'
 import { factoryOverviewApi } from '@/services/factoryOverviewApi'
@@ -20,7 +21,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
-async function render(path = '/') {
+async function render(path = '/', inventory = true) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -29,9 +30,12 @@ async function render(path = '/') {
       { path: '/transfer-batches', component: { template: '<div/>' } },
     ],
   })
-  await router.push(path)
+  await router.push(inventory ? `${path}${path.includes('?') ? '&' : '?'}view=inventory` : path)
   wrapper = mount(FactoryOverviewPage, {
-    global: { plugins: [router], stubs: { FactoryOverviewCharts: true } },
+    global: {
+      plugins: [router],
+      stubs: { FactoryOverviewCharts: true, FactoryPerformancePanel: true },
+    },
   })
   await flushPromises()
   return router
@@ -44,6 +48,20 @@ async function click(label: string) {
   await flushPromises()
 }
 describe('factory dashboard', () => {
+  it('opens production first and loads inventory only when requested', async () => {
+    await render('/', false)
+    expect(wrapper.getComponent(FactoryPerformancePanel).props('scene')).toBe('production')
+    expect(factoryOverviewApi.get).not.toHaveBeenCalled()
+    await click('检验与质量')
+    expect(wrapper.getComponent(FactoryPerformancePanel).props('scene')).toBe('quality')
+    expect(factoryOverviewApi.get).not.toHaveBeenCalled()
+    await click('库存与交接')
+    expect(factoryOverviewApi.get).toHaveBeenCalledTimes(1)
+    expect(wrapper.getComponent(FactoryOverviewCharts).props('scene')).toBe('overview')
+    await click('生产完成')
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(factoryOverviewApi.get).toHaveBeenCalledTimes(1)
+  })
   it('exports the displayed analysis, unit and period with readable material type names', async () => {
     vi.mocked(factoryOverviewApi.get).mockImplementation(async (days) => ({
       ...factoryFixture(),
@@ -107,7 +125,11 @@ describe('factory dashboard', () => {
     await flushPromises()
     await wrapper.get('.factory-custom-period').trigger('submit')
     await flushPromises()
-    expect(router.currentRoute.value.query).toEqual({ days: '5', metric: 'quantity' })
+    expect(router.currentRoute.value.query).toEqual({
+      days: '5',
+      metric: 'quantity',
+      view: 'inventory',
+    })
     expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(5)
     expect(wrapper.getComponent(ElSelect).props('modelValue')).toBe(5)
     expect(wrapper.text()).toContain('近5天入库')
@@ -115,7 +137,7 @@ describe('factory dashboard', () => {
     await vi.advanceTimersByTimeAsync(60000)
     await flushPromises()
     expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(5)
-    await router.push('/?days=365')
+    await router.push('/?days=365&view=inventory')
     await flushPromises()
     expect(factoryOverviewApi.get).toHaveBeenLastCalledWith(365)
   })
@@ -129,7 +151,7 @@ describe('factory dashboard', () => {
     await flushPromises()
     expect(router.currentRoute.value.query.days).toBe('366')
     for (const value of ['0', '-1', '3.5', 'invalid', '5&days=7']) {
-      await router.push(`/?days=${value}`)
+      await router.push(`/?days=${value}&view=inventory`)
       await flushPromises()
       expect(wrapper.getComponent(ElSelect).props('modelValue')).toBe(30)
     }

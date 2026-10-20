@@ -8,7 +8,8 @@ import { teamMaterialApi } from '@/services/teamMaterialApi'
 vi.mock('@/services/materialInputApi', () => ({
   materialSuggestions: vi.fn().mockResolvedValue([]),
 }))
-vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ currentUser: { id: 41, team_id: 2 } }) }))
+const state = vi.hoisted(() => ({ auth: {} as Record<string, unknown> }))
+vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
 let wrapper: VueWrapper
 const allowed = {
@@ -19,8 +20,10 @@ const allowed = {
   items: [],
 }
 beforeEach(() => {
+  state.auth = { currentUser: { id: 41, team_id: 2 }, isTeamAccount: true, isAdmin: false }
   localStorage.clear()
   vi.spyOn(teamMaterialApi, 'processingTasks').mockResolvedValue([])
+  vi.spyOn(teamMaterialApi, 'inspectionProblems').mockResolvedValue([])
   vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([])
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([
     { id: 1, team_id: 2, name: '检验', active: true, version: 1 },
@@ -59,6 +62,67 @@ async function click(text: string) {
 }
 
 describe('team business settings', () => {
+  it('lets the QC leader maintain versioned problem choices separately from businesses', async () => {
+    vi.mocked(teamMaterialApi.inspectionProblems).mockResolvedValue([
+      { id: 15, team_id: 2, name: '划伤', active: true, version: 3 },
+    ])
+    const save = vi.spyOn(teamMaterialApi, 'saveInspectionProblem').mockResolvedValue({
+      id: 15,
+      team_id: 2,
+      name: '表面划伤',
+      active: false,
+      version: 4,
+    })
+    wrapper = mount(TeamBusinessDialog, {
+      props: { modelValue: true, teamId: 2, inspectionProblems: true, initialTab: 'problems' },
+      global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('检验问题')
+    expect(wrapper.text()).toContain('改名不改变历史记录')
+    await wrapper.get('input[aria-label="问题名称 15"]').setValue('表面划伤')
+    wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', false)
+    await click('保存')
+    expect(save).toHaveBeenCalledWith(
+      2,
+      { name: '表面划伤', active: false, expected_version: 3 },
+      15,
+    )
+    expect(teamMaterialApi.savePurpose).not.toHaveBeenCalled()
+    await wrapper.get('input[aria-label="新增问题名称"]').setValue('尺寸超差')
+    await click('新增问题')
+    expect(save).toHaveBeenLastCalledWith(2, { name: '尺寸超差', active: true }, undefined)
+  })
+  it.each([
+    [
+      'another team',
+      { currentUser: { id: 41, team_id: 3 }, isTeamAccount: true, isAdmin: false },
+      true,
+    ],
+    [
+      'administrator',
+      { currentUser: { id: 41, team_id: null }, isTeamAccount: false, isAdmin: true },
+      true,
+    ],
+    [
+      'non-QC team',
+      { currentUser: { id: 41, team_id: 2 }, isTeamAccount: true, isAdmin: false },
+      false,
+    ],
+  ])(
+    'does not expose or load problem configuration for %s',
+    async (_label, auth, inspectionProblems) => {
+      state.auth = auth
+      wrapper = mount(TeamBusinessDialog, {
+        props: { modelValue: true, teamId: 2, inspectionProblems, initialTab: 'problems' },
+        global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
+      })
+      await flushPromises()
+      expect(wrapper.text()).not.toContain('检验问题')
+      expect(wrapper.find('[aria-label="新增问题名称"]').exists()).toBe(false)
+      expect(teamMaterialApi.inspectionProblems).not.toHaveBeenCalled()
+    },
+  )
   it('does not show or load processing tasks for warehouse settings', async () => {
     wrapper = mount(TeamBusinessDialog, {
       props: { modelValue: true, teamId: 2, processingTasks: false },

@@ -13,6 +13,7 @@ import {
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { useRoute } from 'vue-router'
 import FilterDialog from './FilterDialog.vue'
+import InspectionProblemFilter from './InspectionProblemFilter.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import StatePanel from './StatePanel.vue'
 import TableExportButton from './TableExportButton.vue'
@@ -28,6 +29,7 @@ import {
   type QualityFilters,
 } from '@/services/qualityFeedbackApi'
 import { formatDateTime } from '@/utils/format'
+import { inspectionProblemLabel } from '@/services/inspectionApi'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 const props = defineProps<{ teamId: number; showAll?: boolean }>()
 const emit = defineEmits<{ count: [value: number] }>()
@@ -45,6 +47,7 @@ const filtersOpen = ref(false),
   draftStatus = ref<QualityFilters['status']>(),
   draftKind = ref<QualityFilters['kind']>(),
   draftTeam = ref<number>(),
+  draftProblem = ref<number>(),
   dates = ref({ from: '', to: '' }),
   applied = ref<QualityFilters>({})
 const count = computed(
@@ -52,6 +55,7 @@ const count = computed(
     Number(!!applied.value.status) +
     Number(!!applied.value.kind) +
     Number(!!applied.value.team_id) +
+    Number(!!applied.value.problem_type_id) +
     Number(!!applied.value.date_from || !!applied.value.date_to),
 )
 let generation = 0
@@ -99,6 +103,7 @@ function openFilters() {
   draftStatus.value = applied.value.status
   draftKind.value = applied.value.kind
   draftTeam.value = applied.value.team_id
+  draftProblem.value = applied.value.problem_type_id
   dates.value = { from: applied.value.date_from || '', to: applied.value.date_to || '' }
 }
 function apply() {
@@ -107,6 +112,7 @@ function apply() {
     status: draftStatus.value,
     kind: draftKind.value,
     team_id: draftTeam.value,
+    problem_type_id: draftProblem.value,
     date_from: dates.value.from || undefined,
     date_to: dates.value.to || undefined,
   }
@@ -118,6 +124,7 @@ function reset() {
   draftStatus.value = undefined
   draftKind.value = undefined
   draftTeam.value = undefined
+  draftProblem.value = undefined
   dates.value = { from: '', to: '' }
 }
 function changePage(value: number) {
@@ -143,6 +150,7 @@ function exportSource() {
         value: (r) => r.involved_teams.map((t) => t.name).join('、'),
       },
       { key: 'notes', label: '问题说明', value: (r) => r.notes },
+      { key: 'problems', label: '检验问题', value: inspectionProblemLabel },
       {
         key: 'feedback_status',
         label: '处理状态',
@@ -235,6 +243,7 @@ onBeforeUnmount(() => {
               :value="Number(t.id)" /></ElSelect
         ></label>
         <label>发现日期<RecordDateFilter v-model="dates" label="发现日期" /></label>
+        <label>检验问题<InspectionProblemFilter v-if="filtersOpen" v-model="draftProblem" /></label>
       </FilterDialog>
       <ElButton class="action-warm" @click="search">查询</ElButton>
       <TableExportButton
@@ -277,6 +286,9 @@ onBeforeUnmount(() => {
         }}</template></ElTableColumn
       >
       <ElTableColumn prop="failed_quantity" label="不合格件数" width="110" align="center" />
+      <ElTableColumn label="检验问题" min-width="180" align="center" show-overflow-tooltip>
+        <template #default="{ row }">{{ inspectionProblemLabel(row as QualityFeedback) }}</template>
+      </ElTableColumn>
       <ElTableColumn label="涉及班组" min-width="180" align="center" show-overflow-tooltip
         ><template #default="{ row }">{{
           (row as QualityFeedback).involved_teams.map((t) => t.name).join('、') || '待指定'

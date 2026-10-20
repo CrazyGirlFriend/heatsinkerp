@@ -33,6 +33,7 @@ export interface QualityFeedbackDetail extends QualityFeedback {
   rechecks: InspectionRecord[]
 }
 export interface QualityFilters {
+  problem_type_id?: number
   team_id?: number
   query?: string
   kind?: InspectionRecord['kind']

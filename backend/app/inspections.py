@@ -13,6 +13,8 @@ from .auth import actor_name
 from .material_lineage import relatives
 from .models import (
     InspectionFeedbackTeam,
+    InspectionProblem,
+    InspectionProblemType,
     MaterialQuantityAdjustment,
     MaterialStockBalance,
     MaterialTransfer,
@@ -40,6 +42,7 @@ class InspectionCreate(BaseModel):
     dimension_result: str = Field(default="", max_length=2000)
     weight_result: str = Field(default="", max_length=2000)
     involved_team_ids: list[int] = Field(default_factory=list, max_length=50)
+    problem_type_ids: list[int] = Field(default_factory=list, max_length=50)
     notes: str = Field(default="", max_length=2000)
     parent_id: int | None = Field(default=None, ge=1)
     idempotency_key: str = Field(min_length=1, max_length=100)
@@ -72,6 +75,14 @@ class InspectionCreate(BaseModel):
             raise ValueError("请选择问题涉及班组")
         if not self.failed_quantity and self.involved_team_ids:
             raise ValueError("没有不合格物料时无需指定问题班组")
+        if len(set(self.problem_type_ids)) != len(self.problem_type_ids) or any(
+            i < 1 for i in self.problem_type_ids
+        ):
+            raise ValueError("检验问题不能重复或无效")
+        if self.failed_quantity and not self.problem_type_ids:
+            raise ValueError("请选择检验问题")
+        if not self.failed_quantity and self.problem_type_ids:
+            raise ValueError("没有不合格物料时无需选择检验问题")
         return self
 
 
@@ -229,6 +240,7 @@ def record_dict(row, lot, team):
         if row.failed_quantity or row.parent_id
         else None,
         notes=row.notes,
+        problems=[dict(id=p.problem_type_id, name=p.name) for p in row.problems],
         parent_id=row.parent_id,
         released_at=row.released_at.replace(tzinfo=timezone.utc).isoformat()
         if row.released_at
@@ -318,6 +330,23 @@ def create(db, payload, user):
             employee = require_team_employee(
                 db, actor_team.id, payload.inspector_employee_id, "检验人"
             )
+            problems = (
+                list(
+                    db.scalars(
+                        select(InspectionProblemType)
+                        .where(InspectionProblemType.id.in_(payload.problem_type_ids))
+                        .order_by(InspectionProblemType.id)
+                        .with_for_update()
+                        .execution_options(populate_existing=True)
+                    )
+                )
+                if payload.problem_type_ids
+                else []
+            )
+            if len(problems) != len(payload.problem_type_ids) or any(
+                p.team_id != actor_team.id or not p.active for p in problems
+            ):
+                raise HTTPException(422, "请选择启用的检验问题；无可用选项时请联系检验班组长")
             if parent and payload.checked_at.replace(tzinfo=None) < parent.checked_at:
                 raise HTTPException(422, "复检时间不能早于原检查")
             work = (
@@ -351,6 +380,7 @@ def create(db, payload, user):
                 created_by=actor_name(user),
                 created_by_user_id=user.id,
                 created_at=now,
+                problems=[InspectionProblem(problem_type_id=p.id, name=p.name) for p in problems],
             )
             db.add(row)
             db.flush()
@@ -386,6 +416,7 @@ def create(db, payload, user):
                                 methods=payload.methods,
                                 items=payload.items,
                                 involved_team_ids=payload.involved_team_ids,
+                                problems=[dict(id=p.id, name=p.name) for p in problems],
                             ),
                         }
                     },
@@ -413,6 +444,7 @@ def list_records(
     status=None,
     kind=None,
     scope=None,
+    problem_type_id=None,
     date_from=None,
     date_to=None,
     page=1,
@@ -431,6 +463,10 @@ def list_records(
     ):
         if value is not None:
             conditions.append(column == value)
+    if problem_type_id is not None:
+        conditions.append(
+            Inspection.problems.any(InspectionProblem.problem_type_id == problem_type_id)
+        )
     if source_transfer_id is not None:
         ancestry = relatives([source_transfer_id], ancestors=True, name="inspection_ancestry")
         ancestors = select(ancestry.c.id)

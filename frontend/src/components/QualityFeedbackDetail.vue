@@ -28,7 +28,12 @@ import {
   dispositions,
   type QualityFeedbackDetail,
 } from '@/services/qualityFeedbackApi'
-import { inspectionItemLabels, inspectionMethodLabels } from '@/services/inspectionApi'
+import {
+  inspectionItemLabels,
+  inspectionMethodLabels,
+  inspectionProblemLabel,
+  type InspectionRecord,
+} from '@/services/inspectionApi'
 import { materialRequestKey } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
 const props = defineProps<{ issueId: number }>()
@@ -203,7 +208,10 @@ onBeforeUnmount(() => {
           :span="2"
           >{{ detail.weight_result || '—' }}</ElDescriptionsItem
         >
-        <ElDescriptionsItem label="问题说明" :span="2">{{
+        <ElDescriptionsItem label="检验问题" :span="2">{{
+          inspectionProblemLabel(detail)
+        }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="补充说明" :span="2">{{
           detail.notes || '—'
         }}</ElDescriptionsItem>
       </ElDescriptions>
@@ -321,11 +329,17 @@ onBeforeUnmount(() => {
           ><ElTableColumn prop="inspector_name" label="检验人" align="center" /><ElTableColumn
             prop="sample_quantity"
             label="检查件数"
-            align="center" /><ElTableColumn
-            prop="passed_quantity"
-            label="合格"
-            align="center" /><ElTableColumn prop="failed_quantity" label="不合格" align="center"
-        /></ElTable>
+            align="center"
+          /><ElTableColumn prop="passed_quantity" label="合格" align="center" /><ElTableColumn
+            prop="failed_quantity"
+            label="不合格"
+            align="center"
+          /><ElTableColumn label="检验问题" min-width="180" align="center" show-overflow-tooltip>
+            <template #default="{ row }">{{
+              inspectionProblemLabel(row as InspectionRecord)
+            }}</template>
+          </ElTableColumn></ElTable
+        >
       </section>
     </template>
     <template #footer

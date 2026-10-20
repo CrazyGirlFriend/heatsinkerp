@@ -49,6 +49,7 @@ def sources(
 def records(
     kind: Literal["patrol", "inspection"] | None = None,
     scope: Literal["sample", "full"] | None = None,
+    problem_type_id: int | None = Query(default=None, ge=1),
     team_id: int | None = Query(default=None, ge=1),
     source_transfer_id: int | None = Query(default=None, ge=1),
     query: str | None = Query(default=None, max_length=160),
@@ -72,6 +73,7 @@ def records(
             status=status,
             kind=kind,
             scope=scope,
+            problem_type_id=problem_type_id,
             date_from=date_from,
             date_to=date_to,
             page=page,

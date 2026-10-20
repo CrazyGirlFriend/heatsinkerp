@@ -175,6 +175,17 @@ class TeamProcessingTask(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class InspectionProblemType(Base):
+    __tablename__ = "inspection_problem_types"
+    __table_args__ = (UniqueConstraint("team_id", "name", name="uq_inspection_problem_name"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class TeamSettingEvent(Base):
     __tablename__ = "team_setting_events"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -844,6 +855,22 @@ class MaterialInspection(Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    problems: Mapped[list[InspectionProblem]] = relationship(
+        lazy="selectin", order_by="InspectionProblem.problem_type_id"
+    )
+
+
+class InspectionProblem(Base):
+    __tablename__ = "inspection_problems"
+    inspection_id: Mapped[int] = mapped_column(
+        ForeignKey("material_inspections.id", ondelete="RESTRICT"), primary_key=True
+    )
+    problem_type_id: Mapped[int] = mapped_column(
+        ForeignKey("inspection_problem_types.id", ondelete="RESTRICT"),
+        primary_key=True,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(80))
 
 
 class InspectionFeedbackTeam(Base):

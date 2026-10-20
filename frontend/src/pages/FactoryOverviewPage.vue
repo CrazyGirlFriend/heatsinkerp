@@ -18,6 +18,7 @@ import TableExportButton from '@/components/TableExportButton.vue'
 import { tableExportSource } from '@/utils/tableExport'
 import { materialTypeLabel } from '@/types/materialTransfer'
 import FactoryOverviewCharts from '@/components/FactoryOverviewCharts.vue'
+import FactoryPerformancePanel from '@/components/FactoryPerformancePanel.vue'
 import PageBackButton from '@/components/PageBackButton.vue'
 import FactoryRecentBatches from '@/components/FactoryRecentBatches.vue'
 import AnimatedMetric from '@/components/AnimatedMetric.vue'
@@ -34,6 +35,13 @@ import type {
 
 const route = useRoute(),
   router = useRouter()
+const view = computed(() =>
+  route.query.view === 'inventory'
+    ? 'inventory'
+    : route.query.view === 'quality'
+      ? 'quality'
+      : 'production',
+)
 const days = computed(() => {
   const value = typeof route.query.days === 'string' ? Number(route.query.days) : NaN
   return Number.isInteger(value) && value >= 1 && value <= 365 ? value : 30
@@ -210,7 +218,17 @@ function openTeam(team: FactoryTeam) {
 function openBatch(row: FactoryRecentBatch) {
   void router.push(`/transfer-batches?batch_no=${encodeURIComponent(row.batch_no)}`)
 }
-watch(days, load, { immediate: true })
+watch(
+  [days, view],
+  () => {
+    if (view.value === 'inventory') void load()
+    else {
+      ++version
+      loading.value = false
+    }
+  },
+  { immediate: true },
+)
 watch(days, (value) => {
   customDays.value = value
 })
@@ -220,7 +238,8 @@ onMounted(() => {
   syncMotion()
   media?.addEventListener('change', syncMotion)
   timer = setInterval(() => {
-    if (autoRefresh.value && !document.hidden && !loading.value) void load()
+    if (view.value === 'inventory' && autoRefresh.value && !document.hidden && !loading.value)
+      void load()
   }, 60000)
 })
 onBeforeUnmount(() => {
@@ -236,11 +255,34 @@ onBeforeUnmount(() => {
       <div class="factory-heading-start page-heading-start">
         <PageBackButton />
         <div class="factory-heading-title">
-          <h1>全厂物料总览</h1>
-          <p v-if="report">{{ formatDateTime(report.as_of) }} 更新</p>
+          <h1>全厂数据分析</h1>
+          <p v-if="view === 'inventory' && report">{{ formatDateTime(report.as_of) }} 更新</p>
         </div>
       </div>
-      <div class="factory-controls">
+      <nav class="factory-sections factory-main-sections" aria-label="统计视图">
+        <button
+          type="button"
+          :aria-pressed="view === 'production'"
+          @click="preference({ view: 'production' })"
+        >
+          生产完成
+        </button>
+        <button
+          type="button"
+          :aria-pressed="view === 'quality'"
+          @click="preference({ view: 'quality' })"
+        >
+          检验与质量
+        </button>
+        <button
+          type="button"
+          :aria-pressed="view === 'inventory'"
+          @click="preference({ view: 'inventory' })"
+        >
+          库存与交接
+        </button>
+      </nav>
+      <div v-if="view === 'inventory'" class="factory-controls">
         <TableExportButton
           :source="exportSource"
           :disabled="loading || !report || !!error"
@@ -305,63 +347,69 @@ onBeforeUnmount(() => {
         <ElButton :icon="Refresh" :loading="loading" size="small" @click="load">刷新</ElButton>
       </div>
     </header>
-    <ElAlert v-if="error && report" :title="error" type="warning" :closable="false" show-icon />
-    <ElAlert v-if="warning" :title="warning" type="warning" :closable="false" show-icon />
-    <StatePanel v-if="!report && error" state="error" :description="error" @retry="load" />
-    <StatePanel v-else-if="!report" state="loading" title="正在读取全厂物料" />
+    <FactoryPerformancePanel v-if="view !== 'inventory'" :scene="view" :motion="motion" />
     <template v-else>
-      <section class="factory-metrics" aria-label="全厂关键数据">
-        <article
-          v-for="item in metrics"
-          :key="item.key"
-          class="factory-metric"
-          :class="{ 'factory-metric--primary': item.accent }"
-        >
-          <h2 :title="item.hint">{{ item.label }}</h2>
-          <div>
-            <strong
-              ><AnimatedMetric
-                :key="`${item.key}-${metric}-${report.days}`"
-                :value="item.value"
-                :animate="motion"
-                :precision="metric === 'quantity' ? 0 : 3" /></strong
-            ><span>{{ unit }}</span
-            ><small v-if="item.detail">{{ item.detail }}</small>
+      <ElAlert v-if="error && report" :title="error" type="warning" :closable="false" show-icon />
+      <ElAlert v-if="warning" :title="warning" type="warning" :closable="false" show-icon />
+      <StatePanel v-if="!report && error" state="error" :description="error" @retry="load" />
+      <StatePanel v-else-if="!report" state="loading" title="正在读取全厂物料" />
+      <template v-else>
+        <section class="factory-metrics" aria-label="全厂关键数据">
+          <article
+            v-for="item in metrics"
+            :key="item.key"
+            class="factory-metric"
+            :class="{ 'factory-metric--primary': item.accent }"
+          >
+            <h2 :title="item.hint">{{ item.label }}</h2>
+            <div>
+              <strong
+                ><AnimatedMetric
+                  :key="`${item.key}-${metric}-${report.days}`"
+                  :value="item.value"
+                  :animate="motion"
+                  :precision="metric === 'quantity' ? 0 : 3" /></strong
+              ><span>{{ unit }}</span
+              ><small v-if="item.detail">{{ item.detail }}</small>
+            </div>
+          </article>
+        </section>
+        <nav class="factory-sections" aria-label="分析分类">
+          <button
+            v-for="(item, i) in scenes"
+            :key="item.key"
+            type="button"
+            :aria-pressed="sceneIndex === i"
+            @click="sceneIndex = i"
+          >
+            {{ item.label }}
+          </button>
+        </nav>
+        <section class="factory-presentation">
+          <div class="factory-stage" :aria-label="scene.label">
+            <Transition name="scene-fade" mode="in-out" :css="motion">
+              <FactoryOverviewCharts
+                :key="scene.key"
+                :data="report"
+                :metric="metric"
+                :scene="scene.key"
+                :motion="motion"
+                @team="openTeam"
+              />
+            </Transition>
           </div>
-        </article>
-      </section>
-      <nav class="factory-sections" aria-label="分析分类">
-        <button
-          v-for="(item, i) in scenes"
-          :key="item.key"
-          type="button"
-          :aria-pressed="sceneIndex === i"
-          @click="sceneIndex = i"
-        >
-          {{ item.label }}
-        </button>
-      </nav>
-      <section class="factory-presentation">
-        <div class="factory-stage" :aria-label="scene.label">
-          <Transition name="scene-fade" mode="in-out" :css="motion">
-            <FactoryOverviewCharts
-              :key="scene.key"
-              :data="report"
-              :metric="metric"
-              :scene="scene.key"
-              :motion="motion"
-              @team="openTeam"
-            />
-          </Transition>
-        </div>
-        <FactoryRecentBatches :rows="report.recent_batches || []" :motion="motion" @open="openBatch"
-          ><template #actions
-            ><ElButton link type="primary" @click="router.push('/transfer-batches')"
-              >查看全部</ElButton
-            ></template
-          ></FactoryRecentBatches
-        >
-      </section>
+          <FactoryRecentBatches
+            :rows="report.recent_batches || []"
+            :motion="motion"
+            @open="openBatch"
+            ><template #actions
+              ><ElButton link type="primary" @click="router.push('/transfer-batches')"
+                >查看全部</ElButton
+              ></template
+            ></FactoryRecentBatches
+          >
+        </section>
+      </template>
     </template>
   </section>
 </template>
@@ -506,6 +554,9 @@ onBeforeUnmount(() => {
   border-radius: 24px;
   background: var(--surface-soft);
   box-shadow: inset 0 1px 2px #205c4810;
+}
+.factory-main-sections {
+  align-self: center;
 }
 .factory-sections button {
   padding: 6px 18px;

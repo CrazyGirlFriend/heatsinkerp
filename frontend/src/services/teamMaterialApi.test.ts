@@ -28,6 +28,26 @@ afterEach(() => {
   httpClient.defaults.adapter = originalAdapter
 })
 describe('team material API contract', () => {
+  it('uses the QC problem directory with versioned edits', async () => {
+    data = []
+    await teamMaterialApi.inspectionProblems(8)
+    await teamMaterialApi.saveInspectionProblem(8, { name: '划伤', active: true })
+    await teamMaterialApi.saveInspectionProblem(
+      8,
+      { name: '表面划伤', active: false, expected_version: 2 },
+      3,
+    )
+    expect(requests.map((item) => [item.method, item.url])).toEqual([
+      ['get', '/team-materials/8/inspection-problems'],
+      ['post', '/team-materials/8/inspection-problems'],
+      ['patch', '/team-materials/8/inspection-problems/3'],
+    ])
+    expect(JSON.parse(requests[2]!.data)).toEqual({
+      name: '表面划伤',
+      active: false,
+      expected_version: 2,
+    })
+  })
   it('uses a separate versioned processing task directory and task/business processing filters', async () => {
     data = []
     await teamMaterialApi.processingTasks(2)

@@ -11,6 +11,7 @@ from .auth import actor_name, get_current_user, require_admin
 from .database import get_db
 from .material_stock import require_actor, require_team
 from .models import (
+    InspectionProblemType,
     Team,
     TeamEmployee,
     TeamProcessingTask,
@@ -19,7 +20,7 @@ from .models import (
     User,
     utcnow,
 )
-from .team_constants import PROCESSING_TEAM_CODES
+from .team_constants import INSPECTION_TEAM_CODE, PROCESSING_TEAM_CODES
 
 router = APIRouter(prefix="/api/team-materials", tags=["team business settings"])
 
@@ -90,7 +91,15 @@ def list_purposes(
 
 
 def save_directory_item(
-    db, team_id, user, payload, item_id=None, *, employee=False, processing_task=False
+    db,
+    team_id,
+    user,
+    payload,
+    item_id=None,
+    *,
+    employee=False,
+    processing_task=False,
+    inspection_problem=False,
 ):
     model, label, action = (
         (TeamEmployee, "员工", "employee_changed")
@@ -99,6 +108,11 @@ def save_directory_item(
     )
     if processing_task:
         model, label, action = TeamProcessingTask, "加工任务", "processing_task_changed"
+    if inspection_problem:
+        if user.role != "TEAM" or not user.team or user.team.code != INSPECTION_TEAM_CODE:
+            raise HTTPException(403, "仅检验班组长可以维护检验问题")
+        require_actor(user, team_id)
+        model, label, action = InspectionProblemType, "检验问题", "inspection_problem_changed"
     if user.role != "ADMIN":
         require_actor(user, team_id)
     try:
@@ -248,6 +262,44 @@ def update_processing_task(
     db: Session = Depends(get_db),
 ):
     return save_directory_item(db, team_id, user, payload, task_id, processing_task=True)
+
+
+@router.get("/{team_id}/inspection-problems")
+def list_inspection_problems(
+    team_id: int = Path(ge=1), _: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    team = require_team(db, team_id)
+    if team.code != INSPECTION_TEAM_CODE:
+        raise HTTPException(422, "检验问题由检验班组统一维护")
+    return [
+        directory_item_dict(row)
+        for row in db.scalars(
+            select(InspectionProblemType)
+            .where(InspectionProblemType.team_id == team_id)
+            .order_by(InspectionProblemType.id)
+        )
+    ]
+
+
+@router.post("/{team_id}/inspection-problems", status_code=201)
+def create_inspection_problem(
+    payload: DirectoryItemInput,
+    team_id: int = Path(ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return save_directory_item(db, team_id, user, payload, inspection_problem=True)
+
+
+@router.patch("/{team_id}/inspection-problems/{problem_id}")
+def update_inspection_problem(
+    payload: DirectoryItemInput,
+    team_id: int = Path(ge=1),
+    problem_id: int = Path(ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return save_directory_item(db, team_id, user, payload, problem_id, inspection_problem=True)
 
 
 @router.put("/{team_id}/opening-stock/authorization")

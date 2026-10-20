@@ -1936,6 +1936,7 @@ onBeforeUnmount(() => {
         :team-id="teamId"
         :team-name="title"
         :processing-tasks="hasProcessing"
+        :inspection-problems="team?.code === 'FACTORY-QC'"
         :business-only="auth.isAdmin"
         @changed="businessChanged"
         @stocked="openingStocked"

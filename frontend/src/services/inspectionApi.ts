@@ -42,6 +42,7 @@ export interface InspectionRecord {
   sample_quantity: number
   passed_quantity: number
   failed_quantity: number
+  problems?: { id: number; name: string }[]
   status: 'pending' | 'released' | 'passed' | 'failed'
   notes: string
   parent_id: number | null
@@ -56,6 +57,7 @@ export interface InspectionCreate {
   dimension_result: string
   weight_result: string
   involved_team_ids: number[]
+  problem_type_ids: number[]
   source_transfer_id: number
   expected_revision: number
   inspector_employee_id: number
@@ -73,6 +75,7 @@ export interface InspectionFilters {
   source_transfer_id?: number
   query?: string
   inspector_id?: number
+  problem_type_id?: number
   status?: InspectionRecord['status']
   date_from?: string
   date_to?: string
@@ -117,3 +120,11 @@ export const inspectionStatusLabels = {
 }
 export const inspectionMethodLabels = { visual: '目视', microscope: '显微镜' }
 export const inspectionItemLabels = { appearance: '外观', dimension: '尺寸', weight: '重量' }
+export function inspectionProblemLabel(
+  row: Pick<InspectionRecord, 'problems' | 'failed_quantity'>,
+) {
+  return (
+    row.problems?.map((problem) => problem.name).join('、') ||
+    (row.failed_quantity > 0 ? '历史未分类' : '—')
+  )
+}

@@ -131,3 +131,22 @@ it('losing team permissions removes write actions', async () => {
   expect(button('提交反馈')).toBeUndefined()
   expect(button('保存处理意见')).toBeUndefined()
 })
+
+it('shows historical problem snapshots for the original check and every recheck', async () => {
+  vi.mocked(qualityFeedbackApi.detail).mockResolvedValue({
+    ...record,
+    problems: [{ id: 11, name: '原检查问题名称' }],
+    rechecks: [
+      { ...record, id: 2, parent_id: 1, problems: [{ id: 11, name: '复检时的问题名称' }] },
+      { ...record, id: 3, parent_id: 1, problems: [] },
+      { ...record, id: 4, parent_id: 1, failed_quantity: 0, problems: [] },
+    ],
+  })
+  await render()
+  expect(wrapper.text()).toContain('原检查问题名称')
+  expect(wrapper.text()).toContain('复检时的问题名称')
+  expect(wrapper.text()).toContain('历史未分类')
+  const rows = wrapper.findAll('.el-table__body-wrapper tbody tr')
+  expect(rows[2]!.text()).toContain('—')
+  expect(rows[2]!.text()).not.toContain('历史未分类')
+})

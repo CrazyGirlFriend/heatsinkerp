@@ -45,6 +45,7 @@ const props = withDefaults(
     businessOnly?: boolean
     teamName?: string
     processingTasks?: boolean
+    inspectionProblems?: boolean
   }>(),
   { processingTasks: true },
 )
@@ -62,16 +63,36 @@ const employees = ref<TeamEmployee[]>([])
 const editingEmployees = computed(() => tab.value === 'employees')
 const tasks = ref<TeamProcessingTask[]>([])
 const editingTasks = computed(() => tab.value === 'tasks')
+const problems = ref<TeamDirectoryItem[]>([])
+const editingProblems = computed(() => tab.value === 'problems')
 const canManage = computed(
   () =>
     auth.currentUser?.active !== false &&
     (auth.isAdmin || Number(auth.currentUser?.team_id) === props.teamId),
 )
+const canManageProblems = computed(
+  () => props.inspectionProblems && auth.isTeamAccount && !auth.isAdmin && canManage.value,
+)
+const canManageDirectory = computed(
+  () => canManage.value && (!editingProblems.value || canManageProblems.value),
+)
 const directoryItems = computed(() =>
-  editingTasks.value ? tasks.value : editingEmployees.value ? employees.value : purposes.value,
+  editingProblems.value
+    ? problems.value
+    : editingTasks.value
+      ? tasks.value
+      : editingEmployees.value
+        ? employees.value
+        : purposes.value,
 )
 const itemLabel = computed(() =>
-  editingTasks.value ? '任务' : editingEmployees.value ? '员工' : '业务',
+  editingProblems.value
+    ? '问题'
+    : editingTasks.value
+      ? '任务'
+      : editingEmployees.value
+        ? '员工'
+        : '业务',
 )
 const purposes = ref<TeamPurpose[]>([]),
   newName = ref(''),
@@ -140,18 +161,22 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [options, state, staff, taskOptions] = await Promise.all([
+    const [options, state, staff, taskOptions, problemOptions] = await Promise.all([
       teamMaterialApi.purposes(props.teamId),
       props.businessOnly ? Promise.resolve(null) : teamMaterialApi.openingState(props.teamId),
       teamMaterialApi.employees(props.teamId),
       !props.processingTasks || !canManage.value
         ? Promise.resolve([])
         : teamMaterialApi.processingTasks(props.teamId),
+      canManageProblems.value
+        ? teamMaterialApi.inspectionProblems(props.teamId)
+        : Promise.resolve([]),
     ])
     if (current !== epoch) return
     purposes.value = options
     employees.value = staff
     tasks.value = taskOptions
+    problems.value = problemOptions
     opening.value = state
   } catch (e) {
     if (current === epoch) error.value = e instanceof Error ? e.message : '班组设置加载失败'
@@ -171,6 +196,7 @@ watch(
         ? 'purposes'
         : props.initialTab || 'purposes'
     if (tab.value === 'tasks' && props.processingTasks === false) tab.value = 'purposes'
+    if (tab.value === 'problems' && !canManageProblems.value) tab.value = 'purposes'
     newName.value = ''
     requestKey = ''
     lastBody = ''
@@ -219,7 +245,7 @@ function saveDraft() {
   }
 }
 async function saveDirectoryItem(item?: TeamDirectoryItem) {
-  if (saving.value || loading.value || !canManage.value) return
+  if (saving.value || loading.value || !canManageDirectory.value) return
   const name = (item ? item.name : newName.value).trim()
   if (!name) {
     invalidPurpose.value = item?.id ?? 'new'
@@ -232,11 +258,13 @@ async function saveDirectoryItem(item?: TeamDirectoryItem) {
   error.value = ''
   try {
     await (
-      editingTasks.value
-        ? teamMaterialApi.saveProcessingTask
-        : editingEmployees.value
-          ? teamMaterialApi.saveEmployee
-          : teamMaterialApi.savePurpose
+      editingProblems.value
+        ? teamMaterialApi.saveInspectionProblem
+        : editingTasks.value
+          ? teamMaterialApi.saveProcessingTask
+          : editingEmployees.value
+            ? teamMaterialApi.saveEmployee
+            : teamMaterialApi.savePurpose
     )(
       props.teamId,
       { name, active: item?.active ?? true, ...(item ? { expected_version: item.version } : {}) },
@@ -324,16 +352,20 @@ async function submitOpening() {
         label="加工任务"
         :disabled="saving"
       />
+      <ElTabPane v-if="canManageProblems" name="problems" label="检验问题" :disabled="saving" />
       <ElTabPane v-if="!businessOnly" name="opening" label="初始库存" :disabled="saving" />
     </ElTabs>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <p v-if="loading">正在读取班组设置…</p>
     <section
-      v-else-if="tab === 'purposes' || editingEmployees || editingTasks"
+      v-else-if="tab === 'purposes' || editingEmployees || editingTasks || editingProblems"
       ref="purposeSettings"
       class="purpose-settings"
     >
-      <p v-if="editingTasks" class="settings-note">
+      <p v-if="editingProblems" class="settings-note">
+        巡检、检验及复检发现不合格时，从这份清单选择问题，可多选。停用后不可再选；改名不改变历史记录。
+      </p>
+      <p v-else-if="editingTasks" class="settings-note">
         维护本班组的具体任务，如粗磨、精磨。加工时选择实际完成的任务；任务独立于业务，不要求每批完成全部任务。停用或改名不改变历史记录。
       </p>
       <p v-else-if="!editingEmployees" class="settings-note">
@@ -345,15 +377,17 @@ async function submitOpening() {
           v-model="item.name"
           :aria-label="`${itemLabel}名称 ${item.id}`"
           maxlength="80"
-          :disabled="saving || !canManage"
+          :disabled="saving || !canManageDirectory"
         />
         <ElSwitch
           v-model="item.active"
           :aria-label="`${item.name}启用状态`"
           active-text="启用"
-          :disabled="saving || !canManage"
+          :disabled="saving || !canManageDirectory"
         />
-        <ElButton :disabled="saving || !canManage" @click="saveDirectoryItem(item)">保存</ElButton>
+        <ElButton :disabled="saving || !canManageDirectory" @click="saveDirectoryItem(item)"
+          >保存</ElButton
+        >
       </div>
       <ElAlert
         v-if="tab === 'purposes' && purposes.length && !purposes.some((item) => item.active)"
@@ -367,19 +401,21 @@ async function submitOpening() {
           v-model="newName"
           :aria-label="`新增${itemLabel}名称`"
           :placeholder="
-            editingTasks
-              ? '例如：粗磨、精磨'
-              : editingEmployees
-                ? '请输入员工姓名'
-                : '例如：检验、去毛刺'
+            editingProblems
+              ? '请输入统一的问题名称'
+              : editingTasks
+                ? '例如：粗磨、精磨'
+                : editingEmployees
+                  ? '请输入员工姓名'
+                  : '例如：检验、去毛刺'
           "
           maxlength="80"
-          :disabled="saving || !canManage"
+          :disabled="saving || !canManageDirectory"
           @keyup.enter="saveDirectoryItem()"
         /><ElButton
           type="primary"
           :loading="saving"
-          :disabled="!canManage"
+          :disabled="!canManageDirectory"
           @click="saveDirectoryItem()"
           >新增{{ itemLabel }}</ElButton
         >

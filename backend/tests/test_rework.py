@@ -121,6 +121,7 @@ def test_historical_hold_survives_rework_and_recheck_until_manual_release(client
             "source_transfer_id": child["id"],
             "involved_team_ids": [],
             "failed_quantity": 0,
+            "problem_type_ids": [],
             "expected_revision": context["revision"],
             "idempotency_key": "root-pass",
             "checked_at": datetime.now(timezone.utc).isoformat(),

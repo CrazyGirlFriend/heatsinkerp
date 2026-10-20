@@ -1,6 +1,7 @@
 import type { WarehouseLocation } from './warehouseLocationApi'
 import { httpRequest, HttpRequestError, type HttpRequestOptions } from './httpClient'
 import type {
+  TeamDirectoryItem,
   TeamEmployee,
   TeamPurpose,
   TeamProcessingTask,
@@ -266,6 +267,19 @@ export const teamMaterialApi = {
   },
   processingTasks(teamId: number) {
     return request<TeamProcessingTask[]>(path(teamId, 'processing-tasks'))
+  },
+  inspectionProblems(teamId: number) {
+    return request<TeamDirectoryItem[]>(path(teamId, 'inspection-problems'))
+  },
+  saveInspectionProblem(
+    teamId: number,
+    payload: { name: string; active: boolean; expected_version?: number },
+    id?: number,
+  ) {
+    return request<TeamDirectoryItem>(
+      path(teamId, id ? `inspection-problems/${id}` : 'inspection-problems'),
+      { method: id ? 'PATCH' : 'POST', body: payload },
+    )
   },
   saveProcessingTask(
     teamId: number,

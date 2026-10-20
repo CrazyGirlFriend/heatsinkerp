@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 from app.database import SessionLocal
-from app.models import TeamEmployee
+from app.models import InspectionProblemType, TeamEmployee
 from test_material_transfers import _leader, _team
 from test_processing_daily import setup_lot, work
 from test_warehouse_classification import base, dispatch
@@ -22,9 +22,11 @@ def inspection(client, warehouse):
     _, headers = _leader(client, "qc-leader", qc["id"])
     with SessionLocal() as db:
         person = TeamEmployee(team_id=qc["id"], name="巡检员李师傅")
-        db.add(person)
+        problem = InspectionProblemType(team_id=qc["id"], name="表面划伤")
+        db.add_all([person, problem])
         db.commit()
         person_id = person.id
+        problem_id = problem.id
     context = client.get(base(s, True) + f"/stock/{produced['id']}/quantity-adjustments").json()
     return (
         s,
@@ -40,6 +42,7 @@ def inspection(client, warehouse):
             methods=["visual"],
             items=["appearance"],
             involved_team_ids=[s["other"]["id"]],
+            problem_type_ids=[problem_id],
             idempotency_key="inspection-one",
         ),
     )
@@ -47,6 +50,8 @@ def inspection(client, warehouse):
 
 def create_check(client, inspection, **overrides):
     _, _, headers, body = inspection
+    if overrides.get("failed_quantity") == 0:
+        overrides.setdefault("problem_type_ids", [])
     return client.post("/api/inspections", headers=headers, json={**body, **overrides})
 
 
@@ -178,6 +183,12 @@ def test_invalid_inspection_cannot_write_stock_or_feedback(client, inspection, c
 def test_formal_qc_full_inspection_does_not_require_processing_or_create_output(client, warehouse):
     s = warehouse
     lot, worker = setup_lot(client, s, "FACTORY-QC")
+    problem = client.post(
+        f"/api/team-materials/{s['other']['id']}/inspection-problems",
+        headers=s["other_headers"],
+        json={"name": "尺寸超差"},
+    )
+    assert problem.status_code == 201, problem.text
     context = client.get(base(s, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
     before = client.get(base(s, True) + "/overview").json()["totals"]
     sources = client.get(
@@ -204,6 +215,7 @@ def test_formal_qc_full_inspection_does_not_require_processing_or_create_output(
         checked_at=datetime.now(timezone.utc).isoformat(),
         sample_quantity=10,
         failed_quantity=2,
+        problem_type_ids=[problem.json()["id"]],
         kind="inspection",
         scope="full",
         methods=["visual", "microscope"],

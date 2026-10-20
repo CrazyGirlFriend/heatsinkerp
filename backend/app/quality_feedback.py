@@ -19,13 +19,14 @@ from .models import (
     InspectionFeedbackTeam as Member,
 )
 from .models import (
-    MaterialInspection as Inspection,
-)
-from .models import (
+    InspectionProblem,
     MaterialTransfer,
     MaterialTransferEvent,
     Team,
     utcnow,
+)
+from .models import (
+    MaterialInspection as Inspection,
 )
 from .record_filters import RecordFilters
 from .team_constants import INSPECTION_TEAM_CODE
@@ -111,6 +112,7 @@ def list_records(
     query=None,
     kind=None,
     status=None,
+    problem_type_id=None,
     date_from=None,
     date_to=None,
     page=1,
@@ -126,6 +128,10 @@ def list_records(
         conditions.append(Inspection.kind == kind)
     if status:
         conditions.append(Inspection.feedback_status == status)
+    if problem_type_id is not None:
+        conditions.append(
+            Inspection.problems.any(InspectionProblem.problem_type_id == problem_type_id)
+        )
     if query and query.strip():
         conditions.append(
             stock.literal_query(

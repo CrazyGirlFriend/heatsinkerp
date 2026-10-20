@@ -16,6 +16,7 @@ import { Refresh, Search } from '@element-plus/icons-vue'
 import AppDialog from './AppDialog.vue'
 import QualityFeedbackDetail from './QualityFeedbackDetail.vue'
 import FilterDialog from './FilterDialog.vue'
+import InspectionProblemFilter from './InspectionProblemFilter.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import StatePanel from './StatePanel.vue'
 import TableExportButton from './TableExportButton.vue'
@@ -30,6 +31,7 @@ import {
   inspectionStatusLabels,
   inspectionMethodLabels,
   inspectionItemLabels,
+  inspectionProblemLabel,
   type InspectionFilters,
   type InspectionRecord,
 } from '@/services/inspectionApi'
@@ -69,6 +71,7 @@ const query = ref(''),
   filtersOpen = ref(false),
   draftTeam = ref<number>(),
   draftStatus = ref<InspectionRecord['status']>(),
+  draftProblem = ref<number>(),
   draftDates = ref({ from: '', to: '' })
 const applied = ref<InspectionFilters>({}),
   sourceFilter = ref<number>()
@@ -84,6 +87,7 @@ const filterCount = computed(
   () =>
     Number(!!applied.value.team_id) +
     Number(!!applied.value.status) +
+    Number(!!applied.value.problem_type_id) +
     Number(!!applied.value.date_from || !!applied.value.date_to),
 )
 function params(): InspectionFilters {
@@ -131,6 +135,7 @@ function search() {
 function openFilters() {
   draftTeam.value = applied.value.team_id
   draftStatus.value = applied.value.status
+  draftProblem.value = applied.value.problem_type_id
   draftDates.value = { from: applied.value.date_from || '', to: applied.value.date_to || '' }
 }
 function applyFilters() {
@@ -138,6 +143,7 @@ function applyFilters() {
     query: query.value.trim() || undefined,
     team_id: draftTeam.value,
     status: draftStatus.value,
+    problem_type_id: draftProblem.value,
     date_from: draftDates.value.from || undefined,
     date_to: draftDates.value.to || undefined,
   }
@@ -148,6 +154,7 @@ function applyFilters() {
 function resetFilters() {
   draftTeam.value = undefined
   draftStatus.value = undefined
+  draftProblem.value = undefined
   draftDates.value = { from: '', to: '' }
 }
 function clearSource() {
@@ -215,6 +222,7 @@ function exportSource() {
       { key: 'dimension_result', label: '尺寸要求与实测', value: (row) => row.dimension_result },
       { key: 'weight_result', label: '重量要求与实测', value: (row) => row.weight_result },
       { key: 'notes', label: '检查与处理说明', value: (row) => row.notes },
+      { key: 'problems', label: '检验问题', value: inspectionProblemLabel },
       { key: 'parent_id', label: '原巡检记录编号', value: (row) => row.parent_id },
       { key: 'batch_no', label: '批次号', value: (row) => row.batch_no },
     ],
@@ -290,6 +298,7 @@ onBeforeUnmount(() => {
               :label="label" /></ElSelect
         ></label>
         <label>检查日期<RecordDateFilter v-model="draftDates" label="检查日期" /></label>
+        <label>检验问题<InspectionProblemFilter v-if="filtersOpen" v-model="draftProblem" /></label>
       </FilterDialog>
       <ElButton class="action-warm" @click="search">查询</ElButton>
       <TableExportButton
@@ -355,6 +364,11 @@ onBeforeUnmount(() => {
       <ElTableColumn prop="sample_quantity" label="检查件数" width="100" align="center" />
       <ElTableColumn prop="passed_quantity" label="合格件数" width="100" align="center" />
       <ElTableColumn prop="failed_quantity" label="不合格件数" width="115" align="center" />
+      <ElTableColumn label="检验问题" min-width="180" align="center" show-overflow-tooltip>
+        <template #default="{ row }">{{
+          inspectionProblemLabel(row as InspectionRecord)
+        }}</template>
+      </ElTableColumn>
       <ElTableColumn label="检查结果" min-width="175" align="center"
         ><template #default="{ row }"
           ><ElTag
@@ -462,7 +476,12 @@ onBeforeUnmount(() => {
         <ElDescriptionsItem v-if="detail.weight_result" label="重量要求 / 实测" :span="2">{{
           detail.weight_result
         }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="说明" :span="2">{{ detail.notes || '—' }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="检验问题" :span="2">{{
+          inspectionProblemLabel(detail)
+        }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="补充说明" :span="2">{{
+          detail.notes || '—'
+        }}</ElDescriptionsItem>
       </ElDescriptions>
       <template #footer><ElButton @click="detail = null">关闭</ElButton></template>
     </AppDialog>

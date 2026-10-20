@@ -5,9 +5,11 @@ import { ElInput, ElPagination, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import TeamInspectionRecords from './TeamInspectionRecords.vue'
 import FilterDialog from './FilterDialog.vue'
+import InspectionProblemFilter from './InspectionProblemFilter.vue'
 import TableExportButton from './TableExportButton.vue'
 import InspectionRegistrationDialog from './InspectionRegistrationDialog.vue'
 import { inspectionApi, type InspectionRecord } from '@/services/inspectionApi'
+import { teamMaterialApi } from '@/services/teamMaterialApi'
 const state = vi.hoisted(() => ({ auth: {} as Record<string, unknown> }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
 vi.mock('@/stores/teamDirectory', () => ({
@@ -51,6 +53,7 @@ const record: InspectionRecord = {
   sample_quantity: 5,
   passed_quantity: 4,
   failed_quantity: 1,
+  problems: [{ id: 14, name: '历史划伤名称' }],
   status: 'pending',
   notes: '',
   parent_id: null,
@@ -70,6 +73,9 @@ beforeEach(() => {
     page: 1,
     page_size: 10,
   })
+  vi.spyOn(teamMaterialApi, 'inspectionProblems').mockResolvedValue([
+    { id: 14, team_id: 8, name: '表面划伤', active: false, version: 2 },
+  ])
 })
 afterEach(() => {
   wrapper?.unmount()
@@ -134,20 +140,52 @@ it('uses the same search and filters for records and export and retains them in 
   const selects = wrapper.findAllComponents(ElSelect)
   selects[0]!.vm.$emit('update:modelValue', 2)
   selects[1]!.vm.$emit('update:modelValue', 'pending')
+  wrapper.getComponent(InspectionProblemFilter).vm.$emit('update:modelValue', 14)
   wrapper.getComponent(FilterDialog).vm.$emit('apply')
   await flushPromises()
   await wrapper.setProps({ fullscreen: true })
   const data = wrapper.getComponent(TableExportButton).props('source')()!
   const exported = await data.load(new AbortController().signal, () => {})
   expect(inspectionApi.records).toHaveBeenLastCalledWith(
-    expect.objectContaining({ team_id: 2, status: 'pending', query: '805881-5' }),
+    expect.objectContaining({
+      team_id: 2,
+      status: 'pending',
+      query: '805881-5',
+      problem_type_id: 14,
+    }),
   )
   expect(exported[0]).toMatchObject({
     passed_quantity: 4,
     failed_quantity: 1,
     inspector_name: '王检验',
     processor_name: '李师傅',
+    problems: '历史划伤名称',
   })
   expect(wrapper.find('input[aria-label="检查搜索"]').exists()).toBe(true)
   expect(wrapper.getComponent(ElPagination).props('total')).toBe(1)
+  expect(wrapper.getComponent(FilterDialog).props('count')).toBe(3)
+  await button('明细').trigger('click')
+  expect(wrapper.text()).toContain('历史划伤名称')
+})
+
+it('offers disabled categories for historical queries and clears them on reset', async () => {
+  await render()
+  wrapper.getComponent(FilterDialog).vm.$emit('open')
+  wrapper.getComponent(FilterDialog).vm.$emit('update:modelValue', true)
+  await flushPromises()
+  const picker = wrapper.getComponent(InspectionProblemFilter)
+  const option = picker
+    .findAllComponents({ name: 'ElOption' })
+    .find((item) => item.props('value') === 14)!
+  expect(option.props('label')).toBe('表面划伤（已停用）')
+  expect(option.props('disabled')).toBe(false)
+  picker.vm.$emit('update:modelValue', 14)
+  wrapper.getComponent(FilterDialog).vm.$emit('apply')
+  await flushPromises()
+  wrapper.getComponent(FilterDialog).vm.$emit('reset')
+  wrapper.getComponent(FilterDialog).vm.$emit('apply')
+  await flushPromises()
+  expect(inspectionApi.records).toHaveBeenLastCalledWith(
+    expect.objectContaining({ problem_type_id: undefined }),
+  )
 })
