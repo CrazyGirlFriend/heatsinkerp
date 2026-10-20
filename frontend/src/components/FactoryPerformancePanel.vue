@@ -39,6 +39,7 @@ const dates = ref(recentDates()),
   teamId = ref<number>(),
   metric = ref<Metric>('quantity'),
   autoRefresh = ref(true),
+  exporting = ref(false),
   basis = ref<QualityBasis>({ kind: 'patrol', scope: 'sample', phase: 'first' }),
   report = ref<FactoryPerformance | null>(null),
   teams = ref<FactoryPerformance['teams']>([]),
@@ -274,7 +275,7 @@ watch(
 )
 onMounted(() => {
   timer = setInterval(() => {
-    if (autoRefresh.value && !document.hidden && !loading.value) void load()
+    if (autoRefresh.value && !exporting.value && !document.hidden && !loading.value) void load()
   }, 60000)
 })
 onBeforeUnmount(() => {
@@ -312,6 +313,7 @@ onBeforeUnmount(() => {
           :variants="exportVariants"
           :context="exportContext"
           :disabled="loading || !report || !!error"
+          @visible-change="exporting = $event"
         />
         <ElSwitch
           v-model="autoRefresh"

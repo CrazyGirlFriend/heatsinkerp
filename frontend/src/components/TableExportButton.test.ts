@@ -32,11 +32,13 @@ describe('shared export entry', () => {
     })
     expect(makeSource).not.toHaveBeenCalled()
     await wrapper.get('button').trigger('click')
+    expect(wrapper.emitted('visible-change')).toEqual([[true]])
     expect(wrapper.getComponent(TableExportDialog).props()).toMatchObject({
       source,
       appendTo: root,
     })
     await wrapper.setProps({ context: 'OTHER' })
+    expect(wrapper.emitted('visible-change')).toEqual([[true], [false]])
     expect(wrapper.getComponent(TableExportDialog).props('source')).toBeNull()
     await wrapper.get('button').trigger('click')
     ;(state.auth.currentUser as { team_id: number }).team_id = 3

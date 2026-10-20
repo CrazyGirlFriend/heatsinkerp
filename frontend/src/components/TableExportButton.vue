@@ -13,9 +13,11 @@ const props = defineProps<{
   context?: unknown
   appendTo?: HTMLElement
 }>()
+const emit = defineEmits<{ 'visible-change': [value: boolean] }>()
 const auth = useAuthStore()
 const taskSource = ref<TableExportSource | null>(null)
 const taskVariants = ref<TableExportSource[]>([])
+watch(taskSource, (source) => emit('visible-change', source !== null))
 function open() {
   taskSource.value = props.source()
   taskVariants.value = props.variants?.() || []

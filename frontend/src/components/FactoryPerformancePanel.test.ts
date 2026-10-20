@@ -55,6 +55,16 @@ function selection(label: string) {
 }
 
 describe('factory production and quality reporting', () => {
+  it('pauses automatic refresh while selecting export fields and resumes after close', async () => {
+    await render('quality')
+    const exporter = wrapper.getComponent(TableExportButton)
+    exporter.vm.$emit('visible-change', true)
+    await vi.advanceTimersByTimeAsync(120000)
+    expect(factoryPerformanceApi.get).toHaveBeenCalledTimes(1)
+    exporter.vm.$emit('visible-change', false)
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(factoryPerformanceApi.get).toHaveBeenCalledTimes(2)
+  })
   it('separates actual first work from rework and exports team/day work quantities', async () => {
     const router = await render()
     expect(factoryPerformanceApi.get).toHaveBeenCalledWith({
