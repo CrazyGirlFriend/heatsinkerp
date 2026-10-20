@@ -41,8 +41,12 @@ def prepare(lot, balance, latest, payload, team_code):
         raise HTTPException(422, "请选择加工人并填写实际加工日期")
     if payload.processing_date > datetime.now(ZoneInfo(settings.factory_timezone)).date():
         raise HTTPException(422, "实际加工日期不能晚于今天")
-    if payload.work_kind != "rework" and (
-        lot.processing_role == "produced" or (latest and latest.processing_status == "complete")
+    if (
+        payload.work_kind != "rework"
+        and payload.processing_task_id is None
+        and (
+            lot.processing_role == "produced" or (latest and latest.processing_status == "complete")
+        )
     ):
         raise HTTPException(409, "本班组已加工完成，请选择未加工库存，避免重复登记产量")
     q, w = balance.on_hand_quantity, balance.on_hand_weight

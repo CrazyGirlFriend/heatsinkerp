@@ -28,6 +28,7 @@ from .models import (
     SerialDeliveryPlan,
     SerialUrgency,
     Team,
+    TeamProcessingTask,
     TeamPurpose,
     User,
     WarehouseLocation,
@@ -177,6 +178,7 @@ WATCHED = (
     User,
     AuthSession,
     TeamPurpose,
+    TeamProcessingTask,
     OpeningStockSubmission,
     WarehouseLocation,
 )
@@ -253,7 +255,9 @@ def change_for(row, db):
         # Existing origins may have descendants in other teams. A new receipt or
         # split has no descendants yet and only affects its source/destination.
         return InventoryChange(team_ids=None)
-    return InventoryChange(team_ids=affected_teams(row), directory=isinstance(row, TeamPurpose))
+    return InventoryChange(
+        team_ids=affected_teams(row), directory=isinstance(row, (TeamPurpose, TeamProcessingTask))
+    )
 
 
 @event.listens_for(Session, "before_flush")

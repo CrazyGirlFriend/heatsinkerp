@@ -3,7 +3,15 @@ import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Refresh, Search } from '@element-plus/icons-vue'
-import { ElButton, ElInput, ElLoading, ElPagination, ElTable, ElTableColumn } from 'element-plus'
+import {
+  ElAlert,
+  ElButton,
+  ElInput,
+  ElLoading,
+  ElPagination,
+  ElTable,
+  ElTableColumn,
+} from 'element-plus'
 import FilterDialog from './FilterDialog.vue'
 import ProcessingBatchPicker from './ProcessingBatchPicker.vue'
 import { ElSelect, ElOption, ElMessage } from 'element-plus'
@@ -14,6 +22,7 @@ import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import type { ProcessingDailyRow, ProcessingRecordSummary } from '@/types/materialProcessing'
+import type { TeamPurpose } from '@/types/teamBusiness'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { ProcessingRecord } from '@/types/materialProcessing'
@@ -51,6 +60,12 @@ const reworkMode = ref(false),
   reworkRecordId = ref<number | null>(null),
   reworkBusy = ref(false)
 const processorId = ref<number | null>(null)
+const taskId = ref<number | null>(null),
+  purposeId = ref<number | null>(null)
+const tasks = ref<{ id: number; name: string }[]>([]),
+  purposes = ref<TeamPurpose[]>([])
+const directoryError = ref('')
+const selectedReworkId = ref<number | null>(null)
 const processors = ref<{ id: number; name: string }[]>([])
 const processorName = computed({
   get: () => processors.value.find((person) => person.id === processorId.value)?.name || '',
@@ -63,7 +78,9 @@ const filterCount = computed(
   () =>
     Number(Boolean(text('date_from') || text('date_to') || text('work_date'))) +
     Number(Boolean(text('processor_id'))) +
-    Number(Boolean(text('work_kind'))),
+    Number(Boolean(text('work_kind'))) +
+    Number(Boolean(text('processing_task_id'))) +
+    Number(Boolean(text('purpose_id'))),
 )
 const rows = ref<ProcessingRecord[]>([]),
   total = ref(0),
@@ -71,7 +88,8 @@ const rows = ref<ProcessingRecord[]>([]),
   error = ref('')
 const detailOpen = ref(false),
   sourceId = ref<number | null>(null)
-let generation = 0
+let generation = 0,
+  directoryGeneration = 0
 const live = useLiveRefresh(() => load(true), {
   teamId: () => props.teamId,
   busy: () => loading.value || detailOpen.value,
@@ -83,15 +101,20 @@ function syncFilters() {
     to: text('date_to') || text('work_date'),
   }
   processorId.value = Number(text('processor_id')) || null
+  taskId.value = Number(text('processing_task_id')) || null
+  purposeId.value = Number(text('purpose_id')) || null
 }
 function resetFilters() {
   workKind.value = ''
   dates.value = { from: '', to: '' }
   processorId.value = null
+  taskId.value = purposeId.value = null
 }
 function filters() {
   return {
     query: text('query') || undefined,
+    processing_task_id: Number(text('processing_task_id')) || undefined,
+    purpose_id: Number(text('purpose_id')) || undefined,
     work_kind: text('work_kind') || undefined,
     processor_id: Number(text('processor_id')) || undefined,
     work_date: text('work_date') || undefined,
@@ -106,6 +129,10 @@ function apply(nextPage = 1, size = pageSize.value, applyFilters = false) {
     query: {
       tab: 'processing',
       work_kind: (applyFilters ? workKind.value : text('work_kind')) || undefined,
+      processing_task_id: applyFilters
+        ? taskId.value || undefined
+        : text('processing_task_id') || undefined,
+      purpose_id: applyFilters ? purposeId.value || undefined : text('purpose_id') || undefined,
       query: query.value.trim() || undefined,
       processor_id: applyFilters
         ? processorId.value || undefined
@@ -152,6 +179,7 @@ async function load(background = false) {
     total.value = result.total
     summary.value = result.summary || null
     processors.value = result.processors || []
+    tasks.value = result.processing_tasks || []
   } catch (e) {
     if (current === generation) {
       if (background) throw e
@@ -174,6 +202,12 @@ function exportSource() {
         value: (row: ProcessingRecord) => sharedSerialLabel(row),
       },
       { key: 'material_name', label: '材质', value: (row) => row.material_name },
+      { key: 'purpose_name', label: '对应业务', value: (row) => row.purpose_name || '未登记' },
+      {
+        key: 'processing_task_name',
+        label: '具体任务',
+        value: (row) => row.processing_task_name || '未登记',
+      },
       {
         key: 'work_kind',
         label: '加工性质',
@@ -249,6 +283,16 @@ function exportSource() {
 }
 const dailyColumns = [
   {
+    key: 'purpose_name',
+    label: '对应业务',
+    value: (r: ProcessingDailyRow) => r.purpose_name || '未登记',
+  },
+  {
+    key: 'processing_task_name',
+    label: '具体任务',
+    value: (r: ProcessingDailyRow) => r.processing_task_name || '未登记',
+  },
+  {
     key: 'rework_quantity',
     label: '返工件次',
     value: (r: ProcessingDailyRow) => r.rework_quantity || 0,
@@ -296,7 +340,7 @@ const dailyColumns = [
   },
   {
     key: 'completed_quantity',
-    label: '首次加工完成件数',
+    label: '首次任务完成件次',
     value: (r: ProcessingDailyRow) => r.completed_quantity,
   },
   {
@@ -326,8 +370,8 @@ function exportVariants() {
     params = filters()
   return [
     tableExportSource(
-      '按加工人汇总',
-      summary.value.employee_day_count,
+      '按加工人和任务汇总',
+      summary.value.daily_group_count ?? summary.value.employee_day_count,
       dailyColumns,
       (signal, progress) =>
         loadExportPages(
@@ -346,6 +390,7 @@ function saved() {
 async function startRework(recordId: number) {
   if (reworkBusy.value) return
   reworkBusy.value = true
+  selectedReworkId.value = recordId
   try {
     const result = await teamMaterialApi.processingSources(props.teamId, {
       rework_record_id: recordId,
@@ -368,6 +413,7 @@ function selectRework(id: number) {
 }
 function detail(row: unknown) {
   reworkMode.value = false
+  selectedReworkId.value = null
   sourceId.value = (row as ProcessingRecord).source_transfer_id
   detailOpen.value = true
 }
@@ -377,11 +423,18 @@ watch(
     if (previous && values[0] !== previous[0]) {
       ++generation
       processors.value = []
+      tasks.value = []
       summary.value = null
-      if (text('processor_id')) {
+      if (text('processor_id') || text('processing_task_id') || text('purpose_id')) {
         void router.replace({
           path: route.path,
-          query: { ...route.query, processor_id: undefined, page: undefined },
+          query: {
+            ...route.query,
+            processor_id: undefined,
+            processing_task_id: undefined,
+            purpose_id: undefined,
+            page: undefined,
+          },
         })
         return
       }
@@ -393,6 +446,25 @@ watch(
   },
   { immediate: true },
 )
+async function loadDirectories() {
+  const id = props.teamId,
+    current = ++directoryGeneration
+  directoryError.value = ''
+  purposes.value = []
+  try {
+    const purposeOptions = await teamMaterialApi.purposes(id)
+    if (current !== directoryGeneration) return
+    purposes.value = purposeOptions
+  } catch (e) {
+    if (current === directoryGeneration)
+      directoryError.value = e instanceof Error ? e.message : '筛选选项读取失败'
+  }
+}
+watch(
+  () => props.teamId,
+  () => void loadDirectories(),
+  { immediate: true },
+)
 watch(
   () => props.refreshKey,
   () => {
@@ -401,6 +473,7 @@ watch(
 )
 onBeforeUnmount(() => {
   ++generation
+  ++directoryGeneration
 })
 </script>
 
@@ -429,6 +502,9 @@ onBeforeUnmount(() => {
         @apply="apply(1, pageSize, true)"
         @reset="resetFilters"
       >
+        <ElAlert v-if="directoryError" :title="directoryError" type="error" :closable="false">
+          <ElButton link @click="loadDirectories">重新读取筛选选项</ElButton>
+        </ElAlert>
         <label
           >加工性质<ElSelect
             v-model="workKind"
@@ -440,6 +516,36 @@ onBeforeUnmount(() => {
               value="rework" /></ElSelect
         ></label>
         <label>实际加工日期<RecordDateFilter v-model="dates" label="加工日期" /></label>
+        <label
+          >具体任务<ElSelect
+            v-model="taskId"
+            clearable
+            filterable
+            placeholder="全部任务"
+            aria-label="加工任务筛选"
+          >
+            <ElOption
+              v-for="item in tasks"
+              :key="item.id"
+              :value="item.id"
+              :label="item.name"
+            /> </ElSelect
+        ></label>
+        <label
+          >对应业务<ElSelect
+            v-model="purposeId"
+            clearable
+            filterable
+            placeholder="全部业务"
+            aria-label="加工业务筛选"
+          >
+            <ElOption
+              v-for="item in purposes"
+              :key="item.id"
+              :value="item.id"
+              :label="`${item.name}${item.active ? '' : '（已停用）'}`"
+            /> </ElSelect
+        ></label>
         <label
           >加工人（不选为全部）<ProcessingPersonInput
             v-model="processorName"
@@ -459,10 +565,10 @@ onBeforeUnmount(() => {
         >加工登记</ElButton
       >
     </div>
-    <div v-if="summary && !error" class="processing-totals" aria-label="筛选结果产量合计">
+    <div v-if="summary && !error" class="processing-totals" aria-label="筛选结果加工工作量合计">
       <span class="summary-label">筛选结果合计</span>
       <span
-        >首次完成 <strong>{{ inventoryAmount(summary.completed_quantity) }}</strong> 件 /
+        >首次任务完成 <strong>{{ inventoryAmount(summary.completed_quantity) }}</strong> 件次 /
         <strong>{{ inventoryAmount(summary.completed_weight) }}</strong> kg</span
       >
       <span
@@ -473,9 +579,12 @@ onBeforeUnmount(() => {
         >返工 <strong>{{ inventoryAmount(summary.rework_quantity || 0) }}</strong> 件次 /
         {{ inventoryAmount(summary.rework_weight || 0) }} kg</span
       >
-      <span class="summary-note">{{ summary.record_count }} 笔有效加工 · 按实际加工日期</span>
+      <span class="summary-note"
+        >{{ summary.record_count }} 笔有效加工 · 按实际加工日期 ·
+        各任务工作量分别统计，非实物库存产量</span
+      >
       <span v-if="summary.unreported_count" class="summary-note"
-        >{{ summary.unreported_count }} 笔历史记录信息不全，未计入产量</span
+        >{{ summary.unreported_count }} 笔历史记录信息不全，未计入工作量</span
       >
     </div>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
@@ -508,6 +617,12 @@ onBeforeUnmount(() => {
         show-overflow-tooltip
       >
         <template #default="{ row }">{{ row.processor_name || '未登记' }}</template>
+      </ElTableColumn>
+      <ElTableColumn label="对应业务" min-width="140" align="center" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.purpose_name || '未登记' }}</template>
+      </ElTableColumn>
+      <ElTableColumn label="具体任务" min-width="140" align="center" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.processing_task_name || '未登记' }}</template>
       </ElTableColumn>
       <ElTableColumn label="物料类型" min-width="115"
         ><template #default="{ row }">{{
@@ -616,6 +731,7 @@ onBeforeUnmount(() => {
       processing
       :can-write="canWrite && reworkMode"
       :rework="reworkMode"
+      :rework-record-id="selectedReworkId"
       @saved="saved"
     />
     <ProcessingBatchPicker

@@ -10,7 +10,16 @@ from .async_api import AsyncAPIRouter as APIRouter
 from .auth import actor_name, get_current_user, require_admin
 from .database import get_db
 from .material_stock import require_actor, require_team
-from .models import Team, TeamEmployee, TeamPurpose, TeamSettingEvent, User, utcnow
+from .models import (
+    Team,
+    TeamEmployee,
+    TeamProcessingTask,
+    TeamPurpose,
+    TeamSettingEvent,
+    User,
+    utcnow,
+)
+from .team_constants import PROCESSING_TEAM_CODES
 
 router = APIRouter(prefix="/api/team-materials", tags=["team business settings"])
 
@@ -80,12 +89,16 @@ def list_purposes(
     ]
 
 
-def save_directory_item(db, team_id, user, payload, item_id=None, *, employee=False):
+def save_directory_item(
+    db, team_id, user, payload, item_id=None, *, employee=False, processing_task=False
+):
     model, label, action = (
         (TeamEmployee, "员工", "employee_changed")
         if employee
         else (TeamPurpose, "业务", "purpose_changed")
     )
+    if processing_task:
+        model, label, action = TeamProcessingTask, "加工任务", "processing_task_changed"
     if user.role != "ADMIN":
         require_actor(user, team_id)
     try:
@@ -100,6 +113,10 @@ def save_directory_item(db, team_id, user, payload, item_id=None, *, employee=Fa
                 raise HTTPException(404, "未找到班组")
             if not team.active:
                 raise HTTPException(403, "班组已停用")
+            if processing_task and (
+                team.code not in PROCESSING_TEAM_CODES or team.kind != "production"
+            ):
+                raise HTTPException(422, "库房不登记加工，请选择生产班组")
             row = (
                 None
                 if item_id is None
@@ -193,6 +210,44 @@ def update_employee(
 class OpeningAuthorization(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool
+
+
+@router.get("/{team_id}/processing-tasks")
+def list_processing_tasks(
+    team_id: int = Path(ge=1), user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    if user.role != "ADMIN":
+        require_actor(user, team_id)
+    require_team(db, team_id)
+    return [
+        directory_item_dict(row)
+        for row in db.scalars(
+            select(TeamProcessingTask)
+            .where(TeamProcessingTask.team_id == team_id)
+            .order_by(TeamProcessingTask.id)
+        )
+    ]
+
+
+@router.post("/{team_id}/processing-tasks", status_code=201)
+def create_processing_task(
+    payload: DirectoryItemInput,
+    team_id: int = Path(ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return save_directory_item(db, team_id, user, payload, processing_task=True)
+
+
+@router.patch("/{team_id}/processing-tasks/{task_id}")
+def update_processing_task(
+    payload: DirectoryItemInput,
+    team_id: int = Path(ge=1),
+    task_id: int = Path(ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return save_directory_item(db, team_id, user, payload, task_id, processing_task=True)
 
 
 @router.put("/{team_id}/opening-stock/authorization")

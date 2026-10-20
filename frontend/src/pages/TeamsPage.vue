@@ -515,6 +515,7 @@ onMounted(() => void loadTeams())
       v-model="businessOpen"
       :team-id="Number(businessTeam.id)"
       :team-name="businessTeam.name"
+      :processing-tasks="!isWarehouse(businessTeam)"
       business-only
     />
     <AppDialog

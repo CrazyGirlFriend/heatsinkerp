@@ -18,6 +18,8 @@ def list_daily(
     query=None,
     work_date=None,
     work_kind=None,
+    processing_task_id=None,
+    purpose_id=None,
     urgent_only=False,
     page=1,
     page_size=20,
@@ -30,12 +32,20 @@ def list_daily(
         processor_id,
         work_date,
         work_kind,
+        processing_task_id,
+        purpose_id,
     )
     statement = production_groups(conditions)
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
     rows = db.execute(
         statement.order_by(
-            Work.processing_date.desc(), Work.processor_employee_id, Work.processing_mode
+            Work.processing_date.desc(),
+            Work.processor_employee_id,
+            Work.processing_mode,
+            Work.processing_task_id,
+            Work.processing_task_name,
+            Work.purpose_id,
+            Work.purpose_name,
         )
         .offset((page - 1) * page_size)
         .limit(page_size)

@@ -195,8 +195,18 @@ def list_sources(
     require_processing_team(db, team_id)
     balance = stock.stock_table(team_id)
     registered = registered_lots(team_id)
+    from .processing_tasks import can_continue, completed_work
+
+    live_lots = select(balance.c.transfer_id).where(
+        or_(balance.c.on_hand_quantity > 0, balance.c.on_hand_weight > 0),
+        ~func.coalesce(balance.c.material_type, "").in_(SCRAP_MATERIAL_TYPES),
+    )
+
     conditions = [
-        func.coalesce(registered.c.processing_status, "") != "complete",
+        or_(
+            func.coalesce(registered.c.processing_status, "") != "complete",
+            can_continue(team_id, live_lots),
+        ),
         ~func.coalesce(balance.c.material_type, "").in_(SCRAP_MATERIAL_TYPES),
         or_(balance.c.on_hand_quantity > 0, balance.c.on_hand_weight > 0),
     ]
@@ -210,6 +220,18 @@ def list_sources(
         conditions[0] = or_(
             Transfer.rework_pending.is_(True), registered.c.processing_status == "complete"
         )
+        if record.processing_task_id is not None:
+            completed = completed_work(team_id, live_lots).subquery()
+            conditions[0] = or_(
+                Transfer.rework_pending.is_(True),
+                select(completed.c.work_id)
+                .where(
+                    completed.c.lot_id == Transfer.id,
+                    completed.c.processing_task_id == record.processing_task_id,
+                )
+                .correlate(Transfer)
+                .exists(),
+            )
         conditions.append(Transfer.id.in_(select(family.c.id)))
     if group_id is not None:
         from .warehouse_inventory import group_conditions, origin_columns
@@ -341,7 +363,14 @@ def output_balances(db, team_id, lot_ids):
 
 
 def record_conditions(
-    team_id, record_filters=None, query=None, processor_id=None, work_date=None, work_kind=None
+    team_id,
+    record_filters=None,
+    query=None,
+    processor_id=None,
+    work_date=None,
+    work_kind=None,
+    processing_task_id=None,
+    purpose_id=None,
 ):
     filters = record_filters or RecordFilters()
     if filters.date_from and filters.date_to and filters.date_from > filters.date_to:
@@ -361,6 +390,10 @@ def record_conditions(
         conditions.append(Transfer.serial_no.in_(urgent_serials()))
     if processor_id:
         conditions.append(Adjustment.processor_employee_id == processor_id)
+    if processing_task_id:
+        conditions.append(Adjustment.processing_task_id == processing_task_id)
+    if purpose_id:
+        conditions.append(Adjustment.purpose_id == purpose_id)
     if work_date:
         conditions.append(Adjustment.processing_date == work_date)
     if query and query.strip():
@@ -374,6 +407,8 @@ def record_conditions(
                     Adjustment.processor_name,
                     TeamEmployee.name,
                     Adjustment.reason,
+                    Adjustment.processing_task_name,
+                    Adjustment.purpose_name,
                 ],
             )
         )
@@ -390,6 +425,10 @@ def production_groups(conditions):
                 "processor_name"
             ),
             Adjustment.processing_mode,
+            Adjustment.processing_task_id,
+            Adjustment.processing_task_name,
+            Adjustment.purpose_id,
+            Adjustment.purpose_name,
             func.count().label("record_count"),
             *(
                 func.sum(
@@ -424,6 +463,10 @@ def production_groups(conditions):
             Adjustment.processor_employee_id,
             TeamEmployee.name,
             Adjustment.processing_mode,
+            Adjustment.processing_task_id,
+            Adjustment.processing_task_name,
+            Adjustment.purpose_id,
+            Adjustment.purpose_name,
         )
     )
 
@@ -437,6 +480,8 @@ def list_records(
     processor_id=None,
     work_date=None,
     work_kind=None,
+    processing_task_id=None,
+    purpose_id=None,
     page=1,
     page_size=20,
 ):
@@ -444,7 +489,14 @@ def list_records(
     balance = stock.stock_table(team_id)
     registered = registered_lots(team_id)
     conditions = record_conditions(
-        team_id, record_filters, query, processor_id, work_date, work_kind
+        team_id,
+        record_filters,
+        query,
+        processor_id,
+        work_date,
+        work_kind,
+        processing_task_id,
+        purpose_id,
     )
     statement = (
         select(
@@ -455,7 +507,7 @@ def list_records(
             Transfer.batch_no,
             Transfer.material_name,
             Transfer.material_type,
-            Transfer.purpose_name,
+            Transfer.purpose_name.label("source_purpose_name"),
             balance.c.on_hand_quantity,
             balance.c.on_hand_weight,
             balance.c.in_transit_quantity,
@@ -471,10 +523,17 @@ def list_records(
     )
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
     groups = production_groups(conditions).subquery()
+    employee_days = (
+        select(groups.c.processing_date, groups.c.processor_employee_id).distinct().subquery()
+    )
     totals = (
         db.execute(
             select(
-                func.count().label("employee_day_count"),
+                select(func.count())
+                .select_from(employee_days)
+                .scalar_subquery()
+                .label("employee_day_count"),
+                func.count().label("daily_group_count"),
                 func.coalesce(func.sum(groups.c.record_count), 0).label("record_count"),
                 *(func.coalesce(func.sum(groups.c[key]), 0).label(key) for key in SUMMARY_METRICS),
             )
@@ -496,6 +555,24 @@ def list_records(
             .where(Adjustment.team_id == team_id, Adjustment.processor_employee_id.is_not(None))
             .group_by(Adjustment.processor_employee_id, TeamEmployee.name)
             .order_by(Adjustment.processor_employee_id)
+        )
+        .mappings()
+        .all()
+    )
+    task_records = (
+        select(func.max(Adjustment.id).label("id"))
+        .where(Adjustment.team_id == team_id, Adjustment.processing_task_id.is_not(None))
+        .group_by(Adjustment.processing_task_id)
+        .subquery()
+    )
+    processing_tasks = (
+        db.execute(
+            select(
+                Adjustment.processing_task_id.label("id"),
+                Adjustment.processing_task_name.label("name"),
+            )
+            .join(task_records, task_records.c.id == Adjustment.id)
+            .order_by(Adjustment.processing_task_id)
         )
         .mappings()
         .all()
@@ -562,9 +639,9 @@ def list_records(
                         "batch_no",
                         "material_name",
                         "material_type",
-                        "purpose_name",
                     )
                 },
+                "purpose_name": snapshot["purpose_name"] or current["source_purpose_name"],
                 **{key: value for key, value in holdings.items() if key != "progress"},
                 "processing_state": state(
                     current["material_type"],
@@ -584,6 +661,7 @@ def list_records(
         "total": total,
         "summary": summary,
         "processors": [dict(person) for person in processors],
+        "processing_tasks": [dict(task) for task in processing_tasks],
         "page": page,
         "page_size": page_size,
         "as_of": _utc(utcnow()),

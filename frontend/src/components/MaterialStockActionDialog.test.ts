@@ -346,6 +346,9 @@ describe('source batch dispatch and loss drafts', () => {
     ])
   })
   it('requires a team employee and actual work date for whole-lot processing during outbound', async () => {
+    vi.spyOn(teamMaterialApi, 'processingTasks').mockResolvedValue([
+      { id: 9, team_id: 2, name: '压轧', active: true, version: 1 },
+    ])
     vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({
       source_transfer_id: 10,
       batch_no: 'TL10',
@@ -353,6 +356,8 @@ describe('source batch dispatch and loss drafts', () => {
       weight: 10,
       revision: 7,
       processing_mode: 'split',
+      task_required: true,
+      allowed_task_ids: [9],
       as_of: '',
       items: [],
       total: 0,
@@ -385,6 +390,14 @@ describe('source batch dispatch and loss drafts', () => {
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
     await wrapper.get('input[aria-label="实际加工日期"]').setValue(factoryToday())
     await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    const task = wrapper
+      .findAllComponents(ElSelect)
+      .find((item) => item.find('[aria-label="加工任务"]').exists())!
+    expect(task.element.closest('.is-error')).not.toBeNull()
+    task.vm.$emit('update:modelValue', 9)
+    await flushPromises()
+    await submit()
     expect(
       vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].quantity_adjustments,
     ).toEqual([
@@ -393,6 +406,7 @@ describe('source batch dispatch and loss drafts', () => {
         quantity: 100,
         expected_revision: 7,
         processor_employee_id: 22,
+        processing_task_id: 9,
         processor_name: '发送王师傅',
         processing_mode: 'split',
         processing_date: factoryToday(),

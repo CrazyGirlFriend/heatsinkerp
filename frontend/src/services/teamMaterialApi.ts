@@ -3,6 +3,7 @@ import { httpRequest, HttpRequestError, type HttpRequestOptions } from './httpCl
 import type {
   TeamEmployee,
   TeamPurpose,
+  TeamProcessingTask,
   OpeningLine,
   OpeningState,
   SerialHistory,
@@ -224,6 +225,8 @@ export const teamMaterialApi = {
       processor_id?: number
       work_date?: string
       work_kind?: string
+      processing_task_id?: number
+      purpose_id?: number
     } = {},
   ) {
     return request<MaterialPage<ProcessingDailyRow>>(path(teamId, 'processing-daily', params))
@@ -234,12 +237,15 @@ export const teamMaterialApi = {
       processor_id?: number
       work_date?: string
       work_kind?: string
+      processing_task_id?: number
+      purpose_id?: number
     } = {},
   ) {
     return request<
       MaterialPage<ProcessingRecord> & {
         summary?: ProcessingRecordSummary
         processors?: { id: number; name: string }[]
+        processing_tasks?: { id: number; name: string }[]
       }
     >(path(teamId, 'processing-records', params))
   },
@@ -257,6 +263,22 @@ export const teamMaterialApi = {
   },
   purposes(teamId: number) {
     return request<TeamPurpose[]>(path(teamId, 'purposes'))
+  },
+  processingTasks(teamId: number) {
+    return request<TeamProcessingTask[]>(path(teamId, 'processing-tasks'))
+  },
+  saveProcessingTask(
+    teamId: number,
+    payload: { name: string; active: boolean; expected_version?: number },
+    id?: number,
+  ) {
+    return request<TeamProcessingTask>(
+      path(teamId, id ? `processing-tasks/${id}` : 'processing-tasks'),
+      {
+        method: id ? 'PATCH' : 'POST',
+        body: payload,
+      },
+    )
   },
   savePurpose(
     teamId: number,

@@ -44,6 +44,10 @@ export interface ProcessingRecord extends QuantityAdjustment, SharedMaterialFiel
 }
 
 export interface ProcessingDailyRow {
+  processing_task_id?: number | null
+  processing_task_name?: string | null
+  purpose_id?: number | null
+  purpose_name?: string | null
   team_id: number
   team_name: string
   processing_date: string
@@ -65,6 +69,7 @@ export interface ProcessingDailyRow {
 }
 
 export interface ProcessingRecordSummary {
+  daily_group_count?: number
   employee_day_count: number
   record_count: number
   unreported_count: number

@@ -26,6 +26,7 @@ import {
 import SpecificationInput from './SpecificationInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
+import ProcessingTaskFields from './ProcessingTaskFields.vue'
 import type { TeamEmployee } from '@/types/teamBusiness'
 import WeightInput from './WeightInput.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
@@ -59,6 +60,7 @@ const props = defineProps<{
   canWrite?: boolean
   processing?: boolean
   rework?: boolean
+  reworkRecordId?: number | null
 }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [QuantityAdjustment] }>()
 const auth = useAuthStore()
@@ -99,6 +101,10 @@ const employee = ref<TeamEmployee | null>(null)
 const processingDate = ref(factoryToday())
 const inputQuantity = ref<number>()
 const completedWeight = ref<number>()
+const taskId = ref<number | null>(null),
+  purposeId = ref<number | null>(null)
+const taskFieldsValid = ref(true),
+  originalRecordId = ref<number | null>(null)
 const isRework = computed(() => props.rework || snapshot.value?.rework_pending === true)
 const structured = computed(() => props.processing && !!snapshot.value?.processing_mode)
 const unitProcessing = computed(
@@ -225,7 +231,9 @@ const editable = computed(
 const hasStock = computed(
   () =>
     !!snapshot.value &&
-    (isRework.value || snapshot.value.processing_status !== 'complete') &&
+    (isRework.value ||
+      snapshot.value.processing_status !== 'complete' ||
+      !!snapshot.value.allowed_task_ids?.length) &&
     (snapshot.value.quantity > 0 || snapshot.value.weight > 0),
 )
 let generation = 0,
@@ -246,6 +254,16 @@ async function load(refreshSnapshot = false) {
       completedWeight.value = result.weight
       progress.value = result.processing_status || 'partial'
       specification.value = result.transfer_specification || ''
+      purposeId.value = result.purpose_id || null
+      originalRecordId.value = props.reworkRecordId || result.rework_of_id || null
+      taskFieldsValid.value = result.task_required == null
+      if (isRework.value || result.rework_pending) {
+        const original = result.rework_task_records?.find(
+          (item) => item.rework_of_id === originalRecordId.value,
+        )
+        taskId.value = original?.processing_task_id || null
+        purposeId.value = original?.purpose_id ?? purposeId.value
+      }
     }
     if (!snapshot.value || refreshSnapshot) {
       snapshot.value = result
@@ -290,6 +308,7 @@ async function save() {
         ),
       ))
   if (
+    (props.processing && !taskFieldsValid.value) ||
     (structured.value &&
       (!employee.value || !processingDate.value || processingDate.value > factoryToday())) ||
     (structured.value &&
@@ -335,13 +354,16 @@ async function save() {
   }))
   const body = {
     ...(isRework.value
-      ? { work_kind: 'rework' as const, rework_of_id: snapshot.value.rework_of_id || undefined }
+      ? { work_kind: 'rework' as const, rework_of_id: originalRecordId.value || undefined }
       : {}),
     source_transfer_id: props.sourceId,
     quantity: count!,
     expected_revision: snapshot.value.revision,
     processor_name: processorName.value.trim(),
     reason: reason.value.trim(),
+    ...(props.processing && snapshot.value.task_required != null
+      ? { processing_task_id: taskId.value, purpose_id: purposeId.value }
+      : {}),
     ...(structured.value
       ? {
           processor_employee_id: employee.value!.id,
@@ -400,6 +422,8 @@ watch(
     quantity.value = undefined
     processorName.value = ''
     employee.value = null
+    taskId.value = purposeId.value = originalRecordId.value = null
+    taskFieldsValid.value = true
     processingDate.value = factoryToday()
     inputQuantity.value = completedWeight.value = undefined
     reason.value = error.value = requestKey = fingerprint = ''
@@ -450,7 +474,7 @@ onBeforeUnmount(() => {
     @close="close"
   >
     <p v-if="isRework && snapshot" class="quantity-rework-note">
-      返工第 {{ (snapshot.rework_count || 0) + 1 }} 次 · 关联加工记录 #{{ snapshot.rework_of_id }} ·
+      返工第 {{ (snapshot.rework_count || 0) + 1 }} 次 · 关联加工记录 #{{ originalRecordId }} ·
       本次完成量单独计为返工工作量
     </p>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
@@ -669,6 +693,18 @@ onBeforeUnmount(() => {
             'processing-split-grid': structured && !unitProcessing,
           }"
         >
+          <ProcessingTaskFields
+            v-if="processing && snapshot.task_required != null"
+            v-model:task-id="taskId"
+            v-model:purpose-id="purposeId"
+            v-model:rework-record-id="originalRecordId"
+            :team-id="teamId"
+            :context="snapshot"
+            :rework="isRework"
+            :submitted="submitted"
+            :disabled="saving || loading"
+            @validity="taskFieldsValid = $event"
+          />
           <ElFormItem
             :label="unitProcessing ? '本次完成件数' : '加工后本批未转出总件数'"
             required
@@ -835,6 +871,12 @@ onBeforeUnmount(() => {
           <template #default="{ row }">{{
             row.operation_kind === 'outbound_clearance' ? '—' : row.processor_name || '未登记'
           }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="对应业务" min-width="120" align="center">
+          <template #default="{ row }">{{ row.purpose_name || '未登记' }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="具体任务" min-width="120" align="center">
+          <template #default="{ row }">{{ row.processing_task_name || '未登记' }}</template>
         </ElTableColumn>
         <ElTableColumn label="变更前 → 变更后" min-width="140" align="center"
           ><template #default="{ row }"

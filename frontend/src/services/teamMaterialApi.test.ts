@@ -28,6 +28,31 @@ afterEach(() => {
   httpClient.defaults.adapter = originalAdapter
 })
 describe('team material API contract', () => {
+  it('uses a separate versioned processing task directory and task/business processing filters', async () => {
+    data = []
+    await teamMaterialApi.processingTasks(2)
+    await teamMaterialApi.saveProcessingTask(2, { name: '粗磨', active: true })
+    await teamMaterialApi.saveProcessingTask(
+      2,
+      { name: '精磨', active: false, expected_version: 3 },
+      8,
+    )
+    data = { items: [], total: 0, page: 1, page_size: 10 }
+    await teamMaterialApi.processingRecords(2, { processing_task_id: 8, purpose_id: 3 })
+    await teamMaterialApi.processingDaily(2, { processing_task_id: 8, purpose_id: 3 })
+    expect(requests.map((item) => item.url)).toEqual([
+      '/team-materials/2/processing-tasks',
+      '/team-materials/2/processing-tasks',
+      '/team-materials/2/processing-tasks/8',
+      '/team-materials/2/processing-records?processing_task_id=8&purpose_id=3',
+      '/team-materials/2/processing-daily?processing_task_id=8&purpose_id=3',
+    ])
+    expect(JSON.parse(requests[2]!.data)).toEqual({
+      name: '精磨',
+      active: false,
+      expected_version: 3,
+    })
+  })
   it('preserves current dimensions, processing roles and output identity on stock sources', async () => {
     data = {
       items: [

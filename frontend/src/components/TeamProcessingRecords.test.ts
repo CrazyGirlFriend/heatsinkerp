@@ -2,7 +2,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ElPagination, ElInput } from 'element-plus'
+import { ElPagination, ElInput, ElSelect } from 'element-plus'
 import TeamProcessingRecords from './TeamProcessingRecords.vue'
 import FilterDialog from './FilterDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
@@ -42,6 +42,10 @@ const record = (id = 1): ProcessingRecord => ({
 })
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(teamMaterialApi, 'processingTasks').mockRejectedValue(new Error('不应读取他组任务目录'))
+  vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([
+    { id: 3, name: '研磨业务1', team_id: 5, active: true, version: 1 },
+  ])
   vi.spyOn(teamMaterialApi, 'processingRecords').mockResolvedValue({
     items: [record()],
     total: 21,
@@ -60,6 +64,7 @@ beforeEach(() => {
       { id: 71, name: '张师傅' },
       { id: 22, name: '王师傅' },
     ],
+    processing_tasks: [{ id: 8, name: '粗磨' }],
   })
   vi.spyOn(teamMaterialApi, 'processingDaily').mockResolvedValue({
     items: [
@@ -109,6 +114,49 @@ async function render(canWrite = true, path = '/team-workspaces/5?tab=processing
 }
 
 describe('cutting processing records', () => {
+  it('filters both exports by task and business and counts employee-task groups independently', async () => {
+    const result = await teamMaterialApi.processingRecords(5)
+    vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+      ...result,
+      summary: { ...result.summary!, employee_day_count: 1, daily_group_count: 3 },
+    })
+    const router = await render()
+    expect(teamMaterialApi.processingTasks).not.toHaveBeenCalled()
+    wrapper
+      .findAllComponents(ElSelect)
+      .find((item) => item.find('[aria-label="加工任务筛选"]').exists())!
+      .vm.$emit('update:modelValue', 8)
+    wrapper
+      .findAllComponents(ElSelect)
+      .find((item) => item.find('[aria-label="加工业务筛选"]').exists())!
+      .vm.$emit('update:modelValue', 3)
+    wrapper.getComponent(FilterDialog).vm.$emit('apply')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({
+      processing_task_id: '8',
+      purpose_id: '3',
+    })
+    const exports = wrapper.getComponent(TableExportButton)
+    const details = exports.props('source')()!
+    const grouped = exports.props('variants')!()[0]!
+    expect(grouped.total).toBe(3)
+    expect(grouped.title).toContain('任务')
+    await details.load(new AbortController().signal, () => {})
+    await grouped.load(new AbortController().signal, () => {})
+    expect(teamMaterialApi.processingRecords).toHaveBeenLastCalledWith(
+      5,
+      expect.objectContaining({ processing_task_id: 8, purpose_id: 3 }),
+    )
+    expect(teamMaterialApi.processingDaily).toHaveBeenLastCalledWith(
+      5,
+      expect.objectContaining({ processing_task_id: 8, purpose_id: 3 }),
+    )
+    wrapper.getComponent(FilterDialog).vm.$emit('reset')
+    wrapper.getComponent(FilterDialog).vm.$emit('apply')
+    await flushPromises()
+    expect(router.currentRoute.value.query.processing_task_id).toBeUndefined()
+    expect(router.currentRoute.value.query.purpose_id).toBeUndefined()
+  })
   it('shows and exports the processing person without substituting the login account', async () => {
     vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
       items: [{ ...record(), processor_name: '王师傅' }, record(2)],
@@ -222,13 +270,15 @@ describe('unified production records', () => {
   it('shows totals for every matching record and keeps one entry in normal and fullscreen modes', async () => {
     await render()
     expect(wrapper.text()).not.toContain('个人日产')
-    expect(wrapper.get('[aria-label="筛选结果产量合计"]').text()).toContain('完成 100 件 / 98 kg')
-    expect(wrapper.text()).toContain('1 笔历史记录信息不全，未计入产量')
+    expect(wrapper.get('[aria-label="筛选结果加工工作量合计"]').text()).toContain(
+      '完成 100 件次 / 98 kg',
+    )
+    expect(wrapper.text()).toContain('1 笔历史记录信息不全，未计入工作量')
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
     await wrapper.setProps({ fullscreen: true })
     expect(wrapper.findComponent(FilterDialog).exists()).toBe(true)
     expect(wrapper.findComponent(TableExportButton).exists()).toBe(true)
-    expect(wrapper.find('[aria-label="筛选结果产量合计"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="筛选结果加工工作量合计"]').exists()).toBe(true)
   })
   it('uses the applied actual-date and person filters for both export formats', async () => {
     const router = await render()
@@ -331,6 +381,7 @@ it('opens the sole current descendant directly for rework without a second sourc
     sourceId: 88,
     rework: true,
     canWrite: true,
+    reworkRecordId: 1,
     modelValue: true,
   })
 })
@@ -354,7 +405,7 @@ it('separates rework totals and exports rework identity alongside initial produc
     },
   })
   await render()
-  expect(wrapper.text()).toContain('首次完成')
+  expect(wrapper.text()).toContain('首次任务完成')
   expect(wrapper.text()).toContain('返工 · 第 3 次')
   const source = wrapper.getComponent(TableExportButton).props('source')()!
   const exported = await source.load(new AbortController().signal, () => {})

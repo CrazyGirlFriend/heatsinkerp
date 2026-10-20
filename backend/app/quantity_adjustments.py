@@ -91,6 +91,10 @@ def record_dict(row):
         "reason": row.reason,
         "processor_name": row.processor_name,
         "processor_employee_id": row.processor_employee_id,
+        "processing_task_id": row.processing_task_id,
+        "processing_task_name": row.processing_task_name,
+        "purpose_id": row.purpose_id,
+        "purpose_name": row.purpose_name,
         "processing_date": row.processing_date.isoformat() if row.processing_date else None,
         "processing_mode": row.processing_mode,
         "work_kind": row.work_kind,
@@ -153,6 +157,7 @@ def context(db, team_id, lot_id, page=1, page_size=10):
             MaterialTransfer.serial_no,
             MaterialTransfer.material_name,
             MaterialTransfer.material_type,
+            MaterialTransfer.purpose_id,
             MaterialTransfer.purpose_name,
             MaterialTransfer.transfer_specification,
             MaterialTransfer.entry_kind,
@@ -167,6 +172,7 @@ def context(db, team_id, lot_id, page=1, page_size=10):
     ).one_or_none()
     if lot is None:
         raise HTTPException(404, "未找到本班组已签收的库存批次")
+    from .processing_tasks import context as task_context
     from .rework import previous_work
     from .shared_material import document as shared_document
 
@@ -223,6 +229,8 @@ def context(db, team_id, lot_id, page=1, page_size=10):
         "material_name": lot.material_name,
         "material_type": lot.material_type,
         "purpose_name": lot.purpose_name,
+        "purpose_id": lot.purpose_id,
+        **task_context(db, team_id, lot_id),
         "quantity": balance.on_hand_quantity,
         "weight": float(balance.on_hand_weight),
         "processing_status": progress,
@@ -274,9 +282,11 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     ):
         raise HTTPException(409, "本批已无在库物料，不能增加件数")
     latest = latest_records(db, [lot.id]).get(lot.id)
+    from .processing_tasks import snapshot as task_snapshot
     from .rework import validate
 
     prior_work = validate(db, lot, payload, latest)
+    task_fields = task_snapshot(db, lot, payload, prior_work)
     payload, production = prepare(lot, balance, latest, payload, team.code)
     before_specification = (
         latest.after_specification
@@ -335,7 +345,9 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     if payload.outputs is not None:
         from .processing_outputs import create_outputs
 
-        items, snapshots, after_weight = create_outputs(db, lot, payload, user, now, hold)
+        items, snapshots, after_weight = create_outputs(
+            db, lot, payload, user, now, hold, task_fields
+        )
     row = Adjustment(
         source_transfer_id=lot.id,
         team_id=lot.next_team_id,
@@ -343,6 +355,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         after_quantity=payload.quantity,
         processor_name=employee.name,
         processor_employee_id=employee.id,
+        **task_fields,
         **production,
         work_kind=payload.work_kind,
         rework_of_id=prior_work.id if prior_work else None,
@@ -407,6 +420,8 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
                 "rework_round": {"before": None, "after": row.rework_round},
                 "reason": {"before": None, "after": row.reason},
                 "processor_name": {"before": None, "after": row.processor_name},
+                "processing_task_name": {"before": None, "after": row.processing_task_name},
+                "purpose_name": {"before": None, "after": row.purpose_name},
                 **(
                     {
                         "processing_date": {

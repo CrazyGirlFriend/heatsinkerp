@@ -164,6 +164,17 @@ class TeamEmployee(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class TeamProcessingTask(Base):
+    __tablename__ = "team_processing_tasks"
+    __table_args__ = (UniqueConstraint("team_id", "name", name="uq_team_processing_task_name"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class TeamSettingEvent(Base):
     __tablename__ = "team_setting_events"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -622,6 +633,8 @@ class MaterialQuantityAdjustment(Base):
         ),
         Index("ix_mqa_lot_created", "source_transfer_id", "created_at", "id"),
         Index("ix_mqa_team_day_worker", "team_id", "processing_date", "processor_employee_id"),
+        Index("ix_mqa_team_task_day", "team_id", "processing_task_id", "processing_date"),
+        Index("ix_mqa_team_purpose_day", "team_id", "purpose_id", "processing_date"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source_transfer_id: Mapped[int] = mapped_column(
@@ -636,6 +649,14 @@ class MaterialQuantityAdjustment(Base):
     )
     processing_date: Mapped[date | None] = mapped_column(Date)
     processing_mode: Mapped[str | None] = mapped_column(String(16))
+    processing_task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("team_processing_tasks.id", ondelete="RESTRICT")
+    )
+    processing_task_name: Mapped[str | None] = mapped_column(String(80))
+    purpose_id: Mapped[int | None] = mapped_column(
+        ForeignKey("team_purposes.id", ondelete="RESTRICT")
+    )
+    purpose_name: Mapped[str | None] = mapped_column(String(80))
     work_kind: Mapped[str] = mapped_column(
         String(16), nullable=False, default="initial", server_default="initial"
     )

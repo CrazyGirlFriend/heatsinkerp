@@ -20,6 +20,7 @@ const allowed = {
 }
 beforeEach(() => {
   localStorage.clear()
+  vi.spyOn(teamMaterialApi, 'processingTasks').mockResolvedValue([])
   vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([])
   vi.spyOn(teamMaterialApi, 'purposes').mockResolvedValue([
     { id: 1, team_id: 2, name: '检验', active: true, version: 1 },
@@ -58,6 +59,36 @@ async function click(text: string) {
 }
 
 describe('team business settings', () => {
+  it('does not show or load processing tasks for warehouse settings', async () => {
+    wrapper = mount(TeamBusinessDialog, {
+      props: { modelValue: true, teamId: 2, processingTasks: false },
+      global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
+    })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('加工任务')
+    expect(teamMaterialApi.processingTasks).not.toHaveBeenCalled()
+  })
+  it('maintains task names and activation with versions, separately from businesses', async () => {
+    vi.mocked(teamMaterialApi.processingTasks).mockResolvedValue([
+      { id: 9, team_id: 2, name: '粗磨', active: true, version: 3 },
+    ])
+    const save = vi.spyOn(teamMaterialApi, 'saveProcessingTask').mockResolvedValue({
+      id: 9,
+      team_id: 2,
+      name: '精磨',
+      active: false,
+      version: 4,
+    })
+    await render('tasks')
+    await wrapper.get('input[aria-label="任务名称 9"]').setValue('精磨')
+    wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', false)
+    await click('保存')
+    expect(save).toHaveBeenCalledWith(2, { name: '精磨', active: false, expected_version: 3 }, 9)
+    expect(teamMaterialApi.savePurpose).not.toHaveBeenCalled()
+    await wrapper.get('input[aria-label="新增任务名称"]').setValue('去毛刺')
+    await click('新增任务')
+    expect(save).toHaveBeenLastCalledWith(2, { name: '去毛刺', active: true }, undefined)
+  })
   it('maintains employees separately from businesses without a login account', async () => {
     vi.mocked(teamMaterialApi.employees).mockResolvedValue([
       { id: 4, team_id: 2, name: '王师傅', active: true, version: 1 },

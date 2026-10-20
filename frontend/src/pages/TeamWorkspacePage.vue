@@ -1935,6 +1935,7 @@ onBeforeUnmount(() => {
         v-model="businessOpen"
         :team-id="teamId"
         :team-name="title"
+        :processing-tasks="hasProcessing"
         :business-only="auth.isAdmin"
         @changed="businessChanged"
         @stocked="openingStocked"

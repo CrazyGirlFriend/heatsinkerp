@@ -32,17 +32,22 @@ import type {
   TeamDirectoryItem,
   TeamEmployee,
   TeamPurpose,
+  TeamProcessingTask,
 } from '@/types/teamBusiness'
 import { materialRequestKey } from '@/utils/materialStock'
 import { showToast } from '@/stores/toast'
 
-const props = defineProps<{
-  modelValue: boolean
-  teamId: number
-  initialTab?: string
-  businessOnly?: boolean
-  teamName?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    teamId: number
+    initialTab?: string
+    businessOnly?: boolean
+    teamName?: string
+    processingTasks?: boolean
+  }>(),
+  { processingTasks: true },
+)
 const emit = defineEmits<{
   'update:modelValue': [boolean]
   changed: []
@@ -55,8 +60,19 @@ const tab = ref('purposes'),
   error = ref('')
 const employees = ref<TeamEmployee[]>([])
 const editingEmployees = computed(() => tab.value === 'employees')
-const directoryItems = computed(() => (editingEmployees.value ? employees.value : purposes.value))
-const itemLabel = computed(() => (editingEmployees.value ? '员工' : '业务'))
+const tasks = ref<TeamProcessingTask[]>([])
+const editingTasks = computed(() => tab.value === 'tasks')
+const canManage = computed(
+  () =>
+    auth.currentUser?.active !== false &&
+    (auth.isAdmin || Number(auth.currentUser?.team_id) === props.teamId),
+)
+const directoryItems = computed(() =>
+  editingTasks.value ? tasks.value : editingEmployees.value ? employees.value : purposes.value,
+)
+const itemLabel = computed(() =>
+  editingTasks.value ? '任务' : editingEmployees.value ? '员工' : '业务',
+)
 const purposes = ref<TeamPurpose[]>([]),
   newName = ref(''),
   opening = ref<OpeningState | null>(null)
@@ -124,14 +140,18 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [options, state, staff] = await Promise.all([
+    const [options, state, staff, taskOptions] = await Promise.all([
       teamMaterialApi.purposes(props.teamId),
       props.businessOnly ? Promise.resolve(null) : teamMaterialApi.openingState(props.teamId),
       teamMaterialApi.employees(props.teamId),
+      !props.processingTasks || !canManage.value
+        ? Promise.resolve([])
+        : teamMaterialApi.processingTasks(props.teamId),
     ])
     if (current !== epoch) return
     purposes.value = options
     employees.value = staff
+    tasks.value = taskOptions
     opening.value = state
   } catch (e) {
     if (current === epoch) error.value = e instanceof Error ? e.message : '班组设置加载失败'
@@ -146,7 +166,11 @@ watch(
     if (!props.modelValue) return
     validation.reset()
     invalidPurpose.value = null
-    tab.value = props.businessOnly ? 'purposes' : props.initialTab || 'purposes'
+    tab.value =
+      props.businessOnly && props.initialTab === 'opening'
+        ? 'purposes'
+        : props.initialTab || 'purposes'
+    if (tab.value === 'tasks' && props.processingTasks === false) tab.value = 'purposes'
     newName.value = ''
     requestKey = ''
     lastBody = ''
@@ -195,7 +219,7 @@ function saveDraft() {
   }
 }
 async function saveDirectoryItem(item?: TeamDirectoryItem) {
-  if (saving.value || loading.value) return
+  if (saving.value || loading.value || !canManage.value) return
   const name = (item ? item.name : newName.value).trim()
   if (!name) {
     invalidPurpose.value = item?.id ?? 'new'
@@ -207,7 +231,13 @@ async function saveDirectoryItem(item?: TeamDirectoryItem) {
   saving.value = true
   error.value = ''
   try {
-    await (editingEmployees.value ? teamMaterialApi.saveEmployee : teamMaterialApi.savePurpose)(
+    await (
+      editingTasks.value
+        ? teamMaterialApi.saveProcessingTask
+        : editingEmployees.value
+          ? teamMaterialApi.saveEmployee
+          : teamMaterialApi.savePurpose
+    )(
       props.teamId,
       { name, active: item?.active ?? true, ...(item ? { expected_version: item.version } : {}) },
       item?.id,
@@ -288,16 +318,25 @@ async function submitOpening() {
     <ElTabs v-model="tab">
       <ElTabPane name="purposes" label="本组业务" :disabled="saving" />
       <ElTabPane name="employees" label="班组员工" :disabled="saving" />
+      <ElTabPane
+        v-if="processingTasks && canManage"
+        name="tasks"
+        label="加工任务"
+        :disabled="saving"
+      />
       <ElTabPane v-if="!businessOnly" name="opening" label="初始库存" :disabled="saving" />
     </ElTabs>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <p v-if="loading">正在读取班组设置…</p>
     <section
-      v-else-if="tab === 'purposes' || editingEmployees"
+      v-else-if="tab === 'purposes' || editingEmployees || editingTasks"
       ref="purposeSettings"
       class="purpose-settings"
     >
-      <p v-if="!editingEmployees" class="settings-note">
+      <p v-if="editingTasks" class="settings-note">
+        维护本班组的具体任务，如粗磨、精磨。加工时选择实际完成的任务；任务独立于业务，不要求每批完成全部任务。停用或改名不改变历史记录。
+      </p>
+      <p v-else-if="!editingEmployees" class="settings-note">
         设置本班组可以做的业务，如检验、去毛刺。上序转料时选择；修改后需保存，历史单据保留原名称。
       </p>
       <div v-for="item in directoryItems" :key="item.id" class="purpose-editor">
@@ -306,18 +345,18 @@ async function submitOpening() {
           v-model="item.name"
           :aria-label="`${itemLabel}名称 ${item.id}`"
           maxlength="80"
-          :disabled="saving"
+          :disabled="saving || !canManage"
         />
         <ElSwitch
           v-model="item.active"
           :aria-label="`${item.name}启用状态`"
           active-text="启用"
-          :disabled="saving"
+          :disabled="saving || !canManage"
         />
-        <ElButton :disabled="saving" @click="saveDirectoryItem(item)">保存</ElButton>
+        <ElButton :disabled="saving || !canManage" @click="saveDirectoryItem(item)">保存</ElButton>
       </div>
       <ElAlert
-        v-if="!editingEmployees && purposes.length && !purposes.some((item) => item.active)"
+        v-if="tab === 'purposes' && purposes.length && !purposes.some((item) => item.active)"
         title="业务全部停用后，上序无法新建转给本班组的转料单。"
         type="info"
         :closable="false"
@@ -327,15 +366,25 @@ async function submitOpening() {
           :class="{ 'is-error': invalidPurpose === 'new' && !newName.trim() }"
           v-model="newName"
           :aria-label="`新增${itemLabel}名称`"
-          :placeholder="editingEmployees ? '请输入员工姓名' : '例如：检验、去毛刺'"
+          :placeholder="
+            editingTasks
+              ? '例如：粗磨、精磨'
+              : editingEmployees
+                ? '请输入员工姓名'
+                : '例如：检验、去毛刺'
+          "
           maxlength="80"
-          :disabled="saving"
+          :disabled="saving || !canManage"
           @keyup.enter="saveDirectoryItem()"
-        /><ElButton type="primary" :loading="saving" @click="saveDirectoryItem()"
+        /><ElButton
+          type="primary"
+          :loading="saving"
+          :disabled="!canManage"
+          @click="saveDirectoryItem()"
           >新增{{ itemLabel }}</ElButton
         >
       </div>
-      <p v-if="!editingEmployees && !purposes.length" class="settings-note">
+      <p v-if="tab === 'purposes' && !purposes.length" class="settings-note">
         尚未配置时，新单暂归“未分类”；配置后，上序新开单必须选择启用的业务。
       </p>
     </section>

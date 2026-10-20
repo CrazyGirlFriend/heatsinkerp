@@ -34,6 +34,7 @@ import SludgeWeightFields from './SludgeWeightFields.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
+import ProcessingTaskFields from './ProcessingTaskFields.vue'
 import type { TeamEmployee } from '@/types/teamBusiness'
 import { factoryToday } from '@/utils/format'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
@@ -60,6 +61,7 @@ import type {
   CreatedMaterialBatches,
   MaterialLoss,
   StockBatch,
+  QuantityAdjustmentContext,
 } from '@/types/teamMaterials'
 import {
   amountError,
@@ -151,6 +153,10 @@ const processing = reactive<
       processorName: string
       processorOptions: string[]
       status?: 'partial' | 'complete'
+      context?: QuantityAdjustmentContext
+      taskId?: number | null
+      purposeId?: number | null
+      taskFieldsValid?: boolean
       loading: boolean
       error: string
     }
@@ -371,6 +377,9 @@ async function loadProcessing(source: StockBatch) {
     draft.quantity ??= context.quantity
     draft.original = context.quantity
     draft.revision = context.revision
+    draft.context = context
+    draft.purposeId ??= context.purpose_id || null
+    draft.taskFieldsValid = context.task_required == null
     draft.processorOptions = context.processor_options || []
     draft.structured = !!context.processing_mode
     draft.date ||= factoryToday()
@@ -528,6 +537,7 @@ const validation = useDialogValidation(() => {
       add('purposeId', '请选择接收业务')
     const draft = processing[Number(line.source.transfer.id)]
     if (draft) {
+      if (!draft.taskFieldsValid) add('processingTask', '请选择有效的加工任务和业务')
       if (!draft.processorName.trim() || draft.processorName.trim().length > 80)
         add('processorName', '请选择加工人')
       if (
@@ -766,6 +776,9 @@ async function submit() {
       quantity: draft.quantity!,
       expected_revision: draft.revision!,
       processor_name: draft.processorName.trim(),
+      ...(draft.context?.task_required != null
+        ? { processing_task_id: draft.taskId || null, purpose_id: draft.purposeId || null }
+        : {}),
       ...(draft.structured
         ? {
             processor_employee_id: draft.employee!.id,
@@ -1013,7 +1026,6 @@ async function submit() {
                     v-if="
                       !isLoss &&
                       processingTeam &&
-                      line.source.processing_state !== 'complete' &&
                       !isWeightOnlyType(line.source.transfer.material_type) &&
                       !isWeightOnlyType(line.materialType) &&
                       !processing[Number(line.source.transfer.id)] &&
@@ -1076,6 +1088,16 @@ async function submit() {
                   :precision="0"
                   controls-position="right"
               /></ElFormItem>
+              <ProcessingTaskFields
+                v-if="processing[Number(line.source.transfer.id)]!.context?.task_required != null"
+                v-model:task-id="processing[Number(line.source.transfer.id)]!.taskId"
+                v-model:purpose-id="processing[Number(line.source.transfer.id)]!.purposeId"
+                :team-id="teamId"
+                :context="processing[Number(line.source.transfer.id)]!.context!"
+                :submitted="!!lineError(line, 'processingTask')"
+                :disabled="saving"
+                @validity="processing[Number(line.source.transfer.id)]!.taskFieldsValid = $event"
+              />
               <ElFormItem
                 v-if="processingTeam && !processing[Number(line.source.transfer.id)]!.loading"
                 label="本批加工进度"

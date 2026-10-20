@@ -13,6 +13,7 @@ export interface TeamDirectoryItem {
 }
 export type TeamPurpose = TeamDirectoryItem
 export type TeamEmployee = TeamDirectoryItem
+export type TeamProcessingTask = TeamDirectoryItem
 export interface OpeningLine extends SludgeMeasurement {
   serial_no: string
   material_name: string

@@ -53,6 +53,8 @@ class ProcessingQuantity(BaseModel):
     expected_revision: int = Field(ge=0)
     processor_name: str = Field(min_length=1, max_length=80)
     processor_employee_id: int | None = Field(default=None, ge=1)
+    processing_task_id: int | None = Field(default=None, ge=1)
+    purpose_id: int | None = Field(default=None, ge=1)
     processing_date: date | None = None
     processing_mode: Literal["unit", "split"] | None = None
     work_kind: Literal["initial", "rework"] = "initial"

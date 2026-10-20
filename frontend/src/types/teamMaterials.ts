@@ -60,6 +60,10 @@ export interface StockBatch extends MaterialBalance {
   unassigned_weight?: number
 }
 export interface QuantityAdjustment {
+  processing_task_id?: number | null
+  processing_task_name?: string | null
+  purpose_id?: number | null
+  purpose_name?: string | null
   work_kind?: 'initial' | 'rework'
   rework_of_id?: number | null
   rework_round?: number
@@ -110,6 +114,17 @@ export interface ProcessingOutput extends CreateProcessingOutput {
 }
 export interface QuantityAdjustmentContext
   extends MaterialPage<QuantityAdjustment>, SharedMaterialFields {
+  purpose_id?: number | null
+  task_required?: boolean
+  completed_task_ids?: number[]
+  allowed_task_ids?: number[]
+  rework_task_records?: {
+    processing_task_id: number | null
+    processing_task_name: string | null
+    purpose_id: number | null
+    purpose_name: string | null
+    rework_of_id: number
+  }[]
   source_transfer_id: number
   batch_no: string
   quantity: number
@@ -132,6 +147,8 @@ export interface QuantityAdjustmentContext
   rework_count?: number
 }
 export interface CreateQuantityAdjustment {
+  processing_task_id?: number | null
+  purpose_id?: number | null
   work_kind?: 'initial' | 'rework'
   rework_of_id?: number
   source_transfer_id: number

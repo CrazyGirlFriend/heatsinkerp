@@ -14,7 +14,7 @@ from .processing_records import require_processing_team
 from .schemas import SCRAP_MATERIAL_TYPES
 
 
-def create_outputs(db, lot, payload, user, now, hold):
+def create_outputs(db, lot, payload, user, now, hold, task_fields=None):
     """Caller owns the source lock and commits outputs plus adjustment atomically."""
     require_processing_team(db, lot.next_team_id)
     if lot.material_type in SCRAP_MATERIAL_TYPES:
@@ -87,8 +87,16 @@ def create_outputs(db, lot, payload, user, now, hold):
             next_team_id=team.id,
             next_team_code=team.code,
             next_team_name=team.name,
-            purpose_id=lot.purpose_id,
-            purpose_name=lot.purpose_name,
+            purpose_id=task_fields["purpose_id"]
+            if task_fields
+            and task_fields["purpose_name"] is not None
+            and output.role != "remaining"
+            else lot.purpose_id,
+            purpose_name=task_fields["purpose_name"]
+            if task_fields
+            and task_fields["purpose_name"] is not None
+            and output.role != "remaining"
+            else lot.purpose_name,
             quantity=output.quantity,
             weight=output.weight,
             **fields,

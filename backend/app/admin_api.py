@@ -22,6 +22,7 @@ from .models import (
     OpeningStockSubmission,
     Team,
     TeamEmployee,
+    TeamProcessingTask,
     TeamPurpose,
     TeamSettingEvent,
     User,
@@ -186,6 +187,7 @@ def delete_team(
             (MaterialTransfer, MaterialTransfer.next_team_id),
             (TeamPurpose, TeamPurpose.team_id),
             (TeamEmployee, TeamEmployee.team_id),
+            (TeamProcessingTask, TeamProcessingTask.team_id),
             (TeamSettingEvent, TeamSettingEvent.team_id),
             (OpeningStockSubmission, OpeningStockSubmission.team_id),
         )

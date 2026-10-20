@@ -503,9 +503,7 @@ onBeforeUnmount(() => {
                   type="primary"
                   @click="openQuantity(asStock(row))"
                   >{{
-                    canRegisterProcessing &&
-                    row.processing_state !== 'complete' &&
-                    stockAvailable(asStock(row))
+                    canRegisterProcessing && stockAvailable(asStock(row))
                       ? row.transfer.rework_pending
                         ? '返工登记'
                         : '加工登记'
