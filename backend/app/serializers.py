@@ -42,6 +42,7 @@ def user_dict(user: User) -> dict[str, Any]:
         "team_id": user.team_id,
         "team_code": user.team.code if user.team else None,
         "team_name": user.team.name if user.team else None,
+        "team_kind": user.team.kind if user.team else None,
         "active": user.active,
         "created_at": _utc(user.created_at),
         "updated_at": _utc(user.updated_at),

@@ -4,6 +4,14 @@ import { processRouteApi } from './processRouteApi'
 import * as http from './httpClient'
 import { routeFixture } from '@/testFixtures/processRoute'
 afterEach(() => vi.restoreAllMocks())
+it('loads both types for the engineering list while keeping warehouse choices normal-only by default', async () => {
+  const request = vi.spyOn(http, 'httpRequest').mockResolvedValue({ items: [], total: 0 })
+  await processRouteApi.list('', 1, undefined, 'desc', 20, 'all')
+  expect(request.mock.calls[0]![0]).toContain('kind=all')
+  await processRouteApi.list('', 1, 'published')
+  expect(request.mock.calls[1]![0]).not.toContain('kind=all')
+  expect(request.mock.calls[1]![0]).toContain('state=published')
+})
 it('uploads Word as FormData and does not overwrite the retained source in draft writes', async () => {
   const request = vi.spyOn(http, 'httpRequest').mockResolvedValue(routeFixture)
   const file = new File(['word-bytes'], '工艺.docx')
@@ -78,4 +86,64 @@ it('reads execution-team tasks and purposes through the read-only route endpoint
     body: undefined,
   })
   expect(request).toHaveBeenCalledOnce()
+})
+it('creates a manual route without an original and applies version checks to file writes', async () => {
+  const request = vi.spyOn(http, 'httpRequest').mockResolvedValue(routeFixture)
+  await processRouteApi.save({ ...routeFixture, id: 0, filename: '' })
+  expect(request).toHaveBeenLastCalledWith(
+    '/process-routes',
+    expect.objectContaining({ method: 'POST' }),
+  )
+  const file = new File(['pdf'], '图纸.pdf')
+  await processRouteApi.uploadDrawing(routeFixture, file)
+  const upload = request.mock.calls.at(-1)![1]!.body as FormData
+  expect(upload.get('version')).toBe('1')
+  expect(upload.get('file')).toBe(file)
+  await processRouteApi.removeDrawing(routeFixture, 33)
+  expect(request).toHaveBeenLastCalledWith('/process-routes/8/drawings/33?version=1', {
+    method: 'DELETE',
+    body: undefined,
+  })
+})
+it('rejects disguised or oversized drawing names before uploading', async () => {
+  const request = vi.spyOn(http, 'httpRequest').mockResolvedValue(routeFixture)
+  await expect(
+    processRouteApi.uploadDrawing(routeFixture, new File(['x'], '图纸.pdf.exe')),
+  ).rejects.toThrow('仅支持 PDF')
+  await expect(
+    processRouteApi.uploadDrawing(
+      routeFixture,
+      new File([new Uint8Array(5 * 1024 * 1024 + 1)], '大图.pdf'),
+    ),
+  ).rejects.toThrow('不能超过 5 MB')
+  expect(request).not.toHaveBeenCalled()
+})
+
+it('passes time sorting and selected page size to the backend list', async () => {
+  const request = vi.spyOn(http, 'httpRequest').mockResolvedValue({ items: [], total: 0 })
+  await processRouteApi.list('S-001', 3, undefined, 'asc', 50)
+  expect(request).toHaveBeenLastCalledWith(
+    '/process-routes?query=S-001&page=3&page_size=50&sort_order=asc',
+    { method: 'GET', body: undefined },
+  )
+})
+it('separates direction-adjusted drawing previews from original downloads', async () => {
+  const blob = new Blob(['pdf'])
+  const get = vi.spyOn(http.httpClient, 'get').mockResolvedValue({ data: blob })
+  const signal = new AbortController().signal
+  await processRouteApi.drawing(8, 33, signal, true)
+  expect(get).toHaveBeenLastCalledWith('/process-routes/8/drawings/33?preview=true', {
+    responseType: 'blob',
+    signal,
+  })
+  await processRouteApi.drawing(8, 33, signal)
+  expect(get).toHaveBeenLastCalledWith('/process-routes/8/drawings/33', {
+    responseType: 'blob',
+    signal,
+  })
+  const post = vi.spyOn(http.httpClient, 'post').mockResolvedValue({ data: blob })
+  const file = new File(['pdf'], '图纸.pdf')
+  await processRouteApi.previewDrawing(file, signal)
+  expect(post.mock.calls[0]![0]).toBe('/process-routes/drawing-preview')
+  expect((post.mock.calls[0]![1] as FormData).get('file')).toBe(file)
 })

@@ -12,6 +12,7 @@ import '@/styles/team-workspace.css'
 
 const props = defineProps<{
   title: string
+  engineering?: boolean
   modelValue: string
   warehouse?: boolean
   manageWarehouse?: boolean
@@ -28,13 +29,15 @@ const emit = defineEmits<{
   export: []
 }>()
 const sections = computed(() =>
-  teamWorkspaceSectionsFor(
-    Boolean(props.warehouse),
-    Boolean(props.manageWarehouse),
-    Boolean(props.reallocations),
-    Boolean(props.processing),
-    Boolean(props.inspection),
-  ),
+  props.engineering
+    ? teamWorkspaceSections.filter((section) => section.value === 'process-routes')
+    : teamWorkspaceSectionsFor(
+        Boolean(props.warehouse),
+        Boolean(props.manageWarehouse),
+        Boolean(props.reallocations),
+        Boolean(props.processing),
+        Boolean(props.inspection),
+      ),
 )
 const sectionLabel = computed(
   () =>
@@ -46,6 +49,7 @@ const fullscreen = ref(false),
   fullscreenBusy = ref(false)
 const canFullscreen = computed(() =>
   [
+    'process-routes',
     'stock',
     'delivery-schedule',
     'pending',
@@ -190,7 +194,7 @@ onBeforeUnmount(() => {
       </div>
     </header>
     <nav
-      v-show="!fullscreen"
+      v-show="!fullscreen && sections.length > 1"
       ref="navigation"
       class="team-workspace__navigation"
       :aria-label="title + '功能'"

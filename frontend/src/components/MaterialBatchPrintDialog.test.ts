@@ -50,6 +50,15 @@ it('refreshes each selected batch before printing and cleans up print mode', asy
   expect(materialTransferApi.get).toHaveBeenCalledTimes(2)
   expect(window.print).toHaveBeenCalledOnce()
 })
+it('excludes internal rework allocations from batch previews and print counts', async () => {
+  await wrapper.setProps({
+    items: [...items, { ...items[0]!, batch_no: 'REWORK-1', entry_kind: 'rework_split' }],
+  })
+  expect(wrapper.getComponent(MaterialBatchPrintSheet).props('items')).toEqual(items)
+  await print()
+  expect(materialTransferApi.get).toHaveBeenCalledTimes(2)
+  expect(window.print).toHaveBeenCalledOnce()
+})
 it('does not print stale or partial data when a batch reload fails', async () => {
   vi.mocked(materialTransferApi.get).mockRejectedValueOnce(new Error('批次读取失败'))
   await print()

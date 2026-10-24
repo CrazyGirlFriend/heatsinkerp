@@ -35,7 +35,9 @@ const emit = defineEmits<{ close: []; saved: [schedule: ProductionSchedule] }>()
 const visible = ref(true)
 const auth = useAuthStore(),
   directory = useTeamDirectoryStore()
-const teams = computed(() => directory.items.filter((team) => team.active))
+const teams = computed(() =>
+  directory.items.filter((team) => team.active && team.kind !== 'engineering'),
+)
 const existing = props.schedule
 const localDue = existing ? formatDateTime(existing.due_at) : ''
 const form = reactive({

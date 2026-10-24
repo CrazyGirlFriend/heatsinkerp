@@ -6,9 +6,23 @@ import {
   paginateTransferBlocks,
   printTextParts,
   transferPrintTotals,
+  transferPrintProfile,
 } from './materialTransferPrint'
 
 describe('print grouping and pagination', () => {
+  it('keeps the normal transfer form and excludes internal rework allocations', () => {
+    const item = dispatchFixture(1).items[0]!
+    const allocation = { ...item, batch_no: 'REWORK-1', entry_kind: 'rework_split' as const }
+    expect(transferPrintProfile(item)).toMatchObject({
+      title: '物料转料单',
+      sourceLabel: '转出班组',
+      targetLabel: '接收班组',
+      copies: ['转出留存联', '接收确认联'],
+    })
+    expect(groupTransferPrintItems([item, allocation])[0]!.items).toEqual([item])
+    expect(transferPrintTotals([item, allocation])).toEqual(transferPrintTotals([item]))
+    expect(() => transferPrintProfile(allocation)).toThrow('返工料划分不生成转料单')
+  })
   it('groups the same route/date/person but never combines different senders or destinations', () => {
     const items = dispatchFixture(5).items
     items[1]!.sent_employee_name = '张三'

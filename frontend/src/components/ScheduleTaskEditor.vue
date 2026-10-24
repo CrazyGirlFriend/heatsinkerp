@@ -43,7 +43,9 @@ const emit = defineEmits<{ close: []; saved: [task: ScheduleTask] }>()
 const visible = ref(true)
 const auth = useAuthStore(),
   directory = useTeamDirectoryStore()
-const teams = computed(() => directory.items.filter((team) => team.active))
+const teams = computed(() =>
+  directory.items.filter((team) => team.active && team.kind !== 'engineering'),
+)
 const writable = computed(
   () => auth.isAdmin && !auth.currentUserError && auth.currentUser?.active !== false,
 )

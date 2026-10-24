@@ -12,7 +12,38 @@ export interface ProcessRouteStep {
   split_here: boolean
   source_row?: string | null
 }
+export interface ProcessRouteDrawing {
+  sha256?: string
+  id: number
+  filename: string
+  size_bytes: number
+}
+
+export interface ReworkRouteRequest {
+  can_modify?: boolean
+  source_transfer_id: number
+  batch_no: string
+  team_id: number
+  team_name: string
+  quantity: number
+  weight: number
+  reason: string
+  rework_of_id: number
+  inspection_id?: number | null
+  round: number
+  resume_route_id: number | null
+  resume_step_index: number | null
+  resume_step_name?: string | null
+  resume_team_id: number
+}
 export interface ProcessRoute {
+  route_kind?: 'normal' | 'rework'
+  rework_batch_no?: string
+  rework_quantity?: number
+  rework_weight?: number
+  rework_request?: ReworkRouteRequest | null
+  drawings?: ProcessRouteDrawing[]
+  execution_labels?: { tasks: Record<string, string>; purposes: Record<string, string> }
   id: number
   title: string
   filename: string
@@ -33,10 +64,18 @@ export interface ProcessRoute {
     field_warnings?: string[]
   }
   created_by: string
+  engineering_employee_id?: number | null
+  engineering_employee_name?: string | null
+  modified_employee_id?: number | null
+  modified_employee_name?: string | null
   created_at: string
+  updated_at?: string | null
   published_at: string | null
 }
 export interface ProcessRouteContext {
+  can_resume?: boolean
+  route_kind?: 'normal' | 'rework'
+  rework_of_id?: number | null
   id: number
   title: string
   version: number

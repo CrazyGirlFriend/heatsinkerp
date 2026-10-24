@@ -8,6 +8,7 @@ import SpecificationInput from './SpecificationInput.vue'
 import AutofillBadge from './AutofillBadge.vue'
 import ImportedDocumentPreview from './ImportedDocumentPreview.vue'
 import ProcessRouteEditor from './ProcessRouteEditor.vue'
+import PublishedProcessRoutePicker from './PublishedProcessRoutePicker.vue'
 import { useDocumentImport } from '@/composables/useDocumentImport'
 import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute } from '@/types/processRoute'
@@ -108,7 +109,7 @@ const importBusy = ref(false),
   previewOpen = ref(false),
   routeEditorOpen = ref(false),
   routeReviewed = ref(false)
-const fileInput = ref<HTMLInputElement>()
+const routePickerOpen = ref(false)
 const documentImport = useDocumentImport()
 let importGeneration = 0
 const attempt = ref<CreateWarehouseReceipt | null>(null)
@@ -275,14 +276,16 @@ function focusImportedField(key: string) {
   if (!control?.matches(':disabled, [aria-disabled="true"]'))
     control?.focus({ preventScroll: true })
 }
-async function importDocument(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (!file || readonly.value) return
+async function selectRoute(route: ProcessRoute) {
+  if (readonly.value || !props.modelValue) return
+  if (route.state !== 'published') {
+    error.value = '请选择工艺班组已发布的工艺'
+    return
+  }
   const current = ++importGeneration
   importBusy.value = true
   error.value = ''
   try {
-    const route = await processRouteApi.import(file)
     if (current !== importGeneration || !props.modelValue) return
     const fields = route.source_data.receipt_fields || {}
     const replace = (key: string) => {
@@ -332,33 +335,24 @@ async function importDocument(event: Event) {
           : [newMember(), newMember()]
       importedMemberSignature.value = memberSignature()
     }
+    if (route.serial_nos.length === 1 && !fields.serial_no && replace('serial_no'))
+      assignImportedField('serial_no', route.serial_nos[0])
     importedRoute.value = route
     documentImport.record(fields)
     previewOpen.value = false
-    routeReviewed.value = false
+    routeReviewed.value = true
     validation.reset()
   } catch (failure) {
     if (current === importGeneration)
-      error.value = failure instanceof Error ? failure.message : '工艺单导入失败'
+      error.value = failure instanceof Error ? failure.message : '工艺关联失败'
   } finally {
     if (current === importGeneration) importBusy.value = false
-    if (fileInput.value) fileInput.value.value = ''
   }
-}
-function reviewedRoute(route: ProcessRoute) {
-  importedRoute.value = route
-  routeReviewed.value = true
-  routeEditorOpen.value = false
 }
 const intakeSerials = computed(() =>
   sharedEntry.value
     ? members.value.map((member) => member.serial_no.trim())
     : [form.serialNo.trim()],
-)
-const routeForReview = computed(() =>
-  importedRoute.value
-    ? { ...importedRoute.value, serial_nos: intakeSerials.value.filter(Boolean) }
-    : null,
 )
 const routeSerialsMatch = computed(
   () =>
@@ -367,7 +361,7 @@ const routeSerialsMatch = computed(
       intakeSerials.value.every((serial) => importedRoute.value!.serial_nos.includes(serial))),
 )
 watch(intakeSerials, () => {
-  if (!routeSerialsMatch.value) routeReviewed.value = false
+  routeReviewed.value = routeSerialsMatch.value && importedRoute.value?.state === 'published'
 })
 const visibleSections = computed(() =>
   documentSections.map((section) => ({
@@ -404,6 +398,7 @@ function fill(payload: CreateWarehouseReceipt | null = null) {
   importedRoute.value = null
   previewOpen.value = false
   routeEditorOpen.value = false
+  routePickerOpen.value = false
   routeReviewed.value = false
   documentImport.reset()
   importedMemberSignature.value = ''
@@ -480,7 +475,7 @@ function close() {
 const validation = useDialogValidation(() => {
   const issues: Record<string, string> = {}
   if (importedRoute.value && (!routeReviewed.value || !routeSerialsMatch.value))
-    issues.processRoute = '请按本次入库流水号重新核对工艺'
+    issues.processRoute = '入库流水号须与所选工艺一致，请重新关联工艺'
   if (
     importedRoute.value &&
     (form.receiptKind !== 'external' || isScrapType(form.materialType || null))
@@ -655,6 +650,7 @@ function payload(): CreateWarehouseReceipt {
   }
 }
 async function submit() {
+  if (routePickerOpen.value) return
   if (
     locationBusy.value ||
     importBusy.value ||
@@ -793,21 +789,20 @@ onBeforeUnmount(() => {
           ><IconFileText :size="21" stroke="1.5"
         /></span>
         <div class="receipt-import-copy">
-          <strong>{{ importedRoute ? importedRoute.filename : '创建流水号 · 导入工艺单' }}</strong>
-          <span
-            >{{ importedRoute ? '文件资料已带入，可直接修改' : '自动带入物料资料，并保留原文对照'
-            }}<small>DOCX · 最大 5 MB</small></span
-          >
+          <strong>{{
+            importedRoute ? importedRoute.filename || importedRoute.title : '关联工艺'
+          }}</strong>
+          <span>{{ importedRoute ? '已关联工艺，物料资料可修改' : '按流水号选择工艺' }}</span>
         </div>
       </div>
       <div class="receipt-import-actions">
-        <ElButton :loading="importBusy" :disabled="readonly" @click="fileInput?.click()">
+        <ElButton :loading="importBusy" :disabled="readonly" @click="routePickerOpen = true">
           <IconFileUpload :size="16" stroke="1.6" aria-hidden="true" />{{
-            importedRoute ? '更换工艺单' : '导入工艺单'
+            importedRoute ? '更换工艺' : '选择工艺'
           }}
         </ElButton>
         <ElButton
-          v-if="importedRoute"
+          v-if="importedRoute?.filename"
           :disabled="importBusy"
           :aria-pressed="previewOpen"
           @click="previewOpen = !previewOpen"
@@ -817,14 +812,6 @@ onBeforeUnmount(() => {
           }}
         </ElButton>
       </div>
-      <input
-        ref="fileInput"
-        type="file"
-        accept=".docx"
-        hidden
-        aria-label="导入工艺单"
-        @change="importDocument"
-      />
     </section>
     <div
       class="receipt-document-layout"
@@ -1318,12 +1305,10 @@ onBeforeUnmount(() => {
                     )
                     .join(' → ')
                 }}</strong
-                ><span>{{
-                  routeReviewed ? '已核对，将与本次入库一起保存' : '请核对执行班组、任务和工艺要求'
-                }}</span>
+                ><span>{{ routeSerialsMatch ? '已关联' : '流水号与所选工艺不一致' }}</span>
               </div>
               <ElButton :disabled="readonly" @click="routeEditorOpen = true">{{
-                routeReviewed ? '查看 / 修改工艺' : '核对工艺'
+                '查看工艺'
               }}</ElButton>
             </div>
           </ElFormItem>
@@ -1336,19 +1321,26 @@ onBeforeUnmount(() => {
         @focus-field="focusImportedField"
       />
     </div>
+    <PublishedProcessRoutePicker
+      v-if="routePickerOpen && modelValue"
+      :serial-no="sharedEntry ? members[0]?.serial_no : form.serialNo"
+      @selected="selectRoute"
+      @close="routePickerOpen = false"
+    />
     <ProcessRouteEditor
       v-if="importedRoute && routeEditorOpen"
-      :route="routeForReview!"
-      intake
+      :route="importedRoute"
+      view-only
       @close="routeEditorOpen = false"
-      @reviewed="reviewedRoute"
     />
     <template #footer
       ><ElButton :disabled="saving" @click="close">{{ attempt ? '稍后核对' : '取消' }}</ElButton
       ><ElButton
         type="primary"
         :loading="saving"
-        :disabled="!canWrite || saving || importBusy || recoveryBlocked || locationBusy"
+        :disabled="
+          !canWrite || saving || importBusy || routePickerOpen || recoveryBlocked || locationBusy
+        "
         @click="submit"
         >{{ attempt ? '重试核对入库' : '确认入库' }}</ElButton
       ></template

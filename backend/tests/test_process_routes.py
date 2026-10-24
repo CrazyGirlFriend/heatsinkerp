@@ -151,7 +151,7 @@ def test_word_review_permissions_original_and_revision(client, warehouse):
         client.post(
             URL + "/import", headers=s["headers"], files={"file": ("a.docx", data)}
         ).status_code
-        == 201
+        == 403
     )
     assert client.post(URL + f"/{row['id']}/publish", json={"version": 1}).status_code == 422
     assert client.post(URL + "/import", files={"file": ("a.docx", b"bad")}).status_code == 422
@@ -240,14 +240,14 @@ def test_planned_repeated_local_task_is_not_rework(client, warehouse):
     assert result.json()["work_kind"] == "initial" and result.json()["process_step_index"] == 2
 
 
-def test_legacy_stock_remains_usable(client, warehouse):
+def test_legacy_warehouse_stock_requires_route_before_first_transfer(client, warehouse):
     lot = intake(client, warehouse).json()
     imported(client)
     assert (
         dispatch(
             client, warehouse, [{"source_transfer_id": lot["id"], "quantity": 100, "weight": 10}]
         ).status_code
-        == 201
+        == 422
     )
 
 

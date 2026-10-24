@@ -7,7 +7,7 @@ import {
 
 export type UserRole = 'ADMIN' | 'TEAM'
 export type EntityId = string | number
-export type TeamKind = 'production' | 'warehouse'
+export type TeamKind = 'production' | 'warehouse' | 'engineering'
 
 export interface Team {
   opening_stock_enabled?: boolean
@@ -155,7 +155,12 @@ export function normalizeTeam(value: unknown): Team {
     opening_stock_enabled: raw.opening_stock_enabled === true,
     active: booleanValue(raw.active ?? raw.is_active ?? raw.enabled),
     sort_order: Number.isFinite(Number(raw.sort_order)) ? Number(raw.sort_order) : 0,
-    kind: raw.kind === 'warehouse' ? 'warehouse' : 'production',
+    kind:
+      raw.kind === 'engineering'
+        ? 'engineering'
+        : raw.kind === 'warehouse'
+          ? 'warehouse'
+          : 'production',
     account_count:
       raw.account_count === undefined && raw.user_count === undefined
         ? undefined
@@ -179,6 +184,12 @@ export function normalizeAccount(value: unknown): Account {
           id: rawTeamId as EntityId,
           code: stringValue(raw.team_code, raw.group_code),
           name: flatTeamName,
+          kind:
+            raw.team_kind === 'engineering'
+              ? ('engineering' as const)
+              : raw.team_kind === 'warehouse'
+                ? ('warehouse' as const)
+                : ('production' as const),
           active: true,
         }
       : null)

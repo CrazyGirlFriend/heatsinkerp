@@ -105,7 +105,7 @@ onMounted(load)
     <div v-if="!current && canBind" class="route-binding">
       <ElSelect
         v-model="selected"
-        placeholder="搜索并选择已发布工艺"
+        placeholder="搜索并选择工艺"
         filterable
         remote
         :remote-method="search"
@@ -131,7 +131,7 @@ onMounted(load)
       </h3>
       <ProcessRouteSteps :route="route" :current="current" />
     </template>
-    <p v-else-if="!loading">本批尚未关联工艺。管理员可在“工艺路线”上传、核对并发布 Word 工艺表。</p>
+    <p v-else-if="!loading">本批尚未关联工艺。请联系工艺班组录入并保存工艺。</p>
     <template #footer
       ><ElButton :disabled="busy" @click="visible = false">关闭</ElButton
       ><ElButton

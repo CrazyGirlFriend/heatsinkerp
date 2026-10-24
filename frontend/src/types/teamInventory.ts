@@ -14,7 +14,8 @@ import { formatDateTime } from '@/utils/format'
 import { inventoryScheduleDue, inventoryScheduleLabel } from '@/utils/inventorySchedule'
 import type { InventoryScheduleSummary } from './productionSchedule'
 
-export type WarehouseSource = 'external' | 'return' | 'internal' | 'opening' | 'processing'
+export type WarehouseSource =
+  'external' | 'return' | 'internal' | 'opening' | 'processing' | 'rework'
 export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary, SharedMaterialFields {
   process_route?: import('./processRoute').ProcessRouteContext | null
   group_id: number
@@ -53,19 +54,22 @@ export const warehouseSourceNames: Record<WarehouseSource, string> = {
   internal: '车间转入',
   opening: '初始库存',
   processing: '本班组加工',
+  rework: '返工料划分',
 }
 export const warehouseSourceLabel = (row: TeamInventoryRow) =>
   row.receipt_source === 'opening'
     ? '初始库存'
     : `${warehouseSourceNames[row.receipt_source]} · ${row.source_name || '未登记'}`
 export const inventorySourceLabel = (row: TeamInventoryRow, warehouse = false) =>
-  row.receipt_source === 'processing'
-    ? `本班组加工${row.processing_role ? ` · ${processingRoleLabels[row.processing_role]}` : ''}`
-    : row.receipt_source === 'opening'
-      ? '初始库存'
-      : warehouse
-        ? warehouseSourceLabel(row)
-        : row.source_name || '上序未登记'
+  row.receipt_source === 'rework'
+    ? '返工料划分'
+    : row.receipt_source === 'processing'
+      ? `本班组加工${row.processing_role ? ` · ${processingRoleLabels[row.processing_role]}` : ''}`
+      : row.receipt_source === 'opening'
+        ? '初始库存'
+        : warehouse
+          ? warehouseSourceLabel(row)
+          : row.source_name || '上序未登记'
 export { formatAmount as inventoryAmount } from '@/utils/format'
 const amount = inventoryAmount
 export function inventoryDispatchable(row: TeamInventoryRow) {
@@ -167,7 +171,13 @@ export const warehouseColumns = [
     width: 130,
     defaultVisible: true,
     format: (row: TeamInventoryRow) =>
-      row.rework_pending ? '待返工' : row.rework_count ? `已返工 ${row.rework_count} 次` : '—',
+      row.process_route?.route_kind === 'rework'
+        ? '返工中'
+        : row.rework_pending
+          ? '待返工'
+          : row.rework_count
+            ? `已返工 ${row.rework_count} 次`
+            : '—',
   },
   {
     key: 'processing_role',

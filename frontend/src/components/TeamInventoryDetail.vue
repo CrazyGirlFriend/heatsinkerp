@@ -9,7 +9,8 @@ import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 import { globalTransferExportFields } from '@/utils/teamTableExport'
 import { currentLocations } from '@/utils/warehousePlacement'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
+import { useProcessRouteView } from '@/composables/useProcessRouteView'
 import {
   ElButton,
   ElDescriptions,
@@ -66,6 +67,13 @@ const emit = defineEmits<{
   schedule: [id?: number, serialNo?: string]
 }>()
 const routeLot = ref<number | null>(null)
+const ProcessRouteEditor = defineAsyncComponent(() => import('./ProcessRouteEditor.vue'))
+const {
+  route: viewedRoute,
+  loading: routeLoading,
+  open: viewRoute,
+  close: closeRoute,
+} = useProcessRouteView()
 const rows = ref<StockBatch[]>([]),
   total = ref(0),
   page = ref(1),
@@ -380,6 +388,7 @@ function changed() {
 watch(
   [() => props.teamId, () => props.group?.group_id],
   () => {
+    closeRoute()
     page.value = movementPage.value = 1
     rows.value = []
     movements.value = []
@@ -489,7 +498,14 @@ onBeforeUnmount(() => {
           >
           <ElTableColumn label="派工工序" min-width="170" align="center"
             ><template #default="{ row }"
-              ><ElButton link type="primary" @click="routeLot = Number(row.transfer.id)">{{
+              ><ElButton
+                v-if="row.transfer.rework_route_id"
+                link
+                type="primary"
+                :disabled="!row.transfer.rework_route_ready || routeLoading"
+                @click="viewRoute(row.transfer.rework_route_id)"
+                >{{ row.transfer.rework_route_ready ? '返工工艺' : '待制定返工工艺' }}</ElButton
+              ><ElButton v-else link type="primary" @click="routeLot = Number(row.transfer.id)">{{
                 row.transfer.process_route
                   ? `${row.transfer.process_route.sequence_no} · ${row.transfer.process_route.step_name}`
                   : warehouse && canWrite
@@ -647,11 +663,13 @@ onBeforeUnmount(() => {
           >
           <ElTableColumn label="返工属性" min-width="130" align="center"
             ><template #default="{ row }">{{
-              row.transfer.rework_pending
-                ? '待返工'
-                : row.transfer.rework_count
-                  ? `已返工 ${row.transfer.rework_count} 次`
-                  : '—'
+              row.transfer.process_route?.route_kind === 'rework'
+                ? '返工中'
+                : row.transfer.rework_pending
+                  ? '待返工'
+                  : row.transfer.rework_count
+                    ? `已返工 ${row.transfer.rework_count} 次`
+                    : '—'
             }}</template></ElTableColumn
           >
           <ElTableColumn v-if="processing" label="加工状态" min-width="185" align="center"
@@ -861,6 +879,7 @@ onBeforeUnmount(() => {
     :can-write="canRegisterProcessing"
     :processing="processing"
     @saved="changed"
+    @changed="changed"
   />
   <SerialMaterialDrawer
     v-if="group && serialMounted"
@@ -876,6 +895,7 @@ onBeforeUnmount(() => {
     @close="routeLot = null"
     @changed="emit('changed')"
   />
+  <ProcessRouteEditor v-if="viewedRoute" :route="viewedRoute" view-only @close="closeRoute" />
 </template>
 
 <style scoped>

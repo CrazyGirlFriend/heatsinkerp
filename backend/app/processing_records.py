@@ -54,7 +54,9 @@ def registered_lots(team_id):
         .outerjoin(
             parent,
             and_(
-                Transfer.entry_kind.in_(("processing_output", "serial_reallocation")),
+                Transfer.entry_kind.in_(
+                    ("processing_output", "serial_reallocation", "rework_split")
+                ),
                 Transfer.processing_role != "remaining",
                 parent.c.lot_id == Transfer.source_transfer_id,
             ),

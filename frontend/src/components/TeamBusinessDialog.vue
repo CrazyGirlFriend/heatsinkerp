@@ -43,6 +43,7 @@ const props = withDefaults(
     teamId: number
     initialTab?: string
     businessOnly?: boolean
+    employeesOnly?: boolean
     teamName?: string
     processingTasks?: boolean
     inspectionProblems?: boolean
@@ -162,7 +163,7 @@ async function load() {
   error.value = ''
   try {
     const [options, state, staff, taskOptions, problemOptions] = await Promise.all([
-      teamMaterialApi.purposes(props.teamId),
+      props.employeesOnly ? Promise.resolve([]) : teamMaterialApi.purposes(props.teamId),
       props.businessOnly ? Promise.resolve(null) : teamMaterialApi.openingState(props.teamId),
       teamMaterialApi.employees(props.teamId),
       !props.processingTasks || !canManage.value
@@ -197,6 +198,7 @@ watch(
         : props.initialTab || 'purposes'
     if (tab.value === 'tasks' && props.processingTasks === false) tab.value = 'purposes'
     if (tab.value === 'problems' && !canManageProblems.value) tab.value = 'purposes'
+    if (props.employeesOnly) tab.value = 'employees'
     newName.value = ''
     requestKey = ''
     lastBody = ''
@@ -344,7 +346,7 @@ async function submitOpening() {
     @close="close"
   >
     <ElTabs v-model="tab">
-      <ElTabPane name="purposes" label="本组业务" :disabled="saving" />
+      <ElTabPane v-if="!employeesOnly" name="purposes" label="本组业务" :disabled="saving" />
       <ElTabPane name="employees" label="班组员工" :disabled="saving" />
       <ElTabPane
         v-if="processingTasks && canManage"

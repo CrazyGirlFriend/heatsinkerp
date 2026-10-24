@@ -27,7 +27,9 @@ const actions = {
   dispatched: '确认出库',
   rejected: '库房退回核对',
   quantity_changed: '加工件数变更',
-  route_bound: '关联派工工艺',
+  route_bound: '关联工艺',
+  rework_requested: '登记返工事项',
+  rework_resumed: '返回正常工序',
   reallocated: '流水号转投',
   processed: '本班组加工实物登记',
   inspection_recorded: '检查登记',
@@ -35,7 +37,8 @@ const actions = {
   quality_feedback: '质量反馈',
 }
 const labels: Record<string, string> = {
-  process_route: '派工工艺 / 工序',
+  process_route: '工艺 / 工序',
+  rework_route: '返工工艺',
   inspection: '检查结果',
   quality_feedback: '质量反馈',
   work_kind: '加工性质',

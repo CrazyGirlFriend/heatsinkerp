@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import AppDialog from '@/components/AppDialog.vue'
+import PublishedProcessRoutePicker from './PublishedProcessRoutePicker.vue'
+import type { ProcessRoute } from '@/types/processRoute'
 import {
   materialWeightToleranceKg,
   isSplittingTeamCode,
@@ -23,7 +25,6 @@ import {
   ElPopover,
   ElOption,
   ElRadioButton,
-  ElCheckbox,
   ElRadioGroup,
   ElSelect,
 } from 'element-plus'
@@ -88,12 +89,58 @@ const emit = defineEmits<{
   saved: [CreatedMaterialBatches | MaterialLoss]
   balancesChanged: []
 }>()
+const routePickerKey = ref('')
+function needsRoute(line: (typeof lines.value)[number]) {
+  return (
+    !isLoss.value &&
+    sourceWarehouse.value &&
+    !isScrapType(line.materialType) &&
+    !line.source.transfer.process_route &&
+    !line.source.transfer.rework_route_id
+  )
+}
+function selectedRoute(route: ProcessRoute) {
+  const line = lines.value.find((item) => item.key === routePickerKey.value)
+  if (!line) return
+  const lot = line.source.transfer
+  const serials = lot.shared_unallocated
+    ? (lot.shared_serials || []).map((item) => item.serial_no)
+    : [lot.serial_no]
+  if (
+    route.route_kind === 'rework' ||
+    route.serial_nos.length !== serials.length ||
+    serials.some((serial) => !route.serial_nos.includes(serial)) ||
+    route.steps[0]?.team_id !== props.teamId
+  ) {
+    errorMessage.value = '工艺流水号或起始库房与本批物料不一致'
+    return
+  }
+  lines.value
+    .filter((item) => item.source.transfer.id === lot.id)
+    .forEach((item) => {
+      item.selectedRoute = route
+    })
+  routePickerKey.value = ''
+  const target = route.steps[1]
+  if (
+    target &&
+    lines.value.every(
+      (item) =>
+        item.selectedRoute?.steps[1]?.team_id === target.team_id ||
+        item.source.transfer.process_route?.next_team_id === target.team_id,
+    )
+  ) {
+    form.nextTeamId = target.team_id || ''
+  }
+  if (target?.team_id === Number(form.nextTeamId)) line.purposeId = target.purpose_id || undefined
+}
 const locationLeases: WarehouseLeaseGroup = new Map()
 const auth = useAuthStore()
 const directory = useTeamDirectoryStore()
 const lines = ref<
   {
     key: string
+    selectedRoute?: ProcessRoute
     warehouseLocation: string
     warehouseLocationKey: string
     locationBusy: boolean
@@ -213,7 +260,9 @@ const canWrite = computed(
     !auth.currentUserError,
 )
 const externalOption = computed<ExternalEntryKind | null>(() => {
-  const team = directory.items.find((team) => team.active && Number(team.id) === props.teamId)
+  const team = directory.items.find(
+    (team) => team.active && team.kind !== 'engineering' && Number(team.id) === props.teamId,
+  )
   if (!team || directory.error) return null
   return team.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse'
     ? 'warehouse_outbound'
@@ -233,10 +282,13 @@ watch(
     batchPurposeId.value = undefined
     lines.value.forEach((line) => {
       const route = line.source.transfer.process_route
+      const selectedStep = line.selectedRoute?.steps[1]
       line.purposeId =
-        !form.reworkReturn && route?.next_team_id === Number(form.nextTeamId)
-          ? route.next_purpose_id || undefined
-          : undefined
+        selectedStep?.team_id === Number(form.nextTeamId)
+          ? selectedStep.purpose_id || undefined
+          : !form.reworkReturn && route?.next_team_id === Number(form.nextTeamId)
+            ? route.next_purpose_id || undefined
+            : undefined
       line.warehouseLocation = ''
       line.warehouseLocationKey = ''
     })
@@ -272,6 +324,7 @@ const destinations = computed(() =>
   directory.items.filter(
     (team) =>
       team.active &&
+      team.kind !== 'engineering' &&
       String(team.id) !== String(props.teamId) &&
       (!containsScrap.value || team.kind === 'warehouse'),
   ),
@@ -542,6 +595,7 @@ const validation = useDialogValidation(() => {
     const add = (field: string, message: string) => {
       issues[`${line.key}.${field}`] = message
     }
+    if (needsRoute(line) && !line.selectedRoute) add('route', '请选择工艺后再转出')
     if (!isLoss.value && !isScrapType(line.materialType) && !line.specificationValid)
       add('specification', '请补全实际尺寸')
     if (converted(line) && !sludgeWeight(line.gross, line.percent)) {
@@ -877,6 +931,12 @@ async function submit() {
             warehouse_location_reservation_key: line.warehouseLocationKey,
           }
         : {}),
+      ...(line.selectedRoute
+        ? {
+            process_route_id: line.selectedRoute.id,
+            process_route_version: line.selectedRoute.version,
+          }
+        : {}),
       source_transfer_id: Number(line.source.transfer.id),
       ...(!isLoss.value && lineSchedules(line).some((schedule) => schedule.id === line.scheduleId)
         ? { production_schedule_id: line.scheduleId }
@@ -1013,10 +1073,6 @@ async function submit() {
               externalOption === 'warehouse_outbound' ? '对外出库' : '发货'
             }}</ElRadioButton>
           </ElRadioGroup>
-          <div v-if="!external" class="dispatch-rework">
-            <ElCheckbox v-model="form.reworkReturn">退回返工</ElCheckbox>
-            <span v-if="form.reworkReturn">接收后按返工登记，关联原加工记录</span>
-          </div>
         </div>
         <div class="dialog-form-grid dispatch-context-fields">
           <ElFormItem label="转料人" :error="fieldErrors.sender" required>
@@ -1130,6 +1186,17 @@ async function submit() {
                 :quantity="dispatchableAmounts(line.latest).quantity"
                 :weight="dispatchableAmounts(line.latest).weight"
               />
+            </div>
+            <div v-if="needsRoute(line)" class="dispatch-route-choice">
+              <ElButton
+                :type="lineError(line, 'route') ? 'danger' : 'primary'"
+                size="small"
+                :disabled="busy"
+                @click="routePickerKey = line.key"
+                >{{ line.selectedRoute ? '更换工艺' : '选择工艺' }}</ElButton
+              >
+              <span v-if="line.selectedRoute">{{ line.selectedRoute.serial_nos.join('、') }}</span>
+              <span v-else class="field-error">未关联工艺</span>
             </div>
             <div class="source-actions">
               <ElButton
@@ -1629,6 +1696,12 @@ async function submit() {
       </div></template
     >
   </AppDialog>
+  <PublishedProcessRoutePicker
+    v-if="routePickerKey"
+    :serial-no="lines.find((line) => line.key === routePickerKey)?.source.transfer.serial_no"
+    @selected="selectedRoute"
+    @close="routePickerKey = ''"
+  />
 </template>
 
 <style scoped>

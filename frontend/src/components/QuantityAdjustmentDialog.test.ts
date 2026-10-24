@@ -11,6 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
+import { processRouteApi } from '@/services/processRouteApi'
+import { reworkRouteFixture } from '@/testFixtures/processRoute'
 
 const state = vi.hoisted(() => ({
   auth: {
@@ -60,7 +62,16 @@ afterEach(() => {
 async function render(canWrite = true, person = '王师傅') {
   wrapper = mount(QuantityAdjustmentDialog, {
     props: { modelValue: true, teamId: 2, sourceId: 10, canWrite },
-    global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
+    global: {
+      stubs: {
+        ProcessRouteEditor: {
+          name: 'ProcessRouteEditor',
+          props: { route: Object, viewOnly: Boolean },
+          template: '<div />',
+        },
+        ElDialog: { template: '<div><slot/><slot name="footer"/></div>' },
+      },
+    },
   })
   await flushPromises()
   if (wrapper.findComponent(ProcessingPersonInput).exists())
@@ -572,6 +583,23 @@ it('reworks completed stock with a required employee and the original record, wi
     ...context(),
     processing_mode: 'unit',
     processing_status: 'complete',
+    rework_route_id: 9,
+    rework_route_ready: true,
+    process_route: {
+      id: 9,
+      route_kind: 'rework',
+      title: '返工工艺',
+      version: 1,
+      step_index: 0,
+      sequence_no: 1,
+      step_name: '返工精磨',
+      instructions: '精磨至2.50±0.01mm',
+      team_id: 2,
+      processing_task_id: null,
+      purpose_id: null,
+      complete: false,
+      split_here: false,
+    },
     rework_count: 2,
     rework_of_id: 8,
   })
@@ -648,4 +676,45 @@ it('expands historical step requirements without using the batch current-route r
   expect(detail.text()).toContain('具体任务 · 磨削')
   expect(detail.text()).toContain('原加工记录 #40')
   expect(detail.get('p').text()).toBe('原记录厚度 2.50 ±0.05 mm\n不得叠放')
+})
+
+it('shows the active rework plan and keeps historical links bound to their original plan', async () => {
+  vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
+    ...context(),
+    rework_route_id: 27,
+    rework_route_ready: true,
+    items: [
+      {
+        id: 51,
+        source_transfer_id: 10,
+        before_quantity: 10,
+        after_quantity: 10,
+        delta_quantity: 0,
+        weight: 100,
+        reason: '',
+        created_by: '',
+        created_at: '',
+        work_kind: 'rework',
+        process_route_id: 19,
+        process_step_name: '旧返工打磨',
+      },
+    ],
+    total: 1,
+  })
+  vi.spyOn(processRouteApi, 'detail').mockImplementation(async (id) => ({
+    ...reworkRouteFixture,
+    id,
+  }))
+  await render(false)
+  await wrapper.setProps({ processing: true })
+  await click('查看返工工艺')
+  expect(processRouteApi.detail).toHaveBeenLastCalledWith(27)
+  const viewer = wrapper.getComponent({ name: 'ProcessRouteEditor' })
+  expect(viewer.props('viewOnly')).toBe(true)
+  viewer.vm.$emit('close')
+  await flushPromises()
+  await click('旧返工打磨')
+  expect(processRouteApi.detail).toHaveBeenLastCalledWith(19)
+  expect(wrapper.getComponent({ name: 'ProcessRouteEditor' }).props('route').id).toBe(19)
+  expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
 })

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { AxiosError, AxiosHeaders, type InternalAxiosRequestConfig } from 'axios'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { adminApi, AUTH_SESSION_STORAGE_KEY } from './adminApi'
+import { adminApi, AUTH_SESSION_STORAGE_KEY, normalizeAccount } from './adminApi'
 import { httpClient } from './httpClient'
 
 const originalAdapter = httpClient.defaults.adapter
@@ -164,4 +164,19 @@ describe('current authentication and team administration API', () => {
       ['/teams/900', 'delete'],
     ])
   })
+})
+
+it('preserves engineering identity from the flat login and profile response', () => {
+  expect(
+    normalizeAccount({
+      id: 1,
+      username: 'process',
+      role: 'TEAM',
+      active: true,
+      team_id: 9,
+      team_code: 'FACTORY-PROCESS',
+      team_name: '工艺',
+      team_kind: 'engineering',
+    }).team,
+  ).toMatchObject({ code: 'FACTORY-PROCESS', kind: 'engineering' })
 })

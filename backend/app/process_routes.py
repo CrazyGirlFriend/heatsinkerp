@@ -8,12 +8,18 @@ from .models import (
     ProcessRoute,
     ProcessRoutePath,
     Team,
+    TeamEmployee,
     TeamProcessingTask,
     TeamPurpose,
     utcnow,
 )
 from .schemas import SCRAP_MATERIAL_TYPES
-from .team_constants import PROCESSING_TEAM_CODES, SPLITTING_TEAM_CODES, WAREHOUSE_TEAM_CODE
+from .team_constants import (
+    ENGINEERING_TEAM_CODE,
+    PROCESSING_TEAM_CODES,
+    SPLITTING_TEAM_CODES,
+    WAREHOUSE_TEAM_CODE,
+)
 
 
 def require_route(db, route_id, lock=False):
@@ -26,45 +32,67 @@ def require_route(db, route_id, lock=False):
     return row
 
 
-def assert_route_importer(user):
-    if user.role == "ADMIN":
-        return user
+def is_engineering_user(user):
     team = user.team
-    if (
-        not user.active
-        or user.role != "TEAM"
-        or not team
-        or not team.active
-        or team.code != WAREHOUSE_TEAM_CODE
-        or team.kind != "warehouse"
-    ):
-        raise HTTPException(403, "仅管理员或正式库房账号可以导入工艺单")
+    return bool(
+        user.active
+        and user.role == "TEAM"
+        and team
+        and team.active
+        and team.code == ENGINEERING_TEAM_CODE
+        and team.kind == "engineering"
+    )
+
+
+def assert_route_importer(user):
+    if user.role != "ADMIN" and not is_engineering_user(user):
+        raise HTTPException(403, "仅工艺班组或管理员可以维护工艺")
     return user
 
 
 def require_route_reader(row, user):
-    if row.state == "published" or user.role == "ADMIN":
-        return row
-    assert_route_importer(user)
-    if row.created_by_user_id != user.id:
-        raise HTTPException(403, "只能查看本人导入的工艺草稿原件")
+    if row.state != "published":
+        assert_route_importer(user)
     return row
 
 
 def require_draft_owner(db, row, user):
-    if user.role == "ADMIN":
-        return
     assert_route_importer(user)
-    if row.created_by_user_id != user.id:
-        raise HTTPException(403, "只能核对本人导入的工艺草稿")
     if row.state != "draft" or db.scalar(
         select(MaterialTransfer.id).where(MaterialTransfer.process_route_id == row.id).limit(1)
     ):
         raise HTTPException(409, "已发布或已绑定批次的工艺不能继续编辑")
 
 
+def assign_engineering_employee(db, row, employee_id, *, modifier=False):
+    prefix = "modified" if modifier else "engineering"
+    if employee_id is None:
+        setattr(row, prefix + "_employee_id", None)
+        setattr(row, prefix + "_employee_name", None)
+        return
+    person = db.scalar(
+        select(TeamEmployee)
+        .join(Team, Team.id == TeamEmployee.team_id)
+        .where(
+            TeamEmployee.id == employee_id,
+            TeamEmployee.active.is_(True),
+            Team.code == ENGINEERING_TEAM_CODE,
+            Team.kind == "engineering",
+            Team.active.is_(True),
+        )
+        .with_for_update()
+    )
+    if person is None:
+        raise HTTPException(422, "工艺人员须为工艺班组的在职员工")
+    setattr(row, prefix + "_employee_id", person.id)
+    setattr(row, prefix + "_employee_name", person.name)
+
+
 def publish_route(db, row):
     row.steps = validate_steps(db, row)
+    from .rework_routes import activate
+
+    activate(db, row)
     row.state, row.published_at = "published", utcnow()
     db.add_all(
         ProcessRoutePath(
@@ -120,8 +148,18 @@ def route_document(lot):
             following = route.steps[index] if index is not None else None
         except HTTPException:
             pass  # Unsplit common stock is explained by the route's split marker.
+    can_resume = False
+    if route.route_kind == "rework":
+        if step["team_id"] != lot.next_team_id:
+            following = step
+        elif lot.process_step_complete and following is None:
+            can_resume = lot.next_team_id == route.resume_team_id
+            following = {"team_id": route.resume_team_id, "purpose_id": None}
     return {
+        "can_resume": can_resume,
         "id": route.id,
+        "route_kind": route.route_kind,
+        "rework_of_id": route.rework_of_id,
         "title": route.title,
         "version": route.version,
         "step_index": lot.process_step_index,
@@ -182,7 +220,13 @@ def processing_context(lot):
 
 
 def prepare_processing(lot, payload):
-    if not lot.process_route_id or payload.work_kind == "rework":
+    from .rework_routes import active, pending
+
+    if pending(lot):
+        raise HTTPException(422, "返工工艺尚未制定，请联系工艺人员")
+    if active(lot) and payload.work_kind != "rework":
+        raise HTTPException(422, "本批按返工工艺执行，不能登记为正常产量")
+    if not lot.process_route_id or (payload.work_kind == "rework" and not active(lot)):
         return payload, None
     index = processing_step(lot)
     step = lot.process_route.steps[index]
@@ -227,6 +271,18 @@ def finish_processing(lot, payload, index, outputs):
         return
     if outputs:
         for child in outputs:
+            child.rework_route_id = lot.rework_route_id
+            if lot.process_route.route_kind == "rework":
+                finished = child.processing_role == "scrap" or (
+                    child.processing_role == "produced"
+                    and next_index(
+                        lot.process_route, index, child.serial_no, child.shared_unallocated
+                    )
+                    is None
+                )
+                child.rework_count = (
+                    lot.process_route.rework_round if finished else lot.rework_count
+                )
             child.process_route_id = lot.process_route_id
             child.process_step_index = (
                 index if child.processing_role != "remaining" else lot.process_step_index
@@ -239,6 +295,11 @@ def finish_processing(lot, payload, index, outputs):
             child.process_route = lot.process_route
     elif payload.processing_status == "complete":
         lot.process_step_index, lot.process_step_complete = index, True
+        if (
+            lot.process_route.route_kind == "rework"
+            and next_index(lot.process_route, index, lot.serial_no, lot.shared_unallocated) is None
+        ):
+            lot.rework_count = lot.process_route.rework_round
     # A partial count-only entry cannot prove which pieces completed a step.
     elif payload.processing_status == "partial":
         raise HTTPException(422, "部分加工请分别登记已加工产出和未加工余料，才能按批次流转工序")
@@ -247,29 +308,14 @@ def finish_processing(lot, payload, index, outputs):
 def dispatch_fields(db, lot, target, kind, rework_return=False, policy=None):
     if kind in SCRAP_MATERIAL_TYPES:
         return {}  # Scrap follows existing scrap/quality controls, not product stages.
-    if not lot.process_route_id:
-        if (
-            policy
-            and lot.next_team_code == WAREHOUSE_TEAM_CODE
-            and lot.created_at >= policy.enforced_after
-            and not lot.rework_pending
-        ):
-            if lot.source_transfer_id:
-                from .material_lineage import relatives
+    from .rework_routes import dispatch_fields as rework_dispatch
 
-                ancestry = relatives([lot.id], ancestors=True, name="route_legacy_ancestors")
-                if db.scalar(
-                    select(MaterialTransfer.id)
-                    .where(
-                        MaterialTransfer.id.in_(select(ancestry.c.id)),
-                        MaterialTransfer.created_at < policy.enforced_after,
-                    )
-                    .limit(1)
-                ):
-                    return {}
-            raise HTTPException(
-                422, "本批新入库产品尚未绑定已发布的工艺路线，请先在库存明细关联工艺"
-            )
+    rework_fields = rework_dispatch(lot, target, rework_return)
+    if rework_fields is not None:
+        return rework_fields
+    if not lot.process_route_id:
+        if policy and lot.next_team_code == WAREHOUSE_TEAM_CODE:
+            raise HTTPException(422, "本批尚未关联工艺，请在转出前按流水号选择工艺")
         return {}
     if lot.rework_pending and not rework_return:
         raise HTTPException(422, "本批待返工，请先登记返工，不能作为正常产品转出")
@@ -355,6 +401,8 @@ def validate_steps(db, route):
         team = teams.get(step["team_id"])
         if not team or not team.active:
             raise HTTPException(422, "每道工序都须明确选择启用的班组")
+        if route.route_kind == "rework" and team.code == WAREHOUSE_TEAM_CODE:
+            raise HTTPException(422, "返工工序请选择生产班组；库房接收请设为返回工序")
         if step["name"].strip() == "中转库" and team.code != WAREHOUSE_TEAM_CODE:
             raise HTTPException(422, "中转库对应库房班组，请选择库房作为执行班组")
         if not step["name"].strip() or not step["instructions"].strip():
@@ -380,18 +428,20 @@ def validate_steps(db, route):
             if not purpose or not purpose.active or purpose.team_id != team.id:
                 raise HTTPException(422, "库房业务须属于本库房且处于启用状态")
         reviewed.append({**step, "team_name": team.name})
-    if teams[steps[0]["team_id"]].code != WAREHOUSE_TEAM_CODE or steps[0]["serial_nos"]:
+    if route.route_kind != "rework" and (
+        teams[steps[0]["team_id"]].code != WAREHOUSE_TEAM_CODE or steps[0]["serial_nos"]
+    ):
         raise HTTPException(422, "工艺路线须从库房公共备料工序开始")
     branch = next((i for i, step in enumerate(steps) if step["serial_nos"]), None)
     splits = [i for i, step in enumerate(steps) if step["split_here"]]
-    if len(route.serial_nos) > 1 and (
-        len(splits) != 1 or splits[0] == 0 or (branch is not None and splits[0] >= branch)
+    if (
+        route.route_kind != "rework"
+        and len(route.serial_nos) > 1
+        and (len(splits) != 1 or splits[0] == 0 or (branch is not None and splits[0] >= branch))
     ):
         raise HTTPException(422, "共投路线须指定一个位于分支之前的加工拆分点")
     if branch is not None and any(not step["serial_nos"] for step in steps[branch:]):
         raise HTTPException(422, "拆分后的工序须明确适用流水号，不能再次变回未分配共投料")
-    if not route.review_note or not route.review_note.strip():
-        raise HTTPException(422, "请填写核对结论，确认原文识别及重复行处理结果")
     return reviewed
 
 

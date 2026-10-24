@@ -303,12 +303,12 @@ class MaterialTransfer(Base):
             "(entry_kind IN ('transfer', 'warehouse_outbound', 'inspection_shipment') AND source_team_id IS NOT NULL AND source_team_code IS NOT NULL AND source_team_name IS NOT NULL) OR "
             "(entry_kind IN ('warehouse_receipt', 'opening_stock') AND source_team_id IS NULL AND source_team_code IS NULL AND source_team_name IS NULL "
             "AND source_transfer_id IS NULL AND dispatch_id IS NULL AND status = 'received' AND stock_tracked = 1) OR "
-            "(entry_kind IN ('serial_reallocation', 'processing_output') AND source_team_id IS NOT NULL AND source_team_id = next_team_id AND source_team_code IS NOT NULL AND source_team_name IS NOT NULL "
+            "(entry_kind IN ('serial_reallocation', 'processing_output', 'rework_split') AND source_team_id IS NOT NULL AND source_team_id = next_team_id AND source_team_code IS NOT NULL AND source_team_name IS NOT NULL "
             "AND source_transfer_id IS NOT NULL AND dispatch_id IS NULL AND status = 'received' AND stock_tracked = 1)",
             name="ck_mt_entry_kind_source",
         ),
         CheckConstraint(
-            "(entry_kind IN ('transfer', 'warehouse_receipt', 'opening_stock', 'serial_reallocation', 'processing_output') AND next_team_id IS NOT NULL AND next_team_code IS NOT NULL AND next_team_name IS NOT NULL "
+            "(entry_kind IN ('transfer', 'warehouse_receipt', 'opening_stock', 'serial_reallocation', 'processing_output', 'rework_split') AND next_team_id IS NOT NULL AND next_team_code IS NOT NULL AND next_team_name IS NOT NULL "
             "AND external_destination IS NULL AND status IN ('pending', 'received', 'voided')) OR "
             "(entry_kind IN ('warehouse_outbound', 'inspection_shipment') AND next_team_id IS NULL AND next_team_code IS NULL AND next_team_name IS NULL "
             "AND external_destination IS NOT NULL AND length(trim(external_destination)) > 0 AND source_transfer_id IS NOT NULL AND dispatch_id IS NOT NULL "
@@ -346,8 +346,18 @@ class MaterialTransfer(Base):
     )
     process_step_index: Mapped[int | None] = mapped_column(Integer)
     sent_process_step_index: Mapped[int | None] = mapped_column(Integer)
-    process_step_complete: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
-    process_route: Mapped[ProcessRoute | None] = relationship(lazy="selectin")
+    process_step_complete: Mapped[bool | None] = mapped_column(
+        Boolean, default=False, server_default="0"
+    )
+    process_route: Mapped[ProcessRoute | None] = relationship(
+        foreign_keys=[process_route_id], lazy="selectin"
+    )
+    rework_route_id: Mapped[int | None] = mapped_column(
+        ForeignKey("process_routes.id", ondelete="RESTRICT"), index=True
+    )
+    rework_route: Mapped[ProcessRoute | None] = relationship(
+        foreign_keys=[rework_route_id], lazy="selectin"
+    )
     batch_no: Mapped[str] = mapped_column(
         TRANSFER_BATCH_NUMBER_TYPE, nullable=False, unique=True, index=True
     )
@@ -1065,6 +1075,39 @@ class ProcessRoute(Base):
 
     __tablename__ = "process_routes"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    route_kind: Mapped[str] = mapped_column(String(16), default="normal", server_default="normal")
+    rework_source_transfer_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "material_transfers.id", ondelete="RESTRICT", use_alter=True, name="fk_pr_rework_source"
+        ),
+        index=True,
+    )
+    rework_of_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "material_quantity_adjustments.id",
+            ondelete="RESTRICT",
+            use_alter=True,
+            name="fk_pr_rework_work",
+        )
+    )
+    rework_inspection_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "material_inspections.id",
+            ondelete="RESTRICT",
+            use_alter=True,
+            name="fk_pr_rework_inspection",
+        )
+    )
+    resume_route_id: Mapped[int | None] = mapped_column(
+        ForeignKey("process_routes.id", ondelete="RESTRICT")
+    )
+    resume_step_index: Mapped[int | None] = mapped_column(Integer)
+    resume_step_complete: Mapped[bool | None] = mapped_column(Boolean)
+    resume_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
+    rework_round: Mapped[int | None] = mapped_column(Integer)
+    request_reason: Mapped[str | None] = mapped_column(Text)
+    request_key: Mapped[str | None] = mapped_column(String(100), unique=True)
+    request_hash: Mapped[str | None] = mapped_column(String(64))
     title: Mapped[str] = mapped_column(String(160))
     filename: Mapped[str] = mapped_column(String(240))
     source_sha256: Mapped[str] = mapped_column(String(64))
@@ -1084,9 +1127,40 @@ class ProcessRoute(Base):
     created_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
+    engineering_employee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("team_employees.id", ondelete="RESTRICT")
+    )
+    engineering_employee_name: Mapped[str | None] = mapped_column(String(80))
+    modified_employee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("team_employees.id", ondelete="RESTRICT")
+    )
+    modified_employee_name: Mapped[str | None] = mapped_column(String(80))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     published_at: Mapped[datetime | None] = mapped_column(DateTime)
-    __table_args__ = (Index("ix_process_routes_created", "created_at", "id"),)
+    __table_args__ = (
+        Index("ix_pr_kind_updated", "route_kind", "updated_at", "id"),
+        Index("ix_process_routes_created", "created_at", "id"),
+        Index("ix_process_routes_parent_state", "parent_id", "state"),
+    )
+
+
+class ProcessRouteDrawing(Base):
+    """Immutable drawing bytes belong to one editable/published route version."""
+
+    __tablename__ = "process_route_drawings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    route_id: Mapped[int] = mapped_column(
+        ForeignKey("process_routes.id", ondelete="RESTRICT"), index=True
+    )
+    filename: Mapped[str] = mapped_column(String(240))
+    sha256: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    content: Mapped[bytes] = mapped_column(
+        LargeBinary().with_variant(LONGBLOB(), "mysql"), deferred=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    __table_args__ = (UniqueConstraint("route_id", "sha256", name="uq_process_route_drawing"),)
 
 
 class ProcessRoutePolicy(Base):

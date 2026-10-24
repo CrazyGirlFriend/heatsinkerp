@@ -17,7 +17,7 @@ def weight_lineage(team_id=None, root_ids=None):
     ).where(
         Transfer.status == "received",
         Transfer.stock_tracked.is_(True),
-        Transfer.entry_kind != "processing_output",
+        Transfer.entry_kind.not_in(("processing_output", "rework_split")),
     )
     if root_ids is not None:
         roots = roots.where(Transfer.id.in_(root_ids))
@@ -29,7 +29,7 @@ def weight_lineage(team_id=None, root_ids=None):
         .select_from(Transfer)
         .join(lineage, Transfer.source_transfer_id == lineage.c.transfer_id)
         .where(
-            Transfer.entry_kind == "processing_output",
+            Transfer.entry_kind.in_(("processing_output", "rework_split")),
             Transfer.status == "received",
             Transfer.stock_tracked.is_(True),
             Transfer.next_team_id == lineage.c.team_id,
@@ -86,9 +86,9 @@ def weight_differences(db, lot_ids, team_id=None):
     path = path.union(
         select(Transfer.id, Transfer.source_transfer_id, Transfer.entry_kind)
         .join(path, Transfer.id == path.c.source_transfer_id)
-        .where(path.c.entry_kind == "processing_output")
+        .where(path.c.entry_kind.in_(("processing_output", "rework_split")))
     )
-    roots = select(path.c.id).where(path.c.entry_kind != "processing_output")
+    roots = select(path.c.id).where(path.c.entry_kind.not_in(("processing_output", "rework_split")))
     differences = weight_difference_table(team_id, roots)
     rows = db.execute(select(differences).where(differences.c.transfer_id.in_(lot_ids)))
     return {

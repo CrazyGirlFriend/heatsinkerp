@@ -45,5 +45,11 @@ class RouteWrite(BaseModel):
         return result
 
 
+class RouteDraftWrite(RouteWrite):
+    resume_step_index: int | None = Field(default=None, ge=0, le=99)
+    engineering_employee_id: int | None = Field(default=None, ge=1)
+    modified_employee_id: int | None = Field(default=None, ge=1)
+
+
 class RouteIntakeWrite(RouteWrite):
     id: int = Field(ge=1)

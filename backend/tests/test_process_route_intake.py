@@ -4,12 +4,13 @@ from copy import deepcopy
 from hashlib import sha256
 
 import pytest
-from app import material_transfer_workflow, process_route_api
+from app import material_transfer_workflow
 from app.database import SessionLocal
-from app.models import MaterialTransfer, ProcessRoute, ProcessRoutePath, User
+from app.models import MaterialTransfer, ProcessRoute, ProcessRoutePath
 from app.process_route_schemas import StepWrite
 from app.schemas import WarehouseReceiptCreate
 from sqlalchemy import func, select
+from test_engineering_team import engineering as engineering  # noqa: F401
 from test_material_transfers import _leader
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
@@ -67,61 +68,27 @@ def assert_no_receipt(route_id):
         assert row.review_note is None
 
 
-def test_official_warehouse_import_tracks_stable_user_ownership(client, warehouse, monkeypatch):
-    original = StepWrite(sequence_no=0, name="中转库", instructions="备料").model_dump()
-    monkeypatch.setattr(
-        process_route_api,
-        "parse_docx",
-        lambda _: (
-            {"tables": [["原件"]], "original_steps": [deepcopy(original)]},
-            ["WAREHOUSE-001"],
-            [deepcopy(original)],
-        ),
-    )
-    result = client.post(
-        URL + "/import", headers=warehouse["headers"], files={"file": ("工艺.docx", b"original")}
-    )
-    assert result.status_code == 201, result.text
-    row = result.json()
-    owner = client.get("/api/auth/me", headers=warehouse["headers"]).json()
-    assert row["created_by_user_id"] == owner["id"]
-    assert row["steps"][0]["team_id"] == warehouse["team"]["id"]
-    assert row["source_data"]["original_steps"][0]["team_id"] is None
-    assert (
-        client.post(
-            URL + "/import",
-            headers=warehouse["other_headers"],
-            files={"file": ("工艺.docx", b"original")},
-        ).status_code
-        == 403
-    )
-    with SessionLocal() as db:
-        db.get(User, owner["id"]).display_name = "库房姓名已修改"
-        db.commit()
-    saved = client.put(
-        URL + f"/{row['id']}",
-        headers=warehouse["headers"],
-        json={
-            "title": row["title"],
-            "version": row["version"],
-            "serial_nos": row["serial_nos"],
-            "steps": row["steps"],
-            "review_note": "核对完成",
-        },
-    )
+def test_warehouse_and_production_cannot_import_word(client, warehouse):
+    for headers in (warehouse["headers"], warehouse["other_headers"]):
+        response = client.post(
+            URL + "/import", headers=headers, files={"file": ("工艺.docx", b"original")}
+        )
+        assert response.status_code == 403
+
+
+def publish_payload(client, payload):
+    write = {key: value for key, value in payload.items() if key != "id"}
+    saved = client.put(URL + f"/{payload['id']}", json=write)
     assert saved.status_code == 200, saved.text
-    assert saved.json()["created_by_user_id"] == owner["id"]
     published = client.post(
-        URL + f"/{row['id']}/publish",
-        headers=warehouse["headers"],
-        json={"version": saved.json()["version"]},
+        URL + f"/{payload['id']}/publish", json={"version": saved.json()["version"]}
     )
     assert published.status_code == 200, published.text
-    assert published.json()["state"] == "published"
+    return {key: published.json()[key] for key in payload}
 
 
-def test_intake_publishes_binds_once_and_preserves_original(client, warehouse):
-    payload = route_payload(client, warehouse)
+def test_intake_binds_published_route_once_and_preserves_original(client, warehouse):
+    payload = publish_payload(client, route_payload(client, warehouse))
     result = intake(client, warehouse, process_route=payload)
     assert result.status_code == 201, result.text
     body = result.json()
@@ -207,11 +174,11 @@ def test_another_warehouse_account_cannot_claim_draft_by_name(client, warehouse)
             "process_route": payload,
         },
     )
-    assert forged.status_code == 403, forged.text
+    assert forged.status_code == 422, forged.text
     assert_no_receipt(payload["id"])
 
 
-def test_failure_after_route_review_rolls_back_publication(client, warehouse):
+def test_warehouse_cannot_publish_draft_as_part_of_receipt(client, warehouse):
     payload = route_payload(client, warehouse)
     # A missing selected location fails after route validation/publication, before stock creation.
     result = intake(client, warehouse, process_route=payload, warehouse_location="不存在的仓位")
@@ -249,6 +216,7 @@ def test_shared_intake_keeps_one_physical_origin_with_all_route_serials(client, 
     payload = route_payload(client, warehouse)
     payload["serial_nos"] = ["ORDER-A", "ORDER-B"]
     payload["steps"][1]["split_here"] = True
+    payload = publish_payload(client, payload)
     shared = [
         {
             "serial_no": serial,
@@ -313,7 +281,7 @@ def test_migration_adds_owner_to_existing_drafts_without_claiming_them(tmp_path)
         engine.dispose()
 
 
-def test_route_options_exposes_only_active_execution_vocabulary(client, warehouse):
+def test_route_options_exposes_only_active_execution_vocabulary(client, warehouse, engineering):
     from app.models import Team, TeamProcessingTask
 
     team_id = warehouse["other"]["id"]
@@ -330,7 +298,7 @@ def test_route_options_exposes_only_active_execution_vocabulary(client, warehous
         client.post(base + "/purposes", json={"name": "停用业务", "active": False}).status_code
         == 201
     )
-    response = client.get(URL + f"/options/{team_id}", headers=warehouse["headers"])
+    response = client.get(URL + f"/options/{team_id}", headers=engineering["headers"])
     assert response.status_code == 200, response.text
     assert response.json() == {"tasks": [task], "purposes": [purpose]}
     assert client.get(URL + f"/options/{team_id}").json() == response.json()
@@ -338,10 +306,10 @@ def test_route_options_exposes_only_active_execution_vocabulary(client, warehous
         client.get(URL + f"/options/{team_id}", headers=warehouse["other_headers"]).status_code
         == 403
     )
-    assert client.get(base + "/processing-tasks", headers=warehouse["headers"]).status_code == 403
+    assert client.get(base + "/processing-tasks", headers=engineering["headers"]).status_code == 403
     assert (
         client.post(
-            base + "/processing-tasks", headers=warehouse["headers"], json={"name": "越权任务"}
+            base + "/processing-tasks", headers=engineering["headers"], json={"name": "越权任务"}
         ).status_code
         == 403
     )
@@ -350,9 +318,11 @@ def test_route_options_exposes_only_active_execution_vocabulary(client, warehous
         # Historical/misconfigured warehouse task rows must not become executable options.
         db.add(TeamProcessingTask(team_id=warehouse_id, name="旧仓库任务"))
         db.commit()
-    own = client.get(URL + f"/options/{warehouse_id}", headers=warehouse["headers"])
+    own = client.get(URL + f"/options/{warehouse_id}", headers=engineering["headers"])
     assert own.status_code == 200 and own.json()["tasks"] == []
     with SessionLocal() as db:
         db.get(Team, team_id).active = False
         db.commit()
-    assert client.get(URL + f"/options/{team_id}", headers=warehouse["headers"]).status_code == 404
+    assert (
+        client.get(URL + f"/options/{team_id}", headers=engineering["headers"]).status_code == 404
+    )

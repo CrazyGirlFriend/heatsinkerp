@@ -180,12 +180,15 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
       raw.entry_kind === 'warehouse_receipt' ||
       raw.entry_kind === 'serial_reallocation' ||
       raw.entry_kind === 'processing_output' ||
+      raw.entry_kind === 'rework_split' ||
       isExternalEntryKind(String(raw.entry_kind))
         ? (raw.entry_kind as MaterialTransfer['entry_kind'])
         : 'transfer',
     sent_processing_status: textValue(
       raw.sent_processing_status,
     ) as MaterialTransfer['sent_processing_status'],
+    rework_route_id: raw.rework_route_id == null ? null : Number(raw.rework_route_id),
+    rework_route_ready: raw.rework_route_ready === true,
     rework_pending: raw.rework_pending === true,
     rework_count: optionalInteger(raw.rework_count) || 0,
     processing_role: ['remaining', 'produced', 'scrap'].includes(String(raw.processing_role))

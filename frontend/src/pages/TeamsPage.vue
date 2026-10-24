@@ -64,7 +64,11 @@ const editingId = ref<EntityId | null>(null)
 const editingWarehouse = computed(
   () =>
     editingId.value !== null &&
-    teams.value.some((team) => String(team.id) === String(editingId.value) && isWarehouse(team)),
+    teams.value.some(
+      (team) =>
+        String(team.id) === String(editingId.value) &&
+        (isWarehouse(team) || team.kind === 'engineering'),
+    ),
 )
 const formError = ref('')
 const codeInput = ref<InputInstance | null>(null)
@@ -341,6 +345,7 @@ function teamRowClass({ row }: { row: Team }): string {
 }
 
 function kindLabel(team: Team): string {
+  if (team.kind === 'engineering') return '工艺'
   if (isWarehouse(team)) return '库房'
   return '普通班组'
 }
@@ -441,6 +446,7 @@ onMounted(() => void loadTeams())
               <ElButton
                 link
                 type="primary"
+                v-if="row.kind !== 'engineering'"
                 @click="
                   () => {
                     authorizationTeam = asTeam(row)
@@ -515,7 +521,8 @@ onMounted(() => void loadTeams())
       v-model="businessOpen"
       :team-id="Number(businessTeam.id)"
       :team-name="businessTeam.name"
-      :processing-tasks="!isWarehouse(businessTeam)"
+      :processing-tasks="!isWarehouse(businessTeam) && businessTeam.kind !== 'engineering'"
+      :employees-only="businessTeam.kind === 'engineering'"
       business-only
     />
     <AppDialog

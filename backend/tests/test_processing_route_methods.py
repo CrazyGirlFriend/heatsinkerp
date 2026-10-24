@@ -9,8 +9,9 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from app.database import SessionLocal
 from app.models import MaterialQuantityAdjustment, MaterialTransfer
+from engineered_rework_helpers import approve_rework, resume_rework
 from sqlalchemy import create_engine, text
-from test_process_route_intake import route_payload
+from test_process_route_intake import publish_payload, route_payload
 from test_processing_daily import work
 from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import intake
@@ -35,6 +36,7 @@ def routed_lot(client, s, code="FACTORY-GRIND", second=True):
             }
         )
     payload["steps"].append({**payload["steps"][0], "sequence_no": 3, "name": "库房接收"})
+    payload = publish_payload(client, payload)
     receipt = intake(client, s, process_route=payload, quantity=10, weight=100)
     assert receipt.status_code == 201, receipt.text
     sent = dispatch(
@@ -47,9 +49,18 @@ def routed_lot(client, s, code="FACTORY-GRIND", second=True):
 
 
 def processed(client, s, lot, worker, **extra):
+    rework = extra.get("work_kind") == "rework"
+    if rework:
+        lot = approve_rework(client, s, lot, {"id": extra["rework_of_id"]})
+        extra.pop("processing_task_id", None)
     response = work(client, s, lot, worker, idempotency_key=uuid4().hex, **extra)
     assert response.status_code == 201, response.text
-    return response.json()
+    result = response.json()
+    if rework:
+        for output in result["outputs"]:
+            if output["role"] == "produced":
+                resume_rework(client, s, output)
+    return result
 
 
 @pytest.mark.parametrize("code", ["FACTORY-GRIND", "FACTORY-ANNEAL"])
@@ -93,13 +104,9 @@ def test_same_task_operations_keep_distinct_snapshots_and_rework_selected_earlie
         processing_task_id=first["processing_task_id"],
     )
     assert result["rework_of_id"] == first["id"]
-    for key in (
-        "process_route_id",
-        "process_step_index",
-        "process_step_name",
-        "process_step_instructions",
-    ):
-        assert result[key] == first[key]
+    assert result["process_route_id"] != first["process_route_id"]
+    assert result["process_step_instructions"] == "返工精磨至2.50±0.01mm"
+    assert result["processing_task_name"] == "返工精磨"
     child = result["outputs"][0]
     with SessionLocal() as db:
         physical = db.get(MaterialTransfer, child["id"])
@@ -107,14 +114,14 @@ def test_same_task_operations_keep_distinct_snapshots_and_rework_selected_earlie
     totals = client.get(base(s, True) + "/overview").json()["totals"]
     assert totals["on_hand_quantity"] == 10 and totals["on_hand_weight"] == 100
     daily = client.get(base(s, True) + "/processing-daily").json()
-    assert daily["total"] == 2
+    assert daily["total"] == 3
     by_step = {item["process_step_index"]: item for item in daily["items"]}
-    assert (by_step[1]["completed_quantity"], by_step[1]["rework_quantity"]) == (10, 10)
+    assert (by_step[1]["completed_quantity"], by_step[1]["rework_quantity"]) == (10, 0)
     assert (by_step[2]["completed_quantity"], by_step[2]["rework_quantity"]) == (10, 0)
     records = client.get(
         base(s, True) + "/processing-records", params={"query": first["process_step_name"]}
     ).json()
-    assert records["total"] == 2
+    assert records["total"] == 1
     assert records["summary"]["completed_quantity"] == 10
     performance = client.get(
         "/api/factory-performance",
@@ -127,7 +134,7 @@ def test_same_task_operations_keep_distinct_snapshots_and_rework_selected_earlie
     )
     assert performance.status_code == 200, performance.text
     production = performance.json()["production"]
-    assert {item["process_step_index"] for item in production["scopes"]} == {1, 2}
+    assert {item["process_step_index"] for item in production["scopes"]} == {0, 1, 2}
     assert production["scope"]["process_step_index"] == 2
     assert production["totals"]["completed_quantity"] == 10
     assert production["totals"]["rework_quantity"] == 0
@@ -161,9 +168,9 @@ def test_partial_later_step_does_not_make_its_remaining_eligible_for_same_task_r
         processing_task_id=second["processing_task_id"],
         idempotency_key="not-finished-fine",
     )
-    assert bad.status_code == 409, bad.text
+    assert bad.status_code == 422, bad.text
     retry = processed(client, s, remaining, worker, work_kind="rework", rework_of_id=first["id"])
-    assert retry["process_step_index"] == 1
+    assert retry["process_step_index"] == 0
     with SessionLocal() as db:
         child = db.get(MaterialTransfer, retry["outputs"][0]["id"])
         assert child.process_step_index == 1 and child.process_step_complete
@@ -217,7 +224,7 @@ def test_repeated_local_operations_deliver_only_against_final_step_schedule(clie
     assert task["nodes"][2]["dispatched_quantity"] == 0
 
 
-def test_old_missing_requirements_remain_unknown_in_rework(client, warehouse):
+def test_old_missing_requirements_need_new_engineering_instruction_for_rework(client, warehouse):
     s = warehouse
     lot, worker, _ = routed_lot(client, s)
     first = processed(client, s, lot, worker)
@@ -233,8 +240,8 @@ def test_old_missing_requirements_remain_unknown_in_rework(client, warehouse):
     ctx = client.get(base(s, True) + f"/stock/{child['id']}/quantity-adjustments").json()
     assert ctx["rework_task_records"][0]["process_step_instructions"] is None
     retry = processed(client, s, child, worker, work_kind="rework", rework_of_id=first["id"])
-    assert retry["process_step_name"] == first["process_step_name"]
-    assert retry["process_step_instructions"] is None
+    assert retry["process_step_name"] == "1 · 返工精磨"
+    assert retry["process_step_instructions"] == "返工精磨至2.50±0.01mm"
 
 
 def test_inline_outbound_completion_uses_same_requirement_snapshot(client, warehouse):

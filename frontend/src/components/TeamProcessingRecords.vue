@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { sharedSerialLabel } from '@/types/sharedMaterial'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
+import { useProcessRouteView } from '@/composables/useProcessRouteView'
 import { useRoute, useRouter } from 'vue-router'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import {
@@ -44,6 +45,13 @@ const props = defineProps<{
   refreshKey?: unknown
 }>()
 const vLoading = ElLoading.directive
+const ProcessRouteEditor = defineAsyncComponent(() => import('./ProcessRouteEditor.vue'))
+const {
+  route: viewedRoute,
+  loading: routeLoading,
+  open: viewRoute,
+  close: closeRoute,
+} = useProcessRouteView()
 const emit = defineEmits<{ register: []; changed: [] }>()
 const route = useRoute(),
   router = useRouter()
@@ -427,6 +435,7 @@ function detail(row: unknown) {
 watch(
   () => [props.teamId, route.fullPath],
   (values, previous) => {
+    closeRoute()
     if (previous && values[0] !== previous[0]) {
       ++generation
       processors.value = []
@@ -659,7 +668,17 @@ onBeforeUnmount(() => {
         <template #default="{ row }">{{ row.purpose_name || '未登记' }}</template>
       </ElTableColumn>
       <ElTableColumn label="工艺工序" min-width="160" align="center"
-        ><template #default="{ row }">{{ row.process_step_name || '—' }}</template></ElTableColumn
+        ><template #default="{ row }">
+          <ElButton
+            v-if="row.work_kind === 'rework' && row.process_route_id"
+            link
+            type="primary"
+            :disabled="routeLoading"
+            :aria-label="`查看加工记录 #${row.id} 的返工工艺`"
+            @click="viewRoute(row.process_route_id)"
+            >{{ row.process_step_name || '返工工艺' }}</ElButton
+          ><span v-else>{{ row.process_step_name || '—' }}</span>
+        </template></ElTableColumn
       >
       <ElTableColumn label="具体任务" min-width="140" align="center" show-overflow-tooltip>
         <template #default="{ row }">{{ row.processing_task_name || '未登记' }}</template>
@@ -773,6 +792,7 @@ onBeforeUnmount(() => {
       :rework="reworkMode"
       :rework-record-id="selectedReworkId"
       @saved="saved"
+      @changed="saved"
     />
     <ProcessingBatchPicker
       v-if="reworkRecordId"
@@ -781,6 +801,7 @@ onBeforeUnmount(() => {
       @close="reworkRecordId = null"
       @selected="selectRework"
     />
+    <ProcessRouteEditor v-if="viewedRoute" :route="viewedRoute" view-only @close="closeRoute" />
   </section>
 </template>
 

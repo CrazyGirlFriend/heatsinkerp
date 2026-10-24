@@ -54,6 +54,23 @@ function source(id = 10, type: 'semi_finished' | null = 'semi_finished'): StockB
     available_weight: 10,
   } as StockBatch
 }
+function warehouseRoute() {
+  return {
+    id: 8,
+    title: '产品工艺',
+    version: 1,
+    step_index: 0,
+    sequence_no: 0,
+    step_name: '备料',
+    instructions: '备料',
+    team_id: 2,
+    processing_task_id: null,
+    purpose_id: null,
+    complete: true,
+    split_here: false,
+    next_team_id: 3,
+  }
+}
 let wrapper: VueWrapper
 beforeEach(() => {
   vi.spyOn(productionScheduleApi, 'candidates').mockResolvedValue({ items: [] })
@@ -310,6 +327,7 @@ describe('source batch dispatch and loss drafts', () => {
   ])('limits inline processing to the configured teams: %s', async (code, allowed) => {
     const row = source()
     row.transfer.next_team.code = code
+    if (code === 'FACTORY-WAREHOUSE') row.transfer.process_route = warehouseRoute()
     await render('dispatch', [row])
     expect(wrapper.findAll('button').some((button) => button.text() === '登记加工后件数')).toBe(
       allowed,
@@ -916,6 +934,7 @@ describe('source batch dispatch and loss drafts', () => {
   it('warehouse transfers carry the original type and current position without processing controls', async () => {
     const row = source()
     row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
+    row.transfer.process_route = warehouseRoute()
     row.transfer.warehouse_location = '历史仓位'
     row.warehouse_positions = []
     row.unassigned_quantity = 100
@@ -1503,6 +1522,52 @@ it('carries the published route destination and business into dispatch without a
     expect.objectContaining({
       next_team_id: 3,
       lines: [expect.objectContaining({ purpose_id: 33, source_transfer_id: 10 })],
+    }),
+  )
+})
+
+it('requires a warehouse route and sends its selection with the same atomic dispatch', async () => {
+  const { default: PublishedProcessRoutePicker } = await import('./PublishedProcessRoutePicker.vue')
+  const { routeFixture } = await import('@/testFixtures/processRoute')
+  const { processRouteApi } = await import('@/services/processRouteApi')
+  vi.spyOn(processRouteApi, 'list').mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 20,
+    enforced_after: null,
+  })
+  const row = source()
+  row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
+  await render('dispatch', [row])
+  await destination()
+  await submit()
+  expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+  expect(wrapper.text()).toContain('未关联工艺')
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === '选择工艺')!
+    .trigger('click')
+  wrapper.getComponent(PublishedProcessRoutePicker).vm.$emit('selected', {
+    ...routeFixture,
+    state: 'published',
+    serial_nos: [row.transfer.serial_no],
+    steps: [
+      { ...routeFixture.steps[0]!, team_id: 2 },
+      { ...routeFixture.steps[1]!, team_id: 3, purpose_id: null },
+    ],
+  })
+  await flushPromises()
+  await submit()
+  expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
+    2,
+    expect.objectContaining({
+      lines: [
+        expect.objectContaining({
+          process_route_id: routeFixture.id,
+          process_route_version: routeFixture.version,
+        }),
+      ],
     }),
   )
 })

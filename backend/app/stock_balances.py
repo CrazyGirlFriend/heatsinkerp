@@ -122,7 +122,7 @@ def contribute(deltas, model, row, sign):
             add(row["source_transfer_id"], "in_transit")
     elif row["status"] in ("received", "dispatched"):
         add(row["source_transfer_id"], "dispatched")
-        if row["entry_kind"] == "processing_output":
+        if row["entry_kind"] in ("processing_output", "rework_split"):
             add(row["source_transfer_id"], "converted")
     if row["status"] in ("pending", "received", "dispatched"):
         add(row["source_transfer_id"], "on_hand", -1)

@@ -436,6 +436,14 @@ describe('material transfer receipt review', () => {
     expect(wrapper.findAll('button').some((button) => button.text().includes('打印'))).toBe(false)
   })
 
+  it('does not offer a transfer printout for an internal rework allocation', async () => {
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(
+      fixture({ entry_kind: 'rework_split', status: 'received', allowed_actions: [] }),
+    )
+    await render()
+    expect(wrapper.findAll('button').some((button) => button.text().includes('打印'))).toBe(false)
+  })
+
   it('returns a receipt for correction without a reason and keeps the pending-review notice', async () => {
     vi.mocked(materialTransferApi.get).mockResolvedValueOnce(
       fixture({

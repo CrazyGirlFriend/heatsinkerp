@@ -250,7 +250,7 @@ export class GlassRenderer {
   constructor(canvas, stage, options={}) {
     this.canvas=canvas; this.stage=stage;
     this.artwork=typeof options.artwork==='function'?options.artwork:null;
-    this.settings={...tokens.materials.thick,brightness:.95,motion:true,opaque:false,compare:false,scene:'aurora',...options};
+    this.settings={...tokens.materials.thick,brightness:.95,motion:true,interactive:true,maxPixelRatio:1.75,opaque:false,compare:false,scene:'aurora',...options};
     this.pointer={x:0,y:0}; this.smoothPointer={x:0,y:0};
     this.time=0; this.lastTime=0; this.frame=0; this.dirty=true; this.rectDirty=true;
     this.geometry=[]; this.visible=true; this.destroyed=false; this.frozen=false; this.animatingUntil=0;
@@ -259,23 +259,38 @@ export class GlassRenderer {
     canvas.hidden=true;canvas.dataset.gpuState='idle';stage.classList.add('fallback');
     this.resizeObserver=new ResizeObserver(()=>{this.resize();this.invalidate(150);});
     this.resizeObserver.observe(stage);
-    this.mutationObserver=new MutationObserver(()=>this.invalidate(600));
-    this.mutationObserver.observe(stage,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style','hidden','aria-selected','aria-pressed','aria-checked']});
+    this.mutationObserver=new MutationObserver(records=>{
+      if(this.settings.interactive){this.invalidate(600);return;}
+      // A form's focus/validation/typing state does not change its glass chrome.
+      const optical=node=>node.nodeType===1&&(node.matches('[data-glass]')||node.querySelector('[data-glass]'));
+      const classes=value=>(value||'').split(/\s+/).filter(name=>name&&!['fallback','webgl-ready'].includes(name)).sort().join(' ');
+      if(records.some(record=>{
+        // Presenting the completed canvas is not another geometry change.
+        if(record.target===stage&&record.attributeName==='class'&&classes(record.oldValue)===classes(stage.getAttribute('class')))return false;
+        return (record.target===stage&&record.type!=='childList')||(record.type==='childList'
+          ? [...record.addedNodes,...record.removedNodes].some(optical)
+          : optical(record.target));
+      }))this.invalidate();
+    });
+    this.mutationObserver.observe(stage,{subtree:true,childList:true,attributes:true,attributeOldValue:true,attributeFilter:['class','style','hidden','aria-selected','aria-pressed','aria-checked']});
     this.intersectionObserver=new IntersectionObserver(entries=>{this.visible=entries[0].isIntersecting;if(this.visible)this.invalidate();});
     this.intersectionObserver.observe(stage);
     this.abort=new AbortController(); const signal=this.abort.signal;
     stage.addEventListener('pointermove',e=>{
+      if(!this.settings.interactive)return;
       const r=stage.getBoundingClientRect();
       this.pointer.x=(e.clientX-r.left)*this.dpr;
       this.pointer.y=(r.height-e.clientY+r.top)*this.dpr;
       this.invalidate(this.reducedMotion?0:220,false);
     },{signal,passive:true});
-    stage.addEventListener('pointerdown',()=>this.invalidate(650),{signal,passive:true});
-    stage.addEventListener('pointerup',()=>this.invalidate(650),{signal,passive:true});
+    stage.addEventListener('pointerdown',()=>{if(this.settings.interactive)this.invalidate(650);},{signal,passive:true});
+    stage.addEventListener('pointerup',()=>{if(this.settings.interactive)this.invalidate(650);},{signal,passive:true});
     stage.addEventListener('lg:optics',event=>this.invalidate(event.detail.duration,false),{signal});
     // Scroll does not bubble, so capture it at the stage. Descendant overflow
     // viewports otherwise leave cached lens rectangles at their old positions.
-    stage.addEventListener('scroll',()=>this.invalidate(),{capture:true,signal,passive:true});
+    stage.addEventListener('scroll',event=>{
+      if(this.settings.interactive||event.target===stage||event.target?.querySelector?.('[data-glass]'))this.invalidate();
+    },{capture:true,signal,passive:true});
     window.addEventListener('resize',()=>this.invalidate(300),{signal,passive:true});
     document.addEventListener('visibilitychange',()=>{this.lastTime=0;if(!document.hidden)this.invalidate();},{signal});
     canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();this.lossObserved=true;this.lost=true;cancelAnimationFrame(this.frame);this.frame=0;canvas.hidden=true;stage.classList.remove('webgl-ready');stage.classList.add('fallback');if(!this.suspended)options.onState?.('lost');if(this.gpuLease?.active)this.resumeGPU();},{signal});
@@ -340,7 +355,7 @@ export class GlassRenderer {
     // ResizeObserver can deliver after context loss or teardown.
     if(this.destroyed||this.frozen||this.suspended||this.lost||!this.gl||this.gl.isContextLost?.())return;
     const rect=this.stage.getBoundingClientRect();
-    this.dpr=Math.min(devicePixelRatio||1,1.75);
+    this.dpr=Math.min(devicePixelRatio||1,this.settings.maxPixelRatio);
     const width=Math.max(1,Math.round(rect.width*this.dpr)),height=Math.max(1,Math.round(rect.height*this.dpr));
     if (width===this.width&&height===this.height)return;
     // Resizing clears the opaque drawing buffer; keep it hidden until redrawn.
@@ -419,6 +434,7 @@ export class GlassRenderer {
 
   invalidate(duration=0,geometry=true) {
     if(this.destroyed||this.frozen||this.suspended||this.lost)return;
+    if(!this.settings.interactive)duration=0;
     this.dirty=true;if(geometry)this.rectDirty=true;
     this.animatingUntil=Math.max(this.animatingUntil,performance.now()+duration);
     if(!this.frame)this.frame=requestAnimationFrame(t=>this.render(t));

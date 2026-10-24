@@ -128,7 +128,12 @@ it('adds press feedback only to fixed footer buttons, without hijacking native f
   expect(runtime.create).toHaveBeenCalledTimes(1)
   expect(runtime.create).toHaveBeenCalledWith(
     dialog,
-    expect.objectContaining({ motion: false, audio: expect.objectContaining({ enabled: false }) }),
+    expect.objectContaining({
+      motion: false,
+      interactive: false,
+      maxPixelRatio: 1,
+      audio: expect.objectContaining({ enabled: false }),
+    }),
   )
   expect(systems[0]!.register.mock.calls.map(([button]) => button)).toEqual([
     ...dialog.querySelectorAll('.action-footer button'),

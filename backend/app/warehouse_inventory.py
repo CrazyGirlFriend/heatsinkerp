@@ -56,7 +56,9 @@ WarehouseSearchField = Literal[
 class WarehouseInventoryFilters(SerialFilters):
     search_field: WarehouseSearchField = "all"
     availability: Literal["current", "owned", "all", "available", "scrap"] = "current"
-    receipt_source: Literal["external", "return", "internal", "opening", "processing"] | None = None
+    receipt_source: (
+        Literal["external", "return", "internal", "opening", "processing", "rework"] | None
+    ) = None
     rework: Literal["pending", "worked"] | None = None
     location_status: Literal["unassigned"] | None = None
     source_team_id: int | None = Field(default=None, ge=1)
@@ -100,6 +102,7 @@ def origin_columns():
         "purpose_name": func.coalesce(mt.purpose_name, ""),
         "receipt_source": case(
             (mt.entry_kind == "processing_output", "processing"),
+            (mt.entry_kind == "rework_split", "rework"),
             (mt.entry_kind == "opening_stock", "opening"),
             (~manual, "internal"),
             (mt.receipt_kind == "return", "return"),
@@ -178,7 +181,7 @@ def warehouse_groups(team_id, filters):
             func.max(
                 case(
                     (
-                        origins["receipt_source"].in_(("internal", "processing")),
+                        origins["receipt_source"].in_(("internal", "processing", "rework")),
                         mt.source_team_name,
                     ),
                     else_=origins["external_source"],
@@ -316,6 +319,7 @@ def list_inventory(db, team_id, filters):
         elif field in ("all", "source"):
             source_kind = case(
                 (table.c.receipt_source == "processing", "本班组加工"),
+                (table.c.receipt_source == "rework", "返工料划分"),
                 (table.c.receipt_source == "opening", "初始库存"),
                 (table.c.receipt_source == "internal", "车间转入"),
                 (table.c.receipt_source == "return", "外部退回"),
@@ -430,7 +434,9 @@ def list_inventory(db, team_id, filters):
         item.pop("matches_date")
         item["process_route"] = (
             route_document(
-                SimpleNamespace(**item, process_route=routes.get(item["process_route_id"]))
+                SimpleNamespace(
+                    **item, process_route=routes.get(item["process_route_id"]), next_team_id=team_id
+                )
             )
             if item["process_route_id"]
             else None
@@ -624,7 +630,7 @@ def list_group_movements(db, team_id, group_id, user, *, page=1, page_size=20):
     # Each actual receipt/outbound document appears once, with its own TL number.
     # Match children by source identity, not their destination nature or purpose.
     scope = and_(
-        mt.entry_kind != "processing_output",
+        mt.entry_kind.not_in(("processing_output", "rework_split")),
         or_(
             mt.id.in_(sources),
             and_(mt.source_team_id == team_id, mt.source_transfer_id.in_(sources)),

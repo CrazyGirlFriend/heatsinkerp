@@ -4,8 +4,14 @@ import type { RouteLocationRaw, Router } from 'vue-router'
 export const DEFAULT_LOGIN_PATH = '/factory-analysis'
 
 export function defaultAuthenticatedPath(
-  user: Pick<Account, 'role' | 'team_id'> | null | undefined,
+  user: (Pick<Account, 'role' | 'team_id'> & Partial<Pick<Account, 'team'>>) | null | undefined,
 ): string {
+  if (
+    user?.role === 'TEAM' &&
+    user.team?.code === 'FACTORY-PROCESS' &&
+    user.team.kind === 'engineering'
+  )
+    return '/process-routes'
   const teamId = Number(user?.team_id)
   return user?.role === 'TEAM' && Number.isSafeInteger(teamId) && teamId > 0
     ? `/team-workspaces/${teamId}`
@@ -33,7 +39,7 @@ export function safeInternalRedirect(value: unknown, fallback = '/transfer-batch
 /** Use Vue Router's previous entry, never the browser's external referrer. */
 export function pageBackDestination(
   router: Router,
-  user: Pick<Account, 'role' | 'team_id'> | null | undefined,
+  user: (Pick<Account, 'role' | 'team_id'> & Partial<Pick<Account, 'team'>>) | null | undefined,
   fallback?: RouteLocationRaw,
 ): { path: string; history: boolean } | null {
   const current = router.currentRoute.value

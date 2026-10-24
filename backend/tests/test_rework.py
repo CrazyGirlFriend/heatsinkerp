@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 import pytest
+from engineered_rework_helpers import approve_rework, resume_rework
 from test_inspections import inspection as inspection  # noqa: F401
 from test_processing_daily import setup_lot, work
 from test_warehouse_classification import base, dispatch
@@ -16,6 +17,7 @@ def test_one_piece_three_reworks_counts_effort_not_three_new_pieces(client, ware
     current = original["outputs"][0]
     prior = original
     for round in range(1, 4):
+        current = approve_rework(client, s, current, prior)
         result = work(
             client,
             s,
@@ -29,6 +31,7 @@ def test_one_piece_three_reworks_counts_effort_not_three_new_pieces(client, ware
         prior = result.json()
         assert prior["rework_round"] == round
         current = prior["outputs"][0]
+        resume_rework(client, s, current)
         totals = client.get(base(s, True) + "/overview").json()["totals"]
         assert totals["on_hand_quantity"] == 1 and totals["on_hand_weight"] == 100
     records = client.get(base(s, True) + "/processing-records").json()
@@ -40,7 +43,11 @@ def test_one_piece_three_reworks_counts_effort_not_three_new_pieces(client, ware
         summary["work_quantity"],
     ) == (1, 3, 4)
     assert summary["completed_weight"] == 100 and summary["rework_weight"] == 300
-    daily = client.get(base(s, True) + "/processing-daily").json()["items"][0]
+    daily_rows = client.get(base(s, True) + "/processing-daily").json()["items"]
+    daily = {
+        key: sum(row[key] for row in daily_rows)
+        for key in ("completed_quantity", "rework_quantity", "work_quantity")
+    }
     assert (daily["completed_quantity"], daily["rework_quantity"], daily["work_quantity"]) == (
         1,
         3,
@@ -60,7 +67,8 @@ def test_one_piece_three_reworks_counts_effort_not_three_new_pieces(client, ware
 def test_partial_rework_keeps_remaining_as_rework_not_initial_output(client, warehouse):
     s = warehouse
     lot, worker = setup_lot(client, s)
-    first = work(client, s, lot, worker).json()["outputs"][0]
+    original = work(client, s, lot, worker).json()
+    first = approve_rework(client, s, original["outputs"][0], original)
     response = work(
         client,
         s,
@@ -73,7 +81,9 @@ def test_partial_rework_keeps_remaining_as_rework_not_initial_output(client, war
     )
     assert response.status_code == 201, response.text
     done, remaining = response.json()["outputs"]
-    pending = client.get(base(s, True) + "/inventory?rework=pending").json()
+    pending_response = client.get(base(s, True) + "/inventory?rework=pending")
+    assert pending_response.status_code == 200, pending_response.text
+    pending = pending_response.json()
     assert pending["total"] == 1 and pending["items"][0]["on_hand_quantity"] == 6
     assert pending["items"][0]["processing_registered_quantity"] == 0
     assert pending["items"][0]["processing_unregistered_quantity"] == 6
@@ -96,9 +106,11 @@ def test_historical_hold_survives_rework_and_recheck_until_manual_release(client
         db.get(MaterialInspection, hold["id"]).blocks_outbound = True
         db.commit()
     worker = client.get(base(s, True) + "/employees").json()[0]
+    lot = approve_rework(client, s, lot)
     result = work(client, s, lot, worker, work_kind="rework", idempotency_key="held-rework")
     assert result.status_code == 201, result.text
     child = result.json()["outputs"][0]
+    resume_rework(client, s, child)
     detail = client.get(
         base(s, True) + "/stock", params={"query": child["batch_no"], "availability": "all"}
     ).json()
@@ -161,7 +173,7 @@ def test_historical_hold_survives_rework_and_recheck_until_manual_release(client
 def test_rework_rejects_raw_stock_wrong_history_and_duplicate_registration(client, warehouse):
     s = warehouse
     lot, worker = setup_lot(client, s)
-    assert work(client, s, lot, worker, work_kind="rework").status_code == 409
+    assert work(client, s, lot, worker, work_kind="rework").status_code == 422
     original = work(client, s, lot, worker).json()
     source = original["outputs"][0]
     assert (
@@ -174,8 +186,9 @@ def test_rework_rejects_raw_stock_wrong_history_and_duplicate_registration(clien
             rework_of_id=9999,
             idempotency_key="wrong-ref",
         ).status_code
-        == 409
+        == 422
     )
+    source = approve_rework(client, s, source, original)
     context = client.get(base(s, True) + f"/stock/{source['id']}/quantity-adjustments").json()
     args = dict(
         work_kind="rework",
@@ -207,7 +220,7 @@ def test_split_rework_records_actual_output_and_scrap_without_recounting_initial
         input_quantity=1,
         outputs=[dict(role="produced", quantity=10, weight=100, material_type="semi_finished")],
     ).json()
-    produced = original["outputs"][0]
+    produced = approve_rework(client, s, original["outputs"][0], original)
     result = work(
         client,
         s,
@@ -279,6 +292,8 @@ def test_return_from_another_team_keeps_original_work_and_marks_pending_rework(c
     )
     assert downstream.status_code == 201, downstream.text
     moved = downstream.json()["outputs"][0]
+    downstream_setup = {**s, "other": target, "other_headers": target_headers}
+    moved = approve_rework(client, downstream_setup, moved, original, team=s["other"]["id"])
     returned = sender_post(
         client,
         f"/api/team-materials/{target['id']}/dispatches",
@@ -306,7 +321,9 @@ def test_return_from_another_team_keeps_original_work_and_marks_pending_rework(c
     done = work(client, s, back, worker, work_kind="rework", idempotency_key="back-done")
     assert done.status_code == 201, done.text
     assert done.json()["rework_of_id"] == original["id"]
-    assert client.get(base(s, True) + "/inventory?rework=worked").json()["total"] == 1
+    worked_response = client.get(base(s, True) + "/inventory?rework=worked")
+    assert worked_response.status_code == 200, worked_response.text
+    assert worked_response.json()["total"] == 1
     assert (
         client.get(base(s, True) + "/processing-records").json()["summary"]["completed_quantity"]
         == 10

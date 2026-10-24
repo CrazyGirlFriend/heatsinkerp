@@ -318,6 +318,8 @@ def authorize_opening(
         )
         if team is None:
             raise HTTPException(404, "未找到班组")
+        if payload.enabled and team.kind == "engineering":
+            raise HTTPException(422, "工艺班组不登记实物库存")
         if payload.enabled and not team.active:
             raise HTTPException(409, "班组已停用，不能开启库存录入")
         before = team.opening_stock_enabled

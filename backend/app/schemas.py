@@ -408,6 +408,8 @@ class MaterialTransferEventResponse(APIModel):
 
 
 class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement):
+    rework_route_id: int | None = None
+    rework_route_ready: bool = False
     process_route: dict[str, Any] | None = None
     shared_group_id: int | None = None
     shared_unallocated: bool = False
@@ -517,7 +519,7 @@ class TeamCreate(APIModel):
     description: str | None = Field(default=None, max_length=240)
     active: bool = True
     sort_order: int = Field(default=0, ge=0, le=1000000)
-    kind: str = Field(default="production", pattern="^(production|warehouse)$")
+    kind: str = Field(default="production", pattern="^(production|warehouse|engineering)$")
 
 
 class TeamUpdate(APIModel):
@@ -526,7 +528,7 @@ class TeamUpdate(APIModel):
     description: str | None = Field(default=None, max_length=240)
     active: bool | None = None
     sort_order: int | None = Field(default=None, ge=0, le=1000000)
-    kind: str | None = Field(default=None, pattern="^(production|warehouse)$")
+    kind: str | None = Field(default=None, pattern="^(production|warehouse|engineering)$")
 
 
 class TeamResponse(APIModel):
@@ -615,6 +617,7 @@ class UserResponse(APIModel):
     role: str
     team_id: int | None
     team_code: str | None
+    team_kind: str | None = None
     team_name: str | None
     active: bool
     created_at: datetime

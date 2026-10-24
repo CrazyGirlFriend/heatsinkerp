@@ -5,6 +5,7 @@ import { ElAlert, ElButton } from 'element-plus'
 import MaterialBatchPrintSheet from './MaterialBatchPrintSheet.vue'
 import { materialTransferApi } from '@/services/materialTransferApi'
 import type { MaterialTransfer } from '@/types/materialTransfer'
+import { canPrintMaterialTransfer } from '@/types/materialTransfer'
 const props = defineProps<{ modelValue: boolean; items: MaterialTransfer[] }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
 const rows = ref<MaterialTransfer[]>([]),
@@ -17,7 +18,7 @@ watch(
   () => [props.modelValue, props.items] as const,
   () => {
     ++generation
-    rows.value = [...props.items]
+    rows.value = props.items.filter(canPrintMaterialTransfer)
     error.value = ''
     busy.value = false
   },
@@ -41,7 +42,8 @@ async function print() {
       rows.value.map((item) => materialTransferApi.get(item.batch_no)),
     )
     if (current !== generation || !props.modelValue) return
-    rows.value = latest
+    rows.value = latest.filter(canPrintMaterialTransfer)
+    if (!rows.value.length) return
     printing.value = true
     await nextTick()
     await nextTick()

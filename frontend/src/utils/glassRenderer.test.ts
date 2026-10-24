@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { GlassRenderer } from '../../vendor/lens/index.js'
+import { GlassRenderer, type RendererOptions } from '../../vendor/lens/index.js'
 
 const gpu = vi.hoisted(() => ({ observe: vi.fn() }))
 vi.mock('../../vendor/lens/internal/context-budget.js', () => ({ observeGPU: gpu.observe }))
@@ -61,7 +61,7 @@ function nextFrame() {
   for (const callback of pending) callback(time)
 }
 
-function fixture() {
+function fixture(options: RendererOptions = {}) {
   const stage = document.createElement('section')
   const canvas = document.createElement('canvas')
   stage.append(canvas)
@@ -100,7 +100,7 @@ function fixture() {
   ) as unknown as WebGL2RenderingContext
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(gl)
   const onState = vi.fn()
-  renderer = new GlassRenderer(canvas, stage, { artwork() {}, motion: false, onState })
+  renderer = new GlassRenderer(canvas, stage, { artwork() {}, motion: false, onState, ...options })
   return {
     stage,
     canvas,
@@ -221,4 +221,65 @@ it('waits for a complete replacement frame after WebGL context restoration', () 
   expect(displayDraws.at(-1)).toEqual({ hidden: true, ready: false })
   expect(canvas.hidden).toBe(false)
   expect(onState.mock.calls.map(([state]) => state)).toEqual(['ready', 'lost', 'ready'])
+})
+
+it('keeps form typing, pointer movement and content scrolling from repainting static glass', async () => {
+  const { stage, displayDraws } = fixture({ interactive: false })
+  const content = document.createElement('main')
+  const input = document.createElement('input')
+  content.append(input)
+  stage.append(content)
+  activate()
+  nextFrame()
+  await Promise.resolve()
+  nextFrame()
+  await Promise.resolve()
+  expect(frames.size).toBe(0)
+  expect(displayDraws).toHaveLength(1)
+  const count = displayDraws.length
+
+  stage.dispatchEvent(new MouseEvent('pointermove', { clientX: 40, clientY: 60 }))
+  input.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+  input.dispatchEvent(new Event('pointerup', { bubbles: true }))
+  input.classList.add('is-focus')
+  input.style.color = 'red'
+  input.value = '输入工艺要求'
+  content.append(document.createTextNode('校验信息'))
+  content.dispatchEvent(new Event('scroll'))
+  await Promise.resolve()
+  nextFrame()
+  expect(frames.size).toBe(0)
+  expect(displayDraws).toHaveLength(count)
+})
+
+it('redraws changed optical geometry and resize once while limiting only the background resolution', async () => {
+  vi.stubGlobal('devicePixelRatio', 2)
+  const { stage, canvas, displayDraws, setWidth } = fixture({
+    interactive: false,
+    maxPixelRatio: 1,
+  })
+  activate()
+  nextFrame()
+  await Promise.resolve()
+  nextFrame()
+  await Promise.resolve()
+  expect(canvas.width).toBe(320)
+  const count = displayDraws.length
+  const footer = document.createElement('footer')
+  footer.dataset.glass = 'panel'
+  stage.append(footer)
+  await Promise.resolve()
+  expect(frames.size).toBe(1)
+  nextFrame()
+  expect(displayDraws).toHaveLength(count + 1)
+  expect(frames.size).toBe(0)
+
+  setWidth(480)
+  resize()
+  expect(canvas.width).toBe(480)
+  expect(canvas.hidden).toBe(true)
+  nextFrame()
+  expect(canvas.hidden).toBe(false)
+  expect(displayDraws).toHaveLength(count + 2)
+  expect(frames.size).toBe(0)
 })

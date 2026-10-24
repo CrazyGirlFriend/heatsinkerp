@@ -234,9 +234,27 @@ def context(db, team_id, lot_id, page=1, page_size=10):
             else None
         )
     )
+    if physical_lot.rework_pending:
+        progress = None
+    from .material_lineage import relatives
+    from .models import MaterialInspection
     from .process_routes import processing_context
 
+    feedback_path = relatives([lot_id], ancestors=True, name="rework_feedback_ancestors")
+    inspections = db.execute(
+        select(MaterialInspection.id, MaterialInspection.kind, MaterialInspection.checked_at)
+        .where(
+            MaterialInspection.source_transfer_id.in_(select(feedback_path.c.id)),
+            MaterialInspection.failed_quantity > 0,
+        )
+        .order_by(MaterialInspection.id.desc())
+        .limit(50)
+    ).all()
     return {
+        "rework_inspections": [
+            {"id": row.id, "kind": row.kind, "checked_at": _utc(row.checked_at)}
+            for row in inspections
+        ],
         "process_route": processing_context(physical_lot),
         "source_transfer_id": lot_id,
         "batch_no": lot.batch_no,
@@ -255,7 +273,16 @@ def context(db, team_id, lot_id, page=1, page_size=10):
         if stock.require_team(db, team_id).code in SPLITTING_TEAM_CODES
         else "unit",
         "origin_processing_record": record_dict(origin) if origin else None,
-        "rework_of_id": rework_of_id,
+        "rework_of_id": physical_lot.rework_route.rework_of_id
+        if physical_lot.rework_route_id
+        else rework_of_id,
+        "rework_route_id": physical_lot.rework_route_id,
+        "rework_round": physical_lot.rework_route.rework_round
+        if physical_lot.rework_route_id
+        else None,
+        "rework_route_ready": physical_lot.rework_route.state == "published"
+        if physical_lot.rework_route_id
+        else False,
         "rework_pending": physical_lot.rework_pending,
         "rework_count": physical_lot.rework_count,
         **weight_differences(db, [lot_id], team_id).get(lot_id, {}),
@@ -304,7 +331,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
 
     payload, route_index = prepare_processing(lot, payload)
     prior_work = validate(db, lot, payload, latest)
-    task_fields = task_snapshot(db, lot, payload, prior_work)
+    task_fields = task_snapshot(db, lot, payload, None if route_index is not None else prior_work)
     payload, production = prepare(lot, balance, latest, payload, team.code)
     before_specification = (
         latest.after_specification
@@ -368,7 +395,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         )
     finish_processing(lot, payload, route_index, items)
     route_fields = processing_fields(lot, route_index)
-    if prior_work:
+    if prior_work and route_index is None:
         route_fields = {
             key: getattr(prior_work, key)
             for key in (
@@ -390,7 +417,11 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         **production,
         work_kind=payload.work_kind,
         rework_of_id=prior_work.id if prior_work else None,
-        rework_round=lot.rework_count + 1 if prior_work else 0,
+        rework_round=lot.process_route.rework_round
+        if prior_work and route_index is not None
+        else lot.rework_count + 1
+        if prior_work
+        else 0,
         processing_status=status,
         before_specification=before_specification or "",
         after_specification=after_specification or "",

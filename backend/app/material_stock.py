@@ -33,6 +33,7 @@ from .models import (
     MaterialLoss,
     MaterialStockBalance,
     MaterialTransfer,
+    ProcessRoute,
     SerialUrgency,
     Team,
     utcnow,
@@ -77,6 +78,8 @@ class LossCreate(StockAmounts):
 
 
 class DispatchLine(StockAmounts, WarehouseLocationChoice, SludgeMeasurement):
+    process_route_id: int | None = Field(default=None, ge=1)
+    process_route_version: int | None = Field(default=None, ge=1)
     production_schedule_id: int | None = Field(default=None, ge=1)
     material_type: str | None = Field(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN)
     purpose_id: int | None = Field(default=None, ge=1)
@@ -369,14 +372,6 @@ def create_dispatch(db, team_id, payload, user):
             target = None if external else workflow._active_target(db, payload.next_team_id)
             if target is not None and target.id == source.id:
                 raise HTTPException(422, "source and target teams must be different")
-            if payload.rework_return:
-                from .rework import previous_work
-                from .team_constants import PROCESSING_TEAM_CODES
-
-                if target is None or target.code not in PROCESSING_TEAM_CODES:
-                    raise HTTPException(422, "返工退料须选择生产班组")
-                if any(previous_work(db, lot) is None for lot in lots.values()):
-                    raise HTTPException(422, "返工退料必须关联已有加工记录")
             clearances = {item.source_transfer_id: item for item in payload.quantity_clearances}
             if (
                 len(clearances) != len(payload.quantity_clearances)
@@ -465,6 +460,14 @@ def create_dispatch(db, team_id, payload, user):
                     if "material_type" in line.model_fields_set
                     else lot.material_type
                 )
+                if line.process_route_id is not None:
+                    from .process_route_api import bind_lot
+                    from .process_routes import require_route
+
+                    selected_route = require_route(db, line.process_route_id, True)
+                    if selected_route.version != line.process_route_version:
+                        raise HTTPException(409, "工艺版本已变化，请重新选择")
+                    bind_lot(db, selected_route, lot, user)
                 route_key = (lot.id, kind)
                 if route_key not in route_cache:
                     route_cache[route_key] = dispatch_fields(
@@ -472,8 +475,17 @@ def create_dispatch(db, team_id, payload, user):
                     )
                 fields = route_cache[route_key]
                 purpose_id = line.purpose_id
-                if fields and target and not payload.rework_return and not lot.rework_pending:
-                    step = lot.process_route.steps[fields["process_step_index"]]
+                if fields and target:
+                    selected_route = (
+                        db.get(ProcessRoute, fields["process_route_id"])
+                        if fields.get("process_route_id")
+                        else None
+                    )
+                    step = (
+                        selected_route.steps[fields["process_step_index"]]
+                        if selected_route
+                        else {"purpose_id": purpose_id}
+                    )
                     if purpose_id is not None and purpose_id != step["purpose_id"]:
                         raise HTTPException(422, "下序接收业务必须与已发布工艺一致")
                     purpose_id = step["purpose_id"]
@@ -547,12 +559,15 @@ def create_dispatch(db, team_id, payload, user):
                 route_fields = route_fields_by_line[line_index]
                 transfer = MaterialTransfer(
                     **route_fields,
-                    process_route=lot.process_route if route_fields else None,
+                    process_route=db.get(ProcessRoute, route_fields["process_route_id"])
+                    if route_fields.get("process_route_id")
+                    else None,
                     sent_process_step_index=lot.process_step_index
                     if route_fields and not payload.rework_return and not lot.rework_pending
                     else None,
                     sent_processing_status=sent_status(lot, record),
-                    rework_pending=payload.rework_return or lot.rework_pending,
+                    rework_pending=bool(route_fields.get("rework_route_id"))
+                    and not route_fields.get("process_step_complete", False),
                     rework_count=lot.rework_count,
                     batch_no=batch_no,
                     serial_no=lot.serial_no,
@@ -782,7 +797,7 @@ def stock_table(team_id=None):
     for amount in ("quantity", "weight"):
         columns[f"received_{amount}"] = cast(
             case(
-                (MaterialTransfer.entry_kind == "processing_output", 0),
+                (MaterialTransfer.entry_kind.in_(("processing_output", "rework_split")), 0),
                 else_=columns[f"received_{amount}"],
             ),
             getattr(balance, f"received_{amount}").type,

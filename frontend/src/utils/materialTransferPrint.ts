@@ -1,4 +1,5 @@
 import {
+  canPrintMaterialTransfer,
   externalActionLabel,
   isExternalTransfer,
   isWeightOnlyType,
@@ -32,6 +33,7 @@ export interface TransferPrintGroup {
 }
 
 export function transferPrintProfile(item: MaterialTransfer) {
+  if (item.entry_kind === 'rework_split') throw new Error('返工料划分不生成转料单')
   const kind = item.entry_kind || 'transfer',
     verb = externalActionLabel(kind)
   const profiles = {
@@ -304,7 +306,7 @@ export function groupTransferPrintItems(items: MaterialTransfer[]): TransferPrin
   const groups = new Map<string, TransferPrintGroup>(),
     seen = new Set<string>()
   for (const item of items) {
-    if (seen.has(item.batch_no)) continue
+    if (!canPrintMaterialTransfer(item) || seen.has(item.batch_no)) continue
     seen.add(item.batch_no)
     const profile = transferPrintProfile(item)
     const key = JSON.stringify([
@@ -325,7 +327,7 @@ export function groupTransferPrintItems(items: MaterialTransfer[]): TransferPrin
 }
 
 export function transferPrintTotals(items: MaterialTransfer[]) {
-  const active = items.filter((item) => item.status !== 'voided'),
+  const active = items.filter((item) => canPrintMaterialTransfer(item) && item.status !== 'voided'),
     countable = active.filter((item) => !isWeightOnlyType(item.material_type))
   return {
     batches: active.length,

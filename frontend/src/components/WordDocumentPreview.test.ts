@@ -51,7 +51,8 @@ it('renders retained Word bytes with its original table and styles only inside a
     }),
   )
   const frame = wrapper.get('iframe')
-  expect(frame.attributes('sandbox')).toBe('')
+  expect(frame.attributes('sandbox')).toBe('allow-same-origin')
+  expect(frame.attributes('sandbox')).not.toContain('allow-scripts')
   expect(frame.attributes('referrerpolicy')).toBe('no-referrer')
   const html = frame.attributes('srcdoc')!
   expect(html).toContain('原件表格及公差 ±0.05')
@@ -79,6 +80,58 @@ it('keeps a clear retry state when the authenticated source cannot be read', asy
   await flushPromises()
   expect(wrapper.find('[role="alert"]').exists()).toBe(false)
   expect(render).toHaveBeenCalledOnce()
+})
+it('keeps download and zoom available in the compact original toolbar', async () => {
+  wrapper = mount(WordDocumentPreview, { props: { route: routeFixture, compact: true } })
+  await flushPromises()
+  expect(wrapper.get('.word-preview-filename').attributes('title')).toBe('工艺.docx')
+  await wrapper.get('select[aria-label="原文件缩放"]').setValue('1.5')
+  expect(wrapper.get('iframe').attributes('srcdoc')).toContain('zoom:1.5')
+  await wrapper.get('button[aria-label="下载原件"]').trigger('click')
+  expect(processRouteApi.download).toHaveBeenCalledWith(routeFixture)
+})
+it('highlights the exact original row without reparsing and clears a stale location', async () => {
+  wrapper = mount(WordDocumentPreview, { props: { route: routeFixture } })
+  await flushPromises()
+  const frame = wrapper.get('iframe').element as HTMLIFrameElement
+  const original = document.implementation.createHTMLDocument('Word 原文')
+  Object.defineProperty(frame, 'contentDocument', { value: original })
+  original.body.innerHTML = '<table><tr><td>原文</td></tr></table>'
+  await wrapper.setProps({ sourceRow: '1:1' })
+  expect(frame.contentDocument!.querySelector('.route-source-target')?.textContent).toBe('原文')
+  await wrapper.setProps({ sourceRow: '1:99' })
+  expect(frame.contentDocument!.querySelector('.route-source-target')).toBeNull()
+  expect(render).toHaveBeenCalledOnce()
+  expect(processRouteApi.source).toHaveBeenCalledOnce()
+})
+it('does not guess a source location when the rendered Word table has been split', async () => {
+  wrapper = mount(WordDocumentPreview, { props: { route: routeFixture } })
+  await flushPromises()
+  const frame = wrapper.get('iframe').element as HTMLIFrameElement
+  const original = document.implementation.createHTMLDocument('Word 续页')
+  Object.defineProperty(frame, 'contentDocument', { value: original })
+  original.body.innerHTML =
+    '<table><tr><td>第一页</td></tr></table><table><tr><td>续页</td></tr></table>'
+  await wrapper.setProps({ sourceRow: '1:1' })
+  expect(frame.contentDocument!.querySelector('.route-source-target')).toBeNull()
+})
+it('magnifies the original layout in place without opening a new page or rerendering Word', async () => {
+  const open = vi.spyOn(window, 'open').mockReturnValue(null)
+  wrapper = mount(WordDocumentPreview, { props: { route: routeFixture } })
+  await flushPromises()
+  ;(wrapper.vm as unknown as { open: () => void }).open()
+  await flushPromises()
+  expect(open).not.toHaveBeenCalled()
+  const viewer = document.querySelector('.document-viewer')!
+  const html = viewer.querySelector('iframe')!.getAttribute('srcdoc')!
+  expect(html).toContain('#original-pages{zoom:1}')
+  expect(html).toContain('原件表格及公差 ±0.05')
+  expect(html).toContain("default-src 'none'")
+  expect(html).not.toContain('role="dialog"')
+  expect(render).toHaveBeenCalledOnce()
+  wrapper.unmount()
+  wrapper = undefined
+  expect(document.querySelector('.document-viewer')).toBeNull()
 })
 it('aborts reads and ignores a delayed source after closing the preview', async () => {
   let resolve!: (value: Blob) => void

@@ -28,7 +28,11 @@ const purposes = ref<TeamPurpose[]>([])
 const loading = ref(true),
   error = ref(''),
   settingsOpen = ref(false)
-const routeStep = computed(() => (!props.rework ? props.context.process_route : null))
+const routeStep = computed(() =>
+  !props.rework || props.context.process_route?.route_kind === 'rework'
+    ? props.context.process_route
+    : null,
+)
 const reworkRecords = computed(() => props.context.rework_task_records || [])
 const recordId = computed(() => props.reworkRecordId ?? props.context.rework_of_id ?? null)
 const origin = computed(() =>
@@ -37,11 +41,13 @@ const origin = computed(() =>
 const chooseOriginal = computed(
   () =>
     props.rework &&
+    !routeStep.value &&
     !props.reworkRecordFixed &&
     (reworkRecords.value.length > 1 || (reworkRecords.value.length > 0 && !origin.value)),
 )
 const validReworkRecord = computed(
   () =>
+    !!routeStep.value ||
     !props.rework ||
     Boolean(
       recordId.value &&
@@ -49,7 +55,7 @@ const validReworkRecord = computed(
     ),
 )
 const currentTaskName = computed(() =>
-  props.rework
+  props.rework && !routeStep.value
     ? origin.value?.processing_task_name || '历史未登记'
     : tasks.value.find((item) => item.id === props.taskId)?.name || '未登记',
 )
@@ -105,7 +111,7 @@ async function load() {
   const current = ++generation
   loading.value = true
   error.value = ''
-  if (props.rework) {
+  if (props.rework && !routeStep.value) {
     if (!recordId.value && reworkRecords.value.length === 1)
       emit('update:reworkRecordId', reworkRecords.value[0]!.rework_of_id)
     emit('update:taskId', origin.value?.processing_task_id || null)
@@ -171,18 +177,26 @@ onBeforeUnmount(() => ++generation)
   >
     <header>
       <strong>{{
-        rework
+        rework && !routeStep
           ? origin?.process_step_name || '原工序未登记'
           : `${routeStep!.sequence_no} · ${routeStep!.step_name}`
       }}</strong>
-      <span>{{ rework ? `原加工记录 #${recordId || '未选择'}` : '按派工工艺执行' }}</span>
+      <span>{{
+        routeStep?.route_kind === 'rework'
+          ? '返工工艺'
+          : rework
+            ? `原加工记录 #${recordId || '未选择'}`
+            : '按工艺执行'
+      }}</span>
     </header>
     <div class="processing-route-task">具体任务 · {{ currentTaskName }}</div>
-    <p v-if="rework && !recordId">请选择原加工记录，核对对应工序和工艺要求。</p>
-    <p v-else-if="rework && !validReworkRecord">未找到关联的原加工记录，请刷新后重新核对。</p>
+    <p v-if="rework && !routeStep && !recordId">请选择原加工记录，核对对应工序和工艺要求。</p>
+    <p v-else-if="rework && !routeStep && !validReworkRecord">
+      未找到关联的原加工记录，请刷新后重新核对。
+    </p>
     <p v-else>
       {{
-        rework
+        rework && !routeStep
           ? origin?.process_step_instructions || '历史未登记本道工艺要求'
           : routeStep!.instructions
       }}
@@ -248,7 +262,10 @@ onBeforeUnmount(() => ++generation)
       可先在<ElButton link type="primary" @click="settingsOpen = true">班组设置</ElButton
       >维护具体任务。
     </small>
-    <small v-if="rework" class="dialog-field-hint"
+    <small v-if="routeStep?.route_kind === 'rework'" class="dialog-field-hint"
+      >按返工工艺指定的业务和任务执行。</small
+    >
+    <small v-else-if="rework" class="dialog-field-hint"
       >沿用原加工记录的业务和任务，历史未登记的不补填。</small
     >
     <ElAlert v-if="error" :title="error" type="error" :closable="false">

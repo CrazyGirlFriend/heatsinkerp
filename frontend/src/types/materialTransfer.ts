@@ -11,6 +11,7 @@ export type MaterialEntryKind =
   | 'opening_stock'
   | 'serial_reallocation'
   | 'processing_output'
+  | 'rework_split'
   | ExternalEntryKind
 export type MaterialTransferAction = 'edit' | 'void' | 'confirm' | string
 
@@ -31,6 +32,7 @@ export const isScrapType = (type?: string | null) =>
 export const isWeightOnlyType = (type?: string | null) =>
   ['sludge', 'scrap_chips'].includes(type || '')
 export function receiptSourceLabel(transfer: MaterialTransfer): string {
+  if (transfer.entry_kind === 'rework_split') return '返工料划分'
   if (transfer.entry_kind === 'processing_output') return '本班组加工'
   if (transfer.entry_kind === 'serial_reallocation') return '转投入库'
   if (transfer.entry_kind === 'opening_stock') return '初始库存'
@@ -41,6 +43,7 @@ export function receiptSourceLabel(transfer: MaterialTransfer): string {
       : '外部入库'
 }
 export function materialSourceLabel(transfer: MaterialTransfer): string {
+  if (transfer.entry_kind === 'rework_split') return '返工料划分'
   if (transfer.entry_kind === 'processing_output') return `${transfer.next_team.name} · 本班组加工`
   if (transfer.entry_kind === 'serial_reallocation')
     return `${transfer.source_serial_no || '原流水号'} 转投入`
@@ -164,6 +167,8 @@ export interface MaterialTransfer
   purpose_name?: string | null
   urgency?: import('./recordFilters').SerialUrgency
   entry_kind?: MaterialEntryKind
+  rework_route_id?: number | null
+  rework_route_ready?: boolean
   rework_pending?: boolean
   rework_count?: number
   sent_processing_status?: import('./materialProcessing').ProcessingState | null
@@ -311,6 +316,7 @@ export function materialSenderName(transfer: MaterialTransfer): string {
 }
 
 export function materialTransferNotesLabel(transfer: MaterialTransfer): string {
+  if (transfer.entry_kind === 'rework_split') return '返工原因'
   if (transfer.entry_kind === 'processing_output') return '加工说明'
   if (transfer.entry_kind === 'serial_reallocation') return '转投原因'
   if (isExternalTransfer(transfer)) return `${externalActionLabel(transfer.entry_kind)}说明`
@@ -333,6 +339,7 @@ export function externalActionLabel(kind?: MaterialEntryKind): string {
   return kind === 'inspection_shipment' ? '发货' : '出库'
 }
 export function materialEntryLabel(kind?: MaterialEntryKind): string {
+  if (kind === 'rework_split') return '返工料划分'
   if (kind === 'processing_output') return '本班组加工'
   if (kind === 'serial_reallocation') return '流水号转投'
   if (kind === 'opening_stock') return '初始库存'
@@ -355,6 +362,10 @@ export function materialDocumentTitle(transfer: MaterialTransfer): string {
       : '物料转料单'
 }
 
+export function canPrintMaterialTransfer(transfer: MaterialTransfer): boolean {
+  return transfer.entry_kind !== 'rework_split'
+}
+
 export function materialTransferVersion(transfer: MaterialTransfer): { expected_version?: number } {
   return Number.isSafeInteger(transfer.version) && Number(transfer.version) > 0
     ? { expected_version: Number(transfer.version) }
@@ -371,6 +382,7 @@ export function materialTransferStatusLabel(
   status: MaterialTransferStatus | string,
   entryKind?: MaterialEntryKind,
 ): string {
+  if (entryKind === 'rework_split' && status === 'received') return '待返工处理'
   if (entryKind === 'processing_output' && status === 'received') return '已登记加工'
   if (entryKind === 'serial_reallocation' && status === 'received') return '已转投'
   if (entryKind === 'opening_stock') return '已登记'

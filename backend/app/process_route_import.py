@@ -420,13 +420,9 @@ def parse_docx(content):
     for sequence in sorted(set(sequences)):
         if sequences.count(sequence) > 1:
             issues.append(f"工序序号{sequence}重复，发布前须人工核对")
-    fields, field_warnings, serial_nos = extract_receipt_fields(tables)
-    for step in steps:
-        match = re.search(r"([\w-]+(?:[,，、]\s*[\w-]+)+)共投", step["instructions"])
-        if match:
-            for value in re.split(r"[,，、]\s*", match.group(1)):
-                if value not in serial_nos:
-                    serial_nos.append(value)
+    fields, field_warnings, _ = extract_receipt_fields(tables)
+    # Instructions may mention other orders. Only the explicit form field identifies this route.
+    serial_nos = [str(fields["serial_no"]["value"])] if "serial_no" in fields else []
     if not serial_nos:
         issues.append("未明确识别流水号，请对照原文补充本次派工名单")
     return (

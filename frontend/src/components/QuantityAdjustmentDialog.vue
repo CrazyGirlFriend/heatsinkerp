@@ -4,7 +4,8 @@ import { materialWeightToleranceKg } from '@/config/materialRules'
 
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import SharedMaterialInfo from './SharedMaterialInfo.vue'
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useProcessRouteView } from '@/composables/useProcessRouteView'
 import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 import {
   ElAlert,
@@ -27,6 +28,8 @@ import SpecificationInput from './SpecificationInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import ProcessingTaskFields from './ProcessingTaskFields.vue'
+import ReworkRouteRequest from './ReworkRouteRequest.vue'
+import { processRouteApi } from '@/services/processRouteApi'
 import type { TeamEmployee } from '@/types/teamBusiness'
 import WeightInput from './WeightInput.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
@@ -62,8 +65,19 @@ const props = defineProps<{
   rework?: boolean
   reworkRecordId?: number | null
 }>()
-const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [QuantityAdjustment] }>()
+const emit = defineEmits<{
+  'update:modelValue': [boolean]
+  saved: [QuantityAdjustment]
+  changed: []
+}>()
 const auth = useAuthStore()
+const ProcessRouteEditor = defineAsyncComponent(() => import('./ProcessRouteEditor.vue'))
+const {
+  route: viewedRoute,
+  loading: routeLoading,
+  open: viewRoute,
+  close: closeRoute,
+} = useProcessRouteView()
 const formRef = ref<InstanceType<typeof ElForm>>()
 const snapshot = ref<QuantityAdjustmentContext | null>(null)
 const records = ref<QuantityAdjustment[]>([]),
@@ -105,7 +119,12 @@ const taskId = ref<number | null>(null),
   purposeId = ref<number | null>(null)
 const taskFieldsValid = ref(true),
   originalRecordId = ref<number | null>(null)
-const isRework = computed(() => props.rework || snapshot.value?.rework_pending === true)
+const isRework = computed(
+  () =>
+    props.rework ||
+    snapshot.value?.rework_pending === true ||
+    snapshot.value?.process_route?.route_kind === 'rework',
+)
 const structured = computed(() => props.processing && !!snapshot.value?.processing_mode)
 const unitProcessing = computed(
   () => structured.value && snapshot.value?.processing_mode === 'unit',
@@ -284,6 +303,23 @@ async function load(refreshSnapshot = false) {
     if (current === generation) loading.value = false
   }
 }
+function reworkChanged() {
+  emit('changed')
+  emit('update:modelValue', false)
+}
+async function resumeRework() {
+  if (!snapshot.value || saving.value || !props.sourceId) return
+  saving.value = true
+  error.value = ''
+  try {
+    await processRouteApi.resumeRework(props.sourceId, snapshot.value.revision)
+    reworkChanged()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '返回正常工序失败'
+  } finally {
+    saving.value = false
+  }
+}
 function close() {
   if (!saving.value) emit('update:modelValue', false)
 }
@@ -418,6 +454,7 @@ async function save() {
 watch(
   () => [props.modelValue, props.teamId, props.sourceId],
   () => {
+    closeRoute()
     ++generation
     snapshot.value = null
     records.value = []
@@ -478,8 +515,10 @@ onBeforeUnmount(() => {
     @close="close"
   >
     <p v-if="isRework && snapshot" class="quantity-rework-note">
-      返工第 {{ (snapshot.rework_count || 0) + 1 }} 次 · 关联加工记录 #{{ originalRecordId }} ·
-      本次完成量单独计为返工工作量
+      返工第 {{ snapshot.rework_round || (snapshot.rework_count || 0) + 1 }} 次 · 关联加工记录 #{{
+        originalRecordId
+      }}
+      · 本次完成量单独计为返工工作量
     </p>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <div v-if="loading" role="status" class="quantity-loading">正在读取件数记录…</div>
@@ -499,8 +538,28 @@ onBeforeUnmount(() => {
         }}</ElDescriptionsItem>
       </ElDescriptions>
       <SharedMaterialInfo :item="snapshot" />
+      <ElAlert
+        v-if="isRework && snapshot.rework_route_id && !snapshot.rework_route_ready"
+        title="待工艺人员制定返工工艺"
+        type="warning"
+        :closable="false"
+      />
+      <ElButton
+        v-if="snapshot.rework_route_id && snapshot.rework_route_ready"
+        class="quantity-rework-route"
+        :loading="routeLoading"
+        @click="viewRoute(snapshot.rework_route_id)"
+        >查看返工工艺</ElButton
+      >
+      <ReworkRouteRequest
+        v-if="editable && hasStock && isRework && !snapshot.rework_route_id"
+        :context="snapshot"
+        :original-id="originalRecordId"
+        @changed="reworkChanged"
+        @busy="saving = $event"
+      />
       <ElForm
-        v-if="editable && hasStock"
+        v-if="editable && hasStock && (!isRework || snapshot.rework_route_ready)"
         ref="formRef"
         class="processing-registration-form"
         label-position="top"
@@ -846,7 +905,7 @@ onBeforeUnmount(() => {
           }}。拆分和继续加工沿用同一批提醒额度，不按件数换算重量或自动记作损耗。
         </p>
       </ElForm>
-      <p v-else-if="editable" class="quantity-note">
+      <p v-else-if="editable && !hasStock" class="quantity-note">
         {{
           snapshot.processing_status === 'complete'
             ? '本批已完成加工，下面可查看加工记录。'
@@ -897,7 +956,16 @@ onBeforeUnmount(() => {
           <template #default="{ row }">{{ row.purpose_name || '未登记' }}</template>
         </ElTableColumn>
         <ElTableColumn v-if="processing" label="工艺工序" min-width="160" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.process_step_name || '历史未登记' }}</template>
+          <template #default="{ row }">
+            <ElButton
+              v-if="row.work_kind === 'rework' && row.process_route_id"
+              link
+              type="primary"
+              :disabled="routeLoading"
+              @click="viewRoute(row.process_route_id)"
+              >{{ row.process_step_name || '返工工艺' }}</ElButton
+            ><span v-else>{{ row.process_step_name || '历史未登记' }}</span>
+          </template>
         </ElTableColumn>
         <ElTableColumn label="具体任务" min-width="120" align="center">
           <template #default="{ row }">{{ row.processing_task_name || '未登记' }}</template>
@@ -980,7 +1048,14 @@ onBeforeUnmount(() => {
         >刷新并核对</ElButton
       >
       <ElButton
-        v-if="editable"
+        v-if="editable && snapshot?.process_route?.can_resume"
+        type="primary"
+        :loading="saving"
+        @click="resumeRework"
+        >返回正常工序</ElButton
+      >
+      <ElButton
+        v-else-if="editable && (!isRework || snapshot?.rework_route_ready)"
         type="primary"
         :loading="saving"
         :disabled="loading || conflict || !hasStock"
@@ -989,9 +1064,13 @@ onBeforeUnmount(() => {
       >
     </template>
   </AppDialog>
+  <ProcessRouteEditor v-if="viewedRoute" :route="viewedRoute" view-only @close="closeRoute" />
 </template>
 
 <style scoped>
+.quantity-rework-route {
+  margin: 12px 0;
+}
 .processing-history-requirements {
   padding: 14px 20px;
 }

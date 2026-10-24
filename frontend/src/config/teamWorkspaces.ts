@@ -3,6 +3,7 @@ import type { Team } from '@/services/adminApi'
 import type { LocationQuery } from 'vue-router'
 
 export const teamWorkspaceSections = [
+  { value: 'process-routes', label: '工艺记录' },
   { value: 'stock', label: '库存明细' },
   { value: 'delivery-schedule', label: '交货排期' },
   { value: 'pending', label: '来料待签收' },
@@ -30,6 +31,7 @@ export function teamWorkspaceSectionsFor(
 ) {
   return teamWorkspaceSections.filter(
     (section) =>
+      section.value !== 'process-routes' &&
       (section.value !== 'warehouse' || (warehouse && manageWarehouse)) &&
       (section.value !== 'reallocations' || reallocations) &&
       (section.value !== 'inspection-results' || inspection) &&

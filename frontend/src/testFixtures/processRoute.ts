@@ -68,3 +68,31 @@ routeFixture.steps.forEach((step, index) => {
   step.source_row = `1:${index + 1}`
 })
 routeFixture.source_data.original_steps = structuredClone(routeFixture.steps)
+
+export const reworkRouteFixture: ProcessRoute = {
+  ...routeFixture,
+  id: 27,
+  title: 'S-001 返工精磨',
+  route_kind: 'rework',
+  state: 'published',
+  filename: '',
+  engineering_employee_name: '张工',
+  source_data: { tables: [], issues: [] },
+  steps: [{ ...routeFixture.steps[1]!, sequence_no: 1, instructions: '返工精磨至2.50±0.01mm' }],
+  rework_request: {
+    can_modify: true,
+    source_transfer_id: 10,
+    batch_no: 'TL-REWORK-1',
+    team_id: 2,
+    team_name: '研磨',
+    quantity: 4,
+    weight: 40,
+    reason: '尺寸偏差，重新精磨',
+    rework_of_id: 42,
+    round: 1,
+    resume_route_id: 8,
+    resume_step_index: 1,
+    resume_step_name: '粗磨',
+    resume_team_id: 2,
+  },
+}

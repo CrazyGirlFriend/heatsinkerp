@@ -54,6 +54,8 @@ function createLayer(dialog: HTMLElement, footer?: HTMLElement, buttons: HTMLEle
         canvas,
         material: { refraction: 0.76, blur: 0.14, dispersion: 0.1 },
         motion: false,
+        interactive: false,
+        maxPixelRatio: 1,
         elasticity: 0.32,
         audio: { enabled: false, storage: null },
         artwork(ctx, { width, height, dpr }) {

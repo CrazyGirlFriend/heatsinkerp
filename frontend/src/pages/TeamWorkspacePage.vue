@@ -104,9 +104,21 @@ const validId = computed(
   () => /^\d+$/.test(teamKey.value) && Number.isSafeInteger(teamId.value) && teamId.value > 0,
 )
 const team = computed(() => directory.items.find((item) => String(item.id) === teamKey.value))
+watch(
+  team,
+  (value) => {
+    if (value?.kind === 'engineering') void router.replace('/process-routes')
+  },
+  { immediate: true },
+)
 const profile = computed(() => teamWorkspaceProfile(team.value?.code))
 const scopeReady = computed(
-  () => validId.value && directory.loaded && !directory.error && Boolean(team.value?.active),
+  () =>
+    validId.value &&
+    directory.loaded &&
+    !directory.error &&
+    Boolean(team.value?.active) &&
+    team.value?.kind !== 'engineering',
 )
 const scopeLoading = computed(
   () =>

@@ -38,3 +38,13 @@ describe('safe internal redirect', () => {
     expect(safeInternalRedirect(value)).toBe('/transfer-batches')
   })
 })
+
+it('lands the engineering account in its own workbench', () => {
+  expect(
+    defaultAuthenticatedPath({
+      role: 'TEAM',
+      team_id: 9,
+      team: { id: 9, code: 'FACTORY-PROCESS', name: '工艺', kind: 'engineering', active: true },
+    }),
+  ).toBe('/process-routes')
+})

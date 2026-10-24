@@ -32,7 +32,7 @@ const sidebar = useSidebarStore(appPinia)
 const activeGroup = computed(() =>
   route.path.startsWith('/settings/')
     ? 'settings'
-    : ['/', '/factory-analysis', '/production-schedules', '/process-routes'].includes(route.path)
+    : ['/', '/factory-analysis', '/production-schedules'].includes(route.path)
       ? 'factory'
       : ['/transfer-batches', '/material-trace'].includes(route.path)
         ? 'materials'
@@ -272,14 +272,6 @@ const materialLinks = computed(() => [
               ><FactoryNavIcon name="schedule" /></ElIcon
             ><span>生产排期</span></ElMenuItem
           >
-          <ElMenuItem
-            v-if="isAdmin"
-            index="/process-routes"
-            aria-label="工艺路线"
-            :aria-current="route.path === '/process-routes' ? 'page' : undefined"
-            ><ElIcon class="factory-nav__team-icon"><FactoryNavIcon name="schedule" /></ElIcon
-            ><span>工艺路线</span></ElMenuItem
-          >
         </ElSubMenu>
         <ElSubMenu
           index="teams"
@@ -298,6 +290,13 @@ const materialLinks = computed(() => [
               aria-hidden="true"
               >当前</span
             ></template
+          >
+          <ElMenuItem
+            index="/process-routes"
+            aria-label="工艺工作台"
+            :aria-current="route.path === '/process-routes' ? 'page' : undefined"
+            ><ElIcon class="factory-nav__team-icon"><FactoryNavIcon name="records" /></ElIcon
+            ><span>工艺</span></ElMenuItem
           >
           <ElMenuItem
             v-if="teamDirectory.loading && !teamDirectory.loaded"

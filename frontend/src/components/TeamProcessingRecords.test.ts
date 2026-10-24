@@ -10,6 +10,8 @@ import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import TableExportButton from './TableExportButton.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
+import { processRouteApi } from '@/services/processRouteApi'
+import { reworkRouteFixture } from '@/testFixtures/processRoute'
 import type { ProcessingRecord } from '@/types/materialProcessing'
 
 const live = vi.hoisted(() => ({ refresh: async () => {} }))
@@ -105,6 +107,11 @@ async function render(canWrite = true, path = '/team-workspaces/5?tab=processing
       plugins: [router],
       stubs: {
         QuantityAdjustmentDialog: true,
+        ProcessRouteEditor: {
+          name: 'ProcessRouteEditor',
+          props: { route: Object, viewOnly: Boolean },
+          template: '<div />',
+        },
         ElDialog: { template: '<div><slot/><slot name="footer"/></div>' },
       },
     },
@@ -267,6 +274,26 @@ describe('cutting processing records', () => {
 })
 
 describe('unified production records', () => {
+  it('opens the exact rework instructions used by the historical processing record as read-only', async () => {
+    vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+      items: [
+        { ...record(), work_kind: 'rework', process_route_id: 27, process_step_name: '返工精磨' },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    })
+    vi.spyOn(processRouteApi, 'detail').mockResolvedValue(reworkRouteFixture)
+    await render()
+    await wrapper.get('button[aria-label="查看加工记录 #1 的返工工艺"]').trigger('click')
+    await flushPromises()
+    expect(processRouteApi.detail).toHaveBeenCalledWith(27)
+    expect(wrapper.getComponent({ name: 'ProcessRouteEditor' }).props()).toMatchObject({
+      route: reworkRouteFixture,
+      viewOnly: true,
+    })
+    expect(wrapper.getComponent(QuantityAdjustmentDialog).props('modelValue')).toBe(false)
+  })
   it('expands recorded process requirements without adding long text to the main table or reopening registration', async () => {
     const instructions = '厚度 2.5（+0.01/-0.02）mm。\n禁止叠放；单件放入泡沫盒。'.repeat(20)
     vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({

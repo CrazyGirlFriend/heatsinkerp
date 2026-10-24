@@ -102,6 +102,24 @@ def test_valid_word_without_optional_document_relationships_is_supported():
     assert values(parser.parse_docx(content))["serial_no"] == "VALID-WORD"
 
 
+def test_identical_rows_with_the_same_sequence_remain_distinct_source_rows():
+    content = docx(
+        [
+            ["流水号", "691236-50"],
+            HEADERS,
+            [6, "研磨", "按图加工", "7", "4008.00"],
+            [7, "轧板", "小拉丝机(80目)拉面。", "7", "4008.00"],
+            [7, "轧板", "小拉丝机(80目)拉面。", "7", "4008.00"],
+        ]
+    )
+    data, _, steps = parser.parse_docx(content)
+    assert [step["sequence_no"] for step in steps] == [6, 7, 7]
+    assert steps[1]["source_row"] == "1:4"
+    assert steps[2]["source_row"] == "1:5"
+    assert data["original_steps"] == steps
+    assert any("序号7重复" in issue for issue in data["issues"])
+
+
 def test_word_form_matches_real_dispatch_labels_without_guessing_stock_or_units():
     result = parser.parse_docx(
         docx(
@@ -150,7 +168,8 @@ def test_word_form_matches_real_dispatch_labels_without_guessing_stock_or_units(
         "source_row": "1:6",
         "source_label": "来料数量：",
     }
-    assert set(result[1]) == {"691236-49", "691236-50", "691236-51"}
+    assert result[1] == ["691236-50"]
+    assert result[2][0]["instructions"] == "691236-49,691236-50,691236-51共投"
     assert any("未标明重量单位" in text for text in result[0]["field_warnings"])
     assert len(result[0]["original_steps"]) == 2
     assert result[0]["tables"][0][4][3] == "18100"
@@ -410,3 +429,16 @@ def test_ambiguous_multiple_main_document_relationships_are_rejected():
     with pytest.raises(HTTPException) as exc:
         parser.parse_docx(docx(PROCESS, parts={"_rels/.rels": relationships}))
     assert exc.value.status_code == 422
+
+
+def test_instruction_references_never_identify_the_route_without_a_header_serial():
+    result = parser.parse_docx(docx([HEADERS, [0, "中转库", "OTHER-1,OTHER-2共投", "0", "20"]]))
+    assert result[1] == []
+    assert result[2][0]["instructions"] == "OTHER-1,OTHER-2共投"
+    assert any("未明确识别流水号" in issue for issue in result[0]["issues"])
+
+
+def test_conflicting_explicit_serial_fields_require_review_instead_of_guessing():
+    result = parser.parse_docx(docx([["流水号", "ONE"], ["流水号", "TWO"], *PROCESS]))
+    assert result[1] == []
+    assert "serial_no" not in result[0]["receipt_fields"]

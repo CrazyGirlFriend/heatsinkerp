@@ -9,3 +9,4 @@ pydantic==2.11.7
 python-multipart==0.0.20
 alembic==1.16.5
 cryptography==48.0.1
+pypdf==6.10.0

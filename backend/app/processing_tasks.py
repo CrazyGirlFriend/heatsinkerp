@@ -44,7 +44,7 @@ def completed_work(team_id, lot_ids, *, local=True, name="processing_task_ancest
         .where(
             *(
                 [
-                    path.c.entry_kind.in_(("processing_output", "serial_reallocation")),
+                    path.c.entry_kind.in_(("processing_output", "serial_reallocation", "rework_split")),
                     path.c.source_team_id == team_id,
                     Transfer.next_team_id == team_id,
                 ]

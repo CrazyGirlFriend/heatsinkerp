@@ -4,7 +4,11 @@ import { ElButton, ElForm, ElFormItem, ElIcon, ElInput } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authState, isAuthenticated, login } from '@/stores/auth'
-import { DEFAULT_LOGIN_PATH, safeInternalRedirect } from '@/utils/navigation'
+import {
+  DEFAULT_LOGIN_PATH,
+  defaultAuthenticatedPath,
+  safeInternalRedirect,
+} from '@/utils/navigation'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,6 +30,11 @@ const refreshHref = computed(
 )
 
 function safeRedirect(): string {
+  if (
+    authState.currentUser?.team?.kind === 'engineering' &&
+    (!route.query.redirect || route.query.redirect === DEFAULT_LOGIN_PATH)
+  )
+    return defaultAuthenticatedPath(authState.currentUser)
   return safeInternalRedirect(route.query.redirect, DEFAULT_LOGIN_PATH)
 }
 

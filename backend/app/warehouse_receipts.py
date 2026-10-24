@@ -11,7 +11,7 @@ from .batch_numbers import next_transfer_batch_number
 from .material_weight import sludge_measurement, validate_material_amounts
 from .models import MaterialDispatch, MaterialTransfer, Team, utcnow
 from .process_route_schemas import RouteWrite
-from .process_routes import publish_route, require_draft_owner, require_route
+from .process_routes import require_route
 from .record_filters import RecordFilters
 from .schemas import SCRAP_MATERIAL_TYPES
 from .team_constants import WAREHOUSE_TEAM_CODE
@@ -33,15 +33,17 @@ def replay(prior, user, request_hash):
 
 
 def intake_route(db, team, payload, user):
-    """Publish the reviewed imported draft in the same transaction as its stock origin."""
+    """Bind an engineering-published route without changing its reviewed content."""
     if payload.process_route is None:
         return None
     if payload.receipt_kind != "external" or payload.material_type in SCRAP_MATERIAL_TYPES:
         raise HTTPException(422, "工艺导入仅用于正常物料的首次来料录入")
     submitted = payload.process_route
     route = require_route(db, submitted.id, True)
+    if route.route_kind != "normal" or route.state != "published":
+        raise HTTPException(422, "请先由工艺班组保存完整工艺，库房仅按流水号关联")
     if route.version != submitted.version:
-        raise HTTPException(409, "工艺草稿已变化，请刷新后核对")
+        raise HTTPException(409, "工艺版本已变化，请重新选择")
     serials = (
         {member.serial_no for member in payload.shared_serials}
         if payload.shared_serials
@@ -56,22 +58,11 @@ def intake_route(db, team, payload, user):
         "review_note": submitted.review_note.strip(),
         "version": submitted.version,
     }
-    if route.state == "published":
-        existing = RouteWrite.model_validate(
-            {key: getattr(route, key) for key in content}
-        ).model_dump()
-        if content != existing:
-            raise HTTPException(409, "已发布工艺不能随入库修改，请使用已核对的版本")
-    else:
-        require_draft_owner(db, route, user)
-        route.title, route.serial_nos, route.steps = (
-            content["title"],
-            content["serial_nos"],
-            content["steps"],
-        )
-        route.review_note = content["review_note"]
-        publish_route(db, route)
-        route.version += 1
+    existing = RouteWrite.model_validate({key: getattr(route, key) for key in content}).model_dump(
+        include=set(content)
+    )
+    if content != existing:
+        raise HTTPException(409, "已发布工艺不能随入库修改，请重新关联已发布版本")
     if route.steps[0]["team_id"] != team.id:
         raise HTTPException(422, "工艺路线起始工序必须为当前库房")
     return route

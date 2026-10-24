@@ -29,6 +29,7 @@ import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/stores/toast'
 import type { MaterialTransfer, MaterialTransferFilterParams } from '@/types/materialTransfer'
 import {
+  canPrintMaterialTransfer,
   canConfirmMaterialTransfer,
   canConfirmOutbound,
   canEditMaterialTransfer,
@@ -487,7 +488,13 @@ async function voidTransfer(): Promise<void> {
 }
 
 async function printTransfer(): Promise<void> {
-  if (!current.value || !props.allowPrint || printReady.value) return
+  if (
+    !current.value ||
+    !props.allowPrint ||
+    !canPrintMaterialTransfer(current.value) ||
+    printReady.value
+  )
+    return
   const batchNo = current.value.batch_no,
     epoch = requestVersion
   printReady.value = true
@@ -772,15 +779,20 @@ watch(
           @click="editOpen = true"
           >编辑</ElButton
         >
-        <ElButton v-if="allowPrint" :icon="Printer" @click="printTransfer">{{
-          processed
-            ? '打印加工登记单'
-            : receipt
-              ? '打印入库单'
-              : external
-                ? `打印${actionLabel}单`
-                : '打印转料单'
-        }}</ElButton>
+        <ElButton
+          v-if="allowPrint && canPrintMaterialTransfer(current)"
+          :icon="Printer"
+          @click="printTransfer"
+          >{{
+            processed
+              ? '打印加工登记单'
+              : receipt
+                ? '打印入库单'
+                : external
+                  ? `打印${actionLabel}单`
+                  : '打印转料单'
+          }}</ElButton
+        >
         <ElButton
           v-if="canVoid"
           type="danger"

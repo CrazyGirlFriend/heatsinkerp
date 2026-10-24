@@ -31,12 +31,20 @@ from .models import (
 )
 from .schemas import TeamCreate, TeamResponse, TeamUpdate, UserCreate, UserResponse, UserUpdate
 from .serializers import team_dict, user_dict
-from .team_constants import WAREHOUSE_TEAM_CODE, WAREHOUSE_TEAM_NAME
+from .team_constants import (
+    ENGINEERING_TEAM_CODE,
+    ENGINEERING_TEAM_NAME,
+    WAREHOUSE_TEAM_CODE,
+    WAREHOUSE_TEAM_NAME,
+)
 
 router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
 
 
-def _validate_team_identity(code: str, name: str) -> None:
+def _validate_team_identity(code: str, name: str, kind: str) -> None:
+    if kind == "engineering" or code == ENGINEERING_TEAM_CODE or name == ENGINEERING_TEAM_NAME:
+        if (code, name, kind) != (ENGINEERING_TEAM_CODE, ENGINEERING_TEAM_NAME, "engineering"):
+            raise HTTPException(422, "工艺班组须使用固定的工艺编码、名称和类型")
     if code.strip().upper() in {"FACTORY-SCRAP", "FACTORY-SHIP"} or name.strip() in {
         "转废",
         "发货",
@@ -50,7 +58,7 @@ def create_team(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
-    _validate_team_identity(payload.code, payload.name)
+    _validate_team_identity(payload.code, payload.name, payload.kind)
     if payload.kind == "warehouse" and (
         payload.code != WAREHOUSE_TEAM_CODE or payload.name != WAREHOUSE_TEAM_NAME
     ):
@@ -120,6 +128,11 @@ def update_team(
         raise _not_found("team")
     before = snapshot(team)
     supplied = payload.model_fields_set
+    if team.code == ENGINEERING_TEAM_CODE and any(
+        field in supplied and getattr(payload, field) != getattr(team, field)
+        for field in ("code", "name", "kind")
+    ):
+        raise _conflict("工艺班组的编码、名称和类型为固定系统项")
     if team.code == WAREHOUSE_TEAM_CODE and supplied.intersection(
         {"code", "name", "kind", "active"}
     ):
@@ -141,6 +154,7 @@ def update_team(
     _validate_team_identity(
         payload.code if "code" in supplied else team.code,
         payload.name if "name" in supplied else team.name,
+        payload.kind if "kind" in supplied else team.kind,
     )
     if any(
         field in supplied and getattr(payload, field) != getattr(team, field)

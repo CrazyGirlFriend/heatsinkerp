@@ -197,8 +197,8 @@ def _require_team_actor(user: User) -> Team:
 
 def _active_target(db, team_id: int) -> Team:
     team = db.scalar(select(Team).where(Team.id == team_id).with_for_update())
-    if team is None or not team.active:
-        raise HTTPException(422, "next_team_id must reference an active team")
+    if team is None or not team.active or team.kind == "engineering":
+        raise HTTPException(422, "接收班组须为启用的收发料班组")
     return team
 
 
@@ -346,6 +346,10 @@ def material_transfer_dict(
         "entry_kind": transfer.entry_kind,
         "processing_role": transfer.processing_role,
         "sent_processing_status": transfer.sent_processing_status,
+        "rework_route_id": transfer.rework_route_id,
+        "rework_route_ready": transfer.rework_route.state == "published"
+        if transfer.rework_route_id
+        else False,
         "rework_pending": transfer.rework_pending,
         "rework_count": transfer.rework_count,
         "purpose_id": transfer.purpose_id,
@@ -442,6 +446,8 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
 
     validate_pair(payload.delivery_date, payload.delivery_quantity)
     source = _require_team_actor(user)
+    if source.kind == "engineering":
+        raise HTTPException(403, "工艺班组不办理实物收发")
     request_hash = _creation_fingerprint(payload)
     try:
         with db.begin():

@@ -716,11 +716,11 @@ def validate_plan(db, payload, plan=None):
     if plan and plan.predecessor_id and payload.predecessor_id is None:
         raise HTTPException(409, "不能移除任务中已有节点的前序关联")
     team = db.get(Team, payload.team_id)
-    if team is None or not team.active:
+    if team is None or not team.active or team.kind == "engineering":
         raise HTTPException(422, "请选择启用的交货班组")
     if payload.next_team_id:
         target = db.get(Team, payload.next_team_id)
-        if target is None or not target.active:
+        if target is None or not target.active or target.kind == "engineering":
             raise HTTPException(422, "请选择启用的接收班组")
     elif payload.external_destination not in EXTERNAL_DESTINATIONS or team.code not in (
         WAREHOUSE_TEAM_CODE,

@@ -209,7 +209,9 @@ const canSubmit = computed(
 )
 const destinationTeams = computed(() => {
   const sourceId = String(sourceTeam.value?.id ?? '')
-  const items = teamStore.items.filter((team) => team.active && String(team.id) !== sourceId)
+  const items = teamStore.items.filter(
+    (team) => team.active && team.kind !== 'engineering' && String(team.id) !== sourceId,
+  )
   const selected = editingSnapshot.value?.next_team
   if (selected && !items.some((team) => String(team.id) === String(selected.id))) {
     return [...items, { ...selected, active: true }]

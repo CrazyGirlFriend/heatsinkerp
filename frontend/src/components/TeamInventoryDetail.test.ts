@@ -14,6 +14,8 @@ import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { warehouseFixture } from '@/testFixtures/teamInventory'
 import type { StockBatch } from '@/types/teamMaterials'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
+import { processRouteApi } from '@/services/processRouteApi'
+import { reworkRouteFixture } from '@/testFixtures/processRoute'
 import { inventoryScheduleFixture, scheduleSummaryFixture } from '@/testFixtures/inventorySchedule'
 
 const live = vi.hoisted(() => ({ refresh: async () => {} }))
@@ -111,12 +113,47 @@ async function render(canWrite = true, warehouse = true) {
         MaterialDispatchDrawer: true,
         SerialMaterialDrawer: true,
         TeamInspectionRecords: true,
+        ProcessRouteEditor: {
+          name: 'ProcessRouteEditor',
+          props: { route: Object, viewOnly: Boolean },
+          template: '<div />',
+        },
       },
     },
   })
   await flushPromises()
 }
 describe('warehouse source detail', () => {
+  it('shows ready and pending rework plans distinctly and opens the scoped plan read-only', async () => {
+    const ready = source(11, 5),
+      pending = source(12, 3)
+    ready.transfer.rework_route_id = 27
+    ready.transfer.rework_route_ready = true
+    pending.transfer.rework_route_id = 28
+    pending.transfer.rework_route_ready = false
+    vi.mocked(teamMaterialApi.inventorySources).mockResolvedValue({
+      items: [ready, pending],
+      total: 2,
+      page: 1,
+      page_size: 10,
+    })
+    vi.spyOn(processRouteApi, 'detail').mockResolvedValue(reworkRouteFixture)
+    await render(false, false)
+    const pendingButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '待制定返工工艺')!
+    expect(pendingButton.attributes('disabled')).toBeDefined()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '返工工艺')!
+      .trigger('click')
+    await flushPromises()
+    expect(processRouteApi.detail).toHaveBeenCalledWith(27)
+    expect(wrapper.getComponent({ name: 'ProcessRouteEditor' }).props()).toMatchObject({
+      route: reworkRouteFixture,
+      viewOnly: true,
+    })
+  })
   it('refreshes only its current page of schedule summaries when the parent clock requests it', async () => {
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
     await render()

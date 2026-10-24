@@ -43,7 +43,7 @@ const router = createRouter({
       path: '/process-routes',
       name: 'process-routes',
       component: () => import('@/pages/ProcessRoutesPage.vue'),
-      meta: { title: '工艺路线', adminOnly: true },
+      meta: { title: '工艺工作台' },
     },
     {
       path: '/production-schedules',
@@ -137,7 +137,11 @@ router.beforeEach(async (to) => {
     } catch {
       /* The guarded destination retries account verification. */
     }
-    destination = safeInternalRedirect(to.query.redirect, DEFAULT_LOGIN_PATH)
+    destination =
+      currentUser.value?.team?.kind === 'engineering' &&
+      (!to.query.redirect || to.query.redirect === DEFAULT_LOGIN_PATH)
+        ? defaultAuthenticatedPath(currentUser.value)
+        : safeInternalRedirect(to.query.redirect, DEFAULT_LOGIN_PATH)
   }
   if (to.name === 'access') {
     return isAuthenticated.value
@@ -186,6 +190,12 @@ router.beforeEach(async (to) => {
   ) {
     return { path: defaultAuthenticatedPath(currentUser.value) }
   }
+  if (
+    to.name === 'team-workspace' &&
+    String(to.params.teamId) === String(currentUser.value?.team_id) &&
+    currentUser.value?.team?.kind === 'engineering'
+  )
+    return '/process-routes'
   if (to.meta.adminOnly && !isAdmin.value) return { path: '/transfer-batches' }
   return true
 })

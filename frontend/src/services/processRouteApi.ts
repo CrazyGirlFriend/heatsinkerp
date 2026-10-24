@@ -6,7 +6,11 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
   try {
     return await httpRequest<T>(`/process-routes${path}`, { method, body })
   } catch (error) {
-    if (path === '/import' && error instanceof HttpRequestError && error.status === 413)
+    if (
+      ['/import', '/parse'].includes(path) &&
+      error instanceof HttpRequestError &&
+      error.status === 413
+    )
       throw new Error(
         '工艺单上传被服务器拒绝，请使用不超过 5 MB 的 .docx 文件；若文件符合要求，请联系管理员检查上传限制。',
         { cause: error },
@@ -23,12 +27,31 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
   }
 }
 export const processRouteApi = {
-  list: (query = '', page = 1, state?: 'published') =>
+  list: (
+    query = '',
+    page = 1,
+    state?: 'draft' | 'published',
+    sortOrder: 'asc' | 'desc' = 'desc',
+    pageSize = 20,
+    kind: 'normal' | 'rework' | 'all' = 'normal',
+  ) =>
     request<MaterialPage<ProcessRoute> & { enforced_after: string | null }>(
-      `?query=${encodeURIComponent(query)}&page=${page}&page_size=20${state ? '&state=' + state : ''}`,
+      `?query=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}&sort_order=${sortOrder}${state ? '&state=' + state : ''}${kind !== 'normal' ? '&kind=' + kind : ''}`,
     ),
   options: (teamId: number) =>
     request<{ tasks: TeamProcessingTask[]; purposes: TeamPurpose[] }>(`/options/${teamId}`),
+  requestRework: (body: {
+    source_transfer_id: number
+    rework_of_id: number
+    inspection_id?: number
+    expected_revision: number
+    quantity: number
+    weight: number
+    reason: string
+    idempotency_key: string
+  }) => request<ProcessRoute>('/rework-requests', 'POST', body),
+  resumeRework: (id: number, revision: number) =>
+    request(`/rework-lots/${id}/resume`, 'POST', { expected_revision: revision }),
   detail: (id: number) => request<ProcessRoute>(`/${id}`),
   lot: (id: number) =>
     request<{ current: ProcessRouteContext | null; route: ProcessRoute | null }>(`/lots/${id}`),
@@ -40,14 +63,70 @@ export const processRouteApi = {
     body.append('file', file)
     return request<ProcessRoute>('/import', 'POST', body)
   },
+  parse: (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.docx'))
+      return Promise.reject(new Error('仅支持 .docx 格式的工艺单'))
+    if (file.size > 5 * 1024 * 1024) return Promise.reject(new Error('工艺单文件不能超过 5 MB'))
+    const body = new FormData()
+    body.append('file', file)
+    return request<
+      Pick<ProcessRoute, 'title' | 'filename' | 'serial_nos' | 'steps' | 'source_data'>
+    >('/parse', 'POST', body)
+  },
   save: (route: ProcessRoute) =>
-    request<ProcessRoute>(`/${route.id}`, 'PUT', {
+    request<ProcessRoute>(route.id ? `/${route.id}` : '', route.id ? 'PUT' : 'POST', {
+      ...(route.rework_request
+        ? { resume_step_index: route.rework_request.resume_step_index }
+        : {}),
       title: route.title,
+      engineering_employee_id: route.engineering_employee_id ?? null,
+      modified_employee_id: route.modified_employee_id ?? route.engineering_employee_id ?? null,
       serial_nos: route.serial_nos,
       steps: route.steps,
       review_note: route.review_note || '',
       version: route.version,
     }),
+  attachSource: (route: ProcessRoute, file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    body.append('version', String(route.version))
+    return request<ProcessRoute>(`/${route.id}/source`, 'POST', body)
+  },
+  uploadDrawing: (route: ProcessRoute, file: File) => {
+    if (!file.name.toLowerCase().endsWith('.pdf'))
+      return Promise.reject(new Error('图纸仅支持 PDF 格式'))
+    if (file.size > 5 * 1024 * 1024) return Promise.reject(new Error('每份图纸不能超过 5 MB'))
+    const body = new FormData()
+    body.append('file', file)
+    body.append('version', String(route.version))
+    return request<ProcessRoute>(`/${route.id}/drawings`, 'POST', body)
+  },
+  removeDrawing: (route: ProcessRoute, id: number) =>
+    request<ProcessRoute>(`/${route.id}/drawings/${id}?version=${route.version}`, 'DELETE'),
+  drawing: async (
+    routeId: number,
+    id: number,
+    signal?: AbortSignal,
+    preview = false,
+  ): Promise<Blob> => {
+    const result = await httpClient.get(
+      `/process-routes/${routeId}/drawings/${id}${preview ? '?preview=true' : ''}`,
+      {
+        responseType: 'blob',
+        signal,
+      },
+    )
+    return result.data
+  },
+  previewDrawing: async (file: File, signal?: AbortSignal): Promise<Blob> => {
+    const body = new FormData()
+    body.append('file', file)
+    const result = await httpClient.post('/process-routes/drawing-preview', body, {
+      responseType: 'blob',
+      signal,
+    })
+    return result.data
+  },
   publish: (route: ProcessRoute) =>
     request<ProcessRoute>(`/${route.id}/publish`, 'POST', { version: route.version }),
   revise: (id: number) => request<ProcessRoute>(`/${id}/revise`, 'POST'),

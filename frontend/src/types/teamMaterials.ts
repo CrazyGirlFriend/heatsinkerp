@@ -124,6 +124,7 @@ export interface QuantityAdjustmentContext
   task_required?: boolean
   completed_task_ids?: number[]
   allowed_task_ids?: number[]
+  rework_inspections?: { id: number; kind: string; checked_at: string }[]
   rework_task_records?: {
     process_route_id?: number | null
     process_step_index?: number | null
@@ -153,6 +154,9 @@ export interface QuantityAdjustmentContext
   weight_root_transfer_id?: number
   origin_processing_record?: QuantityAdjustment | null
   rework_of_id?: number | null
+  rework_route_id?: number | null
+  rework_round?: number | null
+  rework_route_ready?: boolean
   rework_pending?: boolean
   rework_count?: number
 }
@@ -285,6 +289,8 @@ export interface DispatchParams extends MaterialPageParams {
   material_type?: MaterialType
 }
 export interface DispatchLine extends SludgeMeasurement {
+  process_route_id?: number
+  process_route_version?: number
   production_schedule_id?: number | null
   warehouse_location?: string | null
   warehouse_location_reservation_key?: string | null
