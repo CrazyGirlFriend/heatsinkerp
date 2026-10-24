@@ -85,6 +85,16 @@ const fields = computed<DocumentField[]>(() => {
       value: external ? t.external_destination || '—' : t.next_team.name,
     },
     { label: processed ? '本班组业务' : '接收业务', value: materialPurposeLabel(t) },
+    ...(t.process_route
+      ? [
+          { label: '派工工艺', value: t.process_route.title },
+          {
+            label: '当前工序',
+            value: `${t.process_route.sequence_no} · ${t.process_route.step_name}`,
+          },
+          { label: '工艺要求', value: t.process_route.instructions },
+        ]
+      : []),
     ...(t.next_team.code === 'FACTORY-WAREHOUSE'
       ? [{ label: '入库仓位', value: t.warehouse_location || '未填写' }]
       : []),

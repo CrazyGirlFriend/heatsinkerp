@@ -31,6 +31,7 @@ def database(monkeypatch):
         "work_orders",
         "admin_audit_events",
         "team_purposes",
+        "inspection_problem_types",
         "barcode_sequence",
     ):
         columns = [Column("id", Integer, primary_key=True), Column("value", String)]
@@ -56,6 +57,7 @@ def database(monkeypatch):
                 Column("transfer_id", ForeignKey("material_transfers.id", ondelete="RESTRICT"))
             ]
         reference = {
+            "production_schedules": "predecessor_id",
             "material_quantity_adjustments": "rework_of_id",
             "material_inspections": "parent_id",
         }.get(name)
@@ -69,6 +71,14 @@ def database(monkeypatch):
         if name == "shared_material_members":
             columns += [
                 Column("group_id", ForeignKey("shared_material_groups.id", ondelete="RESTRICT"))
+            ]
+        if name == "inspection_problems":
+            columns += [
+                Column("inspection_id", ForeignKey("material_inspections.id", ondelete="RESTRICT")),
+                Column(
+                    "problem_type_id",
+                    ForeignKey("inspection_problem_types.id", ondelete="RESTRICT"),
+                ),
             ]
         Table(name, metadata, *columns)
     metadata.create_all(engine)
@@ -84,6 +94,11 @@ def database(monkeypatch):
             connection.execute(metadata.tables[name].insert(), {"id": 1, "transfer_id": 2})
         connection.execute(metadata.tables["material_transfers"].update().values(shared_group_id=1))
         connection.execute(metadata.tables["shared_material_members"].update().values(group_id=1))
+        connection.execute(
+            metadata.tables["inspection_problems"]
+            .update()
+            .values(inspection_id=1, problem_type_id=1)
+        )
     try:
         yield engine, metadata
     finally:
@@ -124,6 +139,7 @@ def test_reset_removes_rechecks_and_rework_before_their_original_records(databas
     engine, metadata = database
     with engine.begin() as connection:
         for name, reference in (
+            ("production_schedules", "predecessor_id"),
             ("material_inspections", "parent_id"),
             ("material_quantity_adjustments", "rework_of_id"),
         ):
@@ -145,7 +161,12 @@ def test_reset_removes_rechecks_and_rework_before_their_original_records(databas
     before = contents(engine, metadata)
     with Session(engine) as db:
         deleted = reset.reset_business_data(db)
-    assert deleted["material_inspections"] == deleted["material_quantity_adjustments"] == 3
+    assert (
+        deleted["material_inspections"]
+        == deleted["material_quantity_adjustments"]
+        == deleted["production_schedules"]
+        == 3
+    )
     after = contents(engine, metadata)
     for name in metadata.tables:
         assert after[name] == ([] if name in reset.RESET_TABLES else before[name])

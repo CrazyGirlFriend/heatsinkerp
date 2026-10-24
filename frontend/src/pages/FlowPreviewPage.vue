@@ -89,6 +89,11 @@ const selected = ref<FlowSelection | null>(null),
   hoveredId = ref(''),
   drawerOpen = ref(false),
   batchNo = ref('')
+const selectionOpen = ref(false),
+  batchMounted = ref(false)
+watch(selected, (value) => {
+  selectionOpen.value = Boolean(value)
+})
 const reallocationsOpen = ref(false),
   reallocationsPage = ref(1)
 const reallocations = computed(() => trace.value?.reallocations || [])
@@ -383,6 +388,7 @@ async function openReallocations() {
 async function openBatch(code: string) {
   if (example.value || !(await leaveFullscreenForDialog())) return
   batchNo.value = code
+  batchMounted.value = true
   drawerOpen.value = true
 }
 function openRelatedSerial(value: string) {
@@ -429,6 +435,7 @@ watch(
     hoveredId.value = ''
     originId.value = 'all'
     drawerOpen.value = false
+    batchMounted.value = false
     reallocationsOpen.value = false
     reallocationsPage.value = 1
     history.value = null
@@ -900,13 +907,14 @@ onBeforeUnmount(() => {
     </div>
     <AppDrawer
       v-if="mode === 'team'"
-      :model-value="Boolean(selected)"
+      v-model="selectionOpen"
       title="流向明细"
       size="380px"
       :modal="false"
       :lock-scroll="false"
       class="flow-selection-drawer"
-      @close="selected = null"
+      @close="selectionOpen = false"
+      @closed="selected = null"
     >
       <div v-if="selected">
         <h2 class="selection-title">{{ selected.title }}</h2>
@@ -996,9 +1004,10 @@ onBeforeUnmount(() => {
       />
     </AppDialog>
     <MaterialTransferDrawer
-      v-if="mode === 'team' || drawerOpen"
+      v-if="mode === 'team' || batchMounted"
       v-model="drawerOpen"
       :batch-no="batchNo"
+      @closed="batchMounted = false"
       @changed="live.request"
     />
   </div>

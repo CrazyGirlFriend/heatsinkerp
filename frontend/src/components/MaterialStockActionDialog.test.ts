@@ -9,6 +9,8 @@ import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import { factoryToday } from '@/utils/format'
+import { productionScheduleApi } from '@/services/productionScheduleApi'
+import type { ProductionSchedule, ScheduleSummary } from '@/types/productionSchedule'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
@@ -54,6 +56,7 @@ function source(id = 10, type: 'semi_finished' | null = 'semi_finished'): StockB
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(productionScheduleApi, 'candidates').mockResolvedValue({ items: [] })
   glass.enhance.mockReset()
   vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([
     { id: 22, team_id: 2, name: '发送王师傅', active: true, version: 1 },
@@ -81,9 +84,13 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render(mode: 'dispatch' | 'loss' = 'dispatch', sources = [source(), source(11)]) {
+async function render(
+  mode: 'dispatch' | 'loss' = 'dispatch',
+  sources = [source(), source(11)],
+  initialSchedule?: Pick<ProductionSchedule, 'id' | 'next_team_id' | 'external_destination'>,
+) {
   wrapper = mount(MaterialStockActionDialog, {
-    props: { modelValue: true, teamId: 2, mode, sources },
+    props: { modelValue: true, teamId: 2, mode, sources, initialSchedule },
     global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
   })
   await flushPromises()
@@ -112,6 +119,185 @@ async function destination(id = 3) {
 }
 
 describe('source batch dispatch and loss drafts', () => {
+  const schedule = (id: number) =>
+    ({
+      id,
+      due_at: '2026-10-24T08:00:00Z',
+      remaining_quantity: 100,
+      remaining_weight: null,
+    }) as ScheduleSummary
+  it('automatically carries the only matching deadline without another selection', async () => {
+    vi.mocked(productionScheduleApi.candidates).mockResolvedValue({
+      items: [{ source_transfer_id: 10, schedules: [schedule(4)] }],
+    })
+    await render('dispatch', [source()])
+    await destination()
+    expect(wrapper.text()).toContain('已自动关联')
+    expect(wrapper.find('[aria-label="TL10交货排期"]').exists()).toBe(false)
+    await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ lines: [expect.objectContaining({ production_schedule_id: 4 })] }),
+    )
+  })
+  it.each(['quantity', 'weight', 'both'] as const)(
+    'labels task progress by its %s completion basis without treating reference amounts as due',
+    async (completionBasis) => {
+      vi.mocked(productionScheduleApi.candidates).mockResolvedValue({
+        items: [
+          {
+            source_transfer_id: 10,
+            schedules: [
+              {
+                ...schedule(4),
+                task_title: '第一批交货',
+                completion_basis: completionBasis,
+                remaining_quantity: 17,
+                remaining_weight: 4.875,
+              },
+            ],
+          },
+        ],
+      })
+      await render('dispatch', [source()])
+      await destination()
+      expect(wrapper.text()).toContain('第一批交货 · #4')
+      expect(wrapper.text().includes('待交 17 件')).toBe(completionBasis !== 'weight')
+      expect(wrapper.text().includes('待交 4.875 kg')).toBe(completionBasis !== 'quantity')
+    },
+  )
+  it('requires an explicit allocation when one batch has multiple deadlines', async () => {
+    vi.mocked(productionScheduleApi.candidates).mockResolvedValue({
+      items: [{ source_transfer_id: 10, schedules: [schedule(4), schedule(5)] }],
+    })
+    await render('dispatch', [source()])
+    await destination()
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    const picker = wrapper
+      .findAllComponents(ElSelect)
+      .find((item) => item.props('ariaLabel') === 'TL10交货排期')!
+    picker.vm.$emit('update:modelValue', 5)
+    await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ lines: [expect.objectContaining({ production_schedule_id: 5 })] }),
+    )
+  })
+  it('does not load or count waste against a delivery schedule', async () => {
+    const waste = source()
+    waste.transfer.material_type = 'waste'
+    waste.scrap_available_quantity = 0
+    waste.scrap_available_weight = 10
+    await render('dispatch', [waste])
+    await destination(1)
+    expect(productionScheduleApi.candidates).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('交货排期')
+    await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalled()
+    expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1].lines[0]).not.toHaveProperty(
+      'production_schedule_id',
+    )
+  })
+  it('blocks submission if schedule lookup failed instead of silently dropping its association', async () => {
+    vi.mocked(productionScheduleApi.candidates).mockRejectedValue(new Error('排期读取失败'))
+    await render('dispatch', [source()])
+    await destination()
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('重新读取排期')
+  })
+  it.each([422, 409])(
+    'offers a safe refresh after a schedule rejection (%s) and preserves the draft',
+    async (status) => {
+      vi.mocked(productionScheduleApi.candidates)
+        .mockResolvedValueOnce({ items: [{ source_transfer_id: 10, schedules: [schedule(4)] }] })
+        .mockResolvedValueOnce({ items: [{ source_transfer_id: 10, schedules: [schedule(5)] }] })
+      vi.mocked(teamMaterialApi.createDispatch).mockRejectedValueOnce(
+        new TeamMaterialApiError('所选排期已调整，请刷新排期', status),
+      )
+      await render('dispatch', [source()])
+      await destination()
+      wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 75)
+      await submit()
+      expect(productionScheduleApi.candidates).toHaveBeenCalledTimes(1)
+      expect(wrapper.text()).toContain('重新读取排期')
+      await submit()
+      expect(teamMaterialApi.createDispatch).toHaveBeenCalledTimes(1)
+      await wrapper
+        .findAll('button')
+        .find((button) => button.text() === '重新读取排期')!
+        .trigger('click')
+      await flushPromises()
+      expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(75)
+      await submit()
+      const calls = vi.mocked(teamMaterialApi.createDispatch).mock.calls
+      expect(calls[1]![1]).toMatchObject({
+        next_team_id: 3,
+        sent_employee_id: 22,
+        lines: [{ source_transfer_id: 10, quantity: 75, production_schedule_id: 5 }],
+      })
+      expect(calls[1]![1].idempotency_key).not.toBe(calls[0]![1].idempotency_key)
+      expect(teamMaterialApi.refreshSource).not.toHaveBeenCalled()
+    },
+  )
+  it('ignores a late candidate response after the receiving destination changes', async () => {
+    let finishOld!: (result: Awaited<ReturnType<typeof productionScheduleApi.candidates>>) => void
+    vi.mocked(productionScheduleApi.candidates)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOld = resolve
+          }),
+      )
+      .mockResolvedValueOnce({ items: [{ source_transfer_id: 10, schedules: [schedule(5)] }] })
+    await render('dispatch', [source()])
+    await destination(3)
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    await destination(1)
+    finishOld({ items: [{ source_transfer_id: 10, schedules: [schedule(4)] }] })
+    await flushPromises()
+    expect(wrapper.text()).toContain('#5 ·')
+    expect(wrapper.text()).not.toContain('#4 ·')
+    await submit()
+    expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1]).toMatchObject({
+      next_team_id: 1,
+      lines: [{ production_schedule_id: 5 }],
+    })
+  })
+  it('does not silently replace an invalid initial schedule with another matching deadline', async () => {
+    vi.mocked(productionScheduleApi.candidates).mockResolvedValue({
+      items: [{ source_transfer_id: 10, schedules: [schedule(5)] }],
+    })
+    await render('dispatch', [source()], { id: 4, next_team_id: 3, external_destination: null })
+    expect(wrapper.text()).toContain('该排期已调整或已完成')
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+  })
+  it('preserves the selected schedule on uncertain retries and changes the key only with the selected deadline', async () => {
+    vi.mocked(productionScheduleApi.candidates).mockResolvedValue({
+      items: [{ source_transfer_id: 10, schedules: [schedule(4), schedule(5)] }],
+    })
+    vi.mocked(teamMaterialApi.createDispatch).mockRejectedValue(new Error('网络暂不可用'))
+    await render('dispatch', [source()])
+    await destination()
+    const picker = wrapper
+      .findAllComponents(ElSelect)
+      .find((item) => item.props('ariaLabel') === 'TL10交货排期')!
+    picker.vm.$emit('update:modelValue', 4)
+    await submit()
+    await submit()
+    expect(productionScheduleApi.candidates).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).not.toContain('重新读取排期')
+    picker.vm.$emit('update:modelValue', 5)
+    await submit()
+    const calls = vi.mocked(teamMaterialApi.createDispatch).mock.calls
+    expect(calls[0]![1].lines[0]!.production_schedule_id).toBe(4)
+    expect(calls[1]![1].idempotency_key).toBe(calls[0]![1].idempotency_key)
+    expect(calls[2]![1].lines[0]!.production_schedule_id).toBe(5)
+    expect(calls[2]![1].idempotency_key).not.toBe(calls[1]![1].idempotency_key)
+  })
   it.each([
     ['FACTORY-ROLL', true],
     ['FACTORY-WIRE', true],
@@ -1287,4 +1473,36 @@ it('discards an opening closed during lazy import and permits a later opening to
   } finally {
     host.remove()
   }
+})
+
+it('carries the published route destination and business into dispatch without another choice', async () => {
+  const lot = source()
+  lot.transfer.process_route = {
+    id: 8,
+    title: '首批派工',
+    version: 2,
+    step_index: 1,
+    sequence_no: 1,
+    step_name: '轧制',
+    instructions: '按图纸',
+    team_id: 2,
+    processing_task_id: 9,
+    purpose_id: 1,
+    split_here: false,
+    complete: true,
+    next_team_id: 3,
+    next_purpose_id: 33,
+  }
+  vi.mocked(teamMaterialApi.purposes).mockResolvedValue([
+    { id: 33, team_id: 3, name: '退火业务', active: true, version: 1 },
+  ])
+  await render('dispatch', [lot])
+  await submit()
+  expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
+    2,
+    expect.objectContaining({
+      next_team_id: 3,
+      lines: [expect.objectContaining({ purpose_id: 33, source_transfer_id: 10 })],
+    }),
+  )
 })

@@ -45,29 +45,34 @@ def validate(db, lot, payload, latest):
         return None
     if payload.processing_mode is None:
         raise HTTPException(422, "返工须填写加工人、日期与实际完成量")
-    prior = previous_work(db, lot, payload.processing_task_id)
-    if payload.processing_task_id is None and payload.rework_of_id is not None:
+    if lot.process_route_id and payload.rework_of_id is None:
+        raise HTTPException(422, "请选择需要返工的原加工工序记录")
+    if payload.rework_of_id is not None:
         from .processing_tasks import completed_work
 
         history = completed_work(
             lot.next_team_id, [lot.id], local=not lot.rework_pending
         ).subquery()
-        legacy = db.scalar(
-            select(Work)
-            .where(
+        prior = db.scalar(
+            select(Work).where(
+                Work.id == payload.rework_of_id,
                 Work.id.in_(select(history.c.work_id)),
-                Work.processing_task_id.is_(None),
             )
-            .order_by(Work.id.desc())
-            .limit(1)
         )
-        if legacy and legacy.id == payload.rework_of_id:
-            prior = legacy
+        if (
+            prior
+            and payload.processing_task_id is not None
+            and (prior.processing_task_id != payload.processing_task_id)
+        ):
+            raise HTTPException(409, "返工任务与选定的原加工记录不一致")
+    else:
+        prior = previous_work(db, lot, payload.processing_task_id)
     if not (
         lot.rework_pending
         or lot.processing_role == "produced"
         or (latest and latest.processing_status == "complete")
         or (payload.processing_task_id is not None and prior is not None)
+        or (payload.rework_of_id is not None and prior is not None)
     ):
         raise HTTPException(409, "请选择已加工的在库料或退回待返工料")
     if prior is None or (payload.rework_of_id is not None and payload.rework_of_id != prior.id):

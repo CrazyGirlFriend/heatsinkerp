@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ElDatePicker, ElInputNumber, ElSwitch, ElSelect } from 'element-plus'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
+import ProcessingTaskFields from './ProcessingTaskFields.vue'
 import WeightInput from './WeightInput.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { factoryToday } from '@/utils/format'
@@ -130,9 +131,39 @@ it('opens splitting outputs directly and includes worker identity and actual wor
     ...(await teamMaterialApi.quantityContext(2, 10)),
     quantity: 1,
     processing_mode: 'split',
+    task_required: true,
+    process_route: {
+      id: 8,
+      title: '首批派工',
+      version: 2,
+      step_index: 1,
+      sequence_no: 2,
+      step_name: '精磨',
+      instructions: '厚度2.5(+0.01/-0.02)，清洗吹干',
+      team_id: 2,
+      processing_task_id: 9,
+      purpose_id: 3,
+      split_here: false,
+      complete: false,
+      available: true,
+    },
   })
   await render()
   expect(wrapper.findComponent(ElSwitch).exists()).toBe(false)
+  expect(wrapper.findAllComponents(ProcessingTaskFields)).toHaveLength(1)
+  const summary = wrapper.get('.quantity-summary').element
+  const requirements = wrapper.get('[aria-label="本道加工工艺"]').element
+  const outputs = wrapper.get('[aria-label="加工后完整实物明细"]').element
+  expect(
+    summary.compareDocumentPosition(requirements) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
+  expect(requirements.textContent).toContain('厚度2.5(+0.01/-0.02)，清洗吹干')
+  for (const field of [
+    requirements,
+    wrapper.getComponent(ElDatePicker).element,
+    wrapper.getComponent(TeamEmployeeInput).element,
+  ])
+    expect(field.compareDocumentPosition(outputs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:modelValue', employee)
   wrapper
     .findAllComponents(ElInputNumber)
@@ -321,5 +352,46 @@ it('keeps legacy rework without a task and does not require active task or busin
       processing_task_id: null,
       purpose_id: null,
     }),
+  )
+})
+
+it('uses the published route task without asking again, including a planned repeated task', async () => {
+  const context = await teamMaterialApi.quantityContext(2, 10)
+  vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
+    ...context,
+    processing_status: 'complete',
+    task_required: true,
+    completed_task_ids: [9],
+    allowed_task_ids: [],
+    process_route: {
+      id: 8,
+      title: '首批派工',
+      version: 2,
+      step_index: 3,
+      sequence_no: 4,
+      step_name: '二次研磨',
+      instructions: '厚度2.5(+0.01/-0.02)，清洗吹干',
+      team_id: 2,
+      processing_task_id: 9,
+      purpose_id: 3,
+      split_here: false,
+      complete: false,
+      available: true,
+    },
+  })
+  await render()
+  const task = wrapper
+    .findAllComponents(ElSelect)
+    .find((select) => select.props('ariaLabel') === '加工任务')!
+  expect(task.props('modelValue')).toBe(9)
+  expect(task.props('disabled')).toBe(true)
+  expect(wrapper.text()).toContain('二次研磨')
+  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:modelValue', employee)
+  wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 6)
+  wrapper.getComponent(WeightInput).vm.$emit('update:modelValue', 60)
+  await save()
+  expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
+    2,
+    expect.objectContaining({ processing_task_id: 9, purpose_id: 3, processor_employee_id: 71 }),
   )
 })

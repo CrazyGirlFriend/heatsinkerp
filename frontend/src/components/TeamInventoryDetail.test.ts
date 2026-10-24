@@ -3,6 +3,9 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElPagination } from 'element-plus'
 import TeamInventoryDetail from './TeamInventoryDetail.vue'
+import AppDialog from './AppDialog.vue'
+import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
+import TeamInspectionRecords from './TeamInspectionRecords.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import TableExportButton from './TableExportButton.vue'
@@ -10,6 +13,8 @@ import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { warehouseFixture } from '@/testFixtures/teamInventory'
 import type { StockBatch } from '@/types/teamMaterials'
+import { productionScheduleApi } from '@/services/productionScheduleApi'
+import { inventoryScheduleFixture, scheduleSummaryFixture } from '@/testFixtures/inventorySchedule'
 
 const live = vi.hoisted(() => ({ refresh: async () => {} }))
 vi.mock('@/composables/useLiveRefresh', () => ({
@@ -55,6 +60,13 @@ const movement = (id: number, status = 'pending') =>
     received_at: status === 'received' ? '2026-09-27T05:30:00Z' : null,
   })
 beforeEach(() => {
+  vi.spyOn(productionScheduleApi, 'inventory').mockImplementation(async (body) => ({
+    groups: [],
+    sources: (body.source_transfer_ids || []).map((source_transfer_id) => ({
+      source_transfer_id,
+      ...inventoryScheduleFixture(),
+    })),
+  }))
   vi.spyOn(teamMaterialApi, 'quantityContext').mockResolvedValue({
     source_transfer_id: 11,
     batch_no: 'TL11',
@@ -97,12 +109,66 @@ async function render(canWrite = true, warehouse = true) {
         LiveRefreshNotice: true,
         MaterialTransferDrawer: true,
         MaterialDispatchDrawer: true,
+        SerialMaterialDrawer: true,
+        TeamInspectionRecords: true,
       },
     },
   })
   await flushPromises()
 }
 describe('warehouse source detail', () => {
+  it('refreshes only its current page of schedule summaries when the parent clock requests it', async () => {
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    await render()
+    vi.mocked(productionScheduleApi.inventory).mockClear()
+    const sourceReads = vi.mocked(teamMaterialApi.inventorySources).mock.calls.length
+    const movementReads = vi.mocked(teamMaterialApi.inventoryMovements).mock.calls.length
+    await (wrapper.vm as unknown as { refreshSchedules: () => Promise<void> }).refreshSchedules()
+    expect(productionScheduleApi.inventory).toHaveBeenCalledWith({
+      team_id: 1,
+      source_transfer_ids: [11, 12],
+    })
+    expect(teamMaterialApi.inventorySources).toHaveBeenCalledTimes(sourceReads)
+    expect(teamMaterialApi.inventoryMovements).toHaveBeenCalledTimes(movementReads)
+    await wrapper.setProps({ group: null })
+    await (wrapper.vm as unknown as { refreshSchedules: () => Promise<void> }).refreshSchedules()
+    expect(productionScheduleApi.inventory).toHaveBeenCalledOnce()
+  })
+  it('loads schedule details in one batch and shows the source-specific deadline and receiver', async () => {
+    const schedule = scheduleSummaryFixture()
+    vi.mocked(productionScheduleApi.inventory).mockResolvedValue({
+      groups: [],
+      sources: [
+        {
+          source_transfer_id: 11,
+          ...inventoryScheduleFixture({
+            count: 1,
+            due_at: schedule.due_at,
+            status: 'pending',
+            items: [schedule],
+          }),
+        },
+        { source_transfer_id: 12, ...inventoryScheduleFixture() },
+      ],
+    })
+    await render()
+    expect(productionScheduleApi.inventory).toHaveBeenCalledWith({
+      team_id: 1,
+      source_transfer_ids: [11, 12],
+    })
+    const stock = wrapper.get('.warehouse-source-table')
+    expect(stock.text()).toContain('2026-10-23 16:00')
+    expect(stock.text()).toContain('轧制')
+    await stock.get('button[aria-label="查看批次TL11交货排期"]').trigger('click')
+    await flushPromises()
+    expect(stock.get('.inventory-schedule-detail').text()).toContain('计划件数')
+    await stock
+      .get('.inventory-schedule-detail')
+      .findAll('button')
+      .find((button) => button.text() === '查看排期')!
+      .trigger('click')
+    expect(wrapper.emitted('schedule')).toEqual([[81]])
+  })
   it('opens reallocation for authorized stock and distinguishes same-team A outflow from B intake', async () => {
     await render()
     expect(wrapper.findAll('button').filter((button) => button.text() === '转投')).toHaveLength(0)
@@ -458,4 +524,42 @@ it('shows each shared order and its original cutting plan directly in inventory 
   })
   expect(wrapper.get('.shared-current-serial').text()).toContain('ORDER-A')
   expect(wrapper.get('.shared-current-serial').text()).toContain('未登记')
+})
+
+it('retains a nested serial detail until the dialog reports it has closed', async () => {
+  await render()
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === warehouseFixture().serial_no)!
+    .trigger('click')
+  const detail = wrapper.getComponent(SerialMaterialDrawer)
+  detail.vm.$emit('update:modelValue', false)
+  await flushPromises()
+  expect(wrapper.getComponent(SerialMaterialDrawer).props('modelValue')).toBe(false)
+  detail.vm.$emit('closed')
+  await flushPromises()
+  expect(wrapper.findComponent(SerialMaterialDrawer).exists()).toBe(false)
+})
+
+it('retains the selected inspection records until the closing animation finishes', async () => {
+  await render()
+  await wrapper.setProps({ processing: true })
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === '检查记录')!
+    .trigger('click')
+  const records = wrapper.getComponent(TeamInspectionRecords)
+  expect(records.props('sourceId')).toBe(11)
+  const dialog = wrapper
+    .findAllComponents(AppDialog)
+    .find((item) => item.attributes('title') === '本批检查记录')!
+  await dialog
+    .findAll('button')
+    .find((button) => button.text() === '关闭')!
+    .trigger('click')
+  expect(dialog.props('modelValue')).toBe(false)
+  expect(wrapper.getComponent(TeamInspectionRecords).props('sourceId')).toBe(11)
+  dialog.vm.$emit('closed')
+  await flushPromises()
+  expect(wrapper.findComponent(TeamInspectionRecords).exists()).toBe(false)
 })

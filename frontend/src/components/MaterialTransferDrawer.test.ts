@@ -4,6 +4,7 @@ import { reactive } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
+import MaterialTransferDetailFrame from './MaterialTransferDetailFrame.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import ReceiptPersonInput from './ReceiptPersonInput.vue'
 const person = { id: 31, team_id: 3, name: '李师傅', active: true, version: 1 }
@@ -826,4 +827,16 @@ describe('material transfer receipt review', () => {
     expect(materialTransferApi.get).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('新版本操作者')
   })
+})
+
+it('reports completed exit only when the material document has actually closed', async () => {
+  await render()
+  const frame = wrapper.getComponent(MaterialTransferDetailFrame)
+  frame.vm.$emit('closed')
+  await flushPromises()
+  expect(wrapper.emitted('closed')).toBeUndefined()
+  frame.vm.$emit('closed')
+  await wrapper.setProps({ modelValue: false })
+  await flushPromises()
+  expect(wrapper.emitted('closed')).toEqual([[]])
 })

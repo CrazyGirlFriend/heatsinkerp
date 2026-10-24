@@ -5,6 +5,7 @@ an actual received lot; it also scopes drill-down and outbound source selection.
 """
 
 from datetime import date, timezone
+from types import SimpleNamespace
 from typing import Annotated, Literal
 
 from fastapi import Depends, HTTPException, Path, Query
@@ -86,6 +87,9 @@ def origin_columns():
         "serial_no": mt.serial_no,
         "shared_group_id": mt.shared_group_id,
         "shared_unallocated": mt.shared_unallocated,
+        "process_route_id": mt.process_route_id,
+        "process_step_index": mt.process_step_index,
+        "process_step_complete": mt.process_step_complete,
         "material_name": func.coalesce(mt.material_name, ""),
         "transfer_specification": func.coalesce(mt.transfer_specification, ""),
         "material_type": func.coalesce(mt.material_type, ""),
@@ -388,6 +392,18 @@ def list_inventory(db, team_id, filters):
         .mappings()
         .all()
     )
+    from .models import ProcessRoute
+    from .process_routes import route_document
+
+    route_ids = {row["process_route_id"] for row in rows} - {None}
+    routes = (
+        {
+            route.id: route
+            for route in db.scalars(select(ProcessRoute).where(ProcessRoute.id.in_(route_ids)))
+        }
+        if route_ids
+        else {}
+    )
     priorities = urgency_map(db, [row["serial_no"] for row in rows])
     origins = origin_columns()
     differences = {}
@@ -412,6 +428,13 @@ def list_inventory(db, team_id, filters):
     for row in rows:
         item = dict(row)
         item.pop("matches_date")
+        item["process_route"] = (
+            route_document(
+                SimpleNamespace(**item, process_route=routes.get(item["process_route_id"]))
+            )
+            if item["process_route_id"]
+            else None
+        )
         item.update(balance_dict(row))
         item.update(difference_totals(differences.get(tuple(row[name] for name in origins), [])))
         item["urgency"] = priorities.get(row["serial_no"], urgency_dict(None))

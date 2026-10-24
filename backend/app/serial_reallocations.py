@@ -153,9 +153,16 @@ def create(db, team_id, payload, user):
             from .processing_registration import sent_status
             from .quantity_adjustments import latest_records
 
+            if lot.process_route_id and payload.serial_no != lot.serial_no:
+                raise HTTPException(
+                    422, "已绑定工艺的正常产品不能通过转投更换派工流水号，请按共投拆分流程处理"
+                )
             progress = sent_status(lot, latest_records(db, [lot.id]).get(lot.id))
             now = utcnow()
             item = MaterialTransfer(
+                process_route_id=lot.process_route_id,
+                process_step_index=lot.process_step_index,
+                process_step_complete=lot.process_step_complete,
                 sent_processing_status=progress,
                 rework_pending=lot.rework_pending,
                 rework_count=lot.rework_count,

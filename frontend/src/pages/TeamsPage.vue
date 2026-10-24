@@ -510,7 +510,7 @@ onMounted(() => void loadTeams())
       "
     />
     <TeamBusinessDialog
-      v-if="businessOpen && businessTeam && isAdmin"
+      v-if="businessTeam && isAdmin"
       :key="businessTeam.id"
       v-model="businessOpen"
       :team-id="Number(businessTeam.id)"

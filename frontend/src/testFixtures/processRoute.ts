@@ -1,0 +1,70 @@
+import type { ProcessRoute } from '@/types/processRoute'
+export const routeFixture: ProcessRoute = {
+  id: 8,
+  title: '首批派工',
+  filename: '工艺.docx',
+  state: 'draft',
+  version: 1,
+  parent_id: null,
+  serial_nos: ['S-001'],
+  created_by: '管理员',
+  created_at: '',
+  published_at: null,
+  review_note: '已核对原文及重复行',
+  source_data: { tables: [[['流水号', 'S-001']]], issues: ['工序序号1重复，发布前须人工核对'] },
+  steps: [
+    {
+      sequence_no: 0,
+      name: '备料',
+      instructions: '核对来料',
+      planned_days: '0',
+      planned_quantity: '100',
+      team_id: 1,
+      purpose_id: null,
+      processing_task_id: null,
+      serial_nos: [],
+      split_here: false,
+    },
+    {
+      sequence_no: 1,
+      name: '粗磨',
+      instructions: '厚度2.5(+0.01/-0.02)，禁止摞放',
+      planned_days: '7',
+      planned_quantity: '100',
+      team_id: 2,
+      purpose_id: 3,
+      processing_task_id: 4,
+      serial_nos: [],
+      split_here: false,
+    },
+    {
+      sequence_no: 2,
+      name: '精磨',
+      instructions: '清洗吹干',
+      planned_days: '2',
+      planned_quantity: '100',
+      team_id: 2,
+      purpose_id: 3,
+      processing_task_id: 4,
+      serial_nos: [],
+      split_here: false,
+    },
+    {
+      sequence_no: 3,
+      name: '终检',
+      instructions: '按图纸检验',
+      planned_days: '1',
+      planned_quantity: '100',
+      team_id: 3,
+      purpose_id: 5,
+      processing_task_id: 6,
+      serial_nos: [],
+      split_here: false,
+    },
+  ],
+}
+
+routeFixture.steps.forEach((step, index) => {
+  step.source_row = `1:${index + 1}`
+})
+routeFixture.source_data.original_steps = structuredClone(routeFixture.steps)

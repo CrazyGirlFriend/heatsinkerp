@@ -39,9 +39,11 @@ def test_upgrade_is_repeatable_preserves_legacy_hold_and_all_schema_columns():
                 upgrade.upgrade()
             schema = inspect(conn)
             for model in (MaterialInspection, InspectionFeedbackTeam, InspectionFeedbackEvent):
-                assert {c["name"] for c in schema.get_columns(model.__tablename__)} == set(
-                    model.__table__.columns.keys()
-                )
+                expected = set(model.__table__.columns.keys())
+                if model is MaterialInspection:
+                    # The executed-process snapshot is introduced later, in 0047.
+                    expected.remove("process_step")
+                assert {c["name"] for c in schema.get_columns(model.__tablename__)} == expected
             assert conn.exec_driver_sql(
                 "SELECT failed_quantity, blocks_outbound, released_at, scope, kind FROM material_inspections"
             ).one() == (2, 1, None, "sample", "patrol")

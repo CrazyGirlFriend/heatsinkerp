@@ -84,6 +84,10 @@ def record_dict(row):
     return {
         "id": row.id,
         "source_transfer_id": row.source_transfer_id,
+        "process_route_id": row.process_route_id,
+        "process_step_index": row.process_step_index,
+        "process_step_name": row.process_step_name,
+        "process_step_instructions": row.process_step_instructions,
         "before_quantity": row.before_quantity,
         "after_quantity": row.after_quantity,
         "delta_quantity": row.after_quantity - row.before_quantity,
@@ -178,6 +182,15 @@ def context(db, team_id, lot_id, page=1, page_size=10):
 
     physical_lot = db.get(MaterialTransfer, lot_id)
     previous = previous_work(db, physical_lot)
+    tasks = task_context(db, team_id, lot_id)
+    if physical_lot.process_route_id:
+        rework_of_id = (
+            tasks["rework_task_records"][0]["rework_of_id"]
+            if tasks["rework_task_records"]
+            else None
+        )
+    else:
+        rework_of_id = previous.id if previous else None
     shared = shared_document(physical_lot)
     balance = db.get(Balance, lot_id)
     if balance is None:
@@ -221,7 +234,10 @@ def context(db, team_id, lot_id, page=1, page_size=10):
             else None
         )
     )
+    from .process_routes import processing_context
+
     return {
+        "process_route": processing_context(physical_lot),
         "source_transfer_id": lot_id,
         "batch_no": lot.batch_no,
         "serial_no": lot.serial_no,
@@ -230,7 +246,7 @@ def context(db, team_id, lot_id, page=1, page_size=10):
         "material_type": lot.material_type,
         "purpose_name": lot.purpose_name,
         "purpose_id": lot.purpose_id,
-        **task_context(db, team_id, lot_id),
+        **tasks,
         "quantity": balance.on_hand_quantity,
         "weight": float(balance.on_hand_weight),
         "processing_status": progress,
@@ -239,7 +255,7 @@ def context(db, team_id, lot_id, page=1, page_size=10):
         if stock.require_team(db, team_id).code in SPLITTING_TEAM_CODES
         else "unit",
         "origin_processing_record": record_dict(origin) if origin else None,
-        "rework_of_id": previous.id if previous else None,
+        "rework_of_id": rework_of_id,
         "rework_pending": physical_lot.rework_pending,
         "rework_count": physical_lot.rework_count,
         **weight_differences(db, [lot_id], team_id).get(lot_id, {}),
@@ -282,9 +298,11 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     ):
         raise HTTPException(409, "本批已无在库物料，不能增加件数")
     latest = latest_records(db, [lot.id]).get(lot.id)
+    from .process_routes import finish_processing, prepare_processing, processing_fields
     from .processing_tasks import snapshot as task_snapshot
     from .rework import validate
 
+    payload, route_index = prepare_processing(lot, payload)
     prior_work = validate(db, lot, payload, latest)
     task_fields = task_snapshot(db, lot, payload, prior_work)
     payload, production = prepare(lot, balance, latest, payload, team.code)
@@ -346,9 +364,22 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         from .processing_outputs import create_outputs
 
         items, snapshots, after_weight = create_outputs(
-            db, lot, payload, user, now, hold, task_fields
+            db, lot, payload, user, now, hold, task_fields, route_index
         )
+    finish_processing(lot, payload, route_index, items)
+    route_fields = processing_fields(lot, route_index)
+    if prior_work:
+        route_fields = {
+            key: getattr(prior_work, key)
+            for key in (
+                "process_route_id",
+                "process_step_index",
+                "process_step_name",
+                "process_step_instructions",
+            )
+        }
     row = Adjustment(
+        **route_fields,
         source_transfer_id=lot.id,
         team_id=lot.next_team_id,
         before_quantity=before_quantity,

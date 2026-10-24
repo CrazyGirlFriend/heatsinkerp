@@ -95,7 +95,10 @@ def test_dispatch_shared_reads_do_not_grow_with_line_count(client, warehouse, li
     # Latest processing specifications add one shared read, never one per line.
     # Validate the chosen employee once per submission, independent of line count.
     # One shared inspection-hold check also covers all selected source lots.
-    assert len(statements) <= 15, len(statements)
+    # One current locking read checks this submission's delivery commitments.
+    # One shared route-policy read enforces the new-material cutover.
+    assert len(statements) <= 17, len(statements)
+    assert sum("FROM process_route_policy" in sql for sql in statements) == 1
     assert sum("FROM material_inspections" in sql for sql in statements) == 1
     assert sum("FROM material_quantity_adjustments" in sql for sql in statements) == 1
     assert any("LEFT OUTER JOIN serial_urgencies" in sql for sql in statements)

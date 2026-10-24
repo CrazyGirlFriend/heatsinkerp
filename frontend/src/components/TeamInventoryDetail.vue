@@ -22,6 +22,8 @@ import {
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
+import InventoryScheduleDetails from './InventoryScheduleDetails.vue'
+import ProcessRouteLotDialog from './ProcessRouteLotDialog.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import StatePanel from './StatePanel.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
@@ -39,6 +41,13 @@ import type { StockBatch } from '@/types/teamMaterials'
 import { dispatchableAmounts, stockAvailable, stockSelectable } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
 import { processingRoleLabels } from '@/types/materialProcessing'
+import {
+  inventoryScheduleBaseline,
+  inventoryScheduleDue,
+  inventoryScheduleLabel,
+  inventoryScheduleTone,
+  loadInventorySchedules,
+} from '@/utils/inventorySchedule'
 
 const props = defineProps<{
   teamId: number
@@ -54,7 +63,9 @@ const emit = defineEmits<{
   pending: []
   action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]
   reallocate: [source: StockBatch]
+  schedule: [id?: number, serialNo?: string]
 }>()
+const routeLot = ref<number | null>(null)
 const rows = ref<StockBatch[]>([]),
   total = ref(0),
   page = ref(1),
@@ -65,9 +76,74 @@ const movements = ref<MaterialTransfer[]>([]),
   movementPageSize = ref(10)
 const loading = ref(false),
   error = ref('')
+const scheduleLoading = ref(false),
+  scheduleError = ref(''),
+  expandedScheduleSources = ref<number[]>([])
+let scheduleVersion = 0
+async function withSchedules(items: StockBatch[], teamId = props.teamId) {
+  const summaries = await loadInventorySchedules(
+    teamId,
+    items.map((row) => ({ id: Number(row.transfer.id), materialType: row.transfer.material_type })),
+    'sources',
+  )
+  return items.map((row) => ({ ...row, delivery_schedule: summaries[Number(row.transfer.id)] }))
+}
+async function loadSchedules(current = version) {
+  const request = ++scheduleVersion
+  scheduleLoading.value = true
+  scheduleError.value = ''
+  try {
+    const items = await withSchedules(rows.value)
+    if (current === version && request === scheduleVersion) rows.value = items
+  } catch {
+    if (current === version && request === scheduleVersion)
+      scheduleError.value = '交货排期加载失败，库存仍可查看。'
+  } finally {
+    if (current === version && request === scheduleVersion) scheduleLoading.value = false
+  }
+}
+function toggleSchedule(row: StockBatch) {
+  const id = Number(row.transfer.id)
+  expandedScheduleSources.value = expandedScheduleSources.value.includes(id) ? [] : [id]
+}
+function scheduleDestination(row: StockBatch) {
+  const peers = [
+    ...new Set(
+      row.delivery_schedule?.items
+        .map((item) => item.next_team_name || item.external_destination)
+        .filter(Boolean),
+    ),
+  ]
+  return peers.length > 1 ? `${peers.length}个去向` : peers[0] || '—'
+}
+async function refreshSchedules() {
+  if (
+    !props.group ||
+    loading.value ||
+    scheduleLoading.value ||
+    document.hidden ||
+    batchOpen.value ||
+    quantityOpen.value ||
+    serialOpen.value ||
+    inspectionSource.value
+  )
+    return
+  await loadSchedules()
+}
+defineExpose({ refreshSchedules })
 const batchOpen = ref(false),
   selected = ref<MaterialTransfer | null>(null)
 const inspectionSource = ref<number | null>(null)
+const inspectionOpen = ref(false)
+const serialMounted = ref(false)
+function openSerial() {
+  serialMounted.value = true
+  serialOpen.value = true
+}
+function openInspection(sourceId: number) {
+  inspectionSource.value = sourceId
+  inspectionOpen.value = true
+}
 const serialOpen = ref(false)
 const quantityOpen = ref(false),
   quantitySource = ref<number | null>(null)
@@ -98,6 +174,9 @@ const live = useLiveRefresh(() => load(true), {
 })
 async function load(background = false) {
   const current = ++version
+  ++scheduleVersion
+  scheduleLoading.value = false
+  scheduleError.value = ''
   if (!props.group) {
     loading.value = false
     return
@@ -128,7 +207,14 @@ async function load(background = false) {
       await load(background)
       return
     }
-    rows.value = result.items
+    rows.value = result.items.map((row) => ({
+      ...row,
+      delivery_schedule: inventoryScheduleBaseline(row.transfer.material_type),
+    }))
+    expandedScheduleSources.value = expandedScheduleSources.value.filter((id) =>
+      result.items.some((row) => Number(row.transfer.id) === id),
+    )
+    void loadSchedules(current)
     total.value = result.total
     movements.value = records.items
     movementTotal.value = records.total
@@ -173,6 +259,17 @@ function exportStock() {
       { key: 'quantity', label: '库存件数', value: (row) => row.owned_quantity },
       { key: 'weight', label: '库存重量 (kg)', value: (row) => row.owned_weight },
       {
+        key: 'delivery_due_at',
+        label: '要求交货时间',
+        value: (row) => inventoryScheduleDue(row.delivery_schedule),
+      },
+      {
+        key: 'delivery_schedule_status',
+        label: '排期状态',
+        value: (row) => inventoryScheduleLabel(row.delivery_schedule),
+      },
+      { key: 'delivery_destination', label: '排期接收班组 / 去向', value: scheduleDestination },
+      {
         key: 'available_quantity',
         label: '可处理件数',
         value: (row) => dispatchableAmounts(row).quantity,
@@ -190,8 +287,13 @@ function exportStock() {
     ],
     (signal, progress) =>
       loadExportPages(
-        (page, pageSize) =>
-          teamMaterialApi.inventorySources(id, group.group_id, { page, page_size: pageSize }),
+        async (page, pageSize) => {
+          const result = await teamMaterialApi.inventorySources(id, group.group_id, {
+            page,
+            page_size: pageSize,
+          })
+          return { ...result, items: await withSchedules(result.items, id) }
+        },
         signal,
         progress,
       ),
@@ -225,7 +327,12 @@ function action(mode: 'dispatch' | 'loss', row: StockBatch) {
     !error.value &&
     (mode === 'loss' ? stockAvailable(row) : stockSelectable(row))
   )
-    emit('action', mode, [row])
+    emit('action', mode, [actionSource(row)])
+}
+function actionSource(row: StockBatch) {
+  const source = { ...row }
+  delete source.delivery_schedule
+  return source
 }
 function asStock(row: unknown) {
   return row as StockBatch
@@ -277,9 +384,11 @@ watch(
     rows.value = []
     movements.value = []
     total.value = movementTotal.value = 0
-    batchOpen.value = quantityOpen.value = serialOpen.value = false
+    batchOpen.value = quantityOpen.value = serialOpen.value = inspectionOpen.value = false
+    serialMounted.value = false
     selected.value = null
     inspectionSource.value = null
+    expandedScheduleSources.value = []
     void load()
   },
   { immediate: true },
@@ -304,7 +413,7 @@ onBeforeUnmount(() => {
       <ElDescriptionsItem label="流水号"
         ><span v-if="group.shared_unallocated"
           >共投料 · {{ group.shared_serials?.length || 0 }} 个流水号</span
-        ><ElButton v-else link type="primary" @click="serialOpen = true">{{
+        ><ElButton v-else link type="primary" @click="openSerial">{{
           group.serial_no
         }}</ElButton></ElDescriptionsItem
       >
@@ -355,6 +464,7 @@ onBeforeUnmount(() => {
           class="business-table warehouse-source-table"
           :data="rows"
           row-key="transfer.id"
+          :expand-row-keys="expandedScheduleSources.map(String)"
           empty-text="暂无来源记录"
         >
           <ElTableColumn label="来源批次号" min-width="205"
@@ -377,6 +487,17 @@ onBeforeUnmount(() => {
               ] || '—'
             }}</template></ElTableColumn
           >
+          <ElTableColumn label="派工工序" min-width="170" align="center"
+            ><template #default="{ row }"
+              ><ElButton link type="primary" @click="routeLot = Number(row.transfer.id)">{{
+                row.transfer.process_route
+                  ? `${row.transfer.process_route.sequence_no} · ${row.transfer.process_route.step_name}`
+                  : warehouse && canWrite
+                    ? '关联工艺'
+                    : '查看工艺'
+              }}</ElButton></template
+            ></ElTableColumn
+          >
           <ElTableColumn label="当前实际尺寸" min-width="180" show-overflow-tooltip
             ><template #default="{ row }">{{
               row.current_specification ?? row.transfer.transfer_specification ?? '—'
@@ -397,6 +518,37 @@ onBeforeUnmount(() => {
               inventoryAmount(row.owned_weight)
             }}</template></ElTableColumn
           >
+          <ElTableColumn label="要求交货时间" min-width="180" align="center">
+            <template #default="{ row }">
+              <ElButton
+                v-if="row.delivery_schedule?.count"
+                link
+                type="primary"
+                :class="`source-schedule-link--${inventoryScheduleTone(row.delivery_schedule)}`"
+                :aria-expanded="expandedScheduleSources.includes(Number(row.transfer.id))"
+                :aria-label="`查看批次${row.transfer.batch_no}交货排期`"
+                @click="toggleSchedule(asStock(row))"
+                >{{ inventoryScheduleDue(row.delivery_schedule) }}</ElButton
+              >
+              <span v-else>{{ inventoryScheduleDue(row.delivery_schedule) }}</span>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="排期状态" min-width="120" align="center">
+            <template #default="{ row }">
+              <span v-if="!row.delivery_schedule && scheduleLoading">读取中</span>
+              <ElTag v-else :type="inventoryScheduleTone(row.delivery_schedule)">{{
+                inventoryScheduleLabel(row.delivery_schedule)
+              }}</ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn
+            label="排期接收班组 / 去向"
+            min-width="160"
+            align="center"
+            show-overflow-tooltip
+          >
+            <template #default="{ row }">{{ scheduleDestination(asStock(row)) }}</template>
+          </ElTableColumn>
           <ElTableColumn
             v-if="rows.some((row) => row.weight_difference)"
             label="同批累计差异 (kg)"
@@ -466,12 +618,29 @@ onBeforeUnmount(() => {
               formatDateTime(row.transfer.received_at)
             }}</template></ElTableColumn
           >
+          <ElTableColumn
+            v-if="rows.some((row) => row.delivery_schedule?.count)"
+            type="expand"
+            width="1"
+            class-name="source-schedule-toggle"
+            label-class-name="source-schedule-toggle"
+            :resizable="false"
+            ><template #default="{ row }">
+              <InventoryScheduleDetails
+                v-if="row.delivery_schedule?.count"
+                :summary="row.delivery_schedule"
+                :serial-no="row.transfer.serial_no"
+                @close="expandedScheduleSources = []"
+                @view="emit('schedule', $event)"
+                @view-all="emit('schedule', undefined, row.transfer.serial_no)"
+              /> </template
+          ></ElTableColumn>
           <ElTableColumn v-if="processing" label="质量检查" min-width="155" align="center"
             ><template #default="{ row }"
               ><ElButton
                 link
                 :type="row.inspection_hold_id ? 'danger' : 'primary'"
-                @click="inspectionSource = Number(row.transfer.id)"
+                @click="openInspection(Number(row.transfer.id))"
                 >{{ row.inspection_hold_id ? '待处理 · 禁止转出' : '检查记录' }}</ElButton
               ></template
             ></ElTableColumn
@@ -523,7 +692,7 @@ onBeforeUnmount(() => {
                     link
                     type="primary"
                     :disabled="!stockSelectable(asStock(row))"
-                    @click="emit('reallocate', asStock(row))"
+                    @click="emit('reallocate', actionSource(asStock(row)))"
                     >转投</ElButton
                   ><ElButton
                     link
@@ -537,6 +706,12 @@ onBeforeUnmount(() => {
             ></ElTableColumn
           >
         </ElTable>
+        <div v-if="scheduleError" class="source-schedule-error" role="status">
+          <span>{{ scheduleError }}</span
+          ><ElButton link type="primary" :loading="scheduleLoading" @click="loadSchedules()"
+            >重试排期</ElButton
+          >
+        </div>
         <footer>
           <span>共 {{ total }} 个来源批次（含零库存）</span
           ><ElPagination
@@ -664,12 +839,12 @@ onBeforeUnmount(() => {
     @changed="changed"
   />
   <AppDialog
-    :model-value="inspectionSource != null"
+    v-model="inspectionOpen"
     title="本批检查记录"
     width="min(1380px, calc(100vw - 40px))"
     align-center
     append-to-body
-    @close="inspectionSource = null"
+    @closed="inspectionSource = null"
   >
     <TeamInspectionRecords
       v-if="inspectionSource != null"
@@ -677,7 +852,7 @@ onBeforeUnmount(() => {
       :source-id="inspectionSource"
       compact
     />
-    <template #footer><ElButton @click="inspectionSource = null">关闭</ElButton></template>
+    <template #footer><ElButton @click="inspectionOpen = false">关闭</ElButton></template>
   </AppDialog>
   <QuantityAdjustmentDialog
     v-model="quantityOpen"
@@ -688,10 +863,18 @@ onBeforeUnmount(() => {
     @saved="changed"
   />
   <SerialMaterialDrawer
-    v-if="group && serialOpen"
+    v-if="group && serialMounted"
     v-model="serialOpen"
     :team-id="teamId"
     :serial-no="group.serial_no"
+    @closed="serialMounted = false"
+  />
+  <ProcessRouteLotDialog
+    v-if="routeLot"
+    :lot-id="routeLot"
+    :can-bind="warehouse && canWrite"
+    @close="routeLot = null"
+    @changed="emit('changed')"
   />
 </template>
 
@@ -722,6 +905,34 @@ onBeforeUnmount(() => {
 }
 .source-actions :deep(.el-button + .el-button) {
   margin-left: 0;
+}
+.source-schedule-link--danger {
+  color: var(--el-color-danger);
+}
+.source-schedule-link--warning {
+  color: var(--el-color-warning);
+}
+.source-schedule-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-block: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.warehouse-source-table {
+  container-type: inline-size;
+}
+.warehouse-source-table :deep(.source-schedule-toggle) {
+  padding: 0;
+  border-right: 0;
+}
+.warehouse-source-table :deep(.source-schedule-toggle .cell) {
+  display: none;
+}
+.warehouse-source-table :deep(.el-table__expanded-cell) {
+  padding: 0;
 }
 @media (max-width: 760px) {
   :deep(.el-descriptions__body) {

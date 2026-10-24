@@ -13,6 +13,7 @@ export interface InspectionSource {
   processing_status: string
 }
 export interface InspectionRecord {
+  process_step?: import('@/types/processRoute').ProcessRouteContext | null
   kind: 'patrol' | 'inspection'
   scope: 'sample' | 'full'
   methods: ('visual' | 'microscope')[]

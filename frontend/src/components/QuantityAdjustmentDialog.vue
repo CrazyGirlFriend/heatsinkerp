@@ -195,6 +195,7 @@ function outputError(line: OutputDraft, field: 'quantity' | 'weight' | 'specific
   if (field === 'serial')
     return (
       snapshot.value?.shared_unallocated &&
+      (!snapshot.value.process_route || snapshot.value.process_route.split_here) &&
       line.role === 'produced' &&
       !snapshot.value.shared_serials?.some((member) => member.serial_no === line.serialNo)
     )
@@ -232,6 +233,7 @@ const hasStock = computed(
   () =>
     !!snapshot.value &&
     (isRework.value ||
+      snapshot.value.process_route?.available === true ||
       snapshot.value.processing_status !== 'complete' ||
       !!snapshot.value.allowed_task_ids?.length) &&
     (snapshot.value.quantity > 0 || snapshot.value.weight > 0),
@@ -341,7 +343,9 @@ async function save() {
   }
   const outputLines: CreateProcessingOutput[] = activeOutputs.value.map((line) => ({
     role: line.role,
-    ...(snapshot.value?.shared_unallocated && line.role === 'produced'
+    ...(snapshot.value?.shared_unallocated &&
+    (!snapshot.value.process_route || snapshot.value.process_route.split_here) &&
+    line.role === 'produced'
       ? { serial_no: line.serialNo }
       : {}),
     quantity: outputQuantity(line)!,
@@ -507,185 +511,6 @@ onBeforeUnmount(() => {
         <p v-if="!processing" class="quantity-note">
           只修改本批未转出的件数，重量、原签收单和已转出件数不变。保存后立即生效，取消出库不会撤销本次修改。
         </p>
-        <div v-if="processing && !unitProcessing" class="processing-mode">
-          <ElSwitch
-            v-if="!structured"
-            v-model="detailed"
-            :disabled="snapshot.shared_unallocated"
-            aria-label="按明细登记"
-            active-text="按明细登记"
-          /><span>{{
-            detailed
-              ? '逐行填写本批全部未转出实物，剩余大料、不同尺寸小料和废料分别录入。保存后从实际子批出库。'
-              : '仅登记总件数和统一尺寸；一批包含多种尺寸或废料时，启用明细登记。'
-          }}</span>
-        </div>
-        <section
-          v-if="processing && detailed && !unitProcessing"
-          class="processing-outputs"
-          :class="{ 'is-error': submitted && !activeOutputs.length }"
-          aria-label="加工后完整实物明细"
-        >
-          <div class="processing-output-scroll">
-            <table class="processing-output-table">
-              <thead>
-                <tr>
-                  <th>类别</th>
-                  <th>物料类型</th>
-                  <th>件数</th>
-                  <th>实测重量</th>
-                  <th>实际尺寸（选填）</th>
-                  <th v-if="snapshot.shared_unallocated" class="shared-owner-column">
-                    归属流水号 *
-                  </th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <template v-for="(line, index) in outputs" :key="line.key"
-                  ><tr>
-                    <td>
-                      <ElSelect
-                        v-model="line.role"
-                        :aria-label="`明细${index + 1}类别`"
-                        @change="outputRoleChanged(line)"
-                        ><ElOption
-                          v-for="(label, value) in processingRoleLabels"
-                          :key="value"
-                          :value="value"
-                          :label="label"
-                      /></ElSelect>
-                    </td>
-                    <td>
-                      <ElSelect
-                        v-model="line.material_type"
-                        :aria-label="`明细${index + 1}物料类型`"
-                        :disabled="line.role === 'remaining' && !!snapshot.material_type"
-                        @change="outputTypeChanged(line)"
-                        ><ElOption
-                          v-for="type in materialTypeOptions.filter(
-                            (type) => isScrapType(type.value) === (line.role === 'scrap'),
-                          )"
-                          :key="type.value"
-                          :value="type.value"
-                          :label="type.label"
-                      /></ElSelect>
-                    </td>
-                    <td>
-                      <span v-if="isWeightOnlyType(line.material_type)" class="dialog-input-unit"
-                        >仅计重量</span
-                      >
-                      <div
-                        v-else
-                        class="dialog-field"
-                        :class="{ 'is-error': outputError(line, 'quantity') }"
-                      >
-                        <ElInputNumber
-                          v-model="line.quantity"
-                          :aria-label="`明细${index + 1}件数`"
-                          :min="0"
-                          :max="2147483647"
-                          :precision="0"
-                          controls-position="right"
-                        />
-                      </div>
-                    </td>
-                    <td>
-                      <span v-if="line.material_type === 'sludge'"
-                        >{{ line.weight ?? '—' }} kg（折算）</span
-                      >
-                      <div
-                        v-else
-                        class="dialog-field"
-                        :class="{ 'is-error': outputError(line, 'weight') }"
-                      >
-                        <WeightInput v-model="line.weight" :ariaLabel="`明细${index + 1}重量`" />
-                      </div>
-                    </td>
-                    <td>
-                      <div
-                        class="dialog-field"
-                        :class="{ 'is-error': outputError(line, 'specification') }"
-                      >
-                        <SpecificationInput
-                          v-model="line.specification"
-                          :label="`明细${index + 1}实际尺寸`"
-                          @validity-change="line.specificationValid = $event"
-                        />
-                      </div>
-                    </td>
-                    <td v-if="snapshot.shared_unallocated">
-                      <div
-                        v-if="line.role === 'produced'"
-                        class="dialog-field"
-                        :class="{ 'is-error': outputError(line, 'serial') }"
-                      >
-                        <ElSelect
-                          v-model="line.serialNo"
-                          :aria-label="`明细${index + 1}归属流水号`"
-                          placeholder="请选择"
-                          filterable
-                          ><ElOption
-                            v-for="member in snapshot.shared_serials"
-                            :key="member.serial_no"
-                            :value="member.serial_no"
-                            :label="member.serial_no"
-                        /></ElSelect>
-                      </div>
-                      <span v-else>{{ line.role === 'scrap' ? '共投废料' : '共投未分配' }}</span>
-                    </td>
-                    <td>
-                      <ElButton
-                        text
-                        :aria-label="`移除明细${index + 1}`"
-                        @click="outputs.splice(index, 1)"
-                        >移除</ElButton
-                      >
-                    </td>
-                  </tr>
-                  <tr v-if="line.material_type === 'sludge'">
-                    <td :colspan="snapshot.shared_unallocated ? 7 : 6">
-                      <SludgeWeightFields
-                        v-model:gross="line.gross"
-                        v-model:percent="line.percent"
-                        :label="`明细${index + 1}`"
-                        :gross-error="outputError(line, 'weight') ? '请填写实重和比例' : ''"
-                        :percent-error="outputError(line, 'weight') ? '请填写实重和比例' : ''"
-                        @update:weight="line.weight = $event"
-                      />
-                    </td></tr
-                ></template>
-              </tbody>
-            </table>
-          </div>
-          <footer>
-            <ElButton class="action-cool" :disabled="outputs.length >= 100" @click="addOutput()"
-              >增加明细</ElButton
-            ><span
-              >共 {{ activeOutputs.length }} 行 · {{ outputTotal }} 件 ·
-              {{ outputWeight }} kg；空白或全零行不提交</span
-            >
-          </footer>
-        </section>
-        <p
-          v-if="
-            processing &&
-            ((detailed && measuredOutputs) || (unitProcessing && completedWeight != null)) &&
-            (weightDifference || cumulativeWeightDifference)
-          "
-          class="quantity-note processing-weight-notice"
-          role="status"
-        >
-          本次实测比账面{{ weightDifference >= 0 ? '多' : '少' }}
-          {{ Math.abs(weightDifference) }} kg；同一来源在本班组累计{{
-            cumulativeWeightDifference >= 0 ? '多' : '少'
-          }}
-          {{ Math.abs(cumulativeWeightDifference) }} kg，{{
-            Math.abs(cumulativeWeightDifference) <= materialWeightToleranceKg
-              ? `在每批 ${materialWeightToleranceKg} kg 提醒范围内`
-              : `超过每批 ${materialWeightToleranceKg} kg，请核对实测值，仍可提交`
-          }}。拆分和继续加工沿用同一批提醒额度，不按件数换算重量或自动记作损耗。
-        </p>
         <div
           class="dialog-form-grid"
           :class="{
@@ -701,6 +526,7 @@ onBeforeUnmount(() => {
             :team-id="teamId"
             :context="snapshot"
             :rework="isRework"
+            :rework-record-fixed="!!reworkRecordId || snapshot.rework_pending === true"
             :submitted="submitted"
             :disabled="saving || loading"
             @validity="taskFieldsValid = $event"
@@ -837,6 +663,188 @@ onBeforeUnmount(() => {
               :placeholder="unitProcessing ? '选填' : '选填，例如：10 块板材切割为 100 件'"
           /></ElFormItem>
         </div>
+        <div v-if="processing && !unitProcessing" class="processing-mode">
+          <ElSwitch
+            v-if="!structured"
+            v-model="detailed"
+            :disabled="snapshot.shared_unallocated"
+            aria-label="按明细登记"
+            active-text="按明细登记"
+          /><span>{{
+            detailed
+              ? '逐行填写本批全部未转出实物，剩余大料、不同尺寸小料和废料分别录入。保存后从实际子批出库。'
+              : '仅登记总件数和统一尺寸；一批包含多种尺寸或废料时，启用明细登记。'
+          }}</span>
+        </div>
+        <section
+          v-if="processing && detailed && !unitProcessing"
+          class="processing-outputs"
+          :class="{ 'is-error': submitted && !activeOutputs.length }"
+          aria-label="加工后完整实物明细"
+        >
+          <div class="processing-output-scroll">
+            <table class="processing-output-table">
+              <thead>
+                <tr>
+                  <th>类别</th>
+                  <th>物料类型</th>
+                  <th>件数</th>
+                  <th>实测重量</th>
+                  <th>实际尺寸（选填）</th>
+                  <th v-if="snapshot.shared_unallocated" class="shared-owner-column">
+                    归属流水号 *
+                  </th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="(line, index) in outputs" :key="line.key"
+                  ><tr>
+                    <td>
+                      <ElSelect
+                        v-model="line.role"
+                        :aria-label="`明细${index + 1}类别`"
+                        @change="outputRoleChanged(line)"
+                        ><ElOption
+                          v-for="(label, value) in processingRoleLabels"
+                          :key="value"
+                          :value="value"
+                          :label="label"
+                      /></ElSelect>
+                    </td>
+                    <td>
+                      <ElSelect
+                        v-model="line.material_type"
+                        :aria-label="`明细${index + 1}物料类型`"
+                        :disabled="line.role === 'remaining' && !!snapshot.material_type"
+                        @change="outputTypeChanged(line)"
+                        ><ElOption
+                          v-for="type in materialTypeOptions.filter(
+                            (type) => isScrapType(type.value) === (line.role === 'scrap'),
+                          )"
+                          :key="type.value"
+                          :value="type.value"
+                          :label="type.label"
+                      /></ElSelect>
+                    </td>
+                    <td>
+                      <span v-if="isWeightOnlyType(line.material_type)" class="dialog-input-unit"
+                        >仅计重量</span
+                      >
+                      <div
+                        v-else
+                        class="dialog-field"
+                        :class="{ 'is-error': outputError(line, 'quantity') }"
+                      >
+                        <ElInputNumber
+                          v-model="line.quantity"
+                          :aria-label="`明细${index + 1}件数`"
+                          :min="0"
+                          :max="2147483647"
+                          :precision="0"
+                          controls-position="right"
+                        />
+                      </div>
+                    </td>
+                    <td>
+                      <span v-if="line.material_type === 'sludge'"
+                        >{{ line.weight ?? '—' }} kg（折算）</span
+                      >
+                      <div
+                        v-else
+                        class="dialog-field"
+                        :class="{ 'is-error': outputError(line, 'weight') }"
+                      >
+                        <WeightInput v-model="line.weight" :ariaLabel="`明细${index + 1}重量`" />
+                      </div>
+                    </td>
+                    <td>
+                      <div
+                        class="dialog-field"
+                        :class="{ 'is-error': outputError(line, 'specification') }"
+                      >
+                        <SpecificationInput
+                          v-model="line.specification"
+                          :label="`明细${index + 1}实际尺寸`"
+                          @validity-change="line.specificationValid = $event"
+                        />
+                      </div>
+                    </td>
+                    <td v-if="snapshot.shared_unallocated">
+                      <div
+                        v-if="
+                          line.role === 'produced' &&
+                          (!snapshot.process_route || snapshot.process_route.split_here)
+                        "
+                        class="dialog-field"
+                        :class="{ 'is-error': outputError(line, 'serial') }"
+                      >
+                        <ElSelect
+                          v-model="line.serialNo"
+                          :aria-label="`明细${index + 1}归属流水号`"
+                          placeholder="请选择"
+                          filterable
+                          ><ElOption
+                            v-for="member in snapshot.shared_serials"
+                            :key="member.serial_no"
+                            :value="member.serial_no"
+                            :label="member.serial_no"
+                        /></ElSelect>
+                      </div>
+                      <span v-else>{{ line.role === 'scrap' ? '共投废料' : '共投未分配' }}</span>
+                    </td>
+                    <td>
+                      <ElButton
+                        text
+                        :aria-label="`移除明细${index + 1}`"
+                        @click="outputs.splice(index, 1)"
+                        >移除</ElButton
+                      >
+                    </td>
+                  </tr>
+                  <tr v-if="line.material_type === 'sludge'">
+                    <td :colspan="snapshot.shared_unallocated ? 7 : 6">
+                      <SludgeWeightFields
+                        v-model:gross="line.gross"
+                        v-model:percent="line.percent"
+                        :label="`明细${index + 1}`"
+                        :gross-error="outputError(line, 'weight') ? '请填写实重和比例' : ''"
+                        :percent-error="outputError(line, 'weight') ? '请填写实重和比例' : ''"
+                        @update:weight="line.weight = $event"
+                      />
+                    </td></tr
+                ></template>
+              </tbody>
+            </table>
+          </div>
+          <footer>
+            <ElButton class="action-cool" :disabled="outputs.length >= 100" @click="addOutput()"
+              >增加明细</ElButton
+            ><span
+              >共 {{ activeOutputs.length }} 行 · {{ outputTotal }} 件 ·
+              {{ outputWeight }} kg；空白或全零行不提交</span
+            >
+          </footer>
+        </section>
+        <p
+          v-if="
+            processing &&
+            ((detailed && measuredOutputs) || (unitProcessing && completedWeight != null)) &&
+            (weightDifference || cumulativeWeightDifference)
+          "
+          class="quantity-note processing-weight-notice"
+          role="status"
+        >
+          本次实测比账面{{ weightDifference >= 0 ? '多' : '少' }}
+          {{ Math.abs(weightDifference) }} kg；同一来源在本班组累计{{
+            cumulativeWeightDifference >= 0 ? '多' : '少'
+          }}
+          {{ Math.abs(cumulativeWeightDifference) }} kg，{{
+            Math.abs(cumulativeWeightDifference) <= materialWeightToleranceKg
+              ? `在每批 ${materialWeightToleranceKg} kg 提醒范围内`
+              : `超过每批 ${materialWeightToleranceKg} kg，请核对实测值，仍可提交`
+          }}。拆分和继续加工沿用同一批提醒额度，不按件数换算重量或自动记作损耗。
+        </p>
       </ElForm>
       <p v-else-if="editable" class="quantity-note">
         {{
@@ -853,6 +861,19 @@ onBeforeUnmount(() => {
         empty-text="暂无件数变更"
         aria-label="件数变更记录"
       >
+        <ElTableColumn v-if="processing" type="expand" width="44">
+          <template #default="{ row }">
+            <div class="processing-history-requirements">
+              <header>
+                <strong>{{ row.process_step_name || '历史工序未登记' }}</strong>
+                <span>具体任务 · {{ row.processing_task_name || '历史未登记' }}</span>
+                <span v-if="row.rework_of_id">原加工记录 #{{ row.rework_of_id }}</span>
+              </header>
+              <h4>本道工艺要求</h4>
+              <p>{{ row.process_step_instructions || '历史未登记本道工艺要求' }}</p>
+            </div>
+          </template>
+        </ElTableColumn>
         <ElTableColumn label="操作" min-width="135" align="center"
           ><template #default="{ row }">{{
             row.id === snapshot.origin_processing_record?.id
@@ -874,6 +895,9 @@ onBeforeUnmount(() => {
         </ElTableColumn>
         <ElTableColumn label="对应业务" min-width="120" align="center">
           <template #default="{ row }">{{ row.purpose_name || '未登记' }}</template>
+        </ElTableColumn>
+        <ElTableColumn v-if="processing" label="工艺工序" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.process_step_name || '历史未登记' }}</template>
         </ElTableColumn>
         <ElTableColumn label="具体任务" min-width="120" align="center">
           <template #default="{ row }">{{ row.processing_task_name || '未登记' }}</template>
@@ -968,6 +992,33 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.processing-history-requirements {
+  padding: 14px 20px;
+}
+.processing-history-requirements header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 20px;
+}
+.processing-history-requirements header span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.processing-history-requirements h4 {
+  margin: 12px 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.processing-history-requirements p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+  color: var(--text);
+}
+
 .processing-registration-form > .dialog-form-grid.processing-unit-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

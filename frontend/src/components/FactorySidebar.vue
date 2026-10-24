@@ -32,7 +32,7 @@ const sidebar = useSidebarStore(appPinia)
 const activeGroup = computed(() =>
   route.path.startsWith('/settings/')
     ? 'settings'
-    : ['/', '/factory-analysis'].includes(route.path)
+    : ['/', '/factory-analysis', '/production-schedules', '/process-routes'].includes(route.path)
       ? 'factory'
       : ['/transfer-batches', '/material-trace'].includes(route.path)
         ? 'materials'
@@ -262,6 +262,23 @@ const materialLinks = computed(() => [
             ><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"
               ><FactoryNavIcon name="inventory" /></ElIcon
             ><span>班组材质库存</span></ElMenuItem
+          >
+          <ElMenuItem
+            v-if="isAdmin"
+            index="/production-schedules"
+            aria-label="生产排期"
+            :aria-current="route.path === '/production-schedules' ? 'page' : undefined"
+            ><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"
+              ><FactoryNavIcon name="schedule" /></ElIcon
+            ><span>生产排期</span></ElMenuItem
+          >
+          <ElMenuItem
+            v-if="isAdmin"
+            index="/process-routes"
+            aria-label="工艺路线"
+            :aria-current="route.path === '/process-routes' ? 'page' : undefined"
+            ><ElIcon class="factory-nav__team-icon"><FactoryNavIcon name="schedule" /></ElIcon
+            ><span>工艺路线</span></ElMenuItem
           >
         </ElSubMenu>
         <ElSubMenu

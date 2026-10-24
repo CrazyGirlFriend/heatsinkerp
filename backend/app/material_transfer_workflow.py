@@ -93,9 +93,12 @@ def _creation_fingerprint(payload) -> str:
         "warehouse_location",
         "warehouse_location_reservation_key",
         "shared_serials",
+        "process_route",
     ):
         if field not in payload.model_fields_set:
             value.pop(field, None)
+    if value.get("process_route") is None:
+        value.pop("process_route", None)
     for field in (*DOCUMENT_FIELDS, *SLUDGE_FIELDS):
         if value.get(field) is None:
             value.pop(field, None)
@@ -115,6 +118,9 @@ def _snapshot(transfer: MaterialTransfer) -> dict[str, Any]:
         elif isinstance(value, date):
             value = value.isoformat()
         result[field] = value
+    from .process_routes import route_document
+
+    result["process_route"] = route_document(transfer)
     return result
 
 
@@ -297,6 +303,7 @@ def material_transfer_list_options(*, include_history=False):
     # Lists need only the immediate source's identity, not its own relationships.
     # All joins are scalar/unique, so they preserve page limits and row counts.
     return (
+        selectinload(MaterialTransfer.process_route),
         joinedload(MaterialTransfer.urgency),
         joinedload(MaterialTransfer.delivery_origin)
         .load_only(
@@ -322,6 +329,7 @@ def material_transfer_dict(
     transfer: MaterialTransfer, user: User | None = None, *, include_history: bool = True
 ) -> dict[str, Any]:
     from .material_delivery import document
+    from .process_routes import route_document
     from .serial_urgency import urgency_dict
     from .shared_material import document as shared_document
 
@@ -329,6 +337,7 @@ def material_transfer_dict(
     return {
         "id": transfer.id,
         "batch_no": transfer.batch_no,
+        "process_route": route_document(transfer),
         "barcode_payload": transfer.batch_no,
         "barcode_type": "CODE128",
         "serial_no": transfer.serial_no,
@@ -449,6 +458,10 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
                         raise _conflict("idempotency key was used with a different payload")
                     return material_transfer_dict(prior, user)
 
+            from .models import ProcessRoutePolicy
+
+            if db.get(ProcessRoutePolicy, 1) and payload.material_type not in SCRAP_MATERIAL_TYPES:
+                raise HTTPException(422, "正常产品请从库存批次出库，不能通过手工转料单绕过工艺路线")
             employee = require_team_employee(db, source.id, payload.sent_employee_id, "转料人")
             target = _active_target(db, payload.next_team_id)
             if target.id == source.id:
@@ -591,6 +604,13 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
                 validate_outbound_clearance(
                     transfer.stock_source, quantity, weight, available, clearance
                 )
+        if transfer.process_route_id and any(
+            key in supplied and getattr(payload, key) != getattr(transfer, key)
+            for key in ("serial_no", "next_team_id", "material_type")
+        ):
+            raise HTTPException(
+                422, "已绑定工艺的转料单不能改流水号、物料类型或班组，请作废后按工艺重新出库"
+            )
         target = transfer.next_team
         if "next_team_id" in supplied:
             if transfer.warehouse_location and payload.next_team_id != transfer.next_team_id:

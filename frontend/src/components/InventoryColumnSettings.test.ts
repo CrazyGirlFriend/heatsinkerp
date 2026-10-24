@@ -238,6 +238,29 @@ describe('inventory display columns', () => {
     await button('应用').trigger('click')
     expect(latest()).toEqual(defaultInventoryColumns())
   })
+  it('reveals requested new fields once without overriding an explicit hidden choice', async () => {
+    localStorage.setItem(key, JSON.stringify([{ key: 'material_name', visible: true }]))
+    const renderIntroduced = async () => {
+      wrapper = mount(InventoryColumnSettings, {
+        props: { storageKey: key, newVisibleKeys: ['product_code'] },
+        global: {
+          stubs: { ElPopover: { template: '<div><slot name="reference"/><slot/></div>' } },
+        },
+      })
+      await flushPromises()
+    }
+    await renderIntroduced()
+    expect(
+      latest()
+        .filter((item) => item.visible)
+        .map((item) => item.key),
+    ).toEqual(['material_name', 'product_code'])
+    check('产品编号', false)
+    await button('应用').trigger('click')
+    wrapper.unmount()
+    await renderIntroduced()
+    expect(latest().find((item) => item.key === 'product_code')?.visible).toBe(false)
+  })
   it('does not overwrite a quick edit when the opening animation finishes', async () => {
     await render()
     const popover = wrapper.getComponent(ElPopover)

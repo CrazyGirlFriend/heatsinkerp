@@ -21,6 +21,7 @@ const props = defineProps<{
   variants?: TableExportSource[]
   appendTo?: HTMLElement
 }>()
+const visible = ref(Boolean(props.source))
 const variant = ref(0)
 const sources = computed(() => (props.source ? [props.source, ...(props.variants || [])] : []))
 const activeSource = computed(() => sources.value[variant.value] || null)
@@ -28,6 +29,7 @@ watch(
   () => props.source,
   () => {
     variant.value = 0
+    visible.value = Boolean(props.source)
   },
 )
 const emit = defineEmits<{ close: [] }>()
@@ -89,21 +91,22 @@ async function exportFile() {
 }
 function close() {
   cancel()
-  emit('close')
+  visible.value = false
 }
 onBeforeUnmount(cancel)
 </script>
 
 <template>
   <AppDialog
-    :model-value="Boolean(activeSource)"
+    v-model="visible"
     title="导出数据"
     width="560px"
     class="table-export-dialog"
     append-to-body
     :append-to="appendTo || 'body'"
     :close-on-click-modal="false"
-    @update:model-value="!$event && close()"
+    @close="cancel"
+    @closed="activeSource && emit('close')"
   >
     <template v-if="activeSource">
       <ElRadioGroup

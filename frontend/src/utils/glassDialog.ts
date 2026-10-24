@@ -1,5 +1,7 @@
 import { createGlassSystem } from '../../vendor/lens/index.js'
 
+export type GlassSurfaceCleanup = (() => void) & { freeze?: () => void }
+
 // Optical surfaces enhance the existing DOM form without replacing its controls.
 function createLayer(dialog: HTMLElement, footer?: HTMLElement, buttons: HTMLElement[] = []) {
   const shell = document.createElement('div')
@@ -12,6 +14,7 @@ function createLayer(dialog: HTMLElement, footer?: HTMLElement, buttons: HTMLEle
   const opaque = matchMedia('(prefers-reduced-transparency: reduce), (prefers-contrast: more)')
   let system: ReturnType<typeof createGlassSystem> | undefined
   let disposed = false
+  let frozen = false
   let canvas: HTMLCanvasElement | undefined
 
   function resetLayer() {
@@ -36,7 +39,7 @@ function createLayer(dialog: HTMLElement, footer?: HTMLElement, buttons: HTMLEle
   }
 
   function create() {
-    if (disposed) return
+    if (disposed || frozen) return
     resetLayer()
     if (
       opaque.matches ||
@@ -58,11 +61,11 @@ function createLayer(dialog: HTMLElement, footer?: HTMLElement, buttons: HTMLEle
           ctx.fillRect(0, 0, width, height)
           // These are sampled light fields, shared by shell and footer; never a DOM screenshot.
           const light = ctx.createLinearGradient(0, 0, width, height)
-          light.addColorStop(0, '#d4e7dc')
-          light.addColorStop(0.17, '#fafcfb')
+          light.addColorStop(0, '#e0eee5')
+          light.addColorStop(0.17, '#f9fcfa')
           light.addColorStop(0.54, '#ffffff')
-          light.addColorStop(0.84, '#e7f2ec')
-          light.addColorStop(1, '#bfd8cc')
+          light.addColorStop(0.84, '#f1f7f3')
+          light.addColorStop(1, '#c8e1d3')
           ctx.fillStyle = light
           ctx.fillRect(0, 0, width, height)
           ctx.lineWidth = dpr * 1.5
@@ -77,7 +80,7 @@ function createLayer(dialog: HTMLElement, footer?: HTMLElement, buttons: HTMLEle
               width + 60 * dpr,
               height * 0.63 + i * 35 * dpr,
             )
-            ctx.strokeStyle = i % 2 ? '#ffffffb8' : '#729c882b'
+            ctx.strokeStyle = i % 2 ? '#ffffffc7' : '#8ca3971c'
             ctx.stroke()
           }
         },
@@ -96,7 +99,7 @@ function createLayer(dialog: HTMLElement, footer?: HTMLElement, buttons: HTMLEle
   create()
   media.addEventListener('change', create)
   opaque.addEventListener('change', create)
-  return () => {
+  const release = () => {
     if (disposed) return
     disposed = true
     media.removeEventListener('change', create)
@@ -105,11 +108,19 @@ function createLayer(dialog: HTMLElement, footer?: HTMLElement, buttons: HTMLEle
     shell.remove()
     if (footer) delete footer.dataset.glass
   }
+  return Object.assign(release, {
+    freeze() {
+      if (disposed || frozen) return
+      frozen = true
+      system?.renderer?.freeze()
+      system?.jelly.destroy()
+    },
+  })
 }
 
 const surfaceSelector = '.app-glass-surface, .el-dialog, .el-drawer, .el-message-box'
 
-export function enhanceGlassDialog(dialog: HTMLElement) {
+export function enhanceGlassDialog(dialog: HTMLElement): GlassSurfaceCleanup {
   const owns = (element: Element) => element.closest(surfaceSelector) === dialog
   const footer = [
     ...dialog.querySelectorAll<HTMLElement>(
@@ -120,8 +131,9 @@ export function enhanceGlassDialog(dialog: HTMLElement) {
     ? [...footer.querySelectorAll<HTMLButtonElement>('button')].filter(owns)
     : []
   const releaseDialog = createLayer(dialog, footer, buttons)
-  const menus = new Map<HTMLElement, () => void>()
+  const menus = new Map<HTMLElement, ReturnType<typeof createLayer>>()
   let disposed = false
+  let frozen = false
   // Keep Escape local to the open action menu, before the dialog's document handler.
   function menuKey(event: KeyboardEvent) {
     if (!(event.target instanceof Element) || !owns(event.target)) return
@@ -163,7 +175,7 @@ export function enhanceGlassDialog(dialog: HTMLElement) {
   }
   window.addEventListener('keydown', menuKey, true)
   function syncMenus() {
-    if (disposed) return
+    if (disposed || frozen) return
     for (const [menu, release] of menus) {
       if (!menu.isConnected || !owns(menu) || menu.getAttribute('aria-hidden') === 'true') {
         release()
@@ -189,7 +201,7 @@ export function enhanceGlassDialog(dialog: HTMLElement) {
     attributeFilter: ['aria-hidden'],
   })
   syncMenus()
-  return () => {
+  const release = () => {
     if (disposed) return
     disposed = true
     window.removeEventListener('keydown', menuKey, true)
@@ -198,4 +210,14 @@ export function enhanceGlassDialog(dialog: HTMLElement) {
     menus.clear()
     releaseDialog()
   }
+  return Object.assign(release, {
+    freeze() {
+      if (disposed || frozen) return
+      frozen = true
+      window.removeEventListener('keydown', menuKey, true)
+      observer.disconnect()
+      releaseDialog.freeze()
+      for (const release of menus.values()) release.freeze()
+    },
+  })
 }

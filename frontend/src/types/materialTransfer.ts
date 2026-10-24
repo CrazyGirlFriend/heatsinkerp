@@ -133,6 +133,7 @@ export interface MaterialTransferHistoryEntry {
     | 'dispatched'
     | 'rejected'
     | 'quantity_changed'
+    | 'route_bound'
     | 'reallocated'
     | 'processed'
     | 'inspection_recorded'
@@ -155,6 +156,7 @@ export interface SludgeMeasurement {
 }
 export interface MaterialTransfer
   extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement, SharedMaterialFields {
+  process_route?: import('./processRoute').ProcessRouteContext | null
   sludge_percent_locked?: boolean
   delivery_origin_batch_no?: string | null
   can_edit_delivery?: boolean

@@ -121,6 +121,17 @@ defineEmits<{ open: [code: string] }>()
             {{ batch.rework_count || 0 }} 次
           </dd>
         </div>
+        <div v-if="batch.process_route">
+          <dt>本道工序</dt>
+          <dd>
+            {{ batch.process_route.title }} · {{ batch.process_route.sequence_no }} ·
+            {{ batch.process_route.step_name }}
+          </dd>
+        </div>
+        <div v-if="batch.process_route?.instructions?.trim()" class="route-instructions">
+          <dt>本道工艺要求</dt>
+          <dd>{{ batch.process_route.instructions }}</dd>
+        </div>
         <div v-if="batch.processing_role">
           <dt>加工类别</dt>
           <dd>{{ processingRoleLabels[batch.processing_role] }}</dd>
@@ -225,6 +236,15 @@ dd {
   color: var(--text);
   overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
+}
+.route-instructions {
+  flex-basis: 100%;
+  align-items: flex-start;
+}
+.route-instructions dd {
+  flex: 1;
+  white-space: pre-wrap;
+  line-height: 1.65;
 }
 p {
   margin: 8px 0 0;

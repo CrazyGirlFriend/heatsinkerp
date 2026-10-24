@@ -2,6 +2,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, expect, it, vi } from 'vitest'
 import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
+import AppDialog from './AppDialog.vue'
 import MaterialAmount from './MaterialAmount.vue'
 import { ElPagination } from 'element-plus'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
@@ -103,6 +104,13 @@ it.each(['incoming', 'outgoing'])(
       expect(
         wrapper.find('.serial-record-table .material-amount, .serial-record-table small').exists(),
       ).toBe(false)
+      const content = wrapper.get('.serial-detail-body').text()
+      await wrapper.setProps({ modelValue: false })
+      expect(wrapper.get('.serial-detail-body').text()).toBe(content)
+      expect(wrapper.emitted('closed')).toBeUndefined()
+      wrapper.getComponent(AppDialog).vm.$emit('closed')
+      await flushPromises()
+      expect(wrapper.emitted('closed')).toEqual([[]])
     } finally {
       wrapper.unmount()
     }

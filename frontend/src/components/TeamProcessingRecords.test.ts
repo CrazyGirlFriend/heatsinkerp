@@ -267,6 +267,94 @@ describe('cutting processing records', () => {
 })
 
 describe('unified production records', () => {
+  it('expands recorded process requirements without adding long text to the main table or reopening registration', async () => {
+    const instructions = '厚度 2.5（+0.01/-0.02）mm。\n禁止叠放；单件放入泡沫盒。'.repeat(20)
+    vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+      items: [
+        {
+          ...record(),
+          process_step_name: '精磨',
+          processing_task_name: '双面精磨',
+          process_step_instructions: instructions,
+          work_kind: 'rework',
+          rework_of_id: 42,
+          rework_round: 1,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    })
+    await render()
+    expect(wrapper.find('.processing-record-detail').exists()).toBe(false)
+    expect(wrapper.text()).toContain('精磨')
+    expect(wrapper.text()).toContain('双面精磨')
+    expect(wrapper.text()).not.toContain(instructions)
+    const requests = vi.mocked(teamMaterialApi.processingRecords).mock.calls.length
+    await wrapper.get('.el-table__expand-icon').trigger('click')
+    await flushPromises()
+    const detail = wrapper.get('[aria-label="加工记录 #1 工艺详情"]')
+    expect(detail.text()).toContain('精磨')
+    expect(detail.text()).toContain('双面精磨')
+    expect(
+      detail.findAll('dl > div').map((item) => [item.get('dt').text(), item.get('dd').text()]),
+    ).toContainEqual(['返工原记录', '#42'])
+    expect(detail.get('.processing-record-requirements dd').element.textContent).toBe(instructions)
+    expect(wrapper.getComponent(QuantityAdjustmentDialog).props('modelValue')).toBe(false)
+    expect(teamMaterialApi.processingRecords).toHaveBeenCalledTimes(requests)
+    await wrapper.get('.el-table__expand-icon').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.processing-record-detail').exists()).toBe(false)
+  })
+
+  it('marks missing historical requirements explicitly rather than inferring them from a step or task', async () => {
+    vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+      items: [
+        {
+          ...record(),
+          process_step_name: '旧精磨工序',
+          processing_task_name: '旧精磨任务',
+          process_step_instructions: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    })
+    await render()
+    await wrapper.get('.el-table__expand-icon').trigger('click')
+    await flushPromises()
+    const detail = wrapper.get('.processing-record-detail')
+    expect(detail.get('.processing-record-requirements dd').text()).toBe('历史未登记')
+    expect(detail.text()).toContain('旧精磨工序')
+    expect(detail.text()).toContain('旧精磨任务')
+    expect(detail.text()).not.toContain('返工原记录')
+  })
+
+  it('exports the complete recorded requirements including newlines and marks missing history', async () => {
+    const instructions =
+      '按图纸 NP000500010-A4 加工。\n厚度 2.5（+0.01/-0.02）mm，禁止叠放。'.repeat(30)
+    vi.mocked(teamMaterialApi.processingRecords).mockResolvedValue({
+      items: [
+        { ...record(), process_step_instructions: instructions },
+        { ...record(2), process_step_instructions: null },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 10,
+    })
+    await render()
+    const source = wrapper.getComponent(TableExportButton).props('source')()!
+    expect(source.fields.find((field) => field.key === 'process_step_instructions')?.label).toBe(
+      '本道工艺要求',
+    )
+    const exported = await source.load(new AbortController().signal, () => {})
+    expect(exported.map((row) => row.process_step_instructions)).toEqual([
+      instructions,
+      '历史未登记',
+    ])
+  })
+
   it('shows totals for every matching record and keeps one entry in normal and fullscreen modes', async () => {
     await render()
     expect(wrapper.text()).not.toContain('个人日产')

@@ -107,7 +107,6 @@ onBeforeUnmount(reset)
     title="历史合并记录"
     @close="close"
   >
-    <template #header><h2>历史合并记录</h2></template>
     <StatePanel v-if="loading && !current" state="loading" title="正在读取历史记录" />
     <StatePanel v-else-if="!current" state="error" :description="error" @retry="load()" />
     <template v-else>
@@ -179,10 +178,6 @@ onBeforeUnmount(reset)
   <MaterialBatchPrintDialog v-if="allowPrint" v-model="printOpen" :items="current?.items || []" />
 </template>
 <style scoped>
-h2 {
-  margin: 0;
-  font-size: 22px;
-}
 p {
   color: var(--el-text-color-secondary);
   line-height: 1.7;

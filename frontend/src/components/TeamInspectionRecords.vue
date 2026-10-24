@@ -342,6 +342,11 @@ onBeforeUnmount(() => {
       <ElTableColumn label="检查时间" min-width="170" align="center"
         ><template #default="{ row }">{{ formatDateTime(row.checked_at) }}</template></ElTableColumn
       >
+      <ElTableColumn label="被检工序" min-width="155" align="center"
+        ><template #default="{ row }">{{
+          row.process_step ? `${row.process_step.sequence_no} · ${row.process_step.step_name}` : '—'
+        }}</template></ElTableColumn
+      >
       <ElTableColumn prop="team_name" label="被检班组" min-width="105" align="center" />
       <ElTableColumn
         prop="material_name"

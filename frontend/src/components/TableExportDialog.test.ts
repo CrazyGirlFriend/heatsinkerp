@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ElCheckboxGroup, ElRadioGroup } from 'element-plus'
 import TableExportDialog from './TableExportDialog.vue'
+import AppDialog from './AppDialog.vue'
 import * as exports from '@/utils/tableExport'
 
 let wrapper: VueWrapper
@@ -87,6 +88,9 @@ describe('export field picker', () => {
     await button('取消导出').trigger('click')
     await flushPromises()
     expect(signal.aborted).toBe(true)
+    expect(wrapper.getComponent(AppDialog).props('modelValue')).toBe(false)
+    expect(wrapper.emitted('close')).toBeUndefined()
+    wrapper.getComponent(AppDialog).vm.$emit('closed')
     finish([{ serial: '0001' }])
     await flushPromises()
     expect(create).not.toHaveBeenCalled()
@@ -132,4 +136,18 @@ it('switches export content, resets fields and exports the selected worker summa
     ],
   )
   expect(download).toHaveBeenCalledWith(expect.any(Blob), '按加工人汇总')
+})
+
+it('closes a cancelled field picker after the exit transition and reopens for a new export', async () => {
+  render()
+  await flushPromises()
+  const dialog = wrapper.getComponent(AppDialog)
+  await button('取消').trigger('click')
+  expect(dialog.props('modelValue')).toBe(false)
+  expect(wrapper.emitted('close')).toBeUndefined()
+  dialog.vm.$emit('closed')
+  expect(wrapper.emitted('close')).toEqual([[]])
+  await wrapper.setProps({ source: null })
+  await wrapper.setProps({ source: source() })
+  expect(dialog.props('modelValue')).toBe(true)
 })

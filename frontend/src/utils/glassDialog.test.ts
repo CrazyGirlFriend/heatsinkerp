@@ -26,6 +26,8 @@ let systems: Array<{
   stage: HTMLElement
   destroy: ReturnType<typeof vi.fn>
   register: ReturnType<typeof vi.fn>
+  freeze: ReturnType<typeof vi.fn>
+  stopMotion: ReturnType<typeof vi.fn>
 }>
 
 beforeEach(() => {
@@ -56,8 +58,14 @@ beforeEach(() => {
         if (!options.canvas) canvas.remove()
         stage.classList.remove('webgl-ready')
       })
-      systems.push({ stage, destroy, register })
-      return { destroy, renderer: { set: vi.fn() }, jelly: { register } }
+      const freeze = vi.fn()
+      const stopMotion = vi.fn()
+      systems.push({ stage, destroy, register, freeze, stopMotion })
+      return {
+        destroy,
+        renderer: { set: vi.fn(), freeze },
+        jelly: { register, destroy: stopMotion },
+      }
     },
   )
 })
@@ -148,6 +156,35 @@ it('removes owned optical resources and preference listeners exactly once on clo
   motion.change(true)
   transparency.change(true)
   expect(runtime.create).toHaveBeenCalledTimes(1)
+})
+
+it('freezes the surface and open menus until final cleanup without creating new optical layers', async () => {
+  const { dialog, menu } = fixture()
+  menu.setAttribute('aria-hidden', 'false')
+  const cleanup = enhance(dialog)
+  expect(systems).toHaveLength(2)
+  cleanup.freeze?.()
+  cleanup.freeze?.()
+  for (const system of systems) {
+    expect(system.freeze).toHaveBeenCalledOnce()
+    expect(system.stopMotion).toHaveBeenCalledOnce()
+    expect(system.destroy).not.toHaveBeenCalled()
+  }
+  expect(dialog.querySelectorAll('canvas')).toHaveLength(2)
+  expect(dialog.classList.contains('webgl-ready')).toBe(true)
+  motion.change(true)
+  transparency.change(true)
+  menu.setAttribute('aria-hidden', 'true')
+  await flushMenus()
+  expect(runtime.create).toHaveBeenCalledTimes(2)
+  expect(systems.every((system) => system.destroy.mock.calls.length === 0)).toBe(true)
+
+  cleanup()
+  cleanup()
+  expect(systems.every((system) => system.destroy.mock.calls.length === 1)).toBe(true)
+  expect(dialog.querySelector('canvas')).toBeNull()
+  expect(motion.listeners.size).toBe(0)
+  expect(transparency.listeners.size).toBe(0)
 })
 
 it('allocates a menu layer only while visible and stops observing after close', async () => {
@@ -291,6 +328,11 @@ it('keeps nested dialogs, their menus and footer motion owned by the nearest sur
   expect(innerMenu.getAttribute('aria-hidden')).toBe('true')
   expect(outerMenu.getAttribute('aria-hidden')).toBe('false')
   expect(document.activeElement).toBe(innerTrigger)
+  closeOuter.freeze?.()
+  expect(systems[0]!.freeze).toHaveBeenCalledOnce()
+  expect(systems[1]!.freeze).toHaveBeenCalledOnce()
+  expect(systems[2]!.freeze).not.toHaveBeenCalled()
+  expect(systems[3]!.freeze).not.toHaveBeenCalled()
   closeOuter()
   expect(innerFooter.dataset.jelly).toBe('press')
   expect(inner.querySelector('canvas')).not.toBeNull()

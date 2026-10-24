@@ -64,7 +64,12 @@ httpClient.interceptors.request.use((config) => {
   const authorization = authorizationValue()
   if (authorization) config.headers.set('Authorization', authorization)
   else config.headers.delete('Authorization')
-  if (config.data !== undefined && config.data !== null && !config.headers.has('Content-Type')) {
+  if (
+    config.data !== undefined &&
+    config.data !== null &&
+    !(config.data instanceof FormData) &&
+    !config.headers.has('Content-Type')
+  ) {
     config.headers.set('Content-Type', 'application/json')
   }
   return config

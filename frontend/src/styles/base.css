@@ -34,10 +34,10 @@
   --table-hover-bg: #f2faf6;
   --panel-line: var(--line);
   --panel-shadow: 0 5px 18px rgb(32 59 46 / 3%);
-  --glass-surface: linear-gradient(160deg, #fffffff5, #ffffffe0);
-  --glass-border: #ffffffb8;
+  --glass-surface: linear-gradient(160deg, #fffffff2, #ffffffcf);
+  --glass-border: #ffffffeb;
   --glass-shadow:
-    0 5px 18px #203b2e0b, 0 0 0 0.5px #4b6c5814, inset 0 1px 1px #fff, inset 0 -1px 1px #ffffffb8;
+    0 8px 24px #203b2e10, 0 0 0 0.5px #4b6c5824, inset 0 1px 1px #fff, inset 0 -1px 1px #ffffffc7;
   --card-radius: 16px;
   --sidebar-width: 184px;
   --topbar-height: 56px;
@@ -431,5 +431,13 @@ a {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
     animation: none !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .chart-glass {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }

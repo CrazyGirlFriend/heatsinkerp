@@ -89,6 +89,11 @@ const stockOpen = ref(false),
   stockPage = ref(1),
   stockTotal = ref(0)
 const stockSerial = ref<StockDetail | null>(null)
+const serialOpen = ref(false)
+function openSerial(row: StockDetail) {
+  stockSerial.value = row
+  serialOpen.value = true
+}
 const stockTitle = computed(() =>
   [
     stockTeam.value
@@ -158,6 +163,7 @@ function connect() {
   })
 }
 async function stockDetails(material = '', team?: number) {
+  serialOpen.value = false
   stockSerial.value = null
   stockMaterial.value = material
   stockTeam.value = team
@@ -377,6 +383,7 @@ onBeforeUnmount(() => {
       :title="stockTitle"
       width="min(950px, 96vw)"
       class="factory-detail-dialog"
+      @close="serialOpen = false"
     >
       <p v-if="detailError" role="alert">
         {{ detailError }}<ElButton link @click="loadStock">重试</ElButton>
@@ -395,7 +402,7 @@ onBeforeUnmount(() => {
               link
               type="primary"
               :aria-label="`查看${row.team_name} ${row.serial_no}流水号详情`"
-              @click="stockSerial = row as StockDetail"
+              @click="openSerial(row as StockDetail)"
               >{{ row.serial_no }}</ElButton
             >
           </template>
@@ -420,12 +427,12 @@ onBeforeUnmount(() => {
       />
     </AppDialog>
     <SerialMaterialDrawer
-      v-if="stockOpen && stockSerial"
-      :model-value="true"
+      v-if="stockSerial"
+      v-model="serialOpen"
       :team-id="stockSerial.team_id"
       :serial-no="stockSerial.serial_no"
       :can-write="false"
-      @update:model-value="!$event && (stockSerial = null)"
+      @closed="stockSerial = null"
       @changed="refresh"
     />
   </section>

@@ -616,3 +616,36 @@ it('reworks completed stock with a required employee and the original record, wi
     }),
   )
 })
+
+it('expands historical step requirements without using the batch current-route requirements', async () => {
+  const record = {
+    id: 51,
+    source_transfer_id: 10,
+    before_quantity: 10,
+    after_quantity: 10,
+    delta_quantity: 0,
+    weight: 100,
+    reason: '',
+    created_by: '班组长',
+    created_at: '',
+    process_step_name: '2 · 粗磨',
+    process_step_instructions: '原记录厚度 2.50 ±0.05 mm\n不得叠放',
+    processing_task_name: '磨削',
+    rework_of_id: 40,
+  }
+  vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
+    ...context(),
+    items: [record],
+    total: 1,
+  })
+  await render(false)
+  await wrapper.setProps({ processing: true })
+  expect(wrapper.text()).toContain('2 · 粗磨')
+  expect(wrapper.find('.processing-history-requirements').exists()).toBe(false)
+  await wrapper.get('.el-table__expand-icon').trigger('click')
+  await flushPromises()
+  const detail = wrapper.get('.processing-history-requirements')
+  expect(detail.text()).toContain('具体任务 · 磨削')
+  expect(detail.text()).toContain('原加工记录 #40')
+  expect(detail.get('p').text()).toBe('原记录厚度 2.50 ±0.05 mm\n不得叠放')
+})

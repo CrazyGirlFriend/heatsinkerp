@@ -12,6 +12,7 @@ import TableExportButton from '@/components/TableExportButton.vue'
 import FilterDialog from '@/components/FilterDialog.vue'
 import RecordDateFilter from '@/components/RecordDateFilter.vue'
 import FlowPreviewPage from './FlowPreviewPage.vue'
+import AppDrawer from '@/components/AppDrawer.vue'
 import snapshot from '@/fixtures/flowPurposeSnapshot.json'
 import type { SerialHistory } from '@/types/teamBusiness'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
@@ -230,6 +231,14 @@ it('labels the snapshot and does not query live stock or open a possibly unrelat
   expect(document.body.querySelector('.selection-batches button')?.hasAttribute('disabled')).toBe(
     true,
   )
+  const drawer = page.getComponent(AppDrawer)
+  drawer.vm.$emit('close')
+  await flushPromises()
+  expect(drawer.props('modelValue')).toBe(false)
+  expect(document.body.textContent).toContain('演示数据，不打开业务单据')
+  drawer.vm.$emit('closed')
+  await flushPromises()
+  expect(document.body.textContent).not.toContain('演示数据，不打开业务单据')
 })
 it('queries exact serials and keeps the canvas and unsent input intact on push refresh', async () => {
   vi.spyOn(teamMaterialApi, 'serialHistory').mockResolvedValue(snapshot.history as SerialHistory)
@@ -479,6 +488,13 @@ it('leaves native fullscreen before opening a batch dialog and keeps it closed i
     expect(exit).toHaveBeenCalledTimes(2)
     expect(page.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(true)
     expect(page.getComponent(MaterialTransferDrawer).props('batchNo')).toBe(batch.batch_no)
+    const drawer = page.getComponent(MaterialTransferDrawer)
+    drawer.vm.$emit('update:modelValue', false)
+    await flushPromises()
+    expect(page.getComponent(MaterialTransferDrawer).props('modelValue')).toBe(false)
+    drawer.vm.$emit('closed')
+    await flushPromises()
+    expect(page.findComponent(MaterialTransferDrawer).exists()).toBe(false)
   } finally {
     Reflect.deleteProperty(document, 'fullscreenElement')
     Reflect.deleteProperty(document, 'exitFullscreen')

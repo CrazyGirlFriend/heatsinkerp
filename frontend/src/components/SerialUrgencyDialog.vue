@@ -128,20 +128,18 @@ onBeforeUnmount(() => {
 <style>
 .serial-urgency-dialog.el-dialog {
   --el-component-size: 32px;
+  --dialog-title-size: 18px;
   padding: 18px;
   --glass-surface-radius: 16px;
 }
 .serial-urgency-dialog .el-dialog__header {
   padding-bottom: 12px;
 }
-.serial-urgency-dialog .el-dialog__title {
-  font-size: 16px;
-}
 .serial-urgency-dialog .el-dialog__headerbtn {
   top: 12px;
   right: 12px;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
 }
 .serial-urgency-dialog .el-dialog__body {
   padding: 14px 0;

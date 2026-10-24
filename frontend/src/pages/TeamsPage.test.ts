@@ -88,6 +88,7 @@ describe('team management directory ordering', () => {
     expect(opening).not.toHaveBeenCalled()
     wrapper.getComponent(TeamBusinessDialog).vm.$emit('update:modelValue', false)
     await flushPromises()
+    expect(wrapper.getComponent(TeamBusinessDialog).props('modelValue')).toBe(false)
     await wrapper
       .get('tbody tr')
       .findAll('button')

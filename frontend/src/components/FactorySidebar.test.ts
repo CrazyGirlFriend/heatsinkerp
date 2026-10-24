@@ -37,6 +37,7 @@ async function renderSidebar(path = '/transfer-batches', compact = false) {
       { path: '/', component: page },
       { path: '/factory-stock', redirect: '/' },
       { path: '/factory-analysis', component: page },
+      { path: '/production-schedules', component: page },
       { path: '/transfer-batches', component: page },
       { path: '/transfer-batches/scan', component: page },
       { path: '/material-trace', component: page },
@@ -405,6 +406,8 @@ describe('two-level team navigation', () => {
     expect(group.findAllComponents(ElMenuItem).map((item) => item.props('index'))).toEqual([
       '/factory-analysis',
       '/',
+      '/production-schedules',
+      '/process-routes',
     ])
     const analysis = group
       .findAllComponents(ElMenuItem)

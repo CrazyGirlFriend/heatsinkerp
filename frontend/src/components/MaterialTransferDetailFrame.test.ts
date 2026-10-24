@@ -33,6 +33,8 @@ describe('centered material detail frame', () => {
     expect(wrapper.find('aside, .el-drawer').exists()).toBe(false)
     dialog.vm.$emit('update:modelValue', false)
     expect(wrapper.emitted('close')).toHaveLength(1)
+    dialog.vm.$emit('closed')
+    expect(wrapper.emitted('closed')).toEqual([[]])
   })
 
   it('retains confirmation and mutation close protection', async () => {

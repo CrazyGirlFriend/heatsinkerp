@@ -15,11 +15,13 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.mysql import LONGBLOB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -339,6 +341,13 @@ class MaterialTransfer(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    process_route_id: Mapped[int | None] = mapped_column(
+        ForeignKey("process_routes.id", ondelete="RESTRICT"), index=True
+    )
+    process_step_index: Mapped[int | None] = mapped_column(Integer)
+    sent_process_step_index: Mapped[int | None] = mapped_column(Integer)
+    process_step_complete: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    process_route: Mapped[ProcessRoute | None] = relationship(lazy="selectin")
     batch_no: Mapped[str] = mapped_column(
         TRANSFER_BATCH_NUMBER_TYPE, nullable=False, unique=True, index=True
     )
@@ -648,6 +657,12 @@ class MaterialQuantityAdjustment(Base):
         Index("ix_mqa_team_purpose_day", "team_id", "purpose_id", "processing_date"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    process_route_id: Mapped[int | None] = mapped_column(
+        ForeignKey("process_routes.id", ondelete="RESTRICT")
+    )
+    process_step_index: Mapped[int | None] = mapped_column(Integer)
+    process_step_name: Mapped[str | None] = mapped_column(String(120))
+    process_step_instructions: Mapped[str | None] = mapped_column(Text)
     source_transfer_id: Mapped[int] = mapped_column(
         ForeignKey("material_transfers.id", ondelete="RESTRICT")
     )
@@ -794,6 +809,149 @@ class AuthSession(Base):
     user: Mapped[User] = relationship(back_populates="sessions", lazy="joined")
 
 
+class BusinessPerson(Base):
+    """Order contacts are maintained independently of login accounts and workshop staff."""
+
+    __tablename__ = "business_people"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class ProductionScheduleTask(Base):
+    """One serial's delivery route, independent of physical inventory."""
+
+    __tablename__ = "production_schedule_tasks"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    serial_no: Mapped[str] = mapped_column(String(80), nullable=False)
+    business_person_id: Mapped[int | None] = mapped_column(
+        ForeignKey("business_people.id", ondelete="RESTRICT"), index=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    __table_args__ = (
+        CheckConstraint("version > 0", name="ck_pst_positive_revision"),
+        Index("ix_pst_serial", "serial_no", "id"),
+    )
+
+    @property
+    def task_no(self) -> str:
+        return f"PQ{self.id:08d}"
+
+
+class ProductionSchedule(Base):
+    """One team's delivery commitment; quantities are its own output targets."""
+
+    __tablename__ = "production_schedules"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    process_route_id: Mapped[int | None] = mapped_column(
+        ForeignKey("process_routes.id", ondelete="RESTRICT"), index=True
+    )
+    process_step_index: Mapped[int | None] = mapped_column(Integer)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("production_schedule_tasks.id", ondelete="RESTRICT"), nullable=False
+    )
+    serial_no: Mapped[str] = mapped_column(String(80), nullable=False)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
+    next_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
+    external_destination: Mapped[str | None] = mapped_column(String(240))
+    predecessor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("production_schedules.id", ondelete="RESTRICT")
+    )
+    sequence_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    due_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    initial_due_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    target_quantity: Mapped[int | None] = mapped_column(Integer)
+    target_weight: Mapped[Decimal | None] = mapped_column(Numeric(17, 6))
+    completion_basis: Mapped[str] = mapped_column(String(16), nullable=False, default="quantity")
+    notes: Mapped[str | None] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    __table_args__ = (
+        CheckConstraint("sequence_no > 0 AND version > 0", name="ck_ps_positive_revision"),
+        CheckConstraint(
+            "(completion_basis = 'quantity' AND target_quantity IS NOT NULL) OR "
+            "(completion_basis = 'weight' AND target_weight IS NOT NULL) OR "
+            "(completion_basis = 'both' AND target_quantity IS NOT NULL AND target_weight IS NOT NULL)",
+            name="ck_ps_completion_basis",
+        ),
+        CheckConstraint(
+            "(target_quantity IS NULL OR target_quantity > 0) AND "
+            "(target_weight IS NULL OR target_weight > 0) AND "
+            "(target_quantity IS NOT NULL OR target_weight IS NOT NULL)",
+            name="ck_ps_target",
+        ),
+        CheckConstraint(
+            "(next_team_id IS NOT NULL AND external_destination IS NULL) OR "
+            "(next_team_id IS NULL AND external_destination IS NOT NULL)",
+            name="ck_ps_destination",
+        ),
+        Index("ix_ps_team_due", "team_id", "cancelled_at", "due_at", "id"),
+        Index("ix_ps_team_serial", "team_id", "serial_no", "id"),
+        Index("ix_ps_due", "due_at", "id"),
+        Index("ix_ps_serial_due", "serial_no", "due_at", "id"),
+        Index("ix_ps_predecessor", "predecessor_id"),
+        Index("ix_ps_task_sequence", "task_id", "sequence_no", "id"),
+    )
+
+
+class ProductionScheduleSource(Base):
+    __tablename__ = "production_schedule_sources"
+    schedule_id: Mapped[int] = mapped_column(
+        ForeignKey("production_schedules.id", ondelete="RESTRICT"), primary_key=True
+    )
+    source_transfer_id: Mapped[int] = mapped_column(
+        ForeignKey("material_transfers.id", ondelete="RESTRICT"), primary_key=True
+    )
+    quantity: Mapped[int | None] = mapped_column(Integer)
+    weight: Mapped[Decimal | None] = mapped_column(Numeric(17, 6))
+    __table_args__ = (
+        Index("ix_pss_source", "source_transfer_id", "schedule_id"),
+        CheckConstraint(
+            "(quantity IS NULL OR quantity > 0) AND (weight IS NULL OR weight > 0) AND "
+            "(quantity IS NOT NULL OR weight IS NOT NULL)",
+            name="ck_pss_amount",
+        ),
+    )
+
+
+class ProductionScheduleDelivery(Base):
+    """A real transfer belongs to exactly one commitment, never two deadlines."""
+
+    __tablename__ = "production_schedule_deliveries"
+    transfer_id: Mapped[int] = mapped_column(
+        ForeignKey("material_transfers.id", ondelete="RESTRICT"), primary_key=True
+    )
+    schedule_id: Mapped[int] = mapped_column(
+        ForeignKey("production_schedules.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+
+
+class ProductionScheduleEvent(Base):
+    __tablename__ = "production_schedule_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    schedule_id: Mapped[int] = mapped_column(
+        ForeignKey("production_schedules.id", ondelete="RESTRICT"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(String(24), nullable=False)
+    actor: Mapped[str] = mapped_column(String(80), nullable=False)
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    before: Mapped[dict | None] = mapped_column(JSON)
+    after: Mapped[dict] = mapped_column(JSON, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    __table_args__ = (Index("ix_pse_schedule", "schedule_id", "id"),)
+
+
 class MaterialInspection(Base):
     """Inspection facts; disposition and legacy hold release are explicit decisions."""
 
@@ -810,6 +968,7 @@ class MaterialInspection(Base):
         Index("ix_inspection_lot_hold", "source_transfer_id", "parent_id", "released_at"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    process_step: Mapped[dict | None] = mapped_column(JSON)
     source_transfer_id: Mapped[int] = mapped_column(
         ForeignKey("material_transfers.id", ondelete="RESTRICT")
     )
@@ -899,6 +1058,53 @@ class InspectionFeedbackEvent(Base):
     occurred_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     idempotency_key: Mapped[str] = mapped_column(String(100), unique=True)
     request_hash: Mapped[str] = mapped_column(String(64))
+
+
+class ProcessRoute(Base):
+    """One dispatch's reviewed route; published rows are immutable."""
+
+    __tablename__ = "process_routes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(160))
+    filename: Mapped[str] = mapped_column(String(240))
+    source_sha256: Mapped[str] = mapped_column(String(64))
+    source_file: Mapped[bytes] = mapped_column(
+        LargeBinary().with_variant(LONGBLOB(), "mysql"), deferred=True
+    )
+    source_data: Mapped[dict] = mapped_column(JSON, deferred=True)
+    serial_nos: Mapped[list] = mapped_column(JSON)
+    steps: Mapped[list] = mapped_column(JSON)
+    review_note: Mapped[str | None] = mapped_column(Text)
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("process_routes.id", ondelete="RESTRICT")
+    )
+    state: Mapped[str] = mapped_column(String(16), default="draft")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(String(80))
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime)
+    __table_args__ = (Index("ix_process_routes_created", "created_at", "id"),)
+
+
+class ProcessRoutePolicy(Base):
+    __tablename__ = "process_route_policy"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    enforced_after: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class ProcessRoutePath(Base):
+    """Indexed published steps per serial; the empty serial is unsplit common stock."""
+
+    __tablename__ = "process_route_paths"
+    route_id: Mapped[int] = mapped_column(
+        ForeignKey("process_routes.id", ondelete="RESTRICT"), primary_key=True
+    )
+    serial_no: Mapped[str] = mapped_column(String(80), primary_key=True)
+    step_index: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
 
 
 # Register ledger/outbox hooks for HTTP and maintenance ORM writers alike.

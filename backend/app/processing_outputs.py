@@ -14,7 +14,7 @@ from .processing_records import require_processing_team
 from .schemas import SCRAP_MATERIAL_TYPES
 
 
-def create_outputs(db, lot, payload, user, now, hold, task_fields=None):
+def create_outputs(db, lot, payload, user, now, hold, task_fields=None, route_step_index=None):
     """Caller owns the source lock and commits outputs plus adjustment atomically."""
     require_processing_team(db, lot.next_team_id)
     if lot.material_type in SCRAP_MATERIAL_TYPES:
@@ -40,9 +40,16 @@ def create_outputs(db, lot, payload, user, now, hold, task_fields=None):
     for output, number in zip(payload.outputs, numbers, strict=True):
         from .shared_material import allocate
 
+        route_shared = bool(
+            lot.shared_unallocated
+            and lot.process_route_id
+            and not lot.process_route.steps[
+                route_step_index if route_step_index is not None else lot.process_step_index
+            ].get("split_here")
+        )
         serial_no, unallocated, member_fields = (
             (lot.serial_no, lot.shared_unallocated, {})
-            if payload.processing_mode == "unit"
+            if payload.processing_mode == "unit" or route_shared
             else allocate(lot, output)
         )
         if (

@@ -106,6 +106,7 @@ function fixture() {
     canvas,
     displayDraws,
     onState,
+    extension,
     setWidth: (value: number) => (width = value),
     setContextLost: (value: boolean) => (contextLost = value),
   }
@@ -167,6 +168,40 @@ it('keeps a completed frame visible when ResizeObserver reports unchanged dimens
   nextFrame()
   resize()
   expect(canvas.hidden).toBe(false)
+})
+
+it('freezes the completed frame during exit without redrawing or clearing its buffer', async () => {
+  const { canvas, stage, displayDraws, extension, setWidth } = fixture()
+  activate()
+  nextFrame()
+  const drawCount = displayDraws.length
+  const width = canvas.width
+  expect(frames.size).toBeGreaterThan(0)
+  renderer!.freeze()
+  renderer!.freeze()
+  expect(frames.size).toBe(0)
+  expect(canvas.hidden).toBe(false)
+  expect(stage.classList.contains('webgl-ready')).toBe(true)
+  expect(extension.loseContext).not.toHaveBeenCalled()
+
+  stage.dispatchEvent(new Event('pointerdown'))
+  stage.dispatchEvent(new Event('pointerup'))
+  stage.classList.add('is-closing')
+  renderer!.invalidate(650)
+  setWidth(480)
+  resize()
+  activate()
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
+  nextFrame()
+  expect(frames.size).toBe(0)
+  expect(displayDraws).toHaveLength(drawCount)
+  expect(canvas.width).toBe(width)
+  expect(canvas.hidden).toBe(false)
+  expect(extension.loseContext).not.toHaveBeenCalled()
+
+  renderer!.destroy()
+  expect(extension.loseContext).toHaveBeenCalled()
+  expect(canvas.hidden).toBe(true)
 })
 
 it('waits for a complete replacement frame after WebGL context restoration', () => {

@@ -213,6 +213,13 @@ function exportSource() {
         label: '加工性质',
         value: (row) => (row.work_kind === 'rework' ? '返工' : '首次加工'),
       },
+      { key: 'process_step_name', label: '工艺工序', value: (row) => row.process_step_name || '—' },
+      {
+        key: 'process_step_instructions',
+        label: '本道工艺要求',
+        value: (row) =>
+          row.process_step_instructions?.trim() ? row.process_step_instructions : '历史未登记',
+      },
       { key: 'rework_of_id', label: '关联加工记录', value: (row) => row.rework_of_id },
       { key: 'rework_round', label: '返工次数', value: (row) => row.rework_round },
       { key: 'created_at', label: '登记时间', value: (row) => formatDateTime(row.created_at) },
@@ -600,6 +607,36 @@ onBeforeUnmount(() => {
       empty-text="暂无加工登记记录"
       aria-label="班组加工记录"
     >
+      <ElTableColumn type="expand" label="详情" width="54" fixed>
+        <template #default="{ row }">
+          <section class="processing-record-detail" :aria-label="`加工记录 #${row.id} 工艺详情`">
+            <dl>
+              <div>
+                <dt>工艺工序</dt>
+                <dd>{{ row.process_step_name || '历史未登记' }}</dd>
+              </div>
+              <div>
+                <dt>具体任务</dt>
+                <dd>{{ row.processing_task_name || '历史未登记' }}</dd>
+              </div>
+              <div v-if="row.rework_of_id">
+                <dt>返工原记录</dt>
+                <dd>#{{ row.rework_of_id }}</dd>
+              </div>
+              <div class="processing-record-requirements">
+                <dt>本道工艺要求</dt>
+                <dd>
+                  {{
+                    row.process_step_instructions?.trim()
+                      ? row.process_step_instructions
+                      : '历史未登记'
+                  }}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        </template>
+      </ElTableColumn>
       <ElTableColumn label="流水号" min-width="150" fixed show-overflow-tooltip
         ><template #default="{ row }">{{ sharedSerialLabel(row) }}</template></ElTableColumn
       >
@@ -621,6 +658,9 @@ onBeforeUnmount(() => {
       <ElTableColumn label="对应业务" min-width="140" align="center" show-overflow-tooltip>
         <template #default="{ row }">{{ row.purpose_name || '未登记' }}</template>
       </ElTableColumn>
+      <ElTableColumn label="工艺工序" min-width="160" align="center"
+        ><template #default="{ row }">{{ row.process_step_name || '—' }}</template></ElTableColumn
+      >
       <ElTableColumn label="具体任务" min-width="140" align="center" show-overflow-tooltip>
         <template #default="{ row }">{{ row.processing_task_name || '未登记' }}</template>
       </ElTableColumn>
@@ -792,6 +832,38 @@ onBeforeUnmount(() => {
 .processing-records-table {
   flex: 1;
   min-height: 0;
+}
+.processing-record-detail {
+  margin: 8px 16px 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: var(--glass-surface);
+}
+.processing-record-detail dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 24px;
+  margin: 0;
+}
+.processing-record-detail dl > div {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+.processing-record-detail dt {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.processing-record-detail dd {
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.65;
+}
+.processing-record-requirements {
+  grid-column: 1 / -1;
 }
 footer {
   display: flex;

@@ -8,6 +8,8 @@ import { ElCheckbox, ElSelect } from 'element-plus'
 import TeamWorkspacePage from './TeamWorkspacePage.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
 import TeamProcessingRecords from '@/components/TeamProcessingRecords.vue'
+import DeliverySchedules from '@/components/DeliverySchedules.vue'
+import type { ProductionSchedule } from '@/types/productionSchedule'
 import ProcessingBatchPicker from '@/components/ProcessingBatchPicker.vue'
 import QuantityAdjustmentDialog from '@/components/QuantityAdjustmentDialog.vue'
 import TeamMaterialOverviewPanel from '@/components/TeamMaterialOverview.vue'
@@ -30,6 +32,7 @@ import SerialReallocationDialog from '@/components/SerialReallocationDialog.vue'
 import WarehouseManagement from '@/components/WarehouseManagement.vue'
 import TableExportDialog from '@/components/TableExportDialog.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
+import { productionScheduleApi } from '@/services/productionScheduleApi'
 import * as inventoryStream from '@/services/inventoryStream'
 import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import type { StockBatch, TeamMaterialOverview } from '@/types/teamMaterials'
@@ -104,6 +107,7 @@ let wrapper: VueWrapper
 let subscription: inventoryStream.InventorySubscription<inventoryStream.InventoryChange>,
   stopStream: ReturnType<typeof vi.fn>
 beforeEach(() => {
+  vi.spyOn(productionScheduleApi, 'inventory').mockResolvedValue({ groups: [], sources: [] })
   vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([receivingPerson])
   vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
   stopStream = vi.fn()
@@ -189,6 +193,7 @@ async function render(path = '/team-workspaces/914', animate = false) {
       stubs: {
         transition: !animate,
         StockSourcePicker: true,
+        DeliverySchedules: true,
         TeamAnalyticsCharts: true,
         SerialMaterialDrawer: true,
         LedgerChart: true,
@@ -206,6 +211,37 @@ async function render(path = '/team-workspaces/914', animate = false) {
   return router
 }
 describe('team workspace material ledger', () => {
+  it('keeps the chosen schedule and current batch when opening dispatch from the schedule tab', async () => {
+    vi.mocked(teamMaterialApi.stock).mockResolvedValue({
+      items: [source(99)],
+      total: 1,
+      page: 1,
+      page_size: 1,
+    })
+    await render('/team-workspaces/914?tab=delivery-schedule')
+    const schedule = {
+      id: 5,
+      team_id: 914,
+      serial_no: '805881-5',
+      next_team_id: 900,
+      external_destination: null,
+    } as ProductionSchedule
+    wrapper.getComponent(DeliverySchedules).vm.$emit('dispatch', schedule, 99)
+    await flushPromises()
+    expect(teamMaterialApi.stock).toHaveBeenLastCalledWith(914, {
+      source_ids: '99',
+      availability: 'dispatchable',
+      page: 1,
+      page_size: 1,
+    })
+    expect(wrapper.getComponent(MaterialStockActionDialog).props('initialSchedule')).toMatchObject({
+      id: 5,
+      next_team_id: 900,
+    })
+    expect(wrapper.getComponent(MaterialStockActionDialog).props('sources')[0].transfer.id).toBe(99)
+    expect(wrapper.getComponent(MaterialStockActionDialog).props('modelValue')).toBe(true)
+    expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
+  })
   it.each([
     ['FACTORY-ROLL', '轧制', true],
     ['FACTORY-ROLL', '轧制', false],
@@ -1219,7 +1255,7 @@ describe('team workspace material ledger', () => {
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(1)
     expect(wrapper.find('.team-workspace__settings [aria-label="班组设置"]').exists()).toBe(true)
     expect(actions.find('[aria-label="班组设置"]').exists()).toBe(false)
-    expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(11)
+    expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(12)
     expect(wrapper.find('.team-workspace__heading').exists()).toBe(true)
   })
   it.each(['administrator', 'other-team', 'inactive'])(
@@ -1460,7 +1496,7 @@ describe('team workspace material ledger', () => {
       wrapper.getComponent(TeamBusinessDialog).vm.$emit('stocked', [source().transfer])
       await flushPromises()
       expect(router.currentRoute.value.fullPath).toBe(`/team-workspaces/${id}`)
-      expect(wrapper.findComponent(TeamBusinessDialog).exists()).toBe(false)
+      expect(wrapper.getComponent(TeamBusinessDialog).props('modelValue')).toBe(false)
       expect(wrapper.getComponent(MaterialBatchPrintDialog).props('modelValue')).toBe(false)
       expect(vi.mocked(teamMaterialApi.teamInventory).mock.calls.length).toBeGreaterThan(
         inventoryCalls,

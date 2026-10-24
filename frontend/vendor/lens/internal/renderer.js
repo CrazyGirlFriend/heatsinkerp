@@ -253,7 +253,7 @@ export class GlassRenderer {
     this.settings={...tokens.materials.thick,brightness:.95,motion:true,opaque:false,compare:false,scene:'aurora',...options};
     this.pointer={x:0,y:0}; this.smoothPointer={x:0,y:0};
     this.time=0; this.lastTime=0; this.frame=0; this.dirty=true; this.rectDirty=true;
-    this.geometry=[]; this.visible=true; this.destroyed=false; this.animatingUntil=0;
+    this.geometry=[]; this.visible=true; this.destroyed=false; this.frozen=false; this.animatingUntil=0;
     this.reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.gl=null;this.suspended=true;this.width=0;this.height=0;this.dpr=1;this.onState=options.onState;
     canvas.hidden=true;canvas.dataset.gpuState='idle';stage.classList.add('fallback');
@@ -284,7 +284,7 @@ export class GlassRenderer {
   }
 
   resumeGPU(){
-    if(this.destroyed)return;
+    if(this.destroyed||this.frozen)return;
     if(this.gl?.isContextLost()){
       if(this.lossObserved){this.canvas.dataset.gpuState='restoring';this.contextExtension?.restoreContext();}
       return;
@@ -293,6 +293,7 @@ export class GlassRenderer {
   }
 
   startGPU(){
+    if(this.destroyed||this.frozen)return;
     try{
       this.gl ||= this.canvas.getContext('webgl2',{alpha:false,antialias:false,preserveDrawingBuffer:true,powerPreference:'low-power'});
       if(!this.gl)throw new Error('WebGL2 unavailable');
@@ -337,7 +338,7 @@ export class GlassRenderer {
 
   resize() {
     // ResizeObserver can deliver after context loss or teardown.
-    if(this.destroyed||this.suspended||this.lost||!this.gl||this.gl.isContextLost?.())return;
+    if(this.destroyed||this.frozen||this.suspended||this.lost||!this.gl||this.gl.isContextLost?.())return;
     const rect=this.stage.getBoundingClientRect();
     this.dpr=Math.min(devicePixelRatio||1,1.75);
     const width=Math.max(1,Math.round(rect.width*this.dpr)),height=Math.max(1,Math.round(rect.height*this.dpr));
@@ -358,7 +359,7 @@ export class GlassRenderer {
 
   setScene(name) {
     this.settings.scene=name;
-    if(this.suspended||!this.gl||this.gl.isContextLost?.())return;
+    if(this.frozen||this.suspended||!this.gl||this.gl.isContextLost?.())return;
     const art=document.createElement('canvas');art.width=this.width;art.height=this.height;
     const ctx=art.getContext('2d'),w=art.width,h=art.height;
     if(this.artwork){
@@ -410,8 +411,14 @@ export class GlassRenderer {
 
   setMotionSource(source){this.motionSource=source;this.invalidate();}
 
+  freeze() {
+    if(this.destroyed||this.frozen)return;
+    // Reuse the completed buffer while the DOM surface fades out.
+    this.frozen=true;cancelAnimationFrame(this.frame);this.frame=0;
+  }
+
   invalidate(duration=0,geometry=true) {
-    if(this.destroyed||this.suspended||this.lost)return;
+    if(this.destroyed||this.frozen||this.suspended||this.lost)return;
     this.dirty=true;if(geometry)this.rectDirty=true;
     this.animatingUntil=Math.max(this.animatingUntil,performance.now()+duration);
     if(!this.frame)this.frame=requestAnimationFrame(t=>this.render(t));
@@ -468,7 +475,7 @@ export class GlassRenderer {
 
   render(now) {
     this.frame=0;
-    if(this.destroyed||this.suspended||this.lost||!this.gl||document.hidden||!this.visible)return;
+    if(this.destroyed||this.frozen||this.suspended||this.lost||!this.gl||document.hidden||!this.visible)return;
     const dt=this.lastTime?Math.min((now-this.lastTime)/1000,.05):.016;this.lastTime=now;
     if(this.settings.motion&&!this.reducedMotion)this.time+=dt;
     const lerp=this.reducedMotion?1:1-Math.exp(-dt*13);

@@ -77,6 +77,7 @@ class LossCreate(StockAmounts):
 
 
 class DispatchLine(StockAmounts, WarehouseLocationChoice, SludgeMeasurement):
+    production_schedule_id: int | None = Field(default=None, ge=1)
     material_type: str | None = Field(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN)
     purpose_id: int | None = Field(default=None, ge=1)
     transfer_specification: str | None = Field(default=None, max_length=240)
@@ -450,10 +451,38 @@ def create_dispatch(db, team_id, payload, user):
                 "external_destination": payload.external_destination,
             }
             # The target team lock also protects its purpose configuration.
-            purposes = {
-                key: purpose_snapshot(db, target.id if target else None, key)
-                for key in dict.fromkeys(line.purpose_id for line in payload.lines)
-            }
+            from .models import ProcessRoutePolicy
+            from .process_routes import dispatch_fields
+
+            policy = db.get(ProcessRoutePolicy, 1)
+            route_fields_by_line, purposes = [], []
+            purpose_cache = {}
+            route_cache = {}
+            for line in payload.lines:
+                lot = lots[line.source_transfer_id]
+                kind = (
+                    line.material_type
+                    if "material_type" in line.model_fields_set
+                    else lot.material_type
+                )
+                route_key = (lot.id, kind)
+                if route_key not in route_cache:
+                    route_cache[route_key] = dispatch_fields(
+                        db, lot, target, kind, payload.rework_return, policy
+                    )
+                fields = route_cache[route_key]
+                purpose_id = line.purpose_id
+                if fields and target and not payload.rework_return and not lot.rework_pending:
+                    step = lot.process_route.steps[fields["process_step_index"]]
+                    if purpose_id is not None and purpose_id != step["purpose_id"]:
+                        raise HTTPException(422, "下序接收业务必须与已发布工艺一致")
+                    purpose_id = step["purpose_id"]
+                route_fields_by_line.append(fields)
+                if purpose_id not in purpose_cache:
+                    purpose_cache[purpose_id] = purpose_snapshot(
+                        db, target.id if target else None, purpose_id
+                    )
+                purposes.append(purpose_cache[purpose_id])
             batch_numbers = next_transfer_batch_numbers(db, len(payload.lines))
             processing = latest_records(db, lots)
             submitted_at = utcnow()
@@ -484,7 +513,9 @@ def create_dispatch(db, team_id, payload, user):
             db.flush()
             items = []
             consumed_locations = {}
-            for line, batch_no in zip(payload.lines, batch_numbers, strict=True):
+            for line_index, (line, batch_no) in enumerate(
+                zip(payload.lines, batch_numbers, strict=True)
+            ):
                 from .warehouse_locations import consume
 
                 lot = lots[line.source_transfer_id]
@@ -513,14 +544,20 @@ def create_dispatch(db, team_id, payload, user):
                     fields["material_type"] = line.material_type
                 from .processing_registration import sent_status
 
+                route_fields = route_fields_by_line[line_index]
                 transfer = MaterialTransfer(
+                    **route_fields,
+                    process_route=lot.process_route if route_fields else None,
+                    sent_process_step_index=lot.process_step_index
+                    if route_fields and not payload.rework_return and not lot.rework_pending
+                    else None,
                     sent_processing_status=sent_status(lot, record),
                     rework_pending=payload.rework_return or lot.rework_pending,
                     rework_count=lot.rework_count,
                     batch_no=batch_no,
                     serial_no=lot.serial_no,
                     **fields,
-                    **purposes[line.purpose_id],
+                    **purposes[line_index],
                     shared_group_id=lot.shared_group_id,
                     shared_unallocated=lot.shared_unallocated,
                     source_transfer_id=lot.id,
@@ -547,6 +584,9 @@ def create_dispatch(db, team_id, payload, user):
                 items.append(transfer)
             # Flush the whole set so repeated sources receive one balance delta.
             db.flush()
+            from .production_schedules import associate_dispatch
+
+            associate_dispatch(db, team_id, payload, items)
             for source_id, clearance in clearances.items():
                 record_outbound_clearance(
                     db,

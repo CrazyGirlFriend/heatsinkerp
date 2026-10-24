@@ -1,4 +1,5 @@
 import { onBeforeUnmount, watch } from 'vue'
+import type { GlassSurfaceCleanup } from '@/utils/glassDialog'
 
 let runtime: Promise<typeof import('@/utils/glassDialog')> | undefined
 function loadRuntime() {
@@ -14,9 +15,13 @@ export function useGlassSurface(
   visible: () => boolean,
 ) {
   let generation = 0
-  let release: (() => void) | undefined
-  function stop() {
+  let release: GlassSurfaceCleanup | undefined
+  function cancelPending() {
     ++generation
+    release?.freeze?.()
+  }
+  function stop() {
+    cancelPending()
     release?.()
     release = undefined
   }
@@ -34,8 +39,9 @@ export function useGlassSurface(
     }
   }
   watch(visible, (open) => {
-    if (!open) stop()
+    // Keep the established material intact until the exit transition finishes.
+    if (!open) cancelPending()
   })
   onBeforeUnmount(stop)
-  return { start, stop }
+  return { start, cancelPending, stop }
 }

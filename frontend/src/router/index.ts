@@ -40,6 +40,18 @@ const router = createRouter({
     },
     { path: '/factory-live', redirect: '/' },
     {
+      path: '/process-routes',
+      name: 'process-routes',
+      component: () => import('@/pages/ProcessRoutesPage.vue'),
+      meta: { title: '工艺路线', adminOnly: true },
+    },
+    {
+      path: '/production-schedules',
+      name: 'production-schedules',
+      component: () => import('@/pages/ProductionSchedulesPage.vue'),
+      meta: { title: '生产排期', adminOnly: true },
+    },
+    {
       path: '/flow-preview/:view(team|chain)',
       name: 'flow-preview',
       component: () => import('@/pages/FlowPreviewPage.vue'),

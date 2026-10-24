@@ -47,6 +47,7 @@ const fullscreen = ref(false),
 const canFullscreen = computed(() =>
   [
     'stock',
+    'delivery-schedule',
     'pending',
     'receipts',
     'processing',
@@ -271,7 +272,7 @@ onBeforeUnmount(() => {
   margin-left: auto;
   padding: 4px;
   border-radius: 24px;
-  background: linear-gradient(160deg, #ffffffe0, #ffffff47 65%, #ffffff85);
+  background: var(--glass-chrome-fill);
   -webkit-backdrop-filter: blur(10px) saturate(125%);
   backdrop-filter: blur(10px) saturate(125%);
   box-shadow:
@@ -334,10 +335,14 @@ onBeforeUnmount(() => {
   padding: 5px;
   overflow-x: auto;
   border-radius: 24px;
-  background: var(--surface);
+  background: var(--glass-chrome-fill);
+  -webkit-backdrop-filter: blur(16px) saturate(110%);
+  backdrop-filter: blur(16px) saturate(110%);
   box-shadow:
-    inset 0 1px 2px #2f4f3b10,
-    0 1px 0 #ffffffe6;
+    inset 0 1px 0 #fff,
+    inset 0 -1px 0 #a9c3b32b,
+    0 0 0 0.5px #6e8c7926,
+    0 3px 10px #2548320a;
   scrollbar-width: thin;
   scrollbar-color: #bfcfc6 transparent;
 }
@@ -444,6 +449,20 @@ onBeforeUnmount(() => {
   }
   .team-workspace__title {
     font-size: 22px;
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .team-workspace__commands,
+  .team-workspace__navigation {
+    background: var(--surface);
+  }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .team-workspace__commands,
+  .team-workspace__navigation {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 </style>

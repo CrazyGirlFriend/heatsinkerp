@@ -307,11 +307,11 @@
    Rows never transform: sticky columns and cell boundaries must stay aligned. */
 @media screen {
   .business-table {
-    --table-glass-header: linear-gradient(180deg, #ffffffed, #f1f7f3e8);
+    --table-glass-header: linear-gradient(180deg, #fffffffa, #f1f6f3f5);
     --table-glass-hover: var(--glass-hover-fill);
     --table-glass-selected-fill: var(--glass-selected-fill);
     --table-glass-selected: #e5f2eb;
-    --table-glass-edge: inset 0 1px 0 #ffffffd9, inset 0 -1px 0 #dae8df66;
+    --table-glass-edge: inset 0 1px 0 #fff, inset 0 -1px 0 #b7cbbd66;
     --table-glass-hover-edge: inset 0 1px 0 #ffffff99;
     --table-glass-selected-edge: inset 0 1px 0 #ffffffb3, inset 0 -1px 0 #80ac9433;
   }

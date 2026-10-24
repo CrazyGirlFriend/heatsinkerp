@@ -16,6 +16,11 @@ from . import models  # noqa: F401
 from .database import Base, SessionLocal, engine
 
 RESET_TABLES = (
+    "production_schedule_events",
+    "production_schedule_deliveries",
+    "production_schedule_sources",
+    "production_schedules",
+    "production_schedule_tasks",
     "warehouse_placements",
     "serial_delivery_plans",
     "material_stock_balances",
@@ -23,6 +28,7 @@ RESET_TABLES = (
     "material_losses",
     "inspection_feedback_events",
     "inspection_feedback_teams",
+    "inspection_problems",
     "material_inspections",
     "material_quantity_adjustments",
     "material_transfers",
@@ -77,6 +83,7 @@ def reset_business_data(db: Session) -> dict[str, int]:
         for name in RESET_TABLES:
             table = Base.metadata.tables[name]
             references = {
+                "production_schedules": ("predecessor_id",),
                 "material_transfers": ("source_transfer_id", "delivery_origin_id"),
                 "material_quantity_adjustments": ("rework_of_id",),
                 "material_inspections": ("parent_id",),

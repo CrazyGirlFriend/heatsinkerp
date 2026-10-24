@@ -47,6 +47,7 @@ export interface TeamMaterialOverview {
 }
 export interface StockBatch extends MaterialBalance {
   transfer: MaterialTransfer
+  delivery_schedule?: import('./productionSchedule').InventoryScheduleSummary
   inspection_hold_id?: number | null
   processing_state?: import('./materialProcessing').ProcessingState
   current_specification?: string | null
@@ -60,6 +61,10 @@ export interface StockBatch extends MaterialBalance {
   unassigned_weight?: number
 }
 export interface QuantityAdjustment {
+  process_route_id?: number | null
+  process_step_index?: number | null
+  process_step_name?: string | null
+  process_step_instructions?: string | null
   processing_task_id?: number | null
   processing_task_name?: string | null
   purpose_id?: number | null
@@ -115,10 +120,15 @@ export interface ProcessingOutput extends CreateProcessingOutput {
 export interface QuantityAdjustmentContext
   extends MaterialPage<QuantityAdjustment>, SharedMaterialFields {
   purpose_id?: number | null
+  process_route?: import('./processRoute').ProcessRouteContext | null
   task_required?: boolean
   completed_task_ids?: number[]
   allowed_task_ids?: number[]
   rework_task_records?: {
+    process_route_id?: number | null
+    process_step_index?: number | null
+    process_step_name?: string | null
+    process_step_instructions?: string | null
     processing_task_id: number | null
     processing_task_name: string | null
     purpose_id: number | null
@@ -253,6 +263,7 @@ export interface WarehouseReceiptParams extends MaterialPageParams {
 }
 export interface CreateWarehouseReceipt
   extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement {
+  process_route?: import('./processRoute').ReceiptProcessRoute
   shared_serials?: SharedMaterialSerial[]
   serial_no: string
   material_name: string
@@ -274,6 +285,7 @@ export interface DispatchParams extends MaterialPageParams {
   material_type?: MaterialType
 }
 export interface DispatchLine extends SludgeMeasurement {
+  production_schedule_id?: number | null
   warehouse_location?: string | null
   warehouse_location_reservation_key?: string | null
   source_transfer_id: number

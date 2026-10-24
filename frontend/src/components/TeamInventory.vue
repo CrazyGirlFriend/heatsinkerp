@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { sharedSerialLabel } from '@/types/sharedMaterial'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Operation, Refresh, Search } from '@element-plus/icons-vue'
 import {
@@ -20,6 +20,7 @@ import {
 } from 'element-plus'
 import FilterDialog from './FilterDialog.vue'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
+import InventoryScheduleDetails from './InventoryScheduleDetails.vue'
 import InventoryPendingDialog from './InventoryPendingDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
@@ -64,6 +65,11 @@ import type { AgeBand } from '@/types/materialAnalytics'
 import { formatDateTime } from '@/utils/format'
 import { stockSelectable } from '@/utils/materialStock'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
+import {
+  inventoryScheduleBaseline,
+  inventoryScheduleTone,
+  loadInventorySchedules,
+} from '@/utils/inventorySchedule'
 
 const props = defineProps<{
   teamId: number
@@ -115,6 +121,77 @@ const rows = ref<TeamInventoryRow[]>([]),
   error = ref(''),
   refreshError = ref('')
 const asOf = ref('')
+const scheduleLoading = ref(false),
+  scheduleError = ref(''),
+  expandedScheduleGroups = ref<number[]>([])
+const inventoryDetail = ref<InstanceType<typeof TeamInventoryDetail> | null>(null)
+let scheduleClock: ReturnType<typeof setInterval> | undefined
+let scheduleVersion = 0
+function refreshVisibleSchedules() {
+  if (document.hidden || loading.value) return
+  if (detail.value) {
+    void inventoryDetail.value?.refreshSchedules?.()
+    return
+  }
+  if (
+    scheduleLoading.value ||
+    picker.value ||
+    pending.value ||
+    serialOpen.value ||
+    urgencyOpen.value
+  )
+    return
+  void loadSchedules()
+}
+function syncScheduleClock(refresh = false) {
+  clearInterval(scheduleClock)
+  scheduleClock = undefined
+  if (document.hidden) return
+  if (refresh) refreshVisibleSchedules()
+  scheduleClock = setInterval(refreshVisibleSchedules, 60_000)
+}
+function resumeScheduleClock() {
+  syncScheduleClock(true)
+}
+async function withSchedules(items: TeamInventoryRow[], teamId = props.teamId) {
+  const summaries = await loadInventorySchedules(
+    teamId,
+    items.map((row) => ({ id: row.group_id, materialType: row.material_type })),
+    'groups',
+  )
+  return items.map((row) => ({ ...row, delivery_schedule: summaries[row.group_id] }))
+}
+async function loadSchedules(current = version) {
+  const request = ++scheduleVersion
+  scheduleLoading.value = true
+  scheduleError.value = ''
+  try {
+    const items = await withSchedules(rows.value)
+    if (current === version && request === scheduleVersion) rows.value = items
+  } catch {
+    if (current === version && request === scheduleVersion)
+      scheduleError.value = '交货排期加载失败，库存仍可查看。'
+  } finally {
+    if (current === version && request === scheduleVersion) scheduleLoading.value = false
+  }
+}
+function toggleSchedule(row: TeamInventoryRow) {
+  if (!row.delivery_schedule?.count) return
+  expandedScheduleGroups.value = expandedScheduleGroups.value.includes(row.group_id)
+    ? []
+    : [row.group_id]
+}
+function viewSchedule(id?: number, serialNo?: string) {
+  detail.value = null
+  void router.push({
+    path: route.path,
+    query: {
+      tab: 'delivery-schedule',
+      ...(id ? { schedule_id: String(id) } : {}),
+      ...(serialNo ? { serial_no: serialNo } : {}),
+    },
+  })
+}
 const queryDraft = ref(''),
   sourceDraft = ref<WarehouseSource | ''>(''),
   typeDraft = ref(''),
@@ -200,6 +277,9 @@ const sourceLabel = (row: TeamInventoryRow) => inventorySourceLabel(row, props.w
 const columns = computed(() =>
   warehouseColumns
     .filter((column) => props.processing || column.key !== 'processing_role')
+    .filter(
+      (column) => column.key !== 'process_route' || rows.value.some((row) => !!row.process_route),
+    )
     .map((column) => ({
       ...column,
       label:
@@ -348,8 +428,14 @@ function exportSource() {
   }))
   return tableExportSource('库存明细', total.value, fields, (signal, progress) =>
     loadExportPages(
-      (page, pageSize) =>
-        teamMaterialApi.teamInventory(id, { ...params, page, page_size: pageSize }),
+      async (page, pageSize) => {
+        const result = await teamMaterialApi.teamInventory(id, {
+          ...params,
+          page,
+          page_size: pageSize,
+        })
+        return { ...result, items: await withSchedules(result.items, id) }
+      },
       signal,
       progress,
     ),
@@ -522,6 +608,9 @@ function paginate(value: number, size = pageSize.value) {
 let version = 0
 async function load(background = false) {
   const current = ++version
+  ++scheduleVersion
+  scheduleLoading.value = false
+  scheduleError.value = ''
   if (!background) {
     loading.value = true
     error.value = ''
@@ -538,7 +627,14 @@ async function load(background = false) {
       paginate(Math.max(1, Math.ceil(result.total / pageSize.value)))
       return
     }
-    rows.value = result.items
+    rows.value = result.items.map((row) => ({
+      ...row,
+      delivery_schedule: inventoryScheduleBaseline(row.material_type),
+    }))
+    expandedScheduleGroups.value = expandedScheduleGroups.value.filter((id) =>
+      result.items.some((row) => row.group_id === id),
+    )
+    void loadSchedules(current)
     total.value = result.total
     asOf.value = result.as_of || ''
     error.value = ''
@@ -644,6 +740,7 @@ function resetDetails() {
   openingSource.value = null
   detail.value = picker.value = pending.value = null
   serialOpen.value = urgencyOpen.value = false
+  expandedScheduleGroups.value = []
 }
 const searchBeforeFilters = ref({
   query: '',
@@ -717,7 +814,13 @@ watch(
   [() => props.teamId, () => props.canWrite, () => props.canReallocate, () => auth.currentUser?.id],
   resetDetails,
 )
+onMounted(() => {
+  syncScheduleClock()
+  document.addEventListener('visibilitychange', resumeScheduleClock)
+})
 onBeforeUnmount(() => {
+  clearInterval(scheduleClock)
+  document.removeEventListener('visibilitychange', resumeScheduleClock)
   ++version
   ++purposeVersion
   ++sourceVersion
@@ -1000,6 +1103,7 @@ onBeforeUnmount(() => {
           :storage-key="storageKey"
           :columns="selectableColumns"
           :legacy-keys="warehouseLegacyColumnKeys"
+          :new-visible-keys="['delivery_due_at', 'delivery_schedule_status']"
           @change="columnChoices = $event"
         />
         <ElButton
@@ -1046,6 +1150,7 @@ onBeforeUnmount(() => {
       height="100%"
       flexible
       row-key="group_id"
+      :expand-row-keys="expandedScheduleGroups.map(String)"
       empty-text="暂无符合条件的库存"
     >
       <ElTableColumn
@@ -1101,6 +1206,27 @@ onBeforeUnmount(() => {
               >{{ column.format(asRow(row)) }}</ElTag
             >
           </div>
+          <template v-else-if="column.key === 'delivery_due_at'">
+            <ElButton
+              v-if="row.delivery_schedule?.count"
+              link
+              type="primary"
+              class="inventory-schedule-link"
+              :class="`inventory-schedule-link--${inventoryScheduleTone(row.delivery_schedule)}`"
+              :aria-expanded="expandedScheduleGroups.includes(row.group_id)"
+              :aria-label="`查看${row.serial_no}交货排期`"
+              @click="toggleSchedule(asRow(row))"
+              >{{ column.format(asRow(row)) }}</ElButton
+            ><span v-else>{{ column.format(asRow(row)) }}</span>
+          </template>
+          <template v-else-if="column.key === 'delivery_schedule_status'">
+            <span v-if="!row.delivery_schedule && scheduleLoading" class="inventory-schedule-muted"
+              >读取中</span
+            >
+            <ElTag v-else :type="inventoryScheduleTone(row.delivery_schedule)" effect="light">
+              {{ column.format(asRow(row)) }}
+            </ElTag>
+          </template>
           <ElTag
             v-else-if="column.key === 'stock_status' && row.inspection_hold_count"
             type="danger"
@@ -1189,6 +1315,23 @@ onBeforeUnmount(() => {
           <span v-else>{{ column.format(asRow(row)) }}</span>
         </template>
       </ElTableColumn>
+      <ElTableColumn
+        v-if="rows.some((row) => row.delivery_schedule?.count)"
+        type="expand"
+        width="1"
+        class-name="inventory-schedule-toggle"
+        label-class-name="inventory-schedule-toggle"
+        :resizable="false"
+        ><template #default="{ row }">
+          <InventoryScheduleDetails
+            v-if="row.delivery_schedule?.count"
+            :summary="row.delivery_schedule"
+            :serial-no="row.serial_no"
+            @close="expandedScheduleGroups = []"
+            @view="viewSchedule"
+            @view-all="viewSchedule(undefined, row.serial_no)"
+          /> </template
+      ></ElTableColumn>
       <ElTableColumn label="操作" :width="actionWidth" align="center" fixed="right"
         ><template #default="{ row }"
           ><div class="inventory-row-actions">
@@ -1248,6 +1391,12 @@ onBeforeUnmount(() => {
         ></ElTableColumn
       >
     </ElTable>
+    <div v-if="scheduleError && !error" class="inventory-schedule-error" role="status">
+      <span>{{ scheduleError }}</span
+      ><ElButton link type="primary" :loading="scheduleLoading" @click="loadSchedules()"
+        >重试排期</ElButton
+      >
+    </div>
     <footer v-if="!error">
       <span
         >共 {{ total }} 条库存记录<small v-if="asOf" class="inventory-as-of"
@@ -1265,6 +1414,7 @@ onBeforeUnmount(() => {
       />
     </footer>
     <TeamInventoryDetail
+      ref="inventoryDetail"
       :team-id="teamId"
       :group="detail"
       :warehouse="warehouse"
@@ -1276,6 +1426,7 @@ onBeforeUnmount(() => {
       @changed="emit('changed')"
       @action="action"
       @pending="pending = detail"
+      @schedule="viewSchedule"
     />
     <InventoryPendingDialog
       v-if="pending"
@@ -1403,6 +1554,7 @@ onBeforeUnmount(() => {
 .warehouse-table {
   --business-table-font: 14px;
   --business-table-padding: 11px;
+  container-type: inline-size;
   font-variant-numeric: tabular-nums;
 }
 .warehouse-table.el-table.business-table :deep(th.el-table__cell) {
@@ -1575,5 +1727,33 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   min-width: 0;
+}
+.inventory-schedule-muted {
+  color: var(--muted);
+}
+.inventory-schedule-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  padding-block: 8px;
+}
+.inventory-schedule-link--danger {
+  color: var(--el-color-danger);
+}
+.inventory-schedule-link--warning {
+  color: var(--el-color-warning);
+}
+.warehouse-table :deep(.inventory-schedule-toggle) {
+  padding: 0;
+  border-right: 0;
+}
+.warehouse-table :deep(.inventory-schedule-toggle .cell) {
+  display: none;
+}
+.warehouse-table :deep(.el-table__expanded-cell) {
+  padding: 0;
 }
 </style>

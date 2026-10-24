@@ -33,6 +33,9 @@ export interface ProductionScope extends ProductionMetrics {
   material_name: string | null
   purpose_name: string | null
   processing_task_name: string | null
+  process_route_id?: number | null
+  process_step_index?: number | null
+  process_step_name?: string | null
 }
 
 export interface PerformanceFilters {

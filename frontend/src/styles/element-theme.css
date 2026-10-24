@@ -18,7 +18,7 @@
   --el-color-error: #c4474d;
   --el-color-info: var(--muted);
   --el-text-color-primary: var(--text);
-  --el-text-color-regular: var(--muted);
+  --el-text-color-regular: #46554d;
   --el-text-color-secondary: var(--subtle);
   --el-text-color-placeholder: #89979b;
   --el-border-color: #dfe8e3;

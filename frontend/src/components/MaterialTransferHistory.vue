@@ -27,6 +27,7 @@ const actions = {
   dispatched: '确认出库',
   rejected: '库房退回核对',
   quantity_changed: '加工件数变更',
+  route_bound: '关联派工工艺',
   reallocated: '流水号转投',
   processed: '本班组加工实物登记',
   inspection_recorded: '检查登记',
@@ -34,6 +35,7 @@ const actions = {
   quality_feedback: '质量反馈',
 }
 const labels: Record<string, string> = {
+  process_route: '派工工艺 / 工序',
   inspection: '检查结果',
   quality_feedback: '质量反馈',
   work_kind: '加工性质',
@@ -213,6 +215,10 @@ function valueText(field: string, value: unknown): string {
           `${output.batch_no} · ${processingRoleLabels[output.role]} · ${materialTypeLabel(output.material_type)} · ${output.quantity} 件 / ${output.weight} kg${output.transfer_specification ? ` · ${output.transfer_specification}` : ''}`,
       )
       .join('；')
+  if (field === 'process_route' && typeof value === 'object' && value !== null) {
+    const route = value as Record<string, unknown>
+    return `${route.title} · ${route.sequence_no} · ${route.step_name}`
+  }
   if (field === 'receipt_kind') return value === 'return' ? '外部退回' : '外部来料'
   if (field === 'status')
     return materialTransferStatusLabel(String(value), props.transfer.entry_kind)

@@ -36,7 +36,10 @@ import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import ProcessingTaskFields from './ProcessingTaskFields.vue'
 import type { TeamEmployee } from '@/types/teamBusiness'
-import { factoryToday } from '@/utils/format'
+import { factoryToday, formatDateTime } from '@/utils/format'
+import { productionScheduleApi } from '@/services/productionScheduleApi'
+import type { ProductionSchedule, ScheduleSummary } from '@/types/productionSchedule'
+import { isScheduleApplicable } from '@/utils/inventorySchedule'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import { processingProgressLabels } from '@/types/materialProcessing'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
@@ -78,6 +81,7 @@ const props = defineProps<{
   teamId: number
   mode: 'dispatch' | 'loss'
   sources: StockBatch[]
+  initialSchedule?: Pick<ProductionSchedule, 'id' | 'next_team_id' | 'external_destination'>
 }>()
 const emit = defineEmits<{
   'update:modelValue': [boolean]
@@ -105,6 +109,7 @@ const lines = ref<
     originalSpecification: string
     specificationValid: boolean
     specificationOpen: boolean
+    scheduleId?: number
   }[]
 >([])
 function enteredQuantity(line: (typeof lines.value)[number]) {
@@ -138,6 +143,26 @@ const saving = ref(false)
 const refreshing = ref(false)
 const errorMessage = ref('')
 const balanceNotice = ref('')
+const scheduleCandidates = ref<Record<number, ScheduleSummary[]>>({})
+const schedulesLoading = ref(false)
+const scheduleError = ref('')
+const scheduleRefresh = ref(0)
+function lineSchedules(line: (typeof lines.value)[number]) {
+  return isScheduleApplicable(line.materialType)
+    ? scheduleCandidates.value[Number(line.source.transfer.id)] || []
+    : []
+}
+function scheduleLabel(schedule: ScheduleSummary) {
+  const basis =
+    schedule.completion_basis ||
+    (schedule.target_quantity != null || schedule.remaining_quantity != null
+      ? 'quantity'
+      : 'weight')
+  const quantity = basis === 'weight' ? null : schedule.remaining_quantity
+  const weight = basis === 'quantity' ? null : schedule.remaining_weight
+  const task = schedule.task_title || schedule.task_no
+  return `${task ? `${task} · ` : ''}#${schedule.id} · ${formatDateTime(schedule.due_at)}${quantity == null ? '' : ` · 待交 ${quantity} 件`}${weight == null ? '' : ` · 待交 ${weight} kg`}`
+}
 const batchPurposeId = ref<number>()
 const processing = reactive<
   Record<
@@ -207,7 +232,11 @@ watch(
   () => {
     batchPurposeId.value = undefined
     lines.value.forEach((line) => {
-      line.purposeId = undefined
+      const route = line.source.transfer.process_route
+      line.purposeId =
+        !form.reworkReturn && route?.next_team_id === Number(form.nextTeamId)
+          ? route.next_purpose_id || undefined
+          : undefined
       line.warehouseLocation = ''
       line.warehouseLocationKey = ''
     })
@@ -262,7 +291,11 @@ const totalWeight = computed(
     1000000,
 )
 const busy = computed(
-  () => saving.value || refreshing.value || Object.values(processing).some((item) => item.loading),
+  () =>
+    saving.value ||
+    refreshing.value ||
+    schedulesLoading.value ||
+    Object.values(processing).some((item) => item.loading),
 )
 function availableFor(line: (typeof lines.value)[number]) {
   const free = dispatchableAmounts(line.latest)
@@ -528,6 +561,8 @@ const validation = useDialogValidation(() => {
     }
     if (!isLoss.value && warehouse.value && !line.materialType)
       add('materialType', '请选择物料类型')
+    if (!isLoss.value && lineSchedules(line).length > 1 && !line.scheduleId)
+      add('scheduleId', '请选择本次转出对应的交货排期')
     if (
       !isLoss.value &&
       !external.value &&
@@ -592,6 +627,21 @@ watch(
     form.nextTeamId = ''
     form.entryKind = 'transfer'
     form.externalDestination = ''
+    if (!isLoss.value && !props.initialSchedule) {
+      const targets = props.sources.map((source) => source.transfer.process_route?.next_team_id)
+      if (
+        targets.length &&
+        targets.every((id) => id != null && id === targets[0] && id !== props.teamId)
+      )
+        form.nextTeamId = targets[0]!
+    }
+    if (!isLoss.value && props.initialSchedule) {
+      if (props.initialSchedule.next_team_id) form.nextTeamId = props.initialSchedule.next_team_id
+      else if (externalOption.value && props.initialSchedule.external_destination) {
+        form.entryKind = externalOption.value
+        form.externalDestination = props.initialSchedule.external_destination
+      }
+    }
     form.reworkReturn = false
     form.notes = ''
     form.reason = ''
@@ -603,6 +653,82 @@ watch(
     balanceNotice.value = ''
     requestKey = ''
     fingerprint = ''
+  },
+  { immediate: true },
+)
+watch(
+  () =>
+    [
+      props.modelValue,
+      props.teamId,
+      props.mode,
+      form.nextTeamId,
+      form.entryKind,
+      form.externalDestination,
+      lines.value.map((line) => `${line.source.transfer.id}:${line.materialType}`).join(','),
+      scheduleRefresh.value,
+    ] as const,
+  async (_, __, onCleanup) => {
+    let current = true
+    onCleanup(() => {
+      current = false
+    })
+    scheduleError.value = ''
+    scheduleCandidates.value = {}
+    schedulesLoading.value = false
+    if (
+      !props.modelValue ||
+      isLoss.value ||
+      (!external.value && !form.nextTeamId) ||
+      (external.value && !form.externalDestination)
+    )
+      return
+    const ids = [
+      ...new Set(
+        lines.value
+          .filter((line) => isScheduleApplicable(line.materialType))
+          .map((line) => Number(line.source.transfer.id)),
+      ),
+    ]
+    if (!ids.length) return
+    schedulesLoading.value = true
+    try {
+      const result = await productionScheduleApi.candidates({
+        team_id: props.teamId,
+        source_transfer_ids: ids.join(','),
+        ...(external.value
+          ? { external_destination: form.externalDestination }
+          : { next_team_id: Number(form.nextTeamId) }),
+      })
+      if (!current) return
+      scheduleCandidates.value = Object.fromEntries(
+        result.items.map((item) => [item.source_transfer_id, item.schedules]),
+      )
+      for (const line of lines.value) {
+        const options = lineSchedules(line)
+        if (!options.some((option) => option.id === line.scheduleId)) {
+          line.scheduleId =
+            options.find((option) => option.id === props.initialSchedule?.id)?.id ??
+            (options.length === 1 ? options[0]!.id : undefined)
+        }
+      }
+      const initial = props.initialSchedule
+      const sameDestination =
+        initial &&
+        (external.value
+          ? initial.external_destination === form.externalDestination
+          : initial.next_team_id === Number(form.nextTeamId))
+      if (
+        sameDestination &&
+        !lines.value.some((line) => lineSchedules(line).some((option) => option.id === initial.id))
+      )
+        scheduleError.value = '该排期已调整或已完成，请返回交货排期刷新后再操作。'
+    } catch (error) {
+      if (current)
+        scheduleError.value = error instanceof Error ? error.message : '交货排期读取失败，请重试'
+    } finally {
+      if (current) schedulesLoading.value = false
+    }
   },
   { immediate: true },
 )
@@ -660,6 +786,10 @@ async function submit() {
   }
   if (!lines.value.length || lines.value.length > 100) {
     errorMessage.value = '请选择 1 至 100 个来源批次'
+    return
+  }
+  if (!isLoss.value && scheduleError.value) {
+    errorMessage.value = scheduleError.value
     return
   }
   if (external.value && externalOption.value !== form.entryKind) {
@@ -748,6 +878,9 @@ async function submit() {
           }
         : {}),
       source_transfer_id: Number(line.source.transfer.id),
+      ...(!isLoss.value && lineSchedules(line).some((schedule) => schedule.id === line.scheduleId)
+        ? { production_schedule_id: line.scheduleId }
+        : {}),
       quantity: Number(enteredQuantity(line)),
       weight: Number(line.weight),
       ...(line.specification !== line.originalSpecification
@@ -824,7 +957,16 @@ async function submit() {
   } catch (error) {
     if (current !== generation || !props.modelValue) return
     errorMessage.value = error instanceof Error ? error.message : '提交失败，请重试'
-    if (error instanceof TeamMaterialApiError && error.status === 409) await refreshBalances()
+    if (
+      !isLoss.value &&
+      error instanceof TeamMaterialApiError &&
+      [409, 422].includes(error.status || 0) &&
+      error.message.includes('排期')
+    ) {
+      scheduleError.value = error.message
+      errorMessage.value = ''
+    } else if (error instanceof TeamMaterialApiError && error.status === 409)
+      await refreshBalances()
   } finally {
     if (current === generation) saving.value = false
   }
@@ -851,6 +993,9 @@ async function submit() {
       </div>
     </template>
     <ElAlert v-if="errorMessage" :title="errorMessage" type="error" :closable="false" />
+    <ElAlert v-if="scheduleError && !isLoss" :title="scheduleError" type="error" :closable="false">
+      <ElButton link :disabled="schedulesLoading" @click="scheduleRefresh++">重新读取排期</ElButton>
+    </ElAlert>
     <ElForm
       ref="formRef"
       label-position="left"
@@ -868,10 +1013,10 @@ async function submit() {
               externalOption === 'warehouse_outbound' ? '对外出库' : '发货'
             }}</ElRadioButton>
           </ElRadioGroup>
-        </div>
-        <div v-if="!external" class="dispatch-rework">
-          <ElCheckbox v-model="form.reworkReturn">退回返工</ElCheckbox
-          ><span v-if="form.reworkReturn">接收后按返工登记，关联原加工记录</span>
+          <div v-if="!external" class="dispatch-rework">
+            <ElCheckbox v-model="form.reworkReturn">退回返工</ElCheckbox>
+            <span v-if="form.reworkReturn">接收后按返工登记，关联原加工记录</span>
+          </div>
         </div>
         <div class="dialog-form-grid dispatch-context-fields">
           <ElFormItem label="转料人" :error="fieldErrors.sender" required>
@@ -957,6 +1102,14 @@ async function submit() {
               ><span class="source-material">{{
                 line.source.transfer.material_name || '未填写材质'
               }}</span>
+              <ProcessingStockStatus
+                v-if="
+                  isProcessingTeamCode(line.source.transfer.next_team.code) &&
+                  line.latest?.processing_state
+                "
+                :state="line.latest.processing_state"
+                :material-type="line.source.transfer.material_type"
+              />
               <div class="source-meta">
                 <span>上一批次 {{ line.source.transfer.batch_no }}</span>
                 <span>来自 {{ line.source.transfer.source_team.name }}</span
@@ -1167,14 +1320,6 @@ async function submit() {
               >
             </div>
           </template>
-          <ProcessingStockStatus
-            v-if="
-              isProcessingTeamCode(line.source.transfer.next_team.code) &&
-              line.latest?.processing_state
-            "
-            :state="line.latest.processing_state"
-            :material-type="line.source.transfer.material_type"
-          />
           <div
             class="source-inputs dialog-form-grid"
             :class="{
@@ -1291,6 +1436,30 @@ async function submit() {
                   :value="purpose.id"
                   :label="purpose.name" /></ElSelect
             ></ElFormItem>
+            <ElFormItem
+              v-if="!isLoss && lineSchedules(line).length"
+              class="dialog-field-wide"
+              label="交货排期"
+              :error="lineError(line, 'scheduleId')"
+              :required="lineSchedules(line).length > 1"
+            >
+              <span v-if="lineSchedules(line).length === 1" class="dialog-readonly">
+                {{ scheduleLabel(lineSchedules(line)[0]!) }} · 已自动关联
+              </span>
+              <ElSelect
+                v-else
+                v-model="line.scheduleId"
+                :aria-label="`${line.source.transfer.batch_no}交货排期`"
+                placeholder="选择本次转出对应的交期"
+              >
+                <ElOption
+                  v-for="schedule in lineSchedules(line)"
+                  :key="schedule.id"
+                  :value="schedule.id"
+                  :label="scheduleLabel(schedule)"
+                />
+              </ElSelect>
+            </ElFormItem>
             <details
               v-if="!isLoss && !isScrapType(line.materialType)"
               class="source-specification-field"
@@ -1471,8 +1640,8 @@ async function submit() {
 .stock-dialog-heading h2 {
   margin: 0;
   color: var(--text);
-  font-size: 23px;
-  font-weight: 650;
+  font-size: var(--dialog-title-size);
+  font-weight: var(--dialog-title-weight);
   letter-spacing: -0.4px;
 }
 .stock-dialog-heading > span {
@@ -1499,6 +1668,18 @@ async function submit() {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 1px;
+}
+.dispatch-rework {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+.dispatch-rework .el-checkbox {
+  height: 24px;
+  margin: 0;
 }
 .dispatch-context-fields {
   grid-template-columns: 240px repeat(2, minmax(0, 1fr));

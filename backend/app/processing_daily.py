@@ -46,6 +46,8 @@ def list_daily(
             Work.processing_task_name,
             Work.purpose_id,
             Work.purpose_name,
+            Work.process_route_id,
+            Work.process_step_index,
         )
         .offset((page - 1) * page_size)
         .limit(page_size)

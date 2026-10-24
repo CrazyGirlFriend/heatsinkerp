@@ -132,7 +132,7 @@ const cards = computed(() => {
       {
         key: 'production-trend',
         title: `${periodLabel.value}加工完成量`,
-        hint: '仅当前班组、流水号和任务 · 正常加工与返工分列',
+        hint: '仅当前班组、流水号、任务和工序 · 正常加工与返工分列',
         empty: !trend.some((row) => row.record_count),
         option: plot(
           trend.map((row) => row.date),

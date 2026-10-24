@@ -44,6 +44,9 @@ export interface ProcessingRecord extends QuantityAdjustment, SharedMaterialFiel
 }
 
 export interface ProcessingDailyRow {
+  process_route_id?: number | null
+  process_step_index?: number | null
+  process_step_name?: string | null
   processing_task_id?: number | null
   processing_task_name?: string | null
   purpose_id?: number | null

@@ -29,6 +29,8 @@ import TeamQualityFeedback from '@/components/TeamQualityFeedback.vue'
 import { qualityFeedbackApi } from '@/services/qualityFeedbackApi'
 import TeamInspectionRecords from '@/components/TeamInspectionRecords.vue'
 import TeamProcessingRecords from '@/components/TeamProcessingRecords.vue'
+import DeliverySchedules from '@/components/DeliverySchedules.vue'
+import type { ProductionSchedule } from '@/types/productionSchedule'
 import ProcessingBatchPicker from '@/components/ProcessingBatchPicker.vue'
 import QuantityAdjustmentDialog from '@/components/QuantityAdjustmentDialog.vue'
 import TeamSerialHistory from '@/components/TeamSerialHistory.vue'
@@ -175,6 +177,9 @@ const tab = computed(() =>
 )
 const fullscreen = ref(false)
 const inventoryPanel = ref<InstanceType<typeof TeamInventory>>()
+const schedulePanel = ref<InstanceType<typeof DeliverySchedules>>()
+const initialSchedule =
+  ref<Pick<ProductionSchedule, 'id' | 'next_team_id' | 'external_destination'>>()
 const summaryPanel = ref<InstanceType<typeof TeamMaterialOverviewPanel>>()
 const exportSource = ref<TableExportSource | null>(null)
 const exportable = computed(
@@ -187,6 +192,7 @@ const exportable = computed(
     !overviewError.value &&
     [
       'stock',
+      'delivery-schedule',
       'pending',
       'receipts',
       'outgoing',
@@ -200,6 +206,7 @@ function openExport() {
   if (!exportable.value) return
   let source: TableExportSource | undefined
   if (tab.value === 'stock') source = inventoryPanel.value?.exportSource()
+  else if (tab.value === 'delivery-schedule') source = schedulePanel.value?.exportSource()
   else if (['materials', 'material-types'].includes(tab.value))
     source = summaryPanel.value?.exportSource()
   else {
@@ -675,6 +682,7 @@ function closeDetails() {
   reallocationSource.value = null
   receiptOpen.value = false
   actionSources.value = []
+  initialSchedule.value = undefined
   processingPickerOpen.value = processingOpen.value = false
   inspectionOpen.value = false
   openingProcessing.value = 0
@@ -750,7 +758,11 @@ watch(selected, (transfer) => {
   if (transfer) selectedBatchNo.value = transfer.batch_no
 })
 
-async function openAction(mode: 'dispatch' | 'loss', sources: StockBatch[]) {
+async function openAction(
+  mode: 'dispatch' | 'loss',
+  sources: StockBatch[],
+  schedule?: Pick<ProductionSchedule, 'id' | 'next_team_id' | 'external_destination'>,
+) {
   const current = ++actionVersion
   const scope = teamKey.value
   try {
@@ -764,7 +776,38 @@ async function openAction(mode: 'dispatch' | 'loss', sources: StockBatch[]) {
   pickerOpen.value = false
   actionMode.value = mode
   actionSources.value = sources
+  initialSchedule.value = schedule
   actionOpen.value = true
+}
+async function dispatchSchedule(schedule: ProductionSchedule, sourceId: number) {
+  if (!canWrite.value || schedule.team_id !== teamId.value || openingDispatch.value) return
+  closeDetails()
+  const current = actionVersion,
+    scope = teamKey.value
+  openingDispatch.value = true
+  try {
+    const result = await teamMaterialApi.stock(teamId.value, {
+      source_ids: String(sourceId),
+      availability: 'dispatchable',
+      page: 1,
+      page_size: 1,
+    })
+    if (current !== actionVersion || scope !== teamKey.value) return
+    if (!result.items.length) {
+      showToast('该来源批次暂无可转出库存；加工后的物料请从本流水号库存中出库', 'info')
+      await router.push({
+        path: route.path,
+        query: { tab: 'stock', serial_no: schedule.serial_no },
+      })
+      return
+    }
+    await openAction('dispatch', result.items, schedule)
+  } catch (e) {
+    if (scope === teamKey.value)
+      showToast(e instanceof Error ? e.message : '读取排期物料失败', 'error')
+  } finally {
+    if (scope === teamKey.value) openingDispatch.value = false
+  }
 }
 async function openReallocation(source: StockBatch) {
   const current = ++actionVersion,
@@ -1145,6 +1188,15 @@ onBeforeUnmount(() => {
           :team-id="teamId"
           :show-all="team?.code === 'FACTORY-QC'"
           @count="qualityCount = $event"
+        />
+        <DeliverySchedules
+          v-else-if="tab === 'delivery-schedule'"
+          :key="teamId"
+          ref="schedulePanel"
+          :team-id="teamId"
+          :fullscreen="fullscreen"
+          :refresh-key="overview"
+          @dispatch="dispatchSchedule"
         />
         <TeamInspectionRecords
           v-else-if="tab === 'inspection-results'"
@@ -1925,12 +1977,13 @@ onBeforeUnmount(() => {
         :team-id="teamId"
         :mode="actionMode"
         :sources="actionSources"
+        :initial-schedule="initialSchedule"
         @saved="savedAction"
         @balances-changed="loadView"
       />
       <MaterialBatchPrintDialog v-model="printOpen" :items="printRows" />
       <TeamBusinessDialog
-        v-if="businessOpen && canManageBusiness"
+        v-if="canManageBusiness"
         :key="teamId"
         v-model="businessOpen"
         :team-id="teamId"

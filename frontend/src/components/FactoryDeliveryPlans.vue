@@ -8,6 +8,7 @@ import type { Delivery } from '@/types/factoryDashboard'
 import { dashboardNumber as number, deliveryStatus } from '@/utils/factoryDashboard'
 const vLoading = ElLoading.directive
 const emit = defineEmits<{ close: []; saved: [] }>()
+const visible = ref(true)
 const query = ref(''),
   page = ref(1),
   total = ref(0),
@@ -52,11 +53,11 @@ onBeforeUnmount(() => {
 
 <template>
   <AppDialog
-    :model-value="true"
+    v-model="visible"
     title="批次交期与完成情况"
     width="1000px"
     class="factory-detail-dialog"
-    @close="emit('close')"
+    @closed="emit('close')"
   >
     <div class="delivery-toolbar">
       <ElInput

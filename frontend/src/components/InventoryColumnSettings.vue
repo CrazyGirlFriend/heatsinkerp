@@ -12,6 +12,7 @@ const props = defineProps<{
   storageKey: string | null
   columns?: readonly { key: K; label: string; defaultVisible?: boolean }[]
   legacyKeys?: Record<string, readonly K[]>
+  newVisibleKeys?: readonly K[]
   description?: string
   choicesLabel?: string
 }>()
@@ -51,12 +52,15 @@ function normalize(value: unknown): InventoryColumnChoice<K>[] {
       else result.push({ key, visible: item.visible })
     }
   }
-  // Newly introduced columns must not expand an existing customized layout.
+  // Reveal only explicitly introduced fields; retain every saved visibility choice.
   return [
     ...result,
     ...defaults()
       .filter((column) => !result.some((item) => item.key === column.key))
-      .map((column) => ({ ...column, visible: result.length ? false : column.visible })),
+      .map((column) => ({
+        ...column,
+        visible: result.length ? !!props.newVisibleKeys?.includes(column.key) : column.visible,
+      })),
   ]
 }
 watch(

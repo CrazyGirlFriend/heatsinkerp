@@ -8,7 +8,7 @@ from .models import MaterialTransfer as Transfer
 from .models import Team, TeamProcessingTask
 
 
-def completed_work(team_id, lot_ids, *, local=True):
+def completed_work(team_id, lot_ids, *, local=True, name="processing_task_ancestors"):
     """Remaining children skip their creating operation, retaining earlier tasks.
 
     A normal receipt starts a new team workflow; only processing and internal
@@ -25,7 +25,7 @@ def completed_work(team_id, lot_ids, *, local=True):
             literal(True).label("include_work"),
         )
         .where(Transfer.id.in_(lot_ids), Transfer.next_team_id == team_id)
-        .cte("processing_task_ancestors", recursive=True)
+        .cte(name, recursive=True)
     )
     path = path.union(
         select(
@@ -85,23 +85,25 @@ def context(db, team_id, lot_id):
     previous = db.scalars(
         select(Work).where(Work.id.in_(select(history.c.work_id))).order_by(Work.id.desc())
     )
-    rework_records = {}
-    for record in previous:
-        rework_records.setdefault(
-            record.processing_task_id,
-            {
-                "processing_task_id": record.processing_task_id,
-                "processing_task_name": record.processing_task_name,
-                "purpose_id": record.purpose_id,
-                "purpose_name": record.purpose_name,
-                "rework_of_id": record.id,
-            },
-        )
+    rework_records = [
+        {
+            "processing_task_id": record.processing_task_id,
+            "processing_task_name": record.processing_task_name,
+            "purpose_id": record.purpose_id,
+            "purpose_name": record.purpose_name,
+            "rework_of_id": record.id,
+            "process_route_id": record.process_route_id,
+            "process_step_index": record.process_step_index,
+            "process_step_name": record.process_step_name,
+            "process_step_instructions": record.process_step_instructions,
+        }
+        for record in previous
+    ]
     return {
         "task_required": bool(tasks),
         "completed_task_ids": sorted(completed),
         "allowed_task_ids": [task.id for task in tasks if task.active and task.id not in completed],
-        "rework_task_records": list(rework_records.values()),
+        "rework_task_records": rework_records,
     }
 
 
@@ -173,6 +175,7 @@ def snapshot(db, lot, payload, prior_work=None):
     if (
         payload.work_kind != "rework"
         and task
+        and not lot.process_route_id
         and any(row.processing_task_id == task.id for row in history)
     ):
         raise HTTPException(409, "本批已完成该任务，再次执行请登记返工")

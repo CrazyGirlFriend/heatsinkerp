@@ -57,6 +57,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
+  closed: []
   changed: [transfer: MaterialTransfer]
   confirmed: [transfer: MaterialTransfer]
   voided: [transfer: MaterialTransfer]
@@ -275,6 +276,13 @@ async function load(resetKey: unknown = true, background = false): Promise<void>
   } finally {
     if (version === requestVersion) loading.value = false
   }
+}
+
+async function closed() {
+  // Element Plus emits closed before the model update; let that parent update flush first.
+  await nextTick()
+  await nextTick()
+  if (!props.modelValue) emit('closed')
 }
 
 function close(): void {
@@ -579,6 +587,7 @@ watch(
     :model-value="modelValue && !groupOpen"
     :busy="confirming || voiding || deliveryBusy"
     @close="close"
+    @closed="closed"
   >
     <template #header>
       <header class="drawer-heading">
@@ -854,8 +863,8 @@ watch(
   padding-right: 24px;
 }
 .drawer-heading > span:first-child {
-  font-size: 22px;
-  font-weight: 600;
+  font-size: var(--dialog-title-size);
+  font-weight: var(--dialog-title-weight);
 }
 .drawer-heading h2 {
   margin: 0;

@@ -14,6 +14,7 @@ import {
   normalizeMaterialTransfer,
 } from '@/services/materialTransferApi'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
+import { productionScheduleApi } from '@/services/productionScheduleApi'
 import {
   canConfirmMaterialTransfer,
   materialTransferStatusLabel,
@@ -104,6 +105,7 @@ const source = (id = 3): StockBatch =>
   }) as StockBatch
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(productionScheduleApi, 'candidates').mockResolvedValue({ items: [] })
   state.auth = reactive({
     isTeamAccount: true,
     isAdmin: false,

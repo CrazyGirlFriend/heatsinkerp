@@ -352,7 +352,7 @@ def test_legacy_shared_receipt_retry_still_replays_without_a_plan(client, wareho
     payload = WarehouseReceiptCreate.model_validate(body)
     legacy_hash = _creation_fingerprint(payload)
     # Compare with the pre-plan canonical request, including its original default fields.
-    value = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    value = payload.model_dump(mode="json", exclude={"idempotency_key", "process_route"})
     from app.material_transfer_workflow import DOCUMENT_FIELDS, SLUDGE_FIELDS
 
     for field in (

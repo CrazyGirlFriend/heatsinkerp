@@ -15,6 +15,8 @@ from pydantic import (
     model_validator,
 )
 
+from .process_route_schemas import RouteIntakeWrite
+
 DIRECT_MATERIAL_TYPE_PATTERN = "^(raw_material|finished|semi_finished|finished_surplus|semi_finished_surplus|defective|waste|sludge|scrap_chips)$"
 SCRAP_MATERIAL_TYPES = ("defective", "waste", "sludge", "scrap_chips")
 
@@ -298,6 +300,7 @@ class WarehouseReceiptCreate(
     weight: Decimal = Field(ge=0, max_digits=17, decimal_places=6)
     notes: str = Field(default="", max_length=2000)
     idempotency_key: str = Field(min_length=1, max_length=100)
+    process_route: RouteIntakeWrite | None = None
     receipt_kind: Literal["external", "return"] = "external"
     external_source: str | None = Field(default=None, min_length=1, max_length=240)
     return_dispatch_no: str | None = Field(default=None, min_length=1, max_length=40)
@@ -405,6 +408,7 @@ class MaterialTransferEventResponse(APIModel):
 
 
 class MaterialTransferResponse(MaterialTransferDocumentFields, SludgeMeasurement):
+    process_route: dict[str, Any] | None = None
     shared_group_id: int | None = None
     shared_unallocated: bool = False
     shared_origin_batch_no: str | None = None

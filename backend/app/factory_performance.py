@@ -85,6 +85,9 @@ def production_facts(db, team_ids, dates, serial_no=None, material_name=None):
         MaterialTransfer.material_name,
         Work.purpose_name,
         Work.processing_task_name,
+        Work.process_route_id,
+        Work.process_step_index,
+        Work.process_step_name,
     ]
     conditions = [
         Work.team_id.in_(team_ids),
@@ -174,7 +177,14 @@ def production_report(
     empty = {key: 0 for key in PRODUCTION_METRICS}
     if chosen is None:
         return {"scope": None, "scopes": [], "totals": empty, "trend": []}
-    dimensions = ("material_name", "purpose_name", "processing_task_name")
+    dimensions = (
+        "material_name",
+        "purpose_name",
+        "processing_task_name",
+        "process_route_id",
+        "process_step_index",
+        "process_step_name",
+    )
     conditions = [facts.c.team_id == chosen["team_id"], facts.c.serial_no == chosen["serial_no"]]
     sums = [func.count().label("record_count")]
     for kind, prefix in (("initial", "completed"), ("rework", "rework")):

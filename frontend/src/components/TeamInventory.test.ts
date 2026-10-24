@@ -27,6 +27,8 @@ import type { StockBatch } from '@/types/teamMaterials'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/stores/toast'
+import { productionScheduleApi } from '@/services/productionScheduleApi'
+import { inventoryScheduleFixture, scheduleSummaryFixture } from '@/testFixtures/inventorySchedule'
 
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
 
@@ -52,6 +54,10 @@ const overview = () => ({
   legacy_received_count: 0,
 })
 beforeEach(() => {
+  vi.spyOn(productionScheduleApi, 'inventory').mockImplementation(async (body) => ({
+    groups: (body.group_ids || []).map((group_id) => ({ group_id, ...inventoryScheduleFixture() })),
+    sources: [],
+  }))
   vi.spyOn(teamMaterialApi, 'teamInventory').mockResolvedValue({
     items: data(),
     total: 28,
@@ -64,6 +70,7 @@ beforeEach(() => {
 afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 async function render(path = '/team-workspaces/901?tab=stock', canWrite = true, warehouse = true) {
   const router = createRouter({
@@ -110,6 +117,200 @@ async function submit(term: string) {
 }
 
 describe('warehouse grouped stock', () => {
+  it('refreshes only the visible schedule summary each minute, pauses hidden tabs and cleans up its single clock', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    let hidden = false
+    vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden)
+    await render()
+    vi.mocked(productionScheduleApi.inventory).mockClear()
+    vi.mocked(productionScheduleApi.inventory).mockResolvedValueOnce({
+      groups: data().map((row) => ({
+        group_id: row.group_id,
+        ...inventoryScheduleFixture(
+          row.group_id === 11
+            ? {
+                count: 1,
+                status: 'overdue',
+                overdue_count: 1,
+                due_at: '2026-10-22T04:00:00Z',
+                items: [scheduleSummaryFixture({ status: 'overdue' })],
+              }
+            : {},
+        ),
+      })),
+      sources: [],
+    })
+    const inventoryReads = vi.mocked(teamMaterialApi.teamInventory).mock.calls.length
+    await vi.advanceTimersByTimeAsync(60_000)
+    await flushPromises()
+    expect(productionScheduleApi.inventory).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('逾期未交完')
+    expect(teamMaterialApi.teamInventory).toHaveBeenCalledTimes(inventoryReads)
+
+    hidden = true
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(productionScheduleApi.inventory).toHaveBeenCalledTimes(1)
+    hidden = false
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(productionScheduleApi.inventory).toHaveBeenCalledTimes(2)
+
+    await wrapper
+      .findAll('.inventory-row-actions button')
+      .find((button) => button.text() === '明细')!
+      .trigger('click')
+    const detailRefresh = vi.fn().mockResolvedValue(undefined)
+    Object.assign(wrapper.getComponent(TeamInventoryDetail).vm, { refreshSchedules: detailRefresh })
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(detailRefresh).toHaveBeenCalledOnce()
+    expect(productionScheduleApi.inventory).toHaveBeenCalledTimes(2)
+    expect(teamMaterialApi.teamInventory).toHaveBeenCalledTimes(inventoryReads)
+
+    wrapper.unmount()
+    await vi.advanceTimersByTimeAsync(120_000)
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(detailRefresh).toHaveBeenCalledOnce()
+    expect(productionScheduleApi.inventory).toHaveBeenCalledTimes(2)
+  })
+  it('does not overlap minute refreshes while the previous schedule summary is pending', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    await render()
+    let finish!: (result: Awaited<ReturnType<typeof productionScheduleApi.inventory>>) => void
+    vi.mocked(productionScheduleApi.inventory)
+      .mockClear()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve
+          }),
+      )
+    await vi.advanceTimersByTimeAsync(60_000)
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(productionScheduleApi.inventory).toHaveBeenCalledOnce()
+    finish({
+      groups: data().map((row) => ({ group_id: row.group_id, ...inventoryScheduleFixture() })),
+      sources: [],
+    })
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(productionScheduleApi.inventory).toHaveBeenCalledTimes(2)
+  })
+  it('does not replace fresh stock with an older minute summary that finishes after a live stock update', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    await render()
+    let finishStock!: (value: Awaited<ReturnType<typeof teamMaterialApi.teamInventory>>) => void
+    let finishSummary!: (value: Awaited<ReturnType<typeof productionScheduleApi.inventory>>) => void
+    vi.mocked(teamMaterialApi.teamInventory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishStock = resolve
+        }),
+    )
+    await wrapper.setProps({ overview: overview() })
+    vi.mocked(productionScheduleApi.inventory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishSummary = resolve
+        }),
+    )
+    await vi.advanceTimersByTimeAsync(60_000)
+    finishStock({
+      items: [warehouseFixture({ owned_quantity: 999 })],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    })
+    await flushPromises()
+    expect(wrapper.get('[data-field="owned_quantity"]').text()).toBe('999')
+    finishSummary({
+      groups: data().map((row) => ({ group_id: row.group_id, ...inventoryScheduleFixture() })),
+      sources: [],
+    })
+    await flushPromises()
+    expect(wrapper.get('[data-field="owned_quantity"]').text()).toBe('999')
+    expect(wrapper.findAll('.inventory-row-actions')).toHaveLength(1)
+  })
+  it('loads schedules once for the visible page and expands assigned batches without merging rows', async () => {
+    const first = scheduleSummaryFixture()
+    const second = scheduleSummaryFixture({
+      id: 82,
+      status: 'overdue',
+      due_at: '2026-10-22T04:00:00Z',
+      sources: [{ source_transfer_id: 12, batch_no: 'TL12', quantity: 20, weight: 2 }],
+    })
+    vi.mocked(productionScheduleApi.inventory).mockResolvedValue({
+      groups: [
+        {
+          group_id: 11,
+          ...inventoryScheduleFixture({
+            count: 2,
+            status: 'overdue',
+            overdue_count: 1,
+            items: [first, second],
+          }),
+        },
+        {
+          group_id: 12,
+          ...inventoryScheduleFixture({
+            count: 1,
+            status: 'today',
+            due_at: first.due_at,
+            items: [first],
+          }),
+        },
+        { group_id: 13, ...inventoryScheduleFixture() },
+      ],
+      sources: [],
+    })
+    const router = await render()
+    expect(productionScheduleApi.inventory).toHaveBeenCalledTimes(1)
+    expect(productionScheduleApi.inventory).toHaveBeenCalledWith({
+      team_id: 901,
+      group_ids: [11, 12, 13],
+    })
+    expect(headers()).toContain('要求交货时间')
+    expect(headers()).toContain('排期状态')
+    expect(wrapper.text()).toContain('2项排期')
+    expect(wrapper.text()).toContain('1项逾期')
+    expect(wrapper.text()).toContain('今日到期')
+    expect(wrapper.text()).toContain('未安排')
+    const trigger = wrapper.findAll('button').find((button) => button.text() === '2项排期')!
+    await trigger.trigger('click')
+    await flushPromises()
+    expect(trigger.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('.inventory-schedule-detail').text()).toContain('TL11')
+    expect(wrapper.get('.inventory-schedule-detail').text()).toContain('TL12')
+    expect(wrapper.get('.inventory-schedule-detail').text()).toContain('待交件数')
+    await wrapper
+      .get('.inventory-schedule-detail')
+      .findAll('button')
+      .find((button) => button.text() === '查看排期')!
+      .trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({
+      tab: 'delivery-schedule',
+      schedule_id: '81',
+    })
+  })
+  it('keeps stock available on schedule errors and never labels a failed request unplanned', async () => {
+    vi.mocked(productionScheduleApi.inventory).mockRejectedValueOnce(new Error('failed'))
+    await render()
+    expect(wrapper.text()).toContain('交货排期加载失败')
+    expect(wrapper.text()).toContain('未获取')
+    expect(wrapper.text()).not.toContain('未安排')
+    expect(wrapper.findAll('.inventory-row-actions')).toHaveLength(3)
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '重试排期')!
+      .trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('交货排期加载失败')
+    expect(wrapper.text()).toContain('未安排')
+  })
   describe('single-source row actions', () => {
     const source = (): StockBatch => ({
       ...warehouseFixture(),
@@ -859,7 +1060,7 @@ describe('warehouse grouped stock', () => {
     const pending = wrapper.findAll(`button[aria-label="查看${row.serial_no}转出待签收批次"]`)
     expect(pending.map((button) => button.text())).toEqual(['30', '3'])
     await pending[0]!.trigger('click')
-    expect(wrapper.getComponent(InventoryPendingDialog).props('group')).toEqual(row)
+    expect(wrapper.getComponent(InventoryPendingDialog).props('group')).toMatchObject(row)
     expect(wrapper.find('.inventory-cell-stack').exists()).toBe(false)
   })
 
@@ -900,6 +1101,8 @@ describe('warehouse grouped stock', () => {
       '上序班组',
       '库存件数',
       '库存重量 (kg)',
+      '要求交货时间',
+      '排期状态',
       '库存状态',
       '操作',
     ])
@@ -919,7 +1122,7 @@ describe('warehouse grouped stock', () => {
       .findAll('button')
       .find((button) => button.text() === '明细')!
       .trigger('click')
-    expect(wrapper.getComponent(TeamInventoryDetail).props('group')).toEqual(row)
+    expect(wrapper.getComponent(TeamInventoryDetail).props('group')).toMatchObject(row)
     wrapper.getComponent(TeamInventoryDetail).vm.$emit('pending')
     await flushPromises()
     expect(wrapper.getComponent(InventoryPendingDialog).props()).toMatchObject({
@@ -958,7 +1161,7 @@ describe('warehouse grouped stock', () => {
       .findAll('button')
       .find((button) => button.text() === '在途转出')!
       .trigger('click')
-    expect(wrapper.getComponent(InventoryPendingDialog).props('group')).toEqual(row)
+    expect(wrapper.getComponent(InventoryPendingDialog).props('group')).toMatchObject(row)
     expect(wrapper.findAll('.inventory-balance').map((cell) => cell.text())).toEqual(['100', '100'])
     expect(wrapper.find('.inventory-balance > small').exists()).toBe(false)
     expect(hints()).toContain('本班组库存 100 件 / 100 kg')
@@ -1019,7 +1222,15 @@ describe('warehouse grouped stock', () => {
       user: { id: 42 },
     } as ReturnType<typeof useAuthStore>['session']
     await flushPromises()
-    expect(headers()).toEqual(['流水号', '材质', '未转出件数', '未转出重量 (kg)', '操作'])
+    expect(headers()).toEqual([
+      '流水号',
+      '材质',
+      '未转出件数',
+      '未转出重量 (kg)',
+      '要求交货时间',
+      '排期状态',
+      '操作',
+    ])
     expect(wrapper.findAll('.inventory-balance').map((cell) => cell.text())).toEqual(['70', '70'])
     expect(localStorage.getItem('heatsink.classified-columns.v1:42:901')).toBe(
       JSON.stringify([
@@ -1101,6 +1312,8 @@ describe('warehouse grouped stock', () => {
       '上序班组',
       '库存件数',
       '库存重量 (kg)',
+      '要求交货时间',
+      '排期状态',
       '库存状态',
       '操作',
     ])
@@ -1280,6 +1493,8 @@ describe('warehouse grouped stock', () => {
       '来源',
       '库存件数',
       '库存重量 (kg)',
+      '要求交货时间',
+      '排期状态',
       '库存状态',
       '操作',
     ])

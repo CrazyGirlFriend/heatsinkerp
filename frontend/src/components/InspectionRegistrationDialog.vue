@@ -42,6 +42,7 @@ const props = defineProps<{
   groupId?: number
 }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
+const visible = ref(true)
 const directory = useTeamDirectoryStore(),
   auth = useAuthStore()
 const teams = computed(() => directory.items.filter((team) => team.active && teamCanProcess(team)))
@@ -238,7 +239,7 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <AppDialog
-    :model-value="true"
+    v-model="visible"
     :title="recheck ? `${title}复检登记` : `${title}登记`"
     width="min(1060px, calc(100vw - 40px))"
     align-center
@@ -247,7 +248,7 @@ onBeforeUnmount(() => {
     :close-on-press-escape="!saving"
     :show-close="!saving"
     class="inspection-registration"
-    @close="emit('close')"
+    @closed="emit('close')"
   >
     <ElAlert v-if="error" type="error" :closable="false" :title="error" />
     <ElForm ref="form" label-position="top" :disabled="saving" @submit.prevent="submit">
@@ -483,7 +484,7 @@ onBeforeUnmount(() => {
       /></ElFormItem>
     </ElForm>
     <template #footer
-      ><ElButton :disabled="saving" @click="emit('close')">取消</ElButton
+      ><ElButton :disabled="saving" @click="visible = false">取消</ElButton
       ><ElButton
         type="primary"
         :loading="saving"

@@ -14,6 +14,7 @@ import { processingRoleLabels, type ProcessingRole } from '@/types/materialProce
 const props = defineProps<{ teamId: number; groupId?: number; reworkRecordId?: number }>()
 const vLoading = ElLoading.directive
 const emit = defineEmits<{ close: []; selected: [sourceId: number] }>()
+const visible = ref(true)
 const query = ref(''),
   applied = ref(''),
   page = ref(1),
@@ -72,13 +73,13 @@ onBeforeUnmount(() => {
 
 <template>
   <AppDialog
-    :model-value="true"
+    v-model="visible"
     :title="reworkRecordId ? '返工 · 选择现有库存批次' : '加工登记 · 选择库存批次'"
     width="min(1040px, calc(100vw - 24px))"
     align-center
     append-to-body
     class="processing-batch-picker"
-    @close="emit('close')"
+    @closed="emit('close')"
   >
     <div class="processing-picker-search">
       <ElInput
@@ -176,7 +177,7 @@ onBeforeUnmount(() => {
         "
       />
     </div>
-    <template #footer><ElButton @click="emit('close')">取消</ElButton></template>
+    <template #footer><ElButton @click="visible = false">取消</ElButton></template>
   </AppDialog>
 </template>
 

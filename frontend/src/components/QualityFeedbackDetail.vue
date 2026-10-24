@@ -38,6 +38,7 @@ import { materialRequestKey } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
 const props = defineProps<{ issueId: number }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
+const visible = ref(true)
 const auth = useAuthStore(),
   directory = useTeamDirectoryStore()
 const detail = ref<QualityFeedbackDetail>(),
@@ -155,7 +156,7 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <AppDialog
-    :model-value="true"
+    v-model="visible"
     title="质量反馈"
     width="min(1120px, calc(100vw - 40px))"
     align-center
@@ -164,7 +165,7 @@ onBeforeUnmount(() => {
     :close-on-click-modal="false"
     :close-on-press-escape="!busy"
     :show-close="!busy"
-    @close="emit('close')"
+    @closed="emit('close')"
   >
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <template v-if="detail">
@@ -175,6 +176,10 @@ onBeforeUnmount(() => {
         ><ElButton link :loading="loading" :disabled="busy" @click="load">刷新</ElButton>
       </div>
       <ElDescriptions :column="2" border>
+        <ElDescriptionsItem v-if="detail.process_step" label="被检工艺 / 工序" :span="2"
+          >{{ detail.process_step.title }} · {{ detail.process_step.sequence_no }} ·
+          {{ detail.process_step.step_name }}</ElDescriptionsItem
+        >
         <ElDescriptionsItem label="来源 / 发现班组"
           >{{ detail.kind === 'inspection' ? '检验' : '巡检' }} /
           {{ detail.team_name }}</ElDescriptionsItem
@@ -343,7 +348,7 @@ onBeforeUnmount(() => {
       </section>
     </template>
     <template #footer
-      ><ElButton :disabled="busy" @click="emit('close')">关闭</ElButton
+      ><ElButton :disabled="busy" @click="visible = false">关闭</ElButton
       ><ElButton
         v-if="canReply"
         :type="canDecide ? undefined : 'primary'"

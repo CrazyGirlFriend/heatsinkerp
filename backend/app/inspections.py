@@ -208,6 +208,7 @@ def record_dict(row, lot, team):
     )
     return dict(
         id=row.id,
+        process_step=row.process_step,
         source_transfer_id=row.source_transfer_id,
         team_id=row.team_id,
         team_name=team.name,
@@ -354,7 +355,10 @@ def create(db, payload, user):
                 if registered and registered.latest_id
                 else None
             )
+            from .process_routes import route_document
+
             row = Inspection(
+                process_step=route_document(lot),
                 processing_record_id=work.id if work else None,
                 processor_name=work.processor_name if work else None,
                 source_transfer_id=lot.id,

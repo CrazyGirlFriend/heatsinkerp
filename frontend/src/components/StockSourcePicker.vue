@@ -37,6 +37,7 @@ const props = withDefaults(
   { mode: 'dispatch', processing: false },
 )
 const emit = defineEmits<{ close: []; selected: [sources: StockBatch[]]; outbound: [] }>()
+const visible = ref(true)
 const query = ref(''),
   appliedQuery = ref(''),
   page = ref(1),
@@ -140,12 +141,12 @@ onBeforeUnmount(() => {
 
 <template>
   <AppDialog
-    :model-value="true"
+    v-model="visible"
     :title="mode === 'reallocate' ? '流水号转投 · 选择来源批次' : '新建出库 · 选择来源批次'"
     width="min(1040px, 94vw)"
     top="6vh"
     class="stock-source-picker"
-    @close="emit('close')"
+    @closed="emit('close')"
   >
     <p v-if="groupLabel" class="picker-scope">{{ groupLabel }}</p>
     <div class="picker-toolbar">
@@ -336,7 +337,7 @@ onBeforeUnmount(() => {
     <template #footer
       ><span v-if="mode === 'dispatch'" class="picker-batch-note"
         >每条物料独立批次、独立条码，可合并打印</span
-      ><ElButton @click="emit('close')">取消</ElButton
+      ><ElButton @click="visible = false">取消</ElButton
       ><ElButton
         v-if="mode === 'dispatch'"
         type="primary"

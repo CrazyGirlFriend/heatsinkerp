@@ -484,7 +484,9 @@ function handleUserCommand(command: string | number | object): void {
   padding: 0;
 }
 .app-shell--business {
-  background: var(--workspace-bg);
+  background:
+    radial-gradient(ellipse 280px 75% at 0% 45%, #dceee3b3, transparent),
+    radial-gradient(ellipse 420px 220px at 85% -5%, #f5f1e880, transparent), var(--workspace-bg);
 }
 .app-shell--business .sidebar {
   margin: 12px 0 12px 12px;
@@ -492,18 +494,18 @@ function handleUserCommand(command: string | number | object): void {
   border: 1px solid var(--glass-border);
   border-radius: 22px;
   background:
-    radial-gradient(ellipse at 8% 0%, #fffffff2, transparent 58%),
+    radial-gradient(ellipse at 8% 0%, #ffffffa8, transparent 58%),
     radial-gradient(
       ellipse at 100% 100%,
-      color-mix(in srgb, var(--primary-soft) 70%, transparent),
+      color-mix(in srgb, var(--primary-soft) 68%, transparent),
       transparent 72%
     ),
     var(--glass-shell-fill);
   -webkit-backdrop-filter: blur(20px) saturate(110%);
   backdrop-filter: blur(20px) saturate(110%);
   box-shadow:
-    0 8px 28px #203b2e0c,
-    0 0 0 0.5px #335d4614,
+    0 10px 30px #203b2e12,
+    0 0 0 0.5px #335d4624,
     inset 1px 1px 1px #fff,
     inset -1px -1px 1px var(--glass-edge);
 }

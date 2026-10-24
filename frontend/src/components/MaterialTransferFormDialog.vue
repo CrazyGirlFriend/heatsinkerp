@@ -533,9 +533,11 @@ onBeforeUnmount(() => {
     :show-close="!saving"
     @close="close"
   >
-    <template #header>
+    <template #header="{ titleId, titleClass }">
       <div class="form-heading">
-        <h2>{{ external ? `编辑${actionLabel}单` : isEditing ? '编辑转料单' : '新建转料单' }}</h2>
+        <h2 :id="titleId" :class="titleClass">
+          {{ external ? `编辑${actionLabel}单` : isEditing ? '编辑转料单' : '新建转料单' }}
+        </h2>
         <div v-if="sourceTeam" class="handoff-preview" aria-label="转料方向">
           <span>{{ sourceTeam.name }}</span
           ><ElIcon><ArrowRight /></ElIcon>
@@ -931,8 +933,8 @@ onBeforeUnmount(() => {
 .form-heading h2 {
   margin: 0;
   color: var(--text);
-  font-size: 20px;
-  font-weight: 550;
+  font-size: var(--dialog-title-size);
+  font-weight: var(--dialog-title-weight);
 }
 .handoff-preview {
   display: flex;

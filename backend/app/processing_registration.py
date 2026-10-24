@@ -138,6 +138,8 @@ def prepare(lot, balance, latest, payload, team_code):
 def sent_status(lot, latest=None):
     if lot.next_team_code not in PROCESSING_TEAM_CODES:
         return None
+    if lot.rework_pending:
+        return "unregistered"
     if latest:
         return latest.processing_status or "registered"
     return (

@@ -329,7 +329,7 @@
   --business-table-font: var(--workspace-body-size);
   --business-table-padding: 11px;
   --el-table-header-bg-color: var(--table-header-bg);
-  --el-table-header-text-color: #748078;
+  --el-table-header-text-color: #52635a;
   --el-table-border-color: var(--line);
   --el-table-row-hover-bg-color: var(--table-hover-bg);
   flex: 1;
@@ -344,7 +344,7 @@
   th.el-table__cell {
   height: 42px;
   padding-block: 8px;
-  color: #748078;
+  color: #52635a;
   font-size: 12px;
   font-weight: 500;
 }

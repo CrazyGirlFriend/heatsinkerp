@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { ElRadioGroup, ElSelect } from 'element-plus'
+import { ElOption, ElRadioGroup, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import FactoryPerformancePanel from './FactoryPerformancePanel.vue'
 import FactoryPerformanceCharts from './FactoryPerformanceCharts.vue'
@@ -61,6 +61,82 @@ function selection(label: string) {
 }
 
 describe('factory production and quality reporting', () => {
+  it('distinguishes repeated tasks by their recorded route step while keeping legacy scope labels unchanged', async () => {
+    const data = performanceFixture()
+    const first = {
+      ...data.production.scopes[0]!,
+      processing_task_name: '双面研磨',
+      process_route_id: 8,
+      process_step_index: 1,
+      process_step_name: '1 · 粗磨',
+    }
+    const next = {
+      ...first,
+      scope_id: 11,
+      process_step_index: 3,
+      process_step_name: '3 · 精磨',
+    }
+    data.production.scope = first
+    data.production.scopes = [
+      first,
+      next,
+      {
+        ...data.production.scopes[0]!,
+        scope_id: 12,
+        process_route_id: null,
+        process_step_index: null,
+        process_step_name: null,
+      },
+    ]
+    vi.mocked(factoryPerformanceApi.get).mockResolvedValueOnce(data)
+    await render()
+    const selector = wrapper
+      .findAllComponents(ElSelect)
+      .find((component) => component.props('modelValue') === first.scope_id)!
+    expect(selector.findAllComponents(ElOption).map((option) => option.props('label'))).toEqual([
+      'W80 · 轧制业务1 · 双面研磨 · 1 · 粗磨',
+      'W80 · 轧制业务1 · 双面研磨 · 3 · 精磨',
+      'W80 · 轧制业务1 · 压制',
+    ])
+    const table = wrapper.get('.performance-table')
+    const headers = table.findAll('thead th').map((cell) => cell.text())
+    const taskColumn = headers.indexOf('加工任务')
+    const stepColumn = headers.indexOf('工艺工序')
+    expect(stepColumn).toBe(taskColumn + 1)
+    expect(
+      table.findAll('tbody tr').map((row) => {
+        const cells = row.findAll('th, td')
+        return [cells[taskColumn]!.text(), cells[stepColumn]!.text()]
+      }),
+    ).toEqual([
+      ['双面研磨', '1 · 粗磨'],
+      ['双面研磨', '3 · 精磨'],
+      ['压制', '—'],
+    ])
+    const exporter = wrapper.getComponent(TableExportButton)
+    const source = exporter.props('source')()
+    expect(source?.fields).toContainEqual(
+      expect.objectContaining({ key: 'process_step_name', label: '工艺工序' }),
+    )
+    expect((await loadExport(source)).map((row) => row.process_step_name)).toEqual([
+      '1 · 粗磨',
+      '3 · 精磨',
+      '—',
+    ])
+    expect(
+      (await loadExport(exporter.props('variants')!()[0]!)).map((row) => row.process_step_name),
+    ).toEqual(['1 · 粗磨', '1 · 粗磨'])
+    vi.mocked(factoryPerformanceApi.get).mockResolvedValueOnce({
+      ...data,
+      production: { ...data.production, scope: next },
+    })
+    selector.vm.$emit('update:modelValue', next.scope_id)
+    await flushPromises()
+    expect(factoryPerformanceApi.get).toHaveBeenLastCalledWith(
+      expect.objectContaining({ serial_no: '805881-5', work_id: next.scope_id }),
+    )
+  })
+
   it('pauses automatic refresh while selecting export fields and resumes after close', async () => {
     await render('quality')
     const exporter = wrapper.getComponent(TableExportButton)
@@ -100,6 +176,7 @@ describe('factory production and quality reporting', () => {
         team_name: '轧制',
         serial_no: '805881-5',
         processing_task_name: '压制',
+        process_step_name: '—',
         completed_quantity: 110,
         rework_quantity: 30,
         material_name: 'W80',

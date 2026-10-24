@@ -24,7 +24,7 @@ describe('production and quality chart meanings', () => {
     })
     try {
       expect(wrapper.findAllComponents(LedgerChart)).toHaveLength(1)
-      expect(wrapper.text()).toContain('仅当前班组、流水号和任务')
+      expect(wrapper.text()).toContain('仅当前班组、流水号、任务和工序')
       expect(wrapper.text()).not.toContain('班组完成量')
       const chart = wrapper.getComponent(LedgerChart)
       expect(chart.props('option').series).toEqual([

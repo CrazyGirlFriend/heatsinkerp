@@ -4,7 +4,7 @@ import AppDialog from '@/components/AppDialog.vue'
 const props = withDefaults(defineProps<{ modelValue: boolean; busy: boolean; title?: string }>(), {
   title: '转料单详情',
 })
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; closed: [] }>()
 function close() {
   if (props.modelValue && !props.busy) emit('close')
 }
@@ -23,6 +23,7 @@ function close() {
     append-to-body
     :destroy-on-close="false"
     @update:model-value="!$event && close()"
+    @closed="emit('closed')"
   >
     <template v-if="$slots.header" #header><slot name="header" /></template>
     <slot />

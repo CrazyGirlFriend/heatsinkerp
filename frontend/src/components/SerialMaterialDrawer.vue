@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import AppDialog from '@/components/AppDialog.vue'
 import { currentLocations } from '@/utils/warehousePlacement'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   ElButton,
   ElCheckbox,
@@ -42,6 +42,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   changed: []
+  closed: []
   action: [mode: 'dispatch' | 'loss', sources: StockBatch[]]
 }>()
 const tab = ref('stock'),
@@ -155,6 +156,10 @@ async function load(background = false) {
     if (current === version) loading.value = false
   }
 }
+async function closed() {
+  await nextTick()
+  emit('closed')
+}
 function open(value: unknown) {
   const record = value as MaterialTransfer
   selected.value = record
@@ -175,6 +180,10 @@ watch(
   () => [props.modelValue, props.teamId, props.serialNo],
   () => {
     ++version
+    if (!props.modelValue) {
+      batchOpen.value = false
+      return
+    }
     summary.value = null
     tab.value = 'stock'
     page.value = 1
@@ -214,6 +223,7 @@ onBeforeUnmount(() => {
     append-to-body
     class="material-detail-dialog serial-detail-dialog"
     @update:model-value="emit('update:modelValue', $event)"
+    @closed="closed"
   >
     <template #header
       ><div class="serial-title">
@@ -561,16 +571,19 @@ onBeforeUnmount(() => {
 }
 .serial-title {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
 }
-.serial-title span {
-  color: var(--subtle);
-  font-size: 12px;
+.serial-title > span {
+  color: var(--text);
+  font-size: var(--dialog-title-size);
+  font-weight: var(--dialog-title-weight);
 }
 .serial-title strong {
-  color: var(--text);
-  font-size: 19px;
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 .serial-detail-body {
@@ -642,7 +655,6 @@ onBeforeUnmount(() => {
   font-size: 12px;
   line-height: 1.5;
 }
-.serial-title span,
 .serial-detail-footer > span {
   font-size: 14px;
 }

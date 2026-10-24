@@ -6,6 +6,12 @@ import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WarehouseReceiptDialog from './WarehouseReceiptDialog.vue'
 import MaterialInput from './MaterialInput.vue'
+import ProcessRouteEditor from './ProcessRouteEditor.vue'
+import ImportedDocumentPreview from './ImportedDocumentPreview.vue'
+import WordDocumentPreview from './WordDocumentPreview.vue'
+import { processRouteApi } from '@/services/processRouteApi'
+import { routeFixture } from '@/testFixtures/processRoute'
+import type { ProcessRoute } from '@/types/processRoute'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 const state = vi.hoisted(() => ({
@@ -56,6 +62,8 @@ beforeEach(() => {
     refreshTeamDirectory: vi.fn().mockResolvedValue(undefined),
   })
   vi.spyOn(teamMaterialApi, 'createReceipt').mockResolvedValue(receipt())
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue(importedDocument())
+  vi.spyOn(processRouteApi, 'options').mockResolvedValue({ tasks: [], purposes: [] })
 })
 afterEach(() => {
   wrapper?.unmount()
@@ -68,6 +76,8 @@ async function render() {
     global: {
       stubs: {
         ElDialog: { template: '<div><slot name="header"/><slot/><slot name="footer"/></div>' },
+        ProcessRouteEditor: true,
+        WordDocumentPreview: true,
       },
     },
   })
@@ -517,4 +527,660 @@ it('replaces old piece fields with weight-only intake and rejects an empty weigh
     901,
     expect.objectContaining({ quantity: 0, weight: 5, finished_quantity: null }),
   )
+})
+
+function importedDocument(): ProcessRoute {
+  const route = structuredClone(routeFixture)
+  const values: Record<string, string | number> = {
+    serial_no: 'IMPORT-01',
+    material_name: '钼铜',
+    quantity: 41,
+    weight: 171.6,
+    customer_code: 'C-11600',
+    product_code: 'T4-03',
+    finished_specification: '100 × 80 × 5 mm',
+    delivery_date: '2026-11-01',
+    delivery_quantity: 18100,
+    external_source: '供应单位',
+  }
+  route.serial_nos = ['IMPORT-01']
+  route.filename = '生产工艺单.docx'
+  route.source_data.receipt_fields = Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [
+      key,
+      { value, label: key, source_row: '1:1', source_label: key },
+    ]),
+  )
+  route.source_data.tables = [
+    [
+      ['订单数量', '18100'],
+      ['计划加工数量', '4008'],
+    ],
+  ]
+  return route
+}
+async function importFile(openPreview = false) {
+  const input = wrapper.get('input[type="file"]')
+  Object.defineProperty(input.element, 'files', {
+    value: [new File(['word'], '生产工艺单.docx')],
+    configurable: true,
+  })
+  await input.trigger('change')
+  await flushPromises()
+  if (openPreview) {
+    const preview = wrapper.findAll('button').find((button) => button.text() === '查看原始 Word')
+    if (preview) {
+      await preview.trigger('click')
+      await flushPromises()
+    }
+  }
+}
+async function originalButton(label: '查看原始 Word' | '收起原文') {
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === label)!
+    .trigger('click')
+  await flushPromises()
+}
+async function reviewImportedRoute() {
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === '核对工艺')!
+    .trigger('click')
+  const editor = wrapper.getComponent(ProcessRouteEditor)
+  expect(editor.props('intake')).toBe(true)
+  editor.vm.$emit('reviewed', editor.props('route'))
+  await flushPromises()
+}
+
+describe('库房创建流水号导入工艺单', () => {
+  it('fills the receipt form with extracted data and keeps original values visible after manual edits', async () => {
+    vi.spyOn(processRouteApi, 'import').mockResolvedValue(importedDocument())
+    await render()
+    await importFile(true)
+    expect(wrapper.get('input[aria-label="流水号"]').element).toHaveProperty('value', 'IMPORT-01')
+    expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '钼铜')
+    expect(wrapper.get('input[aria-label="客户代码"]').element).toHaveProperty('value', 'C-11600')
+    expect(wrapper.get('input[aria-label="编号"]').element).toHaveProperty('value', 'T4-03')
+    expect(wrapper.get('input[aria-label="要求发货日期"]').element).toHaveProperty(
+      'value',
+      '2026-11-01',
+    )
+    expect(wrapper.getComponent(ImportedDocumentPreview).props('currentValues')).toMatchObject({
+      serial_no: 'IMPORT-01',
+      quantity: 41,
+      weight: 171.6,
+      delivery_quantity: 18100,
+    })
+    const material = wrapper.get('input[aria-label="材质"]').element.closest('.el-form-item')!
+    expect(material.classList.contains('document-field--imported')).toBe(true)
+    expect(material.textContent).toContain('文件带入')
+    await wrapper.get('input[aria-label="材质"]').setValue('人工核对材质')
+    expect(material.classList.contains('document-field--edited')).toBe(true)
+    expect(material.textContent).toContain('已修改')
+    const preview = wrapper.getComponent(ImportedDocumentPreview)
+    expect(preview.props('route').source_data.receipt_fields!.material_name!.value).toBe('钼铜')
+    expect(preview.props('currentValues')!.material_name).toBe('人工核对材质')
+  })
+
+  it('preserves manually filled fields while importing remaining blank fields', async () => {
+    vi.spyOn(processRouteApi, 'import').mockResolvedValue(importedDocument())
+    await render()
+    await wrapper.get('input[aria-label="材质"]').setValue('手工材质')
+    await wrapper.get('input[aria-label="客户代码"]').setValue('手工客户')
+    await amount('入库重量', 99)
+    await importFile(true)
+    expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '手工材质')
+    expect(wrapper.get('input[aria-label="客户代码"]').element).toHaveProperty('value', '手工客户')
+    expect(wrapper.getComponent(ImportedDocumentPreview).props('currentValues')).toMatchObject({
+      quantity: 41,
+      weight: 99,
+      serial_no: 'IMPORT-01',
+    })
+  })
+
+  it('replaces untouched imported values on a new document while preserving subsequent manual edits', async () => {
+    const first = importedDocument()
+    const next = importedDocument()
+    next.id = 99
+    next.source_data.receipt_fields!.material_name!.value = '第二份材质'
+    next.source_data.receipt_fields!.customer_code!.value = 'C-NEW'
+    next.source_data.receipt_fields!.quantity!.value = 52
+    vi.spyOn(processRouteApi, 'import').mockResolvedValueOnce(first).mockResolvedValueOnce(next)
+    await render()
+    await importFile(true)
+    await wrapper.get('input[aria-label="材质"]').setValue('手工核对材质')
+    await importFile(true)
+    expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '手工核对材质')
+    expect(wrapper.get('input[aria-label="客户代码"]').element).toHaveProperty('value', 'C-NEW')
+    const preview = wrapper.getComponent(ImportedDocumentPreview)
+    expect(preview.props('route').id).toBe(99)
+    expect(preview.props('currentValues')!.quantity).toBe(52)
+    expect(preview.props('route').source_data.receipt_fields!.material_name!.value).toBe(
+      '第二份材质',
+    )
+    expect(first.source_data.receipt_fields!.material_name!.value).toBe('钼铜')
+  })
+
+  it('never turns the order or planned production quantity into actual stock', async () => {
+    const route = importedDocument()
+    delete route.source_data.receipt_fields!.quantity
+    delete route.source_data.receipt_fields!.weight
+    vi.spyOn(processRouteApi, 'import').mockResolvedValue(route)
+    await render()
+    await importFile(true)
+    expect(wrapper.getComponent(ImportedDocumentPreview).props('currentValues')).toMatchObject({
+      quantity: 0,
+      weight: 0,
+      delivery_quantity: 18100,
+    })
+    expect(
+      wrapper.getComponent(ImportedDocumentPreview).props('route').source_data.tables,
+    ).toContainEqual([
+      ['订单数量', '18100'],
+      ['计划加工数量', '4008'],
+    ])
+  })
+
+  it('creates shared serial rows but assigns customer and delivery information only to the main serial', async () => {
+    const route = importedDocument()
+    route.serial_nos = ['IMPORT-02', 'IMPORT-01', 'IMPORT-03']
+    vi.spyOn(processRouteApi, 'import').mockResolvedValue(route)
+    await render()
+    await importFile(true)
+    expect(wrapper.find('input[aria-label="流水号"]').exists()).toBe(false)
+    expect(wrapper.get('input[aria-label="共投流水号1"]').element).toHaveProperty(
+      'value',
+      'IMPORT-02',
+    )
+    expect(wrapper.get('input[aria-label="共投流水号2"]').element).toHaveProperty(
+      'value',
+      'IMPORT-01',
+    )
+    expect(wrapper.get('input[aria-label="共投流水号3"]').element).toHaveProperty(
+      'value',
+      'IMPORT-03',
+    )
+    expect(wrapper.get('input[aria-label="共投客户2"]').element).toHaveProperty('value', 'C-11600')
+    for (const index of [1, 3]) {
+      expect(wrapper.get(`input[aria-label="共投客户${index}"]`).element).toHaveProperty(
+        'value',
+        '',
+      )
+    }
+    const dates = wrapper.findAllComponents(ElDatePicker)
+    expect(dates.map((date) => date.props('modelValue'))).toEqual([null, '2026-11-01', null])
+    const quantities = wrapper
+      .findAllComponents(ElInputNumber)
+      .filter((field) => String(field.props('ariaLabel')).startsWith('共投应发件数'))
+    expect(quantities.map((field) => field.props('modelValue'))).toEqual([null, 18100, null])
+  })
+
+  it('does not overwrite current fields or an earlier source document when import fails', async () => {
+    const request = vi.spyOn(processRouteApi, 'import').mockResolvedValueOnce(importedDocument())
+    await render()
+    await importFile(true)
+    await wrapper.get('input[aria-label="材质"]').setValue('已核对材质')
+    request.mockRejectedValueOnce(new Error('文件不是支持的工艺表'))
+    await importFile(true)
+    expect(wrapper.text()).toContain('文件不是支持的工艺表')
+    expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '已核对材质')
+    expect(wrapper.getComponent(ImportedDocumentPreview).props('route').id).toBe(routeFixture.id)
+    expect(wrapper.getComponent(ImportedDocumentPreview).props('currentValues')!.quantity).toBe(41)
+  })
+
+  it('blocks posting during upload and ignores a late import after closing and reopening', async () => {
+    let finish!: (route: ProcessRoute) => void
+    vi.spyOn(processRouteApi, 'import').mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    await render()
+    await fill()
+    await importFile(true)
+    await submit()
+    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+    expect(
+      wrapper
+        .findAll('button')
+        .find((button) => button.text() === '确认入库')!
+        .attributes('disabled'),
+    ).toBeDefined()
+    await wrapper.setProps({ modelValue: false })
+    await wrapper.setProps({ modelValue: true })
+    finish(importedDocument())
+    await flushPromises()
+    expect(wrapper.findComponent(ImportedDocumentPreview).exists()).toBe(false)
+    expect(wrapper.get('input[aria-label="流水号"]').element).toHaveProperty('value', '')
+    expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '')
+  })
+
+  it('marks unreviewed route red and carries the reviewed route into one idempotent receipt retry', async () => {
+    vi.spyOn(processRouteApi, 'import').mockResolvedValue(importedDocument())
+    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(
+      new TeamMaterialApiError('网络中断'),
+    )
+    await render()
+    await importFile(true)
+    wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'raw_material')
+    await flushPromises()
+    await submit()
+    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+    expect(wrapper.get('.receipt-route-review .el-form-item').classes()).toContain('is-error')
+    await reviewImportedRoute()
+    await submit()
+    const original = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
+    expect(original).toMatchObject({
+      serial_no: 'IMPORT-01',
+      material_name: '钼铜',
+      quantity: 41,
+      weight: 171.6,
+      customer_code: 'C-11600',
+      process_route: {
+        id: routeFixture.id,
+        version: 1,
+        title: '首批派工',
+        serial_nos: ['IMPORT-01'],
+        review_note: '已核对原文及重复行',
+        steps: routeFixture.steps,
+      },
+      idempotency_key: expect.any(String),
+    })
+    wrapper.unmount()
+    await render()
+    await submit()
+    expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]).toEqual(original)
+    expect(processRouteApi.import).toHaveBeenCalledOnce()
+  })
+
+  it('clears a definitive route-version conflict, refreshes the draft and requires another review', async () => {
+    const latest = importedDocument()
+    latest.version = 2
+    latest.steps[1]!.instructions = '更新后的工艺要求'
+    vi.spyOn(processRouteApi, 'import').mockResolvedValue(importedDocument())
+    vi.mocked(processRouteApi.detail).mockResolvedValue(latest)
+    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(
+      new TeamMaterialApiError('工艺版本已更新，请重新核对', 409),
+    )
+    await render()
+    await importFile(true)
+    wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'raw_material')
+    await flushPromises()
+    await reviewImportedRoute()
+    await submit()
+    const rejected = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
+    expect(processRouteApi.detail).toHaveBeenCalledWith(routeFixture.id)
+    expect(sessionStorage.length).toBe(0)
+    expect(wrapper.get('input[aria-label="流水号"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.getComponent(ImportedDocumentPreview).props('route').version).toBe(2)
+    expect(wrapper.text()).toContain('请核对执行班组、任务和工艺要求')
+    await submit()
+    expect(teamMaterialApi.createReceipt).toHaveBeenCalledOnce()
+    expect(wrapper.get('.receipt-route-review .el-form-item').classes()).toContain('is-error')
+    await reviewImportedRoute()
+    await submit()
+    const corrected = vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]
+    expect(corrected.process_route?.version).toBe(2)
+    expect(corrected.process_route?.steps[1]!.instructions).toBe('更新后的工艺要求')
+    expect(corrected.idempotency_key).not.toBe(rejected.idempotency_key)
+  })
+
+  it('keeps source comparison and focus attached to the main shared row after renaming its serial', async () => {
+    const route = importedDocument()
+    route.serial_nos = ['IMPORT-02', 'IMPORT-01']
+    vi.spyOn(processRouteApi, 'import').mockResolvedValue(route)
+    await render()
+    await importFile(true)
+    await wrapper.get('input[aria-label="共投流水号2"]').setValue('CORRECTED-01')
+    const customer = wrapper.get('input[aria-label="共投客户2"]')
+    await customer.setValue('C-CORRECTED')
+    wrapper.findAllComponents(ElDatePicker)[1]!.vm.$emit('update:modelValue', '2026-12-01')
+    await flushPromises()
+    const preview = wrapper.getComponent(ImportedDocumentPreview)
+    expect(preview.props('currentValues')).toMatchObject({
+      serial_no: 'CORRECTED-01',
+      customer_code: 'C-CORRECTED',
+      delivery_date: '2026-12-01',
+    })
+    expect(preview.props('route').source_data.receipt_fields).toMatchObject({
+      serial_no: { value: 'IMPORT-01' },
+      customer_code: { value: 'C-11600' },
+      delivery_date: { value: '2026-11-01' },
+    })
+    expect(
+      customer.element.closest('.el-form-item')!.classList.contains('document-field--edited'),
+    ).toBe(true)
+    expect(wrapper.get('input[aria-label="共投客户1"]').element).toHaveProperty('value', '')
+    const scroll = vi.fn()
+    Object.defineProperty(customer.element, 'scrollIntoView', { value: scroll, configurable: true })
+    const focus = vi.spyOn(customer.element as HTMLInputElement, 'focus')
+    preview.vm.$emit('focus-field', 'customer_code')
+    await flushPromises()
+    expect(scroll).toHaveBeenCalledOnce()
+    expect(focus).toHaveBeenCalledOnce()
+  })
+
+  it('invalidates reviewed route serials after a receipt edit and submits the reviewed receipt identities', async () => {
+    vi.spyOn(processRouteApi, 'import').mockResolvedValue(importedDocument())
+    await render()
+    await importFile(true)
+    wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'raw_material')
+    await flushPromises()
+    await reviewImportedRoute()
+    expect(wrapper.text()).toContain('已核对，将与本次入库一起保存')
+    await wrapper.get('input[aria-label="流水号"]').setValue('CORRECTED-SERIAL')
+    await submit()
+    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+    expect(wrapper.get('.receipt-route-review .el-form-item').classes()).toContain('is-error')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '核对工艺')!
+      .trigger('click')
+    const editor = wrapper.getComponent(ProcessRouteEditor)
+    expect(editor.props('route').serial_nos).toEqual(['CORRECTED-SERIAL'])
+    editor.vm.$emit('reviewed', editor.props('route'))
+    await flushPromises()
+    await submit()
+    const body = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
+    expect(body.serial_no).toBe('CORRECTED-SERIAL')
+    expect(body.process_route?.serial_nos).toEqual([body.serial_no])
+  })
+
+  it.each([false, true])(
+    'clears removed automatic fields while retaining manual weight edits: %s',
+    async (editedWeight) => {
+      const next = importedDocument()
+      next.id = 100
+      delete next.source_data.receipt_fields!.customer_code
+      delete next.source_data.receipt_fields!.weight
+      delete next.source_data.receipt_fields!.material_name
+      vi.spyOn(processRouteApi, 'import')
+        .mockResolvedValueOnce(importedDocument())
+        .mockResolvedValueOnce(next)
+      await render()
+      await importFile(true)
+      await wrapper.get('input[aria-label="材质"]').setValue('保留手工材质')
+      if (editedWeight) await amount('入库重量', 99)
+      await importFile(true)
+      expect(wrapper.get('input[aria-label="客户代码"]').element).toHaveProperty('value', '')
+      expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty(
+        'value',
+        '保留手工材质',
+      )
+      expect(wrapper.getComponent(ImportedDocumentPreview).props('currentValues')!.weight).toBe(
+        editedWeight ? 99 : 0,
+      )
+      expect(
+        wrapper.get('input[aria-label="客户代码"]').element.closest('.el-form-item')!.textContent,
+      ).not.toContain('文件带入')
+    },
+  )
+
+  it.each([false, true])(
+    'updates untouched shared members on file replacement and preserves manually edited plans: %s',
+    async (editedPlan) => {
+      const first = importedDocument()
+      first.serial_nos = ['IMPORT-01', 'IMPORT-02']
+      const next = importedDocument()
+      next.id = 101
+      next.serial_nos = ['NEXT-01', 'NEXT-02', 'NEXT-03']
+      next.source_data.receipt_fields!.serial_no!.value = 'NEXT-01'
+      next.source_data.receipt_fields!.customer_code!.value = 'C-NEXT'
+      vi.spyOn(processRouteApi, 'import').mockResolvedValueOnce(first).mockResolvedValueOnce(next)
+      await render()
+      await importFile(true)
+      if (editedPlan) await amount('共投计划重量1', 120)
+      await importFile(true)
+      const serials = wrapper
+        .findAll('input[aria-label^="共投流水号"]')
+        .map((input) => (input.element as HTMLInputElement).value)
+      expect(serials).toEqual(
+        editedPlan ? ['IMPORT-01', 'IMPORT-02'] : ['NEXT-01', 'NEXT-02', 'NEXT-03'],
+      )
+      if (editedPlan) {
+        const planned = wrapper
+          .findAllComponents(ElInputNumber)
+          .find((input) => input.props('ariaLabel') === '共投计划重量1')!
+        expect(planned.props('modelValue')).toBe(120)
+        expect(wrapper.get('input[aria-label="共投客户1"]').element).toHaveProperty(
+          'value',
+          'C-11600',
+        )
+      } else {
+        expect(wrapper.get('input[aria-label="共投客户1"]').element).toHaveProperty(
+          'value',
+          'C-NEXT',
+        )
+      }
+      expect(wrapper.getComponent(ImportedDocumentPreview).props('route').id).toBe(101)
+    },
+  )
+
+  it('fills the form without a Word preview or split layout until the original is requested', async () => {
+    vi.spyOn(processRouteApi, 'import').mockResolvedValue(importedDocument())
+    await render()
+    await importFile()
+    expect(wrapper.get('input[aria-label="流水号"]').element).toHaveProperty('value', 'IMPORT-01')
+    expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '钼铜')
+    expect(
+      wrapper
+        .findAllComponents(ElInputNumber)
+        .find((input) => input.props('ariaLabel') === '入库件数')!
+        .props('modelValue'),
+    ).toBe(41)
+    expect(wrapper.findComponent(ImportedDocumentPreview).exists()).toBe(false)
+    expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(false)
+    expect(wrapper.get('.receipt-document-layout').classes()).not.toContain(
+      'receipt-document-layout--preview',
+    )
+    expect(wrapper.text()).toContain('文件带入')
+    await originalButton('查看原始 Word')
+    expect(wrapper.get('.receipt-document-layout').classes()).toContain(
+      'receipt-document-layout--preview',
+    )
+    expect(wrapper.getComponent(ImportedDocumentPreview).props('route').id).toBe(routeFixture.id)
+    expect(wrapper.findAllComponents(WordDocumentPreview)).toHaveLength(1)
+    expect(
+      wrapper
+        .findAll('[role="tab"]')
+        .find((tab) => tab.text() === '原文件')!
+        .attributes('aria-selected'),
+    ).toBe('true')
+  })
+
+  it('preserves manually corrected values when the original is collapsed and reopened', async () => {
+    vi.spyOn(processRouteApi, 'import').mockResolvedValue(importedDocument())
+    await render()
+    await importFile(true)
+    await wrapper.get('input[aria-label="材质"]').setValue('人工核对材质')
+    await amount('入库重量', 99)
+    await originalButton('收起原文')
+    expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(false)
+    expect(wrapper.get('.receipt-document-layout').classes()).not.toContain(
+      'receipt-document-layout--preview',
+    )
+    expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '人工核对材质')
+    await originalButton('查看原始 Word')
+    const preview = wrapper.getComponent(ImportedDocumentPreview)
+    expect(preview.props('currentValues')).toMatchObject({
+      material_name: '人工核对材质',
+      weight: 99,
+    })
+    expect(preview.props('route').source_data.receipt_fields!.material_name!.value).toBe('钼铜')
+    expect(processRouteApi.import).toHaveBeenCalledOnce()
+  })
+
+  it('starts collapsed again after closing and reopening the intake dialog', async () => {
+    vi.spyOn(processRouteApi, 'import').mockResolvedValue(importedDocument())
+    await render()
+    await importFile(true)
+    expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(true)
+    await wrapper.setProps({ modelValue: false })
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+    expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(false)
+    expect(wrapper.get('.receipt-document-layout').classes()).not.toContain(
+      'receipt-document-layout--preview',
+    )
+    await importFile()
+    expect(wrapper.get('input[aria-label="流水号"]').element).toHaveProperty('value', 'IMPORT-01')
+    expect(wrapper.findComponent(ImportedDocumentPreview).exists()).toBe(false)
+    expect(wrapper.text()).toContain('查看原始 Word')
+  })
+
+  it('collapses the original when a replacement file fills the form and preserves hand corrections', async () => {
+    const next = importedDocument()
+    next.id = 102
+    next.source_data.receipt_fields!.quantity!.value = 52
+    vi.spyOn(processRouteApi, 'import')
+      .mockResolvedValueOnce(importedDocument())
+      .mockResolvedValueOnce(next)
+    await render()
+    await importFile(true)
+    await wrapper.get('input[aria-label="材质"]').setValue('保留手工材质')
+    await importFile()
+    expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(false)
+    expect(wrapper.get('.receipt-document-layout').classes()).not.toContain(
+      'receipt-document-layout--preview',
+    )
+    expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '保留手工材质')
+    expect(
+      wrapper
+        .findAllComponents(ElInputNumber)
+        .find((input) => input.props('ariaLabel') === '入库件数')!
+        .props('modelValue'),
+    ).toBe(52)
+    await originalButton('查看原始 Word')
+    expect(wrapper.getComponent(ImportedDocumentPreview).props('route').id).toBe(102)
+    expect(
+      wrapper.getComponent(ImportedDocumentPreview).props('currentValues')!.material_name,
+    ).toBe('保留手工材质')
+  })
+})
+
+describe('入库导入定位与共投整体校验', () => {
+  it.each([
+    ['finished_specification', '成品规格'],
+    ['transfer_specification', '转料规格'],
+  ] as const)(
+    'locates the interactive shape control for imported %s dimensions',
+    async (key, label) => {
+      const route = importedDocument()
+      route.source_data.receipt_fields![key] = {
+        value: '100 × 80 × 5 mm',
+        label,
+        source_row: '1:1',
+        source_label: label,
+      }
+      vi.spyOn(processRouteApi, 'import').mockResolvedValue(route)
+      await render()
+      await importFile(true)
+      expect(wrapper.find(`input[aria-label="${label}"]`).exists()).toBe(false)
+      const shape = wrapper.get(`input[aria-label="${label}形状"]`).element as HTMLInputElement
+      const scroll = vi.fn()
+      Object.defineProperty(shape, 'scrollIntoView', { value: scroll, configurable: true })
+      const focus = vi.spyOn(shape, 'focus')
+      wrapper.getComponent(ImportedDocumentPreview).vm.$emit('focus-field', key)
+      await flushPromises()
+      expect(scroll).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' })
+      expect(focus).toHaveBeenCalledWith({ preventScroll: true })
+    },
+  )
+
+  it('marks and locates an oversized imported shared group until excess serials are removed', async () => {
+    const route = importedDocument()
+    route.serial_nos = Array.from(
+      { length: 21 },
+      (_, index) => `IMPORT-${String(index + 1).padStart(2, '0')}`,
+    )
+    vi.spyOn(processRouteApi, 'import').mockResolvedValue(route)
+    await render()
+    await importFile()
+    wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'semi_finished')
+    await flushPromises()
+    const amounts = new Map(
+      wrapper.findAllComponents(ElInputNumber).map((input) => [input.props('ariaLabel'), input]),
+    )
+    for (let index = 1; index <= 21; index += 1) {
+      amounts.get(`共投计划重量${index}`)!.vm.$emit('update:modelValue', 1)
+      amounts.get(`共投计划件数${index}`)!.vm.$emit('update:modelValue', 1)
+    }
+    await flushPromises()
+    await Promise.all(
+      Array.from({ length: 21 }, (_, index) =>
+        wrapper.get(`input[aria-label="共投计划切割尺寸${index + 1}"]`).setValue('按图纸切割'),
+      ),
+    )
+    await reviewImportedRoute()
+    const serial = wrapper.get('input[aria-label="共投流水号1"]').element as HTMLInputElement
+    const scroll = vi.fn()
+    Object.defineProperty(serial, 'scrollIntoView', { value: scroll, configurable: true })
+    const focus = vi.spyOn(serial, 'focus')
+    await submit()
+    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+    const group = wrapper.get('[data-validation-field="members"]')
+    expect(group.classes()).toContain('dialog-field')
+    expect(group.classes()).toContain('is-error')
+    expect(group.attributes('aria-invalid')).toBe('true')
+    expect(scroll).toHaveBeenCalledWith({ block: 'center', inline: 'nearest' })
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true })
+    await wrapper.get('button[aria-label="移除共投流水号21"]').trigger('click')
+    expect(group.classes()).not.toContain('is-error')
+    expect(group.attributes('aria-invalid')).toBe('false')
+    await reviewImportedRoute()
+    await submit()
+    expect(teamMaterialApi.createReceipt).toHaveBeenCalledOnce()
+    expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1].shared_serials).toHaveLength(
+      20,
+    )
+  }, 15000)
+})
+
+describe('入库基础资料与共投计划顺序', () => {
+  it('keeps receipt amounts and material specifications before allocation without removing fields', async () => {
+    const route = importedDocument()
+    route.serial_nos = ['IMPORT-01', 'IMPORT-02', 'IMPORT-03']
+    vi.spyOn(processRouteApi, 'import').mockResolvedValue(route)
+    await render()
+    await importFile()
+    const allocation = wrapper.get('[aria-label="共投流水号安排"]').element
+    for (const label of [
+      '入库件数',
+      '入库重量',
+      '原单批号',
+      '编号',
+      '件号',
+      '形状',
+      '外委单位',
+      '用途分类',
+      '三级类别',
+      '订单分类',
+      '成品件数',
+      '转料规格',
+    ]) {
+      const field = wrapper.get(`[aria-label="${label}"]`).element
+      expect(
+        field.compareDocumentPosition(allocation) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+    }
+    const requirements = wrapper.get('textarea[aria-label="技术要求"]').element
+    expect(
+      requirements.compareDocumentPosition(allocation) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    const notes = wrapper.get('textarea[aria-label="入库说明"]').element
+    expect(
+      allocation.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(wrapper.get('input[aria-label="共投客户1"]').element).toHaveProperty('value', 'C-11600')
+    expect(wrapper.get('input[aria-label="共投流水号3"]').element).toHaveProperty(
+      'value',
+      'IMPORT-03',
+    )
+    expect(wrapper.text()).toContain('共投 · 3 个流水号')
+    await wrapper.get('input[aria-label="编号"]').setValue('核对后的编号')
+    await amount('入库重量', 180)
+    expect(wrapper.get('input[aria-label="编号"]').element).toHaveProperty('value', '核对后的编号')
+    expect(wrapper.findComponent(ImportedDocumentPreview).exists()).toBe(false)
+  })
 })

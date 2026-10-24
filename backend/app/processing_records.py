@@ -195,6 +195,7 @@ def list_sources(
     require_processing_team(db, team_id)
     balance = stock.stock_table(team_id)
     registered = registered_lots(team_id)
+    from .process_routes import local_work_pending
     from .processing_tasks import can_continue, completed_work
 
     live_lots = select(balance.c.transfer_id).where(
@@ -204,8 +205,15 @@ def list_sources(
 
     conditions = [
         or_(
-            func.coalesce(registered.c.processing_status, "") != "complete",
-            can_continue(team_id, live_lots),
+            and_(
+                Transfer.process_route_id.is_(None),
+                or_(
+                    func.coalesce(registered.c.processing_status, "") != "complete",
+                    can_continue(team_id, live_lots),
+                ),
+            ),
+            and_(Transfer.process_route_id.is_not(None), local_work_pending()),
+            Transfer.rework_pending.is_(True),
         ),
         ~func.coalesce(balance.c.material_type, "").in_(SCRAP_MATERIAL_TYPES),
         or_(balance.c.on_hand_quantity > 0, balance.c.on_hand_weight > 0),
@@ -217,21 +225,29 @@ def list_sources(
         if record is None or record.team_id != team_id:
             raise HTTPException(404, "未找到本班组加工记录")
         family = relatives([record.source_transfer_id], name="rework_candidates")
+        completed = completed_work(team_id, live_lots).subquery()
+        returned = completed_work(
+            team_id, live_lots, local=False, name="returned_processing_task_ancestors"
+        ).subquery()
         conditions[0] = or_(
-            Transfer.rework_pending.is_(True), registered.c.processing_status == "complete"
-        )
-        if record.processing_task_id is not None:
-            completed = completed_work(team_id, live_lots).subquery()
-            conditions[0] = or_(
+            select(completed.c.work_id)
+            .where(
+                completed.c.lot_id == Transfer.id,
+                completed.c.work_id == record.id,
+            )
+            .correlate(Transfer)
+            .exists(),
+            and_(
                 Transfer.rework_pending.is_(True),
-                select(completed.c.work_id)
+                select(returned.c.work_id)
                 .where(
-                    completed.c.lot_id == Transfer.id,
-                    completed.c.processing_task_id == record.processing_task_id,
+                    returned.c.lot_id == Transfer.id,
+                    returned.c.work_id == record.id,
                 )
                 .correlate(Transfer)
                 .exists(),
-            )
+            ),
+        )
         conditions.append(Transfer.id.in_(select(family.c.id)))
     if group_id is not None:
         from .warehouse_inventory import group_conditions, origin_columns
@@ -408,6 +424,7 @@ def record_conditions(
                     TeamEmployee.name,
                     Adjustment.reason,
                     Adjustment.processing_task_name,
+                    Adjustment.process_step_name,
                     Adjustment.purpose_name,
                 ],
             )
@@ -425,6 +442,9 @@ def production_groups(conditions):
                 "processor_name"
             ),
             Adjustment.processing_mode,
+            Adjustment.process_route_id,
+            Adjustment.process_step_index,
+            Adjustment.process_step_name,
             Adjustment.processing_task_id,
             Adjustment.processing_task_name,
             Adjustment.purpose_id,
@@ -463,6 +483,9 @@ def production_groups(conditions):
             Adjustment.processor_employee_id,
             TeamEmployee.name,
             Adjustment.processing_mode,
+            Adjustment.process_route_id,
+            Adjustment.process_step_index,
+            Adjustment.process_step_name,
             Adjustment.processing_task_id,
             Adjustment.processing_task_name,
             Adjustment.purpose_id,

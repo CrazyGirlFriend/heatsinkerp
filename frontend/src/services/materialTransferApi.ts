@@ -111,6 +111,7 @@ function normalizeHistory(value: unknown): MaterialTransferHistoryEntry[] {
         'quantity_changed',
         'reallocated',
         'processed',
+        'route_bound',
         'inspection_recorded',
         'inspection_rechecked',
       ].includes(String(event.action))
@@ -146,6 +147,10 @@ export function normalizeMaterialTransfer(value: unknown): MaterialTransfer {
   ) as Pick<MaterialTransferDocumentFields, (typeof materialDocumentTextFields)[number]['key']>
   return {
     ...documentText,
+    process_route:
+      raw.process_route && typeof raw.process_route === 'object'
+        ? (raw.process_route as import('@/types/processRoute').ProcessRouteContext)
+        : null,
     shared_group_id: optionalInteger(raw.shared_group_id, 1),
     shared_unallocated: raw.shared_unallocated === true,
     shared_origin_batch_no: textValue(raw.shared_origin_batch_no) || null,

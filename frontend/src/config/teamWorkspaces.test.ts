@@ -51,6 +51,7 @@ describe('shared workspace navigation', () => {
   it('offers receipt records to every team while keeping warehouse management scoped', () => {
     expect(teamWorkspaceSectionsFor(false).map((item) => item.label)).toEqual([
       '库存明细',
+      '交货排期',
       '来料待签收',
       '入库记录',
       '质量反馈',
@@ -61,6 +62,12 @@ describe('shared workspace navigation', () => {
       '收发历史',
     ])
     expect(teamWorkspaceSectionsFor(true).map((item) => item.value)).toContain('receipts')
+    expect(resolveTeamWorkspaceSection({ tab: 'delivery-schedule' }, false)).toBe(
+      'delivery-schedule',
+    )
+    expect(teamWorkspaceSectionPath(7, 'delivery-schedule')).toBe(
+      '/team-workspaces/7?tab=delivery-schedule',
+    )
     expect(teamWorkspaceSectionsFor(true).map((item) => item.value)).not.toContain('warehouse')
     expect(teamWorkspaceSectionsFor(true, true).map((item) => item.value)).toContain('warehouse')
     expect(resolveTeamWorkspaceSection({ tab: 'warehouse' }, true, true)).toBe('warehouse')

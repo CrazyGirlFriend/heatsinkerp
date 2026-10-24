@@ -20,6 +20,7 @@ from .history_protection import team_has_historical_references
 from .models import (
     MaterialTransfer,
     OpeningStockSubmission,
+    ProductionSchedule,
     Team,
     TeamEmployee,
     TeamProcessingTask,
@@ -141,6 +142,15 @@ def update_team(
         payload.code if "code" in supplied else team.code,
         payload.name if "name" in supplied else team.name,
     )
+    if any(
+        field in supplied and getattr(payload, field) != getattr(team, field)
+        for field in ("kind", "code")
+    ):
+        if any(
+            db.scalar(select(ProductionSchedule.id).where(column == team.id).limit(1))
+            for column in (ProductionSchedule.team_id, ProductionSchedule.next_team_id)
+        ):
+            raise _conflict("班组已有交货排期，不能更改班组代码或类型")
     if "kind" in supplied and payload.kind != team.kind:
         referenced = team_has_historical_references(db, team.id)
         referenced = referenced or any(
@@ -185,6 +195,8 @@ def delete_team(
             (User, User.team_id),
             (MaterialTransfer, MaterialTransfer.source_team_id),
             (MaterialTransfer, MaterialTransfer.next_team_id),
+            (ProductionSchedule, ProductionSchedule.team_id),
+            (ProductionSchedule, ProductionSchedule.next_team_id),
             (TeamPurpose, TeamPurpose.team_id),
             (TeamEmployee, TeamEmployee.team_id),
             (TeamProcessingTask, TeamProcessingTask.team_id),

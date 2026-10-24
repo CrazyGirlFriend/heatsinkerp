@@ -11,10 +11,14 @@ import type { SerialSummary, SerialParams } from './materialAnalytics'
 import { inventoryColumns } from './inventoryColumns'
 import { isScrapType, materialTypeLabel, type MaterialType } from './materialTransfer'
 import { formatDateTime } from '@/utils/format'
+import { inventoryScheduleDue, inventoryScheduleLabel } from '@/utils/inventorySchedule'
+import type { InventoryScheduleSummary } from './productionSchedule'
 
 export type WarehouseSource = 'external' | 'return' | 'internal' | 'opening' | 'processing'
 export interface TeamInventoryRow extends MaterialBalance, ProcessingSummary, SharedMaterialFields {
+  process_route?: import('./processRoute').ProcessRouteContext | null
   group_id: number
+  delivery_schedule?: InventoryScheduleSummary
   rework_pending?: boolean
   rework_count?: number
   inspection_hold_count?: number
@@ -143,6 +147,14 @@ export const warehouseColumns = [
     format: (row: TeamInventoryRow) => row.material_name || '—',
   },
   {
+    key: 'process_route',
+    label: '工艺工序',
+    width: 180,
+    defaultVisible: true,
+    format: (row: TeamInventoryRow) =>
+      row.process_route ? `${row.process_route.sequence_no} · ${row.process_route.step_name}` : '—',
+  },
+  {
     key: 'material_type',
     label: '物料类型',
     width: 140,
@@ -195,6 +207,20 @@ export const warehouseColumns = [
     defaultVisible: true,
     numeric: true,
     format: (row: TeamInventoryRow) => amount(row.owned_weight),
+  },
+  {
+    key: 'delivery_due_at',
+    label: '要求交货时间',
+    width: 180,
+    defaultVisible: true,
+    format: (row: TeamInventoryRow) => inventoryScheduleDue(row.delivery_schedule),
+  },
+  {
+    key: 'delivery_schedule_status',
+    label: '排期状态',
+    width: 125,
+    defaultVisible: true,
+    format: (row: TeamInventoryRow) => inventoryScheduleLabel(row.delivery_schedule),
   },
   {
     key: 'shortage_weight',
@@ -296,9 +322,12 @@ export const warehouseSearchColumns = [
   ...warehouseColumns.filter(
     (column) =>
       ![
+        'process_route',
         'material_type',
         'processing_role',
         'stock_status',
+        'delivery_due_at',
+        'delivery_schedule_status',
         'dispatchable_quantity',
         'dispatchable_weight',
         'in_transit_quantity',

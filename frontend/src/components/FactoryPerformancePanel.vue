@@ -225,6 +225,7 @@ function productionExport(periods = false) {
       { key: 'material_name', label: '材质', value: (row) => row.material_name },
       { key: 'purpose_name', label: '业务', value: (row) => row.purpose_name },
       { key: 'processing_task_name', label: '加工任务', value: (row) => row.processing_task_name },
+      { key: 'process_step_name', label: '工艺工序', value: (row) => row.process_step_name || '—' },
       { key: 'period_start', label: '周期开始日期', value: (row) => row.period_start },
       { key: 'period', label: '统计周期', value: () => periodLabel.value },
       { key: 'date_from', label: '统计开始日期', value: () => data.date_from },
@@ -254,7 +255,7 @@ function qualityExport(daily = false) {
     { key: 'name', label: daily ? '周期开始日期' : '受检班组', value: (row) => row.name },
     { key: 'material_name', label: '材质', value: (row) => row.material_name || '未填写材质' },
     { key: 'period', label: '统计周期', value: () => periodLabel.value },
-    { key: 'basis', label: '统计口径', value: () => label },
+    { key: 'basis', label: '统计方式', value: () => label },
     { key: 'date_from', label: '开始日期', value: () => data.date_from },
     { key: 'date_to', label: '结束日期', value: () => data.date_to },
     { key: 'checked_quantity', label: '受检件次', value: (row) => row.checked_quantity },
@@ -426,7 +427,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <ElAlert v-if="dateError" :title="dateError" type="warning" :closable="false" />
-    <div v-if="scene === 'quality'" class="quality-basis" aria-label="合格率统计口径">
+    <div v-if="scene === 'quality'" class="quality-basis" aria-label="合格率统计方式">
       <ElRadioGroup
         v-model="basis.kind"
         size="small"
@@ -497,6 +498,7 @@ onBeforeUnmount(() => {
                 row.material_name,
                 row.purpose_name || '未指定业务',
                 row.processing_task_name || '历史未登记任务',
+                row.process_step_name,
               ]
                 .filter(Boolean)
                 .join(' · ')
@@ -526,7 +528,7 @@ onBeforeUnmount(() => {
       <p class="performance-note">
         {{
           scene === 'production'
-            ? '仅统计当前班组、流水号、业务和任务；正常加工与返工分列，未加工余料和出库不计产。' +
+            ? '仅统计当前班组、流水号、业务、任务和工序；正常加工与返工分列，未加工余料和出库不计产。' +
               (serialFilter ? '' : ' 默认展示最近有加工记录的流水号。')
             : '按材质统计：合格率 = 合格件次 ÷ 实际受检件次；未检不计合格。周一至周日为一周，月按自然月，周期仅计算筛选日期内的记录。'
         }}
@@ -567,7 +569,9 @@ onBeforeUnmount(() => {
         <table class="performance-table business-table">
           <caption>
             {{
-              scene === 'production' ? '当前流水号 · 按业务和任务查看' : `受检明细 · ${basisLabel}`
+              scene === 'production'
+                ? '当前流水号 · 按业务、任务和工序查看'
+                : `受检明细 · ${basisLabel}`
             }}
           </caption>
           <thead v-if="scene === 'production'">
@@ -577,6 +581,7 @@ onBeforeUnmount(() => {
               <th scope="col">材质</th>
               <th scope="col">业务</th>
               <th scope="col">加工任务</th>
+              <th scope="col">工艺工序</th>
               <th scope="col">正常加工 (件次)</th>
               <th scope="col">正常加工重量 (kg)</th>
               <th scope="col">返工 (件次)</th>
@@ -607,6 +612,7 @@ onBeforeUnmount(() => {
               <td>{{ row.material_name || '未填写材质' }}</td>
               <td>{{ row.purpose_name || '未指定业务' }}</td>
               <td>{{ row.processing_task_name || '历史未登记任务' }}</td>
+              <td>{{ row.process_step_name || '—' }}</td>
               <td>{{ formatAmount(row.completed_quantity) }}</td>
               <td>{{ formatAmount(row.completed_weight) }}</td>
               <td>{{ formatAmount(row.rework_quantity) }}</td>
@@ -617,7 +623,7 @@ onBeforeUnmount(() => {
               </td>
             </tr>
             <tr v-if="!report.production.scopes.length">
-              <td colspan="11">当前范围没有加工记录</td>
+              <td colspan="12">当前范围没有加工记录</td>
             </tr>
           </tbody>
           <tbody v-else>

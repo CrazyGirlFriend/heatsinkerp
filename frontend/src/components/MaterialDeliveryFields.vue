@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { ElFormItem, ElInput, ElInputNumber } from 'element-plus'
-defineProps<{ disabled?: boolean; dateError?: string; quantityError?: string }>()
+import AutofillBadge from './AutofillBadge.vue'
+defineProps<{
+  disabled?: boolean
+  dateError?: string
+  quantityError?: string
+  documentSource?: string
+  dateState?: '' | 'imported' | 'edited'
+  quantityState?: '' | 'imported' | 'edited'
+}>()
 const date = defineModel<string>('date', { required: true })
 const quantity = defineModel<number | undefined>('quantity', { required: true })
 </script>
@@ -12,6 +20,13 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
       :required="quantity != null"
       :error="dateError"
       data-validation-field="deliveryDate"
+      :class="dateState ? `document-field--${dateState}` : ''"
+      ><template #label
+        >要求发货日期<AutofillBadge
+          v-if="dateState"
+          :source="documentSource || ''"
+          kind="document"
+          :modified="dateState === 'edited'" /></template
       ><ElInput
         v-model="date"
         type="date"
@@ -25,6 +40,13 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
       :required="Boolean(date)"
       :error="quantityError"
       data-validation-field="deliveryQuantity"
+      :class="quantityState ? `document-field--${quantityState}` : ''"
+      ><template #label
+        >应发成品件数<AutofillBadge
+          v-if="quantityState"
+          :source="documentSource || ''"
+          kind="document"
+          :modified="quantityState === 'edited'" /></template
       ><ElInputNumber
         v-model="quantity"
         aria-label="应发成品件数"
