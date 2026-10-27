@@ -68,7 +68,11 @@ const saving = ref(false),
 let requestKey = '',
   requestFingerprint = ''
 const writable = computed(
-  () => auth.isAdmin && !auth.currentUserError && auth.currentUser?.active !== false,
+  () =>
+    (auth.isAdmin ||
+      (auth.isTeamAccount && existing?.team_id === Number(auth.currentUser?.team_id))) &&
+    !auth.currentUserError &&
+    auth.currentUser?.active !== false,
 )
 const hasExecutions = computed(() =>
   Boolean(
@@ -122,10 +126,19 @@ async function save() {
   }
   try {
     const result = existing
-      ? await productionScheduleApi.update(existing.id, {
-          ...body,
-          expected_version: existing.version,
-        })
+      ? await (auth.isAdmin
+          ? productionScheduleApi.update(existing.id, {
+              ...body,
+              expected_version: existing.version,
+            })
+          : productionScheduleApi.updateCommitment(existing.id, {
+              expected_version: existing.version,
+              due_at: body.due_at,
+              target_quantity: body.target_quantity,
+              target_weight: body.target_weight,
+              completion_basis: body.completion_basis,
+              notes: body.notes,
+            }))
       : await productionScheduleApi.create({ ...body, idempotency_key: requestKey })
     emit('saved', result)
   } catch (e) {
@@ -158,7 +171,7 @@ async function save() {
     >
       <p v-if="existing?.task_id" class="schedule-form__note">
         所属任务：{{ existing.task_no }} ·
-        {{ existing.task_title }}。本处调整交期、交货目标和物料批次，保留任务路线。
+        {{ existing.task_title }}
       </p>
       <div class="schedule-form__grid">
         <ElFormItem label="流水号" required :error="fieldErrors.serial"
@@ -231,8 +244,8 @@ async function save() {
                 :label="`${String(hour - 1).padStart(2, '0')}:00`"
             /></ElSelect></div
         ></ElFormItem>
-        <ElFormItem label="完成依据" required>
-          <ElSelect v-model="form.basis" aria-label="完成依据"
+        <ElFormItem label="计量方式" required>
+          <ElSelect v-model="form.basis" aria-label="计量方式"
             ><ElOption
               v-for="(label, value) in completionBasisLabels"
               :key="value"
@@ -240,9 +253,6 @@ async function save() {
               :value="value"
           /></ElSelect>
         </ElFormItem>
-        <div class="schedule-form__note">
-          以实际转出量判断完成。另填的参考件数或重量不影响所选完成依据。
-        </div>
         <ElFormItem
           :label="form.basis === 'weight' ? '参考件数' : '计划交货件数'"
           :required="form.basis !== 'weight'"
@@ -270,11 +280,13 @@ async function save() {
         /></ElFormItem>
       </div>
       <p v-if="predecessorId" class="schedule-form__note">
-        衔接上序排期 #{{ predecessorId }}，后续按上序实际转出批次承接。<span v-if="predecessor"
-          >上序：{{ predecessor.team_name }} · {{ formatDateTime(predecessor.due_at) }}</span
+        上序 #{{ predecessorId
+        }}<span v-if="predecessor">
+          · {{ predecessor.team_name }} · {{ formatDateTime(predecessor.due_at) }}</span
         >
       </p>
       <ScheduleSourceAllocation
+        v-if="auth.isAdmin"
         v-model="form.sources"
         :serial-no="form.serial"
         :team-id="form.team"
@@ -283,7 +295,7 @@ async function save() {
         :disabled="saving || !writable"
         :error="fieldErrors.sources"
       />
-      <ElFormItem label="排期说明"
+      <ElFormItem label="备注"
         ><ElInput
           v-model="form.notes"
           type="textarea"

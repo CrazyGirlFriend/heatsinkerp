@@ -6,7 +6,14 @@ import PageBackButton from '@/components/PageBackButton.vue'
 import ScheduleTaskBoard from '@/components/ScheduleTaskBoard.vue'
 const fullscreen = ref(false)
 function escape(event: KeyboardEvent) {
-  if (event.key === 'Escape' && !event.defaultPrevented) fullscreen.value = false
+  if (
+    event.key === 'Escape' &&
+    !event.defaultPrevented &&
+    !event
+      .composedPath()
+      .some((node) => node instanceof Element && node.getAttribute('role') === 'dialog')
+  )
+    fullscreen.value = false
 }
 onMounted(() => document.addEventListener('keydown', escape))
 onBeforeUnmount(() => document.removeEventListener('keydown', escape))
@@ -19,10 +26,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
     <header class="production-schedules-heading">
       <div class="page-heading-start">
         <PageBackButton v-if="!fullscreen" />
-        <div>
-          <h1>生产排期</h1>
-          <p v-if="!fullscreen">全局交货安排与班组进度</p>
-        </div>
+        <h1>生产排期</h1>
       </div>
       <ElButton
         :icon="fullscreen ? ScaleToOriginal : FullScreen"
@@ -38,7 +42,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
 .production-schedules-page.reading-workspace {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -52,11 +56,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
 }
 .production-schedules-heading h1 {
   margin: 0;
-}
-.production-schedules-heading p {
-  margin: 5px 0 0;
-  color: var(--muted);
-  font-size: 13px;
+  font-size: 20px;
+  line-height: 28px;
 }
 .production-schedules-page.reading-workspace.production-schedules-page--fullscreen {
   position: fixed;

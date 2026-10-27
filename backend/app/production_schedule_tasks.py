@@ -60,12 +60,15 @@ def task_values(db, ids):
         )
     )
     nodes = list(
-        db.execute(
-            select(Plan.id, Plan.task_id)
-            .where(Plan.task_id.in_(ids))
-            .order_by(Plan.sequence_no, Plan.id)
-        )
+        db.execute(select(Plan).where(Plan.task_id.in_(ids)).order_by(Plan.sequence_no, Plan.id))
     )
+    from .schedule_routes import route_states
+
+    nodes = [row[0] for row in nodes]
+    route_links = route_states(db, nodes)
+    from .schedule_reworks import links_for_tasks
+
+    reworks = links_for_tasks(db, ids)
     values = schedules.summaries(db, [row.id for row in nodes])
     locations = schedules.task_locations(db, ids, [row.id for row in nodes])
     other_source, other_plan = aliased(Source), aliased(Plan)
@@ -110,8 +113,10 @@ def task_values(db, ids):
     )
     grouped = {}
     for row in nodes:
+        values[row.id]["route_link"] = route_links[row.id]
         grouped.setdefault(row.task_id, []).append(values[row.id])
     result = {}
+    now = utcnow()
     for task, person_name in tasks:
         route = grouped.get(task.id, [])
         active = [node for node in route if node["status"] != "cancelled"]
@@ -137,6 +142,13 @@ def task_values(db, ids):
                 if any(node["status"] == "today" for node in unfinished)
                 else "pending"
             )
+        if task.final_due_at and assessed:
+            if unfinished and task.final_due_at < now:
+                state = "overdue"
+            elif not unfinished and any(
+                node["completed_at"] > schedules.iso(task.final_due_at) for node in assessed
+            ):
+                state = "completed_late"
         result[task.id] = {
             "id": task.id,
             "task_no": task.task_no,
@@ -148,11 +160,14 @@ def task_values(db, ids):
             "version": task.version,
             "created_at": schedules.iso(task.created_at),
             "updated_at": schedules.iso(task.updated_at),
-            "final_due_at": (active or route)[-1]["due_at"] if route else None,
+            "final_due_at": schedules.iso(task.final_due_at)
+            or ((active or route)[-1]["due_at"] if route else None),
             "status": state,
             "nodes": route,
             "locations": locations.get(task.id, []),
             "shared_source": task.id in shared_tasks,
+            "reworks": reworks.get(task.id, []),
+            "route_changed": any(n["route_link"]["state"] == "changed" for n in active),
         }
     return result
 
@@ -228,6 +243,8 @@ def task_status_filter(candidates, status, scope=None):
         select(
             Plan.task_id,
             func.min(Plan.due_at).label("first_due"),
+            func.max(Task.final_due_at).label("final_due"),
+            func.max(case((assessed, progress.c.completed_at), else_=None)).label("completed_at"),
             func.sum(case((Plan.cancelled_at.is_(None), 1), else_=0)).label("active"),
             func.sum(case((assessed, 1), else_=0)).label("assessed"),
             func.sum(
@@ -242,6 +259,7 @@ def task_status_filter(candidates, status, scope=None):
             ),
         )
         .outerjoin(progress, progress.c.schedule_id == Plan.id)
+        .join(Task, Task.id == Plan.task_id)
         .where(Plan.task_id.in_(candidates))
         .group_by(Plan.task_id)
         .subquery()
@@ -249,9 +267,15 @@ def task_status_filter(candidates, status, scope=None):
     task_state = case(
         (totals.c.active == 0, "cancelled"),
         (totals.c.assessed == 0, "not_assessed"),
-        (and_(totals.c.unfinished == 0, totals.c.completed_late == 1), "completed_late"),
+        (
+            and_(
+                totals.c.unfinished == 0,
+                or_(totals.c.completed_late == 1, totals.c.completed_at > totals.c.final_due),
+            ),
+            "completed_late",
+        ),
         (totals.c.unfinished == 0, "completed"),
-        (totals.c.overdue == 1, "overdue"),
+        (or_(totals.c.overdue == 1, totals.c.final_due < utcnow()), "overdue"),
         (totals.c.today == 1, "today"),
         else_="pending",
     )
@@ -298,6 +322,7 @@ def create_task(db, payload, user):
             else:
                 require_assignable(db, payload.business_person_id)
                 task = Task(
+                    final_due_at=payload.final_due_at or payload.nodes[-1].due_at,
                     title=payload.title,
                     serial_no=payload.serial_no,
                     notes=payload.notes,
@@ -356,6 +381,11 @@ def update_task(db, task_id, payload, user):
             require_assignable(db, payload.business_person_id, task.business_person_id)
             before["business_person_id"] = task.business_person_id
             task.business_person_id = payload.business_person_id
+        before["final_due_at"] = schedules.iso(task.final_due_at)
+        if "final_due_at" in payload.model_fields_set:
+            if payload.final_due_at is None:
+                raise HTTPException(422, "请选择最终交期")
+            task.final_due_at = payload.final_due_at
         task.title, task.notes = payload.title, payload.notes
         task.version += 1
         task.updated_at = utcnow()
@@ -371,6 +401,7 @@ def update_task(db, task_id, payload, user):
                 actor_id=user.id,
                 before=before,
                 after={
+                    "final_due_at": schedules.iso(task.final_due_at),
                     "task_title": task.title,
                     "task_notes": task.notes,
                     "task_version": task.version,

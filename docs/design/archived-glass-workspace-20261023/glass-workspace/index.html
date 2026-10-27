@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>轧制工作台 · 玻璃层次样式原型</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app" id="app">
+      <aside class="sidebar glass">
+        <a class="brand" href="#" aria-label="安泰天龙工作台"
+          ><img src="/brand/attl-official-logo.png" alt="中国钢研 安泰科技 安泰天龙"
+        /></a>
+        <div class="nav-caption">工作空间</div>
+        <nav aria-label="主导航">
+          <button class="nav-item" data-nav="全厂总览">
+            <img class="icon" src="./icons/LayoutDashboard.svg" alt="" /><span>全厂总览</span
+            ><img class="icon arrow" src="./icons/ChevronDown.svg" alt="" />
+          </button>
+          <button class="nav-item group">
+            <img class="icon" src="./icons/BuildingFactory2.svg" alt="" /><span>班组工作台</span
+            ><img class="icon arrow" src="./icons/ChevronDown.svg" alt="" />
+          </button>
+          <div class="team-nav">
+            <button data-team="库房">库房</button
+            ><button class="selected" data-team="轧制" aria-current="page">
+              <span>轧制</span><span class="live-dot"></span></button
+            ><button data-team="退火">退火</button><button data-team="研磨">研磨</button
+            ><button data-team="线切割">线切割</button><button data-team="雕刻">雕刻</button
+            ><button data-team="电镀">电镀</button><button data-team="检验">检验</button>
+          </div>
+          <button class="nav-item" data-nav="流转查询">
+            <img class="icon" src="./icons/Route.svg" alt="" /><span>流转查询</span
+            ><img class="icon arrow" src="./icons/ChevronRight.svg" alt="" />
+          </button>
+          <button class="nav-item" data-nav="系统设置">
+            <img class="icon" src="./icons/Settings.svg" alt="" /><span>系统设置</span
+            ><img class="icon arrow" src="./icons/ChevronRight.svg" alt="" />
+          </button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="connection"><span class="live-dot"></span><span>系统运行正常</span></div>
+          <button class="profile">
+            <span class="avatar">张</span
+            ><span class="profile-text"><b>张建国</b><small>轧制班组长</small></span
+            ><img class="icon" src="./icons/ChevronDown.svg" alt="" />
+          </button>
+        </div>
+      </aside>
+
+      <main>
+        <header class="page-header">
+          <div class="page-heading">
+            <button class="icon-button" id="backBtn" aria-label="返回当前系统" title="返回当前系统">
+              <img class="icon" src="./icons/ChevronLeft.svg" alt="" />
+            </button>
+            <div class="title-line">
+              <h1 id="workspaceTitle">轧制工作台</h1>
+              <span class="section-caption" id="currentSection">库存明细</span>
+            </div>
+          </div>
+          <div class="header-actions">
+            <button class="prototype-label" id="aboutBtn">样式说明</button>
+            <button class="button secondary" id="exportBtn">
+              <img class="icon" src="./icons/Download.svg" alt="" />导出
+            </button>
+            <button class="button" id="fullscreenBtn">
+              <img class="icon" src="./icons/Maximize.svg" alt="" /><span>全屏查看</span>
+            </button>
+            <button class="button" id="settingsBtn">
+              <img class="icon" src="./icons/Settings.svg" alt="" />班组设置
+            </button>
+          </div>
+        </header>
+        <div class="tab-shell glass">
+          <button class="icon-button" id="tabsPrevBtn" aria-label="向左查看模块">
+            <img class="icon" src="./icons/ChevronLeft.svg" alt="" />
+          </button>
+          <div class="tabs-track" id="tabsTrack">
+            <div class="tabs" id="workspaceTabs" role="tablist" aria-label="工作台模块"></div>
+          </div>
+          <button class="icon-button" id="tabsNextBtn" aria-label="向右查看模块">
+            <img class="icon" src="./icons/ChevronRight.svg" alt="" />
+          </button>
+          <div class="popover-anchor">
+            <button
+              class="icon-button"
+              id="moreTabsBtn"
+              aria-label="全部模块"
+              aria-expanded="false"
+            >
+              <img class="icon" src="./icons/Dots.svg" alt="" />
+            </button>
+            <div class="popover module-menu glass" id="moduleMenu" hidden>
+              <div class="popover-heading"><b>全部模块</b><span id="moduleCount">13 项</span></div>
+              <div id="moduleList"></div>
+            </div>
+          </div>
+        </div>
+        <section class="workspace-panel" aria-labelledby="panelTitle">
+          <h2 id="panelTitle" class="sr-only">库存明细</h2>
+          <div class="toolbar">
+            <label class="search"
+              ><img class="icon" src="./icons/Search.svg" alt="" /><input
+                id="searchInput"
+                type="search"
+                placeholder="流水号、材质、业务或来源"
+                aria-label="搜索流水号、材质、业务或来源"
+              /><kbd>⌘ K</kbd></label
+            >
+            <button class="button secondary" id="queryBtn">查询</button>
+            <div class="popover-anchor">
+              <button class="button" id="filterBtn" aria-expanded="false">
+                <img class="icon" src="./icons/AdjustmentsHorizontal.svg" alt="" />筛选<span
+                  id="filterDot"
+                  class="small-dot"
+                  hidden
+                ></span>
+              </button>
+              <div class="popover filter-popover glass" id="filterPopover" hidden>
+                <div class="popover-heading">
+                  <b>筛选库存</b><button class="text-button" id="resetFilters">重置</button>
+                </div>
+                <div class="filter-grid">
+                  <label class="field"
+                    >物料类型<select id="typeFilter">
+                      <option value="">全部类型</option>
+                      <option>原材料</option>
+                      <option>半成品</option>
+                      <option>成品</option>
+                      <option>废料</option>
+                    </select></label
+                  >
+                  <label class="field"
+                    >加工状态<select id="statusFilter">
+                      <option value="">全部状态</option>
+                      <option value="pending">待加工</option>
+                      <option value="done">已加工</option>
+                      <option value="partial">部分加工</option>
+                    </select></label
+                  >
+                  <label class="field"
+                    >本班组业务<select id="purposeFilter">
+                      <option value="">全部业务</option>
+                      <option>轧制业务1</option>
+                      <option>轧制业务2</option>
+                    </select></label
+                  >
+                  <label class="field"
+                    >材质<select id="materialFilter">
+                      <option value="">全部材质</option>
+                      <option>W80</option>
+                      <option>铜钼</option>
+                    </select></label
+                  >
+                  <label class="field"
+                    >来源 / 上序班组<select id="sourceFilter">
+                      <option value="">全部来源</option>
+                      <option>库房</option>
+                      <option>本班组加工</option>
+                      <option>检验</option>
+                    </select></label
+                  >
+                  <label class="field"
+                    >返工属性<select id="reworkFilter">
+                      <option value="">全部</option>
+                      <option value="true">返工料</option>
+                      <option value="false">正常料</option>
+                    </select></label
+                  >
+                  <div class="filter-section-title">数值与时间</div>
+                  <label class="field"
+                    >比较字段<select id="numericField">
+                      <option value="quantity">库存件数</option>
+                      <option value="weight">库存重量（kg）</option>
+                      <option value="availableQuantity">可转出件数</option>
+                    </select></label
+                  >
+                  <label class="field"
+                    >比较条件
+                    <div class="numeric-filter">
+                      <select id="numericOperator" aria-label="数值比较条件">
+                        <option value="gte">不少于</option>
+                        <option value="lte">不超过</option>
+                        <option value="eq">等于</option></select
+                      ><input
+                        type="number"
+                        id="numericValue"
+                        placeholder="不限"
+                        aria-label="比较数值"
+                      /></div
+                  ></label>
+                  <label class="field">流转日期起<input id="dateFrom" type="date" /></label
+                  ><label class="field">流转日期止<input id="dateTo" type="date" /></label>
+                  <label class="field"
+                    >库存及等待<select id="waitingFilter">
+                      <option value="">全部库存</option>
+                      <option value="pending">来料待签收</option>
+                      <option value="outbound">转出待确认</option>
+                      <option value="age">库存停留 3 天及以上</option>
+                    </select></label
+                  >
+                  <label class="field"
+                    >近期事件<select id="eventFilter">
+                      <option value="">不限</option>
+                      <option value="loss7">近 7 天有丢失记录</option>
+                      <option value="loss30">近 30 天有丢失记录</option>
+                    </select></label
+                  >
+                </div>
+                <div class="filter-toggles">
+                  <label><input type="checkbox" id="urgentFilter" />仅加急</label
+                  ><label><input type="checkbox" id="locationFilter" />仅未分配仓位</label>
+                </div>
+                <div class="popover-footer">
+                  <button class="button primary" id="applyFilter">应用筛选</button>
+                </div>
+              </div>
+            </div>
+            <div class="popover-anchor">
+              <button class="button" id="columnsBtn" aria-label="显示列" aria-expanded="false">
+                <img class="icon" src="./icons/TableColumn.svg" alt="" /><span>显示列</span>
+              </button>
+              <div class="popover glass column-popover" id="columnsPopover" hidden>
+                <div class="popover-heading">
+                  <b>显示列</b><button class="text-button" id="resetColumns">恢复默认</button>
+                </div>
+                <div id="columnList"></div>
+              </div>
+            </div>
+            <button class="icon-button" id="refreshBtn" aria-label="刷新工作台" title="刷新">
+              <img class="icon" src="./icons/Refresh.svg" alt="" />
+            </button>
+            <div class="toolbar-actions">
+              <button class="button" id="createBtn">
+                <img class="icon" src="./icons/ClipboardCheck.svg" alt="" /><span
+                  >加工登记</span
+                ></button
+              ><button class="button" id="inspectionBtn" hidden>检验登记</button
+              ><button class="button" id="receiptBtn" hidden>新建入库</button
+              ><button class="button primary" id="dispatchBtn">
+                <img class="icon" src="./icons/Plus.svg" alt="" />新建出库</button
+              ><button class="button" id="scanBtn">
+                <img class="icon" src="./icons/Maximize.svg" alt="" />扫码入库
+              </button>
+            </div>
+          </div>
+          <div class="list-context">
+            <div class="segments" aria-label="加工状态快捷筛选">
+              <button class="active" data-status="">全部库存</button
+              ><button data-status="pending">待加工 <span>3</span></button
+              ><button data-status="done">已加工 <span>3</span></button
+              ><button data-status="partial">部分加工 <span>1</span></button>
+            </div>
+            <div class="context-summary">
+              <span class="record-count" id="recordCount">8 条记录</span
+              ><span class="update-time"><span class="live-dot"></span>20:30 更新</span>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead id="tableHead"></thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="emptyState" hidden>
+            <img src="./icons/Search.svg" alt="" />
+            <h3>没有找到匹配的记录</h3>
+            <p>换一个关键词，或清除筛选后再试。</p>
+            <button class="button" id="clearSearch">清除筛选</button>
+          </div>
+          <footer class="table-footer">
+            <span id="totalInfo">共 8 条库存记录</span>
+            <div class="pagination">
+              <select aria-label="每页条数">
+                <option>10 条 / 页</option>
+                <option>20 条 / 页</option></select
+              ><button class="icon-button" disabled aria-label="上一页">
+                <img class="icon" src="./icons/ChevronLeft.svg" alt="" /></button
+              ><button class="page-number" aria-current="page">1</button
+              ><button class="icon-button" disabled aria-label="下一页">
+                <img class="icon" src="./icons/ChevronRight.svg" alt="" />
+              </button>
+            </div>
+          </footer>
+        </section>
+        <div class="page-bottom">
+          <span>热沉事业部 · 生产管理平台</span
+          ><span class="prototype-note">交互演示，使用模拟数据</span>
+        </div>
+      </main>
+    </div>
+
+    <dialog class="processing-dialog glass" id="processingDialog" aria-labelledby="dialogTitle">
+      <form method="dialog" id="processingForm" novalidate>
+        <header class="dialog-header">
+          <div>
+            <div class="dialog-eyebrow">生产执行 <span>/</span> 加工登记</div>
+            <h2 id="dialogTitle">登记本次加工</h2>
+          </div>
+          <button type="button" class="round-close" data-close aria-label="关闭加工登记">
+            <img class="icon" src="./icons/X.svg" alt="" />
+          </button>
+        </header>
+        <div class="dialog-body">
+          <div class="batch-summary">
+            <span class="batch-icon"
+              ><img class="icon" src="./icons/LayersIntersect.svg" alt=""
+            /></span>
+            <div>
+              <b id="batchSerial">805881-5</b
+              ><span class="material-label" id="batchMaterial">W80</span
+              ><small>来源批次 TL2026102300008 · 库房转入</small>
+            </div>
+            <div class="batch-stock">
+              <span>本批可加工</span><b><span id="batchQty">34</span><small> 件</small></b
+              ><span><span id="batchWeight">12.750</span> kg</span>
+            </div>
+          </div>
+          <div class="processing-layout">
+            <div class="registration-main">
+              <section class="form-section">
+                <div class="form-section-heading">
+                  <span class="step-no">01</span>
+                  <h3>工序与执行</h3>
+                  <span class="section-aside">按已确认的工艺路线执行</span>
+                </div>
+                <div class="route-current">
+                  <span class="route-step-index">02</span>
+                  <div><b>精加工</b><small>轧制 · 精轧任务</small></div>
+                  <span class="badge neutral">当前工序</span>
+                </div>
+                <div class="requirement">
+                  <div class="requirement-title">
+                    <img class="icon" src="./icons/ClipboardCheck.svg" alt="" /><b>本道工艺要求</b>
+                  </div>
+                  <p>
+                    厚度加工至
+                    <strong>2.50 ± 0.01 mm</strong
+                    >；表面不得有明显划伤。按工艺单确认轧制方向，完成后测量并记录实际尺寸。
+                  </p>
+                </div>
+                <div class="field-grid">
+                  <label class="field required"
+                    >加工日期<input type="date" value="2026-10-23" required
+                  /></label>
+                  <div class="field required">
+                    加工人
+                    <div class="employee-anchor">
+                      <button type="button" class="employee-control" id="employeeBtn">
+                        <span id="employeeValue">选择加工人</span
+                        ><img class="icon" src="./icons/User.svg" alt="" />
+                      </button>
+                      <div class="employee-menu glass" id="employeeMenu" hidden>
+                        <b>选择本班组员工</b
+                        ><input
+                          type="search"
+                          id="employeeSearch"
+                          placeholder="搜索姓名"
+                          aria-label="搜索员工姓名"
+                        />
+                        <div id="employeeList"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+              <section class="form-section output-section">
+                <div class="form-section-heading">
+                  <span class="step-no">02</span>
+                  <h3>本次加工产出</h3>
+                  <span class="section-aside">正常产出</span>
+                </div>
+                <div class="output-fields">
+                  <label class="field required"
+                    >完成件数
+                    <div class="number-control">
+                      <button type="button" data-delta="-1" aria-label="减少完成件数">−</button
+                      ><input
+                        type="number"
+                        id="quantityInput"
+                        min="1"
+                        max="34"
+                        value="24"
+                        aria-label="完成件数"
+                      /><span>件</span
+                      ><button type="button" data-delta="1" aria-label="增加完成件数">+</button>
+                    </div></label
+                  ><label class="field required"
+                    >产出重量
+                    <div class="unit-input">
+                      <input
+                        type="number"
+                        id="weightInput"
+                        min="0.001"
+                        step="0.001"
+                        value="9.000"
+                        aria-label="产出重量"
+                      /><span>kg</span>
+                    </div></label
+                  ><label class="field output-type"
+                    >物料类型<select>
+                      <option>半成品</option>
+                      <option>成品</option>
+                    </select></label
+                  >
+                </div>
+                <label class="field dimension-field"
+                  >实际尺寸
+                  <div class="dimension-fields">
+                    <label
+                      ><span>长</span><input type="number" value="100" aria-label="长度" /><small
+                        >mm</small
+                      ></label
+                    ><span>×</span
+                    ><label
+                      ><span>宽</span><input type="number" value="80" aria-label="宽度" /><small
+                        >mm</small
+                      ></label
+                    ><span>×</span
+                    ><label
+                      ><span>厚</span
+                      ><input type="number" value="2.50" step="0.01" aria-label="厚度" /><small
+                        >mm</small
+                      ></label
+                    >
+                  </div></label
+                ><label class="field notes-field"
+                  >备注 <small>选填</small
+                  ><textarea rows="2" placeholder="补充本次加工情况"></textarea>
+                </label>
+              </section>
+            </div>
+            <aside class="registration-summary">
+              <span class="summary-kicker">本次登记</span>
+              <h3>产出预览</h3>
+              <div class="summary-total">
+                <span>正常完成</span>
+                <div><b id="summaryQty">24</b><small>件</small></div>
+              </div>
+              <div class="summary-weight">
+                <span>产出重量</span><b><span id="summaryWeight">9.000</span><small> kg</small></b>
+              </div>
+              <div class="remaining">
+                <div>
+                  <span>未加工余料</span><b><span id="remainingQty">10</span> 件</b>
+                </div>
+                <small>留在本批，后续可继续加工。</small>
+              </div>
+              <div class="route-preview">
+                <span>下一道流转</span>
+                <div>
+                  <b>轧制</b><img class="icon" src="./icons/ArrowRight.svg" alt="" /><b>退火</b>
+                </div>
+                <small>登记加工完成后，自主发起转出。</small>
+              </div>
+            </aside>
+          </div>
+        </div>
+        <footer class="dialog-footer">
+          <div class="footer-context">
+            <img class="icon" src="./icons/ClipboardCheck.svg" alt="" /><span>本次登记</span
+            ><b>正常加工</b>
+          </div>
+          <div class="footer-actions">
+            <button type="button" class="button" data-close>取消</button
+            ><button type="submit" class="button primary" id="submitProcessing">
+              确认登记<img class="icon" src="./icons/ArrowRight.svg" alt="" />
+            </button>
+          </div>
+        </footer>
+      </form>
+    </dialog>
+    <dialog class="detail-dialog glass" id="detailDialog" aria-labelledby="detailTitle">
+      <header>
+        <div>
+          <small>批次信息</small>
+          <h2 id="detailTitle">805881-5</h2>
+        </div>
+        <button type="button" class="round-close" id="closeDetail" aria-label="关闭批次明细">
+          <img class="icon" src="./icons/X.svg" alt="" />
+        </button>
+      </header>
+      <dl id="detailFields"></dl>
+      <footer>
+        <span>模拟批次 · TL2026102300008</span
+        ><button class="button primary" id="detailProcess">
+          加工登记<img class="icon" src="./icons/ArrowRight.svg" alt="" />
+        </button>
+      </footer>
+    </dialog>
+    <dialog class="about-dialog glass" id="aboutDialog" aria-labelledby="aboutTitle">
+      <header>
+        <div>
+          <small>DESIGN PREVIEW / 02</small>
+          <h2 id="aboutTitle">功能完整，层次更清楚</h2>
+        </div>
+        <button class="round-close" id="closeAbout" aria-label="关闭样式说明">
+          <img class="icon" src="./icons/X.svg" alt="" />
+        </button>
+      </header>
+      <div class="about-grid">
+        <section>
+          <span class="swatch environment"></span>
+          <h3>环境层</h3>
+          <p>亮白为主，只在导航后方保留少量青绿环境光，衬出透明边缘。</p>
+        </section>
+        <section>
+          <span class="swatch glass"></span>
+          <h3>玻璃层</h3>
+          <p>导航、页签、菜单、弹窗外壳有透光、高光与悬浮感。</p>
+        </section>
+        <section>
+          <span class="swatch paper"></span>
+          <h3>内容层</h3>
+          <p>表格与输入框清晰亮白。用字重、留白和分区分出主次。</p>
+        </section>
+      </div>
+      <footer>
+        保留完整模块导航、常用操作、行内操作、筛选字段与选择字段导出。<br />此页为模拟原型；需要实际业务操作时，可从对应入口打开当前系统。
+      </footer>
+    </dialog>
+
+    <div class="popover row-menu glass" id="rowMenu" role="menu" hidden></div>
+    <dialog
+      class="detail-dialog feature-dialog glass"
+      id="featureDialog"
+      aria-labelledby="featureTitle"
+    >
+      <header>
+        <div>
+          <small id="featureEyebrow">工作台操作</small>
+          <h2 id="featureTitle">新建出库</h2>
+        </div>
+        <button class="round-close" id="closeFeature" aria-label="关闭操作预览">
+          <img class="icon" src="./icons/X.svg" alt="" />
+        </button>
+      </header>
+      <div class="feature-body" id="featureBody"></div>
+      <footer>
+        <span>原型预览 · 实际操作使用现有功能</span
+        ><a class="button primary" id="featureLink" target="_blank" rel="noopener"
+          >打开当前系统<img class="icon" src="./icons/ExternalLink.svg" alt=""
+        /></a>
+      </footer>
+    </dialog>
+    <dialog
+      class="detail-dialog export-dialog glass"
+      id="exportDialog"
+      aria-labelledby="exportTitle"
+    >
+      <header>
+        <div>
+          <small>当前筛选结果</small>
+          <h2 id="exportTitle">选择导出字段</h2>
+        </div>
+        <button class="round-close" id="closeExport" aria-label="关闭导出">
+          <img class="icon" src="./icons/X.svg" alt="" />
+        </button>
+      </header>
+      <p class="export-scope" id="exportScope"></p>
+      <div class="export-fields" id="exportFields"></div>
+      <footer>
+        <button class="text-button" id="exportSelectAll">全选字段</button
+        ><button class="button primary" id="confirmExport">
+          <img class="icon" src="./icons/Download.svg" alt="" />导出示例 CSV
+        </button>
+      </footer>
+    </dialog>
+    <dialog class="detail-dialog scan-dialog glass" id="scanDialog" aria-labelledby="scanTitle">
+      <header>
+        <div>
+          <small>来料待签收</small>
+          <h2 id="scanTitle">扫码入库</h2>
+        </div>
+        <button class="round-close" id="closeScan" aria-label="关闭扫码入库">
+          <img class="icon" src="./icons/X.svg" alt="" />
+        </button>
+      </header>
+      <div class="scan-body">
+        <div class="field required">
+          接收人
+          <div class="scan-employees" id="scanEmployees" role="group" aria-label="选择接收人"></div>
+        </div>
+        <label class="field required"
+          >批次条码<input type="text" id="scanBarcode" placeholder="输入或扫描批次条码"
+        /></label>
+        <p>示例批次：TL2026102300008</p>
+      </div>
+      <footer>
+        <span>接收前必须选定接收人</span
+        ><button class="button primary" id="confirmScan">核对接收</button>
+      </footer>
+    </dialog>
+    <div class="toast glass" id="toast" role="status" hidden>
+      <img class="icon" src="./icons/CircleCheck.svg" alt="" /><span></span>
+    </div>
+    <script src="./app.js"></script>
+  </body>
+</html>

@@ -19,6 +19,8 @@ import FilterDialog from '@/components/FilterDialog.vue'
 import RecordDateFilter from '@/components/RecordDateFilter.vue'
 import SerialUrgencyBadge from '@/components/SerialUrgencyBadge.vue'
 import type { CalendarRange } from '@/types/recordFilters'
+import TeamReworkMessages from '@/components/TeamReworkMessages.vue'
+import ReworkProblemDialog from '@/components/ReworkProblemDialog.vue'
 import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
 import TeamWorkspaceActions from '@/components/TeamWorkspaceActions.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
@@ -127,6 +129,7 @@ const scopeLoading = computed(
     (!directory.loaded || directory.loading) &&
     !scopeReady.value,
 )
+const reworkProblemOpen = ref(false)
 const canWrite = computed(
   () =>
     scopeReady.value &&
@@ -1123,6 +1126,15 @@ onBeforeUnmount(() => {
     @update:model-value="selectSection"
     @fullscreen-change="fullscreen = $event"
   >
+    <template v-if="canManageBusiness && teamId" #messages>
+      <ElButton v-if="canWrite" @click="reworkProblemOpen = true">提交返工问题</ElButton>
+      <TeamReworkMessages :key="teamId" :team-id="teamId" @changed="loadView" />
+      <ReworkProblemDialog
+        v-if="reworkProblemOpen && canWrite"
+        @close="reworkProblemOpen = false"
+        @submitted="loadView"
+      />
+    </template>
     <template v-if="canManageBusiness" #settings
       ><ElButton :icon="Setting" aria-label="班组设置" @click="businessOpen = true"
         >班组设置</ElButton

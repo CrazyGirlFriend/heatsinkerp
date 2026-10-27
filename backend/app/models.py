@@ -21,7 +21,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.mysql import LONGBLOB
+from sqlalchemy.dialects.mysql import LONGBLOB, VARCHAR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -341,6 +341,9 @@ class MaterialTransfer(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    processing_schedule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("production_schedules.id", name="fk_mt_processing_schedule", ondelete="RESTRICT"), index=True
+    )
     process_route_id: Mapped[int | None] = mapped_column(
         ForeignKey("process_routes.id", ondelete="RESTRICT"), index=True
     )
@@ -667,6 +670,9 @@ class MaterialQuantityAdjustment(Base):
         Index("ix_mqa_team_purpose_day", "team_id", "purpose_id", "processing_date"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    production_schedule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("production_schedules.id", name="fk_mqa_production_schedule", ondelete="RESTRICT"), index=True
+    )
     process_route_id: Mapped[int | None] = mapped_column(
         ForeignKey("process_routes.id", ondelete="RESTRICT")
     )
@@ -839,6 +845,7 @@ class ProductionScheduleTask(Base):
     business_person_id: Mapped[int | None] = mapped_column(
         ForeignKey("business_people.id", ondelete="RESTRICT"), index=True
     )
+    final_due_at: Mapped[datetime | None] = mapped_column(DateTime)
     notes: Mapped[str | None] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
@@ -1082,6 +1089,10 @@ class ProcessRoute(Base):
         ),
         index=True,
     )
+    original_schedule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("production_schedules.id", ondelete="RESTRICT", use_alter=True,
+                   name="fk_pr_original_schedule"), index=True
+    )
     rework_of_id: Mapped[int | None] = mapped_column(
         ForeignKey(
             "material_quantity_adjustments.id",
@@ -1106,6 +1117,11 @@ class ProcessRoute(Base):
     resume_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
     rework_round: Mapped[int | None] = mapped_column(Integer)
     request_reason: Mapped[str | None] = mapped_column(Text)
+    requesting_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="RESTRICT")
+    )
+    requesting_team_name: Mapped[str | None] = mapped_column(String(80))
+    requested_by: Mapped[str | None] = mapped_column(String(80))
     request_key: Mapped[str | None] = mapped_column(String(100), unique=True)
     request_hash: Mapped[str | None] = mapped_column(String(64))
     title: Mapped[str] = mapped_column(String(160))
@@ -1143,6 +1159,48 @@ class ProcessRoute(Base):
         Index("ix_process_routes_created", "created_at", "id"),
         Index("ix_process_routes_parent_state", "parent_id", "state"),
     )
+
+
+class ReworkNotice(Base):
+    """A team's durable inbox entry, committed with the rework transition."""
+
+    __tablename__ = "rework_notices"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
+    route_id: Mapped[int] = mapped_column(ForeignKey("process_routes.id", ondelete="RESTRICT"))
+    kind: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime)
+    __table_args__ = (
+        UniqueConstraint("team_id", "route_id", "kind", name="uq_rework_notice_delivery"),
+        Index("ix_rework_notices_team_read", "team_id", "read_at", "id"),
+    )
+
+
+class ProcessRouteSerial(Base):
+    """One normal engineering identity, shared by its immutable revisions."""
+
+    __tablename__ = "process_route_serials"
+    serial_no: Mapped[str] = mapped_column(
+        String(240).with_variant(VARCHAR(240, collation="utf8mb4_bin"), "mysql"), primary_key=True
+    )
+    # NULL reserves a legacy duplicate until its original records are reconciled.
+    route_id: Mapped[int | None] = mapped_column(
+        ForeignKey("process_routes.id", ondelete="RESTRICT"), index=True
+    )
+
+
+class ProcessRouteArchive(Base):
+    """Retain a reconciled duplicate and its source under the selected current route."""
+
+    __tablename__ = "process_route_archives"
+    route_id: Mapped[int] = mapped_column(
+        ForeignKey("process_routes.id", ondelete="RESTRICT"), primary_key=True
+    )
+    current_route_id: Mapped[int] = mapped_column(
+        ForeignKey("process_routes.id", ondelete="RESTRICT"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class ProcessRouteDrawing(Base):

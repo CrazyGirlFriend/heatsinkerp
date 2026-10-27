@@ -84,6 +84,7 @@ def record_dict(row):
     return {
         "id": row.id,
         "source_transfer_id": row.source_transfer_id,
+        "production_schedule_id": row.production_schedule_id,
         "process_route_id": row.process_route_id,
         "process_step_index": row.process_step_index,
         "process_step_name": row.process_step_name,
@@ -234,11 +235,16 @@ def context(db, team_id, lot_id, page=1, page_size=10):
             else None
         )
     )
+    from .processing_registration import completed_route_step
+
+    if progress is None and completed_route_step(physical_lot):
+        progress = "complete"
     if physical_lot.rework_pending:
         progress = None
     from .material_lineage import relatives
     from .models import MaterialInspection
     from .process_routes import processing_context
+    from .processing_schedules import context as schedule_context
 
     feedback_path = relatives([lot_id], ancestors=True, name="rework_feedback_ancestors")
     inspections = db.execute(
@@ -256,6 +262,7 @@ def context(db, team_id, lot_id, page=1, page_size=10):
             for row in inspections
         ],
         "process_route": processing_context(physical_lot),
+        **schedule_context(db, physical_lot),
         "source_transfer_id": lot_id,
         "batch_no": lot.batch_no,
         "serial_no": lot.serial_no,
@@ -333,6 +340,9 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
     prior_work = validate(db, lot, payload, latest)
     task_fields = task_snapshot(db, lot, payload, None if route_index is not None else prior_work)
     payload, production = prepare(lot, balance, latest, payload, team.code)
+    from .processing_schedules import bind_outputs, select_plan
+
+    schedule_id = select_plan(db, lot, payload)
     before_specification = (
         latest.after_specification
         if latest and latest.after_specification is not None
@@ -393,6 +403,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
         items, snapshots, after_weight = create_outputs(
             db, lot, payload, user, now, hold, task_fields, route_index
         )
+    bind_outputs(lot, items, schedule_id)
     finish_processing(lot, payload, route_index, items)
     route_fields = processing_fields(lot, route_index)
     if prior_work and route_index is None:
@@ -406,6 +417,7 @@ def record_quantity_change(db, lot, payload, user, operation_key, request_hash):
             )
         }
     row = Adjustment(
+        production_schedule_id=schedule_id,
         **route_fields,
         source_transfer_id=lot.id,
         team_id=lot.next_team_id,

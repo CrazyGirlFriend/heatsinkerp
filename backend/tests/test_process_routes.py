@@ -56,8 +56,9 @@ def test_invalid_word_package_leaves_no_draft_and_valid_original_is_preserved(cl
     assert source.status_code == 200 and source.content == content
 
 
-def published(client, s, same_team=False):
-    row, _ = imported(client)
+def published(client, s, same_team=False, *, row=None):
+    if row is None:
+        row, _ = imported(client)
     task = client.post(base(s, True) + "/processing-tasks", json={"name": "精轧"}).json()
     purpose = client.post(base(s, True) + "/purposes", json={"name": "产品加工"}).json()
     steps = row["steps"][:2]
@@ -161,7 +162,7 @@ def test_word_review_permissions_original_and_revision(client, warehouse):
         ).status_code
         == 413
     )
-    route = published(client, s)
+    route = published(client, s, row=row)
     payload = {
         key: route[key] for key in ("title", "steps", "serial_nos", "review_note", "version")
     }

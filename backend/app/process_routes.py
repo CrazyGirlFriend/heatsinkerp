@@ -6,6 +6,7 @@ from sqlalchemy import select
 from .models import (
     MaterialTransfer,
     ProcessRoute,
+    ProcessRouteArchive,
     ProcessRoutePath,
     Team,
     TeamEmployee,
@@ -58,6 +59,8 @@ def require_route_reader(row, user):
 
 def require_draft_owner(db, row, user):
     assert_route_importer(user)
+    if db.get(ProcessRouteArchive, row.id):
+        raise HTTPException(409, "该工艺已归入历史，请打开当前工艺")
     if row.state != "draft" or db.scalar(
         select(MaterialTransfer.id).where(MaterialTransfer.process_route_id == row.id).limit(1)
     ):
@@ -89,6 +92,9 @@ def assign_engineering_employee(db, row, employee_id, *, modifier=False):
 
 
 def publish_route(db, row):
+    from .process_route_serials import reserve_serial
+
+    reserve_serial(db, row)
     row.steps = validate_steps(db, row)
     from .rework_routes import activate
 

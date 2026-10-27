@@ -14,8 +14,7 @@ import {
   ElTableColumn,
 } from 'element-plus'
 import FilterDialog from './FilterDialog.vue'
-import ProcessingBatchPicker from './ProcessingBatchPicker.vue'
-import { ElSelect, ElOption, ElMessage } from 'element-plus'
+import { ElSelect, ElOption } from 'element-plus'
 import RecordDateFilter from './RecordDateFilter.vue'
 import StatePanel from './StatePanel.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
@@ -64,16 +63,12 @@ const query = ref(''),
   dates = ref({ from: '', to: '' }),
   filtersOpen = ref(false)
 const workKind = ref('')
-const reworkMode = ref(false),
-  reworkRecordId = ref<number | null>(null),
-  reworkBusy = ref(false)
 const processorId = ref<number | null>(null)
 const taskId = ref<number | null>(null),
   purposeId = ref<number | null>(null)
 const tasks = ref<{ id: number; name: string }[]>([]),
   purposes = ref<TeamPurpose[]>([])
 const directoryError = ref('')
-const selectedReworkId = ref<number | null>(null)
 const processors = ref<{ id: number; name: string }[]>([])
 const processorName = computed({
   get: () => processors.value.find((person) => person.id === processorId.value)?.name || '',
@@ -402,33 +397,7 @@ function saved() {
   void load()
   emit('changed')
 }
-async function startRework(recordId: number) {
-  if (reworkBusy.value) return
-  reworkBusy.value = true
-  selectedReworkId.value = recordId
-  try {
-    const result = await teamMaterialApi.processingSources(props.teamId, {
-      rework_record_id: recordId,
-      page_size: 2,
-    })
-    if (!result.total) ElMessage.info('本记录已无可返工的在库料')
-    else if (result.total === 1) selectRework(Number(result.items[0]!.transfer.id))
-    else reworkRecordId.value = recordId
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '返工批次读取失败')
-  } finally {
-    reworkBusy.value = false
-  }
-}
-function selectRework(id: number) {
-  reworkRecordId.value = null
-  sourceId.value = id
-  reworkMode.value = true
-  detailOpen.value = true
-}
 function detail(row: unknown) {
-  reworkMode.value = false
-  selectedReworkId.value = null
   sourceId.value = (row as ProcessingRecord).source_transfer_id
   detailOpen.value = true
 }
@@ -759,15 +728,7 @@ onBeforeUnmount(() => {
       <ElTableColumn prop="batch_no" label="来源批次号" min-width="205" show-overflow-tooltip />
       <ElTableColumn label="操作" width="140" fixed="right" align="center"
         ><template #default="{ row }"
-          ><ElButton link type="primary" @click="detail(row)">记录</ElButton
-          ><ElButton
-            v-if="canWrite"
-            link
-            type="primary"
-            :disabled="reworkBusy || row.on_hand_quantity <= 0"
-            @click="startRework(row.id)"
-            >返工</ElButton
-          ></template
+          ><ElButton link type="primary" @click="detail(row)">记录</ElButton></template
         ></ElTableColumn
       >
     </ElTable>
@@ -788,18 +749,9 @@ onBeforeUnmount(() => {
       :team-id="teamId"
       :source-id="sourceId"
       processing
-      :can-write="canWrite && reworkMode"
-      :rework="reworkMode"
-      :rework-record-id="selectedReworkId"
+      :can-write="false"
       @saved="saved"
       @changed="saved"
-    />
-    <ProcessingBatchPicker
-      v-if="reworkRecordId"
-      :team-id="teamId"
-      :rework-record-id="reworkRecordId"
-      @close="reworkRecordId = null"
-      @selected="selectRework"
     />
     <ProcessRouteEditor v-if="viewedRoute" :route="viewedRoute" view-only @close="closeRoute" />
   </section>

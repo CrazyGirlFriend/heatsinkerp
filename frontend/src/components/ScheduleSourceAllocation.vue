@@ -107,8 +107,7 @@ onBeforeUnmount(() => {
   <section class="schedule-sources" :class="{ 'is-error': error }" :aria-invalid="!!error">
     <header>
       <div>
-        <strong>关联物料批次</strong
-        ><span>可以先排期，来料后再关联；此处填写本节点计划交出量。</span>
+        <strong>关联物料批次</strong>
       </div>
       <ElButton :disabled="disabled || !teamId || !serialNo.trim()" @click="openSources"
         >关联批次</ElButton
@@ -155,9 +154,7 @@ onBeforeUnmount(() => {
         ></ElTableColumn
       >
     </ElTable>
-    <p v-else class="schedule-form__note">
-      尚未关联批次，计划不会产生库存。废料、废渣等不纳入交货排期。
-    </p>
+    <p v-else class="schedule-form__note">暂无关联批次</p>
     <p v-if="error" class="schedule-form__error" role="alert">
       {{ error }}
     </p>
@@ -190,7 +187,7 @@ onBeforeUnmount(() => {
       :data="candidates"
       class="business-table"
       max-height="380"
-      empty-text="暂无可关联批次，可先保存计划，来料后再关联"
+      empty-text="暂无可关联批次"
       v-loading="candidatesLoading"
     >
       <ElTableColumn label="批次号" prop="batch_no" min-width="200" align="center" />
@@ -266,12 +263,6 @@ onBeforeUnmount(() => {
 .schedule-sources header strong {
   color: var(--text);
   font-size: 14px;
-}
-.schedule-sources header span {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
-  margin-top: 4px;
 }
 .schedule-sources :deep(.el-input-number) {
   max-width: 180px;

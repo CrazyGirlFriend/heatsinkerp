@@ -3,7 +3,8 @@ import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ProcessRouteEditor from './ProcessRouteEditor.vue'
 import WordDocumentPreview from './WordDocumentPreview.vue'
-import { processRouteApi } from '@/services/processRouteApi'
+import ProcessRouteDrawingPreview from './ProcessRouteDrawingPreview.vue'
+import { processRouteApi, ProcessRouteSerialConflictError } from '@/services/processRouteApi'
 import { routeFixture, reworkRouteFixture } from '@/testFixtures/processRoute'
 import { defineComponent, h } from 'vue'
 const openWord = vi.fn(),
@@ -75,6 +76,7 @@ async function render(
       stubs: {
         AppDialog: { template: '<div><slot/><slot name="footer"/></div>' },
         ScheduleTaskEditor: true,
+        RouterLink: { props: ['to'], template: '<a><slot /></a>' },
         WordDocumentPreview: originalStub('WordDocumentPreview', openWord),
         ProcessRouteDrawingPreview: originalStub('ProcessRouteDrawingPreview', openDrawing),
       },
@@ -102,6 +104,27 @@ it('preserves original text and saves the version before publication', async () 
   expect(wrapper.text()).toContain('修改工艺')
 })
 
+it('marks a duplicate serial and keeps the entered form until that serial is corrected', async () => {
+  await render()
+  const message = '流水号“S-001”已有正常工艺，请打开原工艺修改'
+  vi.mocked(processRouteApi.save).mockRejectedValueOnce(
+    new ProcessRouteSerialConflictError(message),
+  )
+  await click('保存工艺')
+  expect(
+    wrapper.findAll('.el-form-item.is-error').some((item) => item.text().includes(message)),
+  ).toBe(true)
+  expect((wrapper.get('input[aria-label="流水号"]').element as HTMLInputElement).value).toBe(
+    routeFixture.serial_nos[0],
+  )
+  expect(processRouteApi.publish).not.toHaveBeenCalled()
+  await wrapper.get('input[aria-label="流水号"]').setValue('S-002')
+  await flushPromises()
+  expect(
+    wrapper.findAll('.el-form-item.is-error').some((item) => item.text().includes(message)),
+  ).toBe(false)
+})
+
 it('shows the authored rework scope and instructions in the same form without modification controls', async () => {
   await render(true, reworkRouteFixture, true)
   const text = wrapper.text()
@@ -110,7 +133,8 @@ it('shows the authored rework scope and instructions in the same form without mo
     'TL-REWORK-1',
     '4 件',
     '40 kg',
-    '原加工记录 #42',
+    '原加工记录',
+    '#42',
     '尺寸偏差，重新精磨',
     '返工精磨至2.50±0.01mm',
     '接回正常工序',
@@ -120,6 +144,47 @@ it('shows the authored rework scope and instructions in the same form without mo
     wrapper.findAll('button').some((button) => /修改返工工艺|保存工艺/.test(button.text())),
   ).toBe(false)
   expect(processRouteApi.save).not.toHaveBeenCalled()
+})
+it('carries quality problems and teams into manual rework engineering with inherited drawings', async () => {
+  const drawing = { id: 91, filename: 'S-001图纸.pdf', size_bytes: 100 }
+  await render(
+    false,
+    {
+      ...reworkRouteFixture,
+      steps: [],
+      drawings: [drawing],
+      rework_request: {
+        ...reworkRouteFixture.rework_request!,
+        inspection_id: 19,
+        inspection_kind: 'patrol',
+        problem_names: ['尺寸超差'],
+        problem_notes: '厚度实测2.60mm',
+        problem_teams: [
+          { id: 2, name: '研磨' },
+          { id: 3, name: '轧制' },
+        ],
+      },
+    },
+    false,
+    true,
+  )
+  for (const value of ['返工问题', '尺寸超差', '厚度实测2.60mm', '巡检 #19'])
+    expect(wrapper.get('.route-rework-context').text()).toContain(value)
+  expect(
+    wrapper.findAll('[aria-label="涉及班组"] [role="listitem"]').map((cell) => cell.text()),
+  ).toEqual(['研磨', '轧制'])
+  expect(wrapper.text()).not.toContain('导入工艺单')
+  expect(wrapper.text()).not.toContain('工艺原稿')
+  expect(wrapper.find('input[accept=".docx"]').exists()).toBe(false)
+  expect(wrapper.find('input[aria-label="上传图纸文件"]').exists()).toBe(true)
+  expect(wrapper.getComponent(ProcessRouteDrawingPreview).props()).toMatchObject({
+    routeId: reworkRouteFixture.id,
+    drawing,
+  })
+  expect(wrapper.get('input[aria-label="流水号"]').attributes('disabled')).toBeDefined()
+  await click('放大查看')
+  expect(openDrawing).toHaveBeenCalledOnce()
+  expect(openWord).not.toHaveBeenCalled()
 })
 it('keeps published steps immutable and offers source/revision actions', async () => {
   await render(true)
@@ -206,6 +271,7 @@ async function renderNew() {
       stubs: {
         AppDialog: { template: '<div><slot/><slot name="footer"/></div>' },
         ScheduleTaskEditor: true,
+        RouterLink: { props: ['to'], template: '<a><slot /></a>' },
         WordDocumentPreview: true,
         ProcessRouteDrawingPreview: true,
       },

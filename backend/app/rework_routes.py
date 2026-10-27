@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from . import material_stock as stock
@@ -12,9 +12,19 @@ from . import material_transfer_workflow as workflow
 from .auth import actor_name
 from .batch_numbers import next_transfer_batch_numbers
 from .material_lineage import relatives
+from .models import (
+    InspectionFeedbackTeam,
+    InspectionProblem,
+    MaterialInspection,
+    MaterialTransfer,
+    MaterialTransferEvent,
+    ProcessRoute,
+    ProductionSchedule,
+    Team,
+    utcnow,
+)
 from .models import MaterialQuantityAdjustment as Work
 from .models import MaterialStockBalance as Balance
-from .models import MaterialTransfer, MaterialTransferEvent, ProcessRoute, utcnow
 from .schemas import SCRAP_MATERIAL_TYPES
 
 
@@ -78,42 +88,206 @@ def require_unstarted(db, route):
     return lot
 
 
+def request_documents(db, routes):
+    """Load a bounded page's rework context without one query per route."""
+    routes = [row for row in routes if row.route_kind == "rework"]
+    if not routes:
+        return {}
+    lots = {
+        row.id: row
+        for row in db.execute(
+            select(
+                MaterialTransfer.id,
+                MaterialTransfer.batch_no,
+                MaterialTransfer.next_team_id,
+                MaterialTransfer.next_team_name,
+                MaterialTransfer.quantity,
+                MaterialTransfer.weight,
+            ).where(MaterialTransfer.id.in_([row.rework_source_transfer_id for row in routes]))
+        )
+    }
+    inspection_ids = [row.rework_inspection_id for row in routes if row.rework_inspection_id]
+    inspections = {}
+    problems, teams = {}, {}
+    if inspection_ids:
+        inspections = {
+            row.id: row
+            for row in db.execute(
+                select(
+                    MaterialInspection.id,
+                    MaterialInspection.kind,
+                    MaterialInspection.notes,
+                    MaterialInspection.inspector_name,
+                    MaterialInspection.dimension_result,
+                    MaterialInspection.weight_result,
+                ).where(MaterialInspection.id.in_(inspection_ids))
+            )
+        }
+        for inspection_id, name in db.execute(
+            select(InspectionProblem.inspection_id, InspectionProblem.name)
+            .where(InspectionProblem.inspection_id.in_(inspection_ids))
+            .order_by(InspectionProblem.problem_type_id)
+        ):
+            problems.setdefault(inspection_id, []).append(name)
+        for inspection_id, team_id, name in db.execute(
+            select(InspectionFeedbackTeam.inspection_id, Team.id, Team.name)
+            .join(Team, Team.id == InspectionFeedbackTeam.team_id)
+            .where(InspectionFeedbackTeam.inspection_id.in_(inspection_ids))
+            .order_by(Team.id)
+        ):
+            teams.setdefault(inspection_id, []).append({"id": team_id, "name": name})
+    execution = {
+        route_id: list(dict.fromkeys(step["team_name"] for step in steps if step.get("team_name")))
+        for route_id, steps in db.execute(
+            select(ProcessRoute.id, ProcessRoute.steps).where(
+                ProcessRoute.id.in_([row.id for row in routes if row.state == "published"])
+            )
+        )
+    }
+    tasks = dict(
+        db.execute(
+            select(ProductionSchedule.id, ProductionSchedule.task_id).where(
+                ProductionSchedule.id.in_(
+                    [r.original_schedule_id for r in routes if r.original_schedule_id]
+                )
+            )
+        ).all()
+    )
+    result = {}
+    for route in routes:
+        lot = lots[route.rework_source_transfer_id]
+        inspection = inspections.get(route.rework_inspection_id)
+        result[route.id] = {
+            "source_transfer_id": lot.id,
+            "batch_no": lot.batch_no,
+            "team_id": lot.next_team_id,
+            "team_name": lot.next_team_name,
+            "quantity": lot.quantity,
+            "weight": float(lot.weight),
+            "reason": route.request_reason,
+            "requesting_team_id": route.requesting_team_id,
+            "requesting_team_name": route.requesting_team_name,
+            "requested_by": route.requested_by,
+            "rework_of_id": route.rework_of_id,
+            "original_schedule_id": route.original_schedule_id,
+            "original_task_id": tasks.get(route.original_schedule_id),
+            "inspection_id": route.rework_inspection_id,
+            "inspection_kind": inspection.kind if inspection else None,
+            "inspector_name": inspection.inspector_name if inspection else None,
+            "problem_names": problems.get(route.rework_inspection_id, []),
+            "problem_notes": inspection.notes if inspection else "",
+            "dimension_result": inspection.dimension_result if inspection else "",
+            "weight_result": inspection.weight_result if inspection else "",
+            "problem_teams": teams.get(route.rework_inspection_id, []),
+            "execution_team_names": execution.get(route.id, []),
+            "round": route.rework_round,
+            "resume_route_id": route.resume_route_id,
+            "resume_step_index": route.resume_step_index,
+            "resume_step_name": None,
+            "resume_team_id": route.resume_team_id,
+        }
+    return result
+
+
 def request_document(db, route):
     if route.route_kind != "rework":
         return None
-    lot = db.get(MaterialTransfer, route.rework_source_transfer_id)
     resume = db.get(ProcessRoute, route.resume_route_id) if route.resume_route_id else None
     return {
+        **request_documents(db, [route])[route.id],
         "can_modify": route.state == "published" and can_revise(db, route),
-        "source_transfer_id": lot.id,
-        "batch_no": lot.batch_no,
-        "team_id": lot.next_team_id,
-        "team_name": lot.next_team_name,
-        "quantity": lot.quantity,
-        "weight": float(lot.weight),
-        "reason": route.request_reason,
-        "rework_of_id": route.rework_of_id,
-        "inspection_id": route.rework_inspection_id,
-        "round": route.rework_round,
-        "resume_route_id": route.resume_route_id,
-        "resume_step_index": route.resume_step_index,
         "resume_step_name": f"{resume.steps[route.resume_step_index]['sequence_no']} · {resume.steps[route.resume_step_index]['name']}（{resume.steps[route.resume_step_index].get('team_name', '')}）"
         if resume
         else None,
-        "resume_team_id": route.resume_team_id,
     }
+
+
+def source_stock(db, user, query="", page=1, lot_id=None):
+    """Direct team submissions select physical stock, never a free-form serial."""
+    team = stock.require_actor(user, user.team_id)
+    if team.kind == "engineering":
+        raise HTTPException(403, "请由物料所在班组提交返工问题")
+    stmt = (
+        select(MaterialTransfer, Balance)
+        .join(Balance, Balance.transfer_id == MaterialTransfer.id)
+        .where(
+            MaterialTransfer.next_team_id == team.id,
+            MaterialTransfer.status == "received",
+            MaterialTransfer.stock_tracked.is_(True),
+            MaterialTransfer.rework_route_id.is_(None),
+            or_(
+                MaterialTransfer.material_type.is_(None),
+                MaterialTransfer.material_type.not_in(SCRAP_MATERIAL_TYPES),
+            ),
+            Balance.on_hand_quantity > 0,
+            Balance.on_hand_weight > 0,
+        )
+    )
+    if lot_id is not None:
+        pair = db.execute(stmt.where(MaterialTransfer.id == lot_id)).one_or_none()
+        if pair is None:
+            raise HTTPException(409, "本批库存已变化，请重新选择")
+        from .quantity_adjustments import context
+
+        lot, _ = pair
+        result = context(db, team.id, lot.id)
+        path = relatives([lot.id], ancestors=True, name="team_rework_history")
+        ids = set(db.scalars(select(path.c.id)))
+        records = db.scalars(
+            select(Work)
+            .where(Work.source_transfer_id.in_(ids), Work.processing_status.is_not(None))
+            .order_by(Work.id.desc())
+            .limit(100)
+        )
+        result["rework_task_records"] = [
+            dict(
+                rework_of_id=record.id,
+                process_step_name=record.process_step_name,
+                processing_task_name=record.processing_task_name,
+            )
+            for record in records
+            if not record.outputs
+            or any(item["id"] in ids and item["role"] == "produced" for item in record.outputs)
+        ]
+        result["rework_of_id"] = None
+        return result
+    if query.strip():
+        stmt = stmt.where(
+            or_(
+                MaterialTransfer.serial_no.contains(query.strip(), autoescape=True),
+                MaterialTransfer.batch_no.contains(query.strip(), autoescape=True),
+            )
+        )
+    total = db.scalar(select(func.count()).select_from(stmt.subquery()))
+    rows = db.execute(stmt.order_by(MaterialTransfer.id.desc()).offset((page - 1) * 10).limit(10))
+    return dict(
+        items=[
+            dict(
+                id=lot.id,
+                serial_no=lot.serial_no,
+                batch_no=lot.batch_no,
+                quantity=balance.on_hand_quantity,
+                weight=float(balance.on_hand_weight),
+            )
+            for lot, balance in rows
+        ],
+        total=total,
+        page=page,
+        page_size=10,
+    )
 
 
 def request_rework(db, payload, user):
     from .process_route_api import document
-    from .processing_records import require_processing_team
+    from .quality_feedback import is_qc, require_rework_issue
 
-    stock.require_actor(user, user.team_id)
+    team = stock.require_actor(user, user.team_id)
+    if team.kind == "engineering":
+        raise HTTPException(403, "请由物料所在班组提交返工问题")
     request_hash = stock.fingerprint(payload)
 
     def replay(row):
-        lot = db.get(MaterialTransfer, row.rework_source_transfer_id)
-        if lot.source_team_id != user.team_id or row.request_hash != request_hash:
+        if row.created_by_user_id != user.id or row.request_hash != request_hash:
             raise HTTPException(409, "重复请求的班组或内容不一致")
         return document(row, db=db)
 
@@ -124,11 +298,16 @@ def request_rework(db, payload, user):
             )
             if prior:
                 return replay(prior)
+            if payload.inspection_id and is_qc(user):
+                require_rework_issue(db, payload.inspection_id, user, lock=True)
             from .inspections import lock_hold
 
             hold = lock_hold(db, payload.source_transfer_id)
-            lot = stock.lock_lot(db, payload.source_transfer_id, user.team_id)
-            require_processing_team(db, lot.next_team_id)
+            lot = stock.lock_lot(db, payload.source_transfer_id)
+            if lot.next_team_id != user.team_id and not (payload.inspection_id and is_qc(user)):
+                raise HTTPException(403, "只能提交本班组在库批次的返工问题")
+            if lot.status != "received" or not lot.stock_tracked:
+                raise HTTPException(409, "请选择已签收的在库批次")
             # Recheck after the source lock: retries must not reserve another portion.
             prior = db.scalar(
                 select(ProcessRoute)
@@ -175,18 +354,15 @@ def request_rework(db, payload, user):
                     for item in work.outputs
                 ):
                     raise HTTPException(422, "所选工序未加工这部分料，不能关联返工")
-            if payload.inspection_id:
-                from .models import MaterialInspection
-
-                inspection = db.scalar(
-                    select(MaterialInspection).where(
-                        MaterialInspection.id == payload.inspection_id,
-                        MaterialInspection.source_transfer_id.in_(select(path.c.id)),
-                        MaterialInspection.failed_quantity > 0,
-                    )
+            inspection = db.scalar(
+                select(MaterialInspection).where(
+                    MaterialInspection.id == payload.inspection_id,
+                    MaterialInspection.source_transfer_id.in_(select(path.c.id)),
+                    MaterialInspection.failed_quantity > 0,
                 )
-                if inspection is None:
-                    raise HTTPException(422, "质量问题记录不属于本批物料")
+            )
+            if payload.inspection_id and inspection is None:
+                raise HTTPException(422, "质量问题记录不属于本批物料")
             now = utcnow()
             fields = {key: getattr(lot, key) for key in workflow.DOCUMENT_FIELDS}
             fields.update(delivery_date=None, delivery_quantity=None)
@@ -207,6 +383,7 @@ def request_rework(db, payload, user):
                 stock_tracked=True,
                 processing_role=lot.processing_role,
                 rework_pending=True,
+                processing_schedule_id=lot.processing_schedule_id or work.production_schedule_id,
                 rework_count=lot.rework_count,
                 process_route_id=lot.process_route_id,
                 process_step_index=lot.process_step_index,
@@ -245,6 +422,7 @@ def request_rework(db, payload, user):
                 steps=[],
                 rework_source_transfer_id=child.id,
                 rework_of_id=work.id,
+                original_schedule_id=lot.processing_schedule_id or work.production_schedule_id,
                 rework_inspection_id=payload.inspection_id,
                 resume_route_id=lot.process_route_id,
                 resume_step_index=lot.process_step_index,
@@ -252,6 +430,9 @@ def request_rework(db, payload, user):
                 resume_team_id=lot.next_team_id,
                 rework_round=lot.rework_count + 1,
                 request_reason=payload.reason,
+                requesting_team_id=team.id,
+                requesting_team_name=team.name,
+                requested_by=actor_name(user),
                 request_key=payload.idempotency_key,
                 request_hash=request_hash,
                 created_by=actor_name(user),
@@ -259,6 +440,11 @@ def request_rework(db, payload, user):
             )
             db.add(route)
             db.flush()
+            from .process_route_drawings import copy_drawings
+            from .rework_notices import notify_engineering
+
+            copy_drawings(db, lot.process_route_id or work.process_route_id, route.id)
+            notify_engineering(db, route)
             child.rework_route_id = route.id
             db.add(
                 MaterialTransferEvent(
@@ -411,6 +597,8 @@ def resume(db, lot, user, expected_revision):
     lot.process_route = (
         db.get(ProcessRoute, route.resume_route_id) if route.resume_route_id else None
     )
+    if route.original_schedule_id:
+        lot.processing_schedule_id = route.original_schedule_id
     lot.rework_route = None
     lot.rework_pending = False
     lot.version += 1

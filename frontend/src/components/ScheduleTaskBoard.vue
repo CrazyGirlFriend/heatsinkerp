@@ -1,28 +1,19 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import {
-  ElButton,
-  ElIcon,
-  ElInput,
-  ElOption,
-  ElPagination,
-  ElRadioButton,
-  ElRadioGroup,
-  ElSelect,
-  ElTag,
-} from 'element-plus'
-import { Calendar, List, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { ElButton, ElInput, ElOption, ElPagination, ElSelect, ElTag } from 'element-plus'
+import { Filter, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import AppDialog from './AppDialog.vue'
-import FilterDialog from './FilterDialog.vue'
+import AppDrawer from './AppDrawer.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import StatePanel from './StatePanel.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import TableExportButton from './TableExportButton.vue'
 import DeliverySchedules from './DeliverySchedules.vue'
-import ProductionScheduleGantt from './ProductionScheduleGantt.vue'
 import ProductionScheduleOverview from './ProductionScheduleOverview.vue'
 import ScheduleTaskEditor from './ScheduleTaskEditor.vue'
+import ScheduleRouteLink from './ScheduleRouteLink.vue'
+import ScheduleReworkPanel from './ScheduleReworkPanel.vue'
 import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
@@ -50,7 +41,6 @@ const canManage = computed(
   () => auth.isAdmin && !auth.currentUserError && auth.currentUser?.active !== false,
 )
 const teams = computed(() => directory.items.filter((team) => team.active))
-const view = ref<'overview' | 'gantt'>('overview')
 const selectionKind = ref<'serial' | 'people' | null>(null),
   managingPeople = ref(false)
 const serialSelection = ref<ScheduleSelection[]>([]),
@@ -61,12 +51,17 @@ const rows = ref<ScheduleTask[]>([]),
   pageSize = ref(10),
   loading = ref(false),
   error = ref('')
-const query = ref(''),
-  filters = ref<ScheduleFilters>({}),
+const initialSerial = typeof route.query.serial_no === 'string' ? route.query.serial_no : ''
+const query = ref(initialSerial),
+  filters = ref<ScheduleFilters>(initialSerial ? { query: initialSerial } : {}),
   filterOpen = ref(false)
 const draftTeam = ref<number>(),
   draftStatus = ref<ScheduleStatus>(),
-  draftDates = ref({ from: '', to: '' })
+  draftScope = ref<'attention' | 'completed'>(),
+  draftDates = ref({ from: '', to: '' }),
+  draftSerialSelection = ref<ScheduleSelection[]>([]),
+  draftPersonSelection = ref<ScheduleSelection[]>([])
+const routeLinkOpen = ref(false)
 const editorOpen = ref(false),
   editingTask = ref<ScheduleTask | null>(null)
 const detailId = ref<number>(),
@@ -82,9 +77,13 @@ const live = useLiveRefresh(() => load(true), {
 })
 const filterCount = computed(
   () =>
+    Number(!!filters.value.query) +
+    Number(!!filters.value.scope) +
     Number(!!filters.value.team_id) +
     Number(!!filters.value.status) +
-    Number(!!filters.value.due_from || !!filters.value.due_to),
+    Number(!!filters.value.due_from || !!filters.value.due_to) +
+    Number(!!filters.value.serial_nos?.length) +
+    Number(!!filters.value.business_person_ids?.length),
 )
 async function load(background = false) {
   const token = ++generation
@@ -113,63 +112,60 @@ async function load(background = false) {
     if (token === generation) loading.value = false
   }
 }
-function search() {
-  filters.value = { ...filters.value, query: query.value.trim() || undefined }
-  page.value = 1
-  void load()
-}
 function openFilters() {
+  query.value = filters.value.query || ''
+  draftScope.value = filters.value.scope
   draftTeam.value = filters.value.team_id
   draftStatus.value = filters.value.status
   draftDates.value = {
     from: filters.value.due_from?.slice(0, 10) || '',
     to: filters.value.due_to?.slice(0, 10) || '',
   }
+  draftSerialSelection.value = [...serialSelection.value]
+  draftPersonSelection.value = [...personSelection.value]
+  filterOpen.value = true
 }
 function applyFilters() {
   filters.value = {
-    scope: filters.value.scope,
-    serial_nos: filters.value.serial_nos,
-    business_person_ids: filters.value.business_person_ids,
+    scope: draftScope.value || undefined,
+    serial_nos: draftSerialSelection.value.length
+      ? draftSerialSelection.value.map((item) => String(item.value))
+      : undefined,
+    business_person_ids: draftPersonSelection.value.length
+      ? draftPersonSelection.value.map((item) => Number(item.value))
+      : undefined,
     query: query.value.trim() || undefined,
     team_id: draftTeam.value,
     status: draftStatus.value,
     due_from: draftDates.value.from ? `${draftDates.value.from}T00:00:00+08:00` : undefined,
     due_to: draftDates.value.to ? `${draftDates.value.to}T23:59:59+08:00` : undefined,
   }
+  serialSelection.value = [...draftSerialSelection.value]
+  personSelection.value = [...draftPersonSelection.value]
   page.value = 1
   filterOpen.value = false
   void load()
 }
 function resetFilters() {
+  query.value = ''
+  draftScope.value = undefined
   draftTeam.value = undefined
   draftStatus.value = undefined
   draftDates.value = { from: '', to: '' }
-  applyFilters()
+  draftSerialSelection.value = []
+  draftPersonSelection.value = []
 }
 function paginate(value: number) {
   page.value = value
   void load()
 }
-function setScope(scope?: 'attention' | 'completed') {
-  filters.value = { ...filters.value, scope }
-  page.value = 1
-  void load()
-}
 function applySelection(items: ScheduleSelection[]) {
   if (selectionKind.value === 'serial') {
-    serialSelection.value = items
-    filters.value = { ...filters.value, serial_nos: items.map((item) => String(item.value)) }
+    draftSerialSelection.value = items
   } else {
-    personSelection.value = items
-    filters.value = {
-      ...filters.value,
-      business_person_ids: items.map((item) => Number(item.value)),
-    }
+    draftPersonSelection.value = items
   }
   selectionKind.value = null
-  page.value = 1
-  void load()
 }
 function resizePage(value: number) {
   pageSize.value = value
@@ -294,9 +290,9 @@ function exportSource() {
         value: (task) => perNode(task, (node) => formatDateTime(node.due_at)),
       },
       { key: 'node_targets', label: '各站交货目标', value: (task) => perNode(task, target) },
-      { key: 'node_basis', label: '各站完成依据', value: (task) => perNode(task, basis) },
+      { key: 'node_basis', label: '各站计量方式', value: (task) => perNode(task, basis) },
       { key: 'node_execution', label: '各站执行状态', value: (task) => perNode(task, execution) },
-      { key: 'notes', label: '任务说明', value: (task) => task.notes },
+      { key: 'notes', label: '任务备注', value: (task) => task.notes },
     ],
     (signal, progress) =>
       loadExportPages(
@@ -333,100 +329,32 @@ onBeforeUnmount(() => {
     aria-label="生产排期任务"
   >
     <div class="workspace-data-toolbar task-board__toolbar">
-      <ElInput
-        v-model="query"
-        :prefix-icon="Search"
-        aria-label="任务排期搜索"
-        placeholder="搜索任务、流水号或批次号"
-        clearable
-        @keyup.enter="search"
-        @clear="search"
-      />
-      <FilterDialog
-        v-model="filterOpen"
-        :count="filterCount"
-        @open="openFilters"
-        @apply="applyFilters"
-        @reset="resetFilters"
-      >
-        <label
-          >交货班组<ElSelect v-model="draftTeam" placeholder="全部班组" clearable
-            ><ElOption
-              v-for="team in teams"
-              :key="team.id"
-              :value="Number(team.id)"
-              :label="team.name" /></ElSelect
-        ></label>
-        <label
-          >任务状态<ElSelect v-model="draftStatus" placeholder="全部状态" clearable
-            ><ElOption
-              v-for="(label, value) in scheduleStatusLabels"
-              :key="value"
-              :value="value"
-              :label="label" /></ElSelect
-        ></label>
-        <label class="filter-wide"
-          >节点要求交货日期<RecordDateFilter v-model="draftDates" label="节点要求交货日期"
-        /></label>
-      </FilterDialog>
-      <ElButton class="action-warm" @click="search">查询</ElButton>
-      <TableExportButton
-        :source="exportSource"
-        :context="JSON.stringify(filters)"
-        :disabled="loading || !!error"
-      />
-      <ElButton :icon="Refresh" :loading="loading" aria-label="刷新任务排期" @click="load()" />
-      <ElButton v-if="canManage" type="primary" :icon="Plus" @click="createTask"
-        >新建任务排期</ElButton
-      >
-    </div>
-    <div class="task-board__view">
-      <div class="task-board__scopes" role="group" aria-label="任务范围">
-        <button type="button" :aria-pressed="!filters.scope" @click="setScope()">全部任务</button>
-        <button
-          type="button"
-          :aria-pressed="filters.scope === 'attention'"
-          @click="setScope('attention')"
+      <strong class="task-board__title">交货进度</strong>
+      <div class="task-board__actions">
+        <ElButton
+          class="task-board__filter"
+          :class="{ 'action-cool': filterCount > 0 }"
+          :icon="Filter"
+          :aria-expanded="filterOpen"
+          aria-label="排期筛选"
+          @click="openFilters"
+          >筛选<span v-if="filterCount" class="task-board__filter-count">{{
+            filterCount
+          }}</span></ElButton
         >
-          需关注
-        </button>
-        <button
-          type="button"
-          :aria-pressed="filters.scope === 'completed'"
-          @click="setScope('completed')"
+        <TableExportButton
+          :source="exportSource"
+          :context="JSON.stringify(filters)"
+          :disabled="loading || !!error"
+        />
+        <ElButton :icon="Refresh" :loading="loading" aria-label="刷新任务排期" @click="load()" />
+        <ElButton v-if="canManage" type="primary" :icon="Plus" @click="createTask"
+          >新建任务排期</ElButton
         >
-          已交完
-        </button>
       </div>
-      <ElButton @click="selectionKind = 'serial'">{{
-        serialSelection.length ? `显示 ${serialSelection.length} 个流水号` : '显示流水号'
-      }}</ElButton>
-      <ElButton @click="selectionKind = 'people'">{{
-        personSelection.length ? `业务人员 ${personSelection.length} 人` : '全部业务人员'
-      }}</ElButton>
-      <ElButton v-if="canManage" link type="primary" @click="managingPeople = true"
-        >管理业务人员</ElButton
-      >
-      <ElRadioGroup v-model="view" class="task-board__view-switch" aria-label="排期视图"
-        ><ElRadioButton value="overview"
-          ><ElIcon><List /></ElIcon>交货进度</ElRadioButton
-        ><ElRadioButton value="gantt"
-          ><ElIcon><Calendar /></ElIcon>路线甘特图</ElRadioButton
-        ></ElRadioGroup
-      >
-      <span class="task-board__view-note">{{
-        view === 'overview' ? '点击任务展开路线' : '按任务展开班组路线 · 点击节点查看详情'
-      }}</span>
     </div>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
-    <ProductionScheduleGantt
-      v-else-if="view === 'gantt'"
-      :tasks="rows"
-      :loading="loading"
-      @open-node="openNode"
-      @open-task="openTask"
-    />
     <ProductionScheduleOverview
       v-else
       :tasks="rows"
@@ -446,6 +374,96 @@ onBeforeUnmount(() => {
         @size-change="resizePage"
       />
     </footer>
+    <AppDrawer
+      v-model="filterOpen"
+      title="排期筛选"
+      direction="rtl"
+      size="min(420px, 94vw)"
+      append-to-body
+      class="schedule-filter-drawer"
+    >
+      <div class="schedule-filter-fields">
+        <label
+          >关键词<ElInput
+            v-model="query"
+            :prefix-icon="Search"
+            aria-label="任务排期搜索"
+            placeholder="任务、流水号或批次号"
+            clearable
+            @keyup.enter="applyFilters"
+        /></label>
+        <label
+          >任务范围<ElSelect
+            v-model="draftScope"
+            aria-label="任务范围筛选"
+            placeholder="全部任务"
+            clearable
+            ><ElOption label="需关注" value="attention" />
+            <ElOption label="已交完" value="completed" /></ElSelect
+        ></label>
+        <label
+          >交货班组<ElSelect
+            v-model="draftTeam"
+            aria-label="交货班组筛选"
+            placeholder="全部班组"
+            clearable
+            ><ElOption
+              v-for="team in teams"
+              :key="team.id"
+              :value="Number(team.id)"
+              :label="team.name" /></ElSelect
+        ></label>
+        <label
+          >任务状态<ElSelect
+            v-model="draftStatus"
+            aria-label="任务状态筛选"
+            placeholder="全部状态"
+            clearable
+            ><ElOption
+              v-for="(label, value) in scheduleStatusLabels"
+              :key="value"
+              :value="value"
+              :label="label" /></ElSelect
+        ></label>
+        <label
+          >节点要求交货日期<RecordDateFilter v-model="draftDates" label="节点要求交货日期"
+        /></label>
+        <div class="schedule-filter-selection">
+          <span>流水号</span>
+          <ElButton @click="selectionKind = 'serial'">{{
+            draftSerialSelection.length
+              ? `已选 ${draftSerialSelection.length} 个流水号`
+              : '选择流水号'
+          }}</ElButton>
+          <div v-if="draftSerialSelection.length" class="schedule-filter-values">
+            <ElTag v-for="item in draftSerialSelection" :key="item.value">{{ item.label }}</ElTag>
+          </div>
+        </div>
+        <div class="schedule-filter-selection">
+          <div class="schedule-filter-label">
+            <span>业务人员</span>
+            <ElButton v-if="canManage" link type="primary" @click="managingPeople = true"
+              >管理业务人员</ElButton
+            >
+          </div>
+          <ElButton @click="selectionKind = 'people'">{{
+            draftPersonSelection.length
+              ? `已选 ${draftPersonSelection.length} 位业务人员`
+              : '选择业务人员'
+          }}</ElButton>
+          <div v-if="draftPersonSelection.length" class="schedule-filter-values">
+            <ElTag v-for="item in draftPersonSelection" :key="item.value">{{ item.label }}</ElTag>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="schedule-filter-footer">
+          <ElButton class="schedule-filter-reset" @click="resetFilters">重置</ElButton>
+          <ElButton @click="filterOpen = false">取消</ElButton>
+          <ElButton type="primary" @click="applyFilters">应用筛选</ElButton>
+        </div>
+      </template>
+    </AppDrawer>
     <AppDialog
       :model-value="!!detailId"
       title="任务详情"
@@ -466,6 +484,9 @@ onBeforeUnmount(() => {
             ><span>{{ detail.task_no }} · 流水号 {{ detail.serial_no }}</span>
             <span>业务人员：{{ detail.business_person_name || '未指定' }}</span>
           </div>
+          <ElButton v-if="canManage" @click="routeLinkOpen = true">{{
+            detail.route_changed ? '核对工艺变更' : '关联工艺'
+          }}</ElButton>
           <ElTag :type="scheduleStatusTone(detail.status)">{{
             scheduleStatusLabels[detail.status]
           }}</ElTag
@@ -478,7 +499,7 @@ onBeforeUnmount(() => {
           <span class="task-detail__created">创建于 {{ formatDateTime(detail.created_at) }}</span>
         </div>
         <p v-if="detail.notes" class="task-detail__notes">
-          <span>任务说明</span>{{ detail.notes }}
+          <span>任务备注</span>{{ detail.notes }}
         </p>
         <div class="task-detail__route business-table" role="table" aria-label="班组交货路线">
           <div class="task-detail__route-head" role="row">
@@ -500,6 +521,9 @@ onBeforeUnmount(() => {
                 ><strong>{{ node.team_name }}</strong>
               </div>
               <small>→ {{ node.next_team_name || node.external_destination }}</small>
+              <ElTag v-if="node.route_link?.state === 'changed'" type="warning" size="small"
+                >工艺有更新</ElTag
+              >
             </div>
             <div class="task-detail__due" role="cell">
               <strong>{{ formatDateTime(node.due_at) }}</strong>
@@ -509,7 +533,6 @@ onBeforeUnmount(() => {
             </div>
             <div class="task-detail__target" role="cell">
               <strong>{{ mainTarget(node) }}</strong>
-              <span>{{ basis(node) }}</span>
               <small v-if="referenceTarget(node)">{{ referenceTarget(node) }}</small>
             </div>
             <div
@@ -532,8 +555,29 @@ onBeforeUnmount(() => {
             </div>
           </article>
         </div>
+        <ScheduleReworkPanel
+          :task="detail"
+          :manage="canManage"
+          @saved="
+            (task) => {
+              detail = task
+              void load()
+            }
+          "
+        />
       </template>
     </AppDialog>
+    <ScheduleRouteLink
+      v-if="routeLinkOpen && detail"
+      :task="detail"
+      @close="routeLinkOpen = false"
+      @saved="
+        (task) => {
+          detail = task
+          void load()
+        }
+      "
+    />
     <ScheduleTaskEditor
       v-if="editorOpen"
       :task="editingTask"
@@ -544,7 +588,7 @@ onBeforeUnmount(() => {
     <ScheduleSelectionDialog
       v-if="selectionKind"
       :kind="selectionKind"
-      :selected="selectionKind === 'serial' ? serialSelection : personSelection"
+      :selected="selectionKind === 'serial' ? draftSerialSelection : draftPersonSelection"
       @close="selectionKind = null"
       @apply="applySelection"
     />
@@ -559,39 +603,6 @@ onBeforeUnmount(() => {
   </section>
 </template>
 <style scoped>
-.task-board__scopes {
-  display: flex;
-  padding: 4px;
-  gap: 4px;
-  border: 1px solid #e6eeea;
-  border-radius: 11px;
-  background: linear-gradient(160deg, #f3f8f5, #f9fbfa);
-  box-shadow: inset 0 1px 0 #fff;
-}
-.task-board__scopes button {
-  padding: 6px 12px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  transition:
-    background var(--motion-fast),
-    box-shadow var(--motion-fast);
-}
-.task-board__scopes button[aria-pressed='true'] {
-  background: #fff;
-  color: var(--primary);
-  box-shadow:
-    0 1px 4px #244e3512,
-    inset 0 0 0 1px #dfece4;
-}
-.task-board__scopes button:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
 .task-board {
   display: flex;
   flex: 1;
@@ -604,64 +615,80 @@ onBeforeUnmount(() => {
 .task-board__toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
   gap: 8px;
   flex-shrink: 0;
 }
-.task-board__toolbar > .el-input {
-  flex: 1 1 260px;
-  width: auto;
-  min-width: 260px;
-}
 .task-board__toolbar :deep(.el-button) {
   margin-left: 0;
 }
-.task-board__view {
+.task-board__actions {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
   flex-wrap: wrap;
-  gap: 10px;
-  flex-shrink: 0;
+  gap: 8px;
+  margin-left: auto;
 }
-.task-board__view-switch {
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--glass-chrome-fill);
-  box-shadow: inset 0 1px 0 #fff;
+.task-board__filter-count {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
-.task-board__view-switch :deep(.el-radio-button__inner) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  height: 32px;
-  padding: 0 15px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
+.task-board__title {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+.schedule-filter-fields {
+  display: grid;
+  gap: 18px;
+}
+.schedule-filter-fields > label,
+.schedule-filter-selection {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
   color: var(--muted);
   font-size: 13px;
-  box-shadow: none;
-  transition:
-    color var(--motion-fast),
-    background var(--motion-fast),
-    box-shadow var(--motion-fast);
 }
-.task-board__view-switch :deep(.el-radio-button.is-active .el-radio-button__inner) {
-  color: var(--primary);
-  background: var(--glass-selected-fill);
-  box-shadow: var(--glass-selected-shadow);
-  font-weight: 550;
+.schedule-filter-fields :is(.el-select, .record-date-trigger) {
+  width: 100%;
+  min-width: 0;
 }
-.task-board__view-switch :deep(.el-radio-button:not(.is-active):hover .el-radio-button__inner) {
-  color: var(--text);
-  background: var(--glass-hover-fill);
+.schedule-filter-label,
+.schedule-filter-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-.task-board__view-note {
-  color: var(--muted);
-  font-size: var(--business-table-meta, 12px);
+.schedule-filter-label {
+  justify-content: space-between;
+}
+.schedule-filter-selection > .el-button,
+.schedule-filter-footer > .el-button {
+  margin-left: 0;
+}
+.schedule-filter-reset {
+  margin-right: auto;
+}
+.schedule-filter-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 120px;
+  overflow: auto;
+}
+.schedule-filter-values :deep(.el-tag) {
+  max-width: 100%;
+}
+.schedule-filter-values :deep(.el-tag__content) {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .task-board__footer {
   display: flex;

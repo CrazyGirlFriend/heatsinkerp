@@ -153,7 +153,9 @@ def test_historical_hold_survives_rework_and_recheck_until_manual_release(client
         f"/api/quality-feedback/{hold['id']}/decision",
         headers=headers,
         json=dict(
-            expected_version=0,
+            expected_version=client.get(
+                f"/api/quality-feedback/{hold['id']}", headers=headers
+            ).json()["feedback_version"],
             disposition="rework",
             status="closed",
             involved_team_ids=[s["other"]["id"]],

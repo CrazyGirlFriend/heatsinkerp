@@ -16,10 +16,14 @@ from .async_api import AsyncAPIRouter
 from .auth import actor_name, get_current_user
 from .database import get_db
 from .models import (
+    InspectionFeedbackTeam,
+    InspectionProblem,
     MaterialStockBalance,
     MaterialTransfer,
     ProcessRoute,
+    ProcessRouteArchive,
     ProcessRouteDrawing,
+    ProcessRoutePath,
     ProcessRoutePolicy,
     Team,
     TeamProcessingTask,
@@ -27,9 +31,10 @@ from .models import (
     User,
     utcnow,
 )
-from .process_route_drawings import MAX_DRAWINGS, drawing_preview, validate_drawing
+from .process_route_drawings import MAX_DRAWINGS, copy_drawings, drawing_preview, validate_drawing
 from .process_route_import import MAX_FILE_BYTES, parse_docx
 from .process_route_schemas import RouteDraftWrite
+from .process_route_serials import reserve_serial
 from .process_routes import (
     assert_route_importer,
     assign_engineering_employee,
@@ -41,7 +46,7 @@ from .process_routes import (
     route_document,
     route_options,
 )
-from .rework_routes import ReworkRequest, request_document
+from .rework_routes import ReworkRequest, request_document, request_documents
 from .schemas import SCRAP_MATERIAL_TYPES
 from .team_constants import WAREHOUSE_TEAM_CODE
 
@@ -178,6 +183,7 @@ async def import_word(
                 if not session.get(ProcessRoutePolicy, 1):
                     session.add(ProcessRoutePolicy(id=1, enforced_after=utcnow()))
                 session.flush()
+                reserve_serial(session, row)
                 return document(row, db=session)
 
         return await db.run_sync(save)
@@ -208,12 +214,36 @@ def list_routes(
                         ProcessRoute.engineering_employee_name,
                         ProcessRoute.modified_employee_name,
                         ProcessRoute.title,
+                        ProcessRoute.request_reason,
+                        ProcessRoute.requesting_team_name,
                     ],
                 ),
                 select(MaterialTransfer.id)
                 .where(
                     MaterialTransfer.id == ProcessRoute.rework_source_transfer_id,
-                    literal_query(query.strip(), [MaterialTransfer.batch_no]),
+                    literal_query(
+                        query.strip(), [MaterialTransfer.batch_no, MaterialTransfer.next_team_name]
+                    ),
+                )
+                .exists(),
+                select(InspectionProblem.inspection_id)
+                .where(
+                    InspectionProblem.inspection_id == ProcessRoute.rework_inspection_id,
+                    literal_query(query.strip(), [InspectionProblem.name]),
+                )
+                .exists(),
+                select(InspectionFeedbackTeam.inspection_id)
+                .join(Team, Team.id == InspectionFeedbackTeam.team_id)
+                .where(
+                    InspectionFeedbackTeam.inspection_id == ProcessRoute.rework_inspection_id,
+                    literal_query(query.strip(), [Team.name]),
+                )
+                .exists(),
+                select(ProcessRoutePath.route_id)
+                .join(Team, Team.id == ProcessRoutePath.team_id)
+                .where(
+                    ProcessRoutePath.route_id == ProcessRoute.id,
+                    literal_query(query.strip(), [Team.name]),
                 )
                 .exists(),
             )
@@ -228,12 +258,21 @@ def list_routes(
     if state:
         where.append(ProcessRoute.state == state)
     successor = aliased(ProcessRoute)
+    archived = (
+        select(ProcessRouteArchive.route_id)
+        .where(ProcessRouteArchive.route_id == ProcessRoute.id)
+        .exists()
+    )
+    superseded = (
+        select(successor.id)
+        .where(successor.parent_id == ProcessRoute.id, successor.state == "published")
+        .exists()
+    )
     where.extend(
         [
+            ~archived,
             ~((ProcessRoute.parent_id.is_not(None)) & (ProcessRoute.state == "draft")),
-            ~select(successor.id)
-            .where(successor.parent_id == ProcessRoute.id, successor.state == "published")
-            .exists(),
+            ~superseded,
         ]
     )
     effective_time = func.coalesce(ProcessRoute.updated_at, ProcessRoute.created_at)
@@ -251,38 +290,17 @@ def list_routes(
         .limit(page_size)
     )
     rows = list(rows)
-    scopes = (
-        {
-            item.id: item
-            for item in db.execute(
-                select(
-                    MaterialTransfer.id,
-                    MaterialTransfer.batch_no,
-                    MaterialTransfer.quantity,
-                    MaterialTransfer.weight,
-                ).where(
-                    MaterialTransfer.id.in_(
-                        [
-                            row.rework_source_transfer_id
-                            for row in rows
-                            if row.rework_source_transfer_id
-                        ]
-                    )
-                )
-            )
-        }
-        if any(row.rework_source_transfer_id for row in rows)
-        else {}
-    )
+    requests = request_documents(db, rows)
     items = []
     for row in rows:
         item = document(row, detail=False)
-        scope = scopes.get(row.rework_source_transfer_id)
+        scope = requests.get(row.id)
         if scope:
             item.update(
-                rework_batch_no=scope.batch_no,
-                rework_quantity=scope.quantity,
-                rework_weight=float(scope.weight),
+                rework_request=scope,
+                rework_batch_no=scope["batch_no"],
+                rework_quantity=scope["quantity"],
+                rework_weight=scope["weight"],
             )
         items.append(item)
     policy = db.get(ProcessRoutePolicy, 1)
@@ -293,6 +311,19 @@ def list_routes(
         "page_size": page_size,
         "enforced_after": policy.enforced_after.isoformat() + "Z" if policy else None,
     }
+
+
+@router.get("/rework-sources")
+def rework_sources(
+    query: str = Query("", max_length=120),
+    page: int = Query(1, ge=1),
+    lot_id: int | None = Query(None, ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from .rework_routes import source_stock
+
+    return source_stock(db, user, query, page, lot_id)
 
 
 @router.post("/rework-requests", status_code=201)
@@ -371,6 +402,7 @@ def create_draft(
         if not db.get(ProcessRoutePolicy, 1):
             db.add(ProcessRoutePolicy(id=1, enforced_after=utcnow()))
         db.flush()
+        reserve_serial(db, row)
         return document(row, db=db)
 
 
@@ -434,6 +466,8 @@ async def attach_word(
         def save(session):
             with session.begin():
                 row = editable_version(session, route_id, version, user)
+                if row.route_kind == "rework":
+                    raise HTTPException(422, "返工工艺请手工填写，不支持导入工艺单")
                 row.filename, row.source_file, row.source_data = filename, content, data
                 row.source_sha256 = hashlib.sha256(content).hexdigest()
                 row.version += 1
@@ -591,6 +625,7 @@ def save_draft(
         assign_engineering_employee(db, row, modifier_id, modifier=True)
         row.version += 1
         db.flush()
+        reserve_serial(db, row)
         return document(row, db=db)
 
 
@@ -631,6 +666,9 @@ def publish(
             ):
                 raise HTTPException(409, "工艺已由他人修改，请刷新后重试")
         publish_route(db, row)
+        from .rework_notices import notify_ready
+
+        notify_ready(db, row)
         db.flush()
         return document(row, db=db)
 
@@ -641,6 +679,8 @@ def revise(
 ):
     with db.begin():
         previous = require_route(db, route_id, True)
+        if db.get(ProcessRouteArchive, previous.id):
+            raise HTTPException(409, "该工艺已归入历史，请打开当前工艺")
         if previous.route_kind == "rework":
             from .rework_routes import require_unstarted
 
@@ -663,6 +703,7 @@ def revise(
                     "route_kind",
                     "rework_source_transfer_id",
                     "rework_of_id",
+                    "original_schedule_id",
                     "rework_inspection_id",
                     "resume_route_id",
                     "resume_step_index",
@@ -670,6 +711,9 @@ def revise(
                     "resume_team_id",
                     "rework_round",
                     "request_reason",
+                    "requesting_team_id",
+                    "requesting_team_name",
+                    "requested_by",
                 )
             },
             title=previous.title,
@@ -688,18 +732,7 @@ def revise(
         )
         db.add(row)
         db.flush()
-        for drawing in db.scalars(
-            select(ProcessRouteDrawing).where(ProcessRouteDrawing.route_id == previous.id)
-        ):
-            db.add(
-                ProcessRouteDrawing(
-                    route_id=row.id,
-                    filename=drawing.filename,
-                    sha256=drawing.sha256,
-                    size_bytes=drawing.size_bytes,
-                    content=drawing.content,
-                )
-            )
+        copy_drawings(db, previous.id, row.id)
         db.flush()
         return document(row, db=db)
 

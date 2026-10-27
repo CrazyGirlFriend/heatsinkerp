@@ -7,7 +7,7 @@ from . import material_stock as stock
 from .material_transfer_workflow import _utc, material_transfer_dict, material_transfer_list_options
 from .models import MaterialQuantityAdjustment as Adjustment
 from .models import MaterialTransfer as Transfer
-from .models import TeamEmployee, utcnow
+from .models import ProcessRoutePath, TeamEmployee, utcnow
 from .processing_registration import METRICS, SUMMARY_METRICS
 from .processing_statistics import weight_difference_table
 from .quantity_adjustments import record_dict
@@ -28,6 +28,19 @@ def registered_lots(team_id):
         .group_by(Adjustment.source_transfer_id)
         .subquery()
     )
+    completed_step = and_(
+        Transfer.process_step_complete.is_(True),
+        select(ProcessRoutePath.route_id)
+        .where(
+            ProcessRoutePath.route_id == Transfer.process_route_id,
+            ProcessRoutePath.step_index == Transfer.process_step_index,
+            ProcessRoutePath.team_id == team_id,
+            ProcessRoutePath.serial_no
+            == case((Transfer.shared_unallocated.is_(True), ""), else_=Transfer.serial_no),
+        )
+        .correlate(Transfer)
+        .exists(),
+    )
     parent = latest.alias("parent_processing")
     own = Adjustment.__table__.alias("own_processing_record")
     inherited = Adjustment.__table__.alias("inherited_processing_record")
@@ -41,6 +54,7 @@ def registered_lots(team_id):
                 (Transfer.entry_kind == "serial_reallocation", Transfer.sent_processing_status),
                 (Transfer.processing_role == "remaining", "unregistered"),
                 (Transfer.processing_role == "produced", "complete"),
+                (completed_step, "complete"),
                 else_=inherited.c.processing_status,
             ).label("processing_status"),
             case(
@@ -68,6 +82,7 @@ def registered_lots(team_id):
                 Transfer.rework_pending.is_(True),
                 latest.c.latest_id.is_not(None),
                 parent.c.latest_id.is_not(None),
+                completed_step,
                 and_(
                     Transfer.entry_kind == "serial_reallocation",
                     Transfer.sent_processing_status == "complete",

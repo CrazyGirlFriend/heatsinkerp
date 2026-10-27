@@ -33,6 +33,7 @@ import {
 import { externalDestinationOptions } from '@/types/materialTransfer'
 import { materialRequestKey } from '@/utils/materialStock'
 import { scheduleAmountErrors } from '@/utils/schedulePlan'
+import { formatDateTime } from '@/utils/format'
 
 const props = defineProps<{
   task?: ScheduleTask | null
@@ -76,20 +77,31 @@ function routeNodes() {
   const nodes: NodeDraft[] = []
   props.processRoute?.steps.forEach((step, index) => {
     if (step.serial_nos.length && !step.serial_nos.includes(props.routeSerial || '')) return
+    const planned = Number(step.planned_quantity)
+    const quantity =
+      Number.isSafeInteger(planned) && planned > 0 && planned <= 2147483647 ? planned : undefined
     const last = nodes.at(-1)
     if (last?.team === step.team_id) {
+      last.quantity = quantity
       last.routeIndex = index
       last.notes += `；${step.sequence_no} · ${step.name}`
       return
     }
     const node = newNode(step.team_id || undefined)
+    node.quantity = quantity
     node.routeIndex = index
     node.notes = `${step.sequence_no} · ${step.name}（工艺参考 ${step.planned_days || '—'} 天）`
     nodes.push(node)
   })
   return nodes
 }
+const finalDue = props.task?.final_due_at ? formatDateTime(props.task.final_due_at) : ''
+const importedDelivery = String(
+  props.processRoute?.source_data.receipt_fields?.delivery_date?.value || '',
+)
 const form = reactive({
+  finalDate: finalDue.slice(0, 10) || importedDelivery,
+  finalHour: finalDue.slice(11, 13),
   title: props.task?.title || props.processRoute?.title || '',
   serial: props.task?.serial_no || props.routeSerial || '',
   notes: props.task?.notes || '',
@@ -142,6 +154,8 @@ function removeNode(index: number) {
 const { formRef, fieldErrors, validate } = useDialogValidation(() => {
   const issues: Record<string, string> = {}
   if (!form.title.trim()) issues.title = '请填写任务名称'
+  if ((form.finalDate || form.finalHour) && (!form.finalDate || !form.finalHour))
+    issues.finalDue = '请选择最终交货日期和小时'
   if (props.task) return issues
   if (!form.serial.trim()) issues.serial = '请填写流水号'
   form.nodes.forEach((node, index) => {
@@ -181,6 +195,9 @@ async function save() {
           title: form.title.trim(),
           notes: form.notes.trim() || null,
           business_person_id: form.businessPerson,
+          ...(form.finalDate && form.finalHour
+            ? { final_due_at: `${form.finalDate}T${form.finalHour}:00:00+08:00` }
+            : {}),
         }),
       )
     } else {
@@ -189,6 +206,9 @@ async function save() {
         serial_no: form.serial.trim(),
         notes: form.notes.trim() || null,
         business_person_id: form.businessPerson,
+        ...(form.finalDate && form.finalHour
+          ? { final_due_at: `${form.finalDate}T${form.finalHour}:00:00+08:00` }
+          : {}),
         nodes: form.nodes.map((node, index) => ({
           process_route_id: props.processRoute?.id || null,
           process_step_index: node.routeIndex ?? null,
@@ -270,14 +290,29 @@ async function save() {
           ><ElInput
             v-model="form.title"
             maxlength="120"
-            placeholder="如：首批 100 件交货"
+            placeholder="填写任务名称"
             aria-label="任务名称"
         /></ElFormItem>
       </div>
+      <ElFormItem label="最终交期" :error="fieldErrors.finalDue" class="task-final-due">
+        <ElDatePicker
+          v-model="form.finalDate"
+          type="date"
+          value-format="YYYY-MM-DD"
+          placeholder="交货日期"
+          aria-label="最终交货日期"
+        />
+        <ElSelect v-model="form.finalHour" placeholder="小时" aria-label="最终交货小时"
+          ><ElOption
+            v-for="hour in 24"
+            :key="hour"
+            :value="String(hour - 1).padStart(2, '0')"
+            :label="`${String(hour - 1).padStart(2, '0')}:00`"
+        /></ElSelect>
+      </ElFormItem>
       <template v-if="!task">
         <div class="task-form__route-heading">
-          <strong>班组交货路线</strong
-          ><span>按实际流转顺序排列；每站独立填写交出目标，北京时间精确到小时。</span>
+          <strong>班组交货路线</strong>
         </div>
         <article v-for="(node, index) in form.nodes" :key="node.key" class="route-node">
           <header class="route-node__heading">
@@ -398,8 +433,8 @@ async function save() {
                 placeholder="kg"
                 :aria-label="`第${index + 1}站重量`"
             /></ElFormItem>
-            <ElFormItem class="route-node__basis" label="完成依据" required
-              ><ElSelect v-model="node.basis" :aria-label="`第${index + 1}站完成依据`"
+            <ElFormItem class="route-node__basis" label="计量方式" required
+              ><ElSelect v-model="node.basis" :aria-label="`第${index + 1}站计量方式`"
                 ><ElOption
                   v-for="(label, value) in completionBasisLabels"
                   :key="value"
@@ -409,14 +444,8 @@ async function save() {
           </div>
           <details class="route-node__extra" :open="!!fieldErrors[`${node.key}.sources`]">
             <summary>
-              关联批次与节点说明
-              <span>{{
-                node.sources.length
-                  ? `${node.sources.length} 个批次`
-                  : index
-                    ? '自动承接上序实际来料'
-                    : '可先排期，后来料'
-              }}</span>
+              批次与备注
+              <span v-if="node.sources.length">{{ node.sources.length }} 个批次</span>
             </summary>
             <ScheduleSourceAllocation
               v-model="node.sources"
@@ -427,7 +456,7 @@ async function save() {
               :disabled="saving"
               :error="fieldErrors[`${node.key}.sources`]"
             />
-            <ElFormItem label="节点说明"
+            <ElFormItem label="班组备注"
               ><ElInput v-model="node.notes" maxlength="2000" placeholder="选填"
             /></ElFormItem>
           </details>
@@ -440,7 +469,7 @@ async function save() {
           >添加下一班组</ElButton
         >
       </template>
-      <ElFormItem label="任务说明" class="task-form__notes"
+      <ElFormItem label="任务备注" class="task-form__notes"
         ><ElInput
           v-model="form.notes"
           type="textarea"
@@ -453,7 +482,7 @@ async function save() {
     <template #footer
       ><ElButton :disabled="saving" @click="visible = false">取消</ElButton
       ><ElButton type="primary" :loading="saving" :disabled="!writable" @click="save">{{
-        task ? '保存任务信息' : '保存整条排期'
+        task ? '保存任务信息' : '保存排期'
       }}</ElButton></template
     >
   </AppDialog>
@@ -470,6 +499,14 @@ async function save() {
   />
 </template>
 <style scoped>
+.task-final-due :deep(.el-form-item__content) {
+  display: flex;
+  gap: 8px;
+}
+.task-final-due .el-select {
+  width: 110px;
+}
+
 .task-form {
   padding-top: 12px;
 }
@@ -488,7 +525,6 @@ async function save() {
   align-items: baseline;
   margin: 6px 0 12px;
 }
-.task-form__route-heading span,
 .route-node__destination,
 .route-node__extra summary span {
   color: var(--muted);

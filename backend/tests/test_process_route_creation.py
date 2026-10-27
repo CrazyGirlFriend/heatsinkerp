@@ -1,6 +1,7 @@
 """Manual engineering, optional original import, and version-owned drawing restrictions."""
 
 from io import BytesIO
+from uuid import uuid4
 
 import pytest
 from app.database import SessionLocal
@@ -30,6 +31,7 @@ def pdf(number=0, *, password=False, script=False):
 def manual(client, warehouse, engineering):
     original = route_payload(client, warehouse)
     body = {key: value for key, value in original.items() if key != "id"}
+    body["serial_nos"] = ["MANUAL-" + uuid4().hex]
     body["engineering_employee_id"] = engineering["people"][0]["id"]
     response = client.post(URL, json=body, headers=engineering["headers"])
     assert response.status_code == 201, response.text
@@ -188,7 +190,8 @@ def test_drawing_count_limit_and_cross_route_access(client, warehouse, engineeri
         URL,
         headers=engineering["headers"],
         json={
-            key: route[key] for key in ("title", "version", "serial_nos", "steps", "review_note")
+            **{key: route[key] for key in ("title", "version", "steps", "review_note")},
+            "serial_nos": ["FOREIGN-" + uuid4().hex],
         },
     ).json()
     drawing = route["drawings"][0]

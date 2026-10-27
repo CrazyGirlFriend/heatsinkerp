@@ -25,7 +25,9 @@ from .models import (
     MaterialTransfer,
     NotificationOutbox,
     OpeningStockSubmission,
+    ProcessRoute,
     ProductionSchedule,
+    ReworkNotice,
     SerialDeliveryPlan,
     SerialUrgency,
     Team,
@@ -166,6 +168,8 @@ class InventoryEvents:
 inventory_events = InventoryEvents()
 outbox_wakeups = InventoryEvents()
 WATCHED = (
+    ReworkNotice,
+    ProcessRoute,
     ProductionSchedule,
     MaterialTransfer,
     MaterialLoss,

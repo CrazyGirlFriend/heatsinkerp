@@ -91,6 +91,13 @@ class ScheduleCreate(ScheduleNode):
 
 
 class ScheduleTaskCreate(BaseModel):
+    final_due_at: datetime | None = None
+
+    @field_validator("final_due_at")
+    @classmethod
+    def final_hour(cls, value):
+        return ScheduleNode.hour(value) if value is not None else None
+
     model_config = ConfigDict(extra="forbid")
     idempotency_key: str = Field(min_length=1, max_length=100)
     title: str = Field(min_length=1, max_length=160)
@@ -124,7 +131,24 @@ class ScheduleUpdate(ScheduleCreate):
     expected_version: int = Field(ge=1)
 
 
+class ScheduleCommitmentUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1)
+    due_at: datetime
+    target_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647)
+    target_weight: Decimal | None = Field(default=None, gt=0, max_digits=17, decimal_places=6)
+    completion_basis: Literal["quantity", "weight", "both"]
+    notes: str | None = Field(default=None, max_length=2000)
+
+
 class ScheduleTaskUpdate(BaseModel):
+    final_due_at: datetime | None = None
+
+    @field_validator("final_due_at")
+    @classmethod
+    def final_hour(cls, value):
+        return ScheduleNode.hour(value) if value is not None else None
+
     model_config = ConfigDict(extra="forbid")
     expected_version: int = Field(ge=1)
     title: str = Field(min_length=1, max_length=160)

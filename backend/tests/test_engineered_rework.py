@@ -1,5 +1,6 @@
 """Rework requires engineering instructions and preserves normal physical inventory."""
 
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.database import SessionLocal
@@ -13,20 +14,97 @@ from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 URL = "/api/process-routes"
 
 
+def approved_quality_issue(client, setup, lot, context):
+    from app.material_lineage import relatives
+    from app.models import InspectionProblemType, MaterialInspection, Team, TeamEmployee
+    from sqlalchemy import select
+    from test_material_transfers import _leader, _team
+
+    with SessionLocal() as db:
+        qc = db.scalar(select(Team).where(Team.code == "FACTORY-QC"))
+        qc_id = qc.id if qc else None
+    if qc_id is None:
+        qc_id = _team(client, "FACTORY-QC", "检验")["id"]
+    if "rework_qc_headers" not in setup:
+        _, setup["rework_qc_headers"] = _leader(client, "rework-qc-leader", qc_id)
+    headers = setup["rework_qc_headers"]
+    with SessionLocal.begin() as db:
+        person = db.scalar(select(TeamEmployee).where(TeamEmployee.team_id == qc_id))
+        if person is None:
+            person = TeamEmployee(team_id=qc_id, name="返工检验员", active=True)
+            db.add(person)
+        problem = db.scalar(
+            select(InspectionProblemType).where(InspectionProblemType.team_id == qc_id)
+        )
+        if problem is None:
+            problem = InspectionProblemType(team_id=qc_id, name="返工检查问题", active=True)
+            db.add(problem)
+        db.flush()
+        person_id, problem_id = person.id, problem.id
+        ancestors = relatives([lot["id"]], ancestors=True, name="test_quality_rework_ancestors")
+        issue = db.scalar(
+            select(MaterialInspection)
+            .where(
+                MaterialInspection.source_transfer_id.in_(select(ancestors.c.id)),
+                MaterialInspection.parent_id.is_(None),
+                MaterialInspection.failed_quantity > 0,
+            )
+            .order_by(MaterialInspection.id.desc())
+        )
+        issue_id = issue.id if issue else None
+    if issue_id is None:
+        result = client.post(
+            "/api/inspections",
+            headers=headers,
+            json=dict(
+                source_transfer_id=lot["id"],
+                expected_revision=context["revision"],
+                inspector_employee_id=person_id,
+                checked_at=datetime.now(timezone.utc).isoformat(),
+                sample_quantity=1,
+                failed_quantity=1,
+                methods=["visual"],
+                items=["appearance"],
+                involved_team_ids=[setup["other"]["id"]],
+                problem_type_ids=[problem_id],
+                idempotency_key=uuid4().hex,
+            ),
+        )
+        assert result.status_code == 201, result.text
+        issue_id = result.json()["id"]
+    issue = client.get(f"/api/quality-feedback/{issue_id}", headers=headers).json()
+    result = client.post(
+        f"/api/quality-feedback/{issue_id}/decision",
+        headers=headers,
+        json=dict(
+            expected_version=issue["feedback_version"],
+            disposition="rework",
+            status="processing",
+            involved_team_ids=[setup["other"]["id"]],
+            notes="确认需要返工，由工艺制定要求",
+            idempotency_key=uuid4().hex,
+        ),
+    )
+    assert result.status_code == 200, result.text
+    return issue_id, headers
+
+
 def request_plan(client, s, lot, original, quantity=None, weight=None):
     ctx = client.get(base(s, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
+    issue_id, headers = approved_quality_issue(client, s, lot, ctx)
     body = dict(
         source_transfer_id=lot["id"],
         rework_of_id=original["id"],
+        inspection_id=issue_id,
         expected_revision=ctx["revision"],
         quantity=quantity or ctx["quantity"],
         weight=weight or ctx["weight"],
         reason="尺寸偏差，重新精磨",
         idempotency_key=uuid4().hex,
     )
-    response = client.post(URL + "/rework-requests", json=body, headers=s["other_headers"])
+    response = client.post(URL + "/rework-requests", json=body, headers=headers)
     assert response.status_code == 201, response.text
-    retry = client.post(URL + "/rework-requests", json=body, headers=s["other_headers"])
+    retry = client.post(URL + "/rework-requests", json=body, headers=headers)
     assert retry.status_code == 201 and retry.json()["id"] == response.json()["id"]
     return response.json()
 
@@ -236,9 +314,11 @@ def test_rework_request_permissions_stale_stock_and_foreign_history(client, ware
     original = work(client, s, lot, employee).json()
     current = original["outputs"][0]
     context = client.get(base(s, True) + f"/stock/{current['id']}/quantity-adjustments").json()
+    issue_id, headers = approved_quality_issue(client, s, current, context)
     body = dict(
         source_transfer_id=current["id"],
         rework_of_id=original["id"],
+        inspection_id=issue_id,
         expected_revision=context["revision"],
         quantity=10,
         weight=100,
@@ -249,12 +329,10 @@ def test_rework_request_permissions_stale_stock_and_foreign_history(client, ware
     for change, status in (
         ({"rework_of_id": 999999}, 422),
         ({"expected_revision": 999}, 409),
-        ({"inspection_id": 999999}, 422),
+        ({"inspection_id": 999999}, 404),
         ({"quantity": 5}, 422),
     ):
-        result = client.post(
-            URL + "/rework-requests", json={**body, **change}, headers=s["other_headers"]
-        )
+        result = client.post(URL + "/rework-requests", json={**body, **change}, headers=headers)
         assert result.status_code == status, result.text
     before = client.get(base(s, True) + "/overview").json()["totals"]
     plan = request_plan(client, s, current, original)
@@ -336,3 +414,55 @@ def test_rework_instruction_can_be_revised_only_before_any_execution(client, war
         == "返工精磨至2.50±0.01mm"
     )
     assert client.post(URL + f"/{revision['id']}/revise").status_code == 409
+
+
+def test_rework_inherits_bound_drawing_version_allows_pdf_upload_but_not_word(client, warehouse):
+    from hashlib import sha256
+
+    from app.models import ProcessRouteDrawing
+    from test_process_route_creation import pdf
+    from test_process_route_import import HEADERS, docx
+    from test_processing_route_methods import routed_lot
+
+    s = warehouse
+    lot, employee, normal = routed_lot(client, s, second=False)
+    original_pdf = pdf()
+    with SessionLocal() as db:
+        drawing = ProcessRouteDrawing(
+            route_id=normal["id"],
+            filename="原图纸.pdf",
+            content=original_pdf,
+            sha256=sha256(original_pdf).hexdigest(),
+            size_bytes=len(original_pdf),
+        )
+        db.add(drawing)
+        db.commit()
+        original_id = drawing.id
+    original = work(client, s, lot, employee).json()
+    route = request_plan(client, s, original["outputs"][0], original)
+    assert route["filename"] == "" and route["source_data"] == {"tables": [], "issues": []}
+    copied = route["drawings"][0]
+    assert copied["id"] != original_id and copied["filename"] == "原图纸.pdf"
+    assert client.get(f"{URL}/{route['id']}/drawings/{copied['id']}").content == original_pdf
+    word = docx([["流水号", "WAREHOUSE-001"], HEADERS, [1, "返工", "手工要求", 1, 10]])
+    rejected = client.post(
+        f"{URL}/{route['id']}/source",
+        data={"version": route["version"]},
+        files={"file": ("返工.docx", word)},
+    )
+    assert rejected.status_code == 422 and "手工填写" in rejected.text
+    uploaded = client.post(
+        f"{URL}/{route['id']}/drawings",
+        data={"version": route["version"]},
+        files={"file": ("补充图纸.pdf", pdf(2))},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    route = uploaded.json()
+    assert len(route["drawings"]) == 2
+    saved = save_plan(client, s, route)
+    revision = client.post(f"{URL}/{saved['id']}/revise").json()
+    assert len(revision["drawings"]) == 2
+    assert {drawing["id"] for drawing in revision["drawings"]}.isdisjoint(
+        drawing["id"] for drawing in saved["drawings"]
+    )
+    assert client.get(f"{URL}/{normal['id']}/drawings/{original_id}").content == original_pdf

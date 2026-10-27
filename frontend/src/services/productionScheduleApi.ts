@@ -1,6 +1,9 @@
 import { httpRequest, HttpRequestError, type HttpRequestOptions } from './httpClient'
 import type { MaterialPage } from '@/types/teamMaterials'
 import type {
+  ScheduleReworkOption,
+  ScheduleRouteOption,
+  ScheduleRouteLink,
   ProductionSchedule,
   InventorySchedules,
   ScheduleFilters,
@@ -52,6 +55,21 @@ async function request<T>(path: string, options?: HttpRequestOptions): Promise<T
   }
 }
 export const productionScheduleApi = {
+  reworkOptions: (id: number) =>
+    request<ScheduleReworkOption[]>(`/production-schedules/tasks/${id}/rework-options`),
+  linkRework: (
+    id: number,
+    body: {
+      expected_version: number
+      route_id: number
+      route_version: number
+      schedule_id: number
+    },
+  ) => request<ScheduleTask>(`/production-schedules/tasks/${id}/rework`, { method: 'POST', body }),
+  routeOptions: (id: number) =>
+    request<ScheduleRouteOption[]>(`/production-schedules/tasks/${id}/route-options`),
+  linkRoute: (id: number, body: ScheduleRouteLink) =>
+    request<ScheduleTask>(`/production-schedules/tasks/${id}/route`, { method: 'POST', body }),
   people: (params: { query?: string; page?: number; page_size?: number } = {}) =>
     request<MaterialPage<BusinessPerson>>(
       `/production-schedules/business-people?${queryString(params)}`,
@@ -75,6 +93,7 @@ export const productionScheduleApi = {
     body: {
       expected_version: number
       title: string
+      final_due_at?: string | null
       notes: string | null
       business_person_id?: number | null
     },
@@ -97,6 +116,17 @@ export const productionScheduleApi = {
     request<ProductionSchedule>('/production-schedules', { method: 'POST', body }),
   update: (id: number, body: ScheduleWrite & { expected_version: number }) =>
     request<ProductionSchedule>(`/production-schedules/${id}`, { method: 'PATCH', body }),
+  updateCommitment: (
+    id: number,
+    body: Pick<
+      ScheduleWrite,
+      'due_at' | 'target_quantity' | 'target_weight' | 'completion_basis' | 'notes'
+    > & { expected_version: number },
+  ) =>
+    request<ProductionSchedule>(`/production-schedules/${id}/commitment`, {
+      method: 'PATCH',
+      body,
+    }),
   cancel: (id: number, body: { expected_version: number; reason?: string }) =>
     request<ProductionSchedule>(`/production-schedules/${id}/cancel`, { method: 'POST', body }),
   sources: (params: {

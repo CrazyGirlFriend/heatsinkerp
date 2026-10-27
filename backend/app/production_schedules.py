@@ -234,6 +234,26 @@ def summaries(db, ids, *, now=None):
                 "weight": float(source.weight) if source.weight is not None else None,
             }
         )
+    from .models import MaterialQuantityAdjustment as Work
+
+    processed = dict(
+        db.execute(
+            select(Work.production_schedule_id, func.sum(Work.completed_quantity))
+            .join(Plan, Plan.id == Work.production_schedule_id)
+            .where(
+                Plan.id.in_(ids),
+                Work.work_kind == "initial",
+                or_(
+                    Plan.process_route_id.is_(None),
+                    and_(
+                        Work.process_route_id == Plan.process_route_id,
+                        Work.process_step_index == Plan.process_step_index,
+                    ),
+                ),
+            )
+            .group_by(Work.production_schedule_id)
+        ).all()
+    )
     linked = linked_batches(db, ids)
     availability = execution_availability(db, ids)
     result = {}
@@ -260,6 +280,7 @@ def summaries(db, ids, *, now=None):
             "updated_at": iso(plan.updated_at),
             "completed_at": iso(values["completed_at"]),
             "status": values["schedule_status"],
+            "processed_quantity": processed.get(plan.id) or 0,
             "dispatched_quantity": sent_q,
             "dispatched_weight": float(sent_w),
             "received_quantity": values["received_quantity"] or 0,
@@ -761,6 +782,38 @@ def validate_plan(db, payload, plan=None):
             raise HTTPException(422, "废料、废渣、废屑、废泥不纳入交货排期")
 
 
+def update_commitment(db, plan_id, payload, user):
+    from pydantic import ValidationError
+
+    from .production_schedule_schemas import ScheduleUpdate
+
+    with db.begin():
+        plan = require_plan(db, plan_id)
+        if user.role != "ADMIN" and not (
+            user.role == "TEAM"
+            and user.team_id == plan.team_id
+            and user.team
+            and user.team.active
+            and user.team.kind != "engineering"
+        ):
+            raise HTTPException(403, "仅本班组账号或管理员可以调整交期和数量")
+        data = {field: getattr(plan, field) for field in FIELDS}
+        data.update(payload.model_dump())
+        data["sources"] = [
+            {
+                "source_transfer_id": item.source_transfer_id,
+                "quantity": item.quantity,
+                "weight": item.weight,
+            }
+            for item in db.scalars(select(Source).where(Source.schedule_id == plan.id))
+        ]
+        try:
+            update = ScheduleUpdate.model_validate(data)
+        except ValidationError as exc:
+            raise HTTPException(422, str(exc.errors()[0]["msg"])) from None
+    return save_plan(db, update, user, plan_id)
+
+
 def save_plan(db, payload, user, plan_id=None):
     from .material_stock import fingerprint
 
@@ -982,6 +1035,29 @@ def candidates(db, team_id, lot_ids, next_team_id=None, external_destination=Non
         external_destination=external_destination,
         match_destination=True,
     )
+    # Processing has already chosen the commitment. Offer that one on dispatch,
+    # including over-delivery of an already completed commitment, never another batch.
+    lots = list(
+        db.scalars(
+            select(Transfer)
+            .options(lazyload("*"))
+            .where(Transfer.id.in_(lot_ids), Transfer.next_team_id == team_id)
+        )
+    )
+    for lot in lots:
+        bound = db.get(Plan, lot.processing_schedule_id) if lot.processing_schedule_id else None
+        if bound and bound.process_route_id == lot.process_route_id and bound.team_id == team_id:
+            pairs = [(source, plan_id) for source, plan_id in pairs if source != lot.id]
+            if (
+                bound.cancelled_at is None
+                and bound.next_team_id == next_team_id
+                and bound.external_destination == external_destination
+                and (
+                    bound.process_step_index is None
+                    or bound.process_step_index == lot.process_step_index
+                )
+            ):
+                pairs.append((lot.id, bound.id))
     values = summaries(db, {plan_id for _, plan_id in pairs})
     return {
         "items": [
@@ -1074,6 +1150,25 @@ def associate_dispatch(db, team_id, payload, transfers):
             quantity, weight = totals.get(plan_id, (0, 0))
             totals[plan_id] = (quantity + delivered.quantity, weight + delivered.weight)
     for line, transfer in zip(payload.lines, transfers, strict=True):
+        source = db.get(Transfer, transfer.source_transfer_id)
+        inherited_plan = source.processing_schedule_id if source else None
+        bound = locked.get(inherited_plan)
+        if inherited_plan and (
+            not bound
+            or bound.process_route_id != transfer.process_route_id
+            or (
+                bound.process_step_index is not None
+                and bound.process_step_index != transfer.sent_process_step_index
+            )
+        ):
+            inherited_plan = None
+        if (
+            inherited_plan
+            and line.production_schedule_id
+            and inherited_plan != line.production_schedule_id
+        ):
+            raise HTTPException(422, "本批加工已关联交货排期，转出时不能改为其他排期")
+        selected_plan = inherited_plan or line.production_schedule_id
         if transfer.material_type in EXCLUDED_MATERIAL_TYPES:
             if line.production_schedule_id:
                 raise HTTPException(422, "废料不能抵扣正常交货排期")
@@ -1096,7 +1191,7 @@ def associate_dispatch(db, team_id, payload, transfers):
                         and plan.process_step_index == transfer.sent_process_step_index
                     )
                 )
-                and not complete
+                and (not complete or plan_id == inherited_plan)
                 and plan.serial_no == transfer.serial_no
                 and not transfer.shared_unallocated
                 and plan.next_team_id == payload.next_team_id
@@ -1107,10 +1202,10 @@ def associate_dispatch(db, team_id, payload, transfers):
                 )
             ):
                 choices.add(plan_id)
-        if line.production_schedule_id:
-            if line.production_schedule_id not in choices:
+        if selected_plan:
+            if selected_plan not in choices:
                 raise HTTPException(422, "所选排期不属于本批物料、班组或交货去向，请刷新排期")
-            selected = line.production_schedule_id
+            selected = selected_plan
         elif len(choices) > 1:
             raise HTTPException(
                 422, "本批物料有多项交货排期，请明确本次对应的排期；分属不同排期请拆分明细"

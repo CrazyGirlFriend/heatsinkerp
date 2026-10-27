@@ -1,3 +1,4 @@
+import type { ProcessRouteStep } from './processRoute'
 export const scheduleStatusLabels = {
   pending: '待交货',
   today: '今日到期',
@@ -61,6 +62,7 @@ export type ScheduleAuditSnapshot = Partial<ScheduleWrite> & {
   task_version?: number
 }
 export interface ProductionSchedule extends ScheduleWrite {
+  route_link?: { state: 'unlinked' | 'linked' | 'changed'; latest_route_id: number | null }
   id: number
   task_id?: number
   task_no?: string
@@ -85,6 +87,7 @@ export interface ProductionSchedule extends ScheduleWrite {
   cancelled_at: string | null
   created_at: string
   updated_at: string
+  processed_quantity?: number
   dispatched_quantity: number
   dispatched_weight: number
   received_quantity: number
@@ -176,6 +179,17 @@ export type ScheduleSummary = Pick<
   | 'predecessor_id'
 >
 export interface ScheduleTask {
+  reworks?: {
+    route_id: number
+    route_version: number
+    schedule_id: number
+    batch_no: string
+    problem: string
+    quantity: number
+    completed_quantity: number
+    state: 'awaiting_route' | 'processing' | 'processed'
+  }[]
+  route_changed?: boolean
   id: number
   task_no: string
   title: string
@@ -202,6 +216,7 @@ export interface ScheduleTask {
   }[]
 }
 export interface ScheduleTaskWrite {
+  final_due_at?: string | null
   idempotency_key: string
   title: string
   serial_no: string
@@ -233,4 +248,26 @@ export interface InventoryScheduleSummary {
 export interface InventorySchedules {
   groups: (InventoryScheduleSummary & { group_id: number })[]
   sources: (InventoryScheduleSummary & { source_transfer_id: number })[]
+}
+
+export interface ScheduleRouteOption {
+  id: number
+  title: string
+  version: number
+  published_at: string
+  steps: ProcessRouteStep[]
+}
+export interface ScheduleRouteLink {
+  expected_version: number
+  route_id: number
+  route_version: number
+  mappings: { schedule_id: number; expected_version: number; step_index: number }[]
+}
+
+export interface ScheduleReworkOption {
+  route_id: number
+  route_version: number
+  problem: string
+  batch_no: string
+  plans: { id: number; team_name: string; due_at: string }[]
 }

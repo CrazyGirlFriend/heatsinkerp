@@ -334,8 +334,8 @@
   --el-table-row-hover-bg-color: var(--table-hover-bg);
   flex: 1;
   min-height: 0;
-  border: 1px solid var(--line);
-  border-radius: 16px;
+  border: 1px solid #d8dfdc;
+  border-radius: 8px;
   background: #fff;
 }
 .team-workspace.team-workspace--reading

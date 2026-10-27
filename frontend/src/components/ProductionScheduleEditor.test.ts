@@ -7,9 +7,15 @@ import MaterialInput from './MaterialInput.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ProductionSchedule } from '@/types/productionSchedule'
 
+const auth = vi.hoisted(() => ({
+  isAdmin: true,
+  isTeamAccount: false,
+  currentUserError: '',
+  currentUser: { active: true, team_id: 2 },
+}))
 vi.mock('@/stores/auth', async (original) => ({
   ...(await original<object>()),
-  useAuthStore: () => ({ isAdmin: true, currentUserError: '', currentUser: { active: true } }),
+  useAuthStore: () => auth,
 }))
 vi.mock('@/stores/teamDirectory', () => ({
   useTeamDirectoryStore: () => ({
@@ -53,6 +59,8 @@ const record = (): ProductionSchedule => ({
 })
 let wrapper: VueWrapper
 beforeEach(() => {
+  auth.isAdmin = true
+  auth.isTeamAccount = false
   vi.spyOn(productionScheduleApi, 'create').mockResolvedValue(record())
   vi.spyOn(productionScheduleApi, 'update').mockResolvedValue(record())
   vi.spyOn(productionScheduleApi, 'sources').mockResolvedValue({
@@ -91,6 +99,23 @@ async function save() {
   await flushPromises()
 }
 describe('schedule plan editing', () => {
+  it('lets a team change only its commitment through the restricted endpoint', async () => {
+    auth.isAdmin = false
+    auth.isTeamAccount = true
+    vi.spyOn(productionScheduleApi, 'updateCommitment').mockResolvedValue(record())
+    await render({ schedule: record() })
+    expect(wrapper.find('.schedule-sources').exists()).toBe(false)
+    await save()
+    expect(productionScheduleApi.update).not.toHaveBeenCalled()
+    expect(productionScheduleApi.updateCommitment).toHaveBeenCalledWith(5, {
+      expected_version: 7,
+      due_at: '2026-10-22T16:00:00+08:00',
+      target_quantity: 100,
+      target_weight: 10,
+      completion_basis: 'quantity',
+      notes: null,
+    })
+  })
   it('marks missing required fields and prevents sending an incomplete plan', async () => {
     await render()
     await save()

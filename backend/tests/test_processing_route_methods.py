@@ -11,6 +11,7 @@ from app.database import SessionLocal
 from app.models import MaterialQuantityAdjustment, MaterialTransfer
 from engineered_rework_helpers import approve_rework, resume_rework
 from sqlalchemy import create_engine, text
+from test_engineered_rework import approved_quality_issue
 from test_process_route_intake import publish_payload, route_payload
 from test_processing_daily import work
 from test_warehouse_classification import base, confirm, dispatch
@@ -146,6 +147,10 @@ def test_partial_later_step_does_not_make_its_remaining_eligible_for_same_task_r
     s = warehouse
     lot, worker, _ = routed_lot(client, s)
     first = processed(client, s, lot, worker)
+    # QC identifies the earlier operation's issue before further partial processing.
+    first_lot = first["outputs"][0]
+    context = client.get(base(s, True) + f"/stock/{first_lot['id']}/quantity-adjustments").json()
+    approved_quality_issue(client, s, first_lot, context)
     second = processed(
         client, s, first["outputs"][0], worker, completed_quantity=4, completed_weight=40
     )

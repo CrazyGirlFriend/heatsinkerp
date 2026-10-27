@@ -8,6 +8,7 @@ import TeamBusinessDialog from './TeamBusinessDialog.vue'
 
 const props = defineProps<{
   teamId: number
+  hideRouteInstructions?: boolean
   context: QuantityAdjustmentContext
   taskId?: number | null
   purposeId?: number | null
@@ -170,7 +171,7 @@ onBeforeUnmount(() => ++generation)
     </ElSelect>
   </ElFormItem>
   <section
-    v-if="routeStep || rework"
+    v-if="(routeStep || rework) && !hideRouteInstructions"
     class="processing-route-instructions"
     :class="{ 'processing-route-instructions--invalid': rework && submitted && !validReworkRecord }"
     aria-label="本道加工工艺"

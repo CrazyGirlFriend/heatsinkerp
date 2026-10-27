@@ -275,14 +275,16 @@ describe('delivery schedule workbench', () => {
       expect.objectContaining({ serial_no: undefined, query: '823766' }),
     )
   })
-  it('keeps team schedules read-only and distinguishes actual dispatch, receipt and void status', async () => {
+  it('lets the owning team adjust commitments without cancelling or changing the route', async () => {
     await render(false, true)
     expect(productionScheduleApi.list).toHaveBeenCalledWith(expect.objectContaining({ team_id: 2 }))
-    expect(wrapper.text()).toContain('最初要求交货时间：2026-10-22 15:00')
+    expect(wrapper.text()).toContain('原交货时间：2026-10-22 15:00')
     expect(wrapper.text()).toContain('已作废')
     expect(wrapper.text()).toContain('下序签收件数')
     expect(wrapper.text()).toContain('已转出件数')
-    expect(button('调整排期')).toBeUndefined()
+    expect(button('调整排期')).toBeDefined()
+    expect(button('取消排期')).toBeUndefined()
+    expect(button('添加下序节点')).toBeUndefined()
     expect(button('新建排期')).toBeUndefined()
     expect(wrapper.findComponent(ProductionScheduleEditor).exists()).toBe(false)
   })

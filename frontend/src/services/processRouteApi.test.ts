@@ -1,9 +1,22 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest'
-import { processRouteApi } from './processRouteApi'
+import { processRouteApi, ProcessRouteSerialConflictError } from './processRouteApi'
 import * as http from './httpClient'
 import { routeFixture } from '@/testFixtures/processRoute'
 afterEach(() => vi.restoreAllMocks())
+it('identifies a duplicate normal serial so the form can highlight that field', async () => {
+  const failure = new http.HttpRequestError('Conflict', 409, {
+    detail: { code: 'duplicate_process_route_serial', message: '流水号“S-001”已有正常工艺' },
+  })
+  vi.spyOn(http, 'httpRequest').mockRejectedValue(failure)
+  await expect(processRouteApi.save(routeFixture)).rejects.toBeInstanceOf(
+    ProcessRouteSerialConflictError,
+  )
+  await expect(processRouteApi.save(routeFixture)).rejects.toMatchObject({
+    message: '流水号“S-001”已有正常工艺',
+    cause: failure,
+  })
+})
 it('loads both types for the engineering list while keeping warehouse choices normal-only by default', async () => {
   const request = vi.spyOn(http, 'httpRequest').mockResolvedValue({ items: [], total: 0 })
   await processRouteApi.list('', 1, undefined, 'desc', 20, 'all')

@@ -20,6 +20,8 @@ from .models import (
 )
 from .models import (
     InspectionProblem,
+    MaterialQuantityAdjustment,
+    MaterialStockBalance,
     MaterialTransfer,
     MaterialTransferEvent,
     Team,
@@ -78,6 +80,104 @@ def issue(db, issue_id, user, *, lock=False):
     if row is None:
         raise HTTPException(404, "质量反馈不存在或不属于当前班组")
     return row
+
+
+def require_rework_issue(db, issue_id, user, *, lock=False):
+    if not is_qc(user):
+        raise HTTPException(403, "仅检验班组长可将质量问题提交工艺")
+    row = issue(db, issue_id, user, lock=lock)
+    if row.feedback_status == "closed":
+        raise HTTPException(409, "已结束的问题须重新打开后再提交返工")
+    return row
+
+
+def rework_stock(db, issue_id, user, *, source_transfer_id=None, page=1, page_size=10):
+    from .material_lineage import relatives
+    from .quantity_adjustments import context
+    from .schemas import SCRAP_MATERIAL_TYPES
+
+    row = require_rework_issue(db, issue_id, user)
+    path = relatives([row.source_transfer_id], name="quality_rework_stock")
+    stmt = (
+        select(MaterialTransfer)
+        .join(MaterialStockBalance, MaterialStockBalance.transfer_id == MaterialTransfer.id)
+        .join(Team, Team.id == MaterialTransfer.next_team_id)
+        .where(
+            MaterialTransfer.id.in_(select(path.c.id)),
+            MaterialTransfer.status == "received",
+            MaterialTransfer.stock_tracked.is_(True),
+            MaterialTransfer.rework_route_id.is_(None),
+            MaterialTransfer.material_type.not_in(SCRAP_MATERIAL_TYPES),
+            MaterialStockBalance.on_hand_quantity > 0,
+            MaterialStockBalance.on_hand_weight > 0,
+            Team.active.is_(True),
+            Team.kind == "production",
+        )
+    )
+    if source_transfer_id is not None:
+        lot = db.scalar(stmt.where(MaterialTransfer.id == source_transfer_id))
+        if lot is None:
+            raise HTTPException(409, "本批物料已变化，或不属于该质量问题，请刷新后选择")
+        result = context(db, lot.next_team_id, lot.id)
+        ancestors = relatives([lot.id], ancestors=True, name="quality_rework_history")
+        records = list(
+            db.scalars(
+                select(MaterialQuantityAdjustment)
+                .where(
+                    MaterialQuantityAdjustment.source_transfer_id.in_(select(ancestors.c.id)),
+                    MaterialQuantityAdjustment.processing_status.is_not(None),
+                )
+                .order_by(MaterialQuantityAdjustment.id.desc())
+                .limit(100)
+            )
+        )
+        result["rework_task_records"] = [
+            dict(
+                rework_of_id=record.id,
+                process_step_name=record.process_step_name,
+                processing_task_name=record.processing_task_name,
+            )
+            for record in records
+        ]
+        result["rework_of_id"] = (
+            row.processing_record_id
+            if any(record.id == row.processing_record_id for record in records)
+            else None
+        )
+        return result
+    ids = stmt.with_only_columns(MaterialTransfer.id).subquery()
+    total = db.scalar(select(func.count()).select_from(ids))
+    lots = list(
+        db.scalars(
+            stmt.order_by(MaterialTransfer.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    )
+    balances = {
+        balance.transfer_id: balance
+        for balance in db.scalars(
+            select(MaterialStockBalance).where(
+                MaterialStockBalance.transfer_id.in_([lot.id for lot in lots])
+            )
+        )
+    }
+    return dict(
+        items=[
+            dict(
+                id=lot.id,
+                batch_no=lot.batch_no,
+                serial_no=lot.serial_no,
+                team_name=lot.next_team_name,
+                quantity=balances[lot.id].on_hand_quantity,
+                weight=float(balances[lot.id].on_hand_weight),
+            )
+            for lot in lots
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 def summaries(db, rows):

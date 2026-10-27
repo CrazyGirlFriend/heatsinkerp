@@ -84,6 +84,7 @@ async function render() {
         AppDialog: { template: '<div><slot/><slot name="footer"/></div>' },
         RouterLink: true,
         InspectionRegistrationDialog: true,
+        QualityReworkRequest: true,
       },
     },
   })
@@ -130,6 +131,25 @@ it('losing team permissions removes write actions', async () => {
   await flushPromises()
   expect(button('提交反馈')).toBeUndefined()
   expect(button('保存处理意见')).toBeUndefined()
+})
+it('lets QC submit an open issue directly without saving a disposition', async () => {
+  state.auth.currentUser = { team_id: 8, active: true }
+  await render()
+  await button('提交工艺')!.trigger('click')
+  await flushPromises()
+  expect(wrapper.find('quality-rework-request-stub').exists()).toBe(true)
+  expect(qualityFeedbackApi.decide).not.toHaveBeenCalled()
+})
+
+it('does not expose engineering submission for a closed issue', async () => {
+  state.auth.currentUser = { team_id: 8, active: true }
+  vi.mocked(qualityFeedbackApi.detail).mockResolvedValue({
+    ...record,
+    disposition: 'other',
+    feedback_status: 'closed',
+  })
+  await render()
+  expect(button('提交工艺')).toBeUndefined()
 })
 
 it('shows historical problem snapshots for the original check and every recheck', async () => {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RouterLink } from 'vue-router'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   ElAlert,
@@ -25,7 +26,7 @@ import { ElMessageBox } from 'element-plus'
 import { ArrowDown, Document, FullScreen, Upload, WarningFilled } from '@element-plus/icons-vue'
 import WordDocumentPreview from './WordDocumentPreview.vue'
 import ScheduleTaskEditor from './ScheduleTaskEditor.vue'
-import { processRouteApi } from '@/services/processRouteApi'
+import { processRouteApi, ProcessRouteSerialConflictError } from '@/services/processRouteApi'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import type { ProcessRoute, ProcessRouteStep, ProcessRouteDrawing } from '@/types/processRoute'
 import type { TeamProcessingTask, TeamPurpose } from '@/types/teamBusiness'
@@ -78,9 +79,11 @@ if (
 if (draft.value.route_kind === 'rework' && !draft.value.steps.length) {
   const step = blankStep(1)
   step.team_id = draft.value.rework_request?.team_id || null
+  step.planned_quantity = String(draft.value.rework_request?.quantity || '')
   draft.value.steps = [step]
 }
 const primarySerial = ref(draft.value.serial_nos[0] || '')
+const serialConflict = ref('')
 // Preserve existing version bindings; new imports contain only the labelled primary serial.
 const serials = computed(() =>
   [primarySerial.value.trim(), ...draft.value.serial_nos.slice(1)].filter(Boolean),
@@ -89,7 +92,9 @@ const wordInput = ref<HTMLInputElement>(),
   drawingInput = ref<HTMLInputElement>()
 const pendingWord = ref<File>(),
   pendingDrawings = ref<File[]>([])
-const previewKind = ref<'word' | 'drawing'>('word')
+const previewKind = ref<'word' | 'drawing'>(
+  draft.value.route_kind === 'rework' ? 'drawing' : 'word',
+)
 const wordPreview = ref<InstanceType<typeof WordDocumentPreview>>()
 const drawingPreview = ref<InstanceType<typeof ProcessRouteDrawingPreview>>()
 const activePreview = computed(() =>
@@ -99,7 +104,9 @@ const editingSaved = ref(!props.route?.id || !!props.startEditing)
 const modifying = computed(
   () => !!draft.value.parent_id || (editingSaved.value && draft.value.state === 'published'),
 )
-const previewDrawing = ref<number | File>()
+const previewDrawing = ref<number | File | undefined>(
+  draft.value.route_kind === 'rework' ? draft.value.drawings?.[0]?.id : undefined,
+)
 const editorMain = ref<HTMLElement>()
 const instructionInputs = ref<InputInstance[]>([])
 let editorObserver: ResizeObserver | undefined
@@ -138,7 +145,7 @@ async function importWord(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
-  if (!file || busy.value || readonly.value) return
+  if (!file || busy.value || readonly.value || draft.value.route_kind === 'rework') return
   if (
     draft.value.filename ||
     primarySerial.value.trim() ||
@@ -282,6 +289,10 @@ const modifier = ref<TeamEmployee | null>(
       }
     : null,
 )
+watch(primarySerial, () => {
+  if (error.value === serialConflict.value) error.value = ''
+  serialConflict.value = ''
+})
 watch(modifier, (value) => {
   draft.value.modified_employee_id = value?.id ?? null
   draft.value.modified_employee_name = value?.name ?? null
@@ -328,7 +339,7 @@ const stepIssues = computed(() =>
 )
 async function locateIssue(issue: (typeof stepIssues.value)[number]) {
   issuesOpen.value = false
-  previewKind.value = 'word'
+  if (draft.value.route_kind !== 'rework') previewKind.value = 'word'
   focusOriginal(issue.source)
   await nextTick()
   const row = editorMain.value?.querySelectorAll<HTMLElement>('.route-edit-step')[issue.index]
@@ -376,6 +387,7 @@ const { formRef, fieldErrors, validate } = useDialogValidation(() => {
     errors.modifier = '请选择修改人员'
   if (!primarySerial.value.trim() || /[、,，\n]/.test(primarySerial.value))
     errors.serials = '请填写一个主流水号'
+  if (serialConflict.value) errors.serials = serialConflict.value
   draft.value.steps.forEach((step, index) => {
     if (sequenceProblem(index)) errors[`${index}.sequence`] = '请核对工序序号'
     if (!step.name.trim()) errors[`${index}.name`] = '请填写工序名称'
@@ -406,6 +418,7 @@ async function save() {
   busy.value = true
   error.value = ''
   try {
+    const previewHash = selectedDrawing.value?.sha256
     if (editingSaved.value && draft.value.state === 'published') {
       const revision = await processRouteApi.revise(draft.value.id)
       draft.value = {
@@ -417,6 +430,8 @@ async function save() {
       }
     }
     draft.value = await processRouteApi.save(draft.value)
+    if (typeof previewDrawing.value === 'number' && previewHash)
+      previewDrawing.value = draft.value.drawings?.find((item) => item.sha256 === previewHash)?.id
     while (removedDrawings.value.length) {
       const removed = removedDrawings.value[0]!
       const current = draft.value.drawings?.find(
@@ -441,6 +456,10 @@ async function save() {
     emit('saved')
   } catch (e) {
     error.value = e instanceof Error ? e.message : '工艺保存失败'
+    if (e instanceof ProcessRouteSerialConflictError) {
+      serialConflict.value = e.message
+      validate()
+    }
   } finally {
     busy.value = false
   }
@@ -483,6 +502,7 @@ onMounted(async () => {
     :title="dialogTitle"
     width="min(1680px, 96vw)"
     class="process-route-dialog"
+    :class="{ 'process-route-dialog--rework': draft.route_kind === 'rework' }"
     append-to-body
     :close-on-click-modal="false"
     :show-close="!busy"
@@ -534,6 +554,9 @@ onMounted(async () => {
               maxlength="80"
               aria-label="流水号"
             />
+            <span v-if="serialConflict" class="route-serial-conflict" role="alert">{{
+              serialConflict
+            }}</span>
           </ElFormItem>
           <ElFormItem
             label="工艺人员"
@@ -591,21 +614,99 @@ onMounted(async () => {
         </div>
       </div>
       <div v-if="draft.rework_request" class="route-rework-context">
-        <span
-          >返工批次 <strong>{{ draft.rework_request.batch_no }}</strong></span
-        >
-        <span>{{ draft.rework_request.quantity }} 件 · {{ draft.rework_request.weight }} kg</span>
-        <span>原加工记录 #{{ draft.rework_request.rework_of_id }}</span>
-        <span v-if="draft.rework_request.inspection_id"
-          >质量记录 #{{ draft.rework_request.inspection_id }}</span
-        >
-        <p>{{ draft.rework_request.reason }}</p>
-        <span
-          >接回正常工序
-          <strong>{{
-            draft.rework_request.resume_step_name || draft.rework_request.team_name
-          }}</strong></span
-        >
+        <table aria-label="返工问题信息">
+          <colgroup>
+            <col class="rework-label-column" />
+            <col />
+            <col class="rework-label-column" />
+            <col />
+            <col class="rework-label-column" />
+            <col />
+          </colgroup>
+          <tbody>
+            <tr>
+              <th scope="row">返工问题</th>
+              <td colspan="5" class="rework-problem-title">
+                {{ draft.rework_request.problem_names?.join('、') || draft.rework_request.reason }}
+              </td>
+            </tr>
+            <tr v-if="draft.rework_request.problem_names?.length">
+              <th scope="row">问题说明</th>
+              <td colspan="5">
+                {{ draft.rework_request.problem_notes || draft.rework_request.reason }}
+              </td>
+            </tr>
+            <tr
+              v-if="
+                draft.rework_request.problem_notes &&
+                draft.rework_request.problem_notes !== draft.rework_request.reason
+              "
+            >
+              <th scope="row">返工原因</th>
+              <td colspan="5">{{ draft.rework_request.reason }}</td>
+            </tr>
+            <tr>
+              <th scope="row">涉及班组</th>
+              <td colspan="5" class="rework-team-cells">
+                <div class="rework-team-grid" role="list" aria-label="涉及班组">
+                  <span
+                    v-for="team in draft.rework_request.problem_teams"
+                    :key="team.id"
+                    role="listitem"
+                    >{{ team.name }}</span
+                  >
+                  <span v-if="!draft.rework_request.problem_teams?.length">未指定</span>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">提交班组</th>
+              <td>{{ draft.rework_request.requesting_team_name || '未记录' }}</td>
+              <th scope="row">提交人</th>
+              <td>{{ draft.rework_request.requested_by || '未记录' }}</td>
+              <th scope="row">返工轮次</th>
+              <td>{{ draft.rework_request.round }}</td>
+            </tr>
+            <tr>
+              <th scope="row">问题来源</th>
+              <td>
+                {{
+                  draft.rework_request.inspection_id
+                    ? draft.rework_request.inspection_kind === 'patrol'
+                      ? '巡检'
+                      : '检验'
+                    : draft.rework_request.requesting_team_id
+                      ? '班组反馈'
+                      : '来源未记录'
+                }}<template v-if="draft.rework_request.inspection_id">
+                  #{{ draft.rework_request.inspection_id }}</template
+                >
+              </td>
+              <th scope="row">物料所在班组</th>
+              <td>{{ draft.rework_request.team_name }}</td>
+              <th scope="row">原加工记录</th>
+              <td>#{{ draft.rework_request.rework_of_id }}</td>
+            </tr>
+            <tr>
+              <th scope="row">返工批次</th>
+              <td>{{ draft.rework_request.batch_no }}</td>
+              <th scope="row">返工数量</th>
+              <td>{{ draft.rework_request.quantity }} 件 · {{ draft.rework_request.weight }} kg</td>
+              <th scope="row">接回正常工序</th>
+              <td>
+                {{ draft.rework_request.resume_step_name || draft.rework_request.team_name }}
+              </td>
+            </tr>
+            <tr v-if="draft.rework_request.dimension_result">
+              <th scope="row">尺寸检查</th>
+              <td colspan="5">{{ draft.rework_request.dimension_result }}</td>
+            </tr>
+            <tr v-if="draft.rework_request.weight_result">
+              <th scope="row">重量检查</th>
+              <td colspan="5">{{ draft.rework_request.weight_result }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
       <div class="route-comparison">
         <section ref="editorMain" class="route-editor-main" aria-label="工艺内容">
@@ -653,13 +754,18 @@ onMounted(async () => {
               </div>
             </ElPopover>
             <div v-if="!readonly" class="route-file-actions">
-              <ElButton :icon="Document" :disabled="busy" @click="wordInput?.click()"
+              <ElButton
+                v-if="draft.route_kind !== 'rework'"
+                :icon="Document"
+                :disabled="busy"
+                @click="wordInput?.click()"
                 >导入工艺单</ElButton
               >
               <ElButton :icon="Upload" :disabled="busy" @click="drawingInput?.click()"
                 >上传图纸</ElButton
               >
               <input
+                v-if="draft.route_kind !== 'rework'"
                 ref="wordInput"
                 type="file"
                 accept=".docx"
@@ -1011,6 +1117,7 @@ onMounted(async () => {
           <header class="route-panel-heading">
             <div class="route-preview-tabs">
               <button
+                v-if="draft.route_kind !== 'rework'"
                 type="button"
                 :aria-pressed="previewKind === 'word'"
                 @click="previewKind = 'word'"
@@ -1099,6 +1206,22 @@ onMounted(async () => {
         ></span
       >
       <ElButton :disabled="busy" @click="visible = false">关闭</ElButton>
+      <RouterLink
+        v-if="
+          readonly &&
+          draft.route_kind === 'rework' &&
+          (draft.rework_request?.original_task_id || auth.isAdmin)
+        "
+        :to="{
+          path: '/production-schedules',
+          query: draft.rework_request?.original_task_id
+            ? { task_id: draft.rework_request.original_task_id }
+            : { serial_no: draft.serial_nos[0] },
+        }"
+        class="route-schedule-link"
+        @click="visible = false"
+        >{{ draft.rework_request?.original_task_id ? '查看交货排期' : '关联交货排期' }}</RouterLink
+      >
       <template v-if="readonly && canMaintain && draft.route_kind !== 'rework'">
         <ElSelect
           v-if="auth.isAdmin"
@@ -1124,7 +1247,9 @@ onMounted(async () => {
         >修改返工工艺</ElButton
       >
       <template v-else-if="!readonly"
-        ><ElButton type="primary" :loading="busy" @click="save()">保存工艺</ElButton></template
+        ><ElButton type="primary" :loading="busy" @click="save()">{{
+          draft.route_kind === 'rework' ? '提交工艺' : '保存工艺'
+        }}</ElButton></template
       >
     </template>
     <ScheduleTaskEditor
@@ -1137,21 +1262,90 @@ onMounted(async () => {
   </AppDialog>
 </template>
 <style scoped>
+.route-schedule-link {
+  color: var(--brand-primary, #215b49);
+  font-size: 14px;
+  text-decoration: none;
+  padding: 8px 12px;
+}
+.route-schedule-link:hover {
+  text-decoration: underline;
+}
+:global(.process-route-dialog) {
+  --el-color-danger: var(--accent-red);
+  --el-color-error: var(--accent-red);
+}
+.process-route-dialog--rework .route-dialog-symbol {
+  color: var(--accent-violet);
+  background: linear-gradient(160deg, #ffffff, #eee5ff 60%, #dfceff);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 -1px 0 #7c3aed1c,
+    0 2px 5px #7c3aed1a;
+}
 .route-rework-context {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--action-warm);
   border-radius: 12px;
-  padding: 12px;
   margin-bottom: 16px;
+  overflow: hidden;
   font-size: 13px;
 }
-.route-rework-context p {
-  flex-basis: 100%;
-  margin: 0;
+.route-rework-context table {
+  width: 100%;
+  table-layout: fixed;
+  border-spacing: 0;
+}
+.rework-label-column {
+  width: 104px;
+}
+.route-rework-context :is(th, td) {
+  padding: 7px 10px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.route-rework-context tr > :last-child {
+  border-right: 0;
+}
+.route-rework-context tr:last-child > * {
+  border-bottom: 0;
+}
+.route-rework-context th {
+  background: var(--table-header-bg);
+  color: var(--muted);
+  font-weight: 500;
+}
+.route-rework-context td {
+  background: #ffffffa8;
+}
+.route-rework-context .rework-problem-title {
+  background: linear-gradient(100deg, #fff2ef, #ffffffcf 65%);
+  box-shadow: inset 3px 0 var(--accent-red);
+  color: var(--text);
+  font-weight: 600;
+}
+.route-serial-conflict {
+  width: 100%;
+  margin-top: 4px;
+  color: var(--el-color-danger);
+  font-size: 12px;
+  line-height: 18px;
+}
+.route-rework-context .rework-team-cells {
+  padding: 0;
+}
+.rework-team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+.rework-team-grid > span {
+  padding: 7px 10px;
+  background: var(--surface);
 }
 :global(.el-dialog.process-route-dialog > .el-dialog__header) {
   position: relative;
@@ -1178,11 +1372,12 @@ onMounted(async () => {
   height: 34px;
   border: 1px solid #ffffffef;
   border-radius: 10px;
-  background: linear-gradient(145deg, #ffffff, #dbece3a8);
+  background: linear-gradient(160deg, #ffffff, #e8f0ff 60%, #d0e1ff);
   box-shadow:
-    0 2px 6px #244d3910,
-    inset 0 1px 0 #fff;
-  color: var(--primary);
+    inset 0 1px 0 #fff,
+    inset 0 -1px 0 #2563eb1c,
+    0 2px 5px #2563eb1a;
+  color: var(--accent-blue);
   font-size: 19px;
 }
 .route-dialog-title {
@@ -1328,7 +1523,7 @@ onMounted(async () => {
 }
 .route-issue-locate {
   margin-left: auto;
-  color: #4b6a82;
+  color: var(--accent-blue);
   font-size: 11px;
 }
 .route-issue-unrecognized {
@@ -1352,9 +1547,29 @@ onMounted(async () => {
   height: 30px;
   padding: 0 9px;
   font-size: 12px;
+  --el-button-text-color: var(--accent-blue);
+  --el-button-border-color: #c4d6fc;
+  --el-button-hover-text-color: #1d4ed8;
+  --el-button-hover-bg-color: #eff5ff;
+  --el-button-hover-border-color: #93b4fa;
 }
 .route-file-actions .el-button + .el-button {
   margin-left: 0;
+}
+.process-route-dialog
+  .route-file-actions
+  .el-button:not(:disabled):not(.is-loading):not(.is-link):not(.is-text) {
+  background: linear-gradient(180deg, #fffffffa, #f0f5ff 55%, #e3edff);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 -1px 0 #2563eb12,
+    0 2px 4px #1c42700d;
+}
+.process-route-dialog .route-file-actions .el-button:not(:disabled):hover {
+  border-color: #91b0ee;
+  box-shadow:
+    inset 0 1px 0 #fff,
+    0 3px 7px #2563eb24;
 }
 .route-summary {
   display: flex;
@@ -1500,6 +1715,9 @@ onMounted(async () => {
   border: 0;
   border-radius: 5px;
   background: #fce9e6;
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 -1px 0 #d13b3b26;
   color: var(--el-color-danger);
   font-size: 13px;
   vertical-align: middle;
@@ -1524,7 +1742,7 @@ onMounted(async () => {
   box-shadow: inset 0 0 0 1px var(--el-color-danger-light-5);
 }
 .route-cell--issue .route-cell-value {
-  color: #b03944;
+  color: var(--accent-red);
 }
 .route-step-table :deep(.el-form-item) {
   margin: 0;
@@ -1549,11 +1767,26 @@ onMounted(async () => {
 .route-step-table .route-execution-toggle {
   height: 28px;
   padding: 0 7px;
-  border: 1px solid #dce5ec;
+  border: 1px solid #c4d6fc;
   border-radius: 7px;
-  background: #f1f6f9;
-  color: #476980;
+  background: linear-gradient(180deg, #fffffffa, #edf3ff 55%, #e1ebff);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 -1px 0 #2563eb12,
+    0 1px 3px #1c427012;
+  color: var(--accent-blue);
   font-size: 12px;
+}
+.route-step-table .route-execution-toggle:not(:disabled):hover {
+  border-color: #91b0ee;
+  box-shadow:
+    inset 0 1px 0 #fff,
+    0 3px 7px #2563eb24;
+}
+.route-step-table .route-execution-toggle:not(:disabled):active,
+.process-route-dialog .route-file-actions .el-button:not(:disabled):active {
+  box-shadow: inset 0 1px 3px #2563eb2b;
+  transform: translateY(0);
 }
 .route-execution-toggle :deep(.el-icon) {
   margin-left: 3px;
@@ -1673,15 +1906,18 @@ onMounted(async () => {
   display: flex;
   gap: 4px;
   flex-shrink: 0;
-  background: #e8eef2a6;
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: linear-gradient(180deg, #e5edf7b3, #f6f9ffeb);
+  border: 1px solid #dce5f2;
   border-radius: 10px;
   padding: 3px;
+  box-shadow:
+    inset 0 1px 2px #253d6012,
+    0 1px 0 #fff;
 }
 .route-preview-tabs button {
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 7px;
-  padding: 6px 12px;
+  padding: 5px 11px;
   background: transparent;
   color: var(--muted);
   font: inherit;
@@ -1692,9 +1928,13 @@ onMounted(async () => {
     box-shadow 0.18s;
 }
 .route-preview-tabs button[aria-pressed='true'] {
-  background: rgba(255, 255, 255, 0.92);
-  color: #365d79;
-  box-shadow: 0 1px 5px #34556a16;
+  border-color: #bfd2f4;
+  background: linear-gradient(180deg, #fff, #f0f5ff 60%, #dce9ff);
+  color: var(--accent-blue);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 -1px 0 #2563eb16,
+    0 2px 4px #254a7b1a;
 }
 .route-preview-tabs button:focus-visible {
   outline: 2px solid var(--primary);
@@ -1712,8 +1952,30 @@ onMounted(async () => {
 .route-magnify {
   margin-left: auto;
   padding: 6px 8px;
-  color: #476980;
   font-size: 12px;
+}
+.route-magnify:not(:disabled) {
+  border: 1px solid #c4d6fc;
+  background: linear-gradient(180deg, #fff, #edf3ff);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    0 1px 3px #1c427012;
+  color: var(--accent-blue);
+}
+.route-magnify:not(:disabled):hover {
+  border-color: #91b0ee;
+  box-shadow:
+    inset 0 1px 0 #fff,
+    0 3px 7px #2563eb24;
+}
+.route-magnify:not(:disabled):active,
+.route-preview-tabs button:active {
+  box-shadow: inset 0 1px 3px #2563eb2b;
+}
+.route-original-panel :deep(.word-preview-filename),
+.route-original-panel :deep(.word-preview-tools > .el-button),
+.route-original-panel :deep(.drawing-preview-tools > .el-button) {
+  color: var(--accent-blue);
 }
 .route-original-panel :deep(.word-original-frame) {
   min-height: 0;
@@ -1763,6 +2025,12 @@ onMounted(async () => {
   }
 }
 @media (max-width: 900px) {
+  .route-rework-context {
+    overflow-x: auto;
+  }
+  .route-rework-context table {
+    min-width: 720px;
+  }
   .route-comparison {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1782,6 +2050,10 @@ onMounted(async () => {
   .route-issue-chevron,
   .route-edit-step > td,
   .route-cell-marker,
+  .route-file-actions .el-button,
+  .route-preview-tabs button,
+  .route-magnify,
+  .route-execution-toggle,
   .route-execution-toggle :deep(.el-icon) {
     transition: none;
     transform: none;

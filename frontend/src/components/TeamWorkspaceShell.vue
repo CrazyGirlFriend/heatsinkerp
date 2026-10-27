@@ -166,7 +166,11 @@ onBeforeUnmount(() => {
       <div v-if="fullscreen && $slots['fullscreen-status']" class="team-workspace__status">
         <slot name="fullscreen-status" />
       </div>
-      <div v-if="canFullscreen || $slots.settings" class="team-workspace__commands">
+      <div
+        v-if="canFullscreen || $slots.settings || $slots.messages"
+        class="team-workspace__commands"
+      >
+        <slot name="messages" />
         <div v-if="canFullscreen" class="team-workspace__view-actions">
           <ElButton
             v-if="exportable"

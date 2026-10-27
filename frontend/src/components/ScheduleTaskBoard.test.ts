@@ -1,16 +1,17 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { ElInput, ElRadioGroup, ElSelect } from 'element-plus'
+import { ElInput, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ScheduleTaskBoard from './ScheduleTaskBoard.vue'
 import ProductionScheduleGantt from './ProductionScheduleGantt.vue'
 import ProductionScheduleOverview from './ProductionScheduleOverview.vue'
 import DeliverySchedules from './DeliverySchedules.vue'
 import TableExportButton from './TableExportButton.vue'
-import FilterDialog from './FilterDialog.vue'
+import AppDrawer from './AppDrawer.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import ScheduleTaskEditor from './ScheduleTaskEditor.vue'
+import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ProductionSchedule, ScheduleTask } from '@/types/productionSchedule'
 const hooks = vi.hoisted(() => ({ openDetail: vi.fn() }))
@@ -103,6 +104,10 @@ async function render(path = '/production-schedules') {
           props: ['modelValue'],
           template: '<div v-if="modelValue"><slot/><slot name="footer"/></div>',
         },
+        AppDrawer: {
+          props: ['modelValue'],
+          template: '<aside v-if="modelValue"><slot/><slot name="footer"/></aside>',
+        },
         ProductionScheduleOverview: {
           props: ['tasks', 'teams', 'loading'],
           emits: ['open-node', 'open-task'],
@@ -120,6 +125,7 @@ async function render(path = '/production-schedules') {
           template: '<div/>',
         },
         ScheduleTaskEditor: true,
+        ScheduleSelectionDialog: true,
       },
     },
   })
@@ -133,12 +139,16 @@ async function button(label: string) {
     .trigger('click')
   await flushPromises()
 }
+function select(label: string) {
+  return wrapper.findAllComponents(ElSelect).find((item) => item.props('ariaLabel') === label)!
+}
 describe('task scheduling board', () => {
   it('opens the global overview by default and drills into the existing task and node details', async () => {
     await render()
     const overview = wrapper.getComponent(ProductionScheduleOverview)
     expect(overview.props('tasks')).toEqual([task])
     expect(wrapper.findComponent(ProductionScheduleGantt).exists()).toBe(false)
+    expect(wrapper.find('[aria-label="排期视图"]').exists()).toBe(false)
     expect(wrapper.getComponent(DeliverySchedules).props('detailOnly')).toBe(true)
     overview.vm.$emit('open-node', node(2))
     await flushPromises()
@@ -157,17 +167,18 @@ describe('task scheduling board', () => {
     expect(wrapper.find('.task-detail__notes').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('101 件')
   })
-  it('shares exact filters, tasks and export data between global and Gantt views', async () => {
+  it('shares the applied filters between global progress and export data', async () => {
     await render()
-    wrapper.getComponent(ElInput).vm.$emit('update:modelValue', 'S-001')
+    expect(wrapper.find('input[aria-label="任务排期搜索"]').exists()).toBe(false)
     await button('筛选')
-    wrapper.findAllComponents(ElSelect)[0]!.vm.$emit('update:modelValue', 2)
-    wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'overdue')
+    expect(wrapper.getComponent(AppDrawer).attributes('direction')).toBe('rtl')
+    wrapper.getComponent(ElInput).vm.$emit('update:modelValue', 'S-001')
+    select('交货班组筛选').vm.$emit('update:modelValue', 2)
+    select('任务状态筛选').vm.$emit('update:modelValue', 'overdue')
     wrapper
       .getComponent(RecordDateFilter)
       .vm.$emit('update:modelValue', { from: '2026-10-22', to: '2026-10-23' })
-    wrapper.getComponent(FilterDialog).vm.$emit('apply')
-    await flushPromises()
+    await button('应用筛选')
     const filters = {
       query: 'S-001',
       team_id: 2,
@@ -180,11 +191,9 @@ describe('task scheduling board', () => {
       page: 1,
       page_size: 10,
     })
-    wrapper.getComponent(ElRadioGroup).vm.$emit('update:modelValue', 'gantt')
-    await flushPromises()
-    expect(wrapper.getComponent(ProductionScheduleGantt).props('tasks')).toEqual([task])
-    wrapper.getComponent(ElRadioGroup).vm.$emit('update:modelValue', 'overview')
-    await flushPromises()
+    expect(wrapper.getComponent(AppDrawer).props('modelValue')).toBe(false)
+    expect(wrapper.get('.task-board__filter-count').text()).toBe('4')
+    expect(wrapper.getComponent(ProductionScheduleOverview).props('tasks')).toEqual([task])
     expect(wrapper.findComponent(ProductionScheduleGantt).exists()).toBe(false)
     const data = wrapper.getComponent(TableExportButton).props('source')()!
     const exported = await data.load(new AbortController().signal, () => {})
@@ -198,6 +207,58 @@ describe('task scheduling board', () => {
       route: '库房 → 轧制',
       node_targets: '1. 库房：1 件 / 10 kg（参考）；2. 轧制：100 件 / 10 kg（参考）',
     })
+  })
+  it('stages scope, serials and people until applied, discards cancellation, and resets all conditions', async () => {
+    await render()
+    await button('筛选')
+    wrapper.getComponent(ElInput).vm.$emit('update:modelValue', 'S-001')
+    select('任务范围筛选').vm.$emit('update:modelValue', 'attention')
+    await button('选择流水号')
+    wrapper
+      .getComponent(ScheduleSelectionDialog)
+      .vm.$emit('apply', [{ value: 'S-001', label: 'S-001' }])
+    await flushPromises()
+    await button('选择业务人员')
+    wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 3, label: '张工' }])
+    await flushPromises()
+    expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(1)
+    expect(wrapper.getComponent(AppDrawer).props('modelValue')).toBe(true)
+    await button('应用筛选')
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        query: 'S-001',
+        scope: 'attention',
+        serial_nos: ['S-001'],
+        business_person_ids: [3],
+        page: 1,
+      }),
+    )
+    expect(wrapper.get('.task-board__filter-count').text()).toBe('4')
+    await wrapper.get('button[aria-label="排期筛选"]').trigger('click')
+    await flushPromises()
+    wrapper.getComponent(ElInput).vm.$emit('update:modelValue', 'discarded')
+    await button('重置')
+    await button('取消')
+    expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(2)
+    await wrapper.get('button[aria-label="排期筛选"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.getComponent(ElInput).props('modelValue')).toBe('S-001')
+    expect(select('任务范围筛选').props('modelValue')).toBe('attention')
+    expect(wrapper.get('.schedule-filter-values').text()).toBe('S-001')
+    expect(wrapper.text()).toContain('张工')
+    await button('重置')
+    expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(2)
+    await button('应用筛选')
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        query: undefined,
+        scope: undefined,
+        serial_nos: undefined,
+        business_person_ids: undefined,
+        page: 1,
+      }),
+    )
+    expect(wrapper.find('.task-board__filter-count').exists()).toBe(false)
   })
   it('loads task deep links and refreshes after node or task edits', async () => {
     await render('/production-schedules?task_id=7')

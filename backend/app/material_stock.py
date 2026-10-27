@@ -568,6 +568,11 @@ def create_dispatch(db, team_id, payload, user):
                     sent_processing_status=sent_status(lot, record),
                     rework_pending=bool(route_fields.get("rework_route_id"))
                     and not route_fields.get("process_step_complete", False),
+                    processing_schedule_id=(
+                        lot.processing_schedule_id or lot.rework_route.original_schedule_id
+                    )
+                    if lot.rework_route_id
+                    else None,
                     rework_count=lot.rework_count,
                     batch_no=batch_no,
                     serial_no=lot.serial_no,

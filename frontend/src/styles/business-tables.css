@@ -316,10 +316,9 @@
     --table-glass-selected-edge: inset 0 1px 0 #ffffffb3, inset 0 -1px 0 #80ac9433;
   }
   .el-table.business-table {
-    border-radius: var(--card-radius);
-    box-shadow:
-      0 2px 8px #203b2e06,
-      0 0 0 1px #dae5de80;
+    border: 1px solid #d8dfdc;
+    border-radius: 8px;
+    box-shadow: none;
   }
   .el-table.business-table .el-table__header-wrapper th.el-table__cell,
   table.business-table > thead > tr > th {

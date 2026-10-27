@@ -61,6 +61,20 @@ def reply(
     return feedback.write(db, issue_id, payload, user)
 
 
+@router.get("/{issue_id}/rework-stock")
+def rework_stock(
+    issue_id: int,
+    source_transfer_id: int | None = Query(default=None, ge=1),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return feedback.rework_stock(
+        db, issue_id, user, source_transfer_id=source_transfer_id, page=page, page_size=page_size
+    )
+
+
 @router.post("/{issue_id}/decision")
 def decide(
     issue_id: int,

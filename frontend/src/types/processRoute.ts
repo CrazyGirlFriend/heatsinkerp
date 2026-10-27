@@ -20,6 +20,8 @@ export interface ProcessRouteDrawing {
 }
 
 export interface ReworkRouteRequest {
+  original_task_id?: number | null
+  original_schedule_id?: number | null
   can_modify?: boolean
   source_transfer_id: number
   batch_no: string
@@ -29,7 +31,18 @@ export interface ReworkRouteRequest {
   weight: number
   reason: string
   rework_of_id: number
+  requesting_team_id?: number | null
+  requesting_team_name?: string | null
+  requested_by?: string | null
   inspection_id?: number | null
+  inspection_kind?: 'patrol' | 'inspection' | null
+  inspector_name?: string | null
+  problem_names?: string[]
+  problem_notes?: string
+  dimension_result?: string
+  weight_result?: string
+  problem_teams?: { id: number; name: string }[]
+  execution_team_names?: string[]
   round: number
   resume_route_id: number | null
   resume_step_index: number | null

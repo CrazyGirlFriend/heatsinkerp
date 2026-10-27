@@ -11,6 +11,7 @@ import {
   type ScheduleTask,
 } from '@/types/productionSchedule'
 import { formatAmount, formatDateTime } from '@/utils/format'
+import { scheduleTeamStyle } from '@/utils/scheduleTeamColor'
 import {
   scheduleAxis,
   scheduleLanes,
@@ -77,7 +78,7 @@ function milestoneLabel(node: ProductionSchedule, actual = false) {
     lines.push(
       `${basis === 'quantity' ? '参考重量：' : ''}已交 ${formatAmount(node.dispatched_weight)} / 目标 ${formatAmount(node.target_weight)} kg`,
     )
-  lines.push(`完成口径：${completionBasisLabels[basis]}`)
+  lines.push(`计量方式：${completionBasisLabels[basis]}`)
   if (node.execution_state) lines.push(executionLabel(node))
   if (node.quality_held) lines.push('质量暂扣，暂不可转出')
   return lines.join('\n')
@@ -216,13 +217,7 @@ watch(
       </div>
     </header>
     <StatePanel v-if="loading && !tasks.length" state="loading" compact title="正在读取交货排期" />
-    <StatePanel
-      v-else-if="!tasks.length"
-      state="empty"
-      compact
-      title="暂无交货任务"
-      description="设置班组交货节点后，在这里查看各任务的交货安排。"
-    />
+    <StatePanel v-else-if="!tasks.length" state="empty" compact title="暂无交货任务" />
     <template v-else>
       <div
         ref="viewport"
@@ -234,7 +229,7 @@ watch(
       >
         <div ref="canvas" class="gantt-canvas" :style="canvasStyle">
           <div class="gantt-axis">
-            <div class="gantt-corner">任务 / 班组交货节点</div>
+            <div class="gantt-corner">{{ tasks.length > 1 ? '任务 / 班组' : '班组' }}</div>
             <div class="gantt-axis-track">
               <div
                 v-for="day in axis.days"
@@ -270,7 +265,7 @@ watch(
             class="gantt-task"
             :aria-label="`${group.task.task_no} ${group.task.title}`"
           >
-            <div class="gantt-task-heading">
+            <div v-if="tasks.length > 1" class="gantt-task-heading">
               <div class="gantt-task-label">
                 <button
                   type="button"
@@ -348,6 +343,7 @@ watch(
                 v-for="(row, index) in group.rows"
                 :key="row.node.id"
                 class="gantt-node-row"
+                :style="scheduleTeamStyle(row.node.team_name)"
                 :class="[
                   `status-${row.node.status}`,
                   {
@@ -475,7 +471,6 @@ watch(
           <span v-if="scrollHints.horizontal">{{ scrollHints.horizontal }}</span>
           <span v-if="scrollHints.vertical">{{ scrollHints.vertical }}</span>
         </span>
-        <span class="gantt-explanation">不表示加工时长 · 虚线为交期差异 · 点击窗外箭头定位</span>
       </footer>
     </template>
   </section>
@@ -488,10 +483,10 @@ watch(
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--card-radius);
-  background: var(--glass-surface);
-  box-shadow: var(--glass-shadow);
+  border: 1px solid #cfdcd4;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 2px 5px #23473605;
   overflow: hidden;
 }
 .gantt-toolbar {
@@ -500,7 +495,8 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 18px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, white, #f7f9f8);
 }
 .gantt-caption,
 .gantt-controls {
@@ -593,9 +589,8 @@ watch(
   top: 0;
   z-index: 8;
   height: 60px;
-  background: linear-gradient(180deg, #fffffffa, #f6faf8f5);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 1px var(--line);
+  background: #f0f4f1;
+  box-shadow: 0 1px #c9d6ce;
 }
 .gantt-corner,
 .gantt-task-label,
@@ -605,7 +600,8 @@ watch(
   z-index: 4;
   background: var(--surface);
   border: 0;
-  border-right: 1px solid var(--line);
+  border-right: 1px solid #bacbc1;
+  box-shadow: 3px 0 4px #24463308;
   text-align: left;
 }
 .gantt-corner {
@@ -613,9 +609,10 @@ watch(
   align-items: center;
   padding: 0 18px;
   z-index: 9;
-  font-size: 12px;
-  color: var(--muted);
-  background: #f7faf8;
+  font-size: 13px;
+  font-weight: 600;
+  color: #38483f;
+  background: #f0f4f1;
 }
 .gantt-axis-track {
   position: relative;
@@ -626,7 +623,8 @@ watch(
   width: var(--day-width);
   border-left: 1px solid var(--line);
   padding-top: 8px;
-  color: var(--muted);
+  color: #38483f;
+  font-weight: 600;
   font-size: 12px;
 }
 .gantt-day-caption {
@@ -641,7 +639,8 @@ watch(
 .gantt-day small {
   display: block;
   margin-top: 4px;
-  color: var(--subtle);
+  color: #63706c;
+  font-weight: 400;
   font-size: 10px;
 }
 .gantt-day b {
@@ -650,7 +649,8 @@ watch(
   margin-left: 8px;
 }
 .gantt-day.is-today {
-  background: linear-gradient(180deg, #e8f4efba, #f7fbf900);
+  background: #dcece3;
+  box-shadow: inset 0 -2px 0 var(--primary);
   color: var(--primary);
 }
 .gantt-day.is-weekend:not(.is-today) {
@@ -854,8 +854,11 @@ watch(
   font-size: 10px;
 }
 .gantt-node-title strong {
-  font-weight: 500;
-  font-size: 14px;
+  color: var(--team-color);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 1px 7px;
+  border-left: 3px solid var(--team-color);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -889,7 +892,10 @@ watch(
   );
 }
 .gantt-node-row:nth-of-type(even) .gantt-lane {
-  background-color: #f6faf82b;
+  background-color: #f8faf9;
+}
+.gantt-node-row:nth-of-type(even) .gantt-node-label {
+  background-color: #f8faf9;
 }
 .gantt-node-row:is(:hover, :focus-within, .is-active) .gantt-lane {
   background-color: #edf5f0b3;
@@ -931,11 +937,13 @@ watch(
   transition: box-shadow var(--motion-fast);
 }
 .gantt-planned {
+  color: var(--team-color);
   top: calc(var(--planned-y) - 12px);
 }
 .gantt-planned i {
   transform: rotate(45deg);
   border-radius: 2px;
+  background: var(--team-color);
 }
 .gantt-milestone > span {
   position: absolute;
@@ -1019,7 +1027,7 @@ watch(
   color: var(--muted);
   font-size: 11px;
 }
-.gantt-legend > span:not(.gantt-explanation) {
+.gantt-legend > span {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1048,9 +1056,6 @@ watch(
   border-right: 1px solid #608d7c;
   border-radius: 0 5px 0 0;
 }
-.gantt-explanation {
-  margin-left: auto;
-}
 .gantt-scroll-hints {
   margin-left: auto;
   color: var(--primary);
@@ -1065,10 +1070,6 @@ watch(
   }
   .gantt-caption {
     gap: 8px;
-  }
-  .gantt-explanation {
-    width: 100%;
-    margin-left: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {

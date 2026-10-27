@@ -20,6 +20,7 @@ import {
 } from 'element-plus'
 import AppDialog from './AppDialog.vue'
 import InspectionRegistrationDialog from './InspectionRegistrationDialog.vue'
+import QualityReworkRequest from './QualityReworkRequest.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import {
@@ -46,6 +47,7 @@ const detail = ref<QualityFeedbackDetail>(),
   busy = ref(false),
   loading = ref(false),
   rechecking = ref(false)
+const reworkOpen = ref(false)
 const reply = ref(''),
   decisionNotes = ref(''),
   disposition = ref<keyof typeof dispositions>('pending'),
@@ -144,6 +146,7 @@ watch(
   () => props.issueId,
   () => {
     detail.value = undefined
+    reworkOpen.value = false
     reply.value = ''
     submitted.value = null
     void load()
@@ -309,9 +312,7 @@ onBeforeUnmount(() => {
           <ElCheckbox v-if="detail.blocks_outbound" v-model="release"
             >手动解除此条历史巡检锁定</ElCheckbox
           >
-          <p class="quality-note">
-            保存处理意见不执行发货、返工或转投，也不改变检验结果和库存。实际操作仍在原入口办理。
-          </p>
+          <p class="quality-note">保存处理意见不执行库存操作。</p>
         </ElForm>
         <template v-else
           ><p>
@@ -320,6 +321,23 @@ onBeforeUnmount(() => {
           </p>
           <p>{{ detail.decision_notes || '暂无补充意见' }}</p></template
         >
+      </section>
+      <section
+        v-if="canDecide && detail.feedback_status !== 'closed'"
+        class="quality-detail-section"
+      >
+        <div class="quality-detail-heading">
+          <h3>返工工艺</h3>
+          <ElButton :disabled="busy || loading" @click="reworkOpen = !reworkOpen">{{
+            reworkOpen ? '收起' : '提交工艺'
+          }}</ElButton>
+        </div>
+        <QualityReworkRequest
+          v-if="reworkOpen"
+          :issue="detail"
+          @busy="busy = $event"
+          @changed="emit('changed')"
+        />
       </section>
       <section class="quality-detail-section">
         <div class="quality-detail-heading">

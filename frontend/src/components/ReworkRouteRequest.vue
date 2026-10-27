@@ -13,23 +13,31 @@ import {
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 import { processRouteApi } from '@/services/processRouteApi'
 import { materialRequestKey } from '@/utils/materialStock'
-const props = defineProps<{ context: QuantityAdjustmentContext; originalId?: number | null }>()
+const props = defineProps<{
+  context: QuantityAdjustmentContext
+  inspectionId?: number
+  initialReason?: string
+}>()
 const emit = defineEmits<{ changed: []; busy: [boolean] }>()
-const inspectionId = ref<number>()
-const original = ref(props.originalId || props.context.rework_of_id || null)
-const quantity = ref(props.context.quantity),
-  weight = ref(props.context.weight),
-  reason = ref('')
+const original = ref(props.context.rework_of_id || null)
+const quantity = ref<number>(),
+  weight = ref<number>(),
+  reason = ref(props.initialReason || '')
 const busy = ref(false),
   error = ref(''),
   submitted = ref(false)
-const key = materialRequestKey()
+let key = '',
+  fingerprint = ''
 async function save() {
   submitted.value = true
   if (
     busy.value ||
     !original.value ||
+    quantity.value == null ||
+    weight.value == null ||
+    !Number.isFinite(quantity.value) ||
     quantity.value <= 0 ||
+    !Number.isFinite(weight.value) ||
     weight.value <= 0 ||
     !reason.value.trim()
   )
@@ -38,16 +46,21 @@ async function save() {
   emit('busy', true)
   error.value = ''
   try {
-    await processRouteApi.requestRework({
-      ...(inspectionId.value ? { inspection_id: inspectionId.value } : {}),
+    const body = {
+      inspection_id: props.inspectionId,
       source_transfer_id: props.context.source_transfer_id,
       rework_of_id: original.value,
       expected_revision: props.context.revision,
       quantity: quantity.value,
       weight: weight.value,
       reason: reason.value.trim(),
-      idempotency_key: key,
-    })
+    }
+    const next = JSON.stringify(body)
+    if (next !== fingerprint) {
+      fingerprint = next
+      key = materialRequestKey()
+    }
+    await processRouteApi.requestRework({ ...body, idempotency_key: key })
     emit('changed')
   } catch (e) {
     error.value = e instanceof Error ? e.message : '返工事项登记失败'
@@ -58,9 +71,8 @@ async function save() {
 }
 </script>
 <template>
-  <section class="rework-request" aria-label="登记返工事项">
+  <section class="rework-request" aria-label="提交返工问题">
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <h3>登记返工事项</h3>
     <ElForm label-position="top" :disabled="busy" @submit.prevent="save">
       <ElFormItem
         label="原加工记录"
@@ -83,23 +95,11 @@ async function save() {
           />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem v-if="context.rework_inspections?.length" label="关联质量问题">
-        <ElSelect
-          v-model="inspectionId"
-          clearable
-          placeholder="选择检验或巡检记录"
-          aria-label="关联质量问题"
-        >
-          <ElOption
-            v-for="item in context.rework_inspections"
-            :key="item.id"
-            :value="item.id"
-            :label="`${item.kind === 'patrol' ? '巡检' : '检验'} #${item.id}`"
-          />
-        </ElSelect>
-      </ElFormItem>
       <div class="rework-amounts">
-        <ElFormItem label="返工件数" required
+        <ElFormItem
+          label="返工件数"
+          required
+          :error="submitted && (!quantity || quantity <= 0) ? '请填写返工件数' : ''"
           ><ElInputNumber
             v-model="quantity"
             :min="1"
@@ -107,24 +107,27 @@ async function save() {
             :precision="0"
             aria-label="返工件数"
         /></ElFormItem>
-        <ElFormItem label="返工重量（kg）" required
+        <ElFormItem
+          label="返工重量（kg）"
+          required
+          :error="submitted && (!weight || weight <= 0) ? '请填写返工重量' : ''"
           ><ElInputNumber
             v-model="weight"
             :min="0.000001"
             :max="context.weight"
+            :step="0.000001"
             :precision="6"
             aria-label="返工重量"
         /></ElFormItem>
       </div>
       <ElFormItem
-        label="返工原因"
+        label="问题描述"
         required
-        :error="submitted && !reason.trim() ? '请填写返工原因' : ''"
-        ><ElInput v-model="reason" type="textarea" :rows="2" maxlength="2000" aria-label="返工原因"
+        :error="submitted && !reason.trim() ? '请填写问题描述' : ''"
+        ><ElInput v-model="reason" type="textarea" :rows="2" maxlength="2000" aria-label="问题描述"
       /></ElFormItem>
       <footer>
-        <span>登记后由工艺人员制定返工工艺</span
-        ><ElButton type="primary" :loading="busy" native-type="submit">提交返工事项</ElButton>
+        <ElButton type="primary" :loading="busy" native-type="submit">提交问题</ElButton>
       </footer>
     </ElForm>
   </section>
@@ -137,10 +140,6 @@ async function save() {
   border-radius: 14px;
   background: var(--surface, #fff);
 }
-h3 {
-  margin: 0 0 16px;
-  font-size: 15px;
-}
 .rework-amounts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -152,12 +151,8 @@ h3 {
 }
 footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 12px;
-}
-footer span {
-  color: var(--muted);
-  font-size: 12px;
 }
 </style>

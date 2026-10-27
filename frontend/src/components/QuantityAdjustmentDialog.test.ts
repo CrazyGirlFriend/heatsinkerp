@@ -9,6 +9,7 @@ import SpecificationInput from './SpecificationInput.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
+import ProcessExecutionPanel from './ProcessExecutionPanel.vue'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -578,6 +579,22 @@ describe('processing piece adjustment', () => {
   })
 })
 
+it('directs an unapproved rework request to team submission', async () => {
+  const request = vi.spyOn(processRouteApi, 'requestRework')
+  await render()
+  await wrapper.setProps({ processing: true, rework: true })
+  await flushPromises()
+  expect(wrapper.text()).toContain('请先在本班组工作台提交返工问题')
+  expect(wrapper.find('section[aria-label="登记返工事项"]').exists()).toBe(false)
+  expect(
+    wrapper
+      .findAll('button')
+      .some((button) => button.text() === '提交返工事项' || button.text() === '保存返工登记'),
+  ).toBe(false)
+  expect(request).not.toHaveBeenCalled()
+  expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+})
+
 it('reworks completed stock with a required employee and the original record, without initial output', async () => {
   vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
     ...context(),
@@ -682,6 +699,22 @@ it('shows the active rework plan and keeps historical links bound to their origi
   vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
     ...context(),
     rework_route_id: 27,
+    process_route: {
+      id: 27,
+      title: '返工',
+      version: 1,
+      step_index: 0,
+      sequence_no: 0,
+      step_name: '返工打磨',
+      instructions: '核对厚度',
+      team_id: 2,
+      processing_task_id: null,
+      purpose_id: null,
+      split_here: false,
+      complete: false,
+      available: true,
+      route_kind: 'rework',
+    },
     rework_route_ready: true,
     items: [
       {
@@ -707,11 +740,8 @@ it('shows the active rework plan and keeps historical links bound to their origi
   }))
   await render(false)
   await wrapper.setProps({ processing: true })
-  await click('查看返工工艺')
-  expect(processRouteApi.detail).toHaveBeenLastCalledWith(27)
-  const viewer = wrapper.getComponent({ name: 'ProcessRouteEditor' })
-  expect(viewer.props('viewOnly')).toBe(true)
-  viewer.vm.$emit('close')
+  expect(wrapper.getComponent(ProcessExecutionPanel).props('context')?.id).toBe(27)
+  expect(processRouteApi.detail).toHaveBeenCalledWith(27)
   await flushPromises()
   await click('旧返工打磨')
   expect(processRouteApi.detail).toHaveBeenLastCalledWith(19)

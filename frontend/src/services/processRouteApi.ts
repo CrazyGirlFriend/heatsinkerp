@@ -1,11 +1,25 @@
 import { httpClient, httpRequest, HttpRequestError } from './httpClient'
 import type { ProcessRoute, ProcessRouteContext } from '@/types/processRoute'
-import type { MaterialPage } from '@/types/teamMaterials'
+import type { MaterialPage, QuantityAdjustmentContext } from '@/types/teamMaterials'
 import type { TeamProcessingTask, TeamPurpose } from '@/types/teamBusiness'
+export class ProcessRouteSerialConflictError extends Error {}
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   try {
     return await httpRequest<T>(`/process-routes${path}`, { method, body })
   } catch (error) {
+    if (
+      error instanceof HttpRequestError &&
+      error.body &&
+      typeof error.body === 'object' &&
+      'detail' in error.body &&
+      error.body.detail &&
+      typeof error.body.detail === 'object' &&
+      'code' in error.body.detail &&
+      error.body.detail.code === 'duplicate_process_route_serial' &&
+      'message' in error.body.detail &&
+      typeof error.body.detail.message === 'string'
+    )
+      throw new ProcessRouteSerialConflictError(error.body.detail.message, { cause: error })
     if (
       ['/import', '/parse'].includes(path) &&
       error instanceof HttpRequestError &&
@@ -26,7 +40,20 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
     throw error
   }
 }
+export interface ReworkSource {
+  id: number
+  serial_no: string
+  batch_no: string
+  quantity: number
+  weight: number
+}
 export const processRouteApi = {
+  reworkSources: (query = '', page = 1) =>
+    request<MaterialPage<ReworkSource>>(
+      `/rework-sources?query=${encodeURIComponent(query)}&page=${page}`,
+    ),
+  reworkSourceContext: (id: number) =>
+    request<QuantityAdjustmentContext>(`/rework-sources?lot_id=${id}`),
   list: (
     query = '',
     page = 1,

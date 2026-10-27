@@ -135,6 +135,18 @@ def prepare(lot, balance, latest, payload, team_code):
     )
 
 
+def completed_route_step(lot):
+    route, index = lot.process_route, lot.process_step_index
+    return bool(
+        not lot.rework_pending
+        and route
+        and lot.process_step_complete
+        and index is not None
+        and index < len(route.steps)
+        and route.steps[index]["team_id"] == lot.next_team_id
+    )
+
+
 def sent_status(lot, latest=None):
     if lot.next_team_code not in PROCESSING_TEAM_CODES:
         return None
@@ -144,7 +156,7 @@ def sent_status(lot, latest=None):
         return latest.processing_status or "registered"
     return (
         "complete"
-        if lot.processing_role == "produced"
+        if lot.processing_role == "produced" or completed_route_step(lot)
         else "not_applicable"
         if lot.processing_role == "scrap"
         else "unregistered"

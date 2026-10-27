@@ -7,12 +7,33 @@ from math import atan2, degrees
 from fastapi import HTTPException
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import ArrayObject, DictionaryObject, IndirectObject
+from sqlalchemy import select
 
+from .models import ProcessRouteDrawing
 from .process_route_import import MAX_FILE_BYTES
 
 MAX_DRAWINGS = 10
 FORBIDDEN_KEYS = {"/JS", "/JavaScript", "/AA", "/EmbeddedFiles", "/EF", "/RichMedia", "/XFA"}
 FORBIDDEN_ACTIONS = {"/JavaScript", "/Launch", "/SubmitForm", "/ImportData", "/GoToR", "/URI"}
+
+
+def copy_drawings(db, source_route_id, target_route_id):
+    if not source_route_id:
+        return
+    for drawing in db.scalars(
+        select(ProcessRouteDrawing)
+        .where(ProcessRouteDrawing.route_id == source_route_id)
+        .order_by(ProcessRouteDrawing.id)
+    ):
+        db.add(
+            ProcessRouteDrawing(
+                route_id=target_route_id,
+                filename=drawing.filename,
+                sha256=drawing.sha256,
+                size_bytes=drawing.size_bytes,
+                content=drawing.content,
+            )
+        )
 
 
 def validate_drawing(filename, content):

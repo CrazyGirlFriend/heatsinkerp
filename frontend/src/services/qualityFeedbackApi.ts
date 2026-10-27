@@ -1,5 +1,15 @@
 import { httpRequest } from './httpClient'
 import type { InspectionRecord } from './inspectionApi'
+import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
+
+export interface QualityReworkStock {
+  id: number
+  batch_no: string
+  serial_no: string
+  team_name: string
+  quantity: number
+  weight: number
+}
 
 export const feedbackStates = { pending: '待处理', processing: '处理中', closed: '已结束' }
 export const dispositions = {
@@ -64,6 +74,14 @@ export const qualityFeedbackApi = {
       )}`,
     ),
   detail: (id: number) => httpRequest<QualityFeedbackDetail>(`/quality-feedback/${id}`),
+  reworkStock: (id: number, page = 1) =>
+    httpRequest<{ items: QualityReworkStock[]; total: number }>(
+      `/quality-feedback/${id}/rework-stock?page=${page}`,
+    ),
+  reworkContext: (id: number, lotId: number) =>
+    httpRequest<QuantityAdjustmentContext>(
+      `/quality-feedback/${id}/rework-stock?source_transfer_id=${lotId}`,
+    ),
   reply: (id: number, body: Write) =>
     httpRequest<QualityFeedbackDetail>(`/quality-feedback/${id}/reply`, { method: 'POST', body }),
   decide: (id: number, body: QualityDecision) =>

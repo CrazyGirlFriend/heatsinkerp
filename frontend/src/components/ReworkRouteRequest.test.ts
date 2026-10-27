@@ -27,11 +27,11 @@ it('submits a scoped request without creating a processing record and retains th
   const request = vi
     .spyOn(processRouteApi, 'requestRework')
     .mockRejectedValue(new Error('网络中断'))
-  wrapper = mount(ReworkRouteRequest, { props: { context } })
+  wrapper = mount(ReworkRouteRequest, { props: { context, inspectionId: 19 } })
   await wrapper.get('form').trigger('submit')
   expect(request).not.toHaveBeenCalled()
-  await vi.waitFor(() => expect(wrapper.text()).toContain('请填写返工原因'))
-  await wrapper.get('textarea[aria-label="返工原因"]').setValue('尺寸偏大')
+  await vi.waitFor(() => expect(wrapper.text()).toContain('请填写问题描述'))
+  await wrapper.get('textarea[aria-label="问题描述"]').setValue('尺寸偏大')
   await wrapper.get('input[aria-label="返工件数"]').setValue('4')
   await wrapper.get('input[aria-label="返工重量"]').setValue('40')
   await wrapper.get('form').trigger('submit')
@@ -39,6 +39,7 @@ it('submits a scoped request without creating a processing record and retains th
   expect(request).toHaveBeenLastCalledWith(
     expect.objectContaining({
       source_transfer_id: 12,
+      inspection_id: 19,
       rework_of_id: 8,
       quantity: 4,
       weight: 40,
@@ -50,4 +51,12 @@ it('submits a scoped request without creating a processing record and retains th
   await flushPromises()
   expect(request.mock.calls[0]![0].idempotency_key).toBe(request.mock.calls[1]![0].idempotency_key)
   expect(wrapper.emitted('changed')).toBeUndefined()
+})
+it('accepts integral and fractional weights in native browser validation', async () => {
+  wrapper = mount(ReworkRouteRequest, { props: { context, inspectionId: 19 } })
+  const input = wrapper.get<HTMLInputElement>('input[aria-label="返工重量"]')
+  for (const value of ['10', '0.000002', '12.345678']) {
+    await input.setValue(value)
+    expect(input.element.validity.stepMismatch).toBe(false)
+  }
 })

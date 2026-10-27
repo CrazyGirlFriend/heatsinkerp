@@ -75,6 +75,7 @@ const canDispatch = computed(() =>
     auth.currentUser?.active !== false,
   ),
 )
+const canEditCommitment = computed(() => canManage.value || canDispatch.value)
 const teams = computed(() => directory.items.filter((team) => team.active))
 const rows = ref<ProductionSchedule[]>([]),
   total = ref(0),
@@ -361,7 +362,7 @@ function exportSource() {
       { key: 'quality_held', label: '质量冻结', value: (row) => (row.quality_held ? '是' : '否') },
       {
         key: 'completion_basis',
-        label: '完成依据',
+        label: '计量方式',
         value: (row) => (row.completion_basis ? completionBasisLabels[row.completion_basis] : '—'),
       },
       { key: 'team_name', label: '交货班组', value: (row) => row.team_name },
@@ -370,6 +371,11 @@ function exportSource() {
       { key: 'status', label: '排期状态', value: (row) => scheduleStatusLabels[row.status] },
       { key: 'quantity', label: '计划件数', value: (row) => row.target_quantity },
       { key: 'weight', label: '计划重量（kg）', value: (row) => row.target_weight },
+      {
+        key: 'processed_quantity',
+        label: '已加工件数',
+        value: (row) => (row.assessment_enabled === false ? null : row.processed_quantity),
+      },
       { key: 'dispatched_quantity', label: '已转出件数', value: (row) => row.dispatched_quantity },
       {
         key: 'dispatched_weight',
@@ -402,7 +408,7 @@ function exportSource() {
             .filter(Boolean)
             .join('、'),
       },
-      { key: 'notes', label: '排期说明', value: (row) => row.notes },
+      { key: 'notes', label: '排期备注', value: (row) => row.notes },
     ],
     (signal, progress) =>
       loadExportPages(
@@ -420,10 +426,10 @@ const auditFields: [keyof ScheduleWrite, string][] = [
   ['due_at', '要求交货时间'],
   ['target_quantity', '计划件数'],
   ['target_weight', '计划重量（kg）'],
-  ['completion_basis', '完成依据'],
+  ['completion_basis', '计量方式'],
   ['predecessor_id', '上序排期'],
   ['sources', '关联批次'],
-  ['notes', '说明'],
+  ['notes', '备注'],
 ]
 function auditValue(key: keyof ScheduleWrite, data?: Partial<ScheduleWrite> | null) {
   const value = data?.[key]
@@ -455,7 +461,7 @@ function changes(event: NonNullable<ProductionSchedule['history']>[number]) {
   if (event.after?.reason) items.push({ label: '取消原因', before: '—', after: event.after.reason })
   for (const [key, label] of [
     ['task_title', '任务名称'],
-    ['task_notes', '任务说明'],
+    ['task_notes', '任务备注'],
   ] as const) {
     if (event.before?.[key] !== event.after?.[key])
       items.push({ label, before: event.before?.[key] || '—', after: event.after?.[key] || '—' })
@@ -473,6 +479,8 @@ function actionLabel(action: string) {
         cancel: '取消',
         cancelled: '取消',
         task_updated: '调整任务信息',
+        route_linked: '关联工艺',
+        rework_linked: '关联返工',
       } as Record<string, string>
     )[action] || action
   )
@@ -645,7 +653,7 @@ defineExpose({ exportSource, openDetail })
             >
           </template>
         </ElTableColumn>
-        <ElTableColumn label="完成依据" min-width="110" align="center">
+        <ElTableColumn label="计量方式" min-width="110" align="center">
           <template #default="{ row }">{{
             row.completion_basis
               ? completionBasisLabels[row.completion_basis as keyof typeof completionBasisLabels]
@@ -655,6 +663,11 @@ defineExpose({ exportSource, openDetail })
         <ElTableColumn label="计划件数" min-width="100" align="center"
           ><template #default="{ row }">{{
             formatAmount(row.target_quantity)
+          }}</template></ElTableColumn
+        >
+        <ElTableColumn label="已加工件数" min-width="110" align="center"
+          ><template #default="{ row }">{{
+            row.assessment_enabled === false ? '—' : formatAmount(row.processed_quantity)
           }}</template></ElTableColumn
         >
         <ElTableColumn label="已转出件数" min-width="110" align="center"
@@ -693,7 +706,7 @@ defineExpose({ exportSource, openDetail })
         >
       </ElTable>
       <footer class="schedule-footer">
-        <span>共 {{ total }} 个交货节点 · 按实际转出判定交期，签收单独记录</span
+        <span>共 {{ total }} 条</span
         ><ElPagination
           :current-page="page"
           :page-size="pageSize"
@@ -759,11 +772,10 @@ defineExpose({ exportSource, openDetail })
           v-if="detail.initial_due_at && detail.initial_due_at !== detail.due_at"
           class="schedule-original-deadline"
         >
-          最初要求交货时间：{{ formatDateTime(detail.initial_due_at) }} ·
-          调整前后的时间保留在下方记录中
+          原交货时间：{{ formatDateTime(detail.initial_due_at) }}
         </p>
         <ElDescriptions :column="3" border>
-          <ElDescriptionsItem label="完成依据">{{
+          <ElDescriptionsItem label="计量方式">{{
             detail.completion_basis ? completionBasisLabels[detail.completion_basis] : '—'
           }}</ElDescriptionsItem>
           <ElDescriptionsItem label="执行情况">{{
@@ -817,12 +829,10 @@ defineExpose({ exportSource, openDetail })
           ><ElDescriptionsItem label="更新时间">{{
             formatDateTime(detail.updated_at)
           }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="排期说明" :span="3">{{
-            detail.notes || '—'
-          }}</ElDescriptionsItem>
+          <ElDescriptionsItem label="备注" :span="3">{{ detail.notes || '—' }}</ElDescriptionsItem>
         </ElDescriptions>
         <div class="schedule-section-heading">
-          <h3>按批次分配的计划</h3>
+          <h3>批次计划</h3>
           <RouterLink
             :to="{
               path: `/team-workspaces/${detail.team_id}`,
@@ -834,11 +844,7 @@ defineExpose({ exportSource, openDetail })
         <ElTable
           :data="detail.sources"
           class="business-table"
-          :empty-text="
-            detail.predecessor_id
-              ? '本节点承接上序实际交货，暂未另作批次计划分配'
-              : '尚未关联物料；管理员可在来料后补充关联'
-          "
+          :empty-text="detail.predecessor_id ? '随上序来料' : '暂无关联批次'"
         >
           <ElTableColumn label="来源批次" min-width="200" align="center"
             ><template #default="{ row }"
@@ -857,8 +863,7 @@ defineExpose({ exportSource, openDetail })
         </ElTable>
         <template v-if="detail.linked_batches?.length">
           <div class="schedule-section-heading">
-            <h3>实际关联来料</h3>
-            <span>显示物理来料数量，与本节点计划产出分开记录</span>
+            <h3>来料记录</h3>
           </div>
           <ElTable :data="detail.linked_batches" class="business-table">
             <ElTableColumn label="来料批次" min-width="200" align="center"
@@ -889,18 +894,9 @@ defineExpose({ exportSource, openDetail })
           </ElTable>
         </template>
         <div class="schedule-section-heading">
-          <h3>实际交货记录</h3>
-          <span>{{
-            detail.assessment_enabled === false
-              ? '库房仅展示备料与转出，不考核交货完成量'
-              : '本班组加工完成后实际转出计入交货；未加工料、废料不计入'
-          }}</span>
+          <h3>转出记录</h3>
         </div>
-        <ElTable
-          :data="detail.deliveries || []"
-          class="business-table"
-          empty-text="暂无关联的实际转出记录"
-        >
+        <ElTable :data="detail.deliveries || []" class="business-table" empty-text="暂无转出记录">
           <ElTableColumn label="转出批次" min-width="200" align="center"
             ><template #default="{ row }"
               ><ElButton link type="primary" @click="viewBatch(row.batch_no)">{{
@@ -928,13 +924,9 @@ defineExpose({ exportSource, openDetail })
             ><template #default="{ row }"
               ><MaterialTransferStatus :status="row.status as TransferStatus" outgoing /></template
           ></ElTableColumn>
-          <ElTableColumn label="交货计入" min-width="140" align="center"
+          <ElTableColumn label="计入交货" min-width="100" align="center"
             ><template #default="{ row }">{{
-              detail.assessment_enabled === false
-                ? '库房转出，不考核'
-                : row.counts_toward_delivery
-                  ? '计入交货'
-                  : '不计入交货'
+              detail.assessment_enabled === false ? '—' : row.counts_toward_delivery ? '是' : '否'
             }}</template></ElTableColumn
           >
         </ElTable>
@@ -967,11 +959,18 @@ defineExpose({ exportSource, openDetail })
       </template>
       <template #footer
         ><div
-          v-if="detail && canManage && detail.status !== 'cancelled'"
+          v-if="
+            detail &&
+            canEditCommitment &&
+            (canManage || detail.team_id === teamId) &&
+            detail.status !== 'cancelled'
+          "
           class="schedule-detail__manage"
         >
-          <ElButton type="danger" plain @click="startCancel(detail)">取消排期</ElButton
-          ><ElButton v-if="detail.next_team_id" @click="nextSchedule(detail)">添加下序节点</ElButton
+          <ElButton v-if="canManage" type="danger" plain @click="startCancel(detail)"
+            >取消排期</ElButton
+          ><ElButton v-if="canManage && detail.next_team_id" @click="nextSchedule(detail)"
+            >添加下序节点</ElButton
           ><ElButton type="primary" @click="editSchedule(detail)">调整排期</ElButton>
         </div>
         <ElButton
@@ -988,7 +987,7 @@ defineExpose({ exportSource, openDetail })
       >
     </AppDialog>
     <ProductionScheduleEditor
-      v-if="editing && canManage"
+      v-if="editing && canEditCommitment"
       :schedule="editingSchedule"
       :predecessor="predecessor"
       @close="editing = false"

@@ -1,4 +1,4 @@
-"""All signed-in users can read; only administrators maintain commitments."""
+"""Administrators arrange routes; teams maintain their own delivery commitments."""
 
 from datetime import datetime, timezone
 from typing import Literal
@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from . import business_people
+from . import business_people, schedule_reworks, schedule_routes
 from . import production_schedule_tasks as tasks
 from . import production_schedules as schedules
 from .async_api import AsyncAPIRouter as APIRouter
@@ -16,6 +16,7 @@ from .models import User
 from .production_schedule_schemas import (
     BusinessPersonWrite,
     ScheduleCancel,
+    ScheduleCommitmentUpdate,
     ScheduleCreate,
     ScheduleInventoryQuery,
     ScheduleTaskCreate,
@@ -215,6 +216,36 @@ def create_task(
     return tasks.create_task(db, payload, user)
 
 
+@router.get("/tasks/{task_id}/rework-options")
+def task_rework_options(task_id: int, db: Session = Depends(get_db)):
+    return schedule_reworks.available(db, tasks.require_task(db, task_id))
+
+
+@router.post("/tasks/{task_id}/rework")
+def link_task_rework(
+    task_id: int,
+    payload: schedule_reworks.ReworkLink,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return schedule_reworks.link(db, task_id, payload, user)
+
+
+@router.get("/tasks/{task_id}/route-options")
+def task_route_options(task_id: int, db: Session = Depends(get_db)):
+    return schedule_routes.option_documents(db, tasks.require_task(db, task_id))
+
+
+@router.post("/tasks/{task_id}/route")
+def link_task_route(
+    task_id: int,
+    payload: schedule_routes.RouteLink,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return schedule_routes.link(db, task_id, payload, user)
+
+
 @router.get("/tasks/{task_id}")
 def task_detail(task_id: int, db: Session = Depends(get_db)):
     return tasks.detail(db, task_id)
@@ -243,6 +274,16 @@ def update(
     db: Session = Depends(get_db),
 ):
     return schedules.save_plan(db, payload, user, schedule_id)
+
+
+@router.patch("/{schedule_id}/commitment")
+def update_commitment(
+    schedule_id: int,
+    payload: ScheduleCommitmentUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return schedules.update_commitment(db, schedule_id, payload, user)
 
 
 @router.post("/{schedule_id}/cancel")

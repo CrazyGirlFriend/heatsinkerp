@@ -61,6 +61,7 @@ export interface StockBatch extends MaterialBalance {
   unassigned_weight?: number
 }
 export interface QuantityAdjustment {
+  production_schedule_id?: number | null
   process_route_id?: number | null
   process_step_index?: number | null
   process_step_name?: string | null
@@ -120,6 +121,9 @@ export interface ProcessingOutput extends CreateProcessingOutput {
 export interface QuantityAdjustmentContext
   extends MaterialPage<QuantityAdjustment>, SharedMaterialFields {
   purpose_id?: number | null
+  production_schedule_id?: number | null
+  production_schedule_locked?: boolean
+  processing_schedules?: import('./productionSchedule').ProductionSchedule[]
   process_route?: import('./processRoute').ProcessRouteContext | null
   task_required?: boolean
   completed_task_ids?: number[]
@@ -161,6 +165,7 @@ export interface QuantityAdjustmentContext
   rework_count?: number
 }
 export interface CreateQuantityAdjustment {
+  production_schedule_id?: number | null
   processing_task_id?: number | null
   purpose_id?: number | null
   work_kind?: 'initial' | 'rework'

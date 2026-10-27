@@ -49,6 +49,7 @@ class ProcessingOutput(BaseModel):
 
 
 class ProcessingQuantity(BaseModel):
+    production_schedule_id: int | None = Field(default=None, ge=1)
     model_config = ConfigDict(extra="forbid")
     source_transfer_id: int = Field(ge=1)
     quantity: int = Field(ge=0, le=2_147_483_647)

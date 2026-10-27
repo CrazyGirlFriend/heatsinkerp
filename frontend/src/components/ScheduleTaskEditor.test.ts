@@ -7,6 +7,7 @@ import AppDialog from './AppDialog.vue'
 import MaterialInput from './MaterialInput.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ScheduleTask } from '@/types/productionSchedule'
+import { routeFixture } from '@/testFixtures/processRoute'
 
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({ isAdmin: true, currentUserError: '', currentUser: { active: true } }),
@@ -73,7 +74,7 @@ function amount(label: string, value: number) {
 function date(label: string, value: string) {
   wrapper
     .findAllComponents(ElDatePicker)
-    .at(Number(label.match(/\d+/)?.[0]) - 1)!
+    .find((item) => item.attributes('aria-label') === label || item.props('ariaLabel') === label)!
     .vm.$emit('update:modelValue', value)
 }
 async function button(label: string) {
@@ -92,9 +93,48 @@ async function identity() {
   await flushPromises()
 }
 describe('whole-route task scheduling', () => {
+  it('imports the last operation quantity per team and requires an hour for the original delivery date', async () => {
+    const route = structuredClone(routeFixture)
+    route.steps[0]!.planned_quantity = '1'
+    route.steps[1]!.planned_quantity = '120'
+    route.steps[2]!.planned_quantity = '100'
+    route.source_data.receipt_fields = {
+      delivery_date: {
+        value: '2026-10-30',
+        label: '交货日期',
+        source_row: '1:1',
+        source_label: '交货日期',
+      },
+    }
+    wrapper = mount(ScheduleTaskEditor, {
+      props: { processRoute: route, routeSerial: 'S-001' },
+      global: {
+        directives: { loading: () => {} },
+        stubs: { AppDialog: { template: '<div><slot/><slot name="footer"/></div>' } },
+      },
+    })
+    await flushPromises()
+    for (let index = 1; index <= 3; index++) {
+      date(`第${index}站日期`, '2026-10-28')
+      select(`第${index}站小时`, String(8 + index).padStart(2, '0'))
+    }
+    select('最终外部去向', '库房成品')
+    await button('保存排期')
+    expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
+    expect(wrapper.findAll('.el-form-item.is-error').length).toBeGreaterThan(0)
+    select('最终交货小时', '17')
+    await button('保存排期')
+    const payload = vi.mocked(productionScheduleApi.createTask).mock.calls[0]![0]
+    expect(payload.final_due_at).toBe('2026-10-30T17:00:00+08:00')
+    expect(payload.nodes.map((node) => [node.process_step_index, node.target_quantity])).toEqual([
+      [0, 1],
+      [2, 100],
+      [3, 100],
+    ])
+  })
   it('marks missing fields instead of creating a partial route', async () => {
     await render()
-    await button('保存整条排期')
+    await button('保存排期')
     expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
     expect(wrapper.findAll('.el-form-item.is-error').length).toBeGreaterThanOrEqual(5)
     const finalDestination = wrapper.get('.route-node__heading .route-node__final')
@@ -126,7 +166,7 @@ describe('whole-route task scheduling', () => {
     date('第2站日期', '2026-10-23')
     amount('第2站件数', 100)
     select('最终接收班组', 3)
-    await button('保存整条排期')
+    await button('保存排期')
     const first = vi.mocked(productionScheduleApi.createTask).mock.calls[0]![0]
     expect(first).toMatchObject({
       serial_no: 'S-001',
@@ -152,7 +192,7 @@ describe('whole-route task scheduling', () => {
       ],
     })
     expect(wrapper.text()).toContain('参考重量')
-    await button('保存整条排期')
+    await button('保存排期')
     expect(vi.mocked(productionScheduleApi.createTask).mock.calls[1]![0].idempotency_key).toBe(
       first.idempotency_key,
     )
@@ -164,9 +204,9 @@ describe('whole-route task scheduling', () => {
     select('第1站小时', '14')
     date('第1站日期', '2026-10-23')
     amount('第1站件数', 1)
-    select('第1站完成依据', 'both')
+    select('第1站计量方式', 'both')
     select('最终接收班组', 2)
-    await button('保存整条排期')
+    await button('保存排期')
     expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
     amount('第1站重量', 10)
     await button('添加下一班组')
@@ -174,10 +214,10 @@ describe('whole-route task scheduling', () => {
     date('第2站日期', '2026-10-23')
     amount('第2站件数', 100)
     select('最终接收班组', 3)
-    await button('保存整条排期')
+    await button('保存排期')
     expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
     select('第2站小时', '16')
-    await button('保存整条排期')
+    await button('保存排期')
     expect(productionScheduleApi.createTask).toHaveBeenCalledOnce()
     expect(
       vi.mocked(productionScheduleApi.createTask).mock.calls[0]![0].nodes[0]!.completion_basis,

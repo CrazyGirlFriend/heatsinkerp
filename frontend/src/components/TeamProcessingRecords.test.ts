@@ -475,28 +475,19 @@ describe('unified production records', () => {
   })
 })
 
-it('opens the sole current descendant directly for rework without a second source choice', async () => {
-  vi.spyOn(teamMaterialApi, 'processingSources').mockResolvedValue({
-    items: [{ transfer: { id: 88 } } as never],
-    total: 1,
-    page: 1,
-    page_size: 2,
-  })
+it('keeps processing history read-only and does not let production initiate rework', async () => {
+  const sources = vi.spyOn(teamMaterialApi, 'processingSources')
   await render()
+  expect(wrapper.findAll('button').some((button) => button.text() === '返工')).toBe(false)
   await wrapper
     .findAll('button')
-    .find((b) => b.text() === '返工')!
+    .find((b) => b.text() === '记录')!
     .trigger('click')
   await flushPromises()
-  expect(teamMaterialApi.processingSources).toHaveBeenCalledWith(5, {
-    rework_record_id: 1,
-    page_size: 2,
-  })
+  expect(sources).not.toHaveBeenCalled()
   expect(wrapper.getComponent(QuantityAdjustmentDialog).props()).toMatchObject({
-    sourceId: 88,
-    rework: true,
-    canWrite: true,
-    reworkRecordId: 1,
+    sourceId: 10,
+    canWrite: false,
     modelValue: true,
   })
 })
