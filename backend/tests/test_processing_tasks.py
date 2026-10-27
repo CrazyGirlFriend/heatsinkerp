@@ -7,7 +7,9 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from app.database import SessionLocal
 from app.models import MaterialStockBalance, TeamProcessingTask
+from engineered_rework_helpers import approve_rework, resume_rework
 from sqlalchemy import create_engine
+from test_engineered_rework import save_plan
 from test_processing_daily import setup_lot, work
 from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
@@ -133,18 +135,30 @@ def test_partial_task_remaining_keeps_only_previous_completed_tasks(client, ware
     assert context["completed_task_ids"] == [task1["id"]]
     assert context["allowed_task_ids"] == [task2["id"]]
     assert {row["processing_task_id"] for row in context["rework_task_records"]} == {task1["id"]}
-    assert (
-        work(
-            client,
-            s,
-            remaining,
-            employee,
-            processing_task_id=task2["id"],
-            work_kind="rework",
-            idempotency_key="not-completed-task",
-        ).status_code
-        == 409
+    denied = work(
+        client,
+        s,
+        remaining,
+        employee,
+        processing_task_id=task2["id"],
+        work_kind="rework",
+        idempotency_key="not-completed-task",
     )
+    assert denied.status_code == 422 and "工艺" in denied.text
+    invalid_request = client.post(
+        "/api/process-routes/rework-requests",
+        headers=s["other_headers"],
+        json={
+            "source_transfer_id": remaining["id"],
+            "rework_of_id": second.json()["id"],
+            "expected_revision": context["revision"],
+            "quantity": context["quantity"],
+            "weight": context["weight"],
+            "reason": "不能返工尚未加工的精磨工序",
+            "idempotency_key": "not-completed-task-request",
+        },
+    )
+    assert invalid_request.status_code == 422 and "未加工这部分料" in invalid_request.text
     finish = work(
         client,
         s,
@@ -179,33 +193,38 @@ def test_task_rework_selects_correct_original_after_another_task(client, warehou
         for row in ctx(client, s, lot)["rework_task_records"]
     }
     assert records == {task1["id"]: first["id"], task2["id"]: second["id"]}
+    lot = approve_rework(client, s, lot, first)
     bad = work(
         client,
         s,
         lot,
         employee,
-        processing_task_id=task1["id"],
         work_kind="rework",
         rework_of_id=second["id"],
         idempotency_key="wrong-original",
     )
-    assert bad.status_code == 409
+    assert bad.status_code == 422 and "原加工记录" in bad.text
     result = work(
         client,
         s,
         lot,
         employee,
-        processing_task_id=task1["id"],
         work_kind="rework",
         rework_of_id=first["id"],
         idempotency_key="rework-first",
     )
     assert result.status_code == 201, result.text
     assert result.json()["rework_of_id"] == first["id"]
+    assert result.json()["processing_task_name"] == "返工精磨"
     daily = client.get(
         base(s, True) + "/processing-daily", params={"processing_task_id": task1["id"]}
     ).json()["items"][0]
-    assert (daily["completed_quantity"], daily["rework_quantity"]) == (10, 10)
+    assert (daily["completed_quantity"], daily["rework_quantity"]) == (10, 0)
+    rework_daily = client.get(
+        base(s, True) + "/processing-daily",
+        params={"processing_task_id": result.json()["processing_task_id"]},
+    ).json()["items"][0]
+    assert (rework_daily["completed_quantity"], rework_daily["rework_quantity"]) == (0, 10)
     totals = client.get(base(s, True) + "/overview").json()["totals"]
     assert totals["on_hand_quantity"] == 10
 
@@ -239,23 +258,40 @@ def test_remaining_of_later_task_can_rework_an_earlier_completed_task(client, wa
     assert [row["transfer"]["id"] for row in other_candidates["items"]] == [
         second["outputs"][0]["id"]
     ]
+    context = ctx(client, s, remaining)
+    requested = client.post(
+        "/api/process-routes/rework-requests",
+        headers=s["other_headers"],
+        json={
+            "source_transfer_id": remaining["id"],
+            "rework_of_id": first["id"],
+            "expected_revision": context["revision"],
+            "quantity": context["quantity"],
+            "weight": context["weight"],
+            "reason": "粗磨表面有划伤，精磨前需先返工",
+            "idempotency_key": "earlier-task-problem",
+        },
+    )
+    assert requested.status_code == 201, requested.text
+    route = save_plan(client, s, requested.json())
+    remaining = {"id": route["rework_request"]["source_transfer_id"]}
     result = work(
         client,
         s,
         remaining,
         employee,
-        processing_task_id=task1["id"],
         work_kind="rework",
         rework_of_id=first["id"],
         idempotency_key="rework-earlier-task",
     )
     assert result.status_code == 201, result.text
     assert result.json()["completed_quantity"] == 6
-    assert ctx(client, s, result.json()["outputs"][0])["completed_task_ids"] == [task1["id"]]
+    completed = ctx(client, s, result.json()["outputs"][0])["completed_task_ids"]
+    assert set(completed) == {task1["id"], result.json()["processing_task_id"]}
     assert client.get(base(s, True) + "/overview").json()["totals"]["on_hand_quantity"] == 10
 
 
-def test_rework_preserves_original_task_business_even_when_disabled_or_legacy(client, warehouse):
+def test_engineered_rework_preserves_disabled_and_legacy_original_history(client, warehouse):
     s = warehouse
     lot, employee = setup_lot(client, s)
     legacy = work(client, s, lot, employee).json()
@@ -279,34 +315,43 @@ def test_rework_preserves_original_task_business_even_when_disabled_or_legacy(cl
         url + f"/purposes/{purpose['id']}",
         json={"name": "更名业务", "active": False, "expected_version": 1},
     )
+    current = approve_rework(client, s, first["outputs"][0], first)
     retry = work(
         client,
         s,
-        first["outputs"][0],
+        current,
         employee,
-        processing_task_id=task1["id"],
-        purpose_id=purpose["id"],
         work_kind="rework",
         rework_of_id=first["id"],
         idempotency_key="disabled-task-rework",
     )
     assert retry.status_code == 201, retry.text
     assert (retry.json()["processing_task_name"], retry.json()["purpose_name"]) == (
-        "粗磨",
-        "原业务",
+        "返工精磨",
+        "返工处理",
     )
+    current = retry.json()["outputs"][0]
+    resume_rework(client, s, current)
+    current = approve_rework(client, s, current, legacy)
     legacy_retry = work(
         client,
         s,
-        retry.json()["outputs"][0],
+        current,
         employee,
         work_kind="rework",
         rework_of_id=legacy["id"],
         idempotency_key="legacy-rework",
     )
     assert legacy_retry.status_code == 201, legacy_retry.text
-    assert legacy_retry.json()["processing_task_id"] is None
-    assert legacy_retry.json()["purpose_id"] is None
+    assert legacy_retry.json()["rework_of_id"] == legacy["id"]
+    assert legacy_retry.json()["processing_task_name"] == "返工精磨"
+    records = {row["id"]: row for row in client.get(url + "/processing-records").json()["items"]}
+    assert (records[first["id"]]["processing_task_name"], records[first["id"]]["purpose_name"]) == (
+        "粗磨",
+        "原业务",
+    )
+    assert records[legacy["id"]]["processing_task_id"] is None
+    assert records[legacy["id"]]["purpose_id"] is None
     assert client.get(url + "/overview").json()["totals"]["on_hand_quantity"] == 10
     summary = client.get(url + "/processing-records").json()["summary"]
     assert summary["completed_quantity"] == 20 and summary["rework_quantity"] == 20
