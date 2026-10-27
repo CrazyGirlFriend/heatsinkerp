@@ -593,7 +593,7 @@ describe('warehouse grouped stock', () => {
           select('库存来源筛选')
             .findAllComponents(ElOption)
             .map((option) => option.props('label')),
-        ).toEqual(['外部来料', '外部退回', '车间转入', '初始库存'])
+        ).toEqual(['外部来料', '外部退回', '车间转入', '初始库存', '返工料划分'])
       }
     },
   )

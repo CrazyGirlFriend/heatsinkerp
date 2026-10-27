@@ -15,63 +15,76 @@ CK_MT_ENTRY_DESTINATION = "(entry_kind IN ('transfer', 'warehouse_receipt', 'ope
 
 
 def upgrade():
-    with op.batch_alter_table("process_routes") as batch:
-        batch.add_column(
-            sa.Column("route_kind", sa.String(16), nullable=False, server_default="normal")
-        )
-        batch.add_column(sa.Column("rework_source_transfer_id", sa.Integer()))
-        batch.add_column(sa.Column("rework_of_id", sa.Integer()))
-        batch.add_column(sa.Column("rework_inspection_id", sa.Integer()))
-        batch.add_column(sa.Column("resume_route_id", sa.Integer()))
-        batch.add_column(sa.Column("resume_step_index", sa.Integer()))
-        batch.add_column(sa.Column("resume_step_complete", sa.Boolean()))
-        batch.add_column(sa.Column("resume_team_id", sa.Integer()))
-        batch.add_column(sa.Column("rework_round", sa.Integer()))
-        batch.add_column(sa.Column("request_reason", sa.Text()))
-        batch.add_column(sa.Column("request_key", sa.String(100)))
-        batch.add_column(sa.Column("request_hash", sa.String(64)))
-        batch.create_foreign_key(
-            "fk_pr_rework_source",
-            "material_transfers",
-            ["rework_source_transfer_id"],
-            ["id"],
-            ondelete="RESTRICT",
-        )
-        batch.create_foreign_key(
-            "fk_pr_rework_work",
-            "material_quantity_adjustments",
-            ["rework_of_id"],
-            ["id"],
-            ondelete="RESTRICT",
-        )
-        batch.create_foreign_key(
-            "fk_pr_resume_route", "process_routes", ["resume_route_id"], ["id"], ondelete="RESTRICT"
-        )
-        batch.create_foreign_key(
-            "fk_pr_resume_team", "teams", ["resume_team_id"], ["id"], ondelete="RESTRICT"
-        )
-        batch.create_foreign_key(
-            "fk_pr_rework_inspection",
-            "material_inspections",
-            ["rework_inspection_id"],
-            ["id"],
-            ondelete="RESTRICT",
-        )
-        batch.create_unique_constraint("uq_pr_request_key", ["request_key"])
-        batch.create_index(
-            "ix_process_routes_rework_source_transfer_id", ["rework_source_transfer_id"]
-        )
-        batch.create_index("ix_pr_kind_updated", ["route_kind", "updated_at", "id"])
+    columns = {c["name"] for c in sa.inspect(op.get_bind()).get_columns("process_routes")}
+    if "route_kind" not in columns:
+        with op.batch_alter_table("process_routes") as batch:
+            batch.add_column(
+                sa.Column("route_kind", sa.String(16), nullable=False, server_default="normal")
+            )
+            batch.add_column(sa.Column("rework_source_transfer_id", sa.Integer()))
+            batch.add_column(sa.Column("rework_of_id", sa.Integer()))
+            batch.add_column(sa.Column("rework_inspection_id", sa.Integer()))
+            batch.add_column(sa.Column("resume_route_id", sa.Integer()))
+            batch.add_column(sa.Column("resume_step_index", sa.Integer()))
+            batch.add_column(sa.Column("resume_step_complete", sa.Boolean()))
+            batch.add_column(sa.Column("resume_team_id", sa.Integer()))
+            batch.add_column(sa.Column("rework_round", sa.Integer()))
+            batch.add_column(sa.Column("request_reason", sa.Text()))
+            batch.add_column(sa.Column("request_key", sa.String(100)))
+            batch.add_column(sa.Column("request_hash", sa.String(64)))
+            batch.create_foreign_key(
+                "fk_pr_rework_source",
+                "material_transfers",
+                ["rework_source_transfer_id"],
+                ["id"],
+                ondelete="RESTRICT",
+            )
+            batch.create_foreign_key(
+                "fk_pr_rework_work",
+                "material_quantity_adjustments",
+                ["rework_of_id"],
+                ["id"],
+                ondelete="RESTRICT",
+            )
+            batch.create_foreign_key(
+                "fk_pr_resume_route",
+                "process_routes",
+                ["resume_route_id"],
+                ["id"],
+                ondelete="RESTRICT",
+            )
+            batch.create_foreign_key(
+                "fk_pr_resume_team", "teams", ["resume_team_id"], ["id"], ondelete="RESTRICT"
+            )
+            batch.create_foreign_key(
+                "fk_pr_rework_inspection",
+                "material_inspections",
+                ["rework_inspection_id"],
+                ["id"],
+                ondelete="RESTRICT",
+            )
+            batch.create_unique_constraint("uq_pr_request_key", ["request_key"])
+            batch.create_index(
+                "ix_process_routes_rework_source_transfer_id", ["rework_source_transfer_id"]
+            )
+            batch.create_index("ix_pr_kind_updated", ["route_kind", "updated_at", "id"])
     with op.batch_alter_table("material_transfers") as batch:
         batch.drop_constraint("ck_mt_entry_destination", type_="check")
         batch.create_check_constraint("ck_mt_entry_destination", CK_MT_ENTRY_DESTINATION)
         batch.drop_constraint("ck_mt_entry_kind_source", type_="check")
         batch.create_check_constraint("ck_mt_entry_kind_source", CK_MT_ENTRY_KIND_SOURCE)
-        batch.add_column(sa.Column("rework_route_id", sa.Integer()))
-        batch.create_foreign_key(
-            "fk_mt_rework_route", "process_routes", ["rework_route_id"], ["id"], ondelete="RESTRICT"
-        )
-        batch.create_index("ix_material_transfers_rework_route_id", ["rework_route_id"])
+        if "rework_route_id" not in {
+            c["name"] for c in sa.inspect(op.get_bind()).get_columns("material_transfers")
+        }:
+            batch.add_column(sa.Column("rework_route_id", sa.Integer()))
+            batch.create_foreign_key(
+                "fk_mt_rework_route",
+                "process_routes",
+                ["rework_route_id"],
+                ["id"],
+                ondelete="RESTRICT",
+            )
+            batch.create_index("ix_material_transfers_rework_route_id", ["rework_route_id"])
     policy = sa.table(
         "process_route_policy",
         sa.column("id", sa.Integer()),

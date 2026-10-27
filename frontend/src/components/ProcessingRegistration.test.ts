@@ -7,6 +7,8 @@ import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import ProcessingTaskFields from './ProcessingTaskFields.vue'
 import WeightInput from './WeightInput.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
+import { processRouteApi } from '@/services/processRouteApi'
+import { routeFixture } from '@/testFixtures/processRoute'
 import { factoryToday } from '@/utils/format'
 
 vi.mock('@/stores/auth', () => ({
@@ -19,6 +21,7 @@ vi.mock('@/stores/auth', () => ({
 const employee = { id: 71, name: '张师傅', team_id: 2, active: true, version: 1 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(processRouteApi, 'detail').mockImplementation(async (id) => ({ ...routeFixture, id }))
   vi.spyOn(teamMaterialApi, 'processingTasks').mockResolvedValue([
     { id: 9, team_id: 2, name: '精磨', active: true, version: 1 },
   ])
@@ -152,7 +155,7 @@ it('opens splitting outputs directly and includes worker identity and actual wor
   expect(wrapper.findComponent(ElSwitch).exists()).toBe(false)
   expect(wrapper.findAllComponents(ProcessingTaskFields)).toHaveLength(1)
   const summary = wrapper.get('.quantity-summary').element
-  const requirements = wrapper.get('[aria-label="本道加工工艺"]').element
+  const requirements = wrapper.get('.processing-current-step').element
   const outputs = wrapper.get('[aria-label="加工后完整实物明细"]').element
   expect(
     summary.compareDocumentPosition(requirements) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -243,12 +246,29 @@ it('requires a task and its business, permits a different task on completed stoc
   ).toBeNull()
 })
 
-it('keeps rework linked to the chosen original task instead of the newest different task', async () => {
+it('uses the engineered rework task while preserving the chosen original record', async () => {
   vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
     ...(await teamMaterialApi.quantityContext(2, 10)),
     task_required: true,
     purpose_id: 3,
     rework_of_id: 52,
+    rework_route_id: 9,
+    rework_route_ready: true,
+    process_route: {
+      id: 9,
+      route_kind: 'rework',
+      title: '返工工艺',
+      version: 1,
+      step_index: 0,
+      sequence_no: 1,
+      step_name: '返工精磨',
+      instructions: '精磨至2.50±0.01mm',
+      team_id: 2,
+      processing_task_id: 9,
+      purpose_id: 3,
+      complete: false,
+      split_here: false,
+    },
     rework_task_records: [
       {
         processing_task_id: 9,
@@ -302,7 +322,7 @@ it('keeps rework linked to the chosen original task instead of the newest differ
   )
 })
 
-it('keeps legacy rework without a task and does not require active task or business directories', async () => {
+it('blocks legacy rework without engineering instead of bypassing the problem submission', async () => {
   vi.mocked(teamMaterialApi.quantityContext).mockResolvedValue({
     ...(await teamMaterialApi.quantityContext(2, 10)),
     task_required: true,
@@ -331,28 +351,12 @@ it('keeps legacy rework without a task and does not require active task or busin
     global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
   })
   await flushPromises()
-  wrapper.getComponent(TeamEmployeeInput).vm.$emit('update:modelValue', employee)
-  await flushPromises()
-  const task = wrapper
-    .findAllComponents(ElSelect)
-    .find((item) => item.find('[aria-label="加工任务"]').exists())!
-  expect(task.props('disabled')).toBe(true)
-  expect(task.props('modelValue')).toBeNull()
+  expect(wrapper.text()).toContain('请先在本班组工作台提交返工问题')
+  expect(wrapper.findComponent(TeamEmployeeInput).exists()).toBe(false)
+  expect(wrapper.findComponent(ProcessingTaskFields).exists()).toBe(false)
   expect(teamMaterialApi.processingTasks).not.toHaveBeenCalled()
-  await wrapper
-    .findAll('button')
-    .find((button) => button.text() === '保存返工登记')!
-    .trigger('click')
-  await flushPromises()
-  expect(teamMaterialApi.changeQuantity).toHaveBeenCalledWith(
-    2,
-    expect.objectContaining({
-      work_kind: 'rework',
-      rework_of_id: 51,
-      processing_task_id: null,
-      purpose_id: null,
-    }),
-  )
+  expect(wrapper.findAll('button').some((button) => button.text() === '保存返工登记')).toBe(false)
+  expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
 })
 
 it('uses the published route task without asking again, including a planned repeated task', async () => {

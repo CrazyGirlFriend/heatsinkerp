@@ -8,7 +8,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from sqlalchemy import MetaData, Table, delete, exists, func, inspect, or_, select
+from sqlalchemy import MetaData, Table, delete, exists, func, inspect, or_, select, update
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
@@ -39,6 +39,15 @@ RESET_TABLES = (
     "serial_urgency_events",
     "serial_urgencies",
 )
+
+# These nullable links may be unused by normal engineering records. Never clear
+# them: a referenced batch, inspection or commitment must keep its history.
+PROTECTED_ROUTE_REFERENCES = {
+    "rework_source_transfer_id": "material_transfers",
+    "rework_of_id": "material_quantity_adjustments",
+    "rework_inspection_id": "material_inspections",
+    "original_schedule_id": "production_schedules",
+}
 
 
 def business_counts(db: Session) -> dict[str, int]:
@@ -76,10 +85,31 @@ def reset_business_data(db: Session) -> dict[str, int]:
         # Fail closed on future dependencies, even if an ON DELETE CASCADE would
         # otherwise silently remove records outside the approved material scope.
         for name in protected:
-            if any(fk["referred_table"] in RESET_TABLES for fk in schema.get_foreign_keys(name)):
-                raise RuntimeError("Unapproved dependent table: " + name)
+            for fk in schema.get_foreign_keys(name):
+                if fk["referred_table"] not in RESET_TABLES:
+                    continue
+                columns = fk["constrained_columns"]
+                if (
+                    name != "process_routes"
+                    or len(columns) != 1
+                    or PROTECTED_ROUTE_REFERENCES.get(columns[0]) != fk["referred_table"]
+                ):
+                    raise RuntimeError("Unapproved dependent table: " + name)
+                table = Table(name, MetaData(), autoload_with=connection)
+                if connection.scalar(select(exists().where(table.c[columns[0]].is_not(None)))):
+                    raise RuntimeError(
+                        "Protected engineering references material data: " + columns[0]
+                    )
         fingerprints = _fingerprints(connection, protected)
         before = business_counts(db)
+        # Both ends are within the reset scope. Break these nullable commitment
+        # links before deleting schedules; keep foreign-key checks enabled.
+        for name, column in (
+            ("material_transfers", "processing_schedule_id"),
+            ("material_quantity_adjustments", "production_schedule_id"),
+        ):
+            table = Base.metadata.tables[name]
+            db.execute(update(table).where(table.c[column].is_not(None)).values({column: None}))
         for name in RESET_TABLES:
             table = Base.metadata.tables[name]
             references = {

@@ -15,15 +15,20 @@ TABLES = (
 
 
 def upgrade():
-    op.add_column(
-        "production_schedule_tasks", sa.Column("final_due_at", sa.DateTime(), nullable=True)
-    )
-    op.execute(
-        sa.text(
-            "UPDATE production_schedule_tasks SET final_due_at = (SELECT due_at FROM production_schedules WHERE task_id = production_schedule_tasks.id ORDER BY CASE WHEN cancelled_at IS NULL THEN 0 ELSE 1 END, sequence_no DESC, id DESC LIMIT 1)"
+    if "final_due_at" not in {
+        c["name"] for c in sa.inspect(op.get_bind()).get_columns("production_schedule_tasks")
+    }:
+        op.add_column(
+            "production_schedule_tasks", sa.Column("final_due_at", sa.DateTime(), nullable=True)
         )
-    )
+        op.execute(
+            sa.text(
+                "UPDATE production_schedule_tasks SET final_due_at = (SELECT due_at FROM production_schedules WHERE task_id = production_schedule_tasks.id ORDER BY CASE WHEN cancelled_at IS NULL THEN 0 ELSE 1 END, sequence_no DESC, id DESC LIMIT 1)"
+            )
+        )
     for table, column, constraint in TABLES:
+        if column in {c["name"] for c in sa.inspect(op.get_bind()).get_columns(table)}:
+            continue
         with op.batch_alter_table(table) as batch:
             batch.add_column(sa.Column(column, sa.Integer(), nullable=True))
             batch.create_foreign_key(

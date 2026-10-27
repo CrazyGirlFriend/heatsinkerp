@@ -8,6 +8,7 @@ from sqlalchemy import (
     Column,
     ForeignKey,
     Integer,
+    LargeBinary,
     MetaData,
     String,
     Table,
@@ -38,6 +39,10 @@ def database(monkeypatch):
         if name == "material_transfers":
             columns += [
                 Column(
+                    "processing_schedule_id",
+                    ForeignKey("production_schedules.id", ondelete="RESTRICT"),
+                ),
+                Column(
                     "source_transfer_id", ForeignKey("material_transfers.id", ondelete="RESTRICT")
                 ),
                 Column(
@@ -67,6 +72,13 @@ def database(monkeypatch):
                 Column(
                     "source_transfer_id", ForeignKey("material_transfers.id", ondelete="RESTRICT")
                 ),
+            ]
+        if name == "material_quantity_adjustments":
+            columns += [
+                Column(
+                    "production_schedule_id",
+                    ForeignKey("production_schedules.id", ondelete="RESTRICT"),
+                )
             ]
         if name == "shared_material_members":
             columns += [
@@ -133,6 +145,65 @@ def test_reset_respects_delivery_origin_reference_without_stock_source(database)
         )
     with Session(engine) as db:
         assert reset.reset_business_data(db)["material_transfers"] == 3
+
+
+def test_reset_removes_material_commitment_links_with_foreign_keys_enabled(database):
+    engine, metadata = database
+    with engine.begin() as connection:
+        connection.execute(
+            metadata.tables["material_transfers"].update().values(processing_schedule_id=1)
+        )
+        connection.execute(
+            metadata.tables["material_quantity_adjustments"]
+            .update()
+            .values(production_schedule_id=1)
+        )
+    before = contents(engine, metadata)
+    with Session(engine) as db:
+        reset.reset_business_data(db)
+    after = contents(engine, metadata)
+    for name in metadata.tables:
+        assert after[name] == ([] if name in reset.RESET_TABLES else before[name])
+
+
+@pytest.mark.parametrize("reference", [None, *reset.PROTECTED_ROUTE_REFERENCES])
+def test_reset_preserves_engineering_originals_and_refuses_actual_references(database, reference):
+    engine, metadata = database
+    routes = Table(
+        "process_routes",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("source_file", LargeBinary),
+        *[
+            Column(column, ForeignKey(f"{target}.id", ondelete="RESTRICT"))
+            for column, target in reset.PROTECTED_ROUTE_REFERENCES.items()
+        ],
+    )
+    drawings = Table(
+        "process_route_drawings",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("route_id", ForeignKey("process_routes.id", ondelete="RESTRICT")),
+        Column("source_file", LargeBinary),
+    )
+    metadata.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(routes.insert(), {"id": 1, "source_file": b"original Word"})
+        connection.execute(
+            drawings.insert(), {"id": 1, "route_id": 1, "source_file": b"original PDF"}
+        )
+        if reference:
+            connection.execute(routes.update().values({reference: 1}))
+    before = contents(engine, metadata)
+    with Session(engine) as db:
+        if reference:
+            with pytest.raises(RuntimeError, match="Protected engineering references"):
+                reset.reset_business_data(db)
+        else:
+            reset.reset_business_data(db)
+    after = contents(engine, metadata)
+    for name in metadata.tables:
+        assert after[name] == ([] if not reference and name in reset.RESET_TABLES else before[name])
 
 
 def test_reset_removes_rechecks_and_rework_before_their_original_records(database):

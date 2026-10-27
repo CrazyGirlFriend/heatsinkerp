@@ -64,6 +64,11 @@ vi.mock('@/services/qualityFeedbackApi', () => ({
     records: vi.fn().mockResolvedValue({ items: [], total: 0, pending_count: 0 }),
   },
 }))
+vi.mock('@/services/reworkNoticeApi', () => ({
+  reworkNoticeApi: {
+    list: vi.fn().mockResolvedValue({ items: [], total: 0, unread: 0 }),
+  },
+}))
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
 const source = (id = 10): StockBatch =>
   ({

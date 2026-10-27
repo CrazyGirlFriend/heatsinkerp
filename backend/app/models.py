@@ -342,7 +342,10 @@ class MaterialTransfer(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     processing_schedule_id: Mapped[int | None] = mapped_column(
-        ForeignKey("production_schedules.id", name="fk_mt_processing_schedule", ondelete="RESTRICT"), index=True
+        ForeignKey(
+            "production_schedules.id", name="fk_mt_processing_schedule", ondelete="RESTRICT"
+        ),
+        index=True,
     )
     process_route_id: Mapped[int | None] = mapped_column(
         ForeignKey("process_routes.id", ondelete="RESTRICT"), index=True
@@ -671,7 +674,10 @@ class MaterialQuantityAdjustment(Base):
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     production_schedule_id: Mapped[int | None] = mapped_column(
-        ForeignKey("production_schedules.id", name="fk_mqa_production_schedule", ondelete="RESTRICT"), index=True
+        ForeignKey(
+            "production_schedules.id", name="fk_mqa_production_schedule", ondelete="RESTRICT"
+        ),
+        index=True,
     )
     process_route_id: Mapped[int | None] = mapped_column(
         ForeignKey("process_routes.id", ondelete="RESTRICT")
@@ -1090,8 +1096,13 @@ class ProcessRoute(Base):
         index=True,
     )
     original_schedule_id: Mapped[int | None] = mapped_column(
-        ForeignKey("production_schedules.id", ondelete="RESTRICT", use_alter=True,
-                   name="fk_pr_original_schedule"), index=True
+        ForeignKey(
+            "production_schedules.id",
+            ondelete="RESTRICT",
+            use_alter=True,
+            name="fk_pr_original_schedule",
+        ),
+        index=True,
     )
     rework_of_id: Mapped[int | None] = mapped_column(
         ForeignKey(

@@ -31,6 +31,7 @@ def test_only_supported_business_routes_are_registered(client):
         "/api/quality-feedback",
         "/api/production-schedules",
         "/api/process-routes",
+        "/api/rework-notices",
         "/api/factory-dashboard",
         "/api/factory-overview",
         "/api/factory-performance",

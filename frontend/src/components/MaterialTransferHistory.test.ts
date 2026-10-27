@@ -87,7 +87,7 @@ it('retains route binding audit and presents its process step in business wordin
   })
   const wrapper = mount(MaterialTransferHistory, { props: { transfer } })
   try {
-    expect(wrapper.text()).toContain('关联派工工艺')
+    expect(wrapper.text()).toContain('关联工艺')
     expect(wrapper.text()).toContain('首批派工 · 0 · 备料')
   } finally {
     wrapper.unmount()

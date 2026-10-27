@@ -10,31 +10,43 @@ depends_on = None
 
 
 def upgrade():
-    with op.batch_alter_table("process_routes") as batch:
-        batch.add_column(sa.Column("requesting_team_id", sa.Integer(), nullable=True))
-        batch.add_column(sa.Column("requesting_team_name", sa.String(80), nullable=True))
-        batch.add_column(sa.Column("requested_by", sa.String(80), nullable=True))
-        batch.create_foreign_key(
-            "fk_pr_requesting_team", "teams", ["requesting_team_id"], ["id"], ondelete="RESTRICT"
+    inspector = sa.inspect(op.get_bind())
+    if "requesting_team_id" not in {c["name"] for c in inspector.get_columns("process_routes")}:
+        with op.batch_alter_table("process_routes") as batch:
+            batch.add_column(sa.Column("requesting_team_id", sa.Integer(), nullable=True))
+            batch.add_column(sa.Column("requesting_team_name", sa.String(80), nullable=True))
+            batch.add_column(sa.Column("requested_by", sa.String(80), nullable=True))
+            batch.create_foreign_key(
+                "fk_pr_requesting_team",
+                "teams",
+                ["requesting_team_id"],
+                ["id"],
+                ondelete="RESTRICT",
+            )
+    if not inspector.has_table("rework_notices"):
+        op.create_table(
+            "rework_notices",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column(
+                "team_id",
+                sa.Integer(),
+                sa.ForeignKey("teams.id", ondelete="RESTRICT"),
+                nullable=False,
+            ),
+            sa.Column(
+                "route_id",
+                sa.Integer(),
+                sa.ForeignKey("process_routes.id", ondelete="RESTRICT"),
+                nullable=False,
+            ),
+            sa.Column("kind", sa.String(16), nullable=False),
+            sa.Column("created_at", sa.DateTime(), nullable=False),
+            sa.Column("read_at", sa.DateTime(), nullable=True),
+            sa.UniqueConstraint("team_id", "route_id", "kind", name="uq_rework_notice_delivery"),
         )
-    op.create_table(
-        "rework_notices",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column(
-            "team_id", sa.Integer(), sa.ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False
-        ),
-        sa.Column(
-            "route_id",
-            sa.Integer(),
-            sa.ForeignKey("process_routes.id", ondelete="RESTRICT"),
-            nullable=False,
-        ),
-        sa.Column("kind", sa.String(16), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("read_at", sa.DateTime(), nullable=True),
-        sa.UniqueConstraint("team_id", "route_id", "kind", name="uq_rework_notice_delivery"),
-    )
-    op.create_index("ix_rework_notices_team_read", "rework_notices", ["team_id", "read_at", "id"])
+        op.create_index(
+            "ix_rework_notices_team_read", "rework_notices", ["team_id", "read_at", "id"]
+        )
 
 
 def downgrade():
