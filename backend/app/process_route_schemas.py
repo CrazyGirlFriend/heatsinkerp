@@ -46,6 +46,7 @@ class RouteWrite(BaseModel):
 
 
 class RouteDraftWrite(RouteWrite):
+    material_values: dict[str, str | int | float | None] | None = Field(default=None, max_length=30)
     resume_step_index: int | None = Field(default=None, ge=0, le=99)
     engineering_employee_id: int | None = Field(default=None, ge=1)
     modified_employee_id: int | None = Field(default=None, ge=1)

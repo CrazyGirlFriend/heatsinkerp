@@ -928,6 +928,32 @@ class ProductionSchedule(Base):
     )
 
 
+class ProductionScheduleBatch(Base):
+    """A team's own dated delivery batch, distinct from physical inventory lots."""
+
+    __tablename__ = "production_schedule_batches"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    schedule_id: Mapped[int] = mapped_column(
+        ForeignKey("production_schedules.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    batch_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    planned_start_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    due_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    target_quantity: Mapped[int | None] = mapped_column(Integer)
+    target_weight: Mapped[Decimal | None] = mapped_column(Numeric(17, 6))
+    upstream_batch_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    __table_args__ = (
+        CheckConstraint("batch_number > 0", name="ck_psb_number"),
+        CheckConstraint("planned_start_at < due_at", name="ck_psb_period"),
+        CheckConstraint(
+            "(target_quantity IS NULL OR target_quantity > 0) AND "
+            "(target_weight IS NULL OR target_weight > 0) AND "
+            "(target_quantity IS NOT NULL OR target_weight IS NOT NULL)",
+            name="ck_psb_target",
+        ),
+    )
+
+
 class ProductionScheduleSource(Base):
     __tablename__ = "production_schedule_sources"
     schedule_id: Mapped[int] = mapped_column(
@@ -958,6 +984,9 @@ class ProductionScheduleDelivery(Base):
     schedule_id: Mapped[int] = mapped_column(
         ForeignKey("production_schedules.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    schedule_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("production_schedule_batches.id", ondelete="RESTRICT"), index=True
+    )
 
 
 class ProductionScheduleEvent(Base):
@@ -973,6 +1002,32 @@ class ProductionScheduleEvent(Base):
     after: Mapped[dict] = mapped_column(JSON, nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     __table_args__ = (Index("ix_pse_schedule", "schedule_id", "id"),)
+
+
+class ScheduleNotice(Base):
+    __tablename__ = "schedule_notices"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_key: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
+    schedule_id: Mapped[int] = mapped_column(
+        ForeignKey("production_schedules.id", ondelete="RESTRICT"), nullable=False
+    )
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
+    kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    message: Mapped[str] = mapped_column(String(300), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    __table_args__ = (Index("ix_sn_team_id", "team_id", "id"),)
+
+
+class ScheduleNoticeRead(Base):
+    __tablename__ = "schedule_notice_reads"
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    notice_id: Mapped[int] = mapped_column(
+        ForeignKey("schedule_notices.id", ondelete="CASCADE"), primary_key=True
+    )
+    read_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    __table_args__ = (Index("ix_snr_notice", "notice_id"),)
 
 
 class MaterialInspection(Base):
@@ -1230,6 +1285,17 @@ class ProcessRouteDrawing(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     __table_args__ = (UniqueConstraint("route_id", "sha256", name="uq_process_route_drawing"),)
+
+
+class ProcessRouteOrderFile(Base):
+    __tablename__ = "process_route_order_files"
+    route_id: Mapped[int] = mapped_column(
+        ForeignKey("process_routes.id", ondelete="RESTRICT"), primary_key=True
+    )
+    filename: Mapped[str] = mapped_column(String(240))
+    content: Mapped[bytes] = mapped_column(
+        LargeBinary().with_variant(LONGBLOB(), "mysql"), deferred=True
+    )
 
 
 class ProcessRoutePolicy(Base):

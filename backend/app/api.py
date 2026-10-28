@@ -21,6 +21,7 @@ from .process_route_api import router as process_route_router
 from .production_schedule_api import router as production_schedule_router
 from .quality_feedback_api import router as quality_feedback_router
 from .rework_notices import router as rework_notices_router
+from .schedule_notices import router as schedule_notices_router
 from .serial_urgency import router as urgency_router
 from .team_business import router as team_business_router
 from .team_serial_history import router as serial_history_router
@@ -49,6 +50,7 @@ router.include_router(team_business_router)
 router.include_router(opening_stock_router)
 router.include_router(serial_history_router)
 router.include_router(notification_router)
+router.include_router(schedule_notices_router)
 router.include_router(dashboard_router)
 router.include_router(warehouse_locations_router)
 

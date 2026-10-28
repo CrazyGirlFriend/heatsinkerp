@@ -80,7 +80,10 @@ def published(client, s, same_team=False, *, row=None):
         },
     )
     assert result.status_code == 200, result.text
-    result = client.post(URL + f"/{row['id']}/publish", json={"version": result.json()["version"]})
+    result = client.post(
+        URL + f"/{row['id']}/publish",
+        json={"version": result.json()["version"], "confirmed_imports": True},
+    )
     assert result.status_code == 200, result.text
     return result.json()
 
@@ -272,7 +275,10 @@ def test_shared_common_work_then_designated_partial_split_preserves_remaining_st
             "review_note": "原文核对，共投在二次轧制时拆分",
         },
     ).json()
-    result = client.post(URL + f"/{draft['id']}/publish", json={"version": saved["version"]})
+    result = client.post(
+        URL + f"/{draft['id']}/publish",
+        json={"version": saved["version"], "confirmed_imports": True},
+    )
     assert result.status_code == 200, result.text
     route = result.json()
     lot = intake(

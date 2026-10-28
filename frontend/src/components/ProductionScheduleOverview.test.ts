@@ -200,6 +200,54 @@ describe('global production schedule progress', () => {
     await markers[2]!.trigger('blur')
     expect(wrapper.findAll('.sp-node.is-related')).toHaveLength(0)
   })
+  it('keeps interval labels compact and exposes exact batch dates and all linked neighbours', async () => {
+    const schedules = [
+      node({
+        id: 1,
+        team_name: '库房',
+        planned_start_at: '2026-10-26T08:00:00+08:00',
+        due_at: '2026-10-27T09:00:00+08:00',
+      }),
+      node({
+        id: 2,
+        team_name: '库房',
+        planned_start_at: '2026-10-26T12:00:00+08:00',
+        due_at: '2026-10-27T10:00:00+08:00',
+      }),
+      node({
+        id: 3,
+        team_name: '轧制',
+        batch_number: 1,
+        upstream_timeline_ids: [1, 2],
+        planned_start_at: '2026-10-27T11:00:00+08:00',
+        due_at: '2026-10-29T12:00:00+08:00',
+      }),
+    ]
+    await render([task(1, schedules)])
+    const markers = wrapper.findAll('.sp-node')
+    const rolling = markers[2]!
+    expect(rolling.text()).toContain('轧制 · 1 批')
+    expect(rolling.text()).not.toContain('10-27')
+    expect(rolling.attributes('aria-label')).toContain('开始 2026-10-27 11:00')
+    expect(rolling.attributes('aria-label')).toContain('第 1 批')
+    await rolling.trigger('focus')
+    expect(wrapper.findAll('.sp-node.is-related')).toHaveLength(3)
+    expect(wrapper.findAll('.sp-links > path.is-related')).toHaveLength(2)
+    await vi.waitFor(() => {
+      const tooltip = [...document.querySelectorAll('.schedule-node-tooltip')].find((e) =>
+        e.textContent?.includes('2026-10-29 12:00'),
+      )
+      expect(tooltip?.textContent).toContain('2026-10-27 11:00')
+    })
+    // Tooltips must not consume native button activation on Enter or Space.
+    for (const code of ['Enter', 'Space']) {
+      const event = new KeyboardEvent('keydown', { code, bubbles: true, cancelable: true })
+      rolling.element.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+    }
+    await rolling.trigger('click')
+    expect(wrapper.emitted('open-node')?.[0]).toEqual([schedules[2]])
+  })
   it('preserves exact custom dates and zoom while locating a future task from its details', async () => {
     const future = task(1, [node({ due_at: '2026-12-26T14:00:00+08:00' })])
     await render([future])

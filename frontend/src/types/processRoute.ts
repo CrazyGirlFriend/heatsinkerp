@@ -19,6 +19,28 @@ export interface ProcessRouteDrawing {
   size_bytes: number
 }
 
+export interface RouteMaterialField {
+  value: string | number
+  label: string
+  source_row: string
+  source_label: string
+  source_kind?: 'word' | 'excel'
+  source_filename?: string
+  parsed_value?: string | number
+  alternative?: RouteMaterialField
+}
+
+export interface RouteOrderDocument {
+  filename: string
+  sheet: string
+  headers: string[]
+  values: string[]
+  display_values?: string[]
+  serial_no: string
+  receipt_fields: Record<string, RouteMaterialField>
+  warnings: string[]
+}
+
 export interface ReworkRouteRequest {
   original_task_id?: number | null
   original_schedule_id?: number | null
@@ -70,10 +92,11 @@ export interface ProcessRoute {
     tables: string[][][]
     issues: string[]
     original_steps?: ProcessRouteStep[]
-    receipt_fields?: Record<
-      string,
-      { value: string | number; label: string; source_row: string; source_label: string }
-    >
+    receipt_fields?: Record<string, RouteMaterialField>
+    word_fields?: Record<string, RouteMaterialField>
+    order_document?: RouteOrderDocument
+    review_required?: boolean
+    material_confirmation?: { fingerprint: string; by: string; at: string }
     field_warnings?: string[]
   }
   created_by: string

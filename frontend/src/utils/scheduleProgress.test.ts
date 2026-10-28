@@ -55,7 +55,7 @@ describe('progress calendar and reminders', () => {
     expect(result.markers[0]!.x).toBe(result.markers[1]!.x)
     expect(result.markers[0]!.top).not.toBe(result.markers[1]!.top)
     expect(result.outside.map((item) => item.id)).toEqual([3])
-    expect(result.height).toBe(PROGRESS_LANE_HEIGHT * 2 + 8)
+    expect(result.height).toBe(PROGRESS_LANE_HEIGHT * 2 + 10)
     expect(result.links).toHaveLength(1)
     const separate = progressMarkers(
       [node(1, '2026-10-23T10:00:00+08:00'), node(2, '2026-10-23T13:00:00+08:00')],
@@ -63,7 +63,7 @@ describe('progress calendar and reminders', () => {
       500,
     )
     expect(separate.markers).toHaveLength(2)
-    expect(separate.height).toBe(PROGRESS_LANE_HEIGHT * 2 + 8)
+    expect(separate.height).toBe(PROGRESS_LANE_HEIGHT * 2 + 10)
     const enlarged = progressMarkers(
       separate.visible.map((item) => item.node),
       week,
@@ -71,7 +71,7 @@ describe('progress calendar and reminders', () => {
     )
     expect(enlarged.markers).toHaveLength(2)
     expect(enlarged.links).toHaveLength(1)
-    expect(enlarged.height).toBe(56)
+    expect(enlarged.height).toBe(52)
   })
   it('fits two same-day operations in a compact row while retaining morning and afternoon deadlines', () => {
     const range = progressWeek(now, now)
@@ -80,7 +80,7 @@ describe('progress calendar and reminders', () => {
       range,
       7 * (PROGRESS_CARD_WIDTH + 24),
     )
-    expect(result.height).toBeLessThanOrEqual(88)
+    expect(result.height).toBeLessThanOrEqual(112)
     const [morning, afternoon] = result.markers
     expect(afternoon!.x).toBeGreaterThan(morning!.x)
     expect(afternoon!.top - morning!.top).toBeGreaterThanOrEqual(40)
@@ -120,7 +120,7 @@ describe('progress calendar and reminders', () => {
       week,
       7 * (PROGRESS_CARD_WIDTH + 8),
     )
-    expect(result.height).toBe(56)
+    expect(result.height).toBe(52)
     const [first, second] = result.markers
     expect(first!.x).toBeCloseTo((PROGRESS_CARD_WIDTH + 8) * (1 + 16 / 24))
     expect(second!.x).toBeCloseTo((PROGRESS_CARD_WIDTH + 8) * (2 + 10 / 24))
@@ -195,5 +195,130 @@ describe('individual operation progress', () => {
         processed_quantity: 90,
       }),
     ).toEqual({ processed: 90, dispatched: 40 })
+  })
+})
+
+describe('team batch processing intervals', () => {
+  it('uses the team-entered start and end, clips a crossing interval, and retains overlaps', () => {
+    const start = Date.parse('2026-10-23T00:00:00+08:00')
+    const range = progressRange(start, start + 86400000, now)
+    const schedule = {
+      ...node(1, '2026-10-24T12:00:00+08:00'),
+      batches: [
+        {
+          id: 31,
+          batch_number: 1,
+          planned_start_at: '2026-10-22T12:00:00+08:00',
+          due_at: '2026-10-23T12:00:00+08:00',
+          target_quantity: 40,
+          target_weight: null,
+          upstream_batch_ids: [],
+          warnings: [],
+          status: 'pending' as const,
+          dispatched_quantity: 10,
+          dispatched_weight: 1,
+          received_quantity: 0,
+          received_weight: 0,
+          completed_at: null,
+        },
+        {
+          id: 32,
+          batch_number: 2,
+          planned_start_at: '2026-10-23T08:00:00+08:00',
+          due_at: '2026-10-24T12:00:00+08:00',
+          target_quantity: 60,
+          target_weight: null,
+          upstream_batch_ids: [],
+          warnings: [],
+          status: 'pending' as const,
+          dispatched_quantity: 0,
+          dispatched_weight: 0,
+          received_quantity: 0,
+          received_weight: 0,
+          completed_at: null,
+        },
+      ],
+    }
+    const result = progressMarkers([schedule], range, 240)
+    expect(result.markers).toHaveLength(2)
+    expect(result.markers[0]).toMatchObject({
+      x: 0,
+      width: 120,
+      interval: true,
+      clippedStart: true,
+    })
+    expect(result.markers[1]).toMatchObject({ x: 80, width: 160, interval: true, clippedEnd: true })
+    expect(result.markers[0]!.top).not.toBe(result.markers[1]!.top)
+    expect(result.markers[0]!.node).toMatchObject({
+      parent_schedule_id: 1,
+      target_quantity: 40,
+      dispatched_quantity: 10,
+    })
+    expect(result.markers[0]!.node.processed_quantity).toBeUndefined()
+    expect(result.markers[0]!.node.stock).toBeUndefined()
+  })
+  it('never derives a start from a predecessor or craft duration for legacy commitments', () => {
+    const range = progressWeek(now, now)
+    const result = progressMarkers(
+      [node(1, '2026-10-22T12:00:00+08:00'), node(2, '2026-10-23T12:00:00+08:00')],
+      range,
+      700,
+    )
+    expect(result.markers.every((m) => !m.interval)).toBe(true)
+    expect(result.markers.every((m) => m.width === PROGRESS_CARD_WIDTH)).toBe(true)
+  })
+})
+
+describe('batch flow lanes', () => {
+  const interval = (id: number, start: string, end: string, upstream: number[] = []) => ({
+    ...node(id, `2026-10-${end}:00+08:00`),
+    planned_start_at: `2026-10-${start}:00+08:00`,
+    upstream_timeline_ids: upstream,
+    predecessor_id: upstream[0] ?? null,
+  })
+  it('keeps each linked flow together even when another batch starts before the next team', () => {
+    const nodes = [
+      interval(1, '20T08:00', '21T09:00'),
+      interval(2, '21T10:00', '22T09:00'),
+      interval(3, '21T10:00', '22T12:00', [1]),
+      interval(4, '22T10:00', '23T12:00', [2]),
+      interval(5, '22T13:00', '23T12:00', [3]),
+      interval(6, '23T13:00', '24T12:00', [4]),
+    ]
+    for (const width of [952, 1904]) {
+      const result = progressMarkers(nodes, progressWeek(now, now), width)
+      const positions = new Map(result.markers.map((m) => [m.node.id, m.top]))
+      expect(positions.get(1)).toBe(positions.get(3))
+      expect(positions.get(3)).toBe(positions.get(5))
+      expect(positions.get(2)).toBe(positions.get(4))
+      expect(positions.get(4)).toBe(positions.get(6))
+      expect(positions.get(1)).not.toBe(positions.get(2))
+      expect(result.height).toBe(PROGRESS_LANE_HEIGHT * 2 + 10)
+      expect(result.links.map((link) => link.key)).toEqual(['1:3', '2:4', '3:5', '4:6'])
+    }
+  })
+  it('separates genuine overlaps within a linked flow and permits a same-hour handoff', () => {
+    const result = progressMarkers(
+      [
+        interval(1, '20T08:00', '21T09:00'),
+        interval(2, '21T08:00', '22T12:00', [1]),
+        interval(3, '22T12:00', '23T12:00', [2]),
+      ],
+      progressWeek(now, now),
+      952,
+    )
+    expect(result.markers[0]!.top).not.toBe(result.markers[1]!.top)
+    for (const a of result.markers)
+      for (const b of result.markers) {
+        if (a.node.id >= b.node.id || a.top !== b.top) continue
+        expect(a.x + a.width <= b.x || b.x + b.width <= a.x).toBe(true)
+      }
+    const joined = progressMarkers(
+      [interval(1, '20T08:00', '21T09:00'), interval(2, '21T09:00', '22T12:00', [1])],
+      progressWeek(now, now),
+      952,
+    )
+    expect(joined.markers[0]!.top).toBe(joined.markers[1]!.top)
+    expect(joined.markers[0]!.x + joined.markers[0]!.width).toBeCloseTo(joined.markers[1]!.x)
   })
 })

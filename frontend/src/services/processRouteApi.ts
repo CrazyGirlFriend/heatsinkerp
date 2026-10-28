@@ -1,5 +1,5 @@
 import { httpClient, httpRequest, HttpRequestError } from './httpClient'
-import type { ProcessRoute, ProcessRouteContext } from '@/types/processRoute'
+import type { ProcessRoute, ProcessRouteContext, RouteOrderDocument } from '@/types/processRoute'
 import type { MaterialPage, QuantityAdjustmentContext } from '@/types/teamMaterials'
 import type { TeamProcessingTask, TeamPurpose } from '@/types/teamBusiness'
 export class ProcessRouteSerialConflictError extends Error {}
@@ -100,7 +100,31 @@ export const processRouteApi = {
       Pick<ProcessRoute, 'title' | 'filename' | 'serial_nos' | 'steps' | 'source_data'>
     >('/parse', 'POST', body)
   },
-  save: (route: ProcessRoute) =>
+  parseOrder: (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.xlsx') || !file.size || file.size > 5 * 1024 * 1024)
+      return Promise.reject(new Error('请上传非空 .xlsx 订单表，不超过 5 MB'))
+    const body = new FormData()
+    body.append('file', file)
+    return request<RouteOrderDocument>('/parse-order', 'POST', body)
+  },
+  attachOrder: (route: ProcessRoute, file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    body.append('version', String(route.version))
+    return request<ProcessRoute>(`/${route.id}/order`, 'POST', body)
+  },
+  downloadOrder: async (route: ProcessRoute) => {
+    const response = await httpClient.get(`/process-routes/${route.id}/order`, {
+      responseType: 'blob',
+    })
+    const url = URL.createObjectURL(response.data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = route.source_data.order_document?.filename || '订单.xlsx'
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  },
+  save: (route: ProcessRoute, includeMaterials = true) =>
     request<ProcessRoute>(route.id ? `/${route.id}` : '', route.id ? 'PUT' : 'POST', {
       ...(route.rework_request
         ? { resume_step_index: route.rework_request.resume_step_index }
@@ -111,6 +135,15 @@ export const processRouteApi = {
       serial_nos: route.serial_nos,
       steps: route.steps,
       review_note: route.review_note || '',
+      ...(includeMaterials && route.id && route.source_data.receipt_fields
+        ? {
+            material_values: Object.fromEntries(
+              Object.entries(route.source_data.receipt_fields)
+                .filter(([key]) => key !== 'serial_no')
+                .map(([key, field]) => [key, field.value]),
+            ),
+          }
+        : {}),
       version: route.version,
     }),
   attachSource: (route: ProcessRoute, file: File) => {
@@ -154,8 +187,11 @@ export const processRouteApi = {
     })
     return result.data
   },
-  publish: (route: ProcessRoute) =>
-    request<ProcessRoute>(`/${route.id}/publish`, 'POST', { version: route.version }),
+  publish: (route: ProcessRoute, confirmedImports = false) =>
+    request<ProcessRoute>(`/${route.id}/publish`, 'POST', {
+      version: route.version,
+      confirmed_imports: confirmedImports,
+    }),
   revise: (id: number) => request<ProcessRoute>(`/${id}/revise`, 'POST'),
   bind: (id: number, lotId: number) =>
     request(`/${id}/bind`, 'POST', { source_transfer_ids: [lotId] }),

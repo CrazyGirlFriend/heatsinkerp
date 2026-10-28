@@ -4,7 +4,8 @@ import { scheduleTimestamp } from './scheduleTimeline'
 
 export const SCHEDULE_WEEK = 7 * 86_400_000
 export const PROGRESS_CARD_WIDTH = 112
-export const PROGRESS_LANE_HEIGHT = 40
+export const PROGRESS_CARD_HEIGHT = 32
+export const PROGRESS_LANE_HEIGHT = 42
 const DAY = 86_400_000
 const OFFSET = 8 * 3_600_000
 export const isDelivered = (node: ProductionSchedule) =>
@@ -36,17 +37,87 @@ export function progressRange(start: number, end: number, now: number) {
   return { start, end, days }
 }
 
+export function timelineNodes(nodes: ProductionSchedule[]): ProductionSchedule[] {
+  return nodes.flatMap((node) =>
+    node.batches?.length
+      ? node.batches.map((batch) => ({
+          ...node,
+          ...batch,
+          id: -batch.id,
+          parent_schedule_id: node.id,
+          predecessor_id: batch.upstream_batch_ids.length
+            ? -batch.upstream_batch_ids[0]!
+            : nodes.find((n) => n.id === node.predecessor_id)?.batches?.length
+              ? null
+              : node.predecessor_id,
+          upstream_timeline_ids: batch.upstream_batch_ids.map((id) => -id),
+          processed_quantity: undefined,
+          stock: undefined,
+          batches: undefined,
+          remaining_quantity:
+            batch.target_quantity == null
+              ? null
+              : Math.max(0, batch.target_quantity - batch.dispatched_quantity),
+          remaining_weight:
+            batch.target_weight == null
+              ? null
+              : Math.max(0, batch.target_weight - batch.dispatched_weight),
+          time_warnings: batch.warnings,
+        }))
+      : [node],
+  )
+}
+
 export function progressMarkers(
   nodes: ProductionSchedule[],
   week: ReturnType<typeof progressWeek>,
   width: number,
 ) {
-  const ordered = [...nodes].sort((a, b) => a.sequence_no - b.sequence_no || a.id - b.id)
-  const laneEnds: number[] = []
-  const visible = ordered.flatMap((node) => {
+  const ordered = timelineNodes(nodes).sort(
+    (a, b) =>
+      (scheduleTimestamp(a.planned_start_at || a.due_at) || 0) -
+        (scheduleTimestamp(b.planned_start_at || b.due_at) || 0) ||
+      a.sequence_no - b.sequence_no ||
+      a.id - b.id,
+  )
+  // Reserve lanes for explicitly linked batches so a material flow stays together.
+  // Batch numbers alone never establish a relationship between teams.
+  const roots = new Map(ordered.map((node) => [node.id, node.id]))
+  const root = (id: number): number => {
+    const parent = roots.get(id)!
+    if (parent === id) return id
+    const result = root(parent)
+    roots.set(id, result)
+    return result
+  }
+  for (const node of ordered) {
+    for (const upstream of node.upstream_timeline_ids || []) {
+      if (roots.has(upstream)) roots.set(root(node.id), root(upstream))
+    }
+  }
+  const linked = new Set<number>()
+  for (const node of ordered) {
+    if (node.upstream_timeline_ids?.some((id) => roots.has(id))) linked.add(root(node.id))
+  }
+  const geometries = ordered.flatMap((node) => {
     const date = scheduleTimestamp(node.due_at)
-    if (date == null || date < week.start || date >= week.end) return []
-    const x = ((date - week.start) / (week.end - week.start)) * width
+    const start = scheduleTimestamp(node.planned_start_at)
+    const interval = date != null && start != null && start < date
+    if (
+      date == null ||
+      (interval ? date <= week.start || start >= week.end : date < week.start || date >= week.end)
+    )
+      return []
+    const x =
+      ((Math.max(week.start, interval ? start : date) - week.start) / (week.end - week.start)) *
+      width
+    const barWidth = interval
+      ? Math.max(
+          2,
+          ((Math.min(date, week.end) - Math.max(start, week.start)) / (week.end - week.start)) *
+            width,
+        )
+      : PROGRESS_CARD_WIDTH
     // Keep the card inside its day when possible. The anchor still marks the exact hour.
     const dayWidth = width / week.days.length
     const dayStart = Math.floor((date - week.start) / DAY) * dayWidth
@@ -55,54 +126,78 @@ export function progressMarkers(
     const upper = fitsDay
       ? dayStart + dayWidth - PROGRESS_CARD_WIDTH - 4
       : width - PROGRESS_CARD_WIDTH - 2
-    const left = Math.max(lower, Math.min(upper, x - PROGRESS_CARD_WIDTH / 2))
-    let lane = laneEnds.findIndex((end) => end + 8 <= left)
-    if (lane < 0) lane = laneEnds.length
-    laneEnds[lane] = left + PROGRESS_CARD_WIDTH
+    const left = interval ? x : Math.max(lower, Math.min(upper, x - PROGRESS_CARD_WIDTH / 2))
     return [
       {
         node,
         x,
         labelOffset: left - x,
-        top: 8 + lane * PROGRESS_LANE_HEIGHT,
-        y: 24 + lane * PROGRESS_LANE_HEIGHT,
+        width: barWidth,
+        interval,
+        clippedStart: interval && start < week.start,
+        clippedEnd: interval && date > week.end,
+        top: 0,
+        y: 0,
       },
     ]
   })
-  if (laneEnds.length === 1) {
-    for (const marker of visible) {
-      marker.top += 4
-      marker.y += 4
-    }
+  const flows = new Map<number | 'unlinked', typeof geometries>()
+  for (const marker of geometries) {
+    const key = linked.has(root(marker.node.id)) ? root(marker.node.id) : 'unlinked'
+    const flow = flows.get(key) || []
+    flow.push(marker)
+    flows.set(key, flow)
   }
+  let laneCount = 0
+  for (const flow of flows.values()) {
+    const laneEnds: number[] = []
+    for (const marker of flow) {
+      const left = marker.x + marker.labelOffset
+      // True intervals may meet at the same hour; do not move them or invent a gap.
+      const gap = marker.interval ? 0 : 8
+      let lane = laneEnds.findIndex((end) => end + gap <= left + 0.01)
+      if (lane < 0) lane = laneEnds.length
+      laneEnds[lane] = left + marker.width
+      marker.top = 10 + (laneCount + lane) * PROGRESS_LANE_HEIGHT
+      marker.y = marker.top + PROGRESS_CARD_HEIGHT / 2
+    }
+    laneCount += laneEnds.length
+  }
+  const visible = geometries
   const byId = new Map(visible.map((marker) => [marker.node.id, marker]))
-  const links = visible.flatMap((item) => {
-    const previous = byId.get(item.node.predecessor_id ?? -1)
-    if (!previous || previous === item) return []
-    const from = previous.x + previous.labelOffset + PROGRESS_CARD_WIDTH + 1
-    const to = item.x + item.labelOffset - 1
-    const overlaps = to < from && item.y > previous.y
-    const previousCenter = from - PROGRESS_CARD_WIDTH / 2 - 1
-    const nextCenter = to + PROGRESS_CARD_WIDTH / 2 + 1
-    const path = overlaps
-      ? `M ${previousCenter} ${previous.top + 33} C ${previousCenter} ${item.top - 4} ${nextCenter} ${item.top - 4} ${nextCenter} ${item.top - 1}`
-      : previous.y === item.y
-        ? `M ${from} ${previous.y} L ${to} ${item.y}`
-        : `M ${from} ${previous.y} C ${from + 12} ${previous.y} ${to - 12} ${item.y} ${to} ${item.y}`
-    return [
-      {
-        id: item.node.id,
-        fromId: previous.node.id,
-        done: isDelivered(previous.node) && isDelivered(item.node),
-        path,
-      },
-    ]
-  })
+  const links = visible.flatMap((item) =>
+    (item.node.upstream_timeline_ids?.length
+      ? item.node.upstream_timeline_ids
+      : [item.node.predecessor_id]
+    ).flatMap((predecessorId) => {
+      const previous = predecessorId == null ? undefined : byId.get(predecessorId)
+      if (!previous || previous === item) return []
+      const from = previous.x + previous.labelOffset + previous.width + 1
+      const to = item.x + item.labelOffset - 1
+      const overlaps = to < from && item.y > previous.y
+      const previousCenter = from - previous.width / 2 - 1
+      const nextCenter = to + item.width / 2 + 1
+      const path = overlaps
+        ? `M ${previousCenter} ${previous.top + PROGRESS_CARD_HEIGHT + 1} C ${previousCenter} ${item.top - 4} ${nextCenter} ${item.top - 4} ${nextCenter} ${item.top - 1}`
+        : previous.y === item.y
+          ? `M ${from} ${previous.y} L ${to} ${item.y}`
+          : `M ${from} ${previous.y} C ${from + 12} ${previous.y} ${to - 12} ${item.y} ${to} ${item.y}`
+      return [
+        {
+          key: `${previous.node.id}:${item.node.id}`,
+          id: item.node.id,
+          fromId: previous.node.id,
+          done: isDelivered(previous.node) && isDelivered(item.node),
+          path,
+        },
+      ]
+    }),
+  )
   return {
     visible,
     markers: visible,
     links,
-    height: Math.max(56, laneEnds.length * PROGRESS_LANE_HEIGHT + 8),
+    height: Math.max(52, laneCount * PROGRESS_LANE_HEIGHT + 10),
     outside: ordered.filter((node) => !byId.has(node.id)),
   }
 }
@@ -174,7 +269,7 @@ export function taskRisk(task: ScheduleTask) {
       label: task.status === 'completed_late' ? '逾期交完' : '已交完',
     }
   if (task.status === 'not_assessed') return { tone: 'muted', label: '库房备料' }
-  const active = task.nodes.filter((node) => node.status !== 'cancelled')
+  const active = timelineNodes(task.nodes).filter((node) => node.status !== 'cancelled')
   if (active.some((node) => node.quality_held)) return { tone: 'hold', label: '质量暂扣' }
   const late = active.filter((node) => node.status === 'overdue' && isAssessed(node))
   if (late.length) return { tone: 'late', label: `${late.length} 项逾期` }

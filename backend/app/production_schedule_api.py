@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from . import business_people, schedule_reworks, schedule_routes
+from . import business_people, schedule_batches, schedule_reworks, schedule_routes
 from . import production_schedule_tasks as tasks
 from . import production_schedules as schedules
 from .async_api import AsyncAPIRouter as APIRouter
@@ -274,6 +274,16 @@ def update(
     db: Session = Depends(get_db),
 ):
     return schedules.save_plan(db, payload, user, schedule_id)
+
+
+@router.put("/{schedule_id}/batches")
+def update_batches(
+    schedule_id: int,
+    payload: schedule_batches.BatchPlanWrite,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return schedule_batches.save(db, schedule_id, payload, user)
 
 
 @router.patch("/{schedule_id}/commitment")

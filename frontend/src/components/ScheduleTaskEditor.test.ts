@@ -114,10 +114,6 @@ describe('whole-route task scheduling', () => {
       },
     })
     await flushPromises()
-    for (let index = 1; index <= 3; index++) {
-      date(`第${index}站日期`, '2026-10-28')
-      select(`第${index}站小时`, String(8 + index).padStart(2, '0'))
-    }
     select('最终外部去向', '库房成品')
     await button('保存排期')
     expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
@@ -126,6 +122,8 @@ describe('whole-route task scheduling', () => {
     await button('保存排期')
     const payload = vi.mocked(productionScheduleApi.createTask).mock.calls[0]![0]
     expect(payload.final_due_at).toBe('2026-10-30T17:00:00+08:00')
+    expect(payload.nodes.every((node) => node.due_at === payload.final_due_at)).toBe(true)
+    expect(wrapper.findAllComponents(ElDatePicker)).toHaveLength(1)
     expect(payload.nodes.map((node) => [node.process_step_index, node.target_quantity])).toEqual([
       [0, 1],
       [2, 100],
@@ -145,9 +143,9 @@ describe('whole-route task scheduling', () => {
     vi.mocked(productionScheduleApi.createTask).mockRejectedValueOnce(new Error('网络暂不可用'))
     await render()
     await identity()
+    date('最终交货日期', '2026-10-30')
+    select('最终交货小时', '17')
     select('第1站班组', 1)
-    select('第1站小时', '08')
-    date('第1站日期', '2026-10-23')
     amount('第1站件数', 1)
     amount('第1站重量', 10)
     select('最终接收班组', 2)
@@ -162,8 +160,6 @@ describe('whole-route task scheduling', () => {
         .find((item) => item.props('ariaLabel') === '第2站班组')!
         .props('modelValue'),
     ).toBe(2)
-    select('第2站小时', '14')
-    date('第2站日期', '2026-10-23')
     amount('第2站件数', 100)
     select('最终接收班组', 3)
     await button('保存排期')
@@ -174,7 +170,7 @@ describe('whole-route task scheduling', () => {
         {
           team_id: 1,
           next_team_id: 2,
-          due_at: '2026-10-23T08:00:00+08:00',
+          due_at: '2026-10-30T17:00:00+08:00',
           target_quantity: 1,
           target_weight: 10,
           completion_basis: 'quantity',
@@ -183,7 +179,7 @@ describe('whole-route task scheduling', () => {
         {
           team_id: 2,
           next_team_id: 3,
-          due_at: '2026-10-23T14:00:00+08:00',
+          due_at: '2026-10-30T17:00:00+08:00',
           target_quantity: 100,
           target_weight: null,
           completion_basis: 'quantity',
@@ -197,12 +193,12 @@ describe('whole-route task scheduling', () => {
       first.idempotency_key,
     )
   })
-  it('requires both targets only when both is selected and rejects reversed deadlines', async () => {
+  it('requires both targets when both is selected and keeps final delivery mandatory', async () => {
     await render()
     await identity()
+    date('最终交货日期', '2026-10-30')
+    select('最终交货小时', '17')
     select('第1站班组', 1)
-    select('第1站小时', '14')
-    date('第1站日期', '2026-10-23')
     amount('第1站件数', 1)
     select('第1站计量方式', 'both')
     select('最终接收班组', 2)
@@ -210,13 +206,12 @@ describe('whole-route task scheduling', () => {
     expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
     amount('第1站重量', 10)
     await button('添加下一班组')
-    select('第2站小时', '08')
-    date('第2站日期', '2026-10-23')
     amount('第2站件数', 100)
     select('最终接收班组', 3)
+    select('最终交货小时', '')
     await button('保存排期')
     expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
-    select('第2站小时', '16')
+    select('最终交货小时', '17')
     await button('保存排期')
     expect(productionScheduleApi.createTask).toHaveBeenCalledOnce()
     expect(

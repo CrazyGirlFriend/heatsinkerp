@@ -55,13 +55,39 @@ export interface ScheduleWrite {
   sources: ScheduleSource[]
 }
 export type ScheduleAuditSnapshot = Partial<ScheduleWrite> & {
+  batches?: ScheduleBatchWrite[]
   reason?: string
   cancelled_at?: string | null
   task_title?: string
   task_notes?: string | null
   task_version?: number
 }
+export interface ScheduleBatchWrite {
+  id?: number
+  batch_number: number
+  planned_start_at: string
+  due_at: string
+  target_quantity: number | null
+  target_weight: number | null
+  upstream_batch_ids: number[]
+}
+export interface ScheduleBatch extends ScheduleBatchWrite {
+  id: number
+  status: ScheduleStatus
+  warnings: string[]
+  dispatched_quantity: number
+  dispatched_weight: number
+  received_quantity: number
+  received_weight: number
+  completed_at: string | null
+}
 export interface ProductionSchedule extends ScheduleWrite {
+  batches?: ScheduleBatch[]
+  planned_start_at?: string
+  parent_schedule_id?: number
+  batch_number?: number
+  time_warnings?: string[]
+  upstream_timeline_ids?: number[]
   route_link?: { state: 'unlinked' | 'linked' | 'changed'; latest_route_id: number | null }
   id: number
   task_id?: number
@@ -112,6 +138,7 @@ export interface ProductionSchedule extends ScheduleWrite {
     transferred_at: string
     received_at: string | null
     status: string
+    schedule_batch_id?: number | null
     counts_toward_delivery?: boolean
   }[]
   history?: {
@@ -176,6 +203,7 @@ export type ScheduleSummary = Pick<
   | 'status'
   | 'sources'
   | 'linked_batches'
+  | 'batches'
   | 'predecessor_id'
 >
 export interface ScheduleTask {

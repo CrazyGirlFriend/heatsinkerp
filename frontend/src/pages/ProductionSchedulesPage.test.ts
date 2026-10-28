@@ -10,7 +10,14 @@ afterEach(() => wrapper?.unmount())
 it('keeps fullscreen when Escape returns focus from a dialog, then allows the page to exit fullscreen', async () => {
   wrapper = mount(ProductionSchedulesPage, {
     attachTo: document.body,
-    global: { stubs: { PageBackButton: true, ScheduleTaskBoard: true } },
+    global: {
+      stubs: {
+        PageBackButton: true,
+        ScheduleTaskBoard: {
+          template: '<div><slot name="heading"/><slot name="view-actions"/></div>',
+        },
+      },
+    },
   })
   await wrapper.get('button').trigger('click')
   expect(wrapper.classes()).toContain('production-schedules-page--fullscreen')

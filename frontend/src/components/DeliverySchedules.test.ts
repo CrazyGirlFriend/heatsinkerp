@@ -170,7 +170,7 @@ describe('delivery schedule workbench', () => {
     await (wrapper.vm as unknown as { openDetail: (id: number) => Promise<void> }).openDetail(5)
     await flushPromises()
     expect(wrapper.text()).toContain('805881-5')
-    expect(button('调整排期')).toBeDefined()
+    expect(button('安排批次')).toBeDefined()
   })
   it('shows the full task route but never exposes another team’s outbound action', async () => {
     const current = {
@@ -282,7 +282,7 @@ describe('delivery schedule workbench', () => {
     expect(wrapper.text()).toContain('已作废')
     expect(wrapper.text()).toContain('下序签收件数')
     expect(wrapper.text()).toContain('已转出件数')
-    expect(button('调整排期')).toBeDefined()
+    expect(button('安排批次')).toBeDefined()
     expect(button('取消排期')).toBeUndefined()
     expect(button('添加下序节点')).toBeUndefined()
     expect(button('新建排期')).toBeUndefined()

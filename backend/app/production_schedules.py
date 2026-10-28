@@ -18,6 +18,9 @@ from .models import (
     ProductionSchedule as Plan,
 )
 from .models import (
+    ProductionScheduleBatch as Batch,
+)
+from .models import (
     ProductionScheduleDelivery as Delivery,
 )
 from .models import (
@@ -69,7 +72,7 @@ def require_plan(db, plan_id, *, lock=False):
     return plan
 
 
-def progress_table(*, plan_ids=None, team_id=None):
+def progress_table(*, plan_ids=None, team_id=None, batches=False):
     """SQL aggregation precedes filtering/paging; cancelled transfers never fulfill."""
     transferred_at = case(
         (Transfer.entry_kind == "transfer", Transfer.created_at), else_=Transfer.dispatched_at
@@ -80,9 +83,12 @@ def progress_table(*, plan_ids=None, team_id=None):
     if team_id is not None:
         scope.append(Plan.team_id == team_id)
     warehouse = Plan.team_id.in_(select(Team.id).where(Team.code == WAREHOUSE_TEAM_CODE))
+    key = Delivery.schedule_batch_id if batches else Delivery.schedule_id
+    target = Batch if batches else Plan
     actual = (
         select(
-            Delivery.schedule_id,
+            key.label("schedule_id"),
+            (~warehouse).label("assessed"),
             Transfer.id.label("transfer_id"),
             Transfer.quantity,
             Transfer.weight,
@@ -93,19 +99,19 @@ def progress_table(*, plan_ids=None, team_id=None):
             case((Transfer.status == "received", Transfer.weight), else_=0).label(
                 "received_weight"
             ),
-            Plan.target_quantity,
-            Plan.target_weight,
+            target.target_quantity,
+            target.target_weight,
             Plan.completion_basis,
             func.sum(Transfer.quantity)
             .over(
-                partition_by=Delivery.schedule_id,
+                partition_by=key,
                 order_by=(transferred_at, Transfer.id),
                 rows=(None, 0),
             )
             .label("running_quantity"),
             func.sum(Transfer.weight)
             .over(
-                partition_by=Delivery.schedule_id,
+                partition_by=key,
                 order_by=(transferred_at, Transfer.id),
                 rows=(None, 0),
             )
@@ -144,14 +150,12 @@ def progress_table(*, plan_ids=None, team_id=None):
                 ),
             ),
         )
-        .subquery("schedule_actual_deliveries")
     )
+    if batches:
+        actual = actual.join(Batch, Batch.id == Delivery.schedule_batch_id)
+    actual = actual.subquery("batch_actual_deliveries" if batches else "schedule_actual_deliveries")
     reached = and_(
-        actual.c.schedule_id.in_(
-            select(Plan.id)
-            .join(Team, Team.id == Plan.team_id)
-            .where(Team.code != WAREHOUSE_TEAM_CODE)
-        ),
+        actual.c.assessed,
         or_(
             actual.c.completion_basis == "weight",
             actual.c.running_quantity >= actual.c.target_quantity,
@@ -161,7 +165,7 @@ def progress_table(*, plan_ids=None, team_id=None):
             actual.c.running_weight >= actual.c.target_weight,
         ),
     )
-    return (
+    totals = (
         select(
             actual.c.schedule_id,
             func.sum(actual.c.quantity).label("dispatched_quantity"),
@@ -171,6 +175,38 @@ def progress_table(*, plan_ids=None, team_id=None):
             func.min(case((reached, actual.c.transferred_at), else_=None)).label("completed_at"),
         )
         .group_by(actual.c.schedule_id)
+        .subquery("batch_progress" if batches else "schedule_totals")
+    )
+    if batches:
+        return totals
+    batch_progress = progress_table(plan_ids=plan_ids, team_id=team_id, batches=True)
+    batch_completion = (
+        select(
+            Batch.schedule_id,
+            case(
+                (
+                    func.count(batch_progress.c.completed_at) == func.count(Batch.id),
+                    func.max(batch_progress.c.completed_at),
+                ),
+                else_=None,
+            ).label("completed_at"),
+        )
+        .outerjoin(batch_progress, batch_progress.c.schedule_id == Batch.id)
+        .group_by(Batch.schedule_id)
+    )
+    if plan_ids is not None:
+        batch_completion = batch_completion.where(Batch.schedule_id.in_(plan_ids))
+    batch_completion = batch_completion.subquery("schedule_batch_completion")
+    # An over-delivered batch never settles another batch's unfulfilled commitment.
+    return (
+        select(
+            *[c for c in totals.c if c.key != "completed_at"],
+            case(
+                (batch_completion.c.schedule_id.is_not(None), batch_completion.c.completed_at),
+                else_=totals.c.completed_at,
+            ).label("completed_at"),
+        )
+        .outerjoin(batch_completion, batch_completion.c.schedule_id == totals.c.schedule_id)
         .subquery("schedule_progress")
     )
 
@@ -179,6 +215,21 @@ def status_expression(progress, now):
     local = now.replace(tzinfo=timezone.utc).astimezone(LOCAL_ZONE)
     end_today = datetime.combine(local.date() + timedelta(days=1), time(), LOCAL_ZONE)
     end_today = end_today.astimezone(timezone.utc).replace(tzinfo=None)
+    batches = progress_table(batches=True)
+
+    def batch_matches(condition):
+        return (
+            select(Batch.id)
+            .outerjoin(batches, batches.c.schedule_id == Batch.id)
+            .where(Batch.schedule_id == Plan.id, condition)
+            .exists()
+        )
+
+    late_batch = batch_matches(
+        and_(batches.c.completed_at.is_not(None), batches.c.completed_at > Batch.due_at)
+    )
+    overdue_batch = batch_matches(and_(batches.c.completed_at.is_(None), Batch.due_at < now))
+    today_batch = batch_matches(and_(batches.c.completed_at.is_(None), Batch.due_at < end_today))
     return case(
         (Plan.cancelled_at.is_not(None), "cancelled"),
         (
@@ -186,12 +237,15 @@ def status_expression(progress, now):
             "not_assessed",
         ),
         (
-            and_(progress.c.completed_at.is_not(None), progress.c.completed_at > Plan.due_at),
+            and_(
+                progress.c.completed_at.is_not(None),
+                or_(progress.c.completed_at > Plan.due_at, late_batch),
+            ),
             "completed_late",
         ),
         (progress.c.completed_at.is_not(None), "completed"),
-        (Plan.due_at < now, "overdue"),
-        (Plan.due_at < end_today, "today"),
+        (or_(Plan.due_at < now, overdue_batch), "overdue"),
+        (or_(Plan.due_at < end_today, today_batch), "today"),
         else_="pending",
     )
 
@@ -254,6 +308,9 @@ def summaries(db, ids, *, now=None):
             .group_by(Work.production_schedule_id)
         ).all()
     )
+    from . import schedule_batches
+
+    batch_plans = schedule_batches.summaries(db, [row[0] for row in rows], now=now)
     linked = linked_batches(db, ids)
     availability = execution_availability(db, ids)
     result = {}
@@ -272,6 +329,7 @@ def summaries(db, ids, *, now=None):
             "team_name": values["team_name"],
             "assessment_enabled": values["team_code"] != WAREHOUSE_TEAM_CODE,
             "initial_due_at": iso(plan.initial_due_at),
+            "batches": batch_plans.get(plan.id, []),
             "next_team_name": values["next_team_name"],
             "version": plan.version,
             "target_weight": float(plan.target_weight) if plan.target_weight is not None else None,
@@ -295,6 +353,13 @@ def summaries(db, ids, *, now=None):
             "linked_batches": linked.get(plan.id, {}).get("items", []),
             "linked_batch_count": linked.get(plan.id, {}).get("total", 0),
         }
+        if batch_plans.get(plan.id):
+            for field in ("quantity", "weight"):
+                if any(b[f"target_{field}"] is not None for b in batch_plans[plan.id]):
+                    result[plan.id][f"remaining_{field}"] = sum(
+                        max((b[f"target_{field}"] or 0) - b[f"dispatched_{field}"], 0)
+                        for b in batch_plans[plan.id]
+                    )
         names = {
             item["material_name"] for item in sources.get(plan.id, []) if item["material_name"]
         }
@@ -561,9 +626,17 @@ def linked_batches(db, ids):
 def detail(db, plan_id):
     plan = require_plan(db, plan_id)
     result = summaries(db, [plan_id])[plan_id]
+    delivery_batches = dict(
+        db.execute(
+            select(Delivery.transfer_id, Delivery.schedule_batch_id).where(
+                Delivery.schedule_id == plan_id
+            )
+        ).all()
+    )
     result["deliveries"] = [
         {
             "id": item.id,
+            "schedule_batch_id": delivery_batches.get(item.id),
             "batch_no": item.batch_no,
             "source_transfer_id": item.source_transfer_id,
             "quantity": item.quantity,
@@ -674,12 +747,19 @@ def filtered_nodes(
                 Plan.id.in_(delivery_matches),
             )
         )
-    if due_from:
-        statement = statement.where(Plan.due_at >= due_from)
-    if due_to:
-        statement = statement.where(Plan.due_at <= due_to)
     if due_from and due_to and due_from > due_to:
         raise HTTPException(422, "开始时间不能晚于结束时间")
+    if due_from or due_to:
+        has_batches = select(Batch.id).where(Batch.schedule_id == Plan.id).exists()
+        batch_due = select(Batch.id).where(Batch.schedule_id == Plan.id)
+        legacy_due = []
+        if due_from:
+            batch_due = batch_due.where(Batch.due_at >= due_from)
+            legacy_due.append(Plan.due_at >= due_from)
+        if due_to:
+            batch_due = batch_due.where(Batch.due_at <= due_to)
+            legacy_due.append(Plan.due_at <= due_to)
+        statement = statement.where(or_(batch_due.exists(), and_(~has_batches, *legacy_due)))
     if status:
         progress = progress_table(plan_ids=statement)
         statement = statement.outerjoin(progress, progress.c.schedule_id == Plan.id).where(
@@ -689,6 +769,8 @@ def filtered_nodes(
 
 
 def snapshot(db, plan):
+    from .schedule_batches import snapshots
+
     value = {field: getattr(plan, field) for field in FIELDS}
     value.update(
         due_at=iso(plan.due_at),
@@ -696,6 +778,7 @@ def snapshot(db, plan):
         version=plan.version,
         cancelled_at=iso(plan.cancelled_at),
         task_id=plan.task_id,
+        batches=snapshots(db, plan.id),
     )
     value["target_weight"] = str(plan.target_weight) if plan.target_weight is not None else None
     value["sources"] = [
@@ -716,6 +799,9 @@ def snapshot(db, plan):
 
 
 def record_event(db, plan, user, action, before=None, **extra):
+    from .schedule_notices import notify_change
+
+    after = {**snapshot(db, plan), **extra}
     db.add(
         Event(
             schedule_id=plan.id,
@@ -723,9 +809,10 @@ def record_event(db, plan, user, action, before=None, **extra):
             actor=actor_name(user),
             actor_id=user.id,
             before=before,
-            after={**snapshot(db, plan), **extra},
+            after=after,
         )
     )
+    notify_change(db, plan, action, before, after)
 
 
 def validate_plan(db, payload, plan=None):
@@ -850,6 +937,24 @@ def _save_plan(db, payload, user, plan_id, request_hash):
                 payload.completion_basis in ("quantity", "both") and payload.target_quantity is None
             ) or (payload.completion_basis in ("weight", "both") and payload.target_weight is None):
                 raise HTTPException(422, "完成口径对应的计划数量不能为空")
+            from .models import ProductionScheduleBatch
+
+            if db.scalar(
+                select(ProductionScheduleBatch.id)
+                .where(ProductionScheduleBatch.schedule_id == plan.id)
+                .limit(1)
+            ) and any(
+                getattr(plan, field) != getattr(payload, field)
+                for field in (
+                    "due_at",
+                    "target_quantity",
+                    "target_weight",
+                    "completion_basis",
+                    "team_id",
+                    "predecessor_id",
+                )
+            ):
+                raise HTTPException(409, "本排期已分批，请在分批排期中调整时间和数量")
             if plan.version != payload.expected_version:
                 raise HTTPException(409, "排期已被修改，请刷新后重试")
             if plan.cancelled_at is not None:
@@ -1114,7 +1219,10 @@ def associate_dispatch(db, team_id, payload, transfers):
         )
     }
     if not locked:
-        if any(line.production_schedule_id for line in payload.lines):
+        if any(
+            line.production_schedule_id or line.production_schedule_batch_id
+            for line in payload.lines
+        ):
             raise HTTPException(422, "所选排期不属于本批物料或班组")
         return
     tree = local_ancestors([item.source_transfer_id for item in transfers], team_id)
@@ -1135,10 +1243,18 @@ def associate_dispatch(db, team_id, payload, transfers):
         select(Delivery).where(Delivery.schedule_id.in_(predecessors)).with_for_update()
     ):
         inherited.setdefault(link.schedule_id, set()).add(link.transfer_id)
-    totals = {}
+    planned_batches = {}
+    for batch in db.scalars(
+        select(Batch)
+        .where(Batch.schedule_id.in_(locked))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ):
+        planned_batches.setdefault(batch.schedule_id, []).append(batch)
+    totals, batch_totals = {}, {}
     assessed = db.get(Team, team_id).code != WAREHOUSE_TEAM_CODE
-    for plan_id, delivered in db.execute(
-        select(Delivery.schedule_id, Transfer)
+    for plan_id, batch_id, delivered in db.execute(
+        select(Delivery.schedule_id, Delivery.schedule_batch_id, Transfer)
         .join(Transfer, Transfer.id == Delivery.transfer_id)
         .options(lazyload("*"))
         .where(Delivery.schedule_id.in_(locked))
@@ -1149,6 +1265,9 @@ def associate_dispatch(db, team_id, payload, transfers):
         if valid_delivery(plan, delivered, assessed=assessed):
             quantity, weight = totals.get(plan_id, (0, 0))
             totals[plan_id] = (quantity + delivered.quantity, weight + delivered.weight)
+            if batch_id:
+                quantity, weight = batch_totals.get(batch_id, (0, 0))
+                batch_totals[batch_id] = (quantity + delivered.quantity, weight + delivered.weight)
     for line, transfer in zip(payload.lines, transfers, strict=True):
         source = db.get(Transfer, transfer.source_transfer_id)
         inherited_plan = source.processing_schedule_id if source else None
@@ -1170,7 +1289,7 @@ def associate_dispatch(db, team_id, payload, transfers):
             raise HTTPException(422, "本批加工已关联交货排期，转出时不能改为其他排期")
         selected_plan = inherited_plan or line.production_schedule_id
         if transfer.material_type in EXCLUDED_MATERIAL_TYPES:
-            if line.production_schedule_id:
+            if line.production_schedule_id or line.production_schedule_batch_id:
                 raise HTTPException(422, "废料不能抵扣正常交货排期")
             continue
         choices = set()
@@ -1181,6 +1300,18 @@ def associate_dispatch(db, team_id, payload, transfers):
                 and (plan.completion_basis == "weight" or quantity >= plan.target_quantity)
                 and (plan.completion_basis == "quantity" or weight >= plan.target_weight)
             )
+            if planned_batches.get(plan_id):
+                complete = assessed and all(
+                    (
+                        plan.completion_basis == "weight"
+                        or batch_totals.get(b.id, (0, 0))[0] >= b.target_quantity
+                    )
+                    and (
+                        plan.completion_basis == "quantity"
+                        or batch_totals.get(b.id, (0, 0))[1] >= b.target_weight
+                    )
+                    for b in planned_batches[plan_id]
+                )
             roots = bindings.get(plan_id, set()) | inherited.get(plan.predecessor_id, set())
             if (
                 plan.cancelled_at is None
@@ -1213,7 +1344,16 @@ def associate_dispatch(db, team_id, payload, transfers):
         else:
             selected = next(iter(choices), None)
         if selected:
-            db.add(Delivery(schedule_id=selected, transfer_id=transfer.id))
+            from .schedule_batches import select_dispatch_batch
+
+            batch_id = select_dispatch_batch(
+                planned_batches.get(selected, []), line.production_schedule_batch_id
+            )
+            db.add(
+                Delivery(schedule_id=selected, transfer_id=transfer.id, schedule_batch_id=batch_id)
+            )
+        elif line.production_schedule_batch_id:
+            raise HTTPException(422, "所选交货批次没有对应的排期")
 
 
 def source_options(db, team_id, serial_no, query=None, page=1, page_size=20, schedule_id=None):

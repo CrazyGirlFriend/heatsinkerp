@@ -611,6 +611,32 @@ async function reviewImportedRoute() {
 }
 
 describe('库房关联已发布工艺', () => {
+  it('inherits confirmed engineering metadata but leaves actual batch quantity and weight for receipt', async () => {
+    const route = importedDocument()
+    route.source_data.review_required = true
+    route.source_data.material_confirmation = {
+      fingerprint: 'reviewed',
+      by: '张工',
+      at: '2026-10-28T00:00:00Z',
+    }
+    route.source_data.receipt_fields!.delivery_quantity!.source_filename = '订单.xlsx'
+    vi.spyOn(processRouteApi, 'detail').mockResolvedValue(route)
+    await render()
+    await importFile(true)
+    expect(wrapper.getComponent(ImportedDocumentPreview).props('currentValues')).toMatchObject({
+      serial_no: 'IMPORT-01',
+      customer_code: 'C-11600',
+      product_code: 'T4-03',
+      delivery_quantity: 18100,
+      quantity: 0,
+      weight: 0,
+    })
+    expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', '钼铜')
+    expect(wrapper.get('input[aria-label="要求发货日期"]').element).toHaveProperty(
+      'value',
+      '2026-11-01',
+    )
+  })
   it('fills the receipt form with extracted data and keeps original values visible after manual edits', async () => {
     vi.spyOn(processRouteApi, 'detail').mockResolvedValue(importedDocument())
     await render()

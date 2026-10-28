@@ -22,6 +22,8 @@ import type { TeamEmployee } from '@/types/teamBusiness'
 import { formatDateTime } from '@/utils/format'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import ProcessRouteDrawingPreview from './ProcessRouteDrawingPreview.vue'
+import ProcessRouteMaterials from './ProcessRouteMaterials.vue'
+import { mergeRouteMaterials } from '@/utils/routeMaterials'
 import { ElMessageBox } from 'element-plus'
 import { ArrowDown, Document, FullScreen, Upload, WarningFilled } from '@element-plus/icons-vue'
 import WordDocumentPreview from './WordDocumentPreview.vue'
@@ -89,10 +91,14 @@ const serials = computed(() =>
   [primarySerial.value.trim(), ...draft.value.serial_nos.slice(1)].filter(Boolean),
 )
 const wordInput = ref<HTMLInputElement>(),
+  orderInput = ref<HTMLInputElement>(),
   drawingInput = ref<HTMLInputElement>()
 const pendingWord = ref<File>(),
+  pendingOrder = ref<File>(),
   pendingDrawings = ref<File[]>([])
-const previewKind = ref<'word' | 'drawing'>(
+const importsConfirmed = ref(!!draft.value.source_data.material_confirmation)
+const requiresReview = computed(() => !!draft.value.source_data.review_required)
+const previewKind = ref<'word' | 'drawing' | 'order'>(
   draft.value.route_kind === 'rework' ? 'drawing' : 'word',
 )
 const wordPreview = ref<InstanceType<typeof WordDocumentPreview>>()
@@ -165,7 +171,9 @@ async function importWord(event: Event) {
   error.value = ''
   try {
     const parsed = await processRouteApi.parse(file)
-    draft.value = { ...draft.value, ...parsed, review_note: '' }
+    const data = mergeRouteMaterials(parsed.source_data, draft.value.source_data.order_document)
+    draft.value = { ...draft.value, ...parsed, source_data: data, review_note: '' }
+    importsConfirmed.value = false
     primarySerial.value = parsed.serial_nos[0] || ''
     pendingWord.value = file
     previewKind.value = 'word'
@@ -177,6 +185,57 @@ async function importWord(event: Event) {
     error.value = e instanceof Error ? e.message : '工艺单导入失败'
   } finally {
     busy.value = false
+  }
+}
+async function importOrder(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || busy.value || readonly.value || draft.value.route_kind === 'rework') return
+  if (draft.value.source_data.order_document) {
+    try {
+      await ElMessageBox.confirm('替换订单表后，请重新确认自动填入的资料。', '导入订单表', {
+        confirmButtonText: '替换',
+        cancelButtonText: '取消',
+      })
+    } catch {
+      return
+    }
+  }
+  busy.value = true
+  error.value = ''
+  try {
+    const order = await processRouteApi.parseOrder(file)
+    if (primarySerial.value.trim() && primarySerial.value.trim() !== order.serial_no)
+      throw new Error('订单表与当前工艺流水号不一致')
+    draft.value.source_data = mergeRouteMaterials(draft.value.source_data, order)
+    primarySerial.value = order.serial_no
+    pendingOrder.value = file
+    importsConfirmed.value = false
+    previewKind.value = 'order'
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '订单表导入失败'
+  } finally {
+    busy.value = false
+  }
+}
+function changeMaterial(key: string, value: string) {
+  const field = draft.value.source_data.receipt_fields?.[key]
+  if (!field || readonly.value || busy.value) return
+  field.parsed_value ??= field.value
+  field.value = value
+}
+async function downloadOrder() {
+  try {
+    if (!pendingOrder.value) return await processRouteApi.downloadOrder(draft.value)
+    const url = URL.createObjectURL(pendingOrder.value)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = pendingOrder.value.name
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '订单表下载失败'
   }
 }
 function addDrawings(event: Event) {
@@ -246,6 +305,16 @@ const canMaintain = computed(
         auth.currentUser.team.kind === 'engineering')),
 )
 const readonly = computed(() => !canMaintain.value || !editingSaved.value)
+watch(
+  () => [primarySerial.value, draft.value.steps, draft.value.source_data.receipt_fields],
+  () => {
+    if (!readonly.value && !busy.value) {
+      importsConfirmed.value = false
+      delete draft.value.source_data.material_confirmation
+    }
+  },
+  { deep: true, flush: 'sync' },
+)
 const dialogTitle = computed(() =>
   draft.value.route_kind === 'rework'
     ? readonly.value
@@ -388,6 +457,12 @@ const { formRef, fieldErrors, validate } = useDialogValidation(() => {
   if (!primarySerial.value.trim() || /[、,，\n]/.test(primarySerial.value))
     errors.serials = '请填写一个主流水号'
   if (serialConflict.value) errors.serials = serialConflict.value
+  if (
+    draft.value.source_data.order_document &&
+    primarySerial.value.trim() !== draft.value.source_data.order_document.serial_no
+  )
+    errors.serials = '流水号与订单表不一致'
+  if (requiresReview.value && !importsConfirmed.value) errors.imports = '请确认自动填入的资料和工序'
   draft.value.steps.forEach((step, index) => {
     if (sequenceProblem(index)) errors[`${index}.sequence`] = '请核对工序序号'
     if (!step.name.trim()) errors[`${index}.name`] = '请填写工序名称'
@@ -418,6 +493,8 @@ async function save() {
   busy.value = true
   error.value = ''
   try {
+    const materialFields = JSON.parse(JSON.stringify(draft.value.source_data.receipt_fields || {}))
+    const hasPendingSource = !!pendingWord.value || !!pendingOrder.value
     const previewHash = selectedDrawing.value?.sha256
     if (editingSaved.value && draft.value.state === 'published') {
       const revision = await processRouteApi.revise(draft.value.id)
@@ -429,7 +506,9 @@ async function save() {
         state: revision.state,
       }
     }
-    draft.value = await processRouteApi.save(draft.value)
+    draft.value = hasPendingSource
+      ? await processRouteApi.save(draft.value, false)
+      : await processRouteApi.save(draft.value)
     if (typeof previewDrawing.value === 'number' && previewHash)
       previewDrawing.value = draft.value.drawings?.find((item) => item.sha256 === previewHash)?.id
     while (removedDrawings.value.length) {
@@ -445,13 +524,26 @@ async function save() {
       draft.value = await processRouteApi.attachSource(draft.value, pendingWord.value)
       pendingWord.value = undefined
     }
+    if (pendingOrder.value) {
+      draft.value = await processRouteApi.attachOrder(draft.value, pendingOrder.value)
+      pendingOrder.value = undefined
+    }
+    if (hasPendingSource) {
+      for (const [key, field] of Object.entries(draft.value.source_data.receipt_fields || {})) {
+        if (key !== 'serial_no' && materialFields[key]) field.value = materialFields[key].value
+      }
+      draft.value = await processRouteApi.save(draft.value)
+    }
     while (pendingDrawings.value.length) {
       const file = pendingDrawings.value[0]!
       draft.value = await processRouteApi.uploadDrawing(draft.value, file)
       pendingDrawings.value.shift()
       if (previewDrawing.value === file) previewDrawing.value = draft.value.drawings?.at(-1)?.id
     }
-    draft.value = await processRouteApi.publish(draft.value)
+    draft.value = requiresReview.value
+      ? await processRouteApi.publish(draft.value, importsConfirmed.value)
+      : await processRouteApi.publish(draft.value)
+    importsConfirmed.value = !!draft.value.source_data.material_confirmation
     editingSaved.value = false
     emit('saved')
   } catch (e) {
@@ -543,6 +635,17 @@ onMounted(async () => {
               fieldErrors.serials || (sourceFilename && !primarySerial.trim() ? '流水号未识别' : '')
             "
           >
+            <template #label
+              >流水号
+              <span v-if="draft.source_data.receipt_fields?.serial_no" class="route-import-marker"
+                >{{
+                  draft.source_data.receipt_fields.serial_no.source_kind === 'excel'
+                    ? '订单表'
+                    : '工艺单'
+                }}
+                · 自动填入</span
+              ></template
+            >
             <strong v-if="readonly" class="route-serial-value">{{
               primarySerial || '未填写'
             }}</strong>
@@ -710,6 +813,59 @@ onMounted(async () => {
       </div>
       <div class="route-comparison">
         <section ref="editorMain" class="route-editor-main" aria-label="工艺内容">
+          <div v-if="!readonly" class="route-file-actions route-import-toolbar">
+            <ElButton
+              v-if="draft.route_kind !== 'rework'"
+              :icon="Upload"
+              :disabled="busy"
+              @click="orderInput?.click()"
+              >导入订单表</ElButton
+            >
+            <input
+              v-if="draft.route_kind !== 'rework'"
+              ref="orderInput"
+              type="file"
+              accept=".xlsx"
+              hidden
+              aria-label="导入订单表文件"
+              @change="importOrder"
+            />
+            <ElButton
+              v-if="draft.route_kind !== 'rework'"
+              :icon="Document"
+              :disabled="busy"
+              @click="wordInput?.click()"
+              >导入工艺单</ElButton
+            >
+            <ElButton :icon="Upload" :disabled="busy" @click="drawingInput?.click()"
+              >上传图纸</ElButton
+            >
+            <input
+              v-if="draft.route_kind !== 'rework'"
+              ref="wordInput"
+              type="file"
+              accept=".docx"
+              hidden
+              aria-label="导入工艺单文件"
+              @change="importWord"
+            />
+            <input
+              ref="drawingInput"
+              type="file"
+              accept=".pdf,application/pdf"
+              multiple
+              hidden
+              aria-label="上传图纸文件"
+              @change="addDrawings"
+            />
+          </div>
+          <ProcessRouteMaterials
+            :data="draft.source_data"
+            :readonly="readonly"
+            :disabled="busy"
+            @change="changeMaterial"
+            @source="previewKind = $event"
+          />
           <header class="route-panel-heading">
             <strong class="route-section-title">工序明细</strong>
             <ElPopover
@@ -753,36 +909,6 @@ onMounted(async () => {
                 >
               </div>
             </ElPopover>
-            <div v-if="!readonly" class="route-file-actions">
-              <ElButton
-                v-if="draft.route_kind !== 'rework'"
-                :icon="Document"
-                :disabled="busy"
-                @click="wordInput?.click()"
-                >导入工艺单</ElButton
-              >
-              <ElButton :icon="Upload" :disabled="busy" @click="drawingInput?.click()"
-                >上传图纸</ElButton
-              >
-              <input
-                v-if="draft.route_kind !== 'rework'"
-                ref="wordInput"
-                type="file"
-                accept=".docx"
-                hidden
-                aria-label="导入工艺单文件"
-                @change="importWord"
-              />
-              <input
-                ref="drawingInput"
-                type="file"
-                accept=".pdf,application/pdf"
-                multiple
-                hidden
-                aria-label="上传图纸文件"
-                @change="addDrawings"
-              />
-            </div>
           </header>
           <div class="route-step-table-wrap">
             <table
@@ -818,6 +944,12 @@ onMounted(async () => {
                       :class="{ 'route-cell--issue': sequenceProblem(index) }"
                       :title="sequenceProblem(index)"
                     >
+                      <span
+                        v-if="step.source_row"
+                        class="route-import-marker route-step-import"
+                        :title="`工艺单 · 原文行 ${step.source_row}`"
+                        >自动填入</span
+                      >
                       <span v-if="readonly" class="route-cell-value">{{
                         step.sequence_no >= 0 ? step.sequence_no : '—'
                       }}</span>
@@ -1046,6 +1178,16 @@ onMounted(async () => {
             @click="addStep"
             >＋ 增加工序</ElButton
           >
+          <ElFormItem
+            v-if="!readonly && requiresReview"
+            class="route-import-confirmation"
+            :error="fieldErrors.imports"
+          >
+            <ElCheckbox v-model="importsConfirmed" :disabled="busy"
+              >已核对自动填入的资料和工序</ElCheckbox
+            >
+            <span v-if="fieldErrors.imports" role="alert">{{ fieldErrors.imports }}</span>
+          </ElFormItem>
           <div
             v-if="draft.drawings?.length || pendingDrawings.length"
             class="route-drawing-list"
@@ -1119,6 +1261,14 @@ onMounted(async () => {
               <button
                 v-if="draft.route_kind !== 'rework'"
                 type="button"
+                :aria-pressed="previewKind === 'order'"
+                @click="previewKind = 'order'"
+              >
+                订单表
+              </button>
+              <button
+                v-if="draft.route_kind !== 'rework'"
+                type="button"
                 :aria-pressed="previewKind === 'word'"
                 @click="previewKind = 'word'"
               >
@@ -1140,6 +1290,7 @@ onMounted(async () => {
               >{{ activeSourceLabel }}</span
             >
             <ElButton
+              v-if="previewKind !== 'order'"
               class="route-magnify"
               text
               :icon="FullScreen"
@@ -1148,7 +1299,45 @@ onMounted(async () => {
               >放大查看</ElButton
             >
           </header>
-          <template v-if="previewKind === 'word'">
+          <template v-if="previewKind === 'order'">
+            <template v-if="draft.source_data.order_document">
+              <div class="route-order-filename">
+                <span>{{ draft.source_data.order_document.filename }}</span
+                ><ElButton text @click="downloadOrder">下载原件</ElButton>
+              </div>
+              <div class="route-order-preview">
+                <table aria-label="订单表原始数据">
+                  <thead>
+                    <tr>
+                      <th>原表字段</th>
+                      <th>原表内容</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="(label, index) in draft.source_data.order_document.headers"
+                      :key="index"
+                    >
+                      <th scope="row">{{ label || '—' }}</th>
+                      <td>
+                        {{
+                          (draft.source_data.order_document.display_values ||
+                            draft.source_data.order_document.values)[index] || '—'
+                        }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </template>
+            <div v-else class="route-empty-source">
+              <ElIcon><Document /></ElIcon><span>暂无订单表</span
+              ><ElButton v-if="!readonly" :disabled="busy" @click="orderInput?.click()"
+                >导入订单表</ElButton
+              >
+            </div>
+          </template>
+          <template v-else-if="previewKind === 'word'">
             <WordDocumentPreview
               ref="wordPreview"
               v-if="sourceFilename"
@@ -1262,6 +1451,73 @@ onMounted(async () => {
   </AppDialog>
 </template>
 <style scoped>
+.route-import-marker {
+  font-size: 10px;
+  font-weight: 400;
+  color: #718078;
+  margin-left: 5px;
+  white-space: nowrap;
+}
+.route-step-import {
+  display: block;
+  margin: 0 0 3px;
+}
+.route-import-confirmation {
+  margin: 12px 0;
+}
+.route-import-confirmation :deep(.el-form-item__content) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.route-import-confirmation span[role='alert'] {
+  font-size: 12px;
+  color: var(--el-color-danger);
+}
+.route-order-filename {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.route-order-filename > span {
+  overflow-wrap: anywhere;
+}
+.route-order-preview {
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+}
+.route-order-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+  background: white;
+}
+.route-order-preview th,
+.route-order-preview td {
+  text-align: left;
+  vertical-align: top;
+  padding: 8px 12px;
+  border: 1px solid #dce2df;
+  font-weight: 400;
+  color: #252925;
+  overflow-wrap: anywhere;
+}
+.route-import-toolbar {
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.route-order-preview th {
+  width: 32%;
+  background: #f3f5f3;
+}
+.route-order-preview thead {
+  position: sticky;
+  top: 0;
+}
 .route-schedule-link {
   color: var(--brand-primary, #215b49);
   font-size: 14px;

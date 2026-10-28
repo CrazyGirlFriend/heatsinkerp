@@ -23,6 +23,7 @@ from .models import (
     ProcessRoute,
     ProcessRouteArchive,
     ProcessRouteDrawing,
+    ProcessRouteOrderFile,
     ProcessRoutePath,
     ProcessRoutePolicy,
     Team,
@@ -33,6 +34,12 @@ from .models import (
 )
 from .process_route_drawings import MAX_DRAWINGS, copy_drawings, drawing_preview, validate_drawing
 from .process_route_import import MAX_FILE_BYTES, parse_docx
+from .process_route_orders import (
+    apply_material_values,
+    merge_materials,
+    parse_order,
+    review_fingerprint,
+)
 from .process_route_schemas import RouteDraftWrite
 from .process_route_serials import reserve_serial
 from .process_routes import (
@@ -61,6 +68,7 @@ class BindWrite(BaseModel):
 
 class RevisionWrite(BaseModel):
     version: int = Field(ge=1)
+    confirmed_imports: bool = False
 
 
 def drawing_document(row):
@@ -173,7 +181,7 @@ async def import_word(
                     filename=filename,
                     source_file=content,
                     source_sha256=hashlib.sha256(content).hexdigest(),
-                    source_data=data,
+                    source_data=merge_materials({}, word=data, filename=filename),
                     serial_nos=serials,
                     steps=steps,
                     created_by=actor_name(user),
@@ -420,10 +428,75 @@ async def parse_word(
             "filename": filename,
             "serial_nos": serials,
             "steps": steps,
-            "source_data": data,
+            "source_data": merge_materials({}, word=data, filename=filename),
         }
     finally:
         await file.close()
+
+
+@router.post("/parse-order")
+async def parse_order_file(
+    file: Annotated[UploadFile, File()],
+    _: User = Depends(require_route_importer),
+):
+    try:
+        filename = (file.filename or "").replace("\\", "/").split("/")[-1]
+        content = await file.read(MAX_FILE_BYTES + 1)
+        return await run_in_threadpool(parse_order, content, filename)
+    finally:
+        await file.close()
+
+
+@router.post("/{route_id}/order")
+async def attach_order(
+    route_id: int,
+    file: Annotated[UploadFile, File()],
+    version: Annotated[int, Form(ge=1)],
+    user: User = Depends(require_route_importer),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        filename = (file.filename or "").replace("\\", "/").split("/")[-1]
+        content = await file.read(MAX_FILE_BYTES + 1)
+        order = await run_in_threadpool(parse_order, content, filename)
+
+        def save(session):
+            with session.begin():
+                row = editable_version(session, route_id, version, user)
+                if row.route_kind == "rework" or row.serial_nos != [order["serial_no"]]:
+                    raise HTTPException(422, "请选择与正常工艺流水号一致的订单表")
+                row.source_data = merge_materials(row.source_data, order=order)
+                original = session.get(ProcessRouteOrderFile, row.id)
+                if original is None:
+                    original = ProcessRouteOrderFile(route_id=row.id)
+                    session.add(original)
+                original.filename, original.content = filename, content
+                row.version += 1
+                session.flush()
+                return document(row, db=session)
+
+        return await db.run_sync(save)
+    finally:
+        await file.close()
+
+
+@router.get("/{route_id}/order")
+def download_order(
+    route_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    require_route_reader(require_route(db, route_id), user)
+    original = db.get(ProcessRouteOrderFile, route_id)
+    if original is None:
+        raise HTTPException(404, "尚未上传订单表")
+    return Response(
+        original.content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": "attachment; filename*=UTF-8''" + quote(original.filename),
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+        },
+    )
 
 
 def map_word_steps(session, steps):
@@ -468,7 +541,8 @@ async def attach_word(
                 row = editable_version(session, route_id, version, user)
                 if row.route_kind == "rework":
                     raise HTTPException(422, "返工工艺请手工填写，不支持导入工艺单")
-                row.filename, row.source_file, row.source_data = filename, content, data
+                row.source_data = merge_materials(row.source_data, word=data, filename=filename)
+                row.filename, row.source_file = filename, content
                 row.source_sha256 = hashlib.sha256(content).hexdigest()
                 row.version += 1
                 session.flush()
@@ -599,12 +673,23 @@ def save_draft(
             raise HTTPException(409, "工艺已被他人修改，请刷新后重试")
         if row.route_kind == "rework" and payload.serial_nos != row.serial_nos:
             raise HTTPException(422, "返工流水号随原批次保留，不能修改")
+        order_serial = row.source_data.get("order_document", {}).get("serial_no")
+        if order_serial and payload.serial_nos != [order_serial]:
+            raise HTTPException(422, "流水号与已导入的订单表不一致")
         row.title, row.serial_nos, row.steps = (
             payload.title.strip(),
             payload.serial_nos,
             [step.model_dump() for step in payload.steps],
         )
         row.review_note = payload.review_note.strip()
+        apply_material_values(row, payload.material_values)
+        confirmation = row.source_data.get("material_confirmation")
+        if confirmation and confirmation.get("fingerprint") != review_fingerprint(row):
+            row.source_data = {
+                key: value
+                for key, value in row.source_data.items()
+                if key != "material_confirmation"
+            }
         if row.route_kind == "rework" and payload.resume_step_index not in (
             None,
             row.resume_step_index,
@@ -665,6 +750,22 @@ def publish(
                 .limit(1)
             ):
                 raise HTTPException(409, "工艺已由他人修改，请刷新后重试")
+        if row.source_data.get("review_required"):
+            fingerprint = review_fingerprint(row)
+            if (
+                not payload.confirmed_imports
+                and row.source_data.get("material_confirmation", {}).get("fingerprint")
+                != fingerprint
+            ):
+                raise HTTPException(422, "请确认自动填入的资料和工序")
+            row.source_data = {
+                **row.source_data,
+                "material_confirmation": {
+                    "fingerprint": fingerprint,
+                    "by": actor_name(user),
+                    "at": utcnow().isoformat() + "Z",
+                },
+            }
         publish_route(db, row)
         from .rework_notices import notify_ready
 
@@ -733,6 +834,13 @@ def revise(
         db.add(row)
         db.flush()
         copy_drawings(db, previous.id, row.id)
+        order_file = db.get(ProcessRouteOrderFile, previous.id)
+        if order_file:
+            db.add(
+                ProcessRouteOrderFile(
+                    route_id=row.id, filename=order_file.filename, content=order_file.content
+                )
+            )
         db.flush()
         return document(row, db=db)
 

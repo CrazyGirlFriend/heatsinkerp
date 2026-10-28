@@ -6,6 +6,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import FactorySidebar from '@/components/FactorySidebar.vue'
+import ScheduleNotifications from '@/components/ScheduleNotifications.vue'
 import AccountAvatar from '@/components/AccountAvatar.vue'
 import ProfileDialog from '@/components/ProfileDialog.vue'
 import AccessPage from '@/pages/AccessPage.vue'
@@ -266,6 +267,16 @@ function handleUserCommand(command: string | number | object): void {
         <FactorySidebar :compact="sidebarCompact" glass illustrated />
 
         <div class="sidebar__footer">
+          <ScheduleNotifications
+            v-if="currentUser && ['ADMIN', 'TEAM'].includes(currentUser.role)"
+            :key="`${currentUser.id}:${currentUser.role}:${currentUser.team_id}`"
+            :compact="sidebarCompact"
+            :team-id="
+              currentUser.role === 'TEAM' && currentUser.team_id != null
+                ? Number(currentUser.team_id)
+                : undefined
+            "
+          />
           <div class="sidebar__account">
             <ElDropdown
               placement="top-start"
@@ -419,6 +430,9 @@ function handleUserCommand(command: string | number | object): void {
   margin: 0 12px;
   padding: 8px 0;
   border-top: 1px solid var(--line);
+}
+.sidebar__footer :deep(.notice-trigger) {
+  grid-column: 1 / -1;
 }
 .sidebar__user {
   display: flex;

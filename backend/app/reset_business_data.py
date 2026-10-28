@@ -16,8 +16,11 @@ from . import models  # noqa: F401
 from .database import Base, SessionLocal, engine
 
 RESET_TABLES = (
+    "schedule_notice_reads",
+    "schedule_notices",
     "production_schedule_events",
     "production_schedule_deliveries",
+    "production_schedule_batches",
     "production_schedule_sources",
     "production_schedules",
     "production_schedule_tasks",

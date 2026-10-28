@@ -6,6 +6,8 @@ defineProps<{
   dateError?: string
   quantityError?: string
   documentSource?: string
+  dateSource?: string
+  quantitySource?: string
   dateState?: '' | 'imported' | 'edited'
   quantityState?: '' | 'imported' | 'edited'
 }>()
@@ -24,7 +26,7 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
       ><template #label
         >要求发货日期<AutofillBadge
           v-if="dateState"
-          :source="documentSource || ''"
+          :source="dateSource || documentSource || ''"
           kind="document"
           :modified="dateState === 'edited'" /></template
       ><ElInput
@@ -44,7 +46,7 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
       ><template #label
         >应发成品件数<AutofillBadge
           v-if="quantityState"
-          :source="documentSource || ''"
+          :source="quantitySource || documentSource || ''"
           kind="document"
           :modified="quantityState === 'edited'" /></template
       ><ElInputNumber

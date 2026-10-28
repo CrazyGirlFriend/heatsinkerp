@@ -26,6 +26,7 @@ import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import MaterialTransferStatus from './MaterialTransferStatus.vue'
 import type { MaterialTransferStatus as TransferStatus } from '@/types/materialTransfer'
 import ProductionScheduleEditor from './ProductionScheduleEditor.vue'
+import ScheduleBatchEditor from './ScheduleBatchEditor.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
@@ -75,7 +76,11 @@ const canDispatch = computed(() =>
     auth.currentUser?.active !== false,
   ),
 )
-const canEditCommitment = computed(() => canManage.value || canDispatch.value)
+const canEditCommitment = computed(
+  () =>
+    canDispatch.value ||
+    (auth.isAdmin && !auth.currentUserError && auth.currentUser?.active !== false),
+)
 const teams = computed(() => directory.items.filter((team) => team.active))
 const rows = ref<ProductionSchedule[]>([]),
   total = ref(0),
@@ -237,6 +242,10 @@ function closeDetail() {
   detail.value = null
   taskContext.value = null
   taskLoading.value = false
+}
+async function openBatchPlan(id: number) {
+  await openDetail(id)
+  if (detail.value) editSchedule(detail.value)
 }
 function newSchedule() {
   editingSchedule.value = predecessor.value = null
@@ -458,6 +467,21 @@ function changes(event: NonNullable<ProductionSchedule['history']>[number]) {
       before: auditValue(key, event.before),
       after: auditValue(key, event.after),
     }))
+  const batchText = (
+    b: NonNullable<NonNullable<ProductionSchedule['history']>[number]['after']>['batches'],
+  ) =>
+    (b || [])
+      .map(
+        (row) =>
+          `第 ${row.batch_number} 批：${formatAmount(row.target_quantity)} 件 / ${formatAmount(row.target_weight)} kg，${formatDateTime(row.planned_start_at)} — ${formatDateTime(row.due_at)}`,
+      )
+      .join('；') || '未安排'
+  if (JSON.stringify(event.before?.batches) !== JSON.stringify(event.after?.batches))
+    items.push({
+      label: '分批排期',
+      before: batchText(event.before?.batches),
+      after: batchText(event.after?.batches),
+    })
   if (event.after?.reason) items.push({ label: '取消原因', before: '—', after: event.after.reason })
   for (const [key, label] of [
     ['task_title', '任务名称'],
@@ -476,6 +500,7 @@ function actionLabel(action: string) {
         created: '新建',
         update: '调整',
         updated: '调整',
+        batches_updated: '调整分批排期',
         cancel: '取消',
         cancelled: '取消',
         task_updated: '调整任务信息',
@@ -505,8 +530,8 @@ watch(
   },
 )
 watch(
-  () => route.query.schedule_id,
-  (id) => {
+  () => [route.query.schedule_id, route.query.notice],
+  ([id]) => {
     if (typeof id === 'string' && /^\d+$/.test(id)) void openDetail(Number(id))
   },
   { immediate: true },
@@ -699,9 +724,21 @@ defineExpose({ exportSource, openDetail })
                 : '待关联'
           }}</template></ElTableColumn
         >
-        <ElTableColumn label="操作" width="90" fixed="right" align="center"
+        <ElTableColumn label="计划批数" width="95" align="center"
+          ><template #default="{ row }">{{
+            row.batches?.length || '待安排'
+          }}</template></ElTableColumn
+        >
+        <ElTableColumn label="操作" width="150" fixed="right" align="center"
           ><template #default="{ row }"
-            ><ElButton link type="primary" @click="openDetail(row.id)">明细</ElButton></template
+            ><ElButton link type="primary" @click="openDetail(row.id)">明细</ElButton
+            ><ElButton
+              v-if="canEditCommitment && row.status !== 'cancelled'"
+              link
+              type="primary"
+              @click="openBatchPlan(row.id)"
+              >安排批次</ElButton
+            ></template
           ></ElTableColumn
         >
       </ElTable>
@@ -831,8 +868,68 @@ defineExpose({ exportSource, openDetail })
           }}</ElDescriptionsItem>
           <ElDescriptionsItem label="备注" :span="3">{{ detail.notes || '—' }}</ElDescriptionsItem>
         </ElDescriptions>
+        <div class="schedule-section-heading"><h3>分批排期</h3></div>
+        <ElTable
+          :data="detail.batches || []"
+          border
+          class="business-table"
+          empty-text="待班组安排批次"
+          aria-label="分批排期明细"
+        >
+          <ElTableColumn label="批次" width="85"
+            ><template #default="{ row }">第 {{ row.batch_number }} 批</template></ElTableColumn
+          >
+          <ElTableColumn label="计划开始" min-width="165"
+            ><template #default="{ row }">{{
+              formatDateTime(row.planned_start_at)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="计划转出" min-width="165"
+            ><template #default="{ row }">{{ formatDateTime(row.due_at) }}</template></ElTableColumn
+          >
+          <ElTableColumn label="数量（件）" min-width="100"
+            ><template #default="{ row }">{{
+              formatAmount(row.target_quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn
+            v-if="detail.completion_basis !== 'quantity'"
+            label="重量（kg）"
+            min-width="110"
+            ><template #default="{ row }">{{
+              formatAmount(row.target_weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="已转出（件）" min-width="110"
+            ><template #default="{ row }">{{
+              formatAmount(row.dispatched_quantity)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn
+            v-if="detail.completion_basis !== 'quantity'"
+            label="已转出（kg）"
+            min-width="110"
+            ><template #default="{ row }">{{
+              formatAmount(row.dispatched_weight)
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="状态" min-width="110"
+            ><template #default="{ row }"
+              ><ElTag :type="scheduleStatusTone(row.status)">{{
+                scheduleStatusLabels[row.status as ScheduleStatus]
+              }}</ElTag></template
+            ></ElTableColumn
+          >
+          <ElTableColumn label="时间提醒" min-width="180"
+            ><template #default="{ row }"
+              ><span :class="{ 'schedule-late': row.warnings.length }">{{
+                row.warnings.join('；') || '—'
+              }}</span></template
+            ></ElTableColumn
+          >
+        </ElTable>
         <div class="schedule-section-heading">
-          <h3>批次计划</h3>
+          <h3>关联物料</h3>
           <RouterLink
             :to="{
               path: `/team-workspaces/${detail.team_id}`,
@@ -897,6 +994,13 @@ defineExpose({ exportSource, openDetail })
           <h3>转出记录</h3>
         </div>
         <ElTable :data="detail.deliveries || []" class="business-table" empty-text="暂无转出记录">
+          <ElTableColumn label="计划批次" width="100" align="center">
+            <template #default="{ row }">{{
+              row.schedule_batch_id
+                ? `第 ${detail.batches?.find((b) => b.id === row.schedule_batch_id)?.batch_number ?? '—'} 批`
+                : '未分配'
+            }}</template>
+          </ElTableColumn>
           <ElTableColumn label="转出批次" min-width="200" align="center"
             ><template #default="{ row }"
               ><ElButton link type="primary" @click="viewBatch(row.batch_no)">{{
@@ -971,7 +1075,7 @@ defineExpose({ exportSource, openDetail })
             >取消排期</ElButton
           ><ElButton v-if="canManage && detail.next_team_id" @click="nextSchedule(detail)"
             >添加下序节点</ElButton
-          ><ElButton type="primary" @click="editSchedule(detail)">调整排期</ElButton>
+          ><ElButton type="primary" @click="editSchedule(detail)">安排批次</ElButton>
         </div>
         <ElButton
           v-if="
@@ -986,8 +1090,14 @@ defineExpose({ exportSource, openDetail })
         ><ElButton @click="closeDetail">关闭</ElButton></template
       >
     </AppDialog>
+    <ScheduleBatchEditor
+      v-if="editing && canEditCommitment && editingSchedule"
+      :schedule="editingSchedule"
+      @close="editing = false"
+      @saved="saved"
+    />
     <ProductionScheduleEditor
-      v-if="editing && canEditCommitment"
+      v-if="editing && canEditCommitment && !editingSchedule"
       :schedule="editingSchedule"
       :predecessor="predecessor"
       @close="editing = false"

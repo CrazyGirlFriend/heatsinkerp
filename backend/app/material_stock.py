@@ -81,6 +81,7 @@ class DispatchLine(StockAmounts, WarehouseLocationChoice, SludgeMeasurement):
     process_route_id: int | None = Field(default=None, ge=1)
     process_route_version: int | None = Field(default=None, ge=1)
     production_schedule_id: int | None = Field(default=None, ge=1)
+    production_schedule_batch_id: int | None = Field(default=None, ge=1)
     material_type: str | None = Field(default=None, pattern=DIRECT_MATERIAL_TYPE_PATTERN)
     purpose_id: int | None = Field(default=None, ge=1)
     transfer_specification: str | None = Field(default=None, max_length=240)

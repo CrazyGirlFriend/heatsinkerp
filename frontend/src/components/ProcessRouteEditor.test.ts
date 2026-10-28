@@ -7,6 +7,8 @@ import ProcessRouteDrawingPreview from './ProcessRouteDrawingPreview.vue'
 import { processRouteApi, ProcessRouteSerialConflictError } from '@/services/processRouteApi'
 import { routeFixture, reworkRouteFixture } from '@/testFixtures/processRoute'
 import { defineComponent, h } from 'vue'
+import { orderFixture } from '@/testFixtures/processRouteOrder'
+import { mergeRouteMaterials } from '@/utils/routeMaterials'
 const openWord = vi.fn(),
   openDrawing = vi.fn()
 const originalStub = (name: string, open: typeof openWord) =>
@@ -102,6 +104,59 @@ it('preserves original text and saves the version before publication', async () 
     '2.5(+0.01/-0.02)',
   )
   expect(wrapper.text()).toContain('修改工艺')
+})
+
+it('shows imported order fields, requires confirmation, and persists them after uploading the source', async () => {
+  const order = {
+    ...structuredClone(orderFixture),
+    serial_no: routeFixture.serial_nos[0]!,
+    receipt_fields: {
+      ...structuredClone(orderFixture.receipt_fields),
+      serial_no: { ...orderFixture.receipt_fields.serial_no!, value: routeFixture.serial_nos[0]! },
+    },
+  }
+  vi.spyOn(processRouteApi, 'parseOrder').mockResolvedValue(order)
+  vi.spyOn(processRouteApi, 'attachOrder').mockImplementation(async (route) => ({
+    ...route,
+    version: route.version + 1,
+    source_data: mergeRouteMaterials(route.source_data, order),
+  }))
+  await render()
+  const input = wrapper.get('input[aria-label="导入订单表文件"]')
+  Object.defineProperty(input.element, 'files', {
+    configurable: true,
+    value: [new File(['data'], '订单.xlsx')],
+  })
+  await input.trigger('change')
+  await flushPromises()
+  expect(wrapper.text()).toContain('物料与订单资料')
+  expect(wrapper.text()).toContain('订单表 · 自动填入')
+  expect(wrapper.get('table[aria-label="订单表原始数据"]').text()).toContain('18100')
+  await click('保存工艺')
+  expect(processRouteApi.save).not.toHaveBeenCalled()
+  expect(wrapper.text()).toContain('请确认自动填入的资料和工序')
+  const confirm = () =>
+    wrapper
+      .findAll('label.el-checkbox')
+      .find((item) => item.text().includes('已核对自动填入'))!
+      .get('input')
+  await confirm().setValue(true)
+  await wrapper.get('input[aria-label="工艺资料：客户代码"]').setValue('11600-T3')
+  expect((confirm().element as HTMLInputElement).checked).toBe(false)
+  await confirm().setValue(true)
+  await click('保存工艺')
+  expect(processRouteApi.attachOrder).toHaveBeenCalledOnce()
+  expect(processRouteApi.save).toHaveBeenCalledTimes(2)
+  expect(processRouteApi.publish).toHaveBeenCalledWith(
+    expect.objectContaining({
+      source_data: expect.objectContaining({
+        receipt_fields: expect.objectContaining({
+          customer_code: expect.objectContaining({ value: '11600-T3' }),
+        }),
+      }),
+    }),
+    true,
+  )
 })
 
 it('marks a duplicate serial and keeps the entered form until that serial is corrected', async () => {
@@ -325,8 +380,9 @@ it('imports into the current form with a local original and creates only when sa
   expect(processRouteApi.save).not.toHaveBeenCalled()
   expect(wrapper.getComponent(WordDocumentPreview).props('sourceFile')).toBe(file)
   expect(wrapper.get('input[aria-label="流水号"]').element).toHaveProperty('value', 'S-001')
+  await wrapper.get('.route-import-confirmation input[type="checkbox"]').setValue(true)
   await click('保存工艺')
-  expect(processRouteApi.save).toHaveBeenCalledOnce()
+  expect(processRouteApi.save).toHaveBeenCalledTimes(2)
   expect(processRouteApi.attachSource).toHaveBeenCalledWith(
     expect.objectContaining({ id: 55, version: 1 }),
     file,

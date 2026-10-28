@@ -329,8 +329,9 @@ onBeforeUnmount(() => {
     aria-label="生产排期任务"
   >
     <div class="workspace-data-toolbar task-board__toolbar">
-      <strong class="task-board__title">交货进度</strong>
+      <slot name="heading"><strong class="task-board__title">交货进度</strong></slot>
       <div class="task-board__actions">
+        <slot name="view-actions" />
         <ElButton
           class="task-board__filter"
           :class="{ 'action-cool': filterCount > 0 }"

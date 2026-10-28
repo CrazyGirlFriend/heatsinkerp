@@ -219,7 +219,11 @@ function assignImportedField(key: string, value: string | number | undefined) {
   else if (key === 'external_source') form.externalSource = value == null ? '' : String(value)
 }
 function documentSource(key: string) {
-  return documentImport.original(key) !== undefined ? importedRoute.value?.filename || '' : ''
+  return documentImport.original(key) !== undefined
+    ? importedRoute.value?.source_data.receipt_fields?.[key]?.source_filename ||
+        importedRoute.value?.filename ||
+        '工艺资料'
+    : ''
 }
 function documentChanged(key: string) {
   return documentImport.state(key, importedValues.value[key]) === 'edited'
@@ -287,13 +291,21 @@ async function selectRoute(route: ProcessRoute) {
   error.value = ''
   try {
     if (current !== importGeneration || !props.modelValue) return
-    const fields = route.source_data.receipt_fields || {}
+    const fields = Object.fromEntries(
+      Object.entries(route.source_data.receipt_fields || {}).filter(
+        ([key, field]) =>
+          field.value !== '' &&
+          (!route.source_data.review_required ||
+            !['quantity', 'weight', 'finished_quantity'].includes(key)),
+      ),
+    )
     const replace = (key: string) => {
       const value = importedValues.value[key]
       return (
         value == null ||
         value === '' ||
         (['quantity', 'weight'].includes(key) && value === 0) ||
+        !!autofill.source(key) ||
         documentImport.state(key, value) === 'imported'
       )
     }
@@ -924,6 +936,8 @@ onBeforeUnmount(() => {
               :date-error="fieldErrors.deliveryDate"
               :quantity-error="fieldErrors.deliveryQuantity"
               :document-source="importedRoute?.filename"
+              :date-source="documentSource('delivery_date')"
+              :quantity-source="documentSource('delivery_quantity')"
               :date-state="documentImport.state('delivery_date', importedValues.delivery_date)"
               :quantity-state="
                 documentImport.state('delivery_quantity', importedValues.delivery_quantity)

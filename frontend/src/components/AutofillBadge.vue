@@ -7,9 +7,7 @@ defineProps<{ source: string; kind?: 'document'; modified?: boolean }>()
   <ElTooltip
     v-if="source"
     :content="
-      kind === 'document'
-        ? `来自工艺单 ${source}，可修改并与原文对照`
-        : `资料来自批次 ${source}，可修改`
+      kind === 'document' ? `来自 ${source}，可修改并与原文对照` : `资料来自批次 ${source}，可修改`
     "
     :trigger="['hover', 'focus']"
     placement="top"

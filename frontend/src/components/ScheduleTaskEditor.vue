@@ -54,8 +54,6 @@ interface NodeDraft {
   key: string
   routeIndex?: number
   team?: number
-  date: string
-  hour: string
   quantity?: number
   weight?: number
   basis: CompletionBasis
@@ -66,8 +64,6 @@ function newNode(team?: number): NodeDraft {
   return {
     key: materialRequestKey(),
     team,
-    date: '',
-    hour: '',
     basis: 'quantity',
     sources: [],
     notes: '',
@@ -90,7 +86,7 @@ function routeNodes() {
     const node = newNode(step.team_id || undefined)
     node.quantity = quantity
     node.routeIndex = index
-    node.notes = `${step.sequence_no} · ${step.name}（工艺参考 ${step.planned_days || '—'} 天）`
+    node.notes = `${step.sequence_no} · ${step.name}`
     nodes.push(node)
   })
   return nodes
@@ -154,7 +150,7 @@ function removeNode(index: number) {
 const { formRef, fieldErrors, validate } = useDialogValidation(() => {
   const issues: Record<string, string> = {}
   if (!form.title.trim()) issues.title = '请填写任务名称'
-  if ((form.finalDate || form.finalHour) && (!form.finalDate || !form.finalHour))
+  if ((!props.task || form.finalDate || form.finalHour) && (!form.finalDate || !form.finalHour))
     issues.finalDue = '请选择最终交货日期和小时'
   if (props.task) return issues
   if (!form.serial.trim()) issues.serial = '请填写流水号'
@@ -162,16 +158,6 @@ const { formRef, fieldErrors, validate } = useDialogValidation(() => {
     if (!node.team) issues[`${node.key}.team`] = '请选择交货班组'
     if (node.team && index && node.team === form.nodes[index - 1]?.team)
       issues[`${node.key}.team`] = '相邻节点不能是同一班组'
-    if (!node.date || !node.hour) issues[`${node.key}.due`] = '请选择交货日期和小时'
-    const previous = form.nodes[index - 1]
-    if (
-      previous?.date &&
-      previous.hour &&
-      node.date &&
-      node.hour &&
-      `${node.date} ${node.hour}` < `${previous.date} ${previous.hour}`
-    )
-      issues[`${node.key}.due`] = '不能早于上一个节点的交货时间'
     Object.entries(scheduleAmountErrors(node)).forEach(([field, message]) => {
       issues[`${node.key}.${field}`] = message
     })
@@ -223,7 +209,7 @@ async function save() {
             index === form.nodes.length - 1 && form.destinationKind === 'external'
               ? form.destination
               : null,
-          due_at: `${node.date}T${node.hour}:00:00+08:00`,
+          due_at: `${form.finalDate}T${form.finalHour}:00:00+08:00`,
           target_quantity: node.quantity || null,
           target_weight: node.weight || null,
           completion_basis: node.basis,
@@ -294,7 +280,12 @@ async function save() {
             aria-label="任务名称"
         /></ElFormItem>
       </div>
-      <ElFormItem label="最终交期" :error="fieldErrors.finalDue" class="task-final-due">
+      <ElFormItem
+        label="最终交期"
+        :required="!task"
+        :error="fieldErrors.finalDue"
+        class="task-final-due"
+      >
         <ElDatePicker
           v-model="form.finalDate"
           type="date"
@@ -383,29 +374,6 @@ async function save() {
                   :key="team.id"
                   :label="team.name"
                   :value="Number(team.id)" /></ElSelect
-            ></ElFormItem>
-            <ElFormItem
-              class="route-node__date"
-              label="要求交货时间"
-              required
-              :error="fieldErrors[`${node.key}.due`]"
-              ><div class="route-node__deadline">
-                <ElDatePicker
-                  v-model="node.date"
-                  type="date"
-                  value-format="YYYY-MM-DD"
-                  placeholder="日期"
-                  :aria-label="`第${index + 1}站日期`"
-                /><ElSelect
-                  v-model="node.hour"
-                  placeholder="小时"
-                  :aria-label="`第${index + 1}站小时`"
-                  ><ElOption
-                    v-for="hour in 24"
-                    :key="hour"
-                    :value="String(hour - 1).padStart(2, '0')"
-                    :label="`${String(hour - 1).padStart(2, '0')}:00`"
-                /></ElSelect></div
             ></ElFormItem>
             <ElFormItem
               class="route-node__quantity"
@@ -557,7 +525,7 @@ async function save() {
 }
 .route-node__fields {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(230px, 1.65fr) 110px 138px 144px;
+  grid-template-columns: minmax(160px, 1fr) minmax(110px, 0.7fr) minmax(138px, 0.8fr) 144px;
   gap: 0 14px;
 }
 .route-node__fields :deep(.el-form-item) {
@@ -567,20 +535,6 @@ async function save() {
 .route-node__fields :deep(.el-input-number),
 .route-node__fields :deep(.el-select) {
   width: 100%;
-}
-.route-node__deadline {
-  display: flex;
-  gap: 6px;
-  width: 100%;
-}
-.route-node__deadline :deep(.el-date-editor) {
-  flex: 1;
-  min-width: 0;
-  width: 0;
-}
-.route-node__deadline :deep(.el-select) {
-  width: 82px;
-  flex-shrink: 0;
 }
 .route-node__heading .route-node__final {
   display: flex;
@@ -629,14 +583,11 @@ async function save() {
 }
 @media (max-width: 940px) {
   .route-node__fields {
-    grid-template-columns: minmax(140px, 1fr) minmax(230px, 1.5fr) minmax(144px, 1fr);
-    grid-template-areas: 'team date basis' 'quantity weight .';
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+    grid-template-areas: 'team basis' 'quantity weight';
   }
   .route-node__team {
     grid-area: team;
-  }
-  .route-node__date {
-    grid-area: date;
   }
   .route-node__basis {
     grid-area: basis;

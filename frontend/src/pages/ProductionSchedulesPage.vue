@@ -23,19 +23,22 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
     class="page production-schedules-page reading-workspace"
     :class="{ 'production-schedules-page--fullscreen': fullscreen }"
   >
-    <header class="production-schedules-heading">
-      <div class="page-heading-start">
-        <PageBackButton v-if="!fullscreen" />
-        <h1>生产排期</h1>
-      </div>
-      <ElButton
-        :icon="fullscreen ? ScaleToOriginal : FullScreen"
-        :aria-pressed="fullscreen"
-        @click="fullscreen = !fullscreen"
-        >{{ fullscreen ? '退出全屏' : '全屏查看' }}</ElButton
-      >
-    </header>
-    <ScheduleTaskBoard :fullscreen="fullscreen" />
+    <ScheduleTaskBoard :fullscreen="fullscreen">
+      <template #heading>
+        <header class="production-schedules-heading page-heading-start">
+          <PageBackButton v-if="!fullscreen" />
+          <h1>生产排期</h1>
+        </header>
+      </template>
+      <template #view-actions>
+        <ElButton
+          :icon="fullscreen ? ScaleToOriginal : FullScreen"
+          :aria-pressed="fullscreen"
+          @click="fullscreen = !fullscreen"
+          >{{ fullscreen ? '退出全屏' : '全屏查看' }}</ElButton
+        >
+      </template>
+    </ScheduleTaskBoard>
   </section>
 </template>
 <style scoped>
@@ -51,12 +54,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 12px;
   flex-shrink: 0;
 }
 .production-schedules-heading h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   line-height: 28px;
 }
 .production-schedules-page.reading-workspace.production-schedules-page--fullscreen {

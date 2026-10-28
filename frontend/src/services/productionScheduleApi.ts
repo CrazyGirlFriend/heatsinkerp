@@ -1,6 +1,7 @@
 import { httpRequest, HttpRequestError, type HttpRequestOptions } from './httpClient'
 import type { MaterialPage } from '@/types/teamMaterials'
 import type {
+  ScheduleBatchWrite,
   ScheduleReworkOption,
   ScheduleRouteOption,
   ScheduleRouteLink,
@@ -116,6 +117,8 @@ export const productionScheduleApi = {
     request<ProductionSchedule>('/production-schedules', { method: 'POST', body }),
   update: (id: number, body: ScheduleWrite & { expected_version: number }) =>
     request<ProductionSchedule>(`/production-schedules/${id}`, { method: 'PATCH', body }),
+  saveBatches: (id: number, body: { expected_version: number; batches: ScheduleBatchWrite[] }) =>
+    request<ProductionSchedule>(`/production-schedules/${id}/batches`, { method: 'PUT', body }),
   updateCommitment: (
     id: number,
     body: Pick<

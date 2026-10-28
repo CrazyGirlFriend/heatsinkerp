@@ -157,8 +157,18 @@ const lines = ref<
     specificationValid: boolean
     specificationOpen: boolean
     scheduleId?: number
+    scheduleBatchId?: number
   }[]
 >([])
+function lineScheduleBatches(line: (typeof lines.value)[number]) {
+  const options = lineSchedules(line)
+  return (
+    (
+      options.find((s) => s.id === line.scheduleId) ||
+      (options.length === 1 ? options[0] : undefined)
+    )?.batches || []
+  )
+}
 function enteredQuantity(line: (typeof lines.value)[number]) {
   return isWeightOnlyType(line.materialType) ? 0 : line.quantity
 }
@@ -619,6 +629,12 @@ const validation = useDialogValidation(() => {
       add('scheduleId', '请选择本次转出对应的交货排期')
     if (
       !isLoss.value &&
+      lineScheduleBatches(line).length > 1 &&
+      !lineScheduleBatches(line).some((b) => b.id === line.scheduleBatchId)
+    )
+      add('scheduleBatchId', '请选择本次转出对应的交货批次')
+    if (
+      !isLoss.value &&
       !external.value &&
       purposes.items.value.length &&
       !purposes.items.value.some((item) => item.active && item.id === line.purposeId)
@@ -939,7 +955,16 @@ async function submit() {
         : {}),
       source_transfer_id: Number(line.source.transfer.id),
       ...(!isLoss.value && lineSchedules(line).some((schedule) => schedule.id === line.scheduleId)
-        ? { production_schedule_id: line.scheduleId }
+        ? {
+            production_schedule_id: line.scheduleId,
+            production_schedule_batch_id: lineScheduleBatches(line).some(
+              (b) => b.id === line.scheduleBatchId,
+            )
+              ? line.scheduleBatchId
+              : lineScheduleBatches(line).length === 1
+                ? lineScheduleBatches(line)[0]!.id
+                : undefined,
+          }
         : {}),
       quantity: Number(enteredQuantity(line)),
       weight: Number(line.weight),
@@ -1526,6 +1551,27 @@ async function submit() {
                   :label="scheduleLabel(schedule)"
                 />
               </ElSelect>
+            </ElFormItem>
+            <ElFormItem
+              v-if="!isLoss && lineScheduleBatches(line).length"
+              label="交货批次"
+              :error="lineError(line, 'scheduleBatchId')"
+              :required="lineScheduleBatches(line).length > 1"
+            >
+              <span v-if="lineScheduleBatches(line).length === 1"
+                >第 {{ lineScheduleBatches(line)[0]!.batch_number }} 批</span
+              >
+              <ElSelect
+                v-else
+                v-model="line.scheduleBatchId"
+                placeholder="选择交货批次"
+                :aria-label="`${line.source.transfer.batch_no}交货批次`"
+                ><ElOption
+                  v-for="batch in lineScheduleBatches(line)"
+                  :key="batch.id"
+                  :value="batch.id"
+                  :label="`第 ${batch.batch_number} 批 · ${formatDateTime(batch.due_at)}`"
+              /></ElSelect>
             </ElFormItem>
             <details
               v-if="!isLoss && !isScrapType(line.materialType)"

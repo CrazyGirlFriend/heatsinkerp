@@ -409,6 +409,10 @@ def update_task(db, task_id, payload, user):
                 },
             )
         )
+        from .schedule_notices import notify_final_due
+
+        if before["final_due_at"] != schedules.iso(task.final_due_at):
+            notify_final_due(db, task)
         # Reuse existing team-scoped refresh, without changing node revisions or actual dates.
         for node in db.scalars(select(Plan).where(Plan.task_id == task_id)):
             node.updated_at = task.updated_at

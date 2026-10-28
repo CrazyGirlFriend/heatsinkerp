@@ -12,6 +12,7 @@ import {
   ZoomIn,
   ZoomOut,
   Lock,
+  LocationFilled,
 } from '@element-plus/icons-vue'
 import { ElButton, ElIcon, ElTooltip } from 'element-plus'
 import AppDialog from './AppDialog.vue'
@@ -38,7 +39,9 @@ import {
   progressMarkers,
   progressRange,
   progressWeek,
+  timelineNodes,
   PROGRESS_CARD_WIDTH,
+  PROGRESS_CARD_HEIGHT,
   PROGRESS_LANE_HEIGHT,
   SCHEDULE_WEEK,
   taskRisk,
@@ -106,19 +109,25 @@ const groups = computed(() =>
     const hasVisibleCard = progress.markers.some((marker) => {
       const left = marker.x + marker.labelOffset
       return (
-        left + PROGRESS_CARD_WIDTH > scrollLeft.value &&
+        left + marker.width > scrollLeft.value &&
         left < scrollLeft.value + viewportWidth.value - sideWidth.value
       )
     })
     const active = activeNode.value?.taskId === task.id ? activeNode.value.nodeId : null
-    const selected = task.nodes.find((node) => node.id === active)
+    const selected = timelineNodes(task.nodes).find((node) => node.id === active)
     const related = new Set(
       selected
         ? [
             selected.id,
-            selected.predecessor_id,
-            ...task.nodes
-              .filter((node) => node.predecessor_id === selected.id)
+            ...(selected.upstream_timeline_ids?.length
+              ? selected.upstream_timeline_ids
+              : [selected.predecessor_id]),
+            ...timelineNodes(task.nodes)
+              .filter((node) =>
+                node.upstream_timeline_ids?.length
+                  ? node.upstream_timeline_ids.includes(selected.id)
+                  : node.predecessor_id === selected.id,
+              )
               .map((node) => node.id),
           ]
         : [],
@@ -139,9 +148,7 @@ const groups = computed(() =>
               (node) => (scheduleTimestamp(node.due_at) ?? Infinity) < week.value.start,
             ),
             ...progress.markers
-              .filter(
-                (marker) => marker.x + marker.labelOffset + PROGRESS_CARD_WIDTH <= scrollLeft.value,
-              )
+              .filter((marker) => marker.x + marker.labelOffset + marker.width <= scrollLeft.value)
               .map((marker) => marker.node),
           ],
       after: hasVisibleCard
@@ -268,7 +275,7 @@ function stock(node: ProductionSchedule) {
   return parts.join('；') || '当前无关联库存'
 }
 function markerTitle(task: ScheduleTask, node: ProductionSchedule) {
-  return `${task.serial_no} ${task.title} · 第${node.sequence_no}站 ${node.team_name} → ${node.next_team_name || node.external_destination}\n要求转出 ${formatDateTime(node.due_at)}\n${isAssessed(node) ? '加工完成后有效交货' : '实际转出'} ${nodeProgress(node)}\n${isAssessed(node) && node.processed_quantity != null ? `已加工 ${formatAmount(node.processed_quantity)} 件` : ''}\n${stock(node)}\n${label(node)}`
+  return `${task.serial_no} ${task.title} · 第${node.sequence_no}站 ${node.team_name}${node.batch_number ? ` · 第 ${node.batch_number} 批` : ''} → ${node.next_team_name || node.external_destination}\n开始 ${node.planned_start_at ? formatDateTime(node.planned_start_at) : '待班组安排'}\n要求转出 ${formatDateTime(node.due_at)}\n${isAssessed(node) ? '加工完成后有效交货' : '实际转出'} ${nodeProgress(node)}\n${isAssessed(node) && node.processed_quantity != null ? `已加工 ${formatAmount(node.processed_quantity)} 件` : ''}\n${stock(node)}\n${label(node)}`
 }
 onMounted(() => {
   if (typeof ResizeObserver !== 'undefined') {
@@ -314,6 +321,7 @@ onBeforeUnmount(() => {
       '--weekend-shading': weekendShading,
       '--frozen-width': `${sideWidth}px`,
       '--card-width': `${PROGRESS_CARD_WIDTH}px`,
+      '--card-height': `${PROGRESS_CARD_HEIGHT}px`,
       '--lane-height': `${PROGRESS_LANE_HEIGHT}px`,
     }"
   >
@@ -438,18 +446,21 @@ onBeforeUnmount(() => {
               "
               class="sp-route-alert"
               type="button"
+              :title="group.task.route_changed ? '工艺有更新' : '有返工待处理'"
+              :aria-label="group.task.route_changed ? '工艺有更新' : '有返工待处理'"
               @click="emit('open-task', group.task)"
             >
-              {{ group.task.route_changed ? '工艺有更新' : '有返工待处理' }}
+              <ElIcon><Warning /></ElIcon>
             </button>
           </div>
           <div class="sp-target" :title="target(group.task)">{{ target(group.task) }}</div>
           <div
             class="sp-track"
+            :class="{ 'has-active-node': group.active != null }"
             :style="{
               minHeight: `${group.height}px`,
             }"
-            aria-label="班组要求转出时间"
+            aria-label="班组计划加工时段"
           >
             <span
               v-if="todayPosition >= 0 && todayPosition <= 100"
@@ -493,7 +504,7 @@ onBeforeUnmount(() => {
               </defs>
               <path
                 v-for="link in group.links"
-                :key="link.id"
+                :key="link.key"
                 :d="link.path"
                 :marker-end="`url(#route-arrow-${group.task.id})`"
                 :class="{
@@ -506,7 +517,8 @@ onBeforeUnmount(() => {
               v-for="marker in group.markers"
               :key="marker.node.id"
               :trigger="['hover', 'focus']"
-              :show-after="350"
+              :trigger-keys="[]"
+              :show-after="240"
               :hide-after="0"
               placement="top"
               effect="light"
@@ -519,7 +531,19 @@ onBeforeUnmount(() => {
                     ><span :class="`is-${state(marker.node)}`">{{ label(marker.node) }}</span>
                   </header>
                   <dl>
-                    <dt>交期</dt>
+                    <template v-if="marker.node.batch_number"
+                      ><dt>批次</dt>
+                      <dd>第 {{ marker.node.batch_number }} 批</dd></template
+                    >
+                    <dt>开始</dt>
+                    <dd>
+                      {{
+                        marker.node.planned_start_at
+                          ? formatDateTime(marker.node.planned_start_at)
+                          : '待班组安排'
+                      }}
+                    </dd>
+                    <dt>转出</dt>
                     <dd>{{ formatDateTime(marker.node.due_at) }}</dd>
                     <dt>计划</dt>
                     <dd>{{ nodeTarget(marker.node) }}</dd>
@@ -567,6 +591,12 @@ onBeforeUnmount(() => {
                         </dd>
                       </template>
                     </template>
+                    <template v-if="marker.node.time_warnings?.length"
+                      ><dt>提醒</dt>
+                      <dd class="sp-time-warning">
+                        {{ marker.node.time_warnings.join('；') }}
+                      </dd></template
+                    >
                     <dt>去向</dt>
                     <dd>
                       {{ marker.node.next_team_name || marker.node.external_destination || '—' }}
@@ -581,6 +611,12 @@ onBeforeUnmount(() => {
                   `is-${state(marker.node)}`,
                   {
                     'is-today': marker.node.status === 'today',
+                    'is-interval': marker.interval,
+                    'is-unplanned': !marker.interval,
+                    'is-narrow': marker.width < 86,
+                    'is-clipped-start': marker.clippedStart,
+                    'is-clipped-end': marker.clippedEnd,
+                    'has-time-conflict': !!marker.node.time_warnings?.length,
                     'is-related': group.related.has(marker.node.id),
                     'is-active': group.active === marker.node.id,
                     'has-stock':
@@ -592,6 +628,7 @@ onBeforeUnmount(() => {
                 :style="{
                   ...scheduleTeamStyle(marker.node.team_name),
                   left: `${(marker.x / width) * 100}%`,
+                  width: `${marker.width}px`,
                   top: `${marker.top}px`,
                   '--label-offset': `${marker.labelOffset}px`,
                   '--anchor-offset': `${-marker.labelOffset}px`,
@@ -602,39 +639,69 @@ onBeforeUnmount(() => {
                 @mouseleave="hoveredNode = null"
                 @focus="focusedNode = { taskId: group.task.id, nodeId: marker.node.id }"
                 @blur="focusedNode = null"
-                @click="emit('open-node', marker.node)"
+                @click="
+                  emit(
+                    'open-node',
+                    group.task.nodes.find(
+                      (n) => n.id === (marker.node.parent_schedule_id || marker.node.id),
+                    ) || marker.node,
+                  )
+                "
               >
                 <i class="sp-node-anchor" aria-hidden="true" />
                 <span class="sp-team">
-                  <i
-                    v-if="
+                  <strong class="sp-team-name"
+                    >{{ marker.node.team_name
+                    }}<small v-if="marker.node.batch_number">
+                      · {{ marker.node.batch_number }} 批</small
+                    ></strong
+                  >
+                  <span v-if="marker.interval && marker.width >= 190" class="sp-node-quantity">{{
+                    nodeTarget(marker.node)
+                  }}</span>
+                  <ElIcon v-if="marker.node.status === 'cancelled'" aria-label="已取消"
+                    ><VideoPause
+                  /></ElIcon>
+                  <ElIcon v-else-if="isDelivered(marker.node)" aria-label="已交完"
+                    ><Check
+                  /></ElIcon>
+                  <ElIcon v-else-if="marker.node.quality_held" aria-label="质量暂扣"
+                    ><Lock
+                  /></ElIcon>
+                  <ElIcon
+                    v-else-if="
+                      marker.node.time_warnings?.length || marker.node.status === 'overdue'
+                    "
+                    class="sp-node-warning"
+                    :aria-label="marker.node.time_warnings?.length ? '排期冲突' : '已逾期'"
+                    ><Warning
+                  /></ElIcon>
+                  <ElIcon
+                    v-else-if="
                       (marker.node.stock?.on_hand_quantity ||
                         marker.node.stock?.on_hand_weight ||
                         0) > 0
                     "
-                    class="sp-stock-dot"
+                    class="sp-stock-marker"
                     aria-label="有在库物料"
-                  />
-                  <strong class="sp-team-name">{{ marker.node.team_name }}</strong>
+                    ><LocationFilled
+                  /></ElIcon>
+                </span>
+                <span v-if="!marker.interval" class="sp-node-time" :aria-label="label(marker.node)">
                   <time :datetime="marker.node.due_at">{{
                     formatDateTime(marker.node.due_at).slice(11)
                   }}</time>
                 </span>
                 <span
                   v-if="
-                    isDelivered(marker.node) ||
-                    marker.node.quality_held ||
-                    ['overdue', 'today', 'cancelled'].includes(marker.node.status)
+                    marker.interval &&
+                    marker.completion.dispatched != null &&
+                    marker.completion.dispatched > 0
                   "
-                  class="sp-node-state"
-                  :aria-label="label(marker.node)"
-                >
-                  <ElIcon v-if="marker.node.status === 'cancelled'"><VideoPause /></ElIcon>
-                  <ElIcon v-else-if="isDelivered(marker.node)"><Check /></ElIcon>
-                  <ElIcon v-else-if="marker.node.quality_held"><Lock /></ElIcon>
-                  <ElIcon v-else-if="marker.node.status === 'overdue'"><Warning /></ElIcon>
-                  <ElIcon v-else><Clock /></ElIcon>
-                </span>
+                  class="sp-completion"
+                  :style="{ width: `${marker.completion.dispatched}%` }"
+                  aria-hidden="true"
+                />
               </button>
             </ElTooltip>
           </div>
@@ -745,13 +812,16 @@ onBeforeUnmount(() => {
         <span
           ><ElIcon><Check /></ElIcon>已交完</span
         >
-        <span><i class="sp-legend-current" />物料在此</span>
+        <span
+          ><ElIcon><LocationFilled /></ElIcon>物料在此</span
+        >
         <span
           ><ElIcon><Warning /></ElIcon>逾期</span
         >
         <span
           ><ElIcon><Lock /></ElIcon>暂扣</span
         >
+        <span><i class="sp-unplanned-key" />未定开始</span>
       </div>
     </footer>
   </section>
@@ -763,13 +833,17 @@ onBeforeUnmount(() => {
   background: transparent;
   color: #8a601e;
   font-size: 12px;
-  padding: 2px 0;
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  height: 28px;
+  padding: 0;
   cursor: pointer;
 }
 .schedule-progress {
   --sp-green: var(--primary);
   --sp-muted: #69716d;
-  --sp-line: #e4e6e5;
+  --sp-line: #e9ebec;
   --sp-red: #b93434;
   display: flex;
   flex: 0 1 auto;
@@ -800,7 +874,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border: 1px solid var(--sp-line);
   border-bottom: 0;
   border-radius: 8px 8px 0 0;
@@ -943,10 +1017,10 @@ onBeforeUnmount(() => {
   box-shadow: 0 2px 5px #23473605;
 }
 .sp-row:nth-of-type(even) :is(.sp-row-main, .sp-serial, .sp-target) {
-  background-color: #fafafa;
+  background-color: #fafbfc;
 }
 .sp-row:is(:hover, :focus-within) :is(.sp-row-main, .sp-serial, .sp-target) {
-  background-color: #f0f6f5;
+  background-color: #f0f5f6;
 }
 .sp-table-head {
   position: sticky;
@@ -1105,16 +1179,21 @@ onBeforeUnmount(() => {
   padding: 4px 12px;
   gap: 2px;
 }
+.sp-serial {
+  flex-direction: row;
+  align-items: center;
+}
 .sp-target,
 .sp-head-target {
   left: 170px;
   align-items: center;
   justify-content: center;
   box-shadow: 3px 0 4px #24463308;
-  border-right-color: #bacbc1;
+  border-right-color: #d0d6d7;
 }
 .schedule-progress .sp-serial-button {
   width: 100%;
+  min-width: 0;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1152,15 +1231,15 @@ onBeforeUnmount(() => {
       90deg,
       transparent 0,
       transparent calc(100% / var(--day-count) - 1px),
-      #dfe6e2 calc(100% / var(--day-count) - 1px),
-      #dfe6e2 calc(100% / var(--day-count))
+      #edf0f1 calc(100% / var(--day-count) - 1px),
+      #edf0f1 calc(100% / var(--day-count))
     ),
     repeating-linear-gradient(
       90deg,
       transparent 0,
       transparent calc(100% / var(--day-count) / var(--hour-count) - 1px),
-      #e9eeeb calc(100% / var(--day-count) / var(--hour-count) - 1px),
-      #e9eeeb calc(100% / var(--day-count) / var(--hour-count))
+      #f2f4f5 calc(100% / var(--day-count) / var(--hour-count) - 1px),
+      #f2f4f5 calc(100% / var(--day-count) / var(--hour-count))
     ),
     var(--weekend-shading);
 }
@@ -1181,10 +1260,12 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 .sp-links > path {
-  stroke: #bdcbc3;
-  stroke-width: 1.3;
+  stroke: #c7d0d0;
+  stroke-width: 1;
   fill: none;
+  opacity: 0.6;
   transition:
+    opacity 160ms,
     stroke 160ms,
     stroke-width 160ms;
 }
@@ -1192,29 +1273,34 @@ onBeforeUnmount(() => {
   stroke: #7aa28a;
 }
 .sp-links > path.is-related {
+  opacity: 1;
   stroke: #3c6b5b;
   stroke-width: 2;
 }
 .schedule-progress .sp-node {
   position: absolute;
   width: var(--card-width);
-  height: 32px;
+  height: var(--card-height);
   transform: translateX(var(--label-offset));
-  padding: 0;
+  padding: 0 8px;
   display: flex;
+  flex-direction: row;
+  gap: 6px;
   align-items: center;
+  justify-content: space-between;
   border: 0;
-  border-left: 3px solid var(--team-color);
   border-radius: 4px;
-  background: color-mix(in srgb, var(--team-color) 12%, white);
-  color: #24332d;
+  background: var(--team-color);
+  color: white;
   z-index: 2;
   text-align: left;
   transition:
-    background-color 160ms,
-    color 160ms,
+    opacity 160ms,
     box-shadow 160ms,
-    transform 160ms;
+    transform 160ms,
+    left 180ms ease-out,
+    width 180ms ease-out,
+    top 180ms ease-out;
 }
 .sp-edge {
   position: sticky;
@@ -1248,80 +1334,105 @@ onBeforeUnmount(() => {
   width: 1px;
   height: 4px;
   background: var(--team-color);
+  opacity: 0;
+}
+.sp-node.is-active .sp-node-anchor {
+  opacity: 1;
 }
 .sp-team {
   display: flex;
   align-items: center;
-  gap: 4px;
-  width: 100%;
-  padding: 0 7px 0 5px;
+  justify-content: flex-start;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  line-height: 20px;
 }
 .sp-team-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
-  font-weight: 600;
-  line-height: 20px;
+  font-weight: 500;
 }
-.sp-node time {
+.sp-team > .el-icon {
+  flex-shrink: 0;
   margin-left: auto;
-  font-size: 12px;
-  line-height: 20px;
+  font-size: 13px;
+}
+.sp-node-quantity {
+  margin-left: auto;
+  white-space: nowrap;
+  font-size: 11px;
+  opacity: 0.9;
+}
+.sp-team .sp-node-quantity + .el-icon {
+  margin-left: 0;
+}
+.sp-node-warning {
+  color: #fff1cc;
+}
+.sp-node.is-unplanned .sp-node-warning {
+  color: #b93434;
+}
+.sp-track.has-active-node .sp-node:not(.is-related) {
+  opacity: 0.5;
+}
+.sp-unplanned-key {
+  width: 15px;
+  height: 10px;
+  border: 1px dashed #69716d;
+  border-radius: 2px;
+}
+.sp-completion {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: #ffffffb3;
+  pointer-events: none;
+}
+.sp-node-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 16px;
   white-space: nowrap;
 }
+.sp-node-time .el-icon {
+  font-size: 11px;
+}
+.sp-node.is-late .sp-node-time,
+.sp-node.is-hold .sp-node-time {
+  padding: 0 3px;
+  margin-left: -3px;
+  color: #a72323;
+  background: #fff1f0;
+}
+.sp-node.is-today:not(.is-hold) .sp-node-time {
+  padding: 0 3px;
+  margin-left: -3px;
+  color: #6b4805;
+  background: #fff1cd;
+}
 .schedule-progress .sp-node.is-related {
-  background: color-mix(in srgb, var(--team-color) 24%, white);
-}
-.schedule-progress .sp-node.has-stock,
-.schedule-progress .sp-node.is-active {
-  background: var(--team-color);
-  color: white;
+  box-shadow:
+    0 0 0 2px white,
+    0 0 0 3px var(--team-border);
 }
 .schedule-progress .sp-node.is-active {
-  box-shadow: 0 3px 8px #172a2326;
+  box-shadow:
+    0 0 0 2px white,
+    0 0 0 3px var(--team-color),
+    0 4px 10px #172a2326;
   transform: translate(var(--label-offset), -1px);
   z-index: 3;
 }
-.sp-stock-dot {
-  flex: 0 0 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.sp-node-state {
-  position: absolute;
-  top: -5px;
-  right: -4px;
-  display: grid;
-  place-items: center;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  background: #edf5f0;
-  color: #32664f;
-  box-shadow: 0 0 0 2px white;
-  font-size: 11px;
-}
-.sp-node.is-late .sp-node-state,
-.sp-node.is-hold .sp-node-state {
-  background: #c43f3f;
-  color: white;
-}
-.sp-node.is-today:not(.is-hold) .sp-node-state {
-  background: #f9e7bb;
-  color: #785209;
-}
-.schedule-progress .sp-node.is-transit {
-  border-left-style: dashed;
-}
 .schedule-progress .sp-node.is-cancelled {
-  background: #f1f2f2;
-  color: #737b77;
-  border-left-color: #9ba59f;
-}
-.sp-node.is-cancelled .sp-node-state {
-  background: #e5e8e6;
+  background: #e9eced;
   color: #59615d;
 }
 .sp-stock-empty {
@@ -1451,18 +1562,6 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
 }
-.sp-legend > span > i:not(.el-icon) {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  border: 1px solid #bdcbbf;
-}
-.sp-legend-current {
-  background: var(--primary);
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px #e1eee5;
-}
 .sp-empty {
   padding: 70px 16px;
   color: var(--muted);
@@ -1489,6 +1588,47 @@ onBeforeUnmount(() => {
   .schedule-progress * {
     transition: none !important;
   }
+}
+.schedule-progress .sp-node.is-interval {
+  overflow: hidden;
+  min-width: 2px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.schedule-progress .sp-node.is-unplanned {
+  overflow: hidden;
+  background: var(--team-tint);
+  color: var(--team-color);
+  border: 1px dashed var(--team-color);
+}
+.schedule-progress .sp-node.is-clipped-start {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.schedule-progress .sp-node.is-clipped-end {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.schedule-progress .sp-node.has-time-conflict {
+  box-shadow: inset 0 -3px 0 #e9ac61;
+}
+.schedule-progress .sp-node.is-interval:is(.is-late, .is-hold) {
+  border-bottom: 3px solid #c84646;
+}
+.schedule-progress .sp-node.is-narrow {
+  padding: 0 3px;
+}
+.schedule-progress .sp-node.is-narrow .sp-node-time,
+.schedule-progress .sp-node.is-narrow .sp-team-name small {
+  display: none;
+}
+.sp-team-name small {
+  font-size: 11px;
+  font-weight: 400;
+}
+.sp-time-warning {
+  color: #b03c2e;
+  max-width: 260px;
 }
 </style>
 
