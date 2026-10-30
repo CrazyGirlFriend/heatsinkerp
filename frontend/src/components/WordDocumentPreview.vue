@@ -11,6 +11,7 @@ const props = defineProps<{
   sourceFile?: File
   sourceRow?: string
   compact?: boolean
+  thumbnail?: boolean
 }>()
 const frame = ref<HTMLIFrameElement>()
 const content = ref(''),
@@ -22,7 +23,10 @@ const viewportWidth = ref(600),
 const zoom = ref('fit')
 const scale = computed(() =>
   zoom.value === 'fit'
-    ? Math.min(1, Math.max(0.2, (viewportWidth.value - 24) / pageWidth.value))
+    ? Math.min(
+        1,
+        Math.max(props.thumbnail ? 0.05 : 0.2, (viewportWidth.value - 24) / pageWidth.value),
+      )
     : Number(zoom.value),
 )
 let generation = 0
@@ -38,7 +42,7 @@ function open() {
   if (!ready.value) return
   viewing.value = true
 }
-defineExpose({ open, ready })
+defineExpose({ open, ready, download })
 
 function fitRenderedPage() {
   const sections =
@@ -152,8 +156,13 @@ async function download() {
 }
 </script>
 <template>
-  <section class="word-document-preview" aria-label="Word原文件预览" :aria-busy="loading">
-    <div class="word-preview-tools">
+  <section
+    class="word-document-preview"
+    :class="{ 'word-document-preview--thumbnail': thumbnail }"
+    aria-label="Word原文件预览"
+    :aria-busy="loading"
+  >
+    <div v-if="!thumbnail" class="word-preview-tools">
       <span v-if="compact" class="word-preview-filename" :title="sourceFile?.name || route.filename"
         ><ElIcon><Document /></ElIcon><span>{{ sourceFile?.name || route.filename }}</span></span
       >
@@ -192,6 +201,13 @@ async function download() {
       title="上传的Word原文件"
       class="word-original-frame"
       :class="{ 'word-original-frame--hidden': !content }"
+    />
+    <button
+      v-if="thumbnail && ready"
+      type="button"
+      class="word-thumbnail-open"
+      aria-label="放大工艺原稿"
+      @click="open"
     />
     <DocumentViewer
       v-if="viewing"
@@ -269,5 +285,28 @@ async function download() {
   line-height: 1.6;
   color: var(--muted);
   font-size: 13px;
+}
+.word-document-preview--thumbnail {
+  position: relative;
+  height: 206px;
+  flex: none;
+}
+.word-document-preview--thumbnail .word-original-frame {
+  min-height: 0;
+  height: 100%;
+  pointer-events: none;
+}
+.word-thumbnail-open {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+  cursor: zoom-in;
+}
+.word-thumbnail-open:hover,
+.word-thumbnail-open:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 </style>

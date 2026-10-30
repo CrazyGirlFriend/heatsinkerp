@@ -81,6 +81,17 @@ it('keeps a clear retry state when the authenticated source cannot be read', asy
   expect(wrapper.find('[role="alert"]').exists()).toBe(false)
   expect(render).toHaveBeenCalledOnce()
 })
+it('opens the retained original directly from its thumbnail', async () => {
+  wrapper = mount(WordDocumentPreview, { props: { route: routeFixture, thumbnail: true } })
+  await flushPromises()
+  expect(wrapper.find('.word-preview-tools').exists()).toBe(false)
+  await wrapper.get('button[aria-label="放大工艺原稿"]').trigger('click')
+  await flushPromises()
+  expect(document.querySelector('[aria-label="工艺原稿放大预览"]')).not.toBeNull()
+  expect(wrapper.findComponent({ name: 'DocumentViewer' }).props('html')).toContain(
+    '原件表格及公差',
+  )
+})
 it('keeps download and zoom available in the compact original toolbar', async () => {
   wrapper = mount(WordDocumentPreview, { props: { route: routeFixture, compact: true } })
   await flushPromises()

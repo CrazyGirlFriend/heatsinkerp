@@ -69,6 +69,9 @@ async function button(label: string) {
 function date(value: string) {
   wrapper.findAllComponents(ElDatePicker)[0]!.vm.$emit('update:modelValue', value)
 }
+function batchDate(index: number, value: string) {
+  wrapper.findAllComponents(ElDatePicker)[index + 1]!.vm.$emit('update:modelValue', value)
+}
 it('loads the serial process but requires dispatch to set the customer deadline', async () => {
   await render()
   expect(productionScheduleApi.taskRouteOptions).toHaveBeenCalledWith('S-001')
@@ -77,6 +80,9 @@ it('loads the serial process but requires dispatch to set the customer deadline'
   expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
   date('2026-12-30T16:00:00')
   await flushPromises()
+  expect(wrapper.findAllComponents(ElDatePicker)[1]!.props('modelValue')).toBe('')
+  expect(wrapper.findAllComponents(ElDatePicker)[1]!.props('disabled')).not.toBe(true)
+  batchDate(0, '2026-12-29T16:00:00')
   await button('选择业务人员')
   wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [
     { value: 1, label: '张工' },
@@ -92,7 +98,7 @@ it('loads the serial process but requires dispatch to set the customer deadline'
       business_person_ids: [1, 2],
       final_due_at: '2026-12-30T16:00:00+08:00',
       delivery_batches: [
-        { batch_number: 1, target_quantity: 100, due_at: '2026-12-30T16:00:00+08:00' },
+        { batch_number: 1, target_quantity: 100, due_at: '2026-12-29T16:00:00+08:00' },
       ],
     }),
   )
@@ -103,6 +109,8 @@ it('rejects customer batches that do not add up to the route quantity', async ()
   date('2026-12-30T16:00:00')
   await flushPromises()
   await button('＋ 增加一批')
+  batchDate(0, '2026-12-28T16:00:00')
+  batchDate(1, '2026-12-29T16:00:00')
   const amounts = wrapper.findAllComponents(ElInputNumber)
   amounts[0]!.vm.$emit('update:modelValue', 40)
   amounts[1]!.vm.$emit('update:modelValue', 50)
@@ -123,6 +131,53 @@ it('preserves multiple contacts and uses the order version when editing', async 
     7,
     expect.objectContaining({ expected_version: 3, business_person_ids: [1, 2] }),
   )
+})
+it('preserves batch dates when changing the deadline or adding and removing another batch', async () => {
+  await render(task)
+  batchDate(0, '2026-12-28T16:00:00')
+  date('2026-12-31T16:00:00')
+  await button('＋ 增加一批')
+  expect(wrapper.findAllComponents(ElDatePicker)[1]!.props('modelValue')).toBe(
+    '2026-12-28T16:00:00',
+  )
+  expect(wrapper.findAllComponents(ElDatePicker)[2]!.props('modelValue')).toBe('')
+  await wrapper
+    .findAll('button')
+    .filter((b) => b.text() === '删除')[1]!
+    .trigger('click')
+  await button('保存交期')
+  expect(productionScheduleApi.updateTask).toHaveBeenCalledWith(
+    7,
+    expect.objectContaining({
+      final_due_at: '2026-12-31T16:00:00+08:00',
+      delivery_batches: [
+        { batch_number: 1, target_quantity: 100, due_at: '2026-12-28T16:00:00+08:00' },
+      ],
+    }),
+  )
+})
+it('rejects later hours on the final day and disables dates after the deadline', async () => {
+  await render(task)
+  const picker = wrapper.findAllComponents(ElDatePicker)[1]!
+  const disabled = picker.props('disabledDate') as (date: Date) => boolean
+  expect(disabled(new Date('2026-12-30T00:00:00'))).toBe(false)
+  expect(disabled(new Date('2026-12-31T00:00:00'))).toBe(true)
+  batchDate(0, '2026-12-30T17:00:00')
+  await button('保存交期')
+  expect(wrapper.text()).toContain('第 1 批交期不能晚于最终交期')
+  expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
+})
+it('requires dates in batch order', async () => {
+  await render(task)
+  await button('＋ 增加一批')
+  const amounts = wrapper.findAllComponents(ElInputNumber)
+  amounts[0]!.vm.$emit('update:modelValue', 40)
+  amounts[1]!.vm.$emit('update:modelValue', 60)
+  batchDate(0, '2026-12-29T16:00:00')
+  batchDate(1, '2026-12-28T16:00:00')
+  await button('保存交期')
+  expect(wrapper.text()).toContain('第 2 批交期不能早于上一批')
+  expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
 })
 it.each(['locked', 'admin'])('blocks writes for %s', async (mode) => {
   if (mode === 'admin') role.isDispatch = false

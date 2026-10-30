@@ -76,3 +76,18 @@ it('aborts a stale file fetch and does not retain an object URL after closing', 
   await flushPromises()
   expect(URL.createObjectURL).not.toHaveBeenCalled()
 })
+it('opens a drawing thumbnail directly in the full viewer', async () => {
+  vi.spyOn(processRouteApi, 'drawing').mockResolvedValue(new Blob(['pdf']))
+  wrapper = mount(Preview, {
+    props: {
+      routeId: 8,
+      drawing: { id: 1, filename: '图纸.pdf', size_bytes: 100 },
+      thumbnail: true,
+    },
+  })
+  await flushPromises()
+  expect(wrapper.get('iframe').attributes('loading')).toBe('lazy')
+  await wrapper.get('button[aria-label="放大图纸"]').trigger('click')
+  await flushPromises()
+  expect(document.querySelector('[aria-label="图纸放大预览"]')).not.toBeNull()
+})

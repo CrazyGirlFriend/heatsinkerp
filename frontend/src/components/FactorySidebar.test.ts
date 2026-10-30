@@ -274,7 +274,13 @@ describe('two-level team navigation', () => {
         .findAllComponents(ElMenuItem)
         .filter((item) => !item.props('disabled'))
         .map((item) => item.props('index')),
-    ).toEqual(['/process-routes', '/team-workspaces/8', '/team-workspaces/7'])
+    ).toEqual([
+      '/process-routes',
+      '/business-people',
+      '/dispatch-schedules',
+      '/team-workspaces/8',
+      '/team-workspaces/7',
+    ])
     expect(wrapper.findAll('.factory-nav__missing')).toHaveLength(6)
     expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('扎板工作台')
     await router.push('/transfer-batches?scan=1')

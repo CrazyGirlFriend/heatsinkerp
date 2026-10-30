@@ -14,7 +14,16 @@ const openWord = vi.fn(),
 const originalStub = (name: string, open: typeof openWord) =>
   defineComponent({
     name,
-    props: ['route', 'sourceFile', 'routeId', 'drawing', 'file', 'sourceRow', 'compact'],
+    props: [
+      'route',
+      'sourceFile',
+      'routeId',
+      'drawing',
+      'file',
+      'sourceRow',
+      'compact',
+      'thumbnail',
+    ],
     setup(_props, { expose }) {
       expose({ open, ready: true })
       return () => h('div')
@@ -23,8 +32,8 @@ const originalStub = (name: string, open: typeof openWord) =>
 vi.mock('@/stores/teamDirectory', () => ({
   useTeamDirectoryStore: () => ({
     items: [
-      { id: 1, code: 'FACTORY-WAREHOUSE', name: '库房', active: true },
-      { id: 2, code: 'FACTORY-GRIND', name: '研磨', active: true },
+      { id: 1, code: 'FACTORY-WAREHOUSE', name: '库房', active: true, kind: 'warehouse' },
+      { id: 2, code: 'FACTORY-GRIND', name: '研磨', active: true, kind: 'production' },
     ],
     refreshTeamDirectory: async () => {},
   }),
@@ -77,10 +86,10 @@ async function render(
       directives: { loading: () => {} },
       stubs: {
         AppDialog: { template: '<div><slot/><slot name="footer"/></div>' },
-        ScheduleTaskEditor: true,
         RouterLink: { props: ['to'], template: '<a><slot /></a>' },
         WordDocumentPreview: originalStub('WordDocumentPreview', openWord),
         ProcessRouteDrawingPreview: originalStub('ProcessRouteDrawingPreview', openDrawing),
+        DocumentViewer: true,
       },
     },
   })
@@ -325,7 +334,6 @@ async function renderNew() {
       directives: { loading: () => {} },
       stubs: {
         AppDialog: { template: '<div><slot/><slot name="footer"/></div>' },
-        ScheduleTaskEditor: true,
         RouterLink: { props: ['to'], template: '<a><slot /></a>' },
         WordDocumentPreview: true,
         ProcessRouteDrawingPreview: true,
@@ -423,19 +431,48 @@ it('retains failed drawing uploads for retry and never publishes with a missing 
   expect(processRouteApi.uploadDrawing).toHaveBeenCalledTimes(2)
   expect(processRouteApi.publish).toHaveBeenCalledWith(expect.objectContaining({ version: 3 }))
 })
-it('keeps the same compact step table after publication and shows readable execution names', async () => {
+it('keeps a read-only four-column process table without execution settings or scheduling controls', async () => {
   await render(true, {
     ...routeFixture,
     execution_labels: { tasks: { 4: '精磨任务' }, purposes: { 3: '产品业务' } },
   })
   expect(wrapper.find('table[aria-label="工艺工序"]').exists()).toBe(true)
   expect(wrapper.findAll('.route-edit-step')).toHaveLength(4)
-  await wrapper.findAll('.route-edit-step button')[1]!.trigger('click')
-  expect(wrapper.get('.route-execution-row').text()).toContain('精磨任务')
-  expect(wrapper.get('.route-execution-row').text()).toContain('产品业务')
+  expect(wrapper.findAll('.route-step-table thead th').map((cell) => cell.text())).toEqual([
+    '序号',
+    '工序名称',
+    '工艺要求',
+    '计划加工数量',
+  ])
+  expect(wrapper.find('.route-execution-row').exists()).toBe(false)
+  expect(wrapper.find('.route-execution-toggle').exists()).toBe(false)
+  expect(wrapper.text()).not.toContain('建立工艺排期')
+  expect(wrapper.find('input[placeholder="选择流水号"]').exists()).toBe(false)
   expect(wrapper.findAll('.route-edit-step input, .route-edit-step textarea')).toHaveLength(0)
   expect(wrapper.findAll('.route-edit-step')[1]!.get('.route-instructions-cell').text()).toContain(
     '厚度2.5',
+  )
+})
+it('shows original and drawing thumbnails together in details without a tabbed preview pane', async () => {
+  await render(true, {
+    ...routeFixture,
+    source_data: { ...routeFixture.source_data, order_document: orderFixture },
+    drawings: [
+      { id: 71, filename: '零件.pdf', size_bytes: 100 },
+      { id: 72, filename: '装配.pdf', size_bytes: 100 },
+    ],
+  })
+  expect(wrapper.find('.route-original-panel').exists()).toBe(false)
+  expect(wrapper.findAll('.route-attachment-card')).toHaveLength(4)
+  expect(wrapper.getComponent(WordDocumentPreview).props('thumbnail')).toBe('')
+  expect(
+    wrapper
+      .findAllComponents(ProcessRouteDrawingPreview)
+      .map((preview) => preview.props('drawing')!.id),
+  ).toEqual([71, 72])
+  await wrapper.get('button[aria-label="放大订单表"]').trigger('click')
+  expect(wrapper.findComponent({ name: 'DocumentViewer' }).props('html')).toContain(
+    orderFixture.filename,
   )
 })
 it('shows only the main serial without offering inferred associations or rewriting old bindings', async () => {
@@ -585,7 +622,7 @@ it('locates a warning in the original and keeps both original duplicate rows', a
   choices[1]!.click()
   await flushPromises()
   expect(wrapper.getComponent(WordDocumentPreview).props('sourceRow')).toBe('1:3')
-  expect(wrapper.get('.route-original-line').text()).toBe('原表 1 · 第 3 行')
+  expect(openWord).toHaveBeenCalledOnce()
   expect(wrapper.findAll('.route-edit-step')).toHaveLength(4)
   expect(processRouteApi.save).not.toHaveBeenCalled()
 })

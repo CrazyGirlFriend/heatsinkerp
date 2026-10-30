@@ -47,8 +47,9 @@ class DispatchTaskCreate(BaseModel):
 def validate_customer_batches(batches, final_due, quantity=None):
     if len({b.batch_number for b in batches}) != len(batches):
         raise ValueError("交货批次不能重复")
-    if batches and max(b.due_at for b in batches) != final_due:
-        raise ValueError("最后一批交期须与最终交期一致")
+    for batch in batches:
+        if batch.due_at > final_due:
+            raise ValueError(f"第 {batch.batch_number} 批交期不能晚于最终交期")
     if any(
         a.due_at > b.due_at
         for a, b in zip(

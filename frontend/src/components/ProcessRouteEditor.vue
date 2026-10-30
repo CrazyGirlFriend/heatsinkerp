@@ -13,6 +13,7 @@ import {
   ElOption,
   ElPopover,
   ElSelect,
+  ElTooltip,
   type InputInstance,
 } from 'element-plus'
 import AppDialog from './AppDialog.vue'
@@ -27,7 +28,7 @@ import { mergeRouteMaterials } from '@/utils/routeMaterials'
 import { ElMessageBox } from 'element-plus'
 import { ArrowDown, Document, FullScreen, Upload, WarningFilled } from '@element-plus/icons-vue'
 import WordDocumentPreview from './WordDocumentPreview.vue'
-import ScheduleTaskEditor from './ScheduleTaskEditor.vue'
+import DocumentViewer from './DocumentViewer.vue'
 import { processRouteApi, ProcessRouteSerialConflictError } from '@/services/processRouteApi'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import type { ProcessRoute, ProcessRouteStep, ProcessRouteDrawing } from '@/types/processRoute'
@@ -282,15 +283,47 @@ function removePending(file: File) {
   if (previewDrawing.value === file) previewDrawing.value = undefined
 }
 const sourceFilename = computed(() => pendingWord.value?.name || draft.value.filename)
+const orderViewing = ref(false)
+const hasAttachments = computed(
+  () =>
+    !!(
+      sourceFilename.value ||
+      draft.value.drawings?.length ||
+      draft.value.source_data.order_document
+    ),
+)
+const orderHtml = computed(() => {
+  const document = draft.value.source_data.order_document
+  if (!document) return ''
+  const escape = (value: string) =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+  const values = document.display_values || document.values
+  const rows = document.headers
+    .map(
+      (label, index) =>
+        `<tr><th>${escape(label || '—')}</th><td>${escape(values[index] || '—')}</td></tr>`,
+    )
+    .join('')
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>body{margin:24px;font:14px system-ui;color:#17221e}section{width:760px;background:white;padding:24px;box-sizing:border-box}h1{font-size:18px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #cbd5cf;padding:10px;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere}th{width:180px;background:#f2f6f3}</style></head><body><main id="original-pages"><section class="docx-original"><h1>${escape(document.filename)}</h1><table>${rows}</table></section></main></body></html>`
+})
+function showMaterialSource(kind: 'word' | 'order') {
+  previewKind.value = kind
+  if (!readonly.value) return
+  if (kind === 'order') orderViewing.value = true
+  else wordPreview.value?.open()
+}
 const selectedDrawing = computed(() =>
   typeof previewDrawing.value === 'number'
     ? draft.value.drawings?.find((item) => item.id === previewDrawing.value)
     : undefined,
 )
-const scheduleOpen = ref(false)
 const busy = ref(false),
-  error = ref(''),
-  scheduleSerial = ref('')
+  error = ref('')
 const tasks = reactive<Record<number, TeamProcessingTask[]>>({}),
   purposes = reactive<Record<number, TeamPurpose[]>>({})
 const directory = useTeamDirectoryStore()
@@ -413,8 +446,10 @@ async function locateIssue(issue: (typeof stepIssues.value)[number]) {
   await nextTick()
   const row = editorMain.value?.querySelectorAll<HTMLElement>('.route-edit-step')[issue.index]
   row?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
-  if (readonly.value) row?.focus({ preventScroll: true })
-  else {
+  if (readonly.value) {
+    row?.focus({ preventScroll: true })
+    wordPreview.value?.open()
+  } else {
     const column = { sequence: 0, name: 1, instructions: 2 }[issue.field]
     row?.children[column]
       ?.querySelector<HTMLElement>('input,textarea')
@@ -641,14 +676,19 @@ onMounted(async () => {
           >
             <template #label
               >流水号
-              <span v-if="draft.source_data.receipt_fields?.serial_no" class="route-import-marker"
-                >{{
+              <ElTooltip
+                v-if="draft.source_data.receipt_fields?.serial_no"
+                :content="
                   draft.source_data.receipt_fields.serial_no.source_kind === 'excel'
-                    ? '订单表'
-                    : '工艺单'
-                }}
-                · 自动填入</span
-              ></template
+                    ? '订单表 · 自动填入'
+                    : '工艺单 · 自动填入'
+                "
+                placement="top"
+              >
+                <span class="route-import-marker" role="img" aria-label="自动填入" tabindex="0"
+                  >导</span
+                >
+              </ElTooltip></template
             >
             <strong v-if="readonly" class="route-serial-value">{{
               primarySerial || '未填写'
@@ -815,7 +855,63 @@ onMounted(async () => {
           </tbody>
         </table>
       </div>
-      <div class="route-comparison">
+      <div
+        class="route-comparison"
+        :class="{
+          'route-comparison--readonly': readonly,
+          'route-comparison--attachments': readonly && hasAttachments,
+        }"
+      >
+        <aside
+          v-if="readonly && hasAttachments"
+          class="route-attachment-rail"
+          aria-label="工艺附件缩略图"
+        >
+          <div v-if="draft.source_data.order_document" class="route-attachment-card">
+            <button
+              type="button"
+              class="route-order-thumbnail"
+              aria-label="放大订单表"
+              @click="orderViewing = true"
+            >
+              <table aria-hidden="true">
+                <tbody>
+                  <tr
+                    v-for="(label, index) in draft.source_data.order_document.headers.slice(0, 12)"
+                    :key="index"
+                  >
+                    <th>{{ label }}</th>
+                    <td>
+                      {{
+                        (draft.source_data.order_document.display_values ||
+                          draft.source_data.order_document.values)[index]
+                      }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </button>
+            <strong>订单表</strong>
+            <span :title="draft.source_data.order_document.filename">{{
+              draft.source_data.order_document.filename
+            }}</span>
+            <ElButton link @click="downloadOrder">下载原件</ElButton>
+          </div>
+          <div v-if="sourceFilename" class="route-attachment-card">
+            <WordDocumentPreview
+              ref="wordPreview"
+              :route="draft"
+              :source-row="activeSource"
+              thumbnail
+            />
+            <strong>工艺原稿</strong>
+            <span :title="sourceFilename">{{ sourceFilename }}</span>
+            <ElButton link @click="wordPreview?.download()">下载原件</ElButton>
+          </div>
+          <div v-for="drawing in draft.drawings" :key="drawing.id" class="route-attachment-card">
+            <ProcessRouteDrawingPreview :route-id="draft.id" :drawing="drawing" thumbnail />
+          </div>
+        </aside>
         <section ref="editorMain" class="route-editor-main" aria-label="工艺内容">
           <div v-if="!readonly" class="route-file-actions route-import-toolbar">
             <ElButton
@@ -868,7 +964,7 @@ onMounted(async () => {
             :readonly="readonly"
             :disabled="busy"
             @change="changeMaterial"
-            @source="previewKind = $event"
+            @source="showMaterialSource"
           />
           <header class="route-panel-heading">
             <strong class="route-section-title">工序明细</strong>
@@ -925,7 +1021,7 @@ onMounted(async () => {
                 <col class="route-col-name" />
                 <col />
                 <col class="route-col-quantity" />
-                <col class="route-col-actions" />
+                <col v-if="!readonly" class="route-col-actions" />
               </colgroup>
               <thead>
                 <tr>
@@ -933,7 +1029,7 @@ onMounted(async () => {
                   <th>工序名称</th>
                   <th>工艺要求</th>
                   <th>计划加工数量</th>
-                  <th>执行设置</th>
+                  <th v-if="!readonly">执行设置</th>
                 </tr>
               </thead>
               <tbody>
@@ -949,12 +1045,19 @@ onMounted(async () => {
                       :class="{ 'route-cell--issue': sequenceProblem(index) }"
                       :title="sequenceProblem(index)"
                     >
-                      <span
+                      <ElTooltip
                         v-if="step.source_row"
-                        class="route-import-marker route-step-import"
-                        :title="`工艺单 · 原文行 ${step.source_row}`"
-                        >自动填入</span
+                        :content="`工艺单 · 自动填入 · 原文行 ${step.source_row}`"
+                        placement="top"
                       >
+                        <span
+                          class="route-import-marker route-step-import"
+                          role="img"
+                          aria-label="自动填入"
+                          tabindex="0"
+                          >导</span
+                        >
+                      </ElTooltip>
                       <span v-if="readonly" class="route-cell-value">{{
                         step.sequence_no >= 0 ? step.sequence_no : '—'
                       }}</span>
@@ -1040,7 +1143,7 @@ onMounted(async () => {
                         :aria-label="`工序 ${index + 1} 计划加工数量`"
                       />
                     </td>
-                    <td>
+                    <td v-if="!readonly">
                       <ElButton
                         text
                         :aria-expanded="expanded.has(index)"
@@ -1058,7 +1161,7 @@ onMounted(async () => {
                       ></ElButton>
                     </td>
                   </tr>
-                  <tr v-if="expanded.has(index)" class="route-execution-row">
+                  <tr v-if="!readonly && expanded.has(index)" class="route-execution-row">
                     <td colspan="5">
                       <div class="route-step-details">
                         <ElFormItem
@@ -1196,7 +1299,7 @@ onMounted(async () => {
             <span v-if="fieldErrors.imports" role="alert">{{ fieldErrors.imports }}</span>
           </ElFormItem>
           <div
-            v-if="draft.drawings?.length || pendingDrawings.length"
+            v-if="!readonly && (draft.drawings?.length || pendingDrawings.length)"
             class="route-drawing-list"
             aria-label="工艺图纸"
           >
@@ -1262,7 +1365,7 @@ onMounted(async () => {
             </p>
           </details>
         </section>
-        <aside class="route-original-panel" aria-label="原稿与图纸对照">
+        <aside v-if="!readonly" class="route-original-panel" aria-label="原稿与图纸对照">
           <header class="route-panel-heading">
             <div class="route-preview-tabs">
               <button
@@ -1395,6 +1498,12 @@ onMounted(async () => {
         </aside>
       </div>
     </ElForm>
+    <DocumentViewer
+      v-if="orderViewing"
+      title="订单表"
+      :html="orderHtml"
+      @close="orderViewing = false"
+    />
     <template #footer>
       <span class="route-footer-summary"
         >{{ draft.steps.length }} 道工序<span v-if="serials.length">
@@ -1418,26 +1527,8 @@ onMounted(async () => {
         @click="visible = false"
         >{{ draft.rework_request?.original_task_id ? '查看交货排期' : '关联交货排期' }}</RouterLink
       >
-      <template
-        v-if="readonly && (canMaintain || auth.isDispatch) && draft.route_kind !== 'rework'"
-      >
-        <ElSelect
-          v-if="auth.isDispatch"
-          v-model="scheduleSerial"
-          placeholder="选择流水号"
-          style="width: 180px"
-          ><ElOption
-            v-for="serial in draft.serial_nos"
-            :key="serial"
-            :value="serial"
-            :label="serial"
-        /></ElSelect>
-        <ElButton v-if="auth.isDispatch" :disabled="!scheduleSerial" @click="scheduleOpen = true"
-          >建立工艺排期</ElButton
-        >
-        <ElButton v-if="canMaintain" type="primary" :disabled="busy" @click="revise"
-          >修改工艺</ElButton
-        >
+      <template v-if="readonly && canMaintain && draft.route_kind !== 'rework'">
+        <ElButton type="primary" :disabled="busy" @click="revise">修改工艺</ElButton>
       </template>
       <ElButton
         v-else-if="readonly && canMaintain && draft.rework_request?.can_modify"
@@ -1452,26 +1543,35 @@ onMounted(async () => {
         }}</ElButton></template
       >
     </template>
-    <ScheduleTaskEditor
-      v-if="scheduleOpen"
-      :process-route="draft"
-      :route-serial="scheduleSerial.trim()"
-      @close="scheduleOpen = false"
-      @saved="scheduleOpen = false"
-    />
   </AppDialog>
 </template>
 <style scoped>
 .route-import-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #cddbed;
+  border-radius: 4px;
+  background: #eff5fc;
   font-size: 10px;
-  font-weight: 400;
-  color: #718078;
+  font-weight: 500;
+  line-height: 1;
+  color: #52749a;
   margin-left: 5px;
-  white-space: nowrap;
+  cursor: help;
+}
+.route-import-marker:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
 }
 .route-step-import {
-  display: block;
-  margin: 0 0 3px;
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  margin: 0;
 }
 .route-import-confirmation {
   margin: 12px 0;
@@ -1703,6 +1803,69 @@ onMounted(async () => {
 }
 .route-editor-main {
   min-width: 0;
+}
+.route-comparison.route-comparison--readonly {
+  grid-template-columns: minmax(0, 1fr);
+}
+.route-comparison.route-comparison--attachments {
+  grid-template-columns: 180px minmax(0, 1fr);
+}
+.route-attachment-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.route-attachment-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #ffffffc9;
+}
+.route-attachment-card > :is(strong, span) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.route-attachment-card > span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.route-attachment-card > .el-button {
+  align-self: flex-start;
+  font-size: 12px;
+}
+.route-order-thumbnail {
+  height: 150px;
+  overflow: hidden;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  cursor: zoom-in;
+}
+.route-order-thumbnail:hover,
+.route-order-thumbnail:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.route-order-thumbnail table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 4px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.route-order-thumbnail :is(th, td) {
+  border: 1px solid #d5ddd8;
+  padding: 2px;
+  overflow-wrap: anywhere;
 }
 .route-panel-heading {
   display: flex;
@@ -2310,6 +2473,19 @@ onMounted(async () => {
   }
   .route-step-table {
     min-width: 560px;
+  }
+}
+@media (max-width: 760px) {
+  .route-comparison.route-comparison--attachments {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .route-attachment-rail {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 4px;
+  }
+  .route-attachment-card {
+    flex: 0 0 160px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

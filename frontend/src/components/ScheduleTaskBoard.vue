@@ -26,6 +26,7 @@ import ScheduleTaskEditor from './ScheduleTaskEditor.vue'
 import ScheduleRouteLink from './ScheduleRouteLink.vue'
 import ScheduleReworkPanel from './ScheduleReworkPanel.vue'
 import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
+import ScheduleDocuments from './ScheduleDocuments.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
@@ -659,6 +660,11 @@ onBeforeUnmount(() => {
           </div>
           <span class="task-detail__created">创建于 {{ formatDateTime(detail.created_at) }}</span>
         </div>
+        <ScheduleDocuments
+          :key="detail.id"
+          :serial-no="detail.serial_no"
+          :route-ids="detail.nodes.map((node) => node.process_route_id)"
+        />
         <ElTable
           v-if="detail.delivery_batches?.length"
           :data="detail.delivery_batches"

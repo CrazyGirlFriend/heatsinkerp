@@ -291,25 +291,28 @@ const materialLinks = computed(() => [
             ></template
           >
           <ElMenuItem
-            index="/dispatch-schedules"
-            aria-label="调度工作台"
-            :aria-current="route.path === '/dispatch-schedules' ? 'page' : undefined"
-            ><ElIcon class="factory-nav__team-icon"><FactoryNavIcon name="schedule" /></ElIcon
-            ><span>调度</span></ElMenuItem
+            index="/process-routes"
+            aria-label="工艺工作台"
+            :aria-current="route.path === '/process-routes' ? 'page' : undefined"
+            ><ElIcon class="factory-nav__team-icon" aria-hidden="true"
+              ><FactoryNavIcon name="records" /></ElIcon
+            ><span>工艺</span></ElMenuItem
           >
           <ElMenuItem
             index="/business-people"
             aria-label="业务班组"
             :aria-current="route.path === '/business-people' ? 'page' : undefined"
-            ><ElIcon class="factory-nav__team-icon"><FactoryNavIcon name="records" /></ElIcon
+            ><ElIcon class="factory-nav__team-icon" aria-hidden="true"
+              ><FactoryNavIcon name="accounts" /></ElIcon
             ><span>业务</span></ElMenuItem
           >
           <ElMenuItem
-            index="/process-routes"
-            aria-label="工艺工作台"
-            :aria-current="route.path === '/process-routes' ? 'page' : undefined"
-            ><ElIcon class="factory-nav__team-icon"><FactoryNavIcon name="records" /></ElIcon
-            ><span>工艺</span></ElMenuItem
+            index="/dispatch-schedules"
+            aria-label="调度工作台"
+            :aria-current="route.path === '/dispatch-schedules' ? 'page' : undefined"
+            ><ElIcon class="factory-nav__team-icon" aria-hidden="true"
+              ><FactoryNavIcon name="schedule" /></ElIcon
+            ><span>调度</span></ElMenuItem
           >
           <ElMenuItem
             v-if="teamDirectory.loading && !teamDirectory.loaded"
@@ -678,10 +681,7 @@ const materialLinks = computed(() => [
   font-weight: 450;
 }
 .factory-nav--glass:not(.factory-nav--compact) :deep(.el-sub-menu .el-menu-item) {
-  padding-inline: 42px 10px;
-}
-.factory-nav--glass:not(.factory-nav--compact) :deep(.factory-nav__team-icon) {
-  display: none;
+  padding-inline: 32px 10px;
 }
 .factory-nav--glass :deep(.el-sub-menu .el-menu-item:not(.is-active)) {
   color: #596a61;
@@ -718,7 +718,14 @@ const materialLinks = computed(() => [
   outline-offset: -2px;
 }
 .factory-nav--glass :deep(.factory-nav__team-icon) {
+  width: 20px;
+  height: 18px;
+  margin-right: 8px;
   color: inherit;
+}
+.factory-nav--glass :deep(.factory-nav__team-icon .tabler-icon) {
+  width: 18px;
+  height: 18px;
 }
 .factory-nav--glass .factory-nav__scroll-hint {
   border-radius: 8px;
@@ -740,7 +747,7 @@ const materialLinks = computed(() => [
     --el-menu-level-padding: 12px;
   }
   .factory-nav--glass:not(.factory-nav--compact) :deep(.el-sub-menu .el-menu-item) {
-    padding-left: 39px;
+    padding-left: 29px;
   }
   .factory-nav--glass :deep(.el-sub-menu .el-menu-item.is-active::before) {
     left: 17px;

@@ -20,7 +20,7 @@ def dispatcher(client):
     return _leader(client, "dispatch-leader", response.json()["id"])[1]
 
 
-def create(client, warehouse, dispatcher):
+def create(client, warehouse, dispatcher, final_due="2026-12-30T16:00:00+08:00"):
     route = published(client, warehouse)
     people = [
         client.post(URL + "/business-people", json={"name": name}).json()["id"]
@@ -30,7 +30,7 @@ def create(client, warehouse, dispatcher):
         serial_no="WAREHOUSE-001",
         route_id=route["id"],
         route_version=route["version"],
-        final_due_at="2026-12-30T16:00:00+08:00",
+        final_due_at=final_due,
         idempotency_key=uuid4().hex,
         business_person_ids=people,
         delivery_batches=[
@@ -278,3 +278,67 @@ def test_new_order_requires_business_people(client, warehouse, dispatcher):
     assert client.post(URL + "/tasks", headers=dispatcher, json=body).status_code == 422
     body["business_person_ids"] = [999999]
     assert client.post(URL + "/tasks", headers=dispatcher, json=body).status_code == 422
+
+
+def test_customer_batches_can_finish_before_deadline_without_being_overwritten(
+    client, warehouse, dispatcher
+):
+    task, _ = create(client, warehouse, dispatcher, final_due="2026-12-31T16:00:00+08:00")
+    endpoint = f"{URL}/tasks/{task['id']}"
+    batches = task["delivery_batches"]
+    update = dict(
+        expected_version=task["version"],
+        title=task["title"],
+        final_due_at="2027-01-01T16:00:00+08:00",
+    )
+    response = client.patch(endpoint, headers=dispatcher, json=update)
+    assert response.status_code == 200, response.text
+    task = response.json()
+    assert task["delivery_batches"] == batches
+    # Tightening the deadline must validate the saved batches, and roll back on failure.
+    update.update(expected_version=task["version"], final_due_at="2026-12-30T15:00:00+08:00")
+    response = client.patch(endpoint, headers=dispatcher, json=update)
+    assert response.status_code == 422, response.text
+    assert "第 2 批交期不能晚于最终交期" in response.text
+    current = client.get(endpoint).json()
+    assert current["version"] == task["version"]
+    assert current["final_due_at"] == task["final_due_at"]
+    assert current["delivery_batches"] == batches
+    # A deadline equal to the last batch is also valid.
+    update["final_due_at"] = "2026-12-30T16:00:00+08:00"
+    assert client.patch(endpoint, headers=dispatcher, json=update).status_code == 200
+
+
+def test_customer_batch_updates_cannot_exceed_deadline(client, warehouse, dispatcher):
+    task, _ = create(client, warehouse, dispatcher)
+    endpoint = f"{URL}/tasks/{task['id']}"
+    batches = task["delivery_batches"]
+    batches[-1]["due_at"] = "2026-12-30T17:00:00+08:00"
+    update = dict(expected_version=task["version"], title=task["title"], delivery_batches=batches)
+    response = client.patch(endpoint, headers=dispatcher, json=update)
+    assert response.status_code == 422
+    assert "第 2 批交期不能晚于最终交期" in response.text
+    batches[-1]["due_at"] = "2026-12-29T17:00:00+08:00"
+    response = client.patch(endpoint, headers=dispatcher, json=update)
+    assert response.status_code == 200, response.text
+    assert response.json()["delivery_batches"][-1]["due_at"] == "2026-12-29T09:00:00+00:00"
+
+
+def test_customer_batch_creation_rejects_late_dates(client, dispatcher):
+    response = client.post(
+        URL + "/tasks",
+        headers=dispatcher,
+        json=dict(
+            serial_no="S-001",
+            route_id=1,
+            route_version=1,
+            idempotency_key=uuid4().hex,
+            business_person_ids=[1],
+            final_due_at="2026-12-30T16:00:00+08:00",
+            delivery_batches=[
+                dict(batch_number=1, target_quantity=100, due_at="2026-12-30T17:00:00+08:00")
+            ],
+        ),
+    )
+    assert response.status_code == 422
+    assert "第 1 批交期不能晚于最终交期" in response.text

@@ -5,7 +5,12 @@ import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRouteDrawing } from '@/types/processRoute'
 import DocumentViewer from './DocumentViewer.vue'
 
-const props = defineProps<{ routeId: number; drawing?: ProcessRouteDrawing; file?: File }>()
+const props = defineProps<{
+  routeId: number
+  drawing?: ProcessRouteDrawing
+  file?: File
+  thumbnail?: boolean
+}>()
 const url = ref(''),
   error = ref(''),
   loading = ref(false)
@@ -68,11 +73,16 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <section class="route-drawing-preview" aria-label="图纸原件预览" :aria-busy="loading">
+  <section
+    class="route-drawing-preview"
+    :class="{ 'route-drawing-preview--thumbnail': thumbnail }"
+    aria-label="图纸原件预览"
+    :aria-busy="loading"
+  >
     <p v-if="loading" role="status">正在读取图纸…</p>
     <p v-if="error" role="alert">{{ error }} <ElButton text @click="load">重试</ElButton></p>
     <template v-if="url">
-      <div class="drawing-preview-tools">
+      <div v-if="!thumbnail" class="drawing-preview-tools">
         <ElButton text @click="download">下载图纸原件</ElButton>
       </div>
       <button type="button" class="drawing-preview-sheet" aria-label="放大图纸" @click="open">
@@ -80,9 +90,16 @@ onBeforeUnmount(() => {
           :src="`${url}#toolbar=0&navpanes=0&view=Fit`"
           title="PDF图纸原件"
           tabindex="-1"
+          :loading="thumbnail ? 'lazy' : 'eager'"
           referrerpolicy="no-referrer"
         />
       </button>
+      <template v-if="thumbnail">
+        <strong class="drawing-thumbnail-name" :title="drawing?.filename || file?.name">{{
+          drawing?.filename || file?.name
+        }}</strong>
+        <ElButton class="drawing-thumbnail-download" link @click="download">下载原件</ElButton>
+      </template>
       <DocumentViewer v-if="viewing" title="图纸" :pdf="url" @close="viewing = false" />
     </template>
   </section>
@@ -127,5 +144,24 @@ onBeforeUnmount(() => {
   height: 100%;
   border: 0;
   pointer-events: none;
+}
+.route-drawing-preview--thumbnail {
+  flex: none;
+  margin-top: 0;
+  gap: 5px;
+}
+.route-drawing-preview--thumbnail .drawing-preview-sheet {
+  height: 128px;
+  flex: none;
+}
+.drawing-thumbnail-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.drawing-thumbnail-download {
+  align-self: flex-start;
+  font-size: 12px;
 }
 </style>

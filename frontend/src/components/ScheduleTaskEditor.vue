@@ -16,6 +16,7 @@ import {
 import AppDialog from './AppDialog.vue'
 import MaterialInput from './MaterialInput.vue'
 import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
+import ScheduleDocuments from './ScheduleDocuments.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
@@ -77,7 +78,8 @@ const batches = ref(
     due: local(b.due_at),
   })),
 )
-if (!batches.value.length) batches.value.push({ quantity: quantity.value, due: finalDue.value })
+if (!batches.value.length)
+  batches.value.push({ quantity: quantity.value, due: props.task ? finalDue.value : '' })
 const writable = computed(() => auth.isDispatch && !props.task?.locked_at)
 let generation = 0,
   key = '',
@@ -107,22 +109,21 @@ async function loadRoutes() {
     if (current === generation) loading.value = false
   }
 }
-watch(finalDue, (value) => {
-  if (batches.value.length) batches.value[batches.value.length - 1]!.due = value
-})
 watch(quantity, (value) => {
-  if (!props.task) batches.value = [{ quantity: value, due: finalDue.value }]
+  if (!props.task) batches.value = [{ quantity: value, due: '' }]
 })
 function selectPeople(value: ScheduleSelection[]) {
   people.value = value
   personOpen.value = false
 }
 function addBatch() {
-  batches.value.push({ quantity: 0, due: finalDue.value })
+  batches.value.push({ quantity: 0, due: '' })
 }
 function removeBatch(index: number) {
   batches.value.splice(index, 1)
-  batches.value[batches.value.length - 1]!.due = finalDue.value
+}
+function disabledBatchDate(value: Date) {
+  return !!finalDue.value && value.getTime() > new Date(finalDue.value).getTime()
 }
 async function save() {
   if (saving.value || !writable.value || loading.value) return
@@ -131,23 +132,30 @@ async function save() {
     error.value = '请选择流水号和对应工艺'
     return
   }
-  if (
-    !finalDue.value ||
-    batches.value.some((b) => !b.due || !Number.isSafeInteger(b.quantity) || b.quantity <= 0)
-  ) {
-    error.value = '请填写交期和每批数量'
+  if (!finalDue.value) {
+    error.value = '请选择最终交期'
     return
+  }
+  for (const [index, batch] of batches.value.entries()) {
+    if (!batch.due) {
+      error.value = `请选择第 ${index + 1} 批交期`
+      return
+    }
+    if (!Number.isSafeInteger(batch.quantity) || batch.quantity <= 0) {
+      error.value = `请填写第 ${index + 1} 批数量`
+      return
+    }
+    if (batch.due > finalDue.value) {
+      error.value = `第 ${index + 1} 批交期不能晚于最终交期`
+      return
+    }
+    if (index > 0 && batch.due < batches.value[index - 1]!.due) {
+      error.value = `第 ${index + 1} 批交期不能早于上一批`
+      return
+    }
   }
   if (batches.value.reduce((sum, b) => sum + b.quantity, 0) !== quantity.value) {
     error.value = `各批数量合计须为 ${quantity.value} 件`
-    return
-  }
-  if (
-    batches.value.some(
-      (b, i) => b.due > finalDue.value || (i > 0 && b.due < batches.value[i - 1]!.due),
-    )
-  ) {
-    error.value = '请按批次顺序设置交期，不能晚于最终交期'
     return
   }
   if (!people.value.length) {
@@ -259,6 +267,10 @@ onMounted(loadRoutes)
         ><ElSelect v-model="routeId" aria-label="关联工艺"
           ><ElOption v-for="r in routes" :key="r.id" :value="r.id" :label="r.title" /></ElSelect
       ></ElFormItem>
+      <ScheduleDocuments
+        :serial-no="serial.trim()"
+        :route-ids="task ? task.nodes.map((node) => node.process_route_id) : [routeId]"
+      />
       <h3>
         分批交货 <span>{{ quantity }} 件</span>
       </h3>
@@ -282,7 +294,7 @@ onMounted(loadRoutes)
               type="datetime"
               format="YYYY-MM-DD HH:mm"
               value-format="YYYY-MM-DDTHH:mm:ss"
-              :disabled="$index === batches.length - 1"
+              :disabled-date="disabledBatchDate"
               :disabled-minutes="nonZeroMinutes"
               :disabled-seconds="nonZeroMinutes"
               :aria-label="`第${$index + 1}批交期`" /></template

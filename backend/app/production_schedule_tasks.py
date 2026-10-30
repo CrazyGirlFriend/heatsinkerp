@@ -17,7 +17,7 @@ from .models import ProductionSchedule as Plan
 from .models import ProductionScheduleEvent as Event
 from .models import ProductionScheduleSource as Source
 from .models import ProductionScheduleTask as Task
-from .production_schedule_schemas import ScheduleCreate
+from .production_schedule_schemas import CustomerBatch, ScheduleCreate
 
 
 def request_key(namespace, key):
@@ -466,7 +466,15 @@ def update_task(db, task_id, payload, user):
             before["delivery_batches"] = task.delivery_batches
             task.delivery_batches = customer_values(payload.delivery_batches)
         elif task.delivery_batches and before["final_due_at"] != schedules.iso(task.final_due_at):
-            raise HTTPException(422, "请同时调整最后一批交期")
+            from .dispatch_planning import validate_customer_batches
+
+            try:
+                validate_customer_batches(
+                    [CustomerBatch.model_validate(batch) for batch in task.delivery_batches],
+                    task.final_due_at,
+                )
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from None
         task.title, task.notes = payload.title, payload.notes
         task.version += 1
         task.updated_at = utcnow()

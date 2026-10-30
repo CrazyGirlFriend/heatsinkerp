@@ -29,6 +29,7 @@ import MaterialTransferStatus from './MaterialTransferStatus.vue'
 import type { MaterialTransferStatus as TransferStatus } from '@/types/materialTransfer'
 import SchedulePlanReview from './SchedulePlanReview.vue'
 import ScheduleBatchEditor from './ScheduleBatchEditor.vue'
+import ScheduleDocuments from './ScheduleDocuments.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
@@ -865,6 +866,11 @@ defineExpose({ exportSource, openDetail })
             scheduleStatusLabels[detail.status]
           }}</ElTag>
         </div>
+        <ScheduleDocuments
+          :key="detail.id"
+          :serial-no="detail.serial_no"
+          :route-ids="[detail.process_route_id]"
+        />
         <div v-if="detail.task_id" class="schedule-task-context">
           <div class="schedule-task-context__heading">
             <strong>{{ detail.task_title || '交货任务' }}</strong>
