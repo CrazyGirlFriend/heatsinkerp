@@ -427,6 +427,7 @@ onBeforeUnmount(() => {
         v-for="group in groups"
         :key="group.task.id"
         class="sp-row"
+        :class="{ 'has-active-node': group.active !== null }"
         :aria-label="`${group.task.serial_no} ${group.task.title}`"
       >
         <div class="sp-row-main sp-grid">
@@ -461,6 +462,14 @@ onBeforeUnmount(() => {
             }"
             aria-label="班组计划加工时段"
           >
+            <div
+              v-for="band in group.bands.length > 1 ? group.bands : []"
+              :key="band.id"
+              class="sp-flow-band"
+              :class="{ 'is-active': group.active !== null && band.nodeIds.includes(group.active) }"
+              :style="{ top: `${band.top}px`, height: `${band.height}px` }"
+              aria-hidden="true"
+            />
             <span
               v-if="todayPosition >= 0 && todayPosition <= 100"
               class="sp-now-line"
@@ -863,7 +872,7 @@ onBeforeUnmount(() => {
 .schedule-progress {
   --sp-green: var(--primary);
   --sp-muted: #69716d;
-  --sp-line: #e2e8e4;
+  --sp-line: #dfe5e2;
   --sp-red: #b93434;
   display: flex;
   flex: 0 1 auto;
@@ -898,7 +907,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--sp-line);
   border-bottom: 0;
   border-radius: 10px 10px 0 0;
-  background: linear-gradient(120deg, #ffffff, #f3f8f5);
+  background: #fff;
   box-shadow: inset 0 1px 0 #fff;
 }
 .sp-week-actions {
@@ -1011,8 +1020,8 @@ onBeforeUnmount(() => {
   display: flex;
   height: 24px;
   border-bottom: 1px solid #e4e6e5;
-  background: #f4f8f5;
-  color: #303d36;
+  background: #f1f4f2;
+  color: var(--text);
   font-size: 12px;
   font-weight: 600;
 }
@@ -1039,27 +1048,27 @@ onBeforeUnmount(() => {
   box-shadow: 0 2px 5px #23473605;
 }
 .sp-row:nth-of-type(even) :is(.sp-row-main, .sp-serial, .sp-target) {
-  background-color: #fafbfc;
+  background-color: #f8faf9;
 }
 .sp-row:is(:hover, :focus-within) :is(.sp-row-main, .sp-serial, .sp-target) {
-  background-color: #f0f6f2;
+  background-color: #edf4f0;
 }
 .sp-table-head {
   position: sticky;
   top: 0;
   z-index: 3;
   border-bottom: 1px solid #cfd4d1;
-  background: #f8faf9;
+  background: #f1f4f2;
   align-items: stretch;
   color: #232824;
   font-size: 13px;
   font-weight: 600;
-  min-height: 48px;
+  min-height: 60px;
 }
 .sp-table-head > span {
   display: flex;
   align-items: center;
-  background: #f8faf9;
+  background: #f1f4f2;
   border-right: 1px solid var(--sp-line);
 }
 .sp-head-serial {
@@ -1135,6 +1144,20 @@ onBeforeUnmount(() => {
   color: #171b18;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+}
+.sp-flow-band {
+  position: absolute;
+  inset-inline: 0;
+  background: rgb(82 100 119 / 4%);
+  border-block: 1px solid rgb(82 100 119 / 8%);
+  pointer-events: none;
+  transition: background var(--motion-fast);
+}
+.sp-flow-band:nth-child(even) {
+  background: rgb(255 255 255 / 60%);
+}
+.sp-flow-band.is-active {
+  background: rgb(32 92 72 / 7%);
 }
 .sp-node-info header {
   display: flex;
@@ -1364,9 +1387,12 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   border: 0;
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--team-color);
   color: white;
+  box-shadow:
+    inset 0 1px 0 #ffffff24,
+    0 1px 2px #12251a12;
   z-index: 2;
   text-align: left;
   transition:
@@ -1428,7 +1454,7 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
 }
 .sp-team > .el-icon {
   flex-shrink: 0;
@@ -1448,6 +1474,12 @@ onBeforeUnmount(() => {
 }
 .sp-node.is-unplanned .sp-node-warning {
   color: #b93434;
+}
+.has-active-node .sp-node:not(.is-related) {
+  opacity: 0.48;
+}
+.has-active-node .sp-links > path:not(.is-related) {
+  opacity: 0.18;
 }
 .sp-unplanned-key {
   width: 15px;
@@ -1670,7 +1702,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   padding-inline: 6px;
   gap: 4px;
-  background: var(--team-tint);
+  background: color-mix(in srgb, var(--team-color) 8%, white);
   color: color-mix(in srgb, var(--team-color) 80%, #171b18);
   border: 1px dashed color-mix(in srgb, var(--team-color) 60%, white);
 }

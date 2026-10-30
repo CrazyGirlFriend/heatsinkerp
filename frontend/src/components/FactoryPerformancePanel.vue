@@ -13,6 +13,7 @@ import {
 } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import AnimatedMetric from './AnimatedMetric.vue'
+import StatisticHelp from './StatisticHelp.vue'
 import FactoryPerformanceCharts from './FactoryPerformanceCharts.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import MaterialInput from './MaterialInput.vue'
@@ -476,7 +477,15 @@ onBeforeUnmount(() => {
               : selectedTeam?.name || '全部班组'
           }}</span
         >
-        <span>{{ formatDateTime(report.generated_at) }} 更新</span>
+        <StatisticHelp label="统计说明">
+          {{
+            scene === 'production'
+              ? '仅统计当前班组、流水号、业务、任务和工序；正常加工与返工分列，未加工余料和出库不计产。' +
+                (serialFilter ? '' : ' 默认展示最近有加工记录的流水号。')
+              : '按材质统计：合格率 = 合格件次 ÷ 实际受检件次；未检不计合格。周一至周日为一周，月按自然月，周期仅计算筛选日期内的记录。'
+          }}
+        </StatisticHelp>
+        <span class="performance-updated">{{ formatDateTime(report.generated_at) }} 更新</span>
       </div>
       <div v-if="scene === 'production' && productionScope" class="production-context">
         <div>
@@ -514,7 +523,7 @@ onBeforeUnmount(() => {
         >
       </div>
       <section v-if="cards.length" class="performance-metrics">
-        <article v-for="card in cards" :key="card.label" class="performance-metric chart-glass">
+        <article v-for="card in cards" :key="card.label" class="performance-metric">
           <h2>{{ card.label }}</h2>
           <div>
             <strong v-if="card.value === null">—</strong>
@@ -525,17 +534,12 @@ onBeforeUnmount(() => {
           </div>
         </article>
       </section>
-      <p class="performance-note">
-        {{
-          scene === 'production'
-            ? '仅统计当前班组、流水号、业务、任务和工序；正常加工与返工分列，未加工余料和出库不计产。' +
-              (serialFilter ? '' : ' 默认展示最近有加工记录的流水号。')
-            : '按材质统计：合格率 = 合格件次 ÷ 实际受检件次；未检不计合格。周一至周日为一周，月按自然月，周期仅计算筛选日期内的记录。'
-        }}
-      </p>
       <div v-if="scene === 'quality'" class="quality-issues-summary">
         <div>
           <strong>质量问题 {{ formatAmount(report.issues.summary.total) }} 条</strong>
+          <StatisticHelp label="质量问题统计说明">
+            问题按发现日期、涉及班组及查看权限统计，包含巡检与检验；复检沿用原问题。一个问题可选择多个分类，分类或班组数量不能相加。
+          </StatisticHelp>
           <span>待处理 {{ report.issues.summary.pending }}</span>
           <span>处理中 {{ report.issues.summary.processing }}</span>
           <span>已结束 {{ report.issues.summary.closed }}</span>
@@ -547,9 +551,6 @@ onBeforeUnmount(() => {
           @click="openQuality('quality-feedback')"
           >进入质量反馈</ElButton
         >
-        <p>
-          问题按发现日期、涉及班组及查看权限统计，包含巡检与检验；复检沿用原问题。一个问题可选择多个分类，分类或班组数量不能相加。
-        </p>
       </div>
       <StatePanel
         v-if="scene === 'production' && !productionScope"
@@ -637,7 +638,7 @@ onBeforeUnmount(() => {
               <td>{{ row.record_count }} 笔</td>
             </tr>
             <tr v-if="!qualityRows.length">
-              <td colspan="7">当前口径没有检查记录</td>
+              <td colspan="7">当前筛选条件下没有检查记录</td>
             </tr>
           </tbody>
         </table>
@@ -727,27 +728,34 @@ onBeforeUnmount(() => {
 }
 .performance-scope {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
   flex-wrap: wrap;
   gap: 8px;
   color: var(--muted);
   font-size: 12px;
 }
+.performance-updated {
+  margin-left: auto;
+}
 .performance-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  overflow: hidden;
 }
 .performance-metric {
-  padding: 16px 20px;
-  border-radius: var(--card-radius);
+  padding: 12px 18px;
+  border-left: 1px solid var(--line);
 }
 .performance-metric:first-child {
-  background: radial-gradient(ellipse at 8% 0%, #ffffffd9, transparent 62%), var(--primary-soft);
+  border-left: 3px solid var(--primary);
 }
 .performance-metric h2 {
   color: var(--muted);
-  margin: 0 0 10px;
+  margin: 0 0 4px;
   font-size: 13px;
   font-weight: 500;
 }
@@ -757,22 +765,16 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 .performance-metric strong {
-  font-size: clamp(26px, 2vw, 34px);
+  font-size: 26px;
   font-weight: 550;
   font-variant-numeric: tabular-nums;
 }
 .performance-metric:first-child strong {
   color: var(--primary);
 }
-.performance-metric > div > span,
-.performance-note,
-.quality-issues-summary p {
+.performance-metric > div > span {
   font-size: 12px;
   color: var(--muted);
-}
-.performance-note {
-  margin: -4px 0 0;
-  line-height: 20px;
 }
 .quality-issues-summary {
   display: flex;
@@ -783,7 +785,7 @@ onBeforeUnmount(() => {
 }
 .quality-issues-summary > div {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
   gap: 18px;
 }
@@ -797,11 +799,6 @@ onBeforeUnmount(() => {
 }
 .quality-issues-summary > .el-button {
   margin-left: auto;
-}
-.quality-issues-summary p {
-  margin: 0;
-  flex-basis: 100%;
-  line-height: 20px;
 }
 .performance-table-wrap {
   overflow: auto;
@@ -831,7 +828,7 @@ onBeforeUnmount(() => {
 }
 .performance-table thead th {
   color: var(--muted);
-  background: var(--table-header-bg);
+  background: #f1f4f2;
   font-weight: 500;
 }
 .performance-table tbody th {
@@ -843,6 +840,12 @@ onBeforeUnmount(() => {
 @media (max-width: 1100px) {
   .performance-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .performance-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+  .performance-metric:nth-child(3) {
+    border-left: 0;
   }
   .performance-toolbar-actions {
     margin-left: 0;

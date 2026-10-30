@@ -149,7 +149,9 @@ export function progressMarkers(
     flows.set(key, flow)
   }
   let laneCount = 0
-  for (const flow of flows.values()) {
+  const bands: { id: number | 'unlinked'; top: number; height: number; nodeIds: number[] }[] = []
+  for (const [id, flow] of flows) {
+    const firstLane = laneCount
     const laneEnds: number[] = []
     for (const marker of flow) {
       const left = marker.x + marker.labelOffset
@@ -162,6 +164,12 @@ export function progressMarkers(
       marker.y = marker.top + PROGRESS_CARD_HEIGHT / 2
     }
     laneCount += laneEnds.length
+    bands.push({
+      id,
+      top: firstLane * PROGRESS_LANE_HEIGHT + 5,
+      height: laneEnds.length * PROGRESS_LANE_HEIGHT,
+      nodeIds: flow.map((marker) => marker.node.id),
+    })
   }
   const visible = geometries
   const byId = new Map(visible.map((marker) => [marker.node.id, marker]))
@@ -197,6 +205,7 @@ export function progressMarkers(
     visible,
     markers: visible,
     links,
+    bands,
     height: Math.max(52, laneCount * PROGRESS_LANE_HEIGHT + 10),
     outside: ordered.filter((node) => !byId.has(node.id)),
   }

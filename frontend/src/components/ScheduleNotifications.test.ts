@@ -104,6 +104,34 @@ describe('schedule inbox', () => {
     await flushPromises()
     expect(businessNoticeApi.readAll).toHaveBeenCalledWith({ schedule: 8, rework: 3 })
   })
+  it('opens a whole message row and distinguishes matching IDs from different sources', async () => {
+    vi.mocked(businessNoticeApi.list).mockResolvedValue({
+      ...result,
+      total: 2,
+      items: [
+        notice,
+        {
+          ...notice,
+          source: 'rework',
+          kind: 'requested',
+          message: '厚度超差',
+          read_at: notice.created_at,
+        },
+      ],
+    })
+    const { wrapper } = await setup()
+    await wrapper.get('.notice-trigger').trigger('click')
+    await flushPromises()
+    const rows = wrapper.findAll('button.inbox-item')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]!.attributes('aria-label')).toContain('未读')
+    expect(rows[1]!.attributes('aria-label')).not.toContain('未读')
+    expect(rows[0]!.find('.inbox-unread-dot').exists()).toBe(true)
+    expect(rows[1]!.find('.inbox-unread-dot').exists()).toBe(false)
+    await rows[1]!.get('.inbox-message').trigger('click')
+    await flushPromises()
+    expect(businessNoticeApi.target).toHaveBeenCalledWith('rework', 8)
+  })
   it('reports a failed refresh without marking messages read or losing the last badge', async () => {
     const { wrapper } = await setup()
     vi.mocked(businessNoticeApi.list).mockRejectedValueOnce(new Error('连接中断'))

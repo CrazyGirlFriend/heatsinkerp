@@ -192,7 +192,7 @@ onBeforeUnmount(() => {
 const materialLinks = computed(() => [
   { path: '/transfer-batches', label: '转料记录', icon: 'records' as const },
   ...(isAdmin.value
-    ? [{ path: '/material-trace', label: '全链路追踪', icon: 'trace' as const }]
+    ? [{ path: '/material-trace', label: '流水号查询', icon: 'trace' as const }]
     : []),
 ])
 </script>

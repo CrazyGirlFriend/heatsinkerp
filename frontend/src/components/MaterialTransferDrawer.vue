@@ -190,9 +190,8 @@ watch(
 watch(effectiveBatchNo, () => {
   reviewNotice.value = ''
 })
-const tracePath = computed(() => {
-  if (!current.value?.serial_no) return ''
-  const query = new URLSearchParams({ serial_no: current.value.serial_no })
+function tracePath(serialNo: string) {
+  const query = new URLSearchParams({ serial_no: serialNo })
   const teamId =
     props.traceScope?.team_id ??
     (authStore.isTeamAccount ? authStore.currentUser?.team_id : undefined)
@@ -202,7 +201,7 @@ const tracePath = computed(() => {
     return `/team-workspaces/${teamId}?${query}`
   }
   return `/material-trace?${query}`
-})
+}
 const stateMessage = computed(() => {
   if (!current.value) return ''
 
@@ -664,7 +663,16 @@ watch(
       </div>
       <MaterialTransferDocumentFields :transfer="current" group="all">
         <template #serial>
-          <RouterLink :to="tracePath">{{ sharedSerialLabel(current) }}</RouterLink>
+          <template v-if="current.shared_unallocated && current.shared_serials?.length">
+            共投 ·
+            <template v-for="(member, index) in current.shared_serials" :key="member.serial_no">
+              <span v-if="index"> / </span>
+              <RouterLink :to="tracePath(member.serial_no)">{{ member.serial_no }}</RouterLink>
+            </template>
+          </template>
+          <RouterLink v-else :to="tracePath(current.serial_no)">{{
+            sharedSerialLabel(current)
+          }}</RouterLink>
           <SerialUrgencyBadge :urgency="current.urgency" />
         </template>
         <template v-if="canConfirm" #receiver>

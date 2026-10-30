@@ -81,8 +81,8 @@ const router = createRouter({
     {
       path: '/material-trace',
       name: 'material-trace',
-      component: () => import('@/pages/FlowPreviewPage.vue'),
-      meta: { title: '全链路追踪', adminOnly: true },
+      component: () => import('@/pages/SerialInventoryPage.vue'),
+      meta: { title: '流水号查询', adminOnly: true },
     },
     {
       path: '/settings/teams',
@@ -197,6 +197,8 @@ router.beforeEach(async (to) => {
   )
     return '/process-routes'
   if (to.meta.adminOnly && !isAdmin.value) return { path: '/transfer-batches' }
+  if (to.name === 'flow-preview' && to.params.view === 'chain')
+    return { path: '/material-trace', query: to.query, replace: true }
   return true
 })
 

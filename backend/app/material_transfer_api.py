@@ -43,6 +43,43 @@ def material_input_suggestions(
     return input_suggestions(db, field, query, limit)
 
 
+@router.get("/serial-inventory", dependencies=[Depends(require_admin)])
+def get_serial_inventory(
+    serial_no: str = Query(min_length=1, max_length=80),
+    db: Session = Depends(get_db),
+) -> dict:
+    from .serial_inventory import overview
+
+    return overview(db, serial_no)
+
+
+@router.get("/serial-inventory/batches", dependencies=[Depends(require_admin)])
+def get_serial_inventory_batches(
+    serial_no: str = Query(min_length=1, max_length=80),
+    team_id: int = Query(ge=1),
+    material_name: str = Query(default="", max_length=160),
+    material_type: str = Query(default="", max_length=32),
+    shared: bool = False,
+    location: str = Query(default="stock", pattern="^(stock|incoming)$"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> dict:
+    from .serial_inventory import batches
+
+    return batches(
+        db,
+        serial_no,
+        team_id=team_id,
+        material_name=material_name,
+        material_type=material_type,
+        shared=shared,
+        location=location,
+        page=page,
+        page_size=page_size,
+    )
+
+
 @router.get("/material-trace", tags=["material transfers"])
 def get_serial_trace(
     serial_no: str = Query(min_length=1, max_length=80),

@@ -906,9 +906,24 @@ onBeforeUnmount(() => {
                   @apply="(value) => applyColumn('serial_query', value)" /></template
               ><template #default="{ row }"
                 ><div class="transfer-serial">
-                  <RouterLink class="serial-number" :to="traceLink(row.serial_no)" @click.stop>{{
-                    sharedSerialLabel(row)
-                  }}</RouterLink
+                  <span
+                    v-if="row.shared_unallocated && row.shared_serials?.length"
+                    class="serial-number"
+                  >
+                    共投 ·
+                    <template v-for="(member, index) in row.shared_serials" :key="member.serial_no">
+                      <span v-if="index"> / </span>
+                      <RouterLink :to="traceLink(member.serial_no)" @click.stop>{{
+                        member.serial_no
+                      }}</RouterLink>
+                    </template>
+                  </span>
+                  <RouterLink
+                    v-else
+                    class="serial-number"
+                    :to="traceLink(row.serial_no)"
+                    @click.stop
+                    >{{ sharedSerialLabel(row) }}</RouterLink
                   ><SerialUrgencyBadge :urgency="row.urgency" @click.stop /></div></template
             ></ElTableColumn>
             <ElTableColumn label="转出时间" min-width="180" align="center"

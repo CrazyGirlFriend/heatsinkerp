@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { EChartsCoreOption } from 'echarts/core'
 import LedgerChart from './LedgerChart.vue'
+import StatisticHelp from './StatisticHelp.vue'
 import { glassArea, glassFill, glassTooltip } from '@/utils/chartGlass'
 import { formatAmount } from '@/utils/format'
 import type { FactoryPerformance, QualityBasis } from '@/types/factoryPerformance'
@@ -269,11 +270,11 @@ const cards = computed(() => {
     >
       <header>
         <h2>{{ card.title }}</h2>
+        <StatisticHelp :label="`${card.title}统计说明`">{{ card.hint }}</StatisticHelp>
         <span>{{
           scene === 'production' ? unit : card.key.startsWith('quality') ? '%' : '条'
         }}</span>
       </header>
-      <p>{{ card.hint }}</p>
       <LedgerChart :option="card.option" :empty="card.empty" :label="card.title" :motion="motion" />
     </article>
   </section>
@@ -289,28 +290,28 @@ const cards = computed(() => {
 }
 .performance-chart {
   min-width: 0;
-  border-radius: var(--card-radius);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  box-shadow: none;
   padding: 16px 18px;
 }
 .performance-chart header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 .performance-chart h2 {
   margin: 0;
   font-size: 15px;
   font-weight: 550;
 }
-.performance-chart header > span,
-.performance-chart p {
+.performance-chart header > span {
+  margin-left: auto;
   color: var(--muted);
   font-size: 12px;
-}
-.performance-chart p {
-  margin: 6px 0 12px;
-  line-height: 18px;
 }
 .performance-chart .ledger-chart-frame {
   height: 260px;

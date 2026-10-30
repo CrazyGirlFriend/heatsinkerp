@@ -224,7 +224,7 @@ describe('factory production and quality reporting', () => {
     expect(
       wrapper.findAllComponents(AnimatedMetric).map((metric) => metric.props('value')),
     ).toEqual([0, 0, 0])
-    expect(wrapper.text()).toContain('当前口径没有检查记录')
+    expect(wrapper.text()).toContain('当前筛选条件下没有检查记录')
     expect(factoryPerformanceApi.get).toHaveBeenCalledTimes(1)
   })
 

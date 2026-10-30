@@ -224,8 +224,10 @@ onBeforeUnmount(() => {
         }}</ElDescriptionsItem>
       </ElDescriptions>
       <div class="quality-detail-section">
-        <RouterLink :to="{ path: '/material-trace', query: { serial_no: detail.batch_no } }"
-          >查看本批物料的加工、转料与追踪记录</RouterLink
+        <RouterLink
+          v-if="auth.isAdmin"
+          :to="{ path: '/material-trace', query: { serial_no: detail.serial_no } }"
+          >查看流水号库存</RouterLink
         >
       </div>
       <section class="quality-detail-section">

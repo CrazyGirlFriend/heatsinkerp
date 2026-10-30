@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils'
 import type { EChartsCoreOption } from 'echarts/core'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import FactoryPerformanceCharts from './FactoryPerformanceCharts.vue'
 import LedgerChart from './LedgerChart.vue'
 import { performanceFixture } from '@/testFixtures/factoryPerformance'
@@ -24,7 +24,20 @@ describe('production and quality chart meanings', () => {
     })
     try {
       expect(wrapper.findAllComponents(LedgerChart)).toHaveLength(1)
-      expect(wrapper.text()).toContain('仅当前班组、流水号、任务和工序')
+      expect(wrapper.text()).not.toContain('仅当前班组、流水号、任务和工序')
+      await wrapper.get('button[aria-label="每日加工完成量统计说明"]').trigger('click')
+      await vi.waitFor(() =>
+        expect(document.body.textContent).toContain('仅当前班组、流水号、任务和工序'),
+      )
+      await wrapper
+        .get('button[aria-label="每日加工完成量统计说明"]')
+        .trigger('keydown', { key: 'Escape' })
+      await vi.waitFor(() => {
+        const popover = document
+          .querySelector('.statistic-help-content')
+          ?.closest<HTMLElement>('[role="tooltip"]')
+        expect(popover?.style.display).toBe('none')
+      })
       expect(wrapper.text()).not.toContain('班组完成量')
       const chart = wrapper.getComponent(LedgerChart)
       expect(chart.props('option').series).toEqual([

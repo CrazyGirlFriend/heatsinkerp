@@ -715,6 +715,23 @@ describe('material transfer receipt review', () => {
     )
   })
 
+  it('links each shared serial to its own inventory query for administrators', async () => {
+    state.auth.isAdmin = true
+    state.auth.isTeamAccount = false
+    vi.mocked(materialTransferApi.get).mockResolvedValueOnce(
+      fixture({
+        serial_no: '共投-TL001',
+        shared_unallocated: true,
+        shared_serials: [{ serial_no: '000012' }, { serial_no: '000013' }],
+      }),
+    )
+    await render()
+    expect(wrapper.findAll('a').map((link) => link.attributes('href'))).toEqual([
+      '/material-trace?serial_no=000012',
+      '/material-trace?serial_no=000013',
+    ])
+  })
+
   it('displays the complete scanned document and confirms only the reviewed version without amount input', async () => {
     await render()
     expect(wrapper.text()).toContain('废泥')

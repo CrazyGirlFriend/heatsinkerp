@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   nodeCompletion,
+  PROGRESS_CARD_HEIGHT,
   PROGRESS_CARD_WIDTH,
   PROGRESS_LANE_HEIGHT,
   progressMarkers,
@@ -295,6 +296,16 @@ describe('batch flow lanes', () => {
       expect(positions.get(1)).not.toBe(positions.get(2))
       expect(result.height).toBe(PROGRESS_LANE_HEIGHT * 2 + 10)
       expect(result.links.map((link) => link.key)).toEqual(['1:3', '2:4', '3:5', '4:6'])
+      expect(result.bands.map((band) => [...band.nodeIds].sort())).toEqual([
+        [1, 3, 5],
+        [2, 4, 6],
+      ])
+      for (const band of result.bands) {
+        for (const marker of result.markers.filter((m) => band.nodeIds.includes(m.node.id))) {
+          expect(marker.top).toBeGreaterThanOrEqual(band.top)
+          expect(marker.top + PROGRESS_CARD_HEIGHT).toBeLessThanOrEqual(band.top + band.height)
+        }
+      }
     }
   })
   it('separates genuine overlaps within a linked flow and permits a same-hour handoff', () => {

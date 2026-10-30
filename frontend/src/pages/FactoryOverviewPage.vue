@@ -434,11 +434,12 @@ onBeforeUnmount(() => {
   gap: 18px;
   flex-wrap: wrap;
 }
-.factory-heading h1 {
+.factory-overview .factory-heading-title h1 {
   margin: 0;
-  font-size: 22px;
-  line-height: 30px;
-  font-weight: 550;
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 .factory-heading p {
   font-size: 12px;
@@ -625,7 +626,7 @@ onBeforeUnmount(() => {
     margin: 0;
   }
   .factory-heading h1 {
-    font-size: 21px;
+    font-size: 18px;
     line-height: 28px;
   }
   .factory-metrics {
@@ -692,7 +693,7 @@ onBeforeUnmount(() => {
     gap: 14px;
   }
   .factory-heading h1 {
-    font-size: 21px;
+    font-size: 18px;
   }
   .factory-controls {
     gap: 8px;

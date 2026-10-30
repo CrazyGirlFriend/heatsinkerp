@@ -25,6 +25,9 @@ vi.mock('@/stores/access', () => ({
 vi.mock('@/pages/LoginPage.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/pages/AccessPage.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/pages/FlowPreviewPage.vue', () => ({ default: { template: '<div>chain</div>' } }))
+vi.mock('@/pages/SerialInventoryPage.vue', () => ({
+  default: { template: '<div>serial stock</div>' },
+}))
 vi.mock('@/pages/TeamWorkspacePage.vue', () => ({ default: { template: '<div>team</div>' } }))
 vi.mock('@/pages/FactoryInventoryPage.vue', () => ({
   default: { template: '<div>factory overview</div>' },
@@ -53,12 +56,16 @@ it('denies both full-chain URLs to team accounts, even when entered directly', a
     expect(router.currentRoute.value.path).toBe('/team-workspaces/8')
   }
 })
-it('lets administrators open the accepted canvas from the formal menu route', async () => {
+it('opens serial inventory and redirects old global chain bookmarks', async () => {
   state.admin = true
   await router.push('/material-trace?serial_no=000012')
   expect(router.currentRoute.value.name).toBe('material-trace')
   expect(router.currentRoute.value.meta.adminOnly).toBe(true)
   expect(router.currentRoute.value.meta.standalone).not.toBe(true)
+  expect(router.currentRoute.value.meta.title).toBe('流水号查询')
+  await router.push('/flow-preview/chain?serial_no=000012')
+  expect(router.currentRoute.value.path).toBe('/material-trace')
+  expect(router.currentRoute.value.query.serial_no).toBe('000012')
 })
 it('preserves the scope of old team history bookmarks', async () => {
   await router.push('/material-trace?team_id=8&serial_no=000012&date_from=2026-09-18')
