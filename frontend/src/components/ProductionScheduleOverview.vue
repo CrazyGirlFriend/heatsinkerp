@@ -456,7 +456,6 @@ onBeforeUnmount(() => {
           <div class="sp-target" :title="target(group.task)">{{ target(group.task) }}</div>
           <div
             class="sp-track"
-            :class="{ 'has-active-node': group.active != null }"
             :style="{
               minHeight: `${group.height}px`,
             }"
@@ -527,44 +526,65 @@ onBeforeUnmount(() => {
               <template #content>
                 <div class="sp-node-info" :style="scheduleTeamStyle(marker.node.team_name)">
                   <header>
-                    <strong>{{ marker.node.sequence_no }} · {{ marker.node.team_name }}</strong
+                    <strong
+                      >{{ marker.node.sequence_no }} · {{ marker.node.team_name
+                      }}<small v-if="marker.node.batch_number">
+                        第 {{ marker.node.batch_number }} 批</small
+                      ></strong
                     ><span :class="`is-${state(marker.node)}`">{{ label(marker.node) }}</span>
                   </header>
-                  <dl>
-                    <template v-if="marker.node.batch_number"
-                      ><dt>批次</dt>
-                      <dd>第 {{ marker.node.batch_number }} 批</dd></template
-                    >
-                    <dt>开始</dt>
-                    <dd>
-                      {{
-                        marker.node.planned_start_at
-                          ? formatDateTime(marker.node.planned_start_at)
-                          : '待班组安排'
-                      }}
-                    </dd>
-                    <dt>转出</dt>
-                    <dd>{{ formatDateTime(marker.node.due_at) }}</dd>
-                    <dt>计划</dt>
-                    <dd>{{ nodeTarget(marker.node) }}</dd>
-                    <template
-                      v-if="isAssessed(marker.node) && marker.node.processed_quantity != null"
-                    >
-                      <dt>已加工</dt>
-                      <dd>
-                        {{ formatAmount(marker.node.processed_quantity) }} 件
-                        <small v-if="marker.completion.processed != null"
-                          >{{ Math.round(marker.completion.processed) }}%</small
-                        >
-                      </dd>
-                    </template>
-                    <dt>已转出</dt>
-                    <dd>
-                      {{ nodeActual(marker.node) }}
-                      <small v-if="marker.completion.dispatched != null"
-                        >{{ Math.round(marker.completion.dispatched) }}%</small
+                  <div class="sp-node-dates">
+                    <div>
+                      <span>计划开始</span>
+                      <time
+                        v-if="marker.node.planned_start_at"
+                        :datetime="marker.node.planned_start_at"
                       >
-                    </dd>
+                        {{ formatDateTime(marker.node.planned_start_at) }}
+                      </time>
+                      <strong v-else>待班组安排</strong>
+                    </div>
+                    <div>
+                      <span>计划转出</span>
+                      <time :datetime="marker.node.due_at">{{
+                        formatDateTime(marker.node.due_at)
+                      }}</time>
+                    </div>
+                  </div>
+                  <table class="sp-node-amounts" aria-label="班组完成进度">
+                    <thead>
+                      <tr>
+                        <th scope="col">计划</th>
+                        <th
+                          v-if="isAssessed(marker.node) && marker.node.processed_quantity != null"
+                          scope="col"
+                        >
+                          已加工
+                        </th>
+                        <th scope="col">已转出</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>{{ nodeTarget(marker.node) }}</td>
+                        <td
+                          v-if="isAssessed(marker.node) && marker.node.processed_quantity != null"
+                        >
+                          {{ formatAmount(marker.node.processed_quantity) }} 件
+                          <small v-if="marker.completion.processed != null"
+                            >{{ Math.round(marker.completion.processed) }}%</small
+                          >
+                        </td>
+                        <td>
+                          {{ nodeActual(marker.node) }}
+                          <small v-if="marker.completion.dispatched != null"
+                            >{{ Math.round(marker.completion.dispatched) }}%</small
+                          >
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <dl>
                     <template v-if="marker.node.stock">
                       <dt>在库</dt>
                       <dd>
@@ -843,7 +863,7 @@ onBeforeUnmount(() => {
 .schedule-progress {
   --sp-green: var(--primary);
   --sp-muted: #69716d;
-  --sp-line: #e9ebec;
+  --sp-line: #e2e8e4;
   --sp-red: #b93434;
   display: flex;
   flex: 0 1 auto;
@@ -877,8 +897,9 @@ onBeforeUnmount(() => {
   padding: 8px 12px;
   border: 1px solid var(--sp-line);
   border-bottom: 0;
-  border-radius: 8px 8px 0 0;
-  background: #fff;
+  border-radius: 10px 10px 0 0;
+  background: linear-gradient(120deg, #ffffff, #f3f8f5);
+  box-shadow: inset 0 1px 0 #fff;
 }
 .sp-week-actions {
   display: flex;
@@ -898,13 +919,13 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   width: 30px;
-  height: 28px;
+  height: 30px;
   padding: 0;
   border: 0;
   border-radius: 4px;
   background: transparent;
   color: var(--text);
-  font-size: 12px;
+  font-size: 13px;
 }
 .sp-zoom > span {
   padding: 0 6px;
@@ -939,8 +960,9 @@ onBeforeUnmount(() => {
   background: white;
   color: var(--text);
   padding: 5px 8px;
-  font-size: 12px;
-  min-height: 30px;
+  font-size: 13px;
+  min-height: 34px;
+  min-width: 34px;
 }
 .sp-subtle-button:hover,
 .sp-icon-button:hover {
@@ -989,7 +1011,7 @@ onBeforeUnmount(() => {
   display: flex;
   height: 24px;
   border-bottom: 1px solid #e4e6e5;
-  background: #fff;
+  background: #f4f8f5;
   color: #303d36;
   font-size: 12px;
   font-weight: 600;
@@ -1020,14 +1042,14 @@ onBeforeUnmount(() => {
   background-color: #fafbfc;
 }
 .sp-row:is(:hover, :focus-within) :is(.sp-row-main, .sp-serial, .sp-target) {
-  background-color: #f0f5f6;
+  background-color: #f0f6f2;
 }
 .sp-table-head {
   position: sticky;
   top: 0;
   z-index: 3;
   border-bottom: 1px solid #cfd4d1;
-  background: #fff;
+  background: #f8faf9;
   align-items: stretch;
   color: #232824;
   font-size: 13px;
@@ -1037,7 +1059,7 @@ onBeforeUnmount(() => {
 .sp-table-head > span {
   display: flex;
   align-items: center;
-  background: #fff;
+  background: #f8faf9;
   border-right: 1px solid var(--sp-line);
 }
 .sp-head-serial {
@@ -1057,7 +1079,7 @@ onBeforeUnmount(() => {
   border-right: 1px solid var(--sp-line);
 }
 .sp-day b {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 .sp-day small {
@@ -1108,17 +1130,18 @@ onBeforeUnmount(() => {
   transform: translateX(-50%);
 }
 .sp-node-info {
-  min-width: 220px;
-  color: #25332b;
-  font-size: 12px;
+  width: 352px;
+  max-width: calc(100vw - 48px);
+  color: #171b18;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 .sp-node-info header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding-bottom: 9px;
+  gap: 12px;
+  padding-bottom: 10px;
   border-bottom: 1px solid #e0e7e2;
 }
 .sp-node-info header strong {
@@ -1126,12 +1149,69 @@ onBeforeUnmount(() => {
   border-left: 3px solid var(--team-color);
   font-size: 14px;
 }
-.sp-node-info header span {
+.sp-node-info header strong small {
+  margin-left: 8px;
   color: #63706c;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.sp-node-info header span {
+  flex-shrink: 0;
+  color: #63706c;
+  font-size: 12px;
 }
 .sp-node-info header .is-late,
 .sp-node-info header .is-hold {
   color: #b93434;
+}
+.sp-node-dates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding-block: 12px;
+}
+.sp-node-dates > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sp-node-dates span {
+  color: #63706c;
+  font-size: 12px;
+}
+.sp-node-dates time,
+.sp-node-dates strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.sp-node-amounts {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.sp-node-amounts th,
+.sp-node-amounts td {
+  padding: 7px 8px;
+  border: 1px solid #e0e7e2;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.sp-node-amounts th {
+  background: #f3f7f4;
+  color: #63706c;
+  font-size: 12px;
+  font-weight: 400;
+}
+.sp-node-amounts td {
+  font-weight: 500;
+}
+.sp-node-amounts small {
+  margin-left: 4px;
+  color: #63706c;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
 }
 .sp-node-info dl {
   display: grid;
@@ -1141,11 +1221,6 @@ onBeforeUnmount(() => {
 }
 .sp-node-info dt {
   color: #63706c;
-}
-.sp-node-info dd small {
-  margin-left: 8px;
-  color: #64736c;
-  font-size: 11px;
 }
 .sp-node-info dd {
   margin: 0;
@@ -1352,7 +1427,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
 }
 .sp-team > .el-icon {
@@ -1363,8 +1438,7 @@ onBeforeUnmount(() => {
 .sp-node-quantity {
   margin-left: auto;
   white-space: nowrap;
-  font-size: 11px;
-  opacity: 0.9;
+  font-size: 12px;
 }
 .sp-team .sp-node-quantity + .el-icon {
   margin-left: 0;
@@ -1374,9 +1448,6 @@ onBeforeUnmount(() => {
 }
 .sp-node.is-unplanned .sp-node-warning {
   color: #b93434;
-}
-.sp-track.has-active-node .sp-node:not(.is-related) {
-  opacity: 0.5;
 }
 .sp-unplanned-key {
   width: 15px;
@@ -1398,7 +1469,7 @@ onBeforeUnmount(() => {
   gap: 3px;
   border-radius: 2px;
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
   white-space: nowrap;
 }
@@ -1597,9 +1668,22 @@ onBeforeUnmount(() => {
 }
 .schedule-progress .sp-node.is-unplanned {
   overflow: hidden;
+  padding-inline: 6px;
+  gap: 4px;
   background: var(--team-tint);
-  color: var(--team-color);
-  border: 1px dashed var(--team-color);
+  color: color-mix(in srgb, var(--team-color) 80%, #171b18);
+  border: 1px dashed color-mix(in srgb, var(--team-color) 60%, white);
+}
+.sp-node.is-unplanned .sp-team {
+  gap: 4px;
+}
+.schedule-progress .sp-node.is-interval.is-done {
+  border: 1px solid var(--team-border);
+  background: var(--team-tint);
+  color: color-mix(in srgb, var(--team-color) 80%, #171b18);
+}
+.sp-node.is-done .sp-completion {
+  background: var(--team-border);
 }
 .schedule-progress .sp-node.is-clipped-start {
   border-top-left-radius: 0;
@@ -1623,7 +1707,7 @@ onBeforeUnmount(() => {
   display: none;
 }
 .sp-team-name small {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
 }
 .sp-time-warning {
@@ -1636,8 +1720,10 @@ onBeforeUnmount(() => {
 .el-popper.schedule-node-tooltip {
   padding: 12px 14px;
   border: 1px solid #d2ded6;
-  border-radius: 7px;
+  border-radius: 10px;
   background: #ffffff;
-  box-shadow: 0 8px 24px #19332720;
+  box-shadow:
+    0 2px 5px #1933270a,
+    0 12px 28px #1933271c;
 }
 </style>

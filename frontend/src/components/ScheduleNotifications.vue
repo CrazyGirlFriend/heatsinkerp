@@ -1,23 +1,27 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Bell, Refresh, ArrowRight } from '@element-plus/icons-vue'
 import {
   ElAlert,
   ElButton,
   ElIcon,
+  ElCheckbox,
   ElPagination,
   ElTable,
   ElTableColumn,
   ElTag,
 } from 'element-plus'
 import AppDrawer from './AppDrawer.vue'
-import { scheduleNoticeApi, type ScheduleNotice } from '@/services/scheduleNoticeApi'
+import { scheduleNoticeApi } from '@/services/scheduleNoticeApi'
+import { businessNoticeApi, parseNotice, type BusinessNotice } from '@/services/businessNoticeApi'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { formatDateTime } from '@/utils/format'
 
 const props = defineProps<{ compact?: boolean; teamId?: number }>()
 const router = useRouter()
+const route = useRoute()
+const category = ref('all')
 const visible = ref(false),
   unreadOnly = ref(false),
   loading = ref(false),
@@ -25,10 +29,12 @@ const visible = ref(false),
 const page = ref(1),
   total = ref(0),
   unread = ref(0),
-  latestId = ref(0),
+  latestId = ref({ schedule: 0, rework: 0 }),
   error = ref('')
-const items = ref<ScheduleNotice[]>([])
-const labels: Record<ScheduleNotice['kind'], string> = {
+const items = ref<BusinessNotice[]>([])
+const labels: Record<BusinessNotice['kind'], string> = {
+  requested: '返工申请',
+  ready: '返工工艺已定',
   new: '新增排期',
   changed: '计划调整',
   cancelled: '已取消',
@@ -37,6 +43,7 @@ const labels: Record<ScheduleNotice['kind'], string> = {
   due_soon: '临近交期',
   overdue: '已逾期',
 }
+let disposed = false
 let generation = 0,
   lastDeadlineRefresh = 0,
   timer: ReturnType<typeof setInterval> | undefined
@@ -49,12 +56,12 @@ async function load() {
       if (token !== generation) return
       lastDeadlineRefresh = Date.now()
     }
-    const result = await scheduleNoticeApi.list(page.value, unreadOnly.value)
+    const result = await businessNoticeApi.list(page.value, unreadOnly.value, category.value)
     if (token !== generation) return
     items.value = result.items
     total.value = result.total
     unread.value = result.unread
-    latestId.value = result.latest_id
+    latestId.value = result.latest
     error.value = ''
     const lastPage = Math.max(1, Math.ceil(result.total / 20))
     if (page.value > lastPage) page.value = lastPage
@@ -64,55 +71,82 @@ async function load() {
     if (token === generation) loading.value = false
   }
 }
-async function openNotice(id: number) {
-  const item = items.value.find((row) => row.id === id)
-  if (!item || opening.value) return
+async function openNotice(id: number, source: string) {
+  const item = items.value.find((n) => n.id === id && n.source === source)
+  if (!item || opening.value || loading.value) return
   opening.value = true
-  const token = generation
   try {
-    // A fresh navigation key reopens a previously dismissed detail for the same plan.
-    const failed = await router.push(`${item.href}&notice=${Date.now()}`)
-    if (failed || token !== generation) return
-    await scheduleNoticeApi.read(item.id)
+    const target = await businessNoticeApi.target(item.source, item.id)
+    if (disposed) return
+    // Close the inbox before the destination dialog opens, so the cue is unobscured.
     visible.value = false
-    await load()
+    const failed = await router.push(
+      `${target.href}&business_notice=${item.source}:${item.id}&notice=${Date.now()}`,
+    )
+    if (failed) visible.value = true
   } catch (e) {
     error.value = e instanceof Error ? e.message : '消息打开失败'
+    visible.value = true
   } finally {
     opening.value = false
   }
 }
+async function opened(event: Event) {
+  const key = (event as CustomEvent<string>).detail
+  if (key !== route.query.notice) return
+  const notice = parseNotice(route.query.business_notice)
+  if (!notice) return
+  try {
+    await businessNoticeApi.read(notice.source, notice.id)
+    if (!disposed) await load()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '已打开，已读状态保存失败'
+  }
+}
+function failed(event: Event) {
+  const detail = (event as CustomEvent<{ key: string; message: string }>).detail
+  if (detail.key !== route.query.notice) return
+  error.value = detail.message
+  visible.value = true
+}
 async function readAll() {
   try {
-    await scheduleNoticeApi.readAll(latestId.value)
+    await businessNoticeApi.readAll(latestId.value)
     await load()
   } catch (e) {
     error.value = e instanceof Error ? e.message : '标记失败'
   }
 }
-function rowClass({ row }: { row: ScheduleNotice }) {
+function rowClass({ row }: { row: BusinessNotice }) {
   return row.read_at ? '' : 'is-unread'
 }
 function show() {
   visible.value = true
   void load()
 }
-function filter(value: boolean) {
-  unreadOnly.value = value
+function filter(value: string) {
+  if (category.value === value) return
+  items.value = []
+  category.value = value
   page.value = 1
 }
 const live = useLiveRefresh(load, {
   teamId: () => props.teamId,
   busy: () => loading.value || opening.value,
 })
-watch([page, unreadOnly], () => void load())
+watch([page, unreadOnly, category], () => void load())
 onMounted(() => {
+  window.addEventListener('business-notice-opened', opened)
+  window.addEventListener('business-notice-failed', failed)
   void load()
   timer = setInterval(() => {
     if (!document.hidden) live.request()
   }, 60_000)
 })
 onBeforeUnmount(() => {
+  disposed = true
+  window.removeEventListener('business-notice-opened', opened)
+  window.removeEventListener('business-notice-failed', failed)
   ++generation
   clearInterval(timer)
 })
@@ -134,17 +168,27 @@ onBeforeUnmount(() => {
   <AppDrawer
     v-model="visible"
     title="消息通知"
-    size="min(960px, 96vw)"
+    size="min(1120px, 96vw)"
     class="schedule-inbox"
     append-to-body
   >
     <div class="inbox-toolbar">
       <div class="inbox-tabs" role="group" aria-label="消息筛选">
-        <button type="button" :aria-pressed="!unreadOnly" @click="filter(false)">全部</button>
-        <button type="button" :aria-pressed="unreadOnly" @click="filter(true)">
-          未读<span v-if="unread">{{ unread }}</span>
+        <button
+          v-for="tab in [
+            { value: 'all', label: '全部' },
+            { value: 'rework', label: '返工' },
+            { value: 'schedule', label: '排期' },
+          ]"
+          :key="tab.value"
+          type="button"
+          :aria-pressed="category === tab.value"
+          @click="filter(tab.value)"
+        >
+          {{ tab.label }}
         </button>
       </div>
+      <ElCheckbox v-model="unreadOnly" @change="page = 1">仅未读 {{ unread || '' }}</ElCheckbox>
       <ElButton :disabled="!unread || loading" @click="readAll">全部已读</ElButton>
       <ElButton :icon="Refresh" aria-label="刷新消息" :loading="loading" @click="load" />
     </div>
@@ -157,13 +201,13 @@ onBeforeUnmount(() => {
       :empty-text="loading ? '读取中' : unreadOnly ? '暂无未读消息' : '暂无消息'"
       height="100%"
     >
-      <ElTableColumn label="类型" width="104"
+      <ElTableColumn label="类型" width="122"
         ><template #default="{ row }"
           ><ElTag
             :type="
               row.kind === 'overdue'
                 ? 'danger'
-                : ['due_soon', 'upstream'].includes(row.kind)
+                : ['due_soon', 'upstream', 'requested'].includes(row.kind)
                   ? 'warning'
                   : row.kind === 'cancelled'
                     ? 'info'
@@ -171,7 +215,7 @@ onBeforeUnmount(() => {
             "
             size="small"
             effect="plain"
-            >{{ labels[row.kind as ScheduleNotice['kind']] }}</ElTag
+            >{{ labels[row.kind as BusinessNotice['kind']] }}</ElTag
           ></template
         ></ElTableColumn
       >
@@ -180,26 +224,27 @@ onBeforeUnmount(() => {
           ><button
             type="button"
             class="inbox-serial"
-            :disabled="opening"
-            @click="openNotice(row.id)"
+            :disabled="opening || loading"
+            @click="openNotice(row.id, row.source)"
           >
             {{ row.serial_no }}
           </button></template
         ></ElTableColumn
       >
       <ElTableColumn prop="team_name" label="班组" width="82" />
-      <ElTableColumn prop="message" label="消息" min-width="220" />
+      <ElTableColumn prop="message" label="内容" min-width="250" align="left" />
+      <ElTableColumn v-if="category === 'rework'" prop="batch_no" label="批次号" width="172" />
       <ElTableColumn label="时间" width="146"
         ><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></ElTableColumn
       >
-      <ElTableColumn label="打开" width="64" align="center"
+      <ElTableColumn label="打开" width="64" align="center" fixed="right"
         ><template #default="{ row }"
           ><ElButton
             :icon="ArrowRight"
             size="small"
-            :aria-label="`打开 ${row.serial_no} 排期`"
-            :disabled="opening"
-            @click="openNotice(row.id)" /></template
+            :aria-label="`打开 ${row.serial_no} ${labels[row.kind as BusinessNotice['kind']]}`"
+            :disabled="opening || loading"
+            @click="openNotice(row.id, row.source)" /></template
       ></ElTableColumn>
     </ElTable>
     <template #footer
@@ -268,6 +313,9 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   margin-bottom: 16px;
+}
+.inbox-toolbar :deep(.el-checkbox) {
+  margin-right: 8px;
 }
 .inbox-tabs {
   display: flex;

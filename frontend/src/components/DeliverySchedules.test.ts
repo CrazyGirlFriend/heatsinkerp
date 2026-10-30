@@ -5,6 +5,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElInput, ElPagination, ElSelect } from 'element-plus'
 import { h, reactive } from 'vue'
 import DeliverySchedules from './DeliverySchedules.vue'
+import AppDialog from './AppDialog.vue'
+import { businessNoticeApi } from '@/services/businessNoticeApi'
+import { focusNoticeTarget, noticeOpened } from '@/utils/noticeFocus'
+vi.mock('@/services/businessNoticeApi', async (original) => ({
+  ...(await original<object>()),
+  businessNoticeApi: { target: vi.fn() },
+}))
+vi.mock('@/utils/noticeFocus', () => ({
+  focusNoticeTarget: vi.fn(() => vi.fn()),
+  noticeOpened: vi.fn(),
+  noticeFailed: vi.fn(),
+}))
 import TeamWorkspaceShell from './TeamWorkspaceShell.vue'
 import TableExportButton from './TableExportButton.vue'
 import FilterDialog from './FilterDialog.vue'
@@ -134,6 +146,7 @@ async function render(manage = false, detail = false, withinShell = false, detai
   )
   const deliveryProps = { manage, teamId: manage ? undefined : 2, fullscreen: true, detailOnly }
   const options = {
+    attachTo: document.body,
     global: {
       plugins: [router],
       stubs: {
@@ -160,6 +173,47 @@ function button(text: string) {
   return wrapper.findAll('button').find((item) => item.text() === text)!
 }
 describe('delivery schedule workbench', () => {
+  it('expands the exact historical change after the destination opens', async () => {
+    vi.mocked(businessNoticeApi.target).mockResolvedValue({ href: '', schedule_id: 5, event_id: 9 })
+    vi.mocked(productionScheduleApi.detail).mockResolvedValue({
+      ...record(),
+      history: [
+        {
+          id: 10,
+          action: 'updated',
+          actor: '管理员',
+          occurred_at: '2026-10-29T01:00:00Z',
+          before: { target_quantity: 120 },
+          after: { target_quantity: 130 },
+        },
+        {
+          id: 9,
+          action: 'updated',
+          actor: '管理员',
+          occurred_at: '2026-10-28T01:00:00Z',
+          before: { target_quantity: 100 },
+          after: { target_quantity: 120 },
+        },
+      ],
+    })
+    const router = await render()
+    await router.push(
+      '/team-workspaces/2?tab=delivery-schedule&schedule_id=5&business_notice=schedule:8&notice=click-1',
+    )
+    await flushPromises()
+    expect(noticeOpened).not.toHaveBeenCalled()
+    wrapper
+      .findAllComponents(AppDialog)
+      .find((dialog) => dialog.classes().includes('schedule-detail'))!
+      .vm.$emit('opened')
+    await flushPromises()
+    const element = vi.mocked(focusNoticeTarget).mock.calls.at(-1)?.[0]
+    expect(element?.getAttribute('data-notice-event')).toBe('9')
+    expect(element?.textContent).toContain('100')
+    expect(element?.textContent).toContain('120')
+    expect(element?.textContent).not.toContain('130')
+    expect(noticeOpened).toHaveBeenCalledWith('click-1')
+  })
   it('reuses node details on the admin board without fetching or rendering a second list', async () => {
     state.auth.isAdmin = true
     state.auth.isTeamAccount = false

@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from .admin_api import router as admin_router
 from .auth_api import router as public_router
+from .business_notices import router as business_notices_router
 from .factory_dashboard import router as dashboard_router
 from .factory_overview import router as factory_router
 from .factory_performance import router as performance_router
@@ -35,6 +36,7 @@ router.include_router(stock_router)
 router.include_router(inspection_router)
 router.include_router(quality_feedback_router)
 router.include_router(rework_notices_router)
+router.include_router(business_notices_router)
 router.include_router(production_schedule_router)
 router.include_router(process_route_router)
 router.include_router(dispatch_router)

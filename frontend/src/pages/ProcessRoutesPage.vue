@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { Refresh, Search, Setting, Plus } from '@element-plus/icons-vue'
 import {
   ElAlert,
@@ -12,7 +12,9 @@ import {
   ElTable,
   ElTableColumn,
 } from 'element-plus'
-import TeamReworkMessages from '@/components/TeamReworkMessages.vue'
+import { useRoute } from 'vue-router'
+import { businessNoticeApi, parseNotice } from '@/services/businessNoticeApi'
+import { focusNoticeTarget, noticeOpened, noticeFailed } from '@/utils/noticeFocus'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
@@ -22,6 +24,10 @@ import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute } from '@/types/processRoute'
 import { formatDateTime } from '@/utils/format'
+const location = useRoute()
+const noticeSection = ref('')
+const noticeStep = ref(0)
+let stopNoticeFocus: (() => void) | undefined
 const vLoading = ElLoading.directive
 const auth = useAuthStore(),
   directory = useTeamDirectoryStore()
@@ -82,6 +88,8 @@ function create() {
   creating.value = true
 }
 function closeEditor() {
+  stopNoticeFocus?.()
+  noticeSection.value = ''
   ++detailGeneration
   selected.value = null
   editing.value = false
@@ -134,6 +142,8 @@ function pageSizeChanged(size: number) {
   void load()
 }
 async function open(id: number, startEditing = false) {
+  noticeSection.value = ''
+  stopNoticeFocus?.()
   const request = ++detailGeneration
   error.value = ''
   try {
@@ -146,6 +156,44 @@ async function open(id: number, startEditing = false) {
     if (request === detailGeneration) error.value = e instanceof Error ? e.message : '工艺读取失败'
   }
 }
+async function openReworkNotice() {
+  const notice = parseNotice(location.query.business_notice)
+  if (notice?.source !== 'rework') return
+  const request = ++detailGeneration
+  const key = String(location.query.notice || '')
+  try {
+    const target = await businessNoticeApi.target('rework', notice.id)
+    if (request !== detailGeneration || key !== location.query.notice) return
+    await directory.refreshTeamDirectory()
+    if (request !== detailGeneration) return
+    stopNoticeFocus?.()
+    selected.value = null
+    await nextTick()
+    changeKind('rework')
+    noticeSection.value = target.section || 'problem'
+    noticeStep.value = target.step_index || 0
+    editing.value = canEdit.value && target.route?.state === 'draft'
+    selected.value = target.route || null
+  } catch (e) {
+    if (request === detailGeneration) noticeFailed(key, e)
+  }
+}
+async function focusReworkNotice() {
+  if (!noticeSection.value) return
+  await nextTick()
+  const selector =
+    noticeSection.value === 'problem'
+      ? '.route-rework-context'
+      : `[data-notice-route-step="${noticeStep.value}"]`
+  const element = document.querySelector<HTMLElement>(`.process-route-dialog ${selector}`)
+  if (!element) return
+  stopNoticeFocus?.()
+  stopNoticeFocus = focusNoticeTarget(element)
+  noticeOpened(String(location.query.notice || ''))
+}
+watch(() => [location.query.business_notice, location.query.notice], openReworkNotice, {
+  immediate: true,
+})
 useLiveRefresh(load, {
   teamId: () => (team.value ? Number(team.value.id) : undefined),
   busy: () => loading.value || !!selected.value || creating.value,
@@ -155,6 +203,7 @@ onMounted(() => {
   void load()
 })
 onBeforeUnmount(() => {
+  stopNoticeFocus?.()
   ++generation
   ++detailGeneration
 })
@@ -166,9 +215,6 @@ onBeforeUnmount(() => {
     model-value="process-routes"
     engineering
   >
-    <template v-if="canEdit && team" #messages>
-      <TeamReworkMessages :team-id="Number(team.id)" engineering @changed="load" />
-    </template>
     <template v-if="canEdit && team" #settings>
       <ElButton :icon="Setting" @click="settingsOpen = true">班组设置</ElButton>
     </template>
@@ -278,15 +324,21 @@ onBeforeUnmount(() => {
           </template>
         </ElTableColumn>
         <ElTableColumn v-if="routeKind === 'rework'" label="提交班组" width="100" align="center"
-          ><template #default="{ row }">{{
-            row.rework_request?.requesting_team_name || '未记录'
-          }}</template></ElTableColumn
+          ><template #default="{ row }"
+            ><span :class="{ 'route-empty': !row.rework_request?.requesting_team_name }">{{
+              row.rework_request?.requesting_team_name || '未记录'
+            }}</span></template
+          ></ElTableColumn
         >
         <ElTableColumn v-if="routeKind === 'rework'" label="问题来源" width="80" align="center">
           <template #default="{ row }"
             ><span
               class="rework-source"
-              :class="{ 'rework-source-inspection': row.rework_request?.inspection_id }"
+              :class="{
+                'rework-source-inspection': row.rework_request?.inspection_id,
+                'route-empty':
+                  !row.rework_request?.inspection_id && !row.rework_request?.requesting_team_id,
+              }"
               >{{
                 row.rework_request?.inspection_id
                   ? row.rework_request.inspection_kind === 'patrol'
@@ -294,7 +346,7 @@ onBeforeUnmount(() => {
                     : '检验'
                   : row.rework_request?.requesting_team_id
                     ? '班组反馈'
-                    : '来源未记录'
+                    : '未记录'
               }}</span
             ></template
           >
@@ -359,6 +411,7 @@ onBeforeUnmount(() => {
         <ElTableColumn v-if="routeKind === 'normal'" label="修改人员" min-width="110" align="center"
           ><template #default="{ row }"
             ><span
+              class="route-modifier"
               v-if="
                 row.modified_employee_name &&
                 row.modified_employee_id &&
@@ -425,6 +478,8 @@ onBeforeUnmount(() => {
         :key="selected?.id || 'new'"
         :route="selected || undefined"
         :start-editing="editing"
+        :view-only="!canEdit"
+        @opened="focusReworkNotice"
         @close="closeEditor"
         @saved="load"
       />
@@ -449,8 +504,9 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 .process-workspace {
-  --route-ink: #000;
-  --route-secondary: #646a73;
+  --route-ink: #171918;
+  --route-secondary: #606764;
+  --route-placeholder: #707772;
 }
 .process-workspace :deep(.team-workspace__title) {
   color: var(--route-ink);
@@ -550,7 +606,7 @@ onBeforeUnmount(() => {
 .rework-problem {
   display: grid;
   gap: 4px;
-  line-height: inherit;
+  line-height: 22px;
   min-width: 0;
   text-align: left;
 }
@@ -565,7 +621,7 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
 }
 .rework-source {
-  color: var(--route-ink);
+  color: var(--route-secondary);
   font-size: 12px;
 }
 .rework-source-inspection {
@@ -643,21 +699,21 @@ onBeforeUnmount(() => {
   min-height: 200px;
 }
 .process-workspace :deep(.workspace-data-panel .el-table.business-table.route-list) {
-  --el-table-header-bg-color: #f5f6f7;
-  --el-table-header-text-color: var(--route-ink);
+  --el-table-header-bg-color: #edf2ef;
+  --el-table-header-text-color: #424b46;
   --el-table-text-color: var(--route-ink);
-  --el-table-border-color: #e6e8eb;
-  --el-table-row-hover-bg-color: #f5f8f6;
-  --table-hover-bg: #f5f8f6;
-  --table-header-line: #dee0e3;
+  --el-table-border-color: #e3e8e5;
+  --el-table-row-hover-bg-color: #edf5f0;
+  --table-hover-bg: #edf5f0;
+  --table-header-line: #d3ded7;
   --table-glass-header: none;
   --table-glass-hover: none;
   --table-glass-selected-fill: none;
   --table-glass-edge: 0 0 0 transparent;
   --table-glass-hover-edge: 0 0 0 transparent;
   --table-glass-selected-edge: 0 0 0 transparent;
-  border-color: #dee0e3;
-  border-radius: 4px;
+  border-color: #d8e0db;
+  border-radius: 6px;
   box-shadow: none;
 }
 .process-workspace
@@ -665,9 +721,10 @@ onBeforeUnmount(() => {
   height: 40px;
   font-size: 13px;
   font-weight: 600;
-  background: #f5f6f7;
-  color: var(--route-ink);
-  border-color: #dee0e3;
+  background: var(--el-table-header-bg-color);
+  color: var(--el-table-header-text-color);
+  border-color: #d8e0db;
+  border-bottom-color: var(--table-header-line);
   box-shadow: none;
 }
 .process-workspace
@@ -679,13 +736,20 @@ onBeforeUnmount(() => {
   box-shadow: none;
 }
 .route-empty {
-  color: var(--route-ink);
+  color: var(--route-placeholder);
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.route-modifier {
+  color: var(--route-secondary);
   font-size: 13px;
 }
 .route-updated-at {
-  color: var(--route-ink);
+  color: var(--route-secondary);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .process-workspace :deep(.route-list .el-table__cell:first-child .cell) {
   padding-left: 16px;
@@ -716,7 +780,8 @@ onBeforeUnmount(() => {
 .process-workspace :deep(.workspace-data-panel .el-table.business-table.route-list .route-serial) {
   color: var(--route-ink);
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 500;
+  letter-spacing: 0;
   overflow-wrap: anywhere;
   max-width: 100%;
   height: auto;

@@ -33,7 +33,7 @@ import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import type { ProcessRoute, ProcessRouteStep, ProcessRouteDrawing } from '@/types/processRoute'
 import type { TeamProcessingTask, TeamPurpose } from '@/types/teamBusiness'
 const props = defineProps<{ route?: ProcessRoute; viewOnly?: boolean; startEditing?: boolean }>()
-const emit = defineEmits<{ close: []; saved: [] }>()
+const emit = defineEmits<{ opened: []; close: []; saved: [] }>()
 const visible = ref(true)
 function blankStep(sequence = 0): ProcessRouteStep {
   return {
@@ -600,6 +600,7 @@ onMounted(async () => {
     :show-close="!busy"
     :close-on-press-escape="!busy"
     @closed="emit('close')"
+    @opened="emit('opened')"
   >
     <template #header="{ titleId, titleClass }">
       <div class="route-dialog-heading">
@@ -936,6 +937,7 @@ onMounted(async () => {
                 <template v-for="(step, index) in draft.steps" :key="index">
                   <tr
                     class="route-edit-step"
+                    :data-notice-route-step="index"
                     tabindex="-1"
                     @focusin="focusOriginal(step.source_row)"
                   >

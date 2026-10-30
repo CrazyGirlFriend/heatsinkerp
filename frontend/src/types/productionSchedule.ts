@@ -61,6 +61,7 @@ export type ScheduleAuditSnapshot = Partial<ScheduleWrite> & {
   task_title?: string
   task_notes?: string | null
   task_version?: number
+  final_due_at?: string | null
 }
 export interface ScheduleBatchWrite {
   id?: number

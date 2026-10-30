@@ -19,7 +19,6 @@ import FilterDialog from '@/components/FilterDialog.vue'
 import RecordDateFilter from '@/components/RecordDateFilter.vue'
 import SerialUrgencyBadge from '@/components/SerialUrgencyBadge.vue'
 import type { CalendarRange } from '@/types/recordFilters'
-import TeamReworkMessages from '@/components/TeamReworkMessages.vue'
 import ReworkProblemDialog from '@/components/ReworkProblemDialog.vue'
 import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
 import TeamWorkspaceActions from '@/components/TeamWorkspaceActions.vue'
@@ -1128,7 +1127,6 @@ onBeforeUnmount(() => {
   >
     <template v-if="canManageBusiness && teamId" #messages>
       <ElButton v-if="canWrite" @click="reworkProblemOpen = true">提交返工问题</ElButton>
-      <TeamReworkMessages :key="teamId" :team-id="teamId" @changed="loadView" />
       <ReworkProblemDialog
         v-if="reworkProblemOpen && canWrite"
         @close="reworkProblemOpen = false"

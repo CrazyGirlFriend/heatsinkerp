@@ -1,0 +1,5 @@
+.notice-destination {
+  outline: 2px solid #b78328 !important;
+  outline-offset: -2px;
+  scroll-margin-block: 24px;
+}

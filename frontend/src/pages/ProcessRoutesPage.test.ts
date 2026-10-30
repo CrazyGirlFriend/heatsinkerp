@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
+import { createRouter, createMemoryHistory } from 'vue-router'
 import ProcessRoutesPage from './ProcessRoutesPage.vue'
 import ProcessRouteEditor from '@/components/ProcessRouteEditor.vue'
 import { processRouteApi } from '@/services/processRouteApi'
+import { businessNoticeApi } from '@/services/businessNoticeApi'
 import { routeFixture, reworkRouteFixture } from '@/testFixtures/processRoute'
 const state = vi.hoisted(() => ({ admin: true }))
 vi.mock('@/stores/auth', () => ({
@@ -48,9 +50,16 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render() {
+async function render(query: Record<string, string> = {}) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/process-routes', component: ProcessRoutesPage }],
+  })
+  await router.push({ path: '/process-routes', query })
+  await router.isReady()
   wrapper = mount(ProcessRoutesPage, {
     global: {
+      plugins: [router],
       directives: { loading: () => {} },
       stubs: {
         TeamBusinessDialog: true,
@@ -147,6 +156,22 @@ it('omits editing actions for a production account while keeping serial details 
   await wrapper.get('button.route-serial').trigger('click')
   await flushPromises()
   expect(wrapper.getComponent(ProcessRouteEditor).props('startEditing')).toBe(false)
+})
+it('opens a rework notice for a production account with viewing permission only', async () => {
+  state.admin = false
+  const target = vi.spyOn(businessNoticeApi, 'target').mockResolvedValue({
+    href: '/process-routes?rework_notice=7',
+    section: 'steps',
+    step_index: 0,
+    route: { ...reworkRouteFixture, state: 'published' },
+  })
+  await render({ business_notice: 'rework:7', notice: 'open-7' })
+  expect(target).toHaveBeenCalledWith('rework', 7)
+  expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'desc', 20, 'rework')
+  const editor = wrapper.getComponent(ProcessRouteEditor)
+  expect(editor.props('route')?.id).toBe(reworkRouteFixture.id)
+  expect(editor.props('viewOnly')).toBe(true)
+  expect(editor.props('startEditing')).toBe(false)
 })
 it('requests global time ordering and resets to page one on sort or size changes', async () => {
   await render()

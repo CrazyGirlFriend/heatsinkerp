@@ -1243,6 +1243,18 @@ class ReworkNotice(Base):
     )
 
 
+class ReworkNoticeRead(Base):
+    __tablename__ = "rework_notice_reads"
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    notice_id: Mapped[int] = mapped_column(
+        ForeignKey("rework_notices.id", ondelete="CASCADE"), primary_key=True
+    )
+    read_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    __table_args__ = (Index("ix_rnr_notice", "notice_id"),)
+
+
 class ProcessRouteSerial(Base):
     """One normal engineering identity, shared by its immutable revisions."""
 

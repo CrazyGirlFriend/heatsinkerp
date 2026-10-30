@@ -1,3 +1,4 @@
+import '@/styles/notice-focus.css'
 import { createApp } from 'vue'
 import App from './App.vue'
 import { installDiagnostics } from './services/diagnostics'

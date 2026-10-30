@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { Refresh, Search, Plus } from '@element-plus/icons-vue'
 import {
@@ -18,6 +18,8 @@ import {
   ElTag,
 } from 'element-plus'
 import AppDialog from './AppDialog.vue'
+import { businessNoticeApi, parseNotice, type NoticeTarget } from '@/services/businessNoticeApi'
+import { focusNoticeTarget, noticeOpened, noticeFailed } from '@/utils/noticeFocus'
 import FilterDialog from './FilterDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import StatePanel from './StatePanel.vue'
@@ -200,6 +202,73 @@ function paginate(next: number, size = pageSize.value) {
 function destination(row: ProductionSchedule) {
   return row.next_team_name || row.external_destination || '—'
 }
+function noticeBatchClass({ row }: { row: { id: number } }) {
+  return `notice-batch-${row.id}`
+}
+const noticeTarget = ref<NoticeTarget | null>(null)
+const detailOpened = ref(false)
+const expandedEvents = ref<number[]>([])
+let stopNoticeFocus: (() => void) | undefined
+let landingGeneration = 0
+let focusedNotice = ''
+async function openScheduleNotice() {
+  const token = ++landingGeneration
+  const id = route.query.schedule_id
+  if (typeof id !== 'string' || !/^\d+$/.test(id)) return
+  const notice = parseNotice(route.query.business_notice)
+  noticeTarget.value = null
+  expandedEvents.value = []
+  focusedNotice = ''
+  stopNoticeFocus?.()
+  if (notice?.source !== 'schedule') {
+    await openDetail(Number(id))
+    return
+  }
+  const key = String(route.query.notice || '')
+  try {
+    const target = await businessNoticeApi.target('schedule', notice.id)
+    if (token !== landingGeneration || key !== route.query.notice) return
+    if (target.schedule_id !== Number(id)) throw new Error('排期与消息不一致，请重新打开消息')
+    noticeTarget.value = target
+    await openDetail(target.schedule_id)
+    if (token !== landingGeneration) return
+    if (!detail.value) throw new Error(detailError.value || '排期读取失败')
+    await focusScheduleNotice()
+  } catch (e) {
+    if (token === landingGeneration) noticeFailed(key, e)
+  }
+}
+async function focusScheduleNotice() {
+  const target = noticeTarget.value
+  const key = String(route.query.notice || '')
+  if (!target || !detail.value || !detailOpened.value || focusedNotice === key) return
+  if (detail.value.id !== target.schedule_id) return
+  let eventId = target.event_id
+  if (target.batch_id && !detail.value.batches?.some((b) => b.id === target.batch_id)) {
+    // A removed batch must lead to its history, not highlight a different current batch.
+    eventId = detail.value.history?.find((event) =>
+      event.before?.batches?.some((b) => b.id === target.batch_id),
+    )?.id
+  }
+  if (eventId) expandedEvents.value = [eventId]
+  await nextTick()
+  if (noticeTarget.value !== target || key !== route.query.notice) return
+  const selector = eventId
+    ? `[data-notice-event="${eventId}"]`
+    : target.batch_id
+      ? `.notice-batch-${target.batch_id}`
+      : '.schedule-summary'
+  const element = document.querySelector<HTMLElement>(`.schedule-detail ${selector}`)
+  if (!element) {
+    noticeFailed(key, new Error('对应记录已调整，未能定位，请从排期明细查看'))
+    return
+  }
+  stopNoticeFocus?.()
+  stopNoticeFocus = focusNoticeTarget(element)
+  focusedNotice = key
+  noticeOpened(key)
+}
+watch([detailOpened, detail], () => void focusScheduleNotice(), { flush: 'post' })
 async function openDetail(id: number) {
   const token = ++detailGeneration
   detailId.value = id
@@ -237,6 +306,10 @@ async function loadTask(id: number, token = detailGeneration) {
   }
 }
 function closeDetail() {
+  ++landingGeneration
+  detailOpened.value = false
+  noticeTarget.value = null
+  stopNoticeFocus?.()
   ++detailGeneration
   detailId.value = undefined
   detail.value = null
@@ -467,20 +540,36 @@ function changes(event: NonNullable<ProductionSchedule['history']>[number]) {
       before: auditValue(key, event.before),
       after: auditValue(key, event.after),
     }))
-  const batchText = (
-    b: NonNullable<NonNullable<ProductionSchedule['history']>[number]['after']>['batches'],
-  ) =>
-    (b || [])
-      .map(
-        (row) =>
-          `第 ${row.batch_number} 批：${formatAmount(row.target_quantity)} 件 / ${formatAmount(row.target_weight)} kg，${formatDateTime(row.planned_start_at)} — ${formatDateTime(row.due_at)}`,
-      )
-      .join('；') || '未安排'
-  if (JSON.stringify(event.before?.batches) !== JSON.stringify(event.after?.batches))
+  const oldBatches = new Map((event.before?.batches || []).map((b) => [b.batch_number, b]))
+  const newBatches = new Map((event.after?.batches || []).map((b) => [b.batch_number, b]))
+  for (const number of new Set([...oldBatches.keys(), ...newBatches.keys()])) {
+    const before = oldBatches.get(number),
+      after = newBatches.get(number)
+    for (const [key, label] of [
+      ['planned_start_at', '开始'],
+      ['due_at', '转出'],
+      ['target_quantity', '数量（件）'],
+      ['target_weight', '重量（kg）'],
+    ] as const) {
+      if (before?.[key] === after?.[key]) continue
+      const value = (b: typeof before) =>
+        !b
+          ? '未安排'
+          : key.endsWith('_at')
+            ? formatDateTime(b[key] as string | null)
+            : formatAmount(b[key] as number | null)
+      items.push({
+        label: `第 ${number} 批 · ${label}`,
+        before: value(before),
+        after: value(after),
+      })
+    }
+  }
+  if (event.before?.final_due_at !== event.after?.final_due_at)
     items.push({
-      label: '分批排期',
-      before: batchText(event.before?.batches),
-      after: batchText(event.after?.batches),
+      label: '最终交期',
+      before: formatDateTime(event.before?.final_due_at),
+      after: formatDateTime(event.after?.final_due_at),
     })
   if (event.after?.reason) items.push({ label: '取消原因', before: '—', after: event.after.reason })
   for (const [key, label] of [
@@ -529,13 +618,7 @@ watch(
     live.request()
   },
 )
-watch(
-  () => [route.query.schedule_id, route.query.notice],
-  ([id]) => {
-    if (typeof id === 'string' && /^\d+$/.test(id)) void openDetail(Number(id))
-  },
-  { immediate: true },
-)
+watch(() => [route.query.schedule_id, route.query.notice], openScheduleNotice, { immediate: true })
 watch(canManage, (value) => {
   if (!value) {
     editing.value = false
@@ -546,6 +629,8 @@ onMounted(() => {
   if (!props.detailOnly) clockRefresh = setInterval(live.request, 60_000)
 })
 onBeforeUnmount(() => {
+  ++landingGeneration
+  stopNoticeFocus?.()
   ++generation
   ++detailGeneration
   ++dispatchGeneration
@@ -757,9 +842,10 @@ defineExpose({ exportSource, openDetail })
     </template>
     <AppDialog
       :model-value="!!detailId"
-      title="交货排期明细"
+      :title="noticeTarget && detail ? `${detail.serial_no} · ${detail.team_name}` : '交货排期明细'"
       width="min(1120px, 94vw)"
       class="schedule-detail"
+      @opened="detailOpened = true"
       append-to-body
       @close="closeDetail"
     >
@@ -811,7 +897,7 @@ defineExpose({ exportSource, openDetail })
         >
           原交货时间：{{ formatDateTime(detail.initial_due_at) }}
         </p>
-        <ElDescriptions :column="3" border>
+        <ElDescriptions class="schedule-summary" :column="3" border>
           <ElDescriptionsItem label="计量方式">{{
             detail.completion_basis ? completionBasisLabels[detail.completion_basis] : '—'
           }}</ElDescriptionsItem>
@@ -871,6 +957,8 @@ defineExpose({ exportSource, openDetail })
         <div class="schedule-section-heading"><h3>分批排期</h3></div>
         <ElTable
           :data="detail.batches || []"
+          row-key="id"
+          :row-class-name="noticeBatchClass"
           border
           class="business-table"
           empty-text="待班组安排批次"
@@ -1035,8 +1123,12 @@ defineExpose({ exportSource, openDetail })
           >
         </ElTable>
         <div class="schedule-section-heading"><h3>排期调整记录</h3></div>
-        <ElCollapse class="schedule-audit"
-          ><ElCollapseItem v-for="event in detail.history || []" :key="event.id" :name="event.id"
+        <ElCollapse v-model="expandedEvents" class="schedule-audit"
+          ><ElCollapseItem
+            v-for="event in detail.history || []"
+            :key="event.id"
+            :name="event.id"
+            :data-notice-event="event.id"
             ><template #title
               ><span
                 >{{ formatDateTime(event.occurred_at) }} · {{ event.actor }} ·

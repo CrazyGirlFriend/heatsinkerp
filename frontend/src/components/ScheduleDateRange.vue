@@ -227,7 +227,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
     inset 0 1px 0 #fff,
     0 1px 3px #204e3508;
   color: var(--text);
-  font-size: 12px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 .schedule-date-trigger :deep(> span) {
