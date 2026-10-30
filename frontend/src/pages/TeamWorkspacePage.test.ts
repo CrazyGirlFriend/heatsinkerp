@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import FilterDialog from '@/components/FilterDialog.vue'
 import { ElCheckbox, ElSelect } from 'element-plus'
+import WorkspaceTools from '@/components/WorkspaceTools.vue'
 import TeamWorkspacePage from './TeamWorkspacePage.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
 import TeamProcessingRecords from '@/components/TeamProcessingRecords.vue'
@@ -196,6 +197,7 @@ async function render(path = '/team-workspaces/914', animate = false) {
     global: {
       plugins: [router],
       stubs: {
+        ElPopover: { template: '<div><slot name="reference" /><slot /></div>' },
         transition: !animate,
         StockSourcePicker: true,
         DeliverySchedules: true,
@@ -208,7 +210,11 @@ async function render(path = '/team-workspaces/914', animate = false) {
         MaterialStockActionDialog: true,
         SerialReallocationDialog: true,
         WarehouseReceiptDialog: true,
-        WarehouseManagement: true,
+        WarehouseManagement: {
+          props: ['canManage'],
+          components: { WorkspaceTools },
+          template: '<div><WorkspaceTools /></div>',
+        },
       },
     },
   })
@@ -1246,7 +1252,7 @@ describe('team workspace material ledger', () => {
     const toolbar = ['serials', 'stock'].includes(tab)
       ? '.serial-toolbar'
       : ['overview', 'history'].includes(tab)
-        ? '.history-header'
+        ? '.history-query-bar'
         : ['materials', 'material-types'].includes(tab)
           ? '.ledger-toolbar'
           : '.list-toolbar'
@@ -1258,7 +1264,7 @@ describe('team workspace material ledger', () => {
       expect(wrapper.get('.incoming-scan .scanner-inline').text()).toContain('入库')
     } else expect(actions.text()).toContain('扫码入库')
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(1)
-    expect(wrapper.find('.team-workspace__settings [aria-label="班组设置"]').exists()).toBe(true)
+    expect(wrapper.find('.workspace-more-menu [aria-label="班组设置"]').exists()).toBe(true)
     expect(actions.find('[aria-label="班组设置"]').exists()).toBe(false)
     expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(12)
     expect(wrapper.find('.team-workspace__heading').exists()).toBe(true)
@@ -1304,7 +1310,7 @@ describe('team workspace material ledger', () => {
     expect(toolbar.find('input[aria-label="物料搜索"]').exists()).toBe(true)
     expect(toolbar.find('input[aria-label="扫描转料批次号"]').exists()).toBe(false)
     expect(wrapper.find('.incoming-scan input[aria-label="扫描转料批次号"]').exists()).toBe(true)
-    expect(toolbar.find('.workspace-toolbar-actions .workspace-actions').exists()).toBe(true)
+    expect(toolbar.find('.workspace-more-menu .workspace-actions').exists()).toBe(true)
     expect(toolbar.findAll('button').filter((button) => button.text() === '查询')).toHaveLength(1)
     expect(toolbar.find('.record-date-trigger').exists()).toBe(false)
     const filters = wrapper.getComponent(FilterDialog)

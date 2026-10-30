@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { sharedSerialLabel } from '@/types/sharedMaterial'
+import WorkspaceTools from './WorkspaceTools.vue'
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
 import { useProcessRouteView } from '@/composables/useProcessRouteView'
 import { useRoute, useRouter } from 'vue-router'
-import { Refresh, Search } from '@element-plus/icons-vue'
+import { Search } from '@element-plus/icons-vue'
 import {
   ElAlert,
   ElButton,
@@ -545,7 +546,7 @@ onBeforeUnmount(() => {
         :variants="exportVariants"
         :disabled="loading || !!error"
         :context="route.fullPath"
-      /><ElButton :icon="Refresh" :loading="loading" aria-label="刷新加工记录" @click="load()" />
+      /><WorkspaceTools refresh :loading="loading" @refresh="load()" />
       <ElButton v-if="canWrite && !fullscreen" type="primary" @click="emit('register')"
         >加工登记</ElButton
       >

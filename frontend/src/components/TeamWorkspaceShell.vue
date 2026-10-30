@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { FullScreen, ScaleToOriginal, Upload } from '@element-plus/icons-vue'
 import { ElButton } from 'element-plus'
+import { workspaceToolsKey } from '@/utils/workspaceTools'
 import PageBackButton from '@/components/PageBackButton.vue'
+import WorkspaceTools from './WorkspaceTools.vue'
 import {
   teamWorkspaceSections,
   teamWorkspaceSectionsFor,
@@ -22,11 +24,13 @@ const props = defineProps<{
   qualityCount?: number
   pendingCount?: number | null
   exportable?: boolean
+  settings?: boolean
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: TeamWorkspaceSection]
   'fullscreen-change': [value: boolean]
   export: []
+  settings: []
 }>()
 const sections = computed(() =>
   props.engineering
@@ -65,6 +69,32 @@ const canFullscreen = computed(() =>
     'material-types',
   ].includes(props.modelValue),
 )
+const contentTools = computed(() =>
+  [
+    'stock',
+    'pending',
+    'receipts',
+    'processing',
+    'outgoing',
+    'reallocations',
+    'losses',
+    'materials',
+    'material-types',
+    'warehouse',
+    'overview',
+    'history',
+  ].includes(props.modelValue),
+)
+provide(workspaceToolsKey, {
+  fullscreen,
+  fullscreenBusy,
+  canFullscreen,
+  exportable: computed(() => !!props.exportable),
+  settings: computed(() => !!props.settings),
+  toggleFullscreen,
+  export: () => emit('export'),
+  openSettings: () => emit('settings'),
+})
 let ownsFullscreen = false,
   disposed = false
 function exitFullscreen() {
@@ -154,22 +184,14 @@ onBeforeUnmount(() => {
     :aria-label="title + '工作台'"
   >
     <h1 id="workspace-page-heading" class="sr-only">{{ sectionLabel }}</h1>
-    <header class="team-workspace__navigation-row">
+    <header v-if="fullscreen" class="team-workspace__navigation-row">
       <strong v-if="fullscreen" class="team-workspace__team"
         >{{ title }} · {{ sectionLabel }}</strong
       >
-      <div v-else class="team-workspace__heading page-heading-start">
-        <PageBackButton /><strong class="team-workspace__title">{{
-          title.endsWith('工作台') ? title : title + '工作台'
-        }}</strong>
-      </div>
       <div v-if="fullscreen && $slots['fullscreen-status']" class="team-workspace__status">
         <slot name="fullscreen-status" />
       </div>
-      <div
-        v-if="canFullscreen || $slots.settings || $slots.messages"
-        class="team-workspace__commands"
-      >
+      <div v-if="canFullscreen || $slots.messages" class="team-workspace__commands">
         <slot name="messages" />
         <div v-if="canFullscreen" class="team-workspace__view-actions">
           <ElButton
@@ -187,43 +209,46 @@ onBeforeUnmount(() => {
             >{{ fullscreen ? '退出全屏' : '全屏查看' }}</ElButton
           >
         </div>
-        <div
-          v-if="$slots.settings"
-          v-show="!fullscreen"
-          class="team-workspace__settings"
-          :class="{ 'team-workspace__settings--separated': canFullscreen }"
-        >
-          <slot name="settings" />
-        </div>
       </div>
     </header>
-    <nav
-      v-show="!fullscreen && sections.length > 1"
-      ref="navigation"
-      class="team-workspace__navigation"
-      :aria-label="title + '功能'"
-    >
-      <ElButton
-        v-for="section in sections"
-        :key="section.value"
-        text
-        class="team-workspace__section"
-        :class="{ 'is-current': modelValue === section.value }"
-        :aria-current="modelValue === section.value ? 'page' : undefined"
-        aria-controls="workspace-panel"
-        @click="emit('update:modelValue', section.value)"
+    <div v-show="!fullscreen" class="team-workspace__navigation-bar">
+      <div class="team-workspace__heading page-heading-start">
+        <PageBackButton /><strong class="team-workspace__title">{{ title }}</strong>
+      </div>
+      <nav
+        v-show="sections.length > 1"
+        ref="navigation"
+        class="team-workspace__navigation"
+        :aria-label="title + '功能'"
       >
-        {{ section.label
-        }}<span
-          v-if="
-            (section.value === 'pending' && pendingCount) ||
-            (section.value === 'quality-feedback' && qualityCount)
-          "
-          class="team-workspace__pending"
-          >{{ section.value === 'pending' ? pendingCount : qualityCount }}</span
+        <ElButton
+          v-for="section in sections"
+          :key="section.value"
+          text
+          class="team-workspace__section"
+          :class="{ 'is-current': modelValue === section.value }"
+          :aria-current="modelValue === section.value ? 'page' : undefined"
+          aria-controls="workspace-panel"
+          @click="emit('update:modelValue', section.value)"
         >
-      </ElButton>
-    </nav>
+          {{ section.label
+          }}<span
+            v-if="
+              (section.value === 'pending' && pendingCount) ||
+              (section.value === 'quality-feedback' && qualityCount)
+            "
+            class="team-workspace__pending"
+            >{{ section.value === 'pending' ? pendingCount : qualityCount }}</span
+          >
+        </ElButton>
+      </nav>
+      <div v-if="$slots.messages || !contentTools" class="team-workspace__commands">
+        <slot v-if="!fullscreen" name="messages" />
+        <WorkspaceTools v-if="!contentTools"
+          ><template v-if="$slots.settings" #actions><slot name="settings" /></template
+        ></WorkspaceTools>
+      </div>
+    </div>
     <div
       id="workspace-panel"
       class="team-workspace__content"
@@ -239,7 +264,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .team-workspace {
   gap: 0;
-  padding: 26px 28px 24px;
+  padding: 18px 24px 20px;
 }
 .page.team-workspace.reading-workspace {
   background: transparent;
@@ -253,63 +278,48 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 18px;
   min-width: 0;
-  min-height: 55px;
-  margin-bottom: 21px;
+  min-height: 36px;
+  margin-bottom: 8px;
+}
+.team-workspace__navigation-bar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  margin-bottom: 12px;
 }
 .team-workspace__heading {
   display: flex;
   align-items: center;
-  flex: 1;
+  flex: 0 0 auto;
   gap: 12px;
   min-width: 0;
 }
 .team-workspace__title {
-  min-width: 0;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 29px;
-  font-weight: 640;
-  letter-spacing: -0.9px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
 }
-.team-workspace__commands {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  padding: 4px;
-  border-radius: 24px;
-  background: var(--glass-chrome-fill);
-  -webkit-backdrop-filter: blur(10px) saturate(125%);
-  backdrop-filter: blur(10px) saturate(125%);
-  box-shadow:
-    0 5px 13px #233e2d12,
-    0 0 0 0.5px #4b6c581a,
-    inset 0 1px 1px #fff,
-    inset 0 -1px 1px #ffffffb8;
-}
-.team-workspace__settings,
+.team-workspace__commands,
 .team-workspace__view-actions {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 2px;
-}
-.team-workspace__settings--separated::before {
-  content: '';
-  width: 1px;
-  height: 20px;
-  margin-inline: 5px;
-  background: var(--line);
+  gap: 4px;
+  margin-left: auto;
 }
 .team-workspace__commands :deep(.el-button) {
   height: 32px;
   margin: 0;
-  padding-inline: 13px;
-  border-radius: 20px;
+  padding-inline: 10px;
+  border: 0;
+  border-radius: 9px;
   font-size: 13px;
-  font-weight: 500;
 }
 .team-workspace__commands :deep(.el-button:focus-visible) {
   outline: 2px solid var(--primary);
@@ -332,15 +342,14 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 .team-workspace--fullscreen .team-workspace__navigation-row {
-  min-height: 40px;
-  margin-bottom: 12px;
+  min-height: 32px;
+  margin-bottom: 8px;
 }
 .team-workspace__navigation {
   display: flex;
-  flex: 0 0 auto;
+  flex: 1;
   min-width: 0;
-  margin-bottom: 20px;
-  padding: 5px;
+  padding: 3px;
   overflow-x: auto;
   border-radius: 24px;
   background: var(--glass-chrome-fill);
@@ -357,13 +366,13 @@ onBeforeUnmount(() => {
 .team-workspace__section.el-button {
   flex: 1 0 auto;
   min-width: max-content;
-  height: 35px;
+  height: 32px;
   margin: 0;
-  padding: 0 16px;
+  padding: 0 12px;
   border-radius: 20px;
   color: var(--muted);
   background: transparent;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   transition:
     background-color var(--motion-standard) ease,
@@ -422,21 +431,21 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 1280px) {
   .team-workspace {
-    padding: 21px 20px;
+    padding: 16px 18px;
   }
   .team-workspace__title {
-    font-size: 26px;
+    font-size: 18px;
   }
 }
 @media (max-width: 1080px) {
   .team-workspace {
-    padding: 18px 15px;
+    padding: 14px 15px;
   }
   .team-workspace__navigation-row {
     gap: 12px;
   }
   .team-workspace__title {
-    font-size: 24px;
+    font-size: 18px;
   }
   .team-workspace__section.el-button {
     padding-inline: 13px;
@@ -446,17 +455,19 @@ onBeforeUnmount(() => {
   .team-workspace {
     padding: 12px;
   }
-  .team-workspace__navigation-row {
+  .team-workspace__navigation-row,
+  .team-workspace__navigation-bar {
     flex-wrap: wrap;
   }
-  .team-workspace__heading {
+  .team-workspace__navigation {
     flex-basis: 100%;
+    order: 2;
   }
   .team-workspace__commands {
-    margin-left: 0;
+    margin-left: auto;
   }
   .team-workspace__title {
-    font-size: 22px;
+    font-size: 18px;
   }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {

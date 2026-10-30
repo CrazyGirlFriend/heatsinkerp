@@ -451,7 +451,14 @@ onBeforeUnmount(() => {
   margin-right: auto;
 }
 .factory-heading-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
   margin-right: auto;
+  flex-wrap: wrap;
+}
+.factory-heading-title p {
+  margin: 0;
 }
 .factory-controls {
   display: flex;

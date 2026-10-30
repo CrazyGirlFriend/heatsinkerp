@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { h } from 'vue'
+import WorkspaceTools from './WorkspaceTools.vue'
 import TeamWorkspaceShell from './TeamWorkspaceShell.vue'
 vi.mock('@/components/PageBackButton.vue', () => ({ default: { template: '<span />' } }))
 
@@ -34,12 +36,21 @@ function nativeFullscreen() {
   })
   return { change, request, exit }
 }
+function mountShell(options: {
+  props: InstanceType<typeof TeamWorkspaceShell>['$props']
+  slots?: Record<string, string>
+}) {
+  const content = { template: options.slots?.default || '<span />' }
+  return mount(TeamWorkspaceShell, {
+    ...options,
+    global: { stubs: { teleport: true } },
+    slots: { ...options.slots, default: () => [h(WorkspaceTools), h(content)] },
+  })
+}
 describe('workspace with in-page navigation', () => {
   it('retains the reading layout and selects each warehouse section below the team title', async () => {
-    wrapper = mount(TeamWorkspaceShell, {
-      props: { title: '库房', modelValue: 'stock', warehouse: true },
-    })
-    expect(wrapper.get('.team-workspace__title').text()).toBe('库房工作台')
+    wrapper = mountShell({ props: { title: '库房', modelValue: 'stock', warehouse: true } })
+    expect(wrapper.get('.team-workspace__title').text()).toBe('库房')
     for (const [modelValue, label] of [
       ['stock', '库存明细'],
       ['delivery-schedule', '交货排期'],
@@ -70,7 +81,7 @@ describe('workspace with in-page navigation', () => {
     expect(wrapper.findAll('nav button')).toHaveLength(10)
   })
   it('keeps actions inside the data toolbar and hides warehouse-only sections for other teams', async () => {
-    wrapper = mount(TeamWorkspaceShell, {
+    wrapper = mountShell({
       props: { title: '研磨', modelValue: 'stock' },
       slots: { default: '<div><header><button>新建出库</button></header>库存数据</div>' },
     })
@@ -95,7 +106,7 @@ describe('workspace with in-page navigation', () => {
     expect(wrapper.get('h1').classes()).toContain('sr-only')
   })
   it('updates pending counts without replacing the data region or showing stale zero counts', async () => {
-    wrapper = mount(TeamWorkspaceShell, {
+    wrapper = mountShell({
       props: { title: '研磨', modelValue: 'stock', pendingCount: 23 },
       slots: { default: '<input value="未提交内容" />' },
     })
@@ -110,7 +121,7 @@ describe('workspace with in-page navigation', () => {
     }
   })
   it('keeps every permission-dependent section available when there are more than nine tabs', async () => {
-    wrapper = mount(TeamWorkspaceShell, {
+    wrapper = mountShell({
       props: {
         title: '库房',
         modelValue: 'stock',
@@ -134,32 +145,78 @@ describe('workspace with in-page navigation', () => {
     })
     expect(wrapper.findAll('nav button')).toHaveLength(10)
   })
-  it('preserves export and settings permissions in the header and fullscreen commands', async () => {
+  it('keeps export and fullscreen in the data toolbar and settings in More with permissions', async () => {
     nativeFullscreen()
-    wrapper = mount(TeamWorkspaceShell, {
-      props: { title: '轧制', modelValue: 'stock', exportable: true },
-      slots: {
-        settings: '<button>班组设置</button>',
-        'fullscreen-status': '<span role="status">连接中断</span>',
-      },
+    wrapper = mountShell({
+      props: { title: '轧制', modelValue: 'stock', exportable: true, settings: true },
+      slots: { 'fullscreen-status': '<span role="status">连接中断</span>' },
     })
-    const settings = wrapper.get('.team-workspace__settings button').element
+    expect(wrapper.find('.team-workspace__navigation-row').exists()).toBe(false)
+    expect(wrapper.get('[role=region] .team-workspace__export').text()).toBe('导出')
+    await wrapper.get('[aria-label="更多操作"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[aria-label="班组设置"]').trigger('click')
+    expect(wrapper.emitted('settings')).toEqual([[]])
     await wrapper.get('.team-workspace__export').trigger('click')
     await wrapper.get('.team-workspace__fullscreen').trigger('click')
     await flushPromises()
-    expect(wrapper.get('.team-workspace__settings').attributes('style')).toContain('display: none')
+    expect(wrapper.find('[aria-label="班组设置"]').exists()).toBe(false)
     expect(wrapper.get('.team-workspace__status').text()).toBe('连接中断')
     await wrapper.get('.team-workspace__export').trigger('click')
     expect(wrapper.emitted('export')).toEqual([[], []])
     await wrapper.get('.team-workspace__fullscreen').trigger('click')
     await flushPromises()
-    expect(wrapper.get('.team-workspace__settings button').element).toBe(settings)
-    expect(wrapper.get('.team-workspace__settings').attributes('style') || '').not.toContain(
-      'display: none',
-    )
-    await wrapper.setProps({ exportable: false })
+    await wrapper.setProps({ exportable: false, settings: false })
     expect(wrapper.find('.team-workspace__export').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="更多操作"]').exists()).toBe(false)
   })
+  it.each([
+    'delivery-schedule',
+    'inspections',
+    'inspection-results',
+    'quality-feedback',
+    'process-routes',
+  ])(
+    'retains settings, messages and fullscreen for %s without a legacy toolbar',
+    async (modelValue) => {
+      nativeFullscreen()
+      const engineering = modelValue === 'process-routes'
+      wrapper = mount(TeamWorkspaceShell, {
+        props: {
+          title: engineering ? '工艺' : '检验',
+          modelValue,
+          engineering,
+          inspection: true,
+          qualityCount: 3,
+          settings: !engineering,
+        },
+        global: { stubs: { teleport: true } },
+        slots: {
+          messages: '<button data-message>提交返工问题</button>',
+          ...(engineering ? { settings: '<button data-settings>班组设置</button>' } : {}),
+        },
+      })
+      expect(wrapper.findAll('.team-workspace__fullscreen')).toHaveLength(1)
+      expect(wrapper.findAll('[data-message]')).toHaveLength(1)
+      if (!engineering) expect(wrapper.get('nav').text()).toContain('质量反馈3')
+      await wrapper.get('[aria-label="更多操作"]').trigger('click')
+      await flushPromises()
+      if (engineering) expect(wrapper.get('[data-settings]').text()).toBe('班组设置')
+      else {
+        await wrapper.get('[aria-label="班组设置"]').trigger('click')
+        expect(wrapper.emitted('settings')).toEqual([[]])
+      }
+      await wrapper.get('.team-workspace__fullscreen').trigger('click')
+      await flushPromises()
+      expect(wrapper.findAll('[data-message]')).toHaveLength(1)
+      expect(wrapper.findAll('.team-workspace__fullscreen')).toHaveLength(1)
+      expect(wrapper.classes('team-workspace--fullscreen')).toBe(true)
+      await wrapper.get('.team-workspace__fullscreen').trigger('click')
+      await flushPromises()
+      expect(wrapper.classes('team-workspace--fullscreen')).toBe(false)
+      expect(wrapper.findAll('[data-message]')).toHaveLength(1)
+    },
+  )
   it('reveals the selected section on narrow screens without scrolling the page and cleans up', async () => {
     let resize = () => undefined as void
     const disconnect = vi.fn(),
@@ -174,7 +231,7 @@ describe('workspace with in-page navigation', () => {
         disconnect = disconnect
       },
     )
-    wrapper = mount(TeamWorkspaceShell, { props: { title: '研磨', modelValue: 'stock' } })
+    wrapper = mountShell({ props: { title: '研磨', modelValue: 'stock' } })
     const nav = wrapper.get('nav').element
     Object.defineProperties(nav, { clientWidth: { value: 300 }, scrollWidth: { value: 600 } })
     vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue({ left: 10, right: 310 } as DOMRect)
@@ -204,7 +261,7 @@ describe('workspace with in-page navigation', () => {
   })
   it('expands the document with its dialogs and preserves the data region on entry and exit', async () => {
     const native = nativeFullscreen()
-    wrapper = mount(TeamWorkspaceShell, {
+    wrapper = mountShell({
       props: { title: '研磨', modelValue: 'stock' },
       slots: { default: '<input value="未提交内容" />' },
     })
@@ -215,7 +272,9 @@ describe('workspace with in-page navigation', () => {
     expect(document.fullscreenElement).toBe(document.documentElement)
     expect(wrapper.classes()).toContain('team-workspace--fullscreen')
     expect(wrapper.get('.team-workspace__team').text()).toBe('研磨 · 库存明细')
-    expect(wrapper.get('nav').attributes('style')).toContain('display: none')
+    expect(wrapper.get('.team-workspace__navigation-bar').attributes('style')).toContain(
+      'display: none',
+    )
     expect(wrapper.get('.team-workspace__fullscreen').attributes('aria-pressed')).toBe('true')
     await wrapper.setProps({ modelValue: 'materials' })
     expect(wrapper.classes('team-workspace--fullscreen')).toBe(true)
@@ -224,13 +283,15 @@ describe('workspace with in-page navigation', () => {
     await flushPromises()
     expect(native.exit).toHaveBeenCalledOnce()
     expect(wrapper.get('input').element).toBe(input)
-    expect(wrapper.get('nav').attributes('style') || '').not.toContain('display: none')
+    expect(wrapper.get('.team-workspace__navigation-bar').attributes('style') || '').not.toContain(
+      'display: none',
+    )
     expect(wrapper.emitted('fullscreen-change')).toEqual([[true], [false]])
   })
   it('uses a viewport fallback when native fullscreen fails and exits with Escape', async () => {
     const native = nativeFullscreen()
     native.request.mockRejectedValue(new Error('Unavailable'))
-    wrapper = mount(TeamWorkspaceShell, { props: { title: '检验', modelValue: 'material-types' } })
+    wrapper = mountShell({ props: { title: '检验', modelValue: 'material-types' } })
     await wrapper.get('.team-workspace__fullscreen').trigger('click')
     await flushPromises()
     expect(wrapper.classes('team-workspace--fullscreen')).toBe(true)
@@ -241,7 +302,7 @@ describe('workspace with in-page navigation', () => {
   })
   it('follows browser fullscreen exit and leaves fullscreen on team or non-table navigation', async () => {
     const native = nativeFullscreen()
-    wrapper = mount(TeamWorkspaceShell, {
+    wrapper = mountShell({
       props: { title: '库房', modelValue: 'stock', warehouse: true, manageWarehouse: true },
     })
     await wrapper.get('.team-workspace__fullscreen').trigger('click')
@@ -274,7 +335,7 @@ describe('workspace with in-page navigation', () => {
           }
         }),
     )
-    wrapper = mount(TeamWorkspaceShell, { props: { title: '库房', modelValue: 'stock' } })
+    wrapper = mountShell({ props: { title: '库房', modelValue: 'stock' } })
     await wrapper.get('.team-workspace__fullscreen').trigger('click')
     await wrapper.get('.team-workspace__fullscreen').trigger('click')
     expect(native.request).toHaveBeenCalledOnce()
@@ -289,7 +350,7 @@ describe('workspace with in-page navigation', () => {
     const native = nativeFullscreen()
     const unrelated = document.createElement('video')
     native.change(unrelated)
-    wrapper = mount(TeamWorkspaceShell, { props: { title: '库房', modelValue: 'stock' } })
+    wrapper = mountShell({ props: { title: '库房', modelValue: 'stock' } })
     await wrapper.get('.team-workspace__fullscreen').trigger('click')
     await flushPromises()
     wrapper.unmount()

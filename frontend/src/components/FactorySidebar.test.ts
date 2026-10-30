@@ -287,7 +287,7 @@ describe('two-level team navigation', () => {
         .find((group) => group.props('index') === 'materials')!
         .findAllComponents(ElMenuItem)
         .map((item) => item.attributes('aria-label')),
-    ).toEqual(['转料记录', '全链路追踪'])
+    ).toEqual(['转料记录', '流水号查询'])
   })
 
   it('keeps all eight teams directly clickable and restores selection on browser back', async () => {
@@ -378,7 +378,7 @@ describe('two-level team navigation', () => {
 
   it('routes leaf selections to the existing pages', async () => {
     const { wrapper, router } = await renderSidebar()
-    await wrapper.get('[aria-label="全链路追踪"]').trigger('click')
+    await wrapper.get('[aria-label="流水号查询"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/material-trace')
   })
@@ -393,7 +393,7 @@ describe('two-level team navigation', () => {
     ])
     expect(wrapper.find('[aria-label="班组管理"]').exists()).toBe(false)
     expect(wrapper.find('[aria-label="班组长管理"]').exists()).toBe(false)
-    expect(wrapper.find('[aria-label="全链路追踪"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="流水号查询"]').exists()).toBe(false)
   })
 
   it('puts analysis before stock with distinct matching icons and keeps routes and legacy bookmarks selected correctly', async () => {

@@ -2,7 +2,7 @@
 import { teamCanProcess } from '@/config/teamWorkspaces'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { Refresh, Search, Setting } from '@element-plus/icons-vue'
+import { Search } from '@element-plus/icons-vue'
 import {
   ElAlert,
   ElButton,
@@ -20,6 +20,7 @@ import RecordDateFilter from '@/components/RecordDateFilter.vue'
 import SerialUrgencyBadge from '@/components/SerialUrgencyBadge.vue'
 import type { CalendarRange } from '@/types/recordFilters'
 import ReworkProblemDialog from '@/components/ReworkProblemDialog.vue'
+import WorkspaceTools from '@/components/WorkspaceTools.vue'
 import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
 import TeamWorkspaceActions from '@/components/TeamWorkspaceActions.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
@@ -1121,23 +1122,15 @@ onBeforeUnmount(() => {
     :quality-count="qualityCount"
     :pending-count="pendingCount"
     :exportable="exportable"
+    :settings="canManageBusiness"
+    @settings="businessOpen = true"
     @export="openExport"
     @update:model-value="selectSection"
     @fullscreen-change="fullscreen = $event"
   >
     <template v-if="canManageBusiness && teamId" #messages>
       <ElButton v-if="canWrite" @click="reworkProblemOpen = true">提交返工问题</ElButton>
-      <ReworkProblemDialog
-        v-if="reworkProblemOpen && canWrite"
-        @close="reworkProblemOpen = false"
-        @submitted="loadView"
-      />
     </template>
-    <template v-if="canManageBusiness" #settings
-      ><ElButton :icon="Setting" aria-label="班组设置" @click="businessOpen = true"
-        >班组设置</ElButton
-      ></template
-    >
     <template
       v-if="syncError || syncState === 'reconnecting' || syncState === 'expired'"
       #fullscreen-status
@@ -1405,29 +1398,24 @@ onBeforeUnmount(() => {
                 <div class="list-query-actions">
                   <ElButton class="action-warm" @click="applyFilters()">查询</ElButton>
                 </div>
-                <ElButton
-                  class="list-refresh"
-                  :icon="Refresh"
-                  :loading="loading"
-                  aria-label="刷新工作台"
-                  title="刷新"
-                  @click="loadView()"
-                />
-                <div v-show="!fullscreen" class="workspace-toolbar-actions">
-                  <ElButton
-                    v-if="tab === 'outgoing'"
-                    :disabled="!selectedPrintRows.length"
-                    @click="openPrint(selectedPrintRows)"
-                    >合并打印<span v-if="selectedPrintRows.length"
-                      >（{{ selectedPrintRows.length }}）</span
-                    ></ElButton
-                  >
-                  <TeamWorkspaceActions
-                    v-if="tab !== 'reallocations'"
-                    v-bind="actionBindings"
-                    :show-refresh="false"
-                  />
-                </div>
+                <WorkspaceTools refresh :loading="loading" @refresh="loadView()"
+                  ><template v-if="!fullscreen" #actions>
+                    <div v-show="!fullscreen" class="workspace-toolbar-actions">
+                      <ElButton
+                        v-if="tab === 'outgoing'"
+                        :disabled="!selectedPrintRows.length"
+                        @click="openPrint(selectedPrintRows)"
+                        >合并打印<span v-if="selectedPrintRows.length"
+                          >（{{ selectedPrintRows.length }}）</span
+                        ></ElButton
+                      >
+                      <TeamWorkspaceActions
+                        v-if="tab !== 'reallocations'"
+                        v-bind="actionBindings"
+                        :show-refresh="false"
+                      />
+                    </div> </template
+                ></WorkspaceTools>
               </div>
 
               <MaterialReceiptScanner
@@ -1948,6 +1936,11 @@ onBeforeUnmount(() => {
       </template>
     </div>
     <template #dialogs>
+      <ReworkProblemDialog
+        v-if="reworkProblemOpen && canWrite && canManageBusiness && teamId"
+        @close="reworkProblemOpen = false"
+        @submitted="loadView"
+      />
       <InspectionRegistrationDialog
         v-if="inspectionOpen && canWrite"
         :inspection-team-id="teamId"
@@ -2090,11 +2083,6 @@ onBeforeUnmount(() => {
 .list-toolbar :deep(.el-button + .el-button) {
   margin-left: 0;
 }
-.list-toolbar > .list-refresh {
-  margin-left: auto;
-  width: 36px;
-  padding: 0;
-}
 .list-extra-filters {
   display: flex;
   flex-direction: column;
@@ -2210,9 +2198,6 @@ onBeforeUnmount(() => {
   }
   .list-query-actions {
     grid-column: 1;
-  }
-  .list-toolbar > .list-refresh {
-    grid-column: 2;
   }
 }
 @media (max-width: 760px) {

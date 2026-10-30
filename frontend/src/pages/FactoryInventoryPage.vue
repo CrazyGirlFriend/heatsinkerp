@@ -464,14 +464,14 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   flex-wrap: wrap;
   flex-shrink: 0;
-  gap: 16px;
-  padding: 24px;
+  gap: 8px 12px;
+  padding: 12px 16px;
 }
 .stock-title {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: 8px;
 }
 .stock-heading h1 {
   margin: 0;
@@ -490,7 +490,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 20px;
+  gap: 8px;
 }
 .stock-updated {
   order: -1;

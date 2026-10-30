@@ -2,6 +2,7 @@
 import AppDialog from '@/components/AppDialog.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { formatAmount } from '@/utils/format'
+import WorkspaceTools from './WorkspaceTools.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import TableExportButton from './TableExportButton.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
@@ -26,7 +27,7 @@ import {
   ElTag,
   ElResult,
 } from 'element-plus'
-import { Clock, Lock, Plus, Refresh, Search, CircleClose } from '@element-plus/icons-vue'
+import { Clock, Lock, Plus, Search, CircleClose } from '@element-plus/icons-vue'
 import { showToast } from '@/stores/toast'
 import {
   locationState,
@@ -448,14 +449,10 @@ onBeforeUnmount(() => {
               >{{ section === 'locations' ? '未分配仓位' : '返回仓位' }}</ElButton
             >
             <ElButton class="warehouse-add" :icon="Plus" @click="edit()">新增仓位</ElButton>
-            <ElButton
-              v-if="section === 'locations'"
-              class="warehouse-refresh"
-              :icon="Refresh"
+            <WorkspaceTools
+              :refresh="section === 'locations'"
               :loading="loading"
-              aria-label="刷新仓位"
-              title="刷新"
-              @click="load()"
+              @refresh="load()"
             />
           </div>
         </div>

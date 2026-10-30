@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkspaceTools from './WorkspaceTools.vue'
 import { computed, ref, watch } from 'vue'
 import {
   ElButton,
@@ -159,7 +160,9 @@ defineExpose({ exportSource })
               label="有重量差异" /></ElSelect></label
       ></FilterDialog>
       <ElButton native-type="submit" class="workspace-query action-warm">查询</ElButton>
-      <div v-show="!fullscreen" class="workspace-toolbar-actions"><slot name="actions" /></div>
+      <WorkspaceTools
+        ><template v-if="!fullscreen && $slots.actions" #actions><slot name="actions" /></template
+      ></WorkspaceTools>
     </form>
     <ElTable
       :data="rows"

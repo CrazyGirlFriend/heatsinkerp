@@ -409,7 +409,7 @@ describe('delivery schedule workbench', () => {
       page: 1,
       page_size: 100,
     })
-    await button('全屏查看').trigger('click')
+    await wrapper.get('.team-workspace__fullscreen').trigger('click')
     await flushPromises()
     expect(wrapper.findAll('button').filter((item) => item.text() === '导出')).toHaveLength(1)
     expect(button('退出全屏')).toBeDefined()

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkspaceTools from './WorkspaceTools.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElAlert, ElButton, ElInput } from 'element-plus'
@@ -119,10 +120,7 @@ if (serial.value) search()
 
 <template>
   <section ref="historyRoot" class="serial-history" aria-label="本班组流水号收发历史">
-    <header class="history-header">
-      <h2>本班组收发</h2>
-      <slot name="actions" />
-    </header>
+    <h2 class="sr-only">本班组收发</h2>
     <div class="history-query-bar">
       <form class="history-search" @submit.prevent="search">
         <ElInput
@@ -166,6 +164,9 @@ if (serial.value) search()
           <small>kg</small></strong
         >
       </div>
+      <WorkspaceTools
+        ><template v-if="$slots.actions" #actions><slot name="actions" /></template
+      ></WorkspaceTools>
     </div>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="loading" state="loading" title="正在读取收发历史" />
@@ -213,9 +214,6 @@ if (serial.value) search()
   overflow: auto;
   background: var(--workspace-bg);
 }
-.serial-history:fullscreen .history-header {
-  display: none;
-}
 .serial-history:fullscreen .history-query-bar {
   position: sticky;
   top: 0;
@@ -239,38 +237,18 @@ if (serial.value) search()
   border-radius: var(--card-radius);
   background: var(--glass-surface);
 }
-.serial-history > :is(.history-header, .history-query-bar) {
+.serial-history > .history-query-bar {
   flex-shrink: 0;
-}
-.history-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  min-height: 68px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--card-radius) var(--card-radius) 0 0;
-  background: var(--glass-surface);
-}
-.history-header h2 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  white-space: nowrap;
 }
 .history-query-bar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px 24px;
-  padding: 14px 16px;
-  margin-bottom: 14px;
-  border: 1px solid var(--line);
-  border-top: 0;
-  border-radius: 0 0 var(--card-radius) var(--card-radius);
-  background: var(--glass-surface);
+  gap: 8px 12px;
+  padding: 0 0 12px;
+  margin-bottom: 0;
+  border: 0;
+  background: transparent;
 }
 .history-search {
   display: flex;
@@ -278,9 +256,12 @@ if (serial.value) search()
   flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
+  flex: 1;
 }
 .history-search > .el-input {
-  width: 278px;
+  flex: 1;
+  width: auto;
+  min-width: 180px;
 }
 .history-search :deep(.el-input__wrapper),
 .history-search :deep(.el-button) {
@@ -349,12 +330,8 @@ if (serial.value) search()
   font-weight: 500;
 }
 @media (max-width: 760px) {
-  .history-header,
   .history-query-bar {
     padding: 12px;
-  }
-  .history-header :deep(.workspace-actions) {
-    width: 100%;
   }
   .history-search {
     display: grid;

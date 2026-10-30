@@ -91,8 +91,13 @@ describe('compact material classification', () => {
   it('keeps actions with the material table and removes duplicate charts and summaries', async () => {
     wrapper = mount(TeamMaterialOverview, {
       props: { overview: overview() },
+      global: {
+        stubs: { ElPopover: { template: '<div><slot name="reference" /><slot /></div>' } },
+      },
       slots: { actions: '<button>手工入库</button><button>扫码入库</button>' },
     })
+    await flushPromises()
+    await wrapper.get('[aria-label="更多操作"]').trigger('click')
     await flushPromises()
     expect(wrapper.get('.ledger-toolbar').text()).toContain('手工入库')
     expect(wrapper.get('.ledger-toolbar').text()).toContain('扫码入库')

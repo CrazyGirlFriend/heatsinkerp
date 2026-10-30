@@ -11,11 +11,11 @@
   scrollbar-gutter: stable;
 }
 .page.reading-workspace :is(.workspace-heading, .page-heading) {
-  margin-bottom: 21px;
+  margin-bottom: 12px;
 }
 .page.reading-workspace :is(.workspace-heading, .page-heading) h1 {
-  font-size: 29px;
-  font-weight: 640;
+  font-size: 20px;
+  font-weight: 600;
   letter-spacing: -0.7px;
 }
 .page.reading-workspace
@@ -369,8 +369,8 @@
     .preview-heading h1
   ) {
   color: var(--text);
-  font-size: 29px;
-  font-weight: 640;
+  font-size: 20px;
+  font-weight: 600;
   letter-spacing: -0.7px;
 }
 .page.reading-workspace :is(.heading-actions, .stock-toolbar) {
@@ -403,7 +403,7 @@
 }
 @media (max-width: 1280px) {
   .main-content > .page:not(.team-workspace) {
-    padding: 21px 20px;
+    padding: 16px 18px;
   }
   .main-content
     > .page
@@ -416,12 +416,12 @@
       .chain-title h1,
       .preview-heading h1
     ) {
-    font-size: 26px;
+    font-size: 20px;
   }
 }
 @media (max-width: 1080px) {
   .main-content > .page:not(.team-workspace) {
-    padding: 18px 15px;
+    padding: 14px 15px;
   }
   .main-content
     > .page
@@ -434,7 +434,7 @@
       .chain-title h1,
       .preview-heading h1
     ) {
-    font-size: 24px;
+    font-size: 20px;
   }
 }
 @media (max-width: 760px) {

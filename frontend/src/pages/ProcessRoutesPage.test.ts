@@ -73,7 +73,7 @@ async function render(query: Record<string, string> = {}) {
 }
 it('keeps the common workspace shell without a full-width single tab or duplicate time columns', async () => {
   await render()
-  expect(wrapper.get('.team-workspace__title').text()).toBe('工艺工作台')
+  expect(wrapper.get('.team-workspace__title').text()).toBe('工艺')
   expect(wrapper.get('nav[aria-label="工艺功能"]').attributes('style')).toContain('display: none')
   expect(wrapper.findAll('thead th .cell').map((cell) => cell.text())).toEqual([
     '流水号',

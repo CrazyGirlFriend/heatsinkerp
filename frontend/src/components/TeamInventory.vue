@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { sharedSerialLabel } from '@/types/sharedMaterial'
+import WorkspaceTools from './WorkspaceTools.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Operation, Refresh, Search } from '@element-plus/icons-vue'
+import { Operation, Search } from '@element-plus/icons-vue'
 import {
   ElAlert,
   ElButton,
@@ -71,6 +72,7 @@ import {
   loadInventorySchedules,
 } from '@/utils/inventorySchedule'
 
+const columnSettings = ref<{ open: (anchor?: HTMLElement) => void }>()
 const props = defineProps<{
   teamId: number
   overview: TeamMaterialOverview
@@ -1097,24 +1099,24 @@ onBeforeUnmount(() => {
       <ElButton v-if="inspection && canWrite" class="action-cool" @click="emit('inspect')"
         >检验登记</ElButton
       >
-      <div class="inventory-table-tools" role="group" aria-label="表格工具">
-        <InventoryColumnSettings
-          :key="`${teamId}:${Boolean(processing)}`"
-          :storage-key="storageKey"
-          :columns="selectableColumns"
-          :legacy-keys="warehouseLegacyColumnKeys"
-          :new-visible-keys="['delivery_due_at', 'delivery_schedule_status']"
-          @change="columnChoices = $event"
-        />
-        <ElButton
-          :icon="Refresh"
-          :loading="loading"
-          aria-label="刷新工作台"
-          title="刷新"
-          @click="emit('refresh')"
-        />
-      </div>
-      <div v-show="!fullscreen" class="workspace-toolbar-actions"><slot name="actions" /></div>
+      <InventoryColumnSettings
+        ref="columnSettings"
+        :key="`${teamId}:${Boolean(processing)}`"
+        :new-visible-keys="['delivery_due_at', 'delivery_schedule_status']"
+        :show-trigger="false"
+        :storage-key="storageKey"
+        :columns="selectableColumns"
+        :legacy-keys="warehouseLegacyColumnKeys"
+        @change="columnChoices = $event"
+      />
+      <WorkspaceTools
+        refresh
+        columns
+        :loading="loading"
+        @refresh="emit('refresh')"
+        @columns="columnSettings?.open($event)"
+        ><template v-if="!fullscreen && $slots.actions" #actions><slot name="actions" /></template
+      ></WorkspaceTools>
     </div>
 
     <ElAlert v-if="inputError" :title="inputError" type="warning" :closable="false" />
@@ -1517,20 +1519,13 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 .inventory-filter-controls,
-.inventory-query-actions,
-.inventory-table-tools {
+.inventory-query-actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 .inventory-filter-controls {
   flex-wrap: wrap;
-}
-.inventory-table-tools {
-  margin-left: auto;
-  flex-shrink: 0;
-  padding-left: 12px;
-  border-left: 1px solid var(--line);
 }
 .warehouse-toolbar :deep(.record-date-trigger) {
   max-width: 260px;
@@ -1543,10 +1538,6 @@ onBeforeUnmount(() => {
 }
 .warehouse-toolbar :deep(.el-button + .el-button) {
   margin-left: 0;
-}
-.inventory-table-tools > .el-button {
-  width: 36px;
-  padding: 0;
 }
 .warehouse-search-context {
   padding-bottom: 12px;
@@ -1690,11 +1681,6 @@ onBeforeUnmount(() => {
   }
   .inventory-query-actions {
     flex: 0 0 auto;
-  }
-  .inventory-table-tools {
-    margin-left: auto;
-    padding-left: 0;
-    border-left: 0;
   }
 }
 @media (max-width: 760px) {

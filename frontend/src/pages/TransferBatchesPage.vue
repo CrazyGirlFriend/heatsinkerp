@@ -653,24 +653,12 @@ onBeforeUnmount(() => {
     <h1 class="sr-only">转料记录</h1>
     <div class="transfers-main">
       <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
-      <div class="status-toolbar">
-        <div class="page-heading-start">
-          <PageBackButton />
-          <h2 class="transfer-heading">转料记录</h2>
-        </div>
-        <div class="heading-actions">
-          <TableExportButton
-            :source="exportSource"
-            :disabled="loading || !!errorMessage"
-            :context="route.fullPath"
-          />
-          <ElButton v-if="canCreate" type="primary" :icon="Plus" @click="openCreate"
-            >新建转料</ElButton
-          >
-        </div>
-      </div>
       <ElCard class="transfers-card" shadow="never">
         <form class="filter-bar" @submit.prevent="applyFilters">
+          <div class="page-heading-start">
+            <PageBackButton />
+            <h2 class="transfer-heading">转料记录</h2>
+          </div>
           <div class="search-fields">
             <ElInput
               v-model="queryDraft"
@@ -855,6 +843,15 @@ onBeforeUnmount(() => {
               />
             </div>
             <ElButton :icon="Refresh" aria-label="刷新转料记录" @click="liveRefresh.request" />
+          </div>
+          <div class="heading-actions">
+            <TableExportButton
+              :source="exportSource"
+              :disabled="loading || !!errorMessage"
+              :context="route.fullPath"
+            /><ElButton v-if="canCreate" type="primary" :icon="Plus" @click="openCreate"
+              >新建转料</ElButton
+            >
           </div>
         </form>
         <div
@@ -1186,16 +1183,10 @@ onBeforeUnmount(() => {
   gap: 16px 0;
   background: var(--workspace-bg);
 }
-.status-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--line);
-}
-.status-toolbar h2 {
+.transfer-heading {
+  flex-shrink: 0;
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
 }
 .heading-actions {
@@ -1238,7 +1229,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex: 1 1 470px;
+  flex: 1 1 180px;
   min-width: 0;
 }
 .search-fields > .el-input {
@@ -1392,13 +1383,6 @@ onBeforeUnmount(() => {
   display: none;
 }
 @container workspace (max-width: 760px) {
-  .status-toolbar {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .status-toolbar .heading-actions {
-    margin-left: auto;
-  }
   .transfer-table,
   .transfer-column-settings {
     display: none;

@@ -230,7 +230,7 @@ a {
 .page {
   height: calc(100dvh - var(--topbar-height));
   min-height: 0;
-  padding: 26px 28px 24px;
+  padding: 18px 24px 20px;
   overflow: auto;
   background: transparent;
 }
@@ -255,16 +255,16 @@ a {
   align-items: center;
   justify-content: space-between;
   flex: 0 0 auto;
-  min-height: 55px;
-  margin: 0 0 21px;
+  min-height: 36px;
+  margin: 0 0 12px;
   gap: 20px;
 }
 .page-heading h1,
 .workspace-heading h1 {
   margin: 0;
   color: var(--text);
-  font-size: 29px;
-  font-weight: 640;
+  font-size: 20px;
+  font-weight: 600;
   line-height: 1.4;
   letter-spacing: -0.7px;
 }

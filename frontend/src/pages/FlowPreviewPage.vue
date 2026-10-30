@@ -1405,9 +1405,9 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  gap: 28px;
-  min-height: 76px;
-  padding: 12px 24px 12px 16px;
+  gap: 14px;
+  min-height: 48px;
+  padding: 6px 16px;
   box-sizing: border-box;
   border-bottom: 1px solid var(--line);
 }
@@ -1426,10 +1426,11 @@ onBeforeUnmount(() => {
 }
 .chain-query {
   display: flex;
-  gap: 12px;
-  width: 440px;
-  flex: 1 1 300px;
-  min-width: 280px;
+  flex: 1;
+  gap: 8px;
+  max-width: 480px;
+  width: 360px;
+  min-width: 0;
 }
 .chain-query .el-input {
   flex: 1;
@@ -1437,7 +1438,7 @@ onBeforeUnmount(() => {
 }
 .chain-query :deep(.el-input__wrapper),
 .chain-query .el-button {
-  min-height: 42px;
+  min-height: 34px;
 }
 .chain-query :deep(.el-input-group__prepend) {
   background: var(--workspace-bg);
@@ -1886,8 +1887,8 @@ onBeforeUnmount(() => {
   font-family: inherit;
 }
 .chain-page--embedded .chain-header {
-  min-height: 64px;
-  padding: 12px 16px;
+  min-height: 48px;
+  padding: 6px 12px;
   gap: 16px;
   border: 1px solid var(--line);
   border-radius: 22px 22px 0 0;
@@ -1900,9 +1901,9 @@ onBeforeUnmount(() => {
 .chain-page--embedded .chain-query :deep(.el-input__wrapper),
 .chain-page--embedded .chain-query .el-button,
 .chain-fullscreen {
-  min-height: 40px;
-  height: 40px;
-  font-size: 15px;
+  min-height: 34px;
+  height: 34px;
+  font-size: 13px;
 }
 .chain-page--embedded .preview-main {
   padding: 0 16px 12px;

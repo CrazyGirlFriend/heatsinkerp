@@ -15,6 +15,7 @@ const props = defineProps<{
   newVisibleKeys?: readonly K[]
   description?: string
   choicesLabel?: string
+  showTrigger?: boolean
 }>()
 const emit = defineEmits<{ change: [columns: InventoryColumnChoice<K>[]] }>()
 const options = computed(
@@ -29,6 +30,7 @@ const options = computed(
 const defaults = (): InventoryColumnChoice<K>[] =>
   options.value.map((column) => ({ key: column.key, visible: !!column.defaultVisible }))
 const opened = ref(false)
+const anchor = shallowRef<HTMLElement>()
 const saved = shallowRef(defaults()),
   draft = shallowRef(defaults())
 const label = (key: string) => options.value.find((column) => column.key === key)!.label
@@ -107,10 +109,18 @@ function apply() {
   emit('change', copy(saved.value))
   opened.value = false
 }
+defineExpose({
+  open: (element?: HTMLElement) => {
+    anchor.value = element
+    opened.value = true
+  },
+})
 </script>
 
 <template>
   <ElPopover
+    :virtual-ref="anchor"
+    :virtual-triggering="!!anchor"
     v-model:visible="opened"
     trigger="click"
     placement="bottom-end"
@@ -118,7 +128,11 @@ function apply() {
     popper-class="inventory-columns-popover"
   >
     <template #reference
-      ><ElButton class="inventory-columns-trigger" :icon="Setting" :aria-expanded="opened"
+      ><ElButton
+        v-show="showTrigger !== false"
+        class="inventory-columns-trigger"
+        :icon="Setting"
+        :aria-expanded="opened"
         >显示列</ElButton
       ></template
     >

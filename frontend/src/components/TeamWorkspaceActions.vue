@@ -18,7 +18,12 @@ const emit = defineEmits<{ dispatch: []; receipt: []; scan: []; refresh: [] }>()
 </script>
 
 <template>
-  <div class="workspace-actions" role="group" aria-label="班组操作">
+  <div
+    v-if="canWrite || canReceive || showRefresh"
+    class="workspace-actions"
+    role="group"
+    aria-label="班组操作"
+  >
     <ElButton
       v-if="canReceive"
       :type="warehouse ? 'primary' : 'default'"
@@ -50,7 +55,8 @@ const emit = defineEmits<{ dispatch: []; receipt: []; scan: []; refresh: [] }>()
       aria-label="刷新工作台"
       title="刷新"
       @click="emit('refresh')"
-    />
+      >刷新</ElButton
+    >
   </div>
 </template>
 
