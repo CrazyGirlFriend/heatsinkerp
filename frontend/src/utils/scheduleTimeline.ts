@@ -1,3 +1,4 @@
+import { hasConfirmedPlan } from './schedulePlanning'
 import type { ProductionSchedule } from '@/types/productionSchedule'
 import { formatDateTime } from './format'
 
@@ -48,7 +49,7 @@ export function scheduleLanes(nodes: ProductionSchedule[], axis: ReturnType<type
   const rows = [...nodes]
     .sort((a, b) => a.sequence_no - b.sequence_no || a.id - b.id)
     .map((node) => {
-      const due = scheduleTimestamp(node.due_at)
+      const due = hasConfirmedPlan(node) ? scheduleTimestamp(node.due_at) : null
       const completed = scheduleTimestamp(node.completed_at)
       return {
         node,

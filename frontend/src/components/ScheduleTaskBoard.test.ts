@@ -16,7 +16,12 @@ import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ProductionSchedule, ScheduleTask } from '@/types/productionSchedule'
 const hooks = vi.hoisted(() => ({ openDetail: vi.fn() }))
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ isAdmin: true, currentUserError: '', currentUser: { active: true } }),
+  useAuthStore: () => ({
+    isAdmin: true,
+    isDispatch: true,
+    currentUserError: '',
+    currentUser: { active: true },
+  }),
 }))
 vi.mock('@/stores/teamDirectory', () => ({
   useTeamDirectoryStore: () => ({
@@ -95,7 +100,8 @@ async function render(path = '/production-schedules') {
   })
   await router.push(path)
   wrapper = mount(ScheduleTaskBoard, {
-    props: { fullscreen: true },
+    props: { fullscreen: false },
+    slots: { 'view-actions': '<button class="fullscreen-toggle">全屏切换</button>' },
     global: {
       plugins: [router],
       directives: { loading: () => {} },
@@ -111,7 +117,7 @@ async function render(path = '/production-schedules') {
         ProductionScheduleOverview: {
           props: ['tasks', 'teams', 'loading'],
           emits: ['open-node', 'open-task'],
-          template: '<div class="overview-stub"/>',
+          template: '<div class="overview-stub"><slot name="view-actions"/></div>',
         },
         ProductionScheduleGantt: {
           props: ['tasks', 'loading'],
@@ -143,6 +149,30 @@ function select(label: string) {
   return wrapper.findAllComponents(ElSelect).find((item) => item.props('ariaLabel') === label)!
 }
 describe('task scheduling board', () => {
+  it('focuses fullscreen on the timeline and preserves the current view and filters on exit', async () => {
+    await render('/production-schedules?serial_no=S-001')
+    const overview = wrapper.getComponent(ProductionScheduleOverview)
+    await wrapper.setProps({ fullscreen: true })
+    expect(wrapper.find('.task-board__toolbar').exists()).toBe(false)
+    expect(wrapper.find('.overview-stub .fullscreen-toggle').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="排期筛选"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="刷新任务排期"]').exists()).toBe(false)
+    expect(wrapper.findComponent(TableExportButton).exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('新建任务排期')
+    overview.vm.$emit('open-node', node(2))
+    await flushPromises()
+    expect(hooks.openDetail).toHaveBeenCalledWith(2)
+    await wrapper.setProps({ fullscreen: false })
+    expect(wrapper.getComponent(ProductionScheduleOverview).vm).toBe(overview.vm)
+    expect(wrapper.find('.task-board__toolbar .fullscreen-toggle').exists()).toBe(true)
+    expect(wrapper.findComponent(TableExportButton).exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('新建任务排期')
+    expect(wrapper.get('.task-board__filter-count').text()).toBe('1')
+    expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(1)
+    expect(productionScheduleApi.tasks).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'S-001' }),
+    )
+  })
   it('opens the global overview by default and drills into the existing task and node details', async () => {
     await render()
     const overview = wrapper.getComponent(ProductionScheduleOverview)
@@ -263,7 +293,8 @@ describe('task scheduling board', () => {
   it('loads task deep links and refreshes after node or task edits', async () => {
     await render('/production-schedules?task_id=7')
     expect(productionScheduleApi.task).toHaveBeenCalledWith(7)
-    await button('修改任务信息')
+    await wrapper.setProps({ management: true })
+    await button('修改交期')
     expect(wrapper.getComponent(ScheduleTaskEditor).props('task')).toEqual(task)
     wrapper.getComponent(ScheduleTaskEditor).vm.$emit('saved', task)
     await flushPromises()
@@ -274,7 +305,8 @@ describe('task scheduling board', () => {
   })
   it('preserves a task switch while the saved task list refresh is still pending', async () => {
     await render('/production-schedules?task_id=7')
-    await button('修改任务信息')
+    await wrapper.setProps({ management: true })
+    await button('修改交期')
     let finishRefresh!: (value: Awaited<ReturnType<typeof productionScheduleApi.tasks>>) => void
     vi.mocked(productionScheduleApi.tasks).mockImplementationOnce(
       () =>
@@ -288,6 +320,7 @@ describe('task scheduling board', () => {
     )
     wrapper.getComponent(ScheduleTaskEditor).vm.$emit('saved', task)
     await flushPromises()
+    await wrapper.setProps({ management: false })
     wrapper.getComponent(ProductionScheduleOverview).vm.$emit('open-task', nextTask)
     await flushPromises()
     expect(wrapper.get('.task-detail__heading').text()).toContain('第二批交货')

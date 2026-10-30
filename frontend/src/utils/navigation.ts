@@ -12,6 +12,8 @@ export function defaultAuthenticatedPath(
     user.team.kind === 'engineering'
   )
     return '/process-routes'
+  if (user?.role === 'TEAM' && user.team?.kind === 'dispatch') return '/dispatch-schedules'
+  if (user?.role === 'TEAM' && user.team?.kind === 'business') return '/business-people'
   const teamId = Number(user?.team_id)
   return user?.role === 'TEAM' && Number.isSafeInteger(teamId) && teamId > 0
     ? `/team-workspaces/${teamId}`

@@ -1,3 +1,4 @@
+import { hasConfirmedPlan } from './schedulePlanning'
 import type { ProductionSchedule, ScheduleTask } from '@/types/productionSchedule'
 import { formatAmount, formatDateTime } from './format'
 import { scheduleTimestamp } from './scheduleTimeline'
@@ -64,7 +65,9 @@ export function timelineNodes(nodes: ProductionSchedule[]): ProductionSchedule[]
               : Math.max(0, batch.target_weight - batch.dispatched_weight),
           time_warnings: batch.warnings,
         }))
-      : [node],
+      : !hasConfirmedPlan(node)
+        ? []
+        : [node],
   )
 }
 

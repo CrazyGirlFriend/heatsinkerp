@@ -31,7 +31,7 @@ const refreshHref = computed(
 
 function safeRedirect(): string {
   if (
-    authState.currentUser?.team?.kind === 'engineering' &&
+    ['engineering', 'dispatch', 'business'].includes(authState.currentUser?.team?.kind || '') &&
     (!route.query.redirect || route.query.redirect === DEFAULT_LOGIN_PATH)
   )
     return defaultAuthenticatedPath(authState.currentUser)

@@ -214,6 +214,36 @@ describe('delivery schedule workbench', () => {
     expect(element?.textContent).not.toContain('130')
     expect(noticeOpened).toHaveBeenCalledWith('click-1')
   })
+  it('shows submitted batch changes in the audit without claiming the approved date changed', async () => {
+    const proposed = {
+      batch_number: 1,
+      planned_start_at: '2026-11-01T00:00:00Z',
+      due_at: '2026-11-03T08:00:00Z',
+      target_quantity: 100,
+      target_weight: null,
+      upstream_batch_ids: [],
+    }
+    vi.mocked(productionScheduleApi.detail).mockResolvedValue({
+      ...record(),
+      history: [
+        {
+          id: 11,
+          action: 'plan_submitted',
+          actor: '班组长',
+          occurred_at: '2026-10-30T01:00:00Z',
+          before: { batches: [] },
+          after: { pending_batches: [proposed], batches: [] },
+        },
+      ],
+    })
+    await render()
+    await (wrapper.vm as unknown as { openDetail: (id: number) => Promise<void> }).openDetail(5)
+    await flushPromises()
+    const event = wrapper.find('[data-notice-event="11"]')
+    expect(event.text()).toContain('第 1 批 · 开始')
+    expect(event.text()).toContain('2026-11-03 16:00')
+    expect(event.text()).not.toContain('本次操作未改变计划字段')
+  })
   it('reuses node details on the admin board without fetching or rendering a second list', async () => {
     state.auth.isAdmin = true
     state.auth.isTeamAccount = false
@@ -224,7 +254,7 @@ describe('delivery schedule workbench', () => {
     await (wrapper.vm as unknown as { openDetail: (id: number) => Promise<void> }).openDetail(5)
     await flushPromises()
     expect(wrapper.text()).toContain('805881-5')
-    expect(button('安排批次')).toBeDefined()
+    expect(button('修改批次计划')).toBeUndefined()
   })
   it('shows the full task route but never exposes another team’s outbound action', async () => {
     const current = {
@@ -270,7 +300,7 @@ describe('delivery schedule workbench', () => {
     expect(button('出库')).toBeUndefined()
     expect(wrapper.emitted('dispatch')).toBeUndefined()
   })
-  it('keeps the refreshed task route when an earlier request resolves after cancelling its node', async () => {
+  it('keeps the refreshed task route when an earlier detail request resolves late', async () => {
     state.auth.isAdmin = true
     state.auth.isTeamAccount = false
     const current = { ...record(), task_id: 11 }
@@ -306,8 +336,8 @@ describe('delivery schedule workbench', () => {
     await render(true, false, false, true)
     await (wrapper.vm as unknown as { openDetail: (id: number) => Promise<void> }).openDetail(5)
     await flushPromises()
-    await button('取消排期').trigger('click')
-    await button('确认取消').trigger('click')
+    vi.mocked(productionScheduleApi.detail).mockResolvedValue(cancelled)
+    await (wrapper.vm as unknown as { openDetail: (id: number) => Promise<void> }).openDetail(5)
     await flushPromises()
     expect(wrapper.get('.schedule-task-route').text()).toContain('已取消')
     finishOld(task)
@@ -336,7 +366,7 @@ describe('delivery schedule workbench', () => {
     expect(wrapper.text()).toContain('已作废')
     expect(wrapper.text()).toContain('下序签收件数')
     expect(wrapper.text()).toContain('已转出件数')
-    expect(button('安排批次')).toBeDefined()
+    expect(button('修改批次计划')).toBeDefined()
     expect(button('取消排期')).toBeUndefined()
     expect(button('添加下序节点')).toBeUndefined()
     expect(button('新建排期')).toBeUndefined()
@@ -380,7 +410,7 @@ describe('delivery schedule workbench', () => {
       received_quantity: 20,
       remaining_quantity: 60,
     })
-    expect(button('新建排期')).toBeDefined()
+    expect(button('新建排期')).toBeUndefined()
   })
   it('keeps one workspace export in normal and fullscreen views with the current team filters', async () => {
     await render(false, false, true)

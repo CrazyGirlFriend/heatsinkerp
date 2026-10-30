@@ -64,3 +64,20 @@ def save_person(db, payload, person_id=None):
         db.rollback()
         raise HTTPException(409, "业务人员姓名已存在") from None
     return result
+
+
+def assign_task_people(db, task, ids):
+    from sqlalchemy import delete
+
+    from .models import ProductionScheduleTaskPerson as Link
+
+    if len(ids) != len(set(ids)) or any(i <= 0 for i in ids):
+        raise HTTPException(422, "请选择有效且不重复的业务人员")
+    current = set(db.scalars(select(Link.person_id).where(Link.task_id == task.id)))
+    if task.business_person_id:
+        current.add(task.business_person_id)
+    for person_id in ids:
+        require_assignable(db, person_id, person_id if person_id in current else None)
+    db.execute(delete(Link).where(Link.task_id == task.id))
+    db.add_all(Link(task_id=task.id, person_id=i) for i in ids)
+    task.business_person_id = ids[0] if ids else None

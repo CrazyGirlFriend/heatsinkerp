@@ -264,7 +264,6 @@ const materialLinks = computed(() => [
             ><span>班组材质库存</span></ElMenuItem
           >
           <ElMenuItem
-            v-if="isAdmin"
             index="/production-schedules"
             aria-label="生产排期"
             :aria-current="route.path === '/production-schedules' ? 'page' : undefined"
@@ -290,6 +289,20 @@ const materialLinks = computed(() => [
               aria-hidden="true"
               >当前</span
             ></template
+          >
+          <ElMenuItem
+            index="/dispatch-schedules"
+            aria-label="调度工作台"
+            :aria-current="route.path === '/dispatch-schedules' ? 'page' : undefined"
+            ><ElIcon class="factory-nav__team-icon"><FactoryNavIcon name="schedule" /></ElIcon
+            ><span>调度</span></ElMenuItem
+          >
+          <ElMenuItem
+            index="/business-people"
+            aria-label="业务班组"
+            :aria-current="route.path === '/business-people' ? 'page' : undefined"
+            ><ElIcon class="factory-nav__team-icon"><FactoryNavIcon name="records" /></ElIcon
+            ><span>业务</span></ElMenuItem
           >
           <ElMenuItem
             index="/process-routes"

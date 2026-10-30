@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { hasConfirmedPlan, plannedDueLabel } from '@/utils/schedulePlanning'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { ElButton, ElTooltip } from 'element-plus'
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
@@ -65,7 +66,7 @@ const executionLabel = (node: ProductionSchedule) =>
 function milestoneLabel(node: ProductionSchedule, actual = false) {
   const lines = [
     `${node.team_name} → ${node.next_team_name || node.external_destination || '未指定去向'}`,
-    `要求交货 ${formatDateTime(node.due_at)}`,
+    `要求交货 ${plannedDueLabel(node)}`,
   ]
   if (actual) lines.push(`实际交完 ${formatDateTime(node.completed_at)}`)
   lines.push(scheduleStatusLabels[node.status])
@@ -94,6 +95,7 @@ async function locate(timestamp: number) {
 }
 function locateTask(task: ScheduleTask) {
   const dates = task.nodes
+    .filter(hasConfirmedPlan)
     .map((node) => scheduleTimestamp(node.due_at))
     .filter((date): date is number => date != null)
   const closest = dates.sort((a, b) => Math.abs(a - now.value) - Math.abs(b - now.value))[0]

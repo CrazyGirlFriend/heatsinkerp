@@ -1,4 +1,4 @@
-"""Administrators arrange routes; teams maintain their own delivery commitments."""
+"""Dispatch owns orders; teams submit delivery plans for confirmation."""
 
 from datetime import datetime, timezone
 from typing import Literal
@@ -6,7 +6,13 @@ from typing import Literal
 from fastapi import Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from . import business_people, schedule_batches, schedule_reworks, schedule_routes
+from . import (
+    business_people,
+    dispatch_planning,
+    schedule_batches,
+    schedule_reworks,
+    schedule_routes,
+)
 from . import production_schedule_tasks as tasks
 from . import production_schedules as schedules
 from .async_api import AsyncAPIRouter as APIRouter
@@ -19,10 +25,10 @@ from .production_schedule_schemas import (
     ScheduleCommitmentUpdate,
     ScheduleCreate,
     ScheduleInventoryQuery,
-    ScheduleTaskCreate,
     ScheduleTaskUpdate,
     ScheduleUpdate,
 )
+from .schedule_permissions import require_dispatch
 
 router = APIRouter(
     prefix="/api/production-schedules",
@@ -71,9 +77,9 @@ def list_schedules(
 
 @router.post("", status_code=201)
 def create_schedule(
-    payload: ScheduleCreate, user: User = Depends(require_admin), db: Session = Depends(get_db)
+    payload: ScheduleCreate, user: User = Depends(require_dispatch), db: Session = Depends(get_db)
 ):
-    return schedules.save_plan(db, payload, user)
+    raise HTTPException(422, "请在调度工作台按流水号工艺新建排期")
 
 
 @router.get("/source-options")
@@ -190,8 +196,10 @@ def serial_options(
     from .material_stock import literal_query
     from .models import ProductionScheduleTask
 
-    grouped = select(ProductionScheduleTask.serial_no, func.count().label("task_count")).group_by(
-        ProductionScheduleTask.serial_no
+    grouped = (
+        select(ProductionScheduleTask.serial_no, func.count().label("task_count"))
+        .where(ProductionScheduleTask.cancelled_at.is_(None))
+        .group_by(ProductionScheduleTask.serial_no)
     )
     if query:
         grouped = grouped.where(literal_query(query, [ProductionScheduleTask.serial_no]))
@@ -209,9 +217,48 @@ def serial_options(
     }
 
 
+@router.get("/route-options")
+def new_task_route_options(
+    serial_no: str = Query(min_length=1, max_length=80), db: Session = Depends(get_db)
+):
+    return dispatch_planning.route_options(db, serial_no.strip())
+
+
+@router.put("/tasks/{task_id}/lock")
+def lock_task(
+    task_id: int,
+    payload: dispatch_planning.TaskLock,
+    user: User = Depends(require_dispatch),
+    db: Session = Depends(get_db),
+):
+    return dispatch_planning.lock_task(db, task_id, payload, user)
+
+
+@router.delete("/tasks/{task_id}", status_code=204)
+def delete_task(
+    task_id: int,
+    payload: dispatch_planning.TaskDelete,
+    user: User = Depends(require_dispatch),
+    db: Session = Depends(get_db),
+):
+    dispatch_planning.delete_task(db, task_id, payload, user)
+
+
+@router.post("/{schedule_id}/review")
+def review_plan(
+    schedule_id: int,
+    payload: schedule_batches.PlanReview,
+    user: User = Depends(require_dispatch),
+    db: Session = Depends(get_db),
+):
+    return schedule_batches.review(db, schedule_id, payload, user)
+
+
 @router.post("/tasks", status_code=201)
 def create_task(
-    payload: ScheduleTaskCreate, user: User = Depends(require_admin), db: Session = Depends(get_db)
+    payload: dispatch_planning.DispatchTaskCreate,
+    user: User = Depends(require_dispatch),
+    db: Session = Depends(get_db),
 ):
     return tasks.create_task(db, payload, user)
 
@@ -225,7 +272,7 @@ def task_rework_options(task_id: int, db: Session = Depends(get_db)):
 def link_task_rework(
     task_id: int,
     payload: schedule_reworks.ReworkLink,
-    user: User = Depends(require_admin),
+    user: User = Depends(require_dispatch),
     db: Session = Depends(get_db),
 ):
     return schedule_reworks.link(db, task_id, payload, user)
@@ -240,7 +287,7 @@ def task_route_options(task_id: int, db: Session = Depends(get_db)):
 def link_task_route(
     task_id: int,
     payload: schedule_routes.RouteLink,
-    user: User = Depends(require_admin),
+    user: User = Depends(require_dispatch),
     db: Session = Depends(get_db),
 ):
     return schedule_routes.link(db, task_id, payload, user)
@@ -255,7 +302,7 @@ def task_detail(task_id: int, db: Session = Depends(get_db)):
 def update_task(
     task_id: int,
     payload: ScheduleTaskUpdate,
-    user: User = Depends(require_admin),
+    user: User = Depends(require_dispatch),
     db: Session = Depends(get_db),
 ):
     return tasks.update_task(db, task_id, payload, user)
@@ -270,7 +317,7 @@ def detail(schedule_id: int, db: Session = Depends(get_db)):
 def update(
     schedule_id: int,
     payload: ScheduleUpdate,
-    user: User = Depends(require_admin),
+    user: User = Depends(require_dispatch),
     db: Session = Depends(get_db),
 ):
     return schedules.save_plan(db, payload, user, schedule_id)
@@ -300,7 +347,7 @@ def update_commitment(
 def cancel(
     schedule_id: int,
     payload: ScheduleCancel,
-    user: User = Depends(require_admin),
+    user: User = Depends(require_dispatch),
     db: Session = Depends(get_db),
 ):
     return schedules.cancel_plan(db, schedule_id, payload, user)

@@ -254,8 +254,15 @@ def target(
             ),
         )
     location, _ = schedule_location(db, notice)
+    team = db.get(Team, notice.team_id)
+    href = (
+        f"/dispatch-schedules?schedule_id={location['schedule_id']}"
+        if team.kind == "dispatch"
+        else f"/team-workspaces/{notice.team_id}?tab=delivery-schedule&schedule_id={location['schedule_id']}"
+    )
     return dict(
-        href=f"/team-workspaces/{notice.team_id}?tab=delivery-schedule&schedule_id={location['schedule_id']}",
+        href=href,
+        section="plan-review" if notice.kind == "review" else None,
         **location,
     )
 

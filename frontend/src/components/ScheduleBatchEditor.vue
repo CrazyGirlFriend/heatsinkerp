@@ -17,8 +17,10 @@ import type {
   ScheduleTask,
 } from '@/types/productionSchedule'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
+import { useAuthStore } from '@/stores/auth'
 import { formatAmount, formatDateTime } from '@/utils/format'
 
+const auth = useAuthStore()
 const props = defineProps<{ schedule: ProductionSchedule }>()
 const emit = defineEmits<{ close: []; saved: [ProductionSchedule] }>()
 const visible = ref(true),
@@ -39,7 +41,7 @@ let key = 0
 const local = (value?: string) => (value ? formatDateTime(value).replace(' ', 'T') + ':00' : '')
 const utc = (value: string) => (value ? `${value}+08:00` : '')
 const rows = ref<Draft[]>(
-  (props.schedule.batches || []).map((b) => ({
+  (props.schedule.pending_batches || props.schedule.batches || []).map((b) => ({
     ...b,
     key: ++key,
     start: local(b.planned_start_at),
@@ -94,7 +96,7 @@ async function load() {
   }
 }
 async function save() {
-  if (saving.value || loading.value || !task.value) return
+  if (saving.value || loading.value || !task.value || task.value.locked_at) return
   error.value = ''
   if (!rows.value.length) {
     error.value = '请至少安排一批'
@@ -162,6 +164,26 @@ const defaultTime = new Date(2000, 0, 1, 8)
         >最终交期 <b>{{ formatDateTime(task?.final_due_at) }}</b></span
       >
     </div>
+    <ElAlert
+      v-if="task?.locked_at"
+      title="订单已锁定，请联系调度解锁"
+      type="warning"
+      :closable="false"
+    />
+    <ElTable
+      v-if="task?.delivery_batches?.length"
+      :data="task.delivery_batches"
+      border
+      size="small"
+      aria-label="调度交货要求"
+      ><ElTableColumn label="订单批次" prop="batch_number" width="100" /><ElTableColumn
+        label="数量（件）"
+        prop="target_quantity"
+        width="120"
+      /><ElTableColumn label="要求交期"
+        ><template #default="{ row }">{{ formatDateTime(row.due_at) }}</template></ElTableColumn
+      ></ElTable
+    >
     <div class="batch-plan-layout">
       <section class="batch-plan-main">
         <ElTable :data="rows" border class="business-table" aria-label="班组分批计划" row-key="key">
@@ -172,7 +194,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
                 :min="1"
                 :max="9999"
                 :controls="false"
-                :disabled="saving"
+                :disabled="saving || !!task?.locked_at"
                 aria-label="批次序号" /></template
           ></ElTableColumn>
           <ElTableColumn v-if="basis !== 'weight'" label="数量（件）" width="120" align="center"
@@ -182,7 +204,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
                 :min="1"
                 :precision="0"
                 :controls="false"
-                :disabled="saving"
+                :disabled="saving || !!task?.locked_at"
                 :aria-label="`第${row.batch_number}批数量`" /></template
           ></ElTableColumn>
           <ElTableColumn v-if="basis !== 'quantity'" label="重量（kg）" width="130" align="center"
@@ -192,7 +214,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
                 :min="0.000001"
                 :precision="6"
                 :controls="false"
-                :disabled="saving"
+                :disabled="saving || !!task?.locked_at"
                 :aria-label="`第${row.batch_number}批重量`" /></template
           ></ElTableColumn>
           <ElTableColumn label="计划开始" min-width="195"
@@ -205,7 +227,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
                 :default-time="defaultTime"
                 :disabled-minutes="nonZeroMinutes"
                 :disabled-seconds="nonZeroMinutes"
-                :disabled="saving"
+                :disabled="saving || !!task?.locked_at"
                 placeholder="选择开始时间"
                 :aria-label="`第${row.batch_number}批计划开始`" /></template
           ></ElTableColumn>
@@ -219,7 +241,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
                 :default-time="defaultTime"
                 :disabled-minutes="nonZeroMinutes"
                 :disabled-seconds="nonZeroMinutes"
-                :disabled="saving"
+                :disabled="saving || !!task?.locked_at"
                 placeholder="选择转出时间"
                 :aria-label="`第${row.batch_number}批计划转出`" /></template
           ></ElTableColumn>
@@ -229,7 +251,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
                 v-model="row.upstream_batch_ids"
                 multiple
                 collapse-tags
-                :disabled="saving"
+                :disabled="saving || !!task?.locked_at"
                 placeholder="选择供料批次"
                 :aria-label="`第${row.batch_number}批上游供料`"
                 ><ElOption
@@ -251,7 +273,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
           >
         </ElTable>
         <div class="batch-plan-actions">
-          <ElButton :disabled="saving" @click="add">＋ 增加一批</ElButton
+          <ElButton :disabled="saving || !!task?.locked_at" @click="add">＋ 增加一批</ElButton
           ><span
             >合计
             <b>{{
@@ -312,9 +334,13 @@ const defaultTime = new Date(2000, 0, 1, 8)
       </aside>
     </div>
     <template #footer
-      ><ElButton :disabled="saving" @click="visible = false">取消</ElButton
-      ><ElButton type="primary" :loading="saving" :disabled="loading || !task" @click="save"
-        >保存排期</ElButton
+      ><ElButton :disabled="saving || !!task?.locked_at" @click="visible = false">取消</ElButton
+      ><ElButton
+        type="primary"
+        :loading="saving"
+        :disabled="loading || !task || !!task.locked_at"
+        @click="save"
+        >{{ auth.isDispatch ? '确认并保存' : '提交调度确认' }}</ElButton
       ></template
     >
   </AppDialog>

@@ -12,7 +12,8 @@ import type {
   ScheduleSourceOption,
   ScheduleWrite,
   ScheduleTask,
-  ScheduleTaskWrite,
+  DispatchTaskWrite,
+  CustomerDeliveryBatch,
   BusinessPerson,
 } from '@/types/productionSchedule'
 
@@ -87,7 +88,7 @@ export const productionScheduleApi = {
   tasks: (params: ScheduleFilters = {}) =>
     request<MaterialPage<ScheduleTask>>(`/production-schedules/tasks?${queryString(params)}`),
   task: (id: number) => request<ScheduleTask>(`/production-schedules/tasks/${id}`),
-  createTask: (body: ScheduleTaskWrite) =>
+  createTask: (body: DispatchTaskWrite) =>
     request<ScheduleTask>('/production-schedules/tasks', { method: 'POST', body }),
   updateTask: (
     id: number,
@@ -97,8 +98,23 @@ export const productionScheduleApi = {
       final_due_at?: string | null
       notes: string | null
       business_person_id?: number | null
+      business_person_ids?: number[]
+      delivery_batches?: CustomerDeliveryBatch[]
     },
   ) => request<ScheduleTask>(`/production-schedules/tasks/${id}`, { method: 'PATCH', body }),
+  taskRouteOptions: (serial_no: string) =>
+    request<ScheduleRouteOption[]>(
+      `/production-schedules/route-options?${queryString({ serial_no })}`,
+    ),
+  lockTask: (id: number, body: { expected_version: number; locked: boolean }) =>
+    request<ScheduleTask>(`/production-schedules/tasks/${id}/lock`, { method: 'PUT', body }),
+  deleteTask: (id: number, expected_version: number) =>
+    request<void>(`/production-schedules/tasks/${id}`, {
+      method: 'DELETE',
+      body: { expected_version },
+    }),
+  reviewPlan: (id: number, body: { expected_version: number; approve: boolean; reason?: string }) =>
+    request<ProductionSchedule>(`/production-schedules/${id}/review`, { method: 'POST', body }),
   candidates: (params: {
     team_id: number
     source_transfer_ids: string

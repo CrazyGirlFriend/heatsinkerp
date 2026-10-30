@@ -244,6 +244,7 @@ def status_expression(progress, now):
             "completed_late",
         ),
         (progress.c.completed_at.is_not(None), "completed"),
+        (and_(Plan.planning_state.in_(("pending", "submitted")), ~batch_matches(True)), "pending"),
         (or_(Plan.due_at < now, overdue_batch), "overdue"),
         (or_(Plan.due_at < end_today, today_batch), "today"),
         else_="pending",
@@ -262,6 +263,9 @@ def summaries(db, ids, *, now=None):
             Team.code.label("team_code"),
             target.name.label("next_team_name"),
             Task.title.label("task_title"),
+            Task.locked_at.label("order_locked_at"),
+            Task.delivery_batches.label("customer_batches"),
+            Task.final_due_at.label("customer_due_at"),
             progress,
             status_expression(progress, now or utcnow()).label("schedule_status"),
         )
@@ -330,6 +334,11 @@ def summaries(db, ids, *, now=None):
             "assessment_enabled": values["team_code"] != WAREHOUSE_TEAM_CODE,
             "initial_due_at": iso(plan.initial_due_at),
             "batches": batch_plans.get(plan.id, []),
+            "planning_state": plan.planning_state,
+            "pending_batches": plan.pending_batches,
+            "order_locked": bool(values["order_locked_at"]),
+            "delivery_batches": values["customer_batches"] or [],
+            "final_due_at": iso(values["customer_due_at"]),
             "next_team_name": values["next_team_name"],
             "version": plan.version,
             "target_weight": float(plan.target_weight) if plan.target_weight is not None else None,
@@ -779,6 +788,8 @@ def snapshot(db, plan):
         cancelled_at=iso(plan.cancelled_at),
         task_id=plan.task_id,
         batches=snapshots(db, plan.id),
+        planning_state=plan.planning_state,
+        pending_batches=plan.pending_batches,
     )
     value["target_weight"] = str(plan.target_weight) if plan.target_weight is not None else None
     value["sources"] = [
@@ -824,11 +835,15 @@ def validate_plan(db, payload, plan=None):
     if plan and plan.predecessor_id and payload.predecessor_id is None:
         raise HTTPException(409, "不能移除任务中已有节点的前序关联")
     team = db.get(Team, payload.team_id)
-    if team is None or not team.active or team.kind == "engineering":
+    if team is None or not team.active or team.kind in ("engineering", "dispatch", "business"):
         raise HTTPException(422, "请选择启用的交货班组")
     if payload.next_team_id:
         target = db.get(Team, payload.next_team_id)
-        if target is None or not target.active or target.kind == "engineering":
+        if (
+            target is None
+            or not target.active
+            or target.kind in ("engineering", "dispatch", "business")
+        ):
             raise HTTPException(422, "请选择启用的接收班组")
     elif payload.external_destination not in EXTERNAL_DESTINATIONS or team.code not in (
         WAREHOUSE_TEAM_CODE,
@@ -870,35 +885,7 @@ def validate_plan(db, payload, plan=None):
 
 
 def update_commitment(db, plan_id, payload, user):
-    from pydantic import ValidationError
-
-    from .production_schedule_schemas import ScheduleUpdate
-
-    with db.begin():
-        plan = require_plan(db, plan_id)
-        if user.role != "ADMIN" and not (
-            user.role == "TEAM"
-            and user.team_id == plan.team_id
-            and user.team
-            and user.team.active
-            and user.team.kind != "engineering"
-        ):
-            raise HTTPException(403, "仅本班组账号或管理员可以调整交期和数量")
-        data = {field: getattr(plan, field) for field in FIELDS}
-        data.update(payload.model_dump())
-        data["sources"] = [
-            {
-                "source_transfer_id": item.source_transfer_id,
-                "quantity": item.quantity,
-                "weight": item.weight,
-            }
-            for item in db.scalars(select(Source).where(Source.schedule_id == plan.id))
-        ]
-        try:
-            update = ScheduleUpdate.model_validate(data)
-        except ValidationError as exc:
-            raise HTTPException(422, str(exc.errors()[0]["msg"])) from None
-    return save_plan(db, update, user, plan_id)
+    raise HTTPException(422, "请通过分批排期提交交期，由调度确认")
 
 
 def save_plan(db, payload, user, plan_id=None):
@@ -986,6 +973,9 @@ def _save_plan(db, payload, user, plan_id, request_hash):
             from .production_schedule_tasks import legacy_task
 
             task = legacy_task(db, payload, request_hash)
+            from .schedule_permissions import require_unlocked
+
+            require_unlocked(task)
             if payload.predecessor_id and payload.sequence_no == 1:
                 values["sequence_no"] = require_plan(db, payload.predecessor_id).sequence_no + 1
             plan = Plan(
@@ -1003,6 +993,9 @@ def _save_plan(db, payload, user, plan_id, request_hash):
                 .with_for_update()
                 .execution_options(populate_existing=True)
             )
+            from .schedule_permissions import require_unlocked
+
+            require_unlocked(task)
             for field, value in values.items():
                 setattr(plan, field, value)
             plan.version += 1
@@ -1037,6 +1030,9 @@ def cancel_plan(db, plan_id, payload, user):
             .with_for_update()
             .execution_options(populate_existing=True)
         )
+        from .schedule_permissions import require_unlocked
+
+        require_unlocked(task)
         task.version += 1
         task.updated_at = utcnow()
         record_event(db, plan, user, "cancelled", before, reason=payload.reason.strip())

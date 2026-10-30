@@ -36,7 +36,9 @@ const visible = ref(true)
 const auth = useAuthStore(),
   directory = useTeamDirectoryStore()
 const teams = computed(() =>
-  directory.items.filter((team) => team.active && team.kind !== 'engineering'),
+  directory.items.filter(
+    (team) => team.active && !['engineering', 'dispatch', 'business'].includes(team.kind || ''),
+  ),
 )
 const existing = props.schedule
 const localDue = existing ? formatDateTime(existing.due_at) : ''

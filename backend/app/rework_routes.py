@@ -205,7 +205,7 @@ def request_document(db, route):
 def source_stock(db, user, query="", page=1, lot_id=None):
     """Direct team submissions select physical stock, never a free-form serial."""
     team = stock.require_actor(user, user.team_id)
-    if team.kind == "engineering":
+    if team.kind in ("engineering", "dispatch", "business"):
         raise HTTPException(403, "请由物料所在班组提交返工问题")
     stmt = (
         select(MaterialTransfer, Balance)
@@ -282,7 +282,7 @@ def request_rework(db, payload, user):
     from .quality_feedback import is_qc, require_rework_issue
 
     team = stock.require_actor(user, user.team_id)
-    if team.kind == "engineering":
+    if team.kind in ("engineering", "dispatch", "business"):
         raise HTTPException(403, "请由物料所在班组提交返工问题")
     request_hash = stock.fingerprint(payload)
 

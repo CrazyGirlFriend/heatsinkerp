@@ -46,10 +46,22 @@ const router = createRouter({
       meta: { title: '工艺工作台' },
     },
     {
+      path: '/dispatch-schedules',
+      name: 'dispatch-schedules',
+      component: () => import('@/pages/DispatchSchedulesPage.vue'),
+      meta: { title: '调度工作台' },
+    },
+    {
+      path: '/business-people',
+      name: 'business-people',
+      component: () => import('@/pages/BusinessPeoplePage.vue'),
+      meta: { title: '业务班组' },
+    },
+    {
       path: '/production-schedules',
       name: 'production-schedules',
       component: () => import('@/pages/ProductionSchedulesPage.vue'),
-      meta: { title: '生产排期', adminOnly: true },
+      meta: { title: '生产排期' },
     },
     {
       path: '/flow-preview/:view(team|chain)',
@@ -138,7 +150,7 @@ router.beforeEach(async (to) => {
       /* The guarded destination retries account verification. */
     }
     destination =
-      currentUser.value?.team?.kind === 'engineering' &&
+      ['engineering', 'dispatch', 'business'].includes(currentUser.value?.team?.kind || '') &&
       (!to.query.redirect || to.query.redirect === DEFAULT_LOGIN_PATH)
         ? defaultAuthenticatedPath(currentUser.value)
         : safeInternalRedirect(to.query.redirect, DEFAULT_LOGIN_PATH)
@@ -196,6 +208,12 @@ router.beforeEach(async (to) => {
     currentUser.value?.team?.kind === 'engineering'
   )
     return '/process-routes'
+  if (
+    to.name === 'team-workspace' &&
+    String(to.params.teamId) === String(currentUser.value?.team_id) &&
+    ['dispatch', 'business'].includes(currentUser.value?.team?.kind || '')
+  )
+    return defaultAuthenticatedPath(currentUser.value)
   if (to.meta.adminOnly && !isAdmin.value) return { path: '/transfer-batches' }
   if (to.name === 'flow-preview' && to.params.view === 'chain')
     return { path: '/material-trace', query: to.query, replace: true }

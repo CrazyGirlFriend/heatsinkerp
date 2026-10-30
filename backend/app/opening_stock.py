@@ -101,7 +101,7 @@ def state(
         and user.team_id == team_id
         and team.active
         and team.opening_stock_enabled
-        and team.kind != "engineering",
+        and team.kind not in ("engineering", "dispatch", "business"),
         "items": [
             workflow.material_transfer_dict(row, user)
             for row in db.scalars(
@@ -143,8 +143,8 @@ def create(
             if prior:
                 stock._replay(prior, user, request_hash, "team_id")
                 return result(db, prior, user)
-            if team.kind == "engineering":
-                raise HTTPException(403, "工艺班组不登记实物库存")
+            if team.kind in ("engineering", "dispatch", "business"):
+                raise HTTPException(403, "该班组不登记实物库存")
             if not team.active or not team.opening_stock_enabled:
                 raise HTTPException(403, "管理员尚未开启本班组的初始库存录入权限")
             submission = OpeningStockSubmission(

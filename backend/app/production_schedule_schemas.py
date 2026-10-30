@@ -90,6 +90,18 @@ class ScheduleCreate(ScheduleNode):
         return value
 
 
+class CustomerBatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    batch_number: int = Field(ge=1, le=100)
+    due_at: datetime
+    target_quantity: int = Field(gt=0, le=2_147_483_647)
+
+    @field_validator("due_at")
+    @classmethod
+    def hour(cls, value):
+        return ScheduleNode.hour(value)
+
+
 class ScheduleTaskCreate(BaseModel):
     final_due_at: datetime | None = None
 
@@ -104,6 +116,7 @@ class ScheduleTaskCreate(BaseModel):
     serial_no: str = Field(min_length=1, max_length=80)
     notes: str | None = Field(default=None, max_length=2000)
     business_person_id: int | None = Field(default=None, ge=1)
+    business_person_ids: list[int] = Field(default_factory=list, max_length=100)
     nodes: list[ScheduleNode] = Field(min_length=1, max_length=50)
 
     @field_validator("title", "serial_no", "idempotency_key")
@@ -142,6 +155,7 @@ class ScheduleCommitmentUpdate(BaseModel):
 
 
 class ScheduleTaskUpdate(BaseModel):
+    delivery_batches: list[CustomerBatch] = Field(default_factory=list, max_length=100)
     final_due_at: datetime | None = None
 
     @field_validator("final_due_at")
@@ -154,6 +168,7 @@ class ScheduleTaskUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     notes: str | None = Field(default=None, max_length=2000)
     business_person_id: int | None = Field(default=None, ge=1)
+    business_person_ids: list[int] = Field(default_factory=list, max_length=100)
 
     @field_validator("title")
     @classmethod

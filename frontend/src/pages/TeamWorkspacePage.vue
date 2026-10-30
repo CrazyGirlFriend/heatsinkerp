@@ -110,6 +110,8 @@ watch(
   team,
   (value) => {
     if (value?.kind === 'engineering') void router.replace('/process-routes')
+    if (value?.kind === 'dispatch') void router.replace('/dispatch-schedules')
+    if (value?.kind === 'business') void router.replace('/business-people')
   },
   { immediate: true },
 )
@@ -120,7 +122,7 @@ const scopeReady = computed(
     directory.loaded &&
     !directory.error &&
     Boolean(team.value?.active) &&
-    team.value?.kind !== 'engineering',
+    !['engineering', 'dispatch', 'business'].includes(team.value?.kind || ''),
 )
 const scopeLoading = computed(
   () =>

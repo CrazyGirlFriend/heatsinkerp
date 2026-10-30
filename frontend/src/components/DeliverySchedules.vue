@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import { awaitingReview, plannedDueLabel, planLabel } from '@/utils/schedulePlanning'
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { Refresh, Search, Plus } from '@element-plus/icons-vue'
+import { Refresh, Search } from '@element-plus/icons-vue'
 import {
-  ElAlert,
   ElButton,
   ElCollapse,
   ElCollapseItem,
@@ -27,7 +27,7 @@ import TableExportButton from './TableExportButton.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import MaterialTransferStatus from './MaterialTransferStatus.vue'
 import type { MaterialTransferStatus as TransferStatus } from '@/types/materialTransfer'
-import ProductionScheduleEditor from './ProductionScheduleEditor.vue'
+import SchedulePlanReview from './SchedulePlanReview.vue'
 import ScheduleBatchEditor from './ScheduleBatchEditor.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
@@ -64,11 +64,7 @@ const emit = defineEmits<{
 const route = useRoute(),
   auth = useAuthStore(),
   directory = useTeamDirectoryStore()
-const canManage = computed(() =>
-  Boolean(
-    props.manage && auth.isAdmin && !auth.currentUserError && auth.currentUser?.active !== false,
-  ),
-)
+const canManage = computed(() => Boolean(props.manage && auth.isDispatch))
 const canDispatch = computed(() =>
   Boolean(
     props.teamId &&
@@ -78,12 +74,12 @@ const canDispatch = computed(() =>
     auth.currentUser?.active !== false,
   ),
 )
-const canEditCommitment = computed(
-  () =>
-    canDispatch.value ||
-    (auth.isAdmin && !auth.currentUserError && auth.currentUser?.active !== false),
+const canEditCommitment = computed(() => canDispatch.value || auth.isDispatch)
+const teams = computed(() =>
+  directory.items.filter(
+    (team) => team.active && ['warehouse', 'production'].includes(team.kind || ''),
+  ),
 )
-const teams = computed(() => directory.items.filter((team) => team.active))
 const rows = ref<ProductionSchedule[]>([]),
   total = ref(0),
   loading = ref(false),
@@ -104,12 +100,7 @@ const taskContext = ref<ScheduleTask | null>(null),
   taskLoading = ref(false),
   taskError = ref('')
 const editing = ref(false),
-  editingSchedule = ref<ProductionSchedule | null>(null),
-  predecessor = ref<ProductionSchedule | null>(null)
-const cancelTarget = ref<ProductionSchedule | null>(null),
-  cancelReason = ref(''),
-  cancelling = ref(false),
-  cancelError = ref('')
+  editingSchedule = ref<ProductionSchedule | null>(null)
 const batchNo = ref(''),
   batchOpen = ref(false)
 let generation = 0,
@@ -118,7 +109,7 @@ let generation = 0,
 let clockRefresh: ReturnType<typeof setInterval> | undefined
 const live = useLiveRefresh(() => load(true), {
   teamId: () => props.teamId,
-  busy: () => loading.value || editing.value || !!cancelTarget.value || !!detailId.value,
+  busy: () => loading.value || editing.value || !!detailId.value,
 })
 const filterCount = computed(
   () =>
@@ -253,11 +244,14 @@ async function focusScheduleNotice() {
   if (eventId) expandedEvents.value = [eventId]
   await nextTick()
   if (noticeTarget.value !== target || key !== route.query.notice) return
-  const selector = eventId
-    ? `[data-notice-event="${eventId}"]`
-    : target.batch_id
-      ? `.notice-batch-${target.batch_id}`
-      : '.schedule-summary'
+  const selector =
+    target.section === 'plan-review' && awaitingReview(detail.value)
+      ? '.plan-review'
+      : eventId
+        ? `[data-notice-event="${eventId}"]`
+        : target.batch_id
+          ? `.notice-batch-${target.batch_id}`
+          : '.schedule-summary'
   const element = document.querySelector<HTMLElement>(`.schedule-detail ${selector}`)
   if (!element) {
     noticeFailed(key, new Error('对应记录已调整，未能定位，请从排期明细查看'))
@@ -320,18 +314,9 @@ async function openBatchPlan(id: number) {
   await openDetail(id)
   if (detail.value) editSchedule(detail.value)
 }
-function newSchedule() {
-  editingSchedule.value = predecessor.value = null
-  editing.value = true
-}
 function editSchedule(row: ProductionSchedule) {
+  if (row.order_locked || !canEditCommitment.value) return
   editingSchedule.value = row
-  predecessor.value = null
-  editing.value = true
-}
-function nextSchedule(row: ProductionSchedule) {
-  editingSchedule.value = null
-  predecessor.value = row
   editing.value = true
 }
 function saved(row: ProductionSchedule) {
@@ -339,34 +324,9 @@ function saved(row: ProductionSchedule) {
   void load()
   void openDetail(row.id)
   emit('changed')
-  showToast('交货排期已保存', 'success')
+  showToast(awaitingReview(row) ? '已提交调度确认' : '交货排期已保存', 'success')
 }
-function startCancel(row: ProductionSchedule) {
-  cancelTarget.value = row
-  cancelReason.value = ''
-  cancelError.value = ''
-}
-async function cancel() {
-  if (!cancelTarget.value || !canManage.value || cancelling.value) return
-  cancelling.value = true
-  cancelError.value = ''
-  try {
-    const result = await productionScheduleApi.cancel(cancelTarget.value.id, {
-      expected_version: cancelTarget.value.version,
-      reason: cancelReason.value.trim() || undefined,
-    })
-    cancelTarget.value = null
-    detail.value = result
-    if (result.task_id) void loadTask(result.task_id)
-    emit('changed')
-    void load()
-    showToast('排期已取消，实际收发记录仍保留', 'success')
-  } catch (e) {
-    cancelError.value = e instanceof Error ? e.message : '取消失败，请刷新重试'
-  } finally {
-    cancelling.value = false
-  }
-}
+
 function viewBatch(batch: string) {
   batchNo.value = batch
   batchOpen.value = true
@@ -540,8 +500,18 @@ function changes(event: NonNullable<ProductionSchedule['history']>[number]) {
       before: auditValue(key, event.before),
       after: auditValue(key, event.after),
     }))
-  const oldBatches = new Map((event.before?.batches || []).map((b) => [b.batch_number, b]))
-  const newBatches = new Map((event.after?.batches || []).map((b) => [b.batch_number, b]))
+  const submission = event.action === 'plan_submitted'
+  const oldBatches = new Map(
+    ((submission ? event.before?.pending_batches : null) || event.before?.batches || []).map(
+      (b) => [b.batch_number, b],
+    ),
+  )
+  const newBatches = new Map(
+    ((submission ? event.after?.pending_batches : event.after?.batches) || []).map((b) => [
+      b.batch_number,
+      b,
+    ]),
+  )
   for (const number of new Set([...oldBatches.keys(), ...newBatches.keys()])) {
     const before = oldBatches.get(number),
       after = newBatches.get(number)
@@ -571,7 +541,20 @@ function changes(event: NonNullable<ProductionSchedule['history']>[number]) {
       before: formatDateTime(event.before?.final_due_at),
       after: formatDateTime(event.after?.final_due_at),
     })
-  if (event.after?.reason) items.push({ label: '取消原因', before: '—', after: event.after.reason })
+  if (event.after?.reason)
+    items.push({
+      label: event.action === 'plan_returned' ? '退回原因' : '取消原因',
+      before: '—',
+      after: event.after.reason,
+    })
+  if (event.action === 'order_locked' || event.action === 'order_unlocked') {
+    const locked = event.action === 'order_locked'
+    items.push({
+      label: '订单锁定',
+      before: locked ? '未锁定' : '已锁定',
+      after: locked ? '已锁定' : '未锁定',
+    })
+  }
   for (const [key, label] of [
     ['task_title', '任务名称'],
     ['task_notes', '任务备注'],
@@ -589,7 +572,11 @@ function actionLabel(action: string) {
         created: '新建',
         update: '调整',
         updated: '调整',
-        batches_updated: '调整分批排期',
+        batches_updated: '确认或调整分批排期',
+        plan_submitted: '提交交期',
+        plan_returned: '退回修改',
+        order_locked: '锁定订单',
+        order_unlocked: '解锁订单',
         cancel: '取消',
         cancelled: '取消',
         task_updated: '调整任务信息',
@@ -622,7 +609,6 @@ watch(() => [route.query.schedule_id, route.query.notice], openScheduleNotice, {
 watch(canManage, (value) => {
   if (!value) {
     editing.value = false
-    cancelTarget.value = null
   }
 })
 onMounted(() => {
@@ -694,9 +680,6 @@ defineExpose({ exportSource, openDetail })
           :context="JSON.stringify(params())"
         />
         <ElButton :icon="Refresh" :loading="loading" aria-label="刷新交货排期" @click="load()" />
-        <ElButton v-if="canManage" type="primary" :icon="Plus" @click="newSchedule"
-          >新建排期</ElButton
-        >
       </div>
       <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
       <StatePanel v-if="error" state="error" :description="error" @retry="load" />
@@ -738,9 +721,26 @@ defineExpose({ exportSource, openDetail })
               link
               :class="{ 'schedule-late': row.status === 'overdue' }"
               @click="openDetail(row.id)"
-              >{{ formatDateTime(row.due_at) }}</ElButton
+              >{{ plannedDueLabel(row as ProductionSchedule) }}</ElButton
             ></template
           ></ElTableColumn
+        >
+        <ElTableColumn label="计划确认" width="125" align="center"
+          ><template #default="{ row }"
+            ><ElTag :type="row.planning_state === 'confirmed' ? 'success' : 'warning'">{{
+              planLabel(row as ProductionSchedule)
+            }}</ElTag></template
+          ></ElTableColumn
+        >
+        <ElTableColumn label="最终交期" min-width="170" align="center"
+          ><template #default="{ row }">{{
+            formatDateTime(row.final_due_at)
+          }}</template></ElTableColumn
+        >
+        <ElTableColumn label="订单锁定" width="100" align="center"
+          ><template #default="{ row }">{{
+            row.order_locked ? '已锁定' : '—'
+          }}</template></ElTableColumn
         >
         <ElTableColumn label="排期状态" min-width="120" align="center"
           ><template #default="{ row }"
@@ -818,11 +818,11 @@ defineExpose({ exportSource, openDetail })
           ><template #default="{ row }"
             ><ElButton link type="primary" @click="openDetail(row.id)">明细</ElButton
             ><ElButton
-              v-if="canEditCommitment && row.status !== 'cancelled'"
+              v-if="canEditCommitment && !row.order_locked && row.status !== 'cancelled'"
               link
               type="primary"
               @click="openBatchPlan(row.id)"
-              >安排批次</ElButton
+              >{{ row.planning_state === 'pending' ? '填写交期' : '修改计划' }}</ElButton
             ></template
           ></ElTableColumn
         >
@@ -859,6 +859,7 @@ defineExpose({ exportSource, openDetail })
       <template v-else-if="detail">
         <div class="schedule-detail__heading">
           <strong>{{ detail.serial_no }}</strong
+          ><ElTag v-if="detail.order_locked" type="warning">订单已锁定</ElTag
           ><span>{{ detail.team_name }} → {{ destination(detail) }}</span
           ><ElTag :type="scheduleStatusTone(detail.status)">{{
             scheduleStatusLabels[detail.status]
@@ -883,7 +884,7 @@ defineExpose({ exportSource, openDetail })
                 @click="openDetail(node.id)"
               >
                 <strong>{{ node.team_name }}</strong>
-                <span>{{ formatDateTime(node.due_at) }}</span>
+                <span>{{ plannedDueLabel(node) }}</span>
                 <span :class="`schedule-task-route__status--${scheduleStatusTone(node.status)}`">{{
                   scheduleStatusLabels[node.status]
                 }}</span>
@@ -906,7 +907,7 @@ defineExpose({ exportSource, openDetail })
           }}</ElDescriptionsItem>
           <ElDescriptionsItem label="节点顺序">{{ detail.sequence_no }}</ElDescriptionsItem>
           <ElDescriptionsItem label="要求交货时间">{{
-            formatDateTime(detail.due_at)
+            plannedDueLabel(detail)
           }}</ElDescriptionsItem>
           <ElDescriptionsItem label="实际交完时间">{{
             formatDateTime(detail.completed_at)
@@ -954,6 +955,21 @@ defineExpose({ exportSource, openDetail })
           }}</ElDescriptionsItem>
           <ElDescriptionsItem label="备注" :span="3">{{ detail.notes || '—' }}</ElDescriptionsItem>
         </ElDescriptions>
+        <ElTable
+          v-if="detail.delivery_batches?.length"
+          :data="detail.delivery_batches"
+          border
+          size="small"
+          aria-label="调度交货要求"
+          ><ElTableColumn label="订单批次" prop="batch_number" width="100" /><ElTableColumn
+            label="数量（件）"
+            prop="target_quantity"
+            width="120"
+          /><ElTableColumn label="要求交期"
+            ><template #default="{ row }">{{ formatDateTime(row.due_at) }}</template></ElTableColumn
+          ></ElTable
+        >
+        <SchedulePlanReview :schedule="detail" @changed="saved" />
         <div class="schedule-section-heading"><h3>分批排期</h3></div>
         <ElTable
           :data="detail.batches || []"
@@ -1159,15 +1175,14 @@ defineExpose({ exportSource, openDetail })
             detail &&
             canEditCommitment &&
             (canManage || detail.team_id === teamId) &&
-            detail.status !== 'cancelled'
+            detail.status !== 'cancelled' &&
+            !detail.order_locked
           "
           class="schedule-detail__manage"
         >
-          <ElButton v-if="canManage" type="danger" plain @click="startCancel(detail)"
-            >取消排期</ElButton
-          ><ElButton v-if="canManage && detail.next_team_id" @click="nextSchedule(detail)"
-            >添加下序节点</ElButton
-          ><ElButton type="primary" @click="editSchedule(detail)">安排批次</ElButton>
+          <ElButton type="primary" @click="editSchedule(detail)">{{
+            detail.planning_state === 'pending' ? '填写交期' : '修改批次计划'
+          }}</ElButton>
         </div>
         <ElButton
           v-if="
@@ -1188,38 +1203,6 @@ defineExpose({ exportSource, openDetail })
       @close="editing = false"
       @saved="saved"
     />
-    <ProductionScheduleEditor
-      v-if="editing && canEditCommitment && !editingSchedule"
-      :schedule="editingSchedule"
-      :predecessor="predecessor"
-      @close="editing = false"
-      @saved="saved"
-    />
-    <AppDialog
-      :model-value="!!cancelTarget"
-      title="取消交货排期"
-      width="min(520px,94vw)"
-      append-to-body
-      :close-on-click-modal="!cancelling"
-      :show-close="!cancelling"
-      @close="!cancelling && (cancelTarget = null)"
-      ><ElAlert v-if="cancelError" :title="cancelError" type="error" :closable="false" />
-      <p>
-        取消 {{ cancelTarget?.serial_no }} 在
-        {{ cancelTarget?.team_name }} 的交货安排，已有收发记录继续保留。
-      </p>
-      <ElInput
-        v-model="cancelReason"
-        type="textarea"
-        :rows="3"
-        maxlength="1000"
-        placeholder="取消原因（选填）"
-        aria-label="取消排期原因"
-      /><template #footer
-        ><ElButton :disabled="cancelling" @click="cancelTarget = null">保留排期</ElButton
-        ><ElButton type="danger" :loading="cancelling" @click="cancel">确认取消</ElButton></template
-      ></AppDialog
-    >
     <MaterialTransferDrawer v-model="batchOpen" :batch-no="batchNo" />
     <AppDialog
       :model-value="!!dispatchTarget"

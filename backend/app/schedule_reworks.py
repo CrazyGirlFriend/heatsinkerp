@@ -148,6 +148,9 @@ def link(db, task_id, payload, user):
     with db.begin():
         db.scalar(select(Team.id).order_by(Team.id).limit(1).with_for_update())
         task = require_task(db, task_id, lock=True)
+        from .schedule_permissions import require_unlocked
+
+        require_unlocked(task)
         route = db.scalar(select(Route).where(Route.id == payload.route_id).with_for_update())
         if (
             task.version != payload.expected_version

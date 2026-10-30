@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { hasConfirmedPlan } from '@/utils/schedulePlanning'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   ArrowLeft,
@@ -374,6 +375,7 @@ onBeforeUnmount(() => {
         <button type="button" class="sp-icon-button" aria-label="下一时间段" @click="shiftRange(1)">
           <ElIcon><ArrowRight /></ElIcon>
         </button>
+        <slot name="view-actions" />
       </div>
     </div>
     <div
@@ -491,6 +493,14 @@ onBeforeUnmount(() => {
                 ><span>{{ group[edge].length }}</span>
               </button>
             </ElTooltip>
+            <button
+              v-if="!group.markers.length && group.task.nodes.some((n) => !hasConfirmedPlan(n))"
+              class="sp-awaiting-plan"
+              type="button"
+              @click="emit('open-task', group.task)"
+            >
+              待班组填写 / 调度确认
+            </button>
             <svg
               class="sp-links"
               :viewBox="`0 0 ${width} ${group.height}`"
@@ -837,9 +847,13 @@ onBeforeUnmount(() => {
           ><i />{{ node.team_name }}</span
         >
       </div>
-      <div class="sp-legend">
+      <div class="sp-legend" aria-label="排期图例">
+        <span><i class="sp-period-key" aria-hidden="true" />实心条：计划开始至交货</span>
+        <span><i class="sp-unplanned-key" aria-hidden="true" />虚线框：仅显示交期</span>
         <span
-          ><ElIcon><Check /></ElIcon>已交完</span
+          ><i class="sp-done-key" aria-hidden="true"
+            ><ElIcon><Check /></ElIcon></i
+          >浅色带勾：已交完</span
         >
         <span
           ><ElIcon><LocationFilled /></ElIcon>物料在此</span
@@ -850,7 +864,6 @@ onBeforeUnmount(() => {
         <span
           ><ElIcon><Lock /></ElIcon>暂扣</span
         >
-        <span><i class="sp-unplanned-key" />未定开始</span>
       </div>
     </footer>
   </section>
@@ -1481,11 +1494,27 @@ onBeforeUnmount(() => {
 .has-active-node .sp-links > path:not(.is-related) {
   opacity: 0.18;
 }
+.sp-period-key,
+.sp-unplanned-key,
+.sp-done-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  height: 16px;
+  border-radius: 3px;
+}
+.sp-period-key {
+  background: var(--sp-green);
+}
 .sp-unplanned-key {
-  width: 15px;
-  height: 10px;
-  border: 1px dashed #69716d;
-  border-radius: 2px;
+  border: 1px dashed var(--sp-green);
+  background: color-mix(in srgb, var(--sp-green) 8%, white);
+}
+.sp-done-key {
+  border: 1px solid color-mix(in srgb, var(--sp-green) 30%, white);
+  background: color-mix(in srgb, var(--sp-green) 5%, white);
+  color: var(--sp-green);
 }
 .sp-completion {
   position: absolute;
@@ -1664,6 +1693,20 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
+}
+.sp-awaiting-plan {
+  position: sticky;
+  left: 16px;
+  z-index: 3;
+  margin: 12px 16px;
+  padding: 5px 10px;
+  border: 1px solid #dfcfad;
+  border-radius: 5px;
+  color: #775825;
+  background: #fffbf0;
+  font-size: 12px;
+  cursor: pointer;
 }
 .sp-empty {
   padding: 70px 16px;

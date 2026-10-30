@@ -573,7 +573,10 @@ async function revise() {
 }
 function mapWarehouseSteps() {
   const stockTeam = directory.items.find(
-    (team) => team.active && team.kind !== 'engineering' && team.code === 'FACTORY-WAREHOUSE',
+    (team) =>
+      team.active &&
+      ['warehouse', 'production'].includes(team.kind || '') &&
+      team.code === 'FACTORY-WAREHOUSE',
   )
   if (!stockTeam) return
   draft.value.steps.forEach((step) => {
@@ -1076,7 +1079,9 @@ onMounted(async () => {
                             @change="teamChanged(index)"
                             ><ElOption
                               v-for="team in directory.items.filter(
-                                (team) => team.active && team.kind !== 'engineering',
+                                (team) =>
+                                  team.active &&
+                                  ['warehouse', 'production'].includes(team.kind || ''),
                               )"
                               :key="team.id"
                               :value="Number(team.id)"
@@ -1401,7 +1406,7 @@ onMounted(async () => {
         v-if="
           readonly &&
           draft.route_kind === 'rework' &&
-          (draft.rework_request?.original_task_id || auth.isAdmin)
+          (draft.rework_request?.original_task_id || auth.isDispatch)
         "
         :to="{
           path: '/production-schedules',
@@ -1413,9 +1418,11 @@ onMounted(async () => {
         @click="visible = false"
         >{{ draft.rework_request?.original_task_id ? '查看交货排期' : '关联交货排期' }}</RouterLink
       >
-      <template v-if="readonly && canMaintain && draft.route_kind !== 'rework'">
+      <template
+        v-if="readonly && (canMaintain || auth.isDispatch) && draft.route_kind !== 'rework'"
+      >
         <ElSelect
-          v-if="auth.isAdmin"
+          v-if="auth.isDispatch"
           v-model="scheduleSerial"
           placeholder="选择流水号"
           style="width: 180px"
@@ -1425,10 +1432,12 @@ onMounted(async () => {
             :value="serial"
             :label="serial"
         /></ElSelect>
-        <ElButton v-if="auth.isAdmin" :disabled="!scheduleSerial" @click="scheduleOpen = true"
+        <ElButton v-if="auth.isDispatch" :disabled="!scheduleSerial" @click="scheduleOpen = true"
           >建立工艺排期</ElButton
         >
-        <ElButton type="primary" :disabled="busy" @click="revise">修改工艺</ElButton>
+        <ElButton v-if="canMaintain" type="primary" :disabled="busy" @click="revise"
+          >修改工艺</ElButton
+        >
       </template>
       <ElButton
         v-else-if="readonly && canMaintain && draft.rework_request?.can_modify"

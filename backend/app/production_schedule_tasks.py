@@ -12,7 +12,7 @@ from . import production_schedules as schedules
 from .auth import actor_name
 from .business_people import require_assignable
 from .material_stock import fingerprint, literal_query
-from .models import BusinessPerson, Team, utcnow
+from .models import BusinessPerson, ProductionScheduleTaskPerson, Team, utcnow
 from .models import ProductionSchedule as Plan
 from .models import ProductionScheduleEvent as Event
 from .models import ProductionScheduleSource as Source
@@ -59,6 +59,14 @@ def task_values(db, ids):
             .where(Task.id.in_(ids))
         )
     )
+    people = {}
+    for task_id, person in db.execute(
+        select(ProductionScheduleTaskPerson.task_id, BusinessPerson)
+        .join(BusinessPerson, BusinessPerson.id == ProductionScheduleTaskPerson.person_id)
+        .where(ProductionScheduleTaskPerson.task_id.in_(ids))
+        .order_by(BusinessPerson.id)
+    ):
+        people.setdefault(task_id, []).append({"id": person.id, "name": person.name})
     nodes = list(
         db.execute(select(Plan).where(Plan.task_id.in_(ids)).order_by(Plan.sequence_no, Plan.id))
     )
@@ -156,7 +164,18 @@ def task_values(db, ids):
             "serial_no": task.serial_no,
             "business_person_id": task.business_person_id,
             "business_person_name": person_name,
+            "business_people": people.get(
+                task.id,
+                (
+                    [{"id": task.business_person_id, "name": person_name}]
+                    if task.business_person_id
+                    else []
+                ),
+            ),
             "notes": task.notes,
+            "delivery_batches": task.delivery_batches or [],
+            "locked_at": schedules.iso(task.locked_at),
+            "cancelled_at": schedules.iso(task.cancelled_at),
             "version": task.version,
             "created_at": schedules.iso(task.created_at),
             "updated_at": schedules.iso(task.updated_at),
@@ -189,13 +208,24 @@ def list_tasks(
     page_size=20,
     **filters,
 ):
-    nodes = schedules.filtered_nodes(**filters)
+    nodes = schedules.filtered_nodes(**filters).where(
+        Plan.task_id.in_(select(Task.id).where(Task.cancelled_at.is_(None)))
+    )
     if serial_nos:
         nodes = nodes.where(Plan.serial_no.in_(serial_nos))
     if business_person_ids:
         nodes = nodes.where(
             Plan.task_id.in_(
-                select(Task.id).where(Task.business_person_id.in_(business_person_ids))
+                select(Task.id).where(
+                    or_(
+                        Task.business_person_id.in_(business_person_ids),
+                        Task.id.in_(
+                            select(ProductionScheduleTaskPerson.task_id).where(
+                                ProductionScheduleTaskPerson.person_id.in_(business_person_ids)
+                            )
+                        ),
+                    )
+                )
             )
         )
     if query and query.strip():
@@ -308,6 +338,9 @@ def task_status_filter(candidates, status, scope=None):
 
 
 def create_task(db, payload, user):
+    from .dispatch_planning import DispatchTaskCreate, build_task
+
+    pending = isinstance(payload, DispatchTaskCreate)
     key = request_key("task", payload.idempotency_key)
     digest = fingerprint(payload)
     try:
@@ -320,9 +353,13 @@ def create_task(db, payload, user):
                     raise HTTPException(409, "请求编号已用于不同的排期任务")
                 task_id = prior.id
             else:
+                delivery_batches = None
+                if pending:
+                    payload, delivery_batches = build_task(db, payload)
                 require_assignable(db, payload.business_person_id)
                 task = Task(
                     final_due_at=payload.final_due_at or payload.nodes[-1].due_at,
+                    delivery_batches=delivery_batches,
                     title=payload.title,
                     serial_no=payload.serial_no,
                     notes=payload.notes,
@@ -332,6 +369,14 @@ def create_task(db, payload, user):
                 )
                 db.add(task)
                 db.flush()
+                from .business_people import assign_task_people
+
+                assign_task_people(
+                    db,
+                    task,
+                    payload.business_person_ids
+                    or ([payload.business_person_id] if payload.business_person_id else []),
+                )
                 predecessor_id = None
                 for index, node in enumerate(payload.nodes, 1):
                     # Fields have already been validated; datetimes are normalized UTC.
@@ -348,6 +393,7 @@ def create_task(db, payload, user):
                         **{field: getattr(data, field) for field in schedules.FIELDS},
                         task_id=task.id,
                         initial_due_at=data.due_at,
+                        planning_state="pending" if pending else "confirmed",
                         idempotency_key=data.idempotency_key,
                         request_hash=fingerprint(data),
                     )
@@ -374,18 +420,53 @@ def update_task(db, task_id, payload, user):
     with db.begin():
         db.scalar(select(Team.id).order_by(Team.id).limit(1).with_for_update())
         task = require_task(db, task_id, lock=True)
+        from .schedule_permissions import require_unlocked
+
+        require_unlocked(task)
         if task.version != payload.expected_version:
             raise HTTPException(409, "排期任务已被修改，请刷新后重试")
         before = {"task_title": task.title, "task_notes": task.notes, "task_version": task.version}
-        if "business_person_id" in payload.model_fields_set:
-            require_assignable(db, payload.business_person_id, task.business_person_id)
-            before["business_person_id"] = task.business_person_id
-            task.business_person_id = payload.business_person_id
+        if {"business_person_id", "business_person_ids"} & payload.model_fields_set:
+            from .business_people import assign_task_people
+
+            before["business_person_ids"] = list(
+                db.scalars(
+                    select(ProductionScheduleTaskPerson.person_id).where(
+                        ProductionScheduleTaskPerson.task_id == task.id
+                    )
+                )
+            )
+            ids = (
+                payload.business_person_ids
+                if "business_person_ids" in payload.model_fields_set
+                else ([payload.business_person_id] if payload.business_person_id else [])
+            )
+            if not ids:
+                raise HTTPException(422, "请至少选择一位业务人员")
+            assign_task_people(db, task, ids)
         before["final_due_at"] = schedules.iso(task.final_due_at)
         if "final_due_at" in payload.model_fields_set:
             if payload.final_due_at is None:
                 raise HTTPException(422, "请选择最终交期")
             task.final_due_at = payload.final_due_at
+        if "delivery_batches" in payload.model_fields_set:
+            from .dispatch_planning import customer_values, validate_customer_batches
+
+            try:
+                if not payload.delivery_batches:
+                    raise ValueError("请至少安排一批交货")
+                expected_quantity = (
+                    sum(b["target_quantity"] for b in task.delivery_batches or []) or None
+                )
+                validate_customer_batches(
+                    payload.delivery_batches, task.final_due_at, expected_quantity
+                )
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from None
+            before["delivery_batches"] = task.delivery_batches
+            task.delivery_batches = customer_values(payload.delivery_batches)
+        elif task.delivery_batches and before["final_due_at"] != schedules.iso(task.final_due_at):
+            raise HTTPException(422, "请同时调整最后一批交期")
         task.title, task.notes = payload.title, payload.notes
         task.version += 1
         task.updated_at = utcnow()
@@ -402,16 +483,26 @@ def update_task(db, task_id, payload, user):
                 before=before,
                 after={
                     "final_due_at": schedules.iso(task.final_due_at),
+                    "delivery_batches": task.delivery_batches,
                     "task_title": task.title,
                     "task_notes": task.notes,
                     "task_version": task.version,
                     "business_person_id": task.business_person_id,
+                    "business_person_ids": list(
+                        db.scalars(
+                            select(ProductionScheduleTaskPerson.person_id).where(
+                                ProductionScheduleTaskPerson.task_id == task.id
+                            )
+                        )
+                    ),
                 },
             )
         )
         from .schedule_notices import notify_final_due
 
-        if before["final_due_at"] != schedules.iso(task.final_due_at):
+        if before["final_due_at"] != schedules.iso(task.final_due_at) or (
+            "delivery_batches" in before and before["delivery_batches"] != task.delivery_batches
+        ):
             notify_final_due(db, task)
         # Reuse existing team-scoped refresh, without changing node revisions or actual dates.
         for node in db.scalars(select(Plan).where(Plan.task_id == task_id)):

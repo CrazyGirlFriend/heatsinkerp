@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import {
   ElAlert,
   ElButton,
@@ -8,238 +8,213 @@ import {
   ElFormItem,
   ElInput,
   ElInputNumber,
-  ElOption,
   ElSelect,
-  ElRadioGroup,
-  ElRadioButton,
+  ElOption,
+  ElTable,
+  ElTableColumn,
 } from 'element-plus'
-import { Plus, Delete } from '@element-plus/icons-vue'
 import AppDialog from './AppDialog.vue'
 import MaterialInput from './MaterialInput.vue'
-import ScheduleSourceAllocation from './ScheduleSourceAllocation.vue'
 import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
-import { useDialogValidation } from '@/composables/useDialogValidation'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
-import {
-  completionBasisLabels,
-  type CompletionBasis,
-  type ScheduleSource,
-  type ScheduleTask,
-  type ScheduleTaskWrite,
-  type ScheduleSelection,
+import type {
+  ScheduleTask,
+  ScheduleRouteOption,
+  ScheduleSelection,
+  DispatchTaskWrite,
 } from '@/types/productionSchedule'
-import { externalDestinationOptions } from '@/types/materialTransfer'
+import type { ProcessRoute } from '@/types/processRoute'
 import { materialRequestKey } from '@/utils/materialStock'
-import { scheduleAmountErrors } from '@/utils/schedulePlan'
 import { formatDateTime } from '@/utils/format'
 
 const props = defineProps<{
   task?: ScheduleTask | null
-  processRoute?: import('@/types/processRoute').ProcessRoute
+  processRoute?: ProcessRoute
   routeSerial?: string
 }>()
 const emit = defineEmits<{ close: []; saved: [task: ScheduleTask] }>()
-const visible = ref(true)
 const auth = useAuthStore(),
   directory = useTeamDirectoryStore()
-const teams = computed(() =>
-  directory.items.filter((team) => team.active && team.kind !== 'engineering'),
+const visible = ref(true),
+  saving = ref(false),
+  loading = ref(false),
+  error = ref(''),
+  personOpen = ref(false)
+const serial = ref(props.task?.serial_no || props.routeSerial || '')
+const local = (value?: string | null) =>
+  value ? formatDateTime(value).replace(' ', 'T') + ':00' : ''
+const finalDue = ref(local(props.task?.final_due_at)),
+  notes = ref(props.task?.notes || '')
+const people = ref<ScheduleSelection[]>(
+  (
+    props.task?.business_people ||
+    (props.task?.business_person_id
+      ? [{ id: props.task.business_person_id, name: props.task.business_person_name || '' }]
+      : [])
+  ).map((p) => ({ value: p.id, label: p.name })),
 )
-const writable = computed(
-  () => auth.isAdmin && !auth.currentUserError && auth.currentUser?.active !== false,
+const routes = ref<ScheduleRouteOption[]>([]),
+  routeId = ref<number>()
+const selectedRoute = computed(() => routes.value.find((r) => r.id === routeId.value))
+const steps = computed(
+  () =>
+    selectedRoute.value?.steps.filter(
+      (s) => !s.serial_nos.length || s.serial_nos.includes(serial.value.trim()),
+    ) || [],
 )
-interface NodeDraft {
-  key: string
-  routeIndex?: number
-  team?: number
-  quantity?: number
-  weight?: number
-  basis: CompletionBasis
-  sources: ScheduleSource[]
-  notes: string
-}
-function newNode(team?: number): NodeDraft {
-  return {
-    key: materialRequestKey(),
-    team,
-    basis: 'quantity',
-    sources: [],
-    notes: '',
+const quantity = computed(() =>
+  props.task
+    ? props.task.delivery_batches?.reduce((sum, b) => sum + b.target_quantity, 0) ||
+      props.task.nodes.filter((n) => n.status !== 'cancelled').at(-1)?.target_quantity ||
+      0
+    : Number(steps.value.at(-1)?.planned_quantity) || 0,
+)
+const batches = ref(
+  (props.task?.delivery_batches || []).map((b) => ({
+    quantity: b.target_quantity,
+    due: local(b.due_at),
+  })),
+)
+if (!batches.value.length) batches.value.push({ quantity: quantity.value, due: finalDue.value })
+const writable = computed(() => auth.isDispatch && !props.task?.locked_at)
+let generation = 0,
+  key = '',
+  fingerprint = ''
+async function loadRoutes() {
+  if (props.task) return
+  const current = ++generation
+  routes.value = []
+  routeId.value = undefined
+  error.value = ''
+  if (!serial.value.trim()) {
+    loading.value = false
+    return
+  }
+  loading.value = true
+  try {
+    const result = await productionScheduleApi.taskRouteOptions(serial.value.trim())
+    if (current !== generation) return
+    routes.value = result
+    routeId.value =
+      result.find((r) => r.id === props.processRoute?.id)?.id ||
+      (result.length === 1 ? result[0]!.id : undefined)
+    if (!result.length) error.value = '该流水号暂无工艺，请先由工艺班组制定'
+  } catch (e) {
+    if (current === generation) error.value = e instanceof Error ? e.message : '工艺读取失败'
+  } finally {
+    if (current === generation) loading.value = false
   }
 }
-function routeNodes() {
-  const nodes: NodeDraft[] = []
-  props.processRoute?.steps.forEach((step, index) => {
-    if (step.serial_nos.length && !step.serial_nos.includes(props.routeSerial || '')) return
-    const planned = Number(step.planned_quantity)
-    const quantity =
-      Number.isSafeInteger(planned) && planned > 0 && planned <= 2147483647 ? planned : undefined
-    const last = nodes.at(-1)
-    if (last?.team === step.team_id) {
-      last.quantity = quantity
-      last.routeIndex = index
-      last.notes += `；${step.sequence_no} · ${step.name}`
-      return
-    }
-    const node = newNode(step.team_id || undefined)
-    node.quantity = quantity
-    node.routeIndex = index
-    node.notes = `${step.sequence_no} · ${step.name}`
-    nodes.push(node)
-  })
-  return nodes
-}
-const finalDue = props.task?.final_due_at ? formatDateTime(props.task.final_due_at) : ''
-const importedDelivery = String(
-  props.processRoute?.source_data.receipt_fields?.delivery_date?.value || '',
-)
-const form = reactive({
-  finalDate: finalDue.slice(0, 10) || importedDelivery,
-  finalHour: finalDue.slice(11, 13),
-  title: props.task?.title || props.processRoute?.title || '',
-  serial: props.task?.serial_no || props.routeSerial || '',
-  notes: props.task?.notes || '',
-  businessPerson: props.task?.business_person_id || null,
-  businessName: props.task?.business_person_name || '',
-  nodes: props.processRoute ? routeNodes() : [newNode()],
-  destinationKind: props.processRoute ? 'external' : 'team',
-  nextTeam: undefined as number | undefined,
-  destination: '',
+watch(finalDue, (value) => {
+  if (batches.value.length) batches.value[batches.value.length - 1]!.due = value
 })
-const saving = ref(false),
-  error = ref('')
-const personOpen = ref(false)
-function personSelected(items: ScheduleSelection[]) {
-  form.businessPerson = items[0] ? Number(items[0].value) : null
-  form.businessName = items[0]?.label || ''
+watch(quantity, (value) => {
+  if (!props.task) batches.value = [{ quantity: value, due: finalDue.value }]
+})
+function selectPeople(value: ScheduleSelection[]) {
+  people.value = value
   personOpen.value = false
 }
-let key = '',
-  fingerprint = ''
-const lastTeam = computed(() => form.nodes.at(-1)?.team)
-const externalAllowed = computed(() =>
-  teams.value.some(
-    (team) =>
-      Number(team.id) === lastTeam.value && ['FACTORY-WAREHOUSE', 'FACTORY-QC'].includes(team.code),
-  ),
-)
-function teamName(id?: number) {
-  return teams.value.find((team) => Number(team.id) === id)?.name || '待选班组'
+function addBatch() {
+  batches.value.push({ quantity: 0, due: finalDue.value })
 }
-function changeSerial() {
-  form.nodes.forEach((node) => {
-    node.sources = []
-  })
+function removeBatch(index: number) {
+  batches.value.splice(index, 1)
+  batches.value[batches.value.length - 1]!.due = finalDue.value
 }
-function changeTeam(node: NodeDraft) {
-  node.sources = []
-  if (!externalAllowed.value) form.destinationKind = 'team'
-}
-function addNode() {
-  if (form.nodes.length >= 50) return
-  form.nodes.push(newNode(form.nextTeam))
-  form.nextTeam = undefined
-  form.destinationKind = 'team'
-}
-function removeNode(index: number) {
-  form.nodes.splice(index, 1)
-  if (!externalAllowed.value) form.destinationKind = 'team'
-}
-const { formRef, fieldErrors, validate } = useDialogValidation(() => {
-  const issues: Record<string, string> = {}
-  if (!form.title.trim()) issues.title = '请填写任务名称'
-  if ((!props.task || form.finalDate || form.finalHour) && (!form.finalDate || !form.finalHour))
-    issues.finalDue = '请选择最终交货日期和小时'
-  if (props.task) return issues
-  if (!form.serial.trim()) issues.serial = '请填写流水号'
-  form.nodes.forEach((node, index) => {
-    if (!node.team) issues[`${node.key}.team`] = '请选择交货班组'
-    if (node.team && index && node.team === form.nodes[index - 1]?.team)
-      issues[`${node.key}.team`] = '相邻节点不能是同一班组'
-    Object.entries(scheduleAmountErrors(node)).forEach(([field, message]) => {
-      issues[`${node.key}.${field}`] = message
-    })
-  })
-  if (form.destinationKind === 'team' ? !form.nextTeam : !form.destination)
-    issues.destination = '请选择最后一个节点的接收去向'
-  else if (form.destinationKind === 'team' && form.nextTeam === lastTeam.value)
-    issues.destination = '接收班组不能与交货班组相同'
-  return issues
-})
 async function save() {
-  if (saving.value || !writable.value || !validate()) return
-  saving.value = true
+  if (saving.value || !writable.value || loading.value) return
   error.value = ''
+  if (!serial.value.trim() || (!props.task && !selectedRoute.value)) {
+    error.value = '请选择流水号和对应工艺'
+    return
+  }
+  if (
+    !finalDue.value ||
+    batches.value.some((b) => !b.due || !Number.isSafeInteger(b.quantity) || b.quantity <= 0)
+  ) {
+    error.value = '请填写交期和每批数量'
+    return
+  }
+  if (batches.value.reduce((sum, b) => sum + b.quantity, 0) !== quantity.value) {
+    error.value = `各批数量合计须为 ${quantity.value} 件`
+    return
+  }
+  if (
+    batches.value.some(
+      (b, i) => b.due > finalDue.value || (i > 0 && b.due < batches.value[i - 1]!.due),
+    )
+  ) {
+    error.value = '请按批次顺序设置交期，不能晚于最终交期'
+    return
+  }
+  if (!people.value.length) {
+    error.value = '请至少选择一位业务人员'
+    return
+  }
+  saving.value = true
   try {
-    if (props.task) {
+    const common = {
+      final_due_at: `${finalDue.value}+08:00`,
+      delivery_batches: batches.value.map((b, i) => ({
+        batch_number: i + 1,
+        target_quantity: b.quantity,
+        due_at: `${b.due}+08:00`,
+      })),
+      business_person_ids: people.value.map((p) => Number(p.value)),
+      notes: notes.value.trim() || null,
+    }
+    if (props.task)
       emit(
         'saved',
         await productionScheduleApi.updateTask(props.task.id, {
+          ...common,
+          title: props.task.title,
           expected_version: props.task.version,
-          title: form.title.trim(),
-          notes: form.notes.trim() || null,
-          business_person_id: form.businessPerson,
-          ...(form.finalDate && form.finalHour
-            ? { final_due_at: `${form.finalDate}T${form.finalHour}:00:00+08:00` }
-            : {}),
         }),
       )
-    } else {
-      const body: Omit<ScheduleTaskWrite, 'idempotency_key'> = {
-        title: form.title.trim(),
-        serial_no: form.serial.trim(),
-        notes: form.notes.trim() || null,
-        business_person_id: form.businessPerson,
-        ...(form.finalDate && form.finalHour
-          ? { final_due_at: `${form.finalDate}T${form.finalHour}:00:00+08:00` }
-          : {}),
-        nodes: form.nodes.map((node, index) => ({
-          process_route_id: props.processRoute?.id || null,
-          process_step_index: node.routeIndex ?? null,
-          team_id: node.team!,
-          next_team_id:
-            index < form.nodes.length - 1
-              ? form.nodes[index + 1]!.team!
-              : form.destinationKind === 'team'
-                ? form.nextTeam!
-                : null,
-          external_destination:
-            index === form.nodes.length - 1 && form.destinationKind === 'external'
-              ? form.destination
-              : null,
-          due_at: `${form.finalDate}T${form.finalHour}:00:00+08:00`,
-          target_quantity: node.quantity || null,
-          target_weight: node.weight || null,
-          completion_basis: node.basis,
-          sources: node.sources.map(({ source_transfer_id, quantity, weight }) => ({
-            source_transfer_id,
-            quantity: quantity || null,
-            weight: weight || null,
-          })),
-          notes: node.notes.trim() || null,
-        })),
+    else {
+      const body: Omit<DispatchTaskWrite, 'idempotency_key'> = {
+        ...common,
+        serial_no: serial.value.trim(),
+        route_id: selectedRoute.value!.id,
+        route_version: selectedRoute.value!.version,
       }
-      const nextFingerprint = JSON.stringify(body)
-      if (!key || fingerprint !== nextFingerprint) {
+      const next = JSON.stringify(body)
+      if (!key || fingerprint !== next) {
         key = materialRequestKey()
-        fingerprint = nextFingerprint
+        fingerprint = next
       }
       emit('saved', await productionScheduleApi.createTask({ ...body, idempotency_key: key }))
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '任务保存失败，请重试'
+    error.value = e instanceof Error ? e.message : '排期保存失败'
   } finally {
     saving.value = false
   }
 }
+let serialTimer: ReturnType<typeof setTimeout> | undefined
+watch(serial, () => {
+  ++generation
+  routes.value = []
+  routeId.value = undefined
+  clearTimeout(serialTimer)
+  serialTimer = setTimeout(loadRoutes, 350)
+})
+onBeforeUnmount(() => {
+  ++generation
+  clearTimeout(serialTimer)
+})
+const nonZeroMinutes = () => Array.from({ length: 59 }, (_, i) => i + 1)
+onMounted(loadRoutes)
 </script>
 <template>
   <AppDialog
     v-model="visible"
-    :title="task ? '修改任务信息' : '新建生产排期'"
-    width="min(1260px, 96vw)"
+    :title="task ? '修改订单交期' : '新建排期'"
+    width="min(1040px,96vw)"
     append-to-body
     :close-on-click-modal="!saving"
     :close-on-press-escape="!saving"
@@ -248,357 +223,162 @@ async function save() {
   >
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <ElForm
-      ref="formRef"
       label-position="top"
       :disabled="saving || !writable"
-      class="task-form"
+      class="dispatch-task-form"
       @submit.prevent="save"
     >
-      <div class="task-form__identity">
-        <ElFormItem label="流水号" required :error="fieldErrors.serial"
+      <div class="dispatch-task-fields">
+        <ElFormItem label="流水号" required
           ><MaterialInput
-            v-model="form.serial"
+            v-model="serial"
             field="serial_no"
             label="任务流水号"
-            :maxlength="80"
-            :disabled="!!task || !!processRoute"
-            @update:model-value="changeSerial"
-        /></ElFormItem>
-        <ElFormItem label="业务人员"
-          ><ElButton
-            class="task-form__person"
-            aria-label="选择订单业务人员"
-            @click="personOpen = true"
-            >{{ form.businessName || '选择业务人员（选填）' }}</ElButton
+            :disabled="!!task"
+          /><ElButton v-if="!task" link :loading="loading" @click="loadRoutes"
+            >读取工艺</ElButton
           ></ElFormItem
         >
-        <ElFormItem label="任务名称" required :error="fieldErrors.title"
-          ><ElInput
-            v-model="form.title"
-            maxlength="120"
-            placeholder="填写任务名称"
-            aria-label="任务名称"
+        <ElFormItem label="最终交期" required
+          ><ElDatePicker
+            v-model="finalDue"
+            type="datetime"
+            format="YYYY-MM-DD HH:mm"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            :disabled-minutes="nonZeroMinutes"
+            :disabled-seconds="nonZeroMinutes"
+            aria-label="最终交期"
         /></ElFormItem>
+        <ElFormItem label="业务人员"
+          ><ElButton class="dispatch-person-select" @click="personOpen = true">{{
+            people.length ? people.map((p) => p.label).join('、') : '选择业务人员'
+          }}</ElButton></ElFormItem
+        >
       </div>
-      <ElFormItem
-        label="最终交期"
-        :required="!task"
-        :error="fieldErrors.finalDue"
-        class="task-final-due"
-      >
-        <ElDatePicker
-          v-model="form.finalDate"
-          type="date"
-          value-format="YYYY-MM-DD"
-          placeholder="交货日期"
-          aria-label="最终交货日期"
-        />
-        <ElSelect v-model="form.finalHour" placeholder="小时" aria-label="最终交货小时"
-          ><ElOption
-            v-for="hour in 24"
-            :key="hour"
-            :value="String(hour - 1).padStart(2, '0')"
-            :label="`${String(hour - 1).padStart(2, '0')}:00`"
-        /></ElSelect>
-      </ElFormItem>
-      <template v-if="!task">
-        <div class="task-form__route-heading">
-          <strong>班组交货路线</strong>
-        </div>
-        <article v-for="(node, index) in form.nodes" :key="node.key" class="route-node">
-          <header class="route-node__heading">
-            <strong
-              ><span>{{ String(index + 1).padStart(2, '0') }}</span
-              >{{ teamName(node.team) }}</strong
-            ><span v-if="index < form.nodes.length - 1" class="route-node__destination"
-              >交给 {{ teamName(form.nodes[index + 1]?.team) }}</span
-            >
-            <ElFormItem
-              v-else
-              label="最后交给"
-              required
-              :error="fieldErrors.destination"
-              class="route-node__final"
-            >
-              <ElRadioGroup v-if="externalAllowed" v-model="form.destinationKind" size="small"
-                ><ElRadioButton value="team">接收班组</ElRadioButton
-                ><ElRadioButton value="external">外部去向</ElRadioButton></ElRadioGroup
-              >
-              <ElSelect
-                v-if="form.destinationKind === 'team'"
-                v-model="form.nextTeam"
-                aria-label="最终接收班组"
-                placeholder="选择接收班组"
-                ><ElOption
-                  v-for="team in teams.filter((item) => Number(item.id) !== lastTeam)"
-                  :key="team.id"
-                  :value="Number(team.id)"
-                  :label="team.name"
-              /></ElSelect>
-              <ElSelect
-                v-else
-                v-model="form.destination"
-                aria-label="最终外部去向"
-                placeholder="选择去向"
-                ><ElOption
-                  v-for="item in externalDestinationOptions"
-                  :key="item"
-                  :value="item"
-                  :label="item"
-              /></ElSelect>
-            </ElFormItem>
-            <ElButton
-              v-if="!processRoute && form.nodes.length > 1"
+      <ElFormItem v-if="!task && routes.length > 1" label="工艺" required
+        ><ElSelect v-model="routeId" aria-label="关联工艺"
+          ><ElOption v-for="r in routes" :key="r.id" :value="r.id" :label="r.title" /></ElSelect
+      ></ElFormItem>
+      <h3>
+        分批交货 <span>{{ quantity }} 件</span>
+      </h3>
+      <ElTable :data="batches" border aria-label="订单分批交期">
+        <ElTableColumn label="批次" width="90" align="center"
+          ><template #default="{ $index }">第 {{ $index + 1 }} 批</template></ElTableColumn
+        >
+        <ElTableColumn label="数量（件）" width="170"
+          ><template #default="{ row, $index }"
+            ><ElInputNumber
+              v-model="row.quantity"
+              :min="1"
+              :precision="0"
+              :controls="false"
+              :aria-label="`第${$index + 1}批交货数量`" /></template
+        ></ElTableColumn>
+        <ElTableColumn label="交货时间" min-width="230"
+          ><template #default="{ row, $index }"
+            ><ElDatePicker
+              v-model="row.due"
+              type="datetime"
+              format="YYYY-MM-DD HH:mm"
+              value-format="YYYY-MM-DDTHH:mm:ss"
+              :disabled="$index === batches.length - 1"
+              :disabled-minutes="nonZeroMinutes"
+              :disabled-seconds="nonZeroMinutes"
+              :aria-label="`第${$index + 1}批交期`" /></template
+        ></ElTableColumn>
+        <ElTableColumn label="操作" width="80" align="center"
+          ><template #default="{ $index }"
+            ><ElButton
               link
               type="danger"
-              :icon="Delete"
-              :aria-label="`移除第${index + 1}个节点`"
-              @click="removeNode(index)"
-              >移除</ElButton
-            >
-          </header>
-          <div class="route-node__fields">
-            <ElFormItem
-              class="route-node__team"
-              label="交货班组"
-              required
-              :error="fieldErrors[`${node.key}.team`]"
-              ><ElSelect
-                v-model="node.team"
-                :disabled="!!processRoute"
-                :aria-label="`第${index + 1}站班组`"
-                placeholder="选择班组"
-                @change="changeTeam(node)"
-                ><ElOption
-                  v-for="team in teams"
-                  :key="team.id"
-                  :label="team.name"
-                  :value="Number(team.id)" /></ElSelect
-            ></ElFormItem>
-            <ElFormItem
-              class="route-node__quantity"
-              :label="node.basis === 'weight' ? '参考件数' : '计划件数'"
-              :required="node.basis !== 'weight'"
-              :error="fieldErrors[`${node.key}.quantity`]"
-              ><ElInputNumber
-                v-model="node.quantity"
-                :min="1"
-                :precision="0"
-                :controls="false"
-                placeholder="件"
-                :aria-label="`第${index + 1}站件数`"
-            /></ElFormItem>
-            <ElFormItem
-              class="route-node__weight"
-              :label="node.basis === 'quantity' ? '参考重量（kg）' : '计划重量（kg）'"
-              :required="node.basis !== 'quantity'"
-              :error="fieldErrors[`${node.key}.weight`]"
-              ><ElInputNumber
-                v-model="node.weight"
-                :min="0.000001"
-                :precision="6"
-                :controls="false"
-                placeholder="kg"
-                :aria-label="`第${index + 1}站重量`"
-            /></ElFormItem>
-            <ElFormItem class="route-node__basis" label="计量方式" required
-              ><ElSelect v-model="node.basis" :aria-label="`第${index + 1}站计量方式`"
-                ><ElOption
-                  v-for="(label, value) in completionBasisLabels"
-                  :key="value"
-                  :label="label"
-                  :value="value" /></ElSelect
-            ></ElFormItem>
-          </div>
-          <details class="route-node__extra" :open="!!fieldErrors[`${node.key}.sources`]">
-            <summary>
-              批次与备注
-              <span v-if="node.sources.length">{{ node.sources.length }} 个批次</span>
-            </summary>
-            <ScheduleSourceAllocation
-              v-model="node.sources"
-              :serial-no="form.serial"
-              :team-id="node.team"
-              :target-quantity="node.quantity"
-              :target-weight="node.weight"
-              :disabled="saving"
-              :error="fieldErrors[`${node.key}.sources`]"
-            />
-            <ElFormItem label="班组备注"
-              ><ElInput v-model="node.notes" maxlength="2000" placeholder="选填"
-            /></ElFormItem>
-          </details>
-        </article>
-        <ElButton
-          v-if="!processRoute"
-          :icon="Plus"
-          :disabled="form.nodes.length >= 50"
-          @click="addNode"
-          >添加下一班组</ElButton
+              :disabled="batches.length === 1"
+              @click="removeBatch($index)"
+              >删除</ElButton
+            ></template
+          ></ElTableColumn
         >
+      </ElTable>
+      <ElButton :disabled="batches.length >= 100" class="dispatch-add-batch" @click="addBatch"
+        >＋ 增加一批</ElButton
+      >
+      <template v-if="!task && steps.length">
+        <h3>执行工艺</h3>
+        <ElTable :data="steps" border size="small" aria-label="工艺执行班组">
+          <ElTableColumn label="工序" prop="name" min-width="130" />
+          <ElTableColumn label="班组" min-width="100"
+            ><template #default="{ row }">{{
+              directory.items.find((t) => Number(t.id) === row.team_id)?.name || row.team_name
+            }}</template></ElTableColumn
+          >
+          <ElTableColumn label="计划数量" prop="planned_quantity" width="110" align="right" />
+          <ElTableColumn
+            label="工艺要求"
+            prop="instructions"
+            min-width="220"
+            show-overflow-tooltip
+          />
+        </ElTable>
       </template>
-      <ElFormItem label="任务备注" class="task-form__notes"
-        ><ElInput
-          v-model="form.notes"
-          type="textarea"
-          :rows="2"
-          maxlength="2000"
-          placeholder="选填"
-          show-word-limit
+      <ElFormItem label="备注" class="dispatch-notes"
+        ><ElInput v-model="notes" maxlength="2000"
       /></ElFormItem>
     </ElForm>
     <template #footer
       ><ElButton :disabled="saving" @click="visible = false">取消</ElButton
-      ><ElButton type="primary" :loading="saving" :disabled="!writable" @click="save">{{
-        task ? '保存任务信息' : '保存排期'
+      ><ElButton type="primary" :loading="saving" :disabled="!writable || loading" @click="save">{{
+        task ? '保存交期' : '创建排期'
       }}</ElButton></template
     >
   </AppDialog>
   <ScheduleSelectionDialog
     v-if="personOpen"
     kind="people"
-    single
     active-only
-    :selected="
-      form.businessPerson ? [{ value: form.businessPerson, label: form.businessName }] : []
-    "
+    :selected="people"
     @close="personOpen = false"
-    @apply="personSelected"
+    @apply="selectPeople"
   />
 </template>
 <style scoped>
-.task-final-due :deep(.el-form-item__content) {
-  display: flex;
-  gap: 8px;
-}
-.task-final-due .el-select {
-  width: 110px;
-}
-
-.task-form {
+.dispatch-task-form {
   padding-top: 12px;
 }
-.task-form__identity {
+.dispatch-task-fields {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(160px, 0.8fr) minmax(220px, 1.5fr);
-  gap: 20px;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
 }
-.task-form__person {
+.dispatch-task-form h3 {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 12px 0;
+  font-size: 14px;
+}
+.dispatch-task-form h3 span {
+  color: var(--muted);
+  font-weight: 400;
+}
+.dispatch-task-form :deep(.el-date-editor),
+.dispatch-task-form :deep(.el-input-number) {
+  width: 100%;
+}
+.dispatch-person-select {
   width: 100%;
   justify-content: flex-start;
+  overflow: hidden;
 }
-.task-form__route-heading {
-  display: flex;
-  gap: 16px;
-  align-items: baseline;
-  margin: 6px 0 12px;
+.dispatch-add-batch {
+  margin-top: 10px;
 }
-.route-node__destination,
-.route-node__extra summary span {
-  color: var(--muted);
-  font-size: 12px;
+.dispatch-notes {
+  margin-top: 16px;
 }
-.route-node {
-  padding: 14px 16px 4px;
-  margin-bottom: 12px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.7);
-}
-.route-node__heading {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-bottom: 14px;
-}
-.route-node__heading strong {
-  color: var(--text);
-}
-.route-node__heading strong span {
-  margin-right: 12px;
-  font-size: 12px;
-  color: var(--primary);
-}
-.route-node__destination + .el-button {
-  margin-left: auto;
-}
-.route-node__fields {
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(110px, 0.7fr) minmax(138px, 0.8fr) 144px;
-  gap: 0 14px;
-}
-.route-node__fields :deep(.el-form-item) {
-  min-width: 0;
-  margin-bottom: 14px;
-}
-.route-node__fields :deep(.el-input-number),
-.route-node__fields :deep(.el-select) {
-  width: 100%;
-}
-.route-node__heading .route-node__final {
-  display: flex;
-  align-items: center;
-  flex-direction: row;
-  gap: 10px;
-  margin: 0 0 0 auto;
-}
-.route-node__final :deep(.el-form-item__label) {
-  display: inline-flex;
-  align-items: center;
-  margin: 0;
-  padding: 0;
-  height: auto;
-  line-height: 20px;
-  white-space: nowrap;
-}
-.route-node__final :deep(.el-form-item__content) {
-  flex-wrap: nowrap;
-  gap: 8px;
-}
-.route-node__final :deep(.el-radio-group) {
-  flex-wrap: nowrap;
-}
-.route-node__final :deep(.el-select) {
-  width: 180px;
-}
-.route-node__extra {
-  border-top: 1px solid var(--line);
-  margin: 0 -16px;
-  padding: 10px 16px;
-}
-.route-node__extra summary {
-  cursor: pointer;
-  color: var(--primary);
-  font-size: 13px;
-}
-.route-node__extra summary span {
-  margin-left: 12px;
-}
-.route-node__extra :deep(.schedule-sources) {
-  margin-top: 12px;
-}
-.task-form__notes {
-  margin-top: 18px;
-}
-@media (max-width: 940px) {
-  .route-node__fields {
-    grid-template-columns: repeat(2, minmax(140px, 1fr));
-    grid-template-areas: 'team basis' 'quantity weight';
-  }
-  .route-node__team {
-    grid-area: team;
-  }
-  .route-node__basis {
-    grid-area: basis;
-  }
-  .route-node__quantity {
-    grid-area: quantity;
-    max-width: 110px;
-  }
-  .route-node__weight {
-    grid-area: weight;
-    max-width: 138px;
+@media (max-width: 760px) {
+  .dispatch-task-fields {
+    grid-template-columns: 1fr;
+    gap: 0;
   }
 }
 </style>

@@ -7,6 +7,7 @@ import { productionScheduleApi } from '@/services/productionScheduleApi'
 import { scheduleSummaryFixture } from '@/testFixtures/inventorySchedule'
 import type { ProductionSchedule, ScheduleTask } from '@/types/productionSchedule'
 
+vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isDispatch: false }) }))
 let wrapper: VueWrapper
 const schedule = {
   ...scheduleSummaryFixture(),
@@ -48,7 +49,7 @@ describe('team batch planner', () => {
   it('requires an explicit start and keeps the final deadline read-only', async () => {
     await render()
     expect(wrapper.findAllComponents(ElDatePicker)[0]!.props('modelValue')).toBe('')
-    await click('保存排期')
+    await click('提交调度确认')
     expect(productionScheduleApi.saveBatches).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('开始须早于转出')
     expect(wrapper.text()).toContain('2026-12-30 16:00')
@@ -67,7 +68,7 @@ describe('team batch planner', () => {
     const amounts = wrapper.findAllComponents(ElInputNumber)
     amounts[1]!.vm.$emit('update:modelValue', 40)
     amounts[3]!.vm.$emit('update:modelValue', 60)
-    await click('保存排期')
+    await click('提交调度确认')
     expect(productionScheduleApi.saveBatches).toHaveBeenCalledWith(5, {
       expected_version: 7,
       batches: [

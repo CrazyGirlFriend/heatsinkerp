@@ -45,14 +45,14 @@ def insert_once(db, model, values, key):
     db.execute(stmt)
 
 
-def add_notice(db, plan, kind, message, key, now=None):
+def add_notice(db, plan, kind, message, key, now=None, *, team_id=None):
     insert_once(
         db,
         Notice,
         dict(
             event_key=key,
             schedule_id=plan.id,
-            team_id=plan.team_id,
+            team_id=team_id or plan.team_id,
             kind=kind,
             message=message,
             created_at=now or utcnow(),
@@ -73,13 +73,40 @@ def notify_change(db, plan, action, before, after):
         "updated": ("changed", "交货计划已调整"),
         "batches_updated": ("changed", "分批计划已调整"),
         "cancelled": ("cancelled", "排期已取消"),
+        "order_locked": ("locked", "调度已锁定订单"),
+        "order_unlocked": ("unlocked", "调度已解锁订单，可以提交交期调整"),
+        "plan_returned": ("returned", "交期计划已退回，请修改后重新提交"),
     }
+    if action == "plan_submitted":
+        from .team_constants import DISPATCH_TEAM_CODE
+
+        dispatch_id = db.scalar(
+            select(Team.id).where(Team.code == DISPATCH_TEAM_CODE, Team.active.is_(True))
+        )
+        if dispatch_id:
+            name = db.get(Team, plan.team_id).name
+            add_notice(
+                db,
+                plan,
+                "review",
+                f"{name}已提交交期计划，请确认",
+                f"plan:{plan.id}:{plan.version}:{action}",
+                team_id=dispatch_id,
+            )
+        return
     if action not in labels:
         return
     changed = {k for k in after if k != "version" and (before or {}).get(k) != after[k]}
-    if before is not None and not changed:
+    if before is not None and not changed and action not in ("order_locked", "order_unlocked"):
         return
     kind, message = labels[action]
+    if action == "batches_updated" and (before or {}).get("planning_state") in (
+        "submitted",
+        "revision_pending",
+    ):
+        message = "调度已确认本班组交期计划"
+    if action == "plan_returned":
+        message += "：" + after.get("reason", "")[:180]
     key = f"plan:{plan.id}:{plan.version}:{action}"
     add_notice(db, plan, kind, message, key)
     # Only explicitly linked next nodes receive upstream changes, not every team.
@@ -117,7 +144,7 @@ def notify_final_due(db, task):
             db,
             plan,
             "final_due",
-            f"最终交期调整为 {date_text(task.final_due_at)}",
+            f"调度已调整订单交期，请核对分批安排；最终交期 {date_text(task.final_due_at)}",
             f"task:{task.id}:{task.version}:team:{plan.team_id}",
         )
 
@@ -144,7 +171,10 @@ def refresh_deadlines(db, user, now=None):
         if batched:
             query = query.join(Plan, Plan.id == Batch.schedule_id)
         else:
-            query = query.where(~exists(select(Batch.id).where(Batch.schedule_id == Plan.id)))
+            query = query.where(
+                Plan.planning_state.in_(("confirmed", "revision_pending")),
+                ~exists(select(Batch.id).where(Batch.schedule_id == Plan.id)),
+            )
         query = query.join(Team, Team.id == Plan.team_id).where(
             Plan.cancelled_at.is_(None),
             Team.active.is_(True),

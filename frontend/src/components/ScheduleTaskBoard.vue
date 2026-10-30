@@ -1,7 +1,18 @@
 <script setup lang="ts">
+import { awaitingReview, plannedDueLabel, planLabel } from '@/utils/schedulePlanning'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElButton, ElInput, ElOption, ElPagination, ElSelect, ElTag } from 'element-plus'
+import {
+  ElAlert,
+  ElButton,
+  ElInput,
+  ElOption,
+  ElPagination,
+  ElSelect,
+  ElTag,
+  ElTable,
+  ElTableColumn,
+} from 'element-plus'
 import { Filter, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import AppDialog from './AppDialog.vue'
 import AppDrawer from './AppDrawer.vue'
@@ -33,13 +44,22 @@ import {
 import { formatAmount, formatDateTime } from '@/utils/format'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 
-defineProps<{ fullscreen?: boolean }>()
+const asTask = (row: unknown) => row as ScheduleTask
+const peopleLabel = (row: unknown) => {
+  const task = asTask(row)
+  return task.business_people?.map((p) => p.name).join('、') || task.business_person_name || '—'
+}
+function taskQuantity(row: unknown) {
+  const task = asTask(row)
+  return task.delivery_batches?.length
+    ? task.delivery_batches.reduce((sum, batch) => sum + batch.target_quantity, 0)
+    : task.nodes.filter((node) => node.status !== 'cancelled').at(-1)?.target_quantity
+}
+const props = defineProps<{ fullscreen?: boolean; management?: boolean }>()
 const auth = useAuthStore(),
   directory = useTeamDirectoryStore(),
   route = useRoute()
-const canManage = computed(
-  () => auth.isAdmin && !auth.currentUserError && auth.currentUser?.active !== false,
-)
+const canManage = computed(() => !!props.management && auth.isDispatch)
 const teams = computed(() => directory.items.filter((team) => team.active))
 const selectionKind = ref<'serial' | 'people' | null>(null),
   managingPeople = ref(false)
@@ -154,6 +174,41 @@ function resetFilters() {
   draftDates.value = { from: '', to: '' }
   draftSerialSelection.value = []
   draftPersonSelection.value = []
+}
+const actionBusy = ref(false),
+  actionError = ref(''),
+  deleteTarget = ref<ScheduleTask | null>(null)
+async function toggleLock(task: ScheduleTask) {
+  if (actionBusy.value || !canManage.value) return
+  actionBusy.value = true
+  actionError.value = ''
+  try {
+    const updated = await productionScheduleApi.lockTask(task.id, {
+      expected_version: task.version,
+      locked: !task.locked_at,
+    })
+    if (detail.value?.id === updated.id) detail.value = updated
+    await load()
+  } catch (e) {
+    actionError.value = e instanceof Error ? e.message : '锁定操作失败'
+  } finally {
+    actionBusy.value = false
+  }
+}
+async function removeTask() {
+  if (!deleteTarget.value || !canManage.value || actionBusy.value) return
+  actionBusy.value = true
+  actionError.value = ''
+  try {
+    await productionScheduleApi.deleteTask(deleteTarget.value.id, deleteTarget.value.version)
+    if (detail.value?.id === deleteTarget.value.id) closeTask()
+    deleteTarget.value = null
+    await load()
+  } catch (e) {
+    actionError.value = e instanceof Error ? e.message : '删除排期失败'
+  } finally {
+    actionBusy.value = false
+  }
 }
 function paginate(value: number) {
   page.value = value
@@ -275,7 +330,10 @@ function exportSource() {
       {
         key: 'business_person',
         label: '业务人员',
-        value: (task) => task.business_person_name || '未指定',
+        value: (task) =>
+          task.business_people?.map((p) => p.name).join('、') ||
+          task.business_person_name ||
+          '未指定',
       },
       { key: 'status', label: '任务状态', value: (task) => scheduleStatusLabels[task.status] },
       {
@@ -328,11 +386,12 @@ onBeforeUnmount(() => {
     :class="{ 'task-board--fullscreen': fullscreen }"
     aria-label="生产排期任务"
   >
-    <div class="workspace-data-toolbar task-board__toolbar">
+    <div v-if="!fullscreen || error" class="workspace-data-toolbar task-board__toolbar">
       <slot name="heading"><strong class="task-board__title">交货进度</strong></slot>
       <div class="task-board__actions">
         <slot name="view-actions" />
         <ElButton
+          v-if="!fullscreen"
           class="task-board__filter"
           :class="{ 'action-cool': filterCount > 0 }"
           :icon="Filter"
@@ -344,25 +403,118 @@ onBeforeUnmount(() => {
           }}</span></ElButton
         >
         <TableExportButton
+          v-if="!fullscreen"
           :source="exportSource"
           :context="JSON.stringify(filters)"
           :disabled="loading || !!error"
         />
-        <ElButton :icon="Refresh" :loading="loading" aria-label="刷新任务排期" @click="load()" />
-        <ElButton v-if="canManage" type="primary" :icon="Plus" @click="createTask"
+        <ElButton
+          v-if="!fullscreen"
+          :icon="Refresh"
+          :loading="loading"
+          aria-label="刷新任务排期"
+          @click="load()"
+        />
+        <ElButton v-if="!fullscreen && canManage" type="primary" :icon="Plus" @click="createTask"
           >新建任务排期</ElButton
         >
       </div>
     </div>
+    <ElAlert v-if="actionError" :title="actionError" type="error" :closable="false" />
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
+    <ElTable
+      v-else-if="management"
+      :data="rows"
+      border
+      height="100%"
+      class="business-table dispatch-task-table"
+      aria-label="调度排期列表"
+      row-key="id"
+    >
+      <ElTableColumn label="流水号" min-width="150"
+        ><template #default="{ row }"
+          ><ElButton link type="primary" @click="openTask(asTask(row))">{{
+            row.serial_no
+          }}</ElButton></template
+        ></ElTableColumn
+      >
+      <ElTableColumn label="数量（件）" width="110" align="right"
+        ><template #default="{ row }">{{
+          formatAmount(taskQuantity(row))
+        }}</template></ElTableColumn
+      >
+      <ElTableColumn label="交货批数" width="95" align="center"
+        ><template #default="{ row }">{{
+          row.delivery_batches?.length || 1
+        }}</template></ElTableColumn
+      >
+      <ElTableColumn label="最终交期" min-width="170"
+        ><template #default="{ row }">{{
+          formatDateTime(row.final_due_at)
+        }}</template></ElTableColumn
+      >
+      <ElTableColumn label="业务人员" min-width="140" show-overflow-tooltip
+        ><template #default="{ row }">{{ peopleLabel(row) }}</template></ElTableColumn
+      >
+      <ElTableColumn label="待填班组" width="95" align="center"
+        ><template #default="{ row }">{{
+          new Set(
+            row.nodes
+              .filter((n: ProductionSchedule) => n.planning_state === 'pending')
+              .map((n: ProductionSchedule) => n.team_id),
+          ).size
+        }}</template></ElTableColumn
+      >
+      <ElTableColumn label="待确认" width="95" align="center"
+        ><template #default="{ row }"
+          ><ElButton
+            link
+            :type="
+              row.nodes.some((n: ProductionSchedule) => awaitingReview(n)) ? 'warning' : undefined
+            "
+            @click="openTask(asTask(row))"
+            >{{ row.nodes.filter((n: ProductionSchedule) => awaitingReview(n)).length }}</ElButton
+          ></template
+        ></ElTableColumn
+      >
+      <ElTableColumn label="订单锁定" width="95" align="center"
+        ><template #default="{ row }"
+          ><ElTag :type="row.locked_at ? 'warning' : 'info'">{{
+            row.locked_at ? '已锁定' : '未锁定'
+          }}</ElTag></template
+        ></ElTableColumn
+      >
+      <ElTableColumn v-if="canManage" label="操作" width="205" fixed="right"
+        ><template #default="{ row }"
+          ><ElButton
+            link
+            type="primary"
+            :disabled="!!row.locked_at || actionBusy"
+            @click="editTask(asTask(row))"
+            >修改交期</ElButton
+          ><ElButton link :disabled="actionBusy" @click="toggleLock(asTask(row))">{{
+            row.locked_at ? '解锁' : '锁定'
+          }}</ElButton
+          ><ElButton
+            link
+            type="danger"
+            :disabled="!!row.locked_at || actionBusy"
+            @click="deleteTarget = asTask(row)"
+            >删除</ElButton
+          ></template
+        ></ElTableColumn
+      >
+    </ElTable>
     <ProductionScheduleOverview
       v-else
       :tasks="rows"
       :loading="loading"
       @open-node="openNode"
       @open-task="openTask"
-    />
+    >
+      <template v-if="fullscreen" #view-actions><slot name="view-actions" /></template>
+    </ProductionScheduleOverview>
     <footer class="task-board__footer">
       <span>共 {{ total }} 项任务</span
       ><ElPagination
@@ -443,7 +595,7 @@ onBeforeUnmount(() => {
         <div class="schedule-filter-selection">
           <div class="schedule-filter-label">
             <span>业务人员</span>
-            <ElButton v-if="canManage" link type="primary" @click="managingPeople = true"
+            <ElButton v-if="auth.isAdmin" link type="primary" @click="managingPeople = true"
               >管理业务人员</ElButton
             >
           </div>
@@ -483,15 +635,23 @@ onBeforeUnmount(() => {
           <div>
             <strong>{{ detail.title }}</strong
             ><span>{{ detail.task_no }} · 流水号 {{ detail.serial_no }}</span>
-            <span>业务人员：{{ detail.business_person_name || '未指定' }}</span>
+            <span
+              >业务人员：{{
+                detail.business_people?.map((p) => p.name).join('、') ||
+                detail.business_person_name ||
+                '未指定'
+              }}</span
+            >
           </div>
-          <ElButton v-if="canManage" @click="routeLinkOpen = true">{{
+          <ElButton v-if="canManage && !detail.locked_at" @click="routeLinkOpen = true">{{
             detail.route_changed ? '核对工艺变更' : '关联工艺'
           }}</ElButton>
           <ElTag :type="scheduleStatusTone(detail.status)">{{
             scheduleStatusLabels[detail.status]
           }}</ElTag
-          ><ElButton v-if="canManage" @click="editTask(detail)">修改任务信息</ElButton>
+          ><ElButton v-if="canManage && !detail.locked_at" @click="editTask(detail)"
+            >修改交期</ElButton
+          >
         </div>
         <div class="task-detail__meta">
           <div>
@@ -499,6 +659,21 @@ onBeforeUnmount(() => {
           </div>
           <span class="task-detail__created">创建于 {{ formatDateTime(detail.created_at) }}</span>
         </div>
+        <ElTable
+          v-if="detail.delivery_batches?.length"
+          :data="detail.delivery_batches"
+          border
+          size="small"
+          aria-label="订单交货要求"
+        >
+          <ElTableColumn label="交货批次" prop="batch_number" width="100" /><ElTableColumn
+            label="数量（件）"
+            prop="target_quantity"
+            width="120"
+          /><ElTableColumn label="交期"
+            ><template #default="{ row }">{{ formatDateTime(row.due_at) }}</template></ElTableColumn
+          >
+        </ElTable>
         <p v-if="detail.notes" class="task-detail__notes">
           <span>任务备注</span>{{ detail.notes }}
         </p>
@@ -527,7 +702,10 @@ onBeforeUnmount(() => {
               >
             </div>
             <div class="task-detail__due" role="cell">
-              <strong>{{ formatDateTime(node.due_at) }}</strong>
+              <strong>{{ plannedDueLabel(node) }}</strong>
+              <ElTag v-if="node.planning_state === 'revision_pending'" type="warning">{{
+                planLabel(node)
+              }}</ElTag>
               <ElTag :type="scheduleStatusTone(node.status)" size="small">{{
                 scheduleStatusLabels[node.status]
               }}</ElTag>
@@ -558,7 +736,7 @@ onBeforeUnmount(() => {
         </div>
         <ScheduleReworkPanel
           :task="detail"
-          :manage="canManage"
+          :manage="canManage && !detail.locked_at"
           @saved="
             (task) => {
               detail = task
@@ -579,6 +757,23 @@ onBeforeUnmount(() => {
         }
       "
     />
+    <AppDialog
+      :model-value="!!deleteTarget"
+      title="删除排期"
+      width="440px"
+      append-to-body
+      :close-on-click-modal="!actionBusy"
+      @close="!actionBusy && (deleteTarget = null)"
+    >
+      <p>删除 {{ deleteTarget?.serial_no }} 的排期？已发生的加工、转料和变更记录将保留。</p>
+      <ElAlert v-if="actionError" :title="actionError" type="error" :closable="false" />
+      <template #footer
+        ><ElButton :disabled="actionBusy" @click="deleteTarget = null">取消</ElButton
+        ><ElButton type="danger" :loading="actionBusy" @click="removeTask"
+          >删除排期</ElButton
+        ></template
+      >
+    </AppDialog>
     <ScheduleTaskEditor
       v-if="editorOpen"
       :task="editingTask"

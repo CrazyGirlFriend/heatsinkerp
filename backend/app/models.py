@@ -852,6 +852,9 @@ class ProductionScheduleTask(Base):
         ForeignKey("business_people.id", ondelete="RESTRICT"), index=True
     )
     final_due_at: Mapped[datetime | None] = mapped_column(DateTime)
+    delivery_batches: Mapped[list | None] = mapped_column(JSON)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime)
     notes: Mapped[str | None] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
@@ -866,6 +869,16 @@ class ProductionScheduleTask(Base):
     @property
     def task_no(self) -> str:
         return f"PQ{self.id:08d}"
+
+
+class ProductionScheduleTaskPerson(Base):
+    __tablename__ = "production_schedule_task_people"
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("production_schedule_tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+    person_id: Mapped[int] = mapped_column(
+        ForeignKey("business_people.id", ondelete="RESTRICT"), primary_key=True
+    )
 
 
 class ProductionSchedule(Base):
@@ -890,6 +903,10 @@ class ProductionSchedule(Base):
     sequence_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     due_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     initial_due_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    planning_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="confirmed", server_default="confirmed"
+    )
+    pending_batches: Mapped[list | None] = mapped_column(JSON)
     target_quantity: Mapped[int | None] = mapped_column(Integer)
     target_weight: Mapped[Decimal | None] = mapped_column(Numeric(17, 6))
     completion_basis: Mapped[str] = mapped_column(String(16), nullable=False, default="quantity")

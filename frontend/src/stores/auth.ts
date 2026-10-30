@@ -77,6 +77,15 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => Boolean(session.value && !isExpired(session.value)))
   const isAdmin = computed(() => currentUser.value?.role === 'ADMIN')
   const isTeamAccount = computed(() => currentUser.value?.role === 'TEAM')
+  const isDispatch = computed(
+    () =>
+      isTeamAccount.value &&
+      currentUser.value?.team?.kind === 'dispatch' &&
+      currentUser.value.team.code === 'FACTORY-DISPATCH' &&
+      currentUser.value.team.active &&
+      currentUser.value.active &&
+      !currentUserError.value,
+  )
 
   function hasRole(required: UserRole | UserRole[]): boolean {
     const roles = Array.isArray(required) ? required : [required]
@@ -216,6 +225,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     isAdmin,
     isTeamAccount,
+    isDispatch,
     hasRole,
     canAccess,
     login,

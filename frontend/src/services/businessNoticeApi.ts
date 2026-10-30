@@ -14,6 +14,10 @@ export interface BusinessNotice {
     | 'overdue'
     | 'requested'
     | 'ready'
+    | 'review'
+    | 'returned'
+    | 'locked'
+    | 'unlocked'
   message: string
   serial_no: string
   batch_no: string | null
@@ -26,7 +30,7 @@ export interface NoticeTarget {
   schedule_id?: number
   event_id?: number | null
   batch_id?: number | null
-  section?: 'problem' | 'steps'
+  section?: 'problem' | 'steps' | 'plan-review'
   step_index?: number
   route?: ProcessRoute
 }

@@ -42,6 +42,12 @@ router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
 
 
 def _validate_team_identity(code: str, name: str, kind: str) -> None:
+    if kind == "business" or code == "FACTORY-BUSINESS" or name == "业务":
+        if (code, name, kind) != ("FACTORY-BUSINESS", "业务", "business"):
+            raise HTTPException(422, "业务班组须使用固定编码 FACTORY-BUSINESS 和业务类型")
+    if kind == "dispatch" or code == "FACTORY-DISPATCH" or name == "调度":
+        if (code, name, kind) != ("FACTORY-DISPATCH", "调度", "dispatch"):
+            raise HTTPException(422, "调度班组须使用固定编码 FACTORY-DISPATCH 和调度类型")
     if kind == "engineering" or code == ENGINEERING_TEAM_CODE or name == ENGINEERING_TEAM_NAME:
         if (code, name, kind) != (ENGINEERING_TEAM_CODE, ENGINEERING_TEAM_NAME, "engineering"):
             raise HTTPException(422, "工艺班组须使用固定的工艺编码、名称和类型")

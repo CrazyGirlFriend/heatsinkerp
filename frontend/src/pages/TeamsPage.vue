@@ -67,7 +67,7 @@ const editingWarehouse = computed(
     teams.value.some(
       (team) =>
         String(team.id) === String(editingId.value) &&
-        (isWarehouse(team) || team.kind === 'engineering'),
+        (isWarehouse(team) || ['engineering', 'dispatch', 'business'].includes(team.kind || '')),
     ),
 )
 const formError = ref('')
@@ -346,6 +346,8 @@ function teamRowClass({ row }: { row: Team }): string {
 
 function kindLabel(team: Team): string {
   if (team.kind === 'engineering') return '工艺'
+  if (team.kind === 'dispatch') return '调度'
+  if (team.kind === 'business') return '业务'
   if (isWarehouse(team)) return '库房'
   return '普通班组'
 }
@@ -446,7 +448,7 @@ onMounted(() => void loadTeams())
               <ElButton
                 link
                 type="primary"
-                v-if="row.kind !== 'engineering'"
+                v-if="['production', 'warehouse'].includes(row.kind)"
                 @click="
                   () => {
                     authorizationTeam = asTeam(row)
@@ -458,6 +460,7 @@ onMounted(() => void loadTeams())
               <ElButton
                 link
                 type="primary"
+                v-if="!['business', 'dispatch'].includes(row.kind)"
                 :disabled="!row.active"
                 @click="
                   () => {
@@ -467,6 +470,7 @@ onMounted(() => void loadTeams())
                 "
                 >班组设置</ElButton
               >
+              <RouterLink v-if="row.kind === 'business'" to="/business-people">人员管理</RouterLink>
               <ElButton link type="primary" :icon="EditPen" @click="openEdit(asTeam(row))"
                 >编辑</ElButton
               >
