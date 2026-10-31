@@ -1,3 +1,5 @@
+import json
+from functools import lru_cache
 from uuid import uuid4
 
 import pytest
@@ -5,10 +7,25 @@ from app.database import SessionLocal
 from app.models import MaterialTransfer, ProductionScheduleTask
 from sqlalchemy import func, select
 from test_material_transfers import _leader
+from test_process_route_orders import VALUES, xlsx
 from test_process_routes import published
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
 URL = "/api/production-schedules"
+
+
+@lru_cache
+def order_file(serial):
+    return xlsx([serial, *VALUES[1:]])
+
+
+def submit(client, body, headers=None):
+    return client.post(
+        URL + "/tasks",
+        headers=headers,
+        data={"payload": json.dumps(body)},
+        files={"file": ("订单.xlsx", order_file(body["serial_no"]))},
+    )
 
 
 @pytest.fixture()
@@ -38,13 +55,10 @@ def create(client, warehouse, dispatcher, final_due="2026-12-30T16:00:00+08:00")
             dict(batch_number=2, target_quantity=60, due_at="2026-12-30T16:00:00+08:00"),
         ],
     )
-    assert client.post(URL + "/tasks", json=body).status_code == 403
-    response = client.post(URL + "/tasks", headers=dispatcher, json=body)
+    assert submit(client, body).status_code == 403
+    response = submit(client, body, dispatcher)
     assert response.status_code == 201, response.text
-    assert (
-        client.post(URL + "/tasks", headers=dispatcher, json=body).json()["id"]
-        == response.json()["id"]
-    )
+    assert submit(client, body, dispatcher).json()["id"] == response.json()["id"]
     return response.json(), people
 
 
@@ -275,9 +289,9 @@ def test_new_order_requires_business_people(client, warehouse, dispatcher):
         idempotency_key=uuid4().hex,
         business_person_ids=[],
     )
-    assert client.post(URL + "/tasks", headers=dispatcher, json=body).status_code == 422
+    assert submit(client, body, dispatcher).status_code == 422
     body["business_person_ids"] = [999999]
-    assert client.post(URL + "/tasks", headers=dispatcher, json=body).status_code == 422
+    assert submit(client, body, dispatcher).status_code == 422
 
 
 def test_customer_batches_can_finish_before_deadline_without_being_overwritten(
@@ -325,10 +339,10 @@ def test_customer_batch_updates_cannot_exceed_deadline(client, warehouse, dispat
 
 
 def test_customer_batch_creation_rejects_late_dates(client, dispatcher):
-    response = client.post(
-        URL + "/tasks",
+    response = submit(
+        client,
         headers=dispatcher,
-        json=dict(
+        body=dict(
             serial_no="S-001",
             route_id=1,
             route_version=1,

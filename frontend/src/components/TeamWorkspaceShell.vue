@@ -75,6 +75,7 @@ const contentTools = computed(() =>
     'pending',
     'receipts',
     'processing',
+    'quality-feedback',
     'outgoing',
     'reallocations',
     'losses',
@@ -244,9 +245,8 @@ onBeforeUnmount(() => {
       </nav>
       <div v-if="$slots.messages || !contentTools" class="team-workspace__commands">
         <slot v-if="!fullscreen" name="messages" />
-        <WorkspaceTools v-if="!contentTools"
-          ><template v-if="$slots.settings" #actions><slot name="settings" /></template
-        ></WorkspaceTools>
+        <WorkspaceTools v-if="!contentTools" />
+        <slot v-if="!contentTools" name="settings" />
       </div>
     </div>
     <div

@@ -22,13 +22,11 @@ import { useAuthStore } from '@/stores/auth'
 import type { TeamEmployee } from '@/types/teamBusiness'
 import { formatDateTime } from '@/utils/format'
 import { useDialogValidation } from '@/composables/useDialogValidation'
-import ProcessRouteDrawingPreview from './ProcessRouteDrawingPreview.vue'
 import ProcessRouteMaterials from './ProcessRouteMaterials.vue'
 import { mergeRouteMaterials } from '@/utils/routeMaterials'
 import { ElMessageBox } from 'element-plus'
-import { ArrowDown, Document, FullScreen, Upload, WarningFilled } from '@element-plus/icons-vue'
-import WordDocumentPreview from './WordDocumentPreview.vue'
-import DocumentViewer from './DocumentViewer.vue'
+import { ArrowDown, Document, Upload, WarningFilled } from '@element-plus/icons-vue'
+import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import { processRouteApi, ProcessRouteSerialConflictError } from '@/services/processRouteApi'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import type { ProcessRoute, ProcessRouteStep, ProcessRouteDrawing } from '@/types/processRoute'
@@ -92,45 +90,38 @@ const serials = computed(() =>
   [primarySerial.value.trim(), ...draft.value.serial_nos.slice(1)].filter(Boolean),
 )
 const wordInput = ref<HTMLInputElement>(),
-  orderInput = ref<HTMLInputElement>(),
   drawingInput = ref<HTMLInputElement>()
 const pendingWord = ref<File>(),
-  pendingOrder = ref<File>(),
   pendingDrawings = ref<File[]>([])
 const importsConfirmed = ref(!!draft.value.source_data.material_confirmation)
 const requiresReview = computed(() => !!draft.value.source_data.review_required)
-const previewKind = ref<'word' | 'drawing' | 'order'>(
-  draft.value.route_kind === 'rework' ? 'drawing' : 'word',
-)
-const wordPreview = ref<InstanceType<typeof WordDocumentPreview>>()
-const drawingPreview = ref<InstanceType<typeof ProcessRouteDrawingPreview>>()
-const activePreview = computed(() =>
-  previewKind.value === 'word' ? wordPreview.value : drawingPreview.value,
-)
 const editingSaved = ref(!props.route?.id || !!props.startEditing)
 const modifying = computed(
   () => !!draft.value.parent_id || (editingSaved.value && draft.value.state === 'published'),
-)
-const previewDrawing = ref<number | File | undefined>(
-  draft.value.route_kind === 'rework' ? draft.value.drawings?.[0]?.id : undefined,
 )
 const editorMain = ref<HTMLElement>()
 const instructionInputs = ref<InputInstance[]>([])
 let editorObserver: ResizeObserver | undefined
 let resizeFrame = 0
 let editorWidth = 0
-onMounted(() => {
-  if (!editorMain.value || typeof ResizeObserver === 'undefined') return
-  editorObserver = new ResizeObserver(([entry]) => {
-    if (!entry || entry.contentRect.width <= 0 || entry.contentRect.width === editorWidth) return
-    editorWidth = entry.contentRect.width
-    if (resizeFrame) cancelAnimationFrame(resizeFrame)
-    resizeFrame = requestAnimationFrame(() => {
-      instructionInputs.value.forEach((input) => input.resizeTextarea())
+watch(
+  editorMain,
+  (element) => {
+    editorObserver?.disconnect()
+    if (!element || typeof ResizeObserver === 'undefined') return
+    editorWidth = 0
+    editorObserver = new ResizeObserver(([entry]) => {
+      if (!entry || entry.contentRect.width <= 0 || entry.contentRect.width === editorWidth) return
+      editorWidth = entry.contentRect.width
+      if (resizeFrame) cancelAnimationFrame(resizeFrame)
+      resizeFrame = requestAnimationFrame(() => {
+        instructionInputs.value.forEach((input) => input.resizeTextarea())
+      })
     })
-  })
-  editorObserver.observe(editorMain.value)
-})
+    editorObserver.observe(element)
+  },
+  { flush: 'post' },
+)
 onBeforeUnmount(() => {
   editorObserver?.disconnect()
   if (resizeFrame) cancelAnimationFrame(resizeFrame)
@@ -177,7 +168,6 @@ async function importWord(event: Event) {
     importsConfirmed.value = false
     primarySerial.value = parsed.serial_nos[0] || ''
     pendingWord.value = file
-    previewKind.value = 'word'
     activeSource.value = ''
     issuesOpen.value = false
     expanded.value = new Set()
@@ -188,56 +178,23 @@ async function importWord(event: Event) {
     busy.value = false
   }
 }
-async function importOrder(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
-  if (!file || busy.value || readonly.value || draft.value.route_kind === 'rework') return
-  if (draft.value.source_data.order_document) {
-    try {
-      await ElMessageBox.confirm('替换订单表后，请重新确认自动填入的资料。', '导入订单表', {
-        confirmButtonText: '替换',
-        cancelButtonText: '取消',
-      })
-    } catch {
-      return
-    }
-  }
-  busy.value = true
-  error.value = ''
-  try {
-    const order = await processRouteApi.parseOrder(file)
-    if (primarySerial.value.trim() && primarySerial.value.trim() !== order.serial_no)
-      throw new Error('订单表与当前工艺流水号不一致')
-    draft.value.source_data = mergeRouteMaterials(draft.value.source_data, order)
-    primarySerial.value = order.serial_no
-    pendingOrder.value = file
-    importsConfirmed.value = false
-    previewKind.value = 'order'
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '订单表导入失败'
-  } finally {
-    busy.value = false
-  }
-}
 function changeMaterial(key: string, value: string) {
+  if (readonly.value || busy.value) return
+  if (key === 'material_name' && !draft.value.source_data.receipt_fields?.material_name) {
+    draft.value.source_data.receipt_fields ||= {}
+    draft.value.source_data.receipt_fields.material_name = {
+      value,
+      label: '材质',
+      source_kind: 'manual',
+      source_row: '',
+      source_label: '材质',
+    }
+    return
+  }
   const field = draft.value.source_data.receipt_fields?.[key]
-  if (!field || readonly.value || busy.value) return
+  if (!field) return
   field.parsed_value ??= field.value
   field.value = value
-}
-async function downloadOrder() {
-  try {
-    if (!pendingOrder.value) return await processRouteApi.downloadOrder(draft.value)
-    const url = URL.createObjectURL(pendingOrder.value)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = pendingOrder.value.name
-    link.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '订单表下载失败'
-  }
 }
 function addDrawings(event: Event) {
   const input = event.target as HTMLInputElement
@@ -259,8 +216,6 @@ function addDrawings(event: Event) {
     return
   }
   pendingDrawings.value.push(...files)
-  previewDrawing.value = files[0]
-  previewKind.value = 'drawing'
 }
 const removedDrawings = ref<ProcessRouteDrawing[]>([])
 function removeDrawing(id: number) {
@@ -268,60 +223,23 @@ function removeDrawing(id: number) {
   if (!drawing || readonly.value || busy.value) return
   removedDrawings.value.push(drawing)
   draft.value.drawings = draft.value.drawings?.filter((item) => item.id !== id)
-  if (previewDrawing.value === id) previewDrawing.value = undefined
-}
-function selectDrawing(value: number | File) {
-  previewDrawing.value = value
-  previewKind.value = 'drawing'
-}
-function showDrawings() {
-  previewKind.value = 'drawing'
-  previewDrawing.value ??= draft.value.drawings?.[0]?.id ?? pendingDrawings.value[0]
 }
 function removePending(file: File) {
   pendingDrawings.value = pendingDrawings.value.filter((item) => item !== file)
-  if (previewDrawing.value === file) previewDrawing.value = undefined
 }
 const sourceFilename = computed(() => pendingWord.value?.name || draft.value.filename)
-const orderViewing = ref(false)
-const hasAttachments = computed(
-  () =>
-    !!(
-      sourceFilename.value ||
-      draft.value.drawings?.length ||
-      draft.value.source_data.order_document
-    ),
+const attachments = ref<InstanceType<typeof ProcessRouteAttachments>>()
+const missingAttachments = computed(() =>
+  draft.value.route_kind === 'rework'
+    ? []
+    : [
+        !sourceFilename.value && '工艺原件',
+        !draft.value.drawings?.length && !pendingDrawings.value.length && '图纸',
+      ].filter(Boolean),
 )
-const orderHtml = computed(() => {
-  const document = draft.value.source_data.order_document
-  if (!document) return ''
-  const escape = (value: string) =>
-    value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;')
-  const values = document.display_values || document.values
-  const rows = document.headers
-    .map(
-      (label, index) =>
-        `<tr><th>${escape(label || '—')}</th><td>${escape(values[index] || '—')}</td></tr>`,
-    )
-    .join('')
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>body{margin:24px;font:14px system-ui;color:#17221e}section{width:760px;background:white;padding:24px;box-sizing:border-box}h1{font-size:18px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #cbd5cf;padding:10px;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere}th{width:180px;background:#f2f6f3}</style></head><body><main id="original-pages"><section class="docx-original"><h1>${escape(document.filename)}</h1><table>${rows}</table></section></main></body></html>`
-})
 function showMaterialSource(kind: 'word' | 'order') {
-  previewKind.value = kind
-  if (!readonly.value) return
-  if (kind === 'order') orderViewing.value = true
-  else wordPreview.value?.open()
+  attachments.value?.open(kind)
 }
-const selectedDrawing = computed(() =>
-  typeof previewDrawing.value === 'number'
-    ? draft.value.drawings?.find((item) => item.id === previewDrawing.value)
-    : undefined,
-)
 const busy = ref(false),
   error = ref('')
 const tasks = reactive<Record<number, TeamProcessingTask[]>>({}),
@@ -441,15 +359,21 @@ const stepIssues = computed(() =>
 )
 async function locateIssue(issue: (typeof stepIssues.value)[number]) {
   issuesOpen.value = false
-  if (draft.value.route_kind !== 'rework') previewKind.value = 'word'
   focusOriginal(issue.source)
+  if (!readonly.value && issue.field === 'name') expanded.value.add(issue.index)
   await nextTick()
   const row = editorMain.value?.querySelectorAll<HTMLElement>('.route-edit-step')[issue.index]
   row?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   if (readonly.value) {
     row?.focus({ preventScroll: true })
-    wordPreview.value?.open()
+    attachments.value?.open('word')
   } else {
+    if (issue.field === 'name') {
+      editorMain.value
+        ?.querySelector<HTMLInputElement>(`input[aria-label="工序 ${issue.index + 1} 名称"]`)
+        ?.focus({ preventScroll: true })
+      return
+    }
     const column = { sequence: 0, name: 1, instructions: 2 }[issue.field]
     row?.children[column]
       ?.querySelector<HTMLElement>('input,textarea')
@@ -461,10 +385,6 @@ function warehouse(id: number | null) {
   return directory.items.some((team) => Number(team.id) === id && team.code === 'FACTORY-WAREHOUSE')
 }
 const activeSource = ref('')
-const activeSourceLabel = computed(() => {
-  const [table, line] = activeSource.value.split(':')
-  return table && line ? `原表 ${table} · 第 ${line} 行` : activeSource.value
-})
 function focusOriginal(row?: string | null) {
   activeSource.value = row || ''
 }
@@ -480,6 +400,8 @@ async function options(id: number | null) {
 }
 function teamChanged(index: number) {
   const step = draft.value.steps[index]!
+  step.team_name = directory.items.find((team) => Number(team.id) === step.team_id)?.name
+  if (!step.name.trim()) step.name = step.team_name || ''
   step.processing_task_id = null
   step.purpose_id = null
   void options(step.team_id)
@@ -498,6 +420,8 @@ const { formRef, fieldErrors, validate } = useDialogValidation(() => {
   )
     errors.serials = '流水号与订单表不一致'
   if (requiresReview.value && !importsConfirmed.value) errors.imports = '请确认自动填入的资料和工序'
+  if (missingAttachments.value.length)
+    errors.attachments = `缺少：${missingAttachments.value.join('、')}`
   draft.value.steps.forEach((step, index) => {
     if (sequenceProblem(index)) errors[`${index}.sequence`] = '请核对工序序号'
     if (!step.name.trim()) errors[`${index}.name`] = '请填写工序名称'
@@ -529,8 +453,7 @@ async function save() {
   error.value = ''
   try {
     const materialFields = JSON.parse(JSON.stringify(draft.value.source_data.receipt_fields || {}))
-    const hasPendingSource = !!pendingWord.value || !!pendingOrder.value
-    const previewHash = selectedDrawing.value?.sha256
+    const hasPendingSource = !!pendingWord.value
     if (editingSaved.value && draft.value.state === 'published') {
       const revision = await processRouteApi.revise(draft.value.id)
       draft.value = {
@@ -544,8 +467,6 @@ async function save() {
     draft.value = hasPendingSource
       ? await processRouteApi.save(draft.value, false)
       : await processRouteApi.save(draft.value)
-    if (typeof previewDrawing.value === 'number' && previewHash)
-      previewDrawing.value = draft.value.drawings?.find((item) => item.sha256 === previewHash)?.id
     while (removedDrawings.value.length) {
       const removed = removedDrawings.value[0]!
       const current = draft.value.drawings?.find(
@@ -559,11 +480,11 @@ async function save() {
       draft.value = await processRouteApi.attachSource(draft.value, pendingWord.value)
       pendingWord.value = undefined
     }
-    if (pendingOrder.value) {
-      draft.value = await processRouteApi.attachOrder(draft.value, pendingOrder.value)
-      pendingOrder.value = undefined
-    }
     if (hasPendingSource) {
+      if (materialFields.material_name && !draft.value.source_data.receipt_fields?.material_name) {
+        draft.value.source_data.receipt_fields ||= {}
+        draft.value.source_data.receipt_fields.material_name = materialFields.material_name
+      }
       for (const [key, field] of Object.entries(draft.value.source_data.receipt_fields || {})) {
         if (key !== 'serial_no' && materialFields[key]) field.value = materialFields[key].value
       }
@@ -573,7 +494,6 @@ async function save() {
       const file = pendingDrawings.value[0]!
       draft.value = await processRouteApi.uploadDrawing(draft.value, file)
       pendingDrawings.value.shift()
-      if (previewDrawing.value === file) previewDrawing.value = draft.value.drawings?.at(-1)?.id
     }
     draft.value = requiresReview.value
       ? await processRouteApi.publish(draft.value, importsConfirmed.value)
@@ -704,6 +624,35 @@ onMounted(async () => {
             <span v-if="serialConflict" class="route-serial-conflict" role="alert">{{
               serialConflict
             }}</span>
+          </ElFormItem>
+          <ElFormItem label="材质" class="route-material-field">
+            <template #label>
+              材质
+              <ElTooltip
+                v-if="draft.source_data.receipt_fields?.material_name?.alternative"
+                :content="`订单表：${draft.source_data.receipt_fields.material_name.alternative.value}；工艺单：${draft.source_data.receipt_fields.material_name.parsed_value ?? draft.source_data.receipt_fields.material_name.value}`"
+              >
+                <ElIcon
+                  class="route-material-difference"
+                  tabindex="0"
+                  role="img"
+                  aria-label="材质来源不一致"
+                  ><WarningFilled
+                /></ElIcon>
+              </ElTooltip>
+            </template>
+            <strong v-if="readonly" class="route-person-value">{{
+              draft.source_data.receipt_fields?.material_name?.value || '—'
+            }}</strong>
+            <ElInput
+              v-else
+              :model-value="String(draft.source_data.receipt_fields?.material_name?.value || '')"
+              aria-label="材质"
+              placeholder="填写材质"
+              maxlength="160"
+              :disabled="busy"
+              @update:model-value="changeMaterial('material_name', $event)"
+            />
           </ElFormItem>
           <ElFormItem
             label="工艺人员"
@@ -855,119 +804,67 @@ onMounted(async () => {
           </tbody>
         </table>
       </div>
-      <div
-        class="route-comparison"
-        :class="{
-          'route-comparison--readonly': readonly,
-          'route-comparison--attachments': readonly && hasAttachments,
-        }"
-      >
-        <aside
-          v-if="readonly && hasAttachments"
-          class="route-attachment-rail"
-          aria-label="工艺附件缩略图"
-        >
-          <div v-if="draft.source_data.order_document" class="route-attachment-card">
-            <button
-              type="button"
-              class="route-order-thumbnail"
-              aria-label="放大订单表"
-              @click="orderViewing = true"
-            >
-              <table aria-hidden="true">
-                <tbody>
-                  <tr
-                    v-for="(label, index) in draft.source_data.order_document.headers.slice(0, 12)"
-                    :key="index"
-                  >
-                    <th>{{ label }}</th>
-                    <td>
-                      {{
-                        (draft.source_data.order_document.display_values ||
-                          draft.source_data.order_document.values)[index]
-                      }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </button>
-            <strong>订单表</strong>
-            <span :title="draft.source_data.order_document.filename">{{
-              draft.source_data.order_document.filename
-            }}</span>
-            <ElButton link @click="downloadOrder">下载原件</ElButton>
-          </div>
-          <div v-if="sourceFilename" class="route-attachment-card">
-            <WordDocumentPreview
-              ref="wordPreview"
-              :route="draft"
-              :source-row="activeSource"
-              thumbnail
-            />
-            <strong>工艺原稿</strong>
-            <span :title="sourceFilename">{{ sourceFilename }}</span>
-            <ElButton link @click="wordPreview?.download()">下载原件</ElButton>
-          </div>
-          <div v-for="drawing in draft.drawings" :key="drawing.id" class="route-attachment-card">
-            <ProcessRouteDrawingPreview :route-id="draft.id" :drawing="drawing" thumbnail />
-          </div>
-        </aside>
+      <div class="route-comparison route-comparison--attachments">
+        <ProcessRouteAttachments
+          ref="attachments"
+          :route="draft"
+          :documents="['word', 'drawing']"
+          :source-file="pendingWord"
+          :pending-drawings="pendingDrawings"
+          :editable="!readonly"
+          :disabled="busy"
+          :source-row="activeSource"
+          @remove-drawing="removeDrawing"
+          @remove-pending-drawing="removePending"
+        />
         <section ref="editorMain" class="route-editor-main" aria-label="工艺内容">
-          <div v-if="!readonly" class="route-file-actions route-import-toolbar">
-            <ElButton
-              v-if="draft.route_kind !== 'rework'"
-              :icon="Upload"
-              :disabled="busy"
-              @click="orderInput?.click()"
-              >导入订单表</ElButton
-            >
-            <input
-              v-if="draft.route_kind !== 'rework'"
-              ref="orderInput"
-              type="file"
-              accept=".xlsx"
-              hidden
-              aria-label="导入订单表文件"
-              @change="importOrder"
-            />
-            <ElButton
-              v-if="draft.route_kind !== 'rework'"
-              :icon="Document"
-              :disabled="busy"
-              @click="wordInput?.click()"
-              >导入工艺单</ElButton
-            >
-            <ElButton :icon="Upload" :disabled="busy" @click="drawingInput?.click()"
-              >上传图纸</ElButton
-            >
-            <input
-              v-if="draft.route_kind !== 'rework'"
-              ref="wordInput"
-              type="file"
-              accept=".docx"
-              hidden
-              aria-label="导入工艺单文件"
-              @change="importWord"
-            />
-            <input
-              ref="drawingInput"
-              type="file"
-              accept=".pdf,application/pdf"
-              multiple
-              hidden
-              aria-label="上传图纸文件"
-              @change="addDrawings"
-            />
+          <div
+            v-if="!readonly && fieldErrors.attachments"
+            class="route-attachment-warning"
+            role="alert"
+          >
+            {{ fieldErrors.attachments }}
           </div>
-          <ProcessRouteMaterials
-            :data="draft.source_data"
-            :readonly="readonly"
-            :disabled="busy"
-            @change="changeMaterial"
-            @source="showMaterialSource"
-          />
           <header class="route-panel-heading">
             <strong class="route-section-title">工序明细</strong>
+            <div v-if="!readonly" class="route-file-actions route-import-toolbar">
+              <ElButton
+                v-if="draft.route_kind !== 'rework'"
+                :icon="Document"
+                :disabled="busy"
+                :aria-invalid="!!fieldErrors.attachments && missingAttachments.includes('工艺原件')"
+                title="必填：导入工艺原件"
+                @click="wordInput?.click()"
+                >导入工艺单</ElButton
+              >
+              <ElButton
+                :icon="Upload"
+                :disabled="busy"
+                :aria-invalid="!!fieldErrors.attachments && missingAttachments.includes('图纸')"
+                :title="draft.route_kind !== 'rework' ? '必填：上传图纸' : '补充图纸'"
+                @click="drawingInput?.click()"
+                >{{ draft.route_kind === 'rework' ? '补充图纸' : '上传图纸' }}</ElButton
+              >
+              <input
+                v-if="draft.route_kind !== 'rework'"
+                ref="wordInput"
+                type="file"
+                accept=".docx"
+                hidden
+                aria-label="导入工艺单文件"
+                @change="importWord"
+              />
+              <input
+                ref="drawingInput"
+                type="file"
+                accept=".pdf,application/pdf"
+                multiple
+                hidden
+                aria-label="上传图纸文件"
+                @change="addDrawings"
+              />
+            </div>
+
             <ElPopover
               v-if="issueCount"
               v-model:visible="issuesOpen"
@@ -1026,7 +923,7 @@ onMounted(async () => {
               <thead>
                 <tr>
                   <th>序号</th>
-                  <th>工序名称</th>
+                  <th>执行班组</th>
                   <th>工艺要求</th>
                   <th>计划加工数量</th>
                   <th v-if="!readonly">执行设置</th>
@@ -1094,17 +991,33 @@ onMounted(async () => {
                       :class="{ 'route-cell--issue': textProblem(index, 'name') }"
                       :title="textProblem(index, 'name')"
                     >
-                      <span v-if="readonly" class="route-cell-value">{{ step.name || '—' }}</span>
-                      <ElFormItem
-                        v-else
-                        :error="textProblem(index, 'name') || fieldErrors[`${index}.name`]"
-                        ><ElInput
-                          v-model="step.name"
-                          :readonly="readonly"
-                          :disabled="busy"
-                          maxlength="120"
-                          :aria-label="`工序 ${index + 1} 名称`"
-                      /></ElFormItem>
+                      <span
+                        v-if="readonly"
+                        class="route-cell-value"
+                        :title="`工序：${step.name}`"
+                        >{{
+                          step.team_name ||
+                          directory.items.find((team) => Number(team.id) === step.team_id)?.name ||
+                          '未关联班组'
+                        }}</span
+                      >
+                      <ElFormItem v-else :error="fieldErrors[`${index}.team`]">
+                        <ElSelect
+                          v-model="step.team_id"
+                          :disabled="readonly || busy"
+                          placeholder="选择班组"
+                          :aria-label="`工序 ${index + 1} 执行班组`"
+                          @change="teamChanged(index)"
+                          ><ElOption
+                            v-for="team in directory.items.filter(
+                              (team) =>
+                                team.active &&
+                                ['warehouse', 'production'].includes(team.kind || ''),
+                            )"
+                            :key="team.id"
+                            :value="Number(team.id)"
+                            :label="team.name" /></ElSelect
+                      ></ElFormItem>
                     </td>
                     <td
                       class="route-instructions-cell"
@@ -1164,32 +1077,13 @@ onMounted(async () => {
                   <tr v-if="!readonly && expanded.has(index)" class="route-execution-row">
                     <td colspan="5">
                       <div class="route-step-details">
-                        <ElFormItem
-                          label="执行班组"
-                          :required="!readonly"
-                          :error="fieldErrors[`${index}.team`]"
-                          ><span v-if="readonly" class="route-readonly-value">{{
-                            step.team_name ||
-                            directory.items.find((team) => Number(team.id) === step.team_id)
-                              ?.name ||
-                            '—'
-                          }}</span
-                          ><ElSelect
-                            v-else
-                            v-model="step.team_id"
-                            :disabled="readonly || busy"
-                            placeholder="选择班组"
-                            @change="teamChanged(index)"
-                            ><ElOption
-                              v-for="team in directory.items.filter(
-                                (team) =>
-                                  team.active &&
-                                  ['warehouse', 'production'].includes(team.kind || ''),
-                              )"
-                              :key="team.id"
-                              :value="Number(team.id)"
-                              :label="team.name" /></ElSelect
-                        ></ElFormItem>
+                        <ElFormItem label="工序名称" :error="fieldErrors[`${index}.name`]"
+                          ><ElInput
+                            v-model="step.name"
+                            :disabled="busy"
+                            maxlength="120"
+                            :aria-label="`工序 ${index + 1} 名称`"
+                        /></ElFormItem>
                         <ElFormItem
                           label="具体任务"
                           :required="!readonly && !warehouse(step.team_id)"
@@ -1238,14 +1132,17 @@ onMounted(async () => {
                               :value="Number(purpose.id)"
                               :label="purpose.name" /></ElSelect
                         ></ElFormItem>
-                        <ElFormItem label="参考天数"
+                        <ElFormItem v-if="draft.route_kind !== 'rework'" label="参考天数"
                           ><ElInput
                             v-model="step.planned_days"
                             :readonly="readonly"
                             :disabled="busy"
                             maxlength="80"
                         /></ElFormItem>
-                        <ElFormItem label="适用流水号" class="route-step-serials"
+                        <ElFormItem
+                          v-if="draft.route_kind !== 'rework'"
+                          label="适用流水号"
+                          class="route-step-serials"
                           ><ElSelect
                             v-model="step.serial_nos"
                             multiple
@@ -1258,16 +1155,16 @@ onMounted(async () => {
                               :label="serial" /></ElSelect
                         ></ElFormItem>
                         <ElCheckbox
-                          v-if="serials.length > 1"
+                          v-if="draft.route_kind !== 'rework' && serials.length > 1"
                           v-model="step.split_here"
                           :disabled="readonly || busy"
                           >在此登记共投实际拆分</ElCheckbox
                         >
                       </div>
-                      <div class="route-step-meta">
-                        <span>{{ step.source_row ? `原文行 ${step.source_row}` : '手工录入' }}</span
+                      <div v-if="step.source_row || draft.steps.length > 1" class="route-step-meta">
+                        <span v-if="step.source_row">{{ `原文行 ${step.source_row}` }}</span
                         ><ElButton
-                          v-if="!readonly"
+                          v-if="draft.steps.length > 1"
                           type="danger"
                           link
                           :disabled="busy || draft.steps.length < 2"
@@ -1298,37 +1195,6 @@ onMounted(async () => {
             >
             <span v-if="fieldErrors.imports" role="alert">{{ fieldErrors.imports }}</span>
           </ElFormItem>
-          <div
-            v-if="!readonly && (draft.drawings?.length || pendingDrawings.length)"
-            class="route-drawing-list"
-            aria-label="工艺图纸"
-          >
-            <strong>图纸</strong>
-            <div v-for="drawing in draft.drawings" :key="drawing.id" class="route-drawing-item">
-              <ElButton text @click="selectDrawing(drawing.id)">{{ drawing.filename }}</ElButton
-              ><ElButton
-                v-if="!readonly"
-                text
-                type="danger"
-                :disabled="busy"
-                :aria-label="`移除 ${drawing.filename}`"
-                @click="removeDrawing(drawing.id)"
-                >移除</ElButton
-              >
-            </div>
-            <div v-for="(file, index) in pendingDrawings" :key="index" class="route-drawing-item">
-              <ElButton text @click="selectDrawing(file)">{{ file.name }}</ElButton
-              ><small>待保存</small
-              ><ElButton
-                text
-                type="danger"
-                :disabled="busy"
-                :aria-label="`移除 ${file.name}`"
-                @click="removePending(file)"
-                >移除</ElButton
-              >
-            </div>
-          </div>
           <ElFormItem
             v-if="!readonly || draft.review_note"
             label="备注"
@@ -1345,6 +1211,24 @@ onMounted(async () => {
               placeholder="选填"
               maxlength="2000"
           /></ElFormItem>
+          <details
+            v-if="
+              Object.keys(draft.source_data.receipt_fields || {}).some(
+                (key) => !['serial_no', 'material_name'].includes(key),
+              )
+            "
+            class="route-extra-info"
+          >
+            <summary>物料与订单资料</summary>
+            <ProcessRouteMaterials
+              :exclude="['material_name']"
+              :data="draft.source_data"
+              :readonly="readonly"
+              :disabled="busy"
+              @change="changeMaterial"
+              @source="showMaterialSource"
+            />
+          </details>
           <details class="route-extra-info">
             <summary>其他信息</summary>
             <ElFormItem label="工艺名称"
@@ -1365,145 +1249,8 @@ onMounted(async () => {
             </p>
           </details>
         </section>
-        <aside v-if="!readonly" class="route-original-panel" aria-label="原稿与图纸对照">
-          <header class="route-panel-heading">
-            <div class="route-preview-tabs">
-              <button
-                v-if="draft.route_kind !== 'rework'"
-                type="button"
-                :aria-pressed="previewKind === 'order'"
-                @click="previewKind = 'order'"
-              >
-                订单表
-              </button>
-              <button
-                v-if="draft.route_kind !== 'rework'"
-                type="button"
-                :aria-pressed="previewKind === 'word'"
-                @click="previewKind = 'word'"
-              >
-                工艺原稿</button
-              ><button
-                type="button"
-                :aria-pressed="previewKind === 'drawing'"
-                @click="showDrawings"
-              >
-                图纸<span v-if="draft.drawings?.length || pendingDrawings.length">
-                  {{ (draft.drawings?.length || 0) + pendingDrawings.length }}</span
-                >
-              </button>
-            </div>
-            <span
-              v-if="activeSource && previewKind === 'word'"
-              class="route-original-line"
-              :title="activeSourceLabel"
-              >{{ activeSourceLabel }}</span
-            >
-            <ElButton
-              v-if="previewKind !== 'order'"
-              class="route-magnify"
-              text
-              :icon="FullScreen"
-              :disabled="!activePreview?.ready"
-              @click="activePreview?.open()"
-              >放大查看</ElButton
-            >
-          </header>
-          <template v-if="previewKind === 'order'">
-            <template v-if="draft.source_data.order_document">
-              <div class="route-order-filename">
-                <span>{{ draft.source_data.order_document.filename }}</span
-                ><ElButton text @click="downloadOrder">下载原件</ElButton>
-              </div>
-              <div class="route-order-preview">
-                <table aria-label="订单表原始数据">
-                  <thead>
-                    <tr>
-                      <th>原表字段</th>
-                      <th>原表内容</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="(label, index) in draft.source_data.order_document.headers"
-                      :key="index"
-                    >
-                      <th scope="row">{{ label || '—' }}</th>
-                      <td>
-                        {{
-                          (draft.source_data.order_document.display_values ||
-                            draft.source_data.order_document.values)[index] || '—'
-                        }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </template>
-            <div v-else class="route-empty-source">
-              <ElIcon><Document /></ElIcon><span>暂无订单表</span
-              ><ElButton v-if="!readonly" :disabled="busy" @click="orderInput?.click()"
-                >导入订单表</ElButton
-              >
-            </div>
-          </template>
-          <template v-else-if="previewKind === 'word'">
-            <WordDocumentPreview
-              ref="wordPreview"
-              v-if="sourceFilename"
-              :route="draft"
-              :source-file="pendingWord"
-              :source-row="activeSource"
-              compact
-            />
-            <div v-else class="route-empty-source">
-              <ElIcon><Document /></ElIcon>
-              <span>暂无原稿</span
-              ><ElButton v-if="!readonly" :disabled="busy" @click="wordInput?.click()"
-                >导入工艺单</ElButton
-              >
-            </div>
-          </template>
-          <template v-else>
-            <ElSelect
-              v-if="draft.drawings?.length || pendingDrawings.length"
-              v-model="previewDrawing"
-              placeholder="选择图纸"
-              aria-label="选择预览图纸"
-              ><ElOption
-                v-for="drawing in draft.drawings"
-                :key="drawing.id"
-                :value="drawing.id"
-                :label="drawing.filename" /><ElOption
-                v-for="(file, index) in pendingDrawings"
-                :key="`pending-${index}`"
-                :value="file"
-                :label="file.name"
-            /></ElSelect>
-            <ProcessRouteDrawingPreview
-              ref="drawingPreview"
-              v-if="previewDrawing"
-              :route-id="draft.id"
-              :drawing="selectedDrawing"
-              :file="typeof previewDrawing === 'object' ? previewDrawing : undefined"
-            />
-            <div v-else class="route-empty-source">
-              <ElIcon><Document /></ElIcon>
-              <span>暂无图纸</span
-              ><ElButton v-if="!readonly" :disabled="busy" @click="drawingInput?.click()"
-                >上传图纸</ElButton
-              >
-            </div>
-          </template>
-        </aside>
       </div>
     </ElForm>
-    <DocumentViewer
-      v-if="orderViewing"
-      title="订单表"
-      :html="orderHtml"
-      @close="orderViewing = false"
-    />
     <template #footer>
       <span class="route-footer-summary"
         >{{ draft.steps.length }} 道工序<span v-if="serials.length">
@@ -1585,49 +1332,9 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--el-color-danger);
 }
-.route-order-filename {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 13px;
-  margin-bottom: 10px;
-}
-.route-order-filename > span {
-  overflow-wrap: anywhere;
-}
-.route-order-preview {
-  overflow: auto;
-  min-height: 0;
-  flex: 1;
-}
-.route-order-preview table {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 13px;
-  background: white;
-}
-.route-order-preview th,
-.route-order-preview td {
-  text-align: left;
-  vertical-align: top;
-  padding: 8px 12px;
-  border: 1px solid #dce2df;
-  font-weight: 400;
-  color: #252925;
-  overflow-wrap: anywhere;
-}
 .route-import-toolbar {
   justify-content: flex-end;
-  margin-bottom: 12px;
-}
-.route-order-preview th {
-  width: 32%;
-  background: #f3f5f3;
-}
-.route-order-preview thead {
-  position: sticky;
-  top: 0;
+  margin: 0;
 }
 .route-schedule-link {
   color: var(--brand-primary, #215b49);
@@ -1797,75 +1504,21 @@ onMounted(async () => {
 }
 .route-comparison {
   display: grid;
-  grid-template-columns: minmax(0, 1.22fr) minmax(0, 1fr);
+  grid-template-columns: 180px minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
 .route-editor-main {
   min-width: 0;
 }
-.route-comparison.route-comparison--readonly {
-  grid-template-columns: minmax(0, 1fr);
-}
-.route-comparison.route-comparison--attachments {
-  grid-template-columns: 180px minmax(0, 1fr);
-}
-.route-attachment-rail {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
-.route-attachment-card {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #ffffffc9;
-}
-.route-attachment-card > :is(strong, span) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.route-attachment-warning {
+  margin: 0 0 12px;
+  color: var(--el-color-danger);
   font-size: 12px;
 }
-.route-attachment-card > span {
-  font-size: 11px;
-  color: var(--muted);
-}
-.route-attachment-card > .el-button {
-  align-self: flex-start;
-  font-size: 12px;
-}
-.route-order-thumbnail {
-  height: 150px;
-  overflow: hidden;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: white;
-  cursor: zoom-in;
-}
-.route-order-thumbnail:hover,
-.route-order-thumbnail:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-.route-order-thumbnail table {
-  width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
-  font-size: 4px;
-  line-height: 1.5;
-  color: var(--text);
-}
-.route-order-thumbnail :is(th, td) {
-  border: 1px solid #d5ddd8;
-  padding: 2px;
-  overflow-wrap: anywhere;
+.route-file-actions .el-button[aria-invalid='true'] {
+  border-color: var(--el-color-danger);
+  color: var(--el-color-danger);
 }
 .route-panel-heading {
   display: flex;
@@ -2005,7 +1658,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 20px;
+  gap: 8px 12px;
   min-height: 32px;
 }
 .route-summary :deep(.el-form-item) {
@@ -2036,12 +1689,23 @@ onMounted(async () => {
   line-height: 32px;
 }
 .route-summary .route-serials {
-  width: 300px;
+  flex: 1.4 1 240px;
   max-width: 100%;
 }
 .route-summary .route-person-field {
-  width: 220px;
+  flex: 1 1 170px;
   max-width: 100%;
+}
+.route-summary .route-material-field {
+  flex: 1 1 170px;
+  max-width: 100%;
+}
+.route-material-difference {
+  margin-left: 5px;
+  color: #9b702e;
+}
+.route-summary .route-time-field {
+  flex: 0 0 226px;
 }
 .route-summary :deep(.el-input__wrapper),
 .route-summary :deep(.person-trigger) {
@@ -2246,6 +1910,9 @@ onMounted(async () => {
   font-size: 12px;
   margin-top: 12px;
 }
+.route-step-meta > .el-button {
+  margin-left: auto;
+}
 .route-add-step {
   margin: 12px 0 0;
 }
@@ -2258,40 +1925,6 @@ onMounted(async () => {
   color: #51655a;
   font-size: 13px;
   line-height: 1.7;
-}
-.route-drawing-list {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 20px;
-  font-size: 12px;
-}
-.route-drawing-list > strong {
-  font-weight: 500;
-  color: var(--muted);
-}
-.route-drawing-item {
-  display: flex;
-  align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 0 4px;
-  max-width: 100%;
-}
-.route-drawing-item :deep(.el-button) {
-  min-width: 0;
-  height: 30px;
-  margin: 0;
-  font-size: 12px;
-}
-.route-drawing-item :deep(.el-button > span) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.route-drawing-item small {
-  color: var(--muted);
-  white-space: nowrap;
 }
 .route-extra-info {
   margin-top: 20px;
@@ -2313,118 +1946,6 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--muted);
 }
-.route-original-panel {
-  position: sticky;
-  top: 0;
-  min-width: 0;
-  height: clamp(480px, 62dvh, 800px);
-  display: flex;
-  flex-direction: column;
-  border: 1px solid #dce4eb;
-  border-radius: 16px;
-  padding: 12px;
-  background: linear-gradient(145deg, #ffffffed, #eef4f8a8);
-  box-shadow:
-    inset 0 1px 0 #fff,
-    0 3px 12px #314b6106;
-}
-.route-original-panel .route-panel-heading {
-  margin-bottom: 6px;
-  gap: 8px;
-}
-.route-preview-tabs {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-  background: linear-gradient(180deg, #e5edf7b3, #f6f9ffeb);
-  border: 1px solid #dce5f2;
-  border-radius: 10px;
-  padding: 3px;
-  box-shadow:
-    inset 0 1px 2px #253d6012,
-    0 1px 0 #fff;
-}
-.route-preview-tabs button {
-  border: 1px solid transparent;
-  border-radius: 7px;
-  padding: 5px 11px;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  transition:
-    background 0.18s,
-    box-shadow 0.18s;
-}
-.route-preview-tabs button[aria-pressed='true'] {
-  border-color: #bfd2f4;
-  background: linear-gradient(180deg, #fff, #f0f5ff 60%, #dce9ff);
-  color: var(--accent-blue);
-  box-shadow:
-    inset 0 1px 0 #fff,
-    inset 0 -1px 0 #2563eb16,
-    0 2px 4px #254a7b1a;
-}
-.route-preview-tabs button:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-.route-original-line {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  margin-left: auto;
-  color: #856020;
-  font-size: 11px;
-}
-.route-magnify {
-  margin-left: auto;
-  padding: 6px 8px;
-  font-size: 12px;
-}
-.route-magnify:not(:disabled) {
-  border: 1px solid #c4d6fc;
-  background: linear-gradient(180deg, #fff, #edf3ff);
-  box-shadow:
-    inset 0 1px 0 #fff,
-    0 1px 3px #1c427012;
-  color: var(--accent-blue);
-}
-.route-magnify:not(:disabled):hover {
-  border-color: #91b0ee;
-  box-shadow:
-    inset 0 1px 0 #fff,
-    0 3px 7px #2563eb24;
-}
-.route-magnify:not(:disabled):active,
-.route-preview-tabs button:active {
-  box-shadow: inset 0 1px 3px #2563eb2b;
-}
-.route-original-panel :deep(.word-preview-filename),
-.route-original-panel :deep(.word-preview-tools > .el-button),
-.route-original-panel :deep(.drawing-preview-tools > .el-button) {
-  color: var(--accent-blue);
-}
-.route-original-panel :deep(.word-original-frame) {
-  min-height: 0;
-}
-.route-empty-source {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 13px;
-}
-.route-empty-source > .el-icon {
-  font-size: 28px;
-  color: #9aafbf;
-}
 .route-footer-summary {
   margin-right: auto;
   color: var(--muted);
@@ -2432,17 +1953,17 @@ onMounted(async () => {
 }
 @media (max-width: 1150px) {
   .route-comparison {
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-template-columns: 160px minmax(0, 1fr);
     gap: 16px;
   }
   .route-col-name {
     width: 104px;
   }
   .route-col-quantity {
-    width: 90px;
+    width: 108px;
   }
   .route-col-actions {
-    width: 58px;
+    width: 74px;
   }
   .route-col-sequence {
     width: 60px;
@@ -2450,23 +1971,16 @@ onMounted(async () => {
   .route-step-table td {
     padding: 8px 6px;
   }
-  .route-original-panel {
-    padding: 12px;
-  }
 }
 @media (max-width: 900px) {
+  .route-comparison {
+    grid-template-columns: 140px minmax(0, 1fr);
+  }
   .route-rework-context {
     overflow-x: auto;
   }
   .route-rework-context table {
     min-width: 720px;
-  }
-  .route-comparison {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .route-original-panel {
-    position: static;
-    height: 480px;
   }
   .route-step-table-wrap {
     overflow-x: auto;
@@ -2479,14 +1993,6 @@ onMounted(async () => {
   .route-comparison.route-comparison--attachments {
     grid-template-columns: minmax(0, 1fr);
   }
-  .route-attachment-rail {
-    flex-direction: row;
-    overflow-x: auto;
-    padding: 4px;
-  }
-  .route-attachment-card {
-    flex: 0 0 160px;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .route-issue-summary,
@@ -2494,8 +2000,6 @@ onMounted(async () => {
   .route-edit-step > td,
   .route-cell-marker,
   .route-file-actions .el-button,
-  .route-preview-tabs button,
-  .route-magnify,
   .route-execution-toggle,
   .route-execution-toggle :deep(.el-icon) {
     transition: none;

@@ -7,7 +7,7 @@ from app.process_route_orders import merge_materials, parse_order
 from fastapi import HTTPException
 from sender_helpers import sender_post
 from test_engineering_team import engineering as engineering  # noqa: F401
-from test_process_route_creation import manual
+from test_process_route_creation import manual, upload
 from test_process_route_import import HEADERS, docx
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
@@ -185,6 +185,9 @@ def test_order_attachments_confirmation_revision_and_reader_permissions(
     assert attached.status_code == 200, attached.text
     route = attached.json()
     assert route["source_data"]["receipt_fields"]["customer_code"]["value"] == "11600-T3"
+    drawing = upload(client, route, engineering)
+    assert drawing.status_code == 201, drawing.text
+    route = drawing.json()
     publish = f"{URL}/{route['id']}/publish"
     assert client.post(publish, json={"version": route["version"]}).status_code == 422
     result = client.post(publish, json={"version": route["version"], "confirmed_imports": True})
@@ -259,3 +262,28 @@ def test_order_attachments_confirmation_revision_and_reader_permissions(
         ]["value"]
         == "热沉"
     )
+
+
+def test_material_can_be_added_corrected_and_read_back(client, warehouse, engineering):
+    route = manual(client, warehouse, engineering)
+    path = f"{URL}/{route['id']}"
+    payload = {key: route[key] for key in ("title", "serial_nos", "steps", "version")}
+    payload["material_values"] = {"material_name": "Mo70Cu30"}
+    saved = client.put(path, json=payload, headers=engineering["headers"])
+    assert saved.status_code == 200, saved.text
+    field = client.get(path).json()["source_data"]["receipt_fields"]["material_name"]
+    assert field["value"] == "Mo70Cu30"
+    assert field["source_kind"] == "manual"
+    payload["version"] = saved.json()["version"]
+    payload["material_values"] = {"material_name": "Mo80Cu20"}
+    changed = client.put(path, json=payload, headers=engineering["headers"])
+    assert changed.status_code == 200, changed.text
+    assert (
+        client.get(path).json()["source_data"]["receipt_fields"]["material_name"]["value"]
+        == "Mo80Cu20"
+    )
+    payload["version"] = changed.json()["version"]
+    payload["material_values"] = {"material_name": "x" * 161}
+    assert client.put(path, json=payload, headers=engineering["headers"]).status_code == 422
+    payload["material_values"] = {"unknown_field": "no"}
+    assert client.put(path, json=payload, headers=engineering["headers"]).status_code == 422

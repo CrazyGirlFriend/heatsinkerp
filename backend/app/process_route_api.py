@@ -321,6 +321,17 @@ def list_routes(
     }
 
 
+@router.get("/resolve")
+def resolve_route(
+    serial_no: str = Query(min_length=1, max_length=80),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from .process_routes import resolve_normal_route
+
+    return document(resolve_normal_route(db, serial_no.strip()), db=db)
+
+
 @router.get("/rework-sources")
 def rework_sources(
     query: str = Query("", max_length=120),
@@ -497,6 +508,20 @@ def download_order(
             "Cache-Control": "private, no-store",
         },
     )
+
+
+@router.get("/{route_id}/dispatch-order")
+def dispatch_order(
+    route_id: int,
+    serial_no: str = Query(min_length=1, max_length=80),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from .schedule_order_documents import route_order
+
+    require_route_reader(require_route(db, route_id), user)
+    order = route_order(db, route_id, serial_no.strip())
+    return {"task_id": order.task_id, "document": order.document} if order else None
 
 
 def map_word_steps(session, steps):

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import AppDialog from '@/components/AppDialog.vue'
-import PublishedProcessRoutePicker from './PublishedProcessRoutePicker.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
+import MaterialInput from './MaterialInput.vue'
+import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute } from '@/types/processRoute'
 import {
   materialWeightToleranceKg,
@@ -89,7 +91,6 @@ const emit = defineEmits<{
   saved: [CreatedMaterialBatches | MaterialLoss]
   balancesChanged: []
 }>()
-const routePickerKey = ref('')
 function needsRoute(line: (typeof lines.value)[number]) {
   return (
     !isLoss.value &&
@@ -99,40 +100,19 @@ function needsRoute(line: (typeof lines.value)[number]) {
     !line.source.transfer.rework_route_id
   )
 }
-function selectedRoute(route: ProcessRoute) {
-  const line = lines.value.find((item) => item.key === routePickerKey.value)
-  if (!line) return
-  const lot = line.source.transfer
-  const serials = lot.shared_unallocated
-    ? (lot.shared_serials || []).map((item) => item.serial_no)
-    : [lot.serial_no]
-  if (
-    route.route_kind === 'rework' ||
-    route.serial_nos.length !== serials.length ||
-    serials.some((serial) => !route.serial_nos.includes(serial)) ||
-    route.steps[0]?.team_id !== props.teamId
-  ) {
-    errorMessage.value = '工艺流水号或起始库房与本批物料不一致'
-    return
-  }
-  lines.value
-    .filter((item) => item.source.transfer.id === lot.id)
-    .forEach((item) => {
-      item.selectedRoute = route
-    })
-  routePickerKey.value = ''
-  const target = route.steps[1]
-  if (
-    target &&
-    lines.value.every(
-      (item) =>
-        item.selectedRoute?.steps[1]?.team_id === target.team_id ||
-        item.source.transfer.process_route?.next_team_id === target.team_id,
-    )
-  ) {
-    form.nextTeamId = target.team_id || ''
-  }
-  if (target?.team_id === Number(form.nextTeamId)) line.purposeId = target.purpose_id || undefined
+function routeProblem(line: (typeof lines.value)[number]) {
+  if (!needsRoute(line)) return ''
+  if (!line.serialNo.trim()) return '请填写流水号'
+  if (line.routeLoading) return '正在读取工艺'
+  if (line.routeError) return line.routeError
+  const route = line.selectedRoute
+  if (!route) return '未找到对应工艺'
+  const missing = [
+    !line.dispatchOrderAvailable && !route.source_data.order_document && '订单表',
+    !route.filename && '工艺原件',
+    !route.drawings?.length && '图纸',
+  ].filter(Boolean)
+  return missing.length ? `缺少：${missing.join('、')}` : ''
 }
 const locationLeases: WarehouseLeaseGroup = new Map()
 const auth = useAuthStore()
@@ -141,6 +121,10 @@ const lines = ref<
   {
     key: string
     selectedRoute?: ProcessRoute
+    dispatchOrderAvailable?: boolean
+    serialNo: string
+    routeLoading?: boolean
+    routeError?: string
     warehouseLocation: string
     warehouseLocationKey: string
     locationBusy: boolean
@@ -605,7 +589,7 @@ const validation = useDialogValidation(() => {
     const add = (field: string, message: string) => {
       issues[`${line.key}.${field}`] = message
     }
-    if (needsRoute(line) && !line.selectedRoute) add('route', '请选择工艺后再转出')
+    if (routeProblem(line)) add('route', routeProblem(line))
     if (!isLoss.value && !isScrapType(line.materialType) && !line.specificationValid)
       add('specification', '请补全实际尺寸')
     if (converted(line) && !sludgeWeight(line.gross, line.percent)) {
@@ -675,6 +659,7 @@ watch(
     if (!open) return
     lines.value = (isLoss.value ? props.sources.slice(0, 1) : props.sources).map((source) => ({
       key: materialRequestKey(),
+      serialNo: source.transfer.serial_no || '',
       warehouseLocation: '',
       warehouseLocationKey: '',
       locationBusy: false,
@@ -954,6 +939,9 @@ async function submit() {
           }
         : {}),
       source_transfer_id: Number(line.source.transfer.id),
+      ...(!line.source.transfer.serial_no && !isScrapType(line.materialType)
+        ? { serial_no: line.serialNo.trim() }
+        : {}),
       ...(!isLoss.value && lineSchedules(line).some((schedule) => schedule.id === line.scheduleId)
         ? {
             production_schedule_id: line.scheduleId,
@@ -1056,6 +1044,72 @@ async function submit() {
     if (current === generation) saving.value = false
   }
 }
+const attachmentItems = computed(() =>
+  lines.value
+    .filter((line) => !isScrapType(line.materialType) && (!needsRoute(line) || line.selectedRoute))
+    .map((line) => ({
+      serialNo: line.serialNo.trim(),
+      routeId: line.source.transfer.process_route?.id || line.selectedRoute?.id,
+      route: line.selectedRoute,
+    })),
+)
+watch(
+  () => [
+    props.modelValue,
+    isLoss.value,
+    lines.value.map((line) => `${line.key}:${line.serialNo}:${line.materialType}`).join('|'),
+  ],
+  (_, _old, onCleanup) => {
+    let cancelled = false
+    const pending = lines.value.filter(needsRoute)
+    pending.forEach((line) => {
+      line.selectedRoute = undefined
+      line.dispatchOrderAvailable = false
+      line.routeError = ''
+      line.routeLoading = !!line.serialNo.trim()
+    })
+    if (!props.modelValue || !pending.length) return
+    const timer = setTimeout(async () => {
+      const cache = new Map<string, Promise<ProcessRoute>>()
+      for (const line of pending) {
+        const serial = line.serialNo.trim()
+        if (!serial) continue
+        try {
+          if (!cache.has(serial)) cache.set(serial, processRouteApi.resolve(serial))
+          const result = await cache.get(serial)!
+          if (cancelled) return
+          if (result.steps[0]?.team_id !== props.teamId)
+            throw new Error('工艺起始库房与本批物料不一致')
+          const order = await processRouteApi.dispatchOrder(result.id, serial)
+          if (cancelled) return
+          line.dispatchOrderAvailable = !!order
+          line.selectedRoute = result
+        } catch (e) {
+          if (cancelled) return
+          line.routeError = e instanceof Error ? e.message : '工艺读取失败'
+        } finally {
+          if (!cancelled) line.routeLoading = false
+        }
+      }
+      if (cancelled) return
+      const targets = lines.value.map(
+        (line) =>
+          line.selectedRoute?.steps[1]?.team_id || line.source.transfer.process_route?.next_team_id,
+      )
+      if (targets[0] && targets.every((id) => id === targets[0])) form.nextTeamId = targets[0]
+      lines.value.forEach((line) => {
+        const step = line.selectedRoute?.steps[1]
+        if (step?.team_id === Number(form.nextTeamId))
+          line.purposeId = step?.purpose_id || undefined
+      })
+    }, 300)
+    onCleanup(() => {
+      cancelled = true
+      clearTimeout(timer)
+    })
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -1081,606 +1135,623 @@ async function submit() {
     <ElAlert v-if="scheduleError && !isLoss" :title="scheduleError" type="error" :closable="false">
       <ElButton link :disabled="schedulesLoading" @click="scheduleRefresh++">重新读取排期</ElButton>
     </ElAlert>
-    <ElForm
-      ref="formRef"
-      label-position="left"
-      label-width="112px"
-      :show-message="false"
-      :disabled="busy || !canWrite"
-      @submit.prevent="submit"
-    >
-      <section v-if="!isLoss" class="dispatch-context">
-        <div class="dispatch-context-heading">
-          <h3>收发信息</h3>
-          <ElRadioGroup v-if="externalOption" v-model="form.entryKind" aria-label="出库方式">
-            <ElRadioButton value="transfer">内部转料</ElRadioButton>
-            <ElRadioButton :value="externalOption">{{
-              externalOption === 'warehouse_outbound' ? '对外出库' : '发货'
-            }}</ElRadioButton>
-          </ElRadioGroup>
-        </div>
-        <div class="dialog-form-grid dispatch-context-fields">
-          <ElFormItem label="转料人" :error="fieldErrors.sender" required>
-            <TeamEmployeeInput
-              v-if="modelValue"
-              v-model="sender"
-              :team-id="teamId"
-              label="转料人"
-              :disabled="busy || !canWrite"
-              :invalid="!!fieldErrors.sender"
-            />
-          </ElFormItem>
-          <ElFormItem
-            class="external-destination-field"
-            v-if="external"
-            :label="`${actionLabel}去向`"
-            :error="fieldErrors.externalDestination"
-            required
-          >
-            <ElSelect
-              v-model="form.externalDestination"
-              :aria-label="`${actionLabel}去向`"
-              :disabled="saving || !modelValue"
-              placeholder="请选择去向"
-            >
-              <ElOption
-                v-for="destination in externalDestinationOptions"
-                :key="destination"
-                :label="destination"
-                :value="destination"
-              />
-            </ElSelect>
-          </ElFormItem>
-          <ElFormItem
-            v-if="!isLoss && !external"
-            label="接收班组"
-            :error="fieldErrors.nextTeamId"
-            required
-            class="destination-field"
-          >
-            <ElSelect
-              v-model="form.nextTeamId"
-              aria-label="出库接收班组"
-              placeholder="选择接收班组"
-              filterable
-              ><ElOption
-                v-for="team in destinations"
-                :key="team.id"
-                :value="team.id"
-                :label="teamWorkspaceProfile(team.code)?.name || team.name"
-            /></ElSelect>
-          </ElFormItem>
-          <ElFormItem
-            v-if="
-              !isLoss &&
-              !external &&
-              lines.length > 1 &&
-              purposes.items.value.some((item) => item.active)
-            "
-            label="统一接收业务"
-            class="batch-purpose-field"
-          >
-            <ElSelect
-              v-model="batchPurposeId"
-              aria-label="统一接收业务"
-              placeholder="选择一次，应用到全部物料"
-              @change="applyBatchPurpose"
-              ><ElOption
-                v-for="purpose in purposes.items.value.filter((item) => item.active)"
-                :key="purpose.id"
-                :value="purpose.id"
-                :label="purpose.name"
-            /></ElSelect>
-          </ElFormItem>
-        </div>
-      </section>
-      <div class="source-lines">
-        <article v-for="(line, index) in lines" :key="line.key" class="source-line">
-          <header>
-            <div class="source-identity">
-              <span class="source-index">{{ String(index + 1).padStart(2, '0') }}</span>
-              <strong>{{ sharedSerialLabel(line.source.transfer) }}</strong
-              ><span class="source-material">{{
-                line.source.transfer.material_name || '未填写材质'
-              }}</span>
-              <ProcessingStockStatus
-                v-if="
-                  isProcessingTeamCode(line.source.transfer.next_team.code) &&
-                  line.latest?.processing_state
-                "
-                :state="line.latest.processing_state"
-                :material-type="line.source.transfer.material_type"
-              />
-              <div class="source-meta">
-                <span>上一批次 {{ line.source.transfer.batch_no }}</span>
-                <span>来自 {{ line.source.transfer.source_team.name }}</span
-                ><span v-if="line.source.transfer.purpose_name"
-                  >业务 {{ line.source.transfer.purpose_name }}</span
-                ><span v-if="line.source.transfer.source_batch_no"
-                  >原单批号 {{ line.source.transfer.source_batch_no }}</span
-                ><span v-if="sourceWarehouse"
-                  >当前仓位 {{ currentLocations(line.latest || line.source) }}</span
-                >
-              </div>
-            </div>
-            <div class="source-balance">
-              <span>账面库存</span>
-              <MaterialAmount
-                animate
-                :weight-only="isWeightOnlyType(line.source.transfer.material_type)"
-                :quantity="dispatchableAmounts(line.latest).quantity"
-                :weight="dispatchableAmounts(line.latest).weight"
-              />
-            </div>
-            <div v-if="needsRoute(line)" class="dispatch-route-choice">
-              <ElButton
-                :type="lineError(line, 'route') ? 'danger' : 'primary'"
-                size="small"
-                :disabled="busy"
-                @click="routePickerKey = line.key"
-                >{{ line.selectedRoute ? '更换工艺' : '选择工艺' }}</ElButton
-              >
-              <span v-if="line.selectedRoute">{{ line.selectedRoute.serial_nos.join('、') }}</span>
-              <span v-else class="field-error">未关联工艺</span>
-            </div>
-            <div class="source-actions">
-              <ElButton
-                size="small"
-                type="primary"
-                plain
-                :disabled="!line.latest"
-                @click="fillAll(index)"
-                >全部填入</ElButton
-              >
-              <ElPopover
-                v-if="!isLoss && (!sourceWarehouse || lines.length > 1)"
-                :visible="activeActions === line.key"
-                @update:visible="setLineActions(line.key, $event)"
-                trigger="click"
-                placement="bottom-end"
-                popper-class="stock-source-popover"
-                :width="180"
-                :teleported="false"
-                :show-arrow="false"
-                persistent
-              >
-                <template #reference>
-                  <ElButton size="small" :aria-label="`${line.source.transfer.batch_no}更多操作`">
-                    更多<ElIcon
-                      class="source-action-chevron"
-                      :class="{ 'is-open': activeActions === line.key }"
-                      ><ArrowDown
-                    /></ElIcon>
-                  </ElButton>
-                </template>
-                <div class="source-action-menu" @click="activeActions = ''">
-                  <ElButton
-                    v-if="!isLoss && !sourceWarehouse"
-                    link
-                    type="primary"
-                    :disabled="lines.length >= 100"
-                    @click="splitLine(index)"
-                    >拆分物料</ElButton
-                  ><ElButton
-                    v-if="!isLoss && lines.length > 1"
-                    link
-                    type="danger"
-                    @click="removeLine(index)"
-                    >移除</ElButton
-                  ><ElButton
-                    v-if="
-                      !isLoss &&
-                      processingTeam &&
-                      !isWeightOnlyType(line.source.transfer.material_type) &&
-                      !isWeightOnlyType(line.materialType) &&
-                      !processing[Number(line.source.transfer.id)] &&
-                      lines.findIndex(
-                        (other) => other.source.transfer.id === line.source.transfer.id,
-                      ) === index
-                    "
-                    link
-                    type="primary"
-                    @click="openQuantity(line.source)"
-                    >登记加工后件数</ElButton
-                  >
-                </div>
-              </ElPopover>
-            </div>
-          </header>
-
-          <template
-            v-if="
-              !isLoss &&
-              processingTeam &&
-              !isWeightOnlyType(line.source.transfer.material_type) &&
-              (!isWeightOnlyType(line.materialType) ||
-                processing[Number(line.source.transfer.id)]) &&
-              lines.findIndex((other) => other.source.transfer.id === line.source.transfer.id) ===
-                index
-            "
-          >
-            <p v-if="needsProcessingCount(line)" class="processing-count-notice" role="status">
-              本次转出件数超过账面可用
-              {{ availableFor(line).quantity }}
-              件。若加工后件数已变化，可先登记实际总件数；仍可按当前填写提交。<ElButton
-                link
-                type="primary"
-                @click="openQuantity(line.source)"
-                >展开加工登记</ElButton
-              >
-            </p>
-            <div
-              v-if="processing[Number(line.source.transfer.id)]"
-              class="processing-count source-inputs dialog-form-grid"
-            >
-              <p
-                v-if="processing[Number(line.source.transfer.id)]!.loading"
-                class="dialog-field-hint dialog-field-wide"
-                role="status"
-              >
-                正在读取加工件数…
-              </p>
-              <ElFormItem
-                v-else
-                label="加工后未转出件数"
-                :error="lineError(line, 'processingQuantity')"
-                required
-                ><ElInputNumber
-                  v-model="processing[Number(line.source.transfer.id)]!.quantity"
-                  :aria-label="`${line.source.transfer.batch_no}加工后未转出件数`"
-                  :min="0"
-                  :max="2147483647"
-                  :precision="0"
-                  controls-position="right"
-              /></ElFormItem>
-              <ProcessingTaskFields
-                v-if="processing[Number(line.source.transfer.id)]!.context?.task_required != null"
-                v-model:task-id="processing[Number(line.source.transfer.id)]!.taskId"
-                v-model:purpose-id="processing[Number(line.source.transfer.id)]!.purposeId"
+    <div :class="{ 'dispatch-with-attachments': !isLoss && attachmentItems.length }">
+      <SerialRouteAttachments v-if="!isLoss && attachmentItems.length" :items="attachmentItems" />
+      <ElForm
+        ref="formRef"
+        label-position="left"
+        label-width="112px"
+        :show-message="false"
+        :disabled="busy || !canWrite"
+        @submit.prevent="submit"
+      >
+        <section v-if="!isLoss" class="dispatch-context">
+          <div class="dispatch-context-heading">
+            <h3>收发信息</h3>
+            <ElRadioGroup v-if="externalOption" v-model="form.entryKind" aria-label="出库方式">
+              <ElRadioButton value="transfer">内部转料</ElRadioButton>
+              <ElRadioButton :value="externalOption">{{
+                externalOption === 'warehouse_outbound' ? '对外出库' : '发货'
+              }}</ElRadioButton>
+            </ElRadioGroup>
+          </div>
+          <div class="dialog-form-grid dispatch-context-fields">
+            <ElFormItem label="转料人" :error="fieldErrors.sender" required>
+              <TeamEmployeeInput
+                v-if="modelValue"
+                v-model="sender"
                 :team-id="teamId"
-                :context="processing[Number(line.source.transfer.id)]!.context!"
-                :submitted="!!lineError(line, 'processingTask')"
-                :disabled="saving"
-                @validity="processing[Number(line.source.transfer.id)]!.taskFieldsValid = $event"
+                label="转料人"
+                :disabled="busy || !canWrite"
+                :invalid="!!fieldErrors.sender"
               />
-              <ElFormItem
-                v-if="processingTeam && !processing[Number(line.source.transfer.id)]!.loading"
-                label="本批加工进度"
-                :error="lineError(line, 'processingStatus')"
-                required
-                ><ElSelect
-                  v-model="processing[Number(line.source.transfer.id)]!.status"
-                  :aria-label="`${line.source.transfer.batch_no}本批加工进度`"
-                  ><ElOption
-                    v-for="(label, value) in processingProgressLabels"
-                    :key="value"
-                    :value="value"
-                    :label="label"
-                    :disabled="
-                      processing[Number(line.source.transfer.id)]!.structured && value === 'partial'
-                    " /></ElSelect
-              ></ElFormItem>
-              <ElFormItem label="加工人" required :error="lineError(line, 'processorName')">
-                <TeamEmployeeInput
-                  v-if="processing[Number(line.source.transfer.id)]!.structured"
-                  :model-value="processing[Number(line.source.transfer.id)]!.employee || null"
-                  :team-id="teamId"
-                  label="加工人"
-                  :invalid="!!lineError(line, 'processorName')"
-                  @update:model-value="selectProcessor(Number(line.source.transfer.id), $event)"
-                />
-                <ProcessingPersonInput
-                  v-else
-                  v-model="processing[Number(line.source.transfer.id)]!.processorName"
-                  :options="processing[Number(line.source.transfer.id)]!.processorOptions"
-                  :label="`${line.source.transfer.batch_no}加工人`"
-                />
-              </ElFormItem>
-              <ElFormItem
-                v-if="processing[Number(line.source.transfer.id)]!.structured"
-                label="实际加工日期"
-                required
-                :error="lineError(line, 'processingDate')"
-              >
-                <ElInput
-                  v-model="processing[Number(line.source.transfer.id)]!.date"
-                  type="date"
-                  aria-label="实际加工日期"
-                  :max="factoryToday()"
-                />
-              </ElFormItem>
-              <ElFormItem label="加工说明（选填）" :error="lineError(line, 'processingReason')"
-                ><ElInput
-                  v-model="processing[Number(line.source.transfer.id)]!.reason"
-                  maxlength="2000"
-                  placeholder="例如：1 块切成 20 件"
-              /></ElFormItem>
-              <p class="dialog-field-hint dialog-field-wide">
-                此处登记本批全部加工完成，与本次出库一起保存。部分加工请先从库存登记，分别选择已加工与未加工库存。大料、小料或废料需要分别记账时，请先在库存中按明细登记，再选择实际子批出库。<ElButton
-                  link
-                  @click="delete processing[Number(line.source.transfer.id)]"
-                  >取消登记</ElButton
-                >
-              </p>
-              <ElAlert
-                v-if="processing[Number(line.source.transfer.id)]!.error"
-                :title="processing[Number(line.source.transfer.id)]!.error"
-                type="error"
-                class="dialog-field-wide"
-                :closable="false"
-                ><ElButton link @click="loadProcessing(line.source)">重新读取</ElButton></ElAlert
-              >
-            </div>
-          </template>
-          <div
-            class="source-inputs dialog-form-grid"
-            :class="{
-              'source-inputs-weight-only': isWeightOnlyType(line.materialType),
-              'source-inputs-sludge': converted(line),
-            }"
-          >
+            </ElFormItem>
             <ElFormItem
-              class="source-quantity-field"
-              v-if="!isWeightOnlyType(line.materialType)"
-              :label="isLoss ? '丢失件数' : `${actionLabel}件数`"
-              :error="lineError(line, 'quantity')"
+              class="external-destination-field"
+              v-if="external"
+              :label="`${actionLabel}去向`"
+              :error="fieldErrors.externalDestination"
               required
-              ><ElInputNumber
-                v-model="line.quantity"
-                :aria-label="`${line.source.transfer.batch_no}件数`"
-                :min="0"
-                :precision="0"
-                controls-position="right"
-                ><template #suffix
-                  ><span class="dialog-input-unit">件</span></template
-                ></ElInputNumber
-              ></ElFormItem
             >
-            <ElFormItem
-              class="source-weight-field"
-              v-if="!converted(line)"
-              :label="
-                isLoss
-                  ? line.source.transfer.sludge_content_percent
-                    ? '丢失折算重量'
-                    : '丢失重量'
-                  : `${actionLabel}重量`
-              "
-              :error="lineError(line, 'weight')"
-              required
-              ><WeightInput
-                v-model="line.weight"
-                :ariaLabel="`${line.source.transfer.batch_no}重量`"
-            /></ElFormItem>
-            <SludgeWeightFields
-              v-if="converted(line)"
-              v-model:gross="line.gross"
-              v-model:percent="line.percent"
-              :label="line.source.transfer.batch_no"
-              :gross-error="lineError(line, 'gross')"
-              :percent-error="lineError(line, 'percent')"
-              :locked="line.source.transfer.sludge_content_percent != null"
-              :disabled="busy || !canWrite"
-              @update:weight="line.weight = $event"
-            />
-            <p
-              v-else-if="
-                line.materialType === 'sludge' &&
-                line.source.transfer.sludge_content_percent == null
-              "
-              class="dialog-field-hint dialog-field-wide"
-            >
-              历史废泥未记录比例，沿用原账重，不自动折算。
-            </p>
-            <p
-              v-else-if="isLoss && line.materialType === 'sludge'"
-              class="dialog-field-hint dialog-field-wide"
-            >
-              丢失重量按有效材料计算，不填废泥实重。
-            </p>
-            <ElFormItem
-              v-if="!isLoss"
-              class="source-material-type-field"
-              :label="`${actionLabel}物料类型`"
-              :error="lineError(line, 'materialType')"
-              :required="warehouse"
-              ><span
-                class="dialog-readonly"
-                v-if="sourceWarehouse || line.source.transfer.material_type === 'sludge'"
-                >{{ materialTypeLabel(line.source.transfer.material_type) }}</span
-              ><ElSelect
-                v-else
-                v-model="line.materialType"
-                :aria-label="`${line.source.transfer.batch_no}物料类型`"
-                :placeholder="materialTypeLabel(line.source.transfer.material_type)"
-                ><ElOption
-                  v-for="type in materialTypeOptions.filter(
-                    (type) =>
-                      !isScrapType(line.source.transfer.material_type) || isScrapType(type.value),
-                  )"
-                  :key="type.value"
-                  :label="type.label"
-                  :value="type.value" /></ElSelect
-            ></ElFormItem>
-            <ElFormItem
-              v-if="!isLoss && !external"
-              class="source-purpose-field"
-              label="下序接收业务"
-              :error="lineError(line, 'purposeId')"
-              :required="purposes.items.value.length > 0"
-              ><ElSelect
-                v-model="line.purposeId"
-                :aria-label="`${line.source.transfer.batch_no}接收业务`"
-                :loading="purposes.loading.value"
-                :disabled="!form.nextTeamId || !purposes.items.value.length"
-                :placeholder="
-                  !form.nextTeamId
-                    ? '先选择接收班组'
-                    : !purposes.items.value.length
-                      ? '接收班组尚未配置业务'
-                      : purposes.items.value.some((item) => item.active)
-                        ? '选择接收业务'
-                        : '接收班组暂无启用业务'
-                "
-                ><ElOption
-                  v-for="purpose in purposes.items.value.filter((item) => item.active)"
-                  :key="purpose.id"
-                  :value="purpose.id"
-                  :label="purpose.name" /></ElSelect
-            ></ElFormItem>
-            <ElFormItem
-              v-if="!isLoss && lineSchedules(line).length"
-              class="dialog-field-wide"
-              label="交货排期"
-              :error="lineError(line, 'scheduleId')"
-              :required="lineSchedules(line).length > 1"
-            >
-              <span v-if="lineSchedules(line).length === 1" class="dialog-readonly">
-                {{ scheduleLabel(lineSchedules(line)[0]!) }} · 已自动关联
-              </span>
               <ElSelect
-                v-else
-                v-model="line.scheduleId"
-                :aria-label="`${line.source.transfer.batch_no}交货排期`"
-                placeholder="选择本次转出对应的交期"
+                v-model="form.externalDestination"
+                :aria-label="`${actionLabel}去向`"
+                :disabled="saving || !modelValue"
+                placeholder="请选择去向"
               >
                 <ElOption
-                  v-for="schedule in lineSchedules(line)"
-                  :key="schedule.id"
-                  :value="schedule.id"
-                  :label="scheduleLabel(schedule)"
+                  v-for="destination in externalDestinationOptions"
+                  :key="destination"
+                  :label="destination"
+                  :value="destination"
                 />
               </ElSelect>
             </ElFormItem>
             <ElFormItem
-              v-if="!isLoss && lineScheduleBatches(line).length"
-              label="交货批次"
-              :error="lineError(line, 'scheduleBatchId')"
-              :required="lineScheduleBatches(line).length > 1"
+              v-if="!isLoss && !external"
+              label="接收班组"
+              :error="fieldErrors.nextTeamId"
+              required
+              class="destination-field"
             >
-              <span v-if="lineScheduleBatches(line).length === 1"
-                >第 {{ lineScheduleBatches(line)[0]!.batch_number }} 批</span
-              >
               <ElSelect
-                v-else
-                v-model="line.scheduleBatchId"
-                placeholder="选择交货批次"
-                :aria-label="`${line.source.transfer.batch_no}交货批次`"
+                v-model="form.nextTeamId"
+                aria-label="出库接收班组"
+                placeholder="选择接收班组"
+                filterable
                 ><ElOption
-                  v-for="batch in lineScheduleBatches(line)"
-                  :key="batch.id"
-                  :value="batch.id"
-                  :label="`第 ${batch.batch_number} 批 · ${formatDateTime(batch.due_at)}`"
+                  v-for="team in destinations"
+                  :key="team.id"
+                  :value="team.id"
+                  :label="teamWorkspaceProfile(team.code)?.name || team.name"
               /></ElSelect>
             </ElFormItem>
-            <details
-              v-if="!isLoss && !isScrapType(line.materialType)"
-              class="source-specification-field"
-              :open="line.specificationOpen"
-              @toggle="line.specificationOpen = ($event.target as HTMLDetailsElement).open"
+            <ElFormItem
+              v-if="
+                !isLoss &&
+                !external &&
+                lines.length > 1 &&
+                purposes.items.value.some((item) => item.active)
+              "
+              label="统一接收业务"
+              class="batch-purpose-field"
             >
-              <summary>
-                <span>实际尺寸</span>
-                <span class="specification-summary">{{ line.specification || '选填' }}</span>
-                <span class="source-disclosure-action">{{
-                  line.specificationOpen ? '收起' : '编辑'
+              <ElSelect
+                v-model="batchPurposeId"
+                aria-label="统一接收业务"
+                placeholder="选择一次，应用到全部物料"
+                @change="applyBatchPurpose"
+                ><ElOption
+                  v-for="purpose in purposes.items.value.filter((item) => item.active)"
+                  :key="purpose.id"
+                  :value="purpose.id"
+                  :label="purpose.name"
+              /></ElSelect>
+            </ElFormItem>
+          </div>
+        </section>
+        <div class="source-lines">
+          <article v-for="(line, index) in lines" :key="line.key" class="source-line">
+            <header>
+              <div class="source-identity">
+                <span class="source-index">{{ String(index + 1).padStart(2, '0') }}</span>
+                <strong>{{ sharedSerialLabel(line.source.transfer) }}</strong
+                ><span class="source-material">{{
+                  line.source.transfer.material_name || '未填写材质'
                 }}</span>
-                <ElIcon><ArrowDown /></ElIcon>
-              </summary>
-              <ElFormItem label-width="0" :error="lineError(line, 'specification')">
-                <SpecificationInput
-                  class="source-specification"
-                  v-model="line.specification"
-                  :label="`${line.source.transfer.batch_no}实际尺寸`"
-                  @validity-change="line.specificationValid = $event"
+                <ProcessingStockStatus
+                  v-if="
+                    isProcessingTeamCode(line.source.transfer.next_team.code) &&
+                    line.latest?.processing_state
+                  "
+                  :state="line.latest.processing_state"
+                  :material-type="line.source.transfer.material_type"
                 />
-              </ElFormItem>
-            </details>
-            <ElFormItem v-if="!isLoss && warehouse" label="入库仓位" class="dialog-field-wide"
-              ><WarehouseLocationSelect
-                v-model="line.warehouseLocation"
-                v-model:reservation-key="line.warehouseLocationKey"
-                :team-id="Number(form.nextTeamId)"
-                :serial-no="line.source.transfer.serial_no"
-                :material-name="line.source.transfer.material_name || ''"
-                :material-type="line.materialType"
-                :lease-group="locationLeases"
-                :active="modelValue"
+                <div class="source-meta">
+                  <span>上一批次 {{ line.source.transfer.batch_no }}</span>
+                  <span>来自 {{ line.source.transfer.source_team.name }}</span
+                  ><span v-if="line.source.transfer.purpose_name"
+                    >业务 {{ line.source.transfer.purpose_name }}</span
+                  ><span v-if="line.source.transfer.source_batch_no"
+                    >原单批号 {{ line.source.transfer.source_batch_no }}</span
+                  ><span v-if="sourceWarehouse"
+                    >当前仓位 {{ currentLocations(line.latest || line.source) }}</span
+                  >
+                </div>
+              </div>
+              <div class="source-balance">
+                <span>账面库存</span>
+                <MaterialAmount
+                  animate
+                  :weight-only="isWeightOnlyType(line.source.transfer.material_type)"
+                  :quantity="dispatchableAmounts(line.latest).quantity"
+                  :weight="dispatchableAmounts(line.latest).weight"
+                />
+              </div>
+              <div v-if="needsRoute(line)" class="dispatch-route-choice">
+                <ElFormItem
+                  v-if="!line.source.transfer.serial_no"
+                  label="流水号"
+                  :error="lineError(line, 'route')"
+                  required
+                >
+                  <MaterialInput
+                    v-model="line.serialNo"
+                    field="serial_no"
+                    aria-label="出库流水号"
+                    label="出库流水号"
+                    :disabled="busy"
+                    placeholder="输入流水号"
+                  />
+                </ElFormItem>
+                <span v-if="routeProblem(line)" class="field-error" role="status">{{
+                  routeProblem(line)
+                }}</span>
+              </div>
+              <div class="source-actions">
+                <ElButton
+                  size="small"
+                  type="primary"
+                  plain
+                  :disabled="!line.latest"
+                  @click="fillAll(index)"
+                  >全部填入</ElButton
+                >
+                <ElPopover
+                  v-if="
+                    !isLoss &&
+                    (!sourceWarehouse || !line.source.transfer.serial_no || lines.length > 1)
+                  "
+                  :visible="activeActions === line.key"
+                  @update:visible="setLineActions(line.key, $event)"
+                  trigger="click"
+                  placement="bottom-end"
+                  popper-class="stock-source-popover"
+                  :width="180"
+                  :teleported="false"
+                  :show-arrow="false"
+                  persistent
+                >
+                  <template #reference>
+                    <ElButton size="small" :aria-label="`${line.source.transfer.batch_no}更多操作`">
+                      更多<ElIcon
+                        class="source-action-chevron"
+                        :class="{ 'is-open': activeActions === line.key }"
+                        ><ArrowDown
+                      /></ElIcon>
+                    </ElButton>
+                  </template>
+                  <div class="source-action-menu" @click="activeActions = ''">
+                    <ElButton
+                      v-if="!isLoss && (!sourceWarehouse || !line.source.transfer.serial_no)"
+                      link
+                      type="primary"
+                      :disabled="lines.length >= 100"
+                      @click="splitLine(index)"
+                      >拆分物料</ElButton
+                    ><ElButton
+                      v-if="!isLoss && lines.length > 1"
+                      link
+                      type="danger"
+                      @click="removeLine(index)"
+                      >移除</ElButton
+                    ><ElButton
+                      v-if="
+                        !isLoss &&
+                        processingTeam &&
+                        !isWeightOnlyType(line.source.transfer.material_type) &&
+                        !isWeightOnlyType(line.materialType) &&
+                        !processing[Number(line.source.transfer.id)] &&
+                        lines.findIndex(
+                          (other) => other.source.transfer.id === line.source.transfer.id,
+                        ) === index
+                      "
+                      link
+                      type="primary"
+                      @click="openQuantity(line.source)"
+                      >登记加工后件数</ElButton
+                    >
+                  </div>
+                </ElPopover>
+              </div>
+            </header>
+
+            <template
+              v-if="
+                !isLoss &&
+                processingTeam &&
+                !isWeightOnlyType(line.source.transfer.material_type) &&
+                (!isWeightOnlyType(line.materialType) ||
+                  processing[Number(line.source.transfer.id)]) &&
+                lines.findIndex((other) => other.source.transfer.id === line.source.transfer.id) ===
+                  index
+              "
+            >
+              <p v-if="needsProcessingCount(line)" class="processing-count-notice" role="status">
+                本次转出件数超过账面可用
+                {{ availableFor(line).quantity }}
+                件。若加工后件数已变化，可先登记实际总件数；仍可按当前填写提交。<ElButton
+                  link
+                  type="primary"
+                  @click="openQuantity(line.source)"
+                  >展开加工登记</ElButton
+                >
+              </p>
+              <div
+                v-if="processing[Number(line.source.transfer.id)]"
+                class="processing-count source-inputs dialog-form-grid"
+              >
+                <p
+                  v-if="processing[Number(line.source.transfer.id)]!.loading"
+                  class="dialog-field-hint dialog-field-wide"
+                  role="status"
+                >
+                  正在读取加工件数…
+                </p>
+                <ElFormItem
+                  v-else
+                  label="加工后未转出件数"
+                  :error="lineError(line, 'processingQuantity')"
+                  required
+                  ><ElInputNumber
+                    v-model="processing[Number(line.source.transfer.id)]!.quantity"
+                    :aria-label="`${line.source.transfer.batch_no}加工后未转出件数`"
+                    :min="0"
+                    :max="2147483647"
+                    :precision="0"
+                    controls-position="right"
+                /></ElFormItem>
+                <ProcessingTaskFields
+                  v-if="processing[Number(line.source.transfer.id)]!.context?.task_required != null"
+                  v-model:task-id="processing[Number(line.source.transfer.id)]!.taskId"
+                  v-model:purpose-id="processing[Number(line.source.transfer.id)]!.purposeId"
+                  :team-id="teamId"
+                  :context="processing[Number(line.source.transfer.id)]!.context!"
+                  :submitted="!!lineError(line, 'processingTask')"
+                  :disabled="saving"
+                  @validity="processing[Number(line.source.transfer.id)]!.taskFieldsValid = $event"
+                />
+                <ElFormItem
+                  v-if="processingTeam && !processing[Number(line.source.transfer.id)]!.loading"
+                  label="本批加工进度"
+                  :error="lineError(line, 'processingStatus')"
+                  required
+                  ><ElSelect
+                    v-model="processing[Number(line.source.transfer.id)]!.status"
+                    :aria-label="`${line.source.transfer.batch_no}本批加工进度`"
+                    ><ElOption
+                      v-for="(label, value) in processingProgressLabels"
+                      :key="value"
+                      :value="value"
+                      :label="label"
+                      :disabled="
+                        processing[Number(line.source.transfer.id)]!.structured &&
+                        value === 'partial'
+                      " /></ElSelect
+                ></ElFormItem>
+                <ElFormItem label="加工人" required :error="lineError(line, 'processorName')">
+                  <TeamEmployeeInput
+                    v-if="processing[Number(line.source.transfer.id)]!.structured"
+                    :model-value="processing[Number(line.source.transfer.id)]!.employee || null"
+                    :team-id="teamId"
+                    label="加工人"
+                    :invalid="!!lineError(line, 'processorName')"
+                    @update:model-value="selectProcessor(Number(line.source.transfer.id), $event)"
+                  />
+                  <ProcessingPersonInput
+                    v-else
+                    v-model="processing[Number(line.source.transfer.id)]!.processorName"
+                    :options="processing[Number(line.source.transfer.id)]!.processorOptions"
+                    :label="`${line.source.transfer.batch_no}加工人`"
+                  />
+                </ElFormItem>
+                <ElFormItem
+                  v-if="processing[Number(line.source.transfer.id)]!.structured"
+                  label="实际加工日期"
+                  required
+                  :error="lineError(line, 'processingDate')"
+                >
+                  <ElInput
+                    v-model="processing[Number(line.source.transfer.id)]!.date"
+                    type="date"
+                    aria-label="实际加工日期"
+                    :max="factoryToday()"
+                  />
+                </ElFormItem>
+                <ElFormItem label="加工说明（选填）" :error="lineError(line, 'processingReason')"
+                  ><ElInput
+                    v-model="processing[Number(line.source.transfer.id)]!.reason"
+                    maxlength="2000"
+                    placeholder="例如：1 块切成 20 件"
+                /></ElFormItem>
+                <p class="dialog-field-hint dialog-field-wide">
+                  此处登记本批全部加工完成，与本次出库一起保存。部分加工请先从库存登记，分别选择已加工与未加工库存。大料、小料或废料需要分别记账时，请先在库存中按明细登记，再选择实际子批出库。<ElButton
+                    link
+                    @click="delete processing[Number(line.source.transfer.id)]"
+                    >取消登记</ElButton
+                  >
+                </p>
+                <ElAlert
+                  v-if="processing[Number(line.source.transfer.id)]!.error"
+                  :title="processing[Number(line.source.transfer.id)]!.error"
+                  type="error"
+                  class="dialog-field-wide"
+                  :closable="false"
+                  ><ElButton link @click="loadProcessing(line.source)">重新读取</ElButton></ElAlert
+                >
+              </div>
+            </template>
+            <div
+              class="source-inputs dialog-form-grid"
+              :class="{
+                'source-inputs-weight-only': isWeightOnlyType(line.materialType),
+                'source-inputs-sludge': converted(line),
+              }"
+            >
+              <ElFormItem
+                class="source-quantity-field"
+                v-if="!isWeightOnlyType(line.materialType)"
+                :label="isLoss ? '丢失件数' : `${actionLabel}件数`"
+                :error="lineError(line, 'quantity')"
+                required
+                ><ElInputNumber
+                  v-model="line.quantity"
+                  :aria-label="`${line.source.transfer.batch_no}件数`"
+                  :min="0"
+                  :precision="0"
+                  controls-position="right"
+                  ><template #suffix
+                    ><span class="dialog-input-unit">件</span></template
+                  ></ElInputNumber
+                ></ElFormItem
+              >
+              <ElFormItem
+                class="source-weight-field"
+                v-if="!converted(line)"
+                :label="
+                  isLoss
+                    ? line.source.transfer.sludge_content_percent
+                      ? '丢失折算重量'
+                      : '丢失重量'
+                    : `${actionLabel}重量`
+                "
+                :error="lineError(line, 'weight')"
+                required
+                ><WeightInput
+                  v-model="line.weight"
+                  :ariaLabel="`${line.source.transfer.batch_no}重量`"
+              /></ElFormItem>
+              <SludgeWeightFields
+                v-if="converted(line)"
+                v-model:gross="line.gross"
+                v-model:percent="line.percent"
+                :label="line.source.transfer.batch_no"
+                :gross-error="lineError(line, 'gross')"
+                :percent-error="lineError(line, 'percent')"
+                :locked="line.source.transfer.sludge_content_percent != null"
                 :disabled="busy || !canWrite"
-                @busy-change="line.locationBusy = $event"
+                @update:weight="line.weight = $event"
+              />
+              <p
+                v-else-if="
+                  line.materialType === 'sludge' &&
+                  line.source.transfer.sludge_content_percent == null
+                "
+                class="dialog-field-hint dialog-field-wide"
+              >
+                历史废泥未记录比例，沿用原账重，不自动折算。
+              </p>
+              <p
+                v-else-if="isLoss && line.materialType === 'sludge'"
+                class="dialog-field-hint dialog-field-wide"
+              >
+                丢失重量按有效材料计算，不填废泥实重。
+              </p>
+              <ElFormItem
+                v-if="!isLoss"
+                class="source-material-type-field"
+                :label="`${actionLabel}物料类型`"
+                :error="lineError(line, 'materialType')"
+                :required="warehouse"
+                ><span
+                  class="dialog-readonly"
+                  v-if="sourceWarehouse || line.source.transfer.material_type === 'sludge'"
+                  >{{ materialTypeLabel(line.source.transfer.material_type) }}</span
+                ><ElSelect
+                  v-else
+                  v-model="line.materialType"
+                  :aria-label="`${line.source.transfer.batch_no}物料类型`"
+                  :placeholder="materialTypeLabel(line.source.transfer.material_type)"
+                  ><ElOption
+                    v-for="type in materialTypeOptions.filter(
+                      (type) =>
+                        !isScrapType(line.source.transfer.material_type) || isScrapType(type.value),
+                    )"
+                    :key="type.value"
+                    :label="type.label"
+                    :value="type.value" /></ElSelect
+              ></ElFormItem>
+              <ElFormItem
+                v-if="!isLoss && !external"
+                class="source-purpose-field"
+                label="下序接收业务"
+                :error="lineError(line, 'purposeId')"
+                :required="purposes.items.value.length > 0"
+                ><ElSelect
+                  v-model="line.purposeId"
+                  :aria-label="`${line.source.transfer.batch_no}接收业务`"
+                  :loading="purposes.loading.value"
+                  :disabled="!form.nextTeamId || !purposes.items.value.length"
+                  :placeholder="
+                    !form.nextTeamId
+                      ? '先选择接收班组'
+                      : !purposes.items.value.length
+                        ? '接收班组尚未配置业务'
+                        : purposes.items.value.some((item) => item.active)
+                          ? '选择接收业务'
+                          : '接收班组暂无启用业务'
+                  "
+                  ><ElOption
+                    v-for="purpose in purposes.items.value.filter((item) => item.active)"
+                    :key="purpose.id"
+                    :value="purpose.id"
+                    :label="purpose.name" /></ElSelect
+              ></ElFormItem>
+              <ElFormItem
+                v-if="!isLoss && lineSchedules(line).length"
+                class="dialog-field-wide"
+                label="交货排期"
+                :error="lineError(line, 'scheduleId')"
+                :required="lineSchedules(line).length > 1"
+              >
+                <span v-if="lineSchedules(line).length === 1" class="dialog-readonly">
+                  {{ scheduleLabel(lineSchedules(line)[0]!) }} · 已自动关联
+                </span>
+                <ElSelect
+                  v-else
+                  v-model="line.scheduleId"
+                  :aria-label="`${line.source.transfer.batch_no}交货排期`"
+                  placeholder="选择本次转出对应的交期"
+                >
+                  <ElOption
+                    v-for="schedule in lineSchedules(line)"
+                    :key="schedule.id"
+                    :value="schedule.id"
+                    :label="scheduleLabel(schedule)"
+                  />
+                </ElSelect>
+              </ElFormItem>
+              <ElFormItem
+                v-if="!isLoss && lineScheduleBatches(line).length"
+                label="交货批次"
+                :error="lineError(line, 'scheduleBatchId')"
+                :required="lineScheduleBatches(line).length > 1"
+              >
+                <span v-if="lineScheduleBatches(line).length === 1"
+                  >第 {{ lineScheduleBatches(line)[0]!.batch_number }} 批</span
+                >
+                <ElSelect
+                  v-else
+                  v-model="line.scheduleBatchId"
+                  placeholder="选择交货批次"
+                  :aria-label="`${line.source.transfer.batch_no}交货批次`"
+                  ><ElOption
+                    v-for="batch in lineScheduleBatches(line)"
+                    :key="batch.id"
+                    :value="batch.id"
+                    :label="`第 ${batch.batch_number} 批 · ${formatDateTime(batch.due_at)}`"
+                /></ElSelect>
+              </ElFormItem>
+              <details
+                v-if="!isLoss && !isScrapType(line.materialType)"
+                class="source-specification-field"
+                :open="line.specificationOpen"
+                @toggle="line.specificationOpen = ($event.target as HTMLDetailsElement).open"
+              >
+                <summary>
+                  <span>实际尺寸</span>
+                  <span class="specification-summary">{{ line.specification || '选填' }}</span>
+                  <span class="source-disclosure-action">{{
+                    line.specificationOpen ? '收起' : '编辑'
+                  }}</span>
+                  <ElIcon><ArrowDown /></ElIcon>
+                </summary>
+                <ElFormItem label-width="0" :error="lineError(line, 'specification')">
+                  <SpecificationInput
+                    class="source-specification"
+                    v-model="line.specification"
+                    :label="`${line.source.transfer.batch_no}实际尺寸`"
+                    @validity-change="line.specificationValid = $event"
+                  />
+                </ElFormItem>
+              </details>
+              <ElFormItem v-if="!isLoss && warehouse" label="入库仓位" class="dialog-field-wide"
+                ><WarehouseLocationSelect
+                  v-model="line.warehouseLocation"
+                  v-model:reservation-key="line.warehouseLocationKey"
+                  :team-id="Number(form.nextTeamId)"
+                  :serial-no="line.source.transfer.serial_no"
+                  :material-name="line.source.transfer.material_name || ''"
+                  :material-type="line.materialType"
+                  :lease-group="locationLeases"
+                  :active="modelValue"
+                  :disabled="busy || !canWrite"
+                  @busy-change="line.locationBusy = $event"
+              /></ElFormItem>
+            </div>
+            <OutboundQuantityClearance
+              v-for="item in clearances.filter(
+                (item) =>
+                  item.id === line.source.transfer.id &&
+                  lines.findIndex((candidate) => candidate.source.transfer.id === item.id) ===
+                    index,
+              )"
+              :key="item.id"
+              :batch-no="item.batchNo"
+              :quantity="item.quantity"
+              :enabled="!!clearanceSelected[item.id]"
+              :reason="clearanceReasons[item.id] || ''"
+              :disabled="busy || !canWrite"
+              @update:enabled="clearanceSelected[item.id] = $event"
+              @update:reason="clearanceReasons[item.id] = $event"
+            />
+          </article>
+        </div>
+        <details class="action-notes-section">
+          <summary>
+            <span>
+              {{
+                isLoss
+                  ? '丢失原因'
+                  : containsScrap
+                    ? '废料处理原因'
+                    : external
+                      ? `${actionLabel}说明`
+                      : warehouse
+                        ? '入库说明'
+                        : '出库说明'
+              }}
+            </span>
+            <span class="notes-summary">{{ (isLoss ? form.reason : form.notes) || '选填' }}</span>
+            <ElIcon><ArrowDown /></ElIcon>
+          </summary>
+          <div class="dialog-form-grid">
+            <ElFormItem
+              v-if="isLoss"
+              class="dialog-field-wide"
+              label-width="0"
+              :error="fieldErrors.reason"
+              ><ElInput
+                v-model="form.reason"
+                aria-label="丢失原因"
+                type="textarea"
+                :rows="3"
+                maxlength="2000"
+                show-word-limit
+                placeholder="选填：填写实际情况和原因"
+            /></ElFormItem>
+            <ElFormItem v-else class="dialog-field-wide" label-width="0" :error="fieldErrors.notes"
+              ><ElInput
+                v-model="form.notes"
+                :aria-label="
+                  containsScrap
+                    ? '废料处理原因'
+                    : external
+                      ? `${actionLabel}说明`
+                      : warehouse
+                        ? '入库说明'
+                        : '出库说明'
+                "
+                type="textarea"
+                :rows="2"
+                maxlength="2000"
+                show-word-limit
+                placeholder="选填"
             /></ElFormItem>
           </div>
-          <OutboundQuantityClearance
-            v-for="item in clearances.filter(
-              (item) =>
-                item.id === line.source.transfer.id &&
-                lines.findIndex((candidate) => candidate.source.transfer.id === item.id) === index,
-            )"
-            :key="item.id"
-            :batch-no="item.batchNo"
-            :quantity="item.quantity"
-            :enabled="!!clearanceSelected[item.id]"
-            :reason="clearanceReasons[item.id] || ''"
-            :disabled="busy || !canWrite"
-            @update:enabled="clearanceSelected[item.id] = $event"
-            @update:reason="clearanceReasons[item.id] = $event"
-          />
-        </article>
-      </div>
-      <details class="action-notes-section">
-        <summary>
-          <span>
-            {{
-              isLoss
-                ? '丢失原因'
-                : containsScrap
-                  ? '废料处理原因'
-                  : external
-                    ? `${actionLabel}说明`
-                    : warehouse
-                      ? '入库说明'
-                      : '出库说明'
-            }}
-          </span>
-          <span class="notes-summary">{{ (isLoss ? form.reason : form.notes) || '选填' }}</span>
-          <ElIcon><ArrowDown /></ElIcon>
-        </summary>
-        <div class="dialog-form-grid">
-          <ElFormItem
-            v-if="isLoss"
-            class="dialog-field-wide"
-            label-width="0"
-            :error="fieldErrors.reason"
-            ><ElInput
-              v-model="form.reason"
-              aria-label="丢失原因"
-              type="textarea"
-              :rows="3"
-              maxlength="2000"
-              show-word-limit
-              placeholder="选填：填写实际情况和原因"
-          /></ElFormItem>
-          <ElFormItem v-else class="dialog-field-wide" label-width="0" :error="fieldErrors.notes"
-            ><ElInput
-              v-model="form.notes"
-              :aria-label="
-                containsScrap
-                  ? '废料处理原因'
-                  : external
-                    ? `${actionLabel}说明`
-                    : warehouse
-                      ? '入库说明'
-                      : '出库说明'
-              "
-              type="textarea"
-              :rows="2"
-              maxlength="2000"
-              show-word-limit
-              placeholder="选填"
-          /></ElFormItem>
-        </div>
-      </details>
-    </ElForm>
+        </details>
+      </ElForm>
+    </div>
     <ElAlert v-if="weightNotice" :title="weightNotice" type="warning" :closable="false" show-icon />
     <ElAlert
       v-if="balanceNotice"
@@ -1742,15 +1813,21 @@ async function submit() {
       </div></template
     >
   </AppDialog>
-  <PublishedProcessRoutePicker
-    v-if="routePickerKey"
-    :serial-no="lines.find((line) => line.key === routePickerKey)?.source.transfer.serial_no"
-    @selected="selectedRoute"
-    @close="routePickerKey = ''"
-  />
 </template>
 
 <style scoped>
+.dispatch-with-attachments {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 800px) {
+  .dispatch-with-attachments {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .stock-dialog-heading {
   display: flex;
   align-items: baseline;

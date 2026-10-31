@@ -38,6 +38,7 @@ const context = (revision = 0): QuantityAdjustmentContext => ({
 })
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(processRouteApi, 'dispatchOrder').mockResolvedValue(null)
   state.auth = reactive({
     isTeamAccount: true,
     currentUser: { id: 2, team_id: 2, active: true },
@@ -65,6 +66,7 @@ async function render(canWrite = true, person = '王师傅') {
     props: { modelValue: true, teamId: 2, sourceId: 10, canWrite },
     global: {
       stubs: {
+        SerialRouteAttachments: true,
         ProcessRouteEditor: {
           name: 'ProcessRouteEditor',
           props: { route: Object, viewOnly: Boolean },

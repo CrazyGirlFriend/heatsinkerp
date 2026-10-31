@@ -36,7 +36,9 @@ const activeGroup = computed(() =>
       ? 'factory'
       : ['/transfer-batches', '/material-trace'].includes(route.path)
         ? 'materials'
-        : 'teams',
+        : ['/process-routes', '/business-people', '/dispatch-schedules'].includes(route.path)
+          ? 'management'
+          : 'teams',
 )
 const workspaces = computed(() => configuredTeamWorkspaces(teamDirectory.items))
 const activeIndex = computed(() => route.path)
@@ -46,6 +48,7 @@ const waitingForDirectory = computed(
 )
 const groupIndexes = computed(() => [
   'factory',
+  'management',
   'teams',
   'materials',
   ...(isAdmin.value ? ['settings'] : []),
@@ -273,18 +276,18 @@ const materialLinks = computed(() => [
           >
         </ElSubMenu>
         <ElSubMenu
-          index="teams"
-          data-nav-index="teams"
-          aria-label="班组工作台"
-          :class="{ 'factory-nav__current': activeGroup === 'teams' }"
-          :aria-description="activeGroup === 'teams' ? '当前页面所属模块' : undefined"
+          index="management"
+          data-nav-index="management"
+          aria-label="生产管理"
+          :class="{ 'factory-nav__current': activeGroup === 'management' }"
+          :aria-description="activeGroup === 'management' ? '当前页面所属模块' : undefined"
         >
           <template #title
             ><ElIcon class="factory-nav__module-icon" aria-hidden="true"
-              ><FactoryNavIcon name="workspaces" /></ElIcon
-            ><span>班组工作台</span
+              ><FactoryNavIcon name="schedule" /></ElIcon
+            ><span>生产管理</span
             ><span
-              v-if="activeGroup === 'teams' && !compact"
+              v-if="activeGroup === 'management' && !compact"
               class="factory-nav__current-badge"
               aria-hidden="true"
               >当前</span
@@ -313,6 +316,25 @@ const materialLinks = computed(() => [
             ><ElIcon class="factory-nav__team-icon" aria-hidden="true"
               ><FactoryNavIcon name="schedule" /></ElIcon
             ><span>调度</span></ElMenuItem
+          >
+        </ElSubMenu>
+        <ElSubMenu
+          index="teams"
+          data-nav-index="teams"
+          aria-label="班组工作台"
+          :class="{ 'factory-nav__current': activeGroup === 'teams' }"
+          :aria-description="activeGroup === 'teams' ? '当前页面所属模块' : undefined"
+        >
+          <template #title
+            ><ElIcon class="factory-nav__module-icon" aria-hidden="true"
+              ><FactoryNavIcon name="workspaces" /></ElIcon
+            ><span>班组工作台</span
+            ><span
+              v-if="activeGroup === 'teams' && !compact"
+              class="factory-nav__current-badge"
+              aria-hidden="true"
+              >当前</span
+            ></template
           >
           <ElMenuItem
             v-if="teamDirectory.loading && !teamDirectory.loaded"

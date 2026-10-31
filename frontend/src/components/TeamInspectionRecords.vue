@@ -264,7 +264,7 @@ onBeforeUnmount(() => {
       'inspection-records--fullscreen': fullscreen,
     }"
   >
-    <div class="inspection-toolbar">
+    <div class="inspection-toolbar workspace-data-toolbar">
       <ElInput
         v-model="query"
         :prefix-icon="Search"

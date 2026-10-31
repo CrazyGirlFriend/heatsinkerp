@@ -3,6 +3,7 @@
 import pytest
 from app.database import SessionLocal
 from app.models import ProcessRoute, TeamEmployee
+from route_document_helpers import add_documents
 from test_material_transfers import _leader
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
@@ -37,6 +38,7 @@ def test_engineering_edit_revision_and_warehouse_binding(client, warehouse, engi
     assert saved.status_code == 200, saved.text
     assert saved.json()["engineering_employee_name"] == "工艺张工"
     assert saved.json()["updated_at"]
+    add_documents(payload["id"])
     published = client.post(
         URL + f"/{payload['id']}/publish",
         headers=engineering["headers"],

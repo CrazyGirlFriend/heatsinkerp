@@ -6,13 +6,16 @@ const props = defineProps<{
   data: ProcessRoute['source_data']
   readonly: boolean
   disabled: boolean
+  exclude?: string[]
 }>()
 const emit = defineEmits<{
   change: [key: string, value: string]
   source: [kind: 'word' | 'order']
 }>()
 const fields = computed(() =>
-  Object.entries(props.data.receipt_fields || {}).filter(([key]) => key !== 'serial_no'),
+  Object.entries(props.data.receipt_fields || {}).filter(
+    ([key]) => key !== 'serial_no' && !props.exclude?.includes(key),
+  ),
 )
 function source(field: RouteMaterialField) {
   return field.source_kind === 'excel' ? '订单表' : '工艺单'
@@ -61,7 +64,15 @@ function warningLabel(warning: string) {
             >
           </td>
           <td>
+            <span v-if="field.source_kind === 'manual'">手工填写</span>
+            <span
+              v-else-if="readonly && field.source_kind === 'excel'"
+              :title="field.source_filename"
+            >
+              订单表 · 自动填入
+            </span>
             <button
+              v-else
               type="button"
               :title="`${field.source_filename || ''} ${field.source_row}`"
               @click="emit('source', field.source_kind === 'excel' ? 'order' : 'word')"

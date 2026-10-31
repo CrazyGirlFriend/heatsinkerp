@@ -48,6 +48,10 @@ export interface ReworkSource {
   weight: number
 }
 export const processRouteApi = {
+  dispatchOrder: (id: number, serial: string) =>
+    request<{ task_id: number; document: RouteOrderDocument } | null>(
+      `/${id}/dispatch-order?serial_no=${encodeURIComponent(serial)}`,
+    ),
   reworkSources: (query = '', page = 1) =>
     request<MaterialPage<ReworkSource>>(
       `/rework-sources?query=${encodeURIComponent(query)}&page=${page}`,
@@ -79,6 +83,8 @@ export const processRouteApi = {
   }) => request<ProcessRoute>('/rework-requests', 'POST', body),
   resumeRework: (id: number, revision: number) =>
     request(`/rework-lots/${id}/resume`, 'POST', { expected_revision: revision }),
+  resolve: (serialNo: string) =>
+    request<ProcessRoute>(`/resolve?serial_no=${encodeURIComponent(serialNo)}`),
   detail: (id: number) => request<ProcessRoute>(`/${id}`),
   lot: (id: number) =>
     request<{ current: ProcessRouteContext | null; route: ProcessRoute | null }>(`/lots/${id}`),

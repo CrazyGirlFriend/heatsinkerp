@@ -224,8 +224,16 @@ def apply_material_values(row, values):
     if values is None:
         return
     data = deepcopy(row.source_data)
-    fields = data.get("receipt_fields", {})
+    fields = data.setdefault("receipt_fields", {})
     for key, value in values.items():
+        if key == "material_name" and key not in fields:
+            fields[key] = {
+                "value": "",
+                "label": "材质",
+                "source_kind": "manual",
+                "source_row": "",
+                "source_label": "材质",
+            }
         if key not in fields or key == "serial_no":
             raise HTTPException(422, "订单字段不存在或不可修改")
         try:

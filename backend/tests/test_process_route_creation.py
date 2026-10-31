@@ -7,6 +7,7 @@ import pytest
 from app.database import SessionLocal
 from app.models import ProcessRoute
 from pypdf import PdfWriter
+from route_document_helpers import add_documents
 from sqlalchemy import func, select
 from test_engineering_team import engineering as engineering  # noqa: F401
 from test_process_route_import import HEADERS, docx
@@ -47,7 +48,7 @@ def upload(client, route, engineering, content=None, filename="图纸.pdf", vers
     )
 
 
-def test_manual_create_publish_without_word_and_original_source_permissions(
+def test_manual_create_requires_documents_and_preserves_original_source_permissions(
     client, warehouse, engineering
 ):
     route = manual(client, warehouse, engineering)
@@ -61,6 +62,16 @@ def test_manual_create_publish_without_word_and_original_source_permissions(
         headers=warehouse["headers"],
     )
     assert denied.status_code == 403
+    published = client.post(
+        f"{URL}/{route['id']}/publish",
+        headers=engineering["headers"],
+        json={"version": route["version"]},
+    )
+    assert published.status_code == 422, published.text
+    assert published.json()["detail"] == "缺少：工艺原件、图纸"
+    with SessionLocal() as db:
+        assert db.get(ProcessRoute, route["id"]).state == "draft"
+    add_documents(route["id"], order=False)
     published = client.post(
         f"{URL}/{route['id']}/publish",
         headers=engineering["headers"],
@@ -121,6 +132,7 @@ def test_drawings_access_versions_and_revision_isolation(client, warehouse, engi
     assert upload(client, route, engineering).status_code == 409
     assert upload(client, saved, engineering).status_code == 422
     assert client.get(f"{URL}/{route['id'] + 100}/drawings/{drawing['id']}").status_code == 404
+    add_documents(route["id"])
     published = client.post(
         f"{URL}/{route['id']}/publish",
         headers=engineering["headers"],

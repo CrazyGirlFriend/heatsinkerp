@@ -342,7 +342,9 @@ class WarehouseReceiptCreate(
                 or self.delivery_quantity
             ):
                 raise ValueError("共投料的流水号、客户、成品规格与交期须分别填写")
-        elif not self.serial_no or self.serial_no.startswith("共投-"):
+        elif (not self.serial_no and self.receipt_kind == "return") or self.serial_no.startswith(
+            "共投-"
+        ):
             raise ValueError("请输入有效流水号，共投编号由系统生成")
         if self.receipt_kind == "return" and not self.external_source:
             raise ValueError("外部返料须填写来源单位")

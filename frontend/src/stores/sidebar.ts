@@ -25,10 +25,13 @@ export const useSidebarStore = defineStore('sidebar', () => {
           opened.value = Array.isArray(saved.opened)
             ? saved.opened.filter(
                 (item: unknown) =>
-                  typeof item === 'string' && /^(factory|teams|materials|settings)$/.test(item),
+                  typeof item === 'string' &&
+                  /^(factory|management|teams|materials|settings)$/.test(item),
               )
             : []
           page.value = typeof saved.page === 'string' ? saved.page.split('?')[0] : ''
+          if (['/process-routes', '/business-people', '/dispatch-schedules'].includes(page.value))
+            opened.value = opened.value.map((item) => (item === 'teams' ? 'management' : item))
         }
       } catch {
         /* Storage may be unavailable; navigation still works in memory. */

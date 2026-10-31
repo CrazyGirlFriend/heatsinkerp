@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, ref } from 'vue'
+import { inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { FullScreen, MoreFilled, Refresh, Setting, Upload } from '@element-plus/icons-vue'
 import { ElButton, ElPopover } from 'element-plus'
 import { workspaceToolsKey } from '@/utils/workspaceTools'
@@ -8,11 +8,43 @@ defineProps<{ refresh?: boolean; loading?: boolean; columns?: boolean }>()
 const emit = defineEmits<{ refresh: []; columns: [anchor: HTMLElement] }>()
 const tools = inject(workspaceToolsKey, null)
 const opened = ref(false)
+const compact = ref(true)
+const root = ref<HTMLElement>()
 const moreButton = ref<InstanceType<typeof ElButton>>()
+const columnsButton = ref<InstanceType<typeof ElButton>>()
+let observer: ResizeObserver | undefined
+let toolbar: HTMLElement | null = null
+
+function updateLayout() {
+  const width = toolbar?.getBoundingClientRect().width || 0
+  if (width)
+    compact.value = width < (toolbar?.classList.contains('workspace-data-toolbar') ? 900 : 1200)
+}
+
+onMounted(() => {
+  toolbar =
+    root.value?.closest<HTMLElement>('.workspace-data-toolbar, .team-workspace__navigation-row') ||
+    root.value?.parentElement ||
+    null
+  updateLayout()
+  if (toolbar && typeof ResizeObserver !== 'undefined') {
+    observer = new ResizeObserver(updateLayout)
+    observer.observe(toolbar)
+  } else {
+    window.addEventListener('resize', updateLayout)
+  }
+})
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  window.removeEventListener('resize', updateLayout)
+})
+watch(compact, (value) => {
+  if (!value) opened.value = false
+})
 </script>
 
 <template>
-  <div class="workspace-tools" role="group" aria-label="页面工具">
+  <div ref="root" class="workspace-tools" role="group" aria-label="页面工具">
     <ElButton
       v-if="tools?.exportable.value && !tools.fullscreen.value"
       class="team-workspace__export action-warm"
@@ -31,9 +63,37 @@ const moreButton = ref<InstanceType<typeof ElButton>>()
       @click="tools.toggleFullscreen"
       >全屏</ElButton
     >
+    <div v-if="!compact" class="workspace-tools__inline">
+      <ElButton
+        v-if="columns"
+        ref="columnsButton"
+        text
+        :icon="Setting"
+        @click="emit('columns', columnsButton!.$el)"
+        >显示列</ElButton
+      >
+      <ElButton
+        v-if="refresh"
+        text
+        :icon="Refresh"
+        :loading="loading"
+        aria-label="刷新工作台"
+        @click="emit('refresh')"
+      />
+      <ElButton
+        v-if="tools?.settings.value && !tools.fullscreen.value"
+        text
+        :icon="Setting"
+        aria-label="班组设置"
+        @click="tools.openSettings"
+        >班组设置</ElButton
+      >
+      <slot name="actions" />
+    </div>
     <ElPopover
       v-if="
-        refresh || columns || (tools?.settings.value && !tools.fullscreen.value) || $slots.actions
+        compact &&
+        (refresh || columns || (tools?.settings.value && !tools.fullscreen.value) || $slots.actions)
       "
       v-model:visible="opened"
       trigger="click"
@@ -86,6 +146,16 @@ const moreButton = ref<InstanceType<typeof ElButton>>()
   flex: 0 0 auto;
   align-items: center;
   gap: 4px;
+}
+.workspace-tools__inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.workspace-tools__inline :deep(.workspace-toolbar-actions) {
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 .workspace-tools :deep(.el-button) {
   height: 32px;

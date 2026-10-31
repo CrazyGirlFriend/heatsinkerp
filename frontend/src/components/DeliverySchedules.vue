@@ -868,6 +868,8 @@ defineExpose({ exportSource, openDetail })
         </div>
         <ScheduleDocuments
           :key="detail.id"
+          :task-id="detail.task_id || undefined"
+          :order-document="taskContext?.order_document || undefined"
           :serial-no="detail.serial_no"
           :route-ids="[detail.process_route_id]"
         />

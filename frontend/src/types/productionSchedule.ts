@@ -230,6 +230,7 @@ export interface DispatchTaskWrite {
   idempotency_key: string
 }
 export interface ScheduleTask {
+  order_document?: import('./processRoute').RouteOrderDocument | null
   business_people?: { id: number; name: string }[]
   delivery_batches?: CustomerDeliveryBatch[]
   locked_at?: string | null

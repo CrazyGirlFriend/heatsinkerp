@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { processRouteApi } from '@/services/processRouteApi'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
 import { ElMessageBox } from 'element-plus'
@@ -71,6 +72,7 @@ function fixture(overrides: Partial<MaterialTransfer> = {}) {
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(processRouteApi, 'dispatchOrder').mockResolvedValue(null)
   state.auth = reactive({
     isAdmin: false,
     isTeamAccount: true,
@@ -104,6 +106,7 @@ async function render(
     props: { modelValue: true, batchNo: 'TL20260906000001', ...props },
     global: {
       stubs: {
+        SerialRouteAttachments: true,
         MaterialTransferDetailFrame: {
           template: '<div><slot name="header"/><slot/><slot name="footer"/></div>',
         },

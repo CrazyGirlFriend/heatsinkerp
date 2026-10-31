@@ -1,12 +1,13 @@
 """Published dispatch routes and physical-lot progress, in stock transactions."""
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from .models import (
     MaterialTransfer,
     ProcessRoute,
     ProcessRouteArchive,
+    ProcessRouteDrawing,
     ProcessRoutePath,
     Team,
     TeamEmployee,
@@ -91,9 +92,65 @@ def assign_engineering_employee(db, row, employee_id, *, modifier=False):
     setattr(row, prefix + "_employee_name", person.name)
 
 
+def resolve_normal_route(db, serial):
+    """Resolve an exact serial to its latest published revision, never a fuzzy match."""
+    from sqlalchemy.orm import aliased
+
+    successor = aliased(ProcessRoute)
+    rows = list(
+        db.scalars(
+            select(ProcessRoute).where(
+                ProcessRoute.route_kind == "normal",
+                ProcessRoute.state == "published",
+                select(ProcessRoutePath.route_id)
+                .where(
+                    ProcessRoutePath.route_id == ProcessRoute.id,
+                    ProcessRoutePath.serial_no == serial,
+                )
+                .exists(),
+                ~select(ProcessRouteArchive.route_id)
+                .where(
+                    ProcessRouteArchive.route_id == ProcessRoute.id,
+                )
+                .exists(),
+                ~select(successor.id)
+                .where(
+                    successor.parent_id == ProcessRoute.id,
+                    successor.state == "published",
+                )
+                .exists(),
+            )
+        )
+    )
+    if not rows:
+        raise HTTPException(404, "未找到该流水号的正常工艺")
+    if len(rows) != 1:
+        raise HTTPException(409, "该流水号有多份工艺，请工艺班组核对后再出库")
+    return rows[0]
+
+
+def require_route_documents(db, row):
+    if row.route_kind != "rework":
+        missing = []
+        if not row.filename or not row.source_file:
+            missing.append("工艺原件")
+        if not db.scalar(
+            select(ProcessRouteDrawing.id)
+            .where(
+                ProcessRouteDrawing.route_id == row.id,
+                func.length(ProcessRouteDrawing.content) > 0,
+            )
+            .limit(1)
+        ):
+            missing.append("图纸")
+        if missing:
+            raise HTTPException(422, "缺少：" + "、".join(missing))
+
+
 def publish_route(db, row):
     from .process_route_serials import reserve_serial
 
+    require_route_documents(db, row)
     reserve_serial(db, row)
     row.steps = validate_steps(db, row)
     from .rework_routes import activate

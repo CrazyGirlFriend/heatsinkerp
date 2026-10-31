@@ -9,6 +9,7 @@ from app.database import SessionLocal
 from app.models import MaterialTransfer, ProcessRoute, ProcessRoutePath
 from app.process_route_schemas import StepWrite
 from app.schemas import WarehouseReceiptCreate
+from route_document_helpers import add_documents
 from sqlalchemy import func, select
 from test_engineering_team import engineering as engineering  # noqa: F401
 from test_material_transfers import _leader
@@ -80,6 +81,7 @@ def publish_payload(client, payload):
     write = {key: value for key, value in payload.items() if key != "id"}
     saved = client.put(URL + f"/{payload['id']}", json=write)
     assert saved.status_code == 200, saved.text
+    add_documents(payload["id"])
     published = client.post(
         URL + f"/{payload['id']}/publish", json={"version": saved.json()["version"]}
     )

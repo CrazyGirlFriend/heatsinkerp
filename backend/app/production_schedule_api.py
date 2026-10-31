@@ -1,10 +1,15 @@
 """Dispatch owns orders; teams submit delivery plans for confirmation."""
 
 from datetime import datetime, timezone
-from typing import Literal
+from pathlib import PurePath
+from typing import Annotated, Literal
+from urllib.parse import quote
 
-from fastapi import Depends, HTTPException, Query
+from fastapi import Depends, File, Form, HTTPException, Query, Response, UploadFile
+from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from . import (
     business_people,
@@ -18,7 +23,9 @@ from . import production_schedules as schedules
 from .async_api import AsyncAPIRouter as APIRouter
 from .auth import get_current_user, require_admin
 from .database import get_db
-from .models import User
+from .models import ProductionScheduleOrderFile, User
+from .process_route_import import MAX_FILE_BYTES
+from .process_route_orders import parse_order
 from .production_schedule_schemas import (
     BusinessPersonWrite,
     ScheduleCancel,
@@ -255,12 +262,60 @@ def review_plan(
 
 
 @router.post("/tasks", status_code=201)
-def create_task(
-    payload: dispatch_planning.DispatchTaskCreate,
+async def create_task(
+    payload: Annotated[str, Form()],
+    file: Annotated[UploadFile | None, File()] = None,
     user: User = Depends(require_dispatch),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    return tasks.create_task(db, payload, user)
+    try:
+        try:
+            data = dispatch_planning.DispatchTaskCreate.model_validate_json(payload)
+        except ValidationError as exc:
+            raise HTTPException(422, exc.errors()[0]["msg"]) from None
+        if file is None:
+            raise HTTPException(422, "请上传订单表")
+        order = await read_order(file)
+        return await db.run_sync(
+            lambda session: tasks.create_task(session, data, user, order=order)
+        )
+    finally:
+        if file:
+            await file.close()
+
+
+async def read_order(file):
+    filename = PurePath((file.filename or "").replace("\\", "/")).name
+    content = await file.read(MAX_FILE_BYTES + 1)
+    document = await run_in_threadpool(parse_order, content, filename)
+    return filename, content, document
+
+
+@router.post("/parse-order")
+async def preview_order(
+    file: Annotated[UploadFile, File()], user: User = Depends(require_dispatch)
+):
+    try:
+        return (await read_order(file))[2]
+    finally:
+        await file.close()
+
+
+@router.get("/tasks/{task_id}/order")
+def download_order(task_id: int, db: Session = Depends(get_db)):
+    tasks.require_task(db, task_id)
+    order = db.get(ProductionScheduleOrderFile, task_id)
+    if order is None:
+        raise HTTPException(404, "尚未上传订单表")
+    return Response(
+        order.content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": "attachment; filename*=UTF-8''" + quote(order.filename),
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+        },
+    )
 
 
 @router.get("/tasks/{task_id}/rework-options")

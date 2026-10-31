@@ -35,6 +35,10 @@ async function renderSidebar(path = '/transfer-batches', compact = false) {
     history: createMemoryHistory(),
     routes: [
       { path: '/', component: page },
+      ...['/process-routes', '/business-people', '/dispatch-schedules'].map((path) => ({
+        path,
+        component: page,
+      })),
       { path: '/factory-stock', redirect: '/' },
       { path: '/factory-analysis', component: page },
       { path: '/production-schedules', component: page },
@@ -263,6 +267,7 @@ describe('two-level team navigation', () => {
     const groups = wrapper.findAllComponents(ElSubMenu)
     expect(groups.map((group) => group.props('index'))).toEqual([
       'factory',
+      'management',
       'teams',
       'materials',
       'settings',
@@ -274,13 +279,7 @@ describe('two-level team navigation', () => {
         .findAllComponents(ElMenuItem)
         .filter((item) => !item.props('disabled'))
         .map((item) => item.props('index')),
-    ).toEqual([
-      '/process-routes',
-      '/business-people',
-      '/dispatch-schedules',
-      '/team-workspaces/8',
-      '/team-workspaces/7',
-    ])
+    ).toEqual(['/team-workspaces/8', '/team-workspaces/7'])
     expect(wrapper.findAll('.factory-nav__missing')).toHaveLength(6)
     expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('扎板工作台')
     await router.push('/transfer-batches?scan=1')
@@ -359,15 +358,16 @@ describe('two-level team navigation', () => {
     expect(teamGroup.attributes('aria-expanded')).toBe('false')
     await teamGroup.get('.el-sub-menu__title').trigger('click')
     expect(teamGroup.attributes('aria-expanded')).toBe('true')
-    expect(wrapper.get('.el-menu').findAll(':scope > .el-sub-menu')).toHaveLength(4)
+    expect(wrapper.get('.el-menu').findAll(':scope > .el-sub-menu')).toHaveLength(5)
   })
 
-  it('keeps exactly the same four parent groups when the entire sidebar collapses', async () => {
+  it('keeps exactly the same five parent groups when the entire sidebar collapses', async () => {
     const { wrapper } = await renderSidebar()
     await wrapper.setProps({ compact: true })
     expect(wrapper.getComponent(ElMenu).props('collapse')).toBe(true)
     expect(wrapper.findAllComponents(ElSubMenu).map((group) => group.props('index'))).toEqual([
       'factory',
+      'management',
       'teams',
       'materials',
       'settings',
@@ -376,6 +376,7 @@ describe('two-level team navigation', () => {
     expect(wrapper.getComponent(ElMenu).props('collapse')).toBe(false)
     expect(wrapper.findAllComponents(ElSubMenu).map((group) => group.props('index'))).toEqual([
       'factory',
+      'management',
       'teams',
       'materials',
       'settings',
@@ -394,6 +395,7 @@ describe('two-level team navigation', () => {
     const { wrapper } = await renderSidebar()
     expect(wrapper.findAllComponents(ElSubMenu).map((group) => group.props('index'))).toEqual([
       'factory',
+      'management',
       'teams',
       'materials',
     ])

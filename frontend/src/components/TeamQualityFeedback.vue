@@ -10,7 +10,7 @@ import {
   ElTag,
   ElPagination,
 } from 'element-plus'
-import { Refresh, Search } from '@element-plus/icons-vue'
+import { Search } from '@element-plus/icons-vue'
 import { useRoute } from 'vue-router'
 import FilterDialog from './FilterDialog.vue'
 import InspectionProblemFilter from './InspectionProblemFilter.vue'
@@ -19,6 +19,7 @@ import StatePanel from './StatePanel.vue'
 import TableExportButton from './TableExportButton.vue'
 import QualityFeedbackDetail from './QualityFeedbackDetail.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
+import WorkspaceTools from './WorkspaceTools.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import {
@@ -203,8 +204,8 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <section class="quality-feedback-records">
-    <div class="quality-feedback-toolbar">
+  <section class="quality-feedback-records workspace-data-panel">
+    <div class="quality-feedback-toolbar workspace-data-toolbar">
       <ElInput
         v-model="query"
         :prefix-icon="Search"
@@ -251,7 +252,7 @@ onBeforeUnmount(() => {
         :disabled="loading || !!error"
         :context="JSON.stringify(params())"
       />
-      <ElButton :icon="Refresh" :loading="loading" aria-label="刷新质量反馈" @click="load()" />
+      <WorkspaceTools refresh :loading="loading" @refresh="load()" />
     </div>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />

@@ -495,7 +495,10 @@ const validation = useDialogValidation(() => {
     issues.processRoute = '工艺单用于正常物料的首次入库'
   if (!form.externalSource.trim() || form.externalSource.trim().length > 240)
     issues.externalSource = '请填写外部来源单位'
-  if (!sharedEntry.value && (!form.serialNo.trim() || form.serialNo.trim().length > 80))
+  if (
+    !sharedEntry.value &&
+    ((!form.serialNo.trim() && form.receiptKind === 'return') || form.serialNo.trim().length > 80)
+  )
     issues.serialNo = '请输入有效流水号'
   if (sharedEntry.value) {
     const serials = members.value.map((member) => member.serial_no.trim().toLocaleLowerCase())
@@ -879,7 +882,7 @@ onBeforeUnmount(() => {
               label="流水号"
               :error="fieldErrors.serialNo"
               :class="['receipt-identity-field', importedClass('serial_no')]"
-              required
+              :required="form.receiptKind === 'return'"
               ><template #label
                 >流水号<AutofillBadge
                   :source="documentSource('serial_no')"
@@ -891,7 +894,7 @@ onBeforeUnmount(() => {
                 label="流水号"
                 :maxlength="80"
                 :disabled="readonly"
-                placeholder="输入或选择流水号"
+                placeholder="选填，出库时可补充"
                 @selected="autofill.select"
             /></ElFormItem>
             <ElFormItem

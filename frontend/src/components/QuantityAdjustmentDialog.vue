@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { materialWeightToleranceKg } from '@/config/materialRules'
 
@@ -532,7 +533,25 @@ onBeforeUnmount(() => {
     </p>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <div v-if="loading" role="status" class="quantity-loading">正在读取件数记录…</div>
-    <div v-if="snapshot" :class="{ 'processing-workspace': processing }">
+    <div
+      v-if="snapshot"
+      :class="{
+        'processing-workspace': processing,
+        'processing-workspace--attachments': processing,
+      }"
+    >
+      <SerialRouteAttachments
+        v-if="processing"
+        :items="
+          (snapshot.shared_unallocated && snapshot.shared_serials?.length
+            ? snapshot.shared_serials
+            : [{ serial_no: snapshot.serial_no }]
+          ).map((item) => ({
+            serialNo: item.serial_no || '',
+            routeId: snapshot!.process_route?.id,
+          }))
+        "
+      />
       <section class="processing-work-order">
         <h3 v-if="processing" class="processing-section-title">工单信息</h3>
         <ElDescriptions :column="2" border class="quantity-summary">
@@ -1136,6 +1155,26 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.processing-workspace.processing-workspace--attachments {
+  grid-template-columns: 154px minmax(0, 1.3fr) minmax(280px, 0.8fr);
+}
+@media (max-width: 1050px) {
+  .processing-workspace.processing-workspace--attachments {
+    grid-template-columns: 150px minmax(0, 1fr);
+  }
+  .processing-workspace--attachments .process-execution-panel {
+    grid-column: 2;
+  }
+}
+@media (max-width: 700px) {
+  .processing-workspace.processing-workspace--attachments {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .processing-workspace--attachments .process-execution-panel {
+    grid-column: 1;
+  }
+}
+
 .processing-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);

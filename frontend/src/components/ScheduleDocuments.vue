@@ -13,8 +13,10 @@ import { Document, FullScreen, Picture, Tickets } from '@element-plus/icons-vue'
 import AppDialog from './AppDialog.vue'
 import StatePanel from './StatePanel.vue'
 import ProcessRouteSteps from './ProcessRouteSteps.vue'
+import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import { processRouteApi } from '@/services/processRouteApi'
-import type { ProcessRoute } from '@/types/processRoute'
+import { productionScheduleApi } from '@/services/productionScheduleApi'
+import type { ProcessRoute, RouteOrderDocument } from '@/types/processRoute'
 import { formatDateTime } from '@/utils/format'
 
 const WordDocumentPreview = defineAsyncComponent(() => import('./WordDocumentPreview.vue'))
@@ -24,8 +26,12 @@ const ProcessRouteDrawingPreview = defineAsyncComponent(
 const props = defineProps<{
   serialNo: string
   routeIds: (number | null | undefined)[]
+  thumbnails?: boolean
+  taskId?: number
+  orderDocument?: RouteOrderDocument | null
+  orderFile?: File
 }>()
-type Tab = 'info' | 'word' | 'drawing'
+type Tab = 'info' | 'order' | 'word' | 'drawing'
 const visible = ref(false),
   tab = ref<Tab>('info'),
   loading = ref(false),
@@ -35,24 +41,41 @@ const routes = ref<ProcessRoute[]>([]),
   drawingId = ref<number>()
 const routeIds = computed(() => [...new Set(props.routeIds.filter((id): id is number => !!id))])
 const route = computed(() => routes.value.find((item) => item.id === selectedId.value))
+const savedOrder = ref<RouteOrderDocument | null>()
+const order = computed(() =>
+  props.orderDocument === undefined ? savedOrder.value : props.orderDocument,
+)
 const fields = computed(() =>
-  Object.entries(route.value?.source_data.receipt_fields || {}).filter(
-    ([key]) => key !== 'serial_no',
-  ),
+  Object.entries({
+    ...route.value?.source_data.receipt_fields,
+    ...order.value?.receipt_fields,
+  }).filter(([key]) => key !== 'serial_no'),
 )
 const drawing = computed(() => route.value?.drawings?.find((item) => item.id === drawingId.value))
 const wordPreview = ref<{ ready: boolean; open: () => void }>()
 const drawingPreview = ref<{ ready: boolean; open: () => void }>()
 const preview = computed(() => (tab.value === 'word' ? wordPreview.value : drawingPreview.value))
+const orderDownload = computed(() =>
+  props.taskId && order.value
+    ? () => productionScheduleApi.downloadOrder(props.taskId!, order.value!.filename)
+    : undefined,
+)
 let generation = 0
 async function load() {
   const current = ++generation
   loading.value = true
   error.value = ''
   routes.value = []
+  savedOrder.value = undefined
   try {
-    const result = await Promise.all(routeIds.value.map((id) => processRouteApi.detail(id)))
+    const [result, task] = await Promise.all([
+      Promise.all(routeIds.value.map((id) => processRouteApi.detail(id))),
+      props.taskId && props.orderDocument === undefined
+        ? productionScheduleApi.task(props.taskId)
+        : Promise.resolve(null),
+    ])
     if (current !== generation) return
+    savedOrder.value = task?.order_document || undefined
     routes.value = result
     selectedId.value = result[0]?.id
   } catch (e) {
@@ -64,26 +87,50 @@ async function load() {
 function open(value: Tab) {
   tab.value = value
   visible.value = true
-  void load()
+  if (!props.thumbnails) void load()
 }
 watch(route, (value) => {
   drawingId.value = value?.drawings?.[0]?.id
 })
 watch(visible, (value) => {
-  if (!value) ++generation
+  if (!value && !props.thumbnails) ++generation
 })
 watch(
-  () => [props.serialNo, routeIds.value.join(',')],
+  () => [props.serialNo, routeIds.value.join(','), props.thumbnails, props.taskId],
   () => {
+    ++generation
+    routes.value = []
     visible.value = false
+    if (props.thumbnails) void load()
   },
+  { immediate: true },
 )
 onBeforeUnmount(() => ++generation)
 </script>
 
 <template>
-  <div class="schedule-documents" role="group" aria-label="排期资料">
+  <aside v-if="thumbnails" class="schedule-document-rail" aria-label="排期附件缩略图">
+    <slot name="upload" />
+    <StatePanel v-if="loading" state="loading" compact />
+    <StatePanel v-else-if="error" state="error" :description="error" @retry="load" />
+    <template v-else-if="route">
+      <ElSelect v-if="routes.length > 1" v-model="selectedId" aria-label="查看关联工艺">
+        <ElOption v-for="item in routes" :key="item.id" :value="item.id" :label="item.title" />
+      </ElSelect>
+      <ProcessRouteAttachments
+        :key="route.id"
+        :route="route"
+        :order-document="order"
+        :order-file="orderFile"
+        :order-download="orderDownload"
+      />
+      <ElButton :icon="Tickets" @click="open('info')">流水号信息</ElButton>
+    </template>
+    <span v-else class="schedule-document-empty">选择流水号后显示工艺资料</span>
+  </aside>
+  <div v-else class="schedule-documents" role="group" aria-label="排期资料">
     <ElButton :icon="Tickets" :disabled="!serialNo" @click="open('info')">流水号信息</ElButton>
+    <ElButton :icon="Document" :disabled="!serialNo" @click="open('order')">订单表</ElButton>
     <ElButton :icon="Document" :disabled="!serialNo" @click="open('word')">工艺原件</ElButton>
     <ElButton :icon="Picture" :disabled="!serialNo" @click="open('drawing')">图纸</ElButton>
   </div>
@@ -113,6 +160,7 @@ onBeforeUnmount(() => ++generation)
       </ElSelect>
       <ElTabs v-model="tab" aria-label="排期资料分类">
         <ElTabPane label="流水号信息" name="info" />
+        <ElTabPane label="订单表" name="order" />
         <ElTabPane label="工艺原件" name="word" />
         <ElTabPane label="图纸" name="drawing" />
       </ElTabs>
@@ -128,6 +176,17 @@ onBeforeUnmount(() => ++generation)
         </ElDescriptions>
         <h3>工艺路线</h3>
         <ProcessRouteSteps :route="route" />
+      </section>
+      <section v-else-if="tab === 'order'" class="schedule-document-order">
+        <ProcessRouteAttachments
+          :key="route.id"
+          :route="route"
+          :documents="['order']"
+          :order-thumbnail="false"
+          :order-document="order"
+          :order-file="orderFile"
+          :order-download="orderDownload"
+        />
       </section>
       <section v-else class="schedule-document-preview">
         <div class="schedule-document-tools">
@@ -173,6 +232,17 @@ onBeforeUnmount(() => ++generation)
 </template>
 
 <style scoped>
+.schedule-document-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.schedule-document-empty {
+  padding: 16px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .schedule-documents {
   display: flex;
   flex-wrap: wrap;

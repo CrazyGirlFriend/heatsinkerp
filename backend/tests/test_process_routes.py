@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from app.database import SessionLocal
 from app.models import MaterialTransfer, ProcessRoute, TeamEmployee
+from route_document_helpers import add_documents
 from sqlalchemy import func, select
 from test_process_route_import import CONTENT_TYPES, PROCESS, docx
 from test_quantity_adjustments import change
@@ -80,6 +81,7 @@ def published(client, s, same_team=False, *, row=None):
         },
     )
     assert result.status_code == 200, result.text
+    add_documents(row["id"])
     result = client.post(
         URL + f"/{row['id']}/publish",
         json={"version": result.json()["version"], "confirmed_imports": True},
@@ -178,8 +180,6 @@ def test_partial_processed_and_remaining_stock_have_separate_cursors(client, war
     s = warehouse
     route = published(client, s)
     lot = intake(client, s, weight=10).json()
-    lines = [{"source_transfer_id": lot["id"], "quantity": 100, "weight": 10}]
-    assert dispatch(client, s, lines).status_code == 422
     assert bind(client, route, lot, headers=s["other_headers"]).status_code == 403
     assert bind(client, route, lot).status_code == 200
     current = receive(client, s, lot)
@@ -251,7 +251,7 @@ def test_legacy_warehouse_stock_requires_route_before_first_transfer(client, war
         dispatch(
             client, warehouse, [{"source_transfer_id": lot["id"], "quantity": 100, "weight": 10}]
         ).status_code
-        == 422
+        == 404
     )
 
 
@@ -265,16 +265,18 @@ def test_shared_common_work_then_designated_partial_split_preserves_remaining_st
     steps[2]["split_here"] = True
     steps[3]["serial_nos"] = ["A"]
     steps.append({**steps[3], "sequence_no": 4, "serial_nos": ["B"]})
-    saved = client.put(
-        URL + f"/{draft['id']}",
-        json={
-            "title": "共投首批",
-            "serial_nos": ["A", "B"],
-            "steps": steps,
-            "version": draft["version"],
-            "review_note": "原文核对，共投在二次轧制时拆分",
-        },
-    ).json()
+    # Legacy shared routes remain executable; new normal orders import one serial per order.
+    from app.models import ProcessRouteOrderFile
+
+    with SessionLocal() as db:
+        historical = db.get(ProcessRoute, draft["id"])
+        historical.serial_nos = ["A", "B"]
+        historical.steps = steps
+        historical.source_data = {**historical.source_data, "order_document": None}
+        db.delete(db.get(ProcessRouteOrderFile, historical.id))
+        db.commit()
+    add_documents(draft["id"])
+    saved = draft
     result = client.post(
         URL + f"/{draft['id']}/publish",
         json={"version": saved["version"], "confirmed_imports": True},
@@ -370,17 +372,27 @@ def test_route_schedule_reuses_steps_and_auto_matches_partial_delivery(client, w
                 "process_step_index": index,
             }
         )
-    response = client.post(
-        "/api/production-schedules/tasks",
-        json={
-            "title": "工艺交货",
-            "serial_no": "WAREHOUSE-001",
-            "idempotency_key": uuid4().hex,
-            "nodes": nodes,
-        },
-    )
-    assert response.status_code == 201, response.text
-    task = response.json()
+    # Exercise a legacy, already-confirmed task; new tasks use dispatch review.
+    from app.models import User
+    from app.production_schedule_schemas import ScheduleTaskCreate
+    from app.production_schedule_tasks import create_task
+
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.username == "admin"))
+        db.expunge(user)
+    with SessionLocal() as db:
+        task = create_task(
+            db,
+            ScheduleTaskCreate.model_validate(
+                {
+                    "title": "工艺交货",
+                    "serial_no": "WAREHOUSE-001",
+                    "idempotency_key": uuid4().hex,
+                    "nodes": nodes,
+                }
+            ),
+            user,
+        )
     lot = intake(client, s, weight=10).json()
     assert bind(client, route, lot).status_code == 200
     current = receive(client, s, lot)

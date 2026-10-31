@@ -5,10 +5,18 @@ import ProcessRouteEditor from './ProcessRouteEditor.vue'
 import WordDocumentPreview from './WordDocumentPreview.vue'
 import ProcessRouteDrawingPreview from './ProcessRouteDrawingPreview.vue'
 import { processRouteApi, ProcessRouteSerialConflictError } from '@/services/processRouteApi'
-import { routeFixture, reworkRouteFixture } from '@/testFixtures/processRoute'
+import { routeFixture as baseRouteFixture, reworkRouteFixture } from '@/testFixtures/processRoute'
 import { defineComponent, h } from 'vue'
 import { orderFixture } from '@/testFixtures/processRouteOrder'
-import { mergeRouteMaterials } from '@/utils/routeMaterials'
+import type { ProcessRoute } from '@/types/processRoute'
+const routeFixture: ProcessRoute = {
+  ...baseRouteFixture,
+  drawings: [{ id: 70, filename: '完整图纸.pdf', size_bytes: 100 }],
+  source_data: {
+    ...baseRouteFixture.source_data,
+    order_document: { ...orderFixture, serial_no: 'S-001' },
+  },
+}
 const openWord = vi.fn(),
   openDrawing = vi.fn()
 const originalStub = (name: string, open: typeof openWord) =>
@@ -26,7 +34,11 @@ const originalStub = (name: string, open: typeof openWord) =>
     ],
     setup(_props, { expose }) {
       expose({ open, ready: true })
-      return () => h('div')
+      return () =>
+        h('button', {
+          'aria-label': name === 'WordDocumentPreview' ? '放大工艺原稿' : '放大图纸',
+          onClick: open,
+        })
     },
   })
 vi.mock('@/stores/teamDirectory', () => ({
@@ -115,57 +127,15 @@ it('preserves original text and saves the version before publication', async () 
   expect(wrapper.text()).toContain('修改工艺')
 })
 
-it('shows imported order fields, requires confirmation, and persists them after uploading the source', async () => {
-  const order = {
-    ...structuredClone(orderFixture),
-    serial_no: routeFixture.serial_nos[0]!,
-    receipt_fields: {
-      ...structuredClone(orderFixture.receipt_fields),
-      serial_no: { ...orderFixture.receipt_fields.serial_no!, value: routeFixture.serial_nos[0]! },
-    },
-  }
-  vi.spyOn(processRouteApi, 'parseOrder').mockResolvedValue(order)
-  vi.spyOn(processRouteApi, 'attachOrder').mockImplementation(async (route) => ({
-    ...route,
-    version: route.version + 1,
-    source_data: mergeRouteMaterials(route.source_data, order),
-  }))
-  await render()
-  const input = wrapper.get('input[aria-label="导入订单表文件"]')
-  Object.defineProperty(input.element, 'files', {
-    configurable: true,
-    value: [new File(['data'], '订单.xlsx')],
-  })
-  await input.trigger('change')
-  await flushPromises()
-  expect(wrapper.text()).toContain('物料与订单资料')
-  expect(wrapper.text()).toContain('订单表 · 自动填入')
-  expect(wrapper.get('table[aria-label="订单表原始数据"]').text()).toContain('18100')
+it('publishes engineering with its original and drawings without asking for an order', async () => {
+  const route = structuredClone(routeFixture)
+  delete route.source_data.order_document
+  await render(false, route)
+  expect(wrapper.text()).not.toContain('导入订单表')
+  expect(wrapper.find('[aria-label="导入订单表文件"]').exists()).toBe(false)
+  expect(wrapper.get('[aria-label="工艺附件缩略图"]').text()).not.toContain('订单表')
   await click('保存工艺')
-  expect(processRouteApi.save).not.toHaveBeenCalled()
-  expect(wrapper.text()).toContain('请确认自动填入的资料和工序')
-  const confirm = () =>
-    wrapper
-      .findAll('label.el-checkbox')
-      .find((item) => item.text().includes('已核对自动填入'))!
-      .get('input')
-  await confirm().setValue(true)
-  await wrapper.get('input[aria-label="工艺资料：客户代码"]').setValue('11600-T3')
-  expect((confirm().element as HTMLInputElement).checked).toBe(false)
-  await confirm().setValue(true)
-  await click('保存工艺')
-  expect(processRouteApi.attachOrder).toHaveBeenCalledOnce()
-  expect(processRouteApi.save).toHaveBeenCalledTimes(2)
-  expect(processRouteApi.publish).toHaveBeenCalledWith(
-    expect.objectContaining({
-      source_data: expect.objectContaining({
-        receipt_fields: expect.objectContaining({
-          customer_code: expect.objectContaining({ value: '11600-T3' }),
-        }),
-      }),
-    }),
-    true,
-  )
+  expect(processRouteApi.publish).toHaveBeenCalledOnce()
 })
 
 it('marks a duplicate serial and keeps the entered form until that serial is corrected', async () => {
@@ -246,7 +216,13 @@ it('carries quality problems and teams into manual rework engineering with inher
     drawing,
   })
   expect(wrapper.get('input[aria-label="流水号"]').attributes('disabled')).toBeDefined()
-  await click('放大查看')
+  await wrapper.get('.route-execution-toggle').trigger('click')
+  expect(wrapper.get('.route-step-details').text()).toContain('具体任务')
+  expect(wrapper.text()).not.toContain('参考天数')
+  expect(wrapper.text()).not.toContain('适用流水号')
+  expect(wrapper.text()).not.toContain('手工录入')
+  expect(wrapper.text()).toContain('补充图纸')
+  await wrapper.get('button[aria-label="放大图纸"]').trigger('click')
   expect(openDrawing).toHaveBeenCalledOnce()
   expect(openWord).not.toHaveBeenCalled()
 })
@@ -255,6 +231,7 @@ it('keeps published steps immutable and offers source/revision actions', async (
   expect(wrapper.text()).not.toContain('删除工序')
   expect(wrapper.text()).not.toContain('保存工艺')
   expect(wrapper.text()).toContain('工艺原稿')
+  expect(wrapper.find('[aria-label="放大订单表"]').exists()).toBe(false)
 })
 it('retains an editable draft when publication is rejected', async () => {
   vi.mocked(processRouteApi.publish).mockRejectedValue(new Error('工序序号必须递增且不能重复'))
@@ -305,7 +282,7 @@ it('maps the original transit store to warehouse for an older imported draft', a
 it('shows the source row for the focused step without replacing the actual original file', async () => {
   await render()
   await wrapper.findAll('.route-edit-step')[1]!.trigger('focusin')
-  expect(wrapper.get('.route-original-line').text()).toBe('原表 1 · 第 2 行')
+  expect(wrapper.getComponent(WordDocumentPreview).props('sourceRow')).toBe('1:2')
   expect(wrapper.getComponent(WordDocumentPreview).props('route').id).toBe(routeFixture.id)
   expect(wrapper.find('.route-original-row--active').exists()).toBe(false)
 })
@@ -353,20 +330,19 @@ it('opens a manual form without importing or persisting a blank record', async (
   await renderNew()
   expect(wrapper.findAll('thead th').map((item) => item.text())).toEqual([
     '序号',
-    '工序名称',
+    '执行班组',
     '工艺要求',
     '计划加工数量',
     '执行设置',
   ])
-  expect(wrapper.text()).toContain('暂无原稿')
+  expect(wrapper.get('[aria-label="工艺附件缩略图"]').text()).toContain('工艺原件未上传')
   expect(processRouteApi.save).not.toHaveBeenCalled()
   expect(parse).not.toHaveBeenCalled()
   await wrapper.get('input[aria-label="流水号"]').setValue('NEW-001')
   await wrapper.get('textarea[aria-label="工序 1 工艺要求"]').setValue('按来料备料')
   await click('保存工艺')
-  expect(processRouteApi.save).toHaveBeenCalledWith(
-    expect.objectContaining({ id: 0, title: 'NEW-001', serial_nos: ['NEW-001'], filename: '' }),
-  )
+  expect(processRouteApi.save).not.toHaveBeenCalled()
+  expect(wrapper.text()).toContain('缺少：工艺原件、图纸')
 })
 it('imports into the current form with a local original and creates only when saving', async () => {
   const file = new File(['word'], '导入工艺.docx')
@@ -440,7 +416,7 @@ it('keeps a read-only four-column process table without execution settings or sc
   expect(wrapper.findAll('.route-edit-step')).toHaveLength(4)
   expect(wrapper.findAll('.route-step-table thead th').map((cell) => cell.text())).toEqual([
     '序号',
-    '工序名称',
+    '执行班组',
     '工艺要求',
     '计划加工数量',
   ])
@@ -463,25 +439,35 @@ it('shows original and drawing thumbnails together in details without a tabbed p
     ],
   })
   expect(wrapper.find('.route-original-panel').exists()).toBe(false)
-  expect(wrapper.findAll('.route-attachment-card')).toHaveLength(4)
+  expect(wrapper.findAll('.route-attachment-card')).toHaveLength(3)
   expect(wrapper.getComponent(WordDocumentPreview).props('thumbnail')).toBe('')
   expect(
     wrapper
       .findAllComponents(ProcessRouteDrawingPreview)
       .map((preview) => preview.props('drawing')!.id),
   ).toEqual([71, 72])
-  await wrapper.get('button[aria-label="放大订单表"]').trigger('click')
-  expect(wrapper.findComponent({ name: 'DocumentViewer' }).props('html')).toContain(
-    orderFixture.filename,
-  )
+  expect(wrapper.find('button[aria-label="放大订单表"]').exists()).toBe(false)
 })
 it('shows only the main serial without offering inferred associations or rewriting old bindings', async () => {
-  await render(false, { ...routeFixture, serial_nos: ['691236-50', '691236-49', '691236-51'] })
+  await render(false, {
+    ...routeFixture,
+    serial_nos: ['691236-50', '691236-49', '691236-51'],
+    source_data: {
+      ...routeFixture.source_data,
+      order_document: { ...orderFixture, serial_no: '691236-50' },
+    },
+  })
   expect(wrapper.get('input[aria-label="流水号"]').element).toHaveProperty('value', '691236-50')
   expect(wrapper.find('input[aria-label="共投关联流水号"]').exists()).toBe(false)
   await click('保存工艺')
   expect(processRouteApi.save).toHaveBeenCalledWith(
-    expect.objectContaining({ serial_nos: ['691236-50', '691236-49', '691236-51'] }),
+    expect.objectContaining({
+      serial_nos: ['691236-50', '691236-49', '691236-51'],
+      source_data: {
+        ...routeFixture.source_data,
+        order_document: { ...orderFixture, serial_no: '691236-50' },
+      },
+    }),
   )
 })
 it('opens either original viewer without replacing the unsaved form', async () => {
@@ -490,10 +476,9 @@ it('opens either original viewer without replacing the unsaved form', async () =
     drawings: [{ id: 71, filename: '图纸.pdf', size_bytes: 100 }],
   })
   await wrapper.get('input[aria-label="流水号"]').setValue('UNSAVED')
-  await click('放大查看')
+  await wrapper.get('button[aria-label="放大工艺原稿"]').trigger('click')
   expect(openWord).toHaveBeenCalledOnce()
-  await click('图纸1')
-  await click('放大查看')
+  await wrapper.get('button[aria-label="放大图纸"]').trigger('click')
   expect(openDrawing).toHaveBeenCalledOnce()
   expect(wrapper.get('.route-comparison').classes()).not.toContain('route-comparison--expanded')
   expect(wrapper.text()).not.toContain('返回工艺')
@@ -503,6 +488,7 @@ it('opens either original viewer without replacing the unsaved form', async () =
 it('corrects an unpublished import that inferred extra serials from instructions', async () => {
   const route = structuredClone(routeFixture)
   route.serial_nos = ['691236-50', '691236-49', '691236-51']
+  route.source_data.order_document!.serial_no = '691236-50'
   route.source_data.receipt_fields = {
     serial_no: { value: '691236-50', label: '流水号', source_label: '流水号', source_row: '1:5' },
   }
@@ -628,8 +614,7 @@ it('locates a warning in the original and keeps both original duplicate rows', a
 })
 it('shows only a short drawing empty state while retaining upload validation', async () => {
   await renderNew()
-  await click('图纸')
-  expect(wrapper.text()).toContain('暂无图纸')
+  expect(wrapper.get('[aria-label="工艺附件缩略图"]').text()).toContain('图纸未上传')
   expect(wrapper.text()).not.toContain('仅保存与查看')
   expect(wrapper.text()).not.toContain('每份 ≤')
   expect(wrapper.text()).not.toContain('可直接填写工艺')
@@ -642,16 +627,16 @@ it('stages drawing removal and removes only the copied attachment when saving a 
     ...structuredClone(routeFixture),
     id: 9,
     parent_id: routeFixture.id,
-    drawings: [{ ...drawing, id: 72 }],
+    drawings: [{ ...drawing, id: 72 }, ...(routeFixture.drawings || [])],
   }
   vi.mocked(processRouteApi.revise).mockResolvedValue(revision)
   vi.mocked(processRouteApi.save).mockResolvedValue({ ...revision, version: 2 })
   vi.spyOn(processRouteApi, 'removeDrawing').mockResolvedValue({
     ...revision,
     version: 3,
-    drawings: [],
+    drawings: routeFixture.drawings,
   })
-  await render(true, { ...routeFixture, drawings: [drawing] })
+  await render(true, { ...routeFixture, drawings: [drawing, ...(routeFixture.drawings || [])] })
   await click('修改工艺')
   await wrapper.get('button[aria-label="移除 图纸.pdf"]').trigger('click')
   expect(processRouteApi.removeDrawing).not.toHaveBeenCalled()
@@ -662,6 +647,87 @@ it('stages drawing removal and removes only the copied attachment when saving a 
     72,
   )
   expect(processRouteApi.publish).toHaveBeenCalledWith(
-    expect.objectContaining({ id: 9, version: 3, drawings: [] }),
+    expect.objectContaining({ id: 9, version: 3, drawings: routeFixture.drawings }),
   )
+})
+
+it('shows missing attachment cards and actual execution team names on legacy details', async () => {
+  await render(true, {
+    ...routeFixture,
+    filename: '',
+    drawings: [],
+    source_data: { tables: [], issues: [] },
+  })
+  expect(wrapper.findAll('.route-attachment-card--missing')).toHaveLength(2)
+  expect(wrapper.get('[aria-label="工艺附件缩略图"]').text()).not.toContain('订单表')
+  expect(wrapper.findAll('.route-edit-step td:nth-child(2)')[0]!.text()).toBe('库房')
+  expect(wrapper.findAll('.route-edit-step td:nth-child(2)')[1]!.text()).toBe('研磨')
+  expect(wrapper.find('.route-original-panel').exists()).toBe(false)
+})
+it.each(['工艺原件', '图纸'])(
+  'blocks saving a normal route missing %s before any write',
+  async (missing) => {
+    const route = structuredClone(routeFixture)
+    if (missing === '工艺原件') route.filename = ''
+    if (missing === '图纸') route.drawings = []
+    await render(false, route)
+    await click('保存工艺')
+    expect(wrapper.text()).toContain(`缺少：${missing}`)
+    expect(processRouteApi.save).not.toHaveBeenCalled()
+    expect(processRouteApi.publish).not.toHaveBeenCalled()
+  },
+)
+
+it('shows material beside the serial and retains corrections after saving', async () => {
+  await render(false, {
+    ...routeFixture,
+    source_data: {
+      ...routeFixture.source_data,
+      receipt_fields: {
+        material_name: {
+          value: 'Mo70Cu30',
+          label: '材质',
+          source_kind: 'word',
+          source_label: '材质',
+          source_row: '1:1',
+        },
+      },
+    },
+  })
+  expect(wrapper.get('input[aria-label="材质"]').element).toHaveProperty('value', 'Mo70Cu30')
+  await wrapper.get('input[aria-label="材质"]').setValue('Mo80Cu20')
+  await click('保存工艺')
+  expect(
+    vi.mocked(processRouteApi.save).mock.calls[0]![0].source_data.receipt_fields?.material_name
+      ?.value,
+  ).toBe('Mo80Cu20')
+  expect(wrapper.get('.route-material-field').text()).toContain('Mo80Cu20')
+  expect(wrapper.find('input[aria-label="材质"]').exists()).toBe(false)
+})
+it('allows a missing material to be filled without inventing an imported source', async () => {
+  await render()
+  await wrapper.get('input[aria-label="材质"]').setValue('CuW80')
+  await click('保存工艺')
+  expect(
+    vi.mocked(processRouteApi.save).mock.calls[0]![0].source_data.receipt_fields?.material_name,
+  ).toMatchObject({ value: 'CuW80', source_kind: 'manual' })
+})
+it('keeps thumbnails on the left and team selection in the same column across view modes', async () => {
+  await render(true)
+  const layout = wrapper.get('.route-comparison')
+  expect(layout.element.firstElementChild?.getAttribute('aria-label')).toBe('工艺附件缩略图')
+  expect(wrapper.find('.route-original-panel').exists()).toBe(false)
+  await click('修改工艺')
+  expect(layout.element.firstElementChild?.getAttribute('aria-label')).toBe('工艺附件缩略图')
+  expect(wrapper.getComponent(WordDocumentPreview).props('thumbnail')).toBe('')
+  expect(wrapper.find('.route-original-panel').exists()).toBe(false)
+  const team = wrapper.get('.route-edit-step td:nth-child(2)')
+  expect(team.find('[aria-label="工序 1 执行班组"]').exists()).toBe(true)
+  expect(team.text()).toContain('库房')
+  wrapper.unmount()
+  await renderNew()
+  expect(
+    wrapper.get('.route-comparison').element.firstElementChild?.getAttribute('aria-label'),
+  ).toBe('工艺附件缩略图')
+  expect(wrapper.find('input[aria-label="材质"]').exists()).toBe(true)
 })

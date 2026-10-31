@@ -417,32 +417,21 @@ def test_rework_instruction_can_be_revised_only_before_any_execution(client, war
 
 
 def test_rework_inherits_bound_drawing_version_allows_pdf_upload_but_not_word(client, warehouse):
-    from hashlib import sha256
-
-    from app.models import ProcessRouteDrawing
     from test_process_route_creation import pdf
     from test_process_route_import import HEADERS, docx
     from test_processing_route_methods import routed_lot
 
     s = warehouse
     lot, employee, normal = routed_lot(client, s, second=False)
-    original_pdf = pdf()
-    with SessionLocal() as db:
-        drawing = ProcessRouteDrawing(
-            route_id=normal["id"],
-            filename="原图纸.pdf",
-            content=original_pdf,
-            sha256=sha256(original_pdf).hexdigest(),
-            size_bytes=len(original_pdf),
-        )
-        db.add(drawing)
-        db.commit()
-        original_id = drawing.id
+    drawing = client.get(f"{URL}/{normal['id']}").json()["drawings"][0]
+    original_id = drawing["id"]
+    original_pdf = client.get(f"{URL}/{normal['id']}/drawings/{original_id}").content
     original = work(client, s, lot, employee).json()
     route = request_plan(client, s, original["outputs"][0], original)
     assert route["filename"] == "" and route["source_data"] == {"tables": [], "issues": []}
     copied = route["drawings"][0]
-    assert copied["id"] != original_id and copied["filename"] == "原图纸.pdf"
+    assert copied["id"] != original_id and copied["filename"] == drawing["filename"]
+    assert client.get(f"{URL}/{route['id']}").json()["drawings"] == route["drawings"]
     assert client.get(f"{URL}/{route['id']}/drawings/{copied['id']}").content == original_pdf
     word = docx([["流水号", "WAREHOUSE-001"], HEADERS, [1, "返工", "手工要求", 1, 10]])
     rejected = client.post(

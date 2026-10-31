@@ -1,4 +1,5 @@
-import { httpRequest, HttpRequestError, type HttpRequestOptions } from './httpClient'
+import { httpClient, httpRequest, HttpRequestError, type HttpRequestOptions } from './httpClient'
+import type { RouteOrderDocument } from '@/types/processRoute'
 import type { MaterialPage } from '@/types/teamMaterials'
 import type {
   ScheduleBatchWrite,
@@ -88,8 +89,31 @@ export const productionScheduleApi = {
   tasks: (params: ScheduleFilters = {}) =>
     request<MaterialPage<ScheduleTask>>(`/production-schedules/tasks?${queryString(params)}`),
   task: (id: number) => request<ScheduleTask>(`/production-schedules/tasks/${id}`),
-  createTask: (body: DispatchTaskWrite) =>
-    request<ScheduleTask>('/production-schedules/tasks', { method: 'POST', body }),
+  createTask: (payload: DispatchTaskWrite, file: File) => {
+    const body = new FormData()
+    body.append('payload', JSON.stringify(payload))
+    body.append('file', file)
+    return request<ScheduleTask>('/production-schedules/tasks', { method: 'POST', body })
+  },
+  parseOrder: (file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return request<RouteOrderDocument>('/production-schedules/parse-order', {
+      method: 'POST',
+      body,
+    })
+  },
+  downloadOrder: async (taskId: number, filename: string) => {
+    const response = await httpClient.get(`/production-schedules/tasks/${taskId}/order`, {
+      responseType: 'blob',
+    })
+    const url = URL.createObjectURL(response.data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  },
   updateTask: (
     id: number,
     body: {

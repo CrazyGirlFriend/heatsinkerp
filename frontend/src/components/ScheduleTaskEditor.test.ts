@@ -7,6 +7,8 @@ import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
 import AppDialog from './AppDialog.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ScheduleTask, ScheduleRouteOption } from '@/types/productionSchedule'
+import { orderFixture } from '@/testFixtures/processRouteOrder'
+import { processRouteApi } from '@/services/processRouteApi'
 import { routeFixture } from '@/testFixtures/processRoute'
 const role = vi.hoisted(() => ({ isDispatch: true }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => role }))
@@ -36,7 +38,13 @@ beforeEach(() => {
   vi.spyOn(productionScheduleApi, 'taskRouteOptions').mockResolvedValue([
     route as unknown as ScheduleRouteOption,
   ])
+  vi.spyOn(productionScheduleApi, 'parseOrder').mockResolvedValue({
+    ...orderFixture,
+    serial_no: 'S-001',
+  })
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue(route)
   vi.spyOn(productionScheduleApi, 'createTask').mockResolvedValue(task)
+  vi.spyOn(productionScheduleApi, 'task').mockResolvedValue(task)
   vi.spyOn(productionScheduleApi, 'updateTask').mockResolvedValue(task)
 })
 afterEach(() => {
@@ -53,10 +61,19 @@ async function render(existing?: ScheduleTask) {
           template: '<div v-if="modelValue"><slot/><slot name="footer"/></div>',
         },
         ScheduleSelectionDialog: true,
+        WordDocumentPreview: true,
+        ProcessRouteDrawingPreview: true,
       },
       directives: { loading: () => {} },
     },
   })
+  await flushPromises()
+}
+const orderFile = new File(['order'], '订单.xlsx')
+async function uploadOrder() {
+  const input = wrapper.get('input[type="file"]')
+  Object.defineProperty(input.element, 'files', { configurable: true, value: [orderFile] })
+  await input.trigger('change')
   await flushPromises()
 }
 async function button(label: string) {
@@ -90,6 +107,10 @@ it('loads the serial process but requires dispatch to set the customer deadline'
   ])
   await flushPromises()
   await button('创建排期')
+  expect(wrapper.text()).toContain('请上传对应流水号的订单表')
+  expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
+  await uploadOrder()
+  await button('创建排期')
   expect(productionScheduleApi.createTask).toHaveBeenCalledWith(
     expect.objectContaining({
       serial_no: 'S-001',
@@ -101,6 +122,7 @@ it('loads the serial process but requires dispatch to set the customer deadline'
         { batch_number: 1, target_quantity: 100, due_at: '2026-12-29T16:00:00+08:00' },
       ],
     }),
+    orderFile,
   )
   expect(vi.mocked(productionScheduleApi.createTask).mock.calls[0]![0]).not.toHaveProperty('nodes')
 })
@@ -121,6 +143,7 @@ it('rejects customer batches that do not add up to the route quantity', async ()
   await button('选择业务人员')
   wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 1, label: '张工' }])
   await flushPromises()
+  await uploadOrder()
   await button('创建排期')
   expect(productionScheduleApi.createTask).toHaveBeenCalledOnce()
 })
@@ -193,4 +216,18 @@ it('keeps the editor until its closing transition finishes', async () => {
   expect(wrapper.emitted('close')).toBeUndefined()
   dialog.vm.$emit('closed')
   expect(wrapper.emitted('close')).toEqual([[]])
+})
+
+it('rejects a mismatched order and clears the imported file when changing serial', async () => {
+  await render()
+  vi.mocked(productionScheduleApi.parseOrder).mockResolvedValueOnce({
+    ...orderFixture,
+    serial_no: 'OTHER',
+  })
+  await uploadOrder()
+  expect(wrapper.text()).toContain('订单表流水号与当前排期不一致')
+  await uploadOrder()
+  expect(wrapper.text()).toContain('替换订单表')
+  await wrapper.get('input[aria-label="任务流水号"]').setValue('OTHER')
+  expect(wrapper.text()).not.toContain('替换订单表')
 })

@@ -113,6 +113,17 @@ async function submit() {
 }
 
 describe('warehouse manual receipt', () => {
+  it('accepts raw intake without a serial number or route', async () => {
+    await render()
+    await fill()
+    await wrapper.get('input[aria-label="流水号"]').setValue('')
+    await submit()
+    expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(
+      901,
+      expect.objectContaining({ serial_no: '' }),
+    )
+    expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1].process_route).toBeUndefined()
+  })
   it('submits one shared physical batch with distinct order requirements, validates duplicate identities and preserves retries', async () => {
     vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(
       new TeamMaterialApiError('网络中断'),

@@ -24,7 +24,7 @@ export interface RouteMaterialField {
   label: string
   source_row: string
   source_label: string
-  source_kind?: 'word' | 'excel'
+  source_kind?: 'word' | 'excel' | 'manual'
   source_filename?: string
   parsed_value?: string | number
   alternative?: RouteMaterialField

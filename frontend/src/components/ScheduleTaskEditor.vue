@@ -14,6 +14,7 @@ import {
   ElTableColumn,
 } from 'element-plus'
 import AppDialog from './AppDialog.vue'
+import { Upload } from '@element-plus/icons-vue'
 import MaterialInput from './MaterialInput.vue'
 import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
 import ScheduleDocuments from './ScheduleDocuments.vue'
@@ -26,7 +27,7 @@ import type {
   ScheduleSelection,
   DispatchTaskWrite,
 } from '@/types/productionSchedule'
-import type { ProcessRoute } from '@/types/processRoute'
+import type { ProcessRoute, RouteOrderDocument } from '@/types/processRoute'
 import { materialRequestKey } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
 
@@ -44,6 +45,43 @@ const visible = ref(true),
   error = ref(''),
   personOpen = ref(false)
 const serial = ref(props.task?.serial_no || props.routeSerial || '')
+const orderInput = ref<HTMLInputElement>(),
+  orderFile = ref<File>(),
+  orderDocument = ref<RouteOrderDocument>(),
+  orderBusy = ref(false),
+  orderError = ref('')
+let orderGeneration = 0
+async function importOrder(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  const current = ++orderGeneration
+  orderFile.value = undefined
+  orderDocument.value = undefined
+  orderError.value = ''
+  key = ''
+  if (!file.name.toLowerCase().endsWith('.xlsx') || file.size > 5 * 1024 * 1024) {
+    orderError.value = '请选择不超过 5 MB 的 XLSX 订单表'
+    return
+  }
+  orderBusy.value = true
+  try {
+    const result = await productionScheduleApi.parseOrder(file)
+    if (current !== orderGeneration) return
+    if (result.serial_no !== serial.value.trim()) {
+      orderError.value = '订单表流水号与当前排期不一致'
+      return
+    }
+    orderFile.value = file
+    orderDocument.value = result
+  } catch (e) {
+    if (current === orderGeneration)
+      orderError.value = e instanceof Error ? e.message : '订单表读取失败'
+  } finally {
+    if (current === orderGeneration) orderBusy.value = false
+  }
+}
 const local = (value?: string | null) =>
   value ? formatDateTime(value).replace(' ', 'T') + ':00' : ''
 const finalDue = ref(local(props.task?.final_due_at)),
@@ -126,7 +164,7 @@ function disabledBatchDate(value: Date) {
   return !!finalDue.value && value.getTime() > new Date(finalDue.value).getTime()
 }
 async function save() {
-  if (saving.value || !writable.value || loading.value) return
+  if (saving.value || !writable.value || loading.value || orderBusy.value) return
   error.value = ''
   if (!serial.value.trim() || (!props.task && !selectedRoute.value)) {
     error.value = '请选择流水号和对应工艺'
@@ -162,6 +200,10 @@ async function save() {
     error.value = '请至少选择一位业务人员'
     return
   }
+  if (!props.task && (!orderFile.value || orderDocument.value?.serial_no !== serial.value.trim())) {
+    error.value = '请上传对应流水号的订单表'
+    return
+  }
   saving.value = true
   try {
     const common = {
@@ -195,7 +237,10 @@ async function save() {
         key = materialRequestKey()
         fingerprint = next
       }
-      emit('saved', await productionScheduleApi.createTask({ ...body, idempotency_key: key }))
+      emit(
+        'saved',
+        await productionScheduleApi.createTask({ ...body, idempotency_key: key }, orderFile.value!),
+      )
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : '排期保存失败'
@@ -205,6 +250,11 @@ async function save() {
 }
 let serialTimer: ReturnType<typeof setTimeout> | undefined
 watch(serial, () => {
+  ++orderGeneration
+  orderFile.value = undefined
+  orderDocument.value = undefined
+  orderBusy.value = false
+  orderError.value = ''
   ++generation
   routes.value = []
   routeId.value = undefined
@@ -212,6 +262,7 @@ watch(serial, () => {
   serialTimer = setTimeout(loadRoutes, 350)
 })
 onBeforeUnmount(() => {
+  ++orderGeneration
   ++generation
   clearTimeout(serialTimer)
 })
@@ -222,7 +273,7 @@ onMounted(loadRoutes)
   <AppDialog
     v-model="visible"
     :title="task ? '修改订单交期' : '新建排期'"
-    width="min(1040px,96vw)"
+    width="min(1280px,96vw)"
     append-to-body
     :close-on-click-modal="!saving"
     :close-on-press-escape="!saving"
@@ -236,111 +287,142 @@ onMounted(loadRoutes)
       class="dispatch-task-form"
       @submit.prevent="save"
     >
-      <div class="dispatch-task-fields">
-        <ElFormItem label="流水号" required
-          ><MaterialInput
-            v-model="serial"
-            field="serial_no"
-            label="任务流水号"
-            :disabled="!!task"
-          /><ElButton v-if="!task" link :loading="loading" @click="loadRoutes"
-            >读取工艺</ElButton
-          ></ElFormItem
+      <div class="dispatch-task-layout">
+        <ScheduleDocuments
+          thumbnails
+          :serial-no="serial.trim()"
+          :route-ids="task ? task.nodes.map((node) => node.process_route_id) : [routeId]"
+          :task-id="task?.id"
+          :order-document="task ? task.order_document || undefined : orderDocument || null"
+          :order-file="orderFile"
         >
-        <ElFormItem label="最终交期" required
-          ><ElDatePicker
-            v-model="finalDue"
-            type="datetime"
-            format="YYYY-MM-DD HH:mm"
-            value-format="YYYY-MM-DDTHH:mm:ss"
-            :disabled-minutes="nonZeroMinutes"
-            :disabled-seconds="nonZeroMinutes"
-            aria-label="最终交期"
-        /></ElFormItem>
-        <ElFormItem label="业务人员"
-          ><ElButton class="dispatch-person-select" @click="personOpen = true">{{
-            people.length ? people.map((p) => p.label).join('、') : '选择业务人员'
-          }}</ElButton></ElFormItem
-        >
-      </div>
-      <ElFormItem v-if="!task && routes.length > 1" label="工艺" required
-        ><ElSelect v-model="routeId" aria-label="关联工艺"
-          ><ElOption v-for="r in routes" :key="r.id" :value="r.id" :label="r.title" /></ElSelect
-      ></ElFormItem>
-      <ScheduleDocuments
-        :serial-no="serial.trim()"
-        :route-ids="task ? task.nodes.map((node) => node.process_route_id) : [routeId]"
-      />
-      <h3>
-        分批交货 <span>{{ quantity }} 件</span>
-      </h3>
-      <ElTable :data="batches" border aria-label="订单分批交期">
-        <ElTableColumn label="批次" width="90" align="center"
-          ><template #default="{ $index }">第 {{ $index + 1 }} 批</template></ElTableColumn
-        >
-        <ElTableColumn label="数量（件）" width="170"
-          ><template #default="{ row, $index }"
-            ><ElInputNumber
-              v-model="row.quantity"
-              :min="1"
-              :precision="0"
-              :controls="false"
-              :aria-label="`第${$index + 1}批交货数量`" /></template
-        ></ElTableColumn>
-        <ElTableColumn label="交货时间" min-width="230"
-          ><template #default="{ row, $index }"
-            ><ElDatePicker
-              v-model="row.due"
-              type="datetime"
-              format="YYYY-MM-DD HH:mm"
-              value-format="YYYY-MM-DDTHH:mm:ss"
-              :disabled-date="disabledBatchDate"
-              :disabled-minutes="nonZeroMinutes"
-              :disabled-seconds="nonZeroMinutes"
-              :aria-label="`第${$index + 1}批交期`" /></template
-        ></ElTableColumn>
-        <ElTableColumn label="操作" width="80" align="center"
-          ><template #default="{ $index }"
-            ><ElButton
-              link
-              type="danger"
-              :disabled="batches.length === 1"
-              @click="removeBatch($index)"
-              >删除</ElButton
-            ></template
-          ></ElTableColumn
-        >
-      </ElTable>
-      <ElButton :disabled="batches.length >= 100" class="dispatch-add-batch" @click="addBatch"
-        >＋ 增加一批</ElButton
-      >
-      <template v-if="!task && steps.length">
-        <h3>执行工艺</h3>
-        <ElTable :data="steps" border size="small" aria-label="工艺执行班组">
-          <ElTableColumn label="工序" prop="name" min-width="130" />
-          <ElTableColumn label="班组" min-width="100"
-            ><template #default="{ row }">{{
-              directory.items.find((t) => Number(t.id) === row.team_id)?.name || row.team_name
-            }}</template></ElTableColumn
+          <template v-if="!task" #upload>
+            <ElButton
+              :icon="Upload"
+              :loading="orderBusy"
+              :disabled="!selectedRoute || saving"
+              @click="orderInput?.click()"
+              >{{ orderFile ? '替换订单表' : '上传订单表' }}</ElButton
+            >
+            <input
+              ref="orderInput"
+              type="file"
+              accept=".xlsx"
+              hidden
+              aria-label="上传订单表"
+              @change="importOrder"
+            />
+            <ElAlert v-if="orderError" :title="orderError" type="error" :closable="false" />
+          </template>
+        </ScheduleDocuments>
+        <div class="dispatch-task-content">
+          <div class="dispatch-task-fields">
+            <ElFormItem label="流水号" required
+              ><MaterialInput
+                v-model="serial"
+                field="serial_no"
+                label="任务流水号"
+                :disabled="!!task"
+              /><ElButton v-if="!task" link :loading="loading" @click="loadRoutes"
+                >读取工艺</ElButton
+              ></ElFormItem
+            >
+            <ElFormItem label="最终交期" required
+              ><ElDatePicker
+                v-model="finalDue"
+                type="datetime"
+                format="YYYY-MM-DD HH:mm"
+                value-format="YYYY-MM-DDTHH:mm:ss"
+                :disabled-minutes="nonZeroMinutes"
+                :disabled-seconds="nonZeroMinutes"
+                aria-label="最终交期"
+            /></ElFormItem>
+            <ElFormItem label="业务人员"
+              ><ElButton class="dispatch-person-select" @click="personOpen = true">{{
+                people.length ? people.map((p) => p.label).join('、') : '选择业务人员'
+              }}</ElButton></ElFormItem
+            >
+          </div>
+          <ElFormItem v-if="!task && routes.length > 1" label="工艺" required
+            ><ElSelect v-model="routeId" aria-label="关联工艺"
+              ><ElOption v-for="r in routes" :key="r.id" :value="r.id" :label="r.title" /></ElSelect
+          ></ElFormItem>
+          <h3>
+            分批交货 <span>{{ quantity }} 件</span>
+          </h3>
+          <ElTable :data="batches" border aria-label="订单分批交期">
+            <ElTableColumn label="批次" width="90" align="center"
+              ><template #default="{ $index }">第 {{ $index + 1 }} 批</template></ElTableColumn
+            >
+            <ElTableColumn label="数量（件）" width="170"
+              ><template #default="{ row, $index }"
+                ><ElInputNumber
+                  v-model="row.quantity"
+                  :min="1"
+                  :precision="0"
+                  :controls="false"
+                  :aria-label="`第${$index + 1}批交货数量`" /></template
+            ></ElTableColumn>
+            <ElTableColumn label="交货时间" min-width="230"
+              ><template #default="{ row, $index }"
+                ><ElDatePicker
+                  v-model="row.due"
+                  type="datetime"
+                  format="YYYY-MM-DD HH:mm"
+                  value-format="YYYY-MM-DDTHH:mm:ss"
+                  :disabled-date="disabledBatchDate"
+                  :disabled-minutes="nonZeroMinutes"
+                  :disabled-seconds="nonZeroMinutes"
+                  :aria-label="`第${$index + 1}批交期`" /></template
+            ></ElTableColumn>
+            <ElTableColumn label="操作" width="80" align="center"
+              ><template #default="{ $index }"
+                ><ElButton
+                  link
+                  type="danger"
+                  :disabled="batches.length === 1"
+                  @click="removeBatch($index)"
+                  >删除</ElButton
+                ></template
+              ></ElTableColumn
+            >
+          </ElTable>
+          <ElButton :disabled="batches.length >= 100" class="dispatch-add-batch" @click="addBatch"
+            >＋ 增加一批</ElButton
           >
-          <ElTableColumn label="计划数量" prop="planned_quantity" width="110" align="right" />
-          <ElTableColumn
-            label="工艺要求"
-            prop="instructions"
-            min-width="220"
-            show-overflow-tooltip
-          />
-        </ElTable>
-      </template>
-      <ElFormItem label="备注" class="dispatch-notes"
-        ><ElInput v-model="notes" maxlength="2000"
-      /></ElFormItem>
+          <template v-if="!task && steps.length">
+            <h3>执行工艺</h3>
+            <ElTable :data="steps" border size="small" aria-label="工艺执行班组">
+              <ElTableColumn label="工序" prop="name" min-width="130" />
+              <ElTableColumn label="班组" min-width="100"
+                ><template #default="{ row }">{{
+                  directory.items.find((t) => Number(t.id) === row.team_id)?.name || row.team_name
+                }}</template></ElTableColumn
+              >
+              <ElTableColumn label="计划数量" prop="planned_quantity" width="110" align="right" />
+              <ElTableColumn
+                label="工艺要求"
+                prop="instructions"
+                min-width="220"
+                show-overflow-tooltip
+              />
+            </ElTable>
+          </template>
+          <ElFormItem label="备注" class="dispatch-notes"
+            ><ElInput v-model="notes" maxlength="2000"
+          /></ElFormItem>
+        </div>
+      </div>
     </ElForm>
     <template #footer
       ><ElButton :disabled="saving" @click="visible = false">取消</ElButton
-      ><ElButton type="primary" :loading="saving" :disabled="!writable || loading" @click="save">{{
-        task ? '保存交期' : '创建排期'
-      }}</ElButton></template
+      ><ElButton
+        type="primary"
+        :loading="saving"
+        :disabled="!writable || loading || orderBusy"
+        @click="save"
+        >{{ task ? '保存交期' : '创建排期' }}</ElButton
+      ></template
     >
   </AppDialog>
   <ScheduleSelectionDialog
@@ -355,6 +437,25 @@ onMounted(loadRoutes)
 <style scoped>
 .dispatch-task-form {
   padding-top: 12px;
+}
+.dispatch-task-layout {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 24px;
+}
+.dispatch-task-content {
+  min-width: 0;
+}
+.dispatch-task-layout > :deep(.schedule-document-rail) {
+  max-height: calc(100dvh - 220px);
+  overflow-y: auto;
+  padding: 4px;
+}
+.dispatch-task-layout :deep(.word-document-preview--thumbnail) {
+  height: 128px;
+}
+.dispatch-task-layout :deep(.route-order-thumbnail) {
+  height: 112px;
 }
 .dispatch-task-fields {
   display: grid;
@@ -388,6 +489,9 @@ onMounted(loadRoutes)
   margin-top: 16px;
 }
 @media (max-width: 760px) {
+  .dispatch-task-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .dispatch-task-fields {
     grid-template-columns: 1fr;
     gap: 0;

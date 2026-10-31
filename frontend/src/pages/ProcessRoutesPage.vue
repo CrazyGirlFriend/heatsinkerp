@@ -216,7 +216,7 @@ onBeforeUnmount(() => {
     engineering
   >
     <template v-if="canEdit && team" #settings>
-      <ElButton :icon="Setting" @click="settingsOpen = true">班组设置</ElButton>
+      <ElButton text :icon="Setting" @click="settingsOpen = true">班组设置</ElButton>
     </template>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <section class="workspace-data-panel">
@@ -646,9 +646,6 @@ onBeforeUnmount(() => {
   color: var(--route-ink);
   font-size: 12px;
   white-space: nowrap;
-}
-.workspace-data-toolbar > .el-input {
-  max-width: 640px;
 }
 .process-workspace :deep(.workspace-data-panel .workspace-data-toolbar) {
   padding-bottom: 14px;

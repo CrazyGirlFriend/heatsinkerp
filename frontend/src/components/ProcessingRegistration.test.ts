@@ -21,6 +21,7 @@ vi.mock('@/stores/auth', () => ({
 const employee = { id: 71, name: '张师傅', team_id: 2, active: true, version: 1 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(processRouteApi, 'dispatchOrder').mockResolvedValue(null)
   vi.spyOn(processRouteApi, 'detail').mockImplementation(async (id) => ({ ...routeFixture, id }))
   vi.spyOn(teamMaterialApi, 'processingTasks').mockResolvedValue([
     { id: 9, team_id: 2, name: '精磨', active: true, version: 1 },
@@ -61,7 +62,12 @@ afterEach(() => {
 async function render() {
   wrapper = mount(QuantityAdjustmentDialog, {
     props: { modelValue: true, teamId: 2, sourceId: 10, processing: true, canWrite: true },
-    global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
+    global: {
+      stubs: {
+        SerialRouteAttachments: true,
+        ElDialog: { template: '<div><slot/><slot name="footer"/></div>' },
+      },
+    },
   })
   await flushPromises()
 }

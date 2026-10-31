@@ -871,6 +871,18 @@ class ProductionScheduleTask(Base):
         return f"PQ{self.id:08d}"
 
 
+class ProductionScheduleOrderFile(Base):
+    __tablename__ = "production_schedule_order_files"
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("production_schedule_tasks.id", ondelete="RESTRICT"), primary_key=True
+    )
+    filename: Mapped[str] = mapped_column(String(240))
+    content: Mapped[bytes] = mapped_column(
+        LargeBinary().with_variant(LONGBLOB(), "mysql"), deferred=True
+    )
+    document: Mapped[dict] = mapped_column(JSON)
+
+
 class ProductionScheduleTaskPerson(Base):
     __tablename__ = "production_schedule_task_people"
     task_id: Mapped[int] = mapped_column(

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 import { formatAmount } from '@/utils/format'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
@@ -661,34 +662,45 @@ watch(
           >历史合并记录 · {{ current.dispatch_no }}</ElButton
         >
       </div>
-      <MaterialTransferDocumentFields :transfer="current" group="all">
-        <template #serial>
-          <template v-if="current.shared_unallocated && current.shared_serials?.length">
-            共投 ·
-            <template v-for="(member, index) in current.shared_serials" :key="member.serial_no">
-              <span v-if="index"> / </span>
-              <RouterLink :to="tracePath(member.serial_no)">{{ member.serial_no }}</RouterLink>
+      <div class="material-details-with-attachments">
+        <SerialRouteAttachments
+          v-if="current.serial_no || current.shared_serials?.length"
+          :items="
+            (current.shared_unallocated && current.shared_serials?.length
+              ? current.shared_serials
+              : [{ serial_no: current.serial_no }]
+            ).map((item) => ({ serialNo: item.serial_no, routeId: current!.process_route?.id }))
+          "
+        />
+        <MaterialTransferDocumentFields :transfer="current" group="all">
+          <template #serial>
+            <template v-if="current.shared_unallocated && current.shared_serials?.length">
+              共投 ·
+              <template v-for="(member, index) in current.shared_serials" :key="member.serial_no">
+                <span v-if="index"> / </span>
+                <RouterLink :to="tracePath(member.serial_no)">{{ member.serial_no }}</RouterLink>
+              </template>
             </template>
+            <RouterLink v-else :to="tracePath(current.serial_no)">{{
+              sharedSerialLabel(current)
+            }}</RouterLink>
+            <SerialUrgencyBadge :urgency="current.urgency" />
           </template>
-          <RouterLink v-else :to="tracePath(current.serial_no)">{{
-            sharedSerialLabel(current)
-          }}</RouterLink>
-          <SerialUrgencyBadge :urgency="current.urgency" />
-        </template>
-        <template v-if="canConfirm" #receiver>
-          <span v-if="pageReceiver">{{ selectedReceiver?.name || '未选择' }}</span>
-          <div v-else ref="receiptPersonCell" class="receipt-person-cell">
-            <span class="required-mark" aria-hidden="true">*</span>
-            <ReceiptPersonInput
-              v-model="receiver"
-              :team-id="Number(current.next_team.id)"
-              :disabled="confirming"
-              :invalid="receiverRequired && !receiver"
-              @open-change="selectingReceiver = $event"
-            />
-          </div>
-        </template>
-      </MaterialTransferDocumentFields>
+          <template v-if="canConfirm" #receiver>
+            <span v-if="pageReceiver">{{ selectedReceiver?.name || '未选择' }}</span>
+            <div v-else ref="receiptPersonCell" class="receipt-person-cell">
+              <span class="required-mark" aria-hidden="true">*</span>
+              <ReceiptPersonInput
+                v-model="receiver"
+                :team-id="Number(current.next_team.id)"
+                :disabled="confirming"
+                :invalid="receiverRequired && !receiver"
+                @open-change="selectingReceiver = $event"
+              />
+            </div>
+          </template>
+        </MaterialTransferDocumentFields>
+      </div>
       <section v-if="canConfirm && warehouseReceiver" class="receipt-location">
         <label>入库仓位</label
         ><strong v-if="current.warehouse_location">{{ current.warehouse_location }}</strong
@@ -844,6 +856,21 @@ watch(
 </template>
 
 <style scoped>
+.material-details-with-attachments {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.material-details-with-attachments:not(:has(.serial-attachments)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (max-width: 760px) {
+  .material-details-with-attachments {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .receipt-person-cell {
   display: flex;
   align-items: center;

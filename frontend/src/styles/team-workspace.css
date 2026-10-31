@@ -290,9 +290,14 @@
   border: 0;
   background: transparent;
 }
-.team-workspace .workspace-data-toolbar :is(.warehouse-search, .el-input) {
-  flex: 1 1 180px;
-  min-width: 150px;
+.team-workspace :is(.workspace-data-toolbar, .history-search) > :is(.warehouse-search, .el-input) {
+  flex: 1 1 320px;
+  min-width: min(100%, 220px);
+  max-width: 520px;
+}
+.team-workspace .warehouse-inventory .workspace-data-toolbar > .warehouse-search {
+  flex: 0 1 400px;
+  max-width: 400px;
 }
 .team-workspace .workspace-data-toolbar :is(.el-input__wrapper, .el-select__wrapper) {
   min-height: 34px;
@@ -309,6 +314,9 @@
 .team-workspace .workspace-data-toolbar .el-button {
   margin-left: 0;
   border-radius: 11px;
+}
+.team-workspace .workspace-data-toolbar > .workspace-tools {
+  margin-left: auto;
 }
 .team-workspace .workspace-toolbar-actions {
   display: flex;
@@ -463,8 +471,15 @@
   .team-workspace .workspace-data-panel .workspace-data-toolbar {
     gap: 8px;
   }
-  .team-workspace .workspace-data-toolbar .warehouse-search {
+  .team-workspace
+    :is(.workspace-data-toolbar, .history-search)
+    > :is(.warehouse-search, .el-input) {
     flex-basis: 100%;
+    max-width: none;
+  }
+  .team-workspace .warehouse-inventory .workspace-data-toolbar > .warehouse-search {
+    flex-basis: 100%;
+    max-width: none;
   }
   .team-workspace .workspace-toolbar-actions {
     margin-left: 0;

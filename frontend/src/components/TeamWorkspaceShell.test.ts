@@ -174,7 +174,6 @@ describe('workspace with in-page navigation', () => {
     'delivery-schedule',
     'inspections',
     'inspection-results',
-    'quality-feedback',
     'process-routes',
   ])(
     'retains settings, messages and fullscreen for %s without a legacy toolbar',
@@ -199,10 +198,12 @@ describe('workspace with in-page navigation', () => {
       expect(wrapper.findAll('.team-workspace__fullscreen')).toHaveLength(1)
       expect(wrapper.findAll('[data-message]')).toHaveLength(1)
       if (!engineering) expect(wrapper.get('nav').text()).toContain('质量反馈3')
-      await wrapper.get('[aria-label="更多操作"]').trigger('click')
-      await flushPromises()
-      if (engineering) expect(wrapper.get('[data-settings]').text()).toBe('班组设置')
-      else {
+      if (engineering) {
+        expect(wrapper.find('[aria-label="更多操作"]').exists()).toBe(false)
+        expect(wrapper.get('.team-workspace__commands [data-settings]').text()).toBe('班组设置')
+      } else {
+        await wrapper.get('[aria-label="更多操作"]').trigger('click')
+        await flushPromises()
         await wrapper.get('[aria-label="班组设置"]').trigger('click')
         expect(wrapper.emitted('settings')).toEqual([[]])
       }
@@ -257,7 +258,44 @@ describe('workspace with in-page navigation', () => {
     expect(nav.scrollTop).toBe(0)
     expect(observe).toHaveBeenCalledWith(nav)
     wrapper.unmount()
-    expect(disconnect).toHaveBeenCalledOnce()
+    expect(disconnect).toHaveBeenCalledTimes(2)
+  })
+  it('shows direct toolbar actions when wide and collects them under More when narrow', async () => {
+    let width = 1440
+    const callbacks: Array<() => void> = []
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(
+      () => ({ width }) as DOMRect,
+    )
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          callbacks.push(callback)
+        }
+        observe() {}
+        disconnect() {}
+      },
+    )
+    wrapper = mountShell({
+      props: { title: '研磨', modelValue: 'stock', settings: true },
+    })
+    callbacks.forEach((callback) => callback())
+    await flushPromises()
+    expect(wrapper.find('[aria-label="更多操作"]').exists()).toBe(false)
+    expect(wrapper.get('.workspace-tools__inline [aria-label="班组设置"]').text()).toBe('班组设置')
+    width = 900
+    callbacks.forEach((callback) => callback())
+    await flushPromises()
+    expect(wrapper.find('.workspace-tools__inline').exists()).toBe(false)
+    await wrapper.get('[aria-label="更多操作"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[aria-label="班组设置"]').trigger('click')
+    expect(wrapper.emitted('settings')).toEqual([[]])
+    width = 1440
+    callbacks.forEach((callback) => callback())
+    await flushPromises()
+    expect(wrapper.find('[aria-label="更多操作"]').exists()).toBe(false)
+    expect(wrapper.find('.workspace-tools__inline [aria-label="班组设置"]').exists()).toBe(true)
   })
   it('expands the document with its dialogs and preserves the data region on entry and exit', async () => {
     const native = nativeFullscreen()

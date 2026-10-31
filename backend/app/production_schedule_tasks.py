@@ -12,7 +12,13 @@ from . import production_schedules as schedules
 from .auth import actor_name
 from .business_people import require_assignable
 from .material_stock import fingerprint, literal_query
-from .models import BusinessPerson, ProductionScheduleTaskPerson, Team, utcnow
+from .models import (
+    BusinessPerson,
+    ProductionScheduleOrderFile,
+    ProductionScheduleTaskPerson,
+    Team,
+    utcnow,
+)
 from .models import ProductionSchedule as Plan
 from .models import ProductionScheduleEvent as Event
 from .models import ProductionScheduleSource as Source
@@ -193,7 +199,10 @@ def task_values(db, ids):
 
 def detail(db, task_id):
     require_task(db, task_id)
-    return task_values(db, [task_id])[task_id]
+    result = task_values(db, [task_id])[task_id]
+    order = db.get(ProductionScheduleOrderFile, task_id)
+    result["order_document"] = order.document if order else None
+    return result
 
 
 def list_tasks(
@@ -337,12 +346,19 @@ def task_status_filter(candidates, status, scope=None):
     return statement.subquery()
 
 
-def create_task(db, payload, user):
+def create_task(db, payload, user, *, order=None):
     from .dispatch_planning import DispatchTaskCreate, build_task
 
     pending = isinstance(payload, DispatchTaskCreate)
+    if pending and order is None:
+        raise HTTPException(422, "请上传订单表")
     key = request_key("task", payload.idempotency_key)
     digest = fingerprint(payload)
+    if order:
+        filename, content, document = order
+        if document["serial_no"] != payload.serial_no:
+            raise HTTPException(422, "订单表与排期流水号不一致")
+        digest = sha256((digest + filename + sha256(content).hexdigest()).encode()).hexdigest()
     try:
         with db.begin():
             # Match the node editor's lock order, including route/cycle validation.
@@ -369,6 +385,12 @@ def create_task(db, payload, user):
                 )
                 db.add(task)
                 db.flush()
+                if order:
+                    db.add(
+                        ProductionScheduleOrderFile(
+                            task_id=task.id, filename=filename, content=content, document=document
+                        )
+                    )
                 from .business_people import assign_task_people
 
                 assign_task_people(

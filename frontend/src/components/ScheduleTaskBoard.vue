@@ -662,6 +662,8 @@ onBeforeUnmount(() => {
         </div>
         <ScheduleDocuments
           :key="detail.id"
+          :task-id="detail.id"
+          :order-document="detail.order_document || undefined"
           :serial-no="detail.serial_no"
           :route-ids="detail.nodes.map((node) => node.process_route_id)"
         />
