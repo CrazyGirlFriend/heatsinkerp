@@ -2,6 +2,7 @@
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { ElPagination } from 'element-plus'
 import ProcessRoutesPage from './ProcessRoutesPage.vue'
 import ProcessRouteEditor from '@/components/ProcessRouteEditor.vue'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -64,13 +65,37 @@ async function render(query: Record<string, string> = {}) {
       stubs: {
         TeamBusinessDialog: true,
         ProcessRouteEditor: true,
-        TeamReworkMessages: true,
         ElPopover: { template: '<div><slot name="reference" /><slot /></div>' },
       },
     },
   })
   await flushPromises()
 }
+it('removes the previous twenty-row page immediately when requesting ten rows', async () => {
+  const items = Array.from({ length: 23 }, (_, index) => ({ ...routeFixture, id: index + 1 }))
+  const response = (size: number) => ({
+    items: items.slice(0, size),
+    total: items.length,
+    page: 1,
+    page_size: size,
+    enforced_after: null,
+  })
+  vi.mocked(processRouteApi.list).mockResolvedValue(response(20))
+  await render()
+  expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(20)
+  let finish!: (value: ReturnType<typeof response>) => void
+  vi.mocked(processRouteApi.list).mockImplementationOnce(
+    () => new Promise((resolve) => (finish = resolve)),
+  )
+  wrapper.getComponent(ElPagination).vm.$emit('size-change', 10)
+  await flushPromises()
+  expect(wrapper.getComponent(ElPagination).props('pageSize')).toBe(10)
+  expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'desc', 10, 'normal')
+  expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(0)
+  finish(response(10))
+  await flushPromises()
+  expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(10)
+})
 it('keeps the common workspace shell without a full-width single tab or duplicate time columns', async () => {
   await render()
   expect(wrapper.get('.team-workspace__title').text()).toBe('工艺')
@@ -189,7 +214,7 @@ it('requests global time ordering and resets to page one on sort or size changes
   expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'asc', 50, 'normal')
   expect(wrapper.find('.el-pagination').exists()).toBe(true)
   expect(wrapper.getComponent(ElPagination).props('pageSizes')).toEqual([10, 20, 50, 100])
-  expect(wrapper.getComponent(ElPagination).props('layout')).toContain('jumper')
+  expect(wrapper.find('.el-pagination__sizes').exists()).toBe(true)
 })
 
 it('separates pending rework with visible problems and teams, and opens manual authoring directly', async () => {

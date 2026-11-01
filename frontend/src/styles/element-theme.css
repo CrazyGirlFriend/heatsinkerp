@@ -18,9 +18,9 @@
   --el-color-error: #c4474d;
   --el-color-info: var(--muted);
   --el-text-color-primary: var(--text);
-  --el-text-color-regular: #46554d;
+  --el-text-color-regular: var(--text);
   --el-text-color-secondary: var(--subtle);
-  --el-text-color-placeholder: #89979b;
+  --el-text-color-placeholder: var(--subtle);
   --el-border-color: #dfe8e3;
   --el-border-color-light: var(--line);
   --el-border-color-lighter: var(--line-light);
@@ -614,7 +614,7 @@
 }
 
 .el-table {
-  font-size: 13px;
+  font-size: var(--font-size-body);
   --el-table-header-bg-color: var(--table-header-bg);
   --el-table-header-text-color: var(--muted);
   --el-table-row-hover-bg-color: var(--table-hover-bg);
@@ -624,11 +624,12 @@
 
 .el-table th.el-table__cell {
   height: 42px;
-  font-weight: 500;
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-regular);
 }
 .el-table:not(.live-table) {
   --el-table-header-bg-color: var(--table-header-bg);
-  --el-table-header-text-color: var(--text);
+  --el-table-header-text-color: var(--subtle);
   --el-table-text-color: var(--text);
   --el-table-border-color: var(--line);
   --el-table-row-hover-bg-color: var(--table-hover-bg);
@@ -636,7 +637,6 @@
   --el-fill-color-lighter: var(--surface);
 }
 .el-table:not(.live-table) th.el-table__cell {
-  font-weight: 550;
   border-bottom-color: var(--table-header-line);
 }
 .el-table td.el-table__cell {
@@ -644,7 +644,10 @@
 }
 .el-table .cell {
   padding-inline: 12px;
-  line-height: 22px;
+  line-height: var(--line-height-body);
+}
+.el-table th.el-table__cell .cell {
+  line-height: var(--line-height-meta);
 }
 .el-table .el-button.is-link {
   font-weight: 400;

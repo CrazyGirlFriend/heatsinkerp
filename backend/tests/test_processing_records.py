@@ -148,6 +148,68 @@ def test_processing_records_are_filtered_paged_and_sorted_by_registration_time(
     )
 
 
+def test_ten_row_pages_cover_all_records_without_overlap_when_page_size_changes(client, processing):
+    from app.database import SessionLocal
+    from app.models import MaterialQuantityAdjustment, MaterialTransfer
+
+    # Imported historical records remain readable without the current creation workflow.
+    team = processing["other"]
+    with SessionLocal() as db:
+        lot = MaterialTransfer(
+            batch_no="PAGINATION-HISTORY",
+            serial_no="PAGINATION-001",
+            entry_kind="opening_stock",
+            next_team_id=team["id"],
+            next_team_code=team["code"],
+            next_team_name=team["name"],
+            quantity=1,
+            weight=100,
+            material_type="semi_finished",
+            status="received",
+            stock_tracked=True,
+            created_by="历史导入",
+            idempotency_key="pagination-stock",
+            request_hash="f" * 64,
+        )
+        db.add(lot)
+        db.flush()
+        db.add_all(
+            MaterialQuantityAdjustment(
+                source_transfer_id=lot.id,
+                team_id=team["id"],
+                before_quantity=index + 1,
+                after_quantity=index + 2,
+                weight_snapshot=100,
+                stock_revision_before=index + 1,
+                reason=f"分页核对-{index}",
+                created_by="历史导入",
+                idempotency_key=f"pagination-{index}",
+                request_hash="f" * 64,
+            )
+            for index in range(13)
+        )
+        db.commit()
+
+    url = base(processing, True) + "/processing-records"
+    large = client.get(url, params={"page": 1, "page_size": 20}).json()
+    first = client.get(url, params={"page": 1, "page_size": 10}).json()
+    second = client.get(url, params={"page": 2, "page_size": 10}).json()
+    empty = client.get(url, params={"page": 3, "page_size": 10}).json()
+    assert len(large["items"]) == 13
+    assert len(first["items"]) == 10
+    assert len(second["items"]) == 3
+    assert empty["items"] == []
+    for result in (first, second, empty):
+        assert result["page_size"] == 10
+        assert result["total"] == 13
+        assert result["summary"]["unreported_count"] == 13
+    assert [row["id"] for row in first["items"] + second["items"]] == [
+        row["id"] for row in large["items"]
+    ]
+    for params in ({"page": 0}, {"page_size": 0}, {"page_size": 101}):
+        assert client.get(url, params=params).status_code == 422
+
+
 def test_outbound_clearance_is_not_a_processing_record_and_scope_is_checked(client, processing):
     s = processing
     lot = receive(client, s)

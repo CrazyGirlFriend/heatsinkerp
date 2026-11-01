@@ -1,4 +1,4 @@
-import { httpRequest, HttpRequestError, type HttpRequestOptions } from './httpClient'
+import { httpRequest, HttpRequestError } from './httpClient'
 import { normalizeMaterialDispatch } from './teamMaterialApi'
 import { isDispatchNumber, type MaterialDispatchDocument } from '@/types/teamMaterials'
 
@@ -11,17 +11,13 @@ export class MaterialDispatchApiError extends Error {
     this.name = 'MaterialDispatchApiError'
   }
 }
-async function request(
-  code: string,
-  options?: HttpRequestOptions,
-  action = '',
-): Promise<MaterialDispatchDocument> {
+async function request(code: string): Promise<MaterialDispatchDocument> {
   if (!isDispatchNumber(code)) throw new MaterialDispatchApiError('请输入有效的 CK 出库批次号')
   let raw: unknown
   try {
     raw = await httpRequest(
-      `/material-dispatches/${encodeURIComponent(code.trim().toUpperCase())}${action}`,
-      options,
+      `/material-dispatches/${encodeURIComponent(code.trim().toUpperCase())}`,
+      { noCache: true },
     )
   } catch (error) {
     if (!(error instanceof HttpRequestError)) throw error
@@ -56,13 +52,6 @@ async function request(
 }
 export const materialDispatchApi = {
   get(code: string) {
-    return request(code, { noCache: true })
-  },
-  confirm(
-    code: string,
-    body: { idempotency_key: string; expected_revision: string; received_employee_id?: number },
-    outbound = false,
-  ) {
-    return request(code, { method: 'POST', body }, outbound ? '/confirm-outbound' : '/confirm')
+    return request(code)
   },
 }

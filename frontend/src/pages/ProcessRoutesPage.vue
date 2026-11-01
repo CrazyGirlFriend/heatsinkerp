@@ -1,17 +1,11 @@
 <script setup lang="ts">
+import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
+import WorkspaceTable from '@/components/WorkspaceTable.vue'
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
+import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
-import { Refresh, Search, Setting, Plus } from '@element-plus/icons-vue'
-import {
-  ElAlert,
-  ElButton,
-  ElInput,
-  ElLoading,
-  ElPagination,
-  ElPopover,
-  ElTag,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
+import { ElAlert, ElButton, ElLoading, ElPopover, ElTag, ElTableColumn } from 'element-plus'
 import { useRoute } from 'vue-router'
 import { businessNoticeApi, parseNotice } from '@/services/businessNoticeApi'
 import { focusNoticeTarget, noticeOpened, noticeFailed } from '@/utils/noticeFocus'
@@ -97,6 +91,14 @@ function closeEditor() {
 }
 let generation = 0
 let detailGeneration = 0
+watch(
+  [page, pageSize],
+  () => {
+    ++generation
+    items.value = []
+  },
+  { flush: 'sync' },
+)
 async function load() {
   const request = ++generation
   loading.value = true
@@ -214,72 +216,75 @@ onBeforeUnmount(() => {
     title="工艺"
     model-value="process-routes"
     engineering
+    :settings="canEdit && !!team"
+    @settings="settingsOpen = true"
   >
-    <template v-if="canEdit && team" #settings>
-      <ElButton text :icon="Setting" @click="settingsOpen = true">班组设置</ElButton>
-    </template>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <section class="workspace-data-panel">
-      <div class="workspace-data-toolbar">
-        <div class="route-kind-switch" role="group" aria-label="工艺类型">
-          <button
-            type="button"
-            :aria-pressed="routeKind === 'normal'"
-            @click="changeKind('normal')"
-          >
-            正常工艺
-          </button>
-          <button
-            type="button"
-            :aria-pressed="routeKind === 'rework'"
-            @click="changeKind('rework')"
-          >
-            返工工艺
-          </button>
-        </div>
-        <ElInput
-          v-model="query"
-          :prefix-icon="Search"
-          clearable
-          :placeholder="
-            routeKind === 'rework'
-              ? '搜索流水号、批次号、问题、班组或工艺人员'
-              : '搜索流水号、工艺人员'
-          "
-          aria-label="工艺记录搜索"
-          @keyup.enter="search"
-          @clear="search"
-        />
-        <ElButton class="action-warm" :disabled="loading" @click="search">查询</ElButton>
-        <ElButton :icon="Refresh" aria-label="刷新工艺记录" :disabled="loading" @click="load" />
-        <ElTag v-if="pendingOnly" closable type="warning" @close="clearPending">待制定</ElTag>
-        <div v-if="canEdit" class="workspace-toolbar-actions">
-          <ElPopover
-            v-model:visible="newMenuOpen"
-            trigger="click"
-            width="170"
-            placement="bottom-end"
-          >
-            <template #reference
-              ><ElButton type="primary" :icon="Plus" :disabled="loading"
-                >新建工艺</ElButton
-              ></template
+    <WorkspaceDataPanel class="workspace-data-panel">
+      <WorkspaceDataToolbar
+        v-model="query"
+        :loading="loading"
+        search-label="工艺记录搜索"
+        :placeholder="
+          routeKind === 'rework'
+            ? '搜索流水号、批次号、问题、班组或工艺人员'
+            : '搜索流水号、工艺人员'
+        "
+        refresh-label="刷新工艺记录"
+        @search="search"
+        @refresh="load"
+      >
+        <template #leading>
+          <div class="route-kind-switch" role="group" aria-label="工艺类型">
+            <button
+              type="button"
+              :aria-pressed="routeKind === 'normal'"
+              @click="changeKind('normal')"
             >
-            <div class="new-route-options">
-              <ElButton @click="create">正常工艺</ElButton
-              ><ElButton @click="createRework">返工工艺</ElButton>
-            </div>
-          </ElPopover>
-        </div>
-      </div>
-      <ElTable
+              正常工艺
+            </button>
+            <button
+              type="button"
+              :aria-pressed="routeKind === 'rework'"
+              @click="changeKind('rework')"
+            >
+              返工工艺
+            </button>
+          </div>
+        </template>
+        <template #status
+          ><ElTag v-if="pendingOnly" closable type="warning" @close="clearPending"
+            >待制定</ElTag
+          ></template
+        >
+        <template #primary-actions>
+          <div v-if="canEdit" class="workspace-toolbar-actions">
+            <ElPopover
+              v-model:visible="newMenuOpen"
+              trigger="click"
+              width="170"
+              placement="bottom-end"
+            >
+              <template #reference
+                ><ElButton type="primary" :icon="Plus" :disabled="loading"
+                  >新建工艺</ElButton
+                ></template
+              >
+              <div class="new-route-options">
+                <ElButton @click="create">正常工艺</ElButton
+                ><ElButton @click="createRework">返工工艺</ElButton>
+              </div>
+            </ElPopover>
+          </div></template
+        >
+      </WorkspaceDataToolbar>
+      <WorkspaceTable
         :key="routeKind"
         v-loading="loading"
         :data="items"
         border
         row-key="id"
-        class="business-table team-table route-list"
-        height="100%"
+        class="team-table route-list"
         aria-label="工艺记录"
         :default-sort="{
           prop: 'updated_at',
@@ -288,6 +293,7 @@ onBeforeUnmount(() => {
         @sort-change="sortChanged"
       >
         <ElTableColumn
+          class-name="table-identity"
           label="流水号"
           :min-width="routeKind === 'rework' ? 205 : 260"
           :fixed="routeKind === 'rework' ? 'left' : false"
@@ -457,21 +463,18 @@ onBeforeUnmount(() => {
             ></template
           ></ElTableColumn
         >
-      </ElTable>
-      <footer class="workspace-list-footer">
-        <span>共 {{ total }} 条记录 · {{ Math.max(1, Math.ceil(total / pageSize)) }} 页</span
-        ><ElPagination
-          :current-page="page"
-          :page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :disabled="loading"
-          :total="total"
-          layout="sizes, prev, pager, next, jumper"
-          @current-change="pageChanged"
-          @size-change="pageSizeChanged"
-        />
-      </footer>
-    </section>
+      </WorkspaceTable>
+      <WorkspacePagination
+        :current-page="page"
+        :page-size="pageSize"
+        :disabled="loading"
+        :total="total"
+        @current-change="pageChanged"
+        @size-change="pageSizeChanged"
+        >共 {{ total }} 条记录 ·
+        {{ Math.max(1, Math.ceil(total / pageSize)) }} 页</WorkspacePagination
+      >
+    </WorkspaceDataPanel>
     <template #dialogs>
       <ProcessRouteEditor
         v-if="selected || creating"
@@ -510,7 +513,6 @@ onBeforeUnmount(() => {
 }
 .process-workspace :deep(.team-workspace__title) {
   color: var(--route-ink);
-  font-size: 20px;
   line-height: 28px;
   font-weight: 600;
   letter-spacing: 0;
@@ -647,91 +649,10 @@ onBeforeUnmount(() => {
   font-size: 12px;
   white-space: nowrap;
 }
-.process-workspace :deep(.workspace-data-panel .workspace-data-toolbar) {
-  padding-bottom: 14px;
-}
-.process-workspace :deep(.workspace-data-toolbar .el-button:not(.is-link)) {
-  height: 32px;
-  min-height: 32px;
-  padding: 0 12px;
-  border-radius: 8px;
-  font-size: 14px;
-  line-height: 20px;
-}
-.process-workspace :deep(.workspace-data-toolbar .el-input__wrapper) {
-  min-height: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: #fff;
-}
-.process-workspace :deep(.workspace-data-toolbar .el-input__inner) {
-  color: var(--route-ink);
-}
-.process-workspace :deep(.workspace-toolbar-actions .el-button--primary) {
-  font-weight: 600;
-}
-.process-workspace
-  :deep(.workspace-data-toolbar .el-button.el-button--primary:not(.is-disabled):not(.is-loading)) {
-  border-color: color-mix(in srgb, var(--primary) 88%, black);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--primary) 76%, white),
-    var(--primary) 55%,
-    color-mix(in srgb, var(--primary) 86%, black)
-  );
-  box-shadow:
-    inset 0 1px 0 #ffffff75,
-    inset 0 -1px 0 #0000001a,
-    0 2px 4px #1e293b24;
-}
-.process-workspace :deep(.workspace-data-toolbar .el-button[aria-label='刷新工艺记录']) {
-  width: 32px;
-  padding: 0;
-}
 .workspace-toolbar-actions {
   margin-left: auto;
 }
-.route-list {
-  flex: 1;
-  min-height: 200px;
-}
-.process-workspace :deep(.workspace-data-panel .el-table.business-table.route-list) {
-  --el-table-header-bg-color: #edf2ef;
-  --el-table-header-text-color: #424b46;
-  --el-table-text-color: var(--route-ink);
-  --el-table-border-color: #e3e8e5;
-  --el-table-row-hover-bg-color: #edf5f0;
-  --table-hover-bg: #edf5f0;
-  --table-header-line: #d3ded7;
-  --table-glass-header: none;
-  --table-glass-hover: none;
-  --table-glass-selected-fill: none;
-  --table-glass-edge: 0 0 0 transparent;
-  --table-glass-hover-edge: 0 0 0 transparent;
-  --table-glass-selected-edge: 0 0 0 transparent;
-  border-color: #d8e0db;
-  border-radius: 6px;
-  box-shadow: none;
-}
-.process-workspace
-  :deep(.workspace-data-panel .el-table.business-table.route-list th.el-table__cell) {
-  height: 40px;
-  font-size: 13px;
-  font-weight: 600;
-  background: var(--el-table-header-bg-color);
-  color: var(--el-table-header-text-color);
-  border-color: #d8e0db;
-  border-bottom-color: var(--table-header-line);
-  box-shadow: none;
-}
-.process-workspace
-  :deep(.workspace-data-panel .el-table.business-table.route-list td.el-table__cell) {
-  height: 44px;
-  padding-block: 8px;
-  color: var(--route-ink);
-  background-image: none;
-  box-shadow: none;
-}
+
 .route-empty {
   color: var(--route-placeholder);
   font-size: 13px;
@@ -740,11 +661,11 @@ onBeforeUnmount(() => {
 }
 .route-modifier {
   color: var(--route-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-meta);
 }
 .route-updated-at {
   color: var(--route-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-meta);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -766,7 +687,7 @@ onBeforeUnmount(() => {
   min-height: 28px;
   padding: 0 8px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-meta);
   line-height: 20px;
   font-weight: 400;
 }
@@ -793,15 +714,7 @@ onBeforeUnmount(() => {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.workspace-list-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-shrink: 0;
-  padding-top: 18px;
-  color: var(--route-secondary);
-  font-size: 13px;
-}
+
 @media (prefers-reduced-motion: reduce) {
   .route-kind-switch button,
   .process-workspace .route-list .route-record-action {

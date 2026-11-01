@@ -169,6 +169,7 @@ export interface ScheduleFilters {
   business_person_ids?: number[]
   due_from?: string
   due_to?: string
+  sort_order?: 'asc' | 'desc'
   page?: number
   page_size?: number
 }
@@ -270,17 +271,6 @@ export interface ScheduleTask {
     batch_count: number
     quality_held: boolean
   }[]
-}
-export interface ScheduleTaskWrite {
-  final_due_at?: string | null
-  idempotency_key: string
-  title: string
-  serial_no: string
-  notes: string | null
-  business_person_id?: number | null
-  nodes: (Omit<ScheduleWrite, 'serial_no' | 'sequence_no' | 'predecessor_id'> & {
-    completion_basis: CompletionBasis
-  })[]
 }
 export interface BusinessPerson {
   id: number

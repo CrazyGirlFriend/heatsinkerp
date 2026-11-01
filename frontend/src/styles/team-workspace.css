@@ -1,7 +1,7 @@
 /* Workbench uses the same density and typography as the inventory overview. */
 .team-workspace {
-  --workspace-body-size: 14px;
-  --workspace-meta-size: 12px;
+  --workspace-body-size: var(--font-size-body);
+  --workspace-meta-size: var(--font-size-meta);
   --workspace-number-size: 15px;
   --workspace-control-height: 38px;
   --workspace-gutter: 12px;
@@ -44,13 +44,13 @@
   font-variant-numeric: tabular-nums;
   --el-table-text-color: var(--workspace-ink);
   --el-table-header-bg-color: var(--table-header-bg);
-  --el-table-header-text-color: var(--text);
+  --el-table-header-text-color: var(--subtle);
   --el-table-border-color: var(--line);
   --el-table-row-hover-bg-color: var(--table-hover-bg);
 }
 .team-workspace :is(.serial-table, .team-table, .ledger-table, .processing-records-table) .cell {
   padding-inline: var(--workspace-gutter);
-  line-height: 22px;
+  line-height: var(--line-height-body);
 }
 .team-workspace .team-table .stock-selection-column .cell {
   display: flex;
@@ -62,8 +62,8 @@
   .el-button.is-link {
   min-height: 24px;
   height: auto;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: var(--font-size-meta);
+  line-height: var(--line-height-meta);
 }
 .team-workspace
   :is(.serial-table, .team-table, .ledger-table, .processing-records-table)
@@ -110,15 +110,6 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.team-workspace :is(.serial-ledger > footer, .table-footer, .material-ledger > footer) {
-  min-height: 56px;
-  padding: 10px var(--workspace-gutter);
-}
-.team-workspace :is(.serial-ledger > footer, .table-footer, .material-ledger > footer) > span {
-  color: var(--workspace-muted);
-  font-size: var(--workspace-meta-size);
-}
-
 .page.team-workspace.team-workspace--reading {
   overflow: hidden;
   scrollbar-gutter: auto;
@@ -194,8 +185,6 @@
 
 /* Bound the table body so its header and pagination stay visible in fullscreen. */
 .team-workspace.reading-workspace.team-workspace--reading.team-workspace--fullscreen {
-  --workspace-body-size: 16px;
-  --workspace-number-size: 16px;
   position: fixed;
   inset: 0;
   z-index: 1500;
@@ -262,34 +251,12 @@
 }
 @media (max-width: 760px) {
   .team-workspace.reading-workspace.team-workspace--reading.team-workspace--fullscreen {
-    --workspace-body-size: 14px;
+    --workspace-body-size: var(--font-size-body);
     --workspace-number-size: 15px;
     padding: 12px;
   }
 }
 
-/* Workspace surfaces reuse the existing panels and Element Plus tables. */
-.team-workspace.team-workspace--reading .workspace-data-panel {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  overflow: hidden;
-  border-radius: 0;
-}
-.team-workspace .workspace-data-panel .workspace-data-toolbar {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 0 12px;
-  border: 0;
-  background: transparent;
-}
 .team-workspace :is(.workspace-data-toolbar, .history-search) > :is(.warehouse-search, .el-input) {
   flex: 1 1 320px;
   min-width: min(100%, 220px);
@@ -328,56 +295,9 @@
 .team-workspace .workspace-data-toolbar .list-refresh {
   margin-left: 0;
 }
-.team-workspace.team-workspace--reading .workspace-data-panel .el-table.business-table {
-  --business-table-font: var(--workspace-body-size);
-  --business-table-padding: 11px;
-  --el-table-header-bg-color: var(--table-header-bg);
-  --el-table-header-text-color: #52635a;
-  --el-table-border-color: var(--line);
-  --el-table-row-hover-bg-color: var(--table-hover-bg);
-  flex: 1;
-  min-height: 0;
-  border: 1px solid #d8dfdc;
-  border-radius: 8px;
-  background: #fff;
-}
-.team-workspace.team-workspace--reading
-  .workspace-data-panel
-  .el-table.business-table
-  th.el-table__cell {
-  height: 42px;
-  padding-block: 8px;
-  color: #52635a;
-  font-size: 12px;
-  font-weight: 500;
-}
-.team-workspace.team-workspace--reading
-  .workspace-data-panel
-  .el-table.business-table
-  td.el-table__cell {
-  height: 57px;
-  padding-block: 10px;
-  color: #47564d;
-}
-.team-workspace.team-workspace--reading
-  .workspace-data-panel
-  .el-table.warehouse-table.business-table
-  td.el-table__cell {
-  height: 44px;
-  padding-block: 7px;
-}
-.team-workspace.team-workspace--reading .workspace-data-panel .el-table.business-table .cell {
-  line-height: 22px;
-}
-.team-workspace.team-workspace--reading
-  .workspace-data-panel
-  .el-table.business-table
-  :is(.el-button.is-link, .batch-link) {
-  font-size: 13px;
-}
 .team-workspace.team-workspace--reading .warehouse-table .serial-number-link {
-  color: var(--primary);
-  font-weight: 600;
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
 }
 .team-workspace .workspace-data-panel .processing-stock-status {
   gap: 0;
@@ -408,42 +328,6 @@
 .team-workspace .workspace-data-panel :is(.action-cool.is-link, .action-warm.is-link) {
   color: var(--primary);
 }
-.team-workspace .workspace-data-panel > footer,
-.team-workspace .workspace-data-panel .table-footer {
-  min-height: 58px;
-  margin-top: auto;
-  padding: 12px 0 0;
-  border: 0;
-  background: transparent;
-}
-.team-workspace .workspace-data-panel footer > span {
-  font-size: 12px;
-}
-.team-workspace .workspace-data-panel .inventory-as-of {
-  display: inline;
-  margin-left: 10px;
-  font-size: 11px;
-}
-.team-workspace .workspace-data-panel .el-pagination {
-  --el-pagination-button-bg-color: transparent;
-  font-size: 12px;
-}
-.team-workspace .workspace-data-panel .el-pagination .el-pager li {
-  border-radius: 8px;
-  font-size: 12px;
-}
-.team-workspace .workspace-data-panel .el-pagination .el-pager li.is-active {
-  color: var(--primary);
-  background: var(--primary-soft);
-}
-.team-workspace .workspace-data-panel .el-pagination .el-select__wrapper {
-  min-height: 32px;
-  border-radius: 9px;
-  font-size: 12px;
-}
-.team-workspace .workspace-data-panel .el-table__inner-wrapper::before {
-  display: none;
-}
 @media (max-width: 1320px) {
   .team-workspace .workspace-data-toolbar :is(.el-button, .el-input__inner, .el-select__wrapper) {
     font-size: 12px;
@@ -453,18 +337,6 @@
   }
   .team-workspace .workspace-toolbar-actions {
     padding-left: 8px;
-  }
-}
-@media (max-height: 820px) {
-  .team-workspace.team-workspace--reading
-    .workspace-data-panel
-    .el-table.business-table
-    td.el-table__cell {
-    height: 43px;
-    padding-block: 6px;
-  }
-  .team-workspace .workspace-data-panel .workspace-data-toolbar {
-    padding-bottom: 10px;
   }
 }
 @media (max-width: 760px) {
@@ -485,8 +357,5 @@
     margin-left: 0;
     border-left: 0;
     padding-left: 0;
-  }
-  .team-workspace .workspace-data-panel > footer {
-    flex-wrap: wrap;
   }
 }

@@ -213,6 +213,7 @@ def list_tasks(
     scope=None,
     serial_nos=None,
     business_person_ids=None,
+    sort_order="asc",
     page=1,
     page_size=20,
     **filters,
@@ -256,10 +257,28 @@ def list_tasks(
         candidates = select(Plan.task_id).where(Plan.id.in_(nodes)).distinct()
         matched = task_status_filter(candidates, status, scope)
     total = db.scalar(select(func.count()).select_from(matched)) or 0
+    last_node = aliased(Plan)
+    final_due = func.coalesce(
+        Task.final_due_at,
+        select(last_node.due_at)
+        .where(last_node.task_id == Task.id)
+        .order_by(
+            case((last_node.cancelled_at.is_(None), 0), else_=1),
+            last_node.sequence_no.desc(),
+            last_node.id.desc(),
+        )
+        .limit(1)
+        .scalar_subquery(),
+    )
     ids = list(
         db.scalars(
             select(matched.c.task_id)
-            .order_by(matched.c.first_due, matched.c.task_id)
+            .join(Task, Task.id == matched.c.task_id)
+            .order_by(
+                final_due.is_(None),
+                final_due.desc() if sort_order == "desc" else final_due.asc(),
+                matched.c.task_id,
+            )
             .offset((page - 1) * page_size)
             .limit(page_size)
         )

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { ElDatePicker, ElInputNumber } from 'element-plus'
+import { ElDatePicker, ElFormItem, ElInputNumber, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ScheduleTaskEditor from './ScheduleTaskEditor.vue'
 import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
@@ -92,6 +92,11 @@ function batchDate(index: number, value: string) {
 it('loads the serial process but requires dispatch to set the customer deadline', async () => {
   await render()
   expect(productionScheduleApi.taskRouteOptions).toHaveBeenCalledWith('S-001')
+  const routeField = wrapper
+    .findAllComponents(ElFormItem)
+    .find((field) => field.props('label') === '关联工艺')!
+  expect(routeField.props('required')).toBe(true)
+  expect(routeField.getComponent(ElSelect).props('modelValue')).toBe(routeFixture.id)
   expect(wrapper.text()).toContain('执行工艺')
   await button('创建排期')
   expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
@@ -125,6 +130,36 @@ it('loads the serial process but requires dispatch to set the customer deadline'
     orderFile,
   )
   expect(vi.mocked(productionScheduleApi.createTask).mock.calls[0]![0]).not.toHaveProperty('nodes')
+})
+it('blocks creation without a process and waits for a choice when several processes match', async () => {
+  vi.mocked(productionScheduleApi.taskRouteOptions).mockResolvedValueOnce([])
+  await render()
+  const createButton = () => wrapper.findAll('button').find((item) => item.text() === '创建排期')!
+  expect(createButton().attributes('disabled')).toBeDefined()
+  expect(wrapper.text()).toContain('该流水号暂无工艺')
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
+  const route = structuredClone(routeFixture)
+  route.steps.forEach((step) => {
+    step.serial_nos = ['S-001']
+    step.planned_quantity = '100'
+  })
+  vi.mocked(productionScheduleApi.taskRouteOptions).mockResolvedValueOnce([
+    route as unknown as ScheduleRouteOption,
+    { ...route, id: route.id + 1 } as unknown as ScheduleRouteOption,
+  ])
+  await button('读取工艺')
+  expect(createButton().attributes('disabled')).toBeDefined()
+  const selection = wrapper
+    .findAllComponents(ElSelect)
+    .find((item) => item.props('ariaLabel') === '关联工艺')!
+  selection.vm.$emit('update:modelValue', route.id)
+  await flushPromises()
+  expect(createButton().attributes('disabled')).toBeUndefined()
+  await wrapper.get('input[aria-label="任务流水号"]').setValue('OTHER')
+  expect(createButton().attributes('disabled')).toBeDefined()
+  expect(selection.props('modelValue')).toBeUndefined()
 })
 it('rejects customer batches that do not add up to the route quantity', async () => {
   await render()

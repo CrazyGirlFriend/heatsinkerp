@@ -151,27 +151,6 @@ def require_clear_lots(db, lots):
         )
 
 
-def held_quantity(db, root_id, *, lock=False):
-    family = select(MaterialTransfer.id).where(
-        or_(MaterialTransfer.id == root_id, MaterialTransfer.inspection_hold_root_id == root_id)
-    )
-    condition = MaterialStockBalance.transfer_id.in_(family)
-    if lock:
-        # Current reads after the hold lock avoid a stale REPEATABLE READ snapshot.
-        # Lock balances only; a waiting worker may already own its transfer row.
-        return sum(
-            db.scalars(
-                select(MaterialStockBalance.on_hand_quantity)
-                .where(condition)
-                .order_by(MaterialStockBalance.transfer_id)
-                .with_for_update()
-            )
-        )
-    return db.scalar(
-        select(func.coalesce(func.sum(MaterialStockBalance.on_hand_quantity), 0)).where(condition)
-    )
-
-
 def recheck_context(db, inspection_id):
     row = db.get(Inspection, inspection_id)
     if row is None or row.parent_id or not row.failed_quantity:

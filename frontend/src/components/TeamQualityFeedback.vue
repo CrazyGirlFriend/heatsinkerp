@@ -1,16 +1,10 @@
 <script setup lang="ts">
+import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
+import WorkspaceTable from './WorkspaceTable.vue'
+import WorkspacePagination from './WorkspacePagination.vue'
+import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import {
-  ElButton,
-  ElInput,
-  ElSelect,
-  ElOption,
-  ElTable,
-  ElTableColumn,
-  ElTag,
-  ElPagination,
-} from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { ElButton, ElSelect, ElOption, ElTableColumn, ElTag } from 'element-plus'
 import { useRoute } from 'vue-router'
 import FilterDialog from './FilterDialog.vue'
 import InspectionProblemFilter from './InspectionProblemFilter.vue'
@@ -19,7 +13,6 @@ import StatePanel from './StatePanel.vue'
 import TableExportButton from './TableExportButton.vue'
 import QualityFeedbackDetail from './QualityFeedbackDetail.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
-import WorkspaceTools from './WorkspaceTools.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import {
@@ -67,6 +60,14 @@ const live = useLiveRefresh(() => load(true), {
 function params(): QualityFilters {
   return { ...applied.value, team_id: props.showAll ? applied.value.team_id : props.teamId }
 }
+watch(
+  [page, size],
+  () => {
+    ++generation
+    rows.value = []
+  },
+  { flush: 'sync' },
+)
 async function load(background = false) {
   const token = ++generation
   if (!background) loading.value = true
@@ -204,69 +205,70 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <section class="quality-feedback-records workspace-data-panel">
-    <div class="quality-feedback-toolbar workspace-data-toolbar">
-      <ElInput
-        v-model="query"
-        :prefix-icon="Search"
-        placeholder="流水号、批次号、材质或问题说明"
-        clearable
-        @keyup.enter="search"
-        @clear="search"
-      />
-      <FilterDialog
-        v-model="filtersOpen"
-        :count="count"
-        @open="openFilters"
-        @apply="apply"
-        @reset="reset"
-      >
-        <label
-          >问题来源<ElSelect v-model="draftKind" clearable placeholder="全部"
-            ><ElOption label="巡检" value="patrol" /><ElOption
-              label="检验"
-              value="inspection" /></ElSelect
-        ></label>
-        <label
-          >处理状态<ElSelect v-model="draftStatus" clearable placeholder="全部"
-            ><ElOption
-              v-for="(name, key) in feedbackStates"
-              :key="key"
-              :value="key"
-              :label="name" /></ElSelect
-        ></label>
-        <label v-if="showAll"
-          >涉及班组<ElSelect v-model="draftTeam" clearable placeholder="全部"
-            ><ElOption
-              v-for="t in directory.items"
-              :key="t.id"
-              :label="t.name"
-              :value="Number(t.id)" /></ElSelect
-        ></label>
-        <label>发现日期<RecordDateFilter v-model="dates" label="发现日期" /></label>
-        <label>检验问题<InspectionProblemFilter v-if="filtersOpen" v-model="draftProblem" /></label>
-      </FilterDialog>
-      <ElButton class="action-warm" @click="search">查询</ElButton>
-      <TableExportButton
-        :source="exportSource"
-        :disabled="loading || !!error"
-        :context="JSON.stringify(params())"
-      />
-      <WorkspaceTools refresh :loading="loading" @refresh="load()" />
-    </div>
+  <WorkspaceDataPanel class="quality-feedback-records workspace-data-panel">
+    <WorkspaceDataToolbar
+      v-model="query"
+      :loading="loading"
+      search-label="质量反馈搜索"
+      placeholder="流水号、批次号、材质或问题说明"
+      @search="search"
+      @refresh="load()"
+    >
+      <template #filters>
+        <FilterDialog
+          v-model="filtersOpen"
+          :count="count"
+          @open="openFilters"
+          @apply="apply"
+          @reset="reset"
+        >
+          <label
+            >问题来源<ElSelect v-model="draftKind" clearable placeholder="全部"
+              ><ElOption label="巡检" value="patrol" /><ElOption
+                label="检验"
+                value="inspection" /></ElSelect
+          ></label>
+          <label
+            >处理状态<ElSelect v-model="draftStatus" clearable placeholder="全部"
+              ><ElOption
+                v-for="(name, key) in feedbackStates"
+                :key="key"
+                :value="key"
+                :label="name" /></ElSelect
+          ></label>
+          <label v-if="showAll"
+            >涉及班组<ElSelect v-model="draftTeam" clearable placeholder="全部"
+              ><ElOption
+                v-for="t in directory.items"
+                :key="t.id"
+                :label="t.name"
+                :value="Number(t.id)" /></ElSelect
+          ></label>
+          <label>发现日期<RecordDateFilter v-model="dates" label="发现日期" /></label>
+          <label
+            >检验问题<InspectionProblemFilter v-if="filtersOpen" v-model="draftProblem"
+          /></label>
+        </FilterDialog>
+      </template>
+      <template #tools
+        ><TableExportButton
+          :source="exportSource"
+          :disabled="loading || !!error"
+          :context="JSON.stringify(params())"
+      /></template>
+    </WorkspaceDataToolbar>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
-    <ElTable
+    <WorkspaceTable
       v-else
       :data="rows"
-      class="business-table quality-feedback-table"
-      height="100%"
-      flexible
+      class="quality-feedback-table"
       row-key="id"
       empty-text="暂无质量反馈"
     >
       <ElTableColumn
         prop="serial_no"
+        class-name="table-identity"
         label="流水号"
         min-width="150"
         align="center"
@@ -314,65 +316,25 @@ onBeforeUnmount(() => {
           ><ElButton link type="primary" @click="selected = row.id">查看 / 处理</ElButton></template
         ></ElTableColumn
       >
-    </ElTable>
-    <footer>
-      <span>共 {{ total }} 条问题 · 多班组关联不重复计数</span
-      ><ElPagination
-        :current-page="page"
-        :page-size="size"
-        :page-sizes="[10, 20, 50, 100]"
-        :total="total"
-        layout="sizes, prev, pager, next"
-        @current-change="changePage"
-        @size-change="
-          (value) => {
-            size = value
-            changePage(1)
-          }
-        "
-      />
-    </footer>
+    </WorkspaceTable>
+    <WorkspacePagination
+      :current-page="page"
+      :page-size="size"
+      :total="total"
+      @current-change="changePage"
+      @size-change="
+        (value) => {
+          size = value
+          changePage(1)
+        }
+      "
+      >共 {{ total }} 条问题 · 多班组关联不重复计数</WorkspacePagination
+    >
     <QualityFeedbackDetail
       v-if="selected"
       :issue-id="selected"
       @close="selected = undefined"
       @changed="changed"
     />
-  </section>
+  </WorkspaceDataPanel>
 </template>
-<style scoped>
-.quality-feedback-records {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-  gap: 16px;
-}
-.quality-feedback-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-.quality-feedback-toolbar > .el-input {
-  flex: 1;
-  min-width: 220px;
-}
-.quality-feedback-toolbar :deep(.el-button) {
-  margin-left: 0;
-}
-.quality-feedback-table {
-  flex: 1;
-  min-height: 260px;
-}
-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  color: var(--muted);
-  font-size: 13px;
-}
-</style>

@@ -130,22 +130,6 @@ export const inventoryColumns = [
   },
 ] as const
 export type InventoryColumnKey = (typeof inventoryColumns)[number]['key']
-export const serialNumberColumn = {
-  key: 'serial_no',
-  label: '流水号',
-  width: 250,
-  format: (row: SerialSummary) => row.serial_no,
-} as const
-export const inventorySearchColumns = [serialNumberColumn, ...inventoryColumns]
-export type InventorySearchField = 'all' | (typeof inventorySearchColumns)[number]['key']
-export const inventorySearchKind = (field: InventorySearchField) =>
-  field === 'urgency'
-    ? 'status'
-    : field === 'last_activity_at'
-      ? 'date'
-      : inventoryColumns.some((column) => column.key === field && 'numeric' in column)
-        ? 'number'
-        : 'text'
 export interface InventoryColumnChoice<K extends string = InventoryColumnKey> {
   key: K
   visible: boolean

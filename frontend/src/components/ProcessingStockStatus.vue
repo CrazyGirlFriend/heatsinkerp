@@ -2,7 +2,8 @@
 import { materialWeightToleranceKg } from '@/config/materialRules'
 
 import { computed } from 'vue'
-import { ElTag, ElTooltip } from 'element-plus'
+import { ElIcon, ElTag, ElTooltip } from 'element-plus'
+import { WarningFilled } from '@element-plus/icons-vue'
 import type { ProcessingSummary } from '@/types/materialProcessing'
 import { processingStateLabels, type ProcessingState } from '@/types/materialProcessing'
 import { isScrapType, type MaterialType } from '@/types/materialTransfer'
@@ -17,6 +18,7 @@ const props = defineProps<{
   }
   materialType?: MaterialType | '' | null
   pending?: boolean
+  compact?: boolean
 }>()
 const registered = computed(() => (props.summary?.processing_registered_batch_count ?? 0) > 0)
 const unregistered = computed(() => (props.summary?.processing_unregistered_batch_count ?? 0) > 0)
@@ -47,9 +49,12 @@ const mixed = computed(() => !props.state && registered.value && unregistered.va
 const label = computed(() =>
   mixed.value ? '部分批次有加工记录' : processingStateLabels[current.value],
 )
+const weightWarning = computed(
+  () => (props.summary?.max_weight_difference || 0) > materialWeightToleranceKg,
+)
 const hint = computed(() =>
   props.summary
-    ? `有加工记录的批次库存：${inventoryAmount(props.summary.processing_registered_quantity)} 件 / ${inventoryAmount(props.summary.processing_registered_weight)} kg\n未登记批次库存：${inventoryAmount(props.summary.processing_unregistered_quantity)} 件 / ${inventoryAmount(props.summary.processing_unregistered_weight)} kg${props.pending ? `\n转出待签收：${inventoryAmount(props.summary.in_transit_quantity)} 件 / ${inventoryAmount(props.summary.in_transit_weight)} kg` : ''}`
+    ? `有加工记录的批次库存：${inventoryAmount(props.summary.processing_registered_quantity)} 件 / ${inventoryAmount(props.summary.processing_registered_weight)} kg\n未登记批次库存：${inventoryAmount(props.summary.processing_unregistered_quantity)} 件 / ${inventoryAmount(props.summary.processing_unregistered_weight)} kg${props.pending ? `\n转出待签收：${inventoryAmount(props.summary.in_transit_quantity)} 件 / ${inventoryAmount(props.summary.in_transit_weight)} kg` : ''}${weightWarning.value ? `\n同批累计差异超 ${materialWeightToleranceKg} kg` : ''}`
     : '',
 )
 </script>
@@ -58,12 +63,18 @@ const hint = computed(() =>
   <ElTooltip
     :content="hint"
     :disabled="
-      !summary || current === 'not_applicable' || current === 'cleared' || current === 'pending'
+      !summary ||
+      (!weightWarning &&
+        (current === 'not_applicable' || current === 'cleared' || current === 'pending'))
     "
     :trigger="['hover', 'focus']"
     popper-class="processing-status-tooltip"
   >
-    <div class="processing-stock-status" :tabindex="summary ? 0 : undefined">
+    <div
+      class="processing-stock-status"
+      :class="{ 'processing-stock-status--compact': compact }"
+      :tabindex="summary ? 0 : undefined"
+    >
       <ElTag
         effect="light"
         :type="
@@ -75,14 +86,19 @@ const hint = computed(() =>
         "
         >{{ label }}</ElTag
       >
-      <small v-if="summary && registered"
+      <small v-if="!compact && summary && registered"
         >未转出 {{ inventoryAmount(summary.processing_registered_quantity) }} 件</small
       >
-      <small
-        v-if="(summary?.max_weight_difference || 0) > materialWeightToleranceKg"
-        class="processing-weight-warning"
+      <small v-if="!compact && weightWarning" class="processing-weight-warning"
         >同批累计差异超 {{ materialWeightToleranceKg }} kg</small
       >
+      <ElIcon
+        v-if="compact && weightWarning"
+        class="processing-weight-warning"
+        role="img"
+        :aria-label="`同批累计差异超 ${materialWeightToleranceKg} kg`"
+        ><WarningFilled
+      /></ElIcon>
     </div>
   </ElTooltip>
 </template>
@@ -98,6 +114,12 @@ const hint = computed(() =>
   color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+.processing-stock-status--compact {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 6px;
+  vertical-align: middle;
 }
 .processing-stock-status .processing-weight-warning {
   color: var(--el-color-danger);

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { ElPagination } from 'element-plus'
 import TeamQualityFeedback from './TeamQualityFeedback.vue'
 import FilterDialog from './FilterDialog.vue'
 import InspectionProblemFilter from './InspectionProblemFilter.vue'
@@ -66,6 +67,29 @@ async function render() {
   })
   await flushPromises()
 }
+it('clears the larger page while a smaller page is loading and after a failed request', async () => {
+  const items = Array.from({ length: 23 }, (_, index) => ({ ...record, id: index + 1 }))
+  const response = (size: number) => ({ items: items.slice(0, size), total: 23, pending_count: 23 })
+  vi.mocked(qualityFeedbackApi.records).mockImplementation(async (params) =>
+    response(params?.page_size || 10),
+  )
+  await render()
+  wrapper.getComponent(ElPagination).vm.$emit('size-change', 20)
+  await flushPromises()
+  expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(20)
+  let fail!: (error: Error) => void
+  vi.mocked(qualityFeedbackApi.records).mockImplementationOnce(
+    () => new Promise((_, reject) => (fail = reject)),
+  )
+  wrapper.getComponent(ElPagination).vm.$emit('size-change', 10)
+  await flushPromises()
+  expect(wrapper.getComponent(ElPagination).props('pageSize')).toBe(10)
+  expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(0)
+  fail(new Error('读取失败'))
+  await flushPromises()
+  expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(0)
+  expect(wrapper.text()).toContain('读取失败')
+})
 it('uses a selected problem for the list and export while preserving the original problem name', async () => {
   await render()
   wrapper.getComponent(FilterDialog).vm.$emit('open')

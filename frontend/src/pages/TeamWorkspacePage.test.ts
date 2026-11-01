@@ -22,7 +22,6 @@ import ReceiptPersonInput from '@/components/ReceiptPersonInput.vue'
 import MaterialBatchPrintDialog from '@/components/MaterialBatchPrintDialog.vue'
 import { dispatchFixture } from '@/testFixtures/materialDispatch'
 import { ElPagination } from 'element-plus'
-import { analyticsFixture } from '@/testFixtures/materialAnalytics'
 import { warehouseFixture } from '@/testFixtures/teamInventory'
 import { showToast } from '@/stores/toast'
 import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
@@ -63,11 +62,6 @@ vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => state.di
 vi.mock('@/services/qualityFeedbackApi', () => ({
   qualityFeedbackApi: {
     records: vi.fn().mockResolvedValue({ items: [], total: 0, pending_count: 0 }),
-  },
-}))
-vi.mock('@/services/reworkNoticeApi', () => ({
-  reworkNoticeApi: {
-    list: vi.fn().mockResolvedValue({ items: [], total: 0, unread: 0 }),
   },
 }))
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
@@ -130,7 +124,6 @@ beforeEach(() => {
   })
   state.directory = reactive({ ...state.directory, loaded: true, loading: false, error: '' })
   vi.spyOn(teamMaterialApi, 'overview').mockImplementation(async () => ({ ...summary }))
-  vi.spyOn(teamMaterialApi, 'analytics').mockResolvedValue(analyticsFixture())
   vi.spyOn(teamMaterialApi, 'teamInventory').mockResolvedValue({
     items: [],
     total: 45,
@@ -222,6 +215,23 @@ async function render(path = '/team-workspaces/914', animate = false) {
   return router
 }
 describe('team workspace material ledger', () => {
+  it('shares sync problems with delivery schedules instead of rendering a second banner', async () => {
+    vi.useFakeTimers()
+    await render('/team-workspaces/914?tab=delivery-schedule')
+    subscription.onState('reconnecting')
+    await flushPromises()
+    const schedules = wrapper.getComponent(DeliverySchedules)
+    expect(schedules.props('syncMessage')).toContain('实时连接中断')
+    expect(wrapper.find('.team-material-content > .live-refresh-notice').exists()).toBe(false)
+    const previous = vi.mocked(teamMaterialApi.overview).mock.calls.length
+    schedules.vm.$emit('retry-sync')
+    await vi.advanceTimersByTimeAsync(110)
+    await flushPromises()
+    expect(teamMaterialApi.overview).toHaveBeenCalledTimes(previous + 1)
+    subscription.onState('live')
+    await flushPromises()
+    expect(schedules.props('syncMessage')).toBe('')
+  })
   it('keeps the chosen schedule and current batch when opening dispatch from the schedule tab', async () => {
     vi.mocked(teamMaterialApi.stock).mockResolvedValue({
       items: [source(99)],
@@ -1214,7 +1224,7 @@ describe('team workspace material ledger', () => {
     expect(wrapper.find('.workspace-balance-strip').exists()).toBe(false)
     expect(wrapper.get('h1').classes()).toContain('sr-only')
     expect(wrapper.get('.team-workspace__navigation [aria-current=page]').text()).toBe('库存明细')
-    expect(wrapper.get('.serial-toolbar .workspace-actions').text()).toContain('新建出库')
+    expect(wrapper.get('.workspace-toolbar .workspace-actions').text()).toContain('新建出库')
     expect(wrapper.text()).toContain('2 张历史已接收单')
     expect(wrapper.find('a[href*="next_team_id=914"]').exists()).toBe(true)
     expect(materialTransferApi.list).not.toHaveBeenCalled()
@@ -1249,13 +1259,7 @@ describe('team workspace material ledger', () => {
   ])('keeps %s actions grouped separately from team settings', async (tab) => {
     state.auth.currentUser.team_id = 901
     await render(`/team-workspaces/901?tab=${tab}`)
-    const toolbar = ['serials', 'stock'].includes(tab)
-      ? '.serial-toolbar'
-      : ['overview', 'history'].includes(tab)
-        ? '.history-query-bar'
-        : ['materials', 'material-types'].includes(tab)
-          ? '.ledger-toolbar'
-          : '.list-toolbar'
+    const toolbar = '.workspace-toolbar'
     const actions = wrapper.get(`${toolbar} .workspace-actions`)
     expect(actions.text()).toContain('新建入库')
     expect(actions.text()).toContain('新建出库')
@@ -1264,7 +1268,7 @@ describe('team workspace material ledger', () => {
       expect(wrapper.get('.incoming-scan .scanner-inline').text()).toContain('入库')
     } else expect(actions.text()).toContain('扫码入库')
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(1)
-    expect(wrapper.find('.workspace-more-menu [aria-label="班组设置"]').exists()).toBe(true)
+    expect(wrapper.find('.workspace-data-toolbar [aria-label="班组设置"]').exists()).toBe(true)
     expect(actions.find('[aria-label="班组设置"]').exists()).toBe(false)
     expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(12)
     expect(wrapper.find('.team-workspace__heading').exists()).toBe(true)
@@ -1282,7 +1286,7 @@ describe('team workspace material ledger', () => {
       expect(wrapper.findAll('button').some((button) => button.text() === '新建出库')).toBe(false)
       expect(wrapper.text()).not.toContain('仅查看')
       expect(wrapper.find('[aria-label="班组设置"]').exists()).toBe(kind === 'administrator')
-      expect(wrapper.find('.serial-toolbar [aria-label="刷新工作台"]').exists()).toBe(true)
+      expect(wrapper.find('.workspace-toolbar [aria-label="刷新工作台"]').exists()).toBe(true)
       expect(wrapper.getComponent(TeamInventory).props('canWrite')).toBe(false)
       wrapper.getComponent(TeamInventory).vm.$emit('action', 'loss', [source()])
       await flushPromises()
@@ -1306,7 +1310,7 @@ describe('team workspace material ledger', () => {
     await render('/team-workspaces/914?tab=pending')
     expect(wrapper.get('.team-table').text()).toContain('去毛刺')
     expect(wrapper.get('[aria-label="班组设置"]').text()).toBe('班组设置')
-    const toolbar = wrapper.get('.list-toolbar')
+    const toolbar = wrapper.get('.workspace-toolbar')
     expect(toolbar.find('input[aria-label="物料搜索"]').exists()).toBe(true)
     expect(toolbar.find('input[aria-label="扫描转料批次号"]').exists()).toBe(false)
     expect(wrapper.find('.incoming-scan input[aria-label="扫描转料批次号"]').exists()).toBe(true)

@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { FullScreen, MoreFilled, Refresh, Setting, Upload } from '@element-plus/icons-vue'
+import { inject, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue'
+import { Download, FullScreen, MoreFilled, Refresh, Setting } from '@element-plus/icons-vue'
 import { ElButton, ElPopover } from 'element-plus'
 import { workspaceToolsKey } from '@/utils/workspaceTools'
 
-defineProps<{ refresh?: boolean; loading?: boolean; columns?: boolean }>()
+const props = withDefaults(
+  defineProps<{ refresh?: boolean; loading?: boolean; columns?: boolean; pageActions?: boolean }>(),
+  { pageActions: true },
+)
 const emit = defineEmits<{ refresh: []; columns: [anchor: HTMLElement] }>()
 const tools = inject(workspaceToolsKey, null)
+const slots = useSlots()
 const opened = ref(false)
 const compact = ref(true)
 const root = ref<HTMLElement>()
@@ -17,8 +21,18 @@ let toolbar: HTMLElement | null = null
 
 function updateLayout() {
   const width = toolbar?.getBoundingClientRect().width || 0
+  if (
+    props.pageActions &&
+    !props.refresh &&
+    !props.columns &&
+    !slots.actions &&
+    (!width || width >= 820)
+  ) {
+    compact.value = false
+    return
+  }
   if (width)
-    compact.value = width < (toolbar?.classList.contains('workspace-data-toolbar') ? 900 : 1200)
+    compact.value = width < (toolbar?.classList.contains('workspace-data-toolbar') ? 820 : 1200)
 }
 
 onMounted(() => {
@@ -46,15 +60,20 @@ watch(compact, (value) => {
 <template>
   <div ref="root" class="workspace-tools" role="group" aria-label="页面工具">
     <ElButton
-      v-if="tools?.exportable.value && !tools.fullscreen.value"
-      class="team-workspace__export action-warm"
+      v-if="
+        pageActions &&
+        (tools?.tableExport?.value || tools?.exportable.value) &&
+        !tools?.fullscreen.value
+      "
+      class="team-workspace__export table-export-button action-warm"
       text
-      :icon="Upload"
-      @click="tools.export"
+      :icon="Download"
+      :disabled="tools?.tableExport?.value?.disabled"
+      @click="tools?.tableExport?.value ? tools.tableExport.value.open() : tools?.export()"
       >导出</ElButton
     >
     <ElButton
-      v-if="tools?.canFullscreen.value && !tools.fullscreen.value"
+      v-if="pageActions && tools?.canFullscreen.value && !tools.fullscreen.value"
       class="team-workspace__fullscreen"
       text
       :icon="FullScreen"
@@ -81,7 +100,7 @@ watch(compact, (value) => {
         @click="emit('refresh')"
       />
       <ElButton
-        v-if="tools?.settings.value && !tools.fullscreen.value"
+        v-if="pageActions && tools?.settings.value && !tools.fullscreen.value"
         text
         :icon="Setting"
         aria-label="班组设置"
@@ -93,7 +112,10 @@ watch(compact, (value) => {
     <ElPopover
       v-if="
         compact &&
-        (refresh || columns || (tools?.settings.value && !tools.fullscreen.value) || $slots.actions)
+        (refresh ||
+          columns ||
+          (pageActions && tools?.settings.value && !tools.fullscreen.value) ||
+          $slots.actions)
       "
       v-model:visible="opened"
       trigger="click"
@@ -125,7 +147,7 @@ watch(compact, (value) => {
           >刷新</ElButton
         >
         <ElButton
-          v-if="tools?.settings.value && !tools.fullscreen.value"
+          v-if="pageActions && tools?.settings.value && !tools.fullscreen.value"
           text
           :icon="Setting"
           aria-label="班组设置"

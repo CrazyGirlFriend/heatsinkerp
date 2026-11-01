@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
+import WorkspaceTable from './WorkspaceTable.vue'
+import WorkspacePagination from './WorkspacePagination.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
-import WorkspaceTools from './WorkspaceTools.vue'
+import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Operation, Search } from '@element-plus/icons-vue'
@@ -12,9 +15,7 @@ import {
   ElInput,
   ElOption,
   ElOptionGroup,
-  ElPagination,
   ElSelect,
-  ElTable,
   ElTableColumn,
   ElTag,
   ElTooltip,
@@ -830,7 +831,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="warehouse-inventory serial-ledger workspace-data-panel">
+  <WorkspaceDataPanel class="warehouse-inventory serial-ledger workspace-data-panel">
     <div v-if="summarySection" class="warehouse-search-context">
       <ElButton link type="primary" @click="returnToSummary">返回{{ summaryLabel }}</ElButton
       ><span
@@ -847,12 +848,15 @@ onBeforeUnmount(() => {
       >
     </div>
     <ElAlert v-if="refreshError" :title="refreshError" type="warning" :closable="false" />
-    <div
-      class="warehouse-toolbar serial-toolbar workspace-data-toolbar"
-      role="search"
+    <WorkspaceDataToolbar
+      :loading="loading"
+      columns
       aria-label="库存查询"
+      @search="search"
+      @refresh="emit('refresh')"
+      @columns="columnSettings?.open($event)"
     >
-      <div class="warehouse-search">
+      <template #search>
         <ElSelect
           v-if="searchKind === 'number'"
           v-model="operatorDraft"
@@ -875,8 +879,7 @@ onBeforeUnmount(() => {
               queryDraft = ''
               search()
             }
-          "
-        />
+          " />
         <ElSelect
           v-else-if="searchKind === 'status'"
           v-model="queryDraft"
@@ -901,12 +904,12 @@ onBeforeUnmount(() => {
               : `搜索${searchColumns.find((column) => column.key === fieldDraft)?.label}`
           "
           clearable
+          @keydown.enter.prevent
           @keyup.enter="search"
           @clear="search"
-        />
-      </div>
-      <div class="inventory-filter-controls">
-        <FilterDialog
+      /></template>
+      <template #filters
+        ><FilterDialog
           v-model="filtersOpen"
           title="库存筛选"
           :count="filterCount"
@@ -1081,43 +1084,35 @@ onBeforeUnmount(() => {
               :closable="false"
               class="filter-wide"
             />
-          </div>
-        </FilterDialog>
-        <div class="inventory-query-actions">
-          <ElButton class="action-warm" @click="search">查询</ElButton>
-        </div>
-      </div>
-      <ElButton
-        v-if="processing && canWrite"
-        class="inventory-process"
-        type="primary"
-        :icon="Operation"
-        :disabled="processingLoadingGroupId != null"
-        @click="emit('process')"
-        >加工登记</ElButton
-      >
-      <ElButton v-if="inspection && canWrite" class="action-cool" @click="emit('inspect')"
-        >检验登记</ElButton
-      >
-      <InventoryColumnSettings
-        ref="columnSettings"
-        :key="`${teamId}:${Boolean(processing)}`"
-        :new-visible-keys="['delivery_due_at', 'delivery_schedule_status']"
-        :show-trigger="false"
-        :storage-key="storageKey"
-        :columns="selectableColumns"
-        :legacy-keys="warehouseLegacyColumnKeys"
-        @change="columnChoices = $event"
-      />
-      <WorkspaceTools
-        refresh
-        columns
-        :loading="loading"
-        @refresh="emit('refresh')"
-        @columns="columnSettings?.open($event)"
-        ><template v-if="!fullscreen && $slots.actions" #actions><slot name="actions" /></template
-      ></WorkspaceTools>
-    </div>
+          </div> </FilterDialog
+      ></template>
+      <template #tools>
+        <InventoryColumnSettings
+          ref="columnSettings"
+          :key="`${teamId}:${Boolean(processing)}`"
+          :new-visible-keys="['delivery_due_at', 'delivery_schedule_status']"
+          :show-trigger="false"
+          :storage-key="storageKey"
+          :columns="selectableColumns"
+          :legacy-keys="warehouseLegacyColumnKeys"
+          @change="columnChoices = $event"
+      /></template>
+      <template #primary-actions>
+        <ElButton
+          v-if="processing && canWrite"
+          class="inventory-process"
+          type="primary"
+          :icon="Operation"
+          :disabled="processingLoadingGroupId != null"
+          @click="emit('process')"
+          >加工登记</ElButton
+        >
+        <ElButton v-if="inspection && canWrite" class="action-cool" @click="emit('inspect')"
+          >检验登记</ElButton
+        >
+      </template>
+      <template v-if="!fullscreen && $slots.actions" #actions><slot name="actions" /></template>
+    </WorkspaceDataToolbar>
 
     <ElAlert v-if="inputError" :title="inputError" type="warning" :closable="false" />
     <ElAlert v-if="!warehouse && purposesError" type="warning" :closable="false"
@@ -1145,12 +1140,10 @@ onBeforeUnmount(() => {
     </div>
     <StatePanel v-if="error" state="error" :description="error" @retry="load()" />
     <StatePanel v-else-if="loading" state="loading" title="正在读取库存" />
-    <ElTable
+    <WorkspaceTable
       v-else
-      class="business-table serial-table warehouse-table"
+      class="serial-table warehouse-table"
       :data="rows"
-      height="100%"
-      flexible
       row-key="group_id"
       :expand-row-keys="expandedScheduleGroups.map(String)"
       empty-text="暂无符合条件的库存"
@@ -1164,7 +1157,13 @@ onBeforeUnmount(() => {
         align="center"
         show-overflow-tooltip
         :label-class-name="column.key === searchedColumn?.key ? 'searched-column' : ''"
-        :class-name="'numeric' in column ? 'inventory-number-cell' : ''"
+        :class-name="
+          column.key === 'serial_no'
+            ? 'table-identity'
+            : 'numeric' in column
+              ? 'inventory-number-cell'
+              : ''
+        "
       >
         <template #default="{ row }">
           <div v-if="column.key === 'serial_no'" class="inventory-inline inventory-serial">
@@ -1237,6 +1236,7 @@ onBeforeUnmount(() => {
           >
           <ProcessingStockStatus
             v-else-if="column.key === 'stock_status' && processing"
+            compact
             :summary="asRow(row)"
             :material-type="row.material_type"
             :pending="inventoryHasPending(asRow(row))"
@@ -1392,29 +1392,24 @@ onBeforeUnmount(() => {
           </div></template
         ></ElTableColumn
       >
-    </ElTable>
+    </WorkspaceTable>
     <div v-if="scheduleError && !error" class="inventory-schedule-error" role="status">
       <span>{{ scheduleError }}</span
       ><ElButton link type="primary" :loading="scheduleLoading" @click="loadSchedules()"
         >重试排期</ElButton
       >
     </div>
-    <footer v-if="!error">
-      <span
-        >共 {{ total }} 条库存记录<small v-if="asOf" class="inventory-as-of"
-          >系统记录 · {{ formatDateTime(asOf) }}</small
-        ></span
-      ><ElPagination
-        background
-        :current-page="page"
-        :page-size="pageSize"
-        :page-sizes="[10, 20, 50, 100]"
-        :total="total"
-        layout="sizes, prev, pager, next"
-        @current-change="paginate($event)"
-        @size-change="paginate(1, $event)"
-      />
-    </footer>
+    <WorkspacePagination
+      v-if="!error"
+      :current-page="page"
+      :page-size="pageSize"
+      :total="total"
+      @current-change="paginate($event)"
+      @size-change="paginate(1, $event)"
+      >共 {{ total }} 条库存记录<small v-if="asOf" class="inventory-as-of"
+        >系统记录 · {{ formatDateTime(asOf) }}</small
+      ></WorkspacePagination
+    >
     <TeamInventoryDetail
       ref="inventoryDetail"
       :team-id="teamId"
@@ -1479,82 +1474,20 @@ onBeforeUnmount(() => {
         }
       "
     />
-  </section>
+  </WorkspaceDataPanel>
 </template>
 
 <style scoped>
 .warehouse-inventory {
-  min-width: 0;
-  padding: 0 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--card-radius);
-  background: var(--surface);
   container-type: inline-size;
-}
-.warehouse-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 14px 0;
-}
-.warehouse-search {
-  display: flex;
-  gap: 8px;
-  flex: 1 1 220px;
-  min-width: 200px;
-}
-.warehouse-search > .el-select {
-  min-width: 0;
-}
-.warehouse-search > .el-input {
-  min-width: 0;
-}
-.warehouse-search > .numeric-operator {
-  width: 98px;
-}
-.warehouse-search > :last-child {
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-}
-.inventory-filter-controls,
-.inventory-query-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.inventory-filter-controls {
-  flex-wrap: wrap;
-}
-.warehouse-toolbar :deep(.record-date-trigger) {
-  max-width: 260px;
-  min-width: 0;
-}
-.warehouse-toolbar :deep(.record-date-trigger > span) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.warehouse-toolbar :deep(.el-button + .el-button) {
-  margin-left: 0;
 }
 .warehouse-search-context {
   padding-bottom: 12px;
 }
 .warehouse-table {
-  --business-table-font: 14px;
-  --business-table-padding: 11px;
   container-type: inline-size;
-  font-variant-numeric: tabular-nums;
 }
-.warehouse-table.el-table.business-table :deep(th.el-table__cell) {
-  height: 44px;
-}
-.warehouse-table.el-table.business-table :deep(.cell) {
-  white-space: nowrap;
-  overflow-wrap: normal;
-}
+
 .inventory-inline {
   display: flex;
   align-items: center;
@@ -1609,20 +1542,12 @@ onBeforeUnmount(() => {
   margin-left: 0;
 }
 .inventory-as-of {
-  display: block;
-  margin-top: 4px;
-  font-size: 13px;
+  font-size: var(--font-size-meta);
 }
 .warehouse-table :deep(.searched-column) {
   color: var(--primary);
 }
-.warehouse-table.el-table.business-table :deep(.el-tag) {
-  font-size: 12px;
-  border: 0;
-  padding: 0 9px;
-  height: 26px;
-  line-height: 24px;
-}
+
 .warehouse-table :deep(.serial-number-link) {
   min-width: 0;
   max-width: 100%;
@@ -1635,7 +1560,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 .warehouse-table :deep(.serial-number-link strong) {
-  font-weight: 550;
+  font-weight: var(--font-weight-medium);
 }
 .inventory-serial .serial-number-link {
   flex: 0 1 auto;
@@ -1644,56 +1569,12 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   margin-left: 0;
 }
-.warehouse-inventory > footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  min-height: 56px;
-  padding: 14px 12px;
-  border-top: 1px solid var(--line);
-}
-.warehouse-inventory > footer > span {
-  color: var(--muted);
-  font-size: 14px;
-}
-@container (max-width: 680px) {
-  .warehouse-search {
-    flex-basis: 100%;
-  }
-  .inventory-filter-controls {
-    flex: 1;
-  }
-}
-@container (max-width: 560px) {
-  .warehouse-toolbar {
-    display: flex;
-    gap: 8px;
-  }
-  .warehouse-search {
-    flex-basis: 100%;
-    min-width: 0;
-  }
-  .inventory-filter-controls {
-    display: flex;
-    flex: 0 0 auto;
-    flex-wrap: nowrap;
-  }
-  .inventory-query-actions {
-    flex: 0 0 auto;
-  }
-}
+
 @media (max-width: 760px) {
   .warehouse-inventory {
-    padding-inline: 12px;
+    container-type: inline-size;
   }
-  .warehouse-search {
-    min-width: 0;
-  }
-  .warehouse-inventory > footer {
-    flex-wrap: wrap;
-    overflow-x: auto;
-  }
+
   .warehouse-table :deep(.el-table-fixed-column--right) {
     position: relative !important;
     right: auto !important;

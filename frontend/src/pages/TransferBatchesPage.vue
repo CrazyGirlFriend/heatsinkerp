@@ -418,6 +418,15 @@ function updateRoute(): void {
   })
 }
 
+watch(
+  [page, pageSize],
+  () => {
+    ++requestVersion
+    rows.value = []
+  },
+  { flush: 'sync' },
+)
+
 async function loadRows(background = false): Promise<void> {
   const version = ++requestVersion
   if (!background) {

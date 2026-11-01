@@ -384,6 +384,9 @@ describe('unified production records', () => {
 
   it('shows totals for every matching record and keeps one entry in normal and fullscreen modes', async () => {
     await render()
+    expect(
+      wrapper.get('.processing-totals').element.closest('.workspace-pagination'),
+    ).not.toBeNull()
     expect(wrapper.text()).not.toContain('个人日产')
     expect(wrapper.get('[aria-label="筛选结果加工工作量合计"]').text()).toContain(
       '完成 100 件次 / 98 kg',

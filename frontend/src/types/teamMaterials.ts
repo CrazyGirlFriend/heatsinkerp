@@ -243,10 +243,6 @@ export interface CreatedMaterialBatches {
   items: MaterialTransfer[]
 }
 export const isDispatchNumber = (code: string): boolean => /^CK[A-Z0-9-]+$/i.test(code.trim())
-export const dispatchDocumentTitle = (kind?: MaterialEntryKind): string =>
-  kind === 'inspection_shipment' ? '批次发货单' : '批次出库单'
-export const dispatchConfirmLabel = (kind?: MaterialEntryKind): string =>
-  isExternalEntryKind(kind) ? `确认整批${externalActionLabel(kind)}` : '确认整批接收'
 export interface MaterialPage<T> {
   items: T[]
   total: number

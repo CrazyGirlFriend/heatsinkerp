@@ -5,7 +5,7 @@ import printSource from './MaterialTransferPrintSheet.vue?raw'
 import printCopySource from './MaterialTransferPrintCopy.vue?raw'
 import printModelSource from '@/utils/materialTransferPrint.ts?raw'
 import listSource from '@/pages/TransferBatchesPage.vue?raw'
-import traceSource from '@/pages/MaterialTracePage.vue?raw'
+import serialSource from '@/pages/SerialInventoryPage.vue?raw'
 
 describe('pure material transfer interface', () => {
   it('collects document snapshots without introducing a work-order or process workflow', () => {
@@ -29,26 +29,16 @@ describe('pure material transfer interface', () => {
     expect(drawerSource).not.toContain('<ElInputNumber')
   })
 
-  it('keeps the transfer list for ordinary queries and retains serial tracing', () => {
+  it('keeps the transfer list for ordinary queries and provides serial inventory lookup', () => {
     expect(listSource).toContain('class="page workspace-page transfers-page reading-workspace"')
     expect(listSource).toMatch(/<ElTable\s+v-else\b/)
     expect(listSource).not.toContain('height="100%"')
     expect(listSource).not.toContain('aria-label="扫码查询"')
-    expect(traceSource).toContain(
-      'class="page workspace-page material-trace-page reading-workspace"',
-    )
-    expect(traceSource).toContain('<SerialBatchGraph')
-    for (const source of [listSource, traceSource, drawerSource, formSource]) {
+    expect(serialSource).toContain('各班组库存')
+    expect(serialSource).toContain('loadBatches')
+    for (const source of [listSource, serialSource, drawerSource, formSource]) {
       expect(source).not.toContain("from '@ant-design/icons-vue'")
     }
-  })
-
-  it('traces only a serial-number handoff chain and reports the current state', () => {
-    expect(traceSource).toContain('materialTransferApi.trace(serialNo)')
-    expect(traceSource).toContain('在库分布')
-    expect(traceSource).toContain('批次流向')
-    expect(traceSource).not.toContain('最近确认位置')
-    expect(traceSource).not.toMatch(/WorkOrder|workOrder|工艺主线|工单信息|产品/)
   })
 
   it('prints a teleported Code 128 transfer sheet containing only handoff facts', () => {

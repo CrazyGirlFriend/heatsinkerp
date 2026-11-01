@@ -10,27 +10,6 @@ export interface ChartPoint extends Amount {
   key: string
   label?: string
 }
-export interface ActivityPoint {
-  key: string
-  label?: string
-  incoming: Amount
-  outgoing: Amount
-  loss?: Amount
-}
-export interface MaterialAnalytics {
-  team_id: number
-  days: 7 | 30
-  metric: Metric
-  as_of: string
-  trend: ActivityPoint[]
-  stock_ranking: ChartPoint[]
-  material_types: ChartPoint[]
-  materials: ChartPoint[]
-  loss_ranking: ChartPoint[]
-  stock_age: ChartPoint[]
-  waiting_age: ActivityPoint[]
-  peers: { incoming: ChartPoint[]; outgoing: ChartPoint[] }
-}
 export const serialMetaFields = [
   'material_name',
   'material_type',

@@ -1,5 +1,12 @@
 :root {
-  --font-body: 'HeatSink Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-body:
+    'HeatSink Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-size-body: 14px;
+  --line-height-body: 20px;
+  --font-size-meta: 12px;
+  --line-height-meta: 16px;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
   font-family: var(--font-body);
   color: var(--text);
   background: #fff;
@@ -23,9 +30,9 @@
   --action-orange-hover: #28643d;
   --success: #18a65b;
   --danger: #e5484d;
-  --text: #171b19;
-  --muted: #5e6963;
-  --subtle: #626e67;
+  --text: #18181b;
+  --muted: #52525b;
+  --subtle: #686872;
   --line: #e8edef;
   --line-light: #eff3f0;
   --surface: #fff;
@@ -71,8 +78,10 @@ body {
   min-height: 100vh;
   margin: 0;
   background: #fff;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: var(--font-weight-regular);
+  font-variant-numeric: tabular-nums;
 }
 
 button,
@@ -243,11 +252,20 @@ a {
   overflow: hidden;
 }
 .page-heading-start {
+  --workspace-heading-size: 22px;
   display: flex;
   align-items: center;
   gap: 12px;
   min-width: 0;
   flex-shrink: 0;
+}
+.page-heading-start > h1 {
+  font-weight: 600;
+}
+@media (max-width: 1080px) {
+  .page-heading-start {
+    --workspace-heading-size: 20px;
+  }
 }
 .page-heading,
 .workspace-heading {

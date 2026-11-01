@@ -2,7 +2,8 @@
 import AppDialog from '@/components/AppDialog.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { formatAmount } from '@/utils/format'
-import WorkspaceTools from './WorkspaceTools.vue'
+import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
+import WorkspacePagination from './WorkspacePagination.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import TableExportButton from './TableExportButton.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
@@ -19,7 +20,6 @@ import {
   ElIcon,
   ElInput,
   ElOption,
-  ElPagination,
   ElSelect,
   ElSwitch,
   ElTable,
@@ -27,7 +27,7 @@ import {
   ElTag,
   ElResult,
 } from 'element-plus'
-import { Clock, Lock, Plus, Search, CircleClose } from '@element-plus/icons-vue'
+import { Clock, Lock, Plus, CircleClose } from '@element-plus/icons-vue'
 import { showToast } from '@/stores/toast'
 import {
   locationState,
@@ -299,6 +299,7 @@ function reset() {
   filter.value = undefined
   search()
 }
+
 const validation = useDialogValidation((): Record<string, string> =>
   form.name.trim() ? {} : { name: '请填写仓位名称' },
 )
@@ -389,19 +390,19 @@ onBeforeUnmount(() => {
     <ElResult v-if="!canManage" icon="warning" title="仅库房账号和管理员可以设置仓位" />
     <template v-else>
       <ElCard shadow="never" class="warehouse-card">
-        <div class="warehouse-toolbar">
-          <template v-if="section === 'locations'">
-            <ElInput
-              v-model="query"
-              aria-label="搜索仓位"
-              placeholder="仓位、流水号或材质"
-              clearable
-              :prefix-icon="Search"
-              maxlength="80"
-              @keyup.enter="search"
-              @clear="search"
-            />
-            <FilterDialog
+        <WorkspaceDataToolbar
+          v-model="query"
+          :searchable="section === 'locations'"
+          :refresh="section === 'locations'"
+          :loading="loading"
+          search-label="搜索仓位"
+          placeholder="仓位、流水号或材质"
+          :maxlength="80"
+          @search="search"
+          @refresh="load()"
+        >
+          <template v-if="section === 'locations'" #filters
+            ><FilterDialog
               v-model="filtersOpen"
               title="仓位筛选"
               :count="appliedFilter ? 1 : 0"
@@ -424,18 +425,19 @@ onBeforeUnmount(() => {
                     label="空闲"
                     value="available" /><ElOption label="待签收" value="pending" /><ElOption
                     label="填写中"
-                    value="draft" /><ElOption label="停用" value="disabled" /></ElSelect></label
-            ></FilterDialog>
-            <ElButton class="action-warm" @click="search">查询</ElButton
-            ><ElButton @click="reset">重置</ElButton>
-          </template>
-          <div class="warehouse-actions">
-            <TableExportButton
+                    value="draft" /><ElOption
+                    label="停用"
+                    value="disabled" /></ElSelect></label></FilterDialog
+          ></template>
+          <template #tools
+            ><ElButton v-if="section === 'locations'" @click="reset">重置</ElButton
+            ><TableExportButton
               v-if="section === 'locations'"
               :source="exportSource"
               :disabled="loading || !!error"
               :context="[teamId, section, appliedQuery, appliedFilter].join('|')"
-            />
+          /></template>
+          <template #actions>
             <ElButton
               v-if="canDispatch && selected.size"
               :disabled="loading || !!error"
@@ -448,14 +450,13 @@ onBeforeUnmount(() => {
               @click="section = section === 'locations' ? 'unassigned' : 'locations'"
               >{{ section === 'locations' ? '未分配仓位' : '返回仓位' }}</ElButton
             >
-            <ElButton class="warehouse-add" :icon="Plus" @click="edit()">新增仓位</ElButton>
-            <WorkspaceTools
-              :refresh="section === 'locations'"
-              :loading="loading"
-              @refresh="load()"
-            />
-          </div>
-        </div>
+          </template>
+          <template #primary-actions
+            ><ElButton class="warehouse-add" :icon="Plus" @click="edit()"
+              >新增仓位</ElButton
+            ></template
+          >
+        </WorkspaceDataToolbar>
         <WarehouseUnassigned
           v-if="section === 'unassigned' && teamId"
           :team-id="teamId"
@@ -515,20 +516,21 @@ onBeforeUnmount(() => {
               :image-size="64"
             />
           </div>
-          <footer class="warehouse-footer">
-            <span aria-live="polite">共 {{ total }} 个仓位</span>
-            <div>
-              <span>{{ pageSize }} 个/页</span
-              ><ElPagination
-                v-model:current-page="page"
-                :page-size="pageSize"
-                :total="total"
-                :pager-count="5"
-                layout="prev, pager, next"
-                @current-change="load()"
-              />
-            </div>
-          </footer>
+          <WorkspacePagination
+            :current-page="page"
+            :page-size="pageSize"
+            :total="total"
+            layout="prev, pager, next"
+            @current-change="
+              (value) => {
+                page = value
+                load()
+              }
+            "
+            ><span aria-live="polite"
+              >共 {{ total }} 个仓位 · {{ pageSize }} 个/页</span
+            ></WorkspacePagination
+          >
         </template>
       </ElCard>
       <AppDialog
@@ -734,33 +736,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
 }
-.warehouse-toolbar,
-.warehouse-actions,
-.warehouse-footer,
-.warehouse-footer > div {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.warehouse-toolbar {
-  flex-wrap: wrap;
-  margin-bottom: 18px;
-}
-.warehouse-toolbar > .el-input {
-  flex: 1 1 190px;
-  max-width: 270px;
-}
-.warehouse-toolbar > .el-select {
-  width: 126px;
-}
-.warehouse-toolbar .el-button {
-  height: 36px;
-  margin-left: 0;
-}
-.warehouse-actions {
-  margin-left: auto;
-  flex-wrap: wrap;
-}
+
 .warehouse-refresh {
   width: 36px;
   padding: 0;
@@ -879,17 +855,7 @@ onBeforeUnmount(() => {
   background: rgb(255 255 255 / 55%);
   font-size: 12px;
 }
-.warehouse-footer {
-  justify-content: space-between;
-  flex-shrink: 0;
-  margin-top: auto;
-  padding-top: 24px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.warehouse-footer > div {
-  gap: 16px;
-}
+
 .warehouse-detail-title {
   display: flex;
   align-items: center;
@@ -1048,40 +1014,15 @@ onBeforeUnmount(() => {
   .warehouse-card :deep(.el-card__body) {
     padding: 12px;
   }
-  .warehouse-toolbar > .el-input {
-    max-width: none;
-  }
-  .warehouse-actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
   .warehouse-legend {
     gap: 10px 14px;
   }
-  .warehouse-footer {
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-  .warehouse-footer > div {
-    gap: 8px;
-    flex-wrap: wrap;
-  }
+
   .warehouse-detail-table :deep(.el-scrollbar__bar.is-horizontal) {
     opacity: 1;
   }
 }
 @media (max-width: 560px) {
-  .warehouse-footer {
-    padding-top: 12px;
-    gap: 8px;
-  }
-  .warehouse-footer > div {
-    display: contents;
-  }
-  .warehouse-footer :deep(.el-pagination) {
-    flex-basis: 100%;
-    justify-content: center;
-  }
   .warehouse-detail-summary {
     flex-wrap: wrap;
     gap: 14px;
@@ -1110,12 +1051,8 @@ onBeforeUnmount(() => {
   }
 }
 @media (max-height: 650px) {
-  .warehouse-toolbar,
   .warehouse-legend {
     margin-bottom: 12px;
-  }
-  .warehouse-footer {
-    padding-top: 12px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -27,12 +27,7 @@ import type {
   ProcessingRecordSummary,
 } from '@/types/materialProcessing'
 import { isExternalEntryKind } from '@/types/materialTransfer'
-import type {
-  MaterialAnalytics,
-  Metric,
-  SerialParams,
-  SerialSummary,
-} from '@/types/materialAnalytics'
+import type { SerialParams, SerialSummary } from '@/types/materialAnalytics'
 import type {
   WarehouseGroupParams,
   TeamInventoryParams,
@@ -365,9 +360,6 @@ export const teamMaterialApi = {
       path(teamId, `inventory/${groupId}/pending-outbound`, params),
       normalizeMaterialTransfer,
     )
-  },
-  analytics(teamId: number, params: { days?: 7 | 30; metric?: Metric } = {}) {
-    return request<MaterialAnalytics>(path(teamId, 'analytics', params))
   },
   serials(teamId: number, params: SerialParams = {}) {
     return request<MaterialPage<SerialSummary>>(path(teamId, 'serials', params))

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
+import WorkspaceTable from './WorkspaceTable.vue'
+import WorkspacePagination from './WorkspacePagination.vue'
+import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { formatAmount } from '@/utils/format'
@@ -13,12 +17,9 @@ import {
   ElCheckbox,
   ElForm,
   ElFormItem,
-  ElInput,
   ElInputNumber,
   ElOption,
-  ElPagination,
   ElSelect,
-  ElTable,
   ElTableColumn,
 } from 'element-plus'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
@@ -228,18 +229,19 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="unassigned-stock">
-    <div class="unassigned-tools">
-      <ElInput
-        v-model="query"
-        aria-label="搜索未分配物料"
-        placeholder="流水号、批次或材质"
-        clearable
-        @keyup.enter="search"
-        @clear="search"
-      /><ElButton class="action-warm" :loading="loading" @click="search">查询</ElButton
-      ><TableExportButton :source="exportSource" :disabled="loading || !!error" :context="teamId" />
-    </div>
+  <WorkspaceDataPanel class="unassigned-stock">
+    <WorkspaceDataToolbar
+      v-model="query"
+      search-label="搜索未分配物料"
+      placeholder="流水号、批次或材质"
+      :loading="loading"
+      @search="search"
+      @refresh="load()"
+    >
+      <template #tools
+        ><TableExportButton :source="exportSource" :disabled="loading || !!error" :context="teamId"
+      /></template>
+    </WorkspaceDataToolbar>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <BatchSelectionBar
       v-if="canDispatch"
@@ -258,7 +260,7 @@ onBeforeUnmount(() => {
         >批量出库</ElButton
       ></BatchSelectionBar
     >
-    <ElTable
+    <WorkspaceTable
       :data="rows"
       row-key="transfer.id"
       class="business-table"
@@ -283,7 +285,11 @@ onBeforeUnmount(() => {
           }}</ElButton></template
         ></ElTableColumn
       >
-      <ElTableColumn label="流水号" min-width="150" show-overflow-tooltip
+      <ElTableColumn
+        class-name="table-identity"
+        label="流水号"
+        min-width="150"
+        show-overflow-tooltip
         ><template #default="{ row }">{{
           sharedSerialLabel(row.transfer)
         }}</template></ElTableColumn
@@ -314,17 +320,20 @@ onBeforeUnmount(() => {
           ></template
         ></ElTableColumn
       >
-    </ElTable>
-    <footer>
-      <span>共 {{ total }} 批</span
-      ><ElPagination
-        v-model:current-page="page"
-        :page-size="10"
-        :total="total"
-        layout="prev, pager, next"
-        @current-change="load"
-      />
-    </footer>
+    </WorkspaceTable>
+    <WorkspacePagination
+      :current-page="page"
+      :page-size="10"
+      :total="total"
+      layout="prev, pager, next"
+      @current-change="
+        (value) => {
+          page = value
+          load()
+        }
+      "
+      >共 {{ total }} 批</WorkspacePagination
+    >
     <AppDialog
       :model-value="!!selected"
       title="安排仓位"
@@ -383,33 +392,10 @@ onBeforeUnmount(() => {
         ><ElButton type="primary" :loading="saving" @click="assign">确认安排</ElButton></template
       >
     </AppDialog>
-  </section>
+  </WorkspaceDataPanel>
 </template>
 
 <style scoped>
-.unassigned-stock {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-}
-.unassigned-tools,
-footer {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-block: 12px;
-}
-.unassigned-tools .el-input {
-  max-width: 320px;
-}
-footer {
-  justify-content: space-between;
-  margin-top: auto;
-  padding-top: 20px;
-  color: var(--muted);
-}
 .el-select {
   width: 100%;
 }

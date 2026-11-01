@@ -88,14 +88,6 @@ export const processRouteApi = {
   detail: (id: number) => request<ProcessRoute>(`/${id}`),
   lot: (id: number) =>
     request<{ current: ProcessRouteContext | null; route: ProcessRoute | null }>(`/lots/${id}`),
-  import: (file: File) => {
-    if (!file.name.toLowerCase().endsWith('.docx'))
-      return Promise.reject(new Error('仅支持 .docx 格式的工艺单'))
-    if (file.size > 5 * 1024 * 1024) return Promise.reject(new Error('工艺单文件不能超过 5 MB'))
-    const body = new FormData()
-    body.append('file', file)
-    return request<ProcessRoute>('/import', 'POST', body)
-  },
   parse: (file: File) => {
     if (!file.name.toLowerCase().endsWith('.docx'))
       return Promise.reject(new Error('仅支持 .docx 格式的工艺单'))
@@ -105,19 +97,6 @@ export const processRouteApi = {
     return request<
       Pick<ProcessRoute, 'title' | 'filename' | 'serial_nos' | 'steps' | 'source_data'>
     >('/parse', 'POST', body)
-  },
-  parseOrder: (file: File) => {
-    if (!file.name.toLowerCase().endsWith('.xlsx') || !file.size || file.size > 5 * 1024 * 1024)
-      return Promise.reject(new Error('请上传非空 .xlsx 订单表，不超过 5 MB'))
-    const body = new FormData()
-    body.append('file', file)
-    return request<RouteOrderDocument>('/parse-order', 'POST', body)
-  },
-  attachOrder: (route: ProcessRoute, file: File) => {
-    const body = new FormData()
-    body.append('file', file)
-    body.append('version', String(route.version))
-    return request<ProcessRoute>(`/${route.id}/order`, 'POST', body)
   },
   downloadOrder: async (route: ProcessRoute) => {
     const response = await httpClient.get(`/process-routes/${route.id}/order`, {

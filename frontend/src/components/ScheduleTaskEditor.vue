@@ -343,8 +343,19 @@ onMounted(loadRoutes)
               }}</ElButton></ElFormItem
             >
           </div>
-          <ElFormItem v-if="!task && routes.length > 1" label="工艺" required
-            ><ElSelect v-model="routeId" aria-label="关联工艺"
+          <ElFormItem v-if="!task" label="关联工艺" required
+            ><ElSelect
+              v-model="routeId"
+              aria-label="关联工艺"
+              :loading="loading"
+              :disabled="loading || !routes.length"
+              :placeholder="
+                !serial.trim()
+                  ? '请先输入流水号'
+                  : !routes.length
+                    ? '暂无可用工艺'
+                    : '请选择对应工艺'
+              "
               ><ElOption v-for="r in routes" :key="r.id" :value="r.id" :label="r.title" /></ElSelect
           ></ElFormItem>
           <h3>
@@ -419,7 +430,7 @@ onMounted(loadRoutes)
       ><ElButton
         type="primary"
         :loading="saving"
-        :disabled="!writable || loading || orderBusy"
+        :disabled="!writable || loading || orderBusy || (!task && !selectedRoute)"
         @click="save"
         >{{ task ? '保存交期' : '创建排期' }}</ElButton
       ></template

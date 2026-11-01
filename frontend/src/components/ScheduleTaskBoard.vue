@@ -1,21 +1,15 @@
 <script setup lang="ts">
+import WorkspaceTable from './WorkspaceTable.vue'
+import WorkspacePagination from './WorkspacePagination.vue'
+import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { awaitingReview, plannedDueLabel, planLabel } from '@/utils/schedulePlanning'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import {
-  ElAlert,
-  ElButton,
-  ElInput,
-  ElOption,
-  ElPagination,
-  ElSelect,
-  ElTag,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus'
-import { Filter, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { ElAlert, ElButton, ElOption, ElSelect, ElTag, ElTable, ElTableColumn } from 'element-plus'
+import { Filter, Plus } from '@element-plus/icons-vue'
 import AppDialog from './AppDialog.vue'
 import AppDrawer from './AppDrawer.vue'
+import FilterDialog from './FilterDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import StatePanel from './StatePanel.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
@@ -76,6 +70,7 @@ const initialSerial = typeof route.query.serial_no === 'string' ? route.query.se
 const query = ref(initialSerial),
   filters = ref<ScheduleFilters>(initialSerial ? { query: initialSerial } : {}),
   filterOpen = ref(false)
+const sortOrder = ref<'asc' | 'desc'>('asc')
 const draftTeam = ref<number>(),
   draftStatus = ref<ScheduleStatus>(),
   draftScope = ref<'attention' | 'completed'>(),
@@ -106,6 +101,14 @@ const filterCount = computed(
     Number(!!filters.value.serial_nos?.length) +
     Number(!!filters.value.business_person_ids?.length),
 )
+watch(
+  [page, pageSize],
+  () => {
+    ++generation
+    rows.value = []
+  },
+  { flush: 'sync' },
+)
 async function load(background = false) {
   const token = ++generation
   if (!background) loading.value = true
@@ -113,6 +116,7 @@ async function load(background = false) {
   try {
     const result = await productionScheduleApi.tasks({
       ...filters.value,
+      sort_order: sortOrder.value,
       page: page.value,
       page_size: pageSize.value,
     })
@@ -133,8 +137,22 @@ async function load(background = false) {
     if (token === generation) loading.value = false
   }
 }
+function search() {
+  filters.value = { ...filters.value, query: query.value.trim() || undefined }
+  page.value = 1
+  void load()
+}
+function changeSort(order: 'asc' | 'desc') {
+  if (order === sortOrder.value) return
+  sortOrder.value = order
+  page.value = 1
+  void load()
+}
+function sortChanged(sort: { prop: string | null; order: 'ascending' | 'descending' | null }) {
+  if (sort.prop === 'final_due_at' && sort.order)
+    changeSort(sort.order === 'ascending' ? 'asc' : 'desc')
+}
 function openFilters() {
-  query.value = filters.value.query || ''
   draftScope.value = filters.value.scope
   draftTeam.value = filters.value.team_id
   draftStatus.value = filters.value.status
@@ -148,6 +166,7 @@ function openFilters() {
 }
 function applyFilters() {
   filters.value = {
+    query: filters.value.query,
     scope: draftScope.value || undefined,
     serial_nos: draftSerialSelection.value.length
       ? draftSerialSelection.value.map((item) => String(item.value))
@@ -155,7 +174,6 @@ function applyFilters() {
     business_person_ids: draftPersonSelection.value.length
       ? draftPersonSelection.value.map((item) => Number(item.value))
       : undefined,
-    query: query.value.trim() || undefined,
     team_id: draftTeam.value,
     status: draftStatus.value,
     due_from: draftDates.value.from ? `${draftDates.value.from}T00:00:00+08:00` : undefined,
@@ -168,7 +186,6 @@ function applyFilters() {
   void load()
 }
 function resetFilters() {
-  query.value = ''
   draftScope.value = undefined
   draftTeam.value = undefined
   draftStatus.value = undefined
@@ -318,7 +335,7 @@ function nodeChanged() {
   if (detailId.value) void openTask(detailId.value)
 }
 function exportSource() {
-  const selected = { ...filters.value }
+  const selected = { ...filters.value, sort_order: sortOrder.value }
   const perNode = (task: ScheduleTask, value: (node: ProductionSchedule) => string) =>
     task.nodes.map((node, index) => `${index + 1}. ${node.team_name}：${value(node)}`).join('；')
   return tableExportSource(
@@ -387,12 +404,33 @@ onBeforeUnmount(() => {
     :class="{ 'task-board--fullscreen': fullscreen }"
     aria-label="生产排期任务"
   >
-    <div v-if="!fullscreen || error" class="workspace-data-toolbar task-board__toolbar">
+    <div v-if="!fullscreen || error" class="task-board__toolbar">
       <slot name="heading"><strong class="task-board__title">交货进度</strong></slot>
       <div class="task-board__actions">
-        <slot name="view-actions" />
-        <ElButton
+        <TableExportButton
+          text
           v-if="!fullscreen"
+          :source="exportSource"
+          :context="JSON.stringify({ ...filters, sort_order: sortOrder })"
+          :disabled="loading || !!error"
+        />
+        <slot name="view-actions" />
+      </div>
+    </div>
+    <WorkspaceDataToolbar
+      v-if="!fullscreen"
+      v-model="query"
+      :loading="loading"
+      search-label="任务排期搜索"
+      placeholder="搜索流水号、任务或批次号"
+      :maxlength="160"
+      refresh-label="刷新任务排期"
+      @search="search"
+      @refresh="load()"
+    >
+      <template #filters>
+        <ElButton
+          v-if="!fullscreen && !management"
           class="task-board__filter"
           :class="{ 'action-cool': filterCount > 0 }"
           :icon="Filter"
@@ -403,37 +441,137 @@ onBeforeUnmount(() => {
             filterCount
           }}</span></ElButton
         >
-        <TableExportButton
+        <component
+          :is="management ? FilterDialog : AppDrawer"
           v-if="!fullscreen"
-          :source="exportSource"
-          :context="JSON.stringify(filters)"
-          :disabled="loading || !!error"
-        />
-        <ElButton
-          v-if="!fullscreen"
-          :icon="Refresh"
-          :loading="loading"
-          aria-label="刷新任务排期"
-          @click="load()"
-        />
-        <ElButton v-if="!fullscreen && canManage" type="primary" :icon="Plus" @click="createTask"
-          >新建任务排期</ElButton
+          v-model="filterOpen"
+          title="排期筛选"
+          v-bind="
+            management
+              ? { count: filterCount }
+              : {
+                  direction: 'rtl',
+                  size: 'min(420px, 94vw)',
+                  appendToBody: true,
+                  class: 'schedule-filter-drawer',
+                }
+          "
+          @open="management && openFilters()"
+          @reset="resetFilters"
+          @apply="applyFilters"
         >
-      </div>
-    </div>
+          <div :class="management ? 'filter-fields' : 'schedule-filter-fields'">
+            <label
+              >任务范围<ElSelect
+                v-model="draftScope"
+                aria-label="任务范围筛选"
+                placeholder="全部任务"
+                clearable
+                ><ElOption label="需关注" value="attention" />
+                <ElOption label="已交完" value="completed" /></ElSelect
+            ></label>
+            <label
+              >交货班组<ElSelect
+                v-model="draftTeam"
+                aria-label="交货班组筛选"
+                placeholder="全部班组"
+                clearable
+                ><ElOption
+                  v-for="team in teams"
+                  :key="team.id"
+                  :value="Number(team.id)"
+                  :label="team.name" /></ElSelect
+            ></label>
+            <label
+              >任务状态<ElSelect
+                v-model="draftStatus"
+                aria-label="任务状态筛选"
+                placeholder="全部状态"
+                clearable
+                ><ElOption
+                  v-for="(label, value) in scheduleStatusLabels"
+                  :key="value"
+                  :value="value"
+                  :label="label" /></ElSelect
+            ></label>
+            <label
+              >节点要求交货日期<RecordDateFilter v-model="draftDates" label="节点要求交货日期"
+            /></label>
+            <div class="schedule-filter-selection">
+              <span>流水号</span>
+              <ElButton @click="selectionKind = 'serial'">{{
+                draftSerialSelection.length
+                  ? `已选 ${draftSerialSelection.length} 个流水号`
+                  : '选择流水号'
+              }}</ElButton>
+              <div v-if="draftSerialSelection.length" class="schedule-filter-values">
+                <ElTag v-for="item in draftSerialSelection" :key="item.value">{{
+                  item.label
+                }}</ElTag>
+              </div>
+            </div>
+            <div class="schedule-filter-selection">
+              <div class="schedule-filter-label">
+                <span>业务人员</span>
+                <ElButton v-if="auth.isAdmin" link type="primary" @click="managingPeople = true"
+                  >管理业务人员</ElButton
+                >
+              </div>
+              <ElButton @click="selectionKind = 'people'">{{
+                draftPersonSelection.length
+                  ? `已选 ${draftPersonSelection.length} 位业务人员`
+                  : '选择业务人员'
+              }}</ElButton>
+              <div v-if="draftPersonSelection.length" class="schedule-filter-values">
+                <ElTag v-for="item in draftPersonSelection" :key="item.value">{{
+                  item.label
+                }}</ElTag>
+              </div>
+            </div>
+          </div>
+          <template v-if="!management" #footer>
+            <div class="schedule-filter-footer">
+              <ElButton class="schedule-filter-reset" @click="resetFilters">重置</ElButton>
+              <ElButton @click="filterOpen = false">取消</ElButton>
+              <ElButton type="primary" @click="applyFilters">应用筛选</ElButton>
+            </div>
+          </template>
+        </component></template
+      >
+      <template #tools>
+        <ElSelect
+          v-if="!fullscreen && !management"
+          :model-value="sortOrder"
+          class="task-board__sort"
+          aria-label="最终交期排序"
+          @change="changeSort"
+          ><ElOption label="最终交期：由近到远" value="asc" />
+          <ElOption label="最终交期：由远到近" value="desc" />
+        </ElSelect>
+      </template>
+      <template #primary-actions
+        ><ElButton v-if="canManage" type="primary" :icon="Plus" @click="createTask"
+          >新建任务排期</ElButton
+        ></template
+      >
+    </WorkspaceDataToolbar>
     <ElAlert v-if="actionError" :title="actionError" type="error" :closable="false" />
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
-    <ElTable
+    <WorkspaceTable
       v-else-if="management"
       :data="rows"
       border
-      height="100%"
-      class="business-table dispatch-task-table"
+      class="dispatch-task-table"
       aria-label="调度排期列表"
       row-key="id"
+      :default-sort="{
+        prop: 'final_due_at',
+        order: sortOrder === 'asc' ? 'ascending' : 'descending',
+      }"
+      @sort-change="sortChanged"
     >
-      <ElTableColumn label="流水号" min-width="150"
+      <ElTableColumn class-name="table-identity" label="流水号" min-width="150"
         ><template #default="{ row }"
           ><ElButton link type="primary" @click="openTask(asTask(row))">{{
             row.serial_no
@@ -450,7 +588,12 @@ onBeforeUnmount(() => {
           row.delivery_batches?.length || 1
         }}</template></ElTableColumn
       >
-      <ElTableColumn label="最终交期" min-width="170"
+      <ElTableColumn
+        label="最终交期"
+        prop="final_due_at"
+        min-width="170"
+        sortable="custom"
+        :sort-orders="['ascending', 'descending']"
         ><template #default="{ row }">{{
           formatDateTime(row.final_due_at)
         }}</template></ElTableColumn
@@ -506,7 +649,7 @@ onBeforeUnmount(() => {
           ></template
         ></ElTableColumn
       >
-    </ElTable>
+    </WorkspaceTable>
     <ProductionScheduleOverview
       v-else
       :tasks="rows"
@@ -516,108 +659,15 @@ onBeforeUnmount(() => {
     >
       <template v-if="fullscreen" #view-actions><slot name="view-actions" /></template>
     </ProductionScheduleOverview>
-    <footer class="task-board__footer">
-      <span>共 {{ total }} 项任务</span
-      ><ElPagination
-        :current-page="page"
-        :page-size="pageSize"
-        :total="total"
-        :page-sizes="[10, 20, 50]"
-        layout="sizes, prev, pager, next"
-        @current-change="paginate"
-        @size-change="resizePage"
-      />
-    </footer>
-    <AppDrawer
-      v-model="filterOpen"
-      title="排期筛选"
-      direction="rtl"
-      size="min(420px, 94vw)"
-      append-to-body
-      class="schedule-filter-drawer"
+    <WorkspacePagination
+      :current-page="page"
+      :page-size="pageSize"
+      :total="total"
+      :page-sizes="[10, 20, 50]"
+      @current-change="paginate"
+      @size-change="resizePage"
+      >共 {{ total }} 项任务</WorkspacePagination
     >
-      <div class="schedule-filter-fields">
-        <label
-          >关键词<ElInput
-            v-model="query"
-            :prefix-icon="Search"
-            aria-label="任务排期搜索"
-            placeholder="任务、流水号或批次号"
-            clearable
-            @keyup.enter="applyFilters"
-        /></label>
-        <label
-          >任务范围<ElSelect
-            v-model="draftScope"
-            aria-label="任务范围筛选"
-            placeholder="全部任务"
-            clearable
-            ><ElOption label="需关注" value="attention" />
-            <ElOption label="已交完" value="completed" /></ElSelect
-        ></label>
-        <label
-          >交货班组<ElSelect
-            v-model="draftTeam"
-            aria-label="交货班组筛选"
-            placeholder="全部班组"
-            clearable
-            ><ElOption
-              v-for="team in teams"
-              :key="team.id"
-              :value="Number(team.id)"
-              :label="team.name" /></ElSelect
-        ></label>
-        <label
-          >任务状态<ElSelect
-            v-model="draftStatus"
-            aria-label="任务状态筛选"
-            placeholder="全部状态"
-            clearable
-            ><ElOption
-              v-for="(label, value) in scheduleStatusLabels"
-              :key="value"
-              :value="value"
-              :label="label" /></ElSelect
-        ></label>
-        <label
-          >节点要求交货日期<RecordDateFilter v-model="draftDates" label="节点要求交货日期"
-        /></label>
-        <div class="schedule-filter-selection">
-          <span>流水号</span>
-          <ElButton @click="selectionKind = 'serial'">{{
-            draftSerialSelection.length
-              ? `已选 ${draftSerialSelection.length} 个流水号`
-              : '选择流水号'
-          }}</ElButton>
-          <div v-if="draftSerialSelection.length" class="schedule-filter-values">
-            <ElTag v-for="item in draftSerialSelection" :key="item.value">{{ item.label }}</ElTag>
-          </div>
-        </div>
-        <div class="schedule-filter-selection">
-          <div class="schedule-filter-label">
-            <span>业务人员</span>
-            <ElButton v-if="auth.isAdmin" link type="primary" @click="managingPeople = true"
-              >管理业务人员</ElButton
-            >
-          </div>
-          <ElButton @click="selectionKind = 'people'">{{
-            draftPersonSelection.length
-              ? `已选 ${draftPersonSelection.length} 位业务人员`
-              : '选择业务人员'
-          }}</ElButton>
-          <div v-if="draftPersonSelection.length" class="schedule-filter-values">
-            <ElTag v-for="item in draftPersonSelection" :key="item.value">{{ item.label }}</ElTag>
-          </div>
-        </div>
-      </div>
-      <template #footer>
-        <div class="schedule-filter-footer">
-          <ElButton class="schedule-filter-reset" @click="resetFilters">重置</ElButton>
-          <ElButton @click="filterOpen = false">取消</ElButton>
-          <ElButton type="primary" @click="applyFilters">应用筛选</ElButton>
-        </div>
-      </template>
-    </AppDrawer>
     <AppDialog
       :model-value="!!detailId"
       title="任务详情"
@@ -827,6 +877,9 @@ onBeforeUnmount(() => {
 .task-board__toolbar :deep(.el-button) {
   margin-left: 0;
 }
+.task-board__sort {
+  width: 190px;
+}
 .task-board__actions {
   display: flex;
   align-items: center;
@@ -894,15 +947,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.task-board__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  color: var(--muted);
-  font-size: 13px;
-  flex-shrink: 0;
-}
+
 .task-detail__heading {
   display: flex;
   gap: 16px;

@@ -2,8 +2,28 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
+import { ElTooltip } from 'element-plus'
 
 describe('processing stock meaning', () => {
+  it('keeps a compact status and accessible weight warning with quantities in its tooltip', () => {
+    const wrapper = mount(ProcessingStockStatus, {
+      props: {
+        compact: true,
+        state: 'partial',
+        summary: {
+          processing_registered_batch_count: 1,
+          processing_registered_quantity: 12,
+          max_weight_difference: 2,
+        },
+      },
+    })
+    expect(wrapper.text()).toBe('部分加工')
+    expect(wrapper.find('small').exists()).toBe(false)
+    expect(wrapper.get('[role="img"]').attributes('aria-label')).toContain('差异超 1 kg')
+    expect(wrapper.getComponent(ElTooltip).props('content')).toContain('12 件')
+    expect(wrapper.getComponent(ElTooltip).props('content')).toContain('差异超 1 kg')
+    wrapper.unmount()
+  })
   it('flags a same-source cumulative difference only when the largest absolute root value exceeds one kg', async () => {
     const wrapper = mount(ProcessingStockStatus, {
       props: { state: 'partial', summary: { max_weight_difference: 1 } },

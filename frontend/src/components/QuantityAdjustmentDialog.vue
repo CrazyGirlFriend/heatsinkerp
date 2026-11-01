@@ -820,7 +820,7 @@ onBeforeUnmount(() => {
             aria-label="加工后完整实物明细"
           >
             <div class="processing-output-scroll">
-              <table class="processing-output-table">
+              <table class="processing-output-table business-document-table">
                 <thead>
                   <tr>
                     <th>类别</th>

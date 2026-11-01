@@ -11,7 +11,6 @@ import type {
   ScheduleFilters,
   ScheduleSummary,
   ScheduleSourceOption,
-  ScheduleWrite,
   ScheduleTask,
   DispatchTaskWrite,
   CustomerDeliveryBatch,
@@ -153,25 +152,8 @@ export const productionScheduleApi = {
   list: (params: ScheduleFilters = {}) =>
     request<MaterialPage<ProductionSchedule>>(`/production-schedules?${queryString(params)}`),
   detail: (id: number) => request<ProductionSchedule>(`/production-schedules/${id}`),
-  create: (body: ScheduleWrite & { idempotency_key: string }) =>
-    request<ProductionSchedule>('/production-schedules', { method: 'POST', body }),
-  update: (id: number, body: ScheduleWrite & { expected_version: number }) =>
-    request<ProductionSchedule>(`/production-schedules/${id}`, { method: 'PATCH', body }),
   saveBatches: (id: number, body: { expected_version: number; batches: ScheduleBatchWrite[] }) =>
     request<ProductionSchedule>(`/production-schedules/${id}/batches`, { method: 'PUT', body }),
-  updateCommitment: (
-    id: number,
-    body: Pick<
-      ScheduleWrite,
-      'due_at' | 'target_quantity' | 'target_weight' | 'completion_basis' | 'notes'
-    > & { expected_version: number },
-  ) =>
-    request<ProductionSchedule>(`/production-schedules/${id}/commitment`, {
-      method: 'PATCH',
-      body,
-    }),
-  cancel: (id: number, body: { expected_version: number; reason?: string }) =>
-    request<ProductionSchedule>(`/production-schedules/${id}/cancel`, { method: 'POST', body }),
   sources: (params: {
     team_id: number
     serial_no: string

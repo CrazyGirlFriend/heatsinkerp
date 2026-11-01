@@ -1,26 +1,26 @@
 <script setup lang="ts">
+import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
+import WorkspaceTable from '@/components/WorkspaceTable.vue'
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { teamCanProcess } from '@/config/teamWorkspaces'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { Search } from '@element-plus/icons-vue'
 import {
   ElAlert,
   ElButton,
   ElCheckbox,
-  ElInput,
   ElOption,
-  ElPagination,
   ElPopover,
   ElSelect,
-  ElTable,
   ElTableColumn,
 } from 'element-plus'
 import FilterDialog from '@/components/FilterDialog.vue'
+import LiveRefreshNotice from '@/components/LiveRefreshNotice.vue'
 import RecordDateFilter from '@/components/RecordDateFilter.vue'
 import SerialUrgencyBadge from '@/components/SerialUrgencyBadge.vue'
 import type { CalendarRange } from '@/types/recordFilters'
 import ReworkProblemDialog from '@/components/ReworkProblemDialog.vue'
-import WorkspaceTools from '@/components/WorkspaceTools.vue'
+import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
 import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
 import TeamWorkspaceActions from '@/components/TeamWorkspaceActions.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
@@ -579,6 +579,12 @@ let version = 0
 let actionVersion = 0
 const syncState = ref<InventoryConnection>('connecting'),
   syncError = ref('')
+const syncMessage = computed(() =>
+  syncState.value === 'expired'
+    ? '登录或访问凭证已失效，请重新验证。'
+    : syncError.value ||
+      (syncState.value === 'reconnecting' ? '实时连接中断，当前显示上次结果，正在重连。' : ''),
+)
 let unsubscribe: (() => void) | undefined,
   streamVersion = 0
 let refreshQueued = false,
@@ -1133,30 +1139,17 @@ onBeforeUnmount(() => {
     <template v-if="canManageBusiness && teamId" #messages>
       <ElButton v-if="canWrite" @click="reworkProblemOpen = true">提交返工问题</ElButton>
     </template>
-    <template
-      v-if="syncError || syncState === 'reconnecting' || syncState === 'expired'"
-      #fullscreen-status
-      ><span
-        role="status"
-        :title="
-          syncState === 'expired'
-            ? '登录或访问凭证已失效，请重新验证。'
-            : syncError || '实时连接中断，当前显示上次结果，正在重连。'
-        "
-        >{{ syncState === 'expired' ? '登录失效' : '连接中断' }}</span
-      ></template
+    <template v-if="syncMessage" #fullscreen-status
+      ><span role="status" :title="syncMessage">{{
+        syncState === 'expired' ? '登录失效' : '连接中断'
+      }}</span></template
     >
     <div class="team-material-content">
-      <ElAlert
-        v-if="syncError || syncState === 'reconnecting' || syncState === 'expired'"
+      <LiveRefreshNotice
+        v-if="tab !== 'delivery-schedule'"
         v-show="!fullscreen"
-        type="warning"
-        :closable="false"
-        :title="
-          syncState === 'expired'
-            ? '登录或访问凭证已失效，请重新验证。'
-            : syncError || '实时连接中断，当前显示上次结果，正在重连。'
-        "
+        :message="syncMessage"
+        @retry="queueRefresh"
       />
       <StatePanel v-if="scopeLoading" state="loading" title="正在读取班组信息" />
       <StatePanel
@@ -1213,6 +1206,8 @@ onBeforeUnmount(() => {
           :team-id="teamId"
           :fullscreen="fullscreen"
           :refresh-key="overview"
+          :sync-message="syncMessage"
+          @retry-sync="queueRefresh"
           @dispatch="dispatchSchedule"
         />
         <TeamInspectionRecords
@@ -1242,7 +1237,8 @@ onBeforeUnmount(() => {
           v-else-if="['overview', 'history'].includes(tab)"
           :key="teamId"
           :team-id="teamId"
-          ><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template
+          ><template v-if="canWrite || canReceive" #actions
+            ><TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" /></template
         ></TeamSerialHistory>
         <template v-else-if="['stock', 'materials', 'material-types'].includes(tab)">
           <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料库存" />
@@ -1271,7 +1267,7 @@ onBeforeUnmount(() => {
             @refresh="loadView"
             @changed="loadView"
             @action="openAction"
-            ><template #actions
+            ><template v-if="canWrite || canReceive" #actions
               ><TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" /></template
           ></TeamInventory>
           <TeamMaterialOverviewPanel
@@ -1285,32 +1281,32 @@ onBeforeUnmount(() => {
             :fullscreen="fullscreen"
             @filter="openSummaryDetail"
             @paginate="paginateSummary"
-            ><template #actions><TeamWorkspaceActions v-bind="actionBindings" /></template
+            @refresh="loadView()"
+            ><template v-if="canWrite || canReceive" #actions
+              ><TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" /></template
           ></TeamMaterialOverviewPanel>
         </template>
         <template v-else>
           <div class="team-list-layout">
-            <section class="team-list-panel workspace-data-panel">
-              <div class="list-toolbar workspace-data-toolbar">
-                <ElInput
-                  v-model="queryDraft"
-                  :prefix-icon="Search"
-                  :aria-label="`${tab === 'reallocations' ? '转投记录' : tab === 'losses' ? '丢失记录' : '物料'}搜索`"
-                  clearable
-                  :placeholder="
-                    tab === 'reallocations'
-                      ? '搜索原流水号、目标流水号或批次号'
-                      : tab === 'outgoing'
-                        ? '搜索批次、流水号、业务或去向'
-                        : tab === 'losses'
-                          ? '搜索批次、流水号或材质'
-                          : '搜索批次、流水号、材质或业务'
-                  "
-                  @keyup.enter="applyFilters()"
-                  @clear="applyFilters()"
-                />
-                <div class="list-filter-controls">
-                  <FilterDialog
+            <WorkspaceDataPanel class="team-list-panel workspace-data-panel">
+              <WorkspaceDataToolbar
+                v-model="queryDraft"
+                :loading="loading"
+                :search-label="`${tab === 'reallocations' ? '转投记录' : tab === 'losses' ? '丢失记录' : '物料'}搜索`"
+                :placeholder="
+                  tab === 'reallocations'
+                    ? '搜索原流水号、目标流水号或批次号'
+                    : tab === 'outgoing'
+                      ? '搜索批次、流水号、业务或去向'
+                      : tab === 'losses'
+                        ? '搜索批次、流水号或材质'
+                        : '搜索批次、流水号、材质或业务'
+                "
+                @search="applyFilters()"
+                @refresh="loadView()"
+              >
+                <template #filters
+                  ><FilterDialog
                     v-model="listFiltersOpen"
                     title="记录筛选"
                     :count="listFilterCount"
@@ -1394,31 +1390,28 @@ onBeforeUnmount(() => {
                           v-model="dateDraft"
                           :label="tab === 'receipts' ? '入库日期' : '登记日期'"
                       /></label>
-                    </div>
-                  </FilterDialog>
-                </div>
-                <div class="list-query-actions">
-                  <ElButton class="action-warm" @click="applyFilters()">查询</ElButton>
-                </div>
-                <WorkspaceTools refresh :loading="loading" @refresh="loadView()"
-                  ><template v-if="!fullscreen" #actions>
-                    <div v-show="!fullscreen" class="workspace-toolbar-actions">
-                      <ElButton
-                        v-if="tab === 'outgoing'"
-                        :disabled="!selectedPrintRows.length"
-                        @click="openPrint(selectedPrintRows)"
-                        >合并打印<span v-if="selectedPrintRows.length"
-                          >（{{ selectedPrintRows.length }}）</span
-                        ></ElButton
-                      >
-                      <TeamWorkspaceActions
-                        v-if="tab !== 'reallocations'"
-                        v-bind="actionBindings"
-                        :show-refresh="false"
-                      />
-                    </div> </template
-                ></WorkspaceTools>
-              </div>
+                    </div> </FilterDialog
+                ></template>
+                <template
+                  v-if="!fullscreen && (canWrite || canReceive || tab === 'outgoing')"
+                  #actions
+                >
+                  <div v-show="!fullscreen" class="workspace-toolbar-actions">
+                    <ElButton
+                      v-if="tab === 'outgoing'"
+                      :disabled="!selectedPrintRows.length"
+                      @click="openPrint(selectedPrintRows)"
+                      >合并打印<span v-if="selectedPrintRows.length"
+                        >（{{ selectedPrintRows.length }}）</span
+                      ></ElButton
+                    >
+                    <TeamWorkspaceActions
+                      v-if="tab !== 'reallocations'"
+                      v-bind="actionBindings"
+                      :show-refresh="false"
+                    /></div
+                ></template>
+              </WorkspaceDataToolbar>
 
               <MaterialReceiptScanner
                 v-if="tab === 'pending' && canWrite"
@@ -1464,12 +1457,10 @@ onBeforeUnmount(() => {
                 description="可以调整搜索条件或刷新记录。"
               />
               <div v-else class="team-table-scroll">
-                <ElTable
+                <WorkspaceTable
                   v-if="tab === 'pending'"
                   :data="pending"
-                  height="100%"
-                  flexible
-                  class="business-table team-table single-line-table"
+                  class="team-table single-line-table"
                   row-key="id"
                 >
                   <ElTableColumn label="批次号" min-width="190" show-overflow-tooltip
@@ -1483,7 +1474,11 @@ onBeforeUnmount(() => {
                       </button></template
                     ></ElTableColumn
                   >
-                  <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip
+                  <ElTableColumn
+                    class-name="table-identity"
+                    label="流水号"
+                    min-width="220"
+                    show-overflow-tooltip
                     ><template #default="{ row }"
                       ><span class="record-serial"
                         ><span :title="row.serial_no">{{ row.serial_no }}</span
@@ -1549,13 +1544,11 @@ onBeforeUnmount(() => {
                       ></template
                     ></ElTableColumn
                   >
-                </ElTable>
-                <ElTable
+                </WorkspaceTable>
+                <WorkspaceTable
                   v-else-if="tab === 'receipts'"
                   :data="receipts"
-                  height="100%"
-                  flexible
-                  class="business-table team-table single-line-table"
+                  class="team-table single-line-table"
                   row-key="id"
                 >
                   <ElTableColumn
@@ -1579,7 +1572,11 @@ onBeforeUnmount(() => {
                       </button></template
                     ></ElTableColumn
                   >
-                  <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip
+                  <ElTableColumn
+                    class-name="table-identity"
+                    label="流水号"
+                    min-width="220"
+                    show-overflow-tooltip
                     ><template #default="{ row }"
                       ><span class="record-serial"
                         ><span :title="row.serial_no">{{ row.serial_no }}</span
@@ -1661,13 +1658,11 @@ onBeforeUnmount(() => {
                       ></template
                     ></ElTableColumn
                   >
-                </ElTable>
-                <ElTable
+                </WorkspaceTable>
+                <WorkspaceTable
                   v-else-if="tab === 'outgoing'"
                   :data="outgoing"
-                  height="100%"
-                  flexible
-                  class="business-table team-table dispatch-table single-line-table"
+                  class="team-table dispatch-table single-line-table"
                   row-key="batch_no"
                   @selection-change="selectedPrintRows = $event"
                 >
@@ -1693,7 +1688,11 @@ onBeforeUnmount(() => {
                           entity-label="批次号"
                           compact /></ElPopover></template
                   ></ElTableColumn>
-                  <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip
+                  <ElTableColumn
+                    class-name="table-identity"
+                    label="流水号"
+                    min-width="220"
+                    show-overflow-tooltip
                     ><template #default="{ row }"
                       ><span class="record-serial"
                         ><span :title="row.serial_no">{{ row.serial_no }}</span
@@ -1768,13 +1767,11 @@ onBeforeUnmount(() => {
                       ></template
                     ></ElTableColumn
                   >
-                </ElTable>
-                <ElTable
+                </WorkspaceTable>
+                <WorkspaceTable
                   v-else-if="tab === 'reallocations'"
                   :data="reallocations"
-                  height="100%"
-                  flexible
-                  class="business-table team-table single-line-table"
+                  class="team-table single-line-table"
                   row-key="id"
                 >
                   <ElTableColumn
@@ -1846,13 +1843,11 @@ onBeforeUnmount(() => {
                       ></template
                     ></ElTableColumn
                   >
-                </ElTable>
-                <ElTable
+                </WorkspaceTable>
+                <WorkspaceTable
                   v-else
                   :data="losses"
-                  height="100%"
-                  flexible
-                  class="business-table team-table single-line-table"
+                  class="team-table single-line-table"
                   row-key="id"
                 >
                   <ElTableColumn
@@ -1872,7 +1867,11 @@ onBeforeUnmount(() => {
                       </button></template
                     ></ElTableColumn
                   >
-                  <ElTableColumn label="流水号" min-width="220" show-overflow-tooltip
+                  <ElTableColumn
+                    class-name="table-identity"
+                    label="流水号"
+                    min-width="220"
+                    show-overflow-tooltip
                     ><template #default="{ row }"
                       ><span class="record-serial"
                         ><span :title="row.serial_no">{{ row.serial_no }}</span
@@ -1908,21 +1907,18 @@ onBeforeUnmount(() => {
                       formatDateTime(row.created_at)
                     }}</template></ElTableColumn
                   >
-                </ElTable>
+                </WorkspaceTable>
               </div>
-              <footer v-if="!loading && !loadError" class="table-footer">
-                <span>共 {{ total }} 条记录</span
-                ><ElPagination
-                  :current-page="page"
-                  :page-size="pageSize"
-                  :page-sizes="[10, 20, 50, 100]"
-                  :total="total"
-                  layout="sizes, prev, pager, next"
-                  @current-change="applyFilters($event)"
-                  @size-change="applyFilters(1, $event)"
-                />
-              </footer>
-            </section>
+              <WorkspacePagination
+                v-if="!loading && !loadError"
+                :current-page="page"
+                :page-size="pageSize"
+                :total="total"
+                @current-change="applyFilters($event)"
+                @size-change="applyFilters(1, $event)"
+                >共 {{ total }} 条记录</WorkspacePagination
+              >
+            </WorkspaceDataPanel>
             <MaterialTransferDrawer
               v-model="drawerOpen"
               :transfer="selected"
@@ -2041,50 +2037,8 @@ onBeforeUnmount(() => {
 }
 .team-list-panel {
   container-type: inline-size;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--card-radius);
-  overflow: hidden;
 }
-.list-toolbar,
-.table-footer {
-  flex-shrink: 0;
-}
-.list-toolbar {
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 14px 16px;
-}
-.list-toolbar > .el-input {
-  flex: 1 1 220px;
-  min-width: 0;
-}
-.list-filter-controls,
-.list-query-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.list-toolbar :deep(.record-date-trigger) {
-  min-width: 0;
-  max-width: 260px;
-}
-.list-toolbar :deep(.record-date-trigger > span) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.list-toolbar :deep(.el-button + .el-button) {
-  margin-left: 0;
-}
+
 .list-extra-filters {
   display: flex;
   flex-direction: column;
@@ -2161,55 +2115,12 @@ onBeforeUnmount(() => {
 .row-actions .el-button + .el-button {
   margin-left: 0;
 }
-.table-footer {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-top: 1px solid var(--line);
-}
-.table-footer > span {
-  color: var(--subtle);
-  font-size: 12px;
-}
+
 @container (max-width: 680px) {
-  .list-toolbar > .el-input {
-    flex-basis: 100%;
-  }
 }
 @container (max-width: 560px) {
-  .list-toolbar {
-    background: var(--surface);
-    border-bottom: 1px solid var(--line);
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
-  }
-  .list-toolbar > .el-input,
-  .list-filter-controls {
-    grid-column: 1 / -1;
-  }
-  .list-filter-controls :deep(.record-date-trigger) {
-    flex: 1;
-    max-width: none;
-  }
-  .list-toolbar > .el-checkbox {
-    grid-column: 1 / -1;
-  }
-  .list-query-actions {
-    grid-column: 1;
-  }
 }
 @media (max-width: 760px) {
-  .list-toolbar {
-    padding-inline: 12px;
-  }
-  .table-footer {
-    padding: 8px;
-    overflow-x: auto;
-  }
   .team-table :deep(.el-table-fixed-column--right) {
     position: relative !important;
     right: auto !important;

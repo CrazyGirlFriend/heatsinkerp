@@ -101,6 +101,32 @@ async function render(
 function button(text: string) {
   return wrapper.findAll('button').find((b) => b.text() === text)!
 }
+it('clears the old twenty-row inspection page before the ten-row response arrives', async () => {
+  const items = Array.from({ length: 23 }, (_, index) => ({ ...record, id: index + 1 }))
+  const response = (size: number) => ({
+    items: items.slice(0, size),
+    total: items.length,
+    page: 1,
+    page_size: size,
+  })
+  vi.mocked(inspectionApi.records).mockImplementation(async (params) =>
+    response(params?.page_size || 10),
+  )
+  await render()
+  wrapper.getComponent(ElPagination).vm.$emit('size-change', 20)
+  await flushPromises()
+  expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(20)
+  let finish!: (value: ReturnType<typeof response>) => void
+  vi.mocked(inspectionApi.records).mockImplementationOnce(
+    () => new Promise((resolve) => (finish = resolve)),
+  )
+  wrapper.getComponent(ElPagination).vm.$emit('size-change', 10)
+  await flushPromises()
+  expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(0)
+  finish(response(10))
+  await flushPromises()
+  expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(10)
+})
 it('shows QC cross-team inspection records and rechecks without choosing the batch again', async () => {
   await render()
   expect(inspectionApi.records).toHaveBeenCalledWith(

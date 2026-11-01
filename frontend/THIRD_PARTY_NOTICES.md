@@ -30,27 +30,16 @@ SOFTWARE.
 
 - `public/assets/fonts/InterVariable.woff2`: Inter 4.1, Rasmus Andersson / Inter Project Authors.
   Source: https://rsms.me/inter/ ; license: `public/assets/fonts/Inter-LICENSE.txt` (SIL OFL 1.1).
-- `public/assets/fonts/SourceHanSans-Home.woff2`: shared business UI text subset of Adobe Source Han Sans CN 2.005,
-  renamed internally to **HeatSink Han** to respect the reserved font name.
-  Source: https://github.com/adobe-fonts/source-han-sans/tree/release/Variable/WOFF2/TTF/Subset ;
-  license: `public/assets/fonts/SourceHanSans-LICENSE.txt` (SIL OFL 1.1).
-  `scripts/subset-home-font.py` takes the original font and UTF-8 UI text on stdin.
-  Characters outside the subset use the declared system CJK fallback. The subset covers frontend
-  Vue/TypeScript UI text; standalone presentation screens and print layouts retain their own typography.
+- The unused Source Han Sans subset and its font-face declaration were removed on 2026-11-01.
+  Current Chinese text uses system fonts.
 - Earlier `ambient.png`, `stock.png`, `transit.png` and `*-v2.png` illustrations were removed
-  from the shipped assets on 2026-10-13 because current code no longer references them.
-  Their historical design references remain under `docs/design-references/`.
-- `public/assets/factory-inventory/ambient-white-purple.png`: built-in Image Gen color edit of
-  `ambient-v2.png`, preserving composition and replacing blue/cyan with pearl white and lavender.
-  This is the local white-purple trial requested after the blue-purple deployment; final prompt
-  and scope are recorded in `../docs/design-references/factory-inventory-white-purple.md`.
-- `src/components/motion/InventoryAmbient.vue` uses the existing MIT-licensed Three.js runtime to
-  animate the pale background image, capped at 24 renders/second and one canvas. Visibility,
-  pause, reduced-motion and unmount release/pause its resources; the image is the WebGL fallback.
+  from the shipped assets on 2026-10-13. The unused `ambient-white-purple.png` and its
+  `InventoryAmbient.vue` component were removed on 2026-11-01, along with Three.js.
+  Historical design references remain under `docs/design-references/`.
 
-## Current homepage motion components (2026-09-14)
+## Historical homepage motion components (removed 2026-11-01)
 
-`src/components/motion/SpotlightCard.vue` and `StarBorder.vue` are adapted from Vue Bits,
+The removed `SpotlightCard.vue` and `StarBorder.vue` components were adapted from Vue Bits,
 commit `66c1d9024337c718ae78928b0b92901fd9fbb0cf`:
 
 - https://github.com/DavidHDev/vue-bits/blob/66c1d9024337c718ae78928b0b92901fd9fbb0cf/src/content/Components/SpotlightCard/SpotlightCard.vue
@@ -58,9 +47,8 @@ commit `66c1d9024337c718ae78928b0b92901fd9fbb0cf`:
 
 Changes: scoped CSS in place of Tailwind, light-theme colors and compact dimensions,
 keyboard focus-within, touch-safe spotlight, page visibility/pause/reduced-motion controls.
-Only these component sources are incorporated; no Svelte runtime, Tailwind reset or
-GSAP is added. The homepage reuses the existing Three.js dependency separately.
-The license below applies to both adaptations.
+These components and their Three.js background are no longer shipped.
+The historical license below applies to both adaptations.
 
 Historical releases used a Vue Bits StarBorder component (removed from the current
 screen in the 2026-09-12 table redesign). Its retained historical notice follows:

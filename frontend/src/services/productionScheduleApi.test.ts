@@ -16,7 +16,7 @@ describe('production schedule API errors', () => {
         '0123456789abcdef0123456789abcdef',
       ),
     )
-    await expect(productionScheduleApi.cancel(5, { expected_version: 2 })).rejects.toMatchObject({
+    await expect(productionScheduleApi.detail(5)).rejects.toMatchObject({
       message: '排期已被修改，请刷新后重试',
       status: 409,
       requestId: '0123456789abcdef0123456789abcdef',

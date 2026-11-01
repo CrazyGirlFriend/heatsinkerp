@@ -1,19 +1,13 @@
 <script setup lang="ts">
+import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
+import WorkspaceTable from './WorkspaceTable.vue'
+import WorkspacePagination from './WorkspacePagination.vue'
+import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
-import WorkspaceTools from './WorkspaceTools.vue'
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
 import { useProcessRouteView } from '@/composables/useProcessRouteView'
 import { useRoute, useRouter } from 'vue-router'
-import { Search } from '@element-plus/icons-vue'
-import {
-  ElAlert,
-  ElButton,
-  ElInput,
-  ElLoading,
-  ElPagination,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus'
+import { ElAlert, ElButton, ElLoading, ElTableColumn } from 'element-plus'
 import FilterDialog from './FilterDialog.vue'
 import { ElSelect, ElOption } from 'element-plus'
 import RecordDateFilter from './RecordDateFilter.vue'
@@ -464,125 +458,103 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section
+  <WorkspaceDataPanel
     class="processing-records workspace-data-panel"
     :class="{ 'processing-records--fullscreen': fullscreen }"
     aria-label="加工记录"
   >
-    <div class="processing-records-toolbar workspace-data-toolbar">
-      <ElInput
-        v-model="query"
-        :prefix-icon="Search"
-        clearable
-        aria-label="加工记录搜索"
-        placeholder="流水号、批次号、加工人或加工说明"
-        @keyup.enter="apply()"
-        @clear="apply()"
-      />
-      <FilterDialog
-        v-model="filtersOpen"
-        title="加工记录筛选"
-        :count="filterCount"
-        @open="syncFilters"
-        @cancel="syncFilters"
-        @apply="apply(1, pageSize, true)"
-        @reset="resetFilters"
+    <WorkspaceDataToolbar
+      v-model="query"
+      :loading="loading"
+      search-label="加工记录搜索"
+      placeholder="流水号、批次号、加工人或加工说明"
+      @search="apply()"
+      @refresh="load()"
+    >
+      <template #filters>
+        <FilterDialog
+          v-model="filtersOpen"
+          title="加工记录筛选"
+          :count="filterCount"
+          @open="syncFilters"
+          @cancel="syncFilters"
+          @apply="apply(1, pageSize, true)"
+          @reset="resetFilters"
+        >
+          <ElAlert v-if="directoryError" :title="directoryError" type="error" :closable="false">
+            <ElButton link @click="loadDirectories">重新读取筛选选项</ElButton>
+          </ElAlert>
+          <label
+            >加工性质<ElSelect
+              v-model="workKind"
+              clearable
+              placeholder="全部加工"
+              aria-label="加工性质筛选"
+              ><ElOption label="首次加工" value="initial" /><ElOption
+                label="返工"
+                value="rework" /></ElSelect
+          ></label>
+          <label>实际加工日期<RecordDateFilter v-model="dates" label="加工日期" /></label>
+          <label
+            >具体任务<ElSelect
+              v-model="taskId"
+              clearable
+              filterable
+              placeholder="全部任务"
+              aria-label="加工任务筛选"
+            >
+              <ElOption
+                v-for="item in tasks"
+                :key="item.id"
+                :value="item.id"
+                :label="item.name"
+              /> </ElSelect
+          ></label>
+          <label
+            >对应业务<ElSelect
+              v-model="purposeId"
+              clearable
+              filterable
+              placeholder="全部业务"
+              aria-label="加工业务筛选"
+            >
+              <ElOption
+                v-for="item in purposes"
+                :key="item.id"
+                :value="item.id"
+                :label="`${item.name}${item.active ? '' : '（已停用）'}`"
+              /> </ElSelect
+          ></label>
+          <label
+            >加工人（不选为全部）<ProcessingPersonInput
+              v-model="processorName"
+              :options="processors.map((person) => person.name)"
+              label="加工人"
+              :loading="loading"
+          /></label>
+        </FilterDialog>
+      </template>
+      <template #tools
+        ><TableExportButton
+          :source="exportSource"
+          :variants="exportVariants"
+          :disabled="loading || !!error"
+          :context="route.fullPath"
+      /></template>
+      <template #primary-actions
+        ><ElButton v-if="canWrite && !fullscreen" type="primary" @click="emit('register')"
+          >加工登记</ElButton
+        ></template
       >
-        <ElAlert v-if="directoryError" :title="directoryError" type="error" :closable="false">
-          <ElButton link @click="loadDirectories">重新读取筛选选项</ElButton>
-        </ElAlert>
-        <label
-          >加工性质<ElSelect
-            v-model="workKind"
-            clearable
-            placeholder="全部加工"
-            aria-label="加工性质筛选"
-            ><ElOption label="首次加工" value="initial" /><ElOption
-              label="返工"
-              value="rework" /></ElSelect
-        ></label>
-        <label>实际加工日期<RecordDateFilter v-model="dates" label="加工日期" /></label>
-        <label
-          >具体任务<ElSelect
-            v-model="taskId"
-            clearable
-            filterable
-            placeholder="全部任务"
-            aria-label="加工任务筛选"
-          >
-            <ElOption
-              v-for="item in tasks"
-              :key="item.id"
-              :value="item.id"
-              :label="item.name"
-            /> </ElSelect
-        ></label>
-        <label
-          >对应业务<ElSelect
-            v-model="purposeId"
-            clearable
-            filterable
-            placeholder="全部业务"
-            aria-label="加工业务筛选"
-          >
-            <ElOption
-              v-for="item in purposes"
-              :key="item.id"
-              :value="item.id"
-              :label="`${item.name}${item.active ? '' : '（已停用）'}`"
-            /> </ElSelect
-        ></label>
-        <label
-          >加工人（不选为全部）<ProcessingPersonInput
-            v-model="processorName"
-            :options="processors.map((person) => person.name)"
-            label="加工人"
-            :loading="loading"
-        /></label>
-      </FilterDialog>
-      <ElButton class="workspace-query action-warm" @click="apply()">查询</ElButton
-      ><TableExportButton
-        :source="exportSource"
-        :variants="exportVariants"
-        :disabled="loading || !!error"
-        :context="route.fullPath"
-      /><WorkspaceTools refresh :loading="loading" @refresh="load()" />
-      <ElButton v-if="canWrite && !fullscreen" type="primary" @click="emit('register')"
-        >加工登记</ElButton
-      >
-    </div>
-    <div v-if="summary && !error" class="processing-totals" aria-label="筛选结果加工工作量合计">
-      <span class="summary-label">筛选结果合计</span>
-      <span
-        >首次任务完成 <strong>{{ inventoryAmount(summary.completed_quantity) }}</strong> 件次 /
-        <strong>{{ inventoryAmount(summary.completed_weight) }}</strong> kg</span
-      >
-      <span
-        >废料 <strong>{{ inventoryAmount(summary.scrap_quantity) }}</strong> 件 /
-        <strong>{{ inventoryAmount(summary.scrap_weight) }}</strong> kg</span
-      >
-      <span
-        >返工 <strong>{{ inventoryAmount(summary.rework_quantity || 0) }}</strong> 件次 /
-        {{ inventoryAmount(summary.rework_weight || 0) }} kg</span
-      >
-      <span class="summary-note"
-        >{{ summary.record_count }} 笔有效加工 · 按实际加工日期 ·
-        各任务工作量分别统计，非实物库存产量</span
-      >
-      <span v-if="summary.unreported_count" class="summary-note"
-        >{{ summary.unreported_count }} 笔历史记录信息不全，未计入工作量</span
-      >
-    </div>
+    </WorkspaceDataToolbar>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
-    <ElTable
+    <WorkspaceTable
       v-else
       v-loading="loading"
       :data="rows"
       row-key="id"
-      class="business-table processing-records-table"
-      height="100%"
-      flexible
+      class="processing-records-table"
       empty-text="暂无加工登记记录"
       aria-label="班组加工记录"
     >
@@ -616,7 +588,12 @@ onBeforeUnmount(() => {
           </section>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="流水号" min-width="150" fixed show-overflow-tooltip
+      <ElTableColumn
+        class-name="table-identity"
+        label="流水号"
+        min-width="150"
+        fixed
+        show-overflow-tooltip
         ><template #default="{ row }">{{ sharedSerialLabel(row) }}</template></ElTableColumn
       >
       <ElTableColumn label="加工性质" width="125" align="center"
@@ -706,6 +683,7 @@ onBeforeUnmount(() => {
       <ElTableColumn label="当前状态" min-width="185" align="center"
         ><template #default="{ row }"
           ><ProcessingStockStatus
+            compact
             :state="row.processing_state"
             :material-type="row.material_type" /></template
       ></ElTableColumn>
@@ -732,19 +710,40 @@ onBeforeUnmount(() => {
           ><ElButton link type="primary" @click="detail(row)">记录</ElButton></template
         ></ElTableColumn
       >
-    </ElTable>
-    <footer>
-      <span>共 {{ total }} 条记录</span
-      ><ElPagination
-        :current-page="page"
-        :page-size="pageSize"
-        :page-sizes="[10, 20, 50, 100]"
-        :total="total"
-        layout="sizes, prev, pager, next"
-        @current-change="paginate($event)"
-        @size-change="paginate(1, $event)"
-      />
-    </footer>
+    </WorkspaceTable>
+    <WorkspacePagination
+      :current-page="page"
+      :page-size="pageSize"
+      :total="total"
+      @current-change="paginate($event)"
+      @size-change="paginate(1, $event)"
+    >
+      <template v-if="summary && !error" #statistics>
+        <div class="processing-totals" aria-label="筛选结果加工工作量合计">
+          <span class="summary-label">筛选结果合计</span>
+          <span
+            >首次任务完成 <strong>{{ inventoryAmount(summary.completed_quantity) }}</strong> 件次 /
+            <strong>{{ inventoryAmount(summary.completed_weight) }}</strong> kg</span
+          >
+          <span
+            >废料 <strong>{{ inventoryAmount(summary.scrap_quantity) }}</strong> 件 /
+            <strong>{{ inventoryAmount(summary.scrap_weight) }}</strong> kg</span
+          >
+          <span
+            >返工 <strong>{{ inventoryAmount(summary.rework_quantity || 0) }}</strong> 件次 /
+            {{ inventoryAmount(summary.rework_weight || 0) }} kg</span
+          >
+          <span class="summary-note"
+            >{{ summary.record_count }} 笔有效加工 · 按实际加工日期 ·
+            各任务工作量分别统计，非实物库存产量</span
+          >
+          <span v-if="summary.unreported_count" class="summary-note"
+            >{{ summary.unreported_count }} 笔历史记录信息不全，未计入工作量</span
+          >
+        </div>
+      </template>
+      共 {{ total }} 条记录
+    </WorkspacePagination>
     <QuantityAdjustmentDialog
       v-model="detailOpen"
       :team-id="teamId"
@@ -755,43 +754,17 @@ onBeforeUnmount(() => {
       @changed="saved"
     />
     <ProcessRouteEditor v-if="viewedRoute" :route="viewedRoute" view-only @close="closeRoute" />
-  </section>
+  </WorkspaceDataPanel>
 </template>
 
 <style scoped>
-.processing-records {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--card-radius);
-  background: var(--surface);
-  padding: 0 16px;
-}
-.processing-records-toolbar {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 8px;
-  align-items: center;
-  padding: 14px 0;
-}
-.processing-records-toolbar .el-input {
-  flex: 1;
-  min-width: 0;
-}
-.processing-records-toolbar .el-button {
-  margin-left: 0;
-}
 .processing-totals {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   flex-shrink: 0;
   gap: 8px 24px;
-  padding: 0 0 14px;
+  padding: 0;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
@@ -803,10 +776,7 @@ onBeforeUnmount(() => {
 .summary-note {
   color: var(--muted);
 }
-.processing-records-table {
-  flex: 1;
-  min-height: 0;
-}
+
 .processing-record-detail {
   margin: 8px 16px 12px;
   padding: 14px 16px;
@@ -839,31 +809,12 @@ onBeforeUnmount(() => {
 .processing-record-requirements {
   grid-column: 1 / -1;
 }
-footer {
-  display: flex;
-  flex: 0 0 auto;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 0;
-}
+
 .processing-records--fullscreen {
   border-radius: 0;
   border: 0;
 }
 @media (max-width: 600px) {
-  .processing-records {
-    padding-inline: 10px;
-  }
-  .processing-records-toolbar {
-    flex-wrap: wrap;
-  }
-  .processing-records-toolbar .el-input {
-    flex-basis: 100%;
-  }
-  footer {
-    flex-wrap: wrap;
-  }
   footer .el-pagination {
     max-width: 100%;
     overflow-x: auto;

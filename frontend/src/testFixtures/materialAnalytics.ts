@@ -1,24 +1,4 @@
-import type { MaterialAnalytics, SerialSummary } from '@/types/materialAnalytics'
-export function analyticsFixture(teamId = 914): MaterialAnalytics {
-  const amount = { quantity: 10, weight: 1 }
-  return {
-    team_id: teamId,
-    days: 30,
-    metric: 'weight',
-    as_of: '2026-09-12T00:00:00Z',
-    trend: [{ key: '2026-09-12', incoming: amount, outgoing: amount, loss: amount }],
-    stock_ranking: [{ key: 'SERIAL-1', ...amount }],
-    material_types: [{ key: 'semi_finished', ...amount }],
-    materials: [{ key: '铜钼', ...amount }],
-    loss_ranking: [{ key: 'SERIAL-1', ...amount }],
-    stock_age: [{ key: 'ge7', label: '7天及以上', ...amount }],
-    waiting_age: [{ key: 'ge7', label: '7天及以上', incoming: amount, outgoing: amount }],
-    peers: {
-      incoming: [{ key: '1', label: '库房', ...amount }],
-      outgoing: [{ key: 'warehouse_outbound', label: '对外出库', ...amount }],
-    },
-  }
-}
+import type { SerialSummary } from '@/types/materialAnalytics'
 export function serialFixture(serial = 'SERIAL-1'): SerialSummary {
   return {
     serial_no: serial,

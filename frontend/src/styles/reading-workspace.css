@@ -53,7 +53,7 @@
   :is(.serial-table, .team-table, .ledger-table, .transfer-table, .table-region > .el-table) {
   --el-table-text-color: var(--reading-ink);
   --el-table-header-bg-color: var(--table-header-bg);
-  --el-table-header-text-color: var(--text);
+  --el-table-header-text-color: var(--subtle);
   --el-table-border-color: var(--line);
   --el-table-row-hover-bg-color: var(--table-hover-bg);
   font-size: 14px;
@@ -66,7 +66,7 @@
   padding-block: 10px;
   border-bottom-color: var(--table-header-line);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: var(--font-weight-regular);
 }
 .page.reading-workspace
   :is(.serial-table, .team-table, .ledger-table, .transfer-table, .table-region > .el-table)
@@ -80,14 +80,15 @@
   :is(.serial-table, .team-table, .ledger-table, .transfer-table, .table-region > .el-table)
   .cell {
   padding-inline: 12px;
-  line-height: 22px;
+  line-height: var(--line-height-body);
 }
 .page.reading-workspace
   :is(.team-table, .ledger-table, .transfer-table, .table-region > .el-table)
   .el-button.is-link {
   min-height: 24px;
   height: auto;
-  font-size: 14px;
+  font-size: var(--font-size-meta);
+  line-height: var(--line-height-meta);
   font-weight: 400;
 }
 .page.reading-workspace

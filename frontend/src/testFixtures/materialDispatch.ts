@@ -72,21 +72,3 @@ export function dispatchFixture(
     ...extra,
   }
 }
-export function completedDispatch(group: MaterialDispatchDocument): MaterialDispatchDocument {
-  const status = group.entry_kind === 'transfer' ? ('received' as const) : ('dispatched' as const)
-  return {
-    ...group,
-    revision: 'f'.repeat(64),
-    status,
-    locked: true,
-    allowed_actions: [],
-    pending_line_count: 0,
-    confirmed_by: '确认班组长',
-    confirmed_at: '2026-09-07T01:00:00Z',
-    items: group.items.map((line) =>
-      line.status === 'pending'
-        ? { ...line, status, locked: true, version: 2, allowed_actions: [] }
-        : line,
-    ),
-  }
-}

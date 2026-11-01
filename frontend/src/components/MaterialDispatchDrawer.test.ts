@@ -22,7 +22,6 @@ vi.mock('@/composables/useLiveRefresh', async () => {
 let wrapper: VueWrapper
 beforeEach(() => {
   vi.spyOn(materialDispatchApi, 'get').mockResolvedValue(dispatchFixture())
-  vi.spyOn(materialDispatchApi, 'confirm')
 })
 afterEach(() => {
   wrapper?.unmount()
@@ -87,7 +86,6 @@ it('keeps legacy lookup but shows each batch and never offers whole-group confir
     showHistoryGroup: false,
     receiptOnly: false,
   })
-  expect(materialDispatchApi.confirm).not.toHaveBeenCalled()
 })
 it('co-prints actual batches without restoring a group barcode', async () => {
   await render()

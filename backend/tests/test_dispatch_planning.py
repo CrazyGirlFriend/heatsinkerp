@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 from app.database import SessionLocal
-from app.models import MaterialTransfer, ProductionScheduleTask
+from app.models import MaterialTransfer, ProcessRoute, ProductionScheduleTask
 from sqlalchemy import func, select
 from test_material_transfers import _leader
 from test_process_route_orders import VALUES, xlsx
@@ -292,6 +292,40 @@ def test_new_order_requires_business_people(client, warehouse, dispatcher):
     assert submit(client, body, dispatcher).status_code == 422
     body["business_person_ids"] = [999999]
     assert submit(client, body, dispatcher).status_code == 422
+
+
+def test_new_order_requires_a_current_published_process(client, warehouse, dispatcher):
+    route = published(client, warehouse)
+    person = client.post(URL + "/business-people", json={"name": "业务甲"}).json()
+    body = dict(
+        serial_no="WAREHOUSE-001",
+        route_id=route["id"],
+        route_version=route["version"],
+        final_due_at="2026-12-30T16:00:00+08:00",
+        idempotency_key=uuid4().hex,
+        business_person_ids=[person["id"]],
+    )
+    for field in ("route_id", "route_version"):
+        response = submit(
+            client, {key: value for key, value in body.items() if key != field}, dispatcher
+        )
+        assert response.status_code == 422, response.text
+    for override in (
+        {"route_id": route["id"] + 999},
+        {"route_version": route["version"] + 1},
+        {"serial_no": "NO-MATCHING-PROCESS"},
+    ):
+        response = submit(client, {**body, **override}, dispatcher)
+        assert response.status_code == 409, response.text
+    with SessionLocal.begin() as db:
+        db.get(ProcessRoute, route["id"]).state = "draft"
+    assert submit(client, body, dispatcher).status_code == 409
+    with SessionLocal.begin() as db:
+        assert db.scalar(select(func.count()).select_from(ProductionScheduleTask)) == 0
+        db.get(ProcessRoute, route["id"]).state = "published"
+    response = submit(client, body, dispatcher)
+    assert response.status_code == 201, response.text
+    assert all(node["process_route_id"] == route["id"] for node in response.json()["nodes"])
 
 
 def test_customer_batches_can_finish_before_deadline_without_being_overwritten(

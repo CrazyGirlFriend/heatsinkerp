@@ -14,6 +14,7 @@ import {
 } from 'element-plus'
 import FilterDialog from './FilterDialog.vue'
 import TeamInventory from './TeamInventory.vue'
+import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import TeamInventoryDetail from './TeamInventoryDetail.vue'
 import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
 import StockSourcePicker from './StockSourcePicker.vue'
@@ -602,7 +603,7 @@ describe('warehouse grouped stock', () => {
     async (fullscreen) => {
       await render('/team-workspaces/901?tab=stock', true, false)
       await wrapper.setProps({ processing: true, fullscreen })
-      const entry = wrapper.get('.warehouse-toolbar .inventory-process')
+      const entry = wrapper.get('.workspace-toolbar .inventory-process')
       expect(entry.isVisible()).toBe(true)
       await entry.trigger('click')
       expect(wrapper.emitted('process')).toEqual([[]])
@@ -634,7 +635,11 @@ describe('warehouse grouped stock', () => {
     expect(headers().filter((label) => label === '加工状态')).toHaveLength(1)
     expect(headers()).not.toContain('库存状态')
     expect(wrapper.text()).toContain('有加工记录 · 进度未标明')
-    expect(wrapper.text()).toContain('未转出 12 件')
+    expect(wrapper.text()).not.toContain('未转出 12 件')
+    expect(wrapper.getComponent(ProcessingStockStatus).props('compact')).toBe(true)
+    expect(
+      wrapper.getComponent(ProcessingStockStatus).getComponent(ElTooltip).props('content'),
+    ).toContain('12 件 / 60 kg')
     await wrapper
       .findAll('.inventory-row-actions button')
       .find((button) => button.text() === '加工登记')!

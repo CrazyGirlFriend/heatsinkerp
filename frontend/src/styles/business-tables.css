@@ -1,10 +1,26 @@
 /* Shared screen-only reading scale. Print sheets and dashboards are excluded. */
 @media screen {
   :root {
-    --business-table-font: 14px;
-    --business-table-meta: 12px;
-    --business-table-line: 22px;
+    --business-table-font: var(--font-size-body);
+    --business-table-meta: var(--font-size-meta);
+    --business-table-line: var(--line-height-body);
     --business-table-padding: 10px;
+  }
+  .el-table .el-table__cell,
+  .el-table:not(.el-table--border) .el-table__cell {
+    border-right: 1px solid var(--el-table-border-color);
+    border-bottom: 1px solid var(--el-table-border-color);
+  }
+  table:is(.business-table, .business-document-table) {
+    border-top: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+  }
+  table:is(.business-table, .business-document-table)
+    > :is(thead, tbody, tfoot)
+    > tr
+    > :is(th, td) {
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
   }
   .el-table.business-table :is(th, td).el-table__cell,
   .el-table.business-table .cell {
@@ -61,10 +77,10 @@
     padding-block: 13px;
   }
   .material-detail-section .el-table.business-table th.el-table__cell {
-    color: var(--text);
+    color: var(--subtle);
     background: var(--table-header-bg);
-    font-size: var(--business-table-font);
-    font-weight: 550;
+    font-size: var(--business-table-meta);
+    font-weight: var(--font-weight-regular);
   }
   .material-detail-section .el-table.business-table .cell {
     line-height: var(--business-table-line);
@@ -83,7 +99,7 @@
     font-size: var(--business-table-font);
     font-variant-numeric: tabular-nums;
     --el-table-header-bg-color: var(--table-header-bg);
-    --el-table-header-text-color: var(--text);
+    --el-table-header-text-color: var(--subtle);
     --el-table-text-color: var(--text);
     --el-table-border-color: var(--line);
     --el-table-row-hover-bg-color: var(--table-hover-bg);
@@ -113,7 +129,8 @@
     th.el-table__cell {
     height: 42px;
     padding-block: 10px;
-    font-weight: 500;
+    color: var(--subtle);
+    font-weight: var(--font-weight-regular);
     font-size: var(--business-table-meta);
     text-align: center;
     vertical-align: middle;
@@ -138,13 +155,7 @@
       .stock-source-picker
     )
     .el-table.business-table
-    :is(
-      .el-button.is-link,
-      .batch-link,
-      .serial-number-link,
-      .material-amount strong,
-      .ledger-number .cell
-    ) {
+    :is(.batch-link, .serial-number-link, .material-amount strong, .ledger-number .cell) {
     font-size: var(--business-table-font);
     line-height: var(--business-table-line);
     font-weight: 400;
@@ -157,8 +168,9 @@
     )
     .el-table.business-table
     :is(small, .picker-secondary) {
+    color: var(--subtle);
     font-size: var(--business-table-meta);
-    line-height: 22px;
+    line-height: var(--line-height-meta);
   }
   :is(
       .page.reading-workspace,
@@ -245,8 +257,9 @@
     )
     th {
     background: var(--table-header-bg);
-    font-size: var(--business-table-font);
-    font-weight: 500;
+    color: var(--subtle);
+    font-size: var(--business-table-meta);
+    font-weight: var(--font-weight-regular);
   }
   :is(.drawer-content, .dispatch-detail-content)
     table.business-document-table:is(

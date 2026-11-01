@@ -1630,19 +1630,6 @@ export function traceFlowOption(
   }
 }
 
-export function batchSelection(batch: TraceBatch): FlowSelection {
-  return {
-    title: batch.batch_no,
-    description:
-      batch.entry_kind === 'processing_output'
-        ? `${batch.next_team.name} · 本班组加工`
-        : `${batch.source_team.name} → ${isExternalTransfer(batch) ? batch.external_destination : batch.next_team.name}`,
-    quantity: batch.quantity,
-    weight: batch.weight,
-    batches: [batch.batch_no],
-  }
-}
-
 export function flowByBatch(flows: SerialHistoryFlow[], batchNo: string) {
   return flows.find((flow) => flow.batch_no === batchNo)
 }

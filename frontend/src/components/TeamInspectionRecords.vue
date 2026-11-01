@@ -1,18 +1,18 @@
 <script setup lang="ts">
+import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
+import WorkspaceTable from './WorkspaceTable.vue'
+import WorkspacePagination from './WorkspacePagination.vue'
+import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   ElButton,
   ElDescriptions,
   ElDescriptionsItem,
-  ElInput,
   ElOption,
-  ElPagination,
   ElSelect,
-  ElTable,
   ElTableColumn,
   ElTag,
 } from 'element-plus'
-import { Refresh, Search } from '@element-plus/icons-vue'
 import AppDialog from './AppDialog.vue'
 import QualityFeedbackDetail from './QualityFeedbackDetail.vue'
 import FilterDialog from './FilterDialog.vue'
@@ -98,6 +98,14 @@ function params(): InspectionFilters {
     source_transfer_id: props.sourceId ?? sourceFilter.value,
   }
 }
+watch(
+  [page, size],
+  () => {
+    ++generation
+    rows.value = []
+  },
+  { flush: 'sync' },
+)
 async function load(background = false) {
   const token = ++generation
   if (!background) loading.value = true
@@ -257,83 +265,81 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <section
+  <WorkspaceDataPanel
     class="inspection-records"
     :class="{
       'inspection-records--compact': compact,
       'inspection-records--fullscreen': fullscreen,
     }"
   >
-    <div class="inspection-toolbar workspace-data-toolbar">
-      <ElInput
-        v-model="query"
-        :prefix-icon="Search"
-        clearable
-        placeholder="流水号、批次、材质或检验人"
-        aria-label="检查搜索"
-        @keyup.enter="search"
-        @clear="search"
-      />
-      <FilterDialog
-        v-model="filtersOpen"
-        :count="filterCount"
-        @open="openFilters"
-        @apply="applyFilters"
-        @reset="resetFilters"
+    <WorkspaceDataToolbar
+      v-model="query"
+      :loading="loading"
+      search-label="检查搜索"
+      placeholder="流水号、批次、材质或检验人"
+      :refresh-label="`刷新${title}记录`"
+      @search="search"
+      @refresh="load()"
+    >
+      <template #filters>
+        <FilterDialog
+          v-model="filtersOpen"
+          :count="filterCount"
+          @open="openFilters"
+          @apply="applyFilters"
+          @reset="resetFilters"
+        >
+          <label v-if="showAll"
+            >被检班组<ElSelect v-model="draftTeam" clearable placeholder="全部班组"
+              ><ElOption
+                v-for="team in teams"
+                :key="team.id"
+                :value="Number(team.id)"
+                :label="team.name" /></ElSelect
+          ></label>
+          <label
+            >处理状态<ElSelect v-model="draftStatus" clearable placeholder="全部状态"
+              ><ElOption
+                v-for="(label, key) in inspectionStatusLabels"
+                :key="key"
+                :value="key"
+                :label="label" /></ElSelect
+          ></label>
+          <label>检查日期<RecordDateFilter v-model="draftDates" label="检查日期" /></label>
+          <label
+            >检验问题<InspectionProblemFilter v-if="filtersOpen" v-model="draftProblem"
+          /></label>
+        </FilterDialog>
+      </template>
+      <template #tools
+        ><TableExportButton
+          :source="exportSource"
+          :disabled="loading || !!error"
+          :context="JSON.stringify(params())"
+      /></template>
+      <template #primary-actions
+        ><ElButton v-if="canWrite && !sourceId" type="primary" @click="register()"
+          >{{ title }}登记</ElButton
+        ></template
       >
-        <label v-if="showAll"
-          >被检班组<ElSelect v-model="draftTeam" clearable placeholder="全部班组"
-            ><ElOption
-              v-for="team in teams"
-              :key="team.id"
-              :value="Number(team.id)"
-              :label="team.name" /></ElSelect
-        ></label>
-        <label
-          >处理状态<ElSelect v-model="draftStatus" clearable placeholder="全部状态"
-            ><ElOption
-              v-for="(label, key) in inspectionStatusLabels"
-              :key="key"
-              :value="key"
-              :label="label" /></ElSelect
-        ></label>
-        <label>检查日期<RecordDateFilter v-model="draftDates" label="检查日期" /></label>
-        <label>检验问题<InspectionProblemFilter v-if="filtersOpen" v-model="draftProblem" /></label>
-      </FilterDialog>
-      <ElButton class="action-warm" @click="search">查询</ElButton>
-      <TableExportButton
-        :source="exportSource"
-        :disabled="loading || !!error"
-        :context="JSON.stringify(params())"
-      />
-      <ElButton
-        :icon="Refresh"
-        :loading="loading"
-        :aria-label="`刷新${title}记录`"
-        @click="load()"
-      />
-      <ElButton v-if="canWrite && !sourceId" type="primary" @click="register()"
-        >{{ title }}登记</ElButton
-      >
-    </div>
+    </WorkspaceDataToolbar>
     <div v-if="sourceFilter && !sourceId" class="inspection-scope">
       <span>当前显示所选批次的检查与复检记录</span
       ><ElButton link @click="clearSource">返回全部记录</ElButton>
     </div>
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
-    <ElTable
+    <WorkspaceTable
       v-else
       :data="rows"
-      class="business-table inspection-table"
-      height="100%"
-      flexible
+      class="inspection-table"
       row-key="id"
       :empty-text="`暂无${title}记录`"
       :aria-label="`${title}记录`"
     >
       <ElTableColumn
         prop="serial_no"
+        class-name="table-identity"
         label="流水号"
         min-width="145"
         align="center"
@@ -404,19 +410,15 @@ onBeforeUnmount(() => {
           ></template
         ></ElTableColumn
       >
-    </ElTable>
-    <footer>
-      <span>共 {{ total }} 次检查 · 抽检数量不代表整批合格数量</span
-      ><ElPagination
-        :current-page="page"
-        :page-size="size"
-        :page-sizes="[10, 20, 50, 100]"
-        :total="total"
-        layout="sizes, prev, pager, next"
-        @current-change="changePage"
-        @size-change="changeSize"
-      />
-    </footer>
+    </WorkspaceTable>
+    <WorkspacePagination
+      :current-page="page"
+      :page-size="size"
+      :total="total"
+      @current-change="changePage"
+      @size-change="changeSize"
+      >共 {{ total }} 次检查 · 抽检数量不代表整批合格数量</WorkspacePagination
+    >
     <InspectionRegistrationDialog
       v-if="registration && canWrite && qc"
       :inspection-team-id="Number(qc.id)"
@@ -496,53 +498,20 @@ onBeforeUnmount(() => {
       @close="feedbackId = undefined"
       @changed="load()"
     />
-  </section>
+  </WorkspaceDataPanel>
 </template>
 <style scoped>
-.inspection-records {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  flex: 1;
-  height: 100%;
-  gap: 16px;
-}
-.inspection-toolbar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-  flex-shrink: 0;
-}
-.inspection-toolbar > .el-input {
-  flex: 1;
-  min-width: 220px;
-}
-.inspection-toolbar :deep(.el-button) {
-  margin-left: 0;
-}
-.inspection-table {
-  flex: 1;
-  min-height: 260px;
-}
 .inspection-records--compact {
   height: min(540px, 65dvh);
 }
 .inspection-records--fullscreen {
   padding: 0;
 }
-.inspection-scope,
-footer {
+.inspection-scope {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-}
-footer {
-  flex-shrink: 0;
-  padding: 8px 0;
-  color: var(--muted);
-  font-size: 13px;
 }
 </style>

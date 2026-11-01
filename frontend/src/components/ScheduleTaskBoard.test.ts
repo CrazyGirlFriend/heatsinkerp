@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { ElInput, ElSelect } from 'element-plus'
+import { ElInput, ElPagination, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ScheduleTaskBoard from './ScheduleTaskBoard.vue'
 import ProductionScheduleGantt from './ProductionScheduleGantt.vue'
@@ -9,6 +9,7 @@ import ProductionScheduleOverview from './ProductionScheduleOverview.vue'
 import DeliverySchedules from './DeliverySchedules.vue'
 import TableExportButton from './TableExportButton.vue'
 import AppDrawer from './AppDrawer.vue'
+import FilterDialog from './FilterDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import ScheduleTaskEditor from './ScheduleTaskEditor.vue'
 import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
@@ -139,16 +140,56 @@ async function render(path = '/production-schedules') {
   return router
 }
 async function button(label: string) {
-  await wrapper
-    .findAll('button')
-    .find((item) => item.text() === label)!
-    .trigger('click')
+  const target =
+    label === '筛选'
+      ? wrapper.get('button[aria-label="排期筛选"]')
+      : wrapper.findAll('button').find((item) => item.text() === label)!
+  await target.trigger('click')
   await flushPromises()
 }
 function select(label: string) {
   return wrapper.findAllComponents(ElSelect).find((item) => item.props('ariaLabel') === label)!
 }
 describe('task scheduling board', () => {
+  it('keeps ten-row pagination consistent while an older twenty-row request completes late', async () => {
+    const items = Array.from({ length: 23 }, (_, index) => ({ ...task, id: index + 1 }))
+    const response = (size: number) => ({
+      items: items.slice(0, size),
+      total: items.length,
+      page: 1,
+      page_size: size,
+    })
+    vi.mocked(productionScheduleApi.tasks).mockImplementation(async (params) =>
+      response(params?.page_size || 10),
+    )
+    await render()
+    await wrapper.setProps({ management: true })
+    wrapper.getComponent(ElPagination).vm.$emit('size-change', 20)
+    await flushPromises()
+    expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(20)
+    let finish!: (value: ReturnType<typeof response>) => void
+    vi.mocked(productionScheduleApi.tasks).mockImplementationOnce(
+      () => new Promise((resolve) => (finish = resolve)),
+    )
+    wrapper.getComponent(ElPagination).vm.$emit('size-change', 10)
+    await flushPromises()
+    expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(0)
+    finish(response(10))
+    await flushPromises()
+    expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(10)
+
+    vi.mocked(productionScheduleApi.tasks).mockImplementationOnce(
+      () => new Promise((resolve) => (finish = resolve)),
+    )
+    wrapper.getComponent(ElPagination).vm.$emit('size-change', 20)
+    await flushPromises()
+    wrapper.getComponent(ElPagination).vm.$emit('size-change', 10)
+    await flushPromises()
+    finish(response(20))
+    await flushPromises()
+    expect(wrapper.getComponent(ElPagination).props('pageSize')).toBe(10)
+    expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(10)
+  })
   it('focuses fullscreen on the timeline and preserves the current view and filters on exit', async () => {
     await render('/production-schedules?serial_no=S-001')
     const overview = wrapper.getComponent(ProductionScheduleOverview)
@@ -199,10 +240,12 @@ describe('task scheduling board', () => {
   })
   it('shares the applied filters between global progress and export data', async () => {
     await render()
-    expect(wrapper.find('input[aria-label="任务排期搜索"]').exists()).toBe(false)
+    expect(wrapper.find('input[aria-label="任务排期搜索"]').exists()).toBe(true)
+    await wrapper.get('input[aria-label="任务排期搜索"]').setValue('S-001')
+    await wrapper.get('form[role="search"]').trigger('submit')
+    await flushPromises()
     await button('筛选')
     expect(wrapper.getComponent(AppDrawer).attributes('direction')).toBe('rtl')
-    wrapper.getComponent(ElInput).vm.$emit('update:modelValue', 'S-001')
     select('交货班组筛选').vm.$emit('update:modelValue', 2)
     select('任务状态筛选').vm.$emit('update:modelValue', 'overdue')
     wrapper
@@ -218,6 +261,7 @@ describe('task scheduling board', () => {
     }
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith({
       ...filters,
+      sort_order: 'asc',
       page: 1,
       page_size: 10,
     })
@@ -229,6 +273,7 @@ describe('task scheduling board', () => {
     const exported = await data.load(new AbortController().signal, () => {})
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith({
       ...filters,
+      sort_order: 'asc',
       page: 1,
       page_size: 100,
     })
@@ -239,9 +284,8 @@ describe('task scheduling board', () => {
     })
   })
   it('stages scope, serials and people until applied, discards cancellation, and resets all conditions', async () => {
-    await render()
+    await render('/production-schedules?serial_no=S-001')
     await button('筛选')
-    wrapper.getComponent(ElInput).vm.$emit('update:modelValue', 'S-001')
     select('任务范围筛选').vm.$emit('update:modelValue', 'attention')
     await button('选择流水号')
     wrapper
@@ -266,7 +310,6 @@ describe('task scheduling board', () => {
     expect(wrapper.get('.task-board__filter-count').text()).toBe('4')
     await wrapper.get('button[aria-label="排期筛选"]').trigger('click')
     await flushPromises()
-    wrapper.getComponent(ElInput).vm.$emit('update:modelValue', 'discarded')
     await button('重置')
     await button('取消')
     expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(2)
@@ -281,14 +324,90 @@ describe('task scheduling board', () => {
     await button('应用筛选')
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        query: undefined,
+        query: 'S-001',
         scope: undefined,
         serial_nos: undefined,
         business_person_ids: undefined,
         page: 1,
       }),
     )
+    wrapper.getComponent(ElInput).vm.$emit('update:modelValue', '')
+    wrapper.getComponent(ElInput).vm.$emit('clear')
+    await flushPromises()
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: undefined, page: 1 }),
+    )
     expect(wrapper.find('.task-board__filter-count').exists()).toBe(false)
+  })
+  it('searches without opening filters and keeps final delivery sorting when paging and exporting', async () => {
+    vi.mocked(productionScheduleApi.tasks).mockResolvedValue({
+      items: [task],
+      total: 21,
+      page: 1,
+      page_size: 10,
+    })
+    await render()
+    wrapper.getComponent(ElPagination).vm.$emit('current-change', 2)
+    await flushPromises()
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 2 }),
+    )
+    await wrapper.get('input[aria-label="任务排期搜索"]').setValue('  S-001  ')
+    await wrapper.get('form[role="search"]').trigger('submit')
+    await flushPromises()
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: 'S-001', sort_order: 'asc', page: 1 }),
+    )
+    select('最终交期排序').vm.$emit('change', 'desc')
+    await flushPromises()
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: 'S-001', sort_order: 'desc', page: 1 }),
+    )
+    wrapper.getComponent(ElPagination).vm.$emit('current-change', 2)
+    await flushPromises()
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: 'S-001', sort_order: 'desc', page: 2 }),
+    )
+    vi.mocked(productionScheduleApi.tasks).mockResolvedValue({
+      items: [task],
+      total: 1,
+      page: 1,
+      page_size: 100,
+    })
+    const data = wrapper.getComponent(TableExportButton).props('source')()!
+    await data.load(new AbortController().signal, () => {})
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: 'S-001', sort_order: 'desc', page: 1, page_size: 100 }),
+    )
+  })
+  it('sorts the dispatch table by final delivery through the server', async () => {
+    await render()
+    await wrapper.setProps({ management: true })
+    wrapper.getComponent({ name: 'ElTable' }).vm.$emit('sort-change', {
+      prop: 'final_due_at',
+      order: 'descending',
+    })
+    await flushPromises()
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort_order: 'desc', page: 1 }),
+    )
+    wrapper.getComponent({ name: 'ElTable' }).vm.$emit('sort-change', {
+      prop: 'final_due_at',
+      order: 'ascending',
+    })
+    await flushPromises()
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort_order: 'asc', page: 1 }),
+    )
+    await button('筛选')
+    expect(wrapper.getComponent(FilterDialog).props('modelValue')).toBe(true)
+    expect(wrapper.findComponent(AppDrawer).exists()).toBe(false)
+    select('任务状态筛选').vm.$emit('update:modelValue', 'overdue')
+    await button('应用筛选')
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'overdue', sort_order: 'asc', page: 1 }),
+    )
+    expect(wrapper.getComponent(FilterDialog).props('modelValue')).toBe(false)
   })
   it('loads task deep links and refreshes after node or task edits', async () => {
     await render('/production-schedules?task_id=7')

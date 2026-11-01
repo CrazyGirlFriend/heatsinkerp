@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import WorkspaceTools from './WorkspaceTools.vue'
+import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElAlert, ElButton, ElInput } from 'element-plus'
-import { Search, Connection } from '@element-plus/icons-vue'
+import { ElAlert } from 'element-plus'
+import { Connection } from '@element-plus/icons-vue'
 import TableExportButton from './TableExportButton.vue'
 import FilterDialog from './FilterDialog.vue'
 import { serialHistoryExportSource } from '@/utils/traceTableExport'
@@ -121,16 +121,18 @@ if (serial.value) search()
 <template>
   <section ref="historyRoot" class="serial-history" aria-label="本班组流水号收发历史">
     <h2 class="sr-only">本班组收发</h2>
-    <div class="history-query-bar">
-      <form class="history-search" @submit.prevent="search">
-        <ElInput
-          v-model="serial"
-          :prefix-icon="Search"
-          aria-label="历史流水号"
-          placeholder="输入完整流水号"
-          maxlength="80"
-          clearable
-        /><FilterDialog
+    <WorkspaceDataToolbar
+      v-model="serial"
+      search-label="历史流水号"
+      placeholder="输入完整流水号"
+      :maxlength="80"
+      :search-on-clear="false"
+      :loading="loading"
+      @search="search"
+      @refresh="load()"
+    >
+      <template #filters
+        ><FilterDialog
           v-model="filtersOpen"
           :append-to="historyRoot"
           title="收发历史筛选"
@@ -149,25 +151,24 @@ if (serial.value) search()
               :append-to="historyRoot"
               v-model="dates"
               label="收发日期" /></label></FilterDialog
-        ><ElButton native-type="submit" class="action-warm" :loading="loading">查询</ElButton
+      ></template>
+      <template #tools
         ><TableExportButton
           :append-to="historyRoot"
           :source="exportSource"
           :disabled="loading || !!error || !result?.found"
           :context="[teamId, applied.serial_no, applied.date_from, applied.date_to].join('|')"
-        />
-      </form>
-      <div v-if="result?.found" class="history-total">
-        <span>当前库存</span
-        ><strong
-          >{{ num(totals.quantity) }} <small>件</small><i>/</i>{{ num(totals.weight) }}
-          <small>kg</small></strong
-        >
-      </div>
-      <WorkspaceTools
-        ><template v-if="$slots.actions" #actions><slot name="actions" /></template
-      ></WorkspaceTools>
+      /></template>
+      <template v-if="$slots.actions" #actions><slot name="actions" /></template>
+    </WorkspaceDataToolbar>
+    <div v-if="result?.found" class="history-total">
+      <span>当前库存</span
+      ><strong
+        >{{ num(totals.quantity) }} <small>件</small><i>/</i>{{ num(totals.weight) }}
+        <small>kg</small></strong
+      >
     </div>
+
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
     <StatePanel v-if="loading" state="loading" title="正在读取收发历史" />
     <StatePanel v-else-if="error" state="error" :description="error" @retry="search" />
@@ -214,11 +215,6 @@ if (serial.value) search()
   overflow: auto;
   background: var(--workspace-bg);
 }
-.serial-history:fullscreen .history-query-bar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-}
 .serial-history:fullscreen .team-timeline {
   flex: 1;
   height: auto;
@@ -236,49 +232,6 @@ if (serial.value) search()
   border: 1px solid var(--line);
   border-radius: var(--card-radius);
   background: var(--glass-surface);
-}
-.serial-history > .history-query-bar {
-  flex-shrink: 0;
-}
-.history-query-bar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  padding: 0 0 12px;
-  margin-bottom: 0;
-  border: 0;
-  background: transparent;
-}
-.history-search {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-.history-search > .el-input {
-  flex: 1;
-  width: auto;
-  min-width: 180px;
-}
-.history-search :deep(.el-input__wrapper),
-.history-search :deep(.el-button) {
-  min-height: 36px;
-  font-size: 14px;
-}
-.history-search :deep(.record-date-trigger) {
-  min-width: 0;
-  max-width: 280px;
-}
-.history-search :deep(.record-date-trigger > span) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.history-search > .el-button {
-  margin-left: 0;
 }
 .history-total {
   display: flex;
@@ -330,22 +283,6 @@ if (serial.value) search()
   font-weight: 500;
 }
 @media (max-width: 760px) {
-  .history-query-bar {
-    padding: 12px;
-  }
-  .history-search {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    width: 100%;
-  }
-  .history-search > .el-input {
-    grid-column: 1 / -1;
-    width: 100%;
-  }
-  .history-search :deep(.record-date-trigger) {
-    width: 100%;
-    max-width: none;
-  }
   .history-total {
     margin-left: 0;
   }

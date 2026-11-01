@@ -43,7 +43,6 @@ beforeEach(() => {
     page: 1,
     page_size: 8,
   })
-  vi.spyOn(inspectionApi, 'recheckContext').mockResolvedValue(source)
   vi.spyOn(inspectionApi, 'create').mockResolvedValue({ id: 1 } as InspectionRecord)
   vi.spyOn(teamMaterialApi, 'inspectionProblems').mockResolvedValue([
     { id: 11, team_id: 8, name: '划伤', active: true, version: 1 },

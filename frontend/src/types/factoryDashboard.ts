@@ -30,17 +30,6 @@ export interface YieldRow {
   serial_no?: string
   status?: 'complete' | 'in_progress' | 'needs_review'
 }
-export interface TeamYield {
-  team_id: number
-  team_name: string
-  input_weight: number
-  output_weight: number
-  processing_delta_weight?: number
-  current_weight?: number
-  lost_weight?: number
-  rate: number | null
-  status: 'complete' | 'in_progress' | 'needs_review'
-}
 export interface Installment {
   label: string
   due_date: string

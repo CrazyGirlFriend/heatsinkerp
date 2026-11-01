@@ -21,7 +21,6 @@ import TeamWorkspaceShell from './TeamWorkspaceShell.vue'
 import TableExportButton from './TableExportButton.vue'
 import FilterDialog from './FilterDialog.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
-import ProductionScheduleEditor from './ProductionScheduleEditor.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type {
   ProductionSchedule,
@@ -36,6 +35,7 @@ const state = vi.hoisted(() => ({
     currentUserError: '',
     currentUser: { active: true, team_id: 2 },
   },
+  live: { message: { value: '' }, request: vi.fn() },
 }))
 vi.mock('@/stores/auth', async (original) => ({
   ...(await original<object>()),
@@ -50,7 +50,7 @@ vi.mock('@/stores/teamDirectory', () => ({
   }),
 }))
 vi.mock('@/composables/useLiveRefresh', () => ({
-  useLiveRefresh: () => ({ message: { value: '' }, request: vi.fn() }),
+  useLiveRefresh: () => state.live,
 }))
 const record = (): ProductionSchedule => ({
   id: 5,
@@ -107,6 +107,7 @@ const option = (id = 99): ScheduleSourceOption => ({
 })
 let wrapper: VueWrapper
 beforeEach(() => {
+  state.live = reactive({ message: { value: '' }, request: vi.fn() })
   state.auth = reactive({
     isAdmin: false,
     isTeamAccount: true,
@@ -155,7 +156,6 @@ async function render(manage = false, detail = false, withinShell = false, detai
           template: '<div v-if="modelValue"><slot/><slot name="footer"/></div>',
         },
         MaterialTransferDrawer: true,
-        ProductionScheduleEditor: true,
       },
     },
   }
@@ -173,6 +173,53 @@ function button(text: string) {
   return wrapper.findAll('button').find((item) => item.text() === text)!
 }
 describe('delivery schedule workbench', () => {
+  it('clears the previous larger page while ten-row pagination is pending', async () => {
+    const items = Array.from({ length: 23 }, (_, index) => ({ ...record(), id: index + 1 }))
+    const response = (size: number) => ({
+      items: items.slice(0, size),
+      total: items.length,
+      page: 1,
+      page_size: size,
+    })
+    vi.mocked(productionScheduleApi.list).mockImplementation(async (params) =>
+      response(params?.page_size || 10),
+    )
+    await render()
+    wrapper.getComponent(ElPagination).vm.$emit('size-change', 20)
+    await flushPromises()
+    expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(20)
+    let finish!: (value: ReturnType<typeof response>) => void
+    vi.mocked(productionScheduleApi.list).mockImplementationOnce(
+      () => new Promise((resolve) => (finish = resolve)),
+    )
+    wrapper.getComponent(ElPagination).vm.$emit('size-change', 10)
+    await flushPromises()
+    expect(productionScheduleApi.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 1, page_size: 10 }),
+    )
+    expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(0)
+    finish(response(10))
+    await flushPromises()
+    expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(10)
+  })
+  it('merges workspace and schedule sync failures into one toolbar notice and retries both', async () => {
+    await render()
+    const table = wrapper.get('.el-table').element
+    state.live.message.value = '同步失败，当前保留上次数据'
+    await wrapper.setProps({ syncMessage: '实时连接中断，当前显示上次结果，正在重连。' })
+    expect(wrapper.findAll('.live-refresh-notice')).toHaveLength(1)
+    expect(wrapper.find('.workspace-toolbar .live-refresh-notice').exists()).toBe(true)
+    expect(wrapper.get('.live-refresh-notice').text()).toContain('实时连接中断')
+    expect(wrapper.get('.el-table').element).toBe(table)
+    await wrapper.get('.live-refresh-notice button').trigger('click')
+    expect(state.live.request).toHaveBeenCalledOnce()
+    expect(wrapper.emitted('retry-sync')).toHaveLength(1)
+    await wrapper.setProps({ syncMessage: '' })
+    expect(wrapper.get('.live-refresh-notice').text()).toContain('同步失败')
+    state.live.message.value = ''
+    await flushPromises()
+    expect(wrapper.find('.live-refresh-notice').exists()).toBe(false)
+  })
   it('expands the exact historical change after the destination opens', async () => {
     vi.mocked(businessNoticeApi.target).mockResolvedValue({ href: '', schedule_id: 5, event_id: 9 })
     vi.mocked(productionScheduleApi.detail).mockResolvedValue({
@@ -332,7 +379,6 @@ describe('delivery schedule workbench', () => {
           }),
       )
       .mockResolvedValueOnce({ ...task, status: 'cancelled', version: 2, nodes: [cancelled] })
-    vi.spyOn(productionScheduleApi, 'cancel').mockResolvedValue(cancelled)
     await render(true, false, false, true)
     await (wrapper.vm as unknown as { openDetail: (id: number) => Promise<void> }).openDetail(5)
     await flushPromises()
@@ -370,7 +416,6 @@ describe('delivery schedule workbench', () => {
     expect(button('取消排期')).toBeUndefined()
     expect(button('添加下序节点')).toBeUndefined()
     expect(button('新建排期')).toBeUndefined()
-    expect(wrapper.findComponent(ProductionScheduleEditor).exists()).toBe(false)
   })
   it('uses the same applied filters and columns for paged exports, including hour-zone boundaries', async () => {
     state.auth.isAdmin = true

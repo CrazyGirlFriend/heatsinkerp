@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
-import { FullScreen, ScaleToOriginal, Upload } from '@element-plus/icons-vue'
+import { computed, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
+import { Download, FullScreen, ScaleToOriginal } from '@element-plus/icons-vue'
 import { ElButton } from 'element-plus'
-import { workspaceToolsKey } from '@/utils/workspaceTools'
+import { workspaceToolsKey, type WorkspaceExportAction } from '@/utils/workspaceTools'
 import PageBackButton from '@/components/PageBackButton.vue'
-import WorkspaceTools from './WorkspaceTools.vue'
 import {
   teamWorkspaceSections,
   teamWorkspaceSectionsFor,
@@ -51,6 +50,13 @@ const sectionLabel = computed(
 const navigation = ref<HTMLElement>()
 const fullscreen = ref(false),
   fullscreenBusy = ref(false)
+const tableExport = shallowRef<WorkspaceExportAction | null>(null)
+const exportActions = new Map<symbol, WorkspaceExportAction>()
+function registerExport(owner: symbol, action: WorkspaceExportAction | null) {
+  if (action) exportActions.set(owner, action)
+  else exportActions.delete(owner)
+  tableExport.value = [...exportActions.values()].at(-1) || null
+}
 const canFullscreen = computed(() =>
   [
     'process-routes',
@@ -67,23 +73,8 @@ const canFullscreen = computed(() =>
     'losses',
     'materials',
     'material-types',
-  ].includes(props.modelValue),
-)
-const contentTools = computed(() =>
-  [
-    'stock',
-    'pending',
-    'receipts',
-    'processing',
-    'quality-feedback',
-    'outgoing',
-    'reallocations',
-    'losses',
-    'materials',
-    'material-types',
-    'warehouse',
-    'overview',
     'history',
+    'warehouse',
   ].includes(props.modelValue),
 )
 provide(workspaceToolsKey, {
@@ -91,6 +82,8 @@ provide(workspaceToolsKey, {
   fullscreenBusy,
   canFullscreen,
   exportable: computed(() => !!props.exportable),
+  tableExport,
+  registerExport,
   settings: computed(() => !!props.settings),
   toggleFullscreen,
   export: () => emit('export'),
@@ -196,10 +189,11 @@ onBeforeUnmount(() => {
         <slot name="messages" />
         <div v-if="canFullscreen" class="team-workspace__view-actions">
           <ElButton
-            v-if="exportable"
+            v-if="tableExport || exportable"
             class="team-workspace__export action-warm"
-            :icon="Upload"
-            @click="emit('export')"
+            :icon="Download"
+            :disabled="tableExport?.disabled"
+            @click="tableExport ? tableExport.open() : emit('export')"
             >导出</ElButton
           ><ElButton
             class="team-workspace__fullscreen action-cool"
@@ -243,10 +237,8 @@ onBeforeUnmount(() => {
           >
         </ElButton>
       </nav>
-      <div v-if="$slots.messages || !contentTools" class="team-workspace__commands">
-        <slot v-if="!fullscreen" name="messages" />
-        <WorkspaceTools v-if="!contentTools" />
-        <slot v-if="!contentTools" name="settings" />
+      <div v-if="$slots.messages && !fullscreen" class="team-workspace__commands">
+        <slot name="messages" />
       </div>
     </div>
     <div
@@ -301,7 +293,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 18px;
+  font-size: var(--workspace-heading-size);
   font-weight: 600;
   letter-spacing: -0.3px;
 }
@@ -366,13 +358,13 @@ onBeforeUnmount(() => {
 .team-workspace__section.el-button {
   flex: 1 0 auto;
   min-width: max-content;
-  height: 32px;
+  height: 36px;
   margin: 0;
   padding: 0 12px;
   border-radius: 20px;
   color: var(--muted);
   background: transparent;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
   transition:
     background-color var(--motion-standard) ease,
@@ -433,9 +425,6 @@ onBeforeUnmount(() => {
   .team-workspace {
     padding: 16px 18px;
   }
-  .team-workspace__title {
-    font-size: 18px;
-  }
 }
 @media (max-width: 1080px) {
   .team-workspace {
@@ -443,9 +432,6 @@ onBeforeUnmount(() => {
   }
   .team-workspace__navigation-row {
     gap: 12px;
-  }
-  .team-workspace__title {
-    font-size: 18px;
   }
   .team-workspace__section.el-button {
     padding-inline: 13px;
@@ -465,9 +451,6 @@ onBeforeUnmount(() => {
   }
   .team-workspace__commands {
     margin-left: auto;
-  }
-  .team-workspace__title {
-    font-size: 18px;
   }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {

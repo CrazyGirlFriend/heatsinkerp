@@ -17,17 +17,6 @@ describe('complete dispatch API', () => {
     expect(result.items).toHaveLength(25)
     expect(result.items[24]!.history).toHaveLength(1)
   })
-  it.each([false, true])(
-    'sends required group revision and idempotency on outbound=%s',
-    async (outbound) => {
-      const body = { expected_revision: 'a'.repeat(64), idempotency_key: 'retry-key' }
-      await materialDispatchApi.confirm('CK-GROUP', body, outbound)
-      expect(httpRequest).toHaveBeenCalledWith(
-        `/material-dispatches/CK-GROUP/${outbound ? 'confirm-outbound' : 'confirm'}`,
-        { method: 'POST', body },
-      )
-    },
-  )
   it.each([
     { line_count: 26 },
     { revision: '' },

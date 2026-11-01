@@ -1,15 +1,17 @@
 <script setup lang="ts">
+import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
+import WorkspaceTable from './WorkspaceTable.vue'
+import WorkspacePagination from './WorkspacePagination.vue'
+import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { awaitingReview, plannedDueLabel, planLabel } from '@/utils/schedulePlanning'
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { Refresh, Search } from '@element-plus/icons-vue'
 import {
   ElButton,
   ElCollapse,
   ElCollapseItem,
   ElDescriptions,
   ElDescriptionsItem,
-  ElInput,
   ElOption,
   ElPagination,
   ElSelect,
@@ -57,10 +59,12 @@ const props = defineProps<{
   fullscreen?: boolean
   refreshKey?: unknown
   detailOnly?: boolean
+  syncMessage?: string
 }>()
 const emit = defineEmits<{
   dispatch: [schedule: ProductionSchedule, sourceId: number]
   changed: []
+  'retry-sync': []
 }>()
 const route = useRoute(),
   auth = useAuthStore(),
@@ -112,6 +116,10 @@ const live = useLiveRefresh(() => load(true), {
   teamId: () => props.teamId,
   busy: () => loading.value || editing.value || !!detailId.value,
 })
+function retrySync() {
+  live.request()
+  emit('retry-sync')
+}
 const filterCount = computed(
   () =>
     Number(!!filters.value.team_id) +
@@ -121,6 +129,14 @@ const filterCount = computed(
 function params() {
   return { ...filters.value, team_id: props.teamId ?? filters.value.team_id }
 }
+watch(
+  [page, pageSize],
+  () => {
+    ++generation
+    rows.value = []
+  },
+  { flush: 'sync' },
+)
 async function load(background = false) {
   if (props.detailOnly) return
   const token = ++generation
@@ -627,7 +643,7 @@ defineExpose({ exportSource, openDetail })
 </script>
 
 <template>
-  <section
+  <WorkspaceDataPanel
     class="delivery-schedules"
     :class="{
       'delivery-schedules--fullscreen': fullscreen,
@@ -636,65 +652,65 @@ defineExpose({ exportSource, openDetail })
     aria-label="交货排期"
   >
     <template v-if="!detailOnly">
-      <div class="workspace-data-toolbar schedule-toolbar">
-        <ElInput
-          v-model="query"
-          :prefix-icon="Search"
-          placeholder="搜索流水号、批次号"
-          aria-label="排期搜索"
-          clearable
-          @keyup.enter="search"
-          @clear="search"
-        />
-        <FilterDialog
-          v-model="filterOpen"
-          :count="filterCount"
-          @open="openFilters"
-          @apply="applyFilters"
-          @reset="resetFilters"
-        >
-          <label v-if="!teamId"
-            >交货班组<ElSelect v-model="draftTeam" clearable placeholder="全部班组"
-              ><ElOption
-                v-for="team in teams"
-                :key="team.id"
-                :value="Number(team.id)"
-                :label="team.name" /></ElSelect
-          ></label>
-          <label
-            >排期状态<ElSelect v-model="draftStatus" clearable placeholder="全部状态"
-              ><ElOption
-                v-for="(label, status) in scheduleStatusLabels"
-                :key="status"
-                :value="status"
-                :label="label" /></ElSelect
-          ></label>
-          <label class="filter-wide"
-            >要求交货日期<RecordDateFilter v-model="draftDates" label="要求交货日期"
-          /></label>
-        </FilterDialog>
-        <ElButton class="action-warm" @click="search">查询</ElButton>
-        <TableExportButton
-          v-if="!teamId"
-          :source="exportSource"
-          :disabled="loading || !!error"
-          :context="JSON.stringify(params())"
-        />
-        <ElButton :icon="Refresh" :loading="loading" aria-label="刷新交货排期" @click="load()" />
-      </div>
-      <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
+      <WorkspaceDataToolbar
+        v-model="query"
+        :loading="loading"
+        search-label="排期搜索"
+        placeholder="搜索流水号、批次号"
+        refresh-label="刷新交货排期"
+        @search="search"
+        @refresh="load()"
+      >
+        <template #filters
+          ><FilterDialog
+            v-model="filterOpen"
+            :count="filterCount"
+            @open="openFilters"
+            @apply="applyFilters"
+            @reset="resetFilters"
+          >
+            <label v-if="!teamId"
+              >交货班组<ElSelect v-model="draftTeam" clearable placeholder="全部班组"
+                ><ElOption
+                  v-for="team in teams"
+                  :key="team.id"
+                  :value="Number(team.id)"
+                  :label="team.name" /></ElSelect
+            ></label>
+            <label
+              >排期状态<ElSelect v-model="draftStatus" clearable placeholder="全部状态"
+                ><ElOption
+                  v-for="(label, status) in scheduleStatusLabels"
+                  :key="status"
+                  :value="status"
+                  :label="label" /></ElSelect
+            ></label>
+            <label class="filter-wide"
+              >要求交货日期<RecordDateFilter v-model="draftDates" label="要求交货日期"
+            /></label> </FilterDialog
+        ></template>
+        <template #tools
+          ><TableExportButton
+            v-if="!teamId"
+            :source="exportSource"
+            :disabled="loading || !!error"
+            :context="JSON.stringify(params())"
+        /></template>
+        <template #status
+          ><LiveRefreshNotice :message="syncMessage || live.message.value" @retry="retrySync"
+        /></template>
+      </WorkspaceDataToolbar>
       <StatePanel v-if="error" state="error" :description="error" @retry="load" />
-      <ElTable
+      <WorkspaceTable
         v-else
         :data="rows"
         row-key="id"
-        class="business-table schedule-table"
-        height="100%"
-        flexible
+        class="schedule-table"
         empty-text="暂无交货排期"
         aria-label="交货排期列表"
       >
         <ElTableColumn
+          class-name="table-identity"
           label="流水号"
           prop="serial_no"
           min-width="150"
@@ -791,7 +807,7 @@ defineExpose({ exportSource, openDetail })
             formatAmount(row.completion_basis === 'weight' ? null : row.remaining_quantity)
           }}</template></ElTableColumn
         >
-        <ElTableColumn label="计划 / 参考重量（kg）" min-width="130" align="center"
+        <ElTableColumn label="计划 / 参考重量（kg）" min-width="180" align="center"
           ><template #default="{ row }">{{
             formatAmount(row.target_weight)
           }}</template></ElTableColumn
@@ -827,19 +843,15 @@ defineExpose({ exportSource, openDetail })
             ></template
           ></ElTableColumn
         >
-      </ElTable>
-      <footer class="schedule-footer">
-        <span>共 {{ total }} 条</span
-        ><ElPagination
-          :current-page="page"
-          :page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="total"
-          layout="sizes, prev, pager, next"
-          @current-change="paginate($event)"
-          @size-change="paginate(1, $event)"
-        />
-      </footer>
+      </WorkspaceTable>
+      <WorkspacePagination
+        :current-page="page"
+        :page-size="pageSize"
+        :total="total"
+        @current-change="paginate($event)"
+        @size-change="paginate(1, $event)"
+        >共 {{ total }} 条</WorkspacePagination
+      >
     </template>
     <AppDialog
       :model-value="!!detailId"
@@ -1270,18 +1282,12 @@ defineExpose({ exportSource, openDetail })
         /><ElButton @click="closeDispatch">关闭</ElButton></template
       >
     </AppDialog>
-  </section>
+  </WorkspaceDataPanel>
 </template>
 
 <style scoped>
 .delivery-schedules {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
   height: 100%;
-  min-width: 0;
-  min-height: 0;
-  gap: 14px;
 }
 .delivery-schedules--detail-only {
   display: contents;
@@ -1357,38 +1363,11 @@ defineExpose({ exportSource, openDetail })
 .schedule-task-route__status--success {
   color: var(--primary);
 }
-.schedule-toolbar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-}
-.schedule-toolbar > :deep(.el-input) {
-  flex: 1 1 260px;
-}
-.schedule-toolbar :deep(.el-button) {
-  margin-left: 0;
-}
-.schedule-table {
-  flex: 1;
-  min-height: 180px;
-}
+
 .schedule-table :deep(.schedule-late) {
   color: var(--el-color-danger);
 }
-.schedule-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 4px 0;
-}
-.schedule-footer > span {
-  color: var(--muted);
-  font-size: 12px;
-}
+
 .schedule-detail__heading {
   display: flex;
   gap: 18px;

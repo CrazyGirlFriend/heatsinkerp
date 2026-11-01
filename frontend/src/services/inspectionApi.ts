@@ -97,8 +97,6 @@ function query(params: object) {
   ).toString()
 }
 export const inspectionApi = {
-  recheckContext: (id: number) =>
-    httpRequest<InspectionSource>(`/inspections/${id}/recheck-context`),
   records: (params: InspectionFilters) =>
     httpRequest<Page<InspectionRecord>>(`/inspections?${query(params)}`),
   sources: (params: {

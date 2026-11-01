@@ -1,14 +1,10 @@
 <script setup lang="ts">
+import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
+import WorkspaceTable from '@/components/WorkspaceTable.vue'
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
+import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
 import { computed, onMounted, ref } from 'vue'
-import {
-  ElAlert,
-  ElButton,
-  ElInput,
-  ElPagination,
-  ElTable,
-  ElTableColumn,
-  ElTag,
-} from 'element-plus'
+import { ElAlert, ElButton, ElInput, ElTableColumn, ElTag } from 'element-plus'
 import PageBackButton from '@/components/PageBackButton.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -94,40 +90,49 @@ onMounted(load)
       <PageBackButton />
       <h1>业务班组</h1>
     </header>
-    <div class="workspace-data-toolbar">
-      <ElInput
+    <WorkspaceDataPanel>
+      <WorkspaceDataToolbar
         v-model="query"
+        search-label="业务人员搜索"
         placeholder="搜索业务人员"
-        clearable
-        @keyup.enter="search"
-        @clear="search"
-      /><ElButton :loading="loading" @click="search">查询</ElButton
-      ><ElButton v-if="canManage" type="primary" @click="edit()">添加人员</ElButton>
-    </div>
-    <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <ElTable :data="rows" border class="business-table" height="100%" aria-label="业务人员名单"
-      ><ElTableColumn prop="name" label="业务人员" /><ElTableColumn label="状态" width="120"
-        ><template #default="{ row }"
-          ><ElTag :type="row.active ? 'success' : 'info'">{{
-            row.active ? '在册' : '已移除'
-          }}</ElTag></template
-        ></ElTableColumn
-      ><ElTableColumn v-if="canManage" label="操作" width="180"
-        ><template #default="{ row }"
-          ><ElButton link type="primary" @click="edit(asPerson(row))">修改</ElButton
-          ><ElButton v-if="row.active" link type="danger" @click="removeTarget = asPerson(row)"
-            >删除</ElButton
-          ><ElButton v-else link @click="save(asPerson(row), true)">恢复</ElButton></template
-        ></ElTableColumn
-      ></ElTable
-    >
-    <ElPagination
-      :current-page="page"
-      :page-size="20"
-      :total="total"
-      layout="total,prev,pager,next"
-      @current-change="changePage"
-    />
+        :loading="loading"
+        @search="search"
+        @refresh="load()"
+      >
+        <template v-if="canManage" #actions
+          ><ElButton v-if="canManage" type="primary" @click="edit()">添加人员</ElButton></template
+        >
+      </WorkspaceDataToolbar>
+      <ElAlert v-if="error" :title="error" type="error" :closable="false" />
+      <WorkspaceTable
+        :data="rows"
+        border
+        class="business-table"
+        height="100%"
+        aria-label="业务人员名单"
+        ><ElTableColumn prop="name" label="业务人员" /><ElTableColumn label="状态" width="120"
+          ><template #default="{ row }"
+            ><ElTag :type="row.active ? 'success' : 'info'">{{
+              row.active ? '在册' : '已移除'
+            }}</ElTag></template
+          ></ElTableColumn
+        ><ElTableColumn v-if="canManage" label="操作" width="180"
+          ><template #default="{ row }"
+            ><ElButton link type="primary" @click="edit(asPerson(row))">修改</ElButton
+            ><ElButton v-if="row.active" link type="danger" @click="removeTarget = asPerson(row)"
+              >删除</ElButton
+            ><ElButton v-else link @click="save(asPerson(row), true)">恢复</ElButton></template
+          ></ElTableColumn
+        ></WorkspaceTable
+      >
+      <WorkspacePagination
+        :current-page="page"
+        :page-size="20"
+        :total="total"
+        layout="prev, pager, next"
+        @current-change="changePage"
+      />
+    </WorkspaceDataPanel>
     <AppDialog
       v-model="open"
       :title="editing ? '修改业务人员' : '添加业务人员'"
@@ -177,15 +182,9 @@ onMounted(load)
 }
 .business-people-page h1 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--workspace-heading-size);
 }
-.workspace-data-toolbar {
-  display: flex;
-  gap: 8px;
-}
-.workspace-data-toolbar .el-input {
-  max-width: 360px;
-}
+
 .business-table {
   flex: 1;
   min-height: 0;
