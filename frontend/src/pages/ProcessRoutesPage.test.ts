@@ -329,3 +329,34 @@ it('starts rework from pending submitted problems rather than creating an unrela
   expect(wrapper.find('process-route-editor-stub').exists()).toBe(false)
   expect(wrapper.text()).toContain('待制定')
 })
+
+it('marks incomplete historical routes beside the serial without hiding their details', async () => {
+  const row = {
+    ...routeFixture,
+    state: 'published' as const,
+    missing_documents: ['工艺原件', '图纸'],
+  }
+  vi.mocked(processRouteApi.list).mockResolvedValue({
+    items: [row],
+    total: 1,
+    page: 1,
+    page_size: 20,
+    enforced_after: null,
+  })
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue(row)
+  await render()
+  const warning = wrapper.get('.route-document-warning')
+  expect(warning.text()).toBe('待补资料')
+  expect(warning.attributes('title')).toBe('缺少：工艺原件、图纸')
+  await wrapper.get('button.route-serial').trigger('click')
+  await flushPromises()
+  expect(processRouteApi.detail).toHaveBeenCalledWith(routeFixture.id)
+  expect(wrapper.getComponent(ProcessRouteEditor).props('route')).toMatchObject({
+    id: row.id,
+    missing_documents: row.missing_documents,
+  })
+})
+it('does not flag a complete route as missing documents', async () => {
+  await render()
+  expect(wrapper.find('.route-document-warning').exists()).toBe(false)
+})

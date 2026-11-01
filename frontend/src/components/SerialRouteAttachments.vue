@@ -52,11 +52,9 @@ async function load() {
         ? await processRouteApi.detail(item.routeId)
         : await processRouteApi.resolve(item.serialNo))
     if (version !== generation) return
+    route.value = result
     const order = await processRouteApi.dispatchOrder(result.id, item.serialNo)
-    if (version === generation) {
-      route.value = result
-      dispatchOrder.value = order
-    }
+    if (version === generation) dispatchOrder.value = order
   } catch (e) {
     if (version === generation) error.value = e instanceof Error ? e.message : '资料读取失败'
   } finally {
@@ -91,18 +89,20 @@ onBeforeUnmount(() => ++generation)
       current.serialNo
     }}</strong>
     <span v-if="loading" class="serial-attachments-state" role="status">读取资料…</span>
-    <template v-else-if="error">
+    <template v-if="error">
       <ElAlert :title="error" type="error" :closable="false" />
       <ElButton size="small" @click="load">重试</ElButton>
     </template>
     <ProcessRouteAttachments
-      v-else-if="route"
+      v-if="route"
       :key="selected"
       :route="route"
       :order-document="dispatchOrder?.document"
       :order-download="orderDownload"
     />
-    <span v-else class="serial-attachments-state">填写流水号后显示附件</span>
+    <span v-else-if="!loading && !error" class="serial-attachments-state"
+      >填写流水号后显示附件</span
+    >
   </aside>
 </template>
 

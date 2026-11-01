@@ -74,3 +74,19 @@ it('uses supplied documents without loading another route', async () => {
   expect(resolve).not.toHaveBeenCalled()
   expect(wrapper.getComponent(ProcessRouteAttachments).props('route').id).toBe(routeFixture.id)
 })
+
+it('keeps process and drawing previews available when the order request fails, and retries', async () => {
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue(routeFixture)
+  vi.mocked(processRouteApi.dispatchOrder).mockRejectedValueOnce(new Error('订单表读取失败'))
+  wrapper = mount(SerialRouteAttachments, {
+    props: { items: [{ serialNo: 'S-001', routeId: routeFixture.id }] },
+    global: { stubs },
+  })
+  await flushPromises()
+  expect(wrapper.text()).toContain('订单表读取失败')
+  expect(wrapper.getComponent(ProcessRouteAttachments).props('route')).toEqual(routeFixture)
+  await wrapper.get('button').trigger('click')
+  await flushPromises()
+  expect(wrapper.text()).not.toContain('订单表读取失败')
+  expect(processRouteApi.dispatchOrder).toHaveBeenCalledTimes(2)
+})

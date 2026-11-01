@@ -47,6 +47,27 @@ export interface ReworkSource {
   quantity: number
   weight: number
 }
+function routePayload(route: ProcessRoute, includeMaterials = true) {
+  return {
+    ...(route.rework_request ? { resume_step_index: route.rework_request.resume_step_index } : {}),
+    title: route.title,
+    engineering_employee_id: route.engineering_employee_id ?? null,
+    modified_employee_id: route.modified_employee_id ?? route.engineering_employee_id ?? null,
+    serial_nos: route.serial_nos,
+    steps: route.steps,
+    review_note: route.review_note || '',
+    ...(includeMaterials && route.source_data.receipt_fields
+      ? {
+          material_values: Object.fromEntries(
+            Object.entries(route.source_data.receipt_fields)
+              .filter(([key]) => key !== 'serial_no')
+              .map(([key, field]) => [key, field.value]),
+          ),
+        }
+      : {}),
+    version: route.version,
+  }
+}
 export const processRouteApi = {
   dispatchOrder: (id: number, serial: string) =>
     request<{ task_id: number; document: RouteOrderDocument } | null>(
@@ -109,28 +130,18 @@ export const processRouteApi = {
     link.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   },
+  create: (route: ProcessRoute, file: File, drawings: File[]) => {
+    if (!file || !drawings.length) return Promise.reject(new Error('请上传工艺原件和图纸'))
+    const body = new FormData()
+    body.append('payload', JSON.stringify(routePayload(route)))
+    body.append('file', file)
+    for (const drawing of drawings) body.append('drawings', drawing)
+    return request<ProcessRoute>('', 'POST', body)
+  },
   save: (route: ProcessRoute, includeMaterials = true) =>
-    request<ProcessRoute>(route.id ? `/${route.id}` : '', route.id ? 'PUT' : 'POST', {
-      ...(route.rework_request
-        ? { resume_step_index: route.rework_request.resume_step_index }
-        : {}),
-      title: route.title,
-      engineering_employee_id: route.engineering_employee_id ?? null,
-      modified_employee_id: route.modified_employee_id ?? route.engineering_employee_id ?? null,
-      serial_nos: route.serial_nos,
-      steps: route.steps,
-      review_note: route.review_note || '',
-      ...(includeMaterials && route.id && route.source_data.receipt_fields
-        ? {
-            material_values: Object.fromEntries(
-              Object.entries(route.source_data.receipt_fields)
-                .filter(([key]) => key !== 'serial_no')
-                .map(([key, field]) => [key, field.value]),
-            ),
-          }
-        : {}),
-      version: route.version,
-    }),
+    route.id
+      ? request<ProcessRoute>(`/${route.id}`, 'PUT', routePayload(route, includeMaterials))
+      : Promise.reject(new Error('请上传工艺原件和图纸后新建工艺')),
   attachSource: (route: ProcessRoute, file: File) => {
     const body = new FormData()
     body.append('file', file)

@@ -72,6 +72,7 @@ export interface ReworkRouteRequest {
   resume_team_id: number
 }
 export interface ProcessRoute {
+  missing_documents?: string[]
   route_kind?: 'normal' | 'rework'
   rework_batch_no?: string
   rework_quantity?: number

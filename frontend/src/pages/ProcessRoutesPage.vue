@@ -307,6 +307,14 @@ onBeforeUnmount(() => {
               @click="open(row.id)"
               >{{ row.serial_nos[0] }}</ElButton
             ><span v-else class="route-empty">—</span>
+            <ElTag
+              v-if="row.missing_documents?.length"
+              type="warning"
+              size="small"
+              class="route-document-warning"
+              :title="`缺少：${row.missing_documents.join('、')}`"
+              >待补资料</ElTag
+            >
           </template></ElTableColumn
         >
         <ElTableColumn v-if="routeKind === 'rework'" label="问题" min-width="210">
@@ -499,6 +507,10 @@ onBeforeUnmount(() => {
   </TeamWorkspaceShell>
 </template>
 <style scoped>
+.route-document-warning {
+  margin-left: 8px;
+}
+
 .new-route-options {
   display: grid;
   gap: 6px;

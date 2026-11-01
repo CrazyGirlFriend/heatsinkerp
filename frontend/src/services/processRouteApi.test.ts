@@ -100,13 +100,26 @@ it('reads execution-team tasks and purposes through the read-only route endpoint
   })
   expect(request).toHaveBeenCalledOnce()
 })
-it('creates a manual route without an original and applies version checks to file writes', async () => {
+it('requires documents for creation and applies version checks to existing file writes', async () => {
   const request = vi.spyOn(http, 'httpRequest').mockResolvedValue(routeFixture)
-  await processRouteApi.save({ ...routeFixture, id: 0, filename: '' })
-  expect(request).toHaveBeenLastCalledWith(
-    '/process-routes',
-    expect.objectContaining({ method: 'POST' }),
+  await expect(processRouteApi.save({ ...routeFixture, id: 0, filename: '' })).rejects.toThrow(
+    '请上传工艺原件和图纸',
   )
+  expect(request).not.toHaveBeenCalled()
+  const word = new File(['word'], '工艺.docx')
+  const drawing = new File(['pdf'], '加工图纸.pdf')
+  await expect(processRouteApi.create(routeFixture, word, [])).rejects.toThrow(
+    '请上传工艺原件和图纸',
+  )
+  expect(request).not.toHaveBeenCalled()
+  await processRouteApi.create({ ...routeFixture, id: 0 }, word, [drawing])
+  const created = request.mock.calls[0]![1]!.body as FormData
+  expect(created.get('file')).toBe(word)
+  expect(created.getAll('drawings')).toEqual([drawing])
+  expect(JSON.parse(String(created.get('payload')))).toMatchObject({
+    serial_nos: routeFixture.serial_nos,
+    steps: routeFixture.steps,
+  })
   const file = new File(['pdf'], '图纸.pdf')
   await processRouteApi.uploadDrawing(routeFixture, file)
   const upload = request.mock.calls.at(-1)![1]!.body as FormData

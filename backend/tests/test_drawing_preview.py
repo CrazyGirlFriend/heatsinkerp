@@ -97,7 +97,7 @@ def test_pending_preview_is_read_only_validated_and_keeps_original_download(
         == 422
     )
     route = upload(client, manual(client, warehouse, engineering), engineering, source).json()
-    stored = f"/api/process-routes/{route['id']}/drawings/{route['drawings'][0]['id']}"
+    stored = f"/api/process-routes/{route['id']}/drawings/{route['drawings'][-1]['id']}"
     assert client.get(stored).content == source
     preview = client.get(stored, params={"preview": True})
     assert PdfReader(BytesIO(preview.content)).pages[0].rotation == 270

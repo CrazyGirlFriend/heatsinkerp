@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from urllib.parse import quote
 
 from fastapi import Depends, File, Form, HTTPException, Path, Query, Response, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, aliased, defer
@@ -46,9 +46,11 @@ from .process_routes import (
     assert_route_importer,
     assign_engineering_employee,
     is_engineering_user,
+    missing_route_documents,
     publish_route,
     require_draft_owner,
     require_route,
+    require_route_documents,
     require_route_reader,
     route_document,
     route_options,
@@ -98,11 +100,14 @@ def execution_labels(row, db):
     }
 
 
-def document(row, *, detail=True, db=None):
+def document(row, *, detail=True, db=None, missing_documents=None):
+    if missing_documents is None:
+        missing_documents = missing_route_documents(db, [row.id]).get(row.id, []) if db else []
     return {
         "id": row.id,
         "title": row.title,
         "route_kind": row.route_kind,
+        "missing_documents": missing_documents,
         "rework_request": request_document(db, row) if db is not None else None,
         "filename": row.filename,
         "state": row.state,
@@ -299,9 +304,10 @@ def list_routes(
     )
     rows = list(rows)
     requests = request_documents(db, rows)
+    missing = missing_route_documents(db, [row.id for row in rows])
     items = []
     for row in rows:
-        item = document(row, detail=False)
+        item = document(row, detail=False, missing_documents=missing.get(row.id, []))
         scope = requests.get(row.id)
         if scope:
             item.update(
@@ -397,32 +403,65 @@ def lot_route(lot_id: int, user: User = Depends(get_current_user), db: Session =
 
 
 @router.post("", status_code=201)
-def create_draft(
-    payload: RouteDraftWrite,
+async def create_draft(
+    payload: Annotated[str, Form()],
+    file: Annotated[UploadFile, File()],
+    drawings: Annotated[list[UploadFile], File()],
     user: User = Depends(require_route_importer),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    with db.begin():
-        row = ProcessRoute(
-            title=payload.title,
-            serial_nos=payload.serial_nos,
-            steps=[step.model_dump() for step in payload.steps],
-            review_note=payload.review_note.strip(),
-            filename="",
-            source_sha256="",
-            source_file=b"",
-            source_data={"tables": [], "issues": []},
-            created_by=actor_name(user),
-            created_by_user_id=user.id,
-        )
-        assign_engineering_employee(db, row, payload.engineering_employee_id)
-        assign_engineering_employee(db, row, payload.engineering_employee_id, modifier=True)
-        db.add(row)
-        if not db.get(ProcessRoutePolicy, 1):
-            db.add(ProcessRoutePolicy(id=1, enforced_after=utcnow()))
-        db.flush()
-        reserve_serial(db, row)
-        return document(row, db=db)
+    try:
+        try:
+            write = RouteDraftWrite.model_validate_json(payload)
+        except ValidationError as error:
+            raise HTTPException(422, error.errors()[0]["msg"]) from None
+        if not 1 <= len(drawings) <= MAX_DRAWINGS:
+            raise HTTPException(422, "请上传1至10份图纸")
+        filename, content, parsed, _, _ = await read_word(file)
+        documents, hashes = [], set()
+        for drawing in drawings:
+            name = PurePath(drawing.filename or "").name
+            data = await drawing.read(MAX_FILE_BYTES + 1)
+            await run_in_threadpool(validate_drawing, name, data)
+            digest = hashlib.sha256(data).hexdigest()
+            if digest in hashes:
+                raise HTTPException(422, "请勿重复上传同一图纸")
+            hashes.add(digest)
+            documents.append(dict(filename=name, content=data, sha256=digest, size_bytes=len(data)))
+
+        def save(session):
+            with session.begin():
+                row = ProcessRoute(
+                    title=write.title,
+                    serial_nos=write.serial_nos,
+                    steps=[step.model_dump() for step in write.steps],
+                    review_note=write.review_note.strip(),
+                    filename=filename,
+                    source_sha256=hashlib.sha256(content).hexdigest(),
+                    source_file=content,
+                    source_data=merge_materials({}, word=parsed, filename=filename),
+                    created_by=actor_name(user),
+                    created_by_user_id=user.id,
+                )
+                apply_material_values(row, write.material_values)
+                assign_engineering_employee(session, row, write.engineering_employee_id)
+                assign_engineering_employee(
+                    session, row, write.engineering_employee_id, modifier=True
+                )
+                session.add(row)
+                if not session.get(ProcessRoutePolicy, 1):
+                    session.add(ProcessRoutePolicy(id=1, enforced_after=utcnow()))
+                session.flush()
+                reserve_serial(session, row)
+                session.add_all(ProcessRouteDrawing(route_id=row.id, **data) for data in documents)
+                session.flush()
+                return document(row, db=session)
+
+        return await db.run_sync(save)
+    finally:
+        await file.close()
+        for drawing in drawings:
+            await drawing.close()
 
 
 @router.post("/parse")
@@ -753,6 +792,7 @@ def publish(
         if row.version != payload.version:
             raise HTTPException(409, "工艺内容已变化，请刷新后核对")
         if row.state == "published":
+            require_route_documents(db, row)
             return document(row, db=db)
         if (
             is_engineering_user(user)

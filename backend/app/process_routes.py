@@ -126,25 +126,41 @@ def resolve_normal_route(db, serial):
         raise HTTPException(404, "未找到该流水号的正常工艺")
     if len(rows) != 1:
         raise HTTPException(409, "该流水号有多份工艺，请工艺班组核对后再出库")
+    require_route_documents(db, rows[0])
     return rows[0]
 
 
-def require_route_documents(db, row):
-    if row.route_kind != "rework":
-        missing = []
-        if not row.filename or not row.source_file:
-            missing.append("工艺原件")
-        if not db.scalar(
-            select(ProcessRouteDrawing.id)
-            .where(
-                ProcessRouteDrawing.route_id == row.id,
-                func.length(ProcessRouteDrawing.content) > 0,
+def route_document_checks():
+    return {
+        "工艺原件": (func.length(func.trim(ProcessRoute.filename)) > 0)
+        & (func.length(ProcessRoute.source_file) > 0),
+        "图纸": select(ProcessRouteDrawing.id)
+        .where(
+            ProcessRouteDrawing.route_id == ProcessRoute.id,
+            func.length(ProcessRouteDrawing.content) > 0,
+        )
+        .exists(),
+    }
+
+
+def missing_route_documents(db, route_ids):
+    if not route_ids:
+        return {}
+    checks = route_document_checks()
+    return {
+        row[0]: [label for label, present in zip(checks, row[1:], strict=True) if not present]
+        for row in db.execute(
+            select(ProcessRoute.id, *checks.values()).where(
+                ProcessRoute.id.in_(route_ids), ProcessRoute.route_kind == "normal"
             )
-            .limit(1)
-        ):
-            missing.append("图纸")
-        if missing:
-            raise HTTPException(422, "缺少：" + "、".join(missing))
+        )
+    }
+
+
+def require_route_documents(db, row):
+    missing = missing_route_documents(db, [row.id]).get(row.id, [])
+    if missing:
+        raise HTTPException(422, "缺少：" + "、".join(missing))
 
 
 def publish_route(db, row):
@@ -532,6 +548,7 @@ def validate_schedule(db, payload, previous=None):
         or payload.serial_no not in route.serial_nos
     ):
         raise HTTPException(422, "请选择本次派工已发布的工艺工序")
+    require_route_documents(db, route)
     step = route.steps[index]
     if step["team_id"] != payload.team_id or (
         step["serial_nos"] and payload.serial_no not in step["serial_nos"]

@@ -453,7 +453,7 @@ async function save() {
   error.value = ''
   try {
     const materialFields = JSON.parse(JSON.stringify(draft.value.source_data.receipt_fields || {}))
-    const hasPendingSource = !!pendingWord.value
+    let hasPendingSource = !!pendingWord.value
     if (editingSaved.value && draft.value.state === 'published') {
       const revision = await processRouteApi.revise(draft.value.id)
       draft.value = {
@@ -464,9 +464,20 @@ async function save() {
         state: revision.state,
       }
     }
-    draft.value = hasPendingSource
-      ? await processRouteApi.save(draft.value, false)
-      : await processRouteApi.save(draft.value)
+    if (!draft.value.id) {
+      draft.value = await processRouteApi.create(
+        draft.value,
+        pendingWord.value!,
+        pendingDrawings.value,
+      )
+      pendingWord.value = undefined
+      pendingDrawings.value = []
+      hasPendingSource = false
+    } else {
+      draft.value = hasPendingSource
+        ? await processRouteApi.save(draft.value, false)
+        : await processRouteApi.save(draft.value)
+    }
     while (removedDrawings.value.length) {
       const removed = removedDrawings.value[0]!
       const current = draft.value.drawings?.find(

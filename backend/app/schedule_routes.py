@@ -83,6 +83,8 @@ def route_states(db, plans):
 
 
 def options(db, task):
+    from .process_routes import route_document_checks
+
     successor = aliased(Route)
     return list(
         db.scalars(
@@ -98,6 +100,7 @@ def options(db, task):
                 ),
                 Route.route_kind == "normal",
                 Route.state == "published",
+                *route_document_checks().values(),
                 ~select(successor.id)
                 .where(successor.parent_id == Route.id, successor.state == "published")
                 .exists(),

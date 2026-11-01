@@ -3,7 +3,7 @@
 from app.database import SessionLocal
 from app.models import ProcessRoute, ProcessRouteArchive
 from test_engineering_team import engineering as engineering  # noqa: F401
-from test_process_route_creation import manual
+from test_process_route_creation import create_with_documents, manual
 from test_process_route_serials import body
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
@@ -47,4 +47,4 @@ def test_archives_stay_out_of_the_current_list_with_originals_preserved(
     assert (
         client.get(f"{URL}/{old_id}/source", headers=engineering["headers"]).content == b"original"
     )
-    assert client.post(URL, headers=engineering["headers"], json=body(current)).status_code == 409
+    assert create_with_documents(client, body(current), engineering["headers"]).status_code == 409

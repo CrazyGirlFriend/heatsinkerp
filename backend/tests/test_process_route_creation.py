@@ -1,14 +1,15 @@
-"""Manual engineering, optional original import, and version-owned drawing restrictions."""
+"""Engineering creation requires documents; attachment changes respect route versions."""
 
+import json
 from io import BytesIO
 from uuid import uuid4
 
 import pytest
 from app.database import SessionLocal
-from app.models import ProcessRoute
+from app.models import ProcessRoute, ProcessRouteDrawing
 from pypdf import PdfWriter
 from route_document_helpers import add_documents
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from test_engineering_team import engineering as engineering  # noqa: F401
 from test_process_route_import import HEADERS, docx
 from test_process_route_intake import route_payload
@@ -29,12 +30,29 @@ def pdf(number=0, *, password=False, script=False):
     return stream.getvalue()
 
 
+def create_with_documents(client, body, headers=None, *, source=None, drawing=None):
+    word = (
+        source
+        if source is not None
+        else docx([["流水号", body["serial_nos"][0]], HEADERS, [0, "中转库", "备料", 0, 10]])
+    )
+    return client.post(
+        URL,
+        headers=headers,
+        data={"payload": json.dumps(body)},
+        files=[
+            ("file", ("工艺.docx", word)),
+            ("drawings", ("图纸.pdf", pdf(99) if drawing is None else drawing)),
+        ],
+    )
+
+
 def manual(client, warehouse, engineering):
     original = route_payload(client, warehouse)
     body = {key: value for key, value in original.items() if key != "id"}
     body["serial_nos"] = ["MANUAL-" + uuid4().hex]
     body["engineering_employee_id"] = engineering["people"][0]["id"]
-    response = client.post(URL, json=body, headers=engineering["headers"])
+    response = create_with_documents(client, body, engineering["headers"])
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -52,8 +70,9 @@ def test_manual_create_requires_documents_and_preserves_original_source_permissi
     client, warehouse, engineering
 ):
     route = manual(client, warehouse, engineering)
-    assert route["filename"] == "" and route["source_data"]["tables"] == []
-    assert client.get(f"{URL}/{route['id']}/source").status_code == 404
+    assert route["filename"] == "工艺.docx" and route["drawings"]
+    assert route["missing_documents"] == []
+    assert client.get(f"{URL}/{route['id']}/source").status_code == 200
     denied = client.post(
         URL,
         json={
@@ -65,17 +84,7 @@ def test_manual_create_requires_documents_and_preserves_original_source_permissi
     published = client.post(
         f"{URL}/{route['id']}/publish",
         headers=engineering["headers"],
-        json={"version": route["version"]},
-    )
-    assert published.status_code == 422, published.text
-    assert published.json()["detail"] == "缺少：工艺原件、图纸"
-    with SessionLocal() as db:
-        assert db.get(ProcessRoute, route["id"]).state == "draft"
-    add_documents(route["id"], order=False)
-    published = client.post(
-        f"{URL}/{route['id']}/publish",
-        headers=engineering["headers"],
-        json={"version": route["version"]},
+        json={"version": route["version"], "confirmed_imports": True},
     )
     assert published.status_code == 200, published.text
     assert client.get(f"{URL}/{route['id']}", headers=warehouse["headers"]).status_code == 200
@@ -123,6 +132,8 @@ def test_word_parse_does_not_create_a_record_and_attach_keeps_edited_form(
 
 def test_drawings_access_versions_and_revision_isolation(client, warehouse, engineering):
     route = manual(client, warehouse, engineering)
+    with SessionLocal.begin() as db:
+        db.execute(delete(ProcessRouteDrawing).where(ProcessRouteDrawing.route_id == route["id"]))
     result = upload(client, route, engineering)
     assert result.status_code == 201, result.text
     saved = result.json()
@@ -136,7 +147,7 @@ def test_drawings_access_versions_and_revision_isolation(client, warehouse, engi
     published = client.post(
         f"{URL}/{route['id']}/publish",
         headers=engineering["headers"],
-        json={"version": saved["version"]},
+        json={"version": saved["version"], "confirmed_imports": True},
     )
     assert published.status_code == 200, published.text
     download = client.get(path, headers=warehouse["headers"])
@@ -188,25 +199,55 @@ def test_drawing_restrictions_leave_route_unchanged(
     response = upload(client, route, engineering, content, filename)
     assert response.status_code == status, response.text
     unchanged = client.get(f"{URL}/{route['id']}").json()
-    assert unchanged["drawings"] == [] and unchanged["version"] == route["version"]
+    assert unchanged["drawings"] == route["drawings"] and unchanged["version"] == route["version"]
 
 
 def test_drawing_count_limit_and_cross_route_access(client, warehouse, engineering):
     route = manual(client, warehouse, engineering)
-    for number in range(10):
+    for number in range(9):
         result = upload(client, route, engineering, pdf(number), f"图纸{number}.pdf")
         assert result.status_code == 201, result.text
         route = result.json()
     assert upload(client, route, engineering, pdf(11)).status_code == 422
-    foreign = client.post(
-        URL,
-        headers=engineering["headers"],
-        json={
+    foreign = create_with_documents(
+        client,
+        {
             **{key: route[key] for key in ("title", "version", "steps", "review_note")},
             "serial_nos": ["FOREIGN-" + uuid4().hex],
         },
+        engineering["headers"],
     ).json()
     drawing = route["drawings"][0]
     path = f"{URL}/{foreign['id']}/drawings/{drawing['id']}"
     assert client.get(path).status_code == 404
     assert client.delete(path, params={"version": foreign["version"]}).status_code == 404
+
+
+@pytest.mark.parametrize("missing", ["word", "drawing", "invalid_word", "invalid_drawing"])
+def test_atomic_creation_cannot_leave_an_empty_record(client, warehouse, engineering, missing):
+    original = route_payload(client, warehouse)
+    body = {key: value for key, value in original.items() if key != "id"}
+    body["serial_nos"] = ["ATOMIC-" + uuid4().hex]
+    body["engineering_employee_id"] = engineering["people"][0]["id"]
+    with SessionLocal() as db:
+        before = db.scalar(select(func.count()).select_from(ProcessRoute))
+        before_drawings = db.scalar(select(func.count()).select_from(ProcessRouteDrawing))
+    word = docx([["流水号", body["serial_nos"][0]], HEADERS, [0, "中转库", "备料", 0, 10]])
+    files = []
+    if missing != "word":
+        files.append(("file", ("工艺.docx", b"invalid" if missing == "invalid_word" else word)))
+    if missing != "drawing":
+        files.append(
+            ("drawings", ("图纸.pdf", b"invalid" if missing == "invalid_drawing" else pdf()))
+        )
+    response = client.post(
+        URL,
+        headers=engineering["headers"],
+        data={"payload": json.dumps(body)},
+        files=files,
+    )
+    assert response.status_code == 422, response.text
+    assert client.post(URL, headers=engineering["headers"], json=body).status_code == 422
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(ProcessRoute)) == before
+        assert db.scalar(select(func.count()).select_from(ProcessRouteDrawing)) == before_drawings

@@ -344,33 +344,44 @@ it('opens a manual form without importing or persisting a blank record', async (
   expect(processRouteApi.save).not.toHaveBeenCalled()
   expect(wrapper.text()).toContain('缺少：工艺原件、图纸')
 })
-it('imports into the current form with a local original and creates only when saving', async () => {
+it('creates a new route with its original and drawings in one request', async () => {
   const file = new File(['word'], '导入工艺.docx')
-  vi.spyOn(processRouteApi, 'parse').mockResolvedValue({ ...routeFixture, filename: file.name })
-  vi.spyOn(processRouteApi, 'attachSource').mockResolvedValue({
-    ...routeFixture,
-    id: 55,
-    filename: file.name,
-    version: 2,
+  const drawing = new File(['pdf'], '加工图纸.pdf')
+  vi.mocked(processRouteApi.publish).mockImplementation(async (route) => {
+    await flushPromises()
+    return { ...route, state: 'published' }
   })
-  vi.mocked(processRouteApi.save).mockResolvedValue({
+  vi.spyOn(processRouteApi, 'parse').mockResolvedValue({
+    title: routeFixture.title,
+    serial_nos: routeFixture.serial_nos,
+    steps: routeFixture.steps,
+    source_data: routeFixture.source_data,
+    filename: file.name,
+  })
+  const attach = vi.spyOn(processRouteApi, 'attachSource')
+  const upload = vi.spyOn(processRouteApi, 'uploadDrawing')
+  const create = vi.spyOn(processRouteApi, 'create').mockResolvedValue({
     ...routeFixture,
     id: 55,
-    filename: '',
     version: 1,
+    source_data: { ...routeFixture.source_data, review_required: true },
   })
   await renderNew()
   await files('导入工艺单文件', [file])
-  expect(processRouteApi.save).not.toHaveBeenCalled()
+  await files('上传图纸文件', [drawing])
+  expect(create).not.toHaveBeenCalled()
   expect(wrapper.getComponent(WordDocumentPreview).props('sourceFile')).toBe(file)
-  expect(wrapper.get('input[aria-label="流水号"]').element).toHaveProperty('value', 'S-001')
   await wrapper.get('.route-import-confirmation input[type="checkbox"]').setValue(true)
   await click('保存工艺')
-  expect(processRouteApi.save).toHaveBeenCalledTimes(2)
-  expect(processRouteApi.attachSource).toHaveBeenCalledWith(
-    expect.objectContaining({ id: 55, version: 1 }),
+  expect(create).toHaveBeenCalledWith(
+    expect.objectContaining({ id: 0, serial_nos: ['S-001'] }),
     file,
+    [drawing],
   )
+  expect(processRouteApi.save).not.toHaveBeenCalled()
+  expect(attach).not.toHaveBeenCalled()
+  expect(upload).not.toHaveBeenCalled()
+  expect(processRouteApi.publish).toHaveBeenCalledWith(expect.objectContaining({ id: 55 }), true)
 })
 it('blocks unsupported or oversized drawings and limits the combined file count', async () => {
   await renderNew()
