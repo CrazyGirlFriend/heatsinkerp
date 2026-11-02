@@ -424,6 +424,7 @@ function handleUserCommand(command: string | number | object): void {
 }
 .sidebar__footer {
   display: grid;
+  grid-row: 3;
   grid-template-columns: minmax(0, 1fr) 32px;
   gap: 4px;
   flex-shrink: 0;
@@ -503,6 +504,9 @@ function handleUserCommand(command: string | number | object): void {
     radial-gradient(ellipse 420px 220px at 85% -5%, #f5f1e880, transparent), var(--workspace-bg);
 }
 .app-shell--business .sidebar {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: calc(100dvh - 24px);
   margin: 12px 0 12px 12px;
   padding-bottom: 16px;
   border: 1px solid var(--glass-border);
@@ -528,6 +532,9 @@ function handleUserCommand(command: string | number | object): void {
   padding-inline: 15px;
   border-bottom: 0;
   background: transparent;
+}
+.app-shell--business .factory-nav {
+  grid-row: 2;
 }
 .app-shell--business .main-content {
   background: transparent;
@@ -602,6 +609,7 @@ function handleUserCommand(command: string | number | object): void {
     justify-content: flex-start;
   }
   .app-shell--business .sidebar {
+    height: calc(100dvh - var(--topbar-height) - 24px);
     transform: translateX(calc(-100% - 12px));
   }
   .app-shell--business .sidebar--open {

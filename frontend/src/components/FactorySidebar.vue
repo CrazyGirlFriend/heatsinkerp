@@ -483,6 +483,7 @@ const materialLinks = computed(() => [
   padding: 24px 10px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scroll-padding-block: 24px;
   scrollbar-width: thin;
   scrollbar-color: #bdc9c1 transparent;
 }
