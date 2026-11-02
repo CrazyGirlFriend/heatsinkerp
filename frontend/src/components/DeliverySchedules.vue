@@ -6,12 +6,14 @@ import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { awaitingReview, plannedDueLabel, planLabel } from '@/utils/schedulePlanning'
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import { EditPen } from '@element-plus/icons-vue'
 import {
   ElButton,
   ElCollapse,
   ElCollapseItem,
   ElDescriptions,
   ElDescriptionsItem,
+  ElIcon,
   ElOption,
   ElPagination,
   ElSelect,
@@ -294,6 +296,7 @@ async function openDetail(id: number) {
     if (token === detailGeneration) {
       detail.value = result
       if (result.task_id) void loadTask(result.task_id, token)
+      return result
     }
   } catch (e) {
     if (token === detailGeneration)
@@ -327,12 +330,21 @@ function closeDetail() {
   taskContext.value = null
   taskLoading.value = false
 }
-async function openBatchPlan(id: number) {
-  await openDetail(id)
-  if (detail.value) editSchedule(detail.value)
+function canPlan(row: ProductionSchedule) {
+  return (
+    canEditCommitment.value &&
+    (canManage.value || row.team_id === props.teamId) &&
+    !row.order_locked &&
+    row.status !== 'cancelled'
+  )
+}
+async function editRouteNode(node: ProductionSchedule) {
+  if (!canPlan(node)) return
+  const selected = node.id === detail.value?.id ? detail.value : await openDetail(node.id)
+  if (selected && selected.id === detail.value?.id) editSchedule(selected)
 }
 function editSchedule(row: ProductionSchedule) {
-  if (row.order_locked || !canEditCommitment.value) return
+  if (!canPlan(row)) return
   editingSchedule.value = row
   editing.value = true
 }
@@ -833,14 +845,7 @@ defineExpose({ exportSource, openDetail })
         >
         <ElTableColumn label="操作" width="150" fixed="right" align="center"
           ><template #default="{ row }"
-            ><ElButton link type="primary" @click="openDetail(row.id)">明细</ElButton
-            ><ElButton
-              v-if="canEditCommitment && !row.order_locked && row.status !== 'cancelled'"
-              link
-              type="primary"
-              @click="openBatchPlan(row.id)"
-              >{{ row.planning_state === 'pending' ? '填写交期' : '修改计划' }}</ElButton
-            ></template
+            ><ElButton link type="primary" @click="openDetail(row.id)">明细</ElButton></template
           ></ElTableColumn
         >
       </WorkspaceTable>
@@ -897,19 +902,38 @@ defineExpose({ exportSource, openDetail })
             </p>
             <ol v-if="taskContext" class="schedule-task-route" aria-label="整项任务交货路线">
               <li v-for="node in taskContext.nodes" :key="node.id">
-                <button
-                  type="button"
+                <div
+                  class="schedule-task-route__node"
                   :class="{ 'is-current': node.id === detail.id }"
-                  :aria-current="node.id === detail.id ? 'step' : undefined"
-                  @click="openDetail(node.id)"
+                  :data-schedule-id="node.id"
                 >
-                  <strong>{{ node.team_name }}</strong>
-                  <span>{{ plannedDueLabel(node) }}</span>
+                  <button
+                    type="button"
+                    class="schedule-task-route__heading"
+                    :aria-current="node.id === detail.id ? 'step' : undefined"
+                    :aria-label="`第${node.sequence_no}道 ${node.team_name}，查看明细`"
+                    @click="openDetail(node.id)"
+                  >
+                    <span class="schedule-task-route__sequence">{{ node.sequence_no }}</span>
+                    <strong>{{ node.team_name }}</strong>
+                    <small v-if="canDispatch && node.team_id === teamId">本班组</small>
+                  </button>
+                  <button
+                    v-if="canPlan(node)"
+                    type="button"
+                    class="schedule-task-route__plan"
+                    :aria-label="`第${node.sequence_no}道 ${node.team_name}，${node.planning_state === 'pending' ? '填写交期' : '修改批次计划'}`"
+                    @click="editRouteNode(node)"
+                  >
+                    <ElIcon><EditPen /></ElIcon>
+                    <span>{{ plannedDueLabel(node) }}</span>
+                  </button>
+                  <span v-else class="schedule-task-route__due">{{ plannedDueLabel(node) }}</span>
                   <span
                     :class="`schedule-task-route__status--${scheduleStatusTone(node.status)}`"
                     >{{ scheduleStatusLabels[node.status] }}</span
                   >
-                </button>
+                </div>
               </li>
             </ol>
           </div>
@@ -1212,16 +1236,7 @@ defineExpose({ exportSource, openDetail })
         </ScheduleDocuments>
       </template>
       <template #footer
-        ><div
-          v-if="
-            detail &&
-            canEditCommitment &&
-            (canManage || detail.team_id === teamId) &&
-            detail.status !== 'cancelled' &&
-            !detail.order_locked
-          "
-          class="schedule-detail__manage"
-        >
+        ><div v-if="detail && !detail.task_id && canPlan(detail)" class="schedule-detail__manage">
           <ElButton type="primary" @click="editSchedule(detail)">{{
             detail.planning_state === 'pending' ? '填写交期' : '修改批次计划'
           }}</ElButton>
@@ -1350,7 +1365,7 @@ defineExpose({ exportSource, openDetail })
   color: var(--muted);
   margin-right: 8px;
 }
-.schedule-task-route button {
+.schedule-task-route__node {
   display: grid;
   gap: 4px;
   min-width: 160px;
@@ -1360,21 +1375,63 @@ defineExpose({ exportSource, openDetail })
   background: var(--surface, #fff);
   color: var(--text);
   font: inherit;
-  cursor: pointer;
   text-align: left;
 }
-.schedule-task-route button > span {
+.schedule-task-route__node > span {
   font-size: 12px;
 }
-.schedule-task-route button.is-current {
+.schedule-task-route__node.is-current {
   border-color: var(--primary);
   background: rgba(231, 244, 237, 0.7);
 }
-.schedule-task-route button:hover,
+.schedule-task-route button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 5px;
+  padding: 4px 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.schedule-task-route__sequence {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.schedule-task-route__heading small {
+  margin-left: auto;
+  color: var(--primary);
+  font-size: 11px;
+}
+.schedule-task-route button.schedule-task-route__plan {
+  min-height: 28px;
+  padding: 4px 6px;
+  background: rgba(54, 124, 99, 0.08);
+  color: var(--primary);
+  font-size: 12px;
+  transition: background-color 160ms ease;
+}
+.schedule-task-route button.schedule-task-route__plan:hover {
+  background: rgba(54, 124, 99, 0.16);
+}
+.schedule-task-route__due {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+}
 .schedule-task-route button:focus-visible {
   border-color: var(--primary);
   outline: 2px solid rgba(54, 124, 99, 0.15);
   outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .schedule-task-route button.schedule-task-route__plan {
+    transition: none;
+  }
 }
 .schedule-task-route__status--danger {
   color: var(--el-color-danger);

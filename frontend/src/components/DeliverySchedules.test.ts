@@ -6,6 +6,7 @@ import { ElInput, ElPagination, ElSelect } from 'element-plus'
 import { h, reactive } from 'vue'
 import DeliverySchedules from './DeliverySchedules.vue'
 import AppDialog from './AppDialog.vue'
+import ScheduleBatchEditor from './ScheduleBatchEditor.vue'
 import { businessNoticeApi } from '@/services/businessNoticeApi'
 import { focusNoticeTarget, noticeOpened } from '@/utils/noticeFocus'
 vi.mock('@/services/businessNoticeApi', async (original) => ({
@@ -31,6 +32,7 @@ import type {
 const state = vi.hoisted(() => ({
   auth: {
     isAdmin: false,
+    isDispatch: false,
     isTeamAccount: true,
     currentUserError: '',
     currentUser: { active: true, team_id: 2 },
@@ -110,6 +112,7 @@ beforeEach(() => {
   state.live = reactive({ message: { value: '' }, request: vi.fn() })
   state.auth = reactive({
     isAdmin: false,
+    isDispatch: false,
     isTeamAccount: true,
     currentUserError: '',
     currentUser: { active: true, team_id: 2 },
@@ -156,6 +159,7 @@ async function render(manage = false, detail = false, withinShell = false, detai
           template: '<div v-if="modelValue"><slot/><slot name="footer"/></div>',
         },
         MaterialTransferDrawer: true,
+        ScheduleBatchEditor: true,
       },
     },
   }
@@ -173,6 +177,103 @@ function button(text: string) {
   return wrapper.findAll('button').find((item) => item.text() === text)!
 }
 describe('delivery schedule workbench', () => {
+  function mockTaskRoute(overrides: Partial<ProductionSchedule> = {}) {
+    const first = { ...record(), task_id: 11, planning_state: 'pending' as const, ...overrides }
+    const other = { ...first, id: 6, team_id: 3, team_name: '研磨', sequence_no: 2 }
+    const repeated = { ...first, id: 7, sequence_no: 3, predecessor_id: 6 }
+    const task: ScheduleTask = {
+      id: 11,
+      task_no: 'PQ00000011',
+      title: '第一批交货',
+      serial_no: first.serial_no,
+      notes: null,
+      version: 1,
+      created_at: first.created_at,
+      updated_at: first.updated_at,
+      final_due_at: first.due_at,
+      status: first.status,
+      nodes: [first, other, repeated],
+    }
+    vi.mocked(productionScheduleApi.list).mockResolvedValue({
+      items: [first],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    })
+    vi.mocked(productionScheduleApi.detail).mockImplementation(async (id) =>
+      task.nodes.find((n) => n.id === id)!,
+    )
+    vi.spyOn(productionScheduleApi, 'task').mockResolvedValue(task)
+    return task
+  }
+  it('opens the route before planning and edits the exact occurrence of the owning team', async () => {
+    const task = mockTaskRoute()
+    await render()
+    expect(button('填写交期')).toBeUndefined()
+    expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
+    await button('明细').trigger('click')
+    await flushPromises()
+    expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
+    expect(wrapper.find('.schedule-detail__manage').exists()).toBe(false)
+    expect(wrapper.find('[data-schedule-id="6"] .schedule-task-route__plan').exists()).toBe(false)
+    expect(wrapper.get('[data-schedule-id="5"]').text()).toContain('本班组')
+    await wrapper.get('[data-schedule-id="7"] .schedule-task-route__plan').trigger('click')
+    await flushPromises()
+    expect(productionScheduleApi.detail).toHaveBeenLastCalledWith(7)
+    expect(wrapper.getComponent(ScheduleBatchEditor).props('schedule').id).toBe(7)
+    wrapper.getComponent(ScheduleBatchEditor).vm.$emit('close')
+    await flushPromises()
+    expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
+    expect(wrapper.get('[data-schedule-id="7"]').classes()).toContain('is-current')
+    await wrapper.get('[data-schedule-id="5"] .schedule-task-route__plan').trigger('click')
+    await flushPromises()
+    expect(wrapper.getComponent(ScheduleBatchEditor).props('schedule').id).toBe(5)
+    const saved = { ...task.nodes[0]!, planning_state: 'submitted' as const }
+    task.nodes[0] = saved
+    wrapper.getComponent(ScheduleBatchEditor).vm.$emit('saved', saved)
+    await flushPromises()
+    expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
+    expect(wrapper.get('[data-schedule-id="5"]').text()).toContain('待调度确认')
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+  })
+  it.each([{ order_locked: true }, { status: 'cancelled' as const }])(
+    'keeps locked or cancelled route nodes read-only: %s',
+    async (overrides) => {
+      mockTaskRoute(overrides)
+      await render(false, true)
+      expect(wrapper.find('.schedule-task-route__plan').exists()).toBe(false)
+      expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
+    },
+  )
+  it('keeps confirmed plans editable at their node and permits dispatch to adjust other teams', async () => {
+    mockTaskRoute({ planning_state: 'confirmed' })
+    state.auth.isDispatch = true
+    await render(true, false, false, true)
+    await (wrapper.vm as unknown as { openDetail: (id: number) => Promise<void> }).openDetail(5)
+    await flushPromises()
+    const target = wrapper.get('[data-schedule-id="6"] .schedule-task-route__plan')
+    expect(target.attributes('aria-label')).toContain('修改批次计划')
+    await target.trigger('click')
+    await flushPromises()
+    expect(wrapper.getComponent(ScheduleBatchEditor).props('schedule').id).toBe(6)
+  })
+  it('does not open a planner from a late response after the details were closed', async () => {
+    const task = mockTaskRoute()
+    await render(false, true)
+    let finish!: (value: ProductionSchedule) => void
+    vi.mocked(productionScheduleApi.detail).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    await wrapper.get('[data-schedule-id="7"] .schedule-task-route__plan').trigger('click')
+    await button('关闭').trigger('click')
+    finish(task.nodes[2]!)
+    await flushPromises()
+    expect(wrapper.findComponent(ScheduleBatchEditor).exists()).toBe(false)
+    expect(wrapper.find('.schedule-task-route').exists()).toBe(false)
+  })
   it('clears the previous larger page while ten-row pagination is pending', async () => {
     const items = Array.from({ length: 23 }, (_, index) => ({ ...record(), id: index + 1 }))
     const response = (size: number) => ({

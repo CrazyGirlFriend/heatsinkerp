@@ -159,7 +159,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <div class="batch-plan-summary">
       <strong>{{ schedule.serial_no }}</strong
-      ><span>{{ schedule.team_name }}</span
+      ><span>第 {{ schedule.sequence_no }} 道 · {{ schedule.team_name }}</span
       ><span
         >最终交期 <b>{{ formatDateTime(task?.final_due_at) }}</b></span
       >
