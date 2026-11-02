@@ -11,6 +11,8 @@ import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 import { globalTransferExportFields } from '@/utils/teamTableExport'
 import { transferRecordColumns as displayColumns } from '@/utils/transferRecordColumns'
 import PageBackButton from '@/components/PageBackButton.vue'
+import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
+import WorkspaceTable from '@/components/WorkspaceTable.vue'
 import {
   CircleCheck,
   Clock,
@@ -30,7 +32,6 @@ import {
   ElPagination,
   ElSelect,
   ElSkeleton,
-  ElTable,
   ElTableColumn,
 } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -660,7 +661,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="page workspace-page transfers-page reading-workspace">
     <h1 class="sr-only">转料记录</h1>
-    <div class="transfers-main">
+    <WorkspaceDataPanel class="transfers-main">
       <LiveRefreshNotice :message="liveRefresh.message.value" @retry="liveRefresh.request" />
       <ElCard class="transfers-card" shadow="never">
         <form class="filter-bar" @submit.prevent="applyFilters">
@@ -863,7 +864,7 @@ onBeforeUnmount(() => {
             >
           </div>
         </form>
-        <div
+        <WorkspaceDataPanel
           v-loading="loading && hasRows"
           class="table-pane"
           :aria-busy="loading"
@@ -892,11 +893,10 @@ onBeforeUnmount(() => {
               >新建转料</ElButton
             ></StatePanel
           >
-          <ElTable
+          <WorkspaceTable
             v-else
             :data="rows"
-            class="business-table transfer-table"
-            border
+            class="transfer-table"
             row-key="batch_no"
             empty-text="暂无转料记录"
             :current-row-key="drawerOpen ? selected?.batch_no : undefined"
@@ -1062,7 +1062,7 @@ onBeforeUnmount(() => {
                 ></template
               >
             </ElTableColumn>
-          </ElTable>
+          </WorkspaceTable>
           <div v-if="hasRows" class="transfer-mobile-list">
             <ElButton
               v-for="transfer in rows"
@@ -1104,7 +1104,7 @@ onBeforeUnmount(() => {
               >
             </ElButton>
           </div>
-        </div>
+        </WorkspaceDataPanel>
         <div
           v-if="!errorMessage"
           class="transfer-summary"
@@ -1143,7 +1143,7 @@ onBeforeUnmount(() => {
           />
         </footer>
       </ElCard>
-    </div>
+    </WorkspaceDataPanel>
     <MaterialDispatchDrawer
       v-model="groupOpen"
       :dispatch-no="selectedDispatchNo"
@@ -1265,11 +1265,6 @@ onBeforeUnmount(() => {
   height: 26px;
   padding: 0;
   color: var(--subtle);
-}
-.table-pane {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
 }
 .table-skeleton {
   padding: 24px;

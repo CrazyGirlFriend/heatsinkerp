@@ -175,25 +175,6 @@
   color: var(--reading-muted);
   font-size: 14px;
 }
-.page.reading-workspace.transfers-page {
-  grid-template-rows: minmax(min-content, 1fr);
-  align-content: stretch;
-}
-.page.reading-workspace.transfers-page :is(.transfers-card, .table-pane) {
-  flex: 1 0 auto;
-}
-.page.reading-workspace.transfers-page .transfers-card > .el-card__body {
-  flex: 1 0 auto;
-  height: auto;
-}
-.page.reading-workspace.transfers-page .table-pane {
-  display: flex;
-  flex-direction: column;
-  overflow: visible;
-}
-.page.reading-workspace.transfers-page .table-pane > .state-panel {
-  flex: 1 0 auto;
-}
 .page.reading-workspace .filter-options {
   flex-wrap: wrap;
   gap: 8px;

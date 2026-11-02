@@ -755,7 +755,7 @@ describe('transfer list refresh continuity', () => {
     expect(materialTransferApi.list).toHaveBeenLastCalledWith(
       expect.objectContaining({ page: 1, page_size: 10 }),
     )
-    expect(page.getComponent({ name: 'ElTable' }).props('height')).toBeUndefined()
+    expect(page.getComponent({ name: 'ElTable' }).props('height')).toBe('100%')
     page.getComponent(ElPagination).vm.$emit('size-change', 20)
     await flushPromises()
     expect(materialTransferApi.list).toHaveBeenLastCalledWith(
