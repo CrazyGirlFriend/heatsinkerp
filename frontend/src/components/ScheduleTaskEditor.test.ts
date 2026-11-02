@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { ElDatePicker, ElFormItem, ElInputNumber, ElSelect } from 'element-plus'
+import { ElDatePicker, ElFormItem, ElInputNumber, ElOption, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import dayjs from 'dayjs'
 import ScheduleTaskEditor from './ScheduleTaskEditor.vue'
 import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
 import AppDialog from './AppDialog.vue'
+import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ScheduleTask, ScheduleRouteOption } from '@/types/productionSchedule'
 import { orderFixture } from '@/testFixtures/processRouteOrder'
@@ -150,7 +151,8 @@ it('blocks creation without a process and waits for a choice when several proces
     { ...route, execution_serial: 'S-001' } as unknown as ScheduleRouteOption,
     { ...route, id: route.id + 1, execution_serial: 'S-001' } as unknown as ScheduleRouteOption,
   ])
-  await button('读取工艺')
+  await wrapper.get('button[aria-label="刷新工艺"]').trigger('click')
+  await flushPromises()
   expect(createButton().attributes('disabled')).toBeDefined()
   const selection = wrapper
     .findAllComponents(ElSelect)
@@ -292,7 +294,9 @@ it('rejects a mismatched order and clears the imported file when changing serial
     serial_no: 'OTHER',
   })
   await uploadOrder()
-  expect(wrapper.text()).toContain('订单表流水号与当前排期不一致')
+  expect(wrapper.text()).toContain('订单表流水号为 OTHER，与填写的 S-001 不一致，请核对。')
+  expect(productionScheduleApi.task).not.toHaveBeenCalled()
+  expect(wrapper.text()).not.toContain('替换订单表')
   await uploadOrder()
   expect(wrapper.text()).toContain('替换订单表')
   await wrapper.get('input[aria-label="任务流水号"]').setValue('OTHER')
@@ -343,4 +347,39 @@ it('marks an invalid batch quantity at its field before submission', async () =>
   ).toBe(true)
   expect(wrapper.get('[role="status"]').text()).toContain('待分配 100 件')
   expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
+})
+
+it('names route choices by engineering serial and previews files before entering an order serial', async () => {
+  await render(undefined, '')
+  const selection = wrapper
+    .findAllComponents(ElSelect)
+    .find((item) => item.props('ariaLabel') === '关联工艺')!
+  expect(selection.findAllComponents(ElOption).map((option) => option.props('label'))).toEqual([
+    'S-001',
+  ])
+  expect(processRouteApi.detail).toHaveBeenCalledWith(routeFixture.id)
+  expect(wrapper.getComponent(ProcessRouteAttachments).props('route').id).toBe(routeFixture.id)
+})
+
+it('matches an entered serial automatically and preserves a dispatchers manual correction', async () => {
+  const route = vi.mocked(productionScheduleApi.taskRouteOptions).getMockImplementation()!
+  const options = await route('')
+  const second = { ...options[0]!, id: 19, serial_nos: ['S-002'], execution_serial: 'S-002' }
+  vi.mocked(productionScheduleApi.taskRouteOptions).mockResolvedValue([options[0]!, second])
+  await render(undefined, '')
+  const selection = wrapper
+    .findAllComponents(ElSelect)
+    .find((item) => item.props('ariaLabel') === '关联工艺')!
+  expect(selection.props('modelValue')).toBeUndefined()
+  await wrapper.get('input[aria-label="任务流水号"]').setValue('S-002')
+  await vi.waitFor(() => expect(selection.props('modelValue')).toBe(second.id))
+  selection.vm.$emit('update:modelValue', routeFixture.id)
+  selection.vm.$emit('change', routeFixture.id)
+  await flushPromises()
+  await wrapper.get('input[aria-label="任务流水号"]').setValue('ORDER-OTHER')
+  await vi.waitFor(() =>
+    expect(productionScheduleApi.taskRouteOptions).toHaveBeenCalledWith('ORDER-OTHER'),
+  )
+  await flushPromises()
+  expect(selection.props('modelValue')).toBe(routeFixture.id)
 })

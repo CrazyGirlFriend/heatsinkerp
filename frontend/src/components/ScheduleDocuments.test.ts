@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { ElSelect } from 'element-plus'
+import { ElOption, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ScheduleDocuments from './ScheduleDocuments.vue'
 import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
@@ -100,6 +100,12 @@ it('keeps distinct route versions selectable without changing the dispatch order
   await wrapper.setProps({ orderDocument: { ...orderFixture, filename: '调度订单.xlsx' } })
   await flushPromises()
   expect(processRouteApi.detail).toHaveBeenCalledTimes(2)
+  expect(
+    wrapper
+      .getComponent(ElSelect)
+      .findAllComponents(ElOption)
+      .map((item) => item.props('label')),
+  ).toEqual(['S-001', 'S-001'])
   wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 9)
   await flushPromises()
   expect(wrapper.getComponent({ name: 'WordDocumentPreview' }).props('route').id).toBe(9)
@@ -160,4 +166,31 @@ it('loads the saved dispatch order when editing from a list without document met
   await flushPromises()
   expect(task).toHaveBeenCalledWith(17)
   expect(wrapper.text()).toContain('已保存.xlsx')
+})
+
+it('keeps selected engineering files visible when only the order serial changes', async () => {
+  render()
+  await wrapper.setProps({ serialNo: '' })
+  await flushPromises()
+  vi.mocked(processRouteApi.detail).mockClear()
+  await wrapper.setProps({ serialNo: 'ORDER-OTHER', routeIds: [route.id] })
+  await flushPromises()
+  expect(processRouteApi.detail).not.toHaveBeenCalled()
+  expect(wrapper.getComponent(ProcessRouteAttachments).props('route').id).toBe(route.id)
+})
+
+it('shows animated thumbnail placeholders until the selected engineering files arrive', async () => {
+  let finish!: (value: ProcessRoute) => void
+  vi.mocked(processRouteApi.detail).mockReturnValueOnce(
+    new Promise((resolve) => (finish = resolve)),
+  )
+  render()
+  expect(wrapper.get('[aria-label="排期附件缩略图"]').attributes('aria-busy')).toBe('true')
+  expect(wrapper.get('[role="status"]').text()).toBe('加载工艺资料…')
+  expect(wrapper.findAll('.schedule-document-skeleton')).toHaveLength(2)
+  finish(route)
+  await flushPromises()
+  expect(wrapper.get('[aria-label="排期附件缩略图"]').attributes('aria-busy')).toBe('false')
+  expect(wrapper.findAll('.schedule-document-skeleton')).toHaveLength(0)
+  expect(wrapper.getComponent(ProcessRouteAttachments).props('route').id).toBe(route.id)
 })

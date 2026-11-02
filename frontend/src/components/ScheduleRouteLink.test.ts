@@ -62,6 +62,12 @@ it('maps and offers only the engineering execution path while retaining original
     },
   })
   await flushPromises()
+  const routePicker = wrapper
+    .findAllComponents(ElSelect)
+    .find((select) => select.props('ariaLabel') === '关联工艺')!
+  expect(routePicker.findAllComponents(ElOption).map((option) => option.props('label'))).toEqual([
+    'PROCESS-001 / PROCESS-OTHER',
+  ])
   const stepPicker = wrapper
     .findAllComponents(ElSelect)
     .find((select) => select.props('ariaLabel') === '研磨对应工序')!

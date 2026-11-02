@@ -9,16 +9,15 @@ import {
   ElFormItem,
   ElInput,
   ElInputNumber,
-  ElSelect,
-  ElOption,
   ElTable,
   ElTableColumn,
 } from 'element-plus'
 import AppDialog from './AppDialog.vue'
-import { Upload } from '@element-plus/icons-vue'
+import { Refresh, Upload } from '@element-plus/icons-vue'
 import MaterialInput from './MaterialInput.vue'
 import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
 import ScheduleDocuments from './ScheduleDocuments.vue'
+import ScheduleRouteSelect from './ScheduleRouteSelect.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
@@ -72,7 +71,7 @@ async function importOrder(event: Event) {
     const result = await productionScheduleApi.parseOrder(file)
     if (current !== orderGeneration) return
     if (result.serial_no !== serial.value.trim()) {
-      orderError.value = '订单表流水号与当前排期不一致'
+      orderError.value = `订单表流水号为 ${result.serial_no}，与填写的 ${serial.value.trim() || '未填写'} 不一致，请核对。`
       return
     }
     orderFile.value = file
@@ -97,7 +96,8 @@ const people = ref<ScheduleSelection[]>(
   ).map((p) => ({ value: p.id, label: p.name })),
 )
 const routes = ref<ScheduleRouteOption[]>([]),
-  routeId = ref<number>()
+  routeId = ref<number>(),
+  routeManuallySelected = ref(false)
 const selectedRoute = computed(() => routes.value.find((r) => r.id === routeId.value))
 const steps = computed(
   () =>
@@ -157,9 +157,11 @@ async function loadRoutes() {
     const result = await productionScheduleApi.taskRouteOptions(serial.value.trim())
     if (current !== generation) return
     routes.value = result
+    const matches = result.filter((route) => route.serial_nos?.includes(serial.value.trim()))
+    const preferredId = routeManuallySelected.value ? previousRouteId : props.processRoute?.id
     routeId.value =
-      result.find((r) => r.id === previousRouteId)?.id ||
-      result.find((r) => r.id === props.processRoute?.id)?.id ||
+      result.find((r) => r.id === preferredId)?.id ||
+      (matches.length === 1 ? matches[0]!.id : undefined) ||
       (result.length === 1 ? result[0]!.id : undefined)
     if (!result.length) error.value = '暂无可用工艺，请先由工艺班组制定'
   } catch (e) {
@@ -341,10 +343,7 @@ onMounted(loadRoutes)
                 field="serial_no"
                 label="任务流水号"
                 :disabled="!!task"
-              /><ElButton v-if="!task" link :loading="loading" @click="loadRoutes"
-                >读取工艺</ElButton
-              ></ElFormItem
-            >
+            /></ElFormItem>
             <ElFormItem label="最终交期" required :error="finalDueError"
               ><ElDatePicker
                 v-model="finalDue"
@@ -364,21 +363,22 @@ onMounted(loadRoutes)
             >
           </div>
           <ElFormItem v-if="!task" label="关联工艺" required
-            ><ElSelect
-              v-model="routeId"
-              aria-label="关联工艺"
-              filterable
-              :loading="loading"
-              :disabled="loading || !routes.length"
-              :placeholder="!routes.length ? '暂无可用工艺' : '搜索并选择工艺'"
-              ><ElOption
-                v-for="r in routes"
-                :key="r.id"
-                :value="r.id"
-                :label="
-                  [r.title, r.serial_nos?.join(' / ')].filter(Boolean).join(' · ')
-                " /></ElSelect
-          ></ElFormItem>
+            ><div class="dispatch-route-choice">
+              <ScheduleRouteSelect
+                v-model="routeId"
+                :options="routes"
+                :loading="loading"
+                @change="routeManuallySelected = true"
+              />
+              <ElButton
+                :icon="Refresh"
+                :loading="loading"
+                aria-label="刷新工艺"
+                title="刷新工艺"
+                @click="loadRoutes"
+              />
+            </div>
+          </ElFormItem>
           <div class="dispatch-batch-heading">
             <h3>分批交货</h3>
             <div v-if="quantity > 0" class="dispatch-allocation" role="status" aria-live="polite">
@@ -511,6 +511,16 @@ onMounted(loadRoutes)
   gap: 24px;
 }
 .dispatch-task-content {
+  min-width: 0;
+}
+.dispatch-route-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.dispatch-route-choice > :deep(.el-select) {
+  flex: 1;
   min-width: 0;
 }
 .dispatch-task-layout > :deep(.schedule-document-rail) {

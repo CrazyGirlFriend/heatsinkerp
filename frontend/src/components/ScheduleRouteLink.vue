@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { ElAlert, ElButton, ElOption, ElSelect, ElTable, ElTableColumn } from 'element-plus'
 import AppDialog from './AppDialog.vue'
+import ScheduleRouteSelect from './ScheduleRouteSelect.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ScheduleTask, ScheduleRouteOption } from '@/types/productionSchedule'
 import { formatDateTime } from '@/utils/format'
@@ -89,18 +90,13 @@ async function save() {
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <div class="route-choice">
       <span>流水号 {{ task.serial_no }}</span
-      ><ElSelect
+      ><ScheduleRouteSelect
         v-model="selected"
-        aria-label="关联工艺"
+        :options="options"
+        :loading="busy"
         :disabled="busy"
-        placeholder="暂无可关联工艺"
         @change="match"
-        ><ElOption
-          v-for="r in options"
-          :key="r.id"
-          :value="r.id"
-          :label="`${r.title} · ${formatDateTime(r.published_at)}`"
-      /></ElSelect>
+      />
     </div>
     <ElTable :data="nodes" border class="business-table">
       <ElTableColumn label="排期班组" width="150"
