@@ -110,6 +110,7 @@ export interface ProcessRoute {
   published_at: string | null
 }
 export interface ProcessRouteContext {
+  execution_serial?: string | null
   can_resume?: boolean
   route_kind?: 'normal' | 'rework'
   rework_of_id?: number | null

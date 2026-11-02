@@ -506,7 +506,12 @@ def activate(db, route):
         if route.resume_step_index is None or route.resume_step_index >= len(original.steps):
             raise HTTPException(422, "请选择返工后接回的正常工序")
         step = original.steps[route.resume_step_index]
-        if step.get("serial_nos") and lot.serial_no not in step["serial_nos"]:
+        from .process_route_paths import execution_serial
+
+        if (
+            step.get("serial_nos")
+            and execution_serial(original, lot.serial_no) not in step["serial_nos"]
+        ):
             raise HTTPException(422, "返回工序不适用于本批流水号")
         route.resume_team_id = step["team_id"]
     lot.process_route = route

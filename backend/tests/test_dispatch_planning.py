@@ -313,7 +313,6 @@ def test_new_order_requires_a_current_published_process(client, warehouse, dispa
     for override in (
         {"route_id": route["id"] + 999},
         {"route_version": route["version"] + 1},
-        {"serial_no": "NO-MATCHING-PROCESS"},
     ):
         response = submit(client, {**body, **override}, dispatcher)
         assert response.status_code == 409, response.text

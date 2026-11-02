@@ -8,6 +8,7 @@ from .material_transfer_workflow import _utc, material_transfer_dict, material_t
 from .models import MaterialQuantityAdjustment as Adjustment
 from .models import MaterialTransfer as Transfer
 from .models import ProcessRoutePath, TeamEmployee, utcnow
+from .process_route_paths import path_serial
 from .processing_registration import METRICS, SUMMARY_METRICS
 from .processing_statistics import weight_difference_table
 from .quantity_adjustments import record_dict
@@ -35,8 +36,7 @@ def registered_lots(team_id):
             ProcessRoutePath.route_id == Transfer.process_route_id,
             ProcessRoutePath.step_index == Transfer.process_step_index,
             ProcessRoutePath.team_id == team_id,
-            ProcessRoutePath.serial_no
-            == case((Transfer.shared_unallocated.is_(True), ""), else_=Transfer.serial_no),
+            ProcessRoutePath.serial_no == path_serial(Transfer),
         )
         .correlate(Transfer)
         .exists(),

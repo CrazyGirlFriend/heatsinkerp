@@ -1543,7 +1543,7 @@ it('automatically resolves a warehouse serial and submits its complete documents
   const resolved = {
     ...routeFixture,
     state: 'published' as const,
-    serial_nos: [row.transfer.serial_no],
+    serial_nos: ['PROCESS-001'],
     source_data: {
       ...routeFixture.source_data,
       order_document: undefined,
@@ -1586,6 +1586,30 @@ it('automatically resolves a warehouse serial and submits its complete documents
       ],
     }),
   )
+})
+
+it('requires the current order instead of accepting another order retained by the engineering route', async () => {
+  const { routeFixture } = await import('@/testFixtures/processRoute')
+  const { orderFixture } = await import('@/testFixtures/processRouteOrder')
+  const row = source()
+  row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
+  vi.spyOn(processRouteApi, 'resolve').mockResolvedValue({
+    ...routeFixture,
+    state: 'published',
+    serial_nos: ['PROCESS-001'],
+    source_data: { ...routeFixture.source_data, order_document: orderFixture },
+    drawings: [{ id: 1, filename: '图纸.pdf', size_bytes: 100 }],
+    steps: [
+      { ...routeFixture.steps[0]!, team_id: 2 },
+      { ...routeFixture.steps[1]!, team_id: 3, purpose_id: null },
+    ],
+  })
+  await render('dispatch', [row])
+  await new Promise((resolve) => setTimeout(resolve, 350))
+  await flushPromises()
+  await submit()
+  expect(wrapper.text()).toContain('缺少：订单表')
+  expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
 })
 
 it('keeps documents and route bindings separate for multiple outbound serials', async () => {

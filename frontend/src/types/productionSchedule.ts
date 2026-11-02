@@ -301,6 +301,8 @@ export interface ScheduleRouteOption {
   title: string
   version: number
   published_at: string
+  execution_serial?: string | null
+  serial_nos?: string[]
   steps: ProcessRouteStep[]
 }
 export interface ScheduleRouteLink {

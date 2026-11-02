@@ -958,18 +958,14 @@ describe('库房关联已发布工艺', () => {
     expect(focus).toHaveBeenCalledOnce()
   })
 
-  it('rejects changed serials without modifying the published route and accepts a corrected match', async () => {
+  it('keeps the order serial independent without modifying the published process serial', async () => {
     await render()
     await importFile(true)
     wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'raw_material')
-    await wrapper.get('input[aria-label="流水号"]').setValue('WRONG-SERIAL')
+    await wrapper.get('input[aria-label="流水号"]').setValue('ORDER-01')
     await submit()
-    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
-    expect(wrapper.get('.receipt-route-review .el-form-item').classes()).toContain('is-error')
-    await reviewImportedRoute()
-    expect(wrapper.find('input[type="file"]').exists()).toBe(false)
-    await wrapper.get('input[aria-label="流水号"]').setValue('IMPORT-01')
-    await submit()
+    expect(teamMaterialApi.createReceipt).toHaveBeenCalledOnce()
+    expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1].serial_no).toBe('ORDER-01')
     expect(
       vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1].process_route?.serial_nos,
     ).toEqual(['IMPORT-01'])

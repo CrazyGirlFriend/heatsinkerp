@@ -33,6 +33,7 @@ from .models import (
     ProductionScheduleTask as Task,
 )
 from .models import (
+    SharedMaterialMember,
     Team,
     utcnow,
 )
@@ -409,6 +410,19 @@ def summaries(db, ids, *, now=None):
     return result
 
 
+def shared_order_lot():
+    return and_(
+        Transfer.shared_unallocated.is_(True),
+        select(SharedMaterialMember.id)
+        .where(
+            SharedMaterialMember.group_id == Transfer.shared_group_id,
+            SharedMaterialMember.serial_no == Plan.serial_no,
+        )
+        .correlate(Transfer, Plan)
+        .exists(),
+    )
+
+
 def linked_lots(ids):
     direct = select(Source.schedule_id, Source.source_transfer_id).where(
         Source.schedule_id.in_(ids)
@@ -426,7 +440,7 @@ def linked_lots(ids):
             Plan.process_route_id.is_not(None),
             Transfer.next_team_id == Plan.team_id,
             Transfer.process_step_index == Plan.process_step_index,
-            or_(Transfer.serial_no == Plan.serial_no, Transfer.shared_unallocated.is_(True)),
+            or_(Transfer.serial_no == Plan.serial_no, shared_order_lot()),
         )
     )
     return union(direct, inherited, routed).subquery()
@@ -445,7 +459,7 @@ def execution_lots(ids):
                 Transfer.serial_no == Plan.serial_no,
                 and_(
                     Plan.process_route_id == Transfer.process_route_id,
-                    Transfer.shared_unallocated.is_(True),
+                    shared_order_lot(),
                 ),
             ),
         )

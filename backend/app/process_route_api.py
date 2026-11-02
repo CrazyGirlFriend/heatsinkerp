@@ -513,8 +513,8 @@ async def attach_order(
         def save(session):
             with session.begin():
                 row = editable_version(session, route_id, version, user)
-                if row.route_kind == "rework" or row.serial_nos != [order["serial_no"]]:
-                    raise HTTPException(422, "请选择与正常工艺流水号一致的订单表")
+                if row.route_kind == "rework":
+                    raise HTTPException(422, "返工工艺不上传订单表")
                 row.source_data = merge_materials(row.source_data, order=order)
                 original = session.get(ProcessRouteOrderFile, row.id)
                 if original is None:
@@ -737,9 +737,6 @@ def save_draft(
             raise HTTPException(409, "工艺已被他人修改，请刷新后重试")
         if row.route_kind == "rework" and payload.serial_nos != row.serial_nos:
             raise HTTPException(422, "返工流水号随原批次保留，不能修改")
-        order_serial = row.source_data.get("order_document", {}).get("serial_no")
-        if order_serial and payload.serial_nos != [order_serial]:
-            raise HTTPException(422, "流水号与已导入的订单表不一致")
         row.title, row.serial_nos, row.steps = (
             payload.title.strip(),
             payload.serial_nos,
@@ -984,7 +981,14 @@ def bind_lot(db, row, lot, user):
         if lot.shared_unallocated
         else {lot.serial_no}
     )
-    if serials != set(row.serial_nos) or row.steps[0]["team_id"] != lot.next_team_id:
+    if lot.shared_unallocated:
+        if serials != set(row.serial_nos):
+            raise HTTPException(422, "派工流水号名单与共投实物批次不一致")
+    else:
+        from .process_route_paths import require_order_route
+
+        require_order_route(db, row, lot.serial_no)
+    if row.steps[0]["team_id"] != lot.next_team_id:
         raise HTTPException(422, "派工流水号名单或起始库房与实物批次不一致")
     lot.process_route = row
     lot.process_route_id = row.id

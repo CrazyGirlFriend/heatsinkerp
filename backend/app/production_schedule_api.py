@@ -228,7 +228,7 @@ def serial_options(
 
 @router.get("/route-options")
 def new_task_route_options(
-    serial_no: str = Query(min_length=1, max_length=80), db: Session = Depends(get_db)
+    serial_no: str = Query(default="", max_length=80), db: Session = Depends(get_db)
 ):
     return dispatch_planning.route_options(db, serial_no.strip())
 

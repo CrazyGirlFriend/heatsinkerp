@@ -55,6 +55,47 @@ it('keeps the current operation fixed while reading previous, next and original 
   expect(wrapper.text()).not.toContain('保存工艺')
 })
 
+it('uses the execution serial for an independent order while retaining original step indexes', async () => {
+  const route = {
+    ...structuredClone(routeFixture),
+    state: 'published' as const,
+    serial_nos: ['PROCESS-001', 'PROCESS-OTHER'],
+  }
+  route.steps.forEach((step, index) => {
+    step.serial_nos = [index === 2 ? 'PROCESS-OTHER' : 'PROCESS-001']
+  })
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue(route)
+  wrapper = mount(ProcessExecutionPanel, {
+    props: {
+      serial: 'ORDER-001',
+      context: {
+        id: route.id,
+        version: route.version,
+        title: route.title,
+        execution_serial: 'PROCESS-001',
+        step_index: 1,
+        sequence_no: 1,
+        step_name: '粗磨',
+        instructions: route.steps[1]!.instructions,
+        team_id: 2,
+        processing_task_id: 4,
+        purpose_id: 3,
+        split_here: false,
+        complete: false,
+      },
+    },
+  })
+  await flushPromises()
+  expect(wrapper.findAll('.execution-nodes li')).toHaveLength(3)
+  expect(wrapper.get('.is-current').text()).toContain('粗磨')
+  expect(wrapper.get('.execution-nodes').text()).not.toContain('精磨')
+  expect(wrapper.findAll('.execution-nodes li')[0]!.classes()).toContain('is-before')
+  await wrapper.findAll('.execution-nodes button')[2]!.trigger('click')
+  expect(wrapper.get('.execution-requirements').text()).toContain('按图纸检验')
+  expect(wrapper.get('.is-current').text()).toContain('粗磨')
+  expect(route.serial_nos).toEqual(['PROCESS-001', 'PROCESS-OTHER'])
+})
+
 it('discards a late route response after switching to a different physical route', async () => {
   let finish!: (value: typeof routeFixture) => void
   vi.spyOn(processRouteApi, 'detail').mockImplementation((id) =>

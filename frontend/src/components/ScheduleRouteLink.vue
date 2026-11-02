@@ -15,13 +15,15 @@ const options = ref<ScheduleRouteOption[]>([]),
 const mappings = ref<Record<number, number | undefined>>({})
 const nodes = props.task.nodes.filter((n) => !n.cancelled_at)
 function steps() {
-  return options.value.find((r) => r.id === selected.value)?.steps || []
+  const route = options.value.find((r) => r.id === selected.value)
+  const serial = route?.execution_serial ?? props.task.serial_no
+  return (route?.steps || [])
+    .map((step, index) => ({ step, index }))
+    .filter(({ step }) => !step.serial_nos.length || step.serial_nos.includes(serial))
 }
 function match() {
   mappings.value = {}
   const applicable = steps()
-    .map((step, index) => ({ step, index }))
-    .filter(({ step }) => !step.serial_nos.length || step.serial_nos.includes(props.task.serial_no))
   nodes.forEach((node) => {
     const matches = applicable.filter(
       ({ step }, position) =>
@@ -127,7 +129,7 @@ async function save() {
             :disabled="busy"
             placeholder="保留当前关联"
             ><ElOption
-              v-for="(step, index) in steps()"
+              v-for="{ step, index } in steps()"
               :key="index"
               :value="index"
               :label="`${step.sequence_no} · ${step.name}（${step.team_name}）`"

@@ -17,7 +17,6 @@ from .models import (
 )
 from .models import (
     ProcessRouteArchive,
-    ProcessRoutePath,
     Team,
     utcnow,
 )
@@ -83,21 +82,25 @@ def route_states(db, plans):
 
 
 def options(db, task):
+    from .process_route_paths import execution_serial
     from .process_routes import route_document_checks
 
     successor = aliased(Route)
-    return list(
+    rows = list(
         db.scalars(
             select(Route)
             .options(
-                load_only(Route.id, Route.title, Route.version, Route.steps, Route.published_at)
+                load_only(
+                    Route.id,
+                    Route.title,
+                    Route.version,
+                    Route.steps,
+                    Route.serial_nos,
+                    Route.route_kind,
+                    Route.published_at,
+                )
             )
             .where(
-                Route.id.in_(
-                    select(ProcessRoutePath.route_id).where(
-                        ProcessRoutePath.serial_no == task.serial_no
-                    )
-                ),
                 Route.route_kind == "normal",
                 Route.state == "published",
                 *route_document_checks().values(),
@@ -111,15 +114,27 @@ def options(db, task):
             .order_by(Route.id.desc())
         )
     )
+    result = []
+    for route in rows:
+        try:
+            execution_serial(route, task.serial_no)
+        except HTTPException:
+            continue
+        result.append(route)
+    return result
 
 
 def option_documents(db, task):
+    from .process_route_paths import execution_serial
+
     return [
         dict(
             id=r.id,
             title=r.title,
             version=r.version,
             steps=r.steps,
+            serial_nos=r.serial_nos,
+            execution_serial=execution_serial(r, task.serial_no),
             published_at=schedules.iso(r.published_at),
         )
         for r in options(db, task)

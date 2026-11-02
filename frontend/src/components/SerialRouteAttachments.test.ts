@@ -6,6 +6,7 @@ import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import { routeFixture } from '@/testFixtures/processRoute'
+import { orderFixture } from '@/testFixtures/processRouteOrder'
 let wrapper: VueWrapper
 const stubs = { ProcessRouteAttachments: true }
 beforeEach(() => {
@@ -73,6 +74,39 @@ it('uses supplied documents without loading another route', async () => {
   await flushPromises()
   expect(resolve).not.toHaveBeenCalled()
   expect(wrapper.getComponent(ProcessRouteAttachments).props('route').id).toBe(routeFixture.id)
+})
+
+it.each(['missing', 'failed'])(
+  'does not reuse an engineering order when this order is %s',
+  async (state) => {
+    const route = {
+      ...routeFixture,
+      source_data: { ...routeFixture.source_data, order_document: orderFixture },
+    }
+    if (state === 'failed')
+      vi.mocked(processRouteApi.dispatchOrder).mockRejectedValueOnce(new Error('订单表读取失败'))
+    wrapper = mount(SerialRouteAttachments, {
+      props: { items: [{ serialNo: 'ORDER-NEW', route }] },
+      global: { stubs },
+    })
+    await flushPromises()
+    const attachments = wrapper.getComponent(ProcessRouteAttachments)
+    expect(attachments.props('route')).toEqual(route)
+    expect(attachments.props('orderDocument')).toBeNull()
+    expect(processRouteApi.dispatchOrder).toHaveBeenCalledWith(route.id, 'ORDER-NEW')
+  },
+)
+
+it('loads the independent order document alongside the bound engineering attachments', async () => {
+  const document = { ...orderFixture, serial_no: 'ORDER-NEW' }
+  vi.mocked(processRouteApi.dispatchOrder).mockResolvedValue({ task_id: 51, document })
+  wrapper = mount(SerialRouteAttachments, {
+    props: { items: [{ serialNo: 'ORDER-NEW', route: routeFixture }] },
+    global: { stubs },
+  })
+  await flushPromises()
+  expect(wrapper.getComponent(ProcessRouteAttachments).props('route')).toEqual(routeFixture)
+  expect(wrapper.getComponent(ProcessRouteAttachments).props('orderDocument')).toEqual(document)
 })
 
 it('keeps process and drawing previews available when the order request fails, and retries', async () => {

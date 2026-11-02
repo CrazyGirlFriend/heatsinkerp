@@ -2,6 +2,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { ElDatePicker, ElFormItem, ElInputNumber, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import dayjs from 'dayjs'
 import ScheduleTaskEditor from './ScheduleTaskEditor.vue'
 import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
 import AppDialog from './AppDialog.vue'
@@ -36,7 +37,7 @@ beforeEach(() => {
     s.planned_quantity = '100'
   })
   vi.spyOn(productionScheduleApi, 'taskRouteOptions').mockResolvedValue([
-    route as unknown as ScheduleRouteOption,
+    { ...route, execution_serial: 'S-001' } as unknown as ScheduleRouteOption,
   ])
   vi.spyOn(productionScheduleApi, 'parseOrder').mockResolvedValue({
     ...orderFixture,
@@ -51,9 +52,9 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render(existing?: ScheduleTask) {
+async function render(existing?: ScheduleTask, routeSerial = 'S-001') {
   wrapper = mount(ScheduleTaskEditor, {
-    props: { task: existing, routeSerial: 'S-001' },
+    props: { task: existing, routeSerial },
     global: {
       stubs: {
         AppDialog: {
@@ -136,7 +137,7 @@ it('blocks creation without a process and waits for a choice when several proces
   await render()
   const createButton = () => wrapper.findAll('button').find((item) => item.text() === '创建排期')!
   expect(createButton().attributes('disabled')).toBeDefined()
-  expect(wrapper.text()).toContain('该流水号暂无工艺')
+  expect(wrapper.text()).toContain('暂无可用工艺')
   await wrapper.get('form').trigger('submit')
   await flushPromises()
   expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
@@ -146,8 +147,8 @@ it('blocks creation without a process and waits for a choice when several proces
     step.planned_quantity = '100'
   })
   vi.mocked(productionScheduleApi.taskRouteOptions).mockResolvedValueOnce([
-    route as unknown as ScheduleRouteOption,
-    { ...route, id: route.id + 1 } as unknown as ScheduleRouteOption,
+    { ...route, execution_serial: 'S-001' } as unknown as ScheduleRouteOption,
+    { ...route, id: route.id + 1, execution_serial: 'S-001' } as unknown as ScheduleRouteOption,
   ])
   await button('读取工艺')
   expect(createButton().attributes('disabled')).toBeDefined()
@@ -159,7 +160,10 @@ it('blocks creation without a process and waits for a choice when several proces
   expect(createButton().attributes('disabled')).toBeUndefined()
   await wrapper.get('input[aria-label="任务流水号"]').setValue('OTHER')
   expect(createButton().attributes('disabled')).toBeDefined()
-  expect(selection.props('modelValue')).toBeUndefined()
+  expect(selection.props('modelValue')).toBe(route.id)
+  await vi.waitFor(() => expect(createButton().attributes('disabled')).toBeUndefined())
+  expect(selection.props('modelValue')).toBe(route.id)
+  expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(100)
 })
 it('rejects customer batches that do not add up to the route quantity', async () => {
   await render()
@@ -171,10 +175,16 @@ it('rejects customer batches that do not add up to the route quantity', async ()
   const amounts = wrapper.findAllComponents(ElInputNumber)
   amounts[0]!.vm.$emit('update:modelValue', 40)
   amounts[1]!.vm.$emit('update:modelValue', 50)
+  await flushPromises()
+  expect(wrapper.get('[role="status"]').text()).toContain('待分配 10 件')
   await button('创建排期')
   expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
-  expect(wrapper.text()).toContain('合计须为 100 件')
+  amounts[1]!.vm.$emit('update:modelValue', 70)
+  await flushPromises()
+  expect(wrapper.get('.dispatch-allocation-balance.is-exceeded').text()).toContain('超出 10 件')
   amounts[1]!.vm.$emit('update:modelValue', 60)
+  await flushPromises()
+  expect(wrapper.get('.dispatch-allocation-balance.is-complete').text()).toContain('剩余 0 件')
   await button('选择业务人员')
   wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 1, label: '张工' }])
   await flushPromises()
@@ -220,9 +230,19 @@ it('rejects later hours on the final day and disables dates after the deadline',
   const disabled = picker.props('disabledDate') as (date: Date) => boolean
   expect(disabled(new Date('2026-12-30T00:00:00'))).toBe(false)
   expect(disabled(new Date('2026-12-31T00:00:00'))).toBe(true)
+  const hours = picker.props('disabledHours') as (role: string, date?: dayjs.Dayjs) => number[]
+  expect(hours('', dayjs('2026-12-30T00:00:00'))).toEqual([17, 18, 19, 20, 21, 22, 23])
+  expect(hours('', dayjs('2026-12-29T00:00:00'))).toEqual([])
+  expect(wrapper.text()).toContain('按批次先后 · 不晚于最终交期')
   batchDate(0, '2026-12-30T17:00:00')
+  await flushPromises()
+  expect(
+    wrapper
+      .findAllComponents(ElFormItem)
+      .some((field) => field.props('error') === '第 1 批交期不能晚于最终交期'),
+  ).toBe(true)
   await button('保存交期')
-  expect(wrapper.text()).toContain('第 1 批交期不能晚于最终交期')
+  await vi.waitFor(() => expect(wrapper.text()).toContain('第 1 批交期不能晚于最终交期'))
   expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
 })
 it('requires dates in batch order', async () => {
@@ -233,8 +253,20 @@ it('requires dates in batch order', async () => {
   amounts[1]!.vm.$emit('update:modelValue', 60)
   batchDate(0, '2026-12-29T16:00:00')
   batchDate(1, '2026-12-28T16:00:00')
+  await flushPromises()
+  const picker = wrapper.findAllComponents(ElDatePicker)[2]!
+  const disabled = picker.props('disabledDate') as (date: Date) => boolean
+  const hours = picker.props('disabledHours') as (role: string, date?: dayjs.Dayjs) => number[]
+  expect(disabled(new Date('2026-12-28T00:00:00'))).toBe(true)
+  expect(disabled(new Date('2026-12-29T00:00:00'))).toBe(false)
+  expect(hours('', dayjs('2026-12-29T00:00:00'))).toEqual(Array.from({ length: 16 }, (_, i) => i))
+  expect(
+    wrapper
+      .findAllComponents(ElFormItem)
+      .some((field) => field.props('error') === '第 2 批交期不能早于上一批'),
+  ).toBe(true)
   await button('保存交期')
-  expect(wrapper.text()).toContain('第 2 批交期不能早于上一批')
+  await vi.waitFor(() => expect(wrapper.text()).toContain('第 2 批交期不能早于上一批'))
   expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
 })
 it.each(['locked', 'admin'])('blocks writes for %s', async (mode) => {
@@ -265,4 +297,50 @@ it('rejects a mismatched order and clears the imported file when changing serial
   expect(wrapper.text()).toContain('替换订单表')
   await wrapper.get('input[aria-label="任务流水号"]').setValue('OTHER')
   expect(wrapper.text()).not.toContain('替换订单表')
+})
+
+it('allows selecting a process before an order serial and retains its own execution path', async () => {
+  await render(undefined, '')
+  expect(productionScheduleApi.taskRouteOptions).toHaveBeenCalledWith('')
+  const selection = wrapper
+    .findAllComponents(ElSelect)
+    .find((item) => item.props('ariaLabel') === '关联工艺')!
+  expect(selection.props('filterable')).toBe(true)
+  expect(selection.props('modelValue')).toBe(routeFixture.id)
+  expect(wrapper.find('[aria-label="工艺执行班组"]').exists()).toBe(true)
+  expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(100)
+  await wrapper.get('input[aria-label="任务流水号"]').setValue('ORDER-OTHER')
+  await vi.waitFor(() =>
+    expect(productionScheduleApi.taskRouteOptions).toHaveBeenCalledWith('ORDER-OTHER'),
+  )
+  await flushPromises()
+  expect(selection.props('modelValue')).toBe(routeFixture.id)
+  expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(100)
+  date('2026-12-30T16:00:00')
+  batchDate(0, '2026-12-29T16:00:00')
+  await button('选择业务人员')
+  wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 1, label: '张工' }])
+  vi.mocked(productionScheduleApi.parseOrder).mockResolvedValueOnce({
+    ...orderFixture,
+    serial_no: 'ORDER-OTHER',
+  })
+  await uploadOrder()
+  await button('创建排期')
+  expect(productionScheduleApi.createTask).toHaveBeenCalledWith(
+    expect.objectContaining({ serial_no: 'ORDER-OTHER', route_id: routeFixture.id }),
+    orderFile,
+  )
+})
+
+it('marks an invalid batch quantity at its field before submission', async () => {
+  await render()
+  wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', undefined)
+  await flushPromises()
+  expect(
+    wrapper
+      .findAllComponents(ElFormItem)
+      .some((field) => field.props('error') === '请输入大于 0 的整数'),
+  ).toBe(true)
+  expect(wrapper.get('[role="status"]').text()).toContain('待分配 100 件')
+  expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
 })

@@ -92,7 +92,7 @@ def test_single_order_maps_only_equivalent_fields_and_preserves_every_column():
     )
 
 
-def test_word_wins_in_either_upload_order_and_mismatched_serial_is_rejected():
+def test_word_wins_in_either_upload_order_and_order_serial_is_independent():
     order = parse_order(xlsx(), "订单.xlsx")
     word = {
         "receipt_fields": {
@@ -111,8 +111,9 @@ def test_word_wins_in_either_upload_order_and_mismatched_serial_is_rejected():
     assert first["receipt_fields"]["customer_code"]["alternative"]["value"] == "11600"
     assert first["receipt_fields"]["delivery_date"]["value"] == "2026-11-05"
     assert first["receipt_fields"]["delivery_quantity"]["source_kind"] == "excel"
-    with pytest.raises(HTTPException):
-        merge_materials(first, order=parse_order(xlsx(["OTHER", *VALUES[1:]]), "其他.xlsx"))
+    changed = merge_materials(first, order=parse_order(xlsx(["OTHER", *VALUES[1:]]), "其他.xlsx"))
+    assert changed["receipt_fields"]["serial_no"]["value"] == "691236-50"
+    assert changed["order_document"]["serial_no"] == "OTHER"
 
 
 @pytest.mark.parametrize(
@@ -240,10 +241,12 @@ def test_order_attachments_confirmation_revision_and_reader_permissions(
     }
     payload["material_values"] = {"purpose_category": "新的用途"}
     payload["review_note"] = payload["review_note"] or ""
-    rejected = client.put(
+    independent = client.put(
         f"{URL}/{revision['id']}", json={**payload, "serial_nos": ["OTHER-SERIAL"]}
     )
-    assert rejected.status_code == 422
+    assert independent.status_code == 200, independent.text
+    assert independent.json()["source_data"]["order_document"]["serial_no"] == serial
+    payload["version"] = independent.json()["version"]
     changed = client.put(f"{URL}/{revision['id']}", json=payload)
     assert changed.status_code == 200, changed.text
     updated = changed.json()

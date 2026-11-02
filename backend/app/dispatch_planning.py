@@ -80,7 +80,7 @@ def build_task(db, payload):
         raise HTTPException(409, "工艺已变化，请重新选择当前工艺")
     nodes = []
     for index, step in enumerate(route["steps"]):
-        if step.get("serial_nos") and payload.serial_no not in step["serial_nos"]:
+        if step.get("serial_nos") and route["execution_serial"] not in step["serial_nos"]:
             continue
         try:
             raw = Decimal(str(step.get("planned_quantity") or "0"))

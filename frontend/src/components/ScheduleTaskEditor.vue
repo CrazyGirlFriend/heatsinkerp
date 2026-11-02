@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import type { Dayjs } from 'dayjs'
 import {
   ElAlert,
   ElButton,
@@ -43,6 +44,7 @@ const visible = ref(true),
   saving = ref(false),
   loading = ref(false),
   error = ref(''),
+  submitted = ref(false),
   personOpen = ref(false)
 const serial = ref(props.task?.serial_no || props.routeSerial || '')
 const orderInput = ref<HTMLInputElement>(),
@@ -100,7 +102,9 @@ const selectedRoute = computed(() => routes.value.find((r) => r.id === routeId.v
 const steps = computed(
   () =>
     selectedRoute.value?.steps.filter(
-      (s) => !s.serial_nos.length || s.serial_nos.includes(serial.value.trim()),
+      (s) =>
+        !s.serial_nos.length ||
+        s.serial_nos.includes(selectedRoute.value?.execution_serial ?? serial.value.trim()),
     ) || [],
 )
 const quantity = computed(() =>
@@ -119,28 +123,45 @@ const batches = ref(
 if (!batches.value.length)
   batches.value.push({ quantity: quantity.value, due: props.task ? finalDue.value : '' })
 const writable = computed(() => auth.isDispatch && !props.task?.locked_at)
+const allocated = computed(() =>
+  batches.value.reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0),
+)
+const remaining = computed(() => quantity.value - allocated.value)
+const allocationError = computed(() =>
+  quantity.value > 0 && remaining.value !== 0 ? `各批数量合计须为 ${quantity.value} 件` : '',
+)
+const finalDueError = computed(() => (submitted.value && !finalDue.value ? '请选择最终交期' : ''))
+function quantityError(index: number) {
+  if (!props.task && !selectedRoute.value) return ''
+  const value = batches.value[index]!.quantity
+  return !Number.isSafeInteger(value) || value <= 0 ? '请输入大于 0 的整数' : ''
+}
+function batchDueError(index: number) {
+  const due = batches.value[index]!.due
+  if (!due) return submitted.value ? `请选择第 ${index + 1} 批交期` : ''
+  if (finalDue.value && due > finalDue.value) return `第 ${index + 1} 批交期不能晚于最终交期`
+  if (index > 0 && batches.value[index - 1]!.due && due < batches.value[index - 1]!.due)
+    return `第 ${index + 1} 批交期不能早于上一批`
+  return ''
+}
 let generation = 0,
   key = '',
   fingerprint = ''
 async function loadRoutes() {
   if (props.task) return
   const current = ++generation
-  routes.value = []
-  routeId.value = undefined
+  const previousRouteId = routeId.value
   error.value = ''
-  if (!serial.value.trim()) {
-    loading.value = false
-    return
-  }
   loading.value = true
   try {
     const result = await productionScheduleApi.taskRouteOptions(serial.value.trim())
     if (current !== generation) return
     routes.value = result
     routeId.value =
+      result.find((r) => r.id === previousRouteId)?.id ||
       result.find((r) => r.id === props.processRoute?.id)?.id ||
       (result.length === 1 ? result[0]!.id : undefined)
-    if (!result.length) error.value = '该流水号暂无工艺，请先由工艺班组制定'
+    if (!result.length) error.value = '暂无可用工艺，请先由工艺班组制定'
   } catch (e) {
     if (current === generation) error.value = e instanceof Error ? e.message : '工艺读取失败'
   } finally {
@@ -160,42 +181,41 @@ function addBatch() {
 function removeBatch(index: number) {
   batches.value.splice(index, 1)
 }
-function disabledBatchDate(value: Date) {
-  return !!finalDue.value && value.getTime() > new Date(finalDue.value).getTime()
+function disabledBatchDate(value: Date, index: number) {
+  const day = new Date(value).setHours(0, 0, 0, 0)
+  const previous = batches.value[index - 1]?.due
+  return (
+    (!!finalDue.value && day > new Date(finalDue.value).setHours(0, 0, 0, 0)) ||
+    (!!previous && day < new Date(previous).setHours(0, 0, 0, 0))
+  )
+}
+function disabledBatchHours(index: number, comparingDate?: Dayjs) {
+  const current = comparingDate?.toDate() || new Date(batches.value[index]!.due)
+  if (Number.isNaN(current.getTime())) return []
+  const previous = batches.value[index - 1]?.due
+  return Array.from({ length: 24 }, (_, hour) => hour).filter((hour) => {
+    const value = new Date(current).setHours(hour, 0, 0, 0)
+    return (
+      (!!finalDue.value && value > new Date(finalDue.value).getTime()) ||
+      (!!previous && value < new Date(previous).getTime())
+    )
+  })
 }
 async function save() {
   if (saving.value || !writable.value || loading.value || orderBusy.value) return
   error.value = ''
+  submitted.value = true
   if (!serial.value.trim() || (!props.task && !selectedRoute.value)) {
     error.value = '请选择流水号和对应工艺'
     return
   }
   if (!finalDue.value) {
-    error.value = '请选择最终交期'
     return
   }
   for (const [index, batch] of batches.value.entries()) {
-    if (!batch.due) {
-      error.value = `请选择第 ${index + 1} 批交期`
-      return
-    }
-    if (!Number.isSafeInteger(batch.quantity) || batch.quantity <= 0) {
-      error.value = `请填写第 ${index + 1} 批数量`
-      return
-    }
-    if (batch.due > finalDue.value) {
-      error.value = `第 ${index + 1} 批交期不能晚于最终交期`
-      return
-    }
-    if (index > 0 && batch.due < batches.value[index - 1]!.due) {
-      error.value = `第 ${index + 1} 批交期不能早于上一批`
-      return
-    }
+    if (!batch.due || quantityError(index) || batchDueError(index)) return
   }
-  if (batches.value.reduce((sum, b) => sum + b.quantity, 0) !== quantity.value) {
-    error.value = `各批数量合计须为 ${quantity.value} 件`
-    return
-  }
+  if (allocationError.value) return
   if (!people.value.length) {
     error.value = '请至少选择一位业务人员'
     return
@@ -256,8 +276,7 @@ watch(serial, () => {
   orderBusy.value = false
   orderError.value = ''
   ++generation
-  routes.value = []
-  routeId.value = undefined
+  if (!props.task) loading.value = true
   clearTimeout(serialTimer)
   serialTimer = setTimeout(loadRoutes, 350)
 })
@@ -326,7 +345,7 @@ onMounted(loadRoutes)
                 >读取工艺</ElButton
               ></ElFormItem
             >
-            <ElFormItem label="最终交期" required
+            <ElFormItem label="最终交期" required :error="finalDueError"
               ><ElDatePicker
                 v-model="finalDue"
                 type="datetime"
@@ -335,7 +354,9 @@ onMounted(loadRoutes)
                 :disabled-minutes="nonZeroMinutes"
                 :disabled-seconds="nonZeroMinutes"
                 aria-label="最终交期"
-            /></ElFormItem>
+              />
+              <span class="dispatch-field-hint">各批交期的最晚时间 · 按整点选择</span>
+            </ElFormItem>
             <ElFormItem label="业务人员"
               ><ElButton class="dispatch-person-select" @click="personOpen = true">{{
                 people.length ? people.map((p) => p.label).join('、') : '选择业务人员'
@@ -346,44 +367,80 @@ onMounted(loadRoutes)
             ><ElSelect
               v-model="routeId"
               aria-label="关联工艺"
+              filterable
               :loading="loading"
               :disabled="loading || !routes.length"
-              :placeholder="
-                !serial.trim()
-                  ? '请先输入流水号'
-                  : !routes.length
-                    ? '暂无可用工艺'
-                    : '请选择对应工艺'
-              "
-              ><ElOption v-for="r in routes" :key="r.id" :value="r.id" :label="r.title" /></ElSelect
+              :placeholder="!routes.length ? '暂无可用工艺' : '搜索并选择工艺'"
+              ><ElOption
+                v-for="r in routes"
+                :key="r.id"
+                :value="r.id"
+                :label="
+                  [r.title, r.serial_nos?.join(' / ')].filter(Boolean).join(' · ')
+                " /></ElSelect
           ></ElFormItem>
-          <h3>
-            分批交货 <span>{{ quantity }} 件</span>
-          </h3>
+          <div class="dispatch-batch-heading">
+            <h3>分批交货</h3>
+            <div v-if="quantity > 0" class="dispatch-allocation" role="status" aria-live="polite">
+              <span
+                >计划 <strong>{{ quantity }}</strong> 件</span
+              >
+              <span
+                >已分配 <strong>{{ allocated }}</strong> 件</span
+              >
+              <span
+                class="dispatch-allocation-balance"
+                :class="{
+                  'is-complete': remaining === 0,
+                  'is-exceeded': remaining < 0,
+                }"
+              >
+                {{ remaining < 0 ? '超出' : remaining === 0 ? '剩余' : '待分配' }}
+                <strong>{{ Math.abs(remaining) }}</strong> 件
+              </span>
+            </div>
+          </div>
           <ElTable :data="batches" border aria-label="订单分批交期">
             <ElTableColumn label="批次" width="90" align="center"
               ><template #default="{ $index }">第 {{ $index + 1 }} 批</template></ElTableColumn
             >
             <ElTableColumn label="数量（件）" width="170"
               ><template #default="{ row, $index }"
-                ><ElInputNumber
-                  v-model="row.quantity"
-                  :min="1"
-                  :precision="0"
-                  :controls="false"
-                  :aria-label="`第${$index + 1}批交货数量`" /></template
+                ><ElFormItem class="dispatch-batch-field" :error="quantityError($index)">
+                  <ElInputNumber
+                    v-model="row.quantity"
+                    :min="1"
+                    :max="quantity || undefined"
+                    :precision="0"
+                    :controls="false"
+                    :aria-label="`第${$index + 1}批交货数量`"
+                  /> </ElFormItem></template
             ></ElTableColumn>
             <ElTableColumn label="交货时间" min-width="230"
-              ><template #default="{ row, $index }"
-                ><ElDatePicker
-                  v-model="row.due"
-                  type="datetime"
-                  format="YYYY-MM-DD HH:mm"
-                  value-format="YYYY-MM-DDTHH:mm:ss"
-                  :disabled-date="disabledBatchDate"
-                  :disabled-minutes="nonZeroMinutes"
-                  :disabled-seconds="nonZeroMinutes"
-                  :aria-label="`第${$index + 1}批交期`" /></template
+              ><template #header>
+                <div class="dispatch-date-heading">
+                  <span>交货时间</span>
+                  <span class="dispatch-field-hint">按批次先后 · 不晚于最终交期</span>
+                </div>
+              </template>
+              <template #default="{ row, $index }"
+                ><ElFormItem class="dispatch-batch-field" :error="batchDueError($index)">
+                  <ElDatePicker
+                    v-model="row.due"
+                    type="datetime"
+                    format="YYYY-MM-DD HH:mm"
+                    value-format="YYYY-MM-DDTHH:mm:ss"
+                    :disabled-date="(value: Date) => disabledBatchDate(value, $index)"
+                    :disabled-hours="
+                      (_role: string, value?: Dayjs) => disabledBatchHours($index, value)
+                    "
+                    :disabled-minutes="nonZeroMinutes"
+                    :disabled-seconds="nonZeroMinutes"
+                    :placeholder="
+                      finalDue ? `最晚 ${finalDue.replace('T', ' ').slice(5, 16)}` : '选择交货时间'
+                    "
+                    :aria-label="`第${$index + 1}批交期`"
+                  /> </ElFormItem></template
             ></ElTableColumn>
             <ElTableColumn label="操作" width="80" align="center"
               ><template #default="{ $index }"
@@ -479,9 +536,55 @@ onMounted(loadRoutes)
   margin: 12px 0;
   font-size: 14px;
 }
-.dispatch-task-form h3 span {
+.dispatch-batch-heading,
+.dispatch-date-heading,
+.dispatch-allocation {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.dispatch-batch-heading {
+  justify-content: space-between;
+  margin: 12px 0;
+}
+.dispatch-batch-heading h3 {
+  margin: 0;
+}
+.dispatch-allocation {
   color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.dispatch-allocation strong {
+  font-weight: 500;
+}
+.dispatch-allocation-balance {
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning-dark-2);
+}
+.dispatch-allocation-balance.is-complete {
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success-dark-2);
+}
+.dispatch-allocation-balance.is-exceeded {
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+}
+.dispatch-field-hint {
+  color: var(--muted);
+  font-size: 12px;
   font-weight: 400;
+  line-height: 18px;
+}
+.dispatch-batch-field {
+  margin-bottom: 0;
+}
+.dispatch-batch-field :deep(.el-form-item__error) {
+  position: static;
+  line-height: 18px;
 }
 .dispatch-task-form :deep(.el-date-editor),
 .dispatch-task-form :deep(.el-input-number) {

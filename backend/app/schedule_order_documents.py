@@ -16,6 +16,7 @@ def route_order(db, route_id, serial_no):
             .where(
                 ProductionSchedule.task_id == ProductionScheduleTask.id,
                 ProductionSchedule.process_route_id == route_id,
+                ProductionSchedule.cancelled_at.is_(None),
             )
             .exists(),
         )

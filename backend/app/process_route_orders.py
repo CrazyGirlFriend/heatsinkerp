@@ -205,10 +205,6 @@ def merge_materials(data, *, word=None, order=None, filename=None):
         result["order_document"] = order
     excel = result.get("order_document", {}).get("receipt_fields", {})
     word_fields = result["word_fields"]
-    word_serial = word_fields.get("serial_no", {}).get("value")
-    excel_serial = excel.get("serial_no", {}).get("value")
-    if word_serial and excel_serial and word_serial != excel_serial:
-        raise HTTPException(422, "订单表与工艺单流水号不一致")
     fields = deepcopy(excel)
     for key, field in word_fields.items():
         fields[key] = deepcopy(field)

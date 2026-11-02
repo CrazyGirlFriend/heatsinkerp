@@ -26,7 +26,9 @@ const steps = computed(() =>
     .map((step, index) => ({ ...step, index }))
     .filter(
       (step) =>
-        props.shared || !step.serial_nos.length || step.serial_nos.includes(props.serial || ''),
+        props.shared ||
+        !step.serial_nos.length ||
+        step.serial_nos.includes(props.context?.execution_serial ?? props.serial ?? ''),
     ),
 )
 const selectedStep = computed(() => route.value?.steps[selected.value])

@@ -108,7 +108,9 @@ function routeProblem(line: (typeof lines.value)[number]) {
   const route = line.selectedRoute
   if (!route) return '未找到对应工艺'
   const missing = [
-    !line.dispatchOrderAvailable && !route.source_data.order_document && '订单表',
+    !line.dispatchOrderAvailable &&
+      route.source_data.order_document?.serial_no !== line.serialNo.trim() &&
+      '订单表',
     !route.filename && '工艺原件',
     !route.drawings?.length && '图纸',
   ].filter(Boolean)

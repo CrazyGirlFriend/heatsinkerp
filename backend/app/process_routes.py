@@ -95,9 +95,21 @@ def assign_engineering_employee(db, row, employee_id, *, modifier=False):
 
 
 def resolve_normal_route(db, serial):
-    """Resolve an exact serial to its latest published revision, never a fuzzy match."""
+    """Use dispatch's explicit selection before legacy engineering-serial resolution."""
     from sqlalchemy.orm import aliased
 
+    from .process_route_paths import execution_serial, scheduled_route_ids
+
+    scheduled = scheduled_route_ids(db, serial)
+    if scheduled:
+        if len(scheduled) != 1:
+            raise HTTPException(409, "该流水号排期关联了多份工艺，请调度核对后再出库")
+        route = require_route(db, scheduled.pop())
+        if route.route_kind != "normal" or route.state != "published":
+            raise HTTPException(422, "排期关联的工艺尚未发布")
+        execution_serial(route, serial)
+        require_route_documents(db, route)
+        return route
     successor = aliased(ProcessRoute)
     rows = list(
         db.scalars(
@@ -221,6 +233,8 @@ def route_document(lot):
     if not lot.process_route_id:
         return None
     route = lot.process_route
+    from .process_route_paths import execution_serial
+
     step = route.steps[lot.process_step_index]
     following = None
     if lot.process_step_complete:
@@ -240,6 +254,9 @@ def route_document(lot):
         "can_resume": can_resume,
         "id": route.id,
         "route_kind": route.route_kind,
+        "execution_serial": None
+        if lot.shared_unallocated
+        else execution_serial(route, lot.serial_no),
         "rework_of_id": route.rework_of_id,
         "title": route.title,
         "version": route.version,
@@ -258,9 +275,12 @@ def route_document(lot):
 
 
 def next_index(route, index, serial_no, unallocated=False):
+    from .process_route_paths import execution_serial
+
+    serial = serial_no if unallocated else execution_serial(route, serial_no)
     for position in range(index + 1, len(route.steps)):
         members = route.steps[position].get("serial_nos", [])
-        if not members or (not unallocated and serial_no in members):
+        if not members or (not unallocated and serial in members):
             return position
         if unallocated:
             raise HTTPException(409, "共投料已到分支工序，请先在指定工序登记实际拆分和流水号归属")
@@ -423,10 +443,12 @@ def prepare_dispatch_route(db, lot, line, source, serial, anonymous, user):
             selected_route is None
             or selected_route.route_kind != "normal"
             or selected_route.state != "published"
-            or selected_route.serial_nos != [serial]
             or selected_route.steps[0]["team_id"] != source.id
         ):
             raise HTTPException(422, "流水号或起始库房与工艺不一致")
+        from .process_route_paths import require_order_route
+
+        require_order_route(db, selected_route, serial)
         # Bind this outbound portion only; the remaining raw stock stays unassigned.
         route_lot = SimpleNamespace(
             process_route_id=selected_route.id,
@@ -602,18 +624,15 @@ def validate_schedule(db, payload, previous=None):
         return
     route = db.get(ProcessRoute, payload.process_route_id)
     index = payload.process_step_index
-    if (
-        not route
-        or route.state != "published"
-        or index is None
-        or index >= len(route.steps)
-        or payload.serial_no not in route.serial_nos
-    ):
+    if not route or route.state != "published" or index is None or index >= len(route.steps):
         raise HTTPException(422, "请选择本次派工已发布的工艺工序")
     require_route_documents(db, route)
+    from .process_route_paths import execution_serial
+
+    serial = execution_serial(route, payload.serial_no)
     step = route.steps[index]
     if step["team_id"] != payload.team_id or (
-        step["serial_nos"] and payload.serial_no not in step["serial_nos"]
+        step["serial_nos"] and serial not in step["serial_nos"]
     ):
         raise HTTPException(422, "排期班组或流水号与工艺工序不一致")
     following = next_index(route, index, payload.serial_no)
@@ -631,13 +650,11 @@ def local_work_pending():
     """Keep planned repeat operations selectable without a Python post-pagination filter."""
     from sqlalchemy import case, func
 
-    from .models import ProcessRoutePath
+    from .process_route_paths import path_serial
 
     path = ProcessRoutePath.__table__
     following = path.alias("following_route_step")
-    serial = case(
-        (MaterialTransfer.shared_unallocated.is_(True), ""), else_=MaterialTransfer.serial_no
-    )
+    serial = path_serial()
     next_step = (
         select(func.min(following.c.step_index))
         .where(

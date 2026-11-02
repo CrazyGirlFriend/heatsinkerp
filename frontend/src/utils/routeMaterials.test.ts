@@ -18,11 +18,26 @@ it('merges reactive imports in either order with Word priority and independent s
   first.receipt_fields!.delivery_quantity!.value = '18000'
   expect(order.receipt_fields.delivery_quantity!.value).toBe(18100)
 })
-it('rejects a spreadsheet for another serial', () => {
-  expect(() =>
-    mergeRouteMaterials(
-      { tables: [], issues: [], receipt_fields: { serial_no: field('OTHER') } },
-      orderFixture,
-    ),
-  ).toThrow('流水号不一致')
+it('keeps process and order serials independent with the process value taking priority', () => {
+  const word = { serial_no: field('PROCESS-001') }
+  const merged = mergeRouteMaterials({ tables: [], issues: [], word_fields: word }, orderFixture)
+  expect(merged.word_fields!.serial_no!.value).toBe('PROCESS-001')
+  expect(merged.receipt_fields!.serial_no).toMatchObject({
+    value: 'PROCESS-001',
+    alternative: { value: 'S-001', source_kind: 'excel' },
+  })
+  expect(merged.order_document!.serial_no).toBe('S-001')
+  expect(merged.order_document!.receipt_fields.serial_no!.value).toBe('S-001')
+  expect(word.serial_no.value).toBe('PROCESS-001')
+})
+it('keeps an older process serial when its independent order is retained during a merge', () => {
+  const merged = mergeRouteMaterials({
+    tables: [],
+    issues: [],
+    receipt_fields: { serial_no: field('PROCESS-002') },
+    order_document: orderFixture,
+  })
+  expect(merged.receipt_fields!.serial_no!.value).toBe('PROCESS-002')
+  expect(merged.word_fields!.serial_no!.value).toBe('PROCESS-002')
+  expect(merged.order_document!.serial_no).toBe('S-001')
 })

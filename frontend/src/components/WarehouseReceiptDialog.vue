@@ -369,6 +369,7 @@ const intakeSerials = computed(() =>
 const routeSerialsMatch = computed(
   () =>
     !importedRoute.value ||
+    !sharedEntry.value ||
     (intakeSerials.value.length === importedRoute.value.serial_nos.length &&
       intakeSerials.value.every((serial) => importedRoute.value!.serial_nos.includes(serial))),
 )
@@ -487,7 +488,7 @@ function close() {
 const validation = useDialogValidation(() => {
   const issues: Record<string, string> = {}
   if (importedRoute.value && (!routeReviewed.value || !routeSerialsMatch.value))
-    issues.processRoute = '入库流水号须与所选工艺一致，请重新关联工艺'
+    issues.processRoute = '共投流水号须与所选工艺一致，请重新关联工艺'
   if (
     importedRoute.value &&
     (form.receiptKind !== 'external' || isScrapType(form.materialType || null))
@@ -1324,7 +1325,7 @@ onBeforeUnmount(() => {
                     )
                     .join(' → ')
                 }}</strong
-                ><span>{{ routeSerialsMatch ? '已关联' : '流水号与所选工艺不一致' }}</span>
+                ><span>{{ routeSerialsMatch ? '已关联' : '共投流水号与所选工艺不一致' }}</span>
               </div>
               <ElButton :disabled="readonly" @click="routeEditorOpen = true">{{
                 '查看工艺'

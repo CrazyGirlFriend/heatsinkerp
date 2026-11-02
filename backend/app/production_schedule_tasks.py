@@ -120,7 +120,7 @@ def task_values(db, ids):
             .where(
                 Plan.task_id.in_(ids),
                 Plan.cancelled_at.is_(None),
-                schedules.Transfer.shared_unallocated.is_(True),
+                schedules.shared_order_lot(),
             )
             .distinct()
         )

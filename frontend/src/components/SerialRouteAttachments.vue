@@ -97,7 +97,7 @@ onBeforeUnmount(() => ++generation)
       v-if="route"
       :key="selected"
       :route="route"
-      :order-document="dispatchOrder?.document"
+      :order-document="dispatchOrder?.document ?? null"
       :order-download="orderDownload"
     />
     <span v-else-if="!loading && !error" class="serial-attachments-state"

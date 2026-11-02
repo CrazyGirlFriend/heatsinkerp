@@ -49,8 +49,13 @@ def intake_route(db, team, payload, user):
         if payload.shared_serials
         else {payload.serial_no}
     )
-    if serials != set(submitted.serial_nos) or submitted.steps[0].team_id != team.id:
-        raise HTTPException(422, "工艺流水号名单或起始库房与本次入库不一致")
+    if payload.shared_serials:
+        if serials != set(route.serial_nos):
+            raise HTTPException(422, "工艺流水号名单与共投实物批次不一致")
+    else:
+        from .process_route_paths import require_order_route
+
+        require_order_route(db, route, payload.serial_no)
     content = {
         "title": submitted.title,
         "serial_nos": submitted.serial_nos,

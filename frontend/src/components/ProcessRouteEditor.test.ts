@@ -138,6 +138,34 @@ it('publishes engineering with its original and drawings without asking for an o
   expect(processRouteApi.publish).toHaveBeenCalledOnce()
 })
 
+it('saves engineering with an independent serial without rewriting its retained order', async () => {
+  const route = structuredClone(routeFixture)
+  route.serial_nos = ['PROCESS-001']
+  route.source_data.word_fields = {
+    serial_no: {
+      ...orderFixture.receipt_fields.serial_no!,
+      value: 'PROCESS-001',
+      source_kind: 'word',
+    },
+  }
+  route.source_data.receipt_fields = structuredClone(route.source_data.word_fields)
+  await render(false, route)
+  await click('保存工艺')
+  expect(processRouteApi.save).toHaveBeenCalledWith(
+    expect.objectContaining({
+      serial_nos: ['PROCESS-001'],
+      source_data: expect.objectContaining({
+        word_fields: expect.objectContaining({
+          serial_no: expect.objectContaining({ value: 'PROCESS-001' }),
+        }),
+        order_document: expect.objectContaining({ serial_no: 'S-001' }),
+      }),
+    }),
+  )
+  expect(processRouteApi.publish).toHaveBeenCalledOnce()
+  expect(wrapper.text()).not.toContain('流水号与订单表不一致')
+})
+
 it('marks a duplicate serial and keeps the entered form until that serial is corrected', async () => {
   await render()
   const message = '流水号“S-001”已有正常工艺，请打开原工艺修改'

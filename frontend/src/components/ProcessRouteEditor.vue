@@ -414,11 +414,6 @@ const { formRef, fieldErrors, validate } = useDialogValidation(() => {
   if (!primarySerial.value.trim() || /[、,，\n]/.test(primarySerial.value))
     errors.serials = '请填写一个主流水号'
   if (serialConflict.value) errors.serials = serialConflict.value
-  if (
-    draft.value.source_data.order_document &&
-    primarySerial.value.trim() !== draft.value.source_data.order_document.serial_no
-  )
-    errors.serials = '流水号与订单表不一致'
   if (requiresReview.value && !importsConfirmed.value) errors.imports = '请确认自动填入的资料和工序'
   if (missingAttachments.value.length)
     errors.attachments = `缺少：${missingAttachments.value.join('、')}`
