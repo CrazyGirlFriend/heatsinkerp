@@ -2,6 +2,7 @@
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ProcessRouteEditor from './ProcessRouteEditor.vue'
+import AppDialog from './AppDialog.vue'
 import WordDocumentPreview from './WordDocumentPreview.vue'
 import ProcessRouteDrawingPreview from './ProcessRouteDrawingPreview.vue'
 import { processRouteApi, ProcessRouteSerialConflictError } from '@/services/processRouteApi'
@@ -97,7 +98,10 @@ async function render(
     global: {
       directives: { loading: () => {} },
       stubs: {
-        AppDialog: { template: '<div><slot/><slot name="footer"/></div>' },
+        AppDialog: {
+          props: ['modelValue'],
+          template: '<div><slot/><slot name="footer"/></div>',
+        },
         RouterLink: { props: ['to'], template: '<a><slot /></a>' },
         WordDocumentPreview: originalStub('WordDocumentPreview', openWord),
         ProcessRouteDrawingPreview: originalStub('ProcessRouteDrawingPreview', openDrawing),
@@ -124,7 +128,48 @@ it('preserves original text and saves the version before publication', async () 
   expect(vi.mocked(processRouteApi.save).mock.calls[0]![0].steps[1]!.instructions).toContain(
     '2.5(+0.01/-0.02)',
   )
-  expect(wrapper.text()).toContain('修改工艺')
+  const dialog = wrapper.getComponent(AppDialog)
+  expect(dialog.props('modelValue')).toBe(false)
+  expect(wrapper.emitted('saved')).toHaveLength(1)
+  expect(wrapper.emitted('close')).toBeUndefined()
+  dialog.vm.$emit('closed')
+  expect(wrapper.emitted('close')).toEqual([[]])
+})
+
+it.each([false, true])(
+  'closes the editor only after all save requests succeed (published: %s)',
+  async (published) => {
+    let finishPublication!: (route: ProcessRoute) => void
+    vi.mocked(processRouteApi.publish).mockImplementationOnce(
+      () => new Promise((resolve) => (finishPublication = resolve)),
+    )
+    await render(published, routeFixture, false, published)
+    await click('保存工艺')
+    expect(wrapper.getComponent(AppDialog).props('modelValue')).toBe(true)
+    expect(wrapper.emitted('saved')).toBeUndefined()
+
+    finishPublication({ ...routeFixture, state: 'published' })
+    await flushPromises()
+    expect(wrapper.getComponent(AppDialog).props('modelValue')).toBe(false)
+    expect(wrapper.emitted('saved')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('修改工艺')
+  },
+)
+
+it('keeps the entered form open after publication fails and closes it after a successful retry', async () => {
+  vi.mocked(processRouteApi.publish).mockRejectedValueOnce(new Error('工艺保存失败'))
+  await render()
+  const instructions = wrapper.get('textarea[aria-label="工序 2 工艺要求"]')
+  await instructions.setValue('精磨后测量厚度')
+  await click('保存工艺')
+  expect(wrapper.getComponent(AppDialog).props('modelValue')).toBe(true)
+  expect(wrapper.emitted('saved')).toBeUndefined()
+  expect(wrapper.text()).toContain('工艺保存失败')
+  expect((instructions.element as HTMLTextAreaElement).value).toBe('精磨后测量厚度')
+
+  await click('保存工艺')
+  expect(wrapper.getComponent(AppDialog).props('modelValue')).toBe(false)
+  expect(wrapper.emitted('saved')).toHaveLength(1)
 })
 
 it('publishes engineering with its original and drawings without asking for an order', async () => {
@@ -361,6 +406,8 @@ it('names a new rework step from its assigned team without a hidden name field',
     processing_task_id: null,
     purpose_id: null,
   })
+  expect(wrapper.getComponent(AppDialog).props('modelValue')).toBe(false)
+  expect(wrapper.emitted('saved')).toHaveLength(1)
 })
 
 async function renderNew() {
@@ -368,7 +415,10 @@ async function renderNew() {
     global: {
       directives: { loading: () => {} },
       stubs: {
-        AppDialog: { template: '<div><slot/><slot name="footer"/></div>' },
+        AppDialog: {
+          props: ['modelValue'],
+          template: '<div><slot/><slot name="footer"/></div>',
+        },
         RouterLink: { props: ['to'], template: '<a><slot /></a>' },
         WordDocumentPreview: true,
         ProcessRouteDrawingPreview: true,
@@ -440,6 +490,8 @@ it('creates a new route with its original and drawings in one request', async ()
   expect(attach).not.toHaveBeenCalled()
   expect(upload).not.toHaveBeenCalled()
   expect(processRouteApi.publish).toHaveBeenCalledWith(expect.objectContaining({ id: 55 }), true)
+  expect(wrapper.getComponent(AppDialog).props('modelValue')).toBe(false)
+  expect(wrapper.emitted('saved')).toHaveLength(1)
 })
 it('blocks unsupported or oversized drawings and limits the combined file count', async () => {
   await renderNew()
@@ -472,6 +524,8 @@ it('retains failed drawing uploads for retry and never publishes with a missing 
   expect(processRouteApi.publish).not.toHaveBeenCalled()
   expect(wrapper.text()).toContain('图纸上传失败')
   expect(wrapper.text()).toContain('待保存')
+  expect(wrapper.getComponent(AppDialog).props('modelValue')).toBe(true)
+  expect(wrapper.emitted('saved')).toBeUndefined()
   await click('保存工艺')
   expect(processRouteApi.uploadDrawing).toHaveBeenCalledTimes(2)
   expect(processRouteApi.publish).toHaveBeenCalledWith(expect.objectContaining({ version: 3 }))
@@ -770,8 +824,10 @@ it('shows material beside the serial and retains corrections after saving', asyn
     vi.mocked(processRouteApi.save).mock.calls[0]![0].source_data.receipt_fields?.material_name
       ?.value,
   ).toBe('Mo80Cu20')
-  expect(wrapper.get('.route-material-field').text()).toContain('Mo80Cu20')
-  expect(wrapper.find('input[aria-label="材质"]').exists()).toBe(false)
+  expect((wrapper.get('input[aria-label="材质"]').element as HTMLInputElement).value).toBe(
+    'Mo80Cu20',
+  )
+  expect(wrapper.getComponent(AppDialog).props('modelValue')).toBe(false)
 })
 it('allows a missing material to be filled without inventing an imported source', async () => {
   await render()

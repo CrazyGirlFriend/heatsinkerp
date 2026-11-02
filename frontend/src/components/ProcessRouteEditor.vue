@@ -463,7 +463,7 @@ async function save() {
       ? await processRouteApi.publish(draft.value, importsConfirmed.value)
       : await processRouteApi.publish(draft.value)
     importsConfirmed.value = !!draft.value.source_data.material_confirmation
-    editingSaved.value = false
+    visible.value = false
     emit('saved')
   } catch (e) {
     error.value = e instanceof Error ? e.message : '工艺保存失败'
@@ -904,50 +904,52 @@ onMounted(async () => {
                       :class="{ 'route-cell--issue': sequenceProblem(index) }"
                       :title="sequenceProblem(index)"
                     >
-                      <ElTooltip
-                        v-if="step.source_row"
-                        :content="`工艺单 · 自动填入 · 原文行 ${step.source_row}`"
-                        placement="top"
-                      >
-                        <span
-                          class="route-import-marker route-step-import"
-                          role="img"
-                          aria-label="自动填入"
-                          tabindex="0"
-                          >导</span
+                      <div class="route-sequence-field">
+                        <ElTooltip
+                          v-if="step.source_row"
+                          :content="`工艺单 · 自动填入 · 原文行 ${step.source_row}`"
+                          placement="top"
                         >
-                      </ElTooltip>
-                      <span v-if="readonly" class="route-cell-value">{{
-                        step.sequence_no >= 0 ? step.sequence_no : '—'
-                      }}</span>
-                      <ElFormItem
-                        v-else
-                        :error="sequenceProblem(index) || fieldErrors[`${index}.sequence`]"
-                        ><ElInputNumber
-                          v-model="step.sequence_no"
-                          :min="0"
-                          :max="999"
-                          :controls="false"
-                          :disabled="readonly || busy"
-                          :aria-label="`工序 ${index + 1} 序号`"
-                      /></ElFormItem>
-                      <button
-                        v-if="sequenceProblem(index)"
-                        type="button"
-                        class="route-cell-marker"
-                        :aria-label="sequenceProblem(index)"
-                        :title="`${sequenceProblem(index)} · 点击定位原稿`"
-                        @click="
-                          locateIssue({
-                            index,
-                            field: 'sequence',
-                            label: sequenceProblem(index),
-                            source: step.source_row,
-                          })
-                        "
-                      >
-                        <ElIcon><WarningFilled /></ElIcon>
-                      </button>
+                          <span
+                            class="route-import-marker route-step-import"
+                            role="img"
+                            aria-label="自动填入"
+                            tabindex="0"
+                            >导</span
+                          >
+                        </ElTooltip>
+                        <span v-if="readonly" class="route-cell-value">{{
+                          step.sequence_no >= 0 ? step.sequence_no : '—'
+                        }}</span>
+                        <ElFormItem
+                          v-else
+                          :error="sequenceProblem(index) || fieldErrors[`${index}.sequence`]"
+                          ><ElInputNumber
+                            v-model="step.sequence_no"
+                            :min="0"
+                            :max="999"
+                            :controls="false"
+                            :disabled="readonly || busy"
+                            :aria-label="`工序 ${index + 1} 序号`"
+                        /></ElFormItem>
+                        <button
+                          v-if="sequenceProblem(index)"
+                          type="button"
+                          class="route-cell-marker"
+                          :aria-label="sequenceProblem(index)"
+                          :title="`${sequenceProblem(index)} · 点击定位原稿`"
+                          @click="
+                            locateIssue({
+                              index,
+                              field: 'sequence',
+                              label: sequenceProblem(index),
+                              source: step.source_row,
+                            })
+                          "
+                        >
+                          <ElIcon><WarningFilled /></ElIcon>
+                        </button>
+                      </div>
                     </td>
                     <td
                       :class="{ 'route-cell--issue': textProblem(index, 'name') }"
@@ -1170,9 +1172,8 @@ onMounted(async () => {
   outline-offset: 2px;
 }
 .route-step-import {
-  position: absolute;
-  top: 4px;
-  left: 4px;
+  grid-column: 1;
+  grid-row: 1;
   margin: 0;
 }
 .route-import-confirmation {
@@ -1592,7 +1593,7 @@ onMounted(async () => {
   color: var(--text);
 }
 .route-col-sequence {
-  width: 68px;
+  width: 110px;
 }
 .route-col-name {
   width: 130px;
@@ -1680,10 +1681,21 @@ onMounted(async () => {
   background: #f8d6d1;
   transform: translateY(-1px);
 }
-.route-sequence-cell > .route-cell-marker {
-  position: absolute;
-  top: 4px;
-  right: 4px;
+.route-sequence-field {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 18px;
+  gap: 4px;
+  align-items: center;
+}
+.route-sequence-field > .route-cell-value,
+.route-sequence-field > :deep(.el-form-item) {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+.route-sequence-field > .route-cell-marker {
+  grid-column: 3;
+  grid-row: 1;
   margin: 0;
 }
 .route-step-table td.route-cell--issue {
@@ -1767,7 +1779,7 @@ onMounted(async () => {
     width: 74px;
   }
   .route-col-sequence {
-    width: 60px;
+    width: 102px;
   }
   .route-step-table td {
     padding: 8px 6px;
