@@ -1,60 +1,29 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
-import {
-  ElButton,
-  ElDescriptions,
-  ElDescriptionsItem,
-  ElOption,
-  ElSelect,
-  ElTabPane,
-  ElTabs,
-} from 'element-plus'
-import { Document, FullScreen, Picture, Tickets } from '@element-plus/icons-vue'
-import AppDialog from './AppDialog.vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { ElOption, ElSelect } from 'element-plus'
 import StatePanel from './StatePanel.vue'
-import ProcessRouteSteps from './ProcessRouteSteps.vue'
 import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ProcessRoute, RouteOrderDocument } from '@/types/processRoute'
-import { formatDateTime } from '@/utils/format'
 
-const WordDocumentPreview = defineAsyncComponent(() => import('./WordDocumentPreview.vue'))
-const ProcessRouteDrawingPreview = defineAsyncComponent(
-  () => import('./ProcessRouteDrawingPreview.vue'),
-)
 const props = defineProps<{
   serialNo: string
   routeIds: (number | null | undefined)[]
-  thumbnails?: boolean
   taskId?: number
   orderDocument?: RouteOrderDocument | null
   orderFile?: File
 }>()
-type Tab = 'info' | 'order' | 'word' | 'drawing'
-const visible = ref(false),
-  tab = ref<Tab>('info'),
-  loading = ref(false),
+const loading = ref(false),
   error = ref('')
 const routes = ref<ProcessRoute[]>([]),
-  selectedId = ref<number>(),
-  drawingId = ref<number>()
+  selectedId = ref<number>()
 const routeIds = computed(() => [...new Set(props.routeIds.filter((id): id is number => !!id))])
 const route = computed(() => routes.value.find((item) => item.id === selectedId.value))
 const savedOrder = ref<RouteOrderDocument | null>()
 const order = computed(() =>
   props.orderDocument === undefined ? savedOrder.value : props.orderDocument,
 )
-const fields = computed(() =>
-  Object.entries({
-    ...route.value?.source_data.receipt_fields,
-    ...order.value?.receipt_fields,
-  }).filter(([key]) => key !== 'serial_no'),
-)
-const drawing = computed(() => route.value?.drawings?.find((item) => item.id === drawingId.value))
-const wordPreview = ref<{ ready: boolean; open: () => void }>()
-const drawingPreview = ref<{ ready: boolean; open: () => void }>()
-const preview = computed(() => (tab.value === 'word' ? wordPreview.value : drawingPreview.value))
 const orderDownload = computed(() =>
   props.taskId && order.value
     ? () => productionScheduleApi.downloadOrder(props.taskId!, order.value!.filename)
@@ -84,196 +53,61 @@ async function load() {
     if (current === generation) loading.value = false
   }
 }
-function open(value: Tab) {
-  tab.value = value
-  visible.value = true
-  if (!props.thumbnails) void load()
-}
-watch(route, (value) => {
-  drawingId.value = value?.drawings?.[0]?.id
-})
-watch(visible, (value) => {
-  if (!value && !props.thumbnails) ++generation
-})
-watch(
-  () => [props.serialNo, routeIds.value.join(','), props.thumbnails, props.taskId],
-  () => {
-    ++generation
-    routes.value = []
-    visible.value = false
-    if (props.thumbnails) void load()
-  },
-  { immediate: true },
-)
+watch(() => [props.serialNo, routeIds.value.join(','), props.taskId], load, { immediate: true })
 onBeforeUnmount(() => ++generation)
 </script>
 
 <template>
-  <aside v-if="thumbnails" class="schedule-document-rail" aria-label="排期附件缩略图">
-    <slot name="upload" />
-    <StatePanel v-if="loading" state="loading" compact />
-    <StatePanel v-else-if="error" state="error" :description="error" @retry="load" />
-    <template v-else-if="route">
-      <ElSelect v-if="routes.length > 1" v-model="selectedId" aria-label="查看关联工艺">
-        <ElOption v-for="item in routes" :key="item.id" :value="item.id" :label="item.title" />
-      </ElSelect>
-      <ProcessRouteAttachments
-        :key="route.id"
-        :route="route"
-        :order-document="order"
-        :order-file="orderFile"
-        :order-download="orderDownload"
-      />
-      <ElButton :icon="Tickets" @click="open('info')">流水号信息</ElButton>
-    </template>
-    <span v-else class="schedule-document-empty">选择流水号后显示工艺资料</span>
-  </aside>
-  <div v-else class="schedule-documents" role="group" aria-label="排期资料">
-    <ElButton :icon="Tickets" :disabled="!serialNo" @click="open('info')">流水号信息</ElButton>
-    <ElButton :icon="Document" :disabled="!serialNo" @click="open('order')">订单表</ElButton>
-    <ElButton :icon="Document" :disabled="!serialNo" @click="open('word')">工艺原件</ElButton>
-    <ElButton :icon="Picture" :disabled="!serialNo" @click="open('drawing')">图纸</ElButton>
-  </div>
-  <AppDialog
-    v-model="visible"
-    :title="`${serialNo} · 资料`"
-    width="min(1100px, 94vw)"
-    append-to-body
-    destroy-on-close
-  >
-    <StatePanel v-if="loading" state="loading" compact />
-    <StatePanel v-else-if="error" state="error" :description="error" @retry="load" />
-    <StatePanel v-else-if="!route" state="empty" title="未关联工艺" compact />
-    <template v-else>
-      <ElSelect
-        v-if="routes.length > 1"
-        v-model="selectedId"
-        aria-label="查看关联工艺"
-        class="schedule-document-route"
-      >
-        <ElOption
-          v-for="item in routes"
-          :key="item.id"
-          :value="item.id"
-          :label="`${item.title} · ${formatDateTime(item.updated_at || item.created_at)}`"
-        />
-      </ElSelect>
-      <ElTabs v-model="tab" aria-label="排期资料分类">
-        <ElTabPane label="流水号信息" name="info" />
-        <ElTabPane label="订单表" name="order" />
-        <ElTabPane label="工艺原件" name="word" />
-        <ElTabPane label="图纸" name="drawing" />
-      </ElTabs>
-      <section v-if="tab === 'info'" class="schedule-document-info">
-        <ElDescriptions :column="2" border aria-label="流水号资料">
-          <ElDescriptionsItem label="流水号">{{ serialNo }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="工艺人员">{{
-            route.engineering_employee_name || '未记录'
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem v-for="[key, field] in fields" :key="key" :label="field.label">{{
-            field.value === '' ? '—' : field.value
-          }}</ElDescriptionsItem>
-        </ElDescriptions>
-        <h3>工艺路线</h3>
-        <ProcessRouteSteps :route="route" />
-      </section>
-      <section v-else-if="tab === 'order'" class="schedule-document-order">
+  <div class="schedule-documents" :class="{ 'schedule-documents--layout': !!$slots.default }">
+    <aside class="schedule-document-rail" aria-label="排期附件缩略图">
+      <slot name="upload" />
+      <StatePanel v-if="loading" state="loading" compact />
+      <StatePanel v-else-if="error" state="error" :description="error" @retry="load" />
+      <template v-else-if="route">
+        <ElSelect v-if="routes.length > 1" v-model="selectedId" aria-label="查看关联工艺">
+          <ElOption v-for="item in routes" :key="item.id" :value="item.id" :label="item.title" />
+        </ElSelect>
         <ProcessRouteAttachments
           :key="route.id"
           :route="route"
-          :documents="['order']"
-          :order-thumbnail="false"
           :order-document="order"
           :order-file="orderFile"
           :order-download="orderDownload"
         />
-      </section>
-      <section v-else class="schedule-document-preview">
-        <div class="schedule-document-tools">
-          <ElSelect
-            v-if="tab === 'drawing' && route.drawings?.length"
-            v-model="drawingId"
-            aria-label="选择图纸"
-          >
-            <ElOption
-              v-for="item in route.drawings"
-              :key="item.id"
-              :value="item.id"
-              :label="item.filename"
-            />
-          </ElSelect>
-          <ElButton :icon="FullScreen" :disabled="!preview?.ready" @click="preview?.open()"
-            >放大查看</ElButton
-          >
-        </div>
-        <template v-if="tab === 'word'">
-          <WordDocumentPreview
-            v-if="route.filename"
-            ref="wordPreview"
-            :key="route.id"
-            :route="route"
-            compact
-          />
-          <StatePanel v-else state="empty" title="暂无工艺原件" compact />
-        </template>
-        <template v-else>
-          <ProcessRouteDrawingPreview
-            v-if="drawing"
-            ref="drawingPreview"
-            :route-id="route.id"
-            :drawing="drawing"
-          />
-          <StatePanel v-else state="empty" title="暂无图纸" compact />
-        </template>
-      </section>
-    </template>
-    <template #footer><ElButton @click="visible = false">关闭</ElButton></template>
-  </AppDialog>
+      </template>
+      <StatePanel
+        v-else
+        state="empty"
+        :title="serialNo ? '未关联工艺' : '选择流水号后显示工艺资料'"
+        compact
+      />
+    </aside>
+    <section v-if="$slots.default" class="schedule-document-content"><slot /></section>
+  </div>
 </template>
 
 <style scoped>
+.schedule-documents,
+.schedule-document-content {
+  min-width: 0;
+}
+.schedule-documents--layout {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+  margin-top: 20px;
+}
 .schedule-document-rail {
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-width: 0;
 }
-.schedule-document-empty {
-  padding: 16px 8px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.schedule-documents {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-block: 12px;
-}
-.schedule-documents .el-button + .el-button {
-  margin-left: 0;
-}
-.schedule-document-route {
-  width: 100%;
-  margin-bottom: 12px;
-}
-.schedule-document-info h3 {
-  margin: 16px 0 10px;
-  font-size: 14px;
-}
-.schedule-document-preview {
-  display: flex;
-  flex-direction: column;
-  height: min(600px, 65vh);
-  min-height: 320px;
-}
-.schedule-document-tools {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-.schedule-document-tools .el-select {
-  flex: 1;
-  min-width: 0;
+@media (max-width: 760px) {
+  .schedule-documents--layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
 }
 </style>

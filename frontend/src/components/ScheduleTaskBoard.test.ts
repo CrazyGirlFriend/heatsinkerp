@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { ElInput, ElPagination, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ScheduleTaskBoard from './ScheduleTaskBoard.vue'
+import ScheduleDocuments from './ScheduleDocuments.vue'
 import ProductionScheduleGantt from './ProductionScheduleGantt.vue'
 import ProductionScheduleOverview from './ProductionScheduleOverview.vue'
 import DeliverySchedules from './DeliverySchedules.vue'
@@ -236,6 +237,12 @@ describe('task scheduling board', () => {
       '10 kg（参考）',
     ])
     expect(wrapper.find('.task-detail__notes').exists()).toBe(false)
+    const documents = wrapper.getComponent(ScheduleDocuments)
+    expect(documents.find('.schedule-documents--layout').exists()).toBe(true)
+    expect(documents.find('.task-detail__route').exists()).toBe(true)
+    expect(documents.props('orderDocument')).toBeNull()
+    expect(wrapper.text()).not.toContain('流水号信息')
+
     expect(wrapper.text()).not.toContain('101 件')
   })
   it('shares the applied filters between global progress and export data', async () => {

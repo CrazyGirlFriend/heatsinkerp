@@ -881,313 +881,335 @@ defineExpose({ exportSource, openDetail })
         <ScheduleDocuments
           :key="detail.id"
           :task-id="detail.task_id || undefined"
-          :order-document="taskContext?.order_document || undefined"
+          :order-document="taskContext?.order_document || null"
           :serial-no="detail.serial_no"
           :route-ids="[detail.process_route_id]"
-        />
-        <div v-if="detail.task_id" class="schedule-task-context">
-          <div class="schedule-task-context__heading">
-            <strong>{{ detail.task_title || '交货任务' }}</strong>
-            <span>{{ detail.task_no }}</span>
-            <ElTag v-if="detail.quality_held" type="danger" size="small">质量冻结</ElTag>
-            <span v-if="taskLoading">正在读取任务路线</span>
+        >
+          <div v-if="detail.task_id" class="schedule-task-context">
+            <div class="schedule-task-context__heading">
+              <strong>{{ detail.task_title || '交货任务' }}</strong>
+              <span>{{ detail.task_no }}</span>
+              <ElTag v-if="detail.quality_held" type="danger" size="small">质量冻结</ElTag>
+              <span v-if="taskLoading">正在读取任务路线</span>
+            </div>
+            <p v-if="taskError" role="alert">
+              {{ taskError }} <ElButton link @click="loadTask(detail.task_id)">重试</ElButton>
+            </p>
+            <ol v-if="taskContext" class="schedule-task-route" aria-label="整项任务交货路线">
+              <li v-for="node in taskContext.nodes" :key="node.id">
+                <button
+                  type="button"
+                  :class="{ 'is-current': node.id === detail.id }"
+                  :aria-current="node.id === detail.id ? 'step' : undefined"
+                  @click="openDetail(node.id)"
+                >
+                  <strong>{{ node.team_name }}</strong>
+                  <span>{{ plannedDueLabel(node) }}</span>
+                  <span
+                    :class="`schedule-task-route__status--${scheduleStatusTone(node.status)}`"
+                    >{{ scheduleStatusLabels[node.status] }}</span
+                  >
+                </button>
+              </li>
+            </ol>
           </div>
-          <p v-if="taskError" role="alert">
-            {{ taskError }} <ElButton link @click="loadTask(detail.task_id)">重试</ElButton>
+          <p
+            v-if="detail.initial_due_at && detail.initial_due_at !== detail.due_at"
+            class="schedule-original-deadline"
+          >
+            原交货时间：{{ formatDateTime(detail.initial_due_at) }}
           </p>
-          <ol v-if="taskContext" class="schedule-task-route" aria-label="整项任务交货路线">
-            <li v-for="node in taskContext.nodes" :key="node.id">
-              <button
-                type="button"
-                :class="{ 'is-current': node.id === detail.id }"
-                :aria-current="node.id === detail.id ? 'step' : undefined"
-                @click="openDetail(node.id)"
-              >
-                <strong>{{ node.team_name }}</strong>
-                <span>{{ plannedDueLabel(node) }}</span>
-                <span :class="`schedule-task-route__status--${scheduleStatusTone(node.status)}`">{{
-                  scheduleStatusLabels[node.status]
-                }}</span>
-              </button>
-            </li>
-          </ol>
-        </div>
-        <p
-          v-if="detail.initial_due_at && detail.initial_due_at !== detail.due_at"
-          class="schedule-original-deadline"
-        >
-          原交货时间：{{ formatDateTime(detail.initial_due_at) }}
-        </p>
-        <ElDescriptions class="schedule-summary" :column="3" border>
-          <ElDescriptionsItem label="计量方式">{{
-            detail.completion_basis ? completionBasisLabels[detail.completion_basis] : '—'
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="执行情况">{{
-            detail.execution_state ? scheduleExecutionLabels[detail.execution_state] : '—'
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="节点顺序">{{ detail.sequence_no }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="要求交货时间">{{
-            plannedDueLabel(detail)
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="实际交完时间">{{
-            formatDateTime(detail.completed_at)
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="排期编号"
-            >#{{ detail.id
-            }}<ElButton v-if="detail.predecessor_id" link @click="openDetail(detail.predecessor_id)"
-              >上序 #{{ detail.predecessor_id }}</ElButton
-            ></ElDescriptionsItem
+          <ElDescriptions class="schedule-summary" :column="3" border>
+            <ElDescriptionsItem label="计量方式">{{
+              detail.completion_basis ? completionBasisLabels[detail.completion_basis] : '—'
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="执行情况">{{
+              detail.execution_state ? scheduleExecutionLabels[detail.execution_state] : '—'
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="节点顺序">{{ detail.sequence_no }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="要求交货时间">{{
+              plannedDueLabel(detail)
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="实际交完时间">{{
+              formatDateTime(detail.completed_at)
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="排期编号"
+              >#{{ detail.id
+              }}<ElButton
+                v-if="detail.predecessor_id"
+                link
+                @click="openDetail(detail.predecessor_id)"
+                >上序 #{{ detail.predecessor_id }}</ElButton
+              ></ElDescriptionsItem
+            >
+            <ElDescriptionsItem label="计划件数">{{
+              formatAmount(detail.target_quantity)
+            }}</ElDescriptionsItem
+            ><ElDescriptionsItem label="已转出件数">{{
+              formatAmount(detail.dispatched_quantity)
+            }}</ElDescriptionsItem
+            ><ElDescriptionsItem label="待交件数">{{
+              formatAmount(
+                detail.assessment_enabled === false || detail.completion_basis === 'weight'
+                  ? null
+                  : detail.remaining_quantity,
+              )
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="计划 / 参考重量（kg）">{{
+              formatAmount(detail.target_weight)
+            }}</ElDescriptionsItem
+            ><ElDescriptionsItem label="已转出重量（kg）">{{
+              formatAmount(detail.dispatched_weight)
+            }}</ElDescriptionsItem
+            ><ElDescriptionsItem label="待交重量（kg）">{{
+              formatAmount(
+                detail.assessment_enabled === false || detail.completion_basis === 'quantity'
+                  ? null
+                  : detail.remaining_weight,
+              )
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="下序签收件数">{{
+              formatAmount(detail.received_quantity)
+            }}</ElDescriptionsItem
+            ><ElDescriptionsItem label="下序签收重量（kg）">{{
+              formatAmount(detail.received_weight)
+            }}</ElDescriptionsItem
+            ><ElDescriptionsItem label="更新时间">{{
+              formatDateTime(detail.updated_at)
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="备注" :span="3">{{
+              detail.notes || '—'
+            }}</ElDescriptionsItem>
+          </ElDescriptions>
+          <ElTable
+            v-if="detail.delivery_batches?.length"
+            :data="detail.delivery_batches"
+            border
+            size="small"
+            aria-label="调度交货要求"
+            ><ElTableColumn label="订单批次" prop="batch_number" width="100" /><ElTableColumn
+              label="数量（件）"
+              prop="target_quantity"
+              width="120"
+            /><ElTableColumn label="要求交期"
+              ><template #default="{ row }">{{
+                formatDateTime(row.due_at)
+              }}</template></ElTableColumn
+            ></ElTable
           >
-          <ElDescriptionsItem label="计划件数">{{
-            formatAmount(detail.target_quantity)
-          }}</ElDescriptionsItem
-          ><ElDescriptionsItem label="已转出件数">{{
-            formatAmount(detail.dispatched_quantity)
-          }}</ElDescriptionsItem
-          ><ElDescriptionsItem label="待交件数">{{
-            formatAmount(
-              detail.assessment_enabled === false || detail.completion_basis === 'weight'
-                ? null
-                : detail.remaining_quantity,
-            )
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="计划 / 参考重量（kg）">{{
-            formatAmount(detail.target_weight)
-          }}</ElDescriptionsItem
-          ><ElDescriptionsItem label="已转出重量（kg）">{{
-            formatAmount(detail.dispatched_weight)
-          }}</ElDescriptionsItem
-          ><ElDescriptionsItem label="待交重量（kg）">{{
-            formatAmount(
-              detail.assessment_enabled === false || detail.completion_basis === 'quantity'
-                ? null
-                : detail.remaining_weight,
-            )
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="下序签收件数">{{
-            formatAmount(detail.received_quantity)
-          }}</ElDescriptionsItem
-          ><ElDescriptionsItem label="下序签收重量（kg）">{{
-            formatAmount(detail.received_weight)
-          }}</ElDescriptionsItem
-          ><ElDescriptionsItem label="更新时间">{{
-            formatDateTime(detail.updated_at)
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="备注" :span="3">{{ detail.notes || '—' }}</ElDescriptionsItem>
-        </ElDescriptions>
-        <ElTable
-          v-if="detail.delivery_batches?.length"
-          :data="detail.delivery_batches"
-          border
-          size="small"
-          aria-label="调度交货要求"
-          ><ElTableColumn label="订单批次" prop="batch_number" width="100" /><ElTableColumn
-            label="数量（件）"
-            prop="target_quantity"
-            width="120"
-          /><ElTableColumn label="要求交期"
-            ><template #default="{ row }">{{ formatDateTime(row.due_at) }}</template></ElTableColumn
-          ></ElTable
-        >
-        <SchedulePlanReview :schedule="detail" @changed="saved" />
-        <div class="schedule-section-heading"><h3>分批排期</h3></div>
-        <ElTable
-          :data="detail.batches || []"
-          row-key="id"
-          :row-class-name="noticeBatchClass"
-          border
-          class="business-table"
-          empty-text="待班组安排批次"
-          aria-label="分批排期明细"
-        >
-          <ElTableColumn label="批次" width="85"
-            ><template #default="{ row }">第 {{ row.batch_number }} 批</template></ElTableColumn
+          <SchedulePlanReview :schedule="detail" @changed="saved" />
+          <div class="schedule-section-heading"><h3>分批排期</h3></div>
+          <ElTable
+            :data="detail.batches || []"
+            row-key="id"
+            :row-class-name="noticeBatchClass"
+            border
+            class="business-table"
+            empty-text="待班组安排批次"
+            aria-label="分批排期明细"
           >
-          <ElTableColumn label="计划开始" min-width="165"
-            ><template #default="{ row }">{{
-              formatDateTime(row.planned_start_at)
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn label="计划转出" min-width="165"
-            ><template #default="{ row }">{{ formatDateTime(row.due_at) }}</template></ElTableColumn
-          >
-          <ElTableColumn label="数量（件）" min-width="100"
-            ><template #default="{ row }">{{
-              formatAmount(row.target_quantity)
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn
-            v-if="detail.completion_basis !== 'quantity'"
-            label="重量（kg）"
-            min-width="110"
-            ><template #default="{ row }">{{
-              formatAmount(row.target_weight)
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn label="已转出（件）" min-width="110"
-            ><template #default="{ row }">{{
-              formatAmount(row.dispatched_quantity)
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn
-            v-if="detail.completion_basis !== 'quantity'"
-            label="已转出（kg）"
-            min-width="110"
-            ><template #default="{ row }">{{
-              formatAmount(row.dispatched_weight)
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn label="状态" min-width="110"
-            ><template #default="{ row }"
-              ><ElTag :type="scheduleStatusTone(row.status)">{{
-                scheduleStatusLabels[row.status as ScheduleStatus]
-              }}</ElTag></template
-            ></ElTableColumn
-          >
-          <ElTableColumn label="时间提醒" min-width="180"
-            ><template #default="{ row }"
-              ><span :class="{ 'schedule-late': row.warnings.length }">{{
-                row.warnings.join('；') || '—'
-              }}</span></template
-            ></ElTableColumn
-          >
-        </ElTable>
-        <div class="schedule-section-heading">
-          <h3>关联物料</h3>
-          <RouterLink
-            :to="{
-              path: `/team-workspaces/${detail.team_id}`,
-              query: { tab: 'stock', serial_no: detail.serial_no },
-            }"
-            >查看本班组库存</RouterLink
-          >
-        </div>
-        <ElTable
-          :data="detail.sources"
-          class="business-table"
-          :empty-text="detail.predecessor_id ? '随上序来料' : '暂无关联批次'"
-        >
-          <ElTableColumn label="来源批次" min-width="200" align="center"
-            ><template #default="{ row }"
-              ><ElButton v-if="row.batch_no" link type="primary" @click="viewBatch(row.batch_no)">{{
-                row.batch_no
-              }}</ElButton
-              ><span v-else>—</span></template
-            ></ElTableColumn
-          >
-          <ElTableColumn label="分配计划件数" min-width="140" align="center"
-            ><template #default="{ row }">{{ formatAmount(row.quantity) }}</template></ElTableColumn
-          >
-          <ElTableColumn label="分配计划重量（kg）" min-width="160" align="center"
-            ><template #default="{ row }">{{ formatAmount(row.weight) }}</template></ElTableColumn
-          >
-        </ElTable>
-        <template v-if="detail.linked_batches?.length">
+            <ElTableColumn label="批次" width="85"
+              ><template #default="{ row }">第 {{ row.batch_number }} 批</template></ElTableColumn
+            >
+            <ElTableColumn label="计划开始" min-width="165"
+              ><template #default="{ row }">{{
+                formatDateTime(row.planned_start_at)
+              }}</template></ElTableColumn
+            >
+            <ElTableColumn label="计划转出" min-width="165"
+              ><template #default="{ row }">{{
+                formatDateTime(row.due_at)
+              }}</template></ElTableColumn
+            >
+            <ElTableColumn label="数量（件）" min-width="100"
+              ><template #default="{ row }">{{
+                formatAmount(row.target_quantity)
+              }}</template></ElTableColumn
+            >
+            <ElTableColumn
+              v-if="detail.completion_basis !== 'quantity'"
+              label="重量（kg）"
+              min-width="110"
+              ><template #default="{ row }">{{
+                formatAmount(row.target_weight)
+              }}</template></ElTableColumn
+            >
+            <ElTableColumn label="已转出（件）" min-width="110"
+              ><template #default="{ row }">{{
+                formatAmount(row.dispatched_quantity)
+              }}</template></ElTableColumn
+            >
+            <ElTableColumn
+              v-if="detail.completion_basis !== 'quantity'"
+              label="已转出（kg）"
+              min-width="110"
+              ><template #default="{ row }">{{
+                formatAmount(row.dispatched_weight)
+              }}</template></ElTableColumn
+            >
+            <ElTableColumn label="状态" min-width="110"
+              ><template #default="{ row }"
+                ><ElTag :type="scheduleStatusTone(row.status)">{{
+                  scheduleStatusLabels[row.status as ScheduleStatus]
+                }}</ElTag></template
+              ></ElTableColumn
+            >
+            <ElTableColumn label="时间提醒" min-width="180"
+              ><template #default="{ row }"
+                ><span :class="{ 'schedule-late': row.warnings.length }">{{
+                  row.warnings.join('；') || '—'
+                }}</span></template
+              ></ElTableColumn
+            >
+          </ElTable>
           <div class="schedule-section-heading">
-            <h3>来料记录</h3>
+            <h3>关联物料</h3>
+            <RouterLink
+              :to="{
+                path: `/team-workspaces/${detail.team_id}`,
+                query: { tab: 'stock', serial_no: detail.serial_no },
+              }"
+              >查看本班组库存</RouterLink
+            >
           </div>
-          <ElTable :data="detail.linked_batches" class="business-table">
-            <ElTableColumn label="来料批次" min-width="200" align="center"
+          <ElTable
+            :data="detail.sources"
+            class="business-table"
+            :empty-text="detail.predecessor_id ? '随上序来料' : '暂无关联批次'"
+          >
+            <ElTableColumn label="来源批次" min-width="200" align="center"
+              ><template #default="{ row }"
+                ><ElButton
+                  v-if="row.batch_no"
+                  link
+                  type="primary"
+                  @click="viewBatch(row.batch_no)"
+                  >{{ row.batch_no }}</ElButton
+                ><span v-else>—</span></template
+              ></ElTableColumn
+            >
+            <ElTableColumn label="分配计划件数" min-width="140" align="center"
+              ><template #default="{ row }">{{
+                formatAmount(row.quantity)
+              }}</template></ElTableColumn
+            >
+            <ElTableColumn label="分配计划重量（kg）" min-width="160" align="center"
+              ><template #default="{ row }">{{ formatAmount(row.weight) }}</template></ElTableColumn
+            >
+          </ElTable>
+          <template v-if="detail.linked_batches?.length">
+            <div class="schedule-section-heading">
+              <h3>来料记录</h3>
+            </div>
+            <ElTable :data="detail.linked_batches" class="business-table">
+              <ElTableColumn label="来料批次" min-width="200" align="center"
+                ><template #default="{ row }"
+                  ><ElButton link type="primary" @click="viewBatch(row.batch_no)">{{
+                    row.batch_no
+                  }}</ElButton></template
+                ></ElTableColumn
+              >
+              <ElTableColumn label="材质" prop="material_name" min-width="110" align="center" />
+              <ElTableColumn label="来料件数" min-width="100" align="center"
+                ><template #default="{ row }">{{
+                  formatAmount(row.quantity)
+                }}</template></ElTableColumn
+              >
+              <ElTableColumn label="来料重量（kg）" min-width="130" align="center"
+                ><template #default="{ row }">{{
+                  formatAmount(row.weight)
+                }}</template></ElTableColumn
+              >
+              <ElTableColumn label="签收时间" min-width="170" align="center"
+                ><template #default="{ row }">{{
+                  formatDateTime(row.received_at)
+                }}</template></ElTableColumn
+              >
+              <ElTableColumn label="来料状态" min-width="120" align="center"
+                ><template #default="{ row }"
+                  ><MaterialTransferStatus :status="row.status as TransferStatus" /></template
+              ></ElTableColumn>
+            </ElTable>
+          </template>
+          <div class="schedule-section-heading">
+            <h3>转出记录</h3>
+          </div>
+          <ElTable :data="detail.deliveries || []" class="business-table" empty-text="暂无转出记录">
+            <ElTableColumn label="计划批次" width="100" align="center">
+              <template #default="{ row }">{{
+                row.schedule_batch_id
+                  ? `第 ${detail.batches?.find((b) => b.id === row.schedule_batch_id)?.batch_number ?? '—'} 批`
+                  : '未分配'
+              }}</template>
+            </ElTableColumn>
+            <ElTableColumn label="转出批次" min-width="200" align="center"
               ><template #default="{ row }"
                 ><ElButton link type="primary" @click="viewBatch(row.batch_no)">{{
                   row.batch_no
                 }}</ElButton></template
               ></ElTableColumn
             >
-            <ElTableColumn label="材质" prop="material_name" min-width="110" align="center" />
-            <ElTableColumn label="来料件数" min-width="100" align="center"
+            <ElTableColumn label="件数" min-width="90" align="center"
               ><template #default="{ row }">{{
                 formatAmount(row.quantity)
               }}</template></ElTableColumn
             >
-            <ElTableColumn label="来料重量（kg）" min-width="130" align="center"
+            <ElTableColumn label="重量（kg）" min-width="120" align="center"
               ><template #default="{ row }">{{ formatAmount(row.weight) }}</template></ElTableColumn
+            >
+            <ElTableColumn label="实际转出时间" min-width="170" align="center"
+              ><template #default="{ row }">{{
+                formatDateTime(row.transferred_at)
+              }}</template></ElTableColumn
             >
             <ElTableColumn label="签收时间" min-width="170" align="center"
               ><template #default="{ row }">{{
                 formatDateTime(row.received_at)
               }}</template></ElTableColumn
             >
-            <ElTableColumn label="来料状态" min-width="120" align="center"
+            <ElTableColumn label="单据状态" min-width="130" align="center"
               ><template #default="{ row }"
-                ><MaterialTransferStatus :status="row.status as TransferStatus" /></template
+                ><MaterialTransferStatus
+                  :status="row.status as TransferStatus"
+                  outgoing /></template
             ></ElTableColumn>
+            <ElTableColumn label="计入交货" min-width="100" align="center"
+              ><template #default="{ row }">{{
+                detail.assessment_enabled === false ? '—' : row.counts_toward_delivery ? '是' : '否'
+              }}</template></ElTableColumn
+            >
           </ElTable>
-        </template>
-        <div class="schedule-section-heading">
-          <h3>转出记录</h3>
-        </div>
-        <ElTable :data="detail.deliveries || []" class="business-table" empty-text="暂无转出记录">
-          <ElTableColumn label="计划批次" width="100" align="center">
-            <template #default="{ row }">{{
-              row.schedule_batch_id
-                ? `第 ${detail.batches?.find((b) => b.id === row.schedule_batch_id)?.batch_number ?? '—'} 批`
-                : '未分配'
-            }}</template>
-          </ElTableColumn>
-          <ElTableColumn label="转出批次" min-width="200" align="center"
-            ><template #default="{ row }"
-              ><ElButton link type="primary" @click="viewBatch(row.batch_no)">{{
-                row.batch_no
-              }}</ElButton></template
-            ></ElTableColumn
-          >
-          <ElTableColumn label="件数" min-width="90" align="center"
-            ><template #default="{ row }">{{ formatAmount(row.quantity) }}</template></ElTableColumn
-          >
-          <ElTableColumn label="重量（kg）" min-width="120" align="center"
-            ><template #default="{ row }">{{ formatAmount(row.weight) }}</template></ElTableColumn
-          >
-          <ElTableColumn label="实际转出时间" min-width="170" align="center"
-            ><template #default="{ row }">{{
-              formatDateTime(row.transferred_at)
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn label="签收时间" min-width="170" align="center"
-            ><template #default="{ row }">{{
-              formatDateTime(row.received_at)
-            }}</template></ElTableColumn
-          >
-          <ElTableColumn label="单据状态" min-width="130" align="center"
-            ><template #default="{ row }"
-              ><MaterialTransferStatus :status="row.status as TransferStatus" outgoing /></template
-          ></ElTableColumn>
-          <ElTableColumn label="计入交货" min-width="100" align="center"
-            ><template #default="{ row }">{{
-              detail.assessment_enabled === false ? '—' : row.counts_toward_delivery ? '是' : '否'
-            }}</template></ElTableColumn
-          >
-        </ElTable>
-        <div class="schedule-section-heading"><h3>排期调整记录</h3></div>
-        <ElCollapse v-model="expandedEvents" class="schedule-audit"
-          ><ElCollapseItem
-            v-for="event in detail.history || []"
-            :key="event.id"
-            :name="event.id"
-            :data-notice-event="event.id"
-            ><template #title
-              ><span
-                >{{ formatDateTime(event.occurred_at) }} · {{ event.actor }} ·
-                {{ actionLabel(event.action) }}</span
-              ></template
-            ><ElTable
-              :data="changes(event)"
-              class="business-table"
-              empty-text="本次操作未改变计划字段"
-              ><ElTableColumn
-                label="调整内容"
-                prop="label"
-                width="160"
-                align="center" /><ElTableColumn
-                label="调整前"
-                prop="before"
-                min-width="250"
-                align="center" /><ElTableColumn
-                label="调整后"
-                prop="after"
-                min-width="250"
-                align="center" /></ElTable></ElCollapseItem
-        ></ElCollapse>
+          <div class="schedule-section-heading"><h3>排期调整记录</h3></div>
+          <ElCollapse v-model="expandedEvents" class="schedule-audit"
+            ><ElCollapseItem
+              v-for="event in detail.history || []"
+              :key="event.id"
+              :name="event.id"
+              :data-notice-event="event.id"
+              ><template #title
+                ><span
+                  >{{ formatDateTime(event.occurred_at) }} · {{ event.actor }} ·
+                  {{ actionLabel(event.action) }}</span
+                ></template
+              ><ElTable
+                :data="changes(event)"
+                class="business-table"
+                empty-text="本次操作未改变计划字段"
+                ><ElTableColumn
+                  label="调整内容"
+                  prop="label"
+                  width="160"
+                  align="center" /><ElTableColumn
+                  label="调整前"
+                  prop="before"
+                  min-width="250"
+                  align="center" /><ElTableColumn
+                  label="调整后"
+                  prop="after"
+                  min-width="250"
+                  align="center" /></ElTable></ElCollapseItem
+          ></ElCollapse>
+        </ScheduleDocuments>
       </template>
       <template #footer
         ><div

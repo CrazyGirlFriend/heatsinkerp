@@ -289,7 +289,6 @@ onMounted(loadRoutes)
     >
       <div class="dispatch-task-layout">
         <ScheduleDocuments
-          thumbnails
           :serial-no="serial.trim()"
           :route-ids="task ? task.nodes.map((node) => node.process_route_id) : [routeId]"
           :task-id="task?.id"
