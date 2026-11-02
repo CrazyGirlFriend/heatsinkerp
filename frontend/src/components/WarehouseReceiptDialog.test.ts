@@ -113,6 +113,53 @@ async function submit() {
 }
 
 describe('warehouse manual receipt', () => {
+  it.each(['成品规格', '转料规格'])(
+    'validates only visible %s after switching to shared intake',
+    async (label) => {
+      await render()
+      await fill()
+      const shape = wrapper
+        .findAllComponents(ElSelect)
+        .find((item) => item.find(`input[aria-label="${label}形状"]`).exists())!
+      shape.vm.$emit('update:modelValue', 'rectangle')
+      shape.vm.$emit('change', 'rectangle')
+      await flushPromises()
+      await submit()
+      expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+
+      wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', true)
+      await flushPromises()
+      for (const index of [1, 2]) {
+        await wrapper.get(`input[aria-label="共投流水号${index}"]`).setValue(`SHARED-${index}`)
+        await amount(`共投计划重量${index}`, 0.0025)
+        await amount(`共投计划件数${index}`, 1)
+        await wrapper.get(`input[aria-label="共投计划切割尺寸${index}"]`).setValue('按图纸加工')
+      }
+      await submit()
+      if (label === '成品规格') {
+        expect(wrapper.find('input[aria-label="成品规格形状"]').exists()).toBe(false)
+        expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(
+          901,
+          expect.objectContaining({
+            finished_specification: null,
+            shared_serials: expect.arrayContaining([
+              expect.objectContaining({ serial_no: 'SHARED-1' }),
+              expect.objectContaining({ serial_no: 'SHARED-2' }),
+            ]),
+          }),
+        )
+      } else {
+        expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+        expect(
+          wrapper
+            .get('input[aria-label="转料规格形状"]')
+            .element.closest('.el-form-item')
+            ?.classList.contains('is-error'),
+        ).toBe(true)
+      }
+    },
+  )
+
   it('accepts raw intake without a serial number or route', async () => {
     await render()
     await fill()

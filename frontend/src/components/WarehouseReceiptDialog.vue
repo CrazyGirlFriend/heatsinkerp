@@ -582,6 +582,8 @@ const validation = useDialogValidation(() => {
       ] = message
   }
   for (const field of materialDocumentTextFields) {
+    if (sharedEntry.value && ['customer_code', 'finished_specification'].includes(field.key))
+      continue
     if (specificationValidity[field.key] === false) issues[field.key] = '请填完整规格尺寸'
     else if (form.document[field.key].trim().length > field.maxLength)
       issues[field.key] = '内容过长'
