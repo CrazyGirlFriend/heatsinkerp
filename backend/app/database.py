@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 
+from anyio import CancelScope
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -54,5 +55,9 @@ AsyncSessionLocal = async_sessionmaker(async_engine, autoflush=False, expire_on_
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSessionLocal() as db:
+    db = AsyncSessionLocal()
+    try:
         yield db
+    finally:
+        with CancelScope(shield=True):
+            await db.close()

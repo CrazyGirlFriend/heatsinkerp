@@ -4,6 +4,7 @@ import asyncio
 import json
 from time import monotonic
 
+from anyio import CancelScope
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.security import HTTPAuthorizationCredentials
@@ -30,9 +31,12 @@ def factory_day():
 async def read_inventory(credentials, *, snapshot=True, view="inventory", change=None):
     # Recheck every caller and release auth connections before an overlapping
     # report is shared. Completed reports are never cached.
-    async with AsyncSessionLocal() as db:
-        context = await db.run_sync(lambda session: read_auth_context(credentials, session))
-        user_id = context.user.id
+    # A disconnected SSE client repeatedly cancels its AnyIO scope. Let the short
+    # database read and connection close finish together so no SQLite lock leaks.
+    with CancelScope(shield=True):
+        async with AsyncSessionLocal() as db:
+            context = await db.run_sync(lambda session: read_auth_context(credentials, session))
+            user_id = context.user.id
     if not snapshot:
         return None
     if view == "inventory-changed":
@@ -45,16 +49,17 @@ async def read_inventory(credentials, *, snapshot=True, view="inventory", change
         return None
 
     async def build():
-        async with AsyncSessionLocal() as db:
-            report = await db.run_sync(factory_overview)
-            started = monotonic()
-            frame = message(view, report)
-            record(
-                "inventory.snapshot.encoded",
-                view=view,
-                duration_ms=round((monotonic() - started) * 1000, 2),
-            )
-            return frame
+        with CancelScope(shield=True):
+            async with AsyncSessionLocal() as db:
+                report = await db.run_sync(factory_overview)
+                started = monotonic()
+                frame = message(view, report)
+                record(
+                    "inventory.snapshot.encoded",
+                    view=view,
+                    duration_ms=round((monotonic() - started) * 1000, 2),
+                )
+                return frame
 
     return await snapshot_frames.get(
         view, lambda: (inventory_events.revision, str(factory_day())), build

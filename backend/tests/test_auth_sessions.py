@@ -36,6 +36,22 @@ def active_count(username="admin"):
         )
 
 
+def test_login_can_commit_while_a_local_snapshot_reader_is_open(client):
+    import sqlite3
+
+    from app.database import engine
+
+    reader = sqlite3.connect(engine.url.database)
+    try:
+        reader.execute("BEGIN")
+        reader.execute("SELECT id FROM users").fetchall()
+        response = login(client)
+        assert response.status_code == 200, response.text
+        assert client.get("/api/auth/me", headers=headers(response)).status_code == 200
+    finally:
+        reader.close()
+
+
 @pytest.mark.parametrize("role", ["ADMIN", "TEAM"])
 def test_fourth_login_replaces_only_the_oldest_session(client, role):
     username, password = "admin", "Admin123!"

@@ -19,6 +19,10 @@ from .observability import RequestLogMiddleware
 
 
 def initialize():
+    if engine.dialect.name == "sqlite" and engine.url.database not in (None, "", ":memory:"):
+        # Local readers (including live updates) must not block login/stock commits.
+        with engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA journal_mode=WAL")
     if settings.auto_create_tables:
         Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
