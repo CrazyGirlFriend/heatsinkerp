@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Refresh, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { Refresh } from '@element-plus/icons-vue'
 import { ElIcon, ElMenu, ElMenuItem, ElSubMenu, type MenuInstance } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -53,21 +53,12 @@ const groupIndexes = computed(() => [
   'materials',
   ...(isAdmin.value ? ['settings'] : []),
 ])
-const canScrollUp = ref(false)
-const canScrollDown = ref(false)
 let ready = false
 let disposed = false
 let initialized = false
 let syncing = false
 let revealIndex: string | null = null
 let observer: ResizeObserver | undefined
-
-function updateOverflow(): void {
-  const element = viewport.value
-  if (!element) return
-  canScrollUp.value = element.scrollTop > 1
-  canScrollDown.value = element.scrollHeight - element.clientHeight - element.scrollTop > 1
-}
 
 function revealMenu(): void {
   const element = viewport.value
@@ -85,22 +76,11 @@ function revealMenu(): void {
   if (visibleRect.top < bounds.top + 24) element.scrollTop += visibleRect.top - bounds.top - 24
   else if (visibleRect.bottom > bounds.bottom - 24)
     element.scrollTop += visibleRect.bottom - bounds.bottom + 24
-  updateOverflow()
 }
 
 function requestReveal(index: string): void {
   revealIndex = index
-  void nextTick(() => {
-    revealMenu()
-    updateOverflow()
-  })
-}
-
-function scrollMenu(direction: number): void {
-  revealIndex = null
-  const element = viewport.value
-  if (element) element.scrollTop += direction * element.clientHeight * 0.65
-  updateOverflow()
+  void nextTick(revealMenu)
 }
 
 function observeMenu(): void {
@@ -167,7 +147,6 @@ watch(
       requestReveal(sidebar.opened.at(-1) || activeIndex.value)
     } else {
       revealIndex = null
-      updateOverflow()
     }
   },
   { flush: 'sync' },
@@ -180,10 +159,7 @@ onMounted(async () => {
   await restoreNavigation()
   if (disposed) return
   if (typeof ResizeObserver !== 'undefined') {
-    observer = new ResizeObserver(() => {
-      revealMenu()
-      updateOverflow()
-    })
+    observer = new ResizeObserver(revealMenu)
     observeMenu()
   }
 })
@@ -213,7 +189,6 @@ const materialLinks = computed(() => [
     <div
       ref="viewport"
       class="factory-nav__scroll"
-      @scroll.passive="updateOverflow"
       @wheel.passive="revealIndex = null"
       @touchstart.passive="revealIndex = null"
       @pointerdown="revealIndex = null"
@@ -447,24 +422,6 @@ const materialLinks = computed(() => [
         </ElSubMenu>
       </ElMenu>
     </div>
-    <button
-      v-if="canScrollUp && !compact"
-      type="button"
-      class="factory-nav__scroll-hint factory-nav__scroll-hint--up"
-      aria-label="向上滚动导航"
-      @click="scrollMenu(-1)"
-    >
-      <ElIcon><ArrowUp /></ElIcon><span>上方菜单</span>
-    </button>
-    <button
-      v-if="canScrollDown && !compact"
-      type="button"
-      class="factory-nav__scroll-hint factory-nav__scroll-hint--down"
-      aria-label="向下滚动导航"
-      @click="scrollMenu(1)"
-    >
-      <span>更多菜单</span><ElIcon><ArrowDown /></ElIcon>
-    </button>
   </nav>
 </template>
 
@@ -493,35 +450,6 @@ const materialLinks = computed(() => [
 .factory-nav__scroll::-webkit-scrollbar-thumb {
   border-radius: 5px;
   background: #bdc9c1;
-}
-.factory-nav__scroll-hint {
-  position: absolute;
-  z-index: 1;
-  right: 6px;
-  left: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  color: var(--muted);
-  font-size: 11px;
-  cursor: pointer;
-}
-.factory-nav__scroll-hint:hover,
-.factory-nav__scroll-hint:focus-visible {
-  color: var(--primary);
-}
-.factory-nav__scroll-hint--up {
-  top: 0;
-  background: linear-gradient(#fff 70%, #ffffffc9);
-}
-.factory-nav__scroll-hint--down {
-  bottom: 0;
-  background: linear-gradient(#ffffffc9, #fff 30%);
 }
 .factory-nav :deep(.el-menu) {
   width: 100%;
@@ -749,10 +677,6 @@ const materialLinks = computed(() => [
 .factory-nav--glass :deep(.factory-nav__team-icon .tabler-icon) {
   width: 18px;
   height: 18px;
-}
-.factory-nav--glass .factory-nav__scroll-hint {
-  border-radius: 8px;
-  background: var(--glass-surface);
 }
 .factory-nav--glass.factory-nav--compact .factory-nav__scroll {
   padding-inline: 6px;

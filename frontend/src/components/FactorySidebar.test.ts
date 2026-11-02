@@ -221,7 +221,7 @@ describe('two-level team navigation', () => {
     expect(wrapper.get('[aria-label="流转查询"]').attributes('aria-expanded')).toBe('true')
   })
 
-  it('shows scroll controls when menus overflow, scrolls only navigation, and disconnects observation', async () => {
+  it('keeps native scrolling without overlay controls and disconnects observation', async () => {
     const observe = vi.fn(),
       disconnect = vi.fn()
     let resize: () => void = () => undefined
@@ -245,12 +245,14 @@ describe('two-level team navigation', () => {
     resize()
     await nextTick()
     expect(wrapper.find('[aria-label="向上滚动导航"]').exists()).toBe(false)
-    expect(wrapper.find('[aria-label="向下滚动导航"]').exists()).toBe(true)
-    await wrapper.get('[aria-label="向下滚动导航"]').trigger('click')
-    expect(viewport.scrollTop).toBe(195)
-    expect(wrapper.find('[aria-label="向上滚动导航"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="向下滚动导航"]').exists()).toBe(false)
     viewport.scrollTop = 300
-    await wrapper.get('.factory-nav__scroll').trigger('scroll')
+    await wrapper.get('.factory-nav__scroll').trigger('wheel')
+    resize()
+    await nextTick()
+    expect(viewport.scrollTop).toBe(300)
+    expect(observe).toHaveBeenCalledWith(viewport)
+    expect(wrapper.find('[aria-label="向上滚动导航"]').exists()).toBe(false)
     expect(wrapper.find('[aria-label="向下滚动导航"]').exists()).toBe(false)
     wrapper.unmount()
     expect(disconnect).toHaveBeenCalled()
