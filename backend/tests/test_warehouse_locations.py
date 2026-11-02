@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
+import pytest
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from receipt_helpers import receipt_post
@@ -12,6 +13,8 @@ from sender_helpers import sender_post
 from sqlalchemy import create_engine, inspect, text
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def dispatch(client, setup, source, key, *, returning=False):

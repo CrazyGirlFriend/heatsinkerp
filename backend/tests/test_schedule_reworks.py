@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from app.database import SessionLocal
 from app.models import ProductionSchedule, ProductionScheduleTask
+from legacy_schedules import dispatch_post
 from test_engineered_rework import save_plan
 from test_processing_daily import work
 from test_processing_route_methods import routed_lot
@@ -118,14 +119,14 @@ def test_link_old_rework_requires_actual_batch_and_preserves_commitment(client, 
         schedule_id=unrelated["id"],
     )
     endpoint = f"{URL}/tasks/{task['id']}/rework"
-    assert client.post(endpoint, json=body).status_code == 422
+    assert dispatch_post(client, endpoint, json=body).status_code == 422
     body["schedule_id"] = node["id"]
-    assert client.post(endpoint, json=body, headers=s["other_headers"]).status_code == 403
-    saved = client.post(endpoint, json=body)
+    assert dispatch_post(client, endpoint, json=body, headers=s["other_headers"]).status_code == 403
+    saved = dispatch_post(client, endpoint, json=body)
     assert saved.status_code == 200, saved.text
     assert saved.json()["nodes"][0]["target_quantity"] == 10
     assert saved.json()["final_due_at"] == task["final_due_at"]
-    assert client.post(endpoint, json=body).status_code == 409
+    assert dispatch_post(client, endpoint, json=body).status_code == 409
     route = client.get(f"/api/process-routes/{route['id']}").json()
     save_plan(client, s, route)
     result = work(

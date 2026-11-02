@@ -16,6 +16,8 @@ from test_material_transfers import _create, _setup_three_teams
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def credentials(headers):
     return HTTPAuthorizationCredentials(

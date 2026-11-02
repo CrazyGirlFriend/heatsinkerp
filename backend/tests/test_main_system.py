@@ -17,6 +17,8 @@ from sender_helpers import sender_post
 from sqlalchemy import func, select
 from test_warehouse_receipts import warehouse as warehouse
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def record(**changes):
     document = dict.fromkeys(MaterialDocumentFields.model_fields)

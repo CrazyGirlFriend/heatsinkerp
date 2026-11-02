@@ -10,10 +10,11 @@ from app.models import (
     utcnow,
 )
 from app.schedule_notices import refresh_deadlines
+from legacy_schedules import dispatch_patch
 from sqlalchemy import select
 from test_material_transfers import _leader
 from test_production_schedules import URL, body, plan
-from test_schedule_batches import batch
+from test_schedule_batches import batch, save
 from test_team_rework_notices import prepare
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
@@ -92,7 +93,8 @@ def test_old_notice_targets_own_revision(client, warehouse):
     s = warehouse
     p = plan(client, s, workshop=True)
     for version, quantity in [(1, 120), (2, 130)]:
-        r = client.patch(
+        r = dispatch_patch(
+            client,
             f"{URL}/{p['id']}",
             json={
                 **body(s, workshop=True),
@@ -113,11 +115,7 @@ def test_old_notice_targets_own_revision(client, warehouse):
 def test_batch_and_final_due_targets(client, warehouse):
     s = warehouse
     p = plan(client, s, workshop=True)
-    r = client.put(
-        f"{URL}/{p['id']}/batches",
-        headers=s["other_headers"],
-        json={"expected_version": 1, "batches": [batch(1, 100)]},
-    )
+    r = save(client, p, [batch(1, 100)], s["other_headers"])
     assert r.status_code == 200, r.text
     b = r.json()["batches"][0]
     with SessionLocal.begin() as db:
@@ -128,7 +126,8 @@ def test_batch_and_final_due_targets(client, warehouse):
     t = client.get(f"{INBOX}/schedule/{n['id']}/target").json()
     assert t["batch_id"] == b["id"] and t["event_id"] is None
     task = client.get(f"{URL}/tasks/{p['task_id']}").json()
-    r = client.patch(
+    r = dispatch_patch(
+        client,
         f"{URL}/tasks/{p['task_id']}",
         json={
             "expected_version": task["version"],

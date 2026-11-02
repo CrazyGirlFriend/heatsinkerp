@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from threading import Barrier
 
+import pytest
 from app.database import SessionLocal
 from app.models import WarehousePlacement
 from receipt_helpers import receipt_post
@@ -14,6 +15,8 @@ from test_warehouse_location_locks import claim, create_slot, state
 from test_warehouse_locations import dispatch, location
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def stock(client, setup, source):

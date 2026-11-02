@@ -20,6 +20,8 @@ from test_processing_daily import setup_lot
 from test_warehouse_classification import dispatch
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 @pytest.fixture()
 def facts(client, warehouse):
@@ -316,6 +318,7 @@ def another_lot(facts, serial, material):
         }
         values.update(
             batch_no=f"STATS-{serial}",
+            idempotency_key=None,
             serial_no=serial,
             material_name=material,
             receipt_idempotency_key=f"stats-receipt-{serial}",

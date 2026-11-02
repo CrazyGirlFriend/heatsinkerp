@@ -23,6 +23,8 @@ RESET_TABLES = (
     "production_schedule_batches",
     "production_schedule_sources",
     "production_schedules",
+    "production_schedule_order_files",
+    "production_schedule_task_people",
     "production_schedule_tasks",
     "warehouse_placements",
     "serial_delivery_plans",

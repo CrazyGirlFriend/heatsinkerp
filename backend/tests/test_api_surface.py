@@ -24,6 +24,7 @@ def test_only_supported_business_routes_are_registered(client):
         "/api/users",
         "/api/material-transfers",
         "/api/material-trace",
+        "/api/serial-inventory",
         "/api/material-input-suggestions",
         "/api/material-dispatches",
         "/api/team-materials/",
@@ -32,6 +33,8 @@ def test_only_supported_business_routes_are_registered(client):
         "/api/production-schedules",
         "/api/process-routes",
         "/api/rework-notices",
+        "/api/schedule-notices",
+        "/api/business-notices",
         "/api/factory-dashboard",
         "/api/factory-overview",
         "/api/factory-performance",
@@ -39,7 +42,8 @@ def test_only_supported_business_routes_are_registered(client):
         "/api/main-system/",
         "/api/notifications/",
     )
-    assert all(path.startswith(supported_prefixes) for path in paths), paths
+    unexpected = sorted(path for path in paths if not path.startswith(supported_prefixes))
+    assert not unexpected, unexpected
     for method, path in (
         ("GET", "/api/work-orders"),
         ("POST", "/api/work-orders"),

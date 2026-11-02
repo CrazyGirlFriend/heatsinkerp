@@ -20,6 +20,8 @@ from test_warehouse_locations import location
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def clearance(lot, quantity=20, reason="加工后实际件数减少，最后一批重量已全部转出"):
     return {"source_transfer_id": lot["id"], "quantity": quantity, "reason": reason}

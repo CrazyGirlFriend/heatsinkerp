@@ -11,6 +11,8 @@ from test_factory_overview import report
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def assert_totals(data):
     matrix = data["stock_matrix"]

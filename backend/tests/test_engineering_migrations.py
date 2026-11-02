@@ -28,7 +28,7 @@ def test_fresh_database_upgrades_to_head_and_can_run_again(tmp_path):
         assert result.returncode == 0, result.stdout + result.stderr
     with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            "20261027_0057",
+            "20261031_0063",
         )
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)

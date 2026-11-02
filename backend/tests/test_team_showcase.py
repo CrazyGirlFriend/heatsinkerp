@@ -14,6 +14,8 @@ from app.reset_business_data import business_counts, reset_business_data
 from app.seed_team_material_showcase import DEMO_USERS, seed_team_material_showcase, summary
 from sqlalchemy import select
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 @pytest.fixture(autouse=True)
 def restore_foreign_key_mode():

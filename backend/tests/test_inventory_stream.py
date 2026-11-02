@@ -20,6 +20,8 @@ from test_external_outbound import outbound as outbound
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def test_stream_encodes_mysql_aggregate_decimals_as_rest_json_numbers():
     # MySQL SUM(integer) returns Decimal; SQLite tests normally return int.

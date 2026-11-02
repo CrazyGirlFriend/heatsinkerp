@@ -16,6 +16,8 @@ from sqlalchemy import create_engine
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def details(client, batch, headers):
     return client.get(f"/api/material-transfers/{batch}", headers=headers).json()

@@ -16,6 +16,9 @@ from test_warehouse_receipts import warehouse as warehouse
 MATERIAL = {"serial_no": "WAREHOUSE-001", "material_name": "铜钼", "material_type": "semi_finished"}
 
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
+
 def reserve(client, setup, slot, material=MATERIAL):
     key = uuid4().hex
     result = client.post(

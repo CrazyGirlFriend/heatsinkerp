@@ -16,6 +16,8 @@ from sqlalchemy.exc import IntegrityError
 from test_material_transfers import _leader, _team
 from test_warehouse_receipts import migration
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 @pytest.mark.parametrize(
     "code,kind,entry_kind,allowed",

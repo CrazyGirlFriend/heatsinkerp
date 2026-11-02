@@ -90,7 +90,7 @@ def test_unnamed_receipt_splits_into_serial_specific_routes_without_relabelling_
         )
 
 
-@pytest.mark.parametrize("missing", ["serial", "order", "word", "drawing"])
+@pytest.mark.parametrize("missing", ["serial", "order", "order_metadata", "word", "drawing"])
 def test_missing_outbound_information_rejects_entire_order_without_stock_change(
     client, warehouse, missing
 ):
@@ -101,6 +101,9 @@ def test_missing_outbound_information_rejects_entire_order_without_stock_change(
             db.execute(
                 delete(ProcessRouteOrderFile).where(ProcessRouteOrderFile.route_id == first["id"])
             )
+        if missing == "order_metadata":
+            row = db.get(ProcessRoute, first["id"])
+            row.source_data = {**row.source_data, "order_document": None}
         if missing == "drawing":
             db.execute(
                 delete(ProcessRouteDrawing).where(ProcessRouteDrawing.route_id == first["id"])

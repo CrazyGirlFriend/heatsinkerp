@@ -12,6 +12,8 @@ from test_material_transfers import _setup_three_teams
 from test_receiving_employee import employee
 from test_warehouse_receipts import migration
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def request_for(client, setup, kind):
     if kind == "direct":

@@ -1,13 +1,17 @@
 from datetime import datetime, timedelta
 
+import pytest
 from app.database import SessionLocal
 from app.models import ProductionSchedule, ScheduleNotice, ScheduleNoticeRead, User
 from app.schedule_notices import refresh_deadlines
+from legacy_schedules import dispatch_patch, dispatch_post, seed_plan
 from sqlalchemy import func, select
 from test_material_transfers import _leader
 from test_production_schedules import URL, body, plan
-from test_schedule_batches import batch
+from test_schedule_batches import batch, save
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 INBOX = "/api/schedule-notices"
 
@@ -21,9 +25,8 @@ def notices(client, headers=None, **params):
 def test_scope_individual_receipts_idempotency_and_read_all_watermark(client, warehouse):
     s = warehouse
     payload = body(s, workshop=True)
-    first = client.post(URL, json=payload)
-    assert first.status_code == 201, first.text
-    assert client.post(URL, json=payload).status_code == 201
+    first = seed_plan(client, payload)
+    assert seed_plan(client, payload) == first
     admin = notices(client)
     own = notices(client, s["other_headers"])
     assert admin["total"] == admin["unread"] == own["total"] == 1
@@ -31,7 +34,7 @@ def test_scope_individual_receipts_idempotency_and_read_all_watermark(client, wa
     notice = own["items"][0]
     assert (
         notice["href"]
-        == f"/team-workspaces/{s['other']['id']}?tab=delivery-schedule&schedule_id={first.json()['id']}"
+        == f"/team-workspaces/{s['other']['id']}?tab=delivery-schedule&schedule_id={first['id']}"
     )
     read_url = f"{INBOX}/{notice['id']}/read"
     assert client.post(read_url, headers=s["headers"]).status_code == 404
@@ -55,13 +58,13 @@ def test_noop_failed_changes_and_cancelled_deadlines(client, warehouse):
     s = warehouse
     p = plan(client, s, workshop=True)
     unchanged = {**body(s, workshop=True), "expected_version": 1}
-    assert client.patch(f"{URL}/{p['id']}", json=unchanged).status_code == 200
+    assert dispatch_patch(client, f"{URL}/{p['id']}", json=unchanged).status_code == 200
     assert notices(client)["total"] == 1
-    assert client.patch(f"{URL}/{p['id']}", json=unchanged).status_code == 409
+    assert dispatch_patch(client, f"{URL}/{p['id']}", json=unchanged).status_code == 409
     assert notices(client)["total"] == 1
     assert (
-        client.post(
-            f"{URL}/{p['id']}/cancel", json={"expected_version": 2, "reason": "客户取消"}
+        dispatch_post(
+            client, f"{URL}/{p['id']}/cancel", json={"expected_version": 2, "reason": "客户取消"}
         ).status_code
         == 200
     )
@@ -93,21 +96,19 @@ def test_deadline_stages_deduplicate_and_warehouse_is_not_assessed(client, wareh
 def test_batch_deadlines_use_each_batch_not_parent_and_final_due_notifies_teams(client, warehouse):
     s = warehouse
     p = plan(client, s, workshop=True)
-    result = client.put(
-        f"{URL}/{p['id']}/batches",
-        headers=s["other_headers"],
-        json={
-            "expected_version": 1,
-            "batches": [
-                batch(1, 40),
-                batch(
-                    2,
-                    60,
-                    planned_start_at="2026-12-22T08:00:00+08:00",
-                    due_at="2026-12-23T16:00:00+08:00",
-                ),
-            ],
-        },
+    result = save(
+        client,
+        p,
+        [
+            batch(1, 40),
+            batch(
+                2,
+                60,
+                planned_start_at="2026-12-22T08:00:00+08:00",
+                due_at="2026-12-23T16:00:00+08:00",
+            ),
+        ],
+        s["other_headers"],
     )
     assert result.status_code == 200, result.text
     with SessionLocal() as db:
@@ -119,7 +120,8 @@ def test_batch_deadlines_use_each_batch_not_parent_and_final_due_notifies_teams(
     assert len(due_messages) == 1
     assert "第 1 批" in due_messages[0]["message"]
     task = client.get(f"{URL}/tasks/{p['task_id']}").json()
-    result = client.patch(
+    result = dispatch_patch(
+        client,
         f"{URL}/tasks/{p['task_id']}",
         json={
             "expected_version": task["version"],

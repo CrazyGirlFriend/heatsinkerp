@@ -10,6 +10,8 @@ from sender_helpers import sender_post
 from sqlalchemy import func, select
 from test_material_transfers import _leader
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 @pytest.fixture()
 def demo(client):

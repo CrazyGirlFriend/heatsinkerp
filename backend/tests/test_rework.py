@@ -9,6 +9,8 @@ from test_processing_daily import setup_lot, work
 from test_warehouse_classification import base, dispatch
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def test_one_piece_three_reworks_counts_effort_not_three_new_pieces(client, warehouse):
     s = warehouse

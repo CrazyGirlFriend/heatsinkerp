@@ -5,6 +5,7 @@ from datetime import timedelta
 from threading import Barrier
 from uuid import uuid4
 
+import pytest
 from app.database import SessionLocal
 from app.models import AdminAuditEvent, MaterialTransfer, WarehouseLocation, utcnow
 from receipt_helpers import receipt_post
@@ -13,6 +14,8 @@ from sqlalchemy import func, select
 from test_warehouse_locations import dispatch, location
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def create_slot(client, name="A-01"):

@@ -73,7 +73,12 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
-async function render(path = '/team-workspaces/901?tab=stock', canWrite = true, warehouse = true) {
+async function render(
+  path = '/team-workspaces/901?tab=stock',
+  canWrite = true,
+  warehouse = true,
+  openFilters = true,
+) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/team-workspaces/:teamId', component: { template: '<div/>' } }],
@@ -93,8 +98,10 @@ async function render(path = '/team-workspaces/901?tab=stock', canWrite = true, 
     },
   })
   await flushPromises()
-  wrapper.getComponent(FilterDialog).vm.$emit('update:modelValue', true)
-  await flushPromises()
+  if (openFilters) {
+    wrapper.getComponent(FilterDialog).vm.$emit('update:modelValue', true)
+    await flushPromises()
+  }
   return router
 }
 async function applyModal() {
@@ -516,7 +523,7 @@ describe('warehouse grouped stock', () => {
       page: 1,
       page_size: 10,
     })
-    await render('/team-workspaces/901?tab=stock', true, false)
+    await render('/team-workspaces/901?tab=stock', true, false, false)
     await wrapper.setProps({ processing: true })
     const kinds = wrapper.findAll('.inventory-material-kind').map((row) => row.text())
     expect(kinds).toEqual(['原材料', '原材料', '废屑'])
@@ -1437,7 +1444,7 @@ describe('warehouse grouped stock', () => {
       'YS-017',
     )
   })
-  it('searches zero balances, three-decimal weights, urgency and dates with safe clearing', async () => {
+  it('searches zero balances and three-decimal weights without requesting invalid numbers', async () => {
     await render(undefined, true, false)
     select('库存搜索字段').vm.$emit('update:modelValue', 'available_weight')
     await flushPromises()
@@ -1455,6 +1462,13 @@ describe('warehouse grouped stock', () => {
       901,
       expect.objectContaining({ query: '1.234' }),
     )
+  })
+  it('switches a weight search to urgency without retaining its numeric query', async () => {
+    await render(
+      '/team-workspaces/901?tab=stock&search_field=available_weight&query=1.234',
+      true,
+      false,
+    )
     select('库存搜索字段').vm.$emit('update:modelValue', 'urgency')
     select('库存搜索字段').vm.$emit('change')
     await flushPromises()
@@ -1466,6 +1480,13 @@ describe('warehouse grouped stock', () => {
       .trigger('click')
     await flushPromises()
     expect(headers()[0]).toBe('加急状态')
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
+      901,
+      expect.objectContaining({ search_field: 'urgency', query: 'normal' }),
+    )
+  })
+  it('switches an urgency search to activity date and clears that date safely', async () => {
+    await render('/team-workspaces/901?tab=stock&search_field=urgency&query=normal', true, false)
     select('库存搜索字段').vm.$emit('update:modelValue', 'last_activity_at')
     select('库存搜索字段').vm.$emit('change')
     await flushPromises()
@@ -1673,13 +1694,18 @@ describe('warehouse grouped stock', () => {
       page: 1,
       page_size: 10,
     })
-    await render()
+    await render(undefined, true, true, false)
     expect(wrapper.findAll('td[rowspan="2"]')).toHaveLength(0)
     expect(hints()).toContain('规格：100 × 80 × 5')
     expect(hints()).toContain('规格：40 × 30 × 2')
   })
   it('promotes a searched hidden column and restores custom column order', async () => {
-    await render('/team-workspaces/901?tab=stock&search_field=customer_code&query=C01')
+    await render(
+      '/team-workspaces/901?tab=stock&search_field=customer_code&query=C01',
+      true,
+      true,
+      false,
+    )
     expect(headers()[0]).toBe('客户编号')
     const choices = warehouseColumns
       .map((column) => ({
@@ -1718,7 +1744,7 @@ describe('warehouse grouped stock', () => {
     expect(headers()[0]).toBe('未转出件数')
   })
   it('scopes row details and outbound picker to the selected group, while the serial opens full history', async () => {
-    await render()
+    await render(undefined, true, true, false)
     await wrapper
       .findAll('button')
       .find((item) => item.text() === '明细')!
@@ -1749,7 +1775,7 @@ describe('warehouse grouped stock', () => {
     expect(wrapper.emitted('action')).toHaveLength(1)
   })
   it('refreshes on pushed overview without destroying drafts/table or opened details', async () => {
-    await render()
+    await render(undefined, true, true, false)
     await wrapper.get('input[aria-label="库存明细搜索"]').setValue('未提交')
     await wrapper
       .findAll('button')

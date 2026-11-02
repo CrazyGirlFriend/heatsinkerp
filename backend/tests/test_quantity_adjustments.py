@@ -3,10 +3,13 @@ from decimal import Decimal
 import pytest
 from app.database import SessionLocal
 from app.models import MaterialQuantityAdjustment, MaterialStockBalance, MaterialTransfer
+from sender_helpers import sender_post
 from sqlalchemy import func, select
 from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def change(client, setup, lot, quantity, *, workshop=False, revision=None, key="pieces", **extra):
@@ -29,22 +32,26 @@ def change(client, setup, lot, quantity, *, workshop=False, revision=None, key="
 
 
 def processing_lot(client, setup, **overrides):
-    origin = intake(client, setup, **overrides).json()
-    sent = dispatch(
+    # Processing-accounting tests exercise receipts from before route enforcement.
+    # Current warehouse outbound and route execution have dedicated document tests.
+    sent = sender_post(
         client,
-        setup,
-        [
-            {
-                "source_transfer_id": origin["id"],
-                "quantity": origin["quantity"],
-                "weight": origin["weight"],
-            }
-        ],
-        idempotency_key="to-processing-" + origin["batch_no"],
+        "/api/material-transfers",
+        headers=setup["headers"],
+        json={
+            "serial_no": "WAREHOUSE-001",
+            "next_team_id": setup["other"]["id"],
+            "material_name": "铜钼",
+            "material_type": "semi_finished",
+            "quantity": 100,
+            "weight": "10.125",
+            "idempotency_key": "legacy-processing-receipt",
+            **overrides,
+        },
     )
     assert sent.status_code == 201, sent.text
-    assert confirm(client, setup, sent.json(), workshop=True).status_code == 200
-    return sent.json()["items"][0]
+    assert confirm(client, setup, {"items": [sent.json()]}, workshop=True).status_code == 200
+    return sent.json()
 
 
 def test_cutting_preserves_mass_and_signed_receipt_and_supports_chips(client, warehouse):

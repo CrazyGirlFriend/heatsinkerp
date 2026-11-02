@@ -14,6 +14,8 @@ from test_quantity_adjustments import processing_lot
 from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def setup_lot(client, s, code="FACTORY-ANNEAL", quantity=10, **extra):
     assert client.patch(f"/api/teams/{s['other']['id']}", json={"code": code}).status_code == 200

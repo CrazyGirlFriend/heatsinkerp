@@ -244,7 +244,7 @@ def test_warehouse_can_bind_route_atomically_at_dispatch_and_invalid_dispatch_ro
     route = publish_payload(client, route_payload(client, s))
     receipt = intake(client, s).json()
     line = dict(source_transfer_id=receipt["id"], quantity=10, weight=100)
-    assert dispatch(client, s, [line]).status_code == 422
+    assert dispatch(client, s, [{**line, "quantity": 0, "weight": 0}]).status_code == 422
     line.update(process_route_id=route["id"], process_route_version=route["version"])
     bad = dispatch(client, s, [{**line, "process_route_version": 999}])
     assert bad.status_code == 409

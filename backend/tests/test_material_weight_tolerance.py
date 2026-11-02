@@ -10,6 +10,8 @@ from test_warehouse_classification import dispatch
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def ship(client, setup, source, weight, *, quantity=1, key="ship"):
     response = dispatch(

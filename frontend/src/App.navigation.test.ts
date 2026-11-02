@@ -166,7 +166,7 @@ describe('application navigation shell', () => {
           .get('.factory-nav .el-menu')
           .findAll(':scope > .el-sub-menu')
           .map((group) => group.attributes('aria-label')),
-      ).toEqual(['全厂总览', '班组工作台', '流转查询', '系统设置'])
+      ).toEqual(['全厂总览', '生产管理', '班组工作台', '流转查询', '系统设置'])
       expect(wrapper.find('.factory-nav--overview').exists()).toBe(false)
       expect(wrapper.find('.topbar').exists()).toBe(false)
       expect(wrapper.find('.topbar-clock').exists()).toBe(false)

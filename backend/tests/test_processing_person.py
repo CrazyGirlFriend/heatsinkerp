@@ -14,6 +14,8 @@ from test_quantity_adjustments import change
 from test_warehouse_classification import base, dispatch
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 @pytest.mark.parametrize("person", [None, "", " \t ", "张" * 81])
 def test_invalid_worker_does_not_write_processing_or_dispatch(client, warehouse, person):

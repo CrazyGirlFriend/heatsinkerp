@@ -304,7 +304,39 @@ def test_shared_common_work_then_designated_partial_split_preserves_remaining_st
         ],
     ).json()
     assert bind(client, route, lot).status_code == 200
-    current = receive(client, s, lot)
+    # Retain an already-received shared batch from the old multi-serial scheme.
+    # Current outbound cannot invent a serial-specific order for this shared origin.
+    from app.models import utcnow
+
+    with SessionLocal.begin() as db:
+        origin = db.get(MaterialTransfer, lot["id"])
+        historical = MaterialTransfer(
+            batch_no="LEGACY-SHARED-RECEIPT",
+            serial_no=origin.serial_no,
+            source_transfer_id=origin.id,
+            source_team_id=s["team"]["id"],
+            source_team_code=s["team"]["code"],
+            source_team_name=s["team"]["name"],
+            next_team_id=s["other"]["id"],
+            next_team_code=s["other"]["code"],
+            next_team_name=s["other"]["name"],
+            quantity=100,
+            weight=10,
+            material_name=origin.material_name,
+            material_type=origin.material_type,
+            shared_group_id=origin.shared_group_id,
+            shared_unallocated=True,
+            process_route_id=route["id"],
+            process_step_index=1,
+            process_step_complete=False,
+            status="received",
+            stock_tracked=True,
+            received_at=utcnow(),
+            created_by="历史记录",
+        )
+        db.add(historical)
+        db.flush()
+        current = {"id": historical.id, "quantity": 100, "weight": 10}
     done = work(client, s, current)
     assert done.status_code == 201, done.text
     common = done.json()["outputs"][0]

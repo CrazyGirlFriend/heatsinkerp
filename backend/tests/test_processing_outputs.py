@@ -3,6 +3,7 @@
 
 from decimal import Decimal
 
+import pytest
 from app.database import SessionLocal
 from app.models import MaterialQuantityAdjustment, MaterialStockBalance, MaterialTransfer
 from sqlalchemy import func, select
@@ -11,6 +12,8 @@ from test_processing_records import receive
 from test_quantity_adjustments import change
 from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def outputs():

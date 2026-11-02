@@ -11,6 +11,8 @@ from test_serial_reallocations import reallocate
 from test_warehouse_receipts import intake  # noqa: F401
 from test_warehouse_receipts import warehouse as warehouse
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def measurement(kind, weight=3):
     return (

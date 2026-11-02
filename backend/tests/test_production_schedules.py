@@ -3,6 +3,7 @@
 from datetime import datetime
 from uuid import uuid4
 
+import pytest
 from app.database import SessionLocal, engine
 from app.models import (
     MaterialStockBalance,
@@ -11,6 +12,7 @@ from app.models import (
     TeamEmployee,
     User,
 )
+from legacy_schedules import dispatch_patch, dispatch_post, reject_seed, seed_plan
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from test_quantity_adjustments import change, processing_lot
@@ -19,6 +21,8 @@ from test_shared_material import shared_intake
 from test_warehouse_classification import confirm, dispatch
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 URL = "/api/production-schedules"
 
@@ -37,9 +41,7 @@ def body(s, lot=None, *, workshop=False, **extra):
 
 
 def plan(client, s, lot=None, **extra):
-    response = client.post(URL, json=body(s, lot, **extra))
-    assert response.status_code == 201, response.text
-    return response.json()
+    return seed_plan(client, body(s, lot, **extra))
 
 
 def get(client, item):
@@ -53,8 +55,11 @@ def test_no_stock_created_permissions_hour_precision_versions_and_audit(client, 
     with SessionLocal() as db:
         initial = db.scalar(select(func.count()).select_from(MaterialTransfer))
     assert client.post(URL, headers=s["headers"], json=body(s)).status_code == 403
-    assert client.post(URL, json=body(s, due_at="2026-12-20T16:30:00+08:00")).status_code == 422
-    assert client.post(URL, json=body(s, due_at="2026-12-20T16:00:00")).status_code == 422
+    assert (
+        dispatch_post(client, URL, json=body(s, due_at="2026-12-20T16:30:00+08:00")).status_code
+        == 422
+    )
+    assert dispatch_post(client, URL, json=body(s, due_at="2026-12-20T16:00:00")).status_code == 422
     item = plan(client, s, notes="")
     assert item["dispatched_quantity"] == 0 and item["remaining_quantity"] == 100
     with SessionLocal() as db:
@@ -62,15 +67,15 @@ def test_no_stock_created_permissions_hour_precision_versions_and_audit(client, 
     endpoint = f"{URL}/{item['id']}"
     assert client.get(endpoint, headers=s["other_headers"]).status_code == 200
     updated = {**body(s), "expected_version": 1, "due_at": "2026-12-21T17:00:00+08:00"}
-    assert client.patch(endpoint, headers=s["headers"], json=updated).status_code == 403
-    result = client.patch(endpoint, json=updated)
+    assert dispatch_patch(client, endpoint, headers=s["headers"], json=updated).status_code == 403
+    result = dispatch_patch(client, endpoint, json=updated)
     assert result.status_code == 200, result.text
     assert result.json()["version"] == 2
     assert result.json()["history"][0]["before"]["due_at"] == "2026-12-20T08:00:00+00:00"
-    assert client.patch(endpoint, json=updated).status_code == 409
+    assert dispatch_patch(client, endpoint, json=updated).status_code == 409
     assert (
-        client.post(
-            endpoint + "/cancel", json={"expected_version": 2, "reason": "客户调整"}
+        dispatch_post(
+            client, endpoint + "/cancel", json={"expected_version": 2, "reason": "客户调整"}
         ).status_code
         == 200
     )
@@ -244,15 +249,11 @@ def test_create_retry_does_not_duplicate_and_allocations_cannot_exceed_node_targ
     s = warehouse
     lot = intake(client, s).json()
     payload = body(s, lot)
-    first = client.post(URL, json=payload)
-    assert first.status_code == 201, first.text
-    assert client.post(URL, json=payload).json() == first.json()
-    assert client.post(URL, json={**payload, "target_quantity": 101}).status_code == 409
-    assert client.post(URL, json=body(s, lot, target_quantity=99)).status_code == 422
-    assert (
-        client.post(URL, json=body(s, lot, target_quantity=None, target_weight=10)).status_code
-        == 422
-    )
+    first = seed_plan(client, payload)
+    assert seed_plan(client, payload) == first
+    reject_seed(seed_plan, client, {**payload, "target_quantity": 101}, 409)
+    reject_seed(seed_plan, client, body(s, lot, target_quantity=99))
+    reject_seed(seed_plan, client, body(s, lot, target_quantity=None, target_weight=10))
     assert client.get(URL).json()["total"] == 1
     assert client.get(URL, params={"query": lot["batch_no"]}).json()["total"] == 1
 
@@ -328,7 +329,10 @@ def test_schedule_mutations_notify_teams_and_protect_planned_team_identity(clien
     assert client.patch(f"/api/teams/{team['id']}", json={"code": "CHANGED"}).status_code == 409
     before = inventory_events.revision
     assert (
-        client.post(f"{URL}/{item['id']}/cancel", json={"expected_version": 1}).status_code == 200
+        dispatch_post(
+            client, f"{URL}/{item['id']}/cancel", json={"expected_version": 1}
+        ).status_code
+        == 200
     )
     assert inventory_events.revision > before
 
@@ -376,9 +380,7 @@ def test_external_shipment_counts_only_dispatched_and_keeps_initial_deadline(cli
     s = warehouse
     lot = intake(client, s).json()
     payload = body(s, lot, next_team_id=None, external_destination="库房成品")
-    response = client.post(URL, json=payload)
-    assert response.status_code == 201, response.text
-    item = response.json()
+    item = seed_plan(client, payload)
     result = dispatch(
         client,
         s,
@@ -395,7 +397,8 @@ def test_external_shipment_counts_only_dispatched_and_keeps_initial_deadline(cli
         old.status = "pending"
         old.dispatched_at = None
     assert get(client, item)["dispatched_quantity"] == 0
-    updated = client.patch(
+    updated = dispatch_patch(
+        client,
         f"{URL}/{item['id']}",
         json={**payload, "expected_version": 1, "due_at": "2026-12-25T16:00:00+08:00"},
     )
@@ -411,7 +414,7 @@ def test_inventory_bulk_matches_batches_and_waste_is_inapplicable_defective_rema
     lot = intake(client, s).json()
     waste = intake(client, s, material_type="waste", idempotency_key="waste").json()
     bad = intake(client, s, material_type="defective", idempotency_key="bad").json()
-    assert client.post(URL, json=body(s, waste)).status_code == 422
+    reject_seed(seed_plan, client, body(s, waste))
     plan(client, s, bad)
     item = plan(client, s, lot)
     response = client.post(
@@ -475,7 +478,7 @@ def test_status_filter_uses_hour_deadline_and_actual_completion_not_late_receipt
 def test_shared_unallocated_not_attached_and_allocated_serials_do_not_cross(client, warehouse):
     s = warehouse
     lot = shared_intake(client, s).json()
-    assert client.post(URL, json=body(s, lot)).status_code == 422
+    reject_seed(seed_plan, client, body(s, lot))
     a = plan(client, s, serial_no="ORDER-A")
     b = plan(client, s, serial_no="ORDER-B")
     sent = dispatch(client, s, [{"source_transfer_id": lot["id"], "quantity": 1, "weight": 100}])
@@ -489,7 +492,7 @@ def test_predecessor_cycle_rejected_and_actual_identity_cannot_change(client, wa
     first = plan(client, s, lot)
     second = plan(client, s, workshop=True, predecessor_id=first["id"])
     invalid = {**body(s, lot), "predecessor_id": second["id"], "expected_version": 1}
-    assert client.patch(f"{URL}/{first['id']}", json=invalid).status_code == 422
+    assert dispatch_patch(client, f"{URL}/{first['id']}", json=invalid).status_code == 422
     assert (
         dispatch(
             client, s, [{"source_transfer_id": lot["id"], "quantity": 10, "weight": 1}]
@@ -497,11 +500,14 @@ def test_predecessor_cycle_rejected_and_actual_identity_cannot_change(client, wa
         == 201
     )
     invalid = {**body(s, lot), "serial_no": "OTHER", "expected_version": 1}
-    assert client.patch(f"{URL}/{first['id']}", json=invalid).status_code == 409
+    assert dispatch_patch(client, f"{URL}/{first['id']}", json=invalid).status_code == 409
 
 
 def test_full_business_reset_deletes_schedule_dependencies_and_preserves_people(client, warehouse):
+    from app.models import BusinessPerson, ProductionScheduleOrderFile, ProductionScheduleTaskPerson
+    from app.process_route_orders import parse_order
     from app.reset_business_data import business_counts, reset_business_data
+    from test_process_route_orders import VALUES, xlsx
 
     lot = intake(client, warehouse).json()
     first = plan(client, warehouse, lot)
@@ -510,6 +516,21 @@ def test_full_business_reset_deletes_schedule_dependencies_and_preserves_people(
         client, warehouse, [{"source_transfer_id": lot["id"], "quantity": 10, "weight": 1}]
     )
     assert response.status_code == 201, response.text
+    content = xlsx([first["serial_no"], *VALUES[1:]])
+    with SessionLocal.begin() as db:
+        person = BusinessPerson(name="保留的业务人员", active=True)
+        db.add(person)
+        db.flush()
+        person_id = person.id
+        db.add(ProductionScheduleTaskPerson(task_id=first["task_id"], person_id=person_id))
+        db.add(
+            ProductionScheduleOrderFile(
+                task_id=first["task_id"],
+                filename="订单.xlsx",
+                content=content,
+                document=parse_order(content, "订单.xlsx"),
+            )
+        )
     users = select(User.id, User.username, User.password_hash, User.team_id).order_by(User.id)
     employees = select(TeamEmployee.id, TeamEmployee.name, TeamEmployee.team_id).order_by(
         TeamEmployee.id
@@ -522,6 +543,9 @@ def test_full_business_reset_deletes_schedule_dependencies_and_preserves_people(
         connection.commit()
         try:
             removed = reset_business_data(db)
+            assert removed["production_schedule_order_files"] == 1
+            assert removed["production_schedule_task_people"] == 1
+            assert db.get(BusinessPerson, person_id).name == "保留的业务人员"
             assert removed["production_schedules"] == 2
             assert removed["production_schedule_sources"] == 1
             assert removed["production_schedule_deliveries"] == 1

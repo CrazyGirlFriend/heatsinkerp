@@ -9,6 +9,8 @@ from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import intake  # noqa: F401
 from test_warehouse_receipts import warehouse as warehouse
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 @pytest.fixture(
     params=[("FACTORY-ROLL", "轧制"), ("FACTORY-WIRE", "线切割"), ("FACTORY-ENGRAVE", "雕刻")],

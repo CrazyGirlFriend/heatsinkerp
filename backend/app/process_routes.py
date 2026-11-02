@@ -1,5 +1,7 @@
 """Published dispatch routes and physical-lot progress, in stock transactions."""
 
+from types import SimpleNamespace
+
 from fastapi import HTTPException
 from sqlalchemy import func, select
 
@@ -382,6 +384,66 @@ def finish_processing(lot, payload, index, outputs):
     # A partial count-only entry cannot prove which pieces completed a step.
     elif payload.processing_status == "partial":
         raise HTTPException(422, "部分加工请分别登记已加工产出和未加工余料，才能按批次流转工序")
+
+
+def prepare_dispatch_route(db, lot, line, source, serial, anonymous, user):
+    """Validate the serial's documents and preserve the reviewed route cursor."""
+    from .process_route_api import bind_lot
+
+    route_lot = lot
+    if not serial:
+        raise HTTPException(422, "出库必须填写流水号")
+    if line.process_route_id is not None:
+        selected_route = require_route(db, line.process_route_id, True)
+        if selected_route.version != line.process_route_version:
+            raise HTTPException(409, "工艺版本已变化，请重新读取")
+    elif not lot.process_route_id and source.code == WAREHOUSE_TEAM_CODE:
+        selected_route = resolve_normal_route(db, serial)
+    else:
+        selected_route = lot.process_route
+    if source.code == WAREHOUSE_TEAM_CODE:
+        if selected_route is None:
+            raise HTTPException(422, "未找到该流水号的工艺")
+        require_route_documents(db, selected_route)
+        if selected_route.route_kind != "rework":
+            from .models import ProcessRouteOrderFile
+            from .schedule_order_documents import route_order
+
+            order = route_order(db, selected_route.id, serial)
+            legacy = db.get(ProcessRouteOrderFile, selected_route.id)
+            if not order and not (
+                legacy
+                and legacy.content
+                and (selected_route.source_data.get("order_document") or {}).get("serial_no")
+                == serial
+            ):
+                raise HTTPException(422, "缺少：订单表，请调度上传后再出库")
+    if anonymous:
+        if (
+            selected_route is None
+            or selected_route.route_kind != "normal"
+            or selected_route.state != "published"
+            or selected_route.serial_nos != [serial]
+            or selected_route.steps[0]["team_id"] != source.id
+        ):
+            raise HTTPException(422, "流水号或起始库房与工艺不一致")
+        # Bind this outbound portion only; the remaining raw stock stays unassigned.
+        route_lot = SimpleNamespace(
+            process_route_id=selected_route.id,
+            process_route=selected_route,
+            process_step_index=0,
+            process_step_complete=True,
+            next_team_id=source.id,
+            next_team_code=source.code,
+            serial_no=serial,
+            shared_unallocated=False,
+            rework_route_id=None,
+            rework_pending=False,
+            rework_count=0,
+        )
+    elif line.process_route_id is not None or (not lot.process_route_id and selected_route):
+        bind_lot(db, selected_route, lot, user)
+    return route_lot
 
 
 def dispatch_fields(db, lot, target, kind, rework_return=False, policy=None):

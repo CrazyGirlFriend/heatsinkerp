@@ -12,33 +12,45 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column("production_schedule_tasks", sa.Column("delivery_batches", sa.JSON()))
-    op.add_column("production_schedule_tasks", sa.Column("locked_at", sa.DateTime()))
-    op.add_column("production_schedule_tasks", sa.Column("cancelled_at", sa.DateTime()))
-    op.add_column(
-        "production_schedules",
-        sa.Column("planning_state", sa.String(16), nullable=False, server_default="confirmed"),
-    )
-    op.add_column("production_schedules", sa.Column("pending_batches", sa.JSON()))
-    op.create_table(
-        "production_schedule_task_people",
-        sa.Column(
-            "task_id",
-            sa.Integer(),
-            sa.ForeignKey("production_schedule_tasks.id", ondelete="CASCADE"),
-            primary_key=True,
-        ),
-        sa.Column(
-            "person_id",
-            sa.Integer(),
-            sa.ForeignKey("business_people.id", ondelete="RESTRICT"),
-            primary_key=True,
-        ),
-    )
     connection = op.get_bind()
+    columns = {
+        table: {c["name"] for c in sa.inspect(connection).get_columns(table)}
+        for table in ("production_schedule_tasks", "production_schedules")
+    }
+    for table, column in (
+        ("production_schedule_tasks", sa.Column("delivery_batches", sa.JSON())),
+        ("production_schedule_tasks", sa.Column("locked_at", sa.DateTime())),
+        ("production_schedule_tasks", sa.Column("cancelled_at", sa.DateTime())),
+        (
+            "production_schedules",
+            sa.Column("planning_state", sa.String(16), nullable=False, server_default="confirmed"),
+        ),
+        ("production_schedules", sa.Column("pending_batches", sa.JSON())),
+    ):
+        if column.name not in columns[table]:
+            op.add_column(table, column)
+    if not sa.inspect(connection).has_table("production_schedule_task_people"):
+        op.create_table(
+            "production_schedule_task_people",
+            sa.Column(
+                "task_id",
+                sa.Integer(),
+                sa.ForeignKey("production_schedule_tasks.id", ondelete="CASCADE"),
+                primary_key=True,
+            ),
+            sa.Column(
+                "person_id",
+                sa.Integer(),
+                sa.ForeignKey("business_people.id", ondelete="RESTRICT"),
+                primary_key=True,
+            ),
+        )
     connection.execute(
         sa.text(
-            "INSERT INTO production_schedule_task_people (task_id, person_id) SELECT id, business_person_id FROM production_schedule_tasks WHERE business_person_id IS NOT NULL"
+            "INSERT INTO production_schedule_task_people (task_id, person_id) "
+            "SELECT t.id, t.business_person_id FROM production_schedule_tasks t "
+            "WHERE t.business_person_id IS NOT NULL AND NOT EXISTS "
+            "(SELECT 1 FROM production_schedule_task_people p WHERE p.task_id=t.id AND p.person_id=t.business_person_id)"
         )
     )
     teams = sa.Table("teams", sa.MetaData(), autoload_with=connection)

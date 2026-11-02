@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+import pytest
 from app import factory_overview, material_analytics
 from app.database import SessionLocal
 from app.models import MaterialTransfer
@@ -10,6 +11,8 @@ from test_external_outbound import dispatch as bulk_dispatch
 from test_external_outbound import outbound as outbound
 from test_material_stock import dispatch, endpoint, receive_lot, totals
 from test_material_stock import stock_setup as stock_setup
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def test_pending_transfer_deducts_inventory_and_edit_void_restore_it(client, stock_setup):

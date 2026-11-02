@@ -26,6 +26,7 @@ def test_dispatch_migration_preserves_dates_and_contacts(tmp_path):
                 db.execute(text(sql))
             module.op = Operations(MigrationContext.configure(db))
             module.upgrade()
+            module.upgrade()
             assert db.execute(text("SELECT * FROM production_schedule_task_people")).all() == [
                 (1, 9)
             ]

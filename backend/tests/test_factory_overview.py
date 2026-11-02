@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+import pytest
 from app import factory_overview
 from app.database import SessionLocal
 from app.models import MaterialTransfer, Team
@@ -11,6 +12,8 @@ from test_material_stock import receive_lot
 from test_material_stock import stock_setup as stock_setup
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def report(client):

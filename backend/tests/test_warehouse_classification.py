@@ -13,6 +13,8 @@ from sqlalchemy import create_engine, inspect
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def base(setup, workshop=False):
     return f"/api/team-materials/{setup['other' if workshop else 'team']['id']}"

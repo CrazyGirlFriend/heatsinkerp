@@ -11,6 +11,8 @@ from test_dispatch_batches import external_dispatch
 from test_external_outbound import confirm
 from test_external_outbound import outbound as outbound
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 @pytest.mark.parametrize("entry_kind", EXTERNAL_ENTRY_KINDS)
 @pytest.mark.parametrize("destination", EXTERNAL_DESTINATIONS)

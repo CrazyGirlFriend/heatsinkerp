@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 from app.database import SessionLocal
 from app.models import MaterialInspection, MaterialTransfer, ProductionScheduleTask
+from legacy_schedules import dispatch_patch, dispatch_post, reject_seed, seed_plan, seed_task
 from sqlalchemy import func, select
 from test_inspections import create_check
 from test_inspections import inspection as inspection  # noqa: F401
@@ -13,6 +14,8 @@ from test_quantity_adjustments import change, processing_lot
 from test_warehouse_classification import confirm, dispatch
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 TASKS = URL + "/tasks"
 
@@ -34,9 +37,7 @@ def route(s, lot=None, **extra):
 
 
 def create(client, payload):
-    response = client.post(TASKS, json=payload)
-    assert response.status_code == 201, response.text
-    return response.json()
+    return seed_task(client, payload)
 
 
 def task_detail(client, task):
@@ -51,11 +52,11 @@ def test_task_creation_is_atomic_idempotent_and_does_not_merge_same_serial(clien
     assert client.post(TASKS, headers=s["headers"], json=payload).status_code == 403
     broken = route(s)
     broken["nodes"][1]["next_team_id"] = 999999
-    assert client.post(TASKS, json=broken).status_code == 422
+    reject_seed(seed_task, client, broken)
     assert client.get(TASKS).json()["total"] == client.get(URL).json()["total"] == 0
     first = create(client, payload)
-    assert client.post(TASKS, json=payload).json() == first
-    assert client.post(TASKS, json={**payload, "title": "另一份"}).status_code == 409
+    assert create(client, payload) == first
+    reject_seed(seed_task, client, {**payload, "title": "另一份"}, 409)
     second = create(client, route(s, title="第二批交货任务"))
     assert first["id"] != second["id"] and first["serial_no"] == second["serial_no"]
     assert [node["sequence_no"] for node in first["nodes"]] == [1, 2]
@@ -145,7 +146,7 @@ def test_completion_basis_changes_only_fulfillment_not_actual_quantities(
         "expected_version": 1,
         "notes": "改备注，未改完成口径",
     }
-    response = client.patch(f"{URL}/{item['id']}", json=updated)
+    response = dispatch_patch(client, f"{URL}/{item['id']}", json=updated)
     assert response.status_code == 200, response.text
     assert response.json()["completion_basis"] == basis
 
@@ -166,20 +167,23 @@ def test_execution_and_task_revisions_follow_real_receipt_and_node_edits(client,
     assert task_detail(client, item)["nodes"][1]["execution_state"] == "ready"
     first = item["nodes"][0]
     assert (
-        client.patch(
+        dispatch_patch(
+            client,
             f"{URL}/{first['id']}",
             json={**body(s, lot), "expected_version": 1, "notes": "调整节点"},
         ).status_code
         == 200
     )
     metadata = {"expected_version": 1, "title": "修改标题", "notes": "急件"}
-    assert client.patch(f"{TASKS}/{item['id']}", json=metadata).status_code == 409
+    assert dispatch_patch(client, f"{TASKS}/{item['id']}", json=metadata).status_code == 409
     metadata["expected_version"] = 2
     assert (
-        client.patch(f"{TASKS}/{item['id']}", headers=s["headers"], json=metadata).status_code
+        dispatch_patch(
+            client, f"{TASKS}/{item['id']}", headers=s["headers"], json=metadata
+        ).status_code
         == 403
     )
-    response = client.patch(f"{TASKS}/{item['id']}", json=metadata)
+    response = dispatch_patch(client, f"{TASKS}/{item['id']}", json=metadata)
     assert response.status_code == 200, response.text
     assert (
         response.json()["version"] == 3 and response.json()["nodes"][0]["task_title"] == "修改标题"
@@ -187,7 +191,10 @@ def test_execution_and_task_revisions_follow_real_receipt_and_node_edits(client,
     assert get(client, first)["history"][0]["action"] == "task_updated"
     second = item["nodes"][1]
     assert (
-        client.post(f"{URL}/{second['id']}/cancel", json={"expected_version": 1}).status_code == 200
+        dispatch_post(
+            client, f"{URL}/{second['id']}/cancel", json={"expected_version": 1}
+        ).status_code
+        == 200
     )
     assert task_detail(client, item)["version"] == 4
 
@@ -202,19 +209,21 @@ def test_nodes_cannot_cross_task_serial_or_break_route_and_basis_is_validated(cl
         "expected_version": 1,
         "predecessor_id": other["nodes"][0]["id"],
     }
-    assert client.patch(f"{URL}/{node['id']}", json=update).status_code == 409
+    assert dispatch_patch(client, f"{URL}/{node['id']}", json=update).status_code == 409
     update["predecessor_id"] = first["nodes"][0]["id"]
     assert (
-        client.patch(f"{URL}/{node['id']}", json={**update, "predecessor_id": None}).status_code
+        dispatch_patch(
+            client, f"{URL}/{node['id']}", json={**update, "predecessor_id": None}
+        ).status_code
         == 409
     )
     update["serial_no"] = "WRONG"
-    assert client.patch(f"{URL}/{node['id']}", json=update).status_code == 409
-    assert client.post(URL, json=body(s, completion_basis="both")).status_code == 422
-    assert client.post(URL, json=body(s, completion_basis="weight")).status_code == 422
+    assert dispatch_patch(client, f"{URL}/{node['id']}", json=update).status_code == 409
+    reject_seed(seed_plan, client, body(s, completion_basis="both"))
+    reject_seed(seed_plan, client, body(s, completion_basis="weight"))
     broken = route(s)
     broken["nodes"][0]["next_team_id"] = 999
-    assert client.post(TASKS, json=broken).status_code == 422
+    reject_seed(seed_task, client, broken)
 
 
 def test_quality_hold_is_exposed_without_claiming_material_is_processed(client, inspection):
@@ -356,21 +365,24 @@ def test_business_people_are_independent_and_filter_tasks_with_exact_multiple_se
         {"serial_no": "A,B", "task_count": 1}
     ]
     disabled = client.patch(
-        f"{directory}/{li['id']}", json={"name": "李工", "active": False, "expected_version": 1}
+        f"{directory}/{li['id']}",
+        json={"name": "李工", "active": False, "expected_version": 1},
     )
     assert disabled.status_code == 200
     assert task_detail(client, second)["business_person_name"] == "李工"
-    assert client.post(TASKS, json=route(s, business_person_id=li["id"])).status_code == 422
+    reject_seed(seed_task, client, route(s, business_person_id=li["id"]))
     assert (
         client.patch(
-            f"{directory}/{li['id']}", json={"name": "李工", "active": True, "expected_version": 1}
+            f"{directory}/{li['id']}",
+            json={"name": "李工", "active": True, "expected_version": 1},
         ).status_code
         == 409
     )
     assert client.post(directory, json={"name": " 张工 "}).status_code == 409
     assert client.post(directory, json={"name": "  "}).status_code == 422
     assert (
-        client.patch(
+        dispatch_patch(
+            client,
             f"{TASKS}/{second['id']}",
             json={
                 "expected_version": second["version"],

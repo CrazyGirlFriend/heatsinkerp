@@ -7,6 +7,8 @@ from sender_helpers import sender_post
 from sqlalchemy import func, select
 from test_material_transfers import _create, _setup_three_teams
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 @pytest.fixture()
 def stock_setup(client):

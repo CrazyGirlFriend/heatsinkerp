@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 
+import pytest
 from app.database import SessionLocal
 from app.models import MaterialTransfer
 from receipt_helpers import receipt_post
@@ -12,6 +13,8 @@ from test_external_outbound import outbound as outbound
 from test_material_stock import dispatch, loss, receive_lot
 from test_material_stock import stock_setup as stock_setup
 from test_team_business import initialize
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def trace(client, serial="000012"):

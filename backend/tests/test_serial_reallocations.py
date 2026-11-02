@@ -12,6 +12,8 @@ from test_warehouse_locations import location
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def reallocate(client, setup, lot, **values):
     return client.post(

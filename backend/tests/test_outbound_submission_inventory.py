@@ -9,6 +9,8 @@ from app.models import MaterialTransfer
 from test_external_outbound import legacy_dispatch as dispatch
 from test_external_outbound import outbound as outbound
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def check_stock(client, setup, quantity, weight, pending_quantity, pending_weight):
     overview = client.get(setup["url"] + "/overview").json()

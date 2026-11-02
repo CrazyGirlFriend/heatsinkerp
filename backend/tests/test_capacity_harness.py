@@ -10,6 +10,8 @@ from test_quantity_adjustments import change, processing_lot
 from test_warehouse_classification import confirm, dispatch
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 spec = importlib.util.spec_from_file_location(
     "capacity_harness", Path(__file__).parents[2] / "scripts/verify_mysql_http_concurrency.py"
 )

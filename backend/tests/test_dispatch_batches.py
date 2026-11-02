@@ -18,6 +18,8 @@ from test_material_stock import receive_lot
 from test_material_stock import stock_setup as stock_setup
 from test_warehouse_receipts import migration
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def external_dispatch(client, *args, **kwargs):
     return historical_response(client, new_external_dispatch(client, *args, **kwargs))

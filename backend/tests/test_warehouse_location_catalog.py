@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 
+import pytest
 from app.database import SessionLocal
 from app.models import WarehouseLocation, utcnow
 from test_shared_warehouse_locations import reserve
@@ -9,6 +10,8 @@ from test_warehouse_location_locks import claim, create_slot, production_source,
 from test_warehouse_locations import dispatch, location
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def catalog(client, **params):

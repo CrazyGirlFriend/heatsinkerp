@@ -1,9 +1,13 @@
+import pytest
 from app.database import SessionLocal
 from app.models import MaterialStockBalance, ProductionScheduleTask
+from legacy_schedules import dispatch_patch, dispatch_post, dispatcher
 from test_production_schedules import URL, get, plan
 from test_warehouse_classification import dispatch
 from test_warehouse_receipts import intake  # noqa: F401
 from test_warehouse_receipts import warehouse as warehouse
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def batch(number=1, quantity=40, **extra):
@@ -17,11 +21,27 @@ def batch(number=1, quantity=40, **extra):
 
 
 def save(client, item, batches, headers=None):
-    return client.put(
+    response = client.put(
         f"{URL}/{item['id']}/batches",
-        headers=headers or {},
+        headers=headers if headers is not None else dispatcher(client),
         json={"expected_version": item["version"], "batches": batches},
     )
+
+    if response.status_code == 200 and response.json()["planning_state"] in (
+        "submitted",
+        "revision_pending",
+    ):
+        # These fulfillment tests use accepted plans. Submit through the owner and
+        # explicitly confirm through dispatch, as the current workflow requires.
+        response = dispatch_post(
+            client,
+            f"{URL}/{item['id']}/review",
+            json={
+                "expected_version": response.json()["version"],
+                "approve": True,
+            },
+        )
+    return response
 
 
 def writes(item):
@@ -37,7 +57,7 @@ def writes(item):
     return [{k: v for k, v in b.items() if k in fields} for b in item["batches"]]
 
 
-def test_team_owns_batches_and_admin_owns_final_due(client, warehouse):
+def test_team_proposes_batches_and_dispatch_owns_final_due(client, warehouse):
     s = warehouse
     item = plan(client, s, workshop=True)
     with SessionLocal() as db:
@@ -55,7 +75,17 @@ def test_team_owns_batches_and_admin_owns_final_due(client, warehouse):
     with SessionLocal() as db:
         assert db.get(ProductionScheduleTask, item["task_id"]).final_due_at == final
     assert save(client, item, rows, s["other_headers"]).status_code == 409
-    # Administrator may adjust the same batch plan.
+    # Dispatch may adjust the same batch plan; administrator cannot.
+    assert (
+        client.put(
+            f"{URL}/{item['id']}/batches",
+            json={
+                "expected_version": updated["version"],
+                "batches": writes(updated),
+            },
+        ).status_code
+        == 403
+    )
     assert save(client, updated, writes(updated)).status_code == 200
     assert (
         client.put(
@@ -66,7 +96,8 @@ def test_team_owns_batches_and_admin_owns_final_due(client, warehouse):
         == 422
     )
     assert (
-        client.patch(
+        dispatch_patch(
+            client,
             f"{URL}/tasks/{item['task_id']}",
             headers=s["other_headers"],
             json={

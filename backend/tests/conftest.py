@@ -15,6 +15,26 @@ from app.main import app  # noqa: E402
 
 
 @pytest.fixture()
+def legacy_stock(monkeypatch):
+    """Isolate historical ledger tests from the later engineering entry boundary.
+
+    These tests exercise route-free stock retained from earlier schema versions.
+    Current document/route integration tests do not opt in to this fixture. Bound
+    routes and explicitly selected routes always execute the real validation.
+    """
+    from app import process_routes
+
+    original = process_routes.prepare_dispatch_route
+
+    def prepare(db, lot, line, source, serial, anonymous, user):
+        if lot.process_route_id or line.process_route_id is not None or anonymous:
+            return original(db, lot, line, source, serial, anonymous, user)
+        return lot
+
+    monkeypatch.setattr(process_routes, "prepare_dispatch_route", prepare)
+
+
+@pytest.fixture()
 def client(monkeypatch):
     from app import factory_stream
     from app.inventory_snapshots import SnapshotFrames

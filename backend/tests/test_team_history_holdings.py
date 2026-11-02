@@ -1,5 +1,6 @@
 """Current ownership and dated dispatch history must not be conflated."""
 
+import pytest
 from receipt_helpers import receipt_post
 from test_external_outbound import confirm as external_confirm
 from test_external_outbound import legacy_dispatch as external_dispatch
@@ -7,6 +8,8 @@ from test_external_outbound import outbound as outbound
 from test_material_stock import dispatch
 from test_material_stock import stock_setup as stock_setup
 from test_team_business import history, initialize
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def test_pending_handoff_is_still_owned_and_confirmation_moves_it_once(client, stock_setup):

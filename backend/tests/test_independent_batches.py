@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+import pytest
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from app.database import SessionLocal
@@ -12,6 +13,8 @@ from sqlalchemy import create_engine, func, inspect, select
 from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import intake, migration
 from test_warehouse_receipts import warehouse as warehouse
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def test_split_materials_and_serials_create_independent_batches_and_replay_once(client, warehouse):

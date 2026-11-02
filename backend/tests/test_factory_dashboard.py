@@ -15,6 +15,8 @@ from test_external_outbound import outbound as outbound
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 ROOT = "/api/factory-dashboard"
 
 

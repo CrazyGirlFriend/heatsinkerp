@@ -1,8 +1,11 @@
 """Inventory detail keeps each receipt/outbound batch and its source identity."""
 
+import pytest
 from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def movements(client, setup, group_id, workshop=False, **params):

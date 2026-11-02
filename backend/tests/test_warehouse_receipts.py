@@ -23,6 +23,8 @@ from sqlalchemy import create_engine, func, inspect, select
 from sqlalchemy.exc import IntegrityError
 from test_material_transfers import _leader, _team
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 @pytest.fixture()
 def warehouse(client):
@@ -203,7 +205,6 @@ def test_disabled_warehouse_actor_cannot_intake_with_existing_token(client, ware
 @pytest.mark.parametrize(
     "invalid",
     [
-        {"serial_no": "  "},
         {"material_name": "  "},
         {"material_type": None},
         {"quantity": 0, "weight": 0},
@@ -512,3 +513,22 @@ def test_migration_retains_old_batches_children_audit_losses_and_indexes(tmp_pat
         with pytest.raises(RuntimeError, match="backup"):
             upgrade.downgrade()
     engine.dispose()
+
+
+@pytest.mark.parametrize("serial", [None, "", "  "])
+def test_intake_without_serial_keeps_material_available_for_later_assignment(
+    client, warehouse, serial
+):
+    payload = {
+        "material_name": "铜钼",
+        "material_type": "semi_finished",
+        "quantity": 100,
+        "weight": 10,
+        "idempotency_key": "anonymous-intake",
+    }
+    if serial is not None:
+        payload["serial_no"] = serial
+    response = client.post(warehouse["url"], headers=warehouse["headers"], json=payload)
+    assert response.status_code == 201, response.text
+    assert not response.json()["serial_no"]
+    assert client.get(warehouse["url"]).json()["total"] == 1

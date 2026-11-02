@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 
+import pytest
 from app.database import SessionLocal
 from app.models import MaterialTransfer
 from receipt_helpers import receipt_post
@@ -19,6 +20,8 @@ from test_team_business import initialize
 from test_warehouse_classification import confirm
 from test_warehouse_classification import dispatch as workshop_dispatch
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def overview(client, serial="000012"):

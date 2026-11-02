@@ -11,7 +11,6 @@ import hashlib
 import json
 from datetime import timezone
 from decimal import Decimal
-from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -471,12 +470,7 @@ def create_dispatch(db, team_id, payload, user):
                     if "material_type" in line.model_fields_set
                     else lot.material_type
                 )
-                from .process_route_api import bind_lot
-                from .process_routes import (
-                    require_route,
-                    require_route_documents,
-                    resolve_normal_route,
-                )
+                from .process_routes import prepare_dispatch_route
 
                 serial = line.serial_no if line.serial_no is not None else lot.serial_no
                 if line.serial_no is not None and lot.serial_no and serial != lot.serial_no:
@@ -486,62 +480,9 @@ def create_dispatch(db, team_id, payload, user):
                     raise HTTPException(422, "仅未分配流水号的库房来料可在出库时填写流水号")
                 route_lot = lot
                 if kind not in SCRAP_MATERIAL_TYPES:
-                    if not serial:
-                        raise HTTPException(422, "出库必须填写流水号")
-                    if line.process_route_id is not None:
-                        selected_route = require_route(db, line.process_route_id, True)
-                        if selected_route.version != line.process_route_version:
-                            raise HTTPException(409, "工艺版本已变化，请重新读取")
-                    elif not lot.process_route_id and source.code == WAREHOUSE_TEAM_CODE:
-                        selected_route = resolve_normal_route(db, serial)
-                    else:
-                        selected_route = lot.process_route
-                    if source.code == WAREHOUSE_TEAM_CODE:
-                        if selected_route is None:
-                            raise HTTPException(422, "未找到该流水号的工艺")
-                        require_route_documents(db, selected_route)
-                        if selected_route.route_kind != "rework":
-                            from .models import ProcessRouteOrderFile
-                            from .schedule_order_documents import route_order
-
-                            order = route_order(db, selected_route.id, serial)
-                            legacy = db.get(ProcessRouteOrderFile, selected_route.id)
-                            if not order and not (
-                                legacy
-                                and legacy.content
-                                and selected_route.source_data.get("order_document", {}).get(
-                                    "serial_no"
-                                )
-                                == serial
-                            ):
-                                raise HTTPException(422, "缺少：订单表，请调度上传后再出库")
-                    if anonymous:
-                        if (
-                            selected_route is None
-                            or selected_route.route_kind != "normal"
-                            or selected_route.state != "published"
-                            or selected_route.serial_nos != [serial]
-                            or selected_route.steps[0]["team_id"] != source.id
-                        ):
-                            raise HTTPException(422, "流水号或起始库房与工艺不一致")
-                        # Bind this outbound portion only; the remaining raw stock stays unassigned.
-                        route_lot = SimpleNamespace(
-                            process_route_id=selected_route.id,
-                            process_route=selected_route,
-                            process_step_index=0,
-                            process_step_complete=True,
-                            next_team_id=source.id,
-                            next_team_code=source.code,
-                            serial_no=serial,
-                            shared_unallocated=False,
-                            rework_route_id=None,
-                            rework_pending=False,
-                            rework_count=0,
-                        )
-                    elif line.process_route_id is not None or (
-                        not lot.process_route_id and selected_route
-                    ):
-                        bind_lot(db, selected_route, lot, user)
+                    route_lot = prepare_dispatch_route(
+                        db, lot, line, source, serial, anonymous, user
+                    )
                 route_key = (lot.id, kind, serial, route_lot.process_route_id)
                 if route_key not in route_cache:
                     route_cache[route_key] = dispatch_fields(

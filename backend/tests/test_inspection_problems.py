@@ -7,6 +7,8 @@ from test_inspections import create_check
 from test_inspections import inspection as inspection
 from test_warehouse_receipts import warehouse  # noqa: F401
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def catalog(client, context):
     _, _, headers, body = context

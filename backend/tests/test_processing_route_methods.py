@@ -10,6 +10,7 @@ from alembic.operations import Operations
 from app.database import SessionLocal
 from app.models import MaterialQuantityAdjustment, MaterialTransfer
 from engineered_rework_helpers import approve_rework, resume_rework
+from legacy_schedules import seed_task
 from sqlalchemy import create_engine, text
 from test_engineered_rework import approved_quality_issue
 from test_process_route_intake import publish_payload, route_payload
@@ -198,17 +199,16 @@ def test_repeated_local_operations_deliver_only_against_final_step_schedule(clie
                 "target_quantity": 10,
             }
         )
-    saved = client.post(
-        "/api/production-schedules/tasks",
-        json={
+    saved = seed_task(
+        client,
+        {
             "title": "粗磨精磨同班组交货",
             "serial_no": lot["serial_no"],
             "idempotency_key": uuid4().hex,
             "nodes": nodes,
         },
     )
-    assert saved.status_code == 201, saved.text
-    task_id = saved.json()["id"]
+    task_id = saved["id"]
     coarse = processed(client, s, lot, worker)
     fine = processed(client, s, coarse["outputs"][0], worker)
     rework = processed(

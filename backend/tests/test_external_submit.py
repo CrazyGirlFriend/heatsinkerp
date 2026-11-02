@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+import pytest
 from app import material_transfer_workflow as workflow
 from app.database import SessionLocal
 from app.models import MaterialDispatch, MaterialTransfer
@@ -9,6 +10,8 @@ from receipt_helpers import receipt_post
 from sqlalchemy import func, select
 from test_external_outbound import dispatch
 from test_external_outbound import outbound as outbound
+
+pytestmark = pytest.mark.usefixtures("legacy_stock")
 
 
 def test_external_submit_completes_each_line_and_retry_does_not_deduct_again(client, outbound):

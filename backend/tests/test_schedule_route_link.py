@@ -7,6 +7,7 @@ from app.models import (
     MaterialTransfer,
     ProcessRoute,
 )
+from legacy_schedules import dispatch_post, seed_task
 from test_process_routes import published
 from test_warehouse_receipts import warehouse as warehouse  # noqa: F401
 
@@ -16,9 +17,9 @@ URL = "/api/production-schedules/tasks"
 def setup(client, s):
     process = published(client, s)
     steps = process["steps"]
-    response = client.post(
-        URL,
-        json=dict(
+    task = seed_task(
+        client,
+        dict(
             title="先排交货再关联工艺",
             serial_no="WAREHOUSE-001",
             idempotency_key=uuid4().hex,
@@ -35,8 +36,7 @@ def setup(client, s):
             ],
         ),
     )
-    assert response.status_code == 201, response.text
-    return process, response.json()
+    return process, task
 
 
 def binding(route, task):
@@ -55,10 +55,13 @@ def test_late_link_preserves_dates_targets_and_rejects_foreign_team(client, ware
     route, task = setup(client, warehouse)
     endpoint = f"{URL}/{task['id']}/route"
     payload = binding(route, task)
-    assert client.post(endpoint, json=payload, headers=warehouse["headers"]).status_code == 403
+    assert (
+        dispatch_post(client, endpoint, json=payload, headers=warehouse["headers"]).status_code
+        == 403
+    )
     options = client.get(f"{URL}/{task['id']}/route-options").json()
     assert [o["id"] for o in options] == [route["id"]]
-    response = client.post(endpoint, json=payload)
+    response = dispatch_post(client, endpoint, json=payload)
     assert response.status_code == 200, response.text
     linked = response.json()
     for before, after in zip(task["nodes"], linked["nodes"], strict=True):
@@ -68,7 +71,7 @@ def test_late_link_preserves_dates_targets_and_rejects_foreign_team(client, ware
         )
         assert after["route_link"]["state"] == "linked"
     assert linked["final_due_at"] == task["final_due_at"]
-    assert client.post(endpoint, json=payload).status_code == 409
+    assert dispatch_post(client, endpoint, json=payload).status_code == 409
     with SessionLocal() as db:
         assert not db.query(MaterialTransfer).count()
 
@@ -77,11 +80,11 @@ def test_invalid_mapping_is_atomic_and_new_revision_is_only_a_notice(client, war
     route, task = setup(client, warehouse)
     body = binding(route, task)
     body["mappings"][-1]["step_index"] = 0
-    assert client.post(f"{URL}/{task['id']}/route", json=body).status_code == 422
+    assert dispatch_post(client, f"{URL}/{task['id']}/route", json=body).status_code == 422
     assert all(
         n["process_route_id"] is None for n in client.get(f"{URL}/{task['id']}").json()["nodes"]
     )
-    linked = client.post(f"{URL}/{task['id']}/route", json=binding(route, task)).json()
+    linked = dispatch_post(client, f"{URL}/{task['id']}/route", json=binding(route, task)).json()
     # An accepted new version marks the task; neither stock nor plan is rewritten.
     with SessionLocal.begin() as db:
         old = db.get(ProcessRoute, route["id"])

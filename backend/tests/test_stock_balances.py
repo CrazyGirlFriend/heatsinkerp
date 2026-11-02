@@ -15,6 +15,8 @@ from test_warehouse_classification import confirm, dispatch
 from test_warehouse_receipts import intake  # noqa: F401
 from test_warehouse_receipts import warehouse as warehouse
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def reconcile():
     with SessionLocal() as db:

@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from app.database import SessionLocal
 from app.models import MaterialTransfer
+from legacy_schedules import seed_task
 from test_processing_daily import work
 from test_processing_route_methods import routed_lot
 from test_production_schedules import URL, get, plan
@@ -128,9 +129,9 @@ def test_plan_for_another_lot_or_route_is_rejected(client, warehouse):
 
 def test_only_owner_can_change_team_commitment_and_final_deadline_stays_fixed(client, warehouse):
     s = warehouse
-    task = client.post(
-        URL + "/tasks",
-        json={
+    task = seed_task(
+        client,
+        {
             "title": "客户交货",
             "serial_no": "SCHEDULE-OWNER",
             "idempotency_key": uuid4().hex,
@@ -145,27 +146,30 @@ def test_only_owner_can_change_team_commitment_and_final_deadline_stays_fixed(cl
             ],
         },
     )
-    assert task.status_code == 201, task.text
-    node = task.json()["nodes"][0]
+    node = task["nodes"][0]
+    from test_schedule_batches import batch, save
+
     endpoint = f"{URL}/{node['id']}/commitment"
-    data = {
-        "expected_version": node["version"],
-        "due_at": "2026-12-22T14:00:00+08:00",
-        "target_quantity": 12,
-        "completion_basis": "quantity",
-        "notes": "分批交付",
-    }
-    assert client.patch(endpoint, json=data, headers=s["headers"]).status_code == 403
     assert (
         client.patch(
-            endpoint, json={**data, "team_id": s["team"]["id"]}, headers=s["other_headers"]
+            endpoint,
+            json={
+                "expected_version": node["version"],
+                "due_at": "2026-12-22T14:00:00+08:00",
+                "target_quantity": 10,
+                "completion_basis": "quantity",
+                "notes": "分批交付",
+            },
+            headers=s["other_headers"],
         ).status_code
         == 422
     )
-    result = client.patch(endpoint, json=data, headers=s["other_headers"])
+    rows = [batch(1, 10, due_at="2026-12-22T14:00:00+08:00")]
+    assert save(client, node, rows, s["headers"]).status_code == 403
+    result = save(client, node, rows, s["other_headers"])
     assert result.status_code == 200, result.text
-    assert result.json()["target_quantity"] == 12
-    assert result.json()["history"][0]["before"]["target_quantity"] == 10
-    assert client.patch(endpoint, json=data, headers=s["other_headers"]).status_code == 409
-    final = client.get(f"{URL}/tasks/{task.json()['id']}").json()
+    assert result.json()["target_quantity"] == 10
+    assert result.json()["planning_state"] == "confirmed"
+    assert save(client, node, rows, s["other_headers"]).status_code == 409
+    final = client.get(f"{URL}/tasks/{task['id']}").json()
     assert final["final_due_at"] == "2026-12-25T10:00:00+00:00"

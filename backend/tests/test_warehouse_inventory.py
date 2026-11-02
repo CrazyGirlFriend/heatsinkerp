@@ -9,6 +9,8 @@ from test_warehouse_classification import base, confirm, dispatch
 from test_warehouse_receipts import intake
 from test_warehouse_receipts import warehouse as warehouse
 
+pytestmark = pytest.mark.usefixtures("legacy_stock")
+
 
 def inventory(client, setup, **params):
     response = client.get(base(setup) + "/warehouse-inventory", params=params)
