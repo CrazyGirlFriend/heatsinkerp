@@ -22,6 +22,7 @@ class DispatchTaskCreate(BaseModel):
     route_id: int = Field(ge=1)
     route_version: int = Field(ge=1)
     final_due_at: datetime
+    planned_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647, strict=True)
     delivery_batches: list[CustomerBatch] = Field(default_factory=list, max_length=100)
     business_person_ids: list[int] = Field(min_length=1, max_length=100)
     notes: str | None = Field(default=None, max_length=2000)
@@ -40,7 +41,13 @@ class DispatchTaskCreate(BaseModel):
 
     @model_validator(mode="after")
     def batches(self):
-        validate_customer_batches(self.delivery_batches, self.final_due_at)
+        if "planned_quantity" in self.model_fields_set and self.planned_quantity is None:
+            raise ValueError("请填写计划数量")
+        validate_customer_batches(
+            self.delivery_batches,
+            self.final_due_at,
+            self.planned_quantity if self.delivery_batches else None,
+        )
         return self
 
 
@@ -60,7 +67,7 @@ def validate_customer_batches(batches, final_due, quantity=None):
     ):
         raise ValueError("请按批次顺序设置交期")
     if quantity is not None and sum(b.target_quantity for b in batches) != quantity:
-        raise ValueError("各批数量合计须等于工艺的计划数量")
+        raise ValueError("各批数量合计须等于计划数量")
 
 
 def customer_values(batches):
@@ -108,15 +115,16 @@ def build_task(db, payload):
             nodes.append(node)
     if not nodes:
         raise HTTPException(422, "工艺中没有该流水号的执行班组")
+    planned_quantity = payload.planned_quantity or nodes[-1]["target_quantity"]
     batches = payload.delivery_batches or [
         CustomerBatch.model_construct(
             batch_number=1,
             due_at=payload.final_due_at,
-            target_quantity=nodes[-1]["target_quantity"],
+            target_quantity=planned_quantity,
         )
     ]
     try:
-        validate_customer_batches(batches, payload.final_due_at, nodes[-1]["target_quantity"])
+        validate_customer_batches(batches, payload.final_due_at, planned_quantity)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from None
     for i, node in enumerate(nodes):

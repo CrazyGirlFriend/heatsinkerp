@@ -107,14 +107,12 @@ const steps = computed(
         s.serial_nos.includes(selectedRoute.value?.execution_serial ?? serial.value.trim()),
     ) || [],
 )
-const quantity = computed(() =>
-  props.task
-    ? props.task.delivery_batches?.reduce((sum, b) => sum + b.target_quantity, 0) ||
-      props.task.nodes.filter((n) => n.status !== 'cancelled').at(-1)?.target_quantity ||
-      0
-    : Number(steps.value.at(-1)?.planned_quantity) || 0,
+const quantity = ref<number | undefined>(
+  props.task?.delivery_batches?.reduce((sum, b) => sum + b.target_quantity, 0) ||
+    props.task?.nodes.filter((n) => n.status !== 'cancelled').at(-1)?.target_quantity ||
+    undefined,
 )
-const batches = ref(
+const batches = ref<{ quantity: number | undefined; due: string }[]>(
   (props.task?.delivery_batches || []).map((b) => ({
     quantity: b.target_quantity,
     due: local(b.due_at),
@@ -126,15 +124,27 @@ const writable = computed(() => auth.isDispatch && !props.task?.locked_at)
 const allocated = computed(() =>
   batches.value.reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0),
 )
-const remaining = computed(() => quantity.value - allocated.value)
+const remaining = computed(() => (quantity.value || 0) - allocated.value)
+const plannedQuantityError = computed(() =>
+  quantity.value === undefined ||
+  !Number.isSafeInteger(quantity.value) ||
+  quantity.value <= 0 ||
+  quantity.value > 2147483647
+    ? '请输入 1 至 2147483647 的整数'
+    : '',
+)
 const allocationError = computed(() =>
-  quantity.value > 0 && remaining.value !== 0 ? `各批数量合计须为 ${quantity.value} 件` : '',
+  !plannedQuantityError.value && remaining.value !== 0
+    ? `各批数量合计须为 ${quantity.value} 件`
+    : '',
 )
 const finalDueError = computed(() => (submitted.value && !finalDue.value ? '请选择最终交期' : ''))
 function quantityError(index: number) {
   if (!props.task && !selectedRoute.value) return ''
   const value = batches.value[index]!.quantity
-  return !Number.isSafeInteger(value) || value <= 0 ? '请输入大于 0 的整数' : ''
+  return value === undefined || !Number.isSafeInteger(value) || value <= 0
+    ? '请输入大于 0 的整数'
+    : ''
 }
 function batchDueError(index: number) {
   const due = batches.value[index]!.due
@@ -152,17 +162,22 @@ async function loadRoutes() {
   const current = ++generation
   const previousRouteId = routeId.value
   error.value = ''
+  if (!serial.value.trim()) {
+    loading.value = false
+    return
+  }
   loading.value = true
   try {
     const result = await productionScheduleApi.taskRouteOptions(serial.value.trim())
     if (current !== generation) return
     routes.value = result
     const matches = result.filter((route) => route.serial_nos?.includes(serial.value.trim()))
-    const preferredId = routeManuallySelected.value ? previousRouteId : props.processRoute?.id
+    const preferredId = routeManuallySelected.value
+      ? previousRouteId
+      : matches.find((r) => r.id === props.processRoute?.id)?.id
     routeId.value =
       result.find((r) => r.id === preferredId)?.id ||
-      (matches.length === 1 ? matches[0]!.id : undefined) ||
-      (result.length === 1 ? result[0]!.id : undefined)
+      (matches.length === 1 ? matches[0]!.id : undefined)
     if (!result.length) error.value = '暂无可用工艺，请先由工艺班组制定'
   } catch (e) {
     if (current === generation) error.value = e instanceof Error ? e.message : '工艺读取失败'
@@ -170,9 +185,16 @@ async function loadRoutes() {
     if (current === generation) loading.value = false
   }
 }
-watch(quantity, (value) => {
-  if (!props.task) batches.value = [{ quantity: value, due: '' }]
-})
+watch(
+  () =>
+    selectedRoute.value &&
+    `${selectedRoute.value.id}:${selectedRoute.value.version}:${selectedRoute.value.execution_serial}`,
+  () => {
+    if (props.task) return
+    quantity.value = Number(steps.value.at(-1)?.planned_quantity) || undefined
+    batches.value = [{ quantity: quantity.value, due: '' }]
+  },
+)
 function selectPeople(value: ScheduleSelection[]) {
   people.value = value
   personOpen.value = false
@@ -211,7 +233,7 @@ async function save() {
     error.value = '请选择流水号和对应工艺'
     return
   }
-  if (!finalDue.value) {
+  if (!finalDue.value || plannedQuantityError.value) {
     return
   }
   for (const [index, batch] of batches.value.entries()) {
@@ -229,10 +251,11 @@ async function save() {
   saving.value = true
   try {
     const common = {
+      planned_quantity: quantity.value!,
       final_due_at: `${finalDue.value}+08:00`,
       delivery_batches: batches.value.map((b, i) => ({
         batch_number: i + 1,
-        target_quantity: b.quantity,
+        target_quantity: b.quantity!,
         due_at: `${b.due}+08:00`,
       })),
       business_person_ids: people.value.map((p) => Number(p.value)),
@@ -271,17 +294,27 @@ async function save() {
   }
 }
 let serialTimer: ReturnType<typeof setTimeout> | undefined
-watch(serial, () => {
-  ++orderGeneration
-  orderFile.value = undefined
-  orderDocument.value = undefined
-  orderBusy.value = false
-  orderError.value = ''
-  ++generation
-  if (!props.task) loading.value = true
-  clearTimeout(serialTimer)
-  serialTimer = setTimeout(loadRoutes, 350)
-})
+watch(
+  () => serial.value.trim(),
+  () => {
+    ++orderGeneration
+    orderFile.value = undefined
+    orderDocument.value = undefined
+    orderBusy.value = false
+    orderError.value = ''
+    ++generation
+    clearTimeout(serialTimer)
+    if (props.task) return
+    routeId.value = undefined
+    routes.value = []
+    routeManuallySelected.value = false
+    quantity.value = undefined
+    batches.value = [{ quantity: undefined, due: '' }]
+    error.value = ''
+    loading.value = !!serial.value.trim()
+    if (loading.value) serialTimer = setTimeout(loadRoutes, 350)
+  },
+)
 onBeforeUnmount(() => {
   ++orderGeneration
   ++generation
@@ -362,29 +395,49 @@ onMounted(loadRoutes)
               }}</ElButton></ElFormItem
             >
           </div>
-          <ElFormItem v-if="!task" label="关联工艺" required
-            ><div class="dispatch-route-choice">
-              <ScheduleRouteSelect
-                v-model="routeId"
-                :options="routes"
-                :loading="loading"
-                @change="routeManuallySelected = true"
-              />
-              <ElButton
-                :icon="Refresh"
-                :loading="loading"
-                aria-label="刷新工艺"
-                title="刷新工艺"
-                @click="loadRoutes"
-              />
-            </div>
-          </ElFormItem>
+          <div class="dispatch-route-fields">
+            <ElFormItem v-if="!task" class="dispatch-route-select" label="关联工艺" required
+              ><div class="dispatch-route-choice">
+                <ScheduleRouteSelect
+                  v-model="routeId"
+                  :options="routes"
+                  :loading="loading"
+                  :disabled="!serial.trim()"
+                  @change="routeManuallySelected = true"
+                />
+                <ElButton
+                  :icon="Refresh"
+                  :loading="loading"
+                  :disabled="!serial.trim()"
+                  aria-label="刷新工艺"
+                  title="刷新工艺"
+                  @click="loadRoutes"
+                />
+              </div>
+            </ElFormItem>
+            <ElFormItem label="计划数量" required :error="submitted ? plannedQuantityError : ''">
+              <div class="dispatch-quantity-input">
+                <ElInputNumber
+                  v-model="quantity"
+                  :min="1"
+                  :max="2147483647"
+                  :precision="0"
+                  :controls="false"
+                  :disabled="!task && !selectedRoute"
+                  aria-label="计划数量"
+                />
+                <span>件</span>
+              </div>
+            </ElFormItem>
+          </div>
           <div class="dispatch-batch-heading">
             <h3>分批交货</h3>
-            <div v-if="quantity > 0" class="dispatch-allocation" role="status" aria-live="polite">
-              <span
-                >计划 <strong>{{ quantity }}</strong> 件</span
-              >
+            <div
+              v-if="!plannedQuantityError"
+              class="dispatch-allocation"
+              role="status"
+              aria-live="polite"
+            >
               <span
                 >已分配 <strong>{{ allocated }}</strong> 件</span
               >
@@ -410,9 +463,10 @@ onMounted(loadRoutes)
                   <ElInputNumber
                     v-model="row.quantity"
                     :min="1"
-                    :max="quantity || undefined"
+                    :max="2147483647"
                     :precision="0"
                     :controls="false"
+                    :disabled="!task && !selectedRoute"
                     :aria-label="`第${$index + 1}批交货数量`"
                   /> </ElFormItem></template
             ></ElTableColumn>
@@ -539,6 +593,33 @@ onMounted(loadRoutes)
   grid-template-columns: 1fr 1fr 1fr;
   gap: 16px;
 }
+.dispatch-route-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.dispatch-route-select {
+  grid-column: span 2;
+}
+.dispatch-quantity-input {
+  position: relative;
+  width: 100%;
+}
+.dispatch-quantity-input :deep(.el-input-number) {
+  max-width: none;
+}
+.dispatch-quantity-input :deep(.el-input__inner) {
+  text-align: left;
+  padding-right: 28px;
+}
+.dispatch-quantity-input > span {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
 .dispatch-task-form h3 {
   display: flex;
   align-items: center;
@@ -615,9 +696,13 @@ onMounted(loadRoutes)
   .dispatch-task-layout {
     grid-template-columns: minmax(0, 1fr);
   }
-  .dispatch-task-fields {
+  .dispatch-task-fields,
+  .dispatch-route-fields {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+  .dispatch-route-select {
+    grid-column: auto;
   }
 }
 </style>

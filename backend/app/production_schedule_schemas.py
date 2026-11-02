@@ -155,6 +155,7 @@ class ScheduleCommitmentUpdate(BaseModel):
 
 
 class ScheduleTaskUpdate(BaseModel):
+    planned_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647, strict=True)
     delivery_batches: list[CustomerBatch] = Field(default_factory=list, max_length=100)
     final_due_at: datetime | None = None
 

@@ -116,6 +116,7 @@ export const productionScheduleApi = {
   updateTask: (
     id: number,
     body: {
+      planned_quantity?: number
       expected_version: number
       title: string
       final_due_at?: string | null

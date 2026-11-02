@@ -496,7 +496,12 @@ def update_task(db, task_id, payload, user):
             try:
                 if not payload.delivery_batches:
                     raise ValueError("请至少安排一批交货")
-                expected_quantity = (
+                if (
+                    "planned_quantity" in payload.model_fields_set
+                    and payload.planned_quantity is None
+                ):
+                    raise ValueError("请填写计划数量")
+                expected_quantity = payload.planned_quantity or (
                     sum(b["target_quantity"] for b in task.delivery_batches or []) or None
                 )
                 validate_customer_batches(
@@ -506,6 +511,8 @@ def update_task(db, task_id, payload, user):
                 raise HTTPException(422, str(exc)) from None
             before["delivery_batches"] = task.delivery_batches
             task.delivery_batches = customer_values(payload.delivery_batches)
+        elif "planned_quantity" in payload.model_fields_set:
+            raise HTTPException(422, "修改计划数量时请同时调整分批交货数量")
         elif task.delivery_batches and before["final_due_at"] != schedules.iso(task.final_due_at):
             from .dispatch_planning import validate_customer_batches
 

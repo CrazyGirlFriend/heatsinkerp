@@ -53,9 +53,13 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render(existing?: ScheduleTask, routeSerial = 'S-001') {
+async function render(
+  existing?: ScheduleTask,
+  routeSerial = 'S-001',
+  processRoute?: typeof routeFixture,
+) {
   wrapper = mount(ScheduleTaskEditor, {
-    props: { task: existing, routeSerial },
+    props: { task: existing, routeSerial, processRoute },
     global: {
       stubs: {
         AppDialog: {
@@ -91,6 +95,16 @@ function date(value: string) {
 function batchDate(index: number, value: string) {
   wrapper.findAllComponents(ElDatePicker)[index + 1]!.vm.$emit('update:modelValue', value)
 }
+function batchAmounts() {
+  return wrapper
+    .findAllComponents(ElInputNumber)
+    .filter((input) => input.props('ariaLabel') !== '计划数量')
+}
+function plannedAmount() {
+  return wrapper
+    .findAllComponents(ElInputNumber)
+    .find((input) => input.props('ariaLabel') === '计划数量')!
+}
 it('loads the serial process but requires dispatch to set the customer deadline', async () => {
   await render()
   expect(productionScheduleApi.taskRouteOptions).toHaveBeenCalledWith('S-001')
@@ -123,6 +137,7 @@ it('loads the serial process but requires dispatch to set the customer deadline'
       serial_no: 'S-001',
       route_id: routeFixture.id,
       route_version: routeFixture.version,
+      planned_quantity: 100,
       business_person_ids: [1, 2],
       final_due_at: '2026-12-30T16:00:00+08:00',
       delivery_batches: [
@@ -162,19 +177,22 @@ it('blocks creation without a process and waits for a choice when several proces
   expect(createButton().attributes('disabled')).toBeUndefined()
   await wrapper.get('input[aria-label="任务流水号"]').setValue('OTHER')
   expect(createButton().attributes('disabled')).toBeDefined()
-  expect(selection.props('modelValue')).toBe(route.id)
-  await vi.waitFor(() => expect(createButton().attributes('disabled')).toBeUndefined())
-  expect(selection.props('modelValue')).toBe(route.id)
-  expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(100)
+  expect(selection.props('modelValue')).toBeUndefined()
+  await vi.waitFor(() =>
+    expect(productionScheduleApi.taskRouteOptions).toHaveBeenCalledWith('OTHER'),
+  )
+  await flushPromises()
+  expect(createButton().attributes('disabled')).toBeDefined()
+  expect(plannedAmount().props('modelValue')).toBeUndefined()
 })
-it('rejects customer batches that do not add up to the route quantity', async () => {
+it('rejects customer batches that do not add up to the planned quantity', async () => {
   await render()
   date('2026-12-30T16:00:00')
   await flushPromises()
   await button('＋ 增加一批')
   batchDate(0, '2026-12-28T16:00:00')
   batchDate(1, '2026-12-29T16:00:00')
-  const amounts = wrapper.findAllComponents(ElInputNumber)
+  const amounts = batchAmounts()
   amounts[0]!.vm.$emit('update:modelValue', 40)
   amounts[1]!.vm.$emit('update:modelValue', 50)
   await flushPromises()
@@ -250,7 +268,7 @@ it('rejects later hours on the final day and disables dates after the deadline',
 it('requires dates in batch order', async () => {
   await render(task)
   await button('＋ 增加一批')
-  const amounts = wrapper.findAllComponents(ElInputNumber)
+  const amounts = batchAmounts()
   amounts[0]!.vm.$emit('update:modelValue', 40)
   amounts[1]!.vm.$emit('update:modelValue', 60)
   batchDate(0, '2026-12-29T16:00:00')
@@ -303,42 +321,46 @@ it('rejects a mismatched order and clears the imported file when changing serial
   expect(wrapper.text()).not.toContain('替换订单表')
 })
 
-it('allows selecting a process before an order serial and retains its own execution path', async () => {
-  await render(undefined, '')
-  expect(productionScheduleApi.taskRouteOptions).toHaveBeenCalledWith('')
+it.each([undefined, routeFixture])(
+  'keeps a new schedule empty until its serial is entered, including a provided route %s',
+  async (processRoute) => {
+    await render(undefined, '', processRoute)
+    expect(productionScheduleApi.taskRouteOptions).not.toHaveBeenCalled()
+    expect(processRouteApi.detail).not.toHaveBeenCalled()
+    expect(wrapper.findComponent(ProcessRouteAttachments).exists()).toBe(false)
+    const selection = wrapper
+      .findAllComponents(ElSelect)
+      .find((item) => item.props('ariaLabel') === '关联工艺')!
+    expect(selection.props('modelValue')).toBeUndefined()
+    expect(selection.props('disabled')).toBe(true)
+    expect(plannedAmount().props('modelValue')).toBeUndefined()
+    expect(batchAmounts()[0]!.props('modelValue')).toBeUndefined()
+    expect(wrapper.find('[aria-label="工艺执行班组"]').exists()).toBe(false)
+    await wrapper.get('input[aria-label="任务流水号"]').setValue('   ')
+    await flushPromises()
+    expect(productionScheduleApi.taskRouteOptions).not.toHaveBeenCalled()
+  },
+)
+
+it('does not automatically select the only available route when its serial does not match', async () => {
+  await render(undefined, 'ORDER-OTHER')
   const selection = wrapper
     .findAllComponents(ElSelect)
     .find((item) => item.props('ariaLabel') === '关联工艺')!
-  expect(selection.props('filterable')).toBe(true)
-  expect(selection.props('modelValue')).toBe(routeFixture.id)
-  expect(wrapper.find('[aria-label="工艺执行班组"]').exists()).toBe(true)
-  expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(100)
-  await wrapper.get('input[aria-label="任务流水号"]').setValue('ORDER-OTHER')
-  await vi.waitFor(() =>
-    expect(productionScheduleApi.taskRouteOptions).toHaveBeenCalledWith('ORDER-OTHER'),
-  )
+  expect(selection.props('modelValue')).toBeUndefined()
+  expect(processRouteApi.detail).not.toHaveBeenCalled()
+  expect(wrapper.findComponent(ProcessRouteAttachments).exists()).toBe(false)
+  // Reusing another engineering route still requires an explicit selection after entering a serial.
+  selection.vm.$emit('update:modelValue', routeFixture.id)
+  selection.vm.$emit('change', routeFixture.id)
   await flushPromises()
-  expect(selection.props('modelValue')).toBe(routeFixture.id)
-  expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(100)
-  date('2026-12-30T16:00:00')
-  batchDate(0, '2026-12-29T16:00:00')
-  await button('选择业务人员')
-  wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 1, label: '张工' }])
-  vi.mocked(productionScheduleApi.parseOrder).mockResolvedValueOnce({
-    ...orderFixture,
-    serial_no: 'ORDER-OTHER',
-  })
-  await uploadOrder()
-  await button('创建排期')
-  expect(productionScheduleApi.createTask).toHaveBeenCalledWith(
-    expect.objectContaining({ serial_no: 'ORDER-OTHER', route_id: routeFixture.id }),
-    orderFile,
-  )
+  expect(wrapper.getComponent(ProcessRouteAttachments).props('route').id).toBe(routeFixture.id)
+  expect(plannedAmount().props('modelValue')).toBe(100)
 })
 
 it('marks an invalid batch quantity at its field before submission', async () => {
   await render()
-  wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', undefined)
+  batchAmounts()[0]!.vm.$emit('update:modelValue', undefined)
   await flushPromises()
   expect(
     wrapper
@@ -349,37 +371,172 @@ it('marks an invalid batch quantity at its field before submission', async () =>
   expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
 })
 
-it('names route choices by engineering serial and previews files before entering an order serial', async () => {
+it('loads matching engineering files only after entering a serial and clears them when erased', async () => {
   await render(undefined, '')
   const selection = wrapper
     .findAllComponents(ElSelect)
     .find((item) => item.props('ariaLabel') === '关联工艺')!
+  await wrapper.get('input[aria-label="任务流水号"]').setValue('S-001')
+  await vi.waitFor(() => expect(selection.props('modelValue')).toBe(routeFixture.id))
+  await flushPromises()
   expect(selection.findAllComponents(ElOption).map((option) => option.props('label'))).toEqual([
     'S-001',
   ])
-  expect(processRouteApi.detail).toHaveBeenCalledWith(routeFixture.id)
   expect(wrapper.getComponent(ProcessRouteAttachments).props('route').id).toBe(routeFixture.id)
+  await uploadOrder()
+  await wrapper.get('input[aria-label="任务流水号"]').setValue('')
+  expect(selection.props('modelValue')).toBeUndefined()
+  expect(plannedAmount().props('modelValue')).toBeUndefined()
+  expect(batchAmounts()[0]!.props('modelValue')).toBeUndefined()
+  expect(wrapper.text()).not.toContain('替换订单表')
+  expect(wrapper.find('[aria-label="工艺执行班组"]').exists()).toBe(false)
+  await flushPromises()
+  expect(wrapper.findComponent(ProcessRouteAttachments).exists()).toBe(false)
+  expect(productionScheduleApi.taskRouteOptions).toHaveBeenCalledTimes(1)
 })
 
-it('matches an entered serial automatically and preserves a dispatchers manual correction', async () => {
-  const route = vi.mocked(productionScheduleApi.taskRouteOptions).getMockImplementation()!
-  const options = await route('')
-  const second = { ...options[0]!, id: 19, serial_nos: ['S-002'], execution_serial: 'S-002' }
-  vi.mocked(productionScheduleApi.taskRouteOptions).mockResolvedValue([options[0]!, second])
-  await render(undefined, '')
+it('clears manual associations on a new serial and discards late route responses', async () => {
+  const options = await vi.mocked(productionScheduleApi.taskRouteOptions).getMockImplementation()!(
+    '',
+  )
+  const second = {
+    ...options[0]!,
+    id: 19,
+    serial_nos: ['S-002'],
+    execution_serial: 'S-002',
+    steps: options[0]!.steps.map((step) => ({
+      ...step,
+      serial_nos: ['S-002'],
+      planned_quantity: '200',
+    })),
+  }
+  let finish!: (value: ScheduleRouteOption[]) => void
+  vi.mocked(productionScheduleApi.taskRouteOptions).mockImplementation((serial) =>
+    serial === 'S-001'
+      ? new Promise((resolve) => {
+          finish = resolve
+        })
+      : Promise.resolve([second]),
+  )
+  vi.mocked(processRouteApi.detail).mockImplementation(async (id) => ({ ...routeFixture, id }))
+  await render()
   const selection = wrapper
     .findAllComponents(ElSelect)
     .find((item) => item.props('ariaLabel') === '关联工艺')!
-  expect(selection.props('modelValue')).toBeUndefined()
   await wrapper.get('input[aria-label="任务流水号"]').setValue('S-002')
-  await vi.waitFor(() => expect(selection.props('modelValue')).toBe(second.id))
-  selection.vm.$emit('update:modelValue', routeFixture.id)
-  selection.vm.$emit('change', routeFixture.id)
+  await vi.waitFor(() => expect(selection.props('modelValue')).toBe(19))
+  finish(options)
   await flushPromises()
+  expect(selection.props('modelValue')).toBe(19)
+  expect(plannedAmount().props('modelValue')).toBe(200)
+  expect(wrapper.getComponent(ProcessRouteAttachments).props('route').id).toBe(19)
+  selection.vm.$emit('change', 19)
   await wrapper.get('input[aria-label="任务流水号"]').setValue('ORDER-OTHER')
+  expect(selection.props('modelValue')).toBeUndefined()
+  expect(plannedAmount().props('modelValue')).toBeUndefined()
   await vi.waitFor(() =>
     expect(productionScheduleApi.taskRouteOptions).toHaveBeenCalledWith('ORDER-OTHER'),
   )
   await flushPromises()
-  expect(selection.props('modelValue')).toBe(routeFixture.id)
+  expect(selection.props('modelValue')).toBeUndefined()
+  expect(wrapper.findComponent(ProcessRouteAttachments).exists()).toBe(false)
+})
+
+it('ignores an attachment response arriving after the serial was cleared', async () => {
+  let finish!: (value: typeof routeFixture) => void
+  vi.mocked(processRouteApi.detail).mockReturnValueOnce(
+    new Promise((resolve) => {
+      finish = resolve
+    }),
+  )
+  await render()
+  expect(processRouteApi.detail).toHaveBeenCalledWith(routeFixture.id)
+  await wrapper.get('input[aria-label="任务流水号"]').setValue('')
+  await flushPromises()
+  finish(routeFixture)
+  await flushPromises()
+  expect(wrapper.findComponent(ProcessRouteAttachments).exists()).toBe(false)
+  expect(plannedAmount().props('modelValue')).toBeUndefined()
+})
+
+it('lets dispatch correct the quantity without overwriting batch amounts, dates or the process', async () => {
+  await render()
+  date('2026-12-30T16:00:00')
+  batchDate(0, '2026-12-29T16:00:00')
+  batchAmounts()[0]!.vm.$emit('update:modelValue', 40)
+  plannedAmount().vm.$emit('update:modelValue', 80)
+  await flushPromises()
+  expect(batchAmounts()[0]!.props('modelValue')).toBe(40)
+  expect(wrapper.findAllComponents(ElDatePicker)[1]!.props('modelValue')).toBe(
+    '2026-12-29T16:00:00',
+  )
+  expect(wrapper.get('[role="status"]').text()).toContain('待分配 40 件')
+  await wrapper.get('button[aria-label="刷新工艺"]').trigger('click')
+  await flushPromises()
+  expect(plannedAmount().props('modelValue')).toBe(80)
+  await button('选择业务人员')
+  wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 1, label: '张工' }])
+  await flushPromises()
+  await uploadOrder()
+  await button('创建排期')
+  expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
+  batchAmounts()[0]!.vm.$emit('update:modelValue', 80)
+  await button('创建排期')
+  expect(productionScheduleApi.createTask).toHaveBeenCalledWith(
+    expect.objectContaining({
+      planned_quantity: 80,
+      delivery_batches: [
+        { batch_number: 1, target_quantity: 80, due_at: '2026-12-29T16:00:00+08:00' },
+      ],
+    }),
+    orderFile,
+  )
+  expect(wrapper.get('[aria-label="工艺执行班组"]').text()).toContain('100')
+})
+
+it('saves a corrected existing total and restores it when reopened', async () => {
+  await render(task)
+  plannedAmount().vm.$emit('update:modelValue', 120)
+  batchAmounts()[0]!.vm.$emit('update:modelValue', 120)
+  const updated = {
+    ...task,
+    delivery_batches: [{ ...task.delivery_batches![0]!, target_quantity: 120 }],
+  }
+  vi.mocked(productionScheduleApi.updateTask).mockResolvedValue(updated)
+  await button('保存交期')
+  expect(productionScheduleApi.updateTask).toHaveBeenCalledWith(
+    7,
+    expect.objectContaining({
+      planned_quantity: 120,
+      expected_version: 3,
+      delivery_batches: [
+        { batch_number: 1, target_quantity: 120, due_at: '2026-12-30T16:00:00+08:00' },
+      ],
+    }),
+  )
+  expect(wrapper.emitted('saved')).toEqual([[updated]])
+  wrapper.unmount()
+  await render(updated)
+  expect(plannedAmount().props('modelValue')).toBe(120)
+  expect(wrapper.get('[role="status"]').text()).toContain('剩余 0 件')
+})
+
+it.each([undefined, 0, -1, 1.5, 2147483648])(
+  'rejects invalid planned quantity %s',
+  async (amount) => {
+    await render(task)
+    plannedAmount().vm.$emit('update:modelValue', amount)
+    await button('保存交期')
+    expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
+  },
+)
+
+it('does not clamp existing batches when dispatch reduces the planned total', async () => {
+  await render(task)
+  plannedAmount().vm.$emit('update:modelValue', 80)
+  await flushPromises()
+  expect(batchAmounts()[0]!.props('modelValue')).toBe(100)
+  expect(wrapper.get('[role="status"]').text()).toContain('超出 20 件')
+  await button('保存交期')
+  expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
 })

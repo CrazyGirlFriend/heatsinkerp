@@ -221,6 +221,7 @@ export interface CustomerDeliveryBatch {
   target_quantity: number
 }
 export interface DispatchTaskWrite {
+  planned_quantity?: number
   serial_no: string
   route_id: number
   route_version: number
