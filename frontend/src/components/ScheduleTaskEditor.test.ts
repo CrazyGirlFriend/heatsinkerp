@@ -67,6 +67,7 @@ async function render(
           template: '<div v-if="modelValue"><slot/><slot name="footer"/></div>',
         },
         ScheduleSelectionDialog: true,
+        OrderDocumentPreview: true,
         WordDocumentPreview: true,
         ProcessRouteDrawingPreview: true,
       },
@@ -104,6 +105,12 @@ function plannedAmount() {
   return wrapper
     .findAllComponents(ElInputNumber)
     .find((input) => input.props('ariaLabel') === '计划数量')!
+}
+function trackFocus(element: Element) {
+  const focus = vi.spyOn(element as HTMLElement, 'focus')
+  const scroll = vi.fn()
+  Object.defineProperty(element, 'scrollIntoView', { configurable: true, value: scroll })
+  return { focus, scroll }
 }
 it('loads the serial process but requires dispatch to set the customer deadline', async () => {
   await render()
@@ -539,4 +546,117 @@ it('does not clamp existing batches when dispatch reduces the planned total', as
   expect(wrapper.get('[role="status"]').text()).toContain('超出 20 件')
   await button('保存交期')
   expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
+})
+
+it('shows the missing business contact at its field and scrolls and focuses the selection button', async () => {
+  await render({ ...task, business_people: [], business_person_id: null })
+  const field = wrapper
+    .findAllComponents(ElFormItem)
+    .find((item) => item.props('label') === '业务人员')!
+  const feedback = trackFocus(field.get('button').element)
+  await button('保存交期')
+  expect(field.props('required')).toBe(true)
+  expect(field.props('error')).toBe('请至少选择一位业务人员')
+  await vi.waitFor(() => expect(field.text()).toContain('请至少选择一位业务人员'))
+  expect(feedback.scroll).toHaveBeenCalledWith({ block: 'center', inline: 'nearest' })
+  expect(feedback.focus).toHaveBeenCalledWith({ preventScroll: true })
+  expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
+  await button('选择业务人员')
+  wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 1, label: '张工' }])
+  await flushPromises()
+  expect(field.props('error')).toBe('')
+  await button('保存交期')
+  expect(productionScheduleApi.updateTask).toHaveBeenCalledOnce()
+})
+
+it('focuses the first missing date and moves to the batch date after the deadline is corrected', async () => {
+  await render(task)
+  date('')
+  batchDate(0, '')
+  const due = wrapper.findAllComponents(ElDatePicker)
+  const deadlineFeedback = trackFocus(due[0]!.get('input').element)
+  const batchFeedback = trackFocus(due[1]!.get('input').element)
+  await button('保存交期')
+  await vi.waitFor(() => {
+    expect(wrapper.text()).toContain('请选择最终交期')
+    expect(wrapper.text()).toContain('请选择第 1 批交期')
+  })
+  expect(deadlineFeedback.scroll).toHaveBeenCalledOnce()
+  expect(deadlineFeedback.focus).toHaveBeenCalledWith({ preventScroll: true })
+  expect(batchFeedback.focus).not.toHaveBeenCalled()
+  date('2026-12-30T16:00:00')
+  await button('保存交期')
+  expect(wrapper.text()).not.toContain('请选择最终交期')
+  expect(batchFeedback.scroll).toHaveBeenCalledOnce()
+  expect(batchFeedback.focus).toHaveBeenCalledWith({ preventScroll: true })
+  expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
+})
+
+it('explains an allocation mismatch beside the batch quantity and focuses that input', async () => {
+  await render(task)
+  batchAmounts()[0]!.vm.$emit('update:modelValue', 80)
+  const feedback = trackFocus(batchAmounts()[0]!.get('input').element)
+  await button('保存交期')
+  const field = batchAmounts()[0]!.element.closest('.el-form-item')!
+  await vi.waitFor(() => expect(field.textContent).toContain('各批数量合计须为 100 件'))
+  expect(feedback.scroll).toHaveBeenCalledOnce()
+  expect(feedback.focus).toHaveBeenCalledWith({ preventScroll: true })
+  expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
+  batchAmounts()[0]!.vm.$emit('update:modelValue', 100)
+  await button('保存交期')
+  expect(field.textContent).not.toContain('各批数量合计须为')
+  expect(productionScheduleApi.updateTask).toHaveBeenCalledOnce()
+})
+
+it('focuses invalid planned and batch quantities in field order', async () => {
+  await render(task)
+  plannedAmount().vm.$emit('update:modelValue', undefined)
+  batchAmounts()[0]!.vm.$emit('update:modelValue', undefined)
+  const plannedFeedback = trackFocus(plannedAmount().get('input').element)
+  const batchFeedback = trackFocus(batchAmounts()[0]!.get('input').element)
+  await button('保存交期')
+  await vi.waitFor(() => expect(wrapper.text()).toContain('请输入 1 至 2147483647 的整数'))
+  expect(plannedFeedback.focus).toHaveBeenCalledWith({ preventScroll: true })
+  expect(batchFeedback.focus).not.toHaveBeenCalled()
+  plannedAmount().vm.$emit('update:modelValue', 100)
+  await button('保存交期')
+  expect(wrapper.text()).toContain('请输入大于 0 的整数')
+  expect(batchFeedback.scroll).toHaveBeenCalledOnce()
+  expect(batchFeedback.focus).toHaveBeenCalledWith({ preventScroll: true })
+  expect(productionScheduleApi.updateTask).not.toHaveBeenCalled()
+})
+
+it('shows missing serial and process errors and focuses the serial input', async () => {
+  await render(undefined, '')
+  const feedback = trackFocus(wrapper.get('input[aria-label="任务流水号"]').element)
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  await vi.waitFor(() => {
+    expect(wrapper.text()).toContain('请选择流水号')
+    expect(wrapper.text()).toContain('请选择关联工艺')
+  })
+  expect(feedback.scroll).toHaveBeenCalledOnce()
+  expect(feedback.focus).toHaveBeenCalledWith({ preventScroll: true })
+  expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
+})
+
+it('locates a missing order at the upload button and clears the error after uploading', async () => {
+  await render()
+  date('2026-12-30T16:00:00')
+  batchDate(0, '2026-12-29T16:00:00')
+  await button('选择业务人员')
+  wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 1, label: '张工' }])
+  await flushPromises()
+  const upload = wrapper.findAll('button').find((item) => item.text() === '上传订单表')!
+  const feedback = trackFocus(upload.element)
+  await button('创建排期')
+  const field = upload.element.closest('.el-form-item')!
+  await vi.waitFor(() => expect(field.textContent).toContain('请上传对应流水号的订单表'))
+  expect(feedback.scroll).toHaveBeenCalledOnce()
+  expect(feedback.focus).toHaveBeenCalledWith({ preventScroll: true })
+  expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
+  await uploadOrder()
+  expect(field.textContent).not.toContain('请上传对应流水号的订单表')
+  await button('创建排期')
+  expect(productionScheduleApi.createTask).toHaveBeenCalledOnce()
 })

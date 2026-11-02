@@ -62,3 +62,26 @@ describe('production schedule API errors', () => {
     expect(params.get('scope')).toBe('attention')
   })
 })
+
+it('previews the original uploaded spreadsheet bytes without creating a schedule', async () => {
+  const pdf = new Blob(['pdf'])
+  const request = vi.spyOn(http.httpClient, 'post').mockResolvedValue({ data: pdf })
+  const file = new File(['original-spreadsheet'], '订单.xlsx')
+  const signal = new AbortController().signal
+  expect(await productionScheduleApi.previewOrder(file, signal)).toBe(pdf)
+  const [url, body, config] = request.mock.calls[0]!
+  expect(url).toBe('/production-schedules/order-preview')
+  expect((body as FormData).get('file')).toBe(file)
+  expect(config).toEqual({ responseType: 'blob', signal })
+})
+
+it('requests the saved order preview separately from its original download', async () => {
+  const pdf = new Blob(['pdf'])
+  const request = vi.spyOn(http.httpClient, 'get').mockResolvedValue({ data: pdf })
+  const signal = new AbortController().signal
+  expect(await productionScheduleApi.orderPreview(42, signal)).toBe(pdf)
+  expect(request).toHaveBeenCalledWith('/production-schedules/tasks/42/order?preview=true', {
+    responseType: 'blob',
+    signal,
+  })
+})

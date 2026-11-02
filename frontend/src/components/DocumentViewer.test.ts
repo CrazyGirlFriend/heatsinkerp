@@ -53,3 +53,16 @@ it('retains Word isolation and releases the active viewer with Escape', async ()
   await flushPromises()
   expect(wrapper.emitted('close')).toHaveLength(1)
 })
+
+it('opens wide order worksheets at a readable scale and still offers fit-to-window', async () => {
+  wrapper = mount(DocumentViewer, {
+    attachTo: document.body,
+    props: { title: '订单表', pdf: 'blob:original-order', initialZoom: 100 },
+  })
+  await flushPromises()
+  const frame = document.querySelector('.document-viewer iframe')!
+  expect(frame.getAttribute('src')).toContain('zoom=100')
+  ;(document.querySelector('button[aria-label="适合窗口"]') as HTMLButtonElement).click()
+  await flushPromises()
+  expect(frame.getAttribute('src')).toContain('view=Fit')
+})

@@ -4,7 +4,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ElSelect } from 'element-plus'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
+import DocumentViewer from './DocumentViewer.vue'
 import { processRouteApi } from '@/services/processRouteApi'
+import { productionScheduleApi } from '@/services/productionScheduleApi'
 import { routeFixture } from '@/testFixtures/processRoute'
 import { orderFixture } from '@/testFixtures/processRouteOrder'
 let wrapper: VueWrapper
@@ -15,6 +17,7 @@ beforeEach(() => {
 afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 it('switches serial-specific attachments and keeps the bound version', async () => {
   const detail = vi
@@ -107,6 +110,7 @@ it('loads the independent order document alongside the bound engineering attachm
   await flushPromises()
   expect(wrapper.getComponent(ProcessRouteAttachments).props('route')).toEqual(routeFixture)
   expect(wrapper.getComponent(ProcessRouteAttachments).props('orderDocument')).toEqual(document)
+  expect(wrapper.getComponent(ProcessRouteAttachments).props('orderTaskId')).toBe(51)
 })
 
 it('keeps process and drawing previews available when the order request fails, and retries', async () => {
@@ -123,4 +127,49 @@ it('keeps process and drawing previews available when the order request fails, a
   await flushPromises()
   expect(wrapper.text()).not.toContain('订单表读取失败')
   expect(processRouteApi.dispatchOrder).toHaveBeenCalledTimes(2)
+})
+
+it('switches the original order preview and download with the processing form serial', async () => {
+  vi.mocked(processRouteApi.dispatchOrder).mockImplementation(async (_, serial) => ({
+    task_id: serial === 'ORDER-A' ? 51 : 52,
+    document: { ...orderFixture, serial_no: serial, filename: `${serial}.xlsx` },
+  }))
+  vi.spyOn(productionScheduleApi, 'orderPreview').mockResolvedValue(new Blob(['original-pdf']))
+  const legacy = vi.spyOn(processRouteApi, 'orderPreview')
+  const download = vi.spyOn(productionScheduleApi, 'downloadOrder').mockResolvedValue(undefined)
+  vi.stubGlobal(
+    'URL',
+    class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:team-order-original')
+      static revokeObjectURL = vi.fn()
+    },
+  )
+  wrapper = mount(SerialRouteAttachments, {
+    props: {
+      items: [
+        { serialNo: 'ORDER-A', route: routeFixture },
+        { serialNo: 'ORDER-B', route: routeFixture },
+      ],
+    },
+    global: {
+      stubs: { WordDocumentPreview: true, ProcessRouteDrawingPreview: true, DocumentViewer: true },
+    },
+  })
+  await flushPromises()
+  expect(productionScheduleApi.orderPreview).toHaveBeenLastCalledWith(51, expect.any(AbortSignal))
+  await wrapper.get('[aria-label="放大订单表"]').trigger('click')
+  expect(wrapper.getComponent(DocumentViewer).props('pdf')).toBe('blob:team-order-original')
+  expect(wrapper.getComponent(DocumentViewer).props('html')).toBeUndefined()
+  expect(wrapper.find('.route-attachment-rail table').exists()).toBe(false)
+  wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', `ORDER-B:${routeFixture.id}`)
+  await flushPromises()
+  expect(productionScheduleApi.orderPreview).toHaveBeenLastCalledWith(52, expect.any(AbortSignal))
+  expect(wrapper.findComponent(DocumentViewer).exists()).toBe(false)
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:team-order-original')
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === '下载原件')!
+    .trigger('click')
+  expect(download).toHaveBeenCalledWith(52, 'ORDER-B.xlsx')
+  expect(legacy).not.toHaveBeenCalled()
 })

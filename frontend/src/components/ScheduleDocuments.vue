@@ -92,6 +92,7 @@ onBeforeUnmount(() => ++generation)
             :route="route"
             :order-document="order"
             :order-file="orderFile"
+            :order-task-id="taskId"
             :order-download="orderDownload"
           />
         </div>

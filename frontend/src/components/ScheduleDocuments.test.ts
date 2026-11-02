@@ -18,10 +18,20 @@ beforeEach(() => {
   route.source_data.order_document = structuredClone(orderFixture)
   route.drawings = [{ id: 31, filename: '零件.pdf', size_bytes: 100 }]
   vi.spyOn(processRouteApi, 'detail').mockResolvedValue(route)
+  vi.spyOn(processRouteApi, 'orderPreview').mockResolvedValue(new Blob(['pdf']))
+  vi.spyOn(productionScheduleApi, 'orderPreview').mockResolvedValue(new Blob(['pdf']))
+  vi.stubGlobal(
+    'URL',
+    class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:order-original')
+      static revokeObjectURL = vi.fn()
+    },
+  )
 })
 afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 function render(routeIds: (number | null)[] = [8, 8, null]) {
   wrapper = mount(ScheduleDocuments, {
@@ -74,7 +84,7 @@ it('preloads three document kinds beside the schedule with no duplicate serial-i
     thumbnail: true,
   })
 })
-it('opens order and serial data together and downloads the dispatch order', async () => {
+it('previews the dispatch original layout and downloads its unchanged source file', async () => {
   const order = { ...orderFixture, filename: '调度提供.xlsx', serial_no: 'S-001' }
   const download = vi.spyOn(productionScheduleApi, 'downloadOrder').mockResolvedValue(undefined)
   const task = vi.spyOn(productionScheduleApi, 'task')
@@ -85,11 +95,10 @@ it('opens order and serial data together and downloads the dispatch order', asyn
   expect(wrapper.text()).toContain('调度提供.xlsx')
   expect(wrapper.text()).not.toContain(orderFixture.filename)
   await wrapper.get('button[aria-label="放大订单表"]').trigger('click')
-  const html = wrapper.getComponent(DocumentViewer).props('html')
-  expect(html).toContain('调度提供.xlsx')
-  expect(html).toContain('流水号')
-  expect(html).toContain('S-001')
-  expect(html).toContain('11600')
+  expect(productionScheduleApi.orderPreview).toHaveBeenCalledWith(42, expect.any(AbortSignal))
+  expect(wrapper.getComponent(DocumentViewer).props('pdf')).toBe('blob:order-original')
+  expect(wrapper.getComponent(DocumentViewer).props('html')).toBeUndefined()
+  expect(wrapper.find('.route-order-thumbnail table').exists()).toBe(false)
   await click('下载原件')
   expect(download).toHaveBeenCalledWith(42, '调度提供.xlsx')
 })

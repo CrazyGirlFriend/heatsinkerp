@@ -124,6 +124,13 @@ export const processRouteApi = {
       Pick<ProcessRoute, 'title' | 'filename' | 'serial_nos' | 'steps' | 'source_data'>
     >('/parse', 'POST', body)
   },
+  orderPreview: async (routeId: number, signal?: AbortSignal): Promise<Blob> => {
+    const response = await httpClient.get(`/process-routes/${routeId}/order?preview=true`, {
+      responseType: 'blob',
+      signal,
+    })
+    return response.data
+  },
   downloadOrder: async (route: ProcessRoute) => {
     const response = await httpClient.get(`/process-routes/${route.id}/order`, {
       responseType: 'blob',

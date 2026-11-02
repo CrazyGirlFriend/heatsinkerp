@@ -24,6 +24,7 @@ from .async_api import AsyncAPIRouter as APIRouter
 from .auth import get_current_user, require_admin
 from .database import get_db
 from .models import ProductionScheduleOrderFile, User
+from .order_document_preview import order_document_preview
 from .process_route_import import MAX_FILE_BYTES
 from .process_route_orders import parse_order
 from .production_schedule_schemas import (
@@ -304,20 +305,52 @@ async def preview_order(
 
 
 @router.get("/tasks/{task_id}/order")
-def download_order(task_id: int, db: Session = Depends(get_db)):
-    tasks.require_task(db, task_id)
-    order = db.get(ProductionScheduleOrderFile, task_id)
-    if order is None:
-        raise HTTPException(404, "尚未上传订单表")
+async def download_order(task_id: int, preview: bool = False, db: AsyncSession = Depends(get_db)):
+    def original(session):
+        tasks.require_task(session, task_id)
+        order = session.get(ProductionScheduleOrderFile, task_id)
+        if order is None:
+            raise HTTPException(404, "尚未上传订单表")
+        return order.filename, order.content
+
+    filename, content = await db.run_sync(original)
+    if preview:
+        content = await run_in_threadpool(order_document_preview, content, filename)
+        filename = str(PurePath(filename).with_suffix(".pdf"))
     return Response(
-        order.content,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        content,
+        media_type="application/pdf"
+        if preview
+        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
-            "Content-Disposition": "attachment; filename*=UTF-8''" + quote(order.filename),
+            "Content-Disposition": ("inline" if preview else "attachment")
+            + "; filename*=UTF-8''"
+            + quote(filename),
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "private, no-store",
         },
     )
+
+
+@router.post("/order-preview")
+async def preview_order_original(
+    file: Annotated[UploadFile, File()], user: User = Depends(require_dispatch)
+):
+    try:
+        filename, content, _ = await read_order(file)
+        pdf = await run_in_threadpool(order_document_preview, content, filename)
+        return Response(
+            pdf,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": "inline; filename*=UTF-8''"
+                + quote(str(PurePath(filename).with_suffix(".pdf"))),
+                "X-Content-Type-Options": "nosniff",
+                "Cache-Control": "private, no-store",
+            },
+        )
+    finally:
+        await file.close()
 
 
 @router.get("/tasks/{task_id}/rework-options")

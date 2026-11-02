@@ -4,7 +4,7 @@ import { ElAlert, ElButton, ElIcon } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
 import WordDocumentPreview from './WordDocumentPreview.vue'
 import ProcessRouteDrawingPreview from './ProcessRouteDrawingPreview.vue'
-import DocumentViewer from './DocumentViewer.vue'
+import OrderDocumentPreview from './OrderDocumentPreview.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute, RouteOrderDocument } from '@/types/processRoute'
 const props = withDefaults(
@@ -15,6 +15,7 @@ const props = withDefaults(
     orderThumbnail?: boolean
     sourceFile?: File
     orderFile?: File
+    orderTaskId?: number
     orderDocument?: RouteOrderDocument | null
     orderDownload?: () => Promise<void>
     pendingDrawings?: File[]
@@ -28,30 +29,11 @@ const emit = defineEmits<{
   removePendingDrawing: [file: File]
 }>()
 const wordPreview = ref<InstanceType<typeof WordDocumentPreview>>()
-const orderViewing = ref(false),
-  error = ref('')
+const orderPreview = ref<InstanceType<typeof OrderDocumentPreview>>()
+const error = ref('')
 const order = computed(() =>
   props.orderDocument === undefined ? props.route.source_data.order_document : props.orderDocument,
 )
-const orderHtml = computed(() => {
-  const document = order.value
-  if (!document) return ''
-  const escape = (value: string) =>
-    value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;')
-  const values = document.display_values || document.values
-  const rows = document.headers
-    .map(
-      (label, index) =>
-        `<tr><th>${escape(label || '—')}</th><td>${escape(values[index] || '—')}</td></tr>`,
-    )
-    .join('')
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>body{margin:24px;font:14px system-ui;color:#17221e}section{width:760px;background:white;padding:24px;box-sizing:border-box}h1{font-size:18px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #cbd5cf;padding:10px;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere}th{width:180px;background:#f2f6f3}</style></head><body><main id="original-pages"><section class="docx-original"><h1>${escape(document.filename)}</h1><table>${rows}</table></section></main></body></html>`
-})
 
 async function downloadOrder() {
   try {
@@ -70,35 +52,25 @@ async function downloadOrder() {
 }
 function open(kind: 'word' | 'order') {
   if (!props.documents.includes(kind)) return
-  if (kind === 'order') orderViewing.value = true
+  if (kind === 'order') orderPreview.value?.open()
   else wordPreview.value?.open()
 }
 defineExpose({ open })
 </script>
 <template>
   <aside class="route-attachment-rail" aria-label="工艺附件缩略图">
-    <div v-if="documents.includes('order') && order" class="route-attachment-card">
-      <button
-        type="button"
-        class="route-order-thumbnail"
-        :class="{ 'route-order-thumbnail--full': !orderThumbnail }"
-        aria-label="放大订单表"
-        @click="orderViewing = true"
-      >
-        <table aria-hidden="true">
-          <tbody>
-            <tr
-              v-for="(label, index) in orderThumbnail ? order.headers.slice(0, 12) : order.headers"
-              :key="index"
-            >
-              <th>{{ label }}</th>
-              <td>
-                {{ (order.display_values || order.values)[index] }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </button>
+    <div
+      v-if="documents.includes('order') && order"
+      class="route-attachment-card"
+      :class="{ 'route-attachment-card--full': !orderThumbnail }"
+    >
+      <OrderDocumentPreview
+        ref="orderPreview"
+        :route-id="route.id"
+        :task-id="orderTaskId"
+        :file="orderFile"
+        :thumbnail="orderThumbnail"
+      />
       <strong>订单表</strong>
       <span :title="order.filename">{{ order.filename }}</span>
       <ElButton link @click="downloadOrder">下载原件</ElButton>
@@ -171,12 +143,6 @@ defineExpose({ open })
       ><span>{{ route.route_kind === 'rework' ? '图纸缺失' : '未上传' }}</span>
     </div>
   </aside>
-  <DocumentViewer
-    v-if="orderViewing && documents.includes('order')"
-    title="订单表"
-    :html="orderHtml"
-    @close="orderViewing = false"
-  />
   <ElAlert v-if="error" :title="error" type="error" :closable="false" />
 </template>
 <style scoped>
@@ -224,50 +190,6 @@ defineExpose({ open })
 .route-attachment-card--missing > span {
   color: #9b702e;
 }
-.route-order-thumbnail {
-  height: 150px;
-  overflow: hidden;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: white;
-  cursor: zoom-in;
-}
-.route-order-thumbnail:hover,
-.route-order-thumbnail:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-.route-order-thumbnail table {
-  width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
-  font-size: 4px;
-  line-height: 1.5;
-  color: var(--text);
-}
-.route-order-thumbnail :is(th, td) {
-  border: 1px solid #d5ddd8;
-  padding: 2px;
-  overflow-wrap: anywhere;
-}
-.route-order-thumbnail--full {
-  height: auto;
-  padding: 0;
-  text-align: left;
-}
-.route-order-thumbnail--full table {
-  font-size: 13px;
-}
-.route-order-thumbnail--full :is(th, td) {
-  padding: 8px 12px;
-  white-space: pre-wrap;
-  font-weight: 400;
-}
-.route-order-thumbnail--full th {
-  width: 28%;
-  background: #f2f6f3;
-}
 
 @media (max-width: 760px) {
   .route-attachment-rail {
@@ -278,7 +200,7 @@ defineExpose({ open })
   .route-attachment-card {
     flex: 0 0 160px;
   }
-  .route-attachment-card:has(.route-order-thumbnail--full) {
+  .route-attachment-card--full {
     flex: 1 0 100%;
   }
 }

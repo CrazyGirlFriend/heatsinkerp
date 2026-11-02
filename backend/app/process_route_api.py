@@ -32,6 +32,7 @@ from .models import (
     User,
     utcnow,
 )
+from .order_document_preview import order_document_preview
 from .process_route_drawings import MAX_DRAWINGS, copy_drawings, drawing_preview, validate_drawing
 from .process_route_import import MAX_FILE_BYTES, parse_docx
 from .process_route_orders import (
@@ -563,18 +564,32 @@ async def attach_order(
 
 
 @router.get("/{route_id}/order")
-def download_order(
-    route_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+async def download_order(
+    route_id: int,
+    preview: bool = False,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    require_route_reader(require_route(db, route_id), user)
-    original = db.get(ProcessRouteOrderFile, route_id)
-    if original is None:
-        raise HTTPException(404, "尚未上传订单表")
+    def original(session):
+        require_route_reader(require_route(session, route_id), user)
+        order = session.get(ProcessRouteOrderFile, route_id)
+        if order is None:
+            raise HTTPException(404, "尚未上传订单表")
+        return order.filename, order.content
+
+    filename, content = await db.run_sync(original)
+    if preview:
+        content = await run_in_threadpool(order_document_preview, content, filename)
+        filename = str(PurePath(filename).with_suffix(".pdf"))
     return Response(
-        original.content,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        content,
+        media_type="application/pdf"
+        if preview
+        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
-            "Content-Disposition": "attachment; filename*=UTF-8''" + quote(original.filename),
+            "Content-Disposition": ("inline" if preview else "attachment")
+            + "; filename*=UTF-8''"
+            + quote(filename),
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "private, no-store",
         },

@@ -425,9 +425,39 @@ describe('task scheduling board', () => {
     wrapper.getComponent(ScheduleTaskEditor).vm.$emit('saved', task)
     await flushPromises()
     expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(2)
+    expect(wrapper.findComponent(ScheduleTaskEditor).exists()).toBe(false)
+    expect(wrapper.find('.task-detail__heading').exists()).toBe(false)
+    expect(productionScheduleApi.task).toHaveBeenCalledTimes(1)
     wrapper.getComponent(DeliverySchedules).vm.$emit('changed')
     await flushPromises()
     expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(3)
+  })
+  it('returns to the same filtered list page after creating a task without opening its details', async () => {
+    vi.mocked(productionScheduleApi.tasks).mockResolvedValue({
+      items: [task],
+      total: 21,
+      page: 1,
+      page_size: 10,
+    })
+    await render('/production-schedules?serial_no=S-001')
+    await wrapper.setProps({ management: true })
+    wrapper.getComponent({ name: 'ElTable' }).vm.$emit('sort-change', {
+      prop: 'final_due_at',
+      order: 'descending',
+    })
+    wrapper.getComponent(ElPagination).vm.$emit('current-change', 2)
+    await flushPromises()
+    await button('新建任务排期')
+    expect(wrapper.getComponent(ScheduleTaskEditor).props('task')).toBeNull()
+    wrapper.getComponent(ScheduleTaskEditor).vm.$emit('saved', task)
+    await flushPromises()
+    expect(wrapper.findComponent(ScheduleTaskEditor).exists()).toBe(false)
+    expect(wrapper.find('.task-detail__heading').exists()).toBe(false)
+    expect(productionScheduleApi.task).not.toHaveBeenCalled()
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: 'S-001', sort_order: 'desc', page: 2, page_size: 10 }),
+    )
+    expect(wrapper.getComponent(ElPagination).props('currentPage')).toBe(2)
   })
   it('preserves a task switch while the saved task list refresh is still pending', async () => {
     await render('/production-schedules?task_id=7')

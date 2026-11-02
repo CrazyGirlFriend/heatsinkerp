@@ -4,6 +4,16 @@ import { processRouteApi, ProcessRouteSerialConflictError } from './processRoute
 import * as http from './httpClient'
 import { routeFixture } from '@/testFixtures/processRoute'
 afterEach(() => vi.restoreAllMocks())
+it('reads a legacy order original as an authenticated preview with cancellation', async () => {
+  const pdf = new Blob(['pdf'])
+  const request = vi.spyOn(http.httpClient, 'get').mockResolvedValue({ data: pdf })
+  const signal = new AbortController().signal
+  expect(await processRouteApi.orderPreview(8, signal)).toBe(pdf)
+  expect(request).toHaveBeenCalledWith('/process-routes/8/order?preview=true', {
+    responseType: 'blob',
+    signal,
+  })
+})
 it('identifies a duplicate normal serial so the form can highlight that field', async () => {
   const failure = new http.HttpRequestError('Conflict', 409, {
     detail: { code: 'duplicate_process_route_serial', message: '流水号“S-001”已有正常工艺' },

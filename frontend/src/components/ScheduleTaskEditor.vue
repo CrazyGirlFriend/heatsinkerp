@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import type { Dayjs } from 'dayjs'
 import {
   ElAlert,
@@ -30,6 +30,7 @@ import type {
 import type { ProcessRoute, RouteOrderDocument } from '@/types/processRoute'
 import { materialRequestKey } from '@/utils/materialStock'
 import { formatDateTime } from '@/utils/format'
+import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 
 const props = defineProps<{
   task?: ScheduleTask | null
@@ -45,6 +46,7 @@ const visible = ref(true),
   error = ref(''),
   submitted = ref(false),
   personOpen = ref(false)
+const form = ref<{ $el: HTMLElement }>()
 const serial = ref(props.task?.serial_no || props.routeSerial || '')
 const orderInput = ref<HTMLInputElement>(),
   orderFile = ref<File>(),
@@ -139,6 +141,21 @@ const allocationError = computed(() =>
     : '',
 )
 const finalDueError = computed(() => (submitted.value && !finalDue.value ? '请选择最终交期' : ''))
+const serialError = computed(() => (submitted.value && !serial.value.trim() ? '请选择流水号' : ''))
+const routeError = computed(() =>
+  submitted.value && !props.task && !selectedRoute.value ? '请选择关联工艺' : '',
+)
+const peopleError = computed(() =>
+  submitted.value && !people.value.length ? '请至少选择一位业务人员' : '',
+)
+const orderRequiredError = computed(() =>
+  submitted.value &&
+  !props.task &&
+  selectedRoute.value &&
+  (!orderFile.value || orderDocument.value?.serial_no !== serial.value.trim())
+    ? '请上传对应流水号的订单表'
+    : '',
+)
 function quantityError(index: number) {
   if (!props.task && !selectedRoute.value) return ''
   const value = batches.value[index]!.quantity
@@ -229,23 +246,18 @@ async function save() {
   if (saving.value || !writable.value || loading.value || orderBusy.value) return
   error.value = ''
   submitted.value = true
-  if (!serial.value.trim() || (!props.task && !selectedRoute.value)) {
-    error.value = '请选择流水号和对应工艺'
-    return
-  }
-  if (!finalDue.value || plannedQuantityError.value) {
-    return
-  }
-  for (const [index, batch] of batches.value.entries()) {
-    if (!batch.due || quantityError(index) || batchDueError(index)) return
-  }
-  if (allocationError.value) return
-  if (!people.value.length) {
-    error.value = '请至少选择一位业务人员'
-    return
-  }
-  if (!props.task && (!orderFile.value || orderDocument.value?.serial_no !== serial.value.trim())) {
-    error.value = '请上传对应流水号的订单表'
+  if (
+    serialError.value ||
+    routeError.value ||
+    finalDueError.value ||
+    plannedQuantityError.value ||
+    batches.value.some((_, index) => quantityError(index) || batchDueError(index)) ||
+    allocationError.value ||
+    peopleError.value ||
+    orderRequiredError.value
+  ) {
+    await nextTick()
+    focusFirstInvalidField(form.value?.$el)
     return
   }
   saving.value = true
@@ -336,6 +348,7 @@ onMounted(loadRoutes)
   >
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <ElForm
+      ref="form"
       label-position="top"
       :disabled="saving || !writable"
       class="dispatch-task-form"
@@ -350,27 +363,29 @@ onMounted(loadRoutes)
           :order-file="orderFile"
         >
           <template v-if="!task" #upload>
-            <ElButton
-              :icon="Upload"
-              :loading="orderBusy"
-              :disabled="!selectedRoute || saving"
-              @click="orderInput?.click()"
-              >{{ orderFile ? '替换订单表' : '上传订单表' }}</ElButton
-            >
-            <input
-              ref="orderInput"
-              type="file"
-              accept=".xlsx"
-              hidden
-              aria-label="上传订单表"
-              @change="importOrder"
-            />
+            <ElFormItem class="dispatch-order-field" :error="orderRequiredError">
+              <ElButton
+                :icon="Upload"
+                :loading="orderBusy"
+                :disabled="!selectedRoute || saving"
+                @click="orderInput?.click()"
+                >{{ orderFile ? '替换订单表' : '上传订单表' }}</ElButton
+              >
+              <input
+                ref="orderInput"
+                type="file"
+                accept=".xlsx"
+                hidden
+                aria-label="上传订单表"
+                @change="importOrder"
+              />
+            </ElFormItem>
             <ElAlert v-if="orderError" :title="orderError" type="error" :closable="false" />
           </template>
         </ScheduleDocuments>
         <div class="dispatch-task-content">
           <div class="dispatch-task-fields">
-            <ElFormItem label="流水号" required
+            <ElFormItem label="流水号" required :error="serialError"
               ><MaterialInput
                 v-model="serial"
                 field="serial_no"
@@ -389,14 +404,19 @@ onMounted(loadRoutes)
               />
               <span class="dispatch-field-hint">各批交期的最晚时间 · 按整点选择</span>
             </ElFormItem>
-            <ElFormItem label="业务人员"
+            <ElFormItem label="业务人员" required :error="peopleError"
               ><ElButton class="dispatch-person-select" @click="personOpen = true">{{
                 people.length ? people.map((p) => p.label).join('、') : '选择业务人员'
               }}</ElButton></ElFormItem
             >
           </div>
           <div class="dispatch-route-fields">
-            <ElFormItem v-if="!task" class="dispatch-route-select" label="关联工艺" required
+            <ElFormItem
+              v-if="!task"
+              class="dispatch-route-select"
+              label="关联工艺"
+              required
+              :error="routeError"
               ><div class="dispatch-route-choice">
                 <ScheduleRouteSelect
                   v-model="routeId"
@@ -459,7 +479,12 @@ onMounted(loadRoutes)
             >
             <ElTableColumn label="数量（件）" width="170"
               ><template #default="{ row, $index }"
-                ><ElFormItem class="dispatch-batch-field" :error="quantityError($index)">
+                ><ElFormItem
+                  class="dispatch-batch-field"
+                  :error="
+                    quantityError($index) || (submitted && $index === 0 ? allocationError : '')
+                  "
+                >
                   <ElInputNumber
                     v-model="row.quantity"
                     :min="1"
@@ -670,10 +695,12 @@ onMounted(loadRoutes)
   font-weight: 400;
   line-height: 18px;
 }
-.dispatch-batch-field {
+.dispatch-batch-field,
+.dispatch-order-field {
   margin-bottom: 0;
 }
-.dispatch-batch-field :deep(.el-form-item__error) {
+.dispatch-batch-field :deep(.el-form-item__error),
+.dispatch-order-field :deep(.el-form-item__error) {
   position: static;
   line-height: 18px;
 }

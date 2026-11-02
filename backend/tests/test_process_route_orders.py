@@ -3,10 +3,14 @@ from xml.sax.saxutils import escape
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
+from app import process_route_api
+from app.database import SessionLocal
+from app.models import ProcessRouteOrderFile
 from app.process_route_orders import merge_materials, parse_order
 from fastapi import HTTPException
 from sender_helpers import sender_post
 from test_engineering_team import engineering as engineering  # noqa: F401
+from test_order_document_preview import pdf
 from test_process_route_creation import manual, upload
 from test_process_route_import import HEADERS, docx
 from test_warehouse_receipts import intake
@@ -265,6 +269,57 @@ def test_order_attachments_confirmation_revision_and_reader_permissions(
         ]["value"]
         == "热沉"
     )
+
+
+def test_original_order_preview_keeps_draft_reader_permissions_and_download(
+    client, warehouse, engineering, monkeypatch
+):
+    route = manual(client, warehouse, engineering)
+    content = xlsx([route["serial_nos"][0], *VALUES[1:]])
+    endpoint = f"{URL}/{route['id']}/order"
+    attached = client.post(
+        endpoint,
+        headers=engineering["headers"],
+        data={"version": route["version"]},
+        files={"file": ("订单.xlsx", content)},
+    )
+    assert attached.status_code == 200, attached.text
+    route = attached.json()
+    calls = []
+
+    def render(original, filename):
+        calls.append((original, filename))
+        return pdf()
+
+    monkeypatch.setattr(process_route_api, "order_document_preview", render)
+    assert client.get(endpoint).content == content
+    assert client.get(endpoint + "?preview=true", headers={"Authorization": ""}).status_code == 401
+    assert client.get(endpoint + "?preview=true", headers=warehouse["headers"]).status_code == 403
+    assert calls == []
+    response = client.get(endpoint + "?preview=true", headers=engineering["headers"])
+    assert response.status_code == 200 and response.content == pdf()
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"].startswith("inline;")
+    assert response.headers["cache-control"] == "private, no-store"
+    assert calls == [(content, "订单.xlsx")]
+    published = client.post(
+        f"{URL}/{route['id']}/publish",
+        json={"version": route["version"], "confirmed_imports": True},
+    )
+    assert published.status_code == 200, published.text
+    assert client.get(endpoint + "?preview=true", headers=warehouse["headers"]).content == pdf()
+
+    def unavailable(original, filename):
+        raise HTTPException(503, "订单原件预览暂时不可用")
+
+    monkeypatch.setattr(process_route_api, "order_document_preview", unavailable)
+    assert client.get(endpoint + "?preview=true").status_code == 503
+    assert client.get(endpoint).content == content
+    assert client.get(f"{URL}/999999/order?preview=true").status_code == 404
+    with SessionLocal() as db:
+        db.delete(db.get(ProcessRouteOrderFile, route["id"]))
+        db.commit()
+    assert client.get(endpoint + "?preview=true").status_code == 404
 
 
 def test_material_can_be_added_corrected_and_read_back(client, warehouse, engineering):

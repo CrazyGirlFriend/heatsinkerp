@@ -3,8 +3,12 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ElDatePicker, ElInputNumber } from 'element-plus'
 import ScheduleBatchEditor from './ScheduleBatchEditor.vue'
+import DocumentViewer from './DocumentViewer.vue'
+import { processRouteApi } from '@/services/processRouteApi'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import { scheduleSummaryFixture } from '@/testFixtures/inventorySchedule'
+import { routeFixture } from '@/testFixtures/processRoute'
+import { orderFixture } from '@/testFixtures/processRouteOrder'
 import type { ProductionSchedule, ScheduleTask } from '@/types/productionSchedule'
 
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isDispatch: false }) }))
@@ -13,22 +17,42 @@ const schedule = {
   ...scheduleSummaryFixture(),
   id: 5,
   task_id: 2,
+  process_route_id: routeFixture.id,
   version: 7,
   completion_basis: 'quantity',
   due_at: '2026-12-21T08:00:00Z',
   batches: [],
 } as unknown as ProductionSchedule
-async function render() {
+async function render(task: Partial<ScheduleTask> = {}) {
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue({
+    ...routeFixture,
+    source_data: { ...routeFixture.source_data, order_document: orderFixture },
+  })
+  vi.spyOn(processRouteApi, 'orderPreview')
+  vi.spyOn(productionScheduleApi, 'orderPreview').mockResolvedValue(new Blob(['original-pdf']))
+  vi.stubGlobal(
+    'URL',
+    class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:team-order-original')
+      static revokeObjectURL = vi.fn()
+    },
+  )
   vi.spyOn(productionScheduleApi, 'task').mockResolvedValue({
     id: 2,
     final_due_at: '2026-12-30T08:00:00Z',
     nodes: [],
+    ...task,
   } as unknown as ScheduleTask)
   vi.spyOn(productionScheduleApi, 'saveBatches').mockResolvedValue(schedule)
   wrapper = mount(ScheduleBatchEditor, {
     props: { schedule },
     global: {
-      stubs: { AppDialog: { template: '<div><slot/><slot name="footer"/></div>' } },
+      stubs: {
+        AppDialog: { template: '<div><slot/><slot name="footer"/></div>' },
+        WordDocumentPreview: true,
+        ProcessRouteDrawingPreview: true,
+        DocumentViewer: true,
+      },
       directives: { loading: () => {} },
     },
   })
@@ -44,8 +68,39 @@ async function click(label: string) {
 afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 describe('team batch planner', () => {
+  it('previews and downloads the task original beside the team submission form', async () => {
+    const download = vi.spyOn(productionScheduleApi, 'downloadOrder').mockResolvedValue(undefined)
+    await render({ order_document: { ...orderFixture, filename: '调度订单原件.xlsx' } })
+    expect(productionScheduleApi.task).toHaveBeenCalledTimes(1)
+    expect(processRouteApi.detail).toHaveBeenCalledWith(schedule.process_route_id)
+    expect(productionScheduleApi.orderPreview).toHaveBeenCalledWith(2, expect.any(AbortSignal))
+    expect(processRouteApi.orderPreview).not.toHaveBeenCalled()
+    const rail = wrapper.get('[aria-label="排期附件缩略图"]')
+    expect(rail.find('table').exists()).toBe(false)
+    expect(rail.get('iframe[title="订单表原件"]').attributes('src')).toContain(
+      'blob:team-order-original',
+    )
+    await rail.get('button[aria-label="放大订单表"]').trigger('click')
+    expect(wrapper.getComponent(DocumentViewer).props()).toMatchObject({
+      pdf: 'blob:team-order-original',
+      initialZoom: 100,
+    })
+    expect(wrapper.getComponent(DocumentViewer).props('html')).toBeUndefined()
+    await click('下载原件')
+    expect(download).toHaveBeenCalledWith(2, '调度订单原件.xlsx')
+    expect(wrapper.findAllComponents(ElDatePicker)).toHaveLength(2)
+    expect(wrapper.text()).toContain('提交调度确认')
+  })
+  it('never substitutes the engineering order when this task has no order document', async () => {
+    await render()
+    expect(wrapper.get('[aria-label="排期附件缩略图"]').text()).toContain('未上传')
+    expect(wrapper.find('[aria-label="放大订单表"]').exists()).toBe(false)
+    expect(processRouteApi.orderPreview).not.toHaveBeenCalled()
+    expect(productionScheduleApi.orderPreview).not.toHaveBeenCalled()
+  })
   it('requires an explicit start and keeps the final deadline read-only', async () => {
     await render()
     expect(wrapper.findAllComponents(ElDatePicker)[0]!.props('modelValue')).toBe('')

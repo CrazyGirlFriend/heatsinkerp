@@ -4,11 +4,14 @@ import { ElIcon, useZIndex } from 'element-plus'
 import { ElFocusTrap } from 'element-plus/es/components/focus-trap/index'
 import { Close, FullScreen, ZoomIn, ZoomOut } from '@element-plus/icons-vue'
 
-const props = defineProps<{ title: string; pdf?: string; html?: string }>()
+const props = withDefaults(
+  defineProps<{ title: string; pdf?: string; html?: string; initialZoom?: number | 'fit' }>(),
+  { initialZoom: 'fit' },
+)
 const emit = defineEmits<{ close: [] }>()
 const root = ref<HTMLElement>(),
   frame = ref<HTMLIFrameElement>()
-const zoom = ref<number | 'fit'>('fit')
+const zoom = ref<number | 'fit'>(props.initialZoom)
 const { nextZIndex } = useZIndex()
 const zIndex = nextZIndex()
 const pdfSource = computed(() =>

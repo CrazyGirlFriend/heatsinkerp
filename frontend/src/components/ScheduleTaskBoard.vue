@@ -325,10 +325,11 @@ function editTask(task: ScheduleTask) {
   editingTask.value = task
   editorOpen.value = true
 }
-function saved(task: ScheduleTask) {
+function saved() {
   editorOpen.value = false
+  editingTask.value = null
+  closeTask()
   void load()
-  void openTask(task.id)
 }
 function nodeChanged() {
   void load()

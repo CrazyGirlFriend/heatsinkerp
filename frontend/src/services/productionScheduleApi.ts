@@ -102,6 +102,22 @@ export const productionScheduleApi = {
       body,
     })
   },
+  previewOrder: async (file: File, signal?: AbortSignal): Promise<Blob> => {
+    const body = new FormData()
+    body.append('file', file)
+    const response = await httpClient.post('/production-schedules/order-preview', body, {
+      responseType: 'blob',
+      signal,
+    })
+    return response.data
+  },
+  orderPreview: async (taskId: number, signal?: AbortSignal): Promise<Blob> => {
+    const response = await httpClient.get(
+      `/production-schedules/tasks/${taskId}/order?preview=true`,
+      { responseType: 'blob', signal },
+    )
+    return response.data
+  },
   downloadOrder: async (taskId: number, filename: string) => {
     const response = await httpClient.get(`/production-schedules/tasks/${taskId}/order`, {
       responseType: 'blob',
