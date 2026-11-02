@@ -9,7 +9,7 @@ from fastapi import Depends, File, Form, HTTPException, Path, Query, Response, U
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, aliased, defer
+from sqlalchemy.orm import Session, aliased
 from starlette.concurrency import run_in_threadpool
 
 from .async_api import AsyncAPIRouter
@@ -281,33 +281,56 @@ def list_routes(
         .where(successor.parent_id == ProcessRoute.id, successor.state == "published")
         .exists()
     )
-    where.extend(
-        [
-            ~archived,
-            ~((ProcessRoute.parent_id.is_not(None)) & (ProcessRoute.state == "draft")),
-            ~superseded,
-        ]
-    )
+    current = [
+        ~archived,
+        ~((ProcessRoute.parent_id.is_not(None)) & (ProcessRoute.state == "draft")),
+        ~superseded,
+    ]
+    where.extend(current)
     effective_time = func.coalesce(ProcessRoute.updated_at, ProcessRoute.created_at)
     ordering = (
         (effective_time.asc(), ProcessRoute.id.asc())
         if sort_order == "asc"
         else (effective_time.desc(), ProcessRoute.id.desc())
     )
-    rows = db.scalars(
-        select(ProcessRoute)
-        .options(defer(ProcessRoute.steps))
+    result = db.execute(
+        select(
+            ProcessRoute,
+            ProcessRoute.source_data["receipt_fields"]["material_name"]["value"]
+            .as_string()
+            .label("material_name"),
+        )
         .where(*where)
         .order_by(*ordering)
         .offset((page - 1) * page_size)
         .limit(page_size)
-    )
-    rows = list(rows)
+    ).all()
+    rows = [row for row, _ in result]
+    materials = {row.id: material for row, material in result}
+    drawings = {row.id: [] for row in rows}
+    for drawing in db.scalars(
+        select(ProcessRouteDrawing)
+        .where(ProcessRouteDrawing.route_id.in_(drawings))
+        .order_by(ProcessRouteDrawing.id)
+    ):
+        drawings[drawing.route_id].append(drawing_document(drawing))
     requests = request_documents(db, rows)
     missing = missing_route_documents(db, [row.id for row in rows])
     items = []
     for row in rows:
         item = document(row, detail=False, missing_documents=missing.get(row.id, []))
+        item.update(
+            material_name=materials[row.id] or "",
+            step_summary=[
+                {
+                    "sequence_no": step["sequence_no"],
+                    "name": step["name"],
+                    "team_id": step.get("team_id"),
+                }
+                for step in row.steps
+            ],
+            drawings=drawings[row.id],
+        )
         scope = requests.get(row.id)
         if scope:
             item.update(
@@ -323,6 +346,15 @@ def list_routes(
         "total": db.scalar(select(func.count()).select_from(ProcessRoute).where(*where)),
         "page": page,
         "page_size": page_size,
+        "pending_rework_count": (
+            db.scalar(
+                select(func.count())
+                .select_from(ProcessRoute)
+                .where(*current, ProcessRoute.route_kind == "rework", ProcessRoute.state == "draft")
+            )
+            if user.role == "ADMIN" or is_engineering_user(user)
+            else 0
+        ),
         "enforced_after": policy.enforced_after.isoformat() + "Z" if policy else None,
     }
 

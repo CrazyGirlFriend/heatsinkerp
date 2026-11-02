@@ -87,7 +87,12 @@ export const processRouteApi = {
     pageSize = 20,
     kind: 'normal' | 'rework' | 'all' = 'normal',
   ) =>
-    request<MaterialPage<ProcessRoute> & { enforced_after: string | null }>(
+    request<
+      MaterialPage<ProcessRoute> & {
+        enforced_after: string | null
+        pending_rework_count?: number
+      }
+    >(
       `?query=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}&sort_order=${sortOrder}${state ? '&state=' + state : ''}${kind !== 'normal' ? '&kind=' + kind : ''}`,
     ),
   options: (teamId: number) =>

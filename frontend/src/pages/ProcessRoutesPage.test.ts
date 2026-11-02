@@ -2,9 +2,11 @@
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { createRouter, createMemoryHistory } from 'vue-router'
-import { ElPagination } from 'element-plus'
+import { ElPagination, ElPopover } from 'element-plus'
 import ProcessRoutesPage from './ProcessRoutesPage.vue'
 import ProcessRouteEditor from '@/components/ProcessRouteEditor.vue'
+import DocumentViewer from '@/components/DocumentViewer.vue'
+import FactoryNavIcon from '@/components/FactoryNavIcon.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import { businessNoticeApi } from '@/services/businessNoticeApi'
 import { routeFixture, reworkRouteFixture } from '@/testFixtures/processRoute'
@@ -19,7 +21,12 @@ vi.mock('@/stores/auth', () => ({
 }))
 vi.mock('@/stores/teamDirectory', () => ({
   useTeamDirectoryStore: () => ({
-    items: [{ id: 9, code: 'FACTORY-PROCESS', name: '工艺', kind: 'engineering', active: true }],
+    items: [
+      { id: 9, code: 'FACTORY-PROCESS', name: '工艺', kind: 'engineering', active: true },
+      { id: 1, code: 'FACTORY-WAREHOUSE', name: '库房', kind: 'warehouse', active: true },
+      { id: 3, code: 'FACTORY-GRIND', name: '研磨', kind: 'production', active: true },
+      { id: 5, code: 'FACTORY-ANNEAL', name: '退火', kind: 'production', active: true },
+    ],
     refreshTeamDirectory: async () => {},
   }),
 }))
@@ -28,10 +35,26 @@ vi.mock('@/components/PageBackButton.vue', () => ({ default: { template: '<span 
 let wrapper: VueWrapper
 beforeEach(() => {
   state.admin = true
+  vi.stubGlobal(
+    'URL',
+    class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:route-drawing')
+      static revokeObjectURL = vi.fn()
+    },
+  )
+  vi.spyOn(processRouteApi, 'drawing').mockResolvedValue(new Blob(['pdf']))
   vi.spyOn(processRouteApi, 'list').mockResolvedValue({
     items: [
       {
         ...routeFixture,
+        material_name: 'Mo70Cu30',
+        step_summary: [
+          { sequence_no: 0, name: '库房', team_id: 1 },
+          { sequence_no: 1, name: '退火', team_id: 5 },
+          { sequence_no: 2, name: '研磨', team_id: 3 },
+          { sequence_no: 3, name: '退火', team_id: 5 },
+        ],
+        drawings: [{ id: 70, filename: '加工图纸.pdf', size_bytes: 100 }],
         state: 'published',
         engineering_employee_id: 11,
         engineering_employee_name: '张工',
@@ -48,8 +71,9 @@ beforeEach(() => {
   })
 })
 afterEach(() => {
-  wrapper?.unmount()
+  if (wrapper?.exists()) wrapper.unmount()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 async function render(query: Record<string, string> = {}) {
   const router = createRouter({
@@ -65,6 +89,8 @@ async function render(query: Record<string, string> = {}) {
       stubs: {
         TeamBusinessDialog: true,
         ProcessRouteEditor: true,
+        DocumentViewer: true,
+        FactoryNavIcon: true,
         ElPopover: { template: '<div><slot name="reference" /><slot /></div>' },
       },
     },
@@ -102,6 +128,9 @@ it('keeps the common workspace shell without a full-width single tab or duplicat
   expect(wrapper.get('nav[aria-label="工艺功能"]').attributes('style')).toContain('display: none')
   expect(wrapper.findAll('thead th .cell').map((cell) => cell.text())).toEqual([
     '流水号',
+    '材质',
+    '工序概要',
+    '图纸',
     '工艺人员',
     '修改人员',
     '更新时间',
@@ -113,6 +142,205 @@ it('keeps the common workspace shell without a full-width single tab or duplicat
   expect(wrapper.text()).not.toContain('首次转出前须')
   expect(wrapper.text()).not.toContain('历史工艺')
   expect(wrapper.text()).not.toContain('返回当前工艺')
+})
+it('shows icon-only process nodes in order, including repeated teams', async () => {
+  await render()
+  expect(wrapper.text()).toContain('Mo70Cu30')
+  expect(wrapper.get('.route-step-summary').attributes('aria-description')).toBe(
+    '库房 → 退火 → 研磨 → 退火',
+  )
+  expect(wrapper.find('.route-path-more').exists()).toBe(false)
+  const nodes = wrapper.findAll('.route-step-node')
+  expect(nodes).toHaveLength(4)
+  expect(nodes.map((node) => node.text())).toEqual(['', '', '', ''])
+  expect(nodes.map((node) => node.attributes('aria-label'))).toEqual([
+    '工序 0 · 库房',
+    '工序 1 · 退火',
+    '工序 2 · 研磨',
+    '工序 3 · 退火',
+  ])
+  expect(
+    wrapper
+      .get('.route-step-summary')
+      .findAllComponents(FactoryNavIcon)
+      .map((icon: VueWrapper<InstanceType<typeof FactoryNavIcon>>) => icon.props('name')),
+  ).toEqual(['warehouse', 'annealing', 'grinding', 'annealing'])
+  expect(processRouteApi.drawing).not.toHaveBeenCalled()
+})
+
+it('shows six nodes and exposes the full route when more steps are present', async () => {
+  const response = await processRouteApi.list()
+  const steps = response.items[0]!.step_summary!
+  response.items[0]!.step_summary = [
+    ...steps,
+    ...steps.map((step) => ({ ...step, sequence_no: step.sequence_no + 4 })),
+  ]
+  await render()
+  expect(wrapper.findAll('.route-step-node')).toHaveLength(6)
+  expect(wrapper.get('.route-path-more').text()).toBe('+2')
+  expect(wrapper.get('.route-path-more').attributes('aria-label')).toBe(
+    '另有 2 道工序，查看完整路线',
+  )
+  expect(wrapper.findAll('.route-path-list li').map((item) => item.text())).toEqual([
+    '0库房',
+    '1退火',
+    '2研磨',
+    '3退火',
+    '4库房',
+    '5退火',
+    '6研磨',
+    '7退火',
+  ])
+})
+
+it('uses the assigned team icon for a custom operation name', async () => {
+  const response = await processRouteApi.list()
+  response.items[0]!.step_summary![1]!.name = '高温整平'
+  await render()
+  const icons = wrapper.get('.route-step-summary').findAllComponents(FactoryNavIcon)
+  expect(icons[1]!.props('name')).toBe('annealing')
+  expect(wrapper.findAll('.route-step-node')[1]!.attributes('aria-label')).toContain('高温整平')
+  expect(wrapper.findAll('.route-step-node')[1]!.text()).toBe('')
+})
+
+it('keeps the overflow entry reachable in narrow windows and updates it on resize', async () => {
+  const media = { matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => media),
+  )
+  const response = await processRouteApi.list()
+  const steps = response.items[0]!.step_summary!
+  response.items[0]!.step_summary = [...steps, ...steps]
+  await render()
+  expect(wrapper.findAll('.route-step-node')).toHaveLength(4)
+  expect(wrapper.get('.route-path-more').text()).toBe('+4')
+  const listener = media.addEventListener.mock.calls[0]![1]
+  media.matches = false
+  listener()
+  await flushPromises()
+  expect(wrapper.findAll('.route-step-node')).toHaveLength(6)
+  expect(wrapper.get('.route-path-more').text()).toBe('+2')
+  wrapper.unmount()
+  expect(media.removeEventListener).toHaveBeenCalledWith('change', listener)
+})
+
+it('loads requirements and planned quantity on hover, sharing the request across steps', async () => {
+  const detail = vi.spyOn(processRouteApi, 'detail').mockResolvedValue(routeFixture)
+  await render()
+  expect(detail).not.toHaveBeenCalled()
+  const popovers = wrapper
+    .findAllComponents(ElPopover)
+    .filter((popover) => popover.find('.route-step-node').exists())
+  popovers[0]!.vm.$emit('before-enter')
+  popovers[1]!.vm.$emit('before-enter')
+  await flushPromises()
+  expect(detail).toHaveBeenCalledTimes(1)
+  expect(wrapper.findAll('.route-step-detail')[1]!.text()).toContain(
+    '厚度2.5(+0.01/-0.02)，禁止摞放',
+  )
+  expect(wrapper.findAll('.route-step-quantity')[1]!.text()).toContain('100')
+  popovers[2]!.vm.$emit('before-enter')
+  await flushPromises()
+  expect(detail).toHaveBeenCalledTimes(1)
+  expect(wrapper.findComponent(ProcessRouteEditor).exists()).toBe(false)
+})
+
+it('allows retrying a failed step preview', async () => {
+  vi.spyOn(processRouteApi, 'detail')
+    .mockRejectedValueOnce(new Error('network'))
+    .mockResolvedValue(routeFixture)
+  await render()
+  const popover = wrapper
+    .findAllComponents(ElPopover)
+    .find((popover) => popover.find('.route-step-node').exists())!
+  popover.vm.$emit('before-enter')
+  await flushPromises()
+  expect(wrapper.get('.route-step-detail [role="alert"]').text()).toContain('工序信息读取失败')
+  await wrapper.get('.route-step-detail [role="alert"] button').trigger('click')
+  await flushPromises()
+  expect(wrapper.find('.route-step-detail [role="alert"]').exists()).toBe(false)
+  expect(wrapper.get('.route-step-detail').text()).toContain('核对来料')
+})
+
+it('loads a drawing only when clicked and releases it when its enlarged view closes', async () => {
+  await render()
+  await wrapper.get('button[aria-label="查看 S-001 的图纸"]').trigger('click')
+  await flushPromises()
+  expect(processRouteApi.drawing).toHaveBeenCalledWith(
+    routeFixture.id,
+    70,
+    expect.any(AbortSignal),
+    true,
+  )
+  const viewer = wrapper.getComponent(DocumentViewer)
+  expect(viewer.props()).toMatchObject({ title: '加工图纸.pdf', pdf: 'blob:route-drawing' })
+  viewer.vm.$emit('close')
+  await flushPromises()
+  expect(wrapper.findComponent(DocumentViewer).exists()).toBe(false)
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:route-drawing')
+})
+
+it('lists multiple drawing filenames and opens the chosen file', async () => {
+  const response = await processRouteApi.list()
+  response.items[0]!.drawings!.push({ id: 71, filename: '尺寸图纸.pdf', size_bytes: 120 })
+  await render()
+  expect(wrapper.get('.route-drawing-count').text()).toBe('2 份')
+  expect(processRouteApi.drawing).not.toHaveBeenCalled()
+  await wrapper.findAll('.route-drawing-files button')[1]!.trigger('click')
+  await flushPromises()
+  expect(processRouteApi.drawing).toHaveBeenCalledWith(
+    routeFixture.id,
+    71,
+    expect.any(AbortSignal),
+    true,
+  )
+  expect(wrapper.getComponent(DocumentViewer).props('title')).toBe('尺寸图纸.pdf')
+})
+
+it('keeps the list usable when a drawing fails and allows another attempt', async () => {
+  vi.mocked(processRouteApi.drawing).mockRejectedValueOnce(new Error('offline'))
+  await render()
+  await wrapper.get('.route-drawing-count').trigger('click')
+  await flushPromises()
+  expect(wrapper.text()).toContain('图纸读取失败，请重试')
+  expect(wrapper.findComponent(DocumentViewer).exists()).toBe(false)
+  await wrapper.get('.route-drawing-count').trigger('click')
+  await flushPromises()
+  expect(wrapper.findComponent(DocumentViewer).exists()).toBe(true)
+})
+
+it('cancels an unfinished drawing request when leaving the page', async () => {
+  let finish!: (blob: Blob) => void
+  vi.mocked(processRouteApi.drawing).mockReturnValueOnce(
+    new Promise((resolve) => (finish = resolve)),
+  )
+  await render()
+  await wrapper.get('.route-drawing-count').trigger('click')
+  const signal = vi.mocked(processRouteApi.drawing).mock.calls[0]![2]!
+  wrapper.unmount()
+  expect(signal.aborted).toBe(true)
+  finish(new Blob(['pdf']))
+  await flushPromises()
+  expect(URL.createObjectURL).not.toHaveBeenCalled()
+})
+
+it('uses the global pending count across searches and refreshes it after saving', async () => {
+  const response = { ...(await processRouteApi.list()), pending_rework_count: 7 }
+  vi.mocked(processRouteApi.list).mockResolvedValue(response)
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue({ ...routeFixture, state: 'published' })
+  await render()
+  expect(wrapper.get('.route-pending-count').text()).toBe('7')
+  await wrapper.get('input[aria-label="工艺记录搜索"]').setValue('S-001')
+  await wrapper.get('input[aria-label="工艺记录搜索"]').trigger('keyup', { key: 'Enter' })
+  await flushPromises()
+  expect(wrapper.get('.route-pending-count').text()).toBe('7')
+  await wrapper.get('button.route-serial').trigger('click')
+  await flushPromises()
+  vi.mocked(processRouteApi.list).mockResolvedValue({ ...response, pending_rework_count: 6 })
+  wrapper.getComponent(ProcessRouteEditor).vm.$emit('saved')
+  await flushPromises()
+  expect(wrapper.get('.route-pending-count').text()).toBe('6')
 })
 it('searches only after submission and refreshes the applied query', async () => {
   await render()

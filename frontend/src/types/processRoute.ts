@@ -72,6 +72,8 @@ export interface ReworkRouteRequest {
   resume_team_id: number
 }
 export interface ProcessRoute {
+  material_name?: string
+  step_summary?: Pick<ProcessRouteStep, 'sequence_no' | 'name' | 'team_id'>[]
   missing_documents?: string[]
   route_kind?: 'normal' | 'rework'
   rework_batch_no?: string

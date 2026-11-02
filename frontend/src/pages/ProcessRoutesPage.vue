@@ -4,8 +4,8 @@ import WorkspaceTable from '@/components/WorkspaceTable.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
-import { ElAlert, ElButton, ElLoading, ElPopover, ElTag, ElTableColumn } from 'element-plus'
+import { ArrowDown, Plus } from '@element-plus/icons-vue'
+import { ElAlert, ElButton, ElIcon, ElLoading, ElPopover, ElTag, ElTableColumn } from 'element-plus'
 import { useRoute } from 'vue-router'
 import { businessNoticeApi, parseNotice } from '@/services/businessNoticeApi'
 import { focusNoticeTarget, noticeOpened, noticeFailed } from '@/utils/noticeFocus'
@@ -13,10 +13,12 @@ import { useLiveRefresh } from '@/composables/useLiveRefresh'
 import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
 import TeamBusinessDialog from '@/components/TeamBusinessDialog.vue'
 import ProcessRouteEditor from '@/components/ProcessRouteEditor.vue'
+import DocumentViewer from '@/components/DocumentViewer.vue'
+import FactoryNavIcon from '@/components/FactoryNavIcon.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { processRouteApi } from '@/services/processRouteApi'
-import type { ProcessRoute } from '@/types/processRoute'
+import type { ProcessRoute, ProcessRouteDrawing, ProcessRouteStep } from '@/types/processRoute'
 import { formatDateTime } from '@/utils/format'
 const location = useRoute()
 const noticeSection = ref('')
@@ -65,6 +67,7 @@ function changeKind(kind: 'normal' | 'rework') {
 }
 const items = ref<ProcessRoute[]>([]),
   total = ref(0),
+  pendingRework = ref(0),
   page = ref(1),
   pageSize = ref(20),
   sortOrder = ref<'asc' | 'desc'>('desc'),
@@ -114,7 +117,9 @@ async function load() {
     )
     if (request !== generation) return
     items.value = result.items
+    stepDetails.value = {}
     total.value = result.total
+    pendingRework.value = result.pending_rework_count ?? 0
   } catch (e) {
     if (request === generation) error.value = e instanceof Error ? e.message : '工艺读取失败'
   } finally {
@@ -142,6 +147,84 @@ function pageSizeChanged(size: number) {
   page.value = 1
   pageSize.value = size
   void load()
+}
+function routeSteps(value: unknown) {
+  const row = value as ProcessRoute
+  return row.step_summary ?? row.steps ?? []
+}
+function routePath(row: unknown) {
+  return routeSteps(row)
+    .map((step) => step.name)
+    .join(' → ')
+}
+const teamIcons = {
+  'FACTORY-WAREHOUSE': 'warehouse',
+  'FACTORY-ROLL': 'rolling',
+  'FACTORY-ANNEAL': 'annealing',
+  'FACTORY-GRIND': 'grinding',
+  'FACTORY-WIRE': 'cutting',
+  'FACTORY-ENGRAVE': 'engraving',
+  'FACTORY-PLATE': 'plating',
+  'FACTORY-QC': 'inspection',
+} as const
+function stepIcon(step: Pick<ProcessRouteStep, 'name' | 'team_id'>) {
+  const aliases: Record<string, string> = { 中转库: '库房', 轧板: '轧制', 质检: '检验' }
+  const team = step.team_id
+    ? directory.items.find((item) => Number(item.id) === step.team_id)
+    : directory.items.find((item) => item.name === (aliases[step.name] || step.name))
+  const code = team?.code
+  return code && code in teamIcons ? teamIcons[code as keyof typeof teamIcons] : 'flow'
+}
+const routeMedia = window.matchMedia?.('(max-width: 1100px)')
+const visibleStepCount = ref(routeMedia?.matches ? 4 : 6)
+function resizeRouteSummary() {
+  visibleStepCount.value = routeMedia?.matches ? 4 : 6
+}
+const stepDetails = ref<
+  Record<number, { steps?: ProcessRouteStep[]; loading: boolean; error?: string }>
+>({})
+async function loadStepDetails(id: number) {
+  if (stepDetails.value[id]?.loading || stepDetails.value[id]?.steps) return
+  stepDetails.value[id] = { loading: true }
+  const entry = stepDetails.value[id]!
+  try {
+    entry.steps = (await processRouteApi.detail(id)).steps
+  } catch {
+    entry.error = '工序信息读取失败'
+  } finally {
+    entry.loading = false
+  }
+}
+const drawingMenu = ref<number | null>(null),
+  drawingUrl = ref(''),
+  drawingTitle = ref(''),
+  drawingLoading = ref('')
+let drawingController: AbortController | undefined
+let drawingGeneration = 0
+function closeDrawing() {
+  ++drawingGeneration
+  drawingController?.abort()
+  if (drawingUrl.value) URL.revokeObjectURL(drawingUrl.value)
+  drawingUrl.value = ''
+  drawingLoading.value = ''
+}
+async function openDrawing(routeId: number, drawing: ProcessRouteDrawing) {
+  closeDrawing()
+  drawingMenu.value = null
+  const request = drawingGeneration
+  drawingController = new AbortController()
+  drawingLoading.value = `${routeId}:${drawing.id}`
+  error.value = ''
+  try {
+    const blob = await processRouteApi.drawing(routeId, drawing.id, drawingController.signal, true)
+    if (request !== drawingGeneration) return
+    drawingTitle.value = drawing.filename
+    drawingUrl.value = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }))
+  } catch {
+    if (request === drawingGeneration) error.value = '图纸读取失败，请重试'
+  } finally {
+    if (request === drawingGeneration) drawingLoading.value = ''
+  }
 }
 async function open(id: number, startEditing = false) {
   noticeSection.value = ''
@@ -201,11 +284,14 @@ useLiveRefresh(load, {
   busy: () => loading.value || !!selected.value || creating.value,
 })
 onMounted(() => {
+  routeMedia?.addEventListener('change', resizeRouteSummary)
   void directory.refreshTeamDirectory()
   void load()
 })
 onBeforeUnmount(() => {
+  routeMedia?.removeEventListener('change', resizeRouteSummary)
   stopNoticeFocus?.()
+  closeDrawing()
   ++generation
   ++detailGeneration
 })
@@ -249,14 +335,25 @@ onBeforeUnmount(() => {
               @click="changeKind('rework')"
             >
               返工工艺
+              <span
+                v-if="canEdit && pendingRework"
+                class="route-pending-count"
+                :aria-label="`${pendingRework} 项待制定`"
+                :title="`${pendingRework} 项待制定`"
+                >{{ pendingRework }}</span
+              >
             </button>
           </div>
         </template>
-        <template #status
-          ><ElTag v-if="pendingOnly" closable type="warning" @close="clearPending"
-            >待制定</ElTag
-          ></template
-        >
+        <template #status>
+          <ElTag v-if="pendingOnly" closable type="warning" @close="clearPending">待制定</ElTag>
+          <ElButton
+            v-else-if="routeKind === 'rework' && canEdit && pendingRework"
+            class="route-pending-filter"
+            @click="createRework"
+            >仅看待制定</ElButton
+          >
+        </template>
         <template #primary-actions>
           <div v-if="canEdit" class="workspace-toolbar-actions">
             <ElPopover
@@ -295,7 +392,7 @@ onBeforeUnmount(() => {
         <ElTableColumn
           class-name="table-identity"
           label="流水号"
-          :min-width="routeKind === 'rework' ? 205 : 260"
+          :min-width="routeKind === 'rework' ? 205 : 190"
           :fixed="routeKind === 'rework' ? 'left' : false"
           align="left"
           ><template #default="{ row }"
@@ -317,6 +414,156 @@ onBeforeUnmount(() => {
             >
           </template></ElTableColumn
         >
+        <template v-if="routeKind === 'normal'">
+          <ElTableColumn label="材质" width="120">
+            <template #default="{ row }">
+              <span :class="{ 'route-empty': !row.material_name }">{{
+                row.material_name || '—'
+              }}</span>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="工序概要" min-width="300" :show-overflow-tooltip="false">
+            <template #default="{ row }">
+              <div
+                v-if="routeSteps(row).length"
+                class="route-step-summary"
+                role="group"
+                :aria-label="`${row.serial_nos[0]} 的 ${routeSteps(row).length} 道工序`"
+                :aria-description="routePath(row)"
+              >
+                <template
+                  v-for="(step, index) in routeSteps(row).slice(0, visibleStepCount)"
+                  :key="index"
+                >
+                  <span v-if="index" class="route-path-connector" aria-hidden="true" />
+                  <ElPopover
+                    :trigger="['hover', 'focus']"
+                    :show-after="180"
+                    :hide-after="120"
+                    placement="bottom-start"
+                    :width="320"
+                    @before-enter="loadStepDetails(row.id)"
+                  >
+                    <template #reference>
+                      <button
+                        type="button"
+                        class="route-step-node"
+                        :aria-label="`工序 ${step.sequence_no} · ${step.name || '未命名工序'}`"
+                      >
+                        <FactoryNavIcon :name="stepIcon(step)" />
+                      </button>
+                    </template>
+                    <div class="route-path-heading">
+                      <span>{{ step.name || '未命名工序' }}</span>
+                      <span class="route-path-total">工序 {{ step.sequence_no }}</span>
+                    </div>
+                    <div class="route-step-detail" :aria-busy="stepDetails[row.id]?.loading">
+                      <span
+                        v-if="!stepDetails[row.id] || stepDetails[row.id]?.loading"
+                        class="route-path-total"
+                      >
+                        加载中…
+                      </span>
+                      <div v-else-if="stepDetails[row.id]?.error" role="alert">
+                        {{ stepDetails[row.id]?.error }}
+                        <ElButton link @click="loadStepDetails(row.id)">重试</ElButton>
+                      </div>
+                      <template v-else>
+                        <p>
+                          {{
+                            stepDetails[row.id]?.steps?.[index]?.instructions || '未填写工艺要求'
+                          }}
+                        </p>
+                        <div class="route-step-quantity">
+                          <span>计划加工数量</span>
+                          <span>{{
+                            stepDetails[row.id]?.steps?.[index]?.planned_quantity || '—'
+                          }}</span>
+                        </div>
+                      </template>
+                    </div>
+                  </ElPopover>
+                </template>
+                <template v-if="routeSteps(row).length > visibleStepCount">
+                  <span class="route-path-connector" aria-hidden="true" />
+                  <ElPopover
+                    :trigger="['hover', 'focus']"
+                    :show-after="180"
+                    :hide-after="120"
+                    placement="bottom-start"
+                    :width="360"
+                  >
+                    <template #reference>
+                      <button
+                        type="button"
+                        class="route-path-more"
+                        :aria-label="`另有 ${routeSteps(row).length - visibleStepCount} 道工序，查看完整路线`"
+                      >
+                        +{{ routeSteps(row).length - visibleStepCount }}
+                      </button>
+                    </template>
+                    <div class="route-path-heading">
+                      <span>{{ row.serial_nos[0] }}</span>
+                      <span class="route-path-total">{{ routeSteps(row).length }} 道工序</span>
+                    </div>
+                    <ol class="route-path-list" aria-label="完整工序顺序" tabindex="0">
+                      <li v-for="(step, index) in routeSteps(row)" :key="index">
+                        <span class="route-path-sequence">{{ step.sequence_no }}</span>
+                        <span class="route-step-symbol"
+                          ><FactoryNavIcon :name="stepIcon(step)"
+                        /></span>
+                        <span>{{ step.name || '未命名工序' }}</span>
+                      </li>
+                    </ol>
+                  </ElPopover>
+                </template>
+              </div>
+              <span v-else class="route-empty">—</span>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="图纸" width="88" align="center" :show-overflow-tooltip="false">
+            <template #default="{ row }">
+              <ElButton
+                v-if="row.drawings?.length === 1"
+                link
+                class="route-drawing-count"
+                :aria-label="`查看 ${row.serial_nos[0]} 的图纸`"
+                :loading="drawingLoading === `${row.id}:${row.drawings[0].id}`"
+                @click="openDrawing(row.id, row.drawings[0])"
+                >1 份</ElButton
+              >
+              <ElPopover
+                v-else-if="row.drawings?.length"
+                :visible="drawingMenu === row.id"
+                trigger="click"
+                placement="bottom-end"
+                :width="280"
+                @update:visible="drawingMenu = $event ? row.id : null"
+              >
+                <template #reference>
+                  <ElButton
+                    link
+                    class="route-drawing-count"
+                    :aria-label="`选择 ${row.serial_nos[0]} 的图纸`"
+                    :loading="drawingLoading.startsWith(`${row.id}:`)"
+                    >{{ row.drawings.length }} 份<ElIcon><ArrowDown /></ElIcon
+                  ></ElButton>
+                </template>
+                <div class="route-path-heading">{{ row.serial_nos[0] }} · 图纸</div>
+                <div class="route-drawing-files">
+                  <ElButton
+                    v-for="drawing in row.drawings"
+                    :key="drawing.id"
+                    text
+                    @click="openDrawing(row.id, drawing)"
+                    >{{ drawing.filename }}</ElButton
+                  >
+                </div>
+              </ElPopover>
+              <span v-else class="route-empty">—</span>
+            </template>
+          </ElTableColumn>
+        </template>
         <ElTableColumn v-if="routeKind === 'rework'" label="问题" min-width="210">
           <template #default="{ row }">
             <div
@@ -484,6 +731,12 @@ onBeforeUnmount(() => {
       >
     </WorkspaceDataPanel>
     <template #dialogs>
+      <DocumentViewer
+        v-if="drawingUrl"
+        :title="drawingTitle"
+        :pdf="drawingUrl"
+        @close="closeDrawing"
+      />
       <ProcessRouteEditor
         v-if="selected || creating"
         :key="selected?.id || 'new'"
@@ -519,9 +772,207 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 .process-workspace {
-  --route-ink: #171918;
-  --route-secondary: #606764;
-  --route-placeholder: #707772;
+  --route-ink: var(--text);
+  --route-secondary: var(--muted);
+  --route-placeholder: var(--subtle);
+}
+.process-workspace .workspace-data-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, max-content) auto;
+  align-content: start;
+}
+.process-workspace :deep(.workspace-pagination) {
+  margin-top: 0;
+}
+.route-pending-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 4px;
+  border: 1px solid #dcc294;
+  border-radius: 5px;
+  background: #fbefd7;
+  color: #72501e;
+  font-size: var(--font-size-meta);
+  line-height: var(--line-height-meta);
+  font-variant-numeric: tabular-nums;
+}
+.route-step-summary {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 3px;
+}
+.route-path-total {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+  line-height: var(--line-height-meta);
+  font-weight: var(--font-weight-regular);
+  white-space: nowrap;
+}
+.process-workspace .route-list .route-drawing-count {
+  flex-shrink: 0;
+  gap: 4px;
+  color: var(--route-ink);
+  font-weight: var(--font-weight-regular);
+}
+.route-step-node,
+.route-path-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--surface));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast),
+    background-color var(--motion-fast);
+}
+.route-step-node :deep(.tabler-icon),
+.route-step-symbol :deep(.tabler-icon) {
+  width: 16px;
+  height: 16px;
+  color: var(--primary);
+}
+.route-step-node:hover,
+.route-step-node:focus-visible,
+.route-path-more:hover,
+.route-path-more:focus-visible {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 11%, var(--surface));
+}
+.route-step-node:focus-visible,
+.route-path-more:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.route-path-connector {
+  flex: 0 0 8px;
+  height: 1px;
+  background: color-mix(in srgb, var(--primary) 24%, var(--surface));
+}
+.route-path-more {
+  flex-basis: auto;
+  min-width: 28px;
+  width: auto;
+  padding-inline: 4px;
+  border-color: var(--line);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: var(--font-size-meta);
+  line-height: var(--line-height-meta);
+  font-weight: var(--font-weight-regular);
+  font-variant-numeric: tabular-nums;
+}
+.route-step-detail {
+  padding-top: 10px;
+  color: var(--text);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: var(--font-weight-regular);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.route-step-detail p {
+  margin: 0;
+  max-height: min(240px, calc(100dvh - 260px));
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.route-step-quantity {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+  line-height: var(--line-height-meta);
+}
+.route-step-quantity > :last-child {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.route-path-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: var(--font-weight-medium);
+}
+.route-path-list {
+  display: grid;
+  gap: 0;
+  max-height: min(360px, calc(100dvh - 220px));
+  overflow: auto;
+  padding: 6px 0 0;
+  margin: 0;
+  list-style: none;
+}
+.route-path-list li {
+  display: grid;
+  grid-template-columns: 24px 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line-light);
+  color: var(--text);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: var(--font-weight-regular);
+  overflow-wrap: anywhere;
+}
+.route-path-list li:last-child {
+  border-bottom: 0;
+}
+.route-path-sequence {
+  color: var(--subtle);
+  font-size: var(--font-size-meta);
+  line-height: var(--line-height-meta);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.route-step-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface-soft);
+}
+.route-drawing-files {
+  display: grid;
+  gap: 3px;
+  padding-top: 6px;
+}
+.route-drawing-files .el-button {
+  justify-content: flex-start;
+  height: auto;
+  min-height: 32px;
+  padding: 6px 4px;
+  margin: 0;
+  color: var(--text);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
 }
 .process-workspace :deep(.team-workspace__title) {
   color: var(--route-ink);
@@ -546,9 +997,10 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 86px;
+  min-width: 86px;
   height: 32px;
-  padding: 0;
+  padding: 0 10px;
+  gap: 6px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
@@ -667,8 +1119,8 @@ onBeforeUnmount(() => {
 
 .route-empty {
   color: var(--route-placeholder);
-  font-size: 13px;
-  font-weight: 400;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
   white-space: nowrap;
 }
 .route-modifier {
@@ -709,8 +1161,8 @@ onBeforeUnmount(() => {
 }
 .process-workspace :deep(.workspace-data-panel .el-table.business-table.route-list .route-serial) {
   color: var(--route-ink);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   letter-spacing: 0;
   overflow-wrap: anywhere;
   max-width: 100%;
@@ -727,8 +1179,31 @@ onBeforeUnmount(() => {
   text-underline-offset: 3px;
 }
 
+@media (max-width: 1100px) {
+  .process-workspace :deep(form.workspace-data-toolbar.workspace-toolbar) {
+    flex-wrap: wrap;
+  }
+  .process-workspace :deep(.workspace-toolbar > .workspace-tools) {
+    order: 1;
+  }
+  .workspace-toolbar-actions {
+    order: 2;
+    margin-left: 0;
+  }
+  .process-workspace :deep(.workspace-toolbar__search) {
+    order: 3;
+    flex: 1 1 calc(100% - 108px);
+    max-width: none;
+  }
+  .process-workspace :deep(.workspace-toolbar__query-actions) {
+    order: 4;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .route-kind-switch button,
+  .route-step-node,
+  .route-path-more,
   .process-workspace .route-list .route-record-action {
     transition: none;
     transform: none;
