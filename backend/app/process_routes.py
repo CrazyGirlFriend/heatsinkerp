@@ -334,18 +334,25 @@ def prepare_processing(lot, payload):
     if step["team_id"] != lot.next_team_id:
         raise HTTPException(409, "本批工艺工序与当前班组不一致")
     if (
-        payload.processing_task_id is not None
+        step["processing_task_id"] is not None
+        and payload.processing_task_id is not None
         and payload.processing_task_id != step["processing_task_id"]
     ):
         raise HTTPException(422, "请执行工艺路线指定的具体任务，不能更换工序")
-    if payload.purpose_id is not None and payload.purpose_id != step["purpose_id"]:
+    if (
+        step["purpose_id"] is not None
+        and payload.purpose_id is not None
+        and payload.purpose_id != step["purpose_id"]
+    ):
         raise HTTPException(422, "请执行工艺路线指定的业务")
     if lot.shared_unallocated and payload.outputs:
         allocated = [line for line in payload.outputs if line.role == "produced" and line.serial_no]
         if allocated and not step.get("split_here"):
             raise HTTPException(422, "本工序不是共投料的指定拆分点")
     return payload.model_copy(
-        update={"processing_task_id": step["processing_task_id"], "purpose_id": step["purpose_id"]}
+        update={
+            key: step[key] for key in ("processing_task_id", "purpose_id") if step[key] is not None
+        }
     ), index
 
 
@@ -580,9 +587,13 @@ def validate_steps(db, route):
             if team.code not in PROCESSING_TEAM_CODES or team.kind != "production":
                 raise HTTPException(422, "执行班组须为生产班组或库房")
             task, purpose = tasks.get(step["processing_task_id"]), purposes.get(step["purpose_id"])
-            if not task or not task.active or task.team_id != team.id:
+            if step["processing_task_id"] is not None and (
+                not task or not task.active or task.team_id != team.id
+            ):
                 raise HTTPException(422, f"{step['name']}须对应本班组启用的具体任务")
-            if not purpose or not purpose.active or purpose.team_id != team.id:
+            if step["purpose_id"] is not None and (
+                not purpose or not purpose.active or purpose.team_id != team.id
+            ):
                 raise HTTPException(422, f"{step['name']}须对应本班组启用的业务")
         elif step["processing_task_id"] is not None:
             raise HTTPException(422, "库房备料不选择加工任务")

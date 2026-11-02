@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   ElAlert,
   ElButton,
@@ -30,7 +30,6 @@ import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import { processRouteApi, ProcessRouteSerialConflictError } from '@/services/processRouteApi'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import type { ProcessRoute, ProcessRouteStep, ProcessRouteDrawing } from '@/types/processRoute'
-import type { TeamProcessingTask, TeamPurpose } from '@/types/teamBusiness'
 const props = defineProps<{ route?: ProcessRoute; viewOnly?: boolean; startEditing?: boolean }>()
 const emit = defineEmits<{ opened: []; close: []; saved: [] }>()
 const visible = ref(true)
@@ -126,18 +125,12 @@ onBeforeUnmount(() => {
   editorObserver?.disconnect()
   if (resizeFrame) cancelAnimationFrame(resizeFrame)
 })
-const expanded = ref(new Set<number>())
 const issuesOpen = ref(false)
-function toggleStep(index: number) {
-  if (expanded.value.has(index)) expanded.value.delete(index)
-  else expanded.value.add(index)
-}
 function addStep() {
   draft.value.steps.push(blankStep((draft.value.steps.at(-1)?.sequence_no ?? -1) + 1))
 }
 function removeStep(index: number) {
   draft.value.steps.splice(index, 1)
-  expanded.value = new Set()
 }
 async function importWord(event: Event) {
   const input = event.target as HTMLInputElement
@@ -170,8 +163,6 @@ async function importWord(event: Event) {
     pendingWord.value = file
     activeSource.value = ''
     issuesOpen.value = false
-    expanded.value = new Set()
-    for (const id of new Set(parsed.steps.map((step) => step.team_id))) await options(id)
   } catch (e) {
     error.value = e instanceof Error ? e.message : '工艺单导入失败'
   } finally {
@@ -242,8 +233,6 @@ function showMaterialSource(kind: 'word' | 'order') {
 }
 const busy = ref(false),
   error = ref('')
-const tasks = reactive<Record<number, TeamProcessingTask[]>>({}),
-  purposes = reactive<Record<number, TeamPurpose[]>>({})
 const directory = useTeamDirectoryStore()
 const auth = useAuthStore()
 const canMaintain = computed(
@@ -360,7 +349,6 @@ const stepIssues = computed(() =>
 async function locateIssue(issue: (typeof stepIssues.value)[number]) {
   issuesOpen.value = false
   focusOriginal(issue.source)
-  if (!readonly.value && issue.field === 'name') expanded.value.add(issue.index)
   await nextTick()
   const row = editorMain.value?.querySelectorAll<HTMLElement>('.route-edit-step')[issue.index]
   row?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
@@ -368,12 +356,6 @@ async function locateIssue(issue: (typeof stepIssues.value)[number]) {
     row?.focus({ preventScroll: true })
     attachments.value?.open('word')
   } else {
-    if (issue.field === 'name') {
-      editorMain.value
-        ?.querySelector<HTMLInputElement>(`input[aria-label="工序 ${issue.index + 1} 名称"]`)
-        ?.focus({ preventScroll: true })
-      return
-    }
     const column = { sequence: 0, name: 1, instructions: 2 }[issue.field]
     row?.children[column]
       ?.querySelector<HTMLElement>('input,textarea')
@@ -381,22 +363,9 @@ async function locateIssue(issue: (typeof stepIssues.value)[number]) {
   }
 }
 const issueCount = computed(() => stepIssues.value.length + (unrecognizedRows.value ? 1 : 0))
-function warehouse(id: number | null) {
-  return directory.items.some((team) => Number(team.id) === id && team.code === 'FACTORY-WAREHOUSE')
-}
 const activeSource = ref('')
 function focusOriginal(row?: string | null) {
   activeSource.value = row || ''
-}
-async function options(id: number | null) {
-  if (!id || tasks[id]) return
-  try {
-    const choices = await processRouteApi.options(id)
-    tasks[id] = choices.tasks
-    purposes[id] = choices.purposes
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '班组业务与任务读取失败'
-  }
 }
 function teamChanged(index: number) {
   const step = draft.value.steps[index]!
@@ -404,7 +373,6 @@ function teamChanged(index: number) {
   if (!step.name.trim()) step.name = step.team_name || ''
   step.processing_task_id = null
   step.purpose_id = null
-  void options(step.team_id)
 }
 const { formRef, fieldErrors, validate } = useDialogValidation(() => {
   const errors: Record<string, string> = {}
@@ -422,10 +390,6 @@ const { formRef, fieldErrors, validate } = useDialogValidation(() => {
     if (!step.name.trim()) errors[`${index}.name`] = '请填写工序名称'
     if (!step.instructions.trim()) errors[`${index}.instructions`] = '请填写工艺要求'
     if (!step.team_id) errors[`${index}.team`] = '请选择执行班组'
-    if (!warehouse(step.team_id)) {
-      if (!step.processing_task_id) errors[`${index}.task`] = '请选择具体任务'
-      if (!step.purpose_id) errors[`${index}.purpose`] = '请选择对应业务'
-    }
   })
   return errors
 })
@@ -437,13 +401,7 @@ async function save() {
     return
   }
   if (!draft.value.title.trim()) draft.value.title = serials.value.join('、').slice(0, 160)
-  if (!validate()) {
-    for (const key of Object.keys(fieldErrors.value)) {
-      const index = Number(key.split('.')[0])
-      if (Number.isInteger(index) && key.includes('.')) expanded.value.add(index)
-    }
-    return
-  }
+  if (!validate()) return
   busy.value = true
   error.value = ''
   try {
@@ -524,32 +482,30 @@ async function revise() {
   try {
     editingSaved.value = true
     modifier.value = null
-    mapWarehouseSteps()
-    for (const id of new Set(draft.value.steps.map((step) => step.team_id))) await options(id)
+    prepareStepTeams()
   } catch (e) {
     error.value = e instanceof Error ? e.message : '工艺读取失败'
   } finally {
     busy.value = false
   }
 }
-function mapWarehouseSteps() {
+function prepareStepTeams() {
   const stockTeam = directory.items.find(
     (team) =>
       team.active &&
       ['warehouse', 'production'].includes(team.kind || '') &&
       team.code === 'FACTORY-WAREHOUSE',
   )
-  if (!stockTeam) return
   draft.value.steps.forEach((step) => {
-    if (!step.team_id && ['中转库', '库房'].includes(step.name.trim()))
+    if (!step.team_id && stockTeam && ['中转库', '库房'].includes(step.name.trim()))
       step.team_id = Number(stockTeam.id)
+    if (!step.name.trim() && !step.source_row)
+      step.name = directory.items.find((team) => Number(team.id) === step.team_id)?.name || ''
   })
 }
 onMounted(async () => {
   await directory.refreshTeamDirectory()
-  if (!readonly.value) mapWarehouseSteps()
-  if (!readonly.value)
-    for (const id of new Set(draft.value.steps.map((step) => step.team_id))) await options(id)
+  if (!readonly.value) prepareStepTeams()
 })
 </script>
 <template>
@@ -932,7 +888,7 @@ onMounted(async () => {
                   <th>执行班组</th>
                   <th>工艺要求</th>
                   <th>计划加工数量</th>
-                  <th v-if="!readonly">执行设置</th>
+                  <th v-if="!readonly">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -1064,120 +1020,13 @@ onMounted(async () => {
                     </td>
                     <td v-if="!readonly">
                       <ElButton
-                        text
-                        :aria-expanded="expanded.has(index)"
-                        class="route-execution-toggle"
-                        :class="{
-                          'route-step-error':
-                            fieldErrors[`${index}.team`] ||
-                            fieldErrors[`${index}.task`] ||
-                            fieldErrors[`${index}.purpose`],
-                        }"
-                        @click="toggleStep(index)"
-                        >{{ expanded.has(index) ? '收起' : readonly ? '查看' : '设置' }}
-                        <ElIcon :class="{ 'is-expanded': expanded.has(index) }"
-                          ><ArrowDown /></ElIcon
-                      ></ElButton>
-                    </td>
-                  </tr>
-                  <tr v-if="!readonly && expanded.has(index)" class="route-execution-row">
-                    <td colspan="5">
-                      <div class="route-step-details">
-                        <ElFormItem label="工序名称" :error="fieldErrors[`${index}.name`]"
-                          ><ElInput
-                            v-model="step.name"
-                            :disabled="busy"
-                            maxlength="120"
-                            :aria-label="`工序 ${index + 1} 名称`"
-                        /></ElFormItem>
-                        <ElFormItem
-                          label="具体任务"
-                          :required="!readonly && !warehouse(step.team_id)"
-                          :error="fieldErrors[`${index}.task`]"
-                          ><span v-if="readonly" class="route-readonly-value">{{
-                            draft.execution_labels?.tasks[String(step.processing_task_id)] ||
-                            tasks[step.team_id || 0]?.find(
-                              (task) => Number(task.id) === step.processing_task_id,
-                            )?.name ||
-                            '—'
-                          }}</span
-                          ><ElSelect
-                            v-else
-                            v-model="step.processing_task_id"
-                            :disabled="readonly || busy || !step.team_id || warehouse(step.team_id)"
-                            placeholder="选择任务"
-                            ><ElOption
-                              v-for="task in (tasks[step.team_id || 0] || []).filter(
-                                (task) => task.active,
-                              )"
-                              :key="task.id"
-                              :value="Number(task.id)"
-                              :label="task.name" /></ElSelect
-                        ></ElFormItem>
-                        <ElFormItem
-                          label="对应业务"
-                          :required="!readonly && !warehouse(step.team_id)"
-                          :error="fieldErrors[`${index}.purpose`]"
-                          ><span v-if="readonly" class="route-readonly-value">{{
-                            draft.execution_labels?.purposes[String(step.purpose_id)] ||
-                            purposes[step.team_id || 0]?.find(
-                              (purpose) => Number(purpose.id) === step.purpose_id,
-                            )?.name ||
-                            '—'
-                          }}</span
-                          ><ElSelect
-                            v-else
-                            v-model="step.purpose_id"
-                            :disabled="readonly || busy || !step.team_id"
-                            placeholder="选择业务"
-                            ><ElOption
-                              v-for="purpose in (purposes[step.team_id || 0] || []).filter(
-                                (purpose) => purpose.active,
-                              )"
-                              :key="purpose.id"
-                              :value="Number(purpose.id)"
-                              :label="purpose.name" /></ElSelect
-                        ></ElFormItem>
-                        <ElFormItem v-if="draft.route_kind !== 'rework'" label="参考天数"
-                          ><ElInput
-                            v-model="step.planned_days"
-                            :readonly="readonly"
-                            :disabled="busy"
-                            maxlength="80"
-                        /></ElFormItem>
-                        <ElFormItem
-                          v-if="draft.route_kind !== 'rework'"
-                          label="适用流水号"
-                          class="route-step-serials"
-                          ><ElSelect
-                            v-model="step.serial_nos"
-                            multiple
-                            :disabled="readonly || busy"
-                            placeholder="全部流水号"
-                            ><ElOption
-                              v-for="serial in serials"
-                              :key="serial"
-                              :value="serial"
-                              :label="serial" /></ElSelect
-                        ></ElFormItem>
-                        <ElCheckbox
-                          v-if="draft.route_kind !== 'rework' && serials.length > 1"
-                          v-model="step.split_here"
-                          :disabled="readonly || busy"
-                          >在此登记共投实际拆分</ElCheckbox
-                        >
-                      </div>
-                      <div v-if="step.source_row || draft.steps.length > 1" class="route-step-meta">
-                        <span v-if="step.source_row">{{ `原文行 ${step.source_row}` }}</span
-                        ><ElButton
-                          v-if="draft.steps.length > 1"
-                          type="danger"
-                          link
-                          :disabled="busy || draft.steps.length < 2"
-                          @click="removeStep(index)"
-                          >删除工序</ElButton
-                        >
-                      </div>
+                        type="danger"
+                        link
+                        :disabled="busy || draft.steps.length < 2"
+                        :aria-label="`删除工序 ${index + 1}`"
+                        @click="removeStep(index)"
+                        >删除</ElButton
+                      >
                     </td>
                   </tr>
                 </template>
@@ -1861,63 +1710,9 @@ onMounted(async () => {
 .route-step-table :deep(.el-input__inner) {
   text-align: center;
 }
-.route-step-error {
-  color: var(--el-color-danger);
-}
-.route-step-table .route-execution-toggle {
-  height: 28px;
-  padding: 0 7px;
-  border: 1px solid #c4d6fc;
-  border-radius: 7px;
-  background: linear-gradient(180deg, #fffffffa, #edf3ff 55%, #e1ebff);
-  box-shadow:
-    inset 0 1px 0 #fff,
-    inset 0 -1px 0 #2563eb12,
-    0 1px 3px #1c427012;
-  color: var(--accent-blue);
-  font-size: 12px;
-}
-.route-step-table .route-execution-toggle:not(:disabled):hover {
-  border-color: #91b0ee;
-  box-shadow:
-    inset 0 1px 0 #fff,
-    0 3px 7px #2563eb24;
-}
-.route-step-table .route-execution-toggle:not(:disabled):active,
 .process-route-dialog .route-file-actions .el-button:not(:disabled):active {
   box-shadow: inset 0 1px 3px #2563eb2b;
   transform: translateY(0);
-}
-.route-execution-toggle :deep(.el-icon) {
-  margin-left: 3px;
-  font-size: 10px;
-  transition: transform 160ms;
-}
-.route-execution-toggle :deep(.el-icon.is-expanded) {
-  transform: rotate(180deg);
-}
-.route-execution-row > td {
-  padding: 16px;
-  background: rgba(238, 245, 242, 0.5);
-}
-.route-step-details {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px 16px;
-}
-.route-step-serials {
-  grid-column: span 2;
-}
-.route-step-meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  color: var(--muted);
-  font-size: 12px;
-  margin-top: 12px;
-}
-.route-step-meta > .el-button {
-  margin-left: auto;
 }
 .route-add-step {
   margin: 12px 0 0;
@@ -2005,9 +1800,7 @@ onMounted(async () => {
   .route-issue-chevron,
   .route-edit-step > td,
   .route-cell-marker,
-  .route-file-actions .el-button,
-  .route-execution-toggle,
-  .route-execution-toggle :deep(.el-icon) {
+  .route-file-actions .el-button {
     transition: none;
     transform: none;
   }

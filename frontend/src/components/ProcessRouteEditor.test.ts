@@ -244,8 +244,8 @@ it('carries quality problems and teams into manual rework engineering with inher
     drawing,
   })
   expect(wrapper.get('input[aria-label="流水号"]').attributes('disabled')).toBeDefined()
-  await wrapper.get('.route-execution-toggle').trigger('click')
-  expect(wrapper.get('.route-step-details').text()).toContain('具体任务')
+  expect(wrapper.find('.route-execution-toggle').exists()).toBe(false)
+  expect(wrapper.text()).not.toContain('具体任务')
   expect(wrapper.text()).not.toContain('参考天数')
   expect(wrapper.text()).not.toContain('适用流水号')
   expect(wrapper.text()).not.toContain('手工录入')
@@ -324,13 +324,43 @@ it('keeps a warehouse route preview read-only without save, publication or revis
   expect(processRouteApi.options).not.toHaveBeenCalled()
 })
 
-it('uses the route-specific directory once for repeated visits to the same production team', async () => {
+it('saves without execution presets or loading team task settings', async () => {
+  const route = structuredClone(routeFixture)
+  route.steps.forEach((step) => {
+    step.processing_task_id = null
+    step.purpose_id = null
+  })
+  await render(false, route)
+  expect(processRouteApi.options).not.toHaveBeenCalled()
+  for (const label of ['执行设置', '具体任务', '对应业务', '参考天数', '适用流水号'])
+    expect(wrapper.text()).not.toContain(label)
+  await click('保存工艺')
+  expect(processRouteApi.publish).toHaveBeenCalledOnce()
+  expect(vi.mocked(processRouteApi.save).mock.calls[0]![0].steps).toEqual(route.steps)
+})
+
+it('keeps step deletion available without execution settings', async () => {
   await render(false, routeFixture)
-  expect(processRouteApi.options).toHaveBeenCalledWith(2)
-  expect(
-    vi.mocked(processRouteApi.options).mock.calls.filter(([teamId]) => teamId === 2),
-  ).toHaveLength(1)
-  expect(wrapper.text()).not.toContain('班组业务与任务读取失败')
+  await wrapper.get('button[aria-label="删除工序 2"]').trigger('click')
+  await click('保存工艺')
+  expect(vi.mocked(processRouteApi.save).mock.calls[0]![0].steps.map((step) => step.name)).toEqual([
+    '备料',
+    '精磨',
+    '终检',
+  ])
+})
+
+it('names a new rework step from its assigned team without a hidden name field', async () => {
+  await render(false, { ...reworkRouteFixture, steps: [] }, false, true)
+  await wrapper.get('textarea[aria-label="工序 1 工艺要求"]').setValue('返工精磨至图纸要求')
+  await click('提交工艺')
+  expect(processRouteApi.publish).toHaveBeenCalledOnce()
+  expect(vi.mocked(processRouteApi.save).mock.calls[0]![0].steps[0]).toMatchObject({
+    name: '研磨',
+    team_id: 2,
+    processing_task_id: null,
+    purpose_id: null,
+  })
 })
 
 async function renderNew() {
@@ -361,7 +391,7 @@ it('opens a manual form without importing or persisting a blank record', async (
     '执行班组',
     '工艺要求',
     '计划加工数量',
-    '执行设置',
+    '操作',
   ])
   expect(wrapper.get('[aria-label="工艺附件缩略图"]').text()).toContain('工艺原件未上传')
   expect(processRouteApi.save).not.toHaveBeenCalled()

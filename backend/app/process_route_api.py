@@ -564,12 +564,30 @@ def dispatch_order(
 
 
 def map_word_steps(session, steps):
-    warehouse = session.scalar(
-        select(Team).where(Team.code == WAREHOUSE_TEAM_CODE, Team.active.is_(True))
-    )
+    aliases = {
+        "中转库": WAREHOUSE_TEAM_CODE,
+        "库房": WAREHOUSE_TEAM_CODE,
+        "轧板": "FACTORY-ROLL",
+        "轧制": "FACTORY-ROLL",
+        "线切割": "FACTORY-WIRE",
+        "退火": "FACTORY-ANNEAL",
+        "研磨": "FACTORY-GRIND",
+        "雕刻": "FACTORY-ENGRAVE",
+        "电镀": "FACTORY-PLATE",
+        "质检": "FACTORY-QC",
+        "检验": "FACTORY-QC",
+    }
+    teams = session.scalars(
+        select(Team).where(Team.active.is_(True), Team.kind.in_(("warehouse", "production")))
+    ).all()
     for step in steps:
-        if warehouse and step["name"].strip() in ("中转库", "库房"):
-            step.update(team_id=warehouse.id, team_name=warehouse.name)
+        if step.get("team_id") is not None:
+            continue
+        name = step["name"].strip()
+        code = aliases.get(name)
+        matches = [team for team in teams if (team.code == code if code else team.name == name)]
+        if len(matches) == 1:
+            step.update(team_id=matches[0].id, team_name=matches[0].name)
 
 
 async def read_word(file):

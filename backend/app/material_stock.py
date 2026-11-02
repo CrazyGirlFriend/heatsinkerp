@@ -501,9 +501,10 @@ def create_dispatch(db, team_id, payload, user):
                         if selected_route
                         else {"purpose_id": purpose_id}
                     )
-                    if purpose_id is not None and purpose_id != step["purpose_id"]:
-                        raise HTTPException(422, "下序接收业务必须与已发布工艺一致")
-                    purpose_id = step["purpose_id"]
+                    if step["purpose_id"] is not None:
+                        if purpose_id is not None and purpose_id != step["purpose_id"]:
+                            raise HTTPException(422, "下序接收业务必须与已发布工艺一致")
+                        purpose_id = step["purpose_id"]
                 route_fields_by_line.append(fields)
                 if purpose_id not in purpose_cache:
                     purpose_cache[purpose_id] = purpose_snapshot(

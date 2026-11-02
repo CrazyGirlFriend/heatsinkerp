@@ -130,6 +130,28 @@ it('shows the published step, fixed task and complete instructions for a repeate
   expect(select('加工对应业务').props()).toMatchObject({ modelValue: 3, disabled: true })
 })
 
+it.each([false, true])(
+  'lets the team select work for a route without execution presets (rework=%s)',
+  async (rework) => {
+    const snapshot = context()
+    snapshot.process_route = {
+      ...snapshot.process_route!,
+      processing_task_id: null,
+      purpose_id: null,
+      route_kind: rework ? 'rework' : 'normal',
+    }
+    await render(snapshot, rework)
+    expect(select('加工任务').props('disabled')).toBe(false)
+    expect(select('加工对应业务').props('disabled')).toBe(false)
+    expect(wrapper.getComponent(ProcessingTaskFields).emitted('validity')?.at(-1)).toEqual([false])
+    select('加工任务').vm.$emit('update:modelValue', 9)
+    select('加工对应业务').vm.$emit('update:modelValue', 3)
+    await flushPromises()
+    expect(wrapper.getComponent(ProcessingTaskFields).emitted('validity')?.at(-1)).toEqual([true])
+    expect(wrapper.get('[aria-label="本道加工工艺"]').text()).toContain('厚度 2.50 ±0.05 mm')
+  },
+)
+
 it('keeps same-task originals distinct and changes requirements with the chosen rework record', async () => {
   await render({ ...context(), rework_of_id: 51, rework_task_records: originals() }, true)
   const chooser = select('返工原加工记录')

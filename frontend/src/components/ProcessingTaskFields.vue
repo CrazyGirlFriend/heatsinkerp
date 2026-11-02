@@ -64,26 +64,30 @@ function originalLabel(record: (typeof reworkRecords.value)[number]) {
   return `${record.process_step_name || '历史工序未登记'} · ${record.processing_task_name || '任务未登记'} · 原记录 #${record.rework_of_id}`
 }
 const required = computed(
-  () => !props.rework && (props.context.task_required || tasks.value.length > 0),
+  () =>
+    (!props.rework || !!routeStep.value) && (props.context.task_required || tasks.value.length > 0),
 )
 const choices = computed(() =>
   tasks.value.filter(
     (item) =>
       item.active &&
       (routeStep.value
-        ? item.id === routeStep.value.processing_task_id
+        ? !routeStep.value.processing_task_id || item.id === routeStep.value.processing_task_id
         : props.context.completed_task_ids
           ? !props.context.completed_task_ids.includes(item.id)
           : !props.context.allowed_task_ids || props.context.allowed_task_ids.includes(item.id)),
   ),
 )
 const validTask = computed(
-  () => props.rework || !required.value || choices.value.some((item) => item.id === props.taskId),
+  () =>
+    (props.rework && !routeStep.value) ||
+    !required.value ||
+    choices.value.some((item) => item.id === props.taskId),
 )
 const purposeRequired = computed(() => !!props.taskId && purposes.value.length > 0)
 const validPurpose = computed(
   () =>
-    props.rework ||
+    (props.rework && !routeStep.value) ||
     (!purposeRequired.value && !props.purposeId) ||
     purposes.value.some((item) => item.active && item.id === props.purposeId),
 )
@@ -129,8 +133,9 @@ async function load() {
     tasks.value = taskOptions
     purposes.value = purposeOptions
     if (routeStep.value) {
-      emit('update:taskId', routeStep.value.processing_task_id)
-      emit('update:purposeId', routeStep.value.purpose_id)
+      if (routeStep.value.processing_task_id)
+        emit('update:taskId', routeStep.value.processing_task_id)
+      if (routeStep.value.purpose_id) emit('update:purposeId', routeStep.value.purpose_id)
     }
   } catch (e) {
     if (current === generation) error.value = e instanceof Error ? e.message : '加工任务读取失败'
@@ -218,7 +223,7 @@ onBeforeUnmount(() => ++generation)
       filterable
       :placeholder="rework ? '未登记' : '未分类'"
       :loading="loading"
-      :disabled="disabled || rework || !!routeStep || loading"
+      :disabled="disabled || (rework && !routeStep) || !!routeStep?.purpose_id || loading"
       @update:model-value="emit('update:purposeId', $event || null)"
     >
       <ElOption
@@ -248,7 +253,7 @@ onBeforeUnmount(() => ++generation)
       clearable
       :placeholder="rework ? '未登记' : tasks.length ? '选择本次完成的任务' : '尚未配置任务'"
       :loading="loading"
-      :disabled="disabled || rework || !!routeStep || loading"
+      :disabled="disabled || (rework && !routeStep) || !!routeStep?.processing_task_id || loading"
       @update:model-value="emit('update:taskId', $event || null)"
     >
       <ElOption v-for="item in choices" :key="item.id" :value="item.id" :label="item.name" />
@@ -263,10 +268,14 @@ onBeforeUnmount(() => ++generation)
       可先在<ElButton link type="primary" @click="settingsOpen = true">班组设置</ElButton
       >维护具体任务。
     </small>
-    <small v-if="routeStep?.route_kind === 'rework'" class="dialog-field-hint"
+    <small
+      v-if="
+        routeStep?.route_kind === 'rework' && (routeStep.processing_task_id || routeStep.purpose_id)
+      "
+      class="dialog-field-hint"
       >按返工工艺指定的业务和任务执行。</small
     >
-    <small v-else-if="rework" class="dialog-field-hint"
+    <small v-else-if="rework && !routeStep" class="dialog-field-hint"
       >沿用原加工记录的业务和任务，历史未登记的不补填。</small
     >
     <ElAlert v-if="error" :title="error" type="error" :closable="false">
