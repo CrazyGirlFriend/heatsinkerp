@@ -1,10 +1,11 @@
-"""One inbox over the existing transactional rework and schedule messages."""
+"""One inbox over transactional business messages and confirmation requests."""
 
 from typing import Literal
+from urllib.parse import urlencode
 
 from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, exists, func, literal, select, union_all
+from sqlalchemy import and_, exists, func, literal, or_, select, union_all
 from sqlalchemy.orm import Session
 
 from .async_api import AsyncAPIRouter
@@ -12,6 +13,7 @@ from .auth import get_current_user
 from .database import get_db
 from .models import (
     MaterialTransfer,
+    MaterialTransferAmendment,
     ProcessRoute,
     ProductionSchedule,
     ProductionScheduleEvent,
@@ -20,6 +22,8 @@ from .models import (
     ScheduleNotice,
     ScheduleNoticeRead,
     Team,
+    TransferAmendmentNotice,
+    TransferAmendmentNoticeRead,
     User,
     utcnow,
 )
@@ -27,10 +31,11 @@ from .production_schedules import iso
 from .schedule_notices import insert_once
 
 router = AsyncAPIRouter(prefix="/api/business-notices", tags=["business notices"])
-Source = Literal["schedule", "rework"]
+Source = Literal["schedule", "rework", "transfer"]
 MODELS = {
     "schedule": (ScheduleNotice, ScheduleNoticeRead),
     "rework": (ReworkNotice, ReworkNoticeRead),
+    "transfer": (TransferAmendmentNotice, TransferAmendmentNoticeRead),
 }
 
 
@@ -118,7 +123,7 @@ def schedule_message(notice, event):
 def inbox(
     page: int = Query(1, ge=1),
     unread_only: bool = False,
-    category: Literal["all", "schedule", "rework"] = "all",
+    category: Literal["all", "schedule", "rework", "transfer", "pending"] = "all",
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -127,12 +132,29 @@ def inbox(
     for source, (notice, receipt) in MODELS.items():
         filters = scope(user, notice)
         latest[source] = db.scalar(select(func.max(notice.id)).where(*filters)) or 0
+        action_required = literal(False)
+        if source == "transfer" and user.role == "TEAM" and user.team_id:
+            action_required = and_(
+                notice.kind == "amendment_requested",
+                exists(
+                    select(MaterialTransferAmendment.id).where(
+                        MaterialTransferAmendment.id == notice.amendment_id,
+                        MaterialTransferAmendment.status == "pending",
+                        MaterialTransferAmendment.counterparty_team_id == user.team_id,
+                        or_(
+                            MaterialTransferAmendment.requested_by_user_id.is_(None),
+                            MaterialTransferAmendment.requested_by_user_id != user.id,
+                        ),
+                    )
+                ),
+            )
         queries.append(
             select(
                 literal(source).label("source"),
                 notice.id,
                 notice.created_at,
                 receipt.read_at,
+                action_required.label("action_required"),
             )
             .outerjoin(receipt, and_(receipt.notice_id == notice.id, receipt.user_id == user.id))
             .where(*filters)
@@ -142,7 +164,9 @@ def inbox(
         select(func.count()).select_from(all_rows).where(all_rows.c.read_at.is_(None))
     )
     filters = []
-    if category != "all":
+    if category == "pending":
+        filters.append(all_rows.c.action_required.is_(True))
+    elif category != "all":
         filters.append(all_rows.c.source == category)
     if unread_only:
         filters.append(all_rows.c.read_at.is_(None))
@@ -187,20 +211,34 @@ def inbox(
             )
         )
     }
+    amendments = {
+        amendment.id: amendment
+        for amendment in db.scalars(
+            select(MaterialTransferAmendment).where(
+                MaterialTransferAmendment.id.in_(
+                    [n.amendment_id for n in notices["transfer"].values()]
+                )
+            )
+        )
+    }
     lots = {
         lot.id: lot
         for lot in db.scalars(
             select(MaterialTransfer).where(
-                MaterialTransfer.id.in_([r.rework_source_transfer_id for r in routes.values()])
+                MaterialTransfer.id.in_(
+                    [r.rework_source_transfer_id for r in routes.values()]
+                    + [a.transfer_id for a in amendments.values()]
+                )
             )
         )
     }
     items = []
     # Only the visible page is hydrated. The union handles sorting/counts/pagination in SQL.
-    for source, notice_id, created, read_at in rows:
+    for source, notice_id, created, read_at, action_required in rows:
         notice = notices[source][notice_id]
         team = teams[notice.team_id]
         batch_no = None
+        amendment_info = {}
         if source == "schedule":
             plan = plans[notice.schedule_id]
             serial = plan.serial_no
@@ -210,12 +248,23 @@ def inbox(
                 if notice.kind in ("changed", "upstream", "final_due")
                 else None,
             )
-        else:
+        elif source == "rework":
             route = routes[notice.route_id]
             lot = lots[route.rework_source_transfer_id]
             serial = route.serial_nos[0] if route.serial_nos else ""
             message = route.request_reason
             batch_no = lot.batch_no
+        else:
+            amendment = amendments[notice.amendment_id]
+            lot = lots[amendment.transfer_id]
+            serial = lot.serial_no
+            message = notice.message
+            batch_no = lot.batch_no
+            amendment_info = dict(
+                amendment_id=amendment.id,
+                amendment_status=amendment.status,
+                action_required=bool(action_required),
+            )
         items.append(
             dict(
                 id=notice_id,
@@ -227,6 +276,7 @@ def inbox(
                 team_name=team.name,
                 created_at=iso(created),
                 read_at=iso(read_at),
+                **amendment_info,
             )
         )
     return dict(items=items, total=total, unread=unread, latest=latest)
@@ -240,6 +290,15 @@ def target(
     db: Session = Depends(get_db),
 ):
     notice = visible_notice(db, user, source, notice_id)
+    if source == "transfer":
+        amendment = db.get(MaterialTransferAmendment, notice.amendment_id)
+        transfer = db.get(MaterialTransfer, amendment.transfer_id)
+        return dict(
+            href="/transfer-batches?"
+            + urlencode(dict(batch_no=transfer.batch_no, amendment_id=amendment.id)),
+            section="amendment",
+            amendment_id=amendment.id,
+        )
     if source == "rework":
         # The existing reader enforces draft access and resolves superseded instructions.
         from .rework_notices import notice_route
@@ -270,6 +329,7 @@ def target(
 class ReadAll(BaseModel):
     schedule: int = Field(ge=0)
     rework: int = Field(ge=0)
+    transfer: int = Field(default=0, ge=0)
 
 
 @router.post("/read-all", status_code=204)

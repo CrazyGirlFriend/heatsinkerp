@@ -141,6 +141,10 @@ export interface MaterialTransferHistoryEntry {
     | 'processed'
     | 'inspection_recorded'
     | 'inspection_rechecked'
+    | 'amendment_requested'
+    | 'amendment_approved'
+    | 'amendment_rejected'
+    | 'amendment_cancelled'
   actor: string
   occurred_at: string
   changes: Record<string, { before: unknown; after: unknown }>

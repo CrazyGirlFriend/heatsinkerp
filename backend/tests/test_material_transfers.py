@@ -115,7 +115,7 @@ def test_material_transfer_is_a_single_team_handoff_without_process_dependencies
         assert db.scalar(select(OperationReport.id)) is None
 
 
-def test_permissions_whole_batch_confirmation_and_permanent_lock(client):
+def test_permissions_receipt_requires_counterparty_amendment_instead_of_direct_edit(client):
     setup = _setup_three_teams(client)
     created = _create(client, setup).json()
     batch_no = created["batch_no"]
@@ -198,7 +198,7 @@ def test_permissions_whole_batch_confirmation_and_permanent_lock(client):
     assert received["received_by"] == "third-leader班组长"
     assert received["received_by_user_id"] == setup["third_user"]["id"]
     assert received["quantity"] == 9 and received["weight"] == 2.125
-    assert received["allowed_actions"] == []
+    assert received["allowed_actions"] == ["request_amendment"]
 
     retry = receipt_post(
         client,

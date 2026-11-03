@@ -5,6 +5,8 @@ import { reactive } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
+import TransferAmendmentDialog from './TransferAmendmentDialog.vue'
+import { transferAmendmentApi, type TransferAmendment } from '@/services/transferAmendmentApi'
 import MaterialTransferDetailFrame from './MaterialTransferDetailFrame.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import ReceiptPersonInput from './ReceiptPersonInput.vue'
@@ -72,6 +74,12 @@ function fixture(overrides: Partial<MaterialTransfer> = {}) {
 }
 let wrapper: VueWrapper
 beforeEach(() => {
+  vi.spyOn(transferAmendmentApi, 'list').mockResolvedValue({
+    items: [],
+    remaining_quantity: 0,
+    remaining_weight: 0,
+    editable: false,
+  })
   vi.spyOn(processRouteApi, 'dispatchOrder').mockResolvedValue(null)
   state.auth = reactive({
     isAdmin: false,
@@ -112,6 +120,8 @@ async function render(
         },
         MaterialDispatchDrawer: true,
         MaterialTransferFormDialog: true,
+        TransferAmendmentDialog: true,
+        TransferAmendmentReview: true,
         MaterialTransferPrintSheet: true,
         BarcodeCard: true,
         RouterLink: { props: ['to'], template: '<a :href="to"><slot/></a>' },
@@ -867,4 +877,59 @@ it('reports completed exit only when the material document has actually closed',
   await wrapper.setProps({ modelValue: false })
   await flushPromises()
   expect(wrapper.emitted('closed')).toEqual([[]])
+})
+
+describe('received transfer amendments', () => {
+  it.each([2, 3])(
+    'lets either handoff team request a confirmed change (team %s)',
+    async (teamId) => {
+      state.auth.currentUser.team_id = teamId
+      vi.mocked(materialTransferApi.get).mockResolvedValue(
+        fixture({
+          status: 'received',
+          locked: true,
+          allowed_actions: ['request_amendment'],
+          material_type: 'semi_finished',
+          quantity: 100,
+          weight: 10,
+        }),
+      )
+      vi.mocked(transferAmendmentApi.list).mockResolvedValue({
+        items: [],
+        remaining_quantity: 40,
+        remaining_weight: 4,
+        editable: true,
+      })
+      await render()
+      const button = wrapper.findAll('button').find((item) => item.text() === '申请修改')!
+      expect(button).toBeTruthy()
+      expect(wrapper.findAll('button').some((item) => item.text() === '编辑')).toBe(false)
+      expect(wrapper.text()).toContain('须经对方确认后生效')
+      await button.trigger('click')
+      expect(wrapper.getComponent(TransferAmendmentDialog).props('modelValue')).toBe(true)
+    },
+  )
+  it('shows an existing pending proposal and suppresses another request', async () => {
+    vi.mocked(materialTransferApi.get).mockResolvedValue(
+      fixture({ status: 'received', locked: true, allowed_actions: [] }),
+    )
+    vi.mocked(transferAmendmentApi.list).mockResolvedValue({
+      items: [
+        {
+          id: 11,
+          created_at: '2026-11-03T00:00:00Z',
+          requester_team_name: '研磨',
+          status: 'pending',
+          allowed_actions: ['approve', 'reject'],
+        } as TransferAmendment,
+      ],
+      remaining_quantity: 40,
+      remaining_weight: 4,
+      editable: false,
+    })
+    await render()
+    expect(wrapper.get('table[aria-label="转料修改申请"]').text()).toContain('待对方确认')
+    expect(wrapper.findAll('button').some((item) => item.text() === '核对修改')).toBe(true)
+    expect(wrapper.findAll('button').some((item) => item.text() === '申请修改')).toBe(false)
+  })
 })

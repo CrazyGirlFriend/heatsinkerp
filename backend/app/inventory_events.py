@@ -33,6 +33,7 @@ from .models import (
     Team,
     TeamProcessingTask,
     TeamPurpose,
+    TransferAmendmentNotice,
     User,
     WarehouseLocation,
     utcnow,
@@ -169,6 +170,7 @@ inventory_events = InventoryEvents()
 outbox_wakeups = InventoryEvents()
 WATCHED = (
     ReworkNotice,
+    TransferAmendmentNotice,
     ProcessRoute,
     ProductionSchedule,
     MaterialTransfer,

@@ -26,7 +26,12 @@ const notice: BusinessNotice = {
   created_at: '2026-10-27T06:01:00Z',
   read_at: null,
 }
-const result = { items: [notice], total: 1, unread: 1, latest: { schedule: 8, rework: 3 } }
+const result = {
+  items: [notice],
+  total: 1,
+  unread: 1,
+  latest: { schedule: 8, rework: 3, transfer: 0 },
+}
 const wrappers: ReturnType<typeof mount>[] = []
 async function setup() {
   const router = createRouter({
@@ -41,6 +46,13 @@ async function setup() {
     global: {
       plugins: [router],
       stubs: {
+        TransferAmendmentReview: {
+          name: 'TransferAmendmentReview',
+          props: ['amendmentId'],
+          emits: ['loaded', 'resolved', 'view-transfer'],
+          template:
+            '<section data-testid="amendment-review"><span>{{ amendmentId }}</span><button @click="$emit(\'loaded\', { id: amendmentId })">读取修改内容</button><button @click="$emit(\'resolved\', { id: amendmentId, status: \'approved\' })">确认成功</button></section>',
+        },
         AppDrawer: {
           props: ['modelValue'],
           template: '<div v-if="modelValue"><slot /><slot name="footer" /></div>',
@@ -67,7 +79,7 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 describe('schedule inbox', () => {
-  it('shows unread count, opens the correct team plan and marks only the opened notice', async () => {
+  it('previews a message, then opens the correct team plan', async () => {
     const { wrapper, router } = await setup()
     expect(wrapper.get('.notice-trigger').attributes('aria-label')).toContain('1 条未读')
     await wrapper.get('.notice-trigger').trigger('click')
@@ -75,12 +87,15 @@ describe('schedule inbox', () => {
     expect(wrapper.text()).toContain('第 2 批已过交期')
     await wrapper.get('.inbox-serial').trigger('click')
     await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/production-schedules')
+    expect(businessNoticeApi.read).toHaveBeenCalledWith('schedule', 8)
+    await wrapper.get('.inbox-open-business').trigger('click')
+    await flushPromises()
     expect(router.currentRoute.value.path).toBe('/team-workspaces/2')
     expect(router.currentRoute.value.query).toMatchObject({
       tab: 'delivery-schedule',
       schedule_id: '12',
     })
-    expect(businessNoticeApi.read).not.toHaveBeenCalled()
     noticeOpened(String(router.currentRoute.value.query.notice))
     await flushPromises()
     expect(businessNoticeApi.read).toHaveBeenCalledWith('schedule', 8)
@@ -102,7 +117,7 @@ describe('schedule inbox', () => {
       .find((b) => b.text() === '全部已读')!
       .trigger('click')
     await flushPromises()
-    expect(businessNoticeApi.readAll).toHaveBeenCalledWith({ schedule: 8, rework: 3 })
+    expect(businessNoticeApi.readAll).toHaveBeenCalledWith({ schedule: 8, rework: 3, transfer: 0 })
   })
   it('opens a whole message row and distinguishes matching IDs from different sources', async () => {
     vi.mocked(businessNoticeApi.list).mockResolvedValue({
@@ -130,6 +145,10 @@ describe('schedule inbox', () => {
     expect(rows[1]!.find('.inbox-unread-dot').exists()).toBe(false)
     await rows[1]!.get('.inbox-message').trigger('click')
     await flushPromises()
+    expect(wrapper.get('.inbox-detail').text()).toContain('厚度超差')
+    expect(businessNoticeApi.target).not.toHaveBeenCalled()
+    await wrapper.get('.inbox-open-business').trigger('click')
+    await flushPromises()
     expect(businessNoticeApi.target).toHaveBeenCalledWith('rework', 8)
   })
   it('reports a failed refresh without marking messages read or losing the last badge', async () => {
@@ -141,7 +160,7 @@ describe('schedule inbox', () => {
     expect(wrapper.get('.notice-trigger').attributes('aria-label')).toContain('1 条未读')
     expect(businessNoticeApi.read).not.toHaveBeenCalled()
   })
-  it('filters rework and keeps failed destinations unread', async () => {
+  it('filters rework and reports failed destinations without leaving the inbox closed', async () => {
     vi.mocked(businessNoticeApi.list).mockResolvedValue({
       ...result,
       items: [{ ...notice, source: 'rework', kind: 'requested', message: '厚度超差' }],
@@ -153,17 +172,68 @@ describe('schedule inbox', () => {
     const { wrapper, router } = await setup()
     await wrapper.get('.notice-trigger').trigger('click')
     await flushPromises()
-    await wrapper.findAll('.inbox-tabs button')[1]!.trigger('click')
+    await wrapper
+      .findAll('.inbox-tabs button')
+      .find((button) => button.text() === '返工')!
+      .trigger('click')
     await flushPromises()
     expect(businessNoticeApi.list).toHaveBeenLastCalledWith(1, false, 'rework')
     await wrapper.get('.inbox-serial').trigger('click')
     await flushPromises()
+    await wrapper.get('.inbox-open-business').trigger('click')
+    await flushPromises()
     expect(router.currentRoute.value.path).toBe('/process-routes')
+    vi.mocked(businessNoticeApi.read).mockClear()
     noticeOpened('stale-navigation')
     expect(businessNoticeApi.read).not.toHaveBeenCalled()
     noticeFailed(String(router.currentRoute.value.query.notice), new Error('工艺读取失败'))
     await flushPromises()
     expect(wrapper.text()).toContain('工艺读取失败')
+    expect(businessNoticeApi.read).not.toHaveBeenCalled()
+  })
+  it('loads a transfer proposal in the inbox and marks only its successfully loaded details read', async () => {
+    const proposal: BusinessNotice = {
+      ...notice,
+      source: 'transfer',
+      kind: 'amendment_requested',
+      amendment_id: 17,
+      amendment_status: 'pending',
+      action_required: true,
+      message: '数量由 100 件改为 90 件',
+    }
+    vi.mocked(businessNoticeApi.list).mockResolvedValue({ ...result, items: [proposal] })
+    const { wrapper, router } = await setup()
+    await wrapper.get('.notice-trigger').trigger('click')
+    await flushPromises()
+    await wrapper.get('.inbox-item').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/production-schedules')
+    expect(wrapper.get('[data-testid="amendment-review"]').text()).toContain('17')
+    expect(businessNoticeApi.target).not.toHaveBeenCalled()
+    expect(businessNoticeApi.read).not.toHaveBeenCalled()
+    const review = wrapper.getComponent({ name: 'TransferAmendmentReview' })
+    review.vm.$emit('loaded', { id: 16 })
+    await flushPromises()
+    expect(businessNoticeApi.read).not.toHaveBeenCalled()
+    review.vm.$emit('loaded', { id: 17 })
+    await flushPromises()
+    expect(businessNoticeApi.read).toHaveBeenCalledWith('transfer', 8)
+    expect(wrapper.get('.inbox-kind').text()).toBe('待确认')
+    review.vm.$emit('resolved', { id: 17, status: 'approved' })
+    await flushPromises()
+    expect(businessNoticeApi.list).toHaveBeenCalledTimes(3)
+  })
+  it('keeps pending approval separate from unread filtering and read-all', async () => {
+    const { wrapper } = await setup()
+    await wrapper.get('.notice-trigger').trigger('click')
+    await flushPromises()
+    await wrapper
+      .findAll('.inbox-tabs button')
+      .find((button) => button.text() === '待确认')!
+      .trigger('click')
+    await flushPromises()
+    expect(businessNoticeApi.list).toHaveBeenLastCalledWith(1, false, 'pending')
+    expect(businessNoticeApi.target).not.toHaveBeenCalled()
     expect(businessNoticeApi.read).not.toHaveBeenCalled()
   })
   it('ignores a response after the account component unmounts', async () => {

@@ -26,12 +26,14 @@ from .schedule_notices import router as schedule_notices_router
 from .serial_urgency import router as urgency_router
 from .team_business import router as team_business_router
 from .team_serial_history import router as serial_history_router
+from .transfer_amendments import router as transfer_amendments_router
 from .warehouse_inventory import router as warehouse_inventory_router
 from .warehouse_locations import router as warehouse_locations_router
 
 router = APIRouter()
 router.include_router(admin_router)
 router.include_router(material_router)
+router.include_router(transfer_amendments_router)
 router.include_router(stock_router)
 router.include_router(inspection_router)
 router.include_router(quality_feedback_router)

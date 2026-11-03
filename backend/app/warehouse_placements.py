@@ -127,6 +127,21 @@ def apply_changes(connection, changes, fields):
                         .where(table.c.transfer_id == obj.id)
                         .values(quantity=after["quantity"], weight=after["weight"])
                     )
+            if (
+                before
+                and after
+                and before["status"] == after["status"] == "received"
+                and after["next_team_id"] == warehouse_id
+            ):
+                # Approved receipt corrections reduce current placements, including
+                # later manual placements. Added stock stays unassigned.
+                withdrawals.append(
+                    (
+                        obj.id,
+                        max(0, before["quantity"] - after["quantity"]),
+                        max(Decimal(0), before["weight"] - after["weight"]),
+                    )
+                )
             if (after or before)["source_team_id"] == warehouse_id:
                 old_q, old_w = physical_out(before)
                 new_q, new_w = physical_out(after)

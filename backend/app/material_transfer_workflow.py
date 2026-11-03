@@ -254,7 +254,18 @@ def _assert_receiver(user: User, transfer: MaterialTransfer) -> None:
 
 
 def material_transfer_allowed_actions(transfer: MaterialTransfer, user: User | None) -> list[str]:
-    if user is None or user.role != "TEAM" or transfer.status != "pending":
+    if user is None or user.role != "TEAM":
+        return []
+    if transfer.status == "received":
+        from .transfer_amendments import eligible
+
+        return (
+            ["request_amendment"]
+            if eligible(transfer)
+            and user.team_id in (transfer.source_team_id, transfer.next_team_id)
+            else []
+        )
+    if transfer.status != "pending":
         return []
     if user.team_id == transfer.source_team_id:
         return (
@@ -542,7 +553,11 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
         transfer = _locked_transfer(db, batch_no)
         _assert_source(user, transfer)
         if transfer.status != "pending":
-            raise _conflict("confirmed or voided transfer is permanently locked")
+            raise _conflict(
+                "已签收的交接单请申请修改，经对方班组确认后生效"
+                if transfer.status == "received"
+                else "已作废的交接单不能修改"
+            )
         _assert_version(transfer, payload)
         before = _snapshot(transfer)
         supplied = payload.model_fields_set

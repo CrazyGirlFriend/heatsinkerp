@@ -285,7 +285,11 @@ class MaterialTransfer(Base):
             "AND sludge_gross_weight > 0 AND sludge_content_percent > 0 AND sludge_content_percent <= 100)",
             name="ck_mt_sludge_measurement",
         ),
-        CheckConstraint("quantity > 0 OR weight > 0", name="ck_material_transfers_nonempty"),
+        CheckConstraint(
+            "quantity > 0 OR weight > 0 OR (entry_kind = 'processing_output' "
+            "AND processing_role = 'remaining' AND status = 'received')",
+            name="ck_material_transfers_nonempty",
+        ),
         CheckConstraint(
             "finished_quantity IS NULL OR finished_quantity >= 0",
             name="ck_material_transfers_finished_quantity",
@@ -751,6 +755,78 @@ class MaterialTransferEvent(Base):
     occurred_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     changes: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     transfer: Mapped[MaterialTransfer] = relationship(back_populates="history")
+
+
+class MaterialTransferAmendment(Base):
+    """A received handoff correction takes effect only after counterparty approval."""
+
+    __tablename__ = "material_transfer_amendments"
+    __table_args__ = (
+        UniqueConstraint("pending_transfer_id", name="uq_mta_pending_transfer"),
+        CheckConstraint(
+            "(status = 'pending' AND pending_transfer_id IS NOT NULL AND pending_transfer_id = transfer_id) OR "
+            "(status IN ('approved', 'rejected', 'cancelled') AND pending_transfer_id IS NULL)",
+            name="ck_mta_pending",
+        ),
+        Index("ix_mta_transfer_created", "transfer_id", "created_at", "id"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    transfer_id: Mapped[int] = mapped_column(
+        ForeignKey("material_transfers.id", ondelete="RESTRICT"), nullable=False
+    )
+    pending_transfer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("material_transfers.id", ondelete="RESTRICT")
+    )
+    base_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    requester_team_id: Mapped[int] = mapped_column(
+        ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False
+    )
+    counterparty_team_id: Mapped[int] = mapped_column(
+        ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False
+    )
+    requested_by: Mapped[str] = mapped_column(String(80), nullable=False)
+    requested_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    before: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    after: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    resolved_by: Mapped[str | None] = mapped_column(String(80))
+    resolved_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    response_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class TransferAmendmentNotice(Base):
+    __tablename__ = "transfer_amendment_notices"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_key: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
+    amendment_id: Mapped[int] = mapped_column(
+        ForeignKey("material_transfer_amendments.id", ondelete="RESTRICT"), nullable=False
+    )
+    team_id: Mapped[int] = mapped_column(
+        ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    message: Mapped[str] = mapped_column(String(300), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    __table_args__ = (Index("ix_tan_team_id", "team_id", "id"),)
+
+
+class TransferAmendmentNoticeRead(Base):
+    __tablename__ = "transfer_amendment_notice_reads"
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    notice_id: Mapped[int] = mapped_column(
+        ForeignKey("transfer_amendment_notices.id", ondelete="CASCADE"), primary_key=True
+    )
+    read_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    __table_args__ = (Index("ix_tanr_notice", "notice_id"),)
 
 
 class AdminAuditEvent(Base):

@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import AppDialog from './AppDialog.vue'
+import TransferAmendmentDialog from './TransferAmendmentDialog.vue'
+import TransferAmendmentReview from './TransferAmendmentReview.vue'
+import {
+  transferAmendmentApi,
+  transferAmendmentStatusLabels,
+  type TransferAmendmentList,
+} from '@/services/transferAmendmentApi'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 import { formatAmount } from '@/utils/format'
@@ -99,6 +107,13 @@ const selectingReceiver = ref(false)
 const confirming = ref(false)
 const voiding = ref(false)
 const editOpen = ref(false)
+const amendmentOpen = ref(false),
+  amendmentBusy = ref(false)
+const selectedAmendmentId = ref<number | null>(null)
+const amendments = ref<TransferAmendmentList | null>(null)
+const amendmentsLoading = ref(false),
+  amendmentsError = ref('')
+let amendmentsVersion = 0
 const deliveryOpen = ref(false),
   deliveryBusy = ref(false)
 const printReady = ref(false)
@@ -114,11 +129,12 @@ let confirmKey = ''
 onBeforeUnmount(() => {
   ++requestVersion
   ++actionVersion
+  ++amendmentsVersion
 })
 watch(
-  [confirming, voiding, deliveryBusy],
-  ([confirmBusy, voidBusy, deadlineBusy]) =>
-    emit('busyChange', confirmBusy || voidBusy || deadlineBusy),
+  [confirming, voiding, deliveryBusy, amendmentBusy],
+  ([confirmBusy, voidBusy, deadlineBusy, changeBusy]) =>
+    emit('busyChange', confirmBusy || voidBusy || deadlineBusy || changeBusy),
   { flush: 'sync' },
 )
 
@@ -158,6 +174,14 @@ const canMaintainDelivery = computed(() =>
 const canEdit = computed(() =>
   Boolean(
     !props.receiptOnly && isSource.value && current.value && canEditMaterialTransfer(current.value),
+  ),
+)
+const canRequestAmendment = computed(() =>
+  Boolean(
+    !props.receiptOnly &&
+    teamActorReady.value &&
+    (isSource.value || isReceiver.value) &&
+    amendments.value?.editable,
   ),
 )
 const canVoid = computed(() =>
@@ -214,7 +238,7 @@ const stateMessage = computed(() => {
   if (current.value.status === 'dispatched') return `${actionLabel.value}已确认，单据已锁定`
   if (external.value && current.value.status === 'pending')
     return `由${current.value.source_team.name}确认实际${actionLabel.value}，确认后扣减库存`
-  if (current.value.status === 'received') return '接收已确认，转料内容已锁定'
+  if (current.value.status === 'received') return '签收后可申请修改，须经对方确认后生效'
   if (current.value.status === 'voided') return '该转料单已作废'
   if (canConfirm.value) return '整单确认签收：无需重新录入数量或重量，请核对后确认。'
   if (canEdit.value || canVoid.value) return '接收确认前，转出方可以修改或作废'
@@ -239,6 +263,8 @@ const freezeLive = computed(
     confirming.value ||
     voiding.value ||
     editOpen.value ||
+    amendmentOpen.value ||
+    selectedAmendmentId.value !== null ||
     deliveryOpen.value ||
     printReady.value ||
     groupOpen.value ||
@@ -269,6 +295,7 @@ async function load(resetKey: unknown = true, background = false): Promise<void>
     if (resetKey !== false || current.value?.version !== result.version)
       confirmKey = newIdempotencyKey()
     current.value = result
+    void loadAmendments()
   } catch (error) {
     if (version !== requestVersion || !props.modelValue) return
     if (background) throw error
@@ -279,6 +306,49 @@ async function load(resetKey: unknown = true, background = false): Promise<void>
   }
 }
 
+async function loadAmendments() {
+  const transfer = current.value
+  const epoch = ++amendmentsVersion
+  amendmentsError.value = ''
+  if (
+    !transfer ||
+    transfer.status !== 'received' ||
+    transfer.entry_kind !== 'transfer' ||
+    props.receiptOnly
+  ) {
+    amendments.value = null
+    amendmentsLoading.value = false
+    return
+  }
+  amendmentsLoading.value = true
+  try {
+    const result = await transferAmendmentApi.list(transfer.batch_no)
+    if (
+      epoch === amendmentsVersion &&
+      props.modelValue &&
+      current.value?.batch_no === transfer.batch_no
+    )
+      amendments.value = result
+  } catch (failure) {
+    if (epoch === amendmentsVersion) {
+      amendments.value = null
+      amendmentsError.value = failure instanceof Error ? failure.message : '修改申请读取失败'
+    }
+  } finally {
+    if (epoch === amendmentsVersion) amendmentsLoading.value = false
+  }
+}
+
+async function amendmentChanged() {
+  await load()
+  if (current.value && props.modelValue) emit('changed', current.value)
+}
+
+async function amendmentSubmitted() {
+  showToast('已发送修改申请，等待对方确认', 'success')
+  await amendmentChanged()
+}
+
 async function closed() {
   // Element Plus emits closed before the model update; let that parent update flush first.
   await nextTick()
@@ -287,8 +357,10 @@ async function closed() {
 }
 
 function close(): void {
-  if (confirming.value || voiding.value || deliveryBusy.value) return
+  if (confirming.value || voiding.value || deliveryBusy.value || amendmentBusy.value) return
   editOpen.value = false
+  amendmentOpen.value = false
+  selectedAmendmentId.value = null
   deliveryOpen.value = false
   ++requestVersion
   emit('update:modelValue', false)
@@ -317,7 +389,7 @@ async function confirmReceipt(): Promise<void> {
   confirming.value = true
   try {
     await ElMessageBox.confirm(
-      `由 ${person.name} 接收：${numberText(transfer.quantity, '件')}、${transfer.material_type === 'sludge' ? sludgeSummary(transfer) : numberText(transfer.weight, 'kg')}？确认后转出方不能修改。`,
+      `由 ${person.name} 接收：${numberText(transfer.quantity, '件')}、${transfer.material_type === 'sludge' ? sludgeSummary(transfer) : numberText(transfer.weight, 'kg')}？签收后如需修改，须经对方确认。`,
       '确认签收',
       { type: 'warning', confirmButtonText: '确认签收', cancelButtonText: '取消' },
     )
@@ -347,6 +419,7 @@ async function confirmReceipt(): Promise<void> {
     })
     if (epoch !== actionVersion || !props.modelValue) return
     current.value = confirmed
+    void loadAmendments()
     emit('changed', confirmed)
     emit('confirmed', confirmed)
     reviewNotice.value = ''
@@ -524,6 +597,11 @@ async function groupChanged() {
 watch(
   () => [props.modelValue, effectiveBatchNo.value, props.receiptOnly] as const,
   ([open]) => {
+    ++amendmentsVersion
+    amendments.value = null
+    amendmentsError.value = ''
+    amendmentOpen.value = false
+    selectedAmendmentId.value = null
     groupOpen.value = false
     receiver.value = null
     receiverRequired.value = false
@@ -582,6 +660,10 @@ watch(
     confirming.value = false
     voiding.value = false
     editOpen.value = false
+    amendmentOpen.value = false
+    selectedAmendmentId.value = null
+    ++amendmentsVersion
+    amendments.value = null
     deliveryOpen.value = false
     current.value = null
     emit('update:modelValue', false)
@@ -592,7 +674,7 @@ watch(
 <template>
   <MaterialTransferDetailFrame
     :model-value="modelValue && !groupOpen"
-    :busy="confirming || voiding || deliveryBusy"
+    :busy="confirming || voiding || deliveryBusy || amendmentBusy"
     @close="close"
     @closed="closed"
   >
@@ -717,6 +799,39 @@ watch(
           @busy-change="locationBusy = $event"
         />
       </section>
+      <section v-if="amendments?.items.length || amendmentsError" class="document-records">
+        <h3>修改申请</h3>
+        <p v-if="amendmentsError" role="alert">
+          {{ amendmentsError }}
+          <ElButton link type="primary" :loading="amendmentsLoading" @click="loadAmendments"
+            >重试</ElButton
+          >
+        </p>
+        <div v-else class="document-table-scroll">
+          <table class="amendment-list business-document-table" aria-label="转料修改申请">
+            <thead>
+              <tr>
+                <th scope="col">申请时间</th>
+                <th scope="col">申请班组</th>
+                <th scope="col">状态</th>
+                <th scope="col">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in amendments?.items" :key="item.id">
+                <td>{{ formatDateTime(item.created_at) }}</td>
+                <td>{{ item.requester_team_name }}</td>
+                <td>{{ transferAmendmentStatusLabels[item.status] }}</td>
+                <td>
+                  <ElButton link type="primary" @click="selectedAmendmentId = item.id">{{
+                    item.allowed_actions.includes('approve') ? '核对修改' : '查看'
+                  }}</ElButton>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
       <section class="document-records">
         <h3>{{ processed ? '加工记录' : receipt ? '入库记录' : '流转记录' }}</h3>
         <MaterialTransferHistory :transfer="current" />
@@ -800,6 +915,14 @@ watch(
           >编辑</ElButton
         >
         <ElButton
+          v-if="canRequestAmendment"
+          type="primary"
+          :icon="EditPen"
+          :disabled="amendmentBusy || amendmentsLoading"
+          @click="amendmentOpen = true"
+          >申请修改</ElButton
+        >
+        <ElButton
           v-if="allowPrint && canPrintMaterialTransfer(current)"
           :icon="Printer"
           @click="printTransfer"
@@ -824,10 +947,34 @@ watch(
         >
       </div>
       <p class="permission-note" :title="stateMessage" aria-live="polite">
-        <ElIcon><Lock /></ElIcon>{{ canConfirm ? '接收后本单将锁定。' : stateMessage }}
+        <ElIcon><Lock /></ElIcon>{{ canConfirm ? '签收后修改需经对方确认。' : stateMessage }}
       </p>
     </template>
   </MaterialTransferDetailFrame>
+  <TransferAmendmentDialog
+    v-model="amendmentOpen"
+    :transfer="current"
+    @submitted="amendmentSubmitted"
+    @refreshed="updateCurrent"
+    @busy="amendmentBusy = $event"
+  />
+  <AppDialog
+    v-if="selectedAmendmentId !== null"
+    :model-value="true"
+    title="修改申请"
+    width="min(700px, 94vw)"
+    append-to-body
+    :show-close="!amendmentBusy"
+    :close-on-click-modal="!amendmentBusy"
+    :close-on-press-escape="!amendmentBusy"
+    @close="!amendmentBusy && (selectedAmendmentId = null)"
+  >
+    <TransferAmendmentReview
+      :amendment-id="selectedAmendmentId"
+      @resolved="amendmentChanged"
+      @busy="amendmentBusy = $event"
+    />
+  </AppDialog>
   <MaterialDispatchDrawer
     v-model="groupOpen"
     :dispatch-no="current?.dispatch_no || ''"
@@ -942,6 +1089,22 @@ watch(
 }
 .document-table-scroll {
   overflow-x: auto;
+}
+.amendment-list {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.amendment-list th,
+.amendment-list td {
+  border: 1px solid var(--el-border-color-lighter);
+  padding: 10px 12px;
+  text-align: left;
+}
+.amendment-list th {
+  background: var(--table-header-bg);
+  font-weight: 500;
 }
 .loss-record-table {
   width: 100%;

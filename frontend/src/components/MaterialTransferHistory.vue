@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  transferAmendmentStatusLabels,
+  type TransferAmendmentStatus,
+} from '@/services/transferAmendmentApi'
 import { computed } from 'vue'
 import {
   externalActionLabel,
@@ -35,8 +39,14 @@ const actions = {
   inspection_recorded: '检查登记',
   inspection_rechecked: '复检登记',
   quality_feedback: '质量反馈',
+  amendment_requested: '申请修改',
+  amendment_approved: '确认修改',
+  amendment_rejected: '拒绝修改',
+  amendment_cancelled: '撤回修改申请',
 }
 const labels: Record<string, string> = {
+  amendment_id: '修改申请编号',
+  amendment_status: '修改申请状态',
   process_route: '工艺 / 工序',
   rework_route: '返工工艺',
   inspection: '检查结果',
@@ -122,7 +132,8 @@ function actionLabel(action: keyof typeof actions): string {
   }
   return actions[action]
 }
-function fieldLabel(field: string, clearance = false): string {
+function fieldLabel(field: string, clearance = false, amendment = false): string {
+  if (field === 'reason' && amendment) return '修改原因 / 处理说明'
   if (props.transfer.entry_kind === 'processing_output') {
     const processingLabels: Record<string, string> = {
       quantity: '实物件数',
@@ -187,6 +198,8 @@ function fieldLabel(field: string, clearance = false): string {
 }
 function valueText(field: string, value: unknown): string {
   if (value == null || value === '') return '—'
+  if (field === 'amendment_status')
+    return transferAmendmentStatusLabels[value as TransferAmendmentStatus] || String(value)
   if (field === 'work_kind') return value === 'rework' ? '返工' : '首次加工'
   if (field === 'inspection' && typeof value === 'object') {
     const result = value as {
@@ -289,7 +302,15 @@ function valueText(field: string, value: unknown): string {
               <summary>查看 {{ Object.keys(event.changes).length }} 项变更</summary>
               <dl>
                 <div v-for="(change, field) in event.changes" :key="field">
-                  <dt>{{ fieldLabel(field, !!event.changes.outbound_batches) }}</dt>
+                  <dt>
+                    {{
+                      fieldLabel(
+                        field,
+                        !!event.changes.outbound_batches,
+                        event.action.startsWith('amendment_'),
+                      )
+                    }}
+                  </dt>
                   <dd>
                     <span class="history-before">{{ valueText(field, change.before) }}</span
                     ><span aria-label="变更为"> → </span

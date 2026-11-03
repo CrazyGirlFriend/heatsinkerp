@@ -114,6 +114,10 @@ function normalizeHistory(value: unknown): MaterialTransferHistoryEntry[] {
         'route_bound',
         'inspection_recorded',
         'inspection_rechecked',
+        'amendment_requested',
+        'amendment_approved',
+        'amendment_rejected',
+        'amendment_cancelled',
       ].includes(String(event.action))
     )
       return []

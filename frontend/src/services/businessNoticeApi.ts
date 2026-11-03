@@ -1,6 +1,6 @@
 import { httpRequest } from './httpClient'
 import type { ProcessRoute } from '@/types/processRoute'
-export type NoticeSource = 'schedule' | 'rework'
+export type NoticeSource = 'schedule' | 'rework' | 'transfer'
 export interface BusinessNotice {
   id: number
   source: NoticeSource
@@ -18,25 +18,33 @@ export interface BusinessNotice {
     | 'returned'
     | 'locked'
     | 'unlocked'
+    | 'amendment_requested'
+    | 'amendment_approved'
+    | 'amendment_rejected'
+    | 'amendment_cancelled'
   message: string
   serial_no: string
   batch_no: string | null
   team_name: string
   created_at: string
   read_at: string | null
+  amendment_id?: number
+  amendment_status?: string
+  action_required?: boolean
 }
 export interface NoticeTarget {
   href: string
+  amendment_id?: number
   schedule_id?: number
   event_id?: number | null
   batch_id?: number | null
-  section?: 'problem' | 'steps' | 'plan-review'
+  section?: 'problem' | 'steps' | 'plan-review' | 'amendment'
   step_index?: number
   route?: ProcessRoute
 }
 export function parseNotice(value: unknown) {
   if (typeof value !== 'string') return null
-  const match = /^(schedule|rework):([1-9]\d*)$/.exec(value)
+  const match = /^(schedule|rework|transfer):([1-9]\d*)$/.exec(value)
   return match ? { source: match[1] as NoticeSource, id: Number(match[2]) } : null
 }
 export const businessNoticeApi = {

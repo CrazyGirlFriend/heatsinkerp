@@ -4,6 +4,37 @@ import { describe, expect, it } from 'vitest'
 import MaterialTransferHistory from './MaterialTransferHistory.vue'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 
+it('keeps amendment history distinct from receipt status and processing reasons', () => {
+  const transfer = normalizeMaterialTransfer({
+    id: 1,
+    batch_no: 'TL-001',
+    history: [
+      {
+        id: 4,
+        action: 'amendment_approved',
+        actor: '班组长',
+        occurred_at: '2026-11-03T00:00:00Z',
+        changes: {
+          amendment_id: { before: null, after: 11 },
+          amendment_status: { before: 'pending', after: 'approved' },
+          reason: { before: null, after: '重新核对件数' },
+          quantity: { before: 100, after: 95 },
+        },
+      },
+    ],
+  })
+  const wrapper = mount(MaterialTransferHistory, { props: { transfer } })
+  try {
+    expect(wrapper.text()).toContain('确认修改')
+    expect(wrapper.text()).toContain('待对方确认 → 已生效')
+    expect(wrapper.text()).toContain('修改原因 / 处理说明')
+    expect(wrapper.text()).toContain('100 件 → 95 件')
+    expect(wrapper.text()).not.toContain('加工说明')
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 describe('quantity clearance audit', () => {
   it('shows the reason, actual piece delta and related batches without calling it a loss', () => {
     const transfer = normalizeMaterialTransfer({
