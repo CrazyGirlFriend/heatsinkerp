@@ -538,15 +538,10 @@ function handleUserCommand(command: string | number | object): void {
 }
 .app-shell--business .main-content {
   margin: 12px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid #ccd8d0;
   border-radius: 22px;
-  background:
-    radial-gradient(ellipse at 8% 0%, #ffffffa8, transparent 58%), var(--glass-shell-fill);
-  box-shadow:
-    0 8px 24px #203b2e0c,
-    0 0 0 0.5px #335d4624,
-    inset 1px 1px 1px #fff,
-    inset -1px -1px 1px var(--glass-edge);
+  background: linear-gradient(145deg, #fff, #f5faf7 52%, #e5f0e8);
+  box-shadow: 0 2px 8px #203b2e0a;
 }
 .app-shell--business
   .main-content

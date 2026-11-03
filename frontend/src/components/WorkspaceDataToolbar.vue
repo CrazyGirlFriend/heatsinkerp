@@ -86,10 +86,9 @@ form.workspace-toolbar.workspace-data-toolbar {
   margin: 0;
   /* Keep the hover lift and focus ring inside bounded workspace panels. */
   padding: 6px 8px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid #ccd8d0;
   border-radius: 12px;
-  background: var(--glass-chrome-fill);
-  box-shadow: var(--glass-shadow);
+  background: linear-gradient(135deg, #fff, #f3f8f5 55%, #e1eee5);
 }
 .workspace-toolbar__search {
   display: flex;
@@ -147,7 +146,6 @@ form.workspace-toolbar.workspace-data-toolbar {
   form.workspace-toolbar.workspace-data-toolbar {
     border-color: var(--line);
     background: var(--surface);
-    box-shadow: none;
   }
 }
 </style>
