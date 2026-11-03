@@ -537,7 +537,22 @@ function handleUserCommand(command: string | number | object): void {
   grid-row: 2;
 }
 .app-shell--business .main-content {
-  background: transparent;
+  margin: 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  background:
+    radial-gradient(ellipse at 8% 0%, #ffffffa8, transparent 58%), var(--glass-shell-fill);
+  box-shadow:
+    0 8px 24px #203b2e0c,
+    0 0 0 0.5px #335d4624,
+    inset 1px 1px 1px #fff,
+    inset -1px -1px 1px var(--glass-edge);
+}
+.app-shell--business
+  .main-content
+  > :deep(.page:not(:fullscreen):not(.production-schedules-page--fullscreen)) {
+  height: 100%;
+  padding: 16px;
 }
 .app-shell--business .topbar {
   border-bottom: 0;
@@ -598,6 +613,15 @@ function handleUserCommand(command: string | number | object): void {
   .app-shell--business .topbar {
     gap: 10px;
   }
+  .app-shell--business .main-content {
+    margin: 0 8px 8px;
+    border-radius: 16px;
+  }
+  .app-shell--business
+    .main-content
+    > :deep(.page:not(:fullscreen):not(.production-schedules-page--fullscreen)) {
+    padding: 12px;
+  }
   .app-shell--business .brand-mark {
     display: none;
   }
@@ -623,7 +647,7 @@ function handleUserCommand(command: string | number | object): void {
   }
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .app-shell--business .sidebar {
+  .app-shell--business :is(.sidebar, .main-content) {
     background: var(--surface);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
