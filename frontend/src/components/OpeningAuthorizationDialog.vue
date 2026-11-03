@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import AppDialog from '@/components/AppDialog.vue'
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElSwitch } from 'element-plus'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
@@ -68,15 +70,18 @@ async function save() {
   >
     <p v-if="loading">正在读取授权状态…</p>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <template v-if="state"
-      ><p>开启后，本班组长可以多次提交库存，关闭后停止录入。</p>
-      <ElSwitch
-        v-model="enabled"
-        aria-label="允许录入初始库存"
-        active-text="允许录入初始库存"
-        :disabled="saving || !team?.active"
-      />
-      <p>每次提交累加库存，并保留独立批次记录。</p></template
+    <FormWorkspace v-if="state"
+      ><CompactFormSection>
+        <p class="form-field--full">开启后，本班组长可以多次提交库存，关闭后停止录入。</p>
+        <ElSwitch
+          class="form-field--full"
+          v-model="enabled"
+          aria-label="允许录入初始库存"
+          active-text="允许录入初始库存"
+          :disabled="saving || !team?.active"
+        />
+        <p class="form-field--full">每次提交累加库存，并保留独立批次记录。</p>
+      </CompactFormSection></FormWorkspace
     >
     <template #footer
       ><ElButton :disabled="saving" @click="emit('update:modelValue', false)">取消</ElButton
@@ -88,11 +93,9 @@ async function save() {
 </template>
 <style scoped>
 p {
-  font-size: 15px;
-  line-height: 1.8;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
   color: var(--muted);
-}
-.el-switch {
-  margin-top: 20px;
 }
 </style>

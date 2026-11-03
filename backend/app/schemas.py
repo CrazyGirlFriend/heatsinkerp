@@ -302,6 +302,8 @@ class WarehouseReceiptCreate(
     notes: str = Field(default="", max_length=2000)
     idempotency_key: str = Field(min_length=1, max_length=100)
     process_route: RouteIntakeWrite | None = None
+    document_ids: list[int] = Field(default_factory=list, max_length=12)
+    confirmed_imports: bool = False
     receipt_kind: Literal["external", "return"] = "external"
     external_source: str | None = Field(default=None, min_length=1, max_length=240)
     return_dispatch_no: str | None = Field(default=None, min_length=1, max_length=40)
@@ -561,6 +563,14 @@ AvatarKey = Literal[
     "portrait-6",
     "portrait-7",
     "portrait-8",
+    "portrait-9",
+    "portrait-10",
+    "portrait-11",
+    "portrait-12",
+    "portrait-13",
+    "portrait-14",
+    "portrait-15",
+    "portrait-16",
 ]
 
 

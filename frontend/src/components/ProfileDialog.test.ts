@@ -47,23 +47,23 @@ describe('own profile editing', () => {
       authState.session!.user.role = role
       const update = vi
         .spyOn(adminApi, 'updateProfile')
-        .mockResolvedValue({ ...user, role, display_name: '李师傅', avatar_key: 'portrait-5' })
+        .mockResolvedValue({ ...user, role, display_name: '李师傅', avatar_key: 'portrait-16' })
       await render()
-      expect(wrapper.findAll('.avatar-choice')).toHaveLength(8)
+      expect(wrapper.findAll('.avatar-choice')).toHaveLength(16)
       expect(wrapper.get('[aria-label="头像 1"]').attributes('aria-pressed')).toBe('true')
       await wrapper.get('input[aria-label="姓名"]').setValue(' 李师傅 ')
-      await wrapper.get('[aria-label="头像 5"]').trigger('click')
+      await wrapper.get('[aria-label="头像 16"]').trigger('click')
       await save()
       expect(update).toHaveBeenCalledOnce()
-      expect(update).toHaveBeenCalledWith({ display_name: '李师傅', avatar_key: 'portrait-5' })
+      expect(update).toHaveBeenCalledWith({ display_name: '李师傅', avatar_key: 'portrait-16' })
       expect(authState.currentUser).toMatchObject({
         username: 'leader07',
         role,
         display_name: '李师傅',
-        avatar_key: 'portrait-5',
+        avatar_key: 'portrait-16',
       })
       expect(JSON.parse(localStorage.getItem(AUTH_SESSION_STORAGE_KEY)!)).toMatchObject({
-        user: { avatar_key: 'portrait-5' },
+        user: { avatar_key: 'portrait-16' },
       })
       expect(wrapper.emitted('update:modelValue')).toEqual([[false]])
       expect(wrapper.find('input[aria-label="登录账号"]').exists()).toBe(false)

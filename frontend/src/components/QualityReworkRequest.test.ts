@@ -53,6 +53,7 @@ it('binds the quality issue and real lot while requiring explicit rework amounts
     .trigger('click')
   await flushPromises()
   expect(qualityFeedbackApi.reworkContext).toHaveBeenCalledWith(19, 12)
+  expect(wrapper.emitted('contextChange')?.at(-1)).toEqual([context])
   expect(wrapper.getComponent(ReworkRouteRequest).props()).toMatchObject({
     inspectionId: 19,
     initialReason: '划伤，需要返工',

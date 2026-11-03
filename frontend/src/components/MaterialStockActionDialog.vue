@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppDialog from '@/components/AppDialog.vue'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
+import FormWorkspace from './FormWorkspace.vue'
 import MaterialInput from './MaterialInput.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute } from '@/types/processRoute'
@@ -1051,6 +1052,7 @@ const attachmentItems = computed(() =>
     .filter((line) => !isScrapType(line.materialType) && (!needsRoute(line) || line.selectedRoute))
     .map((line) => ({
       serialNo: line.serialNo.trim(),
+      batchNo: line.source.transfer.batch_no,
       routeId: line.source.transfer.process_route?.id || line.selectedRoute?.id,
       route: line.selectedRoute,
     })),
@@ -1137,12 +1139,13 @@ watch(
     <ElAlert v-if="scheduleError && !isLoss" :title="scheduleError" type="error" :closable="false">
       <ElButton link :disabled="schedulesLoading" @click="scheduleRefresh++">重新读取排期</ElButton>
     </ElAlert>
-    <div :class="{ 'dispatch-with-attachments': !isLoss && attachmentItems.length }">
-      <SerialRouteAttachments v-if="!isLoss && attachmentItems.length" :items="attachmentItems" />
+    <FormWorkspace :documents="!isLoss && attachmentItems.length > 0">
+      <template v-if="!isLoss && attachmentItems.length" #documents>
+        <SerialRouteAttachments :items="attachmentItems" />
+      </template>
       <ElForm
         ref="formRef"
-        label-position="left"
-        label-width="112px"
+        label-position="top"
         :show-message="false"
         :disabled="busy || !canWrite"
         @submit.prevent="submit"
@@ -1753,7 +1756,7 @@ watch(
           </div>
         </details>
       </ElForm>
-    </div>
+    </FormWorkspace>
     <ElAlert v-if="weightNotice" :title="weightNotice" type="warning" :closable="false" show-icon />
     <ElAlert
       v-if="balanceNotice"
@@ -1818,18 +1821,6 @@ watch(
 </template>
 
 <style scoped>
-.dispatch-with-attachments {
-  display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-@media (max-width: 800px) {
-  .dispatch-with-attachments {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 .stock-dialog-heading {
   display: flex;
   align-items: baseline;
@@ -1851,7 +1842,7 @@ watch(
   border-radius: 12px;
 }
 .dispatch-context {
-  padding: 0 3px 20px;
+  padding: 0 0 12px;
 }
 .dispatch-context-heading {
   display: flex;
@@ -1880,8 +1871,8 @@ watch(
   margin: 0;
 }
 .dispatch-context-fields {
-  grid-template-columns: 240px repeat(2, minmax(0, 1fr));
-  gap: 12px 18px;
+  grid-template-columns: minmax(160px, 200px) repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
 }
 .external-destination-field {
   grid-column: span 2;

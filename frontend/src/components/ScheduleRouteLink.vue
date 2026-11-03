@@ -1,7 +1,22 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { ElAlert, ElButton, ElOption, ElSelect, ElTable, ElTableColumn } from 'element-plus'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {
+  ElAlert,
+  ElButton,
+  ElForm,
+  ElFormItem,
+  ElInput,
+  ElOption,
+  ElSelect,
+  ElTable,
+  ElTableColumn,
+} from 'element-plus'
 import AppDialog from './AppDialog.vue'
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
+import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
+import { processRouteApi } from '@/services/processRouteApi'
+import type { ProcessRoute } from '@/types/processRoute'
 import ScheduleRouteSelect from './ScheduleRouteSelect.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ScheduleTask, ScheduleRouteOption } from '@/types/productionSchedule'
@@ -13,6 +28,29 @@ const visible = ref(true),
   error = ref('')
 const options = ref<ScheduleRouteOption[]>([]),
   selected = ref<number>()
+const previewRoute = ref<ProcessRoute>(),
+  previewLoading = ref(false),
+  previewError = ref('')
+let previewGeneration = 0
+async function loadPreview() {
+  const generation = ++previewGeneration
+  previewRoute.value = undefined
+  previewError.value = ''
+  previewLoading.value = false
+  if (!selected.value) return
+  previewLoading.value = true
+  try {
+    const route = await processRouteApi.detail(selected.value)
+    if (generation === previewGeneration) previewRoute.value = route
+  } catch (e) {
+    if (generation === previewGeneration)
+      previewError.value = e instanceof Error ? e.message : '工艺资料读取失败'
+  } finally {
+    if (generation === previewGeneration) previewLoading.value = false
+  }
+}
+watch(selected, loadPreview)
+onBeforeUnmount(() => ++previewGeneration)
 const mappings = ref<Record<number, number | undefined>>({})
 const nodes = props.task.nodes.filter((n) => !n.cancelled_at)
 function steps() {
@@ -80,7 +118,7 @@ async function save() {
   <AppDialog
     v-model="visible"
     title="关联工艺"
-    width="min(1000px, 94vw)"
+    width="min(1220px, 96vw)"
     append-to-body
     :show-close="!busy"
     :close-on-click-modal="false"
@@ -88,50 +126,76 @@ async function save() {
     @closed="emit('close')"
   >
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <div class="route-choice">
-      <span>流水号 {{ task.serial_no }}</span
-      ><ScheduleRouteSelect
-        v-model="selected"
-        :options="options"
-        :loading="busy"
-        :disabled="busy"
-        @change="match"
-      />
-    </div>
-    <ElTable :data="nodes" border class="business-table">
-      <ElTableColumn label="排期班组" width="150"
-        ><template #default="{ row }"
-          >{{ row.team_name }} → {{ row.next_team_name || row.external_destination }}</template
-        ></ElTableColumn
-      >
-      <ElTableColumn label="交货时间" width="160"
-        ><template #default="{ row }">{{ formatDateTime(row.due_at) }}</template></ElTableColumn
-      >
-      <ElTableColumn label="当前关联" width="120"
-        ><template #default="{ row }">{{
-          row.route_link?.state === 'changed'
-            ? '工艺有更新'
-            : row.process_route_id
-              ? '已关联'
-              : '未关联'
-        }}</template></ElTableColumn
-      >
-      <ElTableColumn label="对应工序"
-        ><template #default="{ row }"
-          ><ElSelect
-            v-model="mappings[row.id]"
-            clearable
-            :aria-label="`${row.team_name}对应工序`"
-            :disabled="busy"
-            placeholder="保留当前关联"
-            ><ElOption
-              v-for="{ step, index } in steps()"
-              :key="index"
-              :value="index"
-              :label="`${step.sequence_no} · ${step.name}（${step.team_name}）`"
-              :disabled="step.team_id !== row.team_id" /></ElSelect></template
-      ></ElTableColumn>
-    </ElTable>
+    <FormWorkspace>
+      <template #documents>
+        <p v-if="previewLoading" class="route-documents-empty" role="status">读取工艺资料…</p>
+        <template v-else-if="previewError">
+          <ElAlert :title="previewError" type="error" :closable="false" />
+          <ElButton size="small" @click="loadPreview">重新读取资料</ElButton>
+        </template>
+        <ProcessRouteAttachments
+          v-else-if="previewRoute"
+          :route="previewRoute"
+          :documents="['word', 'drawing']"
+        />
+        <p v-else class="route-documents-empty">选择工艺后显示原件和图纸</p>
+      </template>
+      <ElForm label-position="top" @submit.prevent>
+        <CompactFormSection title="工艺选择">
+          <ElFormItem label="流水号" class="form-field--medium">
+            <ElInput :model-value="task.serial_no" readonly aria-label="排期流水号" />
+          </ElFormItem>
+          <ElFormItem label="关联工艺" required class="form-field--long">
+            <ScheduleRouteSelect
+              v-model="selected"
+              :options="options"
+              :loading="busy"
+              :disabled="busy"
+              @change="match"
+            />
+          </ElFormItem>
+        </CompactFormSection>
+        <CompactFormSection title="节点映射">
+          <ElTable class="business-table form-field--full" :data="nodes" border>
+            <ElTableColumn label="排期班组" width="150"
+              ><template #default="{ row }"
+                >{{ row.team_name }} →
+                {{ row.next_team_name || row.external_destination }}</template
+              ></ElTableColumn
+            >
+            <ElTableColumn label="交货时间" width="160"
+              ><template #default="{ row }">{{
+                formatDateTime(row.due_at)
+              }}</template></ElTableColumn
+            >
+            <ElTableColumn label="当前关联" width="120"
+              ><template #default="{ row }">{{
+                row.route_link?.state === 'changed'
+                  ? '工艺有更新'
+                  : row.process_route_id
+                    ? '已关联'
+                    : '未关联'
+              }}</template></ElTableColumn
+            >
+            <ElTableColumn label="对应工序"
+              ><template #default="{ row }"
+                ><ElSelect
+                  v-model="mappings[row.id]"
+                  clearable
+                  :aria-label="`${row.team_name}对应工序`"
+                  :disabled="busy"
+                  placeholder="保留当前关联"
+                  ><ElOption
+                    v-for="{ step, index } in steps()"
+                    :key="index"
+                    :value="index"
+                    :label="`${step.sequence_no} · ${step.name}（${step.team_name}）`"
+                    :disabled="step.team_id !== row.team_id" /></ElSelect></template
+            ></ElTableColumn>
+          </ElTable>
+        </CompactFormSection>
+      </ElForm>
+    </FormWorkspace>
     <template #footer
       ><ElButton :disabled="busy" @click="visible = false">取消</ElButton
       ><ElButton type="primary" :loading="busy" @click="save">确认关联</ElButton></template
@@ -139,14 +203,11 @@ async function save() {
   </AppDialog>
 </template>
 <style scoped>
-.route-choice {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 14px;
-}
-.route-choice > .el-select {
-  flex: 1;
+.route-documents-empty {
+  margin: 0;
+  padding: 12px 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 .el-table .el-select {
   width: 100%;

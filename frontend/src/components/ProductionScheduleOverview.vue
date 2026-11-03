@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import { hasConfirmedPlan } from '@/utils/schedulePlanning'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
@@ -780,7 +781,16 @@ onBeforeUnmount(() => {
                 <th scope="row">计划交货量</th>
                 <td>{{ target(routeTask) }}</td>
                 <th scope="row">业务人员</th>
-                <td>{{ routeTask.business_person_name || '未指定' }}</td>
+                <td>
+                  <span class="route-people"
+                    ><template v-if="routeTask.business_people?.length"
+                      ><PersonName
+                        v-for="person in routeTask.business_people"
+                        :key="person.id"
+                        :name="person.name" /></template
+                    ><PersonName v-else :name="routeTask.business_person_name || '未指定'"
+                  /></span>
+                </td>
               </tr>
               <tr>
                 <th scope="row">最终交期</th>
@@ -870,6 +880,13 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.route-people {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+  vertical-align: middle;
+}
 .sp-route-alert {
   border: 0;
   background: transparent;

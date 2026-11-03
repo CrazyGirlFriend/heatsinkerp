@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import type { Dayjs } from 'dayjs'
 import {
@@ -17,6 +18,9 @@ import { Refresh, Upload } from '@element-plus/icons-vue'
 import MaterialInput from './MaterialInput.vue'
 import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
 import ScheduleDocuments from './ScheduleDocuments.vue'
+import CompactFormSection from './CompactFormSection.vue'
+import ImportedDataConfirmation from './ImportedDataConfirmation.vue'
+import AutofillBadge from './AutofillBadge.vue'
 import ScheduleRouteSelect from './ScheduleRouteSelect.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
@@ -113,6 +117,21 @@ const quantity = ref<number | undefined>(
   props.task?.delivery_batches?.reduce((sum, b) => sum + b.target_quantity, 0) ||
     props.task?.nodes.filter((n) => n.status !== 'cancelled').at(-1)?.target_quantity ||
     undefined,
+)
+const importedQuantity = computed(() => Number(steps.value.at(-1)?.planned_quantity) || undefined)
+const quantityConfirmed = ref(false)
+const requiresQuantityConfirmation = computed(() => !props.task && !!importedQuantity.value)
+const quantityConfirmationError = computed(() =>
+  submitted.value && requiresQuantityConfirmation.value && !quantityConfirmed.value
+    ? '请核对工艺和计划数量'
+    : '',
+)
+watch(
+  [() => selectedRoute.value?.id, () => selectedRoute.value?.version, quantity, orderFile],
+  () => {
+    quantityConfirmed.value = false
+  },
+  { flush: 'sync' },
 )
 const batches = ref<{ quantity: number | undefined; due: string }[]>(
   (props.task?.delivery_batches || []).map((b) => ({
@@ -254,7 +273,8 @@ async function save() {
     batches.value.some((_, index) => quantityError(index) || batchDueError(index)) ||
     allocationError.value ||
     peopleError.value ||
-    orderRequiredError.value
+    orderRequiredError.value ||
+    quantityConfirmationError.value
   ) {
     await nextTick()
     focusFirstInvalidField(form.value?.$el)
@@ -354,37 +374,35 @@ onMounted(loadRoutes)
       class="dispatch-task-form"
       @submit.prevent="save"
     >
-      <div class="dispatch-task-layout">
-        <ScheduleDocuments
-          :serial-no="serial.trim()"
-          :route-ids="task ? task.nodes.map((node) => node.process_route_id) : [routeId]"
-          :task-id="task?.id"
-          :order-document="task ? task.order_document || undefined : orderDocument || null"
-          :order-file="orderFile"
-        >
-          <template v-if="!task" #upload>
-            <ElFormItem class="dispatch-order-field" :error="orderRequiredError">
-              <ElButton
-                :icon="Upload"
-                :loading="orderBusy"
-                :disabled="!selectedRoute || saving"
-                @click="orderInput?.click()"
-                >{{ orderFile ? '替换订单表' : '上传订单表' }}</ElButton
-              >
-              <input
-                ref="orderInput"
-                type="file"
-                accept=".xlsx"
-                hidden
-                aria-label="上传订单表"
-                @change="importOrder"
-              />
-            </ElFormItem>
-            <ElAlert v-if="orderError" :title="orderError" type="error" :closable="false" />
-          </template>
-        </ScheduleDocuments>
+      <ScheduleDocuments
+        :serial-no="serial.trim()"
+        :route-ids="task ? task.nodes.map((node) => node.process_route_id) : [routeId]"
+        :task-id="task?.id"
+        :order-document="task ? task.order_document || undefined : orderDocument || null"
+        :order-file="orderFile"
+      >
+        <template v-if="!task" #upload>
+          <ElFormItem class="dispatch-order-field" :error="orderRequiredError">
+            <ElButton
+              :icon="Upload"
+              :loading="orderBusy"
+              :disabled="!selectedRoute || saving"
+              @click="orderInput?.click()"
+              >{{ orderFile ? '替换订单表' : '上传订单表' }}</ElButton
+            >
+            <input
+              ref="orderInput"
+              type="file"
+              accept=".xlsx"
+              hidden
+              aria-label="上传订单表"
+              @change="importOrder"
+            />
+          </ElFormItem>
+          <ElAlert v-if="orderError" :title="orderError" type="error" :closable="false" />
+        </template>
         <div class="dispatch-task-content">
-          <div class="dispatch-task-fields">
+          <CompactFormSection title="排期信息">
             <ElFormItem label="流水号" required :error="serialError"
               ><MaterialInput
                 v-model="serial"
@@ -405,15 +423,19 @@ onMounted(loadRoutes)
               <span class="dispatch-field-hint">各批交期的最晚时间 · 按整点选择</span>
             </ElFormItem>
             <ElFormItem label="业务人员" required :error="peopleError"
-              ><ElButton class="dispatch-person-select" @click="personOpen = true">{{
-                people.length ? people.map((p) => p.label).join('、') : '选择业务人员'
-              }}</ElButton></ElFormItem
+              ><ElButton class="dispatch-person-select" @click="personOpen = true"
+                ><span v-if="people.length" class="schedule-people"
+                  ><PersonName
+                    v-for="person in people"
+                    :key="person.value"
+                    :name="person.label" /></span
+                ><template v-else>选择业务人员</template></ElButton
+              ></ElFormItem
             >
-          </div>
-          <div class="dispatch-route-fields">
+
             <ElFormItem
               v-if="!task"
-              class="dispatch-route-select"
+              class="dispatch-route-select form-field--long"
               label="关联工艺"
               required
               :error="routeError"
@@ -435,7 +457,21 @@ onMounted(loadRoutes)
                 />
               </div>
             </ElFormItem>
-            <ElFormItem label="计划数量" required :error="submitted ? plannedQuantityError : ''">
+            <ElFormItem
+              label="计划数量"
+              class="form-field--short"
+              required
+              :error="submitted ? plannedQuantityError : ''"
+            >
+              <template #label
+                >计划数量
+                <AutofillBadge
+                  v-if="requiresQuantityConfirmation"
+                  kind="document"
+                  source="工艺单"
+                  :modified="quantity !== importedQuantity"
+                />
+              </template>
               <div class="dispatch-quantity-input">
                 <ElInputNumber
                   v-model="quantity"
@@ -449,96 +485,107 @@ onMounted(loadRoutes)
                 <span>件</span>
               </div>
             </ElFormItem>
-          </div>
-          <div class="dispatch-batch-heading">
-            <h3>分批交货</h3>
-            <div
-              v-if="!plannedQuantityError"
-              class="dispatch-allocation"
-              role="status"
-              aria-live="polite"
-            >
-              <span
-                >已分配 <strong>{{ allocated }}</strong> 件</span
+          </CompactFormSection>
+          <CompactFormSection title="分批交货">
+            <template #actions>
+              <div
+                v-if="!plannedQuantityError"
+                class="dispatch-allocation"
+                role="status"
+                aria-live="polite"
               >
-              <span
-                class="dispatch-allocation-balance"
-                :class="{
-                  'is-complete': remaining === 0,
-                  'is-exceeded': remaining < 0,
-                }"
-              >
-                {{ remaining < 0 ? '超出' : remaining === 0 ? '剩余' : '待分配' }}
-                <strong>{{ Math.abs(remaining) }}</strong> 件
-              </span>
-            </div>
-          </div>
-          <ElTable :data="batches" border aria-label="订单分批交期">
-            <ElTableColumn label="批次" width="90" align="center"
-              ><template #default="{ $index }">第 {{ $index + 1 }} 批</template></ElTableColumn
-            >
-            <ElTableColumn label="数量（件）" width="170"
-              ><template #default="{ row, $index }"
-                ><ElFormItem
-                  class="dispatch-batch-field"
-                  :error="
-                    quantityError($index) || (submitted && $index === 0 ? allocationError : '')
-                  "
+                <span
+                  >已分配 <strong>{{ allocated }}</strong> 件</span
                 >
-                  <ElInputNumber
-                    v-model="row.quantity"
-                    :min="1"
-                    :max="2147483647"
-                    :precision="0"
-                    :controls="false"
-                    :disabled="!task && !selectedRoute"
-                    :aria-label="`第${$index + 1}批交货数量`"
-                  /> </ElFormItem></template
-            ></ElTableColumn>
-            <ElTableColumn label="交货时间" min-width="230"
-              ><template #header>
-                <div class="dispatch-date-heading">
-                  <span>交货时间</span>
-                  <span class="dispatch-field-hint">按批次先后 · 不晚于最终交期</span>
-                </div>
-              </template>
-              <template #default="{ row, $index }"
-                ><ElFormItem class="dispatch-batch-field" :error="batchDueError($index)">
-                  <ElDatePicker
-                    v-model="row.due"
-                    type="datetime"
-                    format="YYYY-MM-DD HH:mm"
-                    value-format="YYYY-MM-DDTHH:mm:ss"
-                    :disabled-date="(value: Date) => disabledBatchDate(value, $index)"
-                    :disabled-hours="
-                      (_role: string, value?: Dayjs) => disabledBatchHours($index, value)
+                <span
+                  class="dispatch-allocation-balance"
+                  :class="{
+                    'is-complete': remaining === 0,
+                    'is-exceeded': remaining < 0,
+                  }"
+                >
+                  {{ remaining < 0 ? '超出' : remaining === 0 ? '剩余' : '待分配' }}
+                  <strong>{{ Math.abs(remaining) }}</strong> 件
+                </span>
+              </div>
+            </template>
+            <ElTable class="form-field--full" :data="batches" border aria-label="订单分批交期">
+              <ElTableColumn label="批次" width="90" align="center"
+                ><template #default="{ $index }">第 {{ $index + 1 }} 批</template></ElTableColumn
+              >
+              <ElTableColumn label="数量（件）" width="140"
+                ><template #default="{ row, $index }"
+                  ><ElFormItem
+                    class="dispatch-batch-field"
+                    :error="
+                      quantityError($index) || (submitted && $index === 0 ? allocationError : '')
                     "
-                    :disabled-minutes="nonZeroMinutes"
-                    :disabled-seconds="nonZeroMinutes"
-                    :placeholder="
-                      finalDue ? `最晚 ${finalDue.replace('T', ' ').slice(5, 16)}` : '选择交货时间'
-                    "
-                    :aria-label="`第${$index + 1}批交期`"
-                  /> </ElFormItem></template
-            ></ElTableColumn>
-            <ElTableColumn label="操作" width="80" align="center"
-              ><template #default="{ $index }"
-                ><ElButton
-                  link
-                  type="danger"
-                  :disabled="batches.length === 1"
-                  @click="removeBatch($index)"
-                  >删除</ElButton
-                ></template
-              ></ElTableColumn
+                  >
+                    <ElInputNumber
+                      v-model="row.quantity"
+                      :min="1"
+                      :max="2147483647"
+                      :precision="0"
+                      :controls="false"
+                      :disabled="!task && !selectedRoute"
+                      :aria-label="`第${$index + 1}批交货数量`"
+                    /> </ElFormItem></template
+              ></ElTableColumn>
+              <ElTableColumn label="交货时间" min-width="230"
+                ><template #header>
+                  <div class="dispatch-date-heading">
+                    <span>交货时间</span>
+                    <span class="dispatch-field-hint">按批次先后 · 不晚于最终交期</span>
+                  </div>
+                </template>
+                <template #default="{ row, $index }"
+                  ><ElFormItem
+                    class="dispatch-batch-field dispatch-batch-field--date"
+                    :error="batchDueError($index)"
+                  >
+                    <ElDatePicker
+                      v-model="row.due"
+                      type="datetime"
+                      format="YYYY-MM-DD HH:mm"
+                      value-format="YYYY-MM-DDTHH:mm:ss"
+                      :disabled-date="(value: Date) => disabledBatchDate(value, $index)"
+                      :disabled-hours="
+                        (_role: string, value?: Dayjs) => disabledBatchHours($index, value)
+                      "
+                      :disabled-minutes="nonZeroMinutes"
+                      :disabled-seconds="nonZeroMinutes"
+                      :placeholder="
+                        finalDue
+                          ? `最晚 ${finalDue.replace('T', ' ').slice(5, 16)}`
+                          : '选择交货时间'
+                      "
+                      :aria-label="`第${$index + 1}批交期`"
+                    /> </ElFormItem></template
+              ></ElTableColumn>
+              <ElTableColumn label="操作" width="80" align="center"
+                ><template #default="{ $index }"
+                  ><ElButton
+                    link
+                    type="danger"
+                    :disabled="batches.length === 1"
+                    @click="removeBatch($index)"
+                    >删除</ElButton
+                  ></template
+                ></ElTableColumn
+              >
+            </ElTable>
+            <div class="form-field--full">
+              <ElButton :disabled="batches.length >= 100" @click="addBatch">＋ 增加一批</ElButton>
+            </div>
+          </CompactFormSection>
+          <CompactFormSection v-if="!task && steps.length" title="执行工艺">
+            <ElTable
+              class="form-field--full"
+              :data="steps"
+              border
+              size="small"
+              aria-label="工艺执行班组"
             >
-          </ElTable>
-          <ElButton :disabled="batches.length >= 100" class="dispatch-add-batch" @click="addBatch"
-            >＋ 增加一批</ElButton
-          >
-          <template v-if="!task && steps.length">
-            <h3>执行工艺</h3>
-            <ElTable :data="steps" border size="small" aria-label="工艺执行班组">
               <ElTableColumn label="工序" prop="name" min-width="130" />
               <ElTableColumn label="班组" min-width="100"
                 ><template #default="{ row }">{{
@@ -553,12 +600,20 @@ onMounted(loadRoutes)
                 show-overflow-tooltip
               />
             </ElTable>
-          </template>
-          <ElFormItem label="备注" class="dispatch-notes"
-            ><ElInput v-model="notes" maxlength="2000"
-          /></ElFormItem>
+          </CompactFormSection>
+          <CompactFormSection
+            ><ElFormItem label="备注" class="form-field--full"
+              ><ElInput v-model="notes" maxlength="2000" /></ElFormItem
+          ></CompactFormSection>
+          <ImportedDataConfirmation
+            v-if="requiresQuantityConfirmation"
+            v-model="quantityConfirmed"
+            label="已核对工艺和计划数量"
+            :error="quantityConfirmationError"
+            :disabled="saving || !writable"
+          />
         </div>
-      </div>
+      </ScheduleDocuments>
     </ElForm>
     <template #footer
       ><ElButton :disabled="saving" @click="visible = false">取消</ElButton
@@ -581,16 +636,13 @@ onMounted(loadRoutes)
   />
 </template>
 <style scoped>
-.dispatch-task-form {
-  padding-top: 12px;
-}
-.dispatch-task-layout {
-  display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  gap: 24px;
-}
-.dispatch-task-content {
-  min-width: 0;
+.schedule-people {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+  overflow: hidden;
+  vertical-align: middle;
 }
 .dispatch-route-choice {
   display: flex;
@@ -601,30 +653,6 @@ onMounted(loadRoutes)
 .dispatch-route-choice > :deep(.el-select) {
   flex: 1;
   min-width: 0;
-}
-.dispatch-task-layout > :deep(.schedule-document-rail) {
-  max-height: calc(100dvh - 220px);
-  overflow-y: auto;
-  padding: 4px;
-}
-.dispatch-task-layout :deep(.word-document-preview--thumbnail) {
-  height: 128px;
-}
-.dispatch-task-layout :deep(.route-order-thumbnail) {
-  height: 112px;
-}
-.dispatch-task-fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 16px;
-}
-.dispatch-route-fields {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-.dispatch-route-select {
-  grid-column: span 2;
 }
 .dispatch-quantity-input {
   position: relative;
@@ -645,27 +673,12 @@ onMounted(loadRoutes)
   color: var(--muted);
   pointer-events: none;
 }
-.dispatch-task-form h3 {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin: 12px 0;
-  font-size: 14px;
-}
-.dispatch-batch-heading,
 .dispatch-date-heading,
 .dispatch-allocation {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px 16px;
-}
-.dispatch-batch-heading {
-  justify-content: space-between;
-  margin: 12px 0;
-}
-.dispatch-batch-heading h3 {
-  margin: 0;
 }
 .dispatch-allocation {
   color: var(--muted);
@@ -713,23 +726,7 @@ onMounted(loadRoutes)
   justify-content: flex-start;
   overflow: hidden;
 }
-.dispatch-add-batch {
-  margin-top: 10px;
-}
-.dispatch-notes {
-  margin-top: 16px;
-}
-@media (max-width: 760px) {
-  .dispatch-task-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .dispatch-task-fields,
-  .dispatch-route-fields {
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
-  .dispatch-route-select {
-    grid-column: auto;
-  }
+.dispatch-batch-field--date {
+  max-width: 320px;
 }
 </style>

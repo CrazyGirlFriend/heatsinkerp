@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
@@ -19,6 +20,10 @@ import {
   ElTag,
 } from 'element-plus'
 import AppDialog from './AppDialog.vue'
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
+import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 import InspectionRegistrationDialog from './InspectionRegistrationDialog.vue'
 import QualityReworkRequest from './QualityReworkRequest.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -48,6 +53,7 @@ const detail = ref<QualityFeedbackDetail>(),
   loading = ref(false),
   rechecking = ref(false)
 const reworkOpen = ref(false)
+const reworkContext = ref<QuantityAdjustmentContext>()
 const reply = ref(''),
   decisionNotes = ref(''),
   disposition = ref<keyof typeof dispositions>('pending'),
@@ -142,11 +148,15 @@ function rechecked() {
   void load()
   emit('changed')
 }
+watch(reworkOpen, (open) => {
+  if (!open) reworkContext.value = undefined
+})
 watch(
   () => props.issueId,
   () => {
     detail.value = undefined
     reworkOpen.value = false
+    reworkContext.value = undefined
     reply.value = ''
     submitted.value = null
     void load()
@@ -161,7 +171,7 @@ onBeforeUnmount(() => {
   <AppDialog
     v-model="visible"
     title="质量反馈"
-    width="min(1120px, calc(100vw - 40px))"
+    width="min(1380px, calc(100vw - 32px))"
     align-center
     append-to-body
     class="quality-feedback-dialog"
@@ -171,7 +181,24 @@ onBeforeUnmount(() => {
     @closed="emit('close')"
   >
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <template v-if="detail">
+    <FormWorkspace v-if="detail">
+      <template #documents>
+        <SerialRouteAttachments
+          :batch-no="reworkOpen && reworkContext ? reworkContext.batch_no : detail.batch_no"
+          :items="[
+            {
+              serialNo:
+                reworkOpen && reworkContext
+                  ? reworkContext.serial_no || detail.serial_no
+                  : detail.serial_no,
+              routeId:
+                reworkOpen && reworkContext
+                  ? reworkContext.process_route?.id
+                  : detail.process_step?.id,
+            },
+          ]"
+        />
+      </template>
       <div class="quality-detail-heading">
         <strong>{{ detail.serial_no }} · {{ detail.material_name }}</strong
         ><ElTag>{{ feedbackStates[detail.feedback_status] }}</ElTag
@@ -188,7 +215,8 @@ onBeforeUnmount(() => {
           {{ detail.team_name }}</ElDescriptionsItem
         >
         <ElDescriptionsItem label="检验人 / 时间"
-          >{{ detail.inspector_name }} / {{ formatDateTime(detail.checked_at) }}</ElDescriptionsItem
+          ><PersonName :name="detail.inspector_name" /> /
+          {{ formatDateTime(detail.checked_at) }}</ElDescriptionsItem
         >
         <ElDescriptionsItem label="检验范围"
           >{{ detail.scope === 'full' ? '全检' : '抽检' }} {{ detail.sample_quantity }} 件 /
@@ -245,7 +273,9 @@ onBeforeUnmount(() => {
             <strong>{{
               event.kind === 'decision' ? '检验班组长处理意见' : `${event.team_name}反馈`
             }}</strong
-            ><span>{{ event.actor }} · {{ formatDateTime(event.occurred_at) }}</span>
+            ><span
+              ><PersonName :name="event.actor" /> · {{ formatDateTime(event.occurred_at) }}</span
+            >
           </div>
           <p v-if="event.kind === 'decision'">
             {{ event.details.disposition && dispositions[event.details.disposition] }} ·
@@ -281,8 +311,9 @@ onBeforeUnmount(() => {
               ></ElCheckboxGroup
             ></ElFormItem
           >
-          <div class="quality-decision-fields">
+          <CompactFormSection>
             <ElFormItem
+              class="form-field--medium"
               label="处理方式"
               :class="{
                 'is-error':
@@ -294,7 +325,7 @@ onBeforeUnmount(() => {
                   :key="key"
                   :value="key"
                   :label="name" /></ElSelect></ElFormItem
-            ><ElFormItem label="问题状态"
+            ><ElFormItem class="form-field--medium" label="问题状态"
               ><ElSelect v-model="status"
                 ><ElOption
                   v-for="(name, key) in feedbackStates"
@@ -302,15 +333,15 @@ onBeforeUnmount(() => {
                   :value="key"
                   :label="name" /></ElSelect
             ></ElFormItem>
-          </div>
-          <ElFormItem label="处理意见（选填）"
-            ><ElInput
-              v-model="decisionNotes"
-              type="textarea"
-              :rows="2"
-              maxlength="2000"
-              show-word-limit
-          /></ElFormItem>
+            <ElFormItem class="form-field--full" label="处理意见（选填）"
+              ><ElInput
+                v-model="decisionNotes"
+                type="textarea"
+                :rows="2"
+                maxlength="2000"
+                show-word-limit
+            /></ElFormItem>
+          </CompactFormSection>
           <ElCheckbox v-if="detail.blocks_outbound" v-model="release"
             >手动解除此条历史巡检锁定</ElCheckbox
           >
@@ -337,6 +368,7 @@ onBeforeUnmount(() => {
         <QualityReworkRequest
           v-if="reworkOpen"
           :issue="detail"
+          @context-change="reworkContext = $event"
           @busy="busy = $event"
           @changed="emit('changed')"
         />
@@ -351,22 +383,26 @@ onBeforeUnmount(() => {
             ><template #default="{ row }">{{
               formatDateTime(row.checked_at)
             }}</template></ElTableColumn
-          ><ElTableColumn prop="inspector_name" label="检验人" align="center" /><ElTableColumn
-            prop="sample_quantity"
-            label="检查件数"
+          ><ElTableColumn prop="inspector_name" label="检验人" align="center"
+            ><template #default="{ row }"
+              ><PersonName :name="row.inspector_name" /></template></ElTableColumn
+          ><ElTableColumn prop="sample_quantity" label="检查件数" align="center" /><ElTableColumn
+            prop="passed_quantity"
+            label="合格"
             align="center"
-          /><ElTableColumn prop="passed_quantity" label="合格" align="center" /><ElTableColumn
-            prop="failed_quantity"
-            label="不合格"
+          /><ElTableColumn prop="failed_quantity" label="不合格" align="center" /><ElTableColumn
+            label="检验问题"
+            min-width="180"
             align="center"
-          /><ElTableColumn label="检验问题" min-width="180" align="center" show-overflow-tooltip>
+            show-overflow-tooltip
+          >
             <template #default="{ row }">{{
               inspectionProblemLabel(row as InspectionRecord)
             }}</template>
           </ElTableColumn></ElTable
         >
       </section>
-    </template>
+    </FormWorkspace>
     <template #footer
       ><ElButton :disabled="busy" @click="visible = false">关闭</ElButton
       ><ElButton
@@ -410,21 +446,17 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 .quality-detail-section {
-  margin-top: 24px;
+  margin-top: 16px;
 }
 h3 {
   font-size: 15px;
   margin: 0 0 14px;
 }
-.quality-decision-fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-}
+
 .quality-event {
-  padding: 12px 16px;
+  padding: 10px 12px;
   border: 1px solid var(--el-border-color-lighter);
-  border-radius: 12px;
+  border-radius: 8px;
   margin: 10px 0;
 }
 .quality-event > div {

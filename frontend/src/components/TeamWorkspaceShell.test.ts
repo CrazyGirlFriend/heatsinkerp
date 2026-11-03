@@ -80,8 +80,8 @@ describe('workspace with in-page navigation', () => {
       )
     }
     expect(wrapper.find('.workspace-statistics').exists()).toBe(false)
-    expect(wrapper.get('nav').attributes('aria-label')).toBe('库房功能')
-    expect(wrapper.findAll('nav button')).toHaveLength(10)
+    expect(wrapper.get('nav').attributes('aria-label')).toBe('库房收发视图')
+    expect(wrapper.findAll('nav button')).toHaveLength(4)
   })
   it('keeps actions inside the data toolbar and hides warehouse-only sections for other teams', async () => {
     wrapper = mountShell({
@@ -90,16 +90,12 @@ describe('workspace with in-page navigation', () => {
     })
     expect(wrapper.findAll('nav button').map((button) => button.text())).toEqual([
       '库存明细',
-      '交货排期',
-      '来料待签收',
-      '入库记录',
-      '质量反馈',
-      '出库记录',
-      '丢失记录',
       '材质库存',
       '类型库存',
-      '收发历史',
+      '丢失记录',
     ])
+    expect(wrapper.get('.team-workspace__module').text()).toBe('库存')
+    await wrapper.setProps({ modelValue: 'receipts' })
     await wrapper
       .findAll('nav button')
       .find((button) => button.text() === '来料待签收')!
@@ -110,7 +106,7 @@ describe('workspace with in-page navigation', () => {
   })
   it('updates pending counts without replacing the data region or showing stale zero counts', async () => {
     wrapper = mountShell({
-      props: { title: '研磨', modelValue: 'stock', pendingCount: 23 },
+      props: { title: '研磨', modelValue: 'receipts', pendingCount: 23 },
       slots: { default: '<input value="未提交内容" />' },
     })
     const input = wrapper.get('input').element
@@ -123,7 +119,7 @@ describe('workspace with in-page navigation', () => {
       expect(wrapper.find('.team-workspace__pending').exists()).toBe(false)
     }
   })
-  it('keeps every permission-dependent section available when there are more than nine tabs', async () => {
+  it('shows only related views and keeps single-view modules directly accessible', async () => {
     wrapper = mountShell({
       props: {
         title: '库房',
@@ -131,22 +127,31 @@ describe('workspace with in-page navigation', () => {
         warehouse: true,
         manageWarehouse: true,
         reallocations: true,
-        processing: true,
       },
     })
-    expect(wrapper.findAll('nav button')).toHaveLength(14)
-    expect(wrapper.get('nav').text()).toContain('巡检记录')
-    await wrapper.findAll('nav button').at(-1)!.trigger('click')
-    expect(wrapper.emitted('update:modelValue')).toEqual([['warehouse']])
+    expect(wrapper.findAll('nav button')).toHaveLength(4)
+    await wrapper.setProps({ modelValue: 'pending' })
+    expect(wrapper.findAll('nav button').map((button) => button.text())).toEqual([
+      '来料待签收',
+      '入库记录',
+      '出库记录',
+      '转投记录',
+      '收发历史',
+    ])
     await wrapper.setProps({ modelValue: 'warehouse' })
-    expect(wrapper.get('nav [aria-current=page]').text()).toBe('仓库管理')
+    expect(wrapper.get('h1').text()).toBe('仓库管理')
+    expect(wrapper.get('nav').isVisible()).toBe(false)
     await wrapper.setProps({
-      manageWarehouse: false,
-      reallocations: false,
-      processing: false,
-      modelValue: 'stock',
+      title: '检验',
+      modelValue: 'inspections',
+      processing: true,
+      inspection: true,
     })
-    expect(wrapper.findAll('nav button')).toHaveLength(10)
+    expect(wrapper.findAll('nav button').map((button) => button.text())).toEqual([
+      '检验记录',
+      '质量反馈',
+      '巡检记录',
+    ])
   })
   it('keeps export, fullscreen and settings after the query controls without duplicates', async () => {
     nativeFullscreen()
@@ -188,6 +193,7 @@ describe('workspace with in-page navigation', () => {
           modelValue,
           engineering,
           inspection: true,
+          processing: true,
           qualityCount: 3,
           settings: true,
         },
@@ -198,7 +204,9 @@ describe('workspace with in-page navigation', () => {
       await flushPromises()
       expect(wrapper.findAll('.team-workspace__fullscreen')).toHaveLength(1)
       expect(wrapper.findAll('[data-message]')).toHaveLength(1)
-      if (!engineering) expect(wrapper.get('nav').text()).toContain('质量反馈3')
+      if (['inspections', 'inspection-results'].includes(modelValue))
+        expect(wrapper.get('nav').text()).toContain('质量反馈3')
+      else expect(wrapper.get('nav').isVisible()).toBe(false)
       if (engineering) {
         expect(wrapper.find('[aria-label="更多操作"]').exists()).toBe(false)
         expect(wrapper.get('.workspace-data-toolbar [aria-label="班组设置"]').text()).toBe(
@@ -242,7 +250,7 @@ describe('workspace with in-page navigation', () => {
       left: 520,
       right: 600,
     } as DOMRect)
-    await wrapper.setProps({ modelValue: 'history' })
+    await wrapper.setProps({ modelValue: 'losses' })
     expect(nav.scrollLeft).toBe(296)
     nav.scrollLeft = 0
     resize()

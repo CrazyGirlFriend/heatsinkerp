@@ -9,6 +9,7 @@ import DocumentViewer from './DocumentViewer.vue'
 const props = defineProps<{
   route: ProcessRoute
   sourceFile?: File
+  loadSource?: (signal?: AbortSignal) => Promise<Blob>
   sourceRow?: string
   compact?: boolean
   thumbnail?: boolean
@@ -87,7 +88,9 @@ async function load() {
     const [blob, renderer] = await Promise.all([
       props.sourceFile
         ? Promise.resolve(props.sourceFile)
-        : processRouteApi.source(props.route.id, controller.signal),
+        : props.loadSource
+          ? props.loadSource(controller.signal)
+          : processRouteApi.source(props.route.id, controller.signal),
       import('docx-preview'),
     ])
     if (current !== generation) return
@@ -126,7 +129,9 @@ async function load() {
     if (current === generation) loading.value = false
   }
 }
-watch(() => [props.route.id, props.route.filename, props.sourceFile], load, { immediate: true })
+watch(() => [props.route.id, props.route.filename, props.sourceFile, props.loadSource], load, {
+  immediate: true,
+})
 onMounted(() => {
   if (!frame.value) return
   viewportWidth.value = frame.value.clientWidth || 600
@@ -142,11 +147,12 @@ onBeforeUnmount(() => {
 })
 async function download() {
   try {
-    if (props.sourceFile) {
-      const url = URL.createObjectURL(props.sourceFile)
+    if (props.sourceFile || props.loadSource) {
+      const blob = props.sourceFile || (await props.loadSource!(controller?.signal))
+      const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = props.sourceFile.name
+      link.download = props.sourceFile?.name || props.route.filename
       link.click()
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     } else await processRouteApi.download(props.route)

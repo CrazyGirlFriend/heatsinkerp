@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ElAlert, ElButton, ElOption, ElSelect } from 'element-plus'
+import { ElAlert, ElButton, ElForm, ElFormItem, ElOption, ElSelect } from 'element-plus'
 import AppDialog from './AppDialog.vue'
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
+import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import ProcessRouteSteps from './ProcessRouteSteps.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute, ProcessRouteContext } from '@/types/processRoute'
@@ -102,36 +105,51 @@ onMounted(load)
     @closed="emit('close')"
   >
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <div v-if="!current && canBind" class="route-binding">
-      <ElSelect
-        v-model="selected"
-        placeholder="搜索并选择工艺"
-        filterable
-        remote
-        :remote-method="search"
-        :disabled="busy || loading"
-        @change="choose"
-      >
-        <ElOption
-          v-for="item in options"
-          :key="item.id"
-          :value="item.id"
-          :label="`${item.title} · ${item.serial_nos.join('、')}`"
+    <FormWorkspace>
+      <template v-if="route" #documents>
+        <ProcessRouteAttachments
+          :route="route"
+          :documents="['word', 'drawing']"
+          :order-document="null"
         />
-        <template v-if="page * 20 < total" #footer
-          ><ElButton link @click="more">加载更多</ElButton></template
-        >
-      </ElSelect>
-      <span>须与本批流水号名单及起始库房一致；绑定后保留执行历史。</span>
-    </div>
-    <p v-if="loading">正在读取工艺…</p>
-    <template v-else-if="route">
-      <h3>
-        {{ route.title }} <small>工艺 #{{ route.id }}</small>
-      </h3>
-      <ProcessRouteSteps :route="route" :current="current" />
-    </template>
-    <p v-else-if="!loading">本批尚未关联工艺。请联系工艺班组录入并保存工艺。</p>
+      </template>
+      <ElForm v-if="!current && canBind" label-position="top">
+        <CompactFormSection>
+          <ElFormItem class="form-field--long" label="关联工艺" required>
+            <ElSelect
+              v-model="selected"
+              placeholder="搜索并选择工艺"
+              filterable
+              remote
+              :remote-method="search"
+              :disabled="busy || loading"
+              @change="choose"
+            >
+              <ElOption
+                v-for="item in options"
+                :key="item.id"
+                :value="item.id"
+                :label="`${item.title} · ${item.serial_nos.join('、')}`"
+              />
+              <template v-if="page * 20 < total" #footer
+                ><ElButton link @click="more">加载更多</ElButton></template
+              >
+            </ElSelect>
+          </ElFormItem>
+          <p class="route-binding-hint form-field--full">
+            须与本批流水号名单及起始库房一致；绑定后保留执行历史。
+          </p>
+        </CompactFormSection>
+      </ElForm>
+      <p v-if="loading">正在读取工艺…</p>
+      <template v-else-if="route">
+        <h3 class="route-preview-title">
+          {{ route.title }} <small>工艺 #{{ route.id }}</small>
+        </h3>
+        <ProcessRouteSteps :route="route" :current="current" />
+      </template>
+      <p v-else-if="!loading">本批尚未关联工艺。请联系工艺班组录入并保存工艺。</p>
+    </FormWorkspace>
     <template #footer
       ><ElButton :disabled="busy" @click="visible = false">关闭</ElButton
       ><ElButton
@@ -146,19 +164,18 @@ onMounted(load)
   </AppDialog>
 </template>
 <style scoped>
-.route-binding {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin: 8px 0 20px;
-}
-.route-binding .el-select {
-  width: 420px;
-}
-.route-binding span,
+.route-binding-hint,
 small {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 400;
+}
+.route-binding-hint {
+  margin: 0;
+}
+.route-preview-title {
+  margin: 12px 0;
+  font-size: 15px;
+  font-weight: 600;
 }
 </style>

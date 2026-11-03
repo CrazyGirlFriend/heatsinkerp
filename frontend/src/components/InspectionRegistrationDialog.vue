@@ -19,6 +19,9 @@ import {
   ElTableColumn,
 } from 'element-plus'
 import AppDialog from './AppDialog.vue'
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 import { useAuthStore } from '@/stores/auth'
@@ -241,7 +244,7 @@ onBeforeUnmount(() => {
   <AppDialog
     v-model="visible"
     :title="recheck ? `${title}复检登记` : `${title}登记`"
-    width="min(1060px, calc(100vw - 40px))"
+    width="min(1340px, calc(100vw - 32px))"
     align-center
     append-to-body
     :close-on-click-modal="false"
@@ -251,238 +254,263 @@ onBeforeUnmount(() => {
     @closed="emit('close')"
   >
     <ElAlert v-if="error" type="error" :closable="false" :title="error" />
-    <ElForm ref="form" label-position="top" :disabled="saving" @submit.prevent="submit">
-      <div v-if="!source" class="inspection-source-picker">
-        <div class="inspection-pick-toolbar">
-          <ElFormItem label="被检班组" required :class="{ 'is-error': submitted && !teamId }"
-            ><ElSelect
-              v-model="teamId"
-              :disabled="kind === 'inspection'"
-              aria-label="被检班组"
-              placeholder="选择班组"
-              ><ElOption
-                v-for="team in teams"
+    <FormWorkspace :documents="Boolean(source)">
+      <template v-if="source" #documents>
+        <SerialRouteAttachments
+          :batch-no="source.batch_no"
+          :items="[{ serialNo: source.serial_no }]"
+        />
+      </template>
+      <ElForm ref="form" label-position="top" :disabled="saving" @submit.prevent="submit">
+        <div v-if="!source" class="inspection-source-picker">
+          <div class="inspection-pick-toolbar">
+            <ElFormItem label="被检班组" required :class="{ 'is-error': submitted && !teamId }"
+              ><ElSelect
+                v-model="teamId"
+                :disabled="kind === 'inspection'"
+                aria-label="被检班组"
+                placeholder="选择班组"
+                ><ElOption
+                  v-for="team in teams"
+                  :key="team.id"
+                  :value="Number(team.id)"
+                  :label="team.name" /></ElSelect
+            ></ElFormItem>
+            <ElFormItem :label="kind === 'inspection' ? '查找在库批次' : '查找已加工批次'"
+              ><ElInput
+                v-model="search"
+                placeholder="流水号、批次号、材质"
+                @keyup.enter="searchSources"
+            /></ElFormItem>
+            <ElButton :loading="loading" class="action-warm" @click="searchSources">查询</ElButton>
+          </div>
+          <ElTable
+            :data="rows"
+            class="business-table"
+            height="240"
+            :empty-text="
+              kind === 'inspection' ? '暂无可检验的在库批次' : '请选择班组，查询已加工的在库批次'
+            "
+          >
+            <ElTableColumn
+              prop="serial_no"
+              label="流水号"
+              min-width="135"
+              align="center"
+              show-overflow-tooltip
+            />
+            <ElTableColumn prop="material_name" label="材质" min-width="100" align="center" />
+            <ElTableColumn prop="quantity" label="在库件数" width="95" align="center" />
+            <ElTableColumn prop="batch_no" label="批次号" min-width="205" align="center" />
+            <ElTableColumn label="操作" width="130" align="center"
+              ><template #default="{ row }"
+                ><ElButton link type="primary" @click="selectSource(row as InspectionSource)"
+                  >选择</ElButton
+                ></template
+              ></ElTableColumn
+            >
+          </ElTable>
+          <ElPagination
+            :current-page="page"
+            :total="total"
+            :page-size="8"
+            layout="prev, pager, next"
+            @current-change="changePage"
+          />
+        </div>
+        <div v-else class="inspection-selected">
+          <div>
+            <strong>{{ source.serial_no }}</strong
+            ><span>{{ source.material_name }}</span
+            ><span>{{ source.batch_no }}</span>
+          </div>
+          <div>
+            <span>当前库存 {{ source.quantity }} 件</span
+            ><ElButton
+              v-if="rows.length > 1 || (groupId == null && !recheck)"
+              link
+              @click="source = null"
+              >更换批次</ElButton
+            >
+          </div>
+        </div>
+        <CompactFormSection title="检查内容" class="inspection-check-options">
+          <ElFormItem label="检验范围" required>
+            <ElRadioGroup v-model="scope"
+              ><ElRadioButton value="sample">抽检</ElRadioButton
+              ><ElRadioButton value="full">全检</ElRadioButton></ElRadioGroup
+            >
+          </ElFormItem>
+          <ElFormItem
+            label="检查手段"
+            required
+            :class="{ 'is-error': submitted && !methods.length }"
+          >
+            <ElCheckboxGroup v-model="methods"
+              ><ElCheckboxButton
+                v-for="(name, key) in inspectionMethodLabels"
+                :key="key"
+                :value="key"
+                >{{ name }}</ElCheckboxButton
+              ></ElCheckboxGroup
+            >
+          </ElFormItem>
+          <ElFormItem label="检查项目" required :class="{ 'is-error': submitted && !items.length }">
+            <ElCheckboxGroup v-model="items"
+              ><ElCheckboxButton
+                v-for="(name, key) in inspectionItemLabels"
+                :key="key"
+                :value="key"
+                >{{ name }}</ElCheckboxButton
+              ></ElCheckboxGroup
+            >
+          </ElFormItem>
+        </CompactFormSection>
+        <CompactFormSection title="检查记录" class="inspection-fields">
+          <ElFormItem
+            class="form-field--medium"
+            :label="`${title}人`"
+            required
+            :class="{ 'is-error': submitted && !person }"
+            ><TeamEmployeeInput
+              v-model="person"
+              :team-id="inspectionTeamId"
+              :label="`${title}人`"
+              :invalid="submitted && !person"
+          /></ElFormItem>
+          <ElFormItem
+            :label="`${title}时间`"
+            required
+            :class="{ 'is-error': submitted && !checkedAt }"
+            ><ElDatePicker
+              v-model="checkedAt"
+              type="datetime"
+              :aria-label="`${title}时间`"
+              format="YYYY-MM-DD HH:mm"
+          /></ElFormItem>
+          <ElFormItem
+            :label="scope === 'full' ? '全检件数' : '抽检件数'"
+            class="form-field--short"
+            required
+            :class="{ 'is-error': submitted && (!sample || (source && sample > source.quantity)) }"
+            ><ElInputNumber
+              v-model="sample"
+              :disabled="scope === 'full'"
+              :min="1"
+              :max="source?.quantity"
+              :precision="0"
+              controls-position="right"
+              :aria-label="scope === 'full' ? '全检件数' : '抽检件数'"
+          /></ElFormItem>
+          <ElFormItem
+            label="不合格件数"
+            class="form-field--short"
+            required
+            :class="{
+              'is-error':
+                submitted && (failed == null || failed < 0 || (sample != null && failed > sample)),
+            }"
+            ><ElInputNumber
+              v-model="failed"
+              :min="0"
+              :max="sample"
+              :precision="0"
+              controls-position="right"
+              aria-label="不合格件数"
+          /></ElFormItem>
+        </CompactFormSection>
+        <div class="inspection-result" :class="{ 'inspection-result--failed': failed > 0 }">
+          <strong
+            >{{ scope === 'sample' ? '样本合格' : '检验合格' }}
+            {{ Math.max(0, (sample || 0) - (failed || 0)) }} 件</strong
+          >
+          <span>{{
+            scope === 'sample'
+              ? '结果仅代表样本；处理方式由检验班组长决定'
+              : '保存检查结果，不执行发货、返工或库存变更'
+          }}</span>
+        </div>
+        <CompactFormSection title="检查结果">
+          <ElFormItem
+            v-if="items.includes('dimension')"
+            class="form-field--long"
+            label="尺寸要求与实测结果（选填）"
+            ><ElInput
+              v-model="dimension"
+              type="textarea"
+              :rows="2"
+              maxlength="2000"
+              placeholder="例如：要求 30 ± 0.1 mm；实测 30.2 mm"
+          /></ElFormItem>
+          <ElFormItem
+            v-if="items.includes('weight')"
+            class="form-field--long"
+            label="重量要求与实测结果（选填）"
+            ><ElInput
+              v-model="weight"
+              type="textarea"
+              :rows="2"
+              maxlength="2000"
+              placeholder="填写要求、实测重量及单位"
+          /></ElFormItem>
+          <ElFormItem
+            v-if="failed > 0"
+            class="form-field--long"
+            label="检出问题（可多选）"
+            required
+            :class="{ 'is-error': submitted && !validProblems }"
+          >
+            <ElSelect
+              v-model="problemIds"
+              multiple
+              filterable
+              collapse-tags
+              collapse-tags-tooltip
+              :max-collapse-tags="3"
+              :loading="problemsLoading"
+              :disabled="problemsLoading || !!problemsError || !problems.length"
+              aria-label="检出问题"
+              placeholder="选择检验问题"
+            >
+              <ElOption
+                v-for="problem in problems"
+                :key="problem.id"
+                :value="problem.id"
+                :label="problem.name"
+              />
+            </ElSelect>
+            <div v-if="problemsError" class="inspection-problem-note">
+              <span>{{ problemsError }}</span>
+              <ElButton link type="primary" @click="loadProblems">重新读取</ElButton>
+            </div>
+            <p v-else-if="!problemsLoading && !problems.length" class="inspection-problem-note">
+              暂无启用的检验问题，请检验班组长在“班组设置 → 检验问题”中配置。
+            </p>
+          </ElFormItem>
+          <ElFormItem
+            v-if="failed > 0 && !recheck"
+            class="form-field--full"
+            label="问题涉及班组（可多选）"
+            required
+            :class="{ 'is-error': submitted && !involved.length }"
+          >
+            <ElCheckboxGroup v-model="involved"
+              ><ElCheckboxButton
+                v-for="team in involvedTeams"
                 :key="team.id"
                 :value="Number(team.id)"
-                :label="team.name" /></ElSelect
-          ></ElFormItem>
-          <ElFormItem :label="kind === 'inspection' ? '查找在库批次' : '查找已加工批次'"
-            ><ElInput
-              v-model="search"
-              placeholder="流水号、批次号、材质"
-              @keyup.enter="searchSources"
+                >{{ team.name }}</ElCheckboxButton
+              ></ElCheckboxGroup
+            >
+          </ElFormItem>
+          <ElFormItem
+            class="form-field--full"
+            :label="recheck ? '处理与复检说明（选填）' : '补充说明（选填）'"
+            ><ElInput v-model="notes" type="textarea" :rows="2" maxlength="2000" show-word-limit
           /></ElFormItem>
-          <ElButton :loading="loading" class="action-warm" @click="searchSources">查询</ElButton>
-        </div>
-        <ElTable
-          :data="rows"
-          class="business-table"
-          height="240"
-          :empty-text="
-            kind === 'inspection' ? '暂无可检验的在库批次' : '请选择班组，查询已加工的在库批次'
-          "
-        >
-          <ElTableColumn
-            prop="serial_no"
-            label="流水号"
-            min-width="135"
-            align="center"
-            show-overflow-tooltip
-          />
-          <ElTableColumn prop="material_name" label="材质" min-width="100" align="center" />
-          <ElTableColumn prop="quantity" label="在库件数" width="95" align="center" />
-          <ElTableColumn prop="batch_no" label="批次号" min-width="205" align="center" />
-          <ElTableColumn label="操作" width="130" align="center"
-            ><template #default="{ row }"
-              ><ElButton link type="primary" @click="selectSource(row as InspectionSource)"
-                >选择</ElButton
-              ></template
-            ></ElTableColumn
-          >
-        </ElTable>
-        <ElPagination
-          :current-page="page"
-          :total="total"
-          :page-size="8"
-          layout="prev, pager, next"
-          @current-change="changePage"
-        />
-      </div>
-      <div v-else class="inspection-selected">
-        <div>
-          <strong>{{ source.serial_no }}</strong
-          ><span>{{ source.material_name }}</span
-          ><span>{{ source.batch_no }}</span>
-        </div>
-        <div>
-          <span>当前库存 {{ source.quantity }} 件</span
-          ><ElButton
-            v-if="rows.length > 1 || (groupId == null && !recheck)"
-            link
-            @click="source = null"
-            >更换批次</ElButton
-          >
-        </div>
-      </div>
-      <div class="inspection-check-options">
-        <ElFormItem label="检验范围" required>
-          <ElRadioGroup v-model="scope"
-            ><ElRadioButton value="sample">抽检</ElRadioButton
-            ><ElRadioButton value="full">全检</ElRadioButton></ElRadioGroup
-          >
-        </ElFormItem>
-        <ElFormItem label="检查手段" required :class="{ 'is-error': submitted && !methods.length }">
-          <ElCheckboxGroup v-model="methods"
-            ><ElCheckboxButton
-              v-for="(name, key) in inspectionMethodLabels"
-              :key="key"
-              :value="key"
-              >{{ name }}</ElCheckboxButton
-            ></ElCheckboxGroup
-          >
-        </ElFormItem>
-        <ElFormItem label="检查项目" required :class="{ 'is-error': submitted && !items.length }">
-          <ElCheckboxGroup v-model="items"
-            ><ElCheckboxButton
-              v-for="(name, key) in inspectionItemLabels"
-              :key="key"
-              :value="key"
-              >{{ name }}</ElCheckboxButton
-            ></ElCheckboxGroup
-          >
-        </ElFormItem>
-      </div>
-      <div class="inspection-fields">
-        <ElFormItem :label="`${title}人`" required :class="{ 'is-error': submitted && !person }"
-          ><TeamEmployeeInput
-            v-model="person"
-            :team-id="inspectionTeamId"
-            :label="`${title}人`"
-            :invalid="submitted && !person"
-        /></ElFormItem>
-        <ElFormItem
-          :label="`${title}时间`"
-          required
-          :class="{ 'is-error': submitted && !checkedAt }"
-          ><ElDatePicker
-            v-model="checkedAt"
-            type="datetime"
-            aria-:label="`${title}时间`"
-            format="YYYY-MM-DD HH:mm"
-        /></ElFormItem>
-        <ElFormItem
-          :label="scope === 'full' ? '全检件数' : '抽检件数'"
-          required
-          :class="{ 'is-error': submitted && (!sample || (source && sample > source.quantity)) }"
-          ><ElInputNumber
-            v-model="sample"
-            :disabled="scope === 'full'"
-            :min="1"
-            :max="source?.quantity"
-            :precision="0"
-            controls-position="right"
-            aria-:label="scope === 'full' ? '全检件数' : '抽检件数'"
-        /></ElFormItem>
-        <ElFormItem
-          label="不合格件数"
-          required
-          :class="{
-            'is-error':
-              submitted && (failed == null || failed < 0 || (sample != null && failed > sample)),
-          }"
-          ><ElInputNumber
-            v-model="failed"
-            :min="0"
-            :max="sample"
-            :precision="0"
-            controls-position="right"
-            aria-label="不合格件数"
-        /></ElFormItem>
-      </div>
-      <div class="inspection-result" :class="{ 'inspection-result--failed': failed > 0 }">
-        <strong
-          >{{ scope === 'sample' ? '样本合格' : '检验合格' }}
-          {{ Math.max(0, (sample || 0) - (failed || 0)) }} 件</strong
-        >
-        <span>{{
-          scope === 'sample'
-            ? '结果仅代表样本；处理方式由检验班组长决定'
-            : '保存检查结果，不执行发货、返工或库存变更'
-        }}</span>
-      </div>
-      <div
-        v-if="items.includes('dimension') || items.includes('weight')"
-        class="inspection-measurements"
-      >
-        <ElFormItem v-if="items.includes('dimension')" label="尺寸要求与实测结果（选填）"
-          ><ElInput
-            v-model="dimension"
-            type="textarea"
-            :rows="2"
-            maxlength="2000"
-            placeholder="例如：要求 30 ± 0.1 mm；实测 30.2 mm"
-        /></ElFormItem>
-        <ElFormItem v-if="items.includes('weight')" label="重量要求与实测结果（选填）"
-          ><ElInput
-            v-model="weight"
-            type="textarea"
-            :rows="2"
-            maxlength="2000"
-            placeholder="填写要求、实测重量及单位"
-        /></ElFormItem>
-      </div>
-      <ElFormItem
-        v-if="failed > 0"
-        label="检出问题（可多选）"
-        required
-        :class="{ 'is-error': submitted && !validProblems }"
-      >
-        <ElSelect
-          v-model="problemIds"
-          multiple
-          filterable
-          collapse-tags
-          collapse-tags-tooltip
-          :max-collapse-tags="3"
-          :loading="problemsLoading"
-          :disabled="problemsLoading || !!problemsError || !problems.length"
-          aria-label="检出问题"
-          placeholder="选择检验问题"
-        >
-          <ElOption
-            v-for="problem in problems"
-            :key="problem.id"
-            :value="problem.id"
-            :label="problem.name"
-          />
-        </ElSelect>
-        <div v-if="problemsError" class="inspection-problem-note">
-          <span>{{ problemsError }}</span>
-          <ElButton link type="primary" @click="loadProblems">重新读取</ElButton>
-        </div>
-        <p v-else-if="!problemsLoading && !problems.length" class="inspection-problem-note">
-          暂无启用的检验问题，请检验班组长在“班组设置 → 检验问题”中配置。
-        </p>
-      </ElFormItem>
-      <ElFormItem
-        v-if="failed > 0 && !recheck"
-        label="问题涉及班组（可多选）"
-        required
-        :class="{ 'is-error': submitted && !involved.length }"
-      >
-        <ElCheckboxGroup v-model="involved"
-          ><ElCheckboxButton
-            v-for="team in involvedTeams"
-            :key="team.id"
-            :value="Number(team.id)"
-            >{{ team.name }}</ElCheckboxButton
-          ></ElCheckboxGroup
-        >
-      </ElFormItem>
-      <ElFormItem :label="recheck ? '处理与复检说明（选填）' : '补充说明（选填）'"
-        ><ElInput v-model="notes" type="textarea" :rows="2" maxlength="2000" show-word-limit
-      /></ElFormItem>
-    </ElForm>
+        </CompactFormSection>
+      </ElForm>
+    </FormWorkspace>
     <template #footer
       ><ElButton :disabled="saving" @click="visible = false">取消</ElButton
       ><ElButton
@@ -498,19 +526,19 @@ onBeforeUnmount(() => {
 <style scoped>
 .inspection-pick-toolbar {
   display: grid;
-  grid-template-columns: 200px minmax(180px, 1fr) auto;
+  grid-template-columns: minmax(140px, 180px) minmax(180px, 420px) auto;
   align-items: center;
-  gap: 16px;
+  gap: 10px 12px;
 }
 .inspection-selected {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
-  padding: 16px 18px;
+  gap: 10px 12px;
+  padding: 10px 12px;
   border: 1px solid var(--el-border-color-lighter);
-  border-radius: 16px;
+  border-radius: 8px;
   background: var(--el-fill-color-blank);
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 .inspection-selected > div {
   display: flex;
@@ -522,22 +550,8 @@ onBeforeUnmount(() => {
   color: var(--muted);
   font-size: 13px;
 }
-.inspection-check-options,
-.inspection-measurements {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-.inspection-measurements {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
 .inspection-check-options .is-error :deep(.el-checkbox-button__inner) {
   border-color: var(--el-color-danger);
-}
-.inspection-fields {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
 }
 .inspection-fields :deep(.el-input-number),
 .inspection-fields :deep(.el-date-editor),
@@ -547,7 +561,7 @@ onBeforeUnmount(() => {
 .inspection-result {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px 12px;
   padding: 12px 0 18px;
 }
 .inspection-result span {
@@ -565,9 +579,13 @@ onBeforeUnmount(() => {
   color: var(--muted);
   font-size: 13px;
 }
-@media (max-width: 1100px) {
-  .inspection-fields {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (max-width: 620px) {
+  .inspection-pick-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .inspection-selected,
+  .inspection-result {
+    flex-wrap: wrap;
   }
 }
 </style>

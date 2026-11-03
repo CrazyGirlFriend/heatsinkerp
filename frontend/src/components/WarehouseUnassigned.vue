@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
@@ -343,50 +345,55 @@ onBeforeUnmount(() => {
       :close-on-press-escape="!saving"
       @update:model-value="!$event && (selected = null)"
     >
-      <ElForm ref="formRef" label-position="top" :show-message="false"
-        ><p>{{ selected?.transfer.batch_no }}</p>
-        <ElFormItem label="仓位" :error="fieldErrors.location" required
-          ><ElSelect
-            v-model="locationId"
-            filterable
-            remote
-            :remote-method="findSlots"
-            aria-label="选择空闲仓位"
-            placeholder="选择或搜索仓位"
-            :disabled="saving"
-            ><ElOption
-              v-for="slot in slots"
-              :key="slot.id"
-              :value="slot.id"
-              :label="slot.name" /></ElSelect
-        ></ElFormItem>
-        <p v-if="currentSlot?.batches.length">
-          当前库存 {{ slotAmount('quantity') }} 件 · {{ slotAmount('weight') }} kg ·
-          {{ currentSlot.batches.length }} 批
-        </p>
-        <div class="dialog-form-grid">
-          <ElFormItem label="件数" :error="fieldErrors.quantity" required
-            ><ElInputNumber
-              v-model="quantity"
-              :min="0"
-              :max="selected?.unassigned_quantity"
-              :precision="0"
-              :disabled="saving"
-              aria-label="安排仓位件数"
-              controls-position="right"
-              ><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber
-            ></ElFormItem
-          >
-          <ElFormItem label="重量" :error="fieldErrors.weight" required
-            ><WeightInput
-              v-model="weight"
-              :max="selected?.unassigned_weight"
-              :disabled="saving"
-              ariaLabel="安排仓位重量"
-          /></ElFormItem>
-        </div>
-        <ElAlert v-if="formError" :title="formError" type="error" :closable="false" />
-      </ElForm>
+      <FormWorkspace>
+        <ElForm ref="formRef" label-position="top" :show-message="false"
+          ><p>{{ selected?.transfer.batch_no }}</p>
+          <CompactFormSection title="仓位分配">
+            <ElFormItem class="form-field--long" label="仓位" :error="fieldErrors.location" required
+              ><ElSelect
+                v-model="locationId"
+                filterable
+                remote
+                :remote-method="findSlots"
+                aria-label="选择空闲仓位"
+                placeholder="选择或搜索仓位"
+                :disabled="saving"
+                ><ElOption
+                  v-for="slot in slots"
+                  :key="slot.id"
+                  :value="slot.id"
+                  :label="slot.name" /></ElSelect
+            ></ElFormItem>
+            <p v-if="currentSlot?.batches.length" class="form-field--full">
+              当前库存 {{ slotAmount('quantity') }} 件 · {{ slotAmount('weight') }} kg ·
+              {{ currentSlot.batches.length }} 批
+            </p>
+
+            <ElFormItem class="form-field--long" label="件数" :error="fieldErrors.quantity" required
+              ><ElInputNumber
+                v-model="quantity"
+                :min="0"
+                :max="selected?.unassigned_quantity"
+                :precision="0"
+                :disabled="saving"
+                aria-label="安排仓位件数"
+                controls-position="right"
+                ><template #suffix
+                  ><span class="dialog-input-unit">件</span></template
+                ></ElInputNumber
+              ></ElFormItem
+            >
+            <ElFormItem class="form-field--long" label="重量" :error="fieldErrors.weight" required
+              ><WeightInput
+                v-model="weight"
+                :max="selected?.unassigned_weight"
+                :disabled="saving"
+                ariaLabel="安排仓位重量"
+            /></ElFormItem>
+          </CompactFormSection>
+          <ElAlert v-if="formError" :title="formError" type="error" :closable="false" />
+        </ElForm>
+      </FormWorkspace>
       <template #footer
         ><ElButton :disabled="saving" @click="selected = null">取消</ElButton
         ><ElButton type="primary" :loading="saving" @click="assign">确认安排</ElButton></template

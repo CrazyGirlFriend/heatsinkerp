@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ElAlert, ElButton, ElIcon } from 'element-plus'
-import { Document } from '@element-plus/icons-vue'
+import { ElAlert, ElButton } from 'element-plus'
+import DocumentCard from './DocumentCard.vue'
 import WordDocumentPreview from './WordDocumentPreview.vue'
 import ProcessRouteDrawingPreview from './ProcessRouteDrawingPreview.vue'
 import OrderDocumentPreview from './OrderDocumentPreview.vue'
@@ -10,6 +10,7 @@ import type { ProcessRoute, RouteOrderDocument } from '@/types/processRoute'
 const props = withDefaults(
   defineProps<{
     route: ProcessRoute
+    sourceRoute?: ProcessRoute
     sourceRow?: string
     documents?: ('order' | 'word' | 'drawing')[]
     orderThumbnail?: boolean
@@ -31,6 +32,7 @@ const emit = defineEmits<{
 const wordPreview = ref<InstanceType<typeof WordDocumentPreview>>()
 const orderPreview = ref<InstanceType<typeof OrderDocumentPreview>>()
 const error = ref('')
+const wordRoute = computed(() => props.sourceRoute || props.route)
 const order = computed(() =>
   props.orderDocument === undefined ? props.route.source_data.order_document : props.orderDocument,
 )
@@ -59,89 +61,90 @@ defineExpose({ open })
 </script>
 <template>
   <aside class="route-attachment-rail" aria-label="工艺附件缩略图">
-    <div
-      v-if="documents.includes('order') && order"
+    <DocumentCard
+      v-if="documents.includes('order')"
       class="route-attachment-card"
       :class="{ 'route-attachment-card--full': !orderThumbnail }"
+      title="订单表"
+      :filename="order?.filename"
+      :missing="order ? undefined : '未上传订单表'"
     >
       <OrderDocumentPreview
+        v-if="order"
         ref="orderPreview"
         :route-id="route.id"
         :task-id="orderTaskId"
         :file="orderFile"
         :thumbnail="orderThumbnail"
       />
-      <strong>订单表</strong>
-      <span :title="order.filename">{{ order.filename }}</span>
-      <ElButton link @click="downloadOrder">下载原件</ElButton>
-    </div>
-    <div
-      v-else-if="documents.includes('order') && route.route_kind !== 'rework'"
-      class="route-attachment-card route-attachment-card--missing"
-    >
-      <ElIcon><Document /></ElIcon><strong>订单表</strong><span>未上传</span>
-    </div>
-    <div
-      v-if="documents.includes('word') && (sourceFile || route.filename)"
+      <template v-if="order" #actions
+        ><ElButton link @click="downloadOrder">下载原件</ElButton></template
+      >
+    </DocumentCard>
+    <DocumentCard
+      v-if="documents.includes('word')"
       class="route-attachment-card"
+      title="工艺原件"
+      :filename="sourceFile?.name || wordRoute.filename || undefined"
+      :missing="sourceFile || wordRoute.filename ? undefined : '未上传工艺原件'"
     >
       <WordDocumentPreview
+        v-if="sourceFile || wordRoute.filename"
         ref="wordPreview"
-        :route="route"
+        :route="wordRoute"
         :source-file="sourceFile"
         :source-row="sourceRow"
         thumbnail
       />
-      <strong>工艺原稿</strong>
-      <span :title="sourceFile?.name || route.filename">{{
-        sourceFile?.name || route.filename
-      }}</span>
-      <ElButton link @click="wordPreview?.download()">下载原件</ElButton>
-    </div>
-    <div
-      v-else-if="documents.includes('word') && route.route_kind !== 'rework'"
-      class="route-attachment-card route-attachment-card--missing"
-    >
-      <ElIcon><Document /></ElIcon><strong>工艺原件</strong><span>未上传</span>
-    </div>
+      <template v-if="sourceFile || wordRoute.filename" #actions>
+        <ElButton link @click="wordPreview?.download()">下载原件</ElButton>
+      </template>
+    </DocumentCard>
     <template v-if="documents.includes('drawing')">
-      <div v-for="drawing in route.drawings" :key="drawing.id" class="route-attachment-card">
+      <DocumentCard
+        v-for="drawing in route.drawings"
+        :key="drawing.id"
+        class="route-attachment-card"
+        title="图纸"
+      >
         <ProcessRouteDrawingPreview :route-id="route.id" :drawing="drawing" thumbnail />
-        <ElButton
-          v-if="editable"
-          link
-          type="danger"
-          :disabled="disabled"
-          :aria-label="`移除 ${drawing.filename}`"
-          @click="emit('removeDrawing', drawing.id)"
-          >移除</ElButton
-        >
-      </div>
-      <div
+        <template v-if="editable" #actions>
+          <ElButton
+            link
+            type="danger"
+            :disabled="disabled"
+            :aria-label="`移除 ${drawing.filename}`"
+            @click="emit('removeDrawing', drawing.id)"
+            >移除</ElButton
+          >
+        </template>
+      </DocumentCard>
+      <DocumentCard
         v-for="(file, index) in pendingDrawings"
         :key="`pending-${index}`"
         class="route-attachment-card"
+        title="图纸"
+        source="待保存"
       >
         <ProcessRouteDrawingPreview :route-id="route.id" :file="file" thumbnail />
-        <span>待保存</span>
-        <ElButton
-          v-if="editable"
-          link
-          type="danger"
-          :disabled="disabled"
-          :aria-label="`移除 ${file.name}`"
-          @click="emit('removePendingDrawing', file)"
-          >移除</ElButton
-        >
-      </div>
+        <template v-if="editable" #actions>
+          <ElButton
+            link
+            type="danger"
+            :disabled="disabled"
+            :aria-label="`移除 ${file.name}`"
+            @click="emit('removePendingDrawing', file)"
+            >移除</ElButton
+          >
+        </template>
+      </DocumentCard>
+      <DocumentCard
+        v-if="!route.drawings?.length && !pendingDrawings?.length"
+        class="route-attachment-card"
+        title="图纸"
+        missing="未上传图纸"
+      />
     </template>
-    <div
-      v-if="documents.includes('drawing') && !route.drawings?.length && !pendingDrawings?.length"
-      class="route-attachment-card route-attachment-card--missing"
-    >
-      <ElIcon><Document /></ElIcon><strong>图纸</strong
-      ><span>{{ route.route_kind === 'rework' ? '图纸缺失' : '未上传' }}</span>
-    </div>
   </aside>
   <ElAlert v-if="error" :title="error" type="error" :closable="false" />
 </template>
@@ -149,56 +152,14 @@ defineExpose({ open })
 .route-attachment-rail {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
   min-width: 0;
 }
-.route-attachment-card {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #ffffffc9;
-}
-.route-attachment-card > :is(strong, span) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-}
-.route-attachment-card > span {
-  font-size: 11px;
-  color: var(--muted);
-}
-.route-attachment-card > .el-button {
-  align-self: flex-start;
-  font-size: 12px;
-}
-.route-attachment-card--missing {
-  min-height: 96px;
-  align-items: center;
-  justify-content: center;
-  border-style: dashed;
-  background: #ffffff80;
-}
-.route-attachment-card--missing > .el-icon {
-  color: var(--muted);
-  font-size: 20px;
-}
-.route-attachment-card--missing > span {
-  color: #9b702e;
-}
-
 @media (max-width: 760px) {
   .route-attachment-rail {
     flex-direction: row;
     overflow-x: auto;
     padding: 4px;
-  }
-  .route-attachment-card {
-    flex: 0 0 160px;
   }
   .route-attachment-card--full {
     flex: 1 0 100%;

@@ -22,7 +22,7 @@ const emit = defineEmits<{ 'update:modelValue': [string] }>()
       :disabled="disabled"
       @click="emit('update:modelValue', item.key)"
     >
-      <AccountAvatar :avatar-key="item.key" :size="48" />
+      <AccountAvatar :avatar-key="item.key" :size="40" />
       <span class="avatar-choice__check" aria-hidden="true">✓</span>
     </button>
     <button
@@ -32,7 +32,7 @@ const emit = defineEmits<{ 'update:modelValue': [string] }>()
       :disabled="disabled"
       @click="emit('update:modelValue', '')"
     >
-      使用姓名头像
+      <AccountAvatar :name="name" :size="24" /> 使用姓名头像
     </button>
   </div>
 </template>
@@ -41,7 +41,7 @@ const emit = defineEmits<{ 'update:modelValue': [string] }>()
 .avatar-picker {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
   width: 100%;
 }
 .avatar-choice {
@@ -49,8 +49,8 @@ const emit = defineEmits<{ 'update:modelValue': [string] }>()
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 72px;
-  padding: 10px;
+  min-height: 56px;
+  padding: 8px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface);
@@ -90,6 +90,9 @@ const emit = defineEmits<{ 'update:modelValue': [string] }>()
   display: block;
 }
 .avatar-default {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   grid-column: 1 / -1;
   justify-self: start;
   padding: 2px 0;
@@ -99,6 +102,11 @@ const emit = defineEmits<{ 'update:modelValue': [string] }>()
   font: inherit;
   font-size: 13px;
   cursor: pointer;
+}
+@media (min-width: 600px) {
+  .avatar-picker {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
 }
 .avatar-default[aria-pressed='true'] {
   color: var(--primary);

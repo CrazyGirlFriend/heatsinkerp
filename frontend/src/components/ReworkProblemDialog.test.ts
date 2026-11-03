@@ -2,6 +2,7 @@
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { afterEach, expect, it, vi } from 'vitest'
 import ReworkProblemDialog from './ReworkProblemDialog.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import ReworkRouteRequest from './ReworkRouteRequest.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
@@ -29,7 +30,11 @@ it('searches real batches and passes the selected revision and work records to d
   vi.spyOn(processRouteApi, 'reworkSourceContext').mockResolvedValue(context)
   wrapper = mount(ReworkProblemDialog, {
     global: {
-      stubs: { AppDialog: { template: '<section><slot /></section>' }, ReworkRouteRequest: true },
+      stubs: {
+        SerialRouteAttachments: true,
+        AppDialog: { template: '<section><slot /></section>' },
+        ReworkRouteRequest: true,
+      },
     },
   })
   await flushPromises()
@@ -44,6 +49,10 @@ it('searches real batches and passes the selected revision and work records to d
   await flushPromises()
   expect(processRouteApi.reworkSourceContext).toHaveBeenCalledWith(42)
   expect(wrapper.getComponent(ReworkRouteRequest).props('context')).toEqual(context)
+  expect(wrapper.getComponent(SerialRouteAttachments).props('batchNo')).toBe('TL42')
+  expect(wrapper.getComponent(SerialRouteAttachments).props('items')).toEqual([
+    { serialNo: 'S1', routeId: undefined },
+  ])
   expect(wrapper.getComponent(ReworkRouteRequest).props('inspectionId')).toBeUndefined()
   wrapper.getComponent(ReworkRouteRequest).vm.$emit('changed')
   expect(wrapper.emitted('submitted')).toHaveLength(1)

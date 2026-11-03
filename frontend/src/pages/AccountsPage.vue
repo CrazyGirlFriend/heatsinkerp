@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormWorkspace from '../components/FormWorkspace.vue'
+import CompactFormSection from '../components/CompactFormSection.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import TableExportButton from '@/components/TableExportButton.vue'
 import { tableExportSource } from '@/utils/tableExport'
@@ -504,17 +506,15 @@ onMounted(() => void loadData())
       @opened="focusEditor"
     >
       <p v-if="formError" role="alert" class="account-error">{{ formError }}</p>
-      <ElForm
-        ref="formRef"
-        :model="form"
-        label-position="left"
-        label-width="100px"
-        :show-message="false"
-        @submit.prevent="submitForm"
-      >
-        <section class="dialog-form-section">
-          <h3>账号资料</h3>
-          <div class="dialog-form-grid">
+      <FormWorkspace>
+        <ElForm
+          ref="formRef"
+          :model="form"
+          label-position="top"
+          :show-message="false"
+          @submit.prevent="submitForm"
+        >
+          <CompactFormSection title="账号资料">
             <ElFormItem label="登录账号" :error="fieldErrors.username" required>
               <ElInput
                 ref="usernameInput"
@@ -574,7 +574,7 @@ onMounted(() => void loadData())
               </ElInput>
               <p v-if="editingId !== null" class="dialog-field-hint">留空则保留原密码</p>
             </ElFormItem>
-            <ElFormItem class="dialog-field-wide" label="账号状态">
+            <ElFormItem label="账号状态">
               <div class="switch-row">
                 <ElSwitch
                   v-model="form.active"
@@ -586,14 +586,18 @@ onMounted(() => void loadData())
                 <span>{{ form.active ? '允许登录' : '禁止登录' }}</span>
               </div>
             </ElFormItem>
-          </div>
-        </section>
-        <section class="dialog-form-section">
-          <h3>头像</h3>
-          <AvatarPicker v-model="form.avatar_key" :name="form.display_name" :disabled="saving" />
-        </section>
-        <button class="dialog-submit-proxy" type="submit" tabindex="-1" aria-hidden="true" />
-      </ElForm>
+          </CompactFormSection>
+          <CompactFormSection title="头像">
+            <AvatarPicker
+              class="form-field--full"
+              v-model="form.avatar_key"
+              :name="form.display_name"
+              :disabled="saving"
+            />
+          </CompactFormSection>
+          <button class="dialog-submit-proxy" type="submit" tabindex="-1" aria-hidden="true" />
+        </ElForm>
+      </FormWorkspace>
       <template #footer>
         <ElButton :disabled="saving" @click="editorOpen = false">取消</ElButton>
         <ElButton type="primary" :loading="saving" :icon="CircleCheck" @click="submitForm">{{

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ElAlert, ElButton, ElOption, ElSelect } from 'element-plus'
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
+import { ElAlert, ElButton, ElForm, ElFormItem, ElOption, ElSelect } from 'element-plus'
 import ProcessRouteEditor from './ProcessRouteEditor.vue'
 import { formatDateTime } from '@/utils/format'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -78,29 +80,42 @@ async function view(id: number) {
       ><ElButton v-if="manage" size="small" :disabled="busy" @click="add">关联返工问题</ElButton>
     </div>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <div v-if="adding" class="rework-link">
-      <ElSelect
-        v-model="selected"
-        aria-label="返工批次"
-        placeholder="选择返工批次"
-        :disabled="busy"
-        @change="planId = plans().length === 1 ? plans()[0]?.id : undefined"
-        ><ElOption
-          v-for="item in options"
-          :key="item.route_id"
-          :value="item.route_id"
-          :label="`${item.batch_no} · ${item.problem}`"
-      /></ElSelect>
-      <ElSelect v-model="planId" aria-label="原排期节点" placeholder="原排期节点" :disabled="busy"
-        ><ElOption
-          v-for="item in plans()"
-          :key="item.id"
-          :value="item.id"
-          :label="`${item.team_name} · ${formatDateTime(item.due_at)}`"
-      /></ElSelect>
-      <ElButton :disabled="busy" @click="adding = false">取消</ElButton
-      ><ElButton :loading="busy" @click="save">确认关联</ElButton>
-    </div>
+    <FormWorkspace v-if="adding" class="rework-link">
+      <ElForm label-position="top" :disabled="busy" @submit.prevent="save"
+        ><CompactFormSection>
+          <ElFormItem class="form-field--long" label="返工批次" required>
+            <ElSelect
+              v-model="selected"
+              aria-label="返工批次"
+              placeholder="选择返工批次"
+              :disabled="busy"
+              @change="planId = plans().length === 1 ? plans()[0]?.id : undefined"
+              ><ElOption
+                v-for="item in options"
+                :key="item.route_id"
+                :value="item.route_id"
+                :label="`${item.batch_no} · ${item.problem}`"
+            /></ElSelect> </ElFormItem
+          ><ElFormItem class="form-field--long" label="原排期节点" required>
+            <ElSelect
+              v-model="planId"
+              aria-label="原排期节点"
+              placeholder="原排期节点"
+              :disabled="busy"
+              ><ElOption
+                v-for="item in plans()"
+                :key="item.id"
+                :value="item.id"
+                :label="`${item.team_name} · ${formatDateTime(item.due_at)}`"
+            /></ElSelect>
+          </ElFormItem>
+          <div class="rework-link-actions form-field--full">
+            <ElButton :disabled="busy" @click="adding = false">取消</ElButton
+            ><ElButton :loading="busy" @click="save">确认关联</ElButton>
+          </div></CompactFormSection
+        ></ElForm
+      >
+    </FormWorkspace>
     <div v-if="task.reworks?.length" class="rework-grid-wrap">
       <table class="rework-grid" aria-label="返工跟进">
         <colgroup>
@@ -152,8 +167,7 @@ async function view(id: number) {
 .schedule-reworks {
   margin-top: 18px;
 }
-.rework-heading,
-.rework-link {
+.rework-heading {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -163,11 +177,13 @@ async function view(id: number) {
   justify-content: space-between;
   font-size: 14px;
 }
-.rework-link > .el-select:first-child {
-  flex: 2;
+.rework-link {
+  margin-bottom: 12px;
 }
-.rework-link > .el-select {
-  flex: 1;
+.rework-link-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 .rework-grid-wrap {
   overflow-x: auto;

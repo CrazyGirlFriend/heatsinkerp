@@ -2,6 +2,8 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElAlert, ElButton, ElInput, ElPagination, ElTable, ElTableColumn } from 'element-plus'
 import AppDialog from './AppDialog.vue'
+import FormWorkspace from './FormWorkspace.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import ReworkRouteRequest from './ReworkRouteRequest.vue'
 import { processRouteApi, type ReworkSource } from '@/services/processRouteApi'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
@@ -69,7 +71,7 @@ onBeforeUnmount(() => {
   <AppDialog
     v-model="visible"
     title="提交返工问题"
-    width="min(900px, 94vw)"
+    width="min(1180px, 96vw)"
     append-to-body
     :before-close="close"
     :close-on-click-modal="false"
@@ -111,7 +113,13 @@ onBeforeUnmount(() => {
         @current-change="load"
       />
     </template>
-    <template v-else>
+    <FormWorkspace v-else>
+      <template #documents>
+        <SerialRouteAttachments
+          :batch-no="context.batch_no"
+          :items="[{ serialNo: context.serial_no || '', routeId: context.process_route?.id }]"
+        />
+      </template>
       <div class="batch-heading">
         <span>{{ context.serial_no }} · {{ context.batch_no }}</span
         ><ElButton size="small" :disabled="busy" @click="context = undefined">重新选择</ElButton>
@@ -129,7 +137,7 @@ onBeforeUnmount(() => {
         @busy="busy = $event"
         @changed="submitted"
       />
-    </template>
+    </FormWorkspace>
   </AppDialog>
 </template>
 <style scoped>

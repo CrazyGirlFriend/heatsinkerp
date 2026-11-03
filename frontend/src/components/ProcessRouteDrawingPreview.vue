@@ -9,6 +9,9 @@ const props = defineProps<{
   routeId: number
   drawing?: ProcessRouteDrawing
   file?: File
+  filename?: string
+  loadPreview?: (signal: AbortSignal) => Promise<Blob>
+  loadOriginal?: (signal?: AbortSignal) => Promise<Blob>
   thumbnail?: boolean
 }>()
 const url = ref(''),
@@ -31,6 +34,7 @@ async function load() {
   loading.value = true
   try {
     const blob =
+      (props.loadPreview && (await props.loadPreview(controller.signal))) ||
       (props.file && (await processRouteApi.previewDrawing(props.file, controller.signal))) ||
       (props.drawing &&
         (await processRouteApi.drawing(props.routeId, props.drawing.id, controller.signal, true)))
@@ -50,6 +54,7 @@ async function download() {
   const current = generation
   try {
     const blob =
+      (props.loadOriginal && (await props.loadOriginal(controller?.signal))) ||
       props.file ||
       (props.drawing &&
         (await processRouteApi.drawing(props.routeId, props.drawing.id, controller?.signal)))
@@ -57,7 +62,7 @@ async function download() {
     const original = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = original
-    link.download = props.file?.name || props.drawing?.filename || '图纸.pdf'
+    link.download = props.filename || props.file?.name || props.drawing?.filename || '图纸.pdf'
     link.click()
     setTimeout(() => URL.revokeObjectURL(original), 1000)
   } catch {
@@ -65,7 +70,9 @@ async function download() {
   }
 }
 defineExpose({ open, ready })
-watch(() => [props.routeId, props.drawing?.id, props.file], load, { immediate: true })
+watch(() => [props.routeId, props.drawing?.id, props.file, props.loadPreview], load, {
+  immediate: true,
+})
 onBeforeUnmount(() => {
   ++generation
   controller?.abort()
@@ -95,9 +102,11 @@ onBeforeUnmount(() => {
         />
       </button>
       <template v-if="thumbnail">
-        <strong class="drawing-thumbnail-name" :title="drawing?.filename || file?.name">{{
-          drawing?.filename || file?.name
-        }}</strong>
+        <strong
+          class="drawing-thumbnail-name"
+          :title="filename || drawing?.filename || file?.name"
+          >{{ filename || drawing?.filename || file?.name }}</strong
+        >
         <ElButton class="drawing-thumbnail-download" link @click="download">下载原件</ElButton>
       </template>
       <DocumentViewer v-if="viewing" title="图纸" :pdf="url" @close="viewing = false" />

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElButton, ElInput, ElTag } from 'element-plus'
+import PersonName from './PersonName.vue'
 import StatePanel from './StatePanel.vue'
 import { formatAmount, formatDateTime } from '@/utils/format'
 import {
@@ -145,7 +146,7 @@ onBeforeUnmount(() => {
       </div>
       <div>
         <dt>申请人</dt>
-        <dd>{{ amendment.requested_by }}</dd>
+        <dd><PersonName :name="amendment.requested_by" /></dd>
       </div>
       <div>
         <dt>申请时间</dt>
@@ -176,7 +177,7 @@ onBeforeUnmount(() => {
       对方确认后生效；已加工和已转出的记录保持原样。
     </p>
     <div v-if="amendment.resolved_at" class="review-resolution" role="status">
-      {{ amendment.resolved_by || '—' }} ·
+      <PersonName :name="amendment.resolved_by || '—'" /> ·
       {{ formatDateTime(amendment.resolved_at) }}
       <p v-if="amendment.response_reason">{{ amendment.response_reason }}</p>
     </div>

@@ -6,6 +6,7 @@ import dayjs from 'dayjs'
 import ScheduleTaskEditor from './ScheduleTaskEditor.vue'
 import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
 import AppDialog from './AppDialog.vue'
+import ImportedDataConfirmation from './ImportedDataConfirmation.vue'
 import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ScheduleTask, ScheduleRouteOption } from '@/types/productionSchedule'
@@ -77,11 +78,15 @@ async function render(
   await flushPromises()
 }
 const orderFile = new File(['order'], '订单.xlsx')
-async function uploadOrder() {
+async function uploadOrder(confirm = true) {
   const input = wrapper.get('input[type="file"]')
   Object.defineProperty(input.element, 'files', { configurable: true, value: [orderFile] })
   await input.trigger('change')
   await flushPromises()
+  if (confirm && wrapper.findComponent(ImportedDataConfirmation).exists()) {
+    wrapper.getComponent(ImportedDataConfirmation).vm.$emit('update:modelValue', true)
+    await flushPromises()
+  }
 }
 async function button(label: string) {
   await wrapper
@@ -659,4 +664,64 @@ it('locates a missing order at the upload button and clears the error after uplo
   expect(field.textContent).not.toContain('请上传对应流水号的订单表')
   await button('创建排期')
   expect(productionScheduleApi.createTask).toHaveBeenCalledOnce()
+})
+
+it('requires reviewing imported quantity and invalidates confirmation when quantity or order changes', async () => {
+  await render()
+  date('2026-12-30T16:00:00')
+  batchDate(0, '2026-12-29T16:00:00')
+  await button('选择业务人员')
+  wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 1, label: '张工' }])
+  await flushPromises()
+  await uploadOrder(false)
+  const confirmation = () => wrapper.getComponent(ImportedDataConfirmation)
+  expect(wrapper.text()).toContain('文件带入')
+  await button('创建排期')
+  expect(confirmation().text()).toContain('请核对工艺和计划数量')
+  expect(productionScheduleApi.createTask).not.toHaveBeenCalled()
+  await confirmation().get('input[type="checkbox"]').setValue(true)
+  plannedAmount().vm.$emit('update:modelValue', 80)
+  batchAmounts()[0]!.vm.$emit('update:modelValue', 80)
+  await flushPromises()
+  expect(confirmation().props('modelValue')).toBe(false)
+  expect(wrapper.text()).toContain('已修改')
+  await confirmation().get('input[type="checkbox"]').setValue(true)
+  await uploadOrder(false)
+  expect(confirmation().props('modelValue')).toBe(false)
+  await confirmation().get('input[type="checkbox"]').setValue(true)
+  await button('创建排期')
+  expect(productionScheduleApi.createTask).toHaveBeenCalledWith(
+    expect.objectContaining({ planned_quantity: 80 }),
+    orderFile,
+  )
+})
+
+it('keeps manually entered quantity and existing schedule edits free of import confirmation', async () => {
+  const route = structuredClone(routeFixture)
+  route.steps.forEach((step) => {
+    step.planned_quantity = ''
+  })
+  vi.mocked(productionScheduleApi.taskRouteOptions).mockResolvedValue([
+    { ...route, execution_serial: 'S-001' } as unknown as ScheduleRouteOption,
+  ])
+  await render()
+  expect(wrapper.findComponent(ImportedDataConfirmation).exists()).toBe(false)
+  plannedAmount().vm.$emit('update:modelValue', 90)
+  batchAmounts()[0]!.vm.$emit('update:modelValue', 90)
+  date('2026-12-30T16:00:00')
+  batchDate(0, '2026-12-29T16:00:00')
+  await button('选择业务人员')
+  wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 1, label: '张工' }])
+  await flushPromises()
+  await uploadOrder(false)
+  await button('创建排期')
+  expect(productionScheduleApi.createTask).toHaveBeenCalledWith(
+    expect.objectContaining({ planned_quantity: 90 }),
+    orderFile,
+  )
+  wrapper.unmount()
+  await render(task)
+  expect(wrapper.findComponent(ImportedDataConfirmation).exists()).toBe(false)
+  await button('保存交期')
+  expect(productionScheduleApi.updateTask).toHaveBeenCalledOnce()
 })

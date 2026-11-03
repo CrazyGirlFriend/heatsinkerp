@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import SharedMaterialInfo from './SharedMaterialInfo.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { sludgeFields } from '@/utils/sludgeWeight'
@@ -158,6 +159,7 @@ const fields = computed<DocumentField[]>(() => {
     {
       label: processed || reallocated || receipt ? '登记人' : '转料人',
       value: materialSenderName(t),
+      person: true,
     },
     {
       label: processed
@@ -173,10 +175,11 @@ const fields = computed<DocumentField[]>(() => {
     },
     ...(!processed && !receipt && !reallocated
       ? [
-          { label: '开单操作账号', value: t.transferred_by || '—' },
+          { label: '开单操作账号', value: t.transferred_by || '—', person: true },
           {
             label: external ? `${verb}确认人` : '接收人',
             key: external ? undefined : 'receiver',
+            person: true,
             value: external
               ? t.dispatched_by || '—'
               : t.received_employee_name || (t.status === 'received' ? '未登记' : '—'),
@@ -188,11 +191,11 @@ const fields = computed<DocumentField[]>(() => {
         ]
       : []),
     ...(!external && t.entry_kind === 'transfer' && t.received_at
-      ? [{ label: '签收操作账号', value: t.received_by || '—' }]
+      ? [{ label: '签收操作账号', value: t.received_by || '—', person: true }]
       : []),
     ...(t.status === 'voided'
       ? [
-          { label: '作废人', value: t.voided_by || '—' },
+          { label: '作废人', value: t.voided_by || '—', person: true },
           { label: '作废时间', value: formatDateTime(t.voided_at) },
         ]
       : []),
@@ -210,8 +213,8 @@ const fields = computed<DocumentField[]>(() => {
       ><slot name="serial">{{ field.value }}</slot></template
     >
     <template #receiver="{ field }"
-      ><slot name="receiver">{{ field.value }}</slot></template
-    >
+      ><slot name="receiver"><PersonName :name="field.value" /></slot
+    ></template>
   </MaterialDocumentTable>
   <SharedMaterialInfo v-if="group !== 'extra'" :item="transfer" />
 </template>

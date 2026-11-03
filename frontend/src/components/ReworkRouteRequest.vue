@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import CompactFormSection from './CompactFormSection.vue'
 import {
   ElAlert,
   ElButton,
@@ -74,29 +75,32 @@ async function save() {
   <section class="rework-request" aria-label="提交返工问题">
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <ElForm label-position="top" :disabled="busy" @submit.prevent="save">
-      <ElFormItem
-        label="原加工记录"
-        required
-        :error="submitted && !original ? '请选择原加工记录' : ''"
-      >
-        <ElSelect v-model="original" aria-label="返工原加工记录" placeholder="选择需要返工的工序">
-          <ElOption
-            v-for="record in context.rework_task_records"
-            :key="record.rework_of_id"
-            :value="record.rework_of_id"
-            :label="`${record.process_step_name || record.processing_task_name || '加工'} · #${record.rework_of_id}`"
-          />
-          <ElOption
-            v-if="
-              original && !context.rework_task_records?.some((row) => row.rework_of_id === original)
-            "
-            :value="original"
-            :label="`原加工记录 #${original}`"
-          />
-        </ElSelect>
-      </ElFormItem>
-      <div class="rework-amounts">
+      <CompactFormSection title="返工信息">
         <ElFormItem
+          class="form-field--long"
+          label="原加工记录"
+          required
+          :error="submitted && !original ? '请选择原加工记录' : ''"
+        >
+          <ElSelect v-model="original" aria-label="返工原加工记录" placeholder="选择需要返工的工序">
+            <ElOption
+              v-for="record in context.rework_task_records"
+              :key="record.rework_of_id"
+              :value="record.rework_of_id"
+              :label="`${record.process_step_name || record.processing_task_name || '加工'} · #${record.rework_of_id}`"
+            />
+            <ElOption
+              v-if="
+                original &&
+                !context.rework_task_records?.some((row) => row.rework_of_id === original)
+              "
+              :value="original"
+              :label="`原加工记录 #${original}`"
+            />
+          </ElSelect>
+        </ElFormItem>
+        <ElFormItem
+          class="form-field--medium"
           label="返工件数"
           required
           :error="submitted && (!quantity || quantity <= 0) ? '请填写返工件数' : ''"
@@ -108,6 +112,7 @@ async function save() {
             aria-label="返工件数"
         /></ElFormItem>
         <ElFormItem
+          class="form-field--medium"
           label="返工重量（kg）"
           required
           :error="submitted && (!weight || weight <= 0) ? '请填写返工重量' : ''"
@@ -119,13 +124,19 @@ async function save() {
             :precision="6"
             aria-label="返工重量"
         /></ElFormItem>
-      </div>
-      <ElFormItem
-        label="问题描述"
-        required
-        :error="submitted && !reason.trim() ? '请填写问题描述' : ''"
-        ><ElInput v-model="reason" type="textarea" :rows="2" maxlength="2000" aria-label="问题描述"
-      /></ElFormItem>
+        <ElFormItem
+          class="form-field--full"
+          label="问题描述"
+          required
+          :error="submitted && !reason.trim() ? '请填写问题描述' : ''"
+          ><ElInput
+            v-model="reason"
+            type="textarea"
+            :rows="2"
+            maxlength="2000"
+            aria-label="问题描述"
+        /></ElFormItem>
+      </CompactFormSection>
       <footer>
         <ElButton type="primary" :loading="busy" native-type="submit">提交问题</ElButton>
       </footer>
@@ -134,16 +145,11 @@ async function save() {
 </template>
 <style scoped>
 .rework-request {
-  margin-top: 20px;
-  padding: 16px;
+  margin-top: 12px;
+  padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--surface, #fff);
-}
-.rework-amounts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
 }
 .el-input-number,
 .el-select {

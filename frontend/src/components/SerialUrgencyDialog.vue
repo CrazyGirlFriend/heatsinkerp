@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElAlert, ElButton, ElInput } from 'element-plus'
@@ -94,28 +96,32 @@ onBeforeUnmount(() => {
     @update:model-value="emit('update:modelValue', $event)"
   >
     <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
-    <form class="urgency-form" @submit.prevent="save">
-      <div class="urgency-serial">
-        <span>流水号</span><strong>{{ serialNo }}</strong>
-      </div>
-      <label v-if="!state?.urgent" class="urgency-reason">
-        <span>加急原因 <small>选填</small></span>
-        <ElInput
-          v-model="reason"
-          aria-label="加急原因（选填）"
-          type="textarea"
-          :rows="2"
-          maxlength="500"
-          :disabled="busy || !state"
-          placeholder="如：交期提前"
-          resize="none"
-        />
-      </label>
-      <div v-else class="urgency-cancel">
-        <p v-if="state.reason" class="urgency-current-reason">{{ state.reason }}</p>
-        <p>取消此流水号的加急标记？</p>
-      </div>
-    </form>
+    <FormWorkspace>
+      <form class="urgency-form" @submit.prevent="save">
+        <CompactFormSection>
+          <div class="urgency-serial form-field--full">
+            <span>流水号</span><strong>{{ serialNo }}</strong>
+          </div>
+          <label v-if="!state?.urgent" class="urgency-reason form-field--full">
+            <span>加急原因 <small>选填</small></span>
+            <ElInput
+              v-model="reason"
+              aria-label="加急原因（选填）"
+              type="textarea"
+              :rows="2"
+              maxlength="500"
+              :disabled="busy || !state"
+              placeholder="如：交期提前"
+              resize="none"
+            />
+          </label>
+          <div v-else class="urgency-cancel form-field--full">
+            <p v-if="state.reason" class="urgency-current-reason">{{ state.reason }}</p>
+            <p>取消此流水号的加急标记？</p>
+          </div>
+        </CompactFormSection>
+      </form>
+    </FormWorkspace>
     <template #footer>
       <ElButton :disabled="busy" @click="emit('update:modelValue', false)">返回</ElButton>
       <ElButton v-if="!state && !busy" @click="load">重试</ElButton>

@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import AppDialog from '@/components/AppDialog.vue'
-import { IconFileText, IconFileUpload, IconLayoutSidebarRight } from '@tabler/icons-vue'
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
+import ImportedDataConfirmation from './ImportedDataConfirmation.vue'
+import { IconLink } from '@tabler/icons-vue'
 import WeightInput from './WeightInput.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import MaterialInput from './MaterialInput.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import AutofillBadge from './AutofillBadge.vue'
-import ImportedDocumentPreview from './ImportedDocumentPreview.vue'
+import WarehouseReceiptDocuments from './WarehouseReceiptDocuments.vue'
+import { warehouseReceiptDocumentApi } from '@/services/warehouseReceiptDocumentApi'
+import type { ReceiptDocument } from '@/types/warehouseReceiptDocuments'
 import ProcessRouteEditor from './ProcessRouteEditor.vue'
 import PublishedProcessRoutePicker from './PublishedProcessRoutePicker.vue'
 import { useDocumentImport } from '@/composables/useDocumentImport'
 import { processRouteApi } from '@/services/processRouteApi'
-import type { ProcessRoute } from '@/types/processRoute'
+import type { ProcessRoute, RouteMaterialField, RouteOrderDocument } from '@/types/processRoute'
 import { useMaterialAutofill } from '@/composables/useMaterialAutofill'
 import type { MaterialInputField } from '@/services/materialInputApi'
 
@@ -106,11 +111,17 @@ const documentSections = [
 ]
 const importedRoute = ref<ProcessRoute | null>(null)
 const importBusy = ref(false),
-  previewOpen = ref(false),
   routeEditorOpen = ref(false),
   routeReviewed = ref(false)
 const routePickerOpen = ref(false)
 const documentImport = useDocumentImport()
+const documents = ref<ReceiptDocument[]>([])
+const documentsBusy = ref(false)
+const confirmedImports = ref(false)
+const previewSerial = ref('')
+const inheritedOrder = ref<RouteOrderDocument | null>(null)
+const importFields = ref<Record<string, RouteMaterialField>>({})
+const needsConfirmation = computed(() => Boolean(importedRoute.value || documents.value.length))
 let importGeneration = 0
 const attempt = ref<CreateWarehouseReceipt | null>(null)
 const recoveryBlocked = ref(false)
@@ -120,6 +131,7 @@ const readonly = computed(
     !canWrite.value ||
     saving.value ||
     importBusy.value ||
+    documentsBusy.value ||
     Boolean(attempt.value) ||
     recoveryBlocked.value,
 )
@@ -219,11 +231,90 @@ function assignImportedField(key: string, value: string | number | undefined) {
   else if (key === 'external_source') form.externalSource = value == null ? '' : String(value)
 }
 function documentSource(key: string) {
-  return documentImport.original(key) !== undefined
-    ? importedRoute.value?.source_data.receipt_fields?.[key]?.source_filename ||
-        importedRoute.value?.filename ||
-        '工艺资料'
-    : ''
+  return (
+    importFields.value[key]?.source_filename ||
+    (documentImport.original(key) !== undefined ? '工艺资料' : '')
+  )
+}
+function applyImportFields() {
+  const route = importedRoute.value
+  const fields: Record<string, RouteMaterialField> = Object.fromEntries(
+    Object.entries(route?.source_data.receipt_fields || {})
+      .filter(
+        ([key, field]) =>
+          field.value !== '' &&
+          (!route?.source_data.review_required ||
+            !['quantity', 'weight', 'finished_quantity'].includes(key)),
+      )
+      .map(([key, field]) => [
+        key,
+        { ...field, source_filename: field.source_filename || route?.filename },
+      ]),
+  )
+  // Browsing another shared serial's order must not change this batch's material fields.
+  if (!sharedEntry.value && inheritedOrder.value?.serial_no === form.serialNo.trim())
+    for (const [key, field] of Object.entries(inheritedOrder.value.receipt_fields)) {
+      if (!fields[key]) fields[key] = field
+    }
+  for (const document of [...documents.value].sort(
+    (a, b) => Number(b.kind === 'process') - Number(a.kind === 'process'),
+  )) {
+    for (const [key, field] of Object.entries(document.parsed.receipt_fields || {})) {
+      if (
+        document.parsed.review_required &&
+        ['quantity', 'weight', 'finished_quantity'].includes(key)
+      )
+        continue
+      if (field.value !== '' && (document.kind !== 'order' || !fields[key]))
+        fields[key] = { ...field, source_filename: document.filename }
+    }
+  }
+  for (const key of new Set([...Object.keys(importFields.value), ...Object.keys(fields)])) {
+    const value = importedValues.value[key]
+    const state = documentImport.state(key, value)
+    if (
+      state !== 'edited' &&
+      (value == null ||
+        value === '' ||
+        (['quantity', 'weight'].includes(key) && value === 0) ||
+        state === 'imported' ||
+        !!autofill.source(key))
+    )
+      assignImportedField(key, fields[key]?.value)
+  }
+  importFields.value = fields
+  documentImport.record(fields)
+  confirmedImports.value = false
+}
+function uploadedDocument(document: ReceiptDocument) {
+  documents.value = [
+    ...documents.value.filter(
+      (item) =>
+        item.id !== document.id && (document.kind === 'drawing' || item.kind !== document.kind),
+    ),
+    document,
+  ]
+  applyImportFields()
+}
+async function removeDocument(id: number) {
+  if (readonly.value) return
+  const current = importGeneration
+  documentsBusy.value = true
+  try {
+    await warehouseReceiptDocumentApi.remove(id)
+    if (current !== importGeneration || !props.modelValue) return
+    documents.value = documents.value.filter((item) => item.id !== id)
+    applyImportFields()
+  } catch (failure) {
+    if (current === importGeneration)
+      error.value = failure instanceof Error ? failure.message : '附件移除失败'
+  } finally {
+    if (current === importGeneration) documentsBusy.value = false
+  }
+}
+function receiveOrder(document: RouteOrderDocument | null) {
+  inheritedOrder.value = document
+  if (!attempt.value) applyImportFields()
 }
 function documentChanged(key: string) {
   return documentImport.state(key, importedValues.value[key]) === 'edited'
@@ -234,51 +325,6 @@ function importedClass(key: string) {
     'document-field--imported': state === 'imported',
     'document-field--edited': state === 'edited',
   }
-}
-function focusImportedField(key: string) {
-  const labels: Record<string, string> = {
-    serial_no: '流水号',
-    quantity: '入库件数',
-    weight: '入库重量',
-    finished_quantity: '成品件数',
-    delivery_date: '要求发货日期',
-    delivery_quantity: '应发成品件数',
-    external_source: '外部来源单位',
-    ...Object.fromEntries(materialDocumentTextFields.map((field) => [field.key, field.label])),
-  }
-  if (
-    sharedEntry.value &&
-    [
-      'serial_no',
-      'customer_code',
-      'finished_specification',
-      'delivery_date',
-      'delivery_quantity',
-    ].includes(key)
-  ) {
-    const index = importedMember.value ? members.value.indexOf(importedMember.value) : -1
-    const sharedLabels: Record<string, string> = {
-      serial_no: '共投流水号',
-      customer_code: '共投客户',
-      finished_specification: '共投成品规格',
-      delivery_date: '共投交期',
-      delivery_quantity: '共投应发件数',
-    }
-    if (index >= 0) labels[key] = `${sharedLabels[key]}${index + 1}`
-  }
-  const fields = [...(formRef.value?.$el.querySelectorAll<HTMLElement>('[aria-label]') || [])]
-  const field =
-    fields.find((item) => item.getAttribute('aria-label') === labels[key]) ||
-    fields.find((item) => item.getAttribute('aria-label') === `${labels[key]}形状`)
-  const controlSelector =
-    'input:not([type="hidden"]), textarea, select, button, [role="combobox"][tabindex]'
-  const control = field?.matches(controlSelector)
-    ? field
-    : field?.querySelector<HTMLElement>(controlSelector)
-  const anchor = control || field
-  anchor?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  if (!control?.matches(':disabled, [aria-disabled="true"]'))
-    control?.focus({ preventScroll: true })
 }
 async function selectRoute(route: ProcessRoute) {
   if (readonly.value || !props.modelValue) return
@@ -349,9 +395,11 @@ async function selectRoute(route: ProcessRoute) {
     }
     if (route.serial_nos.length === 1 && !fields.serial_no && replace('serial_no'))
       assignImportedField('serial_no', route.serial_nos[0])
+    if (route.filename)
+      documents.value = documents.value.filter((document) => document.kind !== 'process')
     importedRoute.value = route
-    documentImport.record(fields)
-    previewOpen.value = false
+    inheritedOrder.value = null
+    applyImportFields()
     routeReviewed.value = true
     validation.reset()
   } catch (failure) {
@@ -409,7 +457,12 @@ function fill(payload: CreateWarehouseReceipt | null = null) {
   ++importGeneration
   importBusy.value = false
   importedRoute.value = null
-  previewOpen.value = false
+  documents.value = []
+  documentsBusy.value = false
+  confirmedImports.value = payload?.confirmed_imports ?? false
+  inheritedOrder.value = null
+  importFields.value = {}
+  previewSerial.value = ''
   routeEditorOpen.value = false
   routePickerOpen.value = false
   routeReviewed.value = false
@@ -465,6 +518,16 @@ function restoreAttempt() {
     error.value = '上次入库草稿读取失败，请先在入库记录中核对，避免重复登记。'
   }
   fill(attempt.value)
+  if (attempt.value?.document_ids?.length) {
+    const current = importGeneration
+    void Promise.all(attempt.value.document_ids.map((id) => warehouseReceiptDocumentApi.detail(id)))
+      .then((items) => {
+        if (current === importGeneration && props.modelValue) documents.value = items
+      })
+      .catch(() => {
+        if (current === importGeneration) error.value = '附件暂时无法加载，重试仍沿用上次附件'
+      })
+  }
   if (attempt.value?.process_route) {
     const pending = attempt.value.process_route,
       current = importGeneration
@@ -473,7 +536,8 @@ function restoreAttempt() {
       .then((route) => {
         if (current !== importGeneration || !props.modelValue) return
         importedRoute.value = { ...route, ...pending }
-        documentImport.record(route.source_data.receipt_fields || {})
+        importFields.value = route.source_data.receipt_fields || {}
+        documentImport.record(importFields.value)
         routeReviewed.value = true
       })
       .catch(() => {
@@ -487,6 +551,8 @@ function close() {
 }
 const validation = useDialogValidation(() => {
   const issues: Record<string, string> = {}
+  if (needsConfirmation.value && !confirmedImports.value)
+    issues.confirmedImports = '请核对文件带入的信息，并勾选确认'
   if (importedRoute.value && (!routeReviewed.value || !routeSerialsMatch.value))
     issues.processRoute = '共投流水号须与所选工艺一致，请重新关联工艺'
   if (
@@ -598,6 +664,10 @@ const validation = useDialogValidation(() => {
   )
     issues.finishedQuantity = '请填写有效非负整数'
   if (form.notes.trim().length > 2000) issues.notes = '内容过长'
+  const order = documents.value.find((document) => document.kind === 'order')
+  const serials = intakeSerials.value.filter(Boolean)
+  if (order?.parsed.serial_no && serials.length && !serials.includes(order.parsed.serial_no))
+    issues[sharedEntry.value ? 'members' : 'serialNo'] = '订单表流水号与本次入库不一致，请核对'
   return issues
 })
 const { formRef, fieldErrors } = validation
@@ -662,6 +732,8 @@ function payload(): CreateWarehouseReceipt {
           },
         }
       : {}),
+    document_ids: documents.value.map((document) => document.id),
+    confirmed_imports: confirmedImports.value,
     idempotency_key:
       globalThis.crypto?.randomUUID?.() ||
       `warehouse-receipt-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -672,6 +744,7 @@ async function submit() {
   if (
     locationBusy.value ||
     importBusy.value ||
+    documentsBusy.value ||
     saving.value ||
     recoveryBlocked.value ||
     !canWrite.value ||
@@ -741,6 +814,20 @@ async function submit() {
   }
 }
 watch(
+  [importedValues, () => form.materialType, () => memberSignature(), () => importedRoute.value?.id],
+  () => {
+    if (!attempt.value) confirmedImports.value = false
+  },
+  { flush: 'sync' },
+)
+watch(
+  intakeSerials,
+  (serials) => {
+    if (!serials.includes(previewSerial.value)) previewSerial.value = serials.find(Boolean) || ''
+  },
+  { immediate: true },
+)
+watch(
   () => props.modelValue,
   (open) => {
     ++generation
@@ -748,7 +835,6 @@ watch(
     importBusy.value = false
     saving.value = false
     if (open) restoreAttempt()
-    else previewOpen.value = false
   },
   { immediate: true },
 )
@@ -769,7 +855,7 @@ onBeforeUnmount(() => {
   <AppDialog
     :model-value="modelValue"
     title="库房手工入库"
-    :width="importedRoute && previewOpen ? 'min(1440px, 96vw)' : 'min(1180px, 96vw)'"
+    width="min(1440px, 96vw)"
     top="16px"
     class="warehouse-receipt-dialog"
     :close-on-click-modal="!saving"
@@ -801,301 +887,312 @@ onBeforeUnmount(() => {
       description="请重试核对同一次入库。核对完成前保留原内容，避免重复登记。"
       show-icon
     />
-    <section v-if="form.receiptKind === 'external' || importedRoute" class="receipt-import-bar">
-      <div class="receipt-import-file">
-        <span class="receipt-file-icon" aria-hidden="true"
-          ><IconFileText :size="21" stroke="1.5"
-        /></span>
-        <div class="receipt-import-copy">
-          <strong>{{
-            importedRoute ? importedRoute.filename || importedRoute.title : '关联工艺'
-          }}</strong>
-          <span>{{ importedRoute ? '已关联工艺，物料资料可修改' : '按流水号选择工艺' }}</span>
+    <FormWorkspace class="receipt-document-layout">
+      <template #documents>
+        <div v-if="modelValue" class="receipt-document-panel" aria-label="入库附件">
+          <ElSelect v-if="sharedEntry" v-model="previewSerial" aria-label="附件流水号">
+            <ElOption
+              v-for="serial in intakeSerials.filter(Boolean)"
+              :key="serial"
+              :value="serial"
+              :label="serial"
+            />
+          </ElSelect>
+          <WarehouseReceiptDocuments
+            :team-id="teamId"
+            :route="importedRoute || undefined"
+            :serial-no="previewSerial"
+            :documents="documents"
+            editable
+            :disabled="readonly"
+            @uploaded="uploadedDocument"
+            @remove="removeDocument"
+            @inherited-order="receiveOrder"
+            @busy="documentsBusy = $event"
+            @error="error = $event"
+          />
         </div>
-      </div>
-      <div class="receipt-import-actions">
-        <ElButton :loading="importBusy" :disabled="readonly" @click="routePickerOpen = true">
-          <IconFileUpload :size="16" stroke="1.6" aria-hidden="true" />{{
-            importedRoute ? '更换工艺' : '选择工艺'
-          }}
-        </ElButton>
-        <ElButton
-          v-if="importedRoute?.filename"
-          :disabled="importBusy"
-          :aria-pressed="previewOpen"
-          @click="previewOpen = !previewOpen"
-        >
-          <IconLayoutSidebarRight :size="16" stroke="1.6" aria-hidden="true" />{{
-            previewOpen ? '收起原文' : '查看原始 Word'
-          }}
-        </ElButton>
-      </div>
-    </section>
-    <div
-      class="receipt-document-layout"
-      :class="{ 'receipt-document-layout--preview': importedRoute && previewOpen }"
-    >
+      </template>
       <ElForm
         ref="formRef"
-        class="dialog-form-compact receipt-form"
+        class="receipt-form"
         label-position="top"
         :show-message="false"
         @submit.prevent="submit"
       >
-        <section
-          class="dialog-form-section receipt-primary-section"
-          :class="{ 'receipt-primary-section--shared': sharedEntry }"
+        <ElFormItem
+          v-if="form.receiptKind === 'external' || importedRoute"
+          label="关联工艺"
+          :error="fieldErrors.processRoute"
+          class="receipt-route-choice"
         >
-          <h3>
-            入库信息
-            <span v-if="sharedEntry" class="receipt-shared-summary"
+          <div class="receipt-route-choice-content">
+            <strong>{{ importedRoute?.serial_nos.join('、') || '未关联' }}</strong>
+            <ElButton :loading="importBusy" :disabled="readonly" @click="routePickerOpen = true">
+              <IconLink :size="16" />{{ importedRoute ? '更换工艺' : '选择工艺' }}
+            </ElButton>
+            <ElButton v-if="importedRoute" link :disabled="readonly" @click="routeEditorOpen = true"
+              >查看工艺</ElButton
+            >
+          </div>
+        </ElFormItem>
+        <CompactFormSection title="入库信息" class="receipt-primary-section">
+          <template v-if="sharedEntry" #actions
+            ><span class="receipt-shared-summary"
               >共投 · {{ members.length }} 个流水号</span
-            >
-          </h3>
-          <div class="receipt-grid dialog-form-grid">
-            <ElFormItem label="入库来源" :error="fieldErrors.receiptKind" required
-              ><ElSelect v-model="form.receiptKind" aria-label="入库来源" :disabled="readonly"
-                ><ElOption value="external" label="外部来料" /><ElOption
-                  value="return"
-                  label="外部退回" /></ElSelect
-            ></ElFormItem>
-            <ElFormItem label="外部来源单位" :error="fieldErrors.externalSource" required
-              ><MaterialInput
-                v-model="form.externalSource"
-                field="external_source"
-                label="外部来源单位"
-                :maxlength="240"
-                :disabled="readonly"
-                placeholder="供应商、外委单位或退回单位"
-            /></ElFormItem>
-            <ElFormItem
-              v-if="form.receiptKind === 'return'"
-              label="原出库批次"
-              :error="fieldErrors.returnDispatchNo"
-              class="dialog-field-wide"
-              ><ElInput
-                v-model="form.returnDispatchNo"
-                aria-label="原出库批次"
-                maxlength="40"
-                :disabled="readonly"
-                placeholder="选填已确认的出库批次号；流水号沿用原号"
-            /></ElFormItem>
-            <ElFormItem
-              v-if="!sharedEntry"
+            ></template
+          >
+          <ElFormItem label="入库来源" :error="fieldErrors.receiptKind" required
+            ><ElSelect v-model="form.receiptKind" aria-label="入库来源" :disabled="readonly"
+              ><ElOption value="external" label="外部来料" /><ElOption
+                value="return"
+                label="外部退回" /></ElSelect
+          ></ElFormItem>
+          <ElFormItem
+            label="外部来源单位"
+            :error="fieldErrors.externalSource"
+            :class="importedClass('external_source')"
+            required
+            ><template #label
+              >外部来源单位<AutofillBadge
+                :source="documentSource('external_source')"
+                kind="document"
+                :modified="documentChanged('external_source')" /></template
+            ><MaterialInput
+              v-model="form.externalSource"
+              field="external_source"
+              label="外部来源单位"
+              :maxlength="240"
+              :disabled="readonly"
+              placeholder="供应商、外委单位或退回单位"
+          /></ElFormItem>
+          <ElFormItem
+            v-if="form.receiptKind === 'return'"
+            label="原出库批次"
+            :error="fieldErrors.returnDispatchNo"
+            class="dialog-field-wide"
+            ><ElInput
+              v-model="form.returnDispatchNo"
+              aria-label="原出库批次"
+              maxlength="40"
+              :disabled="readonly"
+              placeholder="选填已确认的出库批次号；流水号沿用原号"
+          /></ElFormItem>
+          <ElFormItem
+            v-if="!sharedEntry"
+            label="流水号"
+            :error="fieldErrors.serialNo"
+            :class="['receipt-identity-field', importedClass('serial_no')]"
+            :required="form.receiptKind === 'return'"
+            ><template #label
+              >流水号<AutofillBadge
+                :source="documentSource('serial_no')"
+                kind="document"
+                :modified="documentChanged('serial_no')" /></template
+            ><MaterialInput
+              v-model="form.serialNo"
+              field="serial_no"
               label="流水号"
-              :error="fieldErrors.serialNo"
-              :class="['receipt-identity-field', importedClass('serial_no')]"
-              :required="form.receiptKind === 'return'"
-              ><template #label
-                >流水号<AutofillBadge
-                  :source="documentSource('serial_no')"
-                  kind="document"
-                  :modified="documentChanged('serial_no')" /></template
-              ><MaterialInput
-                v-model="form.serialNo"
-                field="serial_no"
-                label="流水号"
-                :maxlength="80"
-                :disabled="readonly"
-                placeholder="选填，出库时可补充"
-                @selected="autofill.select"
-            /></ElFormItem>
-            <ElFormItem
+              :maxlength="80"
+              :disabled="readonly"
+              placeholder="选填，出库时可补充"
+              @selected="autofill.select"
+          /></ElFormItem>
+          <ElFormItem
+            label="材质"
+            :error="fieldErrors.material_name"
+            :class="['receipt-identity-field', importedClass('material_name')]"
+            required
+            ><template #label
+              >材质<AutofillBadge
+                :source="documentSource('material_name') || autofill.source('material_name')"
+                :kind="documentSource('material_name') ? 'document' : undefined"
+                :modified="documentChanged('material_name')" /></template
+            ><MaterialInput
+              v-model="form.document.material_name"
+              field="material_name"
               label="材质"
-              :error="fieldErrors.material_name"
-              :class="['receipt-identity-field', importedClass('material_name')]"
-              required
-              ><template #label
-                >材质<AutofillBadge
-                  :source="documentSource('material_name') || autofill.source('material_name')"
-                  :kind="documentSource('material_name') ? 'document' : undefined"
-                  :modified="documentChanged('material_name')" /></template
-              ><MaterialInput
-                v-model="form.document.material_name"
-                field="material_name"
-                label="材质"
-                :disabled="readonly"
-                placeholder="输入或选择材质"
-            /></ElFormItem>
-            <ElFormItem label="物料类型" :error="fieldErrors.materialType" required
-              ><ElSelect
-                v-model="form.materialType"
-                aria-label="物料类型"
-                placeholder="选择物料类型"
-                :disabled="readonly"
-                ><ElOption
-                  v-for="item in materialTypeOptions"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value" /></ElSelect
-            ></ElFormItem>
-          </div>
-        </section>
-        <section class="dialog-form-section dialog-section-quantities">
-          <h3>数量与交期</h3>
-          <div class="receipt-grid dialog-form-grid">
-            <MaterialDeliveryFields
-              v-if="form.receiptKind === 'external' && !weightOnly && !sharedEntry"
-              v-model:date="form.deliveryDate"
-              v-model:quantity="form.deliveryQuantity"
               :disabled="readonly"
-              :date-error="fieldErrors.deliveryDate"
-              :quantity-error="fieldErrors.deliveryQuantity"
-              :document-source="importedRoute?.filename"
-              :date-source="documentSource('delivery_date')"
-              :quantity-source="documentSource('delivery_quantity')"
-              :date-state="documentImport.state('delivery_date', importedValues.delivery_date)"
-              :quantity-state="
-                documentImport.state('delivery_quantity', importedValues.delivery_quantity)
-              "
-            />
-            <ElFormItem
-              v-if="!weightOnly"
-              label="入库件数"
-              :error="fieldErrors.quantity"
-              :class="importedClass('quantity')"
-              required
-              ><template #label
-                >入库件数<AutofillBadge
-                  :source="documentSource('quantity')"
-                  kind="document"
-                  :modified="documentChanged('quantity')" /></template
-              ><ElInputNumber
-                v-model="form.quantity"
-                aria-label="入库件数"
-                :min="0"
-                :max="2147483647"
-                :precision="0"
-                controls-position="right"
-                :disabled="readonly"
-                ><template #suffix
-                  ><span class="dialog-input-unit">件</span></template
-                ></ElInputNumber
-              ></ElFormItem
-            >
-            <ElFormItem
-              v-if="form.materialType !== 'sludge'"
-              label="入库重量"
-              :error="fieldErrors.weight"
-              :class="importedClass('weight')"
-              required
-              ><template #label
-                >入库重量<AutofillBadge
-                  :source="documentSource('weight')"
-                  kind="document"
-                  :modified="documentChanged('weight')" /></template
-              ><WeightInput
-                v-model="form.weight"
-                ariaLabel="入库重量"
-                :max="99999999999.999"
-                :disabled="readonly"
-            /></ElFormItem>
-            <SludgeWeightFields
-              v-else
-              v-model:gross="form.gross"
-              v-model:percent="form.percent"
+              placeholder="输入或选择材质"
+          /></ElFormItem>
+          <ElFormItem label="物料类型" :error="fieldErrors.materialType" required
+            ><ElSelect
+              v-model="form.materialType"
+              aria-label="物料类型"
+              placeholder="选择物料类型"
               :disabled="readonly"
-              :gross-error="fieldErrors.gross"
-              :percent-error="fieldErrors.percent"
-              @update:weight="form.weight = $event"
-            />
-            <ElFormItem
-              label="入库仓位"
-              :error="fieldErrors.warehouseLocation"
-              class="receipt-location-field"
-              ><WarehouseLocationSelect
-                v-model="form.warehouseLocation"
-                v-model:reservation-key="form.warehouseLocationKey"
-                :team-id="teamId"
-                :serial-no="sharedEntry ? '' : form.serialNo"
-                :material-name="form.document.material_name"
-                :material-type="form.materialType"
-                :active="modelValue"
-                :disabled="readonly"
-                @busy-change="locationBusy = $event"
-            /></ElFormItem>
-          </div>
-        </section>
+              ><ElOption
+                v-for="item in materialTypeOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value" /></ElSelect
+          ></ElFormItem>
+        </CompactFormSection>
+        <CompactFormSection title="数量与交期" class="dialog-section-quantities">
+          <MaterialDeliveryFields
+            class="form-field--long"
+            v-if="form.receiptKind === 'external' && !weightOnly && !sharedEntry"
+            v-model:date="form.deliveryDate"
+            v-model:quantity="form.deliveryQuantity"
+            :disabled="readonly"
+            :date-error="fieldErrors.deliveryDate"
+            :quantity-error="fieldErrors.deliveryQuantity"
+            :document-source="importedRoute?.filename"
+            :date-source="documentSource('delivery_date')"
+            :quantity-source="documentSource('delivery_quantity')"
+            :date-state="documentImport.state('delivery_date', importedValues.delivery_date)"
+            :quantity-state="
+              documentImport.state('delivery_quantity', importedValues.delivery_quantity)
+            "
+          />
+          <ElFormItem
+            v-if="!weightOnly"
+            label="入库件数"
+            class="form-field--short"
+            :error="fieldErrors.quantity"
+            :class="importedClass('quantity')"
+            required
+            ><template #label
+              >入库件数<AutofillBadge
+                :source="documentSource('quantity')"
+                kind="document"
+                :modified="documentChanged('quantity')" /></template
+            ><ElInputNumber
+              v-model="form.quantity"
+              aria-label="入库件数"
+              :min="0"
+              :max="2147483647"
+              :precision="0"
+              controls-position="right"
+              :disabled="readonly"
+              ><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber
+            ></ElFormItem
+          >
+          <ElFormItem
+            v-if="form.materialType !== 'sludge'"
+            label="入库重量"
+            :error="fieldErrors.weight"
+            :class="importedClass('weight')"
+            required
+            ><template #label
+              >入库重量<AutofillBadge
+                :source="documentSource('weight')"
+                kind="document"
+                :modified="documentChanged('weight')" /></template
+            ><WeightInput
+              v-model="form.weight"
+              ariaLabel="入库重量"
+              :max="99999999999.999"
+              :disabled="readonly"
+          /></ElFormItem>
+          <SludgeWeightFields
+            v-else
+            v-model:gross="form.gross"
+            v-model:percent="form.percent"
+            :disabled="readonly"
+            :gross-error="fieldErrors.gross"
+            :percent-error="fieldErrors.percent"
+            @update:weight="form.weight = $event"
+          />
+          <ElFormItem
+            label="入库仓位"
+            :error="fieldErrors.warehouseLocation"
+            class="form-field--long"
+            ><WarehouseLocationSelect
+              v-model="form.warehouseLocation"
+              v-model:reservation-key="form.warehouseLocationKey"
+              :team-id="teamId"
+              :serial-no="sharedEntry ? '' : form.serialNo"
+              :material-name="form.document.material_name"
+              :material-type="form.materialType"
+              :active="modelValue"
+              :disabled="readonly"
+              @busy-change="locationBusy = $event"
+          /></ElFormItem>
+        </CompactFormSection>
         <template v-for="section in visibleSections" :key="section.name">
-          <section
-            class="dialog-form-section"
+          <CompactFormSection
+            :title="section.label"
             :class="{
               'dialog-section-long': section.name !== 'document',
               'dialog-section-details': section.name === 'document',
             }"
           >
-            <h3>{{ section.label }}</h3>
-            <div class="receipt-grid dialog-form-grid">
-              <ElFormItem
-                v-for="field in section.fields"
-                :key="field.key"
+            <ElFormItem
+              v-for="field in section.fields"
+              :key="field.key"
+              :label="field.label"
+              :error="fieldErrors[field.key]"
+              :class="[
+                { 'form-field--long': specificationKeys.includes(field.key) || field.multiline },
+                importedClass(field.key),
+              ]"
+              ><template #label
+                >{{ field.label
+                }}<AutofillBadge
+                  :source="documentSource(field.key) || autofill.source(field.key)"
+                  :kind="documentSource(field.key) ? 'document' : undefined"
+                  :modified="documentChanged(field.key)" /></template
+              ><SpecificationInput
+                v-if="specificationKeys.includes(field.key)"
+                v-model="form.document[field.key]"
                 :label="field.label"
-                :error="fieldErrors[field.key]"
-                :class="[
-                  { 'dialog-specification-field': specificationKeys.includes(field.key) },
-                  importedClass(field.key),
-                ]"
-                ><template #label
-                  >{{ field.label
-                  }}<AutofillBadge
-                    :source="documentSource(field.key) || autofill.source(field.key)"
-                    :kind="documentSource(field.key) ? 'document' : undefined"
-                    :modified="documentChanged(field.key)" /></template
-                ><SpecificationInput
-                  v-if="specificationKeys.includes(field.key)"
-                  v-model="form.document[field.key]"
-                  :label="field.label"
-                  :disabled="readonly"
-                  @validity-change="specificationValidity[field.key] = $event" /><MaterialInput
-                  v-else-if="suggestionFields.includes(field.key)"
-                  v-model="form.document[field.key]"
-                  :field="field.key as MaterialInputField"
-                  :label="field.label"
-                  :maxlength="field.maxLength"
-                  :disabled="readonly" /><ElInput
-                  v-else
-                  v-model="form.document[field.key]"
-                  :aria-label="field.label"
-                  :type="field.multiline ? 'textarea' : 'text'"
+                :disabled="readonly"
+                @validity-change="specificationValidity[field.key] = $event" /><MaterialInput
+                v-else-if="suggestionFields.includes(field.key)"
+                v-model="form.document[field.key]"
+                :field="field.key as MaterialInputField"
+                :label="field.label"
+                :maxlength="field.maxLength"
+                :disabled="readonly" /><ElInput
+                v-else
+                v-model="form.document[field.key]"
+                :aria-label="field.label"
+                :type="field.multiline ? 'textarea' : 'text'"
+                :rows="2"
+                :maxlength="field.maxLength"
+                :show-word-limit="field.multiline"
+                :disabled="readonly"
+                placeholder="选填"
+            /></ElFormItem>
+            <ElFormItem
+              v-if="section.name === 'document' && !weightOnly"
+              label="成品件数"
+              class="form-field--short"
+              :error="fieldErrors.finishedQuantity"
+              ><template #label
+                >成品件数<AutofillBadge
+                  :source="documentSource('finished_quantity')"
+                  kind="document"
+                  :modified="documentChanged('finished_quantity')" /></template
+              ><ElInputNumber
+                v-model="form.finishedQuantity"
+                aria-label="成品件数"
+                :min="0"
+                :max="2147483647"
+                :precision="0"
+                controls-position="right"
+                :disabled="readonly"
+                placeholder="选填"
+                ><template #suffix
+                  ><span class="dialog-input-unit">件</span></template
+                ></ElInputNumber
+              ></ElFormItem
+            >
+            <template v-if="section.name === 'notes'">
+              <ElFormItem label="入库说明" class="form-field--long" :error="fieldErrors.notes"
+                ><ElInput
+                  v-model="form.notes"
+                  aria-label="入库说明"
+                  type="textarea"
                   :rows="2"
-                  :maxlength="field.maxLength"
-                  :show-word-limit="field.multiline"
+                  maxlength="2000"
+                  show-word-limit
                   :disabled="readonly"
-                  placeholder="选填"
+                  placeholder="选填：说明来料来源及本次入库情况"
               /></ElFormItem>
-              <ElFormItem
-                v-if="section.name === 'document' && !weightOnly"
-                label="成品件数"
-                :error="fieldErrors.finishedQuantity"
-                ><ElInputNumber
-                  v-model="form.finishedQuantity"
-                  aria-label="成品件数"
-                  :min="0"
-                  :max="2147483647"
-                  :precision="0"
-                  controls-position="right"
-                  :disabled="readonly"
-                  placeholder="选填"
-                  ><template #suffix
-                    ><span class="dialog-input-unit">件</span></template
-                  ></ElInputNumber
-                ></ElFormItem
-              >
-              <template v-if="section.name === 'notes'">
-                <ElFormItem label="入库说明" :error="fieldErrors.notes"
-                  ><ElInput
-                    v-model="form.notes"
-                    aria-label="入库说明"
-                    type="textarea"
-                    :rows="2"
-                    maxlength="2000"
-                    show-word-limit
-                    :disabled="readonly"
-                    placeholder="选填：说明来料来源及本次入库情况"
-                /></ElFormItem>
-              </template>
-            </div>
-          </section>
+            </template>
+          </CompactFormSection>
           <section
             v-if="form.receiptKind === 'external' && section.name === 'specification'"
             class="shared-entry-section"
@@ -1313,34 +1410,16 @@ onBeforeUnmount(() => {
             </div>
           </section>
         </template>
-        <section v-if="importedRoute" class="receipt-route-review">
-          <ElFormItem label="本次工艺路线" required :error="fieldErrors.processRoute">
-            <div class="receipt-route-review-content">
-              <div>
-                <strong>{{
-                  importedRoute.steps
-                    .map(
-                      (step) =>
-                        `${step.sequence_no} · ${step.name}${step.team_name && step.team_name !== step.name ? `（${step.team_name}）` : ''}`,
-                    )
-                    .join(' → ')
-                }}</strong
-                ><span>{{ routeSerialsMatch ? '已关联' : '共投流水号与所选工艺不一致' }}</span>
-              </div>
-              <ElButton :disabled="readonly" @click="routeEditorOpen = true">{{
-                '查看工艺'
-              }}</ElButton>
-            </div>
-          </ElFormItem>
-        </section>
+        <ImportedDataConfirmation
+          v-if="needsConfirmation"
+          v-model="confirmedImports"
+          class="receipt-import-confirmation"
+          :disabled="readonly"
+          :error="fieldErrors.confirmedImports"
+          label="已核对文件带入的信息及本次入库数量"
+        />
       </ElForm>
-      <ImportedDocumentPreview
-        v-if="importedRoute && previewOpen"
-        :route="importedRoute"
-        :current-values="importedValues"
-        @focus-field="focusImportedField"
-      />
-    </div>
+    </FormWorkspace>
     <PublishedProcessRoutePicker
       v-if="routePickerOpen && modelValue"
       :serial-no="sharedEntry ? members[0]?.serial_no : form.serialNo"
@@ -1359,7 +1438,13 @@ onBeforeUnmount(() => {
         type="primary"
         :loading="saving"
         :disabled="
-          !canWrite || saving || importBusy || routePickerOpen || recoveryBlocked || locationBusy
+          !canWrite ||
+          saving ||
+          importBusy ||
+          documentsBusy ||
+          routePickerOpen ||
+          recoveryBlocked ||
+          locationBusy
         "
         @click="submit"
         >{{ attempt ? '重试核对入库' : '确认入库' }}</ElButton
@@ -1369,11 +1454,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.receipt-heading,
-.receipt-import-bar,
-.receipt-import-file,
-.receipt-import-actions,
-.receipt-route-review-content {
+.receipt-heading {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1395,122 +1476,35 @@ onBeforeUnmount(() => {
   color: var(--primary);
   font-weight: 600;
 }
-.receipt-import-bar {
-  justify-content: space-between;
-  min-height: 68px;
-  padding: 11px 14px;
-  margin-bottom: 16px;
-  border: 1px solid var(--glass-edge, var(--line));
-  border-radius: 14px;
-  background: var(--glass-chrome-fill, var(--surface));
-  box-shadow:
-    inset 0 1px 0 var(--surface),
-    0 2px 8px #28332d04;
-}
-.receipt-import-file,
-.receipt-import-copy {
+.receipt-document-panel {
   min-width: 0;
-}
-.receipt-file-icon {
   display: grid;
-  flex: 0 0 38px;
-  place-items: center;
-  height: 42px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--text);
+  gap: 10px;
 }
-.receipt-import-copy {
-  display: grid;
-  gap: 3px;
-}
-.receipt-import-copy strong {
-  overflow: hidden;
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.receipt-import-copy > span {
+.receipt-route-choice-content {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.receipt-import-copy small {
-  color: var(--subtle);
-  font-size: 11px;
-}
-.receipt-import-actions {
-  flex-shrink: 0;
+  align-items: center;
   gap: 8px;
+  width: 100%;
 }
-.receipt-import-actions :deep(.el-button + .el-button) {
-  margin-left: 0;
+.receipt-route-choice-content strong {
+  color: var(--text);
+  margin-right: auto;
+  overflow-wrap: anywhere;
 }
-.receipt-import-actions :deep(.el-button > span) {
+.receipt-route-choice-content :deep(.el-button > span) {
   gap: 6px;
-}
-.receipt-import-actions :deep(.el-button[aria-pressed='true']) {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: var(--surface);
-}
-.receipt-document-layout {
-  display: grid;
-  gap: 16px;
-  align-items: start;
-}
-.receipt-document-layout--preview {
-  grid-template-columns: minmax(0, 1.12fr) minmax(360px, 1fr);
 }
 .receipt-form {
   container: receipt-form / inline-size;
   min-width: 0;
-  padding: 18px 20px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--surface);
-  box-shadow: 0 2px 8px #28332d03;
-}
-.receipt-form .dialog-form-section {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-  padding-block: 20px;
-}
-.receipt-form .dialog-form-section:first-child {
-  padding-top: 0;
-}
-.receipt-form .dialog-form-section > h3 {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 650;
-  line-height: 22px;
-}
-.receipt-location-field {
-  grid-column: span 2;
 }
 .receipt-shared-summary {
   margin-left: 12px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 400;
-}
-.receipt-form .receipt-grid {
-  gap: 12px 16px;
-}
-.receipt-form .receipt-primary-section--shared > .receipt-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-.receipt-form :deep(.el-form-item__label) {
-  color: var(--muted);
-  font-weight: 450;
 }
 .receipt-identity-field :deep(.el-input__inner),
 .shared-field-serial :deep(.el-input__inner) {
@@ -1639,35 +1633,6 @@ onBeforeUnmount(() => {
 .shared-plan-warning {
   color: var(--el-color-warning);
 }
-.receipt-route-review {
-  padding: 20px 0 0;
-}
-.receipt-route-review-content {
-  justify-content: space-between;
-  width: 100%;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface-soft);
-}
-.receipt-route-review-content > div {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-.receipt-route-review-content strong {
-  color: var(--text);
-  font-size: 13px;
-  line-height: 1.7;
-  overflow-wrap: anywhere;
-}
-.receipt-route-review-content span {
-  color: var(--muted);
-  font-size: 12px;
-}
-.receipt-route-review :deep(.el-form-item.is-error .receipt-route-review-content) {
-  border-color: var(--el-color-danger);
-}
 .receipt-retry {
   margin-bottom: 12px;
 }
@@ -1678,39 +1643,8 @@ onBeforeUnmount(() => {
   }
 }
 @container receipt-form (max-width: 760px) {
-  .receipt-form .receipt-grid,
-  .receipt-form .receipt-primary-section--shared > .receipt-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .receipt-form .dialog-section-long > .receipt-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .shared-field-delivery {
     max-width: 240px;
-  }
-}
-@media (max-width: 960px) {
-  .receipt-document-layout--preview {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .receipt-document-layout--preview > :deep(.document-preview) {
-    position: static;
-    max-height: 480px;
-  }
-  .receipt-import-bar {
-    flex-wrap: wrap;
-  }
-  .receipt-form {
-    padding: 16px;
-  }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .receipt-import-actions :deep(.el-button),
-  .shared-field-cutting :deep(.el-button) {
-    transition:
-      background var(--motion-fast) var(--motion-ease),
-      color var(--motion-fast) var(--motion-ease),
-      border-color var(--motion-fast) var(--motion-ease);
   }
 }
 </style>

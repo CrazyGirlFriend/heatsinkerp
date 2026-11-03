@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElAlert, ElButton, ElIcon, ElInput, ElPagination } from 'element-plus'
+import { ElAlert, ElButton, ElForm, ElFormItem, ElIcon, ElInput, ElPagination } from 'element-plus'
 import { Check, Search } from '@element-plus/icons-vue'
 import AppDialog from './AppDialog.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -153,18 +156,25 @@ onBeforeUnmount(() => {
         /><ElButton native-type="submit">查询</ElButton>
       </form>
       <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-      <div v-if="canManage && manage" class="selection-person-form">
-        <ElInput
-          v-model="personName"
-          aria-label="业务人员姓名"
-          placeholder="业务人员姓名"
-          maxlength="80"
-          @keyup.enter="savePerson()"
-        /><ElButton type="primary" :loading="saving" @click="savePerson()">{{
-          editing ? '保存姓名' : '添加人员'
-        }}</ElButton
-        ><ElButton v-if="editing" @click="cancelEdit">取消修改</ElButton>
-      </div>
+      <FormWorkspace v-if="canManage && manage" class="selection-person-form">
+        <ElForm label-position="top" :disabled="saving" @submit.prevent="savePerson()"
+          ><CompactFormSection>
+            <ElFormItem class="form-field--long" label="业务人员姓名" required>
+              <ElInput
+                v-model="personName"
+                aria-label="业务人员姓名"
+                placeholder="业务人员姓名"
+                maxlength="80"
+            /></ElFormItem>
+            <div class="selection-person-actions form-field--long">
+              <ElButton type="primary" :loading="saving" @click="savePerson()">{{
+                editing ? '保存姓名' : '添加人员'
+              }}</ElButton
+              ><ElButton v-if="editing" @click="cancelEdit">取消修改</ElButton>
+            </div></CompactFormSection
+          ></ElForm
+        >
+      </FormWorkspace>
       <div v-if="!manage && !single" class="selection-summary">
         <span>已选 {{ chosen.length }} 项，跨页保留</span
         ><ElButton link type="primary" @click="chosen = []">清空选择</ElButton>
@@ -182,11 +192,17 @@ onBeforeUnmount(() => {
             <span v-if="!single" class="selection-check" aria-hidden="true"
               ><ElIcon v-if="chosen.some((item) => item.value === option.value)"
                 ><Check /></ElIcon></span
-            ><strong>{{ option.label }}</strong
+            ><strong
+              ><PersonName v-if="kind === 'people'" :name="option.label" /><template v-else>{{
+                option.label
+              }}</template></strong
             ><small>{{ option.description }}</small>
           </button>
           <span v-else class="selection-person"
-            ><strong>{{ option.label }}</strong
+            ><strong
+              ><PersonName v-if="kind === 'people'" :name="option.label" /><template v-else>{{
+                option.label
+              }}</template></strong
             ><small>{{ option.description }}</small></span
           >
           <template v-if="manage && option.person"
@@ -228,10 +244,15 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 .selection-search,
-.selection-person-form,
 .selection-summary {
   display: flex;
   align-items: center;
+  gap: 8px;
+}
+.selection-person-actions {
+  display: flex;
+  align-self: end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .selection-summary {

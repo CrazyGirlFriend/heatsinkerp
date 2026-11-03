@@ -61,6 +61,7 @@ def intake(client, setup, **overrides):
             "notes": "外部来料，实物清点后手工入库",
             "source_batch_no": "RAW-001",
             "idempotency_key": "warehouse-intake-1",
+            **({"confirmed_imports": True} if overrides.get("process_route") else {}),
             **overrides,
         },
     )

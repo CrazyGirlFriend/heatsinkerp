@@ -5,6 +5,9 @@
     --business-table-meta: var(--font-size-meta);
     --business-table-line: var(--line-height-body);
     --business-table-padding: 10px;
+    --table-grid-line: #cbd1ce;
+    --table-outer-line: #929c96;
+    --table-header-line: #a3ada6;
   }
   .el-table .el-table__cell,
   .el-table:not(.el-table--border) .el-table__cell {
@@ -12,15 +15,15 @@
     border-bottom: 1px solid var(--el-table-border-color);
   }
   table:is(.business-table, .business-document-table) {
-    border-top: 1px solid var(--line);
-    border-left: 1px solid var(--line);
+    border-top: 1px solid var(--table-grid-line);
+    border-left: 1px solid var(--table-grid-line);
   }
   table:is(.business-table, .business-document-table)
     > :is(thead, tbody, tfoot)
     > tr
     > :is(th, td) {
-    border-right: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
+    border-right: 1px solid var(--table-grid-line);
+    border-bottom: 1px solid var(--table-grid-line);
   }
   .el-table.business-table :is(th, td).el-table__cell,
   .el-table.business-table .cell {
@@ -101,7 +104,7 @@
     --el-table-header-bg-color: var(--table-header-bg);
     --el-table-header-text-color: var(--subtle);
     --el-table-text-color: var(--text);
-    --el-table-border-color: var(--line);
+    --el-table-border-color: var(--table-grid-line);
     --el-table-row-hover-bg-color: var(--table-hover-bg);
   }
   :is(
@@ -244,7 +247,7 @@
     )
     :is(th, td) {
     padding: var(--business-table-padding);
-    border-color: var(--line);
+    border-color: var(--table-grid-line);
     text-align: center;
     vertical-align: middle;
   }
@@ -324,17 +327,18 @@
     --table-glass-hover: var(--glass-hover-fill);
     --table-glass-selected-fill: var(--glass-selected-fill);
     --table-glass-selected: #e5f2eb;
-    --table-glass-edge: inset 0 1px 0 #fff, inset 0 -1px 0 #b7cbbd66;
+    --table-glass-edge: inset 0 1px 0 #fff;
     --table-glass-hover-edge: inset 0 1px 0 #ffffff99;
     --table-glass-selected-edge: inset 0 1px 0 #ffffffb3, inset 0 -1px 0 #80ac9433;
   }
   .el-table.business-table {
-    border: 1px solid #d8dfdc;
+    border: 1px solid var(--table-outer-line);
     border-radius: 8px;
     box-shadow: none;
   }
   .el-table.business-table .el-table__header-wrapper th.el-table__cell,
   table.business-table > thead > tr > th {
+    border-bottom-color: var(--table-header-line);
     background-image: var(--table-glass-header);
     box-shadow: var(--table-glass-edge);
   }

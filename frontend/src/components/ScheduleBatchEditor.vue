@@ -12,6 +12,7 @@ import {
 } from 'element-plus'
 import AppDialog from './AppDialog.vue'
 import ScheduleDocuments from './ScheduleDocuments.vue'
+import CompactFormSection from './CompactFormSection.vue'
 import type {
   ProductionSchedule,
   ScheduleBatchWrite,
@@ -177,22 +178,24 @@ const defaultTime = new Date(2000, 0, 1, 8)
         type="warning"
         :closable="false"
       />
-      <ElTable
-        v-if="task?.delivery_batches?.length"
-        :data="task.delivery_batches"
-        border
-        size="small"
-        aria-label="调度交货要求"
-        ><ElTableColumn label="订单批次" prop="batch_number" width="100" /><ElTableColumn
-          label="数量（件）"
-          prop="target_quantity"
-          width="120"
-        /><ElTableColumn label="要求交期"
-          ><template #default="{ row }">{{ formatDateTime(row.due_at) }}</template></ElTableColumn
-        ></ElTable
-      >
-      <div class="batch-plan-layout">
-        <section class="batch-plan-main">
+      <CompactFormSection v-if="task?.delivery_batches?.length" title="调度交货要求">
+        <ElTable
+          class="form-field--full"
+          :data="task.delivery_batches"
+          border
+          size="small"
+          aria-label="调度交货要求"
+          ><ElTableColumn label="订单批次" prop="batch_number" width="100" /><ElTableColumn
+            label="数量（件）"
+            prop="target_quantity"
+            width="120"
+          /><ElTableColumn label="要求交期"
+            ><template #default="{ row }">{{ formatDateTime(row.due_at) }}</template></ElTableColumn
+          ></ElTable
+        >
+      </CompactFormSection>
+      <CompactFormSection title="本班组排期" class="batch-plan-main">
+        <div class="form-field--full">
           <ElTable
             :data="rows"
             border
@@ -310,11 +313,13 @@ const defaultTime = new Date(2000, 0, 1, 8)
             type="warning"
             :closable="false"
           />
-        </section>
-        <aside class="batch-plan-reference">
-          <h3>
-            上游供料 <span>{{ upstream?.team_name || '库房备料' }}</span>
-          </h3>
+        </div>
+      </CompactFormSection>
+      <CompactFormSection title="上游供料" class="batch-plan-reference">
+        <template #actions
+          ><span>{{ upstream?.team_name || '库房备料' }}</span></template
+        >
+        <div class="form-field--long">
           <p v-if="loading">加载中…</p>
           <ElButton v-else-if="!task" @click="load">重新读取</ElButton>
           <ElTable
@@ -340,14 +345,14 @@ const defaultTime = new Date(2000, 0, 1, 8)
           <p v-else>
             {{ upstream ? '上游尚未安排批次' : '暂无上游供料计划' }}
           </p>
-          <dl>
-            <dt>本班组在库</dt>
-            <dd>{{ formatAmount(schedule.stock?.on_hand_quantity || 0) }} 件</dd>
-            <dt>待签收</dt>
-            <dd>{{ formatAmount(schedule.stock?.pending_quantity || 0) }} 件</dd>
-          </dl>
-        </aside>
-      </div>
+        </div>
+        <dl class="form-field--long">
+          <dt>本班组在库</dt>
+          <dd>{{ formatAmount(schedule.stock?.on_hand_quantity || 0) }} 件</dd>
+          <dt>待签收</dt>
+          <dd>{{ formatAmount(schedule.stock?.pending_quantity || 0) }} 件</dd>
+        </dl>
+      </CompactFormSection>
     </ScheduleDocuments>
     <template #footer
       ><ElButton :disabled="saving || !!task?.locked_at" @click="visible = false">取消</ElButton
@@ -368,7 +373,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
   flex-wrap: wrap;
   align-items: center;
   gap: 16px;
-  padding: 8px 0 18px;
+  padding: 4px 0 12px;
   font-size: 14px;
 }
 .batch-plan-summary strong {
@@ -377,11 +382,6 @@ const defaultTime = new Date(2000, 0, 1, 8)
 }
 .batch-plan-summary > span:last-child {
   margin-left: auto;
-}
-.batch-plan-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 18px;
 }
 .batch-plan-main {
   min-width: 0;
@@ -399,21 +399,9 @@ const defaultTime = new Date(2000, 0, 1, 8)
   justify-content: space-between;
   padding: 12px 0;
 }
-.batch-plan-reference {
-  align-self: start;
-  padding: 14px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 10px;
-  background: var(--el-fill-color-light);
-}
-.batch-plan-reference h3 {
-  margin: 0 0 14px;
-  font-size: 14px;
-  display: flex;
-  justify-content: space-between;
-}
-.batch-plan-reference h3 span {
+.batch-plan-reference :deep(.compact-form-section-actions) {
   color: var(--el-color-primary);
+  font-size: 13px;
 }
 .batch-plan-reference p {
   font-size: 13px;
@@ -421,8 +409,8 @@ const defaultTime = new Date(2000, 0, 1, 8)
 .batch-plan-reference dl {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 12px;
-  margin: 18px 0 0;
+  gap: 8px;
+  margin: 0;
   font-size: 13px;
 }
 .batch-plan-reference dd {
@@ -437,13 +425,5 @@ const defaultTime = new Date(2000, 0, 1, 8)
   border-left: 3px solid #c45b43;
   border-radius: 4px;
   font-size: 13px;
-}
-@media (max-width: 1280px) {
-  .batch-plan-layout {
-    grid-template-columns: 1fr;
-  }
-  .batch-plan-reference {
-    order: -1;
-  }
 }
 </style>

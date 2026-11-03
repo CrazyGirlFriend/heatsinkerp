@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
+import AccountAvatar from './AccountAvatar.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import WeightInput from './WeightInput.vue'
 import { focusFirstInvalidField, useDialogValidation } from '@/composables/useDialogValidation'
@@ -357,103 +360,108 @@ async function submitOpening() {
       <ElTabPane v-if="canManageProblems" name="problems" label="检验问题" :disabled="saving" />
       <ElTabPane v-if="!businessOnly" name="opening" label="初始库存" :disabled="saving" />
     </ElTabs>
-    <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <p v-if="loading">正在读取班组设置…</p>
-    <section
-      v-else-if="tab === 'purposes' || editingEmployees || editingTasks || editingProblems"
-      ref="purposeSettings"
-      class="purpose-settings"
-    >
-      <p v-if="editingProblems" class="settings-note">
-        巡检、检验及复检发现不合格时，从这份清单选择问题，可多选。停用后不可再选；改名不改变历史记录。
-      </p>
-      <p v-else-if="editingTasks" class="settings-note">
-        维护本班组的具体任务，如粗磨、精磨。加工时选择实际完成的任务；任务独立于业务，不要求每批完成全部任务。停用或改名不改变历史记录。
-      </p>
-      <p v-else-if="!editingEmployees" class="settings-note">
-        设置本班组可以做的业务，如检验、去毛刺。上序转料时选择；修改后需保存，历史单据保留原名称。
-      </p>
-      <div v-for="item in directoryItems" :key="item.id" class="purpose-editor">
-        <ElInput
-          :class="{ 'is-error': invalidPurpose === item.id && !item.name.trim() }"
-          v-model="item.name"
-          :aria-label="`${itemLabel}名称 ${item.id}`"
-          maxlength="80"
-          :disabled="saving || !canManageDirectory"
+    <FormWorkspace>
+      <ElAlert v-if="error" :title="error" type="error" :closable="false" />
+      <p v-if="loading">正在读取班组设置…</p>
+      <section
+        v-else-if="tab === 'purposes' || editingEmployees || editingTasks || editingProblems"
+        ref="purposeSettings"
+        class="purpose-settings"
+      >
+        <p v-if="editingProblems" class="settings-note">
+          巡检、检验及复检发现不合格时，从这份清单选择问题，可多选。停用后不可再选；改名不改变历史记录。
+        </p>
+        <p v-else-if="editingTasks" class="settings-note">
+          维护本班组的具体任务，如粗磨、精磨。加工时选择实际完成的任务；任务独立于业务，不要求每批完成全部任务。停用或改名不改变历史记录。
+        </p>
+        <p v-else-if="!editingEmployees" class="settings-note">
+          设置本班组可以做的业务，如检验、去毛刺。上序转料时选择；修改后需保存，历史单据保留原名称。
+        </p>
+        <div v-for="item in directoryItems" :key="item.id" class="purpose-editor">
+          <AccountAvatar v-if="editingEmployees" :name="item.name" :size="24" />
+          <ElInput
+            :class="{ 'is-error': invalidPurpose === item.id && !item.name.trim() }"
+            v-model="item.name"
+            :aria-label="`${itemLabel}名称 ${item.id}`"
+            maxlength="80"
+            :disabled="saving || !canManageDirectory"
+          />
+          <ElSwitch
+            v-model="item.active"
+            :aria-label="`${item.name}启用状态`"
+            active-text="启用"
+            :disabled="saving || !canManageDirectory"
+          />
+          <ElButton :disabled="saving || !canManageDirectory" @click="saveDirectoryItem(item)"
+            >保存</ElButton
+          >
+        </div>
+        <ElAlert
+          v-if="tab === 'purposes' && purposes.length && !purposes.some((item) => item.active)"
+          title="业务全部停用后，上序无法新建转给本班组的转料单。"
+          type="info"
+          :closable="false"
         />
-        <ElSwitch
-          v-model="item.active"
-          :aria-label="`${item.name}启用状态`"
-          active-text="启用"
-          :disabled="saving || !canManageDirectory"
+        <div class="purpose-editor">
+          <ElInput
+            :class="{ 'is-error': invalidPurpose === 'new' && !newName.trim() }"
+            v-model="newName"
+            :aria-label="`新增${itemLabel}名称`"
+            :placeholder="
+              editingProblems
+                ? '请输入统一的问题名称'
+                : editingTasks
+                  ? '例如：粗磨、精磨'
+                  : editingEmployees
+                    ? '请输入员工姓名'
+                    : '例如：检验、去毛刺'
+            "
+            maxlength="80"
+            :disabled="saving || !canManageDirectory"
+            @keyup.enter="saveDirectoryItem()"
+          /><ElButton
+            type="primary"
+            :loading="saving"
+            :disabled="!canManageDirectory"
+            @click="saveDirectoryItem()"
+            >新增{{ itemLabel }}</ElButton
+          >
+        </div>
+        <p v-if="tab === 'purposes' && !purposes.length" class="settings-note">
+          尚未配置时，新单暂归“未分类”；配置后，上序新开单必须选择启用的业务。
+        </p>
+      </section>
+      <section v-else-if="!businessOnly" class="opening-settings">
+        <ElAlert
+          v-if="!opening?.enabled"
+          title="请系统管理员在“班组管理”中开启初始库存录入权限。"
+          type="info"
+          :closable="false"
         />
-        <ElButton :disabled="saving || !canManageDirectory" @click="saveDirectoryItem(item)"
-          >保存</ElButton
-        >
-      </div>
-      <ElAlert
-        v-if="tab === 'purposes' && purposes.length && !purposes.some((item) => item.active)"
-        title="业务全部停用后，上序无法新建转给本班组的转料单。"
-        type="info"
-        :closable="false"
-      />
-      <div class="purpose-editor">
-        <ElInput
-          :class="{ 'is-error': invalidPurpose === 'new' && !newName.trim() }"
-          v-model="newName"
-          :aria-label="`新增${itemLabel}名称`"
-          :placeholder="
-            editingProblems
-              ? '请输入统一的问题名称'
-              : editingTasks
-                ? '例如：粗磨、精磨'
-                : editingEmployees
-                  ? '请输入员工姓名'
-                  : '例如：检验、去毛刺'
-          "
-          maxlength="80"
-          :disabled="saving || !canManageDirectory"
-          @keyup.enter="saveDirectoryItem()"
-        /><ElButton
-          type="primary"
-          :loading="saving"
-          :disabled="!canManageDirectory"
-          @click="saveDirectoryItem()"
-          >新增{{ itemLabel }}</ElButton
-        >
-      </div>
-      <p v-if="tab === 'purposes' && !purposes.length" class="settings-note">
-        尚未配置时，新单暂归“未分类”；配置后，上序新开单必须选择启用的业务。
-      </p>
-    </section>
-    <section v-else-if="!businessOnly" class="opening-settings">
-      <ElAlert
-        v-if="!opening?.enabled"
-        title="请系统管理员在“班组管理”中开启初始库存录入权限。"
-        type="info"
-        :closable="false"
-      />
-      <template v-if="opening?.can_submit">
-        <ElForm
-          ref="formRef"
-          label-position="top"
-          :show-message="false"
-          class="opening-lines dialog-form-compact"
-          @submit.prevent="submitOpening"
-        >
-          <article v-for="(line, index) in lines" :key="index" class="opening-line">
-            <header>
-              <strong>物料 {{ index + 1 }}</strong
-              ><ElButton
-                v-if="lines.length > 1"
-                text
-                type="danger"
-                :disabled="saving"
-                @click="lines.splice(index, 1)"
-                >移除</ElButton
-              >
-            </header>
-            <div class="dialog-form-grid opening-fields">
+        <template v-if="opening?.can_submit">
+          <ElForm
+            ref="formRef"
+            label-position="top"
+            :show-message="false"
+            class="opening-lines dialog-form-compact"
+            @submit.prevent="submitOpening"
+          >
+            <CompactFormSection
+              v-for="(line, index) in lines"
+              :key="index"
+              class="opening-line opening-fields"
+              :title="`物料 ${index + 1}`"
+            >
+              <template #actions
+                ><ElButton
+                  v-if="lines.length > 1"
+                  text
+                  type="danger"
+                  :disabled="saving"
+                  @click="lines.splice(index, 1)"
+                  >移除</ElButton
+                >
+              </template>
               <OpeningMaterialFields
                 :line="line"
                 :index="index"
@@ -527,6 +535,7 @@ async function submitOpening() {
                   />
                 </div>
                 <SludgeWeightFields
+                  class="form-field--full"
                   v-else
                   v-model:gross="line.sludge_gross_weight"
                   v-model:percent="line.sludge_content_percent"
@@ -537,7 +546,7 @@ async function submitOpening() {
                   @update:weight="line.weight = $event"
                 />
               </OpeningMaterialFields>
-              <div class="dialog-field">
+              <div class="dialog-field form-field--full">
                 <span class="dialog-field-label">备注</span
                 ><ElInput
                   v-model="line.notes"
@@ -549,14 +558,14 @@ async function submitOpening() {
                   placeholder="选填"
                 />
               </div>
-            </div>
-          </article>
-        </ElForm>
-      </template>
-      <p v-if="opening?.completed" class="settings-note">
-        共 {{ opening.items.length }} 个初始库存批次，可在库存明细和收发历史中查看。
-      </p>
-    </section>
+            </CompactFormSection>
+          </ElForm>
+        </template>
+        <p v-if="opening?.completed" class="settings-note">
+          共 {{ opening.items.length }} 个初始库存批次，可在库存明细和收发历史中查看。
+        </p>
+      </section>
+    </FormWorkspace>
     <template #footer>
       <ElButton :disabled="saving" @click="close">关闭</ElButton>
       <template v-if="!businessOnly && tab === 'opening' && opening?.can_submit && !loading">
@@ -575,19 +584,19 @@ async function submitOpening() {
 <style scoped>
 .settings-note {
   color: var(--muted);
-  font-size: 15px;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.6;
 }
 .purpose-settings {
   display: grid;
-  gap: 14px;
-  padding-block: 8px 24px;
+  gap: 10px;
+  padding-block: 4px 12px;
 }
 .purpose-editor {
   display: flex;
   align-items: center;
-  gap: 20px;
-  max-width: 720px;
+  gap: 10px;
+  max-width: 560px;
 }
 .purpose-editor :deep(.el-input) {
   flex: 1;
@@ -603,27 +612,10 @@ async function submitOpening() {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 12px 16px;
-}
-.opening-line header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--line-light);
-}
-.opening-line header strong {
-  color: var(--primary);
-  font-size: 15px;
+  padding: 10px 12px;
 }
 .opening-fields :deep(.opening-specification-field) {
-  grid-column: span 2;
-}
-@media (max-width: 900px) {
-  .opening-fields :deep(.opening-specification-field) {
-    grid-column: 1 / -1;
-  }
+  grid-column: 1 / -1;
 }
 @media (max-width: 560px) {
   .purpose-editor {

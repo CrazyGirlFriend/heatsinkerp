@@ -50,19 +50,41 @@ describe('sidebar preferences', () => {
     restored.$dispose()
   })
 
-  it('migrates old team-section preferences to a two-level menu', () => {
+  it('restores the three-level team branch without retaining invalid menu keys', () => {
     localStorage.setItem(
       'heatsink-sidebar:1:ADMIN',
       JSON.stringify({
         compact: true,
-        opened: ['teams', 'team-8'],
+        opened: ['teams', 'team-8', 'team-invalid'],
         page: '/team-workspaces/8?tab=history',
       }),
     )
     const store = useSidebarStore(createPinia())
     expect(store.compact).toBe(true)
-    expect(store.opened).toEqual(['teams'])
+    expect(store.opened).toEqual(['teams', 'team-8'])
     expect(store.page).toBe('/team-workspaces/8')
+    store.$dispose()
+  })
+
+  it('remembers filters and pages by team and view, and never replays notification links', () => {
+    const store = useSidebarStore(createPinia())
+    store.rememberWorkspace('8', 'outgoing', { tab: 'outgoing', query: '铜', page: '3' })
+    store.rememberWorkspace('8', 'stock', { material_name: '钼' })
+    store.rememberWorkspace('8', 'outgoing', {
+      tab: 'outgoing',
+      business_notice: 'rework:1',
+      notice: '1',
+    })
+    expect(store.workspaceLocation('8', 'outgoing').query).toEqual({
+      tab: 'outgoing',
+      query: '铜',
+      page: '3',
+    })
+    expect(store.workspaceModules['8:movement']).toBe('outgoing')
+    expect(store.workspaceLocation('9', 'outgoing').query).toEqual({ tab: 'outgoing' })
+    signIn(2)
+    expect(store.workspaceQueries).toEqual({})
+    expect(store.workspaceCounts).toEqual({})
     store.$dispose()
   })
 

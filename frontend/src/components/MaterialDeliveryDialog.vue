@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { ElButton, ElForm } from 'element-plus'
@@ -95,23 +98,38 @@ async function save() {
   <AppDialog
     :model-value="modelValue"
     title="维护本批交期"
-    width="min(540px, 94vw)"
+    width="min(920px, 94vw)"
     append-to-body
     :close-on-click-modal="!saving"
     :close-on-press-escape="!saving"
     :show-close="!saving"
     @close="emit('update:modelValue', false)"
   >
-    <p class="delivery-document">{{ transfer?.serial_no }} · {{ transfer?.batch_no }}</p>
-    <ElForm ref="formRef" label-position="top" :show-message="false" @submit.prevent="save"
-      ><MaterialDeliveryFields
-        v-model:date="date"
-        v-model:quantity="quantity"
-        :disabled="saving"
-        :date-error="fieldErrors.date"
-        :quantity-error="fieldErrors.quantity"
-    /></ElForm>
-    <p v-if="error" role="alert" class="delivery-error">{{ error }}</p>
+    <FormWorkspace>
+      <template v-if="transfer" #documents>
+        <SerialRouteAttachments
+          :batch-no="transfer.batch_no"
+          :items="
+            (transfer.shared_serials?.length
+              ? transfer.shared_serials
+              : [{ serial_no: transfer.serial_no }]
+            ).map((item) => ({ serialNo: item.serial_no, routeId: transfer!.process_route?.id }))
+          "
+        />
+      </template>
+      <p class="delivery-document">{{ transfer?.serial_no }} · {{ transfer?.batch_no }}</p>
+      <ElForm ref="formRef" label-position="top" :show-message="false" @submit.prevent="save"
+        ><CompactFormSection title="本批交货要求"
+          ><MaterialDeliveryFields
+            class="form-field--full"
+            v-model:date="date"
+            v-model:quantity="quantity"
+            :disabled="saving"
+            :date-error="fieldErrors.date"
+            :quantity-error="fieldErrors.quantity" /></CompactFormSection
+      ></ElForm>
+      <p v-if="error" role="alert" class="delivery-error">{{ error }}</p>
+    </FormWorkspace>
     <template #footer
       ><ElButton :disabled="saving" @click="emit('update:modelValue', false)">取消</ElButton
       ><ElButton
@@ -127,7 +145,7 @@ async function save() {
 
 <style scoped>
 .delivery-document {
-  margin: 0 0 20px;
+  margin: 0 0 12px;
   color: var(--subtle);
   overflow-wrap: anywhere;
 }

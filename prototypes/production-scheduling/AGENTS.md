@@ -16,3 +16,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Bars express planned start-to-transfer duration, not only transfer milestones. Overlapping batches get separate lanes.
 - Use team colors, in-stock markers, progress fills and compact exception icons instead of repeated explanatory prose.
 - Keep this prototype explicitly labeled as example data until connected to real business APIs. Use Chrome Playwright and clean up the task-owned browser after verification.
+
+- Keep single-batch team rows at about 52 px and two overlapping batches at about 88 px; prioritize 13 px in-stock counts over small avatars.
+- Use filled bars for material currently at a team, outlined pale bars for future work, and light checked bars for transferred work.
+- Batch selection traces explicit material links upstream and downstream; never infer lineage from matching batch numbers. Only draw connections while a batch is selected.
+- Final delivery dates use a 32 px flag target and short dashed stem; show the date on hover, focus or batch selection.

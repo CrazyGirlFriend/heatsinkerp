@@ -103,6 +103,9 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
             )
             if prior is not None:
                 return replay(prior, user, request_hash)
+            from .warehouse_receipt_documents import attach_documents, validate_documents
+
+            documents = validate_documents(db, team, payload, user)
             route = intake_route(db, team, payload, user)
             delivery_origin_id = None
             if payload.return_dispatch_no:
@@ -194,6 +197,7 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
             )
             db.add(receipt)
             db.flush()
+            attach_documents(db, receipt, documents)
             # MySQL DATETIME(0) rounds fractional seconds. Audit and the first
             # response must use persisted times, just like an idempotent replay.
             db.refresh(receipt, attribute_names=["created_at", "updated_at", "received_at"])

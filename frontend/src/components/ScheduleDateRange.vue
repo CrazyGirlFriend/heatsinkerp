@@ -7,7 +7,7 @@ import { ElButton, ElCalendar, ElIcon, ElPopover, type CalendarInstance } from '
 import { formatDateTime } from '@/utils/format'
 import { progressWeek, SCHEDULE_WEEK } from '@/utils/scheduleProgress'
 
-const props = defineProps<{ modelValue: [string, string] }>()
+const props = defineProps<{ modelValue: [string, string]; compact?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: [string, string]] }>()
 dayjs.locale('zh-cn')
 const visible = ref(false)
@@ -127,7 +127,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
         aria-haspopup="dialog"
       >
         <ElIcon class="schedule-date-icon"><Calendar /></ElIcon>
-        <span>{{ display }}</span>
+        <span>{{
+          compact ? modelValue.map((date) => date.slice(5).replace('-', '/')).join(' – ') : display
+        }}</span>
         <ElIcon class="schedule-date-chevron" :class="{ 'is-open': visible }"><ArrowDown /></ElIcon>
       </ElButton>
     </template>

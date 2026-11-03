@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { currentLocations } from '@/utils/warehousePlacement'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
@@ -450,9 +451,10 @@ onBeforeUnmount(() => {
             label="原因"
             min-width="180"
             show-overflow-tooltip
-          /><ElTableColumn prop="created_by" label="登记人" min-width="110" /><ElTableColumn
-            label="时间"
-            min-width="140"
+          /><ElTableColumn prop="created_by" label="登记人" min-width="110"
+            ><template #default="{ row }"
+              ><PersonName :name="row.created_by" /></template></ElTableColumn
+          ><ElTableColumn label="时间" min-width="140"
             ><template #default="{ row }">{{
               formatDateTime(row.created_at)
             }}</template></ElTableColumn
@@ -512,10 +514,9 @@ onBeforeUnmount(() => {
                 :entry-kind="row.entry_kind" /></template
           ></ElTableColumn>
           <ElTableColumn label="转料 / 登记人" min-width="120" show-overflow-tooltip
-            ><template #default="{ row }">{{
-              materialSenderName(row as MaterialTransfer)
-            }}</template></ElTableColumn
-          >
+            ><template #default="{ row }"
+              ><PersonName :name="materialSenderName(row as MaterialTransfer)" /></template
+          ></ElTableColumn>
           <ElTableColumn label="登记时间" min-width="180"
             ><template #default="{ row }">{{
               formatDateTime(row.transferred_at)

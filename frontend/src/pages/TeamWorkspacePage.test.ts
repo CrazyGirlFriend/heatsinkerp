@@ -7,6 +7,8 @@ import FilterDialog from '@/components/FilterDialog.vue'
 import { ElCheckbox, ElSelect } from 'element-plus'
 import WorkspaceTools from '@/components/WorkspaceTools.vue'
 import TeamWorkspacePage from './TeamWorkspacePage.vue'
+import { appPinia } from '@/stores/access'
+import { useSidebarStore } from '@/stores/sidebar'
 import TeamInventory from '@/components/TeamInventory.vue'
 import TeamProcessingRecords from '@/components/TeamProcessingRecords.vue'
 import DeliverySchedules from '@/components/DeliverySchedules.vue'
@@ -57,7 +59,14 @@ const state = vi.hoisted(() => ({
     refreshTeamDirectory: vi.fn(),
   },
 }))
-vi.mock('@/stores/auth', () => ({ useAuthStore: () => state.auth }))
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => state.auth,
+  currentUser: {
+    get value() {
+      return state.auth.currentUser
+    },
+  },
+}))
 vi.mock('@/stores/teamDirectory', () => ({ useTeamDirectoryStore: () => state.directory }))
 vi.mock('@/services/qualityFeedbackApi', () => ({
   qualityFeedbackApi: {
@@ -107,6 +116,10 @@ let wrapper: VueWrapper
 let subscription: inventoryStream.InventorySubscription<inventoryStream.InventoryChange>,
   stopStream: ReturnType<typeof vi.fn>
 beforeEach(() => {
+  const navigation = useSidebarStore(appPinia)
+  navigation.workspaceQueries = {}
+  navigation.workspaceModules = {}
+  navigation.workspaceCounts = {}
   vi.spyOn(productionScheduleApi, 'inventory').mockResolvedValue({ groups: [], sources: [] })
   vi.spyOn(teamMaterialApi, 'employees').mockResolvedValue([receivingPerson])
   vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
@@ -872,9 +885,9 @@ describe('team workspace material ledger', () => {
     expect(wrapper.find('.team-workspace').exists()).toBe(true)
     expect(warn.mock.calls.flat().join(' ')).not.toContain('non-element root node')
   })
-  it('shows actual pending counts in page navigation without extra requests', async () => {
+  it('shares actual pending counts with navigation without extra requests', async () => {
     const router = await render()
-    expect(wrapper.get('.team-workspace__pending').text()).toBe('1')
+    expect(useSidebarStore(appPinia).workspaceCounts['914']?.pending).toBe(1)
     expect(teamMaterialApi.overview).toHaveBeenCalledOnce()
     await router.push('/team-workspaces/nope')
     await flushPromises()
@@ -886,10 +899,7 @@ describe('team workspace material ledger', () => {
     await navigation().get('[aria-current=page]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.query).toEqual({ query: '铜', page: '2', page_size: '20' })
-    await navigation()
-      .findAll('button')
-      .find((button) => button.text().startsWith('来料待签收'))!
-      .trigger('click')
+    await router.push('/team-workspaces/914?tab=pending')
     await flushPromises()
     expect(router.currentRoute.value.fullPath).toBe('/team-workspaces/914?tab=pending')
     expect(materialTransferApi.list).toHaveBeenLastCalledWith(
@@ -903,6 +913,21 @@ describe('team workspace material ledger', () => {
     expect(navigation().get('[aria-current=page]').text()).toBe('库存明细')
     expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
   })
+  it('restores a view’s filters and page when switching within inventory', async () => {
+    const router = await render('/team-workspaces/914?query=铜&page=2&page_size=20')
+    await wrapper
+      .findAll('.team-workspace__navigation button')
+      .find((button) => button.text() === '材质库存')!
+      .trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query.tab).toBe('materials')
+    await wrapper
+      .findAll('.team-workspace__navigation button')
+      .find((button) => button.text() === '库存明细')!
+      .trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ query: '铜', page: '2', page_size: '20' })
+  })
   it('refreshes the in-page pending count through existing push updates', async () => {
     vi.useFakeTimers()
     await render()
@@ -913,7 +938,7 @@ describe('team workspace material ledger', () => {
     subscription.onData({ changed: true, team_ids: [914] })
     await vi.advanceTimersByTimeAsync(110)
     await flushPromises()
-    expect(wrapper.get('.team-workspace__pending').text()).toBe('5')
+    expect(useSidebarStore(appPinia).workspaceCounts['914']?.pending).toBe(5)
     expect(wrapper.get('.team-workspace__navigation [aria-current=page]').text()).toBe('库存明细')
   })
   it.each([
@@ -1270,7 +1295,9 @@ describe('team workspace material ledger', () => {
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(1)
     expect(wrapper.find('.workspace-data-toolbar [aria-label="班组设置"]').exists()).toBe(true)
     expect(actions.find('[aria-label="班组设置"]').exists()).toBe(false)
-    expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(12)
+    expect(wrapper.findAll('.team-workspace__navigation button')).toHaveLength(
+      ['outgoing', 'pending', 'receipts', 'overview', 'history'].includes(tab) ? 5 : 4,
+    )
     expect(wrapper.find('.team-workspace__heading').exists()).toBe(true)
   })
   it.each(['administrator', 'other-team', 'inactive'])(
@@ -1709,11 +1736,7 @@ describe('warehouse intake workspace', () => {
       state.auth.isAdmin = kind === 'administrator'
       state.auth.isTeamAccount = kind === 'warehouse'
       const router = await render('/team-workspaces/901')
-      await wrapper
-        .get('.team-workspace__navigation')
-        .findAll('button')
-        .find((button) => button.text() === '仓库管理')!
-        .trigger('click')
+      await router.push('/team-workspaces/901?tab=warehouse')
       await flushPromises()
       expect(router.currentRoute.value.query.tab).toBe('warehouse')
       expect(wrapper.getComponent(WarehouseManagement).props('canManage')).toBe(true)

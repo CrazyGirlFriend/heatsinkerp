@@ -1643,8 +1643,8 @@ it('keeps documents and route bindings separate for multiple outbound serials', 
   await new Promise((resolve) => setTimeout(resolve, 350))
   await flushPromises()
   expect(wrapper.getComponent(SerialRouteAttachments).props('items')).toEqual([
-    expect.objectContaining({ serialNo: 'ORDER-A', routeId: 8 }),
-    expect.objectContaining({ serialNo: 'ORDER-B', routeId: 9 }),
+    expect.objectContaining({ serialNo: 'ORDER-A', routeId: 8, batchNo: 'TL10' }),
+    expect.objectContaining({ serialNo: 'ORDER-B', routeId: 9, batchNo: 'TL11' }),
   ])
   await submit()
   expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(

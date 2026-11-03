@@ -4,6 +4,7 @@ import { reactive } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ElInputNumber, ElCheckboxGroup, ElRadioGroup, ElSelect } from 'element-plus'
 import InspectionRegistrationDialog from './InspectionRegistrationDialog.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import { inspectionApi, type InspectionRecord } from '@/services/inspectionApi'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
@@ -59,6 +60,7 @@ async function render(recheck?: InspectionRecord) {
     props: { inspectionTeamId: 8, initialTeamId: 2, recheck },
     global: {
       stubs: {
+        SerialRouteAttachments: true,
         TeamEmployeeInput: true,
         AppDialog: { template: '<div><slot/><slot name="footer"/></div>' },
       },
@@ -266,4 +268,13 @@ it('full inspection fills the current lot quantity and still requires explicit c
       items: ['appearance', 'dimension', 'weight'],
     }),
   )
+})
+
+it('uses the selected inspection batch for inherited originals and clears it when choosing again', async () => {
+  await render()
+  const rail = wrapper.getComponent(SerialRouteAttachments)
+  expect(rail.props('batchNo')).toBe('TL42')
+  expect(rail.props('items')).toEqual([{ serialNo: '805881-5' }])
+  await button('更换批次').trigger('click')
+  expect(wrapper.findComponent(SerialRouteAttachments).exists()).toBe(false)
 })

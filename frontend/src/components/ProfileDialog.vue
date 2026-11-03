@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { nextTick, ref, watch } from 'vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
@@ -156,72 +158,89 @@ async function savePassword() {
         <ElTabPane label="个人资料" name="profile" :disabled="saving" />
         <ElTabPane label="修改密码" name="password" :disabled="saving" />
       </ElTabs>
-      <ElForm ref="formRef" label-position="top" :show-message="false" @submit.prevent="save">
-        <template v-if="mode === 'profile'">
-          <ElFormItem label="姓名" :error="fieldErrors.name" required
-            ><ElInput
-              ref="nameInput"
-              v-model="name"
-              aria-label="姓名"
-              maxlength="80"
-              :disabled="saving"
-          /></ElFormItem>
-          <ElFormItem label="头像"
-            ><AvatarPicker v-model="avatar" :name="name" :disabled="saving"
-          /></ElFormItem>
-        </template>
-        <template v-else>
-          <p class="password-notice">修改后需重新登录。</p>
-          <input
-            class="sr-only"
-            type="text"
-            name="username"
-            :value="auth.currentUser?.username"
-            autocomplete="username"
-            readonly
-            tabindex="-1"
-            aria-hidden="true"
-          />
-          <ElFormItem label="旧密码" :error="fieldErrors.oldPassword" required>
-            <ElInput
-              ref="oldPasswordInput"
-              v-model="oldPassword"
-              aria-label="旧密码"
-              type="password"
-              show-password
-              maxlength="200"
-              autocomplete="current-password"
-              :disabled="saving"
+      <FormWorkspace>
+        <ElForm ref="formRef" label-position="top" :show-message="false" @submit.prevent="save">
+          <CompactFormSection v-if="mode === 'profile'">
+            <ElFormItem class="form-field--long" label="姓名" :error="fieldErrors.name" required
+              ><ElInput
+                ref="nameInput"
+                v-model="name"
+                aria-label="姓名"
+                maxlength="80"
+                :disabled="saving"
+            /></ElFormItem>
+            <ElFormItem class="form-field--full" label="头像"
+              ><AvatarPicker v-model="avatar" :name="name" :disabled="saving"
+            /></ElFormItem>
+          </CompactFormSection>
+          <CompactFormSection v-else>
+            <p class="password-notice form-field--full">修改后需重新登录。</p>
+            <input
+              class="sr-only"
+              type="text"
+              name="username"
+              :value="auth.currentUser?.username"
+              autocomplete="username"
+              readonly
+              tabindex="-1"
+              aria-hidden="true"
             />
-          </ElFormItem>
-          <ElFormItem label="新密码" :error="fieldErrors.newPassword" required>
-            <ElInput
-              v-model="newPassword"
-              aria-label="新密码"
-              type="password"
-              show-password
-              maxlength="200"
-              autocomplete="new-password"
-              placeholder="至少 8 位"
-              :disabled="saving"
-            />
-          </ElFormItem>
-          <ElFormItem label="确认新密码" :error="fieldErrors.confirmPassword" required>
-            <ElInput
-              v-model="confirmPassword"
-              aria-label="确认新密码"
-              type="password"
-              show-password
-              maxlength="200"
-              autocomplete="new-password"
-              placeholder="再次输入新密码"
-              :disabled="saving"
-            />
-          </ElFormItem>
-        </template>
-        <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
-        <button class="dialog-submit-proxy" type="submit" tabindex="-1" aria-hidden="true" />
-      </ElForm>
+            <ElFormItem
+              class="form-field--long"
+              label="旧密码"
+              :error="fieldErrors.oldPassword"
+              required
+            >
+              <ElInput
+                ref="oldPasswordInput"
+                v-model="oldPassword"
+                aria-label="旧密码"
+                type="password"
+                show-password
+                maxlength="200"
+                autocomplete="current-password"
+                :disabled="saving"
+              />
+            </ElFormItem>
+            <ElFormItem
+              class="form-field--long"
+              label="新密码"
+              :error="fieldErrors.newPassword"
+              required
+            >
+              <ElInput
+                v-model="newPassword"
+                aria-label="新密码"
+                type="password"
+                show-password
+                maxlength="200"
+                autocomplete="new-password"
+                placeholder="至少 8 位"
+                :disabled="saving"
+              />
+            </ElFormItem>
+            <ElFormItem
+              class="form-field--long"
+              label="确认新密码"
+              :error="fieldErrors.confirmPassword"
+              required
+            >
+              <ElInput
+                v-model="confirmPassword"
+                aria-label="确认新密码"
+                type="password"
+                show-password
+                maxlength="200"
+                autocomplete="new-password"
+                placeholder="再次输入新密码"
+                :disabled="saving"
+              />
+            </ElFormItem>
+          </CompactFormSection>
+          <ElAlert v-if="error" :title="error" type="error" :closable="false" show-icon />
+          <button class="dialog-submit-proxy" type="submit" tabindex="-1" aria-hidden="true" />
+        </ElForm>
+      </FormWorkspace>
     </div>
     <template #footer
       ><ElButton :disabled="saving" @click="close">取消</ElButton
@@ -240,8 +259,8 @@ async function savePassword() {
   display: flex;
   gap: 16px;
   align-items: center;
-  margin-bottom: 24px;
-  padding: 16px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface-soft);
@@ -261,10 +280,10 @@ async function savePassword() {
   font-size: 13px;
 }
 .profile-tabs :deep(.el-tabs__header) {
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 .password-notice {
-  margin: 0 0 18px;
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
 }

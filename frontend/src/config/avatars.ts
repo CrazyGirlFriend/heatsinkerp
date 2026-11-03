@@ -7,4 +7,12 @@ export const avatarPresets = [
   { key: 'portrait-6', background: '#f3e6df', shirt: '#a26950', skin: '#e8b48e', hair: '#754d35' },
   { key: 'portrait-7', background: '#e8ebee', shirt: '#576879', skin: '#bd815b', hair: '#292d31' },
   { key: 'portrait-8', background: '#edf0dd', shirt: '#75814c', skin: '#f0c7a5', hair: '#52392e' },
+  { key: 'portrait-9', background: '#e5edf5', shirt: '#426486', skin: '#d69b74', hair: '#343438' },
+  { key: 'portrait-10', background: '#f3e7eb', shirt: '#9a5d73', skin: '#f0c7a5', hair: '#684934' },
+  { key: 'portrait-11', background: '#e6eee7', shirt: '#52745b', skin: '#bd815b', hair: '#292d31' },
+  { key: 'portrait-12', background: '#eee9f4', shirt: '#75638e', skin: '#e8b48e', hair: '#62534a' },
+  { key: 'portrait-13', background: '#f4ebdf', shirt: '#a17749', skin: '#f0c7a5', hair: '#444845' },
+  { key: 'portrait-14', background: '#e2eeef', shirt: '#3f787d', skin: '#bd815b', hair: '#353138' },
+  { key: 'portrait-15', background: '#eee9e5', shirt: '#7f6c60', skin: '#e8b48e', hair: '#a29a90' },
+  { key: 'portrait-16', background: '#e8edf3', shirt: '#5b6d8a', skin: '#d69b74', hair: '#483b32' },
 ] as const

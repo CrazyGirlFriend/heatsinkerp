@@ -16,7 +16,7 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
 </script>
 
 <template>
-  <div class="delivery-fields dialog-form-grid dialog-field-wide">
+  <div class="delivery-fields dialog-form-grid dialog-field-wide form-field--group">
     <ElFormItem
       label="要求发货日期"
       :required="quantity != null"

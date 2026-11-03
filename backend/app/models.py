@@ -1433,6 +1433,33 @@ class ProcessRoutePath(Base):
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
 
 
+class WarehouseReceiptDocument(Base):
+    """Receipt-specific originals; uploading never edits a published engineering route."""
+
+    __tablename__ = "warehouse_receipt_documents"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="RESTRICT"))
+    transfer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("material_transfers.id", ondelete="RESTRICT"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(16))
+    filename: Mapped[str] = mapped_column(String(240))
+    sha256: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    content: Mapped[bytes] = mapped_column(
+        LargeBinary().with_variant(LONGBLOB(), "mysql"), deferred=True
+    )
+    parsed: Mapped[dict] = mapped_column(JSON)
+    pending_key: Mapped[str | None] = mapped_column(String(64), unique=True)
+    uploaded_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    __table_args__ = (
+        CheckConstraint("kind IN ('process', 'drawing', 'order')", name="ck_receipt_document_kind"),
+        Index("ix_receipt_documents_owner", "uploaded_by_user_id", "team_id"),
+    )
+
+
 # Register ledger/outbox hooks for HTTP and maintenance ORM writers alike.
 # Preserve historical table metadata without reviving the old workflows.
 from . import (  # noqa: E402

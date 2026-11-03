@@ -3,7 +3,9 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { ElOption, ElSelect } from 'element-plus'
 import { afterEach, expect, it, vi } from 'vitest'
 import ScheduleRouteLink from './ScheduleRouteLink.vue'
+import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
+import { processRouteApi } from '@/services/processRouteApi'
 import { routeFixture } from '@/testFixtures/processRoute'
 import { scheduleSummaryFixture } from '@/testFixtures/inventorySchedule'
 import type { ProductionSchedule, ScheduleTask } from '@/types/productionSchedule'
@@ -54,14 +56,22 @@ it('maps and offers only the engineering execution path while retaining original
       ],
     },
   ])
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue(routeFixture)
   const save = vi.spyOn(productionScheduleApi, 'linkRoute').mockResolvedValue(task)
   wrapper = mount(ScheduleRouteLink, {
     props: { task },
     global: {
-      stubs: { AppDialog: { template: '<div><slot/><slot name="footer"/></div>' } },
+      stubs: {
+        ProcessRouteAttachments: true,
+        AppDialog: { template: '<div><slot/><slot name="footer"/></div>' },
+      },
     },
   })
   await flushPromises()
+  const attachments = wrapper.getComponent(ProcessRouteAttachments)
+  expect(processRouteApi.detail).toHaveBeenCalledWith(8)
+  expect(attachments.props('route')).toEqual(routeFixture)
+  expect(attachments.props('documents')).toEqual(['word', 'drawing'])
   const routePicker = wrapper
     .findAllComponents(ElSelect)
     .find((select) => select.props('ariaLabel') === '关联工艺')!

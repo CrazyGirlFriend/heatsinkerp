@@ -81,6 +81,11 @@ AUDITED_FIELDS = (
 def _creation_fingerprint(payload) -> str:
     # Preserve pre-upgrade idempotency hashes when optional fields are absent.
     value = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    value.pop("confirmed_imports", None)
+    if not value.get("document_ids"):
+        value.pop("document_ids", None)
+    else:
+        value["document_ids"] = sorted(value["document_ids"])
     for member in value.get("shared_serials") or []:
         for field in ("planned_weight", "planned_quantity", "planned_specification"):
             if member.get(field) is None:

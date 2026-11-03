@@ -9,7 +9,11 @@ import {
 } from '@/services/qualityFeedbackApi'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 const props = defineProps<{ issue: QualityFeedbackDetail }>()
-const emit = defineEmits<{ changed: []; busy: [boolean] }>()
+const emit = defineEmits<{
+  changed: []
+  busy: [boolean]
+  contextChange: [QuantityAdjustmentContext | undefined]
+}>()
 const items = ref<QualityReworkStock[]>([]),
   total = ref(0),
   page = ref(1)
@@ -18,6 +22,7 @@ const context = ref<QuantityAdjustmentContext>(),
   busy = ref(false),
   error = ref(''),
   submitted = ref(false)
+watch(context, (value) => emit('contextChange', value))
 let generation = 0
 async function load() {
   const token = ++generation

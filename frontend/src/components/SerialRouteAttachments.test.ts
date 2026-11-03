@@ -4,15 +4,22 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ElSelect } from 'element-plus'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
+import WarehouseReceiptDocuments from './WarehouseReceiptDocuments.vue'
+import { warehouseReceiptDocumentApi } from '@/services/warehouseReceiptDocumentApi'
+import type { ReceiptDocument } from '@/types/warehouseReceiptDocuments'
 import DocumentViewer from './DocumentViewer.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
+import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { routeFixture } from '@/testFixtures/processRoute'
 import { orderFixture } from '@/testFixtures/processRouteOrder'
 let wrapper: VueWrapper
 const stubs = { ProcessRouteAttachments: true }
 beforeEach(() => {
   vi.spyOn(processRouteApi, 'dispatchOrder').mockResolvedValue(null)
+  vi.spyOn(materialTransferApi, 'get').mockResolvedValue(
+    normalizeMaterialTransfer({ serial_no: '' }),
+  )
 })
 afterEach(() => {
   wrapper?.unmount()
@@ -172,4 +179,132 @@ it('switches the original order preview and download with the processing form se
     .trigger('click')
   expect(download).toHaveBeenCalledWith(52, 'ORDER-B.xlsx')
   expect(legacy).not.toHaveBeenCalled()
+})
+
+it('shows persisted receipt originals even when the receipt has no serial or process route', async () => {
+  const documents: ReceiptDocument[] = [
+    {
+      id: 12,
+      kind: 'drawing',
+      filename: '来料图纸.pdf',
+      size_bytes: 100,
+      sha256: 'digest',
+      parsed: {},
+    },
+  ]
+  const list = vi
+    .spyOn(warehouseReceiptDocumentApi, 'forTransfer')
+    .mockResolvedValue({ items: documents })
+  wrapper = mount(SerialRouteAttachments, {
+    props: { items: [], batchNo: 'TL-RECEIPT' },
+    global: { stubs: { WarehouseReceiptDocuments: true } },
+  })
+  await flushPromises()
+  expect(list).toHaveBeenCalledWith('TL-RECEIPT')
+  const attachments = wrapper.getComponent(WarehouseReceiptDocuments)
+  expect(attachments.props('documents')).toEqual(documents)
+  expect(attachments.props('editable')).toBe(false)
+  expect(wrapper.text()).not.toContain('填写流水号后显示附件')
+})
+
+it('does not show another batch’s files when a previous document request finishes late', async () => {
+  let finish!: (value: { items: ReceiptDocument[] }) => void
+  vi.spyOn(warehouseReceiptDocumentApi, 'forTransfer')
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    .mockResolvedValueOnce({ items: [] })
+  wrapper = mount(SerialRouteAttachments, {
+    props: { items: [], batchNo: 'TL-FIRST' },
+    global: { stubs: { WarehouseReceiptDocuments: true } },
+  })
+  await wrapper.setProps({ batchNo: 'TL-SECOND' })
+  await flushPromises()
+  finish({
+    items: [
+      {
+        id: 12,
+        kind: 'drawing',
+        filename: '旧图纸.pdf',
+        size_bytes: 100,
+        sha256: 'digest',
+        parsed: {},
+      },
+    ],
+  })
+  await flushPromises()
+  expect(wrapper.getComponent(WarehouseReceiptDocuments).props('documents')).toEqual([])
+})
+
+it('does not infer an unbound saved receipt’s engineering route from its serial', async () => {
+  const resolve = vi.spyOn(processRouteApi, 'resolve')
+  vi.spyOn(warehouseReceiptDocumentApi, 'forTransfer').mockResolvedValue({ items: [] })
+  wrapper = mount(SerialRouteAttachments, {
+    props: { items: [{ serialNo: 'UNBOUND' }], batchNo: 'TL-UNBOUND' },
+    global: { stubs: { WarehouseReceiptDocuments: true } },
+  })
+  await flushPromises()
+  expect(resolve).not.toHaveBeenCalled()
+  expect(wrapper.getComponent(WarehouseReceiptDocuments).props('route')).toBeUndefined()
+  expect(wrapper.text()).not.toContain('资料读取失败')
+})
+
+it('loads the bound route from the selected batch instead of guessing from a serial', async () => {
+  vi.mocked(materialTransferApi.get).mockResolvedValue(
+    normalizeMaterialTransfer({ serial_no: 'ORDER-A', process_route: { id: 8 } }),
+  )
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue({ ...routeFixture, id: 8 })
+  const resolve = vi.spyOn(processRouteApi, 'resolve')
+  vi.spyOn(warehouseReceiptDocumentApi, 'forTransfer').mockResolvedValue({ items: [] })
+  wrapper = mount(SerialRouteAttachments, {
+    props: { items: [{ serialNo: '', batchNo: 'TL-A' }] },
+    global: { stubs: { WarehouseReceiptDocuments: true } },
+  })
+  await flushPromises()
+  expect(materialTransferApi.get).toHaveBeenCalledWith('TL-A')
+  expect(resolve).not.toHaveBeenCalled()
+  expect(wrapper.getComponent(WarehouseReceiptDocuments).props('route')?.id).toBe(8)
+  expect(wrapper.getComponent(WarehouseReceiptDocuments).props('serialNo')).toBe('ORDER-A')
+})
+
+it('keeps separate batches of the same serial selectable and ignores stale originals', async () => {
+  let finish!: (value: { items: ReceiptDocument[] }) => void
+  vi.spyOn(warehouseReceiptDocumentApi, 'forTransfer')
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    .mockResolvedValueOnce({ items: [] })
+  vi.mocked(materialTransferApi.get).mockImplementation(async (batch) =>
+    normalizeMaterialTransfer({
+      serial_no: 'ORDER-A',
+      process_route: { id: batch === 'TL-A' ? 8 : 9 },
+    }),
+  )
+  vi.spyOn(processRouteApi, 'detail').mockImplementation(async (id) => ({ ...routeFixture, id }))
+  wrapper = mount(SerialRouteAttachments, {
+    props: {
+      items: [
+        { serialNo: 'ORDER-A', batchNo: 'TL-A' },
+        { serialNo: 'ORDER-A', batchNo: 'TL-B' },
+      ],
+    },
+    global: { stubs: { WarehouseReceiptDocuments: true } },
+  })
+  await flushPromises()
+  wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 'ORDER-A::TL-B')
+  await flushPromises()
+  finish({
+    items: [
+      { id: 12, kind: 'drawing', filename: '旧批次.pdf', size_bytes: 10, sha256: '', parsed: {} },
+    ],
+  })
+  await flushPromises()
+  const documents = wrapper.getComponent(WarehouseReceiptDocuments)
+  expect(documents.props('route')?.id).toBe(9)
+  expect(documents.props('documents')).toEqual([])
+  expect(warehouseReceiptDocumentApi.forTransfer).toHaveBeenLastCalledWith('TL-B')
 })

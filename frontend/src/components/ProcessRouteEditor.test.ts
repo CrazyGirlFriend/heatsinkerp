@@ -58,6 +58,7 @@ let wrapper: VueWrapper
 beforeEach(() => {
   openWord.mockReset()
   openDrawing.mockReset()
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue(structuredClone(routeFixture))
   vi.spyOn(processRouteApi, 'options').mockImplementation(async (teamId) => ({
     tasks: teamId === 1 ? [] : [{ id: 4, team_id: teamId, name: '精磨', active: true, version: 1 }],
     purposes: [{ id: 3, team_id: teamId, name: '产品加工', active: true, version: 1 }],
@@ -281,7 +282,11 @@ it('carries quality problems and teams into manual rework engineering with inher
     wrapper.findAll('[aria-label="涉及班组"] [role="listitem"]').map((cell) => cell.text()),
   ).toEqual(['研磨', '轧制'])
   expect(wrapper.text()).not.toContain('导入工艺单')
-  expect(wrapper.text()).not.toContain('工艺原稿')
+  expect(wrapper.text()).toContain('工艺原件')
+  expect(processRouteApi.detail).toHaveBeenCalledWith(
+    reworkRouteFixture.rework_request!.resume_route_id,
+  )
+  expect(wrapper.getComponent(WordDocumentPreview).props('route').id).toBe(routeFixture.id)
   expect(wrapper.find('input[accept=".docx"]').exists()).toBe(false)
   expect(wrapper.find('input[aria-label="上传图纸文件"]').exists()).toBe(true)
   expect(wrapper.getComponent(ProcessRouteDrawingPreview).props()).toMatchObject({
@@ -303,7 +308,7 @@ it('keeps published steps immutable and offers source/revision actions', async (
   await render(true)
   expect(wrapper.text()).not.toContain('删除工序')
   expect(wrapper.text()).not.toContain('保存工艺')
-  expect(wrapper.text()).toContain('工艺原稿')
+  expect(wrapper.text()).toContain('工艺原件')
   expect(wrapper.find('[aria-label="放大订单表"]').exists()).toBe(false)
 })
 it('retains an editable draft when publication is rejected', async () => {
@@ -365,7 +370,7 @@ it('keeps a warehouse route preview read-only without save, publication or revis
   expect(wrapper.text()).not.toContain('保存工艺')
   expect(wrapper.text()).not.toContain('保存工艺')
   expect(wrapper.text()).not.toContain('修改工艺')
-  expect(wrapper.text()).toContain('工艺原稿')
+  expect(wrapper.text()).toContain('工艺原件')
   expect(processRouteApi.options).not.toHaveBeenCalled()
 })
 
@@ -781,7 +786,7 @@ it('shows missing attachment cards and actual execution team names on legacy det
     drawings: [],
     source_data: { tables: [], issues: [] },
   })
-  expect(wrapper.findAll('.route-attachment-card--missing')).toHaveLength(2)
+  expect(wrapper.findAll('.document-card--missing')).toHaveLength(2)
   expect(wrapper.get('[aria-label="工艺附件缩略图"]').text()).not.toContain('订单表')
   expect(wrapper.findAll('.route-edit-step td:nth-child(2)')[0]!.text()).toBe('库房')
   expect(wrapper.findAll('.route-edit-step td:nth-child(2)')[1]!.text()).toBe('研磨')
@@ -840,10 +845,10 @@ it('allows a missing material to be filled without inventing an imported source'
 it('keeps thumbnails on the left and team selection in the same column across view modes', async () => {
   await render(true)
   const layout = wrapper.get('.route-comparison')
-  expect(layout.element.firstElementChild?.getAttribute('aria-label')).toBe('工艺附件缩略图')
+  expect(layout.find('.form-workspace-documents [aria-label="工艺附件缩略图"]').exists()).toBe(true)
   expect(wrapper.find('.route-original-panel').exists()).toBe(false)
   await click('修改工艺')
-  expect(layout.element.firstElementChild?.getAttribute('aria-label')).toBe('工艺附件缩略图')
+  expect(layout.find('.form-workspace-documents [aria-label="工艺附件缩略图"]').exists()).toBe(true)
   expect(wrapper.getComponent(WordDocumentPreview).props('thumbnail')).toBe('')
   expect(wrapper.find('.route-original-panel').exists()).toBe(false)
   const team = wrapper.get('.route-edit-step td:nth-child(2)')
@@ -852,7 +857,22 @@ it('keeps thumbnails on the left and team selection in the same column across vi
   wrapper.unmount()
   await renderNew()
   expect(
-    wrapper.get('.route-comparison').element.firstElementChild?.getAttribute('aria-label'),
-  ).toBe('工艺附件缩略图')
+    wrapper
+      .find('.route-comparison .form-workspace-documents [aria-label="工艺附件缩略图"]')
+      .exists(),
+  ).toBe(true)
   expect(wrapper.find('input[aria-label="材质"]').exists()).toBe(true)
+})
+
+it('retries a failed original-route read without replacing the rework instructions', async () => {
+  vi.mocked(processRouteApi.detail).mockRejectedValueOnce(new Error('原工艺暂时不可用'))
+  await render(false, reworkRouteFixture, false, true)
+  expect(wrapper.text()).toContain('原工艺暂时不可用')
+  expect(wrapper.findComponent(WordDocumentPreview).exists()).toBe(false)
+  const instructions = wrapper.get('textarea[aria-label="工序 1 工艺要求"]')
+  await instructions.setValue('返工后逐件测厚')
+  await click('重新读取')
+  expect(wrapper.getComponent(WordDocumentPreview).props('route').id).toBe(routeFixture.id)
+  expect((instructions.element as HTMLTextAreaElement).value).toBe('返工后逐件测厚')
+  expect(processRouteApi.save).not.toHaveBeenCalled()
 })

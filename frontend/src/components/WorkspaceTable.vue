@@ -28,12 +28,12 @@ defineProps<{ data?: TableProps['data'] }>()
   --el-table-header-bg-color: var(--table-header-bg);
   --el-table-header-text-color: var(--subtle);
   --el-table-text-color: var(--text);
-  --el-table-border-color: var(--line);
+  --el-table-border-color: var(--table-grid-line, var(--line));
   --el-table-row-hover-bg-color: var(--table-hover-bg);
   flex: 1;
   min-width: 0;
   min-height: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--table-outer-line, var(--line));
   border-radius: 8px;
   background: #fff;
   font-size: var(--font-size-body);

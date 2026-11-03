@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import { computed, useId } from 'vue'
 import { ElPopover } from 'element-plus'
 import type { SerialUrgency } from '@/types/recordFilters'
@@ -71,7 +72,10 @@ const label = computed(() =>
     <div v-if="!editable && urgency" class="urgency-detail">
       <strong>流水号加急</strong>
       <p>{{ urgency.reason || '未填写原因' }}</p>
-      <small>{{ urgency.updated_by || '管理员' }} · {{ formatDateTime(urgency.updated_at) }}</small>
+      <small
+        ><PersonName :name="urgency.updated_by || '管理员'" /> ·
+        {{ formatDateTime(urgency.updated_at) }}</small
+      >
     </div>
   </ElPopover>
 </template>

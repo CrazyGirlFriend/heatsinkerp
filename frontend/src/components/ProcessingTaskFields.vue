@@ -157,7 +157,7 @@ onBeforeUnmount(() => ++generation)
     label="返工原加工记录"
     required
     :class="{ 'is-error': submitted && !validReworkRecord }"
-    class="processing-rework-selection dialog-field-wide"
+    class="processing-rework-selection dialog-field-wide form-field--full"
   >
     <ElSelect
       :model-value="origin ? recordId : null"
@@ -177,7 +177,7 @@ onBeforeUnmount(() => ++generation)
   </ElFormItem>
   <section
     v-if="(routeStep || rework) && !hideRouteInstructions"
-    class="processing-route-instructions"
+    class="processing-route-instructions form-field--full"
     :class="{ 'processing-route-instructions--invalid': rework && submitted && !validReworkRecord }"
     aria-label="本道加工工艺"
   >

@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import AppDialog from '@/components/AppDialog.vue'
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import WeightInput from './WeightInput.vue'
 import FormValidationNotice from './FormValidationNotice.vue'
 import MaterialInput from './MaterialInput.vue'
@@ -529,7 +533,7 @@ onBeforeUnmount(() => {
 <template>
   <AppDialog
     :model-value="modelValue"
-    width="min(1180px, 96vw)"
+    width="min(1380px, 96vw)"
     top="16px"
     class="material-transfer-form-dialog"
     :title="external ? `编辑${actionLabel}单` : isEditing ? '编辑转料单' : '新建转料单'"
@@ -595,27 +599,31 @@ onBeforeUnmount(() => {
       title="去向和来源批次已固定；如需更换去向，请作废后重新创建。"
     />
 
-    <ElForm
-      ref="transferForm"
-      class="transfer-form dialog-form-compact"
-      label-position="top"
-      :show-message="false"
-      @submit.prevent="submit"
-    >
-      <section
-        class="transfer-section dialog-form-section dialog-section-quantities"
-        data-form-section="handoff"
-        aria-labelledby="transfer-handoff-heading"
+    <FormWorkspace>
+      <template #documents>
+        <SerialRouteAttachments
+          v-if="modelValue"
+          :batch-no="editingSnapshot?.batch_no"
+          :items="[{ serialNo: form.serialNo.trim(), routeId: editingSnapshot?.process_route?.id }]"
+        />
+      </template>
+      <ElForm
+        ref="transferForm"
+        class="transfer-form dialog-form-compact"
+        label-position="top"
+        :show-message="false"
+        @submit.prevent="submit"
       >
-        <h3 id="transfer-handoff-heading">转料信息</h3>
-        <div class="transfer-section-fields dialog-form-grid">
+        <CompactFormSection title="转料信息" class="transfer-section" data-form-section="handoff">
           <ElFormItem
             label="转料人"
             :required="!isEditing"
             :error="fieldErrors.sender"
             data-validation-field="sender"
           >
-            <span v-if="editingSnapshot">{{ materialSenderName(editingSnapshot) }}</span>
+            <span v-if="editingSnapshot"
+              ><PersonName :name="materialSenderName(editingSnapshot)"
+            /></span>
             <TeamEmployeeInput
               v-else-if="modelValue && sourceTeam"
               v-model="sender"
@@ -743,6 +751,7 @@ onBeforeUnmount(() => {
             required
             :error="fieldErrors.quantity"
             data-validation-field="quantity"
+            class="form-field--medium"
           >
             <ElInputNumber
               v-model="form.quantity"
@@ -762,6 +771,7 @@ onBeforeUnmount(() => {
             required
             :error="fieldErrors.weight"
             data-validation-field="weight"
+            class="form-field--medium"
           >
             <WeightInput
               v-model="form.weight"
@@ -770,7 +780,7 @@ onBeforeUnmount(() => {
               :disabled="!canSubmit"
             />
           </ElFormItem>
-          <div v-if="useSludge" class="dialog-field-wide">
+          <div v-if="useSludge" class="form-field--full">
             <SludgeWeightFields
               :existing="editingSnapshot || undefined"
               v-model:gross="form.gross"
@@ -783,6 +793,7 @@ onBeforeUnmount(() => {
             />
           </div>
           <MaterialDeliveryFields
+            class="form-field--full"
             v-if="!external && !weightOnly"
             v-model:date="form.deliveryDate"
             v-model:quantity="form.deliveryQuantity"
@@ -790,16 +801,16 @@ onBeforeUnmount(() => {
             :date-error="fieldErrors.deliveryDate"
             :quantity-error="fieldErrors.deliveryQuantity"
           />
-          <p v-if="linkedSource && form.deliveryDate" class="dialog-field-wide delivery-origin">
+          <p v-if="linkedSource && form.deliveryDate" class="form-field--full delivery-origin">
             交期沿用源头批次 {{ editingSnapshot?.delivery_origin_batch_no }}
           </p>
           <p
             v-if="form.materialType === 'sludge' && !useSludge"
-            class="dialog-field-wide quantity-hint"
+            class="form-field--full quantity-hint"
           >
             历史废泥未记录比例，沿用原账重，不自动折算。
           </p>
-          <ElFormItem v-if="toWarehouse" label="入库仓位" class="dialog-field-wide"
+          <ElFormItem v-if="toWarehouse" label="入库仓位" class="form-field--full"
             ><strong v-if="editingSnapshot?.warehouse_location">{{
               editingSnapshot.warehouse_location
             }}</strong
@@ -815,29 +826,25 @@ onBeforeUnmount(() => {
               :disabled="saving || refreshing"
               @busy-change="locationBusy = $event"
           /></ElFormItem>
-        </div>
-      </section>
+        </CompactFormSection>
 
-      <section
-        v-for="section in documentSections"
-        :key="section.name"
-        class="transfer-section dialog-form-section"
-        :class="{
-          'dialog-section-long': section.name !== 'document',
-          'dialog-section-details': section.name === 'document',
-        }"
-        :data-form-section="section.name"
-        :aria-labelledby="`transfer-${section.name}-heading`"
-      >
-        <h3 :id="`transfer-${section.name}-heading`">{{ section.label }}</h3>
-        <div class="transfer-section-fields dialog-form-grid">
+        <CompactFormSection
+          v-for="section in documentSections"
+          :key="section.name"
+          class="transfer-section"
+          :title="section.label"
+          :data-form-section="section.name"
+        >
           <ElFormItem
             v-for="field in section.fields"
             :key="field.key"
             :label="field.label"
             :error="fieldErrors[field.key]"
             :data-validation-field="field.key"
-            :class="{ 'dialog-specification-field': specificationKeys.includes(field.key) }"
+            :class="{
+              'form-field--long': specificationKeys.includes(field.key),
+              'form-field--full': field.multiline,
+            }"
           >
             <template #label
               >{{ field.label }}<AutofillBadge :source="autofill.source(field.key)"
@@ -874,6 +881,7 @@ onBeforeUnmount(() => {
             label="成品件数"
             :error="fieldErrors.finishedQuantity"
             data-validation-field="finishedQuantity"
+            class="form-field--medium"
             ><ElInputNumber
               v-model="form.finishedQuantity"
               aria-label="成品件数"
@@ -891,6 +899,7 @@ onBeforeUnmount(() => {
             :label="notesLabel"
             :error="fieldErrors.notes"
             data-validation-field="notes"
+            class="form-field--full"
           >
             <ElInput
               v-model="form.notes"
@@ -903,12 +912,12 @@ onBeforeUnmount(() => {
               :placeholder="toWarehouse ? '选填：说明当前物料情况或转回库房的原因' : '选填'"
             />
           </ElFormItem>
-        </div>
-      </section>
-      <ElButton v-if="refreshFailed" :loading="refreshing" @click="refreshAfterConflict"
-        >重新读取</ElButton
-      >
-    </ElForm>
+        </CompactFormSection>
+        <ElButton v-if="refreshFailed" :loading="refreshing" @click="refreshAfterConflict"
+          >重新读取</ElButton
+        >
+      </ElForm>
+    </FormWorkspace>
 
     <template #footer>
       <ElButton :disabled="saving" @click="close">取消</ElButton>

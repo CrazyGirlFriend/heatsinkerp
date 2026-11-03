@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from '@/components/PersonName.vue'
 import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
 import WorkspaceTable from '@/components/WorkspaceTable.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
@@ -51,6 +52,8 @@ import MaterialTransferStatus from '@/components/MaterialTransferStatus.vue'
 import StatePanel from '@/components/StatePanel.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'
+import { useSidebarStore } from '@/stores/sidebar'
+import { appPinia } from '@/stores/access'
 import { showToast } from '@/stores/toast'
 import {
   resolveTeamWorkspaceSection,
@@ -99,6 +102,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const workspaceNavigation = useSidebarStore(appPinia)
 const directory = useTeamDirectoryStore()
 const teamKey = computed(() => String(route.params.teamId ?? ''))
 const teamId = computed(() => Number(teamKey.value))
@@ -191,6 +195,14 @@ const tab = computed(() =>
     hasProcessing.value,
     team.value?.code === 'FACTORY-QC',
   ),
+)
+watch(
+  [scopeReady, () => route.fullPath],
+  () => {
+    if (scopeReady.value)
+      workspaceNavigation.rememberWorkspace(teamKey.value, tab.value, route.query)
+  },
+  { immediate: true },
 )
 const fullscreen = ref(false)
 const inventoryPanel = ref<InstanceType<typeof TeamInventory>>()
@@ -302,7 +314,8 @@ watch(
   },
 )
 function selectSection(section: TeamWorkspaceSection) {
-  if (section !== tab.value) void router.push(teamWorkspaceSectionPath(teamKey.value, section))
+  if (section !== tab.value)
+    void router.push(workspaceNavigation.workspaceLocation(teamKey.value, section))
 }
 function paginateSummary(nextPage: number, size: number) {
   void router.replace({
@@ -453,6 +466,13 @@ const pendingCount = computed(() =>
       ? (overview.value.pending_incoming.batch_count ?? overview.value.pending_incoming.count)
       : overview.value.pending_incoming.count
     : null,
+)
+watch(
+  [teamKey, scopeReady, pendingCount, qualityCount],
+  ([id, ready, pending, quality]) => {
+    if (ready) workspaceNavigation.workspaceCounts[id] = { pending: pending || 0, quality }
+  },
+  { immediate: true },
 )
 const overviewError = ref('')
 const pending = ref<MaterialTransfer[]>([])
@@ -1523,10 +1543,9 @@ onBeforeUnmount(() => {
                     }}</template></ElTableColumn
                   >
                   <ElTableColumn label="转出人" min-width="100" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      materialSenderName(asTransfer(row))
-                    }}</template></ElTableColumn
-                  >
+                    ><template #default="{ row }"
+                      ><PersonName :name="materialSenderName(asTransfer(row))" /></template
+                  ></ElTableColumn>
                   <ElTableColumn label="转出时间" min-width="170" show-overflow-tooltip
                     ><template #default="{ row }">{{
                       formatDateTime(row.transferred_at)
@@ -1645,12 +1664,14 @@ onBeforeUnmount(() => {
                     min-width="120"
                     align="center"
                     show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      row.entry_kind === 'transfer'
-                        ? row.received_employee_name || '未登记'
-                        : row.received_by || '—'
-                    }}</template></ElTableColumn
-                  >
+                    ><template #default="{ row }"
+                      ><PersonName
+                        :name="
+                          row.entry_kind === 'transfer'
+                            ? row.received_employee_name || '未登记'
+                            : row.received_by || '—'
+                        " /></template
+                  ></ElTableColumn>
                   <ElTableColumn label="操作" width="100" fixed="right"
                     ><template #default="{ row }"
                       ><ElButton link type="primary" @click="openDetail(asTransfer(row))"
@@ -1751,10 +1772,9 @@ onBeforeUnmount(() => {
                         outgoing /></template
                   ></ElTableColumn>
                   <ElTableColumn label="转料 / 登记人" min-width="120" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      materialSenderName(asTransfer(row))
-                    }}</template></ElTableColumn
-                  >
+                    ><template #default="{ row }"
+                      ><PersonName :name="materialSenderName(asTransfer(row))" /></template
+                  ></ElTableColumn>
                   <ElTableColumn label="登记时间" min-width="170" show-overflow-tooltip
                     ><template #default="{ row }">{{
                       formatDateTime(row.transferred_at)
@@ -1812,10 +1832,9 @@ onBeforeUnmount(() => {
                     }}</template></ElTableColumn
                   >
                   <ElTableColumn label="操作人" min-width="100" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      row.transferred_by || '—'
-                    }}</template></ElTableColumn
-                  >
+                    ><template #default="{ row }"
+                      ><PersonName :name="row.transferred_by || '—'" /></template
+                  ></ElTableColumn>
                   <ElTableColumn label="原因" min-width="140" show-overflow-tooltip
                     ><template #default="{ row }">{{ row.notes || '—' }}</template></ElTableColumn
                   >
@@ -1898,10 +1917,9 @@ onBeforeUnmount(() => {
                   >
                   <ElTableColumn prop="reason" label="原因" min-width="200" show-overflow-tooltip />
                   <ElTableColumn label="登记人" min-width="100" show-overflow-tooltip
-                    ><template #default="{ row }">{{
-                      row.created_by || '—'
-                    }}</template></ElTableColumn
-                  >
+                    ><template #default="{ row }"
+                      ><PersonName :name="row.created_by || '—'" /></template
+                  ></ElTableColumn>
                   <ElTableColumn label="登记时间" min-width="170" show-overflow-tooltip
                     ><template #default="{ row }">{{
                       formatDateTime(row.created_at)

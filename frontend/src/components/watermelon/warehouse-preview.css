@@ -1,0 +1,365 @@
+/* All experiment styles stay below its root or the experiment's own dialog. */
+.warehouse-watermelon {
+  --wm-ink: #171719;
+  --wm-muted: #7b7b84;
+  --wm-line: #e7e7ec;
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  color: var(--wm-ink);
+}
+.warehouse-watermelon .warehouse-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border: 1px solid var(--wm-line);
+  border-radius: 20px;
+  background: #fff;
+  overflow: hidden;
+  container-type: inline-size;
+}
+.warehouse-watermelon .wm-warehouse-toolbar {
+  margin: 0;
+  padding: 20px 22px 18px;
+}
+.warehouse-watermelon .wm-warehouse-heading {
+  margin-bottom: 14px;
+}
+.warehouse-watermelon .wm-warehouse-tools .el-button {
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+  font-size: 12px;
+  height: 34px;
+  padding: 0 8px;
+}
+.warehouse-watermelon .wm-warehouse-tools .el-button::before,
+.warehouse-watermelon .wm-warehouse-tools .el-button::after {
+  display: none;
+}
+.wm-grid-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0 22px;
+  padding: 13px 0;
+  border-top: 1px solid var(--wm-line);
+  font-size: 12px;
+  color: var(--wm-muted);
+}
+.wm-grid-heading > :first-child {
+  font-weight: 550;
+  color: #35353a;
+}
+.warehouse-watermelon .warehouse-grid {
+  --slot-height: 70px;
+  display: grid;
+  flex: 1;
+  min-height: var(--slot-height);
+  min-width: 0;
+  overflow-y: auto;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  grid-template-rows: repeat(var(--warehouse-rows), var(--slot-height));
+  align-content: start;
+  gap: 8px;
+  padding: 4px 22px 16px;
+}
+.warehouse-watermelon .warehouse-slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e5e5eb;
+  border-radius: 10px;
+  background: #fafafb;
+  color: #85858e;
+  box-shadow: 0 2px 3px #19192403;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.warehouse-watermelon .warehouse-slot.is-stocked {
+  color: #23785b;
+  background: #f1f8f5;
+  border-color: #cfdfd7;
+}
+.warehouse-watermelon .warehouse-slot.is-pending {
+  color: #43758f;
+  border-color: #d0e0e8;
+}
+.warehouse-watermelon .warehouse-slot.is-disabled {
+  background: #f7f7f9;
+  color: #a4a4ab;
+  border-style: dashed;
+}
+.warehouse-watermelon .warehouse-slot:not(:disabled):hover {
+  border-color: #9caaa3;
+  box-shadow: 0 6px 16px #1b302010;
+}
+.warehouse-watermelon .warehouse-slot:focus-visible {
+  outline: 2px solid #328369;
+  outline-offset: 2px;
+}
+.warehouse-watermelon .warehouse-slot:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.wm-slot-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.wm-slot-arrow {
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.warehouse-slot:hover .wm-slot-arrow,
+.warehouse-slot:focus-visible .wm-slot-arrow {
+  opacity: 1;
+}
+.warehouse-watermelon .warehouse-slot-name {
+  color: #202024;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wm-slot-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+.warehouse-watermelon .warehouse-empty {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  color: #676770;
+}
+.wm-empty-icon {
+  padding: 16px;
+  border: 1px solid #e9e9ef;
+  border-radius: 20px;
+  color: #8e8e98;
+  background: #fafafb;
+  box-shadow: 0 3px 6px #17172005;
+}
+.warehouse-empty strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+.warehouse-watermelon .el-alert {
+  margin: 0 22px 10px;
+  width: auto;
+  flex-shrink: 0;
+}
+.wm-warehouse-dialog .warehouse-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.wm-warehouse-dialog .warehouse-detail-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 20px;
+  padding-bottom: 20px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid #e7e7ec;
+}
+.wm-warehouse-dialog .warehouse-detail-identity {
+  min-width: 0;
+}
+.wm-warehouse-dialog .warehouse-detail-identity strong {
+  display: block;
+  font-size: 17px;
+  color: #111;
+  margin-bottom: 10px;
+  overflow-wrap: anywhere;
+}
+.wm-warehouse-dialog .warehouse-detail-identity > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #76767e;
+  font-size: 13px;
+}
+.wm-warehouse-dialog .warehouse-detail-totals {
+  display: flex;
+  gap: 24px;
+}
+.wm-warehouse-dialog .warehouse-detail-totals small {
+  display: block;
+  font-size: 12px;
+  color: #7c7c85;
+  margin-bottom: 8px;
+}
+.wm-warehouse-dialog .warehouse-detail-totals strong {
+  font-size: 23px;
+  color: #171719;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.wm-warehouse-dialog .warehouse-detail-controls {
+  margin-bottom: 12px;
+}
+.wm-warehouse-dialog .warehouse-detail-tabs {
+  margin-bottom: 10px;
+}
+.wm-warehouse-dialog .warehouse-detail-selection.is-empty {
+  display: none;
+}
+.wm-warehouse-dialog .business-table {
+  --el-table-border-color: #e9e9ee;
+  --el-table-header-bg-color: #f8f8fa;
+  --el-table-text-color: #242427;
+  font-size: 13px;
+}
+.wm-warehouse-dialog .el-table .cell {
+  padding-inline: 10px;
+}
+.wm-warehouse-dialog .el-tag {
+  box-shadow: none;
+  border-radius: 6px;
+  font-size: 11px;
+}
+.wm-warehouse-dialog .el-button::before,
+.wm-warehouse-dialog .el-button::after {
+  display: none;
+}
+.wm-warehouse-dialog .el-button:not(.is-link):not(.is-text) {
+  border-radius: 18px;
+  background: #f5f5f7;
+  color: #171719;
+  border: 1px solid #e2e2e6;
+  box-shadow: none;
+  font-size: 13px;
+  height: 36px;
+}
+.wm-warehouse-dialog .el-button--primary:not(.is-link):not(.is-text) {
+  background: #111;
+  border-color: #111;
+  color: white;
+}
+.wm-warehouse-dialog .el-button.is-link {
+  font-size: 13px;
+}
+.wm-editor-layout {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  margin: -22px;
+}
+.wm-editor-layout > .el-form {
+  padding: 25px;
+}
+.wm-slot-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 15px;
+  padding: 24px;
+  border-left: 1px dashed #e5e4eb;
+  color: #81818a;
+  min-width: 0;
+}
+.wm-slot-preview > span:first-child {
+  font-size: 12px;
+}
+.wm-slot-preview strong {
+  color: #171719;
+  font-size: 18px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.wm-state-pill {
+  border-radius: 12px;
+  background: #f5f5f7;
+  border: 1px solid #eaeaf0;
+  padding: 3px 10px;
+  color: #72727b;
+  font-size: 11px;
+}
+.wm-editor-layout .el-form-item {
+  margin-bottom: 22px;
+}
+.wm-editor-layout .el-form-item__label {
+  height: auto;
+  color: #706f6f;
+  font-size: 13px;
+  padding: 0 0 8px;
+}
+.wm-editor-layout .el-input__wrapper {
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 0 0 1px #dfdde6 inset;
+  padding: 1px 12px;
+}
+.wm-editor-layout .el-input__inner {
+  height: 40px;
+  font-size: 14px;
+  color: #131313;
+}
+.wm-editor-layout .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1.5px #222 inset;
+}
+.wm-field-error,
+.wm-warehouse-dialog .warehouse-error {
+  color: #c14448;
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+.wm-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.wm-field-hint {
+  font-size: 12px;
+  color: #8c8b94;
+  margin: 10px 0 0;
+}
+@container (max-width: 1100px) {
+  .warehouse-watermelon .warehouse-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}
+@container (max-width: 760px) {
+  .warehouse-watermelon .warehouse-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+@container (max-width: 460px) {
+  .warehouse-watermelon .warehouse-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding-inline: 14px;
+  }
+}
+@media (max-width: 600px) {
+  .wm-editor-layout {
+    grid-template-columns: 1fr;
+    margin: -16px;
+  }
+  .wm-slot-preview {
+    display: none;
+  }
+  .wm-warehouse-dialog .warehouse-detail-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wm-warehouse-dialog .el-input__inner:focus-visible {
+  outline: none;
+}

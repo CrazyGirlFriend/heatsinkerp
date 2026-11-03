@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import { RouterLink } from 'vue-router'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   ElAlert,
   ElButton,
-  ElCheckbox,
   ElForm,
   ElFormItem,
   ElInput,
@@ -17,6 +17,10 @@ import {
   type InputInstance,
 } from 'element-plus'
 import AppDialog from './AppDialog.vue'
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
+import ImportedDataConfirmation from './ImportedDataConfirmation.vue'
+import AutofillBadge from './AutofillBadge.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { TeamEmployee } from '@/types/teamBusiness'
@@ -88,6 +92,31 @@ const serialConflict = ref('')
 const serials = computed(() =>
   [primarySerial.value.trim(), ...draft.value.serial_nos.slice(1)].filter(Boolean),
 )
+const sourceRoute = ref<ProcessRoute>()
+const sourceLoading = ref(false)
+const sourceError = ref('')
+let sourceGeneration = 0
+async function loadSourceRoute() {
+  const current = ++sourceGeneration
+  const id =
+    draft.value.route_kind === 'rework' ? draft.value.rework_request?.resume_route_id : null
+  sourceRoute.value = undefined
+  sourceError.value = ''
+  sourceLoading.value = false
+  if (!id || id === draft.value.id) return
+  sourceLoading.value = true
+  try {
+    const route = await processRouteApi.detail(id)
+    if (current === sourceGeneration) sourceRoute.value = route
+  } catch (error) {
+    if (current === sourceGeneration)
+      sourceError.value = error instanceof Error ? error.message : '原工艺读取失败'
+  } finally {
+    if (current === sourceGeneration) sourceLoading.value = false
+  }
+}
+watch(() => draft.value.rework_request?.resume_route_id, loadSourceRoute, { immediate: true })
+onBeforeUnmount(() => ++sourceGeneration)
 const wordInput = ref<HTMLInputElement>(),
   drawingInput = ref<HTMLInputElement>()
 const pendingWord = ref<File>(),
@@ -546,250 +575,10 @@ onMounted(async () => {
       :disabled="busy"
       @submit.prevent
     >
-      <div class="route-identity">
-        <div class="route-summary" aria-label="工艺基本信息">
-          <ElFormItem
-            label="流水号"
-            class="route-serials"
-            :required="!readonly"
-            :error="
-              fieldErrors.serials || (sourceFilename && !primarySerial.trim() ? '流水号未识别' : '')
-            "
-          >
-            <template #label
-              >流水号
-              <ElTooltip
-                v-if="draft.source_data.receipt_fields?.serial_no"
-                :content="
-                  draft.source_data.receipt_fields.serial_no.source_kind === 'excel'
-                    ? '订单表 · 自动填入'
-                    : '工艺单 · 自动填入'
-                "
-                placement="top"
-              >
-                <span class="route-import-marker" role="img" aria-label="自动填入" tabindex="0"
-                  >导</span
-                >
-              </ElTooltip></template
-            >
-            <strong v-if="readonly" class="route-serial-value">{{
-              primarySerial || '未填写'
-            }}</strong>
-            <ElInput
-              v-else
-              v-model="primarySerial"
-              :disabled="busy || draft.route_kind === 'rework'"
-              placeholder="填写流水号"
-              maxlength="80"
-              aria-label="流水号"
-            />
-            <span v-if="serialConflict" class="route-serial-conflict" role="alert">{{
-              serialConflict
-            }}</span>
-          </ElFormItem>
-          <ElFormItem label="材质" class="route-material-field">
-            <template #label>
-              材质
-              <ElTooltip
-                v-if="draft.source_data.receipt_fields?.material_name?.alternative"
-                :content="`订单表：${draft.source_data.receipt_fields.material_name.alternative.value}；工艺单：${draft.source_data.receipt_fields.material_name.parsed_value ?? draft.source_data.receipt_fields.material_name.value}`"
-              >
-                <ElIcon
-                  class="route-material-difference"
-                  tabindex="0"
-                  role="img"
-                  aria-label="材质来源不一致"
-                  ><WarningFilled
-                /></ElIcon>
-              </ElTooltip>
-            </template>
-            <strong v-if="readonly" class="route-person-value">{{
-              draft.source_data.receipt_fields?.material_name?.value || '—'
-            }}</strong>
-            <ElInput
-              v-else
-              :model-value="String(draft.source_data.receipt_fields?.material_name?.value || '')"
-              aria-label="材质"
-              placeholder="填写材质"
-              maxlength="160"
-              :disabled="busy"
-              @update:model-value="changeMaterial('material_name', $event)"
-            />
-          </ElFormItem>
-          <ElFormItem
-            label="工艺人员"
-            class="route-person-field"
-            :required="!readonly && !modifying"
-            :error="fieldErrors.person"
-          >
-            <strong
-              v-if="readonly || modifying"
-              class="route-person-value"
-              :class="{ 'route-value-missing': !draft.engineering_employee_name }"
-              >{{ draft.engineering_employee_name || '未记录' }}</strong
-            >
-            <TeamEmployeeInput
-              v-else-if="engineeringTeam"
-              v-model="person"
-              :team-id="Number(engineeringTeam.id)"
-              label="工艺人员"
-              :invalid="!!fieldErrors.person"
-              :disabled="busy"
-            />
-            <span v-else>请先配置工艺班组</span>
-          </ElFormItem>
-          <ElFormItem
-            v-if="showModifier"
-            label="修改人员"
-            class="route-person-field"
-            :required="!readonly && modifying"
-            :error="fieldErrors.modifier"
-          >
-            <strong
-              v-if="readonly"
-              class="route-person-value"
-              :class="{ 'route-value-missing': !draft.modified_employee_name }"
-              >{{ draft.modified_employee_name || '未记录' }}</strong
-            >
-            <TeamEmployeeInput
-              v-else-if="engineeringTeam"
-              v-model="modifier"
-              :team-id="Number(engineeringTeam.id)"
-              label="修改人员"
-              :invalid="!!fieldErrors.modifier"
-              :disabled="busy"
-            />
-          </ElFormItem>
-          <ElFormItem
-            v-if="readonly && (draft.updated_at || draft.created_at)"
-            label="更新时间"
-            class="route-time-field"
-          >
-            <span class="route-time-value">{{
-              formatDateTime(draft.updated_at || draft.created_at)
-            }}</span>
-          </ElFormItem>
-        </div>
-      </div>
-      <div v-if="draft.rework_request" class="route-rework-context">
-        <table aria-label="返工问题信息">
-          <colgroup>
-            <col class="rework-label-column" />
-            <col />
-            <col class="rework-label-column" />
-            <col />
-            <col class="rework-label-column" />
-            <col />
-          </colgroup>
-          <tbody>
-            <tr>
-              <th scope="row">返工问题</th>
-              <td colspan="5" class="rework-problem-title">
-                {{ draft.rework_request.problem_names?.join('、') || draft.rework_request.reason }}
-              </td>
-            </tr>
-            <tr v-if="draft.rework_request.problem_names?.length">
-              <th scope="row">问题说明</th>
-              <td colspan="5">
-                {{ draft.rework_request.problem_notes || draft.rework_request.reason }}
-              </td>
-            </tr>
-            <tr
-              v-if="
-                draft.rework_request.problem_notes &&
-                draft.rework_request.problem_notes !== draft.rework_request.reason
-              "
-            >
-              <th scope="row">返工原因</th>
-              <td colspan="5">{{ draft.rework_request.reason }}</td>
-            </tr>
-            <tr>
-              <th scope="row">涉及班组</th>
-              <td colspan="5" class="rework-team-cells">
-                <div class="rework-team-grid" role="list" aria-label="涉及班组">
-                  <span
-                    v-for="team in draft.rework_request.problem_teams"
-                    :key="team.id"
-                    role="listitem"
-                    >{{ team.name }}</span
-                  >
-                  <span v-if="!draft.rework_request.problem_teams?.length">未指定</span>
-                </div>
-              </td>
-            </tr>
-            <tr>
-              <th scope="row">提交班组</th>
-              <td>{{ draft.rework_request.requesting_team_name || '未记录' }}</td>
-              <th scope="row">提交人</th>
-              <td>{{ draft.rework_request.requested_by || '未记录' }}</td>
-              <th scope="row">返工轮次</th>
-              <td>{{ draft.rework_request.round }}</td>
-            </tr>
-            <tr>
-              <th scope="row">问题来源</th>
-              <td>
-                {{
-                  draft.rework_request.inspection_id
-                    ? draft.rework_request.inspection_kind === 'patrol'
-                      ? '巡检'
-                      : '检验'
-                    : draft.rework_request.requesting_team_id
-                      ? '班组反馈'
-                      : '来源未记录'
-                }}<template v-if="draft.rework_request.inspection_id">
-                  #{{ draft.rework_request.inspection_id }}</template
-                >
-              </td>
-              <th scope="row">物料所在班组</th>
-              <td>{{ draft.rework_request.team_name }}</td>
-              <th scope="row">原加工记录</th>
-              <td>#{{ draft.rework_request.rework_of_id }}</td>
-            </tr>
-            <tr>
-              <th scope="row">返工批次</th>
-              <td>{{ draft.rework_request.batch_no }}</td>
-              <th scope="row">返工数量</th>
-              <td>{{ draft.rework_request.quantity }} 件 · {{ draft.rework_request.weight }} kg</td>
-              <th scope="row">接回正常工序</th>
-              <td>
-                {{ draft.rework_request.resume_step_name || draft.rework_request.team_name }}
-              </td>
-            </tr>
-            <tr v-if="draft.rework_request.dimension_result">
-              <th scope="row">尺寸检查</th>
-              <td colspan="5">{{ draft.rework_request.dimension_result }}</td>
-            </tr>
-            <tr v-if="draft.rework_request.weight_result">
-              <th scope="row">重量检查</th>
-              <td colspan="5">{{ draft.rework_request.weight_result }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="route-comparison route-comparison--attachments">
-        <ProcessRouteAttachments
-          ref="attachments"
-          :route="draft"
-          :documents="['word', 'drawing']"
-          :source-file="pendingWord"
-          :pending-drawings="pendingDrawings"
-          :editable="!readonly"
-          :disabled="busy"
-          :source-row="activeSource"
-          @remove-drawing="removeDrawing"
-          @remove-pending-drawing="removePending"
-        />
-        <section ref="editorMain" class="route-editor-main" aria-label="工艺内容">
-          <div
-            v-if="!readonly && fieldErrors.attachments"
-            class="route-attachment-warning"
-            role="alert"
-          >
-            {{ fieldErrors.attachments }}
-          </div>
-          <header class="route-panel-heading">
-            <strong class="route-section-title">工序明细</strong>
-            <div v-if="!readonly" class="route-file-actions route-import-toolbar">
+      <FormWorkspace class="route-comparison">
+        <template #documents>
+          <div class="route-documents">
+            <div v-if="!readonly" class="route-file-actions">
               <ElButton
                 v-if="draft.route_kind !== 'rework'"
                 :icon="Document"
@@ -826,248 +615,525 @@ onMounted(async () => {
                 @change="addDrawings"
               />
             </div>
-
-            <ElPopover
-              v-if="issueCount"
-              v-model:visible="issuesOpen"
-              trigger="click"
-              placement="bottom-start"
-              :width="280"
-            >
-              <template #reference>
-                <button type="button" class="route-issue-summary" :aria-expanded="issuesOpen">
-                  <ElIcon><WarningFilled /></ElIcon>{{ issueCount }} 处待核对
-                  <ElIcon class="route-issue-chevron"><ArrowDown /></ElIcon>
-                </button>
-              </template>
-              <div class="route-issue-list" aria-label="工艺待核对项">
-                <button
-                  v-for="issue in stepIssues"
-                  :key="`${issue.index}.${issue.field}`"
-                  type="button"
-                  class="route-issue-choice"
-                  @click="locateIssue(issue)"
-                >
-                  <ElIcon><WarningFilled /></ElIcon>
-                  <span
-                    >{{ issue.label
-                    }}<small
-                      >第 {{ issue.index + 1 }} 道 ·
-                      {{ draft.steps[issue.index]?.name || '未命名工序' }}</small
-                    ></span
-                  >
-                  <span class="route-issue-locate">定位</span>
-                </button>
-                <span
-                  v-if="unrecognizedRows"
-                  class="route-issue-unrecognized"
-                  role="img"
-                  aria-label="原稿含未识别行"
-                  :title="`${unrecognizedRows}未识别`"
-                  ><ElIcon><WarningFilled /></ElIcon>{{ unrecognizedRows }}未识别</span
-                >
-              </div>
-            </ElPopover>
-          </header>
-          <div class="route-step-table-wrap">
-            <table
-              class="route-step-table"
-              :class="{ 'route-step-table--readonly': readonly }"
-              aria-label="工艺工序"
-            >
-              <colgroup>
-                <col class="route-col-sequence" />
-                <col class="route-col-name" />
-                <col />
-                <col class="route-col-quantity" />
-                <col v-if="!readonly" class="route-col-actions" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>序号</th>
-                  <th>执行班组</th>
-                  <th>工艺要求</th>
-                  <th>计划加工数量</th>
-                  <th v-if="!readonly">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <template v-for="(step, index) in draft.steps" :key="index">
-                  <tr
-                    class="route-edit-step"
-                    :data-notice-route-step="index"
-                    tabindex="-1"
-                    @focusin="focusOriginal(step.source_row)"
-                  >
-                    <td
-                      class="route-sequence-cell"
-                      :class="{ 'route-cell--issue': sequenceProblem(index) }"
-                      :title="sequenceProblem(index)"
-                    >
-                      <div class="route-sequence-field">
-                        <ElTooltip
-                          v-if="step.source_row"
-                          :content="`工艺单 · 自动填入 · 原文行 ${step.source_row}`"
-                          placement="top"
-                        >
-                          <span
-                            class="route-import-marker route-step-import"
-                            role="img"
-                            aria-label="自动填入"
-                            tabindex="0"
-                            >导</span
-                          >
-                        </ElTooltip>
-                        <span v-if="readonly" class="route-cell-value">{{
-                          step.sequence_no >= 0 ? step.sequence_no : '—'
-                        }}</span>
-                        <ElFormItem
-                          v-else
-                          :error="sequenceProblem(index) || fieldErrors[`${index}.sequence`]"
-                          ><ElInputNumber
-                            v-model="step.sequence_no"
-                            :min="0"
-                            :max="999"
-                            :controls="false"
-                            :disabled="readonly || busy"
-                            :aria-label="`工序 ${index + 1} 序号`"
-                        /></ElFormItem>
-                        <button
-                          v-if="sequenceProblem(index)"
-                          type="button"
-                          class="route-cell-marker"
-                          :aria-label="sequenceProblem(index)"
-                          :title="`${sequenceProblem(index)} · 点击定位原稿`"
-                          @click="
-                            locateIssue({
-                              index,
-                              field: 'sequence',
-                              label: sequenceProblem(index),
-                              source: step.source_row,
-                            })
-                          "
-                        >
-                          <ElIcon><WarningFilled /></ElIcon>
-                        </button>
-                      </div>
-                    </td>
-                    <td
-                      :class="{ 'route-cell--issue': textProblem(index, 'name') }"
-                      :title="textProblem(index, 'name')"
-                    >
-                      <span
-                        v-if="readonly"
-                        class="route-cell-value"
-                        :title="`工序：${step.name}`"
-                        >{{
-                          step.team_name ||
-                          directory.items.find((team) => Number(team.id) === step.team_id)?.name ||
-                          '未关联班组'
-                        }}</span
-                      >
-                      <ElFormItem v-else :error="fieldErrors[`${index}.team`]">
-                        <ElSelect
-                          v-model="step.team_id"
-                          :disabled="readonly || busy"
-                          placeholder="选择班组"
-                          :aria-label="`工序 ${index + 1} 执行班组`"
-                          @change="teamChanged(index)"
-                          ><ElOption
-                            v-for="team in directory.items.filter(
-                              (team) =>
-                                team.active &&
-                                ['warehouse', 'production'].includes(team.kind || ''),
-                            )"
-                            :key="team.id"
-                            :value="Number(team.id)"
-                            :label="team.name" /></ElSelect
-                      ></ElFormItem>
-                    </td>
-                    <td
-                      class="route-instructions-cell"
-                      :class="{ 'route-cell--issue': textProblem(index, 'instructions') }"
-                      :title="textProblem(index, 'instructions')"
-                    >
-                      <span v-if="readonly" class="route-cell-value">{{
-                        step.instructions || '—'
-                      }}</span>
-                      <ElFormItem
-                        v-else
-                        :error="
-                          textProblem(index, 'instructions') || fieldErrors[`${index}.instructions`]
-                        "
-                        ><ElInput
-                          ref="instructionInputs"
-                          v-model="step.instructions"
-                          type="textarea"
-                          :autosize="{ minRows: 1, maxRows: 5 }"
-                          :readonly="readonly"
-                          :disabled="busy"
-                          maxlength="10000"
-                          :aria-label="`工序 ${index + 1} 工艺要求`"
-                      /></ElFormItem>
-                    </td>
-                    <td>
-                      <span v-if="readonly" class="route-cell-value">{{
-                        step.planned_quantity || '—'
-                      }}</span>
-                      <ElInput
-                        v-else
-                        v-model="step.planned_quantity"
-                        :readonly="readonly"
-                        :disabled="busy"
-                        maxlength="80"
-                        :aria-label="`工序 ${index + 1} 计划加工数量`"
-                      />
-                    </td>
-                    <td v-if="!readonly">
-                      <ElButton
-                        type="danger"
-                        link
-                        :disabled="busy || draft.steps.length < 2"
-                        :aria-label="`删除工序 ${index + 1}`"
-                        @click="removeStep(index)"
-                        >删除</ElButton
-                      >
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
+            <span v-if="sourceLoading" class="route-source-status" role="status">加载原工艺…</span>
+            <div v-if="sourceError" class="route-source-error" role="alert">
+              <span>{{ sourceError }}</span
+              ><ElButton link @click="loadSourceRoute">重新读取</ElButton>
+            </div>
+            <ProcessRouteAttachments
+              ref="attachments"
+              :route="draft"
+              :source-route="sourceRoute"
+              :documents="['word', 'drawing']"
+              :source-file="pendingWord"
+              :pending-drawings="pendingDrawings"
+              :editable="!readonly"
+              :disabled="busy"
+              :source-row="activeSource"
+              @remove-drawing="removeDrawing"
+              @remove-pending-drawing="removePending"
+            />
           </div>
-          <ElButton
-            v-if="!readonly"
-            class="route-add-step"
-            :disabled="busy || draft.steps.length >= 100"
-            @click="addStep"
-            >＋ 增加工序</ElButton
-          >
+        </template>
+        <CompactFormSection title="工艺信息" aria-label="工艺基本信息">
           <ElFormItem
-            v-if="!readonly && requiresReview"
-            class="route-import-confirmation"
-            :error="fieldErrors.imports"
+            label="流水号"
+            class="route-serials form-field--medium"
+            :required="!readonly"
+            :error="
+              fieldErrors.serials || (sourceFilename && !primarySerial.trim() ? '流水号未识别' : '')
+            "
           >
-            <ElCheckbox v-model="importsConfirmed" :disabled="busy"
-              >已核对自动填入的资料和工序</ElCheckbox
-            >
-            <span v-if="fieldErrors.imports" role="alert">{{ fieldErrors.imports }}</span>
-          </ElFormItem>
-          <ElFormItem
-            v-if="!readonly || draft.review_note"
-            label="备注"
-            class="route-review"
-            :error="fieldErrors.review"
-            ><p v-if="readonly" class="route-review-text">{{ draft.review_note }}</p>
+            <template #label
+              >流水号
+              <AutofillBadge
+                v-if="
+                  draft.source_data.receipt_fields?.serial_no &&
+                  draft.source_data.receipt_fields.serial_no.source_kind !== 'manual'
+                "
+                kind="document"
+                :source="
+                  draft.source_data.receipt_fields.serial_no.source_kind === 'excel'
+                    ? '订单表'
+                    : '工艺单'
+                "
+                :modified="
+                  primarySerial !==
+                  String(
+                    draft.source_data.receipt_fields.serial_no.parsed_value ??
+                      draft.source_data.receipt_fields.serial_no.value,
+                  )
+                "
+            /></template>
+            <strong v-if="readonly" class="route-serial-value">{{
+              primarySerial || '未填写'
+            }}</strong>
             <ElInput
               v-else
-              v-model="draft.review_note"
-              type="textarea"
-              :autosize="{ minRows: 1, maxRows: 3 }"
-              :readonly="readonly"
+              v-model="primarySerial"
+              :disabled="busy || draft.route_kind === 'rework'"
+              placeholder="填写流水号"
+              maxlength="80"
+              aria-label="流水号"
+            />
+            <span v-if="serialConflict" class="route-serial-conflict" role="alert">{{
+              serialConflict
+            }}</span>
+          </ElFormItem>
+          <ElFormItem label="材质" class="route-material-field form-field--medium">
+            <template #label>
+              材质
+              <AutofillBadge
+                v-if="
+                  draft.source_data.receipt_fields?.material_name &&
+                  draft.source_data.receipt_fields.material_name.source_kind !== 'manual'
+                "
+                kind="document"
+                :source="
+                  draft.source_data.receipt_fields.material_name.source_kind === 'excel'
+                    ? '订单表'
+                    : '工艺单'
+                "
+                :modified="
+                  draft.source_data.receipt_fields.material_name.parsed_value != null &&
+                  String(draft.source_data.receipt_fields.material_name.parsed_value) !==
+                    String(draft.source_data.receipt_fields.material_name.value)
+                "
+              />
+              <ElTooltip
+                v-if="draft.source_data.receipt_fields?.material_name?.alternative"
+                :content="`订单表：${draft.source_data.receipt_fields.material_name.alternative.value}；工艺单：${draft.source_data.receipt_fields.material_name.parsed_value ?? draft.source_data.receipt_fields.material_name.value}`"
+              >
+                <ElIcon
+                  class="route-material-difference"
+                  tabindex="0"
+                  role="img"
+                  aria-label="材质来源不一致"
+                  ><WarningFilled
+                /></ElIcon>
+              </ElTooltip>
+            </template>
+            <strong v-if="readonly" class="route-person-value">{{
+              draft.source_data.receipt_fields?.material_name?.value || '—'
+            }}</strong>
+            <ElInput
+              v-else
+              :model-value="String(draft.source_data.receipt_fields?.material_name?.value || '')"
+              aria-label="材质"
+              placeholder="填写材质"
+              maxlength="160"
               :disabled="busy"
-              placeholder="选填"
-              maxlength="2000"
-          /></ElFormItem>
+              @update:model-value="changeMaterial('material_name', $event)"
+            />
+          </ElFormItem>
+          <ElFormItem
+            label="工艺人员"
+            class="route-person-field form-field--medium"
+            :required="!readonly && !modifying"
+            :error="fieldErrors.person"
+          >
+            <strong
+              v-if="readonly || modifying"
+              class="route-person-value"
+              :class="{ 'route-value-missing': !draft.engineering_employee_name }"
+              ><PersonName :name="draft.engineering_employee_name || '未记录'"
+            /></strong>
+            <TeamEmployeeInput
+              v-else-if="engineeringTeam"
+              v-model="person"
+              :team-id="Number(engineeringTeam.id)"
+              label="工艺人员"
+              :invalid="!!fieldErrors.person"
+              :disabled="busy"
+            />
+            <span v-else>请先配置工艺班组</span>
+          </ElFormItem>
+          <ElFormItem
+            v-if="showModifier"
+            label="修改人员"
+            class="route-person-field form-field--medium"
+            :required="!readonly && modifying"
+            :error="fieldErrors.modifier"
+          >
+            <strong
+              v-if="readonly"
+              class="route-person-value"
+              :class="{ 'route-value-missing': !draft.modified_employee_name }"
+              ><PersonName :name="draft.modified_employee_name || '未记录'"
+            /></strong>
+            <TeamEmployeeInput
+              v-else-if="engineeringTeam"
+              v-model="modifier"
+              :team-id="Number(engineeringTeam.id)"
+              label="修改人员"
+              :invalid="!!fieldErrors.modifier"
+              :disabled="busy"
+            />
+          </ElFormItem>
+          <ElFormItem
+            v-if="readonly && (draft.updated_at || draft.created_at)"
+            label="更新时间"
+            class="route-time-field"
+          >
+            <span class="route-time-value">{{
+              formatDateTime(draft.updated_at || draft.created_at)
+            }}</span>
+          </ElFormItem>
+        </CompactFormSection>
+        <div v-if="draft.rework_request" class="route-rework-context">
+          <table aria-label="返工问题信息">
+            <colgroup>
+              <col class="rework-label-column" />
+              <col />
+              <col class="rework-label-column" />
+              <col />
+              <col class="rework-label-column" />
+              <col />
+            </colgroup>
+            <tbody>
+              <tr>
+                <th scope="row">返工问题</th>
+                <td colspan="5" class="rework-problem-title">
+                  {{
+                    draft.rework_request.problem_names?.join('、') || draft.rework_request.reason
+                  }}
+                </td>
+              </tr>
+              <tr v-if="draft.rework_request.problem_names?.length">
+                <th scope="row">问题说明</th>
+                <td colspan="5">
+                  {{ draft.rework_request.problem_notes || draft.rework_request.reason }}
+                </td>
+              </tr>
+              <tr
+                v-if="
+                  draft.rework_request.problem_notes &&
+                  draft.rework_request.problem_notes !== draft.rework_request.reason
+                "
+              >
+                <th scope="row">返工原因</th>
+                <td colspan="5">{{ draft.rework_request.reason }}</td>
+              </tr>
+              <tr>
+                <th scope="row">涉及班组</th>
+                <td colspan="5" class="rework-team-cells">
+                  <div class="rework-team-grid" role="list" aria-label="涉及班组">
+                    <span
+                      v-for="team in draft.rework_request.problem_teams"
+                      :key="team.id"
+                      role="listitem"
+                      >{{ team.name }}</span
+                    >
+                    <span v-if="!draft.rework_request.problem_teams?.length">未指定</span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">提交班组</th>
+                <td>{{ draft.rework_request.requesting_team_name || '未记录' }}</td>
+                <th scope="row">提交人</th>
+                <td><PersonName :name="draft.rework_request.requested_by || '未记录'" /></td>
+                <th scope="row">返工轮次</th>
+                <td>{{ draft.rework_request.round }}</td>
+              </tr>
+              <tr>
+                <th scope="row">问题来源</th>
+                <td>
+                  {{
+                    draft.rework_request.inspection_id
+                      ? draft.rework_request.inspection_kind === 'patrol'
+                        ? '巡检'
+                        : '检验'
+                      : draft.rework_request.requesting_team_id
+                        ? '班组反馈'
+                        : '来源未记录'
+                  }}<template v-if="draft.rework_request.inspection_id">
+                    #{{ draft.rework_request.inspection_id }}</template
+                  >
+                </td>
+                <th scope="row">物料所在班组</th>
+                <td>{{ draft.rework_request.team_name }}</td>
+                <th scope="row">原加工记录</th>
+                <td>#{{ draft.rework_request.rework_of_id }}</td>
+              </tr>
+              <tr>
+                <th scope="row">返工批次</th>
+                <td>{{ draft.rework_request.batch_no }}</td>
+                <th scope="row">返工数量</th>
+                <td>
+                  {{ draft.rework_request.quantity }} 件 · {{ draft.rework_request.weight }} kg
+                </td>
+                <th scope="row">接回正常工序</th>
+                <td>
+                  {{ draft.rework_request.resume_step_name || draft.rework_request.team_name }}
+                </td>
+              </tr>
+              <tr v-if="draft.rework_request.dimension_result">
+                <th scope="row">尺寸检查</th>
+                <td colspan="5">{{ draft.rework_request.dimension_result }}</td>
+              </tr>
+              <tr v-if="draft.rework_request.weight_result">
+                <th scope="row">重量检查</th>
+                <td colspan="5">{{ draft.rework_request.weight_result }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <section ref="editorMain" class="route-editor-main" aria-label="工艺内容">
+          <div
+            v-if="!readonly && fieldErrors.attachments"
+            class="route-attachment-warning"
+            role="alert"
+          >
+            {{ fieldErrors.attachments }}
+          </div>
+          <CompactFormSection title="工序明细">
+            <template #actions>
+              <ElPopover
+                v-if="issueCount"
+                v-model:visible="issuesOpen"
+                trigger="click"
+                placement="bottom-start"
+                :width="280"
+              >
+                <template #reference>
+                  <button type="button" class="route-issue-summary" :aria-expanded="issuesOpen">
+                    <ElIcon><WarningFilled /></ElIcon>{{ issueCount }} 处待核对
+                    <ElIcon class="route-issue-chevron"><ArrowDown /></ElIcon>
+                  </button>
+                </template>
+                <div class="route-issue-list" aria-label="工艺待核对项">
+                  <button
+                    v-for="issue in stepIssues"
+                    :key="`${issue.index}.${issue.field}`"
+                    type="button"
+                    class="route-issue-choice"
+                    @click="locateIssue(issue)"
+                  >
+                    <ElIcon><WarningFilled /></ElIcon>
+                    <span
+                      >{{ issue.label
+                      }}<small
+                        >第 {{ issue.index + 1 }} 道 ·
+                        {{ draft.steps[issue.index]?.name || '未命名工序' }}</small
+                      ></span
+                    >
+                    <span class="route-issue-locate">定位</span>
+                  </button>
+                  <span
+                    v-if="unrecognizedRows"
+                    class="route-issue-unrecognized"
+                    role="img"
+                    aria-label="原稿含未识别行"
+                    :title="`${unrecognizedRows}未识别`"
+                    ><ElIcon><WarningFilled /></ElIcon>{{ unrecognizedRows }}未识别</span
+                  >
+                </div>
+              </ElPopover>
+            </template>
+            <div class="form-field--full">
+              <div class="route-step-table-wrap">
+                <table
+                  class="route-step-table"
+                  :class="{ 'route-step-table--readonly': readonly }"
+                  aria-label="工艺工序"
+                >
+                  <colgroup>
+                    <col class="route-col-sequence" />
+                    <col class="route-col-name" />
+                    <col />
+                    <col class="route-col-quantity" />
+                    <col v-if="!readonly" class="route-col-actions" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>序号</th>
+                      <th>执行班组</th>
+                      <th>工艺要求</th>
+                      <th>计划加工数量</th>
+                      <th v-if="!readonly">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template v-for="(step, index) in draft.steps" :key="index">
+                      <tr
+                        class="route-edit-step"
+                        :data-notice-route-step="index"
+                        tabindex="-1"
+                        @focusin="focusOriginal(step.source_row)"
+                      >
+                        <td
+                          class="route-sequence-cell"
+                          :class="{ 'route-cell--issue': sequenceProblem(index) }"
+                          :title="sequenceProblem(index)"
+                        >
+                          <div class="route-sequence-field">
+                            <ElTooltip
+                              v-if="step.source_row"
+                              :content="`工艺单 · 自动填入 · 原文行 ${step.source_row}`"
+                              placement="top"
+                            >
+                              <span
+                                class="route-import-marker route-step-import"
+                                role="img"
+                                aria-label="自动填入"
+                                tabindex="0"
+                                >导</span
+                              >
+                            </ElTooltip>
+                            <span v-if="readonly" class="route-cell-value">{{
+                              step.sequence_no >= 0 ? step.sequence_no : '—'
+                            }}</span>
+                            <ElFormItem
+                              v-else
+                              :error="sequenceProblem(index) || fieldErrors[`${index}.sequence`]"
+                              ><ElInputNumber
+                                v-model="step.sequence_no"
+                                :min="0"
+                                :max="999"
+                                :controls="false"
+                                :disabled="readonly || busy"
+                                :aria-label="`工序 ${index + 1} 序号`"
+                            /></ElFormItem>
+                            <button
+                              v-if="sequenceProblem(index)"
+                              type="button"
+                              class="route-cell-marker"
+                              :aria-label="sequenceProblem(index)"
+                              :title="`${sequenceProblem(index)} · 点击定位原稿`"
+                              @click="
+                                locateIssue({
+                                  index,
+                                  field: 'sequence',
+                                  label: sequenceProblem(index),
+                                  source: step.source_row,
+                                })
+                              "
+                            >
+                              <ElIcon><WarningFilled /></ElIcon>
+                            </button>
+                          </div>
+                        </td>
+                        <td
+                          :class="{ 'route-cell--issue': textProblem(index, 'name') }"
+                          :title="textProblem(index, 'name')"
+                        >
+                          <span
+                            v-if="readonly"
+                            class="route-cell-value"
+                            :title="`工序：${step.name}`"
+                            >{{
+                              step.team_name ||
+                              directory.items.find((team) => Number(team.id) === step.team_id)
+                                ?.name ||
+                              '未关联班组'
+                            }}</span
+                          >
+                          <ElFormItem v-else :error="fieldErrors[`${index}.team`]">
+                            <ElSelect
+                              v-model="step.team_id"
+                              :disabled="readonly || busy"
+                              placeholder="选择班组"
+                              :aria-label="`工序 ${index + 1} 执行班组`"
+                              @change="teamChanged(index)"
+                              ><ElOption
+                                v-for="team in directory.items.filter(
+                                  (team) =>
+                                    team.active &&
+                                    ['warehouse', 'production'].includes(team.kind || ''),
+                                )"
+                                :key="team.id"
+                                :value="Number(team.id)"
+                                :label="team.name" /></ElSelect
+                          ></ElFormItem>
+                        </td>
+                        <td
+                          class="route-instructions-cell"
+                          :class="{ 'route-cell--issue': textProblem(index, 'instructions') }"
+                          :title="textProblem(index, 'instructions')"
+                        >
+                          <span v-if="readonly" class="route-cell-value">{{
+                            step.instructions || '—'
+                          }}</span>
+                          <ElFormItem
+                            v-else
+                            :error="
+                              textProblem(index, 'instructions') ||
+                              fieldErrors[`${index}.instructions`]
+                            "
+                            ><ElInput
+                              ref="instructionInputs"
+                              v-model="step.instructions"
+                              type="textarea"
+                              :autosize="{ minRows: 1, maxRows: 5 }"
+                              :readonly="readonly"
+                              :disabled="busy"
+                              maxlength="10000"
+                              :aria-label="`工序 ${index + 1} 工艺要求`"
+                          /></ElFormItem>
+                        </td>
+                        <td>
+                          <span v-if="readonly" class="route-cell-value">{{
+                            step.planned_quantity || '—'
+                          }}</span>
+                          <ElInput
+                            v-else
+                            v-model="step.planned_quantity"
+                            :readonly="readonly"
+                            :disabled="busy"
+                            maxlength="80"
+                            :aria-label="`工序 ${index + 1} 计划加工数量`"
+                          />
+                        </td>
+                        <td v-if="!readonly">
+                          <ElButton
+                            type="danger"
+                            link
+                            :disabled="busy || draft.steps.length < 2"
+                            :aria-label="`删除工序 ${index + 1}`"
+                            @click="removeStep(index)"
+                            >删除</ElButton
+                          >
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+              <ElButton
+                v-if="!readonly"
+                class="route-add-step"
+                :disabled="busy || draft.steps.length >= 100"
+                @click="addStep"
+                >＋ 增加工序</ElButton
+              >
+              <ImportedDataConfirmation
+                v-if="!readonly && requiresReview"
+                v-model="importsConfirmed"
+                class="route-import-confirmation"
+                label="已核对自动填入的资料和工序"
+                :error="fieldErrors.imports"
+                :disabled="busy"
+              />
+            </div>
+          </CompactFormSection>
+          <CompactFormSection v-if="!readonly || draft.review_note">
+            <ElFormItem
+              label="备注"
+              class="route-review form-field--full"
+              :error="fieldErrors.review"
+              ><p v-if="readonly" class="route-review-text">{{ draft.review_note }}</p>
+              <ElInput
+                v-else
+                v-model="draft.review_note"
+                type="textarea"
+                :autosize="{ minRows: 1, maxRows: 3 }"
+                :readonly="readonly"
+                :disabled="busy"
+                placeholder="选填"
+                maxlength="2000"
+            /></ElFormItem>
+          </CompactFormSection>
           <details
             v-if="
               Object.keys(draft.source_data.receipt_fields || {}).some(
@@ -1088,25 +1154,27 @@ onMounted(async () => {
           </details>
           <details class="route-extra-info">
             <summary>其他信息</summary>
-            <ElFormItem label="工艺名称"
-              ><span v-if="readonly" class="route-readonly-value">{{ draft.title || '—' }}</span
-              ><ElInput
-                v-else
-                v-model="draft.title"
-                :readonly="readonly"
-                :disabled="busy"
-                maxlength="160"
-                placeholder="未填写时使用流水号"
-            /></ElFormItem>
-            <p v-if="draft.created_at" class="route-document-times">
-              创建时间：{{ formatDateTime(draft.created_at)
-              }}<span v-if="draft.updated_at"
-                >更新时间：{{ formatDateTime(draft.updated_at) }}</span
-              >
-            </p>
+            <CompactFormSection>
+              <ElFormItem label="工艺名称" class="form-field--long"
+                ><span v-if="readonly" class="route-readonly-value">{{ draft.title || '—' }}</span
+                ><ElInput
+                  v-else
+                  v-model="draft.title"
+                  :readonly="readonly"
+                  :disabled="busy"
+                  maxlength="160"
+                  placeholder="未填写时使用流水号"
+              /></ElFormItem>
+              <p v-if="draft.created_at" class="route-document-times form-field--full">
+                创建时间：{{ formatDateTime(draft.created_at)
+                }}<span v-if="draft.updated_at"
+                  >更新时间：{{ formatDateTime(draft.updated_at) }}</span
+                >
+              </p>
+            </CompactFormSection>
           </details>
         </section>
-      </div>
+      </FormWorkspace>
     </ElForm>
     <template #footer>
       <span class="route-footer-summary"
@@ -1174,22 +1242,6 @@ onMounted(async () => {
 .route-step-import {
   grid-column: 1;
   grid-row: 1;
-  margin: 0;
-}
-.route-import-confirmation {
-  margin: 12px 0;
-}
-.route-import-confirmation :deep(.el-form-item__content) {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.route-import-confirmation span[role='alert'] {
-  font-size: 12px;
-  color: var(--el-color-danger);
-}
-.route-import-toolbar {
-  justify-content: flex-end;
   margin: 0;
 }
 .route-schedule-link {
@@ -1328,9 +1380,6 @@ onMounted(async () => {
   border: 1px solid var(--el-color-danger-light-7);
   border-radius: 12px;
 }
-.route-identity {
-  margin-bottom: 12px;
-}
 .route-serial-value {
   color: var(--primary);
   font-size: 18px;
@@ -1358,11 +1407,18 @@ onMounted(async () => {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
-.route-comparison {
-  display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
+.route-documents {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.route-source-status,
+.route-source-error {
+  font-size: 12px;
+  color: var(--muted);
+}
+.route-source-error {
+  color: var(--el-color-danger);
 }
 .route-editor-main {
   min-width: 0;
@@ -1375,33 +1431,6 @@ onMounted(async () => {
 .route-file-actions .el-button[aria-invalid='true'] {
   border-color: var(--el-color-danger);
   color: var(--el-color-danger);
-}
-.route-panel-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 34px;
-  margin-bottom: 12px;
-}
-.route-panel-heading > strong {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-}
-.route-section-title {
-  margin-right: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-}
-.route-section-title::before {
-  content: '';
-  width: 3px;
-  height: 14px;
-  border-radius: 2px;
-  background: #54866f;
 }
 .route-issue-summary {
   display: inline-flex;
@@ -1480,98 +1509,16 @@ onMounted(async () => {
 }
 .route-file-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 .route-file-actions .el-button {
-  height: 30px;
-  padding: 0 9px;
-  font-size: 12px;
-  --el-button-text-color: var(--accent-blue);
-  --el-button-border-color: #c4d6fc;
-  --el-button-hover-text-color: #1d4ed8;
-  --el-button-hover-bg-color: #eff5ff;
-  --el-button-hover-border-color: #93b4fa;
-}
-.route-file-actions .el-button + .el-button {
+  flex: 1 1 100%;
   margin-left: 0;
-}
-.process-route-dialog
-  .route-file-actions
-  .el-button:not(:disabled):not(.is-loading):not(.is-link):not(.is-text) {
-  background: linear-gradient(180deg, #fffffffa, #f0f5ff 55%, #e3edff);
-  box-shadow:
-    inset 0 1px 0 #fff,
-    inset 0 -1px 0 #2563eb12,
-    0 2px 4px #1c42700d;
-}
-.process-route-dialog .route-file-actions .el-button:not(:disabled):hover {
-  border-color: #91b0ee;
-  box-shadow:
-    inset 0 1px 0 #fff,
-    0 3px 7px #2563eb24;
-}
-.route-summary {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  min-height: 32px;
-}
-.route-summary :deep(.el-form-item) {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  min-width: 0;
-  margin: 0;
-}
-.route-summary :deep(.el-form-item__label) {
-  display: inline-flex;
-  flex: 0 0 76px;
-  flex-wrap: nowrap;
-  align-items: center;
-  justify-content: flex-start;
-  height: 32px;
-  line-height: 32px;
-  margin: 0;
-  padding: 0 8px 0 0;
-  color: #677970;
-  font-size: 12px;
-  white-space: nowrap;
-}
-.route-summary :deep(.el-form-item__content) {
-  flex: 1;
-  min-width: 0;
-  min-height: 32px;
-  line-height: 32px;
-}
-.route-summary .route-serials {
-  flex: 1.4 1 240px;
-  max-width: 100%;
-}
-.route-summary .route-person-field {
-  flex: 1 1 170px;
-  max-width: 100%;
-}
-.route-summary .route-material-field {
-  flex: 1 1 170px;
-  max-width: 100%;
 }
 .route-material-difference {
   margin-left: 5px;
   color: #9b702e;
-}
-.route-summary .route-time-field {
-  flex: 0 0 226px;
-}
-.route-summary :deep(.el-input__wrapper),
-.route-summary :deep(.person-trigger) {
-  min-height: 32px;
-  height: 32px;
-}
-.route-summary :deep(.team-employee),
-.route-summary :deep(.processing-person-input) {
-  width: 100%;
-  max-width: none;
 }
 .route-readonly-value {
   min-height: 32px;
@@ -1593,7 +1540,7 @@ onMounted(async () => {
   color: var(--text);
 }
 .route-col-sequence {
-  width: 110px;
+  width: 96px;
 }
 .route-col-name {
   width: 130px;
@@ -1608,7 +1555,7 @@ onMounted(async () => {
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 12px 10px;
+  padding: 8px 10px;
   background: #edf3ef;
   border-bottom: 1px solid var(--el-border-color);
   color: #52665b;
@@ -1618,7 +1565,7 @@ onMounted(async () => {
 }
 .route-step-table td {
   position: relative;
-  padding: 10px;
+  padding: 7px 8px;
   border-top: 1px solid var(--el-border-color);
   vertical-align: middle;
   text-align: center;
@@ -1729,9 +1676,6 @@ onMounted(async () => {
 .route-add-step {
   margin: 12px 0 0;
 }
-.route-review {
-  margin: 20px 0 0;
-}
 .route-review-text {
   margin: 0;
   white-space: pre-wrap;
@@ -1740,7 +1684,7 @@ onMounted(async () => {
   line-height: 1.7;
 }
 .route-extra-info {
-  margin-top: 20px;
+  margin-top: 12px;
   font-size: 12px;
   color: var(--muted);
 }
@@ -1765,10 +1709,6 @@ onMounted(async () => {
   font-size: 12px;
 }
 @media (max-width: 1150px) {
-  .route-comparison {
-    grid-template-columns: 160px minmax(0, 1fr);
-    gap: 16px;
-  }
   .route-col-name {
     width: 104px;
   }
@@ -1786,9 +1726,6 @@ onMounted(async () => {
   }
 }
 @media (max-width: 900px) {
-  .route-comparison {
-    grid-template-columns: 140px minmax(0, 1fr);
-  }
   .route-rework-context {
     overflow-x: auto;
   }
@@ -1800,11 +1737,6 @@ onMounted(async () => {
   }
   .route-step-table {
     min-width: 560px;
-  }
-}
-@media (max-width: 760px) {
-  .route-comparison.route-comparison--attachments {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 @media (prefers-reduced-motion: reduce) {

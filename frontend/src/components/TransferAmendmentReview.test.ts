@@ -36,6 +36,7 @@ async function render(value = fixture()) {
   vi.spyOn(transferAmendmentApi, 'get').mockResolvedValue(value)
   wrapper = mount(TransferAmendmentReview, {
     props: { amendmentId: value.id, showTransferLink: true },
+    global: { stubs: { PersonName: { props: ['name'], template: '<span>{{ name }}</span>' } } },
   })
   await flushPromises()
 }

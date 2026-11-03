@@ -3,11 +3,19 @@ import { Refresh } from '@element-plus/icons-vue'
 import { ElIcon, ElMenu, ElMenuItem, ElSubMenu, type MenuInstance } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { isAdmin } from '@/stores/auth'
+import { authState, currentUser, isAdmin, isTeamAccount } from '@/stores/auth'
 import { appPinia } from '@/stores/access'
 import { useSidebarStore } from '@/stores/sidebar'
 import { teamDirectory, refreshTeamDirectory } from '@/stores/teamDirectory'
-import { configuredTeamWorkspaces } from '@/config/teamWorkspaces'
+import {
+  configuredTeamWorkspaces,
+  resolveTeamWorkspaceSection,
+  teamCanProcess,
+  teamCanReallocate,
+  teamWorkspaceModuleFor,
+  teamWorkspaceModulesFor,
+} from '@/config/teamWorkspaces'
+import type { Team } from '@/services/adminApi'
 import FactoryNavIcon from './FactoryNavIcon.vue'
 
 const props = withDefaults(
@@ -41,15 +49,65 @@ const activeGroup = computed(() =>
           : 'teams',
 )
 const workspaces = computed(() => configuredTeamWorkspaces(teamDirectory.items))
-const activeIndex = computed(() => route.path)
-const routeGroups = computed(() => [activeGroup.value])
+function capabilities(team: Team) {
+  const warehouse = team.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse'
+  const manageWarehouse =
+    warehouse &&
+    (isAdmin.value ||
+      (isTeamAccount.value &&
+        currentUser.value?.active &&
+        !authState.currentUserError &&
+        String(currentUser.value.team_id) === String(team.id)))
+  return [
+    warehouse,
+    Boolean(manageWarehouse),
+    teamCanReallocate(team),
+    teamCanProcess(team),
+    team.code === 'FACTORY-QC',
+  ] as const
+}
+const currentTeam = computed(
+  () =>
+    workspaces.value.find(({ team }) => team && route.path === `/team-workspaces/${team.id}`)?.team,
+)
+const currentSection = computed(() =>
+  currentTeam.value
+    ? resolveTeamWorkspaceSection(route.query, ...capabilities(currentTeam.value))
+    : null,
+)
+const activeIndex = computed(() => {
+  if (currentTeam.value && currentSection.value)
+    return `team-${currentTeam.value.id}:${teamWorkspaceModuleFor(currentSection.value)?.value}`
+  if (route.path === '/process-routes')
+    return route.query.kind === 'rework' ? 'engineering:rework' : 'engineering:normal'
+  return route.path
+})
+const routeGroups = computed(() => [
+  activeGroup.value,
+  ...(currentTeam.value ? [`team-${currentTeam.value.id}`] : []),
+  ...(route.path === '/process-routes' ? ['engineering'] : []),
+])
+function modulesFor(team: Team) {
+  return teamWorkspaceModulesFor(...capabilities(team))
+}
+function moduleLocation(team: Team, module: ReturnType<typeof modulesFor>[number]) {
+  const remembered = sidebar.workspaceModules[`${team.id}:${module.value}`]
+  const section = module.sections.find((item) => item.value === remembered) || module.sections[0]!
+  return sidebar.workspaceLocation(String(team.id), section.value)
+}
+function moduleCount(team: Team, module: string) {
+  const counts = sidebar.workspaceCounts[String(team.id)]
+  return module === 'movement' ? counts?.pending : module === 'quality' ? counts?.quality : 0
+}
 const waitingForDirectory = computed(
   () => route.path.startsWith('/team-workspaces/') && !teamDirectory.loaded,
 )
 const groupIndexes = computed(() => [
   'factory',
   'management',
+  'engineering',
   'teams',
+  ...workspaces.value.flatMap(({ team }) => (team ? [`team-${team.id}`] : [])),
   'materials',
   ...(isAdmin.value ? ['settings'] : []),
 ])
@@ -58,6 +116,7 @@ let disposed = false
 let initialized = false
 let syncing = false
 let revealIndex: string | null = null
+let previousActiveIndex = ''
 let observer: ResizeObserver | undefined
 
 function revealMenu(): void {
@@ -123,18 +182,23 @@ async function restoreNavigation(): Promise<void> {
     return
   }
   // Wait until team links exist before restoring selection and scroll position.
-  const changedPage = sidebar.page !== activeIndex.value
-  if (changedPage) {
-    sidebar.page = activeIndex.value
+  const changedPage = sidebar.page !== route.path
+  const changedModule = previousActiveIndex && previousActiveIndex !== activeIndex.value
+  if (changedPage || changedModule || route.query.notice) {
+    sidebar.page = route.path
     sidebar.opened = routeGroups.value
   }
+  previousActiveIndex = activeIndex.value
   await nextTick()
   if (!ready) return
   initialized = true
   syncMenu()
   requestReveal(changedPage ? activeIndex.value : sidebar.opened.at(-1) || activeIndex.value)
 }
-watch([activeIndex, () => routeGroups.value.join('/'), waitingForDirectory], restoreNavigation)
+watch(
+  [activeIndex, () => routeGroups.value.join('/'), waitingForDirectory, () => route.query.notice],
+  restoreNavigation,
+)
 watch(
   () => props.compact,
   async (compact) => {
@@ -268,14 +332,28 @@ const materialLinks = computed(() => [
               >当前</span
             ></template
           >
-          <ElMenuItem
-            index="/process-routes"
+          <ElSubMenu
+            index="engineering"
+            data-nav-index="engineering"
             aria-label="工艺工作台"
-            :aria-current="route.path === '/process-routes' ? 'page' : undefined"
-            ><ElIcon class="factory-nav__team-icon" aria-hidden="true"
-              ><FactoryNavIcon name="records" /></ElIcon
-            ><span>工艺</span></ElMenuItem
+            class="factory-nav__team"
           >
+            <template #title
+              ><ElIcon class="factory-nav__team-icon" aria-hidden="true"
+                ><FactoryNavIcon name="records" /></ElIcon
+              ><span>工艺</span></template
+            >
+            <ElMenuItem
+              v-for="kind in ['normal', 'rework']"
+              :key="kind"
+              :index="`engineering:${kind}`"
+              :route="{ path: '/process-routes', query: kind === 'rework' ? { kind } : {} }"
+              class="factory-nav__workspace-link"
+              :aria-label="kind === 'normal' ? '正常工艺' : '返工工艺'"
+              :aria-current="activeIndex === `engineering:${kind}` ? 'page' : undefined"
+              >{{ kind === 'normal' ? '正常工艺' : '返工工艺' }}</ElMenuItem
+            >
+          </ElSubMenu>
           <ElMenuItem
             index="/business-people"
             aria-label="业务班组"
@@ -326,17 +404,41 @@ const materialLinks = computed(() => [
           >
           <template v-else>
             <template v-for="{ profile, team } in workspaces" :key="profile.code">
-              <ElMenuItem
+              <ElSubMenu
                 v-if="team"
-                :index="`/team-workspaces/${team.id}`"
+                :index="`team-${team.id}`"
+                :data-nav-index="`team-${team.id}`"
                 class="factory-nav__team"
                 :aria-label="profile.name + '工作台'"
-                :aria-current="activeIndex === `/team-workspaces/${team.id}` ? 'page' : undefined"
               >
-                <ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"
-                  ><FactoryNavIcon :name="teamIcons[profile.code]" /></ElIcon
-                ><span>{{ profile.name }}</span>
-              </ElMenuItem>
+                <template #title
+                  ><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"
+                    ><FactoryNavIcon :name="teamIcons[profile.code]" /></ElIcon
+                  ><span>{{ profile.name }}</span></template
+                >
+                <ElMenuItem
+                  v-for="module in modulesFor(team)"
+                  :key="module.value"
+                  :index="`team-${team.id}:${module.value}`"
+                  :route="moduleLocation(team, module)"
+                  class="factory-nav__workspace-link"
+                  :aria-label="`${profile.name} / ${module.label}`"
+                  :aria-current="
+                    activeIndex === `team-${team.id}:${module.value}` ? 'page' : undefined
+                  "
+                  ><span>{{ module.label }}</span
+                  ><span
+                    v-if="moduleCount(team, module.value)"
+                    class="factory-nav__count"
+                    :aria-label="`${module.value === 'movement' ? '待签收' : '待处理质量问题'} ${moduleCount(team, module.value)} 项`"
+                    >{{
+                      moduleCount(team, module.value)! > 99
+                        ? '99+'
+                        : moduleCount(team, module.value)
+                    }}</span
+                  >
+                </ElMenuItem>
+              </ElSubMenu>
               <ElMenuItem
                 v-else
                 :index="'missing-' + profile.code"
@@ -537,6 +639,17 @@ const materialLinks = computed(() => [
   margin-left: auto;
   font-size: 11px;
 }
+.factory-nav__count {
+  min-width: 18px;
+  margin-left: auto;
+  padding: 0 5px;
+  border-radius: 5px;
+  color: var(--action-warm);
+  background: var(--action-warm-soft);
+  font-size: 11px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
 .factory-nav__module-icon {
   flex-shrink: 0;
   height: 20px;
@@ -705,5 +818,19 @@ const materialLinks = computed(() => [
     --el-menu-item-height: 40px;
     --el-menu-sub-item-height: 34px;
   }
+}
+.factory-nav:not(.factory-nav--compact) :deep(.factory-nav__team > .el-sub-menu__title) {
+  height: 34px;
+  padding-left: 30px;
+  font-size: 13px;
+}
+.factory-nav:not(.factory-nav--compact) :deep(.el-menu-item.factory-nav__workspace-link) {
+  height: 32px;
+  padding-inline: 48px 12px;
+  font-size: 13px;
+}
+.factory-nav:not(.factory-nav--compact)
+  :deep(.el-menu-item.factory-nav__workspace-link.is-active::before) {
+  left: 36px;
 }
 </style>

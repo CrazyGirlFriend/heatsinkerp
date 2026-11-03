@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import FormWorkspace from '../components/FormWorkspace.vue'
+import CompactFormSection from '../components/CompactFormSection.vue'
+import PersonName from '@/components/PersonName.vue'
 import PageBackButton from '@/components/PageBackButton.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
@@ -191,80 +194,82 @@ onBeforeUnmount(() => {
                 config.enabled ? '已启用' : '已停用'
               }}</ElTag>
             </header>
-            <ElForm label-position="top" :disabled="busy" @submit.prevent="save">
-              <div class="integration-form-grid">
-                <ElFormItem label="主系统地址" class="integration-wide"
-                  ><ElInput
-                    v-model="form.base_url"
-                    aria-label="主系统地址"
-                    placeholder="https://主系统域名"
-                    maxlength="500"
-                    autocomplete="off"
-                  />
-                  <p class="field-hint">
-                    允许地址：{{
-                      config.allowed_origins.length
-                        ? config.allowed_origins.join('、')
-                        : '未设置，请联系部署管理员'
-                    }}
-                  </p></ElFormItem
-                >
-                <ElFormItem label="访问令牌（Bearer Token）" class="integration-wide"
-                  ><ElInput
-                    v-model="form.token"
-                    aria-label="访问令牌"
-                    type="password"
-                    show-password
-                    autocomplete="new-password"
-                    maxlength="4096"
-                    :placeholder="config.has_token ? '已保存 · 留空不修改' : '填写主系统只读令牌'"
-                  />
-                  <p class="field-hint">
-                    {{
-                      config.has_token
-                        ? '令牌已加密保存；更换地址时须重新填写。'
-                        : '使用主系统只读令牌，不是本系统登录密码。'
-                    }}
-                  </p></ElFormItem
-                >
-                <ElFormItem label="请求超时（秒）"
-                  ><ElInputNumber
-                    v-model="form.timeout_seconds"
-                    aria-label="请求超时（秒）"
-                    :min="0.1"
-                    :max="30"
-                    :step="0.1"
-                    :precision="1"
-                    controls-position="right"
-                /></ElFormItem>
-                <ElFormItem label="资料查询"
-                  ><ElSwitch
-                    v-model="form.enabled"
-                    aria-label="启用资料查询"
-                    active-text="启用"
-                    inactive-text="停用"
-                  />
-                  <p class="field-hint">停用不影响库存及转料。</p></ElFormItem
-                >
-              </div>
-              <footer class="integration-actions">
-                <ElButton
-                  type="primary"
-                  native-type="submit"
-                  :loading="saving"
-                  :disabled="busy || !config.key_ready"
-                  >保存配置</ElButton
-                ><ElButton :disabled="busy" @click="load">重新加载</ElButton
-                ><span v-if="dirty" class="field-hint">未保存</span>
-              </footer>
-            </ElForm>
+            <FormWorkspace>
+              <ElForm label-position="top" :disabled="busy" @submit.prevent="save">
+                <CompactFormSection>
+                  <ElFormItem label="主系统地址" class="form-field--full"
+                    ><ElInput
+                      v-model="form.base_url"
+                      aria-label="主系统地址"
+                      placeholder="https://主系统域名"
+                      maxlength="500"
+                      autocomplete="off"
+                    />
+                    <p class="field-hint">
+                      允许地址：{{
+                        config.allowed_origins.length
+                          ? config.allowed_origins.join('、')
+                          : '未设置，请联系部署管理员'
+                      }}
+                    </p></ElFormItem
+                  >
+                  <ElFormItem label="访问令牌（Bearer Token）" class="form-field--full"
+                    ><ElInput
+                      v-model="form.token"
+                      aria-label="访问令牌"
+                      type="password"
+                      show-password
+                      autocomplete="new-password"
+                      maxlength="4096"
+                      :placeholder="config.has_token ? '已保存 · 留空不修改' : '填写主系统只读令牌'"
+                    />
+                    <p class="field-hint">
+                      {{
+                        config.has_token
+                          ? '令牌已加密保存；更换地址时须重新填写。'
+                          : '使用主系统只读令牌，不是本系统登录密码。'
+                      }}
+                    </p></ElFormItem
+                  >
+                  <ElFormItem class="form-field--long" label="请求超时（秒）"
+                    ><ElInputNumber
+                      v-model="form.timeout_seconds"
+                      aria-label="请求超时（秒）"
+                      :min="0.1"
+                      :max="30"
+                      :step="0.1"
+                      :precision="1"
+                      controls-position="right"
+                  /></ElFormItem>
+                  <ElFormItem class="form-field--long" label="资料查询"
+                    ><ElSwitch
+                      v-model="form.enabled"
+                      aria-label="启用资料查询"
+                      active-text="启用"
+                      inactive-text="停用"
+                    />
+                    <p class="field-hint">停用不影响库存及转料。</p></ElFormItem
+                  >
+                </CompactFormSection>
+                <footer class="integration-actions">
+                  <ElButton
+                    type="primary"
+                    native-type="submit"
+                    :loading="saving"
+                    :disabled="busy || !config.key_ready"
+                    >保存配置</ElButton
+                  ><ElButton :disabled="busy" @click="load">重新加载</ElButton
+                  ><span v-if="dirty" class="field-hint">未保存</span>
+                </footer>
+              </ElForm>
+            </FormWorkspace>
             <dl class="connection-meta" aria-label="连接状态">
               <dt>令牌</dt>
               <dd>{{ config.has_token ? '已配置' : '未配置' }}</dd>
               <dt>最近保存</dt>
               <dd>
                 {{ config.updated_at ? formatDateTime(config.updated_at) : '尚未保存'
-                }}<span v-if="config.updated_by"> · {{ config.updated_by }}</span>
+                }}<span v-if="config.updated_by"> · <PersonName :name="config.updated_by" /></span>
               </dd>
             </dl>
           </section>
@@ -366,14 +371,6 @@ onBeforeUnmount(() => {
 .integration-panel-heading .field-hint {
   margin: 0;
 }
-.integration-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 16px;
-}
-.integration-wide {
-  grid-column: 1 / -1;
-}
 .field-hint {
   color: var(--muted);
   font-size: 13px;
@@ -432,10 +429,6 @@ onBeforeUnmount(() => {
   border-radius: 12px;
   overflow: hidden;
 }
-.integration-panel :deep(.el-form-item__label) {
-  font-size: 14px;
-  font-weight: 500;
-}
 .integration-panel :deep(.el-form-item__content) {
   display: block;
 }
@@ -447,9 +440,6 @@ onBeforeUnmount(() => {
 @media (max-width: 680px) {
   .integration-panel {
     padding: 16px;
-  }
-  .integration-form-grid {
-    grid-template-columns: minmax(0, 1fr);
   }
   .integration-test {
     flex-wrap: wrap;

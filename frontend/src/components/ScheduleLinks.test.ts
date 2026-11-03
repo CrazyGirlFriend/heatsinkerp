@@ -3,8 +3,10 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { ElSelect } from 'element-plus'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ScheduleRouteLink from './ScheduleRouteLink.vue'
+import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import ScheduleReworkPanel from './ScheduleReworkPanel.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
+import { processRouteApi } from '@/services/processRouteApi'
 import { scheduleSummaryFixture } from '@/testFixtures/inventorySchedule'
 import { routeFixture } from '@/testFixtures/processRoute'
 import type { ProductionSchedule, ScheduleTask } from '@/types/productionSchedule'
@@ -53,6 +55,7 @@ const task: ScheduleTask = {
 let wrapper: VueWrapper
 const global = {
   stubs: {
+    ProcessRouteAttachments: true,
     AppDialog: {
       props: ['modelValue'],
       template: '<div v-if="modelValue"><slot/><slot name="footer"/></div>',
@@ -76,7 +79,8 @@ function select(label: string, value: number) {
   item.vm.$emit('update:modelValue', value)
   item.vm.$emit('change', value)
 }
-async function routeEditor() {
+async function routeEditor(twoRoutes = false) {
+  vi.spyOn(processRouteApi, 'detail').mockImplementation(async (id) => ({ ...routeFixture, id }))
   const step = routeFixture.steps[0]!
   vi.spyOn(productionScheduleApi, 'routeOptions').mockResolvedValue([
     {
@@ -90,6 +94,20 @@ async function routeEditor() {
         { ...step, team_id: 1, name: '库房', serial_nos: [] },
       ],
     },
+    ...(twoRoutes
+      ? [
+          {
+            id: 34,
+            title: '修改工艺',
+            version: 3,
+            published_at: '',
+            steps: [
+              { ...step, team_id: 2, name: '研磨', serial_nos: [] },
+              { ...step, team_id: 1, name: '库房', serial_nos: [] },
+            ],
+          },
+        ]
+      : []),
   ])
   wrapper = mount(ScheduleRouteLink, { props: { task }, global })
   await flushPromises()
@@ -154,4 +172,45 @@ describe('排期与工艺关联', () => {
       undefined,
     ])
   })
+})
+
+it('switches engineering originals with the explicit route selection without adding an order preview', async () => {
+  await routeEditor(true)
+  const attachments = wrapper.getComponent(ProcessRouteAttachments)
+  expect(attachments.props('route').id).toBe(33)
+  expect(attachments.props('documents')).toEqual(['word', 'drawing'])
+  select('关联工艺', 34)
+  await flushPromises()
+  expect(wrapper.getComponent(ProcessRouteAttachments).props('route').id).toBe(34)
+  const save = vi.spyOn(productionScheduleApi, 'linkRoute').mockResolvedValue(task)
+  await click('确认关联')
+  expect(save).toHaveBeenCalledWith(
+    task.id,
+    expect.objectContaining({
+      route_id: 34,
+      route_version: 3,
+      mappings: [{ schedule_id: node.id, expected_version: 3, step_index: 0 }],
+    }),
+  )
+})
+
+it('does not restore stale engineering originals after choosing another route', async () => {
+  await routeEditor(true)
+  let finish!: (route: typeof routeFixture) => void
+  vi.mocked(processRouteApi.detail).mockImplementation((id) =>
+    id === 34
+      ? new Promise((resolve) => {
+          finish = resolve
+        })
+      : Promise.resolve({ ...routeFixture, id }),
+  )
+  select('关联工艺', 34)
+  await flushPromises()
+  expect(wrapper.findComponent(ProcessRouteAttachments).exists()).toBe(false)
+  expect(wrapper.text()).toContain('读取工艺资料')
+  select('关联工艺', 33)
+  await flushPromises()
+  finish({ ...routeFixture, id: 34 })
+  await flushPromises()
+  expect(wrapper.getComponent(ProcessRouteAttachments).props('route').id).toBe(33)
 })

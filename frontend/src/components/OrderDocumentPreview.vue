@@ -10,6 +10,7 @@ const props = withDefaults(
     routeId: number
     taskId?: number
     file?: File
+    loadPreview?: (signal: AbortSignal) => Promise<Blob>
     thumbnail?: boolean
   }>(),
   { thumbnail: true },
@@ -33,11 +34,13 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const blob = props.file
-      ? await productionScheduleApi.previewOrder(props.file, controller.signal)
-      : props.taskId
-        ? await productionScheduleApi.orderPreview(props.taskId, controller.signal)
-        : await processRouteApi.orderPreview(props.routeId, controller.signal)
+    const blob = props.loadPreview
+      ? await props.loadPreview(controller.signal)
+      : props.file
+        ? await productionScheduleApi.previewOrder(props.file, controller.signal)
+        : props.taskId
+          ? await productionScheduleApi.orderPreview(props.taskId, controller.signal)
+          : await processRouteApi.orderPreview(props.routeId, controller.signal)
     if (current !== generation) return
     url.value = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }))
   } catch {
@@ -53,6 +56,7 @@ defineExpose({ open })
 watch(
   [
     () => props.file,
+    () => props.loadPreview,
     () => (props.file ? '' : props.taskId ? `task:${props.taskId}` : `route:${props.routeId}`),
   ],
   load,
@@ -83,7 +87,7 @@ onBeforeUnmount(() => {
       @click="open"
     >
       <iframe
-        :src="`${url}#toolbar=0&navpanes=0&zoom=75,0,0`"
+        :src="`${url}#toolbar=0&navpanes=0&view=Fit`"
         title="订单表原件"
         tabindex="-1"
         referrerpolicy="no-referrer"

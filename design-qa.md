@@ -381,3 +381,61 @@ final result: passed for the verified desktop views; deployment result is record
 - 前端排期与通知 46 项通过；并发执行时旧任务编辑测试首次超过 5 秒，单 worker 重跑该文件 7 项全部通过。最后通知及班组明细 13 项重新通过。类型检查、生产构建、定向 ESLint/Ruff、格式和差异检查通过；保留既有 500 kB 分包提示。
 - 截图：output/playwright/schedule-notices-20261027/，01 管理员收件箱，03 通知跳转排期，04 班组收件箱，05 窄屏，06 班组排期。未做生产 MySQL 压测或部署。
 - 最终看板截图 07-board-regression.png：原有数量与时间条、真实分批起止和上游冲突仍正确展示；页面无横向溢出。唯一自动化 Chrome PID 75410 已退出，console/pageerror 为空。本地前后端继续运行，未提交、推送或部署。
+
+---
+
+# 2026-11-03 · 将选定排期原型嵌入正式页面
+
+## 范围与视觉依据
+
+用户选定截图：`/var/folders/6p/1rl9s8bn6h1d034mwzxcb_5w0000gn/T/codex-clipboard-d1ac458d-3776-49a6-856e-48953c619e65.png`（2794 × 1320，约 2× 密度）。其源实现为现有 `prototypes/production-scheduling`。正式页面为 `http://127.0.0.1:5179/production-schedules`，Vue 组件接真实接口，未嵌入 iframe 或静态图片。
+
+证据目录：`output/playwright/schedule-integration-20261103/`。
+- 原型与实现均使用 Chrome，原型看板 `06-source-board.png` 与嵌入看板 `12-final-comparison.png` 均为 1397 × 660 CSS px、DPR 1 的组件截图。在同一次图像输入中对照。正式页视口 1675 × 830，原型页按看板区域匹配视口，避免侧栏和浏览器画框造成比例误判。
+- 交互：`09-selected-flow.png`、`10-date-picker.png`；窄屏：`11-responsive.png`（1280 × 900）。全尺寸看板截图可清楚辨认 13px 时间条、细网格与左右列，不另行放大局部图像。
+- 真实数据：`13-live-final.png`（1440 × 1000）；真实节点详情 `02-node-detail.png`；筛选抽屉 `03-filter.png`；空状态 `04-empty.png`。
+- 对照夹具仅通过当前 Playwright 会话拦截 GET 列表响应，不写数据库，也未引入正式源码。验证完已移除拦截并重新读取真实列表：1 张任务、1 个已填写库房批次、8 道待填写工序。
+
+## 发现与修正
+
+1. P2（已修）：旧通用工具栏的玻璃底色覆盖看板样式。限定在新看板内移除外框、渐变及多余查询按钮，保留回车搜索和刷新。`01-live.png` → `12-final-comparison.png`。
+2. P2（已修）：展开全部按钮被弹性工具栏推到日期旁边。限制搜索工具区宽度，使收起/展开位于搜索与筛选旁。`07-embedded-board.png` → `12-final-comparison.png`。
+3. P2（已修）：同一班组的多个批次在概要线上重复叠色。收起行按班组计划起止范围汇总，展开行仍逐批显示，重叠时自动分道；不把不同工序的同名班组合并。
+4. P2（已修）：负数批次显示 ID 不能直接请求节点详情。点击详情还原父排期 ID，已用组件测试和真实节点详情验证。
+5. 夹具修正：样例父节点状态最初全部写成 pending，与已完成批次不一致。修正夹具父节点状态后再次截图对照，正式逻辑仍依据服务端实际状态，不在前端猜测完成状态。
+
+## 五项视觉检查
+
+- 字体：沿用 HeatSink Inter / PingFang SC / Microsoft YaHei，14px 流水号、13px 班组与时间条、12px 表头，数量使用等宽数字。窄条先隐藏条内数量，左侧数量列与点击详情保持可见。
+- 间距：54px 紧凑工具栏，68px 时间轴表头，236px 名称列、76px 数量列；普通工序 52px，双通道 88px。看板随页面撑满，日期/网格在自身容器滚动；1280px 下工具可见，左列固定。
+- 颜色：使用选定原型的班组配色、白底、浅灰细网格、周末浅底和当天竖线。完成勾号、实际在库定位图标、部分转出箭头、逾期角标分别表达状态；不单靠颜色。班组在库数据不会分摊到批次。
+- 图像与图标：复用应用现有 Tabler / Element Plus 图标及品牌，无生成图片，无替换品牌。API 未提供排期班组负责人的可靠字段，因此不填入原型中的虚构姓名头像。终交期使用标准旗帜图标，与原型方格旗为非阻断差异。
+- 文案与数据：列表只保留流水号、数量、班组及时间条；完整业务资料进入现有详情。未填写开始时间只显示交期点，未填写计划保留待填写入口。无批次在库或加工完成数时，不复制原型的批次实色加工进度；展开后的批次以已确认计划与实际转出数据表达，实际库存显示在班组旁。
+
+## 功能验证与边界
+
+- 5 个相关测试文件、28 项测试通过：真实任务接入、分页/筛选/排序/导出、工厂时区、重叠批次、批次显式前后关联、重复班组、父节点详情 ID、空状态、日期小窗、全屏。
+- Chrome 验证：展开/收起、显式批次链三条连接、四个无关批次淡化、Escape 取消选择、周/双周切换、日期小窗应用、搜索空状态、真实节点详情和调度管理表。
+- 生产构建（含 vue-tsc）通过；限定修改文件 ESLint / Prettier 及 diff 空白检查通过。构建有已有的大 chunk 提醒。
+- 全局看板沿用现有权限和详情/计划编辑流程；原型的内存拖拽改期未直接写入生产数据。调度页仍使用管理表。
+- 普通模式保留完整工具区；全屏模式沿用既有隐藏搜索/筛选的行为，仅显示时间控制和退出全屏。
+- 真实接口回到正式页面后，浏览器 pageerror 为空。测试浏览器按会话关闭，服务保留供用户查看。
+
+final result: passed — 本次嵌入范围内，无未处理的 P0/P1/P2；上述数据来源差异为有意保留，未将原型样例伪装为生产数据。
+
+
+## 2026-11-03 — Watermelon 仓库管理试用页
+
+- 入口：`http://127.0.0.1:5179/team-workspaces/1?tab=warehouse&ui=watermelon`。右上角「返回原版」立即移除查询参数；原入口恢复 WarehouseManagement，零试用样式、motion-v 资源加载（Chrome performance 验证）。
+- 所有试用组件、页面副本、样式、测试、许可和移除程序集中在 `frontend/src/components/watermelon`。生产页面只保留一处带标记的异步接入；原仓库管理组件内不再有 Watermelon 引用。保留其他任务的新表单修改，没有整文件 git 回退。
+- 适配真实 Watermelon 源码：Filter Disclosure、Fluid Tabs、Edit Profile 和 Continuous Pagination。新增/编辑弹窗沿用源组件的浅灰外壳、白色嵌入内容、左右编辑/预览、黑色圆角操作和 300/20/0.8 弹簧参数。仓位卡片为本业务设计，未宣称官方仓库组件。完整 MIT 许可见 NOTICE。
+- 组件化：Button、Filter、Segmented、Search、Switch、Dialog、Pagination 共 7 个通用组件，不依赖仓库 API/类型；页头切换和详情批次切换复用同一 Segmented。各组件自带样式，按钮加载样式不再依赖工具栏，仓库弹窗专属样式限定 wm-warehouse-dialog。README 提供 API 与跨业务接入示例。
+- 紧凑布局：仓位格由 92px 降至 70px，去掉重复箱子图标。Chrome 在 1440px 下验证每排 10 格，在 1024px 下无横向溢出。
+- 信息约束：仓位格只呈现名称、状态；流水号、数量和批次留在详情。页面压缩重复标题，没有添加解释段落。
+- 可逆验证：4 项移除测试通过，包含预演不修改、移除保留周边变更、npm 失败保留入口、入口被改动时停止。依赖卸载还在临时 package/lock 副本中执行过，motion-v/framer-motion/motion-dom/motion-utils/hey-listen 全部消失。
+- UI 验证：33 项测试通过（原仓库 11 + 试用工具栏 4 + 通用组件 18）；类型检查、生产构建通过；新文件 ESLint 通过。构建有已有大 chunk 提醒。
+- Chrome 只读验收：返回原版、新增弹窗及取消、开关、筛选/重置、未分配/仓位切换、Escape、减少动画、仓位与详情、1024px 视口无横向溢出。最终重新加载后 pageerror=[]、console warnings=[]；筛选再次点击可关闭；原生弹窗中的分段选择和方向键切换通过。没有保存业务数据。自动化只使用一个 Chrome 会话，验收后关闭并确认进程退出。
+- 本轮真实本地仓位为 1，未改动该记录；有数据截图仅浏览器 GET 拦截使用 48 个示例并注明，finally 清理拦截、恢复真实数据。截图与官方组件在同次图像输入对比，编辑弹窗使用相同 1200×682 视口。源组件 6 字段适配为仓位 2 字段，因此主动缩短宽高；无未处理的 P0/P1/P2。
+- 证据：output/playwright/watermelon-preview/{reference-edit,isolated-editor,warehouse-fixture,warehouse-detail,warehouse-narrow,original-restored,warehouse-live-final}.png。脚本 check-warehouse.js 和 check-isolation.js。
+
+final result: passed

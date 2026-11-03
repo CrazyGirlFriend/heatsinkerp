@@ -30,7 +30,12 @@ afterEach(() => {
 function render() {
   wrapper = mount(MaterialDeliveryDialog, {
     props: { modelValue: true, transfer: fixture() },
-    global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
+    global: {
+      stubs: {
+        ElDialog: { template: '<div><slot/><slot name="footer"/></div>' },
+        SerialRouteAttachments: true,
+      },
+    },
   })
 }
 describe('batch document delivery maintenance', () => {

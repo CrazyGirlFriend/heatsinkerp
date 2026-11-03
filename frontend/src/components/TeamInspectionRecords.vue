@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
@@ -361,7 +362,9 @@ onBeforeUnmount(() => {
         align="center"
         show-overflow-tooltip
       />
-      <ElTableColumn prop="inspector_name" label="检验人" min-width="110" align="center" />
+      <ElTableColumn prop="inspector_name" label="检验人" min-width="110" align="center"
+        ><template #default="{ row }"><PersonName :name="row.inspector_name" /></template
+      ></ElTableColumn>
       <ElTableColumn label="检查类型" width="90" align="center"
         ><template #default="{ row }">{{
           row.parent_id ? '复检' : row.kind === 'inspection' ? '检验' : '巡检'
@@ -443,13 +446,13 @@ onBeforeUnmount(() => {
         ><ElDescriptionsItem label="材质 / 尺寸"
           >{{ detail.material_name }} / {{ detail.specification || '—' }}</ElDescriptionsItem
         >
-        <ElDescriptionsItem label="检验人">{{ detail.inspector_name }}</ElDescriptionsItem
+        <ElDescriptionsItem label="检验人"
+          ><PersonName :name="detail.inspector_name" /></ElDescriptionsItem
         ><ElDescriptionsItem label="检查时间">{{
           formatDateTime(detail.checked_at)
         }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="原加工人">{{
-          detail.processor_name || '未登记'
-        }}</ElDescriptionsItem
+        <ElDescriptionsItem label="原加工人"
+          ><PersonName :name="detail.processor_name || '未登记'" /></ElDescriptionsItem
         ><ElDescriptionsItem label="加工记录编号">{{
           detail.processing_record_id || '历史未关联'
         }}</ElDescriptionsItem>
@@ -467,7 +470,9 @@ onBeforeUnmount(() => {
         <ElDescriptionsItem label="历史锁定解除时间">{{
           formatDateTime(detail.released_at)
         }}</ElDescriptionsItem
-        ><ElDescriptionsItem label="登记账号">{{ detail.created_by }}</ElDescriptionsItem>
+        ><ElDescriptionsItem label="登记账号"
+          ><PersonName :name="detail.created_by"
+        /></ElDescriptionsItem>
         <ElDescriptionsItem label="范围">{{
           detail.scope === 'full' ? '全检' : '抽检'
         }}</ElDescriptionsItem>

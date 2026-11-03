@@ -631,7 +631,7 @@
   --el-table-header-bg-color: var(--table-header-bg);
   --el-table-header-text-color: var(--subtle);
   --el-table-text-color: var(--text);
-  --el-table-border-color: var(--line);
+  --el-table-border-color: var(--table-grid-line, var(--line));
   --el-table-row-hover-bg-color: var(--table-hover-bg);
   --el-table-current-row-bg-color: var(--primary-soft);
   --el-fill-color-lighter: var(--surface);

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormWorkspace from '../components/FormWorkspace.vue'
+import CompactFormSection from '../components/CompactFormSection.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import TableExportButton from '@/components/TableExportButton.vue'
@@ -540,72 +542,84 @@ onMounted(() => void loadTeams())
       :show-close="!saving"
       @opened="focusEditor"
     >
-      <ElForm
-        ref="formRef"
-        :model="form"
-        label-position="top"
-        :show-message="false"
-        @submit.prevent="submitForm"
-      >
-        <div class="form-grid">
-          <ElFormItem label="班组编码" :error="fieldErrors.code" required>
-            <ElInput
-              ref="codeInput"
-              v-model="form.code"
-              :disabled="editingWarehouse"
-              maxlength="32"
-              autocomplete="off"
-              placeholder="请输入班组编码"
-              aria-label="班组编码"
-            />
-          </ElFormItem>
-          <ElFormItem label="班组名称" :error="fieldErrors.name" required>
-            <ElInput
-              ref="nameInput"
-              v-model="form.name"
-              :disabled="editingWarehouse"
-              maxlength="80"
-              autocomplete="off"
-              placeholder="请输入班组名称"
-              aria-label="班组名称"
-            />
-          </ElFormItem>
-          <ElFormItem label="显示顺序" :error="fieldErrors.sort_order">
-            <ElInputNumber
-              v-model="form.sort_order"
-              class="full-width"
-              :min="0"
-              :max="1000000"
-              :step="10"
-              controls-position="right"
-              aria-label="显示顺序"
-            />
-          </ElFormItem>
-          <ElFormItem label="班组状态">
-            <div class="switch-row">
-              <ElSwitch
-                v-model="form.active"
+      <FormWorkspace>
+        <ElForm
+          ref="formRef"
+          :model="form"
+          label-position="top"
+          :show-message="false"
+          @submit.prevent="submitForm"
+        >
+          <CompactFormSection title="班组资料">
+            <ElFormItem
+              class="form-field--long"
+              label="班组编码"
+              :error="fieldErrors.code"
+              required
+            >
+              <ElInput
+                ref="codeInput"
+                v-model="form.code"
                 :disabled="editingWarehouse"
-                inline-prompt
-                active-text="启"
-                inactive-text="停"
-                aria-label="启用班组"
+                maxlength="32"
+                autocomplete="off"
+                placeholder="请输入班组编码"
+                aria-label="班组编码"
               />
-              <span>{{ form.active ? '可接收转料、绑定账号' : '不再分配新业务' }}</span>
-            </div>
-          </ElFormItem>
-          <ElFormItem class="field-wide" label="班组说明"
-            ><ElInput
-              v-model="form.description"
-              type="textarea"
-              :rows="3"
-              maxlength="240"
-              aria-label="班组说明"
-          /></ElFormItem>
-        </div>
-        <ElAlert v-if="formError" :title="formError" type="error" show-icon :closable="false" />
-        <button class="dialog-submit-proxy" type="submit" tabindex="-1" aria-hidden="true" />
-      </ElForm>
+            </ElFormItem>
+            <ElFormItem
+              class="form-field--long"
+              label="班组名称"
+              :error="fieldErrors.name"
+              required
+            >
+              <ElInput
+                ref="nameInput"
+                v-model="form.name"
+                :disabled="editingWarehouse"
+                maxlength="80"
+                autocomplete="off"
+                placeholder="请输入班组名称"
+                aria-label="班组名称"
+              />
+            </ElFormItem>
+            <ElFormItem class="form-field--medium" label="显示顺序" :error="fieldErrors.sort_order">
+              <ElInputNumber
+                v-model="form.sort_order"
+                class="full-width"
+                :min="0"
+                :max="1000000"
+                :step="10"
+                controls-position="right"
+                aria-label="显示顺序"
+              />
+            </ElFormItem>
+            <ElFormItem class="form-field--long" label="班组状态">
+              <div class="switch-row">
+                <ElSwitch
+                  v-model="form.active"
+                  :disabled="editingWarehouse"
+                  inline-prompt
+                  active-text="启"
+                  inactive-text="停"
+                  aria-label="启用班组"
+                />
+                <span>{{ form.active ? '可接收转料、绑定账号' : '不再分配新业务' }}</span>
+              </div>
+            </ElFormItem>
+            <ElFormItem class="form-field--full" label="班组说明"
+              ><ElInput
+                v-model="form.description"
+                type="textarea"
+                :rows="2"
+                maxlength="240"
+                aria-label="班组说明"
+            /></ElFormItem>
+          </CompactFormSection>
+          <ElAlert v-if="formError" :title="formError" type="error" show-icon :closable="false" />
+          <button class="dialog-submit-proxy" type="submit" tabindex="-1" aria-hidden="true" />
+        </ElForm>
+      </FormWorkspace>
       <template #footer>
         <ElButton :disabled="saving" @click="editorOpen = false">取消</ElButton>
         <ElButton type="primary" :loading="saving" @click="submitForm">保存班组</ElButton>

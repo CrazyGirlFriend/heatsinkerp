@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import AppDialog from './AppDialog.vue'
 import TransferAmendmentDialog from './TransferAmendmentDialog.vue'
 import TransferAmendmentReview from './TransferAmendmentReview.vue'
@@ -746,7 +747,8 @@ watch(
       </div>
       <div class="material-details-with-attachments">
         <SerialRouteAttachments
-          v-if="current.serial_no || current.shared_serials?.length"
+          v-if="receipt || current.serial_no || current.shared_serials?.length"
+          :batch-no="current.batch_no"
           :items="
             (current.shared_unallocated && current.shared_serials?.length
               ? current.shared_serials
@@ -769,7 +771,7 @@ watch(
             <SerialUrgencyBadge :urgency="current.urgency" />
           </template>
           <template v-if="canConfirm" #receiver>
-            <span v-if="pageReceiver">{{ selectedReceiver?.name || '未选择' }}</span>
+            <PersonName v-if="pageReceiver" :name="selectedReceiver?.name || '未选择'" />
             <div v-else ref="receiptPersonCell" class="receipt-person-cell">
               <span class="required-mark" aria-hidden="true">*</span>
               <ReceiptPersonInput
@@ -855,7 +857,9 @@ watch(
                 <td>{{ loss.quantity }}</td>
                 <td>{{ loss.weight }}</td>
                 <td class="table-prose">{{ loss.reason }}</td>
-                <td>{{ loss.created_by }}<br />{{ formatDateTime(loss.created_at) }}</td>
+                <td>
+                  <PersonName :name="loss.created_by" /><br />{{ formatDateTime(loss.created_at) }}
+                </td>
               </tr>
             </tbody>
           </table>

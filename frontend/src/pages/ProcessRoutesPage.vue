@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from '@/components/PersonName.vue'
 import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
 import WorkspaceTable from '@/components/WorkspaceTable.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
@@ -6,7 +7,7 @@ import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { ArrowDown, Plus } from '@element-plus/icons-vue'
 import { ElAlert, ElButton, ElIcon, ElLoading, ElPopover, ElTag, ElTableColumn } from 'element-plus'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { businessNoticeApi, parseNotice } from '@/services/businessNoticeApi'
 import { focusNoticeTarget, noticeOpened, noticeFailed } from '@/utils/noticeFocus'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
@@ -21,6 +22,7 @@ import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute, ProcessRouteDrawing, ProcessRouteStep } from '@/types/processRoute'
 import { formatDateTime } from '@/utils/format'
 const location = useRoute()
+const router = useRouter()
 const noticeSection = ref('')
 const noticeStep = ref(0)
 let stopNoticeFocus: (() => void) | undefined
@@ -39,7 +41,7 @@ const canEdit = computed(
     (auth.isAdmin ||
       (auth.isTeamAccount && String(auth.currentUser?.team_id) === String(team.value?.id))),
 )
-const routeKind = ref<'normal' | 'rework'>('normal')
+const routeKind = ref<'normal' | 'rework'>(location.query.kind === 'rework' ? 'rework' : 'normal')
 const newMenuOpen = ref(false),
   pendingOnly = ref(false)
 function clearPending() {
@@ -49,6 +51,7 @@ function clearPending() {
 function createRework() {
   newMenuOpen.value = false
   routeKind.value = 'rework'
+  void router.replace({ query: { ...location.query, kind: 'rework' } })
   pendingOnly.value = true
   page.value = 1
   query.value = appliedQuery.value = ''
@@ -58,6 +61,10 @@ function changeKind(kind: 'normal' | 'rework') {
   if (kind === routeKind.value) return
   pendingOnly.value = false
   routeKind.value = kind
+  if ((location.query.kind === 'rework' ? 'rework' : 'normal') !== kind)
+    void router.replace({
+      query: { ...location.query, kind: kind === 'rework' ? kind : undefined },
+    })
   query.value = ''
   appliedQuery.value = ''
   items.value = []
@@ -279,6 +286,10 @@ async function focusReworkNotice() {
 watch(() => [location.query.business_notice, location.query.notice], openReworkNotice, {
   immediate: true,
 })
+watch(
+  () => location.query.kind,
+  (kind) => changeKind(kind === 'rework' ? 'rework' : 'normal'),
+)
 useLiveRefresh(load, {
   teamId: () => (team.value ? Number(team.value.id) : undefined),
   busy: () => loading.value || !!selected.value || creating.value,
@@ -660,15 +671,13 @@ onBeforeUnmount(() => {
         </ElTableColumn>
         <ElTableColumn
           label="工艺人员"
-          :width="routeKind === 'rework' ? 84 : undefined"
+          :width="routeKind === 'rework' ? 110 : undefined"
           :min-width="routeKind === 'normal' ? 110 : undefined"
           align="center"
           ><template #default="{ row }"
-            ><span :class="{ 'route-empty': !row.engineering_employee_name }">{{
-              row.engineering_employee_name || '—'
-            }}</span></template
-          ></ElTableColumn
-        >
+            ><span :class="{ 'route-empty': !row.engineering_employee_name }"
+              ><PersonName :name="row.engineering_employee_name || '—'" /></span></template
+        ></ElTableColumn>
         <ElTableColumn v-if="routeKind === 'normal'" label="修改人员" min-width="110" align="center"
           ><template #default="{ row }"
             ><span
@@ -678,7 +687,7 @@ onBeforeUnmount(() => {
                 row.modified_employee_id &&
                 row.modified_employee_id !== row.engineering_employee_id
               "
-              >{{ row.modified_employee_name }}</span
+              ><PersonName :name="row.modified_employee_name" /></span
             ><span v-else class="route-empty">—</span></template
           ></ElTableColumn
         >

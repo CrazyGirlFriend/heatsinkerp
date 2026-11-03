@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CompactFormSection from './CompactFormSection.vue'
 import { ElAlert, ElCheckbox, ElFormItem, ElInput } from 'element-plus'
 defineProps<{
   batchNo: string
@@ -11,21 +12,23 @@ defineEmits<{ 'update:reason': [value: string]; 'update:enabled': [value: boolea
 </script>
 
 <template>
-  <section class="quantity-clearance" aria-label="剩余件数清零">
+  <CompactFormSection class="quantity-clearance" title="剩余件数清零">
     <ElAlert
+      class="form-field--full"
       type="warning"
       :closable="false"
       show-icon
       :title="`批次 ${batchNo}：重量将全部转出，账面仍有 ${quantity} 件。`"
     />
     <ElCheckbox
+      class="form-field--full"
       :model-value="enabled"
       :aria-label="`${batchNo}清零剩余件数`"
       :disabled="disabled"
       @update:model-value="$emit('update:enabled', Boolean($event))"
       >同时清零剩余 {{ quantity }} 件</ElCheckbox
     >
-    <ElFormItem v-if="enabled" label="剩余件数清零原因（选填）">
+    <ElFormItem class="form-field--full" v-if="enabled" label="剩余件数清零原因（选填）">
       <ElInput
         :model-value="reason"
         :aria-label="`${batchNo}清零原因`"
@@ -38,14 +41,11 @@ defineEmits<{ 'update:reason': [value: string]; 'update:enabled': [value: boolea
         @update:model-value="$emit('update:reason', $event)"
       />
     </ElFormItem>
-  </section>
+  </CompactFormSection>
 </template>
 
 <style scoped>
 .quantity-clearance {
-  margin: 16px 0;
-}
-.quantity-clearance :deep(.el-alert) {
-  margin-bottom: 12px;
+  margin: 12px 0;
 }
 </style>

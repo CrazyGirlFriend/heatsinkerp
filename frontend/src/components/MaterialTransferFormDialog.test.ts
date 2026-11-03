@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { ElInputNumber, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialTransferFormDialog from './MaterialTransferFormDialog.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import {
   MaterialTransferApiError,
   materialTransferApi,
@@ -88,6 +89,7 @@ async function render(transfer: MaterialTransfer | null = null) {
     props: { modelValue: true, transfer },
     global: {
       stubs: {
+        SerialRouteAttachments: true,
         ElDialog: { template: '<div><slot name="header"/><slot/><slot name="footer"/></div>' },
       },
     },
@@ -563,4 +565,13 @@ it('hides piece fields after converting a countable transfer and never submits t
       delivery_quantity: null,
     }),
   )
+})
+
+it('keeps transfer originals bound to the issued batch while edited fields change', async () => {
+  await render(fixture())
+  const rail = wrapper.getComponent(SerialRouteAttachments)
+  expect(rail.props('batchNo')).toBe('TL20260906000001')
+  expect(rail.props('items')).toEqual([{ serialNo: 'HS-001', routeId: undefined }])
+  await wrapper.get('input[aria-label="流水号"]').setValue('HS-EDITED')
+  expect(rail.props('batchNo')).toBe('TL20260906000001')
 })

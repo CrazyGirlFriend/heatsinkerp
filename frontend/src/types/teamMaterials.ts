@@ -269,6 +269,8 @@ export interface WarehouseReceiptParams extends MaterialPageParams {
 export interface CreateWarehouseReceipt
   extends Partial<MaterialTransferDocumentFields>, SludgeMeasurement {
   process_route?: import('./processRoute').ReceiptProcessRoute
+  document_ids?: number[]
+  confirmed_imports?: boolean
   shared_serials?: SharedMaterialSerial[]
   serial_no: string
   material_name: string

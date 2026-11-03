@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ScheduleTaskBoard from './ScheduleTaskBoard.vue'
 import ScheduleDocuments from './ScheduleDocuments.vue'
 import ProductionScheduleGantt from './ProductionScheduleGantt.vue'
-import ProductionScheduleOverview from './ProductionScheduleOverview.vue'
+import ProductionScheduleTimeline from './ProductionScheduleTimeline.vue'
 import DeliverySchedules from './DeliverySchedules.vue'
 import TableExportButton from './TableExportButton.vue'
 import AppDrawer from './AppDrawer.vue'
@@ -116,10 +116,10 @@ async function render(path = '/production-schedules') {
           props: ['modelValue'],
           template: '<aside v-if="modelValue"><slot/><slot name="footer"/></aside>',
         },
-        ProductionScheduleOverview: {
+        ProductionScheduleTimeline: {
           props: ['tasks', 'teams', 'loading'],
           emits: ['open-node', 'open-task'],
-          template: '<div class="overview-stub"><slot name="view-actions"/></div>',
+          template: '<div class="overview-stub"><slot/><slot name="view-actions"/></div>',
         },
         ProductionScheduleGantt: {
           props: ['tasks', 'loading'],
@@ -193,7 +193,7 @@ describe('task scheduling board', () => {
   })
   it('focuses fullscreen on the timeline and preserves the current view and filters on exit', async () => {
     await render('/production-schedules?serial_no=S-001')
-    const overview = wrapper.getComponent(ProductionScheduleOverview)
+    const overview = wrapper.getComponent(ProductionScheduleTimeline)
     await wrapper.setProps({ fullscreen: true })
     expect(wrapper.find('.task-board__toolbar').exists()).toBe(false)
     expect(wrapper.find('.overview-stub .fullscreen-toggle').exists()).toBe(true)
@@ -205,7 +205,7 @@ describe('task scheduling board', () => {
     await flushPromises()
     expect(hooks.openDetail).toHaveBeenCalledWith(2)
     await wrapper.setProps({ fullscreen: false })
-    expect(wrapper.getComponent(ProductionScheduleOverview).vm).toBe(overview.vm)
+    expect(wrapper.getComponent(ProductionScheduleTimeline).vm).toBe(overview.vm)
     expect(wrapper.find('.task-board__toolbar .fullscreen-toggle').exists()).toBe(true)
     expect(wrapper.findComponent(TableExportButton).exists()).toBe(true)
     expect(wrapper.text()).not.toContain('新建任务排期')
@@ -217,7 +217,7 @@ describe('task scheduling board', () => {
   })
   it('opens the global overview by default and drills into the existing task and node details', async () => {
     await render()
-    const overview = wrapper.getComponent(ProductionScheduleOverview)
+    const overview = wrapper.getComponent(ProductionScheduleTimeline)
     expect(overview.props('tasks')).toEqual([task])
     expect(wrapper.findComponent(ProductionScheduleGantt).exists()).toBe(false)
     expect(wrapper.find('[aria-label="排期视图"]').exists()).toBe(false)
@@ -238,8 +238,8 @@ describe('task scheduling board', () => {
     ])
     expect(wrapper.find('.task-detail__notes').exists()).toBe(false)
     const documents = wrapper.getComponent(ScheduleDocuments)
-    expect(documents.find('.schedule-documents--layout').exists()).toBe(true)
-    expect(documents.find('.task-detail__route').exists()).toBe(true)
+    expect(documents.find('.schedule-documents.form-workspace--documents').exists()).toBe(true)
+    expect(documents.find('.form-workspace-content .task-detail__route').exists()).toBe(true)
     expect(documents.props('orderDocument')).toBeNull()
     expect(wrapper.text()).not.toContain('流水号信息')
 
@@ -274,7 +274,7 @@ describe('task scheduling board', () => {
     })
     expect(wrapper.getComponent(AppDrawer).props('modelValue')).toBe(false)
     expect(wrapper.get('.task-board__filter-count').text()).toBe('4')
-    expect(wrapper.getComponent(ProductionScheduleOverview).props('tasks')).toEqual([task])
+    expect(wrapper.getComponent(ProductionScheduleTimeline).props('tasks')).toEqual([task])
     expect(wrapper.findComponent(ProductionScheduleGantt).exists()).toBe(false)
     const data = wrapper.getComponent(TableExportButton).props('source')()!
     const exported = await data.load(new AbortController().signal, () => {})
@@ -365,8 +365,10 @@ describe('task scheduling board', () => {
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
       expect.objectContaining({ query: 'S-001', sort_order: 'asc', page: 1 }),
     )
-    select('最终交期排序').vm.$emit('change', 'desc')
+    await button('筛选')
+    select('最终交期排序').vm.$emit('update:modelValue', 'desc')
     await flushPromises()
+    await button('应用筛选')
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
       expect.objectContaining({ query: 'S-001', sort_order: 'desc', page: 1 }),
     )
@@ -477,7 +479,7 @@ describe('task scheduling board', () => {
     wrapper.getComponent(ScheduleTaskEditor).vm.$emit('saved', task)
     await flushPromises()
     await wrapper.setProps({ management: false })
-    wrapper.getComponent(ProductionScheduleOverview).vm.$emit('open-task', nextTask)
+    wrapper.getComponent(ProductionScheduleTimeline).vm.$emit('open-task', nextTask)
     await flushPromises()
     expect(wrapper.get('.task-detail__heading').text()).toContain('第二批交货')
     finishRefresh({ items: [task, nextTask], total: 2, page: 1, page_size: 10 })

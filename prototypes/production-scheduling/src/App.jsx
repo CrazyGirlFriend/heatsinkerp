@@ -18,7 +18,7 @@ import {
   Export,
   Factory,
   Circle,
-  Tray,
+  FlagCheckered,
   PencilSimple,
   Crosshair,
 } from "@phosphor-icons/react";
@@ -37,7 +37,13 @@ import {
   fromInput,
   lanes,
 } from "./data";
+import { traceBatch } from "./batch-flow";
 
+const BATCH_TOP = 7,
+  BATCH_HEIGHT = 34,
+  LANE_HEIGHT = 36;
+const stepHeight = (items) =>
+  Math.max(...items.map((b) => b.lane), 0) * LANE_HEIGHT + 52;
 const cx = (...values) => values.filter(Boolean).join(" ");
 const status = (b) =>
   b.sent === b.qty
@@ -245,6 +251,77 @@ function CalendarPicker({ range, setRange, close }) {
   );
 }
 
+function FlowConnections({ steps, links, range, headerHeight, dragging }) {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(0);
+  const arrowId = useId();
+  useEffect(() => {
+    const observer = new ResizeObserver(([entry]) =>
+      setWidth(entry.contentRect.width),
+    );
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+  const points = new Map();
+  let top = headerHeight;
+  for (const step of steps) {
+    const items = lanes(step.batches, 0.05);
+    for (const batch of items) {
+      const delta = dragging?.id === batch.id ? dragging.delta : 0;
+      points.set(batch.id, {
+        start: batch.start + delta,
+        end: batch.end + delta,
+        y: top + BATCH_TOP + batch.lane * LANE_HEIGHT + BATCH_HEIGHT / 2,
+      });
+    }
+    top += stepHeight(items);
+  }
+  const x = (time) => ((time - range[0]) / (range[1] - range[0])) * width;
+  return (
+    <svg ref={ref} className="flow-connections" aria-hidden="true">
+      <defs>
+        <marker
+          id={arrowId}
+          viewBox="0 0 6 6"
+          refX="6"
+          refY="3"
+          markerWidth="5"
+          markerHeight="5"
+          orient="auto"
+        >
+          <path d="M0 0 L6 3 L0 6" fill="currentColor" />
+        </marker>
+      </defs>
+      {width > 0 &&
+        links.map((link) => {
+          const from = points.get(link.from),
+            to = points.get(link.to);
+          if (
+            !from ||
+            !to ||
+            from.end <= range[0] ||
+            from.end > range[1] ||
+            to.start < range[0] ||
+            to.start >= range[1]
+          )
+            return null;
+          const x1 = x(from.end),
+            x2 = x(to.start),
+            midY = (from.y + to.y) / 2;
+          return (
+            <path
+              key={`${link.from}-${link.to}`}
+              data-from={link.from}
+              data-to={link.to}
+              d={`M${x1} ${from.y} H${x1 + 6} V${midY} H${x2 - 6} V${to.y} H${x2}`}
+              markerEnd={`url(#${arrowId})`}
+            />
+          );
+        })}
+    </svg>
+  );
+}
+
 function BatchBar({
   batch,
   team,
@@ -256,6 +333,9 @@ function BatchBar({
   hint,
   dragging,
   startDrag,
+  flow,
+  selected,
+  showDetail,
 }) {
   const shifted =
     dragging?.id === batch.id
@@ -278,15 +358,23 @@ function BatchBar({
         done && "done",
         batch.stock > 0 && "in-progress",
         batch.late && "late",
+        selected && "flow-selected",
+        flow && !flow.ids.has(batch.id) && "flow-muted",
+        flow?.ids.has(batch.id) && "flow-related",
         dragging?.id === batch.id && "dragging",
       )}
       style={{
         left: `${left}%`,
         width: `${Math.max(0.4, right - left)}%`,
-        top: small ? 14 + lane * 32 : 11 + lane * 40,
+        top: small ? 14 + lane * 32 : BATCH_TOP + lane * LANE_HEIGHT,
         "--team": team.color,
         "--team-pale": team.pale,
       }}
+      data-batch-id={small ? undefined : batch.id}
+      aria-pressed={small ? undefined : Boolean(selected)}
+      onDoubleClick={() =>
+        !small && showDetail({ orderId: order.id, batchId: batch.id })
+      }
       aria-label={`${order.serial} ${team.name}${small ? "" : ` 第${batch.number}批`} ${batch.qty}件 ${dateTime(batch.start)}至${dateTime(batch.end)} ${status(batch)}`}
       onPointerDown={(e) => !small && startDrag(e, batch)}
       onClick={(e) => {
@@ -351,7 +439,8 @@ export function App() {
     [dragging, setDragging] = useState(null),
     [toast, setToast] = useState(null),
     [fullscreen, setFullscreen] = useState(false),
-    [undo, setUndo] = useState(null);
+    [undo, setUndo] = useState(null),
+    [flowSelection, setFlowSelection] = useState(null);
   const scroll = useRef(null),
     datePopup = useRef(null),
     dragCleanup = useRef(null);
@@ -378,6 +467,20 @@ export function App() {
       (scope === "all" ||
         (scope === "risk" ? allBatches(o).some((b) => b.late) : complete(o))),
   );
+  const flowOrder = visible.find(
+    (o) => o.id === flowSelection?.orderId && expanded.has(o.id),
+  );
+  const flowBatch =
+    flowOrder &&
+    allBatches(flowOrder).find((b) => b.id === flowSelection.batchId);
+  const flow = flowBatch && traceBatch(flowOrder.links, flowBatch.id);
+  useEffect(() => {
+    if (
+      flowSelection &&
+      (!flowOrder || (teamFilter && flowBatch?.team !== teamFilter))
+    )
+      setFlowSelection(null);
+  }, [flowSelection, flowOrder, flowBatch?.team, teamFilter]);
   useEffect(() => {
     if (!toast) return;
     const id = setTimeout(() => setToast(null), 5000);
@@ -396,7 +499,10 @@ export function App() {
       if (e.key === "Escape") {
         setCalendarOpen(false);
         setHover(null);
-        if (!detail && !filterOpen) setFullscreen(false);
+        if (!detail && !filterOpen) {
+          if (flowSelection) setFlowSelection(null);
+          else setFullscreen(false);
+        }
       }
     };
     document.addEventListener("keydown", f);
@@ -404,7 +510,7 @@ export function App() {
       document.removeEventListener("keydown", f);
       dragCleanup.current?.();
     };
-  }, [detail, filterOpen]);
+  }, [detail, filterOpen, flowSelection]);
   function openDetail(value) {
     setHover(null);
     setDetail(value);
@@ -725,7 +831,16 @@ export function App() {
             ref={scroll}
             onScroll={() => setHover(null)}
           >
-            <div className="schedule-grid" style={{ "--days": days.length }}>
+            <div
+              className={cx("schedule-grid", flow && "has-flow")}
+              style={{ "--days": days.length }}
+              onClick={(e) => {
+                if (!e.target.closest("button")) {
+                  setFlowSelection(null);
+                  setHover(null);
+                }
+              }}
+            >
               <div className="grid-heading">
                 <div className="identity-heading">流水号 / 班组</div>
                 <div className="quantity-heading">
@@ -787,7 +902,24 @@ export function App() {
                         Math.max(...summary.map((b) => b.lane)) * 32 + 54,
                       );
                 return (
-                  <React.Fragment key={order.id}>
+                  <div
+                    key={order.id}
+                    className={cx(
+                      "order-group",
+                      flowOrder?.id === order.id && "flow-order",
+                    )}
+                  >
+                    {flowOrder?.id === order.id && flow && (
+                      <FlowConnections
+                        steps={order.steps.filter(
+                          (s) => !teamFilter || s.team === teamFilter,
+                        )}
+                        links={flow.links}
+                        range={range}
+                        headerHeight={rowHeight}
+                        dragging={dragging}
+                      />
+                    )}
                     <div
                       className={cx(
                         "schedule-row",
@@ -877,15 +1009,25 @@ export function App() {
                         )}
                         {order.due >= range[0] && order.due <= range[1] && (
                           <button
-                            className="due-marker"
+                            className={cx(
+                              "due-marker",
+                              order.due - range[0] < days.length * 0.2 &&
+                                "label-after",
+                              order.due < TODAY &&
+                                !complete(order) &&
+                                "overdue",
+                            )}
+                            data-order-id={order.id}
                             style={{
                               left: `${((order.due - range[0]) / days.length) * 100}%`,
                             }}
-                            title={`最终交期 ${dateTime(order.due)}`}
                             aria-label={`${order.serial} 最终交期 ${dateTime(order.due)}`}
                             onClick={() => openDetail({ orderId: order.id })}
                           >
-                            <Tray weight="duotone" size={17} />
+                            <FlagCheckered weight="duotone" size={19} />
+                            <span className="due-label">
+                              {dateTime(order.due)}
+                            </span>
                           </button>
                         )}
                         {!summary.some(
@@ -912,10 +1054,7 @@ export function App() {
                         .map((step, index) => {
                           const items = bars(order, step),
                             team = teams[step.team],
-                            height = Math.max(
-                              56,
-                              Math.max(...items.map((b) => b.lane)) * 40 + 58,
-                            ),
+                            height = stepHeight(items),
                             stock = step.batches.reduce(
                               (n, b) => n + b.stock,
                               0,
@@ -945,7 +1084,7 @@ export function App() {
                                     className="stock-pill"
                                     title={`当前在本班组 ${stock} 件`}
                                   >
-                                    <MapPin weight="fill" size={12} />
+                                    <MapPin weight="fill" size={14} />
                                     {stock}
                                   </span>
                                 )}
@@ -969,7 +1108,15 @@ export function App() {
                                     order={order}
                                     range={range}
                                     lane={b.lane}
-                                    open={openDetail}
+                                    open={(value) => {
+                                      setFlowSelection(value);
+                                      setHover(null);
+                                    }}
+                                    showDetail={openDetail}
+                                    flow={
+                                      flowOrder?.id === order.id ? flow : null
+                                    }
+                                    selected={flowSelection?.batchId === b.id}
                                     hint={setHover}
                                     dragging={dragging}
                                     startDrag={startDrag}
@@ -979,43 +1126,77 @@ export function App() {
                             </div>
                           );
                         })}
-                  </React.Fragment>
+                  </div>
                 );
               })}
             </div>
           </div>
           <footer className="board-footer">
-            <div className="team-legend">
-              {Object.entries(teams).map(([key, t]) => (
+            {flowBatch ? (
+              <div className="flow-selection" role="status">
+                <Circle
+                  weight="fill"
+                  size={9}
+                  color={teams[flowBatch.team].color}
+                />
+                <strong>{flowOrder.serial}</strong>
+                <span>
+                  {teams[flowBatch.team].name} · 第 {flowBatch.number} 批
+                </span>
+                <b>{flowBatch.qty} 件</b>
                 <button
-                  key={key}
-                  className={cx(teamFilter === key && "active")}
-                  onClick={() => setTeamFilter(teamFilter === key ? "" : key)}
-                  aria-pressed={teamFilter === key}
+                  className="flow-detail"
+                  onClick={() => openDetail(flowSelection)}
                 >
-                  <Circle size={8} weight="fill" color={t.color} />
-                  {t.name}
+                  查看详情 <ArrowRight size={14} />
                 </button>
-              ))}
-            </div>
-            <div className="status-legend">
-              <span>
-                <Check size={13} />
-                已转出
-              </span>
-              <span>
-                <MapPin weight="fill" size={13} />
-                物料在此
-              </span>
-              <span>
-                <WarningCircle weight="fill" size={13} />
-                逾期
-              </span>
-              <span>
-                <Tray size={13} />
-                最终交期
-              </span>
-            </div>
+                <IconButton
+                  label="取消批次选择"
+                  onClick={() => {
+                    setFlowSelection(null);
+                    setHover(null);
+                  }}
+                >
+                  <X size={15} />
+                </IconButton>
+              </div>
+            ) : (
+              <>
+                <div className="team-legend">
+                  {Object.entries(teams).map(([key, t]) => (
+                    <button
+                      key={key}
+                      className={cx(teamFilter === key && "active")}
+                      onClick={() =>
+                        setTeamFilter(teamFilter === key ? "" : key)
+                      }
+                      aria-pressed={teamFilter === key}
+                    >
+                      <Circle size={8} weight="fill" color={t.color} />
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
+                <div className="status-legend">
+                  <span>
+                    <Check size={13} />
+                    已转出
+                  </span>
+                  <span>
+                    <MapPin weight="fill" size={13} />
+                    物料在此
+                  </span>
+                  <span>
+                    <WarningCircle weight="fill" size={13} />
+                    逾期
+                  </span>
+                  <span>
+                    <FlagCheckered size={13} />
+                    最终交期
+                  </span>
+                </div>
+              </>
+            )}
             <span className="order-count">{visible.length} 个流水号</span>
           </footer>
         </section>

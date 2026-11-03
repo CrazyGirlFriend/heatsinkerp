@@ -42,7 +42,7 @@ it('previews the uploaded original file and opens the same layout without rebuil
   expect(productionScheduleApi.orderPreview).not.toHaveBeenCalled()
   expect(processRouteApi.orderPreview).not.toHaveBeenCalled()
   expect(wrapper.get('iframe').attributes('src')).toBe(
-    'blob:order-1#toolbar=0&navpanes=0&zoom=75,0,0',
+    'blob:order-1#toolbar=0&navpanes=0&view=Fit',
   )
   expect(wrapper.find('table').exists()).toBe(false)
   await wrapper.get('button[aria-label="放大订单表"]').trigger('click')
@@ -131,4 +131,23 @@ it('does not allocate a preview after unmounting while the request is pending', 
   finish(pdf)
   await flushPromises()
   expect(URL.createObjectURL).not.toHaveBeenCalled()
+})
+
+it('previews a warehouse original with its supplied loader and opens that same document', async () => {
+  const loadPreview = vi.fn().mockResolvedValue(pdf)
+  wrapper = mount(OrderDocumentPreview, {
+    props: { routeId: 0, loadPreview },
+    global: { stubs: { DocumentViewer: true } },
+  })
+  await flushPromises()
+  expect(loadPreview).toHaveBeenCalledWith(expect.any(AbortSignal))
+  expect(productionScheduleApi.previewOrder).not.toHaveBeenCalled()
+  expect(productionScheduleApi.orderPreview).not.toHaveBeenCalled()
+  expect(processRouteApi.orderPreview).not.toHaveBeenCalled()
+  await wrapper.get('[aria-label="放大订单表"]').trigger('click')
+  expect(wrapper.getComponent(DocumentViewer).props('pdf')).toBe('blob:order-1')
+  const signal = loadPreview.mock.calls[0]![0] as AbortSignal
+  wrapper.unmount()
+  expect(signal.aborted).toBe(true)
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:order-1')
 })

@@ -7,11 +7,15 @@ import type { ProcessRoute, ProcessRouteContext } from '@/types/processRoute'
 import WordDocumentPreview from './WordDocumentPreview.vue'
 import ProcessRouteDrawingPreview from './ProcessRouteDrawingPreview.vue'
 
-const props = defineProps<{
-  context?: ProcessRouteContext | null
-  serial?: string
-  shared?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    context?: ProcessRouteContext | null
+    serial?: string
+    shared?: boolean
+    documentsVisible?: boolean
+  }>(),
+  { documentsVisible: true },
+)
 const route = ref<ProcessRoute>(),
   error = ref(''),
   loading = ref(false)
@@ -69,8 +73,12 @@ onBeforeUnmount(() => ++generation)
         <button
           v-for="item in [
             { id: 'route', label: '工艺节点' },
-            { id: 'word', label: '工艺原稿' },
-            { id: 'drawing', label: '图纸' },
+            ...(documentsVisible === false
+              ? []
+              : [
+                  { id: 'word', label: '工艺原稿' },
+                  { id: 'drawing', label: '图纸' },
+                ]),
           ]"
           :key="item.id"
           type="button"

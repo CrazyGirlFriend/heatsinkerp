@@ -29,6 +29,7 @@ from .team_serial_history import router as serial_history_router
 from .transfer_amendments import router as transfer_amendments_router
 from .warehouse_inventory import router as warehouse_inventory_router
 from .warehouse_locations import router as warehouse_locations_router
+from .warehouse_receipt_documents import router as warehouse_receipt_documents_router
 
 router = APIRouter()
 router.include_router(admin_router)
@@ -57,5 +58,6 @@ router.include_router(notification_router)
 router.include_router(schedule_notices_router)
 router.include_router(dashboard_router)
 router.include_router(warehouse_locations_router)
+router.include_router(warehouse_receipt_documents_router)
 
 __all__ = ["public_router", "router"]

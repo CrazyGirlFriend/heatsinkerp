@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   ElAlert,
@@ -98,10 +99,9 @@ onBeforeUnmount(() => {
         ><template #default="{ row }">{{ row.serial_nos.join('、') }}</template></ElTableColumn
       >
       <ElTableColumn label="工艺人员" width="140" align="center"
-        ><template #default="{ row }">{{
-          row.engineering_employee_name || '—'
-        }}</template></ElTableColumn
-      >
+        ><template #default="{ row }"
+          ><PersonName :name="row.engineering_employee_name || '—'" /></template
+      ></ElTableColumn>
       <ElTableColumn label="导入时间" width="180" align="center"
         ><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></ElTableColumn
       >

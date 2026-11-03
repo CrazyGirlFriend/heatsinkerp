@@ -435,16 +435,21 @@ def prepare_dispatch_route(db, lot, line, source, serial, anonymous, user):
         if selected_route.route_kind != "rework":
             from .models import ProcessRouteOrderFile
             from .schedule_order_documents import route_order
+            from .warehouse_receipt_documents import has_confirmed_order
 
             order = route_order(db, selected_route.id, serial)
             legacy = db.get(ProcessRouteOrderFile, selected_route.id)
-            if not order and not (
-                legacy
-                and legacy.content
-                and (selected_route.source_data.get("order_document") or {}).get("serial_no")
-                == serial
+            if (
+                not order
+                and not (
+                    legacy
+                    and legacy.content
+                    and (selected_route.source_data.get("order_document") or {}).get("serial_no")
+                    == serial
+                )
+                and not has_confirmed_order(db, lot, serial)
             ):
-                raise HTTPException(422, "缺少：订单表，请调度上传后再出库")
+                raise HTTPException(422, "缺少：订单表，请调度上传或在库房入库时补充后再出库")
     if anonymous:
         if (
             selected_route is None

@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElSkeleton, ElSkeletonItem } from 'element-plus'
 import StatePanel from './StatePanel.vue'
+import FormWorkspace from './FormWorkspace.vue'
 import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import ScheduleRouteSelect from './ScheduleRouteSelect.vue'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -59,67 +60,62 @@ onBeforeUnmount(() => ++generation)
 </script>
 
 <template>
-  <div class="schedule-documents" :class="{ 'schedule-documents--layout': !!$slots.default }">
-    <aside class="schedule-document-rail" aria-label="排期附件缩略图" :aria-busy="loading">
-      <slot name="upload" />
-      <Transition name="schedule-document" mode="out-in">
-        <div v-if="loading" key="loading" class="schedule-document-loading" role="status">
-          <span>加载工艺资料…</span>
-          <ElSkeleton animated :throttle="0">
-            <template #template>
-              <div v-for="index in 2" :key="index" class="schedule-document-skeleton">
-                <ElSkeletonItem variant="image" class="schedule-document-skeleton-image" />
-                <ElSkeletonItem variant="text" />
-              </div>
-            </template>
-          </ElSkeleton>
-        </div>
-        <StatePanel
-          v-else-if="error"
-          key="error"
-          state="error"
-          :description="error"
-          @retry="load"
-        />
-        <div v-else-if="route" :key="route.id" class="schedule-document-preview">
-          <ScheduleRouteSelect
-            v-if="routes.length > 1"
-            v-model="selectedId"
-            :options="routes"
-            label="查看关联工艺"
+  <FormWorkspace class="schedule-documents">
+    <template #documents>
+      <aside class="schedule-document-rail" aria-label="排期附件缩略图" :aria-busy="loading">
+        <slot name="upload" />
+        <Transition name="schedule-document" mode="out-in">
+          <div v-if="loading" key="loading" class="schedule-document-loading" role="status">
+            <span>加载工艺资料…</span>
+            <ElSkeleton animated :throttle="0">
+              <template #template>
+                <div v-for="index in 2" :key="index" class="schedule-document-skeleton">
+                  <ElSkeletonItem variant="image" class="schedule-document-skeleton-image" />
+                  <ElSkeletonItem variant="text" />
+                </div>
+              </template>
+            </ElSkeleton>
+          </div>
+          <StatePanel
+            v-else-if="error"
+            key="error"
+            state="error"
+            :description="error"
+            @retry="load"
           />
-          <ProcessRouteAttachments
-            :route="route"
-            :order-document="order"
-            :order-file="orderFile"
-            :order-task-id="taskId"
-            :order-download="orderDownload"
+          <div v-else-if="route" :key="route.id" class="schedule-document-preview">
+            <ScheduleRouteSelect
+              v-if="routes.length > 1"
+              v-model="selectedId"
+              :options="routes"
+              label="查看关联工艺"
+            />
+            <ProcessRouteAttachments
+              :route="route"
+              :order-document="order"
+              :order-file="orderFile"
+              :order-task-id="taskId"
+              :order-download="orderDownload"
+            />
+          </div>
+          <StatePanel
+            v-else
+            key="empty"
+            state="empty"
+            :title="serialNo ? '未关联工艺' : '选择工艺后显示资料'"
+            compact
           />
-        </div>
-        <StatePanel
-          v-else
-          key="empty"
-          state="empty"
-          :title="serialNo ? '未关联工艺' : '选择工艺后显示资料'"
-          compact
-        />
-      </Transition>
-    </aside>
+        </Transition>
+      </aside>
+    </template>
     <section v-if="$slots.default" class="schedule-document-content"><slot /></section>
-  </div>
+  </FormWorkspace>
 </template>
 
 <style scoped>
 .schedule-documents,
 .schedule-document-content {
   min-width: 0;
-}
-.schedule-documents--layout {
-  display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  align-items: start;
-  gap: 20px;
-  margin-top: 20px;
 }
 .schedule-document-rail {
   display: flex;
@@ -171,12 +167,6 @@ onBeforeUnmount(() => ++generation)
   }
   .schedule-document-loading :deep(.el-skeleton.is-animated .el-skeleton__item) {
     animation: none;
-  }
-}
-@media (max-width: 760px) {
-  .schedule-documents--layout {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
   }
 }
 </style>

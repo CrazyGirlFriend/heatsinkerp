@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import PersonName from '@/components/PersonName.vue'
+import FormWorkspace from '@/components/FormWorkspace.vue'
+import CompactFormSection from '@/components/CompactFormSection.vue'
 import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
 import WorkspaceTable from '@/components/WorkspaceTable.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
 import { computed, onMounted, ref } from 'vue'
-import { ElAlert, ElButton, ElInput, ElTableColumn, ElTag } from 'element-plus'
+import { ElAlert, ElButton, ElForm, ElFormItem, ElInput, ElTableColumn, ElTag } from 'element-plus'
 import PageBackButton from '@/components/PageBackButton.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -110,7 +113,9 @@ onMounted(load)
         class="business-table"
         height="100%"
         aria-label="业务人员名单"
-        ><ElTableColumn prop="name" label="业务人员" /><ElTableColumn label="状态" width="120"
+        ><ElTableColumn prop="name" label="业务人员"
+          ><template #default="{ row }"><PersonName :name="row.name" /></template></ElTableColumn
+        ><ElTableColumn label="状态" width="120"
           ><template #default="{ row }"
             ><ElTag :type="row.active ? 'success' : 'info'">{{
               row.active ? '在册' : '已移除'
@@ -139,13 +144,17 @@ onMounted(load)
       width="420px"
       append-to-body
       :close-on-click-modal="!saving"
-      ><ElAlert v-if="error" :title="error" type="error" :closable="false" /><ElInput
-        v-model="name"
-        maxlength="80"
-        aria-label="业务人员姓名"
-        placeholder="姓名"
-        @keyup.enter="save()"
-      /><template #footer
+      ><ElAlert v-if="error" :title="error" type="error" :closable="false" />
+      <FormWorkspace
+        ><ElForm label-position="top" :disabled="saving" @submit.prevent="save()">
+          <CompactFormSection
+            ><ElFormItem class="form-field--short" label="姓名" required
+              ><ElInput
+                v-model="name"
+                maxlength="80"
+                aria-label="业务人员姓名"
+                placeholder="姓名" /></ElFormItem></CompactFormSection></ElForm></FormWorkspace
+      ><template #footer
         ><ElButton :disabled="saving" @click="open = false">取消</ElButton
         ><ElButton type="primary" :loading="saving" :disabled="!name.trim()" @click="save()"
           >保存</ElButton

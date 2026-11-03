@@ -130,13 +130,13 @@ describe('application navigation shell', () => {
     expect(wrapper.find('.topbar').exists()).toBe(false)
     expect(wrapper.get('#main-content').attributes('aria-label')).toBe('轧制 · 来料待签收')
     expect(wrapper.get('.factory-nav [aria-current=page]').attributes('aria-label')).toBe(
-      '轧制工作台',
+      '轧制 / 收发',
     )
     await router.push('/team-workspaces/1?tab=history')
     await flushPromises()
     expect(wrapper.get('#main-content').attributes('aria-label')).toBe('轧制 · 收发历史')
     expect(wrapper.get('.factory-nav [aria-current=page]').attributes('aria-label')).toBe(
-      '轧制工作台',
+      '轧制 / 收发',
     )
     await router.push('/transfer-batches')
     await flushPromises()
@@ -277,7 +277,9 @@ describe('application navigation shell', () => {
     expect(wrapper.getComponent(FactorySidebar).props('compact')).toBe(false)
     expect(wrapper.find('.topbar').exists()).toBe(false)
     expect(wrapper.get('.brand-mark img').attributes('src')).toBe('/brand/attl-official-logo.png')
-    expect(wrapper.get('#factory-sidebar [aria-label="轧制工作台"]').text()).toBe('轧制')
+    expect(
+      wrapper.get('#factory-sidebar [aria-label="轧制工作台"] > .el-sub-menu__title').text(),
+    ).toBe('轧制')
     expect(wrapper.get('#factory-sidebar [aria-label="转料记录"]').text()).toBe('转料记录')
   })
 

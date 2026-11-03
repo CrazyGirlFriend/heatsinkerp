@@ -96,6 +96,7 @@ async function render(query: Record<string, string> = {}) {
     },
   })
   await flushPromises()
+  return router
 }
 it('removes the previous twenty-row page immediately when requesting ten rows', async () => {
   const items = Array.from({ length: 23 }, (_, index) => ({ ...routeFixture, id: index + 1 }))
@@ -125,7 +126,7 @@ it('removes the previous twenty-row page immediately when requesting ten rows', 
 it('keeps the common workspace shell without a full-width single tab or duplicate time columns', async () => {
   await render()
   expect(wrapper.get('.team-workspace__title').text()).toBe('工艺')
-  expect(wrapper.get('nav[aria-label="工艺功能"]').attributes('style')).toContain('display: none')
+  expect(wrapper.get('nav[aria-label="工艺视图"]').attributes('style')).toContain('display: none')
   expect(wrapper.findAll('thead th .cell').map((cell) => cell.text())).toEqual([
     '流水号',
     '材质',
@@ -587,4 +588,20 @@ it('marks incomplete historical routes beside the serial without hiding their de
 it('does not flag a complete route as missing documents', async () => {
   await render()
   expect(wrapper.find('.route-document-warning').exists()).toBe(false)
+})
+
+it('opens the requested process type and follows navigation between normal and rework', async () => {
+  const router = await render({ kind: 'rework' })
+  expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'desc', 20, 'rework')
+  expect(wrapper.get('.route-kind-switch button[aria-pressed="true"]').text()).toBe('返工工艺')
+  await router.push('/process-routes')
+  await flushPromises()
+  expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'desc', 20, 'normal')
+  expect(wrapper.get('.route-kind-switch button[aria-pressed="true"]').text()).toBe('正常工艺')
+  await router.back()
+  await flushPromises()
+  expect(wrapper.get('.route-kind-switch button[aria-pressed="true"]').text()).toBe('返工工艺')
+  await wrapper.get('.route-kind-switch button:first-child').trigger('click')
+  await flushPromises()
+  expect(router.currentRoute.value.query.kind).toBeUndefined()
 })

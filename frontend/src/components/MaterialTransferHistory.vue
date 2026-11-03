@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import {
   transferAmendmentStatusLabels,
   type TransferAmendmentStatus,
@@ -22,6 +23,15 @@ const props = defineProps<{ transfer: MaterialTransfer }>()
 const events = computed(() =>
   [...(props.transfer.history ?? [])].sort((left, right) => right.id - left.id),
 )
+const personFields = new Set([
+  'processor_name',
+  'created_by',
+  'received_by',
+  'received_employee_name',
+  'dispatched_by',
+  'voided_by',
+  'sent_employee_name',
+])
 const actions = {
   created: '创建转料单',
   updated: '修改转料单',
@@ -285,7 +295,7 @@ function valueText(field: string, value: unknown): string {
           <td>
             <time :datetime="event.occurred_at">{{ formatDateTime(event.occurred_at) }}</time>
           </td>
-          <td>{{ event.actor || '—' }}</td>
+          <td><PersonName :name="event.actor || '—'" /></td>
           <td>
             {{
               event.changes.work_kind?.after === 'rework'
@@ -312,9 +322,18 @@ function valueText(field: string, value: unknown): string {
                     }}
                   </dt>
                   <dd>
-                    <span class="history-before">{{ valueText(field, change.before) }}</span
+                    <span class="history-before"
+                      ><PersonName
+                        v-if="personFields.has(field)"
+                        :name="valueText(field, change.before)"
+                      /><template v-else>{{ valueText(field, change.before) }}</template></span
                     ><span aria-label="变更为"> → </span
-                    ><span>{{ valueText(field, change.after) }}</span>
+                    ><span
+                      ><PersonName
+                        v-if="personFields.has(field)"
+                        :name="valueText(field, change.after)"
+                      /><template v-else>{{ valueText(field, change.after) }}</template></span
+                    >
                   </dd>
                 </div>
               </dl>

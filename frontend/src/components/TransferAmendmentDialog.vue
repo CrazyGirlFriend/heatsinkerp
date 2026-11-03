@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElButton, ElForm, ElFormItem, ElInput, ElInputNumber } from 'element-plus'
 import AppDialog from './AppDialog.vue'
@@ -153,7 +156,7 @@ onBeforeUnmount(() => {
   <AppDialog
     :model-value="modelValue"
     title="申请修改转料单"
-    width="min(640px, 94vw)"
+    width="min(980px, 94vw)"
     append-to-body
     :show-close="!saving"
     :close-on-click-modal="!saving"
@@ -161,7 +164,18 @@ onBeforeUnmount(() => {
     @close="close"
   >
     <StatePanel v-if="loading" state="loading" title="正在核对剩余物料" />
-    <template v-else-if="snapshot">
+    <FormWorkspace v-else-if="snapshot">
+      <template #documents>
+        <SerialRouteAttachments
+          :batch-no="snapshot.batch_no"
+          :items="
+            (snapshot.shared_serials?.length
+              ? snapshot.shared_serials
+              : [{ serial_no: snapshot.serial_no }]
+            ).map((item) => ({ serialNo: item.serial_no, routeId: snapshot!.process_route?.id }))
+          "
+        />
+      </template>
       <p class="amendment-document">{{ snapshot.serial_no }} · {{ snapshot.batch_no }}</p>
       <div class="amendment-balance">
         <span>可调整剩余量</span>
@@ -176,8 +190,13 @@ onBeforeUnmount(() => {
         :show-message="true"
         @submit.prevent="submit"
       >
-        <div class="amendment-amounts">
-          <ElFormItem label="修改后数量（件）" required :error="fieldErrors.quantity">
+        <CompactFormSection title="调整数量">
+          <ElFormItem
+            class="form-field--long"
+            label="修改后数量（件）"
+            required
+            :error="fieldErrors.quantity"
+          >
             <ElInputNumber
               v-model="quantity"
               aria-label="修改后数量"
@@ -191,7 +210,12 @@ onBeforeUnmount(() => {
               {{ formatAmount(minQuantity) }}</span
             >
           </ElFormItem>
-          <ElFormItem label="修改后重量（kg）" required :error="fieldErrors.weight">
+          <ElFormItem
+            class="form-field--long"
+            label="修改后重量（kg）"
+            required
+            :error="fieldErrors.weight"
+          >
             <ElInputNumber
               v-model="weight"
               aria-label="修改后重量"
@@ -205,27 +229,29 @@ onBeforeUnmount(() => {
               >原重量 {{ formatAmount(snapshot.weight) }} · 最少 {{ formatAmount(minWeight) }}</span
             >
           </ElFormItem>
-        </div>
-        <ElFormItem label="备注"
-          ><ElInput
-            v-model="notes"
-            aria-label="修改后备注"
-            type="textarea"
-            :rows="2"
-            maxlength="2000"
-        /></ElFormItem>
-        <ElFormItem label="修改原因" required :error="fieldErrors.reason"
-          ><ElInput
-            v-model="reason"
-            aria-label="修改原因"
-            type="textarea"
-            :rows="2"
-            maxlength="2000"
-            placeholder="说明需要对方核对的内容"
-        /></ElFormItem>
+        </CompactFormSection>
+        <CompactFormSection title="修改说明">
+          <ElFormItem class="form-field--full" label="备注"
+            ><ElInput
+              v-model="notes"
+              aria-label="修改后备注"
+              type="textarea"
+              :rows="2"
+              maxlength="2000"
+          /></ElFormItem>
+          <ElFormItem class="form-field--full" label="修改原因" required :error="fieldErrors.reason"
+            ><ElInput
+              v-model="reason"
+              aria-label="修改原因"
+              type="textarea"
+              :rows="2"
+              maxlength="2000"
+              placeholder="说明需要对方核对的内容"
+          /></ElFormItem>
+        </CompactFormSection>
       </ElForm>
       <p class="amendment-help">对方确认后生效，仅调整剩余物料；已加工和已转出的记录保持原样。</p>
-    </template>
+    </FormWorkspace>
     <p v-if="error" role="alert" class="amendment-error">{{ error }}</p>
     <ElButton v-if="!loading && !editable" :disabled="saving" @click="load">重新读取</ElButton>
     <template #footer>
@@ -239,7 +265,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .amendment-document {
-  margin: 0 0 16px;
+  margin: 0 0 10px;
   color: var(--subtle);
   font-size: 13px;
   overflow-wrap: anywhere;
@@ -248,8 +274,8 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
-  margin-bottom: 20px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
   border-radius: 8px;
   background: var(--table-header-bg);
   font-size: 13px;
@@ -260,14 +286,6 @@ onBeforeUnmount(() => {
 .amendment-balance strong {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-}
-.amendment-amounts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-.amendment-amounts :deep(.el-input-number) {
-  width: 100%;
 }
 .original-value {
   display: block;
@@ -283,11 +301,5 @@ onBeforeUnmount(() => {
 .amendment-error {
   color: var(--danger);
   font-size: 13px;
-}
-@media (max-width: 480px) {
-  .amendment-amounts {
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
 }
 </style>

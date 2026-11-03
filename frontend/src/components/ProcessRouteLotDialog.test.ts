@@ -4,6 +4,7 @@ import { ElSelect } from 'element-plus'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ProcessRouteLotDialog from './ProcessRouteLotDialog.vue'
 import AppDialog from './AppDialog.vue'
+import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import { routeFixture } from '@/testFixtures/processRoute'
 
@@ -33,6 +34,7 @@ async function render() {
           template: '<div><slot/><slot name="footer"/></div>',
         },
         ProcessRouteSteps: true,
+        ProcessRouteAttachments: true,
       },
     },
   })
@@ -120,4 +122,32 @@ it('keeps close controls disabled while a route is being bound', async () => {
   finish({})
   await flushPromises()
   expect(dialog.attributes('show-close')).toBe('true')
+})
+
+it('previews only the chosen process originals without guessing the order serial', async () => {
+  const selectedRoute = {
+    ...routeFixture,
+    state: 'published' as const,
+    source_data: {
+      ...routeFixture.source_data,
+      order_document: {
+        filename: 'OTHER.xlsx',
+        sheet: '订单',
+        headers: [],
+        values: [],
+        serial_no: 'OTHER',
+        receipt_fields: {},
+        warnings: [],
+      },
+    },
+  }
+  vi.spyOn(processRouteApi, 'detail').mockResolvedValue(selectedRoute)
+  const dispatchOrder = vi.spyOn(processRouteApi, 'dispatchOrder')
+  await render()
+  await select(selectedRoute.id)
+  const documents = wrapper.getComponent(ProcessRouteAttachments)
+  expect(documents.props('route')).toEqual(selectedRoute)
+  expect(documents.props('documents')).toEqual(['word', 'drawing'])
+  expect(documents.props('orderDocument')).toBeNull()
+  expect(dispatchOrder).not.toHaveBeenCalled()
 })

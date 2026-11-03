@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { formatAmount } from '@/utils/format'
@@ -687,23 +689,31 @@ onBeforeUnmount(() => {
         :close-on-press-escape="!saving"
         :show-close="!saving"
       >
-        <ElForm ref="formRef" label-position="top" :show-message="false" @submit.prevent="save"
-          ><ElFormItem label="仓位名称" :error="fieldErrors.name" required
-            ><ElInput
-              v-model="form.name"
-              aria-label="仓位名称"
-              placeholder="例如：A区-01"
-              maxlength="80"
-              :disabled="saving" /></ElFormItem
-          ><ElFormItem label="启用"
-            ><ElSwitch
-              v-model="form.active"
-              aria-label="启用仓位"
-              :disabled="saving || !!editing?.batches.length"
-            /><span v-if="editing?.batches.length">有料时可改名，不能停用</span></ElFormItem
+        <FormWorkspace>
+          <ElForm ref="formRef" label-position="top" :show-message="false" @submit.prevent="save"
+            ><CompactFormSection
+              ><ElFormItem
+                class="form-field--long"
+                label="仓位名称"
+                :error="fieldErrors.name"
+                required
+                ><ElInput
+                  v-model="form.name"
+                  aria-label="仓位名称"
+                  placeholder="例如：A区-01"
+                  maxlength="80"
+                  :disabled="saving" /></ElFormItem
+              ><ElFormItem class="form-field--long" label="启用"
+                ><ElSwitch
+                  v-model="form.active"
+                  aria-label="启用仓位"
+                  :disabled="saving || !!editing?.batches.length"
+                /><span v-if="editing?.batches.length">有料时可改名，不能停用</span></ElFormItem
+              >
+            </CompactFormSection>
+            <p v-if="formError" class="warehouse-error" role="alert">{{ formError }}</p></ElForm
           >
-          <p v-if="formError" class="warehouse-error" role="alert">{{ formError }}</p></ElForm
-        >
+        </FormWorkspace>
         <template #footer
           ><ElButton :disabled="saving" @click="editorOpen = false">取消</ElButton
           ><ElButton type="primary" :loading="saving" @click="save">保存</ElButton></template

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import { computed } from 'vue'
 
 export interface DocumentField {
@@ -6,6 +7,7 @@ export interface DocumentField {
   value: string
   key?: string
   fullWidth?: boolean
+  person?: boolean
 }
 const props = defineProps<{ fields: DocumentField[]; label: string }>()
 const rows = computed(() => {
@@ -33,7 +35,11 @@ const rows = computed(() => {
           <template v-for="field in row" :key="field.key || field.label">
             <th scope="row">{{ field.label }}</th>
             <td :class="{ 'table-prose': field.fullWidth }" :colspan="row.length === 1 ? 3 : 1">
-              <slot :name="field.key || field.label" :field="field">{{ field.value }}</slot>
+              <slot :name="field.key || field.label" :field="field"
+                ><PersonName v-if="field.person" :name="field.value" /><template v-else>{{
+                  field.value
+                }}</template></slot
+              >
             </td>
           </template>
         </tr>

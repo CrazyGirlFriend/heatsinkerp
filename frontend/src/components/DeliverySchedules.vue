@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
@@ -1212,7 +1213,7 @@ defineExpose({ exportSource, openDetail })
               :data-notice-event="event.id"
               ><template #title
                 ><span
-                  >{{ formatDateTime(event.occurred_at) }} · {{ event.actor }} ·
+                  >{{ formatDateTime(event.occurred_at) }} · <PersonName :name="event.actor" /> ·
                   {{ actionLabel(event.action) }}</span
                 ></template
               ><ElTable

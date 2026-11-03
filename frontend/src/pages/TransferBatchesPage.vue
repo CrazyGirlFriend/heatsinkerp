@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from '@/components/PersonName.vue'
 import { formatAmount } from '@/utils/format'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import FilterDialog from '@/components/FilterDialog.vue'
@@ -1040,6 +1041,14 @@ onBeforeUnmount(() => {
                   :status="row.status"
                   :entry-kind="row.entry_kind"
                   plain
+                />
+                <PersonName
+                  v-else-if="
+                    ['sent_employee_name', 'received_employee_name', 'transferred_by'].includes(
+                      column.key,
+                    )
+                  "
+                  :name="String(column.value(asTransfer(row)))"
                 />
                 <template v-else>{{ column.value(asTransfer(row)) }}</template>
               </template>

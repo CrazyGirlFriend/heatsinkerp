@@ -7,6 +7,7 @@ import PageBackButton from '@/components/PageBackButton.vue'
 import {
   teamWorkspaceSections,
   teamWorkspaceSectionsFor,
+  teamWorkspaceModuleFor,
   type TeamWorkspaceSection,
 } from '@/config/teamWorkspaces'
 import '@/styles/team-workspace.css'
@@ -31,17 +32,23 @@ const emit = defineEmits<{
   export: []
   settings: []
 }>()
-const sections = computed(() =>
-  props.engineering
-    ? teamWorkspaceSections.filter((section) => section.value === 'process-routes')
-    : teamWorkspaceSectionsFor(
-        Boolean(props.warehouse),
-        Boolean(props.manageWarehouse),
-        Boolean(props.reallocations),
-        Boolean(props.processing),
-        Boolean(props.inspection),
-      ),
-)
+const sections = computed(() => {
+  if (props.engineering)
+    return teamWorkspaceSections.filter((section) => section.value === 'process-routes')
+  const available = teamWorkspaceSectionsFor(
+    Boolean(props.warehouse),
+    Boolean(props.manageWarehouse),
+    Boolean(props.reallocations),
+    Boolean(props.processing),
+    Boolean(props.inspection),
+  )
+  return (
+    teamWorkspaceModuleFor(props.modelValue)?.sections.flatMap((value) =>
+      available.filter((section) => section.value === value),
+    ) || []
+  )
+})
+const moduleLabel = computed(() => teamWorkspaceModuleFor(props.modelValue)?.label)
 const sectionLabel = computed(
   () =>
     teamWorkspaceSections.find((section) => section.value === props.modelValue)?.label ||
@@ -209,12 +216,16 @@ onBeforeUnmount(() => {
     <div v-show="!fullscreen" class="team-workspace__navigation-bar">
       <div class="team-workspace__heading page-heading-start">
         <PageBackButton /><strong class="team-workspace__title">{{ title }}</strong>
+        <template v-if="moduleLabel"
+          ><span class="team-workspace__divider" aria-hidden="true">/</span
+          ><span class="team-workspace__module">{{ moduleLabel }}</span></template
+        >
       </div>
       <nav
         v-show="sections.length > 1"
         ref="navigation"
         class="team-workspace__navigation"
-        :aria-label="title + '功能'"
+        :aria-label="`${title}${moduleLabel || ''}视图`"
       >
         <ElButton
           v-for="section in sections"
@@ -285,8 +296,16 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   flex: 0 0 auto;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
+}
+.team-workspace__divider {
+  color: var(--line);
+}
+.team-workspace__module {
+  color: var(--text);
+  font-size: 15px;
+  white-space: nowrap;
 }
 .team-workspace__title {
   max-width: 140px;
@@ -339,14 +358,12 @@ onBeforeUnmount(() => {
 }
 .team-workspace__navigation {
   display: flex;
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   padding: 3px;
   overflow-x: auto;
-  border-radius: 24px;
+  border-radius: 8px;
   background: var(--glass-chrome-fill);
-  -webkit-backdrop-filter: blur(16px) saturate(110%);
-  backdrop-filter: blur(16px) saturate(110%);
   box-shadow:
     inset 0 1px 0 #fff,
     inset 0 -1px 0 #a9c3b32b,
@@ -356,15 +373,15 @@ onBeforeUnmount(() => {
   scrollbar-color: #bfcfc6 transparent;
 }
 .team-workspace__section.el-button {
-  flex: 1 0 auto;
+  flex: 0 0 auto;
   min-width: max-content;
-  height: 36px;
+  height: 30px;
   margin: 0;
-  padding: 0 12px;
-  border-radius: 20px;
+  padding: 0 10px;
+  border-radius: 6px;
   color: var(--muted);
   background: transparent;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 500;
   transition:
     background-color var(--motion-standard) ease,

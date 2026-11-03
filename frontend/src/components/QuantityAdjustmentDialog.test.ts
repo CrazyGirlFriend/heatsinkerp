@@ -9,6 +9,7 @@ import SpecificationInput from './SpecificationInput.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import ProcessExecutionPanel from './ProcessExecutionPanel.vue'
 import { teamMaterialApi, TeamMaterialApiError } from '@/services/teamMaterialApi'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
@@ -749,4 +750,12 @@ it('shows the active rework plan and keeps historical links bound to their origi
   expect(processRouteApi.detail).toHaveBeenLastCalledWith(19)
   expect(wrapper.getComponent({ name: 'ProcessRouteEditor' }).props('route').id).toBe(19)
   expect(teamMaterialApi.changeQuantity).not.toHaveBeenCalled()
+})
+
+it('keeps processing attachment lookup scoped to the current source batch', async () => {
+  await render()
+  await wrapper.setProps({ processing: true })
+  await flushPromises()
+  expect(wrapper.getComponent(SerialRouteAttachments).props('batchNo')).toBe('TL001')
+  expect(wrapper.getComponent(ProcessExecutionPanel).props('documentsVisible')).toBe(false)
 })

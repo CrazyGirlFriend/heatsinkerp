@@ -32,6 +32,14 @@ const batch = (
 export const initialOrders = [
   {
     id: "a",
+    links: [
+      { from: "a1", to: "a3" },
+      { from: "a3", to: "a5" },
+      { from: "a5", to: "a7" },
+      { from: "a2", to: "a4" },
+      { from: "a4", to: "a6" },
+      { from: "a6", to: "a8" },
+    ],
     serial: "691236-50",
     qty: 100,
     material: "Mo70Cu30",
@@ -72,6 +80,10 @@ export const initialOrders = [
   },
   {
     id: "b",
+    links: [
+      { from: "b1", to: "b2" },
+      { from: "b2", to: "b3" },
+    ],
     serial: "805881-5",
     qty: 240,
     material: "W80Cu20",
@@ -98,6 +110,11 @@ export const initialOrders = [
   },
   {
     id: "c",
+    links: [
+      { from: "c1", to: "c2" },
+      { from: "c2", to: "c3" },
+      { from: "c3", to: "c4" },
+    ],
     serial: "628349-16",
     qty: 80,
     material: "Mo50Cu50",
@@ -125,6 +142,11 @@ export const initialOrders = [
   },
   {
     id: "d",
+    links: [
+      { from: "d1", to: "d2" },
+      { from: "d2", to: "d3" },
+      { from: "d3", to: "d4" },
+    ],
     serial: "823766",
     qty: 160,
     material: "Mo70Cu30",
@@ -152,6 +174,11 @@ export const initialOrders = [
   },
   {
     id: "e",
+    links: [
+      { from: "e1", to: "e2" },
+      { from: "e2", to: "e3" },
+      { from: "e3", to: "e4" },
+    ],
     serial: "691236-51",
     qty: 120,
     material: "Mo70Cu30",
@@ -175,6 +202,10 @@ export const initialOrders = [
   },
   {
     id: "f",
+    links: [
+      { from: "f1", to: "f2" },
+      { from: "f2", to: "f3" },
+    ],
     serial: "701238-12",
     qty: 60,
     material: "W70Cu30",

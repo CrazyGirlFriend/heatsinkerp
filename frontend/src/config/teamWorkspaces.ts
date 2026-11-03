@@ -22,6 +22,45 @@ export const teamWorkspaceSections = [
 ] as const
 export type TeamWorkspaceSection = (typeof teamWorkspaceSections)[number]['value']
 
+export const teamWorkspaceModules = [
+  {
+    value: 'inventory',
+    label: '库存',
+    sections: ['stock', 'materials', 'material-types', 'losses'],
+  },
+  {
+    value: 'movement',
+    label: '收发',
+    sections: ['pending', 'receipts', 'outgoing', 'reallocations', 'history'],
+  },
+  { value: 'processing', label: '加工', sections: ['processing'] },
+  { value: 'delivery', label: '交期', sections: ['delivery-schedule'] },
+  {
+    value: 'quality',
+    label: '质量',
+    sections: ['inspection-results', 'quality-feedback', 'inspections'],
+  },
+  { value: 'warehouse', label: '仓库管理', sections: ['warehouse'] },
+] as const
+
+export function teamWorkspaceModuleFor(section: string) {
+  return teamWorkspaceModules.find((module) => module.sections.some((value) => value === section))
+}
+
+export function teamWorkspaceModulesFor(
+  ...capabilities: Parameters<typeof teamWorkspaceSectionsFor>
+) {
+  const available = teamWorkspaceSectionsFor(...capabilities)
+  return teamWorkspaceModules
+    .map((module) => ({
+      ...module,
+      sections: module.sections.flatMap((value) =>
+        available.filter((section) => section.value === value),
+      ),
+    }))
+    .filter((module) => module.sections.length)
+}
+
 export function teamWorkspaceSectionsFor(
   warehouse: boolean,
   manageWarehouse = false,

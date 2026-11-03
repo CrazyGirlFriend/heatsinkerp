@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import FormWorkspace from './FormWorkspace.vue'
+import CompactFormSection from './CompactFormSection.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import WeightInput from './WeightInput.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
@@ -180,7 +183,7 @@ async function submit() {
   <AppDialog
     :model-value="modelValue"
     title="流水号转投"
-    width="min(620px, calc(100vw - 32px))"
+    width="min(1060px, calc(100vw - 32px))"
     align-center
     append-to-body
     :close-on-click-modal="!saving"
@@ -188,87 +191,119 @@ async function submit() {
     :show-close="!saving"
     @close="close"
   >
-    <div v-if="source" class="reallocation-source">
-      <header>
-        <strong>{{ source.transfer.serial_no }}</strong
-        ><span>{{ source.transfer.material_name || '—' }}</span
-        ><ElTag effect="light">{{ materialTypeLabel(source.transfer.material_type) }}</ElTag>
-      </header>
-      <div>
-        <span>{{ source.transfer.batch_no }}</span
-        ><span
-          ><template v-if="!weightOnly"
-            >{{ inventoryAmount(dispatchableAmounts(source).quantity) }} 件 · </template
-          >{{ inventoryAmount(dispatchableAmounts(source).weight) }} kg</span
-        >
+    <FormWorkspace>
+      <template v-if="source" #documents>
+        <SerialRouteAttachments
+          :batch-no="source.transfer.batch_no"
+          :items="
+            (source.transfer.shared_serials?.length
+              ? source.transfer.shared_serials
+              : [{ serial_no: source.transfer.serial_no }]
+            ).map((item) => ({
+              serialNo: item.serial_no,
+              routeId: source!.transfer.process_route?.id,
+            }))
+          "
+        />
+      </template>
+      <div v-if="source" class="reallocation-source">
+        <header>
+          <strong>{{ source.transfer.serial_no }}</strong
+          ><span>{{ source.transfer.material_name || '—' }}</span
+          ><ElTag effect="light">{{ materialTypeLabel(source.transfer.material_type) }}</ElTag>
+        </header>
+        <div>
+          <span>{{ source.transfer.batch_no }}</span
+          ><span
+            ><template v-if="!weightOnly"
+              >{{ inventoryAmount(dispatchableAmounts(source).quantity) }} 件 · </template
+            >{{ inventoryAmount(dispatchableAmounts(source).weight) }} kg</span
+          >
+        </div>
       </div>
-    </div>
-    <ElForm
-      ref="formRef"
-      label-position="top"
-      :show-message="false"
-      :disabled="saving || !canWrite"
-      @submit.prevent="submit"
-    >
-      <ElFormItem label="目标流水号" :error="fieldErrors.serial" required
-        ><MaterialInput
-          field="serial_no"
-          label="转投目标流水号"
-          :disabled="saving || !canWrite || !modelValue"
-          v-model="form.serial"
-          aria-label="转投目标流水号"
-          :maxlength="80"
-          placeholder="填写转投后的流水号"
-      /></ElFormItem>
-      <div class="reallocation-amounts dialog-form-grid">
-        <ElFormItem v-if="!weightOnly" label="转投件数" :error="fieldErrors.quantity" required
-          ><ElInputNumber
-            v-model="form.quantity"
-            aria-label="转投件数"
-            :min="0"
-            :precision="0"
-            controls-position="right"
-            ><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber
-          ></ElFormItem
-        >
-        <ElFormItem v-if="!measured" label="转投重量" :error="fieldErrors.weight" required
-          ><WeightInput v-model="form.weight" ariaLabel="转投重量"
-        /></ElFormItem>
-      </div>
-      <SludgeWeightFields
-        v-if="measured"
-        v-model:gross="form.gross"
-        v-model:percent="form.percent"
-        label="转投"
-        :gross-error="fieldErrors.gross"
-        :percent-error="fieldErrors.percent"
-        locked
+      <ElForm
+        ref="formRef"
+        label-position="top"
+        :show-message="false"
         :disabled="saving || !canWrite"
-        @update:weight="form.weight = $event"
-      />
-      <ElFormItem v-if="warehouse" label="目标仓位"
-        ><WarehouseLocationSelect
-          v-model="form.location"
-          v-model:reservation-key="form.locationKey"
-          :team-id="teamId"
-          :serial-no="form.serial.trim()"
-          :material-name="source?.transfer.material_name || ''"
-          :material-type="source?.transfer.material_type || ''"
-          :active="modelValue && !!form.serial.trim()"
-          :disabled="saving || !canWrite || !form.serial.trim()"
-          @busy-change="locationBusy = $event"
-      /></ElFormItem>
-      <ElFormItem label="转投原因（选填）" :error="fieldErrors.reason"
-        ><ElInput
-          v-model="form.reason"
-          aria-label="转投原因"
-          type="textarea"
-          :rows="2"
-          maxlength="2000"
-          placeholder="选填：说明本次转投原因"
-      /></ElFormItem>
-    </ElForm>
-    <p v-if="error" role="alert" class="reallocation-error">{{ error }}</p>
+        @submit.prevent="submit"
+      >
+        <CompactFormSection title="转投信息">
+          <ElFormItem
+            class="form-field--long"
+            label="目标流水号"
+            :error="fieldErrors.serial"
+            required
+            ><MaterialInput
+              field="serial_no"
+              label="转投目标流水号"
+              :disabled="saving || !canWrite || !modelValue"
+              v-model="form.serial"
+              aria-label="转投目标流水号"
+              :maxlength="80"
+              placeholder="填写转投后的流水号"
+          /></ElFormItem>
+
+          <ElFormItem
+            class="form-field--medium"
+            v-if="!weightOnly"
+            label="转投件数"
+            :error="fieldErrors.quantity"
+            required
+            ><ElInputNumber
+              v-model="form.quantity"
+              aria-label="转投件数"
+              :min="0"
+              :precision="0"
+              controls-position="right"
+              ><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber
+            ></ElFormItem
+          >
+          <ElFormItem
+            class="form-field--medium"
+            v-if="!measured"
+            label="转投重量"
+            :error="fieldErrors.weight"
+            required
+            ><WeightInput v-model="form.weight" ariaLabel="转投重量"
+          /></ElFormItem>
+          <SludgeWeightFields
+            class="form-field--full"
+            v-if="measured"
+            v-model:gross="form.gross"
+            v-model:percent="form.percent"
+            label="转投"
+            :gross-error="fieldErrors.gross"
+            :percent-error="fieldErrors.percent"
+            locked
+            :disabled="saving || !canWrite"
+            @update:weight="form.weight = $event"
+          />
+          <ElFormItem class="form-field--long" v-if="warehouse" label="目标仓位"
+            ><WarehouseLocationSelect
+              v-model="form.location"
+              v-model:reservation-key="form.locationKey"
+              :team-id="teamId"
+              :serial-no="form.serial.trim()"
+              :material-name="source?.transfer.material_name || ''"
+              :material-type="source?.transfer.material_type || ''"
+              :active="modelValue && !!form.serial.trim()"
+              :disabled="saving || !canWrite || !form.serial.trim()"
+              @busy-change="locationBusy = $event"
+          /></ElFormItem>
+          <ElFormItem class="form-field--full" label="转投原因（选填）" :error="fieldErrors.reason"
+            ><ElInput
+              v-model="form.reason"
+              aria-label="转投原因"
+              type="textarea"
+              :rows="2"
+              maxlength="2000"
+              placeholder="选填：说明本次转投原因"
+          /></ElFormItem>
+        </CompactFormSection>
+      </ElForm>
+      <p v-if="error" role="alert" class="reallocation-error">{{ error }}</p>
+    </FormWorkspace>
     <template #footer
       ><ElButton :disabled="saving" @click="close">取消</ElButton
       ><ElButton
@@ -284,8 +319,8 @@ async function submit() {
 
 <style scoped>
 .reallocation-source {
-  padding: 16px;
-  margin-bottom: 20px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--workspace-bg);

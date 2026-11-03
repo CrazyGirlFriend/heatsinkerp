@@ -3,6 +3,7 @@ import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { ElInputNumber } from 'element-plus'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import TransferAmendmentDialog from './TransferAmendmentDialog.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import { materialTransferApi, normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { transferAmendmentApi, type TransferAmendment } from '@/services/transferAmendmentApi'
 import { HttpRequestError } from '@/services/httpClient'
@@ -33,7 +34,12 @@ async function render(editable = true, latest = transfer()) {
   })
   wrapper = mount(TransferAmendmentDialog, {
     props: { modelValue: true, transfer: transfer() },
-    global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
+    global: {
+      stubs: {
+        ElDialog: { template: '<div><slot/><slot name="footer"/></div>' },
+        SerialRouteAttachments: true,
+      },
+    },
   })
   await flushPromises()
 }
@@ -132,4 +138,17 @@ describe('received transfer amendment request', () => {
       expect.objectContaining({ quantity: 100, weight: 10.123456, notes: '补充包装情况' }),
     )
   })
+})
+
+it('uses the refreshed transfer route for original-document review', async () => {
+  await render(
+    true,
+    normalizeMaterialTransfer({
+      ...transfer(),
+      process_route: { id: 47 },
+    }),
+  )
+  const documents = wrapper.getComponent(SerialRouteAttachments)
+  expect(documents.props('batchNo')).toBe('TL-001')
+  expect(documents.props('items')).toEqual([{ serialNo: 'HS-001', routeId: 47 }])
 })

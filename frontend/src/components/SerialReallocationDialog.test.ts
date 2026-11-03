@@ -5,6 +5,7 @@ import { ElInputNumber } from 'element-plus'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import SerialReallocationDialog from './SerialReallocationDialog.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { StockBatch } from '@/types/teamMaterials'
@@ -68,7 +69,12 @@ afterEach(() => {
 async function render(row = source()) {
   wrapper = mount(SerialReallocationDialog, {
     props: { modelValue: true, teamId: 2, source: row },
-    global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
+    global: {
+      stubs: {
+        ElDialog: { template: '<div><slot/><slot name="footer"/></div>' },
+        SerialRouteAttachments: true,
+      },
+    },
   })
   await flushPromises()
 }
@@ -269,4 +275,26 @@ it('does not expose a piece input when reallocating chips', async () => {
     2,
     expect.objectContaining({ quantity: 0, weight: 3 }),
   )
+})
+
+it('keeps source batch documents bound while a different target serial is entered', async () => {
+  const row = source()
+  row.transfer = normalizeMaterialTransfer({
+    ...row.transfer,
+    process_route: { id: 41 },
+    shared_serials: [{ serial_no: '000A' }, { serial_no: '000C' }],
+  })
+  await render(row)
+  const documents = wrapper.getComponent(SerialRouteAttachments)
+  expect(documents.props('batchNo')).toBe('TL10')
+  expect(documents.props('items')).toEqual([
+    { serialNo: '000A', routeId: 41 },
+    { serialNo: '000C', routeId: 41 },
+  ])
+  await fill('000B')
+  expect(documents.props('batchNo')).toBe('TL10')
+  expect(documents.props('items')).toEqual([
+    { serialNo: '000A', routeId: 41 },
+    { serialNo: '000C', routeId: 41 },
+  ])
 })

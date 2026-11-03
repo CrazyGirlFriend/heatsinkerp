@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
@@ -609,7 +610,9 @@ onBeforeUnmount(() => {
         align="center"
         show-overflow-tooltip
       >
-        <template #default="{ row }">{{ row.processor_name || '未登记' }}</template>
+        <template #default="{ row }"
+          ><PersonName :name="row.processor_name || '未登记'"
+        /></template>
       </ElTableColumn>
       <ElTableColumn label="对应业务" min-width="140" align="center" show-overflow-tooltip>
         <template #default="{ row }">{{ row.purpose_name || '未登记' }}</template>

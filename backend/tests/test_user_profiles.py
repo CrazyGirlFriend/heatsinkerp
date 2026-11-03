@@ -49,7 +49,7 @@ def test_own_profile_persists_without_changing_login_or_permissions(client, role
         {"display_name": "  "},
         {"display_name": None},
         {"avatar_key": None},
-        {"avatar_key": "portrait-9"},
+        {"avatar_key": "portrait-17"},
         {"avatar_key": "https://external.example/avatar.svg"},
     ],
 )
@@ -57,6 +57,15 @@ def test_self_endpoint_rejects_permission_fields_and_invalid_profiles(client, bo
     before = client.get("/api/auth/me").json()
     assert client.patch("/api/auth/me", json=body).status_code == 422
     assert client.get("/api/auth/me").json() == before
+
+
+@pytest.mark.parametrize("preset", range(9, 17))
+def test_new_account_avatar_presets_round_trip(client, preset):
+    key = f"portrait-{preset}"
+    saved = client.patch("/api/auth/me", json={"avatar_key": key})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["avatar_key"] == key
+    assert client.get("/api/auth/me").json()["avatar_key"] == key
 
 
 def test_team_leader_cannot_edit_other_accounts_or_team_metadata(client):

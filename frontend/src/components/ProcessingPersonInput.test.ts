@@ -33,10 +33,14 @@ describe('processing employee picker', () => {
   it('filters a team roster and selects only an existing employee in one click', async () => {
     await render()
     expect(wrapper.findAll('.person-choice')).toHaveLength(48)
+    expect(wrapper.findAll('.person-choice .account-avatar')).toHaveLength(48)
+    expect(wrapper.find('.person-trigger .account-avatar').exists()).toBe(false)
     await wrapper.get('input[aria-label="搜索加工人"]').setValue(' 王 ')
     expect(wrapper.findAll('.person-choice').map((item) => item.text())).toEqual(['王师傅'])
     await wrapper.get('.person-choice').trigger('click')
     expect(wrapper.emitted('update:modelValue')).toEqual([['王师傅']])
+    await flushPromises()
+    expect(wrapper.get('.person-trigger [data-initial]').attributes('data-initial')).toBe('王')
     expect(wrapper.getComponent(ElDialog).props('modelValue')).toBe(false)
   })
 

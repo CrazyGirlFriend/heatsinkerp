@@ -73,3 +73,29 @@ describe('schedule selections', () => {
     expect(wrapper.emitted('apply')?.[1]).toEqual([[]])
   })
 })
+
+it('submits the compact personnel form once without changing selected order assignments', async () => {
+  vi.spyOn(productionScheduleApi, 'people').mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 20,
+  })
+  const save = vi
+    .spyOn(productionScheduleApi, 'savePerson')
+    .mockResolvedValue({ id: 9, name: '张工', active: true, version: 1 })
+  wrapper = mount(ScheduleSelectionDialog, {
+    props: { kind: 'people', manage: true, selected: [{ value: 5, label: '原业务员' }] },
+    global,
+  })
+  await flushPromises()
+  await wrapper.get('input[aria-label="业务人员姓名"]').setValue('  张工  ')
+  await wrapper.get('.selection-person-form form').trigger('submit')
+  await flushPromises()
+  expect(save).toHaveBeenCalledOnce()
+  expect(save).toHaveBeenCalledWith(
+    { name: '张工', active: true, expected_version: undefined },
+    undefined,
+  )
+  expect(wrapper.emitted('apply')).toBeUndefined()
+})

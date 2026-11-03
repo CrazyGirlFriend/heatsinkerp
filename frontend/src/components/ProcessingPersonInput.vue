@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PersonName from './PersonName.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { computed, ref, watch } from 'vue'
 import { ElButton, ElIcon, ElInput, useFormDisabled } from 'element-plus'
@@ -56,9 +57,11 @@ function choose(person: string) {
       :aria-invalid="invalid || undefined"
       @click="opened = true"
     >
-      <span :key="name" class="person-value" :class="{ 'is-placeholder': !name }">{{
-        name || `请选择${label || '加工人'}`
-      }}</span>
+      <span :key="name" class="person-value" :class="{ 'is-placeholder': !name }"
+        ><PersonName v-if="name" :name="name" /><template v-else>{{
+          `请选择${label || '加工人'}`
+        }}</template></span
+      >
       <ElIcon class="person-icon"><User /></ElIcon>
     </button>
     <AppDialog
@@ -106,7 +109,7 @@ function choose(person: string) {
             :title="person"
             @click="choose(person)"
           >
-            <span>{{ person }}</span>
+            <PersonName :name="person" />
             <ElIcon v-if="person === name"><Check /></ElIcon>
           </button>
         </div>
@@ -218,7 +221,7 @@ function choose(person: string) {
     box-shadow var(--motion-fast) ease,
     transform var(--motion-fast) var(--motion-ease);
 }
-.person-choice span {
+.person-choice > .person-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -251,6 +254,11 @@ function choose(person: string) {
   padding: 24px 8px;
   color: var(--muted);
   text-align: center;
+}
+@media (max-width: 540px) {
+  .person-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .person-trigger,

@@ -4,6 +4,8 @@ import { reactive } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ElInput } from 'element-plus'
 import QualityFeedbackDetail from './QualityFeedbackDetail.vue'
+import SerialRouteAttachments from './SerialRouteAttachments.vue'
+import QualityReworkRequest from './QualityReworkRequest.vue'
 import {
   qualityFeedbackApi,
   type QualityFeedbackDetail as Detail,
@@ -81,6 +83,7 @@ async function render() {
     props: { issueId: 1 },
     global: {
       stubs: {
+        SerialRouteAttachments: true,
         AppDialog: { template: '<div><slot/><slot name="footer"/></div>' },
         RouterLink: true,
         InspectionRegistrationDialog: true,
@@ -169,4 +172,24 @@ it('shows historical problem snapshots for the original check and every recheck'
   const rows = wrapper.findAll('.el-table__body-wrapper tbody tr')
   expect(rows[2]!.text()).toContain('—')
   expect(rows[2]!.text()).not.toContain('历史未分类')
+})
+
+it('shows issue originals and follows the explicitly selected rework batch', async () => {
+  state.auth.currentUser = { team_id: 8, active: true }
+  await render()
+  const rail = wrapper.getComponent(SerialRouteAttachments)
+  expect(rail.props('batchNo')).toBe('TL42')
+  await button('提交工艺')!.trigger('click')
+  wrapper.getComponent(QualityReworkRequest).vm.$emit('contextChange', {
+    batch_no: 'TL-REWORK',
+    serial_no: 'REWORK-01',
+    process_route: { id: 51 },
+  })
+  await flushPromises()
+  expect(rail.props('batchNo')).toBe('TL-REWORK')
+  expect(rail.props('items')).toEqual([{ serialNo: 'REWORK-01', routeId: 51 }])
+  await button('收起')!.trigger('click')
+  expect(rail.props('batchNo')).toBe('TL42')
+  await button('提交工艺')!.trigger('click')
+  expect(rail.props('batchNo')).toBe('TL42')
 })
