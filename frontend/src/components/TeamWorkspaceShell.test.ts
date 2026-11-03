@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { h } from 'vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import TeamWorkspaceShell from './TeamWorkspaceShell.vue'
+import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
 vi.mock('@/components/PageBackButton.vue', () => ({ default: { template: '<span />' } }))
 
 let wrapper: VueWrapper
@@ -51,6 +52,34 @@ function mountShell(options: {
   })
 }
 describe('workspace with in-page navigation', () => {
+  it('uses shared Fluid Tabs inside the warehouse card and preserves content when switching', async () => {
+    wrapper = mountShell({
+      props: {
+        title: '库房',
+        modelValue: 'pending',
+        warehouse: true,
+        pendingCount: 23,
+        reallocations: true,
+      },
+      slots: { default: '<input value="未提交内容" />' },
+    })
+    const input = wrapper.get('input').element
+    expect(wrapper.find('.team-workspace__navigation-bar nav').exists()).toBe(false)
+    expect(wrapper.get('.team-workspace__content--card nav').isVisible()).toBe(true)
+    expect(wrapper.getComponent(WatermelonSegmented).props('controls')).toBe('workspace-panel')
+    expect(wrapper.get('nav [aria-current=page]').text()).toBe('来料待签收23')
+    await wrapper.findAll('nav button')[1]!.trigger('click')
+    expect(wrapper.emitted('update:modelValue')).toEqual([['receipts']])
+    await wrapper.setProps({ modelValue: 'receipts', pendingCount: 24 })
+    expect(wrapper.get('nav [aria-current=page]').text()).toBe('入库记录')
+    expect(wrapper.get('.wm-segmented-count').text()).toBe('24')
+    expect(wrapper.get('input').element).toBe(input)
+    await wrapper.setProps({ pendingCount: 0 })
+    expect(wrapper.find('.wm-segmented-count').exists()).toBe(false)
+    await wrapper.setProps({ modelValue: 'delivery-schedule' })
+    expect(wrapper.get('nav').isVisible()).toBe(false)
+    expect(wrapper.find('.team-workspace__content--card').exists()).toBe(false)
+  })
   it('retains the reading layout and selects each warehouse section below the team title', async () => {
     wrapper = mountShell({ props: { title: '库房', modelValue: 'stock', warehouse: true } })
     expect(wrapper.get('.team-workspace__title').text()).toBe('库房')
@@ -348,7 +377,13 @@ describe('workspace with in-page navigation', () => {
   it('follows browser fullscreen exit and keeps supported workbench tabs in fullscreen', async () => {
     const native = nativeFullscreen()
     wrapper = mountShell({
-      props: { title: '库房', modelValue: 'stock', warehouse: true, manageWarehouse: true },
+      props: {
+        title: '库房',
+        modelValue: 'stock',
+        warehouse: true,
+        appearance: 'glass',
+        manageWarehouse: true,
+      },
     })
     await wrapper.get('.team-workspace__fullscreen').trigger('click')
     await flushPromises()
@@ -359,7 +394,7 @@ describe('workspace with in-page navigation', () => {
     await flushPromises()
     await wrapper.setProps({ title: '检验' })
     expect(native.exit).toHaveBeenCalledOnce()
-    for (const modelValue of ['history', 'warehouse']) {
+    for (const modelValue of ['history']) {
       await wrapper.setProps({ modelValue: 'stock' })
       await wrapper.get('.team-workspace__fullscreen').trigger('click')
       await flushPromises()
@@ -369,6 +404,25 @@ describe('workspace with in-page navigation', () => {
       await wrapper.get('.team-workspace__fullscreen').trigger('click')
       await flushPromises()
     }
+  })
+  it('removes fullscreen for warehouse management and exits it when switching from stock', async () => {
+    const native = nativeFullscreen()
+    wrapper = mountShell({
+      props: {
+        title: '库房',
+        modelValue: 'stock',
+        warehouse: true,
+        appearance: 'glass',
+        manageWarehouse: true,
+      },
+    })
+    await wrapper.get('.team-workspace__fullscreen').trigger('click')
+    await flushPromises()
+    await wrapper.setProps({ modelValue: 'warehouse' })
+    await flushPromises()
+    expect(wrapper.find('.team-workspace__fullscreen').exists()).toBe(false)
+    expect(wrapper.classes('team-workspace--fullscreen')).toBe(false)
+    expect(native.exit).toHaveBeenCalledOnce()
   })
   it('closes a late fullscreen request after unmount and prevents duplicate requests', async () => {
     const native = nativeFullscreen()

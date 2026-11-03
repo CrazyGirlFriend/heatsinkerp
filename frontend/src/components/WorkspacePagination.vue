@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { ElOption, ElPagination, ElSelect } from 'element-plus'
+import WatermelonPagination from './watermelon/WatermelonPagination.vue'
+import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+const watermelon = useWatermelonAppearance()
 
 const props = withDefaults(
   defineProps<{
@@ -19,7 +22,22 @@ const paginationLayout = computed(() => props.layout.replace('sizes', 'slot'))
 </script>
 
 <template>
-  <footer class="workspace-pagination">
+  <WatermelonPagination
+    v-if="watermelon"
+    class="workspace-pagination--watermelon"
+    :current-page="currentPage"
+    :page-size="pageSize"
+    :page-sizes="pageSizes"
+    :show-size="layout.includes('sizes')"
+    :total="total"
+    :disabled="disabled"
+    @current-change="$emit('current-change', $event)"
+    @size-change="$emit('size-change', $event)"
+  >
+    <template v-if="$slots.default" #default><slot /></template>
+    <template v-if="$slots.statistics" #statistics><slot name="statistics" /></template>
+  </WatermelonPagination>
+  <footer v-else class="workspace-pagination">
     <div v-if="$slots.statistics" class="workspace-pagination__statistics">
       <slot name="statistics" />
     </div>

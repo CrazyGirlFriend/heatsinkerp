@@ -1,6 +1,6 @@
 import { httpClient, httpRequest, HttpRequestError } from './httpClient'
 import type { ProcessRoute, ProcessRouteContext, RouteOrderDocument } from '@/types/processRoute'
-import type { MaterialPage, QuantityAdjustmentContext } from '@/types/teamMaterials'
+import type { MaterialPage } from '@/types/teamMaterials'
 import type { TeamProcessingTask, TeamPurpose } from '@/types/teamBusiness'
 export class ProcessRouteSerialConflictError extends Error {}
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
@@ -40,13 +40,6 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
     throw error
   }
 }
-export interface ReworkSource {
-  id: number
-  serial_no: string
-  batch_no: string
-  quantity: number
-  weight: number
-}
 function routePayload(route: ProcessRoute, includeMaterials = true) {
   return {
     ...(route.rework_request ? { resume_step_index: route.rework_request.resume_step_index } : {}),
@@ -73,12 +66,6 @@ export const processRouteApi = {
     request<{ task_id: number; document: RouteOrderDocument } | null>(
       `/${id}/dispatch-order?serial_no=${encodeURIComponent(serial)}`,
     ),
-  reworkSources: (query = '', page = 1) =>
-    request<MaterialPage<ReworkSource>>(
-      `/rework-sources?query=${encodeURIComponent(query)}&page=${page}`,
-    ),
-  reworkSourceContext: (id: number) =>
-    request<QuantityAdjustmentContext>(`/rework-sources?lot_id=${id}`),
   list: (
     query = '',
     page = 1,
@@ -100,7 +87,7 @@ export const processRouteApi = {
   requestRework: (body: {
     source_transfer_id: number
     rework_of_id: number
-    inspection_id?: number
+    inspection_id: number
     expected_revision: number
     quantity: number
     weight: number

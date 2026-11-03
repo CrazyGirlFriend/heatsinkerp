@@ -2,8 +2,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import WarehouseUnassigned from './WarehouseUnassigned.vue'
-import BatchSelectionBar from './BatchSelectionBar.vue'
+import WarehousePlacementDialog from './WarehousePlacementDialog.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { warehouseLocationApi, type WarehouseLocation } from '@/services/warehouseLocationApi'
 import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
@@ -47,18 +46,19 @@ afterEach(() => {
   wrapper?.unmount()
   vi.restoreAllMocks()
 })
-async function render(canDispatch = true) {
-  wrapper = mount(WarehouseUnassigned, {
-    props: { teamId: 1, canDispatch },
+async function render() {
+  wrapper = mount(WarehousePlacementDialog, {
+    props: { teamId: 1, modelValue: null },
     global: {
       stubs: {
-        ElDialog: {
+        WatermelonDialog: {
           props: ['modelValue'],
           template: '<div v-if="modelValue"><slot/><slot name="footer"/></div>',
         },
       },
     },
   })
+  await wrapper.setProps({ modelValue: row })
   await flushPromises()
 }
 async function click(text: string) {
@@ -70,27 +70,8 @@ async function click(text: string) {
 }
 
 describe('unassigned warehouse stock', () => {
-  it('supports select-all and emits separate batch ids without mixing allocation amounts', async () => {
-    await render()
-    wrapper.getComponent(BatchSelectionBar).vm.$emit('all', true)
-    await flushPromises()
-    expect(wrapper.getComponent(BatchSelectionBar).props()).toMatchObject({
-      count: 1,
-      quantity: 80,
-      weight: 8,
-    })
-    await click('批量出库')
-    expect(wrapper.emitted('batchDispatch')?.[0]).toEqual([[8]])
-    await wrapper.setProps({ canDispatch: false })
-    expect(wrapper.findComponent(BatchSelectionBar).exists()).toBe(false)
-  })
   it('assigns only the returned portion, not the full lot balance', async () => {
     await render()
-    expect(teamMaterialApi.stock).toHaveBeenCalledWith(
-      1,
-      expect.objectContaining({ location_status: 'unassigned', availability: 'all' }),
-    )
-    await click('安排仓位')
     expect(wrapper.getComponent(ElSelect).props('modelValue')).toBe(7)
     expect(warehouseLocationApi.place).not.toHaveBeenCalled()
     await click('确认安排')
@@ -104,23 +85,43 @@ describe('unassigned warehouse stock', () => {
   })
   it('keeps the form after a concurrent location conflict', async () => {
     vi.mocked(warehouseLocationApi.place).mockRejectedValue(new Error('该仓位已被其他单据占用'))
-    await render(false)
-    expect(wrapper.text()).not.toContain('转出')
-    await click('安排仓位')
+    await render()
     wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 7)
     await flushPromises()
     await click('确认安排')
     expect(wrapper.text()).toContain('该仓位已被其他单据占用')
     expect(wrapper.emitted('changed')).toBeUndefined()
   })
-  it('refreshes on a stock push without overwriting an open placement form', async () => {
+  it('shows the pending location lookup and prevents submitting before it finishes', async () => {
+    let resolveSlots!: (value: { items: WarehouseLocation[] }) => void
+    vi.mocked(teamMaterialApi.warehouseLocations).mockImplementationOnce(
+      () => new Promise((resolve) => (resolveSlots = resolve)),
+    )
     await render()
-    await wrapper.setProps({ refreshKey: 1 })
+    const confirm = wrapper.findAll('button').find((button) => button.text() === '确认安排')!
+    expect(wrapper.getComponent(ElSelect).props('loading')).toBe(true)
+    expect(confirm.attributes('disabled')).toBeDefined()
+    await confirm.trigger('click')
+    expect(warehouseLocationApi.place).not.toHaveBeenCalled()
+    resolveSlots({ items: [slot] })
     await flushPromises()
-    expect(teamMaterialApi.stock).toHaveBeenCalledTimes(2)
-    await click('安排仓位')
-    await wrapper.setProps({ refreshKey: 2 })
+    expect(wrapper.getComponent(ElSelect).props('loading')).toBe(false)
+    expect(confirm.attributes('disabled')).toBeUndefined()
+    expect(wrapper.getComponent(ElSelect).props('modelValue')).toBe(7)
+  })
+  it('discards a late location lookup after changing batches', async () => {
+    let resolveSlots!: (value: { items: WarehouseLocation[] }) => void
+    vi.mocked(teamMaterialApi.warehouseLocations).mockImplementationOnce(
+      () => new Promise((resolve) => (resolveSlots = resolve)),
+    )
+    await render()
+    await wrapper.setProps({
+      modelValue: { ...row, transfer: { ...row.transfer, id: '9', serial_no: 'S9' } },
+    })
     await flushPromises()
-    expect(teamMaterialApi.stock).toHaveBeenCalledTimes(2)
+    resolveSlots({ items: [{ ...slot, id: 99 }] })
+    await flushPromises()
+    expect(wrapper.getComponent(ElSelect).props('modelValue')).toBe(7)
+    expect(wrapper.text()).toContain('S9')
   })
 })

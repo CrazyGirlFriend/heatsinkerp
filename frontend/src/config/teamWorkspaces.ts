@@ -19,6 +19,7 @@ export const teamWorkspaceSections = [
   { value: 'material-types', label: '类型库存' },
   { value: 'history', label: '收发历史' },
   { value: 'warehouse', label: '仓库管理' },
+  { value: 'settings', label: '班组设置' },
 ] as const
 export type TeamWorkspaceSection = (typeof teamWorkspaceSections)[number]['value']
 
@@ -41,6 +42,7 @@ export const teamWorkspaceModules = [
     sections: ['inspection-results', 'quality-feedback', 'inspections'],
   },
   { value: 'warehouse', label: '仓库管理', sections: ['warehouse'] },
+  { value: 'settings', label: '班组设置', sections: ['settings'] },
 ] as const
 
 export function teamWorkspaceModuleFor(section: string) {
@@ -67,10 +69,12 @@ export function teamWorkspaceSectionsFor(
   reallocations = false,
   processing = false,
   inspection = false,
+  manageSettings = false,
 ) {
   return teamWorkspaceSections.filter(
     (section) =>
       section.value !== 'process-routes' &&
+      (section.value !== 'settings' || manageSettings) &&
       (section.value !== 'warehouse' || (warehouse && manageWarehouse)) &&
       (section.value !== 'reallocations' || reallocations) &&
       (section.value !== 'inspection-results' || inspection) &&
@@ -86,6 +90,7 @@ export function resolveTeamWorkspaceSection(
   reallocations = false,
   processing = false,
   inspection = false,
+  manageSettings = false,
 ): TeamWorkspaceSection {
   if (query.tab === 'serials') return 'stock'
   if (query.tab === 'overview') return 'history'
@@ -95,6 +100,7 @@ export function resolveTeamWorkspaceSection(
     reallocations,
     processing,
     inspection,
+    manageSettings,
   ).find((item) => item.value === query.tab)
   if (section) return section.value
   if (query.direction === 'outgoing') return 'outgoing'

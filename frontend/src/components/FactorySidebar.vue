@@ -40,7 +40,7 @@ const sidebar = useSidebarStore(appPinia)
 const activeGroup = computed(() =>
   route.path.startsWith('/settings/')
     ? 'settings'
-    : ['/', '/factory-analysis', '/production-schedules'].includes(route.path)
+    : ['/factory-analysis', '/production-schedules'].includes(route.path)
       ? 'factory'
       : ['/transfer-batches', '/material-trace'].includes(route.path)
         ? 'materials'
@@ -51,19 +51,19 @@ const activeGroup = computed(() =>
 const workspaces = computed(() => configuredTeamWorkspaces(teamDirectory.items))
 function capabilities(team: Team) {
   const warehouse = team.code === 'FACTORY-WAREHOUSE' && team.kind === 'warehouse'
-  const manageWarehouse =
-    warehouse &&
+  const manageSettings =
+    !authState.currentUserError &&
+    currentUser.value?.active !== false &&
     (isAdmin.value ||
-      (isTeamAccount.value &&
-        currentUser.value?.active &&
-        !authState.currentUserError &&
-        String(currentUser.value.team_id) === String(team.id)))
+      (isTeamAccount.value && String(currentUser.value?.team_id) === String(team.id)))
+  const manageWarehouse = warehouse && manageSettings
   return [
     warehouse,
     Boolean(manageWarehouse),
     teamCanReallocate(team),
     teamCanProcess(team),
     team.code === 'FACTORY-QC',
+    manageSettings,
   ] as const
 }
 const currentTeam = computed(
@@ -296,14 +296,6 @@ const materialLinks = computed(() => [
             ><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"
               ><FactoryNavIcon name="analysis" /></ElIcon
             ><span>全厂数据分析</span></ElMenuItem
-          >
-          <ElMenuItem
-            index="/"
-            aria-label="班组材质库存"
-            :aria-current="route.path === '/' ? 'page' : undefined"
-            ><ElIcon v-if="illustrated" class="factory-nav__team-icon" aria-hidden="true"
-              ><FactoryNavIcon name="inventory" /></ElIcon
-            ><span>班组材质库存</span></ElMenuItem
           >
           <ElMenuItem
             index="/production-schedules"

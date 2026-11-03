@@ -29,7 +29,9 @@ def inbox(client, headers=None, **params):
 
 def rework(client, s):
     _, payload, team, headers = prepare(client, s)
-    r = client.post("/api/process-routes/rework-requests", json=payload, headers=s["other_headers"])
+    r = client.post(
+        "/api/process-routes/rework-requests", json=payload, headers=s["rework_qc_headers"]
+    )
     assert r.status_code == 201, r.text
     return team, headers
 

@@ -5,7 +5,14 @@ import { motion, useReducedMotion } from 'motion-v'
 
 defineProps<{
   label: string
-  options: ReadonlyArray<{ value: string; label: string; icon?: Component; disabled?: boolean }>
+  controls?: string
+  options: ReadonlyArray<{
+    value: string
+    label: string
+    icon?: Component
+    disabled?: boolean
+    count?: number | null
+  }>
 }>()
 const value = defineModel<string>({ default: '' })
 const emit = defineEmits<{ change: [value: string] }>()
@@ -45,6 +52,8 @@ function keyboard(event: KeyboardEvent) {
       :key="option.value"
       type="button"
       :aria-pressed="value === option.value"
+      :aria-controls="controls"
+      :aria-current="controls && value === option.value ? 'page' : undefined"
       :class="{ active: value === option.value }"
       :disabled="option.disabled"
       @click="choose(option)"
@@ -57,6 +66,9 @@ function keyboard(event: KeyboardEvent) {
       />
       <component :is="option.icon" v-if="option.icon" :size="16" />
       <span>{{ option.label }}</span>
+      <span v-if="option.count && option.count > 0" class="wm-segmented-count">{{
+        option.count
+      }}</span>
     </button>
   </div>
 </template>
@@ -68,7 +80,7 @@ function keyboard(event: KeyboardEvent) {
   gap: 3px;
   padding: 4px;
   border-radius: 12px;
-  background: #f2f3f5;
+  background: var(--wm-muted-surface, #f2f3f5);
 }
 .wm-segmented button {
   position: relative;
@@ -81,32 +93,44 @@ function keyboard(event: KeyboardEvent) {
   border: 0;
   background: transparent;
   border-radius: 9px;
-  color: #767b83;
+  color: var(--wm-muted, #767b83);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .wm-segmented button > :not(.wm-segmented-indicator) {
   position: relative;
   z-index: 1;
 }
 .wm-segmented .active {
-  color: #22262b;
+  color: var(--wm-text, #22262b);
   font-weight: 600;
+}
+.wm-segmented-count {
+  min-width: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: var(--wm-neutral-bg, #e4e4e7);
+  color: var(--wm-text, #22262b);
+  font-size: 11px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
 }
 .wm-segmented button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 .wm-segmented button:focus-visible {
-  outline: 2px solid #437fba;
+  outline: 2px solid var(--wm-primary, #437fba);
   outline-offset: 2px;
 }
 .wm-segmented-indicator {
   position: absolute;
   inset: 0;
   border-radius: 9px;
-  background: white;
+  background: var(--wm-surface, white);
   box-shadow:
     0 1px 3px #11182714,
     0 0 0 1px #11182706;

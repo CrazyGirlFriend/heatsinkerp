@@ -25,20 +25,15 @@ const router = createRouter({
       meta: { title: '访问验证', public: true },
     },
     { path: '/login', name: 'login', component: LoginPage, meta: { title: '登录', public: true } },
-    {
-      path: '/',
-      name: 'home',
-      component: () => import('@/pages/FactoryInventoryPage.vue'),
-      meta: { title: '班组材质库存' },
-    },
-    { path: '/factory-stock', name: 'factory-stock', redirect: '/' },
+    { path: '/', name: 'home', redirect: DEFAULT_LOGIN_PATH },
+    { path: '/factory-stock', name: 'factory-stock', redirect: DEFAULT_LOGIN_PATH },
     {
       path: '/factory-analysis',
       name: 'factory-analysis',
       component: () => import('@/pages/FactoryOverviewPage.vue'),
       meta: { title: '全厂数据分析' },
     },
-    { path: '/factory-live', redirect: '/' },
+    { path: '/factory-live', redirect: DEFAULT_LOGIN_PATH },
     {
       path: '/process-routes',
       name: 'process-routes',
@@ -139,8 +134,6 @@ router.beforeEach(async (to) => {
     to.name === 'login' || to.name === 'access' ? to.query.redirect : to.fullPath,
     DEFAULT_LOGIN_PATH,
   )
-  if (!isAuthenticated.value && to.fullPath === '/' && !to.redirectedFrom)
-    destination = DEFAULT_LOGIN_PATH
   if (!unlocked)
     return to.name === 'access' ? true : { path: '/access', query: { redirect: destination } }
   if (to.meta.public && isAuthenticated.value) {

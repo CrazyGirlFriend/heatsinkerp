@@ -2,7 +2,7 @@
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { ElInput } from 'element-plus'
+import { ElInput, ElSelect } from 'element-plus'
 import QualityFeedbackDetail from './QualityFeedbackDetail.vue'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import QualityReworkRequest from './QualityReworkRequest.vue'
@@ -98,6 +98,7 @@ it('lets an involved team reply but does not expose QC decisions', async () => {
   await render()
   expect(button('保存处理意见')).toBeUndefined()
   expect(button('登记复检')).toBeUndefined()
+  expect(button('提交工艺')).toBeUndefined()
   await button('提交反馈')!.trigger('click')
   expect(qualityFeedbackApi.reply).not.toHaveBeenCalled()
   wrapper.getComponent(ElInput).vm.$emit('update:modelValue', '已核查，请检验班组长决定处理')
@@ -135,13 +136,27 @@ it('losing team permissions removes write actions', async () => {
   expect(button('提交反馈')).toBeUndefined()
   expect(button('保存处理意见')).toBeUndefined()
 })
-it('lets QC submit an open issue directly without saving a disposition', async () => {
+it('only exposes submission after QC saves the rework decision', async () => {
   state.auth.currentUser = { team_id: 8, active: true }
+  vi.mocked(qualityFeedbackApi.decide).mockResolvedValue({
+    ...record,
+    disposition: 'rework',
+    feedback_version: 1,
+  })
   await render()
+  expect(button('提交工艺')).toBeUndefined()
+  const disposition = wrapper
+    .findAllComponents(ElSelect)
+    .find((select) => select.props('modelValue') === 'pending')!
+  disposition.vm.$emit('update:modelValue', 'rework')
+  await flushPromises()
+  expect(button('提交工艺')).toBeUndefined()
+  await button('保存处理意见')!.trigger('click')
+  await flushPromises()
   await button('提交工艺')!.trigger('click')
   await flushPromises()
   expect(wrapper.find('quality-rework-request-stub').exists()).toBe(true)
-  expect(qualityFeedbackApi.decide).not.toHaveBeenCalled()
+  expect(qualityFeedbackApi.decide).toHaveBeenCalled()
 })
 
 it('does not expose engineering submission for a closed issue', async () => {
@@ -176,6 +191,7 @@ it('shows historical problem snapshots for the original check and every recheck'
 
 it('shows issue originals and follows the explicitly selected rework batch', async () => {
   state.auth.currentUser = { team_id: 8, active: true }
+  vi.mocked(qualityFeedbackApi.detail).mockResolvedValue({ ...record, disposition: 'rework' })
   await render()
   const rail = wrapper.getComponent(SerialRouteAttachments)
   expect(rail.props('batchNo')).toBe('TL42')

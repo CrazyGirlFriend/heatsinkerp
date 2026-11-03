@@ -1,11 +1,11 @@
-"""Team submissions and engineering replies are durable, scoped and stock-neutral."""
+"""QC submissions and engineering replies are durable, scoped and stock-neutral."""
 
 from uuid import uuid4
 
 from app.database import SessionLocal
 from app.models import MaterialStockBalance, ProcessRoute, ReworkNotice, Team
 from sqlalchemy import select
-from test_engineered_rework import save_plan
+from test_engineered_rework import approved_quality_issue, save_plan
 from test_material_transfers import _leader
 from test_processing_daily import setup_lot, work
 from test_warehouse_classification import base
@@ -23,10 +23,10 @@ def prepare(client, warehouse):
         db.flush()
         engineering_id = team.id
     _, engineering_headers = _leader(client, "process-notice-leader", engineering_id)
-    context = client.get(
-        f"/api/process-routes/rework-sources?lot_id={lot['id']}", headers=warehouse["other_headers"]
-    ).json()
+    context = client.get(base(warehouse, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
+    issue_id, _ = approved_quality_issue(client, warehouse, lot, context)
     body = dict(
+        inspection_id=issue_id,
         source_transfer_id=lot["id"],
         rework_of_id=result.json()["id"],
         expected_revision=context["revision"],
@@ -38,17 +38,18 @@ def prepare(client, warehouse):
     return lot, body, engineering_id, engineering_headers
 
 
-def test_team_problem_notifies_engineering_then_authoring_notifies_submitter(client, warehouse):
+def test_qc_problem_notifies_engineering_then_authoring_notifies_submitter(client, warehouse):
     lot, body, engineering_id, engineering_headers = prepare(client, warehouse)
-    headers = warehouse["other_headers"]
-    team_id = warehouse["other"]["id"]
+    headers = warehouse["rework_qc_headers"]
+    with SessionLocal() as db:
+        team_id = db.scalar(select(Team.id).where(Team.code == "FACTORY-QC"))
     before = client.get(base(warehouse, True) + "/overview").json()["totals"]
     result = client.post("/api/process-routes/rework-requests", json=body, headers=headers)
     assert result.status_code == 201, result.text
     route = result.json()
     assert route["rework_request"]["requesting_team_id"] == team_id
-    assert route["rework_request"]["requesting_team_name"] == warehouse["other"]["name"]
-    assert route["rework_request"]["inspection_id"] is None
+    assert route["rework_request"]["requesting_team_name"] == "检验"
+    assert route["rework_request"]["inspection_id"] == body["inspection_id"]
     assert route["state"] == "draft"
     retry = client.post("/api/process-routes/rework-requests", json=body, headers=headers)
     assert retry.status_code == 201 and retry.json()["id"] == route["id"]
@@ -57,7 +58,7 @@ def test_team_problem_notifies_engineering_then_authoring_notifies_submitter(cli
     assert inbox["unread"] == inbox["total"] == 1
     notice = inbox["items"][0]
     assert notice["kind"] == "requested" and notice["problem"] == body["reason"]
-    assert notice["submitting_team"] == warehouse["other"]["name"]
+    assert notice["submitting_team"] == "检验"
     assert (
         client.get(f"/api/rework-notices/{notice['id']}/route", headers=headers).status_code == 403
     )
@@ -87,27 +88,26 @@ def test_team_problem_notifies_engineering_then_authoring_notifies_submitter(cli
     assert team_inbox["items"][0]["kind"] == "ready"
     assert client.get(base(warehouse, True) + "/overview").json()["totals"] == before
     with SessionLocal() as db:
-        assert len(list(db.scalars(select(ReworkNotice)))) == 2
+        assert len(list(db.scalars(select(ReworkNotice)))) == 3
 
 
 def test_direct_request_cannot_mutate_foreign_stock_and_failure_sends_no_message(client, warehouse):
     lot, body, engineering_id, _ = prepare(client, warehouse)
     before = client.get(base(warehouse, True) + "/overview").json()["totals"]
-    for headers in (warehouse["headers"], client.headers):
+    for headers in (warehouse["headers"], warehouse["other_headers"], client.headers):
         result = client.post("/api/process-routes/rework-requests", json=body, headers=headers)
         assert result.status_code == 403, result.text
-    picker = client.get("/api/process-routes/rework-sources", headers=warehouse["headers"]).json()
-    assert all(row["id"] != lot["id"] for row in picker["items"])
-    assert (
-        client.get(
-            f"/api/process-routes/rework-sources?lot_id={lot['id']}", headers=warehouse["headers"]
-        ).status_code
-        == 409
-    )
+    for suffix in ("", f"?lot_id={lot['id']}"):
+        assert (
+            client.get(
+                "/api/process-routes/rework-sources" + suffix, headers=warehouse["headers"]
+            ).status_code
+            == 403
+        )
     stale = client.post(
         "/api/process-routes/rework-requests",
         json={**body, "expected_revision": body["expected_revision"] + 1},
-        headers=warehouse["other_headers"],
+        headers=warehouse["rework_qc_headers"],
     )
     assert stale.status_code == 409
     assert client.get(f"/api/rework-notices?team_id={engineering_id}").json()["total"] == 0
@@ -117,7 +117,9 @@ def test_direct_request_cannot_mutate_foreign_stock_and_failure_sends_no_message
 def test_existing_message_opens_the_current_engineered_revision(client, warehouse):
     _, body, engineering_id, _ = prepare(client, warehouse)
     headers = warehouse["other_headers"]
-    result = client.post("/api/process-routes/rework-requests", json=body, headers=headers)
+    result = client.post(
+        "/api/process-routes/rework-requests", json=body, headers=warehouse["rework_qc_headers"]
+    )
     assert result.status_code == 201
     saved = save_plan(client, warehouse, result.json())
     messages = client.get(
@@ -130,4 +132,4 @@ def test_existing_message_opens_the_current_engineered_revision(client, warehous
     assert opened.status_code == 200, opened.text
     assert opened.json()["id"] == latest["id"]
     assert opened.json()["steps"][0]["instructions"] == "最新修订的要求"
-    assert opened.json()["rework_request"]["requesting_team_id"] == warehouse["other"]["id"]
+    assert opened.json()["rework_request"]["requesting_team_name"] == "检验"

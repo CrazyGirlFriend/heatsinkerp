@@ -4,6 +4,7 @@ import { Download, FullScreen, ScaleToOriginal } from '@element-plus/icons-vue'
 import { ElButton } from 'element-plus'
 import { workspaceToolsKey, type WorkspaceExportAction } from '@/utils/workspaceTools'
 import PageBackButton from '@/components/PageBackButton.vue'
+import WatermelonSegmented from '@/components/watermelon/WatermelonSegmented.vue'
 import {
   teamWorkspaceSections,
   teamWorkspaceSectionsFor,
@@ -11,6 +12,13 @@ import {
   type TeamWorkspaceSection,
 } from '@/config/teamWorkspaces'
 import '@/styles/team-workspace.css'
+import '@/components/watermelon/watermelon.css'
+import '@/components/watermelon/workspace.css'
+import '@/components/watermelon/forms.css'
+import {
+  workspaceAppearanceKey,
+  type WorkspaceAppearance,
+} from '@/composables/useWorkspaceAppearance'
 
 const props = defineProps<{
   title: string
@@ -18,6 +26,7 @@ const props = defineProps<{
   modelValue: string
   warehouse?: boolean
   manageWarehouse?: boolean
+  manageSettings?: boolean
   reallocations?: boolean
   processing?: boolean
   inspection?: boolean
@@ -25,7 +34,10 @@ const props = defineProps<{
   pendingCount?: number | null
   exportable?: boolean
   settings?: boolean
+  appearance?: WorkspaceAppearance
 }>()
+const appearance = computed(() => props.appearance || (props.warehouse ? 'watermelon' : 'glass'))
+provide(workspaceAppearanceKey, appearance)
 const emit = defineEmits<{
   'update:modelValue': [value: TeamWorkspaceSection]
   'fullscreen-change': [value: boolean]
@@ -41,6 +53,7 @@ const sections = computed(() => {
     Boolean(props.reallocations),
     Boolean(props.processing),
     Boolean(props.inspection),
+    Boolean(props.manageSettings),
   )
   return (
     teamWorkspaceModuleFor(props.modelValue)?.sections.flatMap((value) =>
@@ -49,6 +62,21 @@ const sections = computed(() => {
   )
 })
 const moduleLabel = computed(() => teamWorkspaceModuleFor(props.modelValue)?.label)
+const navigationOptions = computed(() =>
+  sections.value.map((section) => ({
+    ...section,
+    count:
+      section.value === 'pending'
+        ? props.pendingCount
+        : section.value === 'quality-feedback'
+          ? props.qualityCount
+          : undefined,
+  })),
+)
+function selectSection(value: string) {
+  const section = sections.value.find((item) => item.value === value)
+  if (section) emit('update:modelValue', section.value)
+}
 const sectionLabel = computed(
   () =>
     teamWorkspaceSections.find((section) => section.value === props.modelValue)?.label ||
@@ -64,25 +92,26 @@ function registerExport(owner: symbol, action: WorkspaceExportAction | null) {
   else exportActions.delete(owner)
   tableExport.value = [...exportActions.values()].at(-1) || null
 }
-const canFullscreen = computed(() =>
-  [
-    'process-routes',
-    'stock',
-    'delivery-schedule',
-    'pending',
-    'receipts',
-    'processing',
-    'inspections',
-    'inspection-results',
-    'quality-feedback',
-    'outgoing',
-    'reallocations',
-    'losses',
-    'materials',
-    'material-types',
-    'history',
-    'warehouse',
-  ].includes(props.modelValue),
+const canFullscreen = computed(
+  () =>
+    appearance.value !== 'watermelon' &&
+    [
+      'process-routes',
+      'stock',
+      'delivery-schedule',
+      'pending',
+      'receipts',
+      'processing',
+      'inspections',
+      'inspection-results',
+      'quality-feedback',
+      'outgoing',
+      'reallocations',
+      'losses',
+      'materials',
+      'material-types',
+      'history',
+    ].includes(props.modelValue),
 )
 provide(workspaceToolsKey, {
   fullscreen,
@@ -181,6 +210,8 @@ onBeforeUnmount(() => {
       'team-workspace--fullscreen': fullscreen,
       'team-workspace--materials': ['materials', 'material-types'].includes(modelValue),
       'team-workspace--warehouse': modelValue === 'warehouse',
+      'team-workspace--watermelon': appearance === 'watermelon',
+      'wm-scope': appearance === 'watermelon',
     }"
     :aria-label="title + '工作台'"
   >
@@ -222,6 +253,7 @@ onBeforeUnmount(() => {
         >
       </div>
       <nav
+        v-if="appearance !== 'watermelon'"
         v-show="sections.length > 1"
         ref="navigation"
         class="team-workspace__navigation"
@@ -255,9 +287,27 @@ onBeforeUnmount(() => {
     <div
       id="workspace-panel"
       class="team-workspace__content"
+      :class="{
+        'team-workspace__content--card': appearance === 'watermelon' && sections.length > 1,
+      }"
       role="region"
       aria-labelledby="workspace-page-heading"
     >
+      <nav
+        v-if="appearance === 'watermelon'"
+        :hidden="sections.length <= 1"
+        ref="navigation"
+        class="team-workspace__card-navigation"
+        :aria-label="`${title}${moduleLabel || ''}视图`"
+      >
+        <WatermelonSegmented
+          :model-value="modelValue"
+          :label="`${title}${moduleLabel || ''}视图`"
+          :options="navigationOptions"
+          controls="workspace-panel"
+          @change="selectSection"
+        />
+      </nav>
       <slot />
     </div>
     <slot name="dialogs" />

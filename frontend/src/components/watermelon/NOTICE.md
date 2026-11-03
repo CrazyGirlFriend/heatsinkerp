@@ -9,18 +9,54 @@ official Watermelon Vue package. Warehouse filtering and saves use the existing 
 - `WatermelonSearch.vue` and `WatermelonSwitch.vue` extract the native input and
   toggle behavior for reuse; these are local components, not additional upstream ports.
 - `WatermelonDialog.vue` / warehouse editor / `WatermelonButton.vue`: Edit Profile's muted
-  outer shell, white inset body, split field/preview layout, black pill action, input borders
+  outer shell, white inset body, black pill action, input borders
   and spring settings (300 stiffness / 20 damping / 0.8 mass). Profile fields become warehouse
-  fields; the native HTML dialog adds focus containment and Escape behavior.
-- `WatermelonPagination.vue`: Continuous Pagination's shared active background and spring
-  interaction. Buttons are 32px for warehouse density; the infinite decorative shimmer is omitted.
-- Warehouse cells remain a business-specific layout; they are not claimed to be a stock
-  Watermelon warehouse component. No remote images or tracking resources are loaded.
+  fields; the compact warehouse form omits the profile preview column. The native HTML dialog
+  adds focus containment and Escape behavior. The backdrop fades separately, matching the
+  reference entrance; the exit is shortened to 150ms for repeated warehouse operations.
+  Button loading uses a local, width-preserving label/spinner transition driven by API state.
+- `WatermelonPagination.vue`: DataTable 11's current-page/total-page label, centered numbered
+  outline/ghost buttons, ellipses and right-aligned page-size control. Keeps the existing
+  Vue events and reduced-motion behavior. Its footer shares the warehouse card rather than
+  repeating the upstream demo's separate footer frame.
+- `WatermelonDataTable.vue`: DataTable 11's 48px header, 14px vertical cell padding,
+  medium-weight primary fields, horizontal separators and borderless colored status pills.
+  Element Plus provides the existing Vue table engine and fixed-column behavior. The shared
+  `embedded` option removes the extra table frame inside a data card; standalone detail
+  tables retain their rounded frame. Business field definitions and server pagination remain
+  local. The demo's client-only sorting is not applied to the joined server-paged warehouse list.
+- `watermelon.css`: scoped light/dark tokens based on system appearance. The warehouse
+  sidebar retains its navigation structure; only its palette matches the table theme.
+  No remote images or tracking resources are loaded.
+- `WatermelonDateInput.vue`: Schedule Date's rounded calendar, selected-day indicator and
+  spring feedback adapted to a single date. Element Plus retains parsing, keyboard navigation,
+  clearing and disabled dates; the upstream range-selection behavior is not copied.
+- `AppNumberInput.vue`: uses Floating Input's border and focus transition with local
+  plus/minus press feedback. Existing external form labels remain in place; this is not a
+  floating-label port. Element Plus retains precision, bounds and numeric keyboard behavior.
+- `WatermelonNotice.vue`: Inline Toast's icon/message composition and spring entrance,
+  adapted to persistent validation feedback. Global messages keep Element Plus's grouping
+  and dismissal engine with the matching palette. No copy action or demo timers are included.
+- `forms.css`: Form 10's consistent input/select/textarea treatment, subtle inset edges,
+  focus ring and inline error surface; Select 21's neutral popover, rounded options and
+  selection check. Warehouse controls use a shared 40px height rather than the example's
+  32px height. The Vue input and select engines retain their existing business bindings.
 
 - https://ui.watermelon.sh/animated-components/filter-disclosure
 - https://ui.watermelon.sh/animated-components/fluid-tabs
 - https://ui.watermelon.sh/animated-components/edit-profile
-- https://ui.watermelon.sh/animated-components/continuous-pagination
+- https://ui.watermelon.sh/components/data-table (DataTable 11)
+- https://registry.watermelon.sh/r/data-table-11.json
+- https://ui.watermelon.sh/animated-components/schedule-date
+- https://registry.watermelon.sh/r/schedule-date.json
+- https://ui.watermelon.sh/animated-components/floating-input
+- https://registry.watermelon.sh/r/floating-input.json
+- https://ui.watermelon.sh/animated-components/inline-toast
+- https://registry.watermelon.sh/r/inline-toast.json
+- https://ui.watermelon.sh/components/form
+- https://registry.watermelon.sh/r/form-10.json
+- https://ui.watermelon.sh/components/select
+- https://registry.watermelon.sh/r/select-21.json
 - https://github.com/WatermelonCorp/watermelon-platform
 
 ## Upstream license

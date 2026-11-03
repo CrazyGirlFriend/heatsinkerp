@@ -1,11 +1,20 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WatermelonWarehouseToolbar from './WatermelonWarehouseToolbar.vue'
-import WarehouseManagement from './WatermelonWarehouse.vue'
+import WarehouseManagement from '../WarehouseManagement.vue'
+import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { warehouseLocationApi } from '@/services/warehouseLocationApi'
 
 let wrapper: VueWrapper | undefined
+beforeEach(() => {
+  vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 50,
+  })
+})
 afterEach(() => {
   wrapper?.unmount()
   document.body.innerHTML = ''
@@ -15,7 +24,7 @@ afterEach(() => {
 describe('Watermelon warehouse controls', () => {
   it('opens from the trigger, supports arrow selection, and returns focus on Escape', async () => {
     wrapper = mount(WatermelonWarehouseToolbar, {
-      props: { section: 'locations', state: 'occupied' },
+      props: { state: 'occupied' },
       attachTo: document.body,
     })
     const trigger = wrapper.get<HTMLButtonElement>('.wm-filter-trigger')
@@ -45,7 +54,7 @@ describe('Watermelon warehouse controls', () => {
     await wrapper.get('input[aria-label="搜索仓位"]').setValue('A-01')
     await wrapper.get('.wm-warehouse-actions').trigger('submit')
     await flushPromises()
-    expect(list).toHaveBeenLastCalledWith('A-01', 1, 50, undefined)
+    expect(list).toHaveBeenLastCalledWith('A-01', 1, 20, undefined)
     await wrapper.get('.wm-filter-trigger').trigger('click')
     await flushPromises()
     const occupied = [
@@ -53,10 +62,10 @@ describe('Watermelon warehouse controls', () => {
     ].find((el) => el.textContent?.includes('有料'))!
     occupied.click()
     await flushPromises()
-    expect(list).toHaveBeenLastCalledWith('A-01', 1, 50, 'occupied')
+    expect(list).toHaveBeenLastCalledWith('A-01', 1, 20, 'occupied')
     await wrapper.get('.wm-reset').trigger('click')
     await flushPromises()
-    expect(list).toHaveBeenLastCalledWith('', 1, 50, undefined)
+    expect(list).toHaveBeenLastCalledWith('', 1, 20, undefined)
   })
 
   it('keeps the existing warehouse permission gate', async () => {
@@ -85,8 +94,7 @@ describe('Watermelon warehouse controls', () => {
     })
     await flushPromises()
     await wrapper.get('.warehouse-add').trigger('click')
-    const saveButton = () =>
-      wrapper!.findAll('button').find((button) => button.text() === '保存仓位')!
+    const saveButton = () => wrapper!.findAll('button').find((button) => button.text() === '保存')!
     await saveButton().trigger('click')
     await flushPromises()
     expect(save).not.toHaveBeenCalled()

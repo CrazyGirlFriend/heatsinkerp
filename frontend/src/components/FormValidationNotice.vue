@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import { ElAlert, ElButton } from 'element-plus'
+import WatermelonNotice from './watermelon/WatermelonNotice.vue'
+import WatermelonButton from './watermelon/WatermelonButton.vue'
+import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+const watermelon = useWatermelonAppearance()
 const props = defineProps<{ message: string; page?: number | null; label?: string }>()
 const emit = defineEmits<{ locate: [] }>()
 const notice = ref<HTMLElement>()
@@ -17,7 +21,11 @@ watch(
 
 <template>
   <div v-if="message" ref="notice" class="form-validation-notice">
+    <WatermelonNotice v-if="watermelon" :message="message" tone="error" role="alert">
+      <WatermelonButton v-if="page != null" @click="emit('locate')">前往补填</WatermelonButton>
+    </WatermelonNotice>
     <ElAlert
+      v-else
       type="error"
       show-icon
       :closable="false"

@@ -356,7 +356,7 @@ onBeforeUnmount(() => {
         >
       </section>
       <section
-        v-if="canDecide && detail.feedback_status !== 'closed'"
+        v-if="canDecide && detail.disposition === 'rework' && detail.feedback_status !== 'closed'"
         class="quality-detail-section"
       >
         <div class="quality-detail-heading">

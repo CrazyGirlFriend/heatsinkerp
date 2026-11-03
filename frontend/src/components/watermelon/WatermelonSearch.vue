@@ -1,16 +1,22 @@
 <script setup lang="ts">
 import { IconSearch, IconX } from '@tabler/icons-vue'
 
-withDefaults(
-  defineProps<{ label: string; placeholder?: string; disabled?: boolean; maxlength?: number }>(),
-  { placeholder: '搜索' },
+const props = withDefaults(
+  defineProps<{
+    label: string
+    placeholder?: string
+    disabled?: boolean
+    maxlength?: number | string
+    searchOnClear?: boolean
+  }>(),
+  { placeholder: '搜索', searchOnClear: true },
 )
 const value = defineModel<string>({ default: '' })
 const emit = defineEmits<{ search: []; clear: [] }>()
 function clear() {
   value.value = ''
   emit('clear')
-  emit('search')
+  if (props.searchOnClear) emit('search')
 }
 function searchOnEnter(event: KeyboardEvent) {
   if (event.isComposing) return
@@ -43,34 +49,34 @@ function searchOnEnter(event: KeyboardEvent) {
 .wm-search {
   display: flex;
   align-items: center;
-  gap: 9px;
-  height: 38px;
-  padding: 0 11px;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
   min-width: 0;
-  border: 1px solid #e1e4e8;
-  border-radius: 10px;
-  background: #fff;
-  color: #9298a1;
+  border: 1px solid var(--wm-control-border, #e4e4e7);
+  border-radius: 8px;
+  background: var(--wm-control-bg, #fff);
+  color: var(--wm-text-muted, #71717a);
   transition:
     border-color 0.18s,
     box-shadow 0.18s;
 }
 .wm-search:focus-within {
-  border-color: #9da7b2;
-  box-shadow: 0 0 0 3px #eef0f3;
+  border-color: var(--wm-focus-ring, #a1a1aa);
+  box-shadow: 0 0 0 1px var(--wm-focus-ring, #a1a1aa);
 }
 .wm-search input {
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   width: 100%;
   min-width: 0;
   outline: 0;
   border: 0;
   background: transparent;
-  color: #202326;
+  color: var(--wm-text, #18181b);
 }
 .wm-search input::placeholder {
-  color: #9197a0;
+  color: var(--wm-placeholder, #71717a);
 }
 .wm-search button {
   display: inline-flex;
@@ -78,7 +84,7 @@ function searchOnEnter(event: KeyboardEvent) {
   align-items: center;
   border: 0;
   background: transparent;
-  color: #747b86;
+  color: var(--wm-text-muted, #71717a);
   cursor: pointer;
   padding: 3px;
   font-size: 17px;
@@ -88,7 +94,7 @@ function searchOnEnter(event: KeyboardEvent) {
   opacity: 0.45;
 }
 .wm-search button:focus-visible {
-  outline: 2px solid #437fba;
+  outline: 2px solid var(--wm-focus-ring, #71717a);
   outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) {

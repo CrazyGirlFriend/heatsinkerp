@@ -34,12 +34,12 @@ async function renderSidebar(path = '/transfer-batches', compact = false) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/', component: page },
+      { path: '/', redirect: '/factory-analysis' },
       ...['/process-routes', '/business-people', '/dispatch-schedules'].map((path) => ({
         path,
         component: page,
       })),
-      { path: '/factory-stock', redirect: '/' },
+      { path: '/factory-stock', redirect: '/factory-analysis' },
       { path: '/factory-analysis', component: page },
       { path: '/production-schedules', component: page },
       { path: '/transfer-batches', component: page },
@@ -77,6 +77,29 @@ afterEach(() => {
 })
 
 describe('three-level team navigation', () => {
+  it.each(['ADMIN', 'TEAM'] as const)(
+    'opens permitted team settings from the third-level menu for %s',
+    async (role) => {
+      signIn(role)
+      useTeamDirectoryStore(appPinia).items = [
+        { id: 2, code: 'FACTORY-ROLL', name: '轧制', kind: 'production', active: true },
+        { id: 3, code: 'FACTORY-GRIND', name: '研磨', kind: 'production', active: true },
+      ]
+      const { wrapper, router } = await renderSidebar('/team-workspaces/2')
+      expect(wrapper.find('[aria-label="研磨 / 班组设置"]').exists()).toBe(role === 'ADMIN')
+      await wrapper.get('[aria-label="轧制 / 班组设置"]').trigger('click')
+      await flushPromises()
+      expect(router.currentRoute.value.query.tab).toBe('settings')
+      expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制 / 班组设置')
+      await router.back()
+      await flushPromises()
+      expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('轧制 / 库存')
+      authState.currentUserError = '权限读取失败'
+      await flushPromises()
+      expect(wrapper.find('[aria-label="轧制 / 班组设置"]').exists()).toBe(false)
+    },
+  )
+
   it('keeps the current module badge on the actual page when other modules open or fold', async () => {
     useTeamDirectoryStore(appPinia).items = [
       { id: 7, code: 'FACTORY-PLATE', name: '电镀', active: true },
@@ -163,7 +186,7 @@ describe('three-level team navigation', () => {
       'false',
     )
     expect(restored.wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe(
-      '班组材质库存',
+      '全厂数据分析',
     )
   })
 
@@ -294,10 +317,12 @@ describe('three-level team navigation', () => {
       'team-8:delivery',
       'team-8:quality',
       'team-8:warehouse',
+      'team-8:settings',
       'team-7:inventory',
       'team-7:movement',
       'team-7:delivery',
       'team-7:quality',
+      'team-7:settings',
     ])
     expect(wrapper.findAll('.factory-nav__missing')).toHaveLength(6)
     expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('扎板 / 库存')
@@ -478,7 +503,7 @@ describe('three-level team navigation', () => {
     expect(wrapper.find('[aria-label="流水号查询"]').exists()).toBe(false)
   })
 
-  it('puts analysis before stock with distinct matching icons and keeps routes and legacy bookmarks selected correctly', async () => {
+  it('removes the team material inventory entry and selects analysis for legacy bookmarks', async () => {
     const { wrapper, router } = await renderSidebar('/factory-stock')
     await wrapper.setProps({ illustrated: true })
     const group = wrapper
@@ -487,29 +512,20 @@ describe('three-level team navigation', () => {
     expect(group.attributes('aria-expanded')).toBe('true')
     expect(group.findAllComponents(ElMenuItem).map((item) => item.props('index'))).toEqual([
       '/factory-analysis',
-      '/',
       '/production-schedules',
     ])
+    expect(wrapper.find('[aria-label="班组材质库存"]').exists()).toBe(false)
     const analysis = group
       .findAllComponents(ElMenuItem)
       .find((item) => item.props('index') === '/factory-analysis')!
-    const stock = group.findAllComponents(ElMenuItem).find((item) => item.props('index') === '/')!
     expect(analysis.getComponent(FactoryNavIcon).props('name')).toBe('analysis')
-    expect(stock.getComponent(FactoryNavIcon).props('name')).toBe('inventory')
-    for (const item of [analysis, stock]) {
-      expect(item.get('.el-icon').classes()).toContain('factory-nav__team-icon')
-      expect(item.get('.el-icon').attributes('aria-hidden')).toBe('true')
-    }
-    expect(wrapper.find('[aria-label="库存明细"]').exists()).toBe(false)
-    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('班组材质库存')
-    await wrapper.get('[aria-label="全厂数据分析"]').trigger('click')
-    await flushPromises()
+    expect(analysis.get('.el-icon').classes()).toContain('factory-nav__team-icon')
+    expect(analysis.get('.el-icon').attributes('aria-hidden')).toBe('true')
     expect(router.currentRoute.value.path).toBe('/factory-analysis')
     expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('全厂数据分析')
-    expect(group.attributes('aria-expanded')).toBe('true')
-    await wrapper.get('[aria-label="班组材质库存"]').trigger('click')
+    await wrapper.get('[aria-label="生产排期"]').trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/')
-    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('班组材质库存')
+    expect(router.currentRoute.value.path).toBe('/production-schedules')
+    expect(wrapper.get('[aria-current="page"]').attributes('aria-label')).toBe('生产排期')
   })
 })

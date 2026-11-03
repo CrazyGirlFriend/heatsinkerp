@@ -28,7 +28,7 @@ defineProps<{ title?: string; source?: string; filename?: string; missing?: stri
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #ffffffc9;
+  background: var(--document-card-bg, #ffffffc9);
 }
 .document-card-heading,
 .document-card-actions {
@@ -74,7 +74,7 @@ defineProps<{ title?: string; source?: string; filename?: string; missing?: stri
 }
 .document-card--missing {
   border-style: dashed;
-  background: #ffffff80;
+  background: var(--document-card-empty-bg, #ffffff80);
 }
 @media (max-width: 760px) {
   .document-card {

@@ -78,13 +78,14 @@ async function renderApp(mobile: boolean) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/', name: 'home', component: page },
-      { path: '/factory-stock', redirect: '/' },
+      { path: '/', name: 'home', redirect: '/factory-analysis' },
+      { path: '/factory-analysis', component: page },
+      { path: '/factory-stock', redirect: '/factory-analysis' },
       { path: '/transfer-batches', component: page },
       { path: '/transfer-batches/scan', redirect: '/transfer-batches?scan=1' },
       { path: '/material-trace', component: page },
       { path: '/team-workspaces/:teamId', name: 'team-workspace', component: page },
-      { path: '/factory-live', redirect: '/' },
+      { path: '/factory-live', redirect: '/factory-analysis' },
       { path: '/settings/teams', component: page },
       { path: '/settings/accounts', component: page },
       { path: '/:pathMatch(.*)*', component: page },
@@ -179,7 +180,7 @@ describe('application navigation shell', () => {
     const { wrapper, router } = await renderApp(false)
     await router.push('/factory-live')
     await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/')
+    expect(router.currentRoute.value.path).toBe('/factory-analysis')
     expect(wrapper.find('.app-shell--business').exists()).toBe(true)
     expect(wrapper.find('.sidebar__screen').exists()).toBe(false)
   })

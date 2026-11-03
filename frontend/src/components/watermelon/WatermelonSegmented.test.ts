@@ -17,12 +17,14 @@ afterEach(() => {
 describe('WatermelonSegmented', () => {
   it('exposes the supplied group name and emits changes without selecting disabled options', async () => {
     wrapper = mount(WatermelonSegmented, {
-      props: { label: '报表视图', options, modelValue: 'first' },
+      props: { label: '报表视图', options, modelValue: 'first', controls: 'report' },
       attachTo: document.body,
     })
     expect(wrapper.get('[role="group"]').attributes('aria-label')).toBe('报表视图')
     const buttons = wrapper.findAll('button')
     expect(buttons[0]!.attributes('aria-pressed')).toBe('true')
+    expect(buttons[0]!.attributes('aria-current')).toBe('page')
+    expect(buttons[0]!.attributes('aria-controls')).toBe('report')
     await buttons[0]!.trigger('click')
     await buttons[1]!.trigger('click')
     expect(wrapper.emitted('change')).toBeUndefined()
@@ -31,6 +33,8 @@ describe('WatermelonSegmented', () => {
     expect(wrapper.emitted('change')).toEqual([['third']])
     await wrapper.setProps({ modelValue: 'third' })
     expect(buttons[2]!.attributes('aria-pressed')).toBe('true')
+    expect(buttons[0]!.attributes('aria-current')).toBeUndefined()
+    expect(buttons[2]!.attributes('aria-current')).toBe('page')
   })
 
   it('moves focus and selection with arrows, Home and End while skipping disabled choices', async () => {

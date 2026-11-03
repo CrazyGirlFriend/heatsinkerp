@@ -20,7 +20,6 @@ import LiveRefreshNotice from '@/components/LiveRefreshNotice.vue'
 import RecordDateFilter from '@/components/RecordDateFilter.vue'
 import SerialUrgencyBadge from '@/components/SerialUrgencyBadge.vue'
 import type { CalendarRange } from '@/types/recordFilters'
-import ReworkProblemDialog from '@/components/ReworkProblemDialog.vue'
 import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
 import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
 import TeamWorkspaceActions from '@/components/TeamWorkspaceActions.vue'
@@ -135,7 +134,6 @@ const scopeLoading = computed(
     (!directory.loaded || directory.loading) &&
     !scopeReady.value,
 )
-const reworkProblemOpen = ref(false)
 const canWrite = computed(
   () =>
     scopeReady.value &&
@@ -144,7 +142,13 @@ const canWrite = computed(
     String(auth.currentUser?.team_id) === teamKey.value &&
     !auth.currentUserError,
 )
-const canManageBusiness = computed(() => scopeReady.value && (auth.isAdmin || canWrite.value))
+const canManageBusiness = computed(
+  () =>
+    scopeReady.value &&
+    !auth.currentUserError &&
+    auth.currentUser?.active !== false &&
+    (auth.isAdmin || canWrite.value),
+)
 const canReallocate = computed(() => canWrite.value && teamCanReallocate(team.value))
 const isWarehouse = computed(
   () =>
@@ -194,6 +198,7 @@ const tab = computed(() =>
     teamCanReallocate(team.value),
     hasProcessing.value,
     team.value?.code === 'FACTORY-QC',
+    canManageBusiness.value,
   ),
 )
 watch(
@@ -488,7 +493,6 @@ const losses = ref<MaterialLoss[]>([])
 const receipts = ref<MaterialTransfer[]>([])
 const reallocations = ref<MaterialTransfer[]>([])
 const receiptOpen = ref(false)
-const businessOpen = ref(false)
 const inspectionOpen = ref(false),
   inspectionGroupId = ref<number>()
 function openInspection(groupId?: number) {
@@ -555,7 +559,6 @@ function businessChanged() {
 }
 async function openingStocked() {
   const alreadyInStock = tab.value === 'stock'
-  businessOpen.value = false
   await router.replace(teamWorkspaceSectionPath(teamKey.value, 'stock'))
   if (alreadyInStock) await loadView()
 }
@@ -1079,7 +1082,6 @@ watch(
     scopeReady,
   ],
   () => {
-    businessOpen.value = false
     closeDetails()
     pending.value = []
     outgoing.value = []
@@ -1150,14 +1152,16 @@ onBeforeUnmount(() => {
     :quality-count="qualityCount"
     :pending-count="pendingCount"
     :exportable="exportable"
-    :settings="canManageBusiness"
-    @settings="businessOpen = true"
+    :manage-settings="canManageBusiness"
     @export="openExport"
     @update:model-value="selectSection"
     @fullscreen-change="fullscreen = $event"
   >
-    <template v-if="canManageBusiness && teamId" #messages>
-      <ElButton v-if="canWrite" @click="reworkProblemOpen = true">提交返工问题</ElButton>
+    <template
+      v-if="canWrite && team?.code === 'FACTORY-QC' && tab !== 'quality-feedback'"
+      #messages
+    >
+      <ElButton @click="selectSection('quality-feedback')">提交返工问题</ElButton>
     </template>
     <template v-if="syncMessage" #fullscreen-status
       ><span role="status" :title="syncMessage">{{
@@ -1201,8 +1205,22 @@ onBeforeUnmount(() => {
             查看。</template
           ></ElAlert
         >
+        <TeamBusinessDialog
+          v-if="tab === 'settings' && canManageBusiness"
+          :key="teamId"
+          :model-value="true"
+          inline
+          @update:model-value="!$event && selectSection('stock')"
+          :team-id="teamId"
+          :team-name="title"
+          :processing-tasks="hasProcessing"
+          :inspection-problems="team?.code === 'FACTORY-QC'"
+          :business-only="auth.isAdmin"
+          @changed="businessChanged"
+          @stocked="openingStocked"
+        />
         <WarehouseManagement
-          v-if="tab === 'warehouse'"
+          v-else-if="tab === 'warehouse'"
           :key="teamId"
           :team-id="teamId"
           :can-manage="canManageWarehouse"
@@ -1447,7 +1465,6 @@ onBeforeUnmount(() => {
                   reallocationOpen ||
                   pickerOpen ||
                   receiptOpen ||
-                  businessOpen ||
                   printOpen ||
                   listFiltersOpen
                 "
@@ -1952,11 +1969,6 @@ onBeforeUnmount(() => {
       </template>
     </div>
     <template #dialogs>
-      <ReworkProblemDialog
-        v-if="reworkProblemOpen && canWrite && canManageBusiness && teamId"
-        @close="reworkProblemOpen = false"
-        @submitted="loadView"
-      />
       <InspectionRegistrationDialog
         v-if="inspectionOpen && canWrite"
         :inspection-team-id="teamId"
@@ -2013,18 +2025,6 @@ onBeforeUnmount(() => {
         @balances-changed="loadView"
       />
       <MaterialBatchPrintDialog v-model="printOpen" :items="printRows" />
-      <TeamBusinessDialog
-        v-if="canManageBusiness"
-        :key="teamId"
-        v-model="businessOpen"
-        :team-id="teamId"
-        :team-name="title"
-        :processing-tasks="hasProcessing"
-        :inspection-problems="team?.code === 'FACTORY-QC'"
-        :business-only="auth.isAdmin"
-        @changed="businessChanged"
-        @stocked="openingStocked"
-      />
     </template>
   </TeamWorkspaceShell>
 </template>

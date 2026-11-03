@@ -29,7 +29,7 @@ vi.mock('@/pages/SerialInventoryPage.vue', () => ({
   default: { template: '<div>serial stock</div>' },
 }))
 vi.mock('@/pages/TeamWorkspacePage.vue', () => ({ default: { template: '<div>team</div>' } }))
-vi.mock('@/pages/FactoryInventoryPage.vue', () => ({
+vi.mock('@/pages/FactoryOverviewPage.vue', () => ({
   default: { template: '<div>factory overview</div>' },
 }))
 import router from './index'
@@ -39,17 +39,20 @@ beforeEach(() => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
 })
 afterEach(() => vi.restoreAllMocks())
-it('redirects retired stock bookmarks to the authenticated factory overview for both roles', async () => {
-  for (const admin of [false, true]) {
-    state.admin = admin
-    await router.push('/factory-stock')
-    expect(router.currentRoute.value.name).toBe('home')
-    expect(router.currentRoute.value.path).toBe('/')
-    expect(router.currentRoute.value.meta.title).toBe('班组材质库存')
-    expect(router.currentRoute.value.meta.standalone).not.toBe(true)
-    expect(router.currentRoute.value.meta.public).not.toBe(true)
-  }
-})
+it.each(['/', '/factory-stock', '/factory-live'])(
+  'redirects retired page %s to authenticated factory analysis for both roles',
+  async (path) => {
+    for (const admin of [false, true]) {
+      state.admin = admin
+      await router.push(path)
+      expect(router.currentRoute.value.name).toBe('factory-analysis')
+      expect(router.currentRoute.value.path).toBe('/factory-analysis')
+      expect(router.currentRoute.value.meta.title).toBe('全厂数据分析')
+      expect(router.currentRoute.value.meta.standalone).not.toBe(true)
+      expect(router.currentRoute.value.meta.public).not.toBe(true)
+    }
+  },
+)
 it('denies both full-chain URLs to team accounts, even when entered directly', async () => {
   for (const path of ['/material-trace?serial_no=000012', '/flow-preview/chain?sample=purposes']) {
     await router.push(path)

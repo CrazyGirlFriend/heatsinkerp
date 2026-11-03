@@ -1,20 +1,18 @@
 <script setup lang="ts">
 import PersonName from './PersonName.vue'
+import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+import WatermelonDataTable from './watermelon/WatermelonDataTable.vue'
+import WatermelonButton from './watermelon/WatermelonButton.vue'
+import WatermelonSearch from './watermelon/WatermelonSearch.vue'
+import WorkspacePagination from './WorkspacePagination.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import {
-  ElAlert,
-  ElButton,
-  ElInput,
-  ElLoading,
-  ElPagination,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus'
+import { ElAlert, ElButton, ElInput, ElLoading, ElTable, ElTableColumn } from 'element-plus'
 import AppDialog from './AppDialog.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute } from '@/types/processRoute'
 import { formatDateTime } from '@/utils/format'
 const vLoading = ElLoading.directive
+const watermelon = useWatermelonAppearance()
 const props = defineProps<{ serialNo?: string }>()
 const emit = defineEmits<{ selected: [route: ProcessRoute]; close: [] }>()
 const visible = ref(true),
@@ -46,6 +44,10 @@ async function load() {
 function search() {
   appliedQuery.value = query.value.trim()
   page.value = 1
+  void load()
+}
+function changePage(value: number) {
+  page.value = value
   void load()
 }
 async function choose(id: number) {
@@ -84,7 +86,16 @@ onBeforeUnmount(() => {
   >
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <div class="route-picker-search">
+      <WatermelonSearch
+        v-if="watermelon"
+        v-model="query"
+        label="工艺搜索"
+        placeholder="搜索流水号、工艺人员"
+        :disabled="busy"
+        @search="search"
+      />
       <ElInput
+        v-else
         v-model="query"
         placeholder="搜索流水号、工艺人员"
         aria-label="工艺搜索"
@@ -92,9 +103,21 @@ onBeforeUnmount(() => {
         :disabled="busy"
         @keyup.enter="search"
         @clear="search"
-      /><ElButton :disabled="loading || busy" @click="search">查询</ElButton>
+      /><component
+        :is="watermelon ? WatermelonButton : ElButton"
+        :disabled="loading || busy"
+        @click="search"
+        >查询</component
+      >
     </div>
-    <ElTable v-loading="loading" :data="items" class="business-table" max-height="440" row-key="id">
+    <component
+      :is="watermelon ? WatermelonDataTable : ElTable"
+      v-loading="loading"
+      :data="items"
+      :class="watermelon ? '' : 'business-table'"
+      max-height="440"
+      row-key="id"
+    >
       <ElTableColumn label="流水号" min-width="260" align="center"
         ><template #default="{ row }">{{ row.serial_nos.join('、') }}</template></ElTableColumn
       >
@@ -112,16 +135,23 @@ onBeforeUnmount(() => {
           ></template
         ></ElTableColumn
       >
-    </ElTable>
-    <ElPagination
-      v-model:current-page="page"
+    </component>
+    <WorkspacePagination
+      :current-page="page"
       :page-size="20"
       :total="total"
       :disabled="busy || loading"
       layout="total, prev, pager, next"
-      @current-change="load"
+      @current-change="changePage"
     />
-    <template #footer><ElButton :disabled="busy" @click="visible = false">取消</ElButton></template>
+    <template #footer
+      ><component
+        :is="watermelon ? WatermelonButton : ElButton"
+        :disabled="busy"
+        @click="visible = false"
+        >取消</component
+      ></template
+    >
   </AppDialog>
 </template>
 <style scoped>
@@ -129,6 +159,13 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 10px;
   margin-block: 12px 16px;
+}
+.route-picker-search > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.wm-pagination {
+  margin-top: 16px;
 }
 .el-pagination {
   justify-content: flex-end;

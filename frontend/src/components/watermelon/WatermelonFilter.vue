@@ -215,12 +215,12 @@ onBeforeUnmount(() => {
   justify-content: center;
   flex-shrink: 0;
   gap: 7px;
-  height: 38px;
+  height: 36px;
   padding: 0 12px;
-  border: 1px solid #e1e4e8;
-  background: #fff;
-  border-radius: 10px;
-  color: #4e5660;
+  border: 1px solid var(--wm-border, #e1e4e8);
+  background: var(--wm-surface, #fff);
+  border-radius: 8px;
+  color: var(--wm-text, #4e5660);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -229,18 +229,17 @@ onBeforeUnmount(() => {
     box-shadow 180ms;
 }
 .wm-filter-trigger:hover {
-  background: #f7f8fa;
-  box-shadow: 0 2px 5px #1520370a;
+  background: var(--wm-hover, #f7f8fa);
 }
 .wm-filter-trigger.active {
-  border-color: #b9d8cd;
-  color: #247960;
-  background: #f3faf7;
+  border-color: var(--wm-success-text, #b9d8cd);
+  color: var(--wm-success-text, #247960);
+  background: var(--wm-success-bg, #f3faf7);
 }
 .wm-active-dot {
   width: 5px;
   height: 5px;
-  background: #2b9b75;
+  background: currentColor;
   border-radius: 50%;
 }
 .wm-filter-panel {
@@ -253,10 +252,10 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 8px;
-  border: 1px solid #e5e5e9;
-  border-radius: 20px;
-  background: #fefefe;
-  color: #24282e;
+  border: 1px solid var(--wm-border, #e5e5e9);
+  border-radius: 12px;
+  background: var(--wm-surface, #fefefe);
+  color: var(--wm-text, #24282e);
   box-shadow:
     0 12px 40px #1e27341c,
     0 2px 8px #1e273408;
@@ -267,7 +266,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   padding: 7px 10px 10px;
-  color: #91959d;
+  color: var(--wm-muted, #91959d);
   font-size: 11px;
 }
 .wm-filter-panel header button {
@@ -277,7 +276,7 @@ onBeforeUnmount(() => {
   padding: 3px;
   border: 0;
   background: transparent;
-  color: #9298a1;
+  color: var(--wm-muted, #9298a1);
   cursor: pointer;
 }
 .wm-filter-panel [role='menuitemradio'] {
@@ -288,21 +287,21 @@ onBeforeUnmount(() => {
   min-height: 42px;
   padding: 8px 12px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 8px;
   background: transparent;
   font: inherit;
   font-size: 14px;
-  color: #535257;
+  color: var(--wm-text, #535257);
   text-align: left;
   cursor: pointer;
 }
 .wm-filter-panel [role='menuitemradio']:hover:not(:disabled),
 .wm-filter-panel [role='menuitemradio']:focus-visible {
-  background: #f3f4f5;
+  background: var(--wm-hover, #f3f4f5);
 }
 .wm-filter-panel [role='menuitemradio'].selected {
-  background: #f1f7f3;
-  color: #253e31;
+  background: var(--wm-success-bg, #f1f7f3);
+  color: var(--wm-success-text, #253e31);
 }
 .wm-filter-panel [role='menuitemradio']:disabled {
   opacity: 0.45;
@@ -316,13 +315,12 @@ onBeforeUnmount(() => {
   flex: 0 0 20px;
   height: 20px;
   border-radius: 50%;
-  background: #31b971;
-  color: white;
-  box-shadow: inset 0 0 0 2px #ffffff50;
+  background: var(--wm-success-text, #31b971);
+  color: var(--wm-success-bg, white);
 }
 .wm-filter-trigger:focus-visible,
 .wm-filter-panel button:focus-visible {
-  outline: 2px solid #437fba;
+  outline: 2px solid var(--wm-primary, #437fba);
   outline-offset: 2px;
 }
 </style>

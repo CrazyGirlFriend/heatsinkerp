@@ -1,43 +1,47 @@
 <script setup lang="ts">
-import FormWorkspace from './FormWorkspace.vue'
-import CompactFormSection from './CompactFormSection.vue'
-import AppDialog from '@/components/AppDialog.vue'
+import WatermelonWarehouseToolbar from './watermelon/WatermelonWarehouseToolbar.vue'
+import WatermelonDataTable from './watermelon/WatermelonDataTable.vue'
+import WatermelonDialog from './watermelon/WatermelonDialog.vue'
+import WatermelonButton from './watermelon/WatermelonButton.vue'
+import WatermelonBadge from './watermelon/WatermelonBadge.vue'
+import WatermelonPagination from './watermelon/WatermelonPagination.vue'
+import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
+import WatermelonSwitch from './watermelon/WatermelonSwitch.vue'
+import './watermelon/watermelon.css'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { formatAmount } from '@/utils/format'
-import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
-import WorkspacePagination from './WorkspacePagination.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import TableExportButton from './TableExportButton.vue'
 import { loadExportPages, tableExportSource } from '@/utils/tableExport'
-import FilterDialog from './FilterDialog.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   ElAlert,
   ElButton,
-  ElCard,
   ElCheckbox,
   ElEmpty,
   ElForm,
   ElFormItem,
-  ElIcon,
   ElInput,
-  ElOption,
-  ElSelect,
-  ElSwitch,
-  ElTable,
   ElTableColumn,
-  ElTag,
   ElResult,
 } from 'element-plus'
-import { Clock, Lock, Plus, CircleClose } from '@element-plus/icons-vue'
+import { IconPlus, IconPencil } from '@tabler/icons-vue'
 import { showToast } from '@/stores/toast'
 import {
   locationState,
   warehouseLocationApi,
   type WarehouseLocation,
-  type WarehouseLocationFilter,
 } from '@/services/warehouseLocationApi'
-import WarehouseUnassigned from './WarehouseUnassigned.vue'
+import WarehousePlacementDialog from './WarehousePlacementDialog.vue'
+import {
+  loadWarehouseCatalog,
+  catalogSerial,
+  catalogAmount,
+  type WarehouseCatalogRow,
+  type WarehouseCatalogFilter,
+} from '@/services/warehouseCatalog'
+import type { StockBatch } from '@/types/teamMaterials'
+import { dispatchableAmounts } from '@/utils/materialStock'
 import BatchSelectionBar from './BatchSelectionBar.vue'
 import { useBatchSelection } from '@/composables/useBatchSelection'
 import { materialTypeLabel } from '@/types/materialTransfer'
@@ -54,62 +58,81 @@ const emit = defineEmits<{
   dispatch: [batchNo: string]
   batchDispatch: [sourceIds: number[]]
 }>()
-const pageSize = ref(50),
-  gridRows = ref(5),
-  grid = ref<HTMLElement>()
+const pageSize = ref(20)
 type Batch = WarehouseLocation['batches'][number]
-const section = ref<'locations' | 'unassigned'>('locations')
-const rows = ref<WarehouseLocation[]>([]),
-  total = ref(0),
+const entries = ref<WarehouseCatalogRow[]>([])
+const placement = ref<StockBatch | null>(null)
+const rows = computed(() => entries.value.flatMap((row) => (row.location ? [row.location] : [])))
+const total = ref(0),
   page = ref(1)
 const query = ref(''),
   appliedQuery = ref(''),
-  filter = ref<WarehouseLocationFilter>(),
-  appliedFilter = ref<WarehouseLocationFilter>()
+  filter = ref<WarehouseCatalogFilter>(),
+  appliedFilter = ref<WarehouseCatalogFilter>()
 function exportSource() {
   const query = appliedQuery.value,
-    state = appliedFilter.value
-  const joined = (row: WarehouseLocation, field: 'serial_no' | 'material_name' | 'batch_no') =>
-    [
-      ...new Set(
-        row.batches
-          .map((batch) => (field === 'serial_no' ? sharedSerialLabel(batch) : batch[field]))
-          .filter(Boolean),
-      ),
-    ].join('、')
+    state = appliedFilter.value,
+    teamId = props.teamId
   return tableExportSource(
     '仓位库存',
     total.value,
     [
-      { key: 'name', label: '仓位', value: (row: WarehouseLocation) => row.name },
-      { key: 'status', label: '状态', value: stateLabel },
-      { key: 'serial_no', label: '流水号', value: (row) => joined(row, 'serial_no') },
-      { key: 'material_name', label: '材质', value: (row) => joined(row, 'material_name') },
+      {
+        key: 'name',
+        label: '仓位',
+        value: (row: WarehouseCatalogRow) => row.location?.name || '—',
+      },
+      { key: 'serial_no', label: '流水号', value: catalogSerial },
+      {
+        key: 'material_name',
+        label: '材质',
+        value: (row) =>
+          row.stock?.transfer.material_name ||
+          [
+            ...new Set(row.location?.batches.map((batch) => batch.material_name).filter(Boolean)),
+          ].join('、'),
+      },
       {
         key: 'material_type',
         label: '物料类型',
         value: (row) =>
-          [...new Set(row.batches.map((batch) => materialTypeLabel(batch.material_type)))].join(
-            '、',
-          ),
+          row.stock
+            ? materialTypeLabel(row.stock.transfer.material_type)
+            : [
+                ...new Set(
+                  row.location!.batches.map((batch) => materialTypeLabel(batch.material_type)),
+                ),
+              ].join('、'),
+      },
+      { key: 'assignment', label: '分配状态', value: assignmentLabel },
+      {
+        key: 'status',
+        label: '仓位状态',
+        value: (row) => (row.location ? stateLabel(row.location) : '—'),
+      },
+      { key: 'quantity', label: '在库件数', value: (row) => catalogAmount(row, 'quantity') },
+      { key: 'weight', label: '在库重量 (kg)', value: (row) => catalogAmount(row, 'weight') },
+      {
+        key: 'received',
+        label: '在库批次',
+        value: (row) => (row.stock ? 1 : received(row.location!).length),
       },
       {
-        key: 'quantity',
-        label: '在库件数',
-        value: (row) => received(row).reduce((sum, batch) => sum + batch.quantity, 0),
+        key: 'pending',
+        label: '待签收批次',
+        value: (row) => (row.stock ? 0 : pending(row.location!).length),
       },
       {
-        key: 'weight',
-        label: '在库重量 (kg)',
-        value: (row) => received(row).reduce((sum, batch) => sum + batch.weight, 0),
+        key: 'batch_no',
+        label: '批次号',
+        value: (row) =>
+          row.stock?.transfer.batch_no ||
+          row.location!.batches.map((batch) => batch.batch_no).join('、'),
       },
-      { key: 'received', label: '在库批次', value: (row) => received(row).length },
-      { key: 'pending', label: '待签收批次', value: (row) => pending(row).length },
-      { key: 'batch_no', label: '批次号', value: (row) => joined(row, 'batch_no') },
     ],
     (signal, progress) =>
       loadExportPages(
-        (page, pageSize) => warehouseLocationApi.list(query, page, pageSize, state),
+        (page, pageSize) => loadWarehouseCatalog(query, page, pageSize, state, teamId),
         signal,
         progress,
       ),
@@ -142,14 +165,6 @@ const detailBatches = computed(() =>
       : pending(detail.value)
     : [],
 )
-const detailIdentity = computed(() => {
-  const batches = detail.value?.batches || []
-  return {
-    serial: [...new Set(batches.map(sharedSerialLabel))].join('、'),
-    material: [...new Set(batches.map((batch) => batch.material_name).filter(Boolean))].join('、'),
-    type: [...new Set(batches.map((batch) => materialTypeLabel(batch.material_type)))].join('、'),
-  }
-})
 const {
   selected,
   available,
@@ -168,6 +183,38 @@ const {
     weight: row.status === 'received' ? (row.available_weight ?? null) : null,
   }),
 )
+function assignmentLabel(row: WarehouseCatalogRow) {
+  return row.stock ? '未分配' : row.location!.batches.length ? '已分配' : '—'
+}
+function stockBatch(stock: StockBatch): Batch {
+  const available = dispatchableAmounts(stock)
+  return {
+    ...stock.transfer,
+    id: Number(stock.transfer.id),
+    material_name: stock.transfer.material_name ?? undefined,
+    material_type: stock.transfer.material_type ?? undefined,
+    status: 'received',
+    quantity: stock.unassigned_quantity ?? 0,
+    weight: stock.unassigned_weight ?? 0,
+    available_quantity: available.quantity ?? undefined,
+    available_weight: available.weight ?? undefined,
+  }
+}
+const unassignedBatches = computed(() =>
+  entries.value.flatMap((row) => (row.stock ? [stockBatch(row.stock)] : [])),
+)
+const selectableUnassigned = computed(() => unassignedBatches.value.filter(available))
+const unassignedCheckedCount = computed(
+  () => selectableUnassigned.value.filter((row) => selected.has(String(row.id))).length,
+)
+const allUnassignedChecked = computed(
+  () =>
+    !!selectableUnassigned.value.length &&
+    unassignedCheckedCount.value === selectableUnassigned.value.length,
+)
+function toggleUnassigned(checked: string | number | boolean) {
+  selectableUnassigned.value.forEach((row) => toggle(row, checked))
+}
 function selectable(batch: Batch) {
   return available(batch) && (selected.has(String(batch.id)) || selected.size < 100)
 }
@@ -199,88 +246,55 @@ function stateLabel(row: WarehouseLocation) {
   if (!stocked(row) && pending(row).length) return '待签收'
   return locationState[row.status]
 }
-function cardLabel(row: WarehouseLocation) {
-  return [
-    row.name,
-    stocked(row) ? '有料' : '空仓',
-    pending(row).length ? '待签收' : '',
-    row.draft_locked ? '填写中' : '',
-    !row.active ? '停用' : '',
-    '查看详情',
-  ]
-    .filter(Boolean)
-    .join('，')
+function stateTone(row: WarehouseLocation) {
+  if (!row.active) return 'neutral'
+  if (row.draft_locked) return 'warning'
+  if (stocked(row)) return 'success'
+  return pending(row).length ? 'info' : 'neutral'
 }
 let version = 0,
   disposed = false
 let timer: ReturnType<typeof setInterval> | undefined
-let resizeObserver: ResizeObserver | undefined,
-  resizeTimer: ReturnType<typeof setTimeout> | undefined
-function fitGrid() {
-  if (!grid.value || disposed || !props.canManage || section.value !== 'locations') return false
-  const height = grid.value.clientHeight
-  if (!height) return false
-  const style = getComputedStyle(grid.value),
-    columns = style.gridTemplateColumns.split(' ').length
-  const gap = parseFloat(style.rowGap) || 0,
-    minimum = parseFloat(style.getPropertyValue('--slot-height')) || 70
-  // Keep cards compact and request only the slots that fit the available area.
-  gridRows.value = Math.max(
-    1,
-    Math.min(Math.floor((height + gap) / (minimum + gap)), Math.floor(100 / columns)),
-  )
-  const size = columns * gridRows.value
-  if (size === pageSize.value) return false
-  pageSize.value = size
-  page.value = 1
-  void load()
-  return true
-}
-watch(
-  grid,
-  (element) => {
-    resizeObserver?.disconnect()
-    if (element) {
-      resizeObserver?.observe(element)
-      fitGrid()
-    }
-  },
-  { flush: 'post' },
-)
 async function load(background = false) {
   if (
     !props.canManage ||
     disposed ||
     (background &&
-      (loading.value ||
-        saving.value ||
-        editorOpen.value ||
-        section.value !== 'locations' ||
-        document.hidden))
+      (loading.value || saving.value || editorOpen.value || !!placement.value || document.hidden))
   )
     return
   const current = ++version
   if (!background) loading.value = true
   try {
-    const data = await warehouseLocationApi.list(
+    const data = await loadWarehouseCatalog(
       appliedQuery.value.trim(),
       page.value,
       pageSize.value,
       appliedFilter.value,
+      props.teamId,
     )
     if (current !== version) return
-    const nextIds = new Set(data.items.map((row) => row.id))
+    const locations = data.items.flatMap((row) => (row.location ? [row.location] : []))
+    const nextIds = new Set(locations.map((row) => row.id))
     // Keep other pages selected, but drop batches removed from a refreshed slot.
     for (const row of rows.value)
       if (nextIds.has(row.id)) {
         for (const batch of row.batches)
-          if (!data.items.some((item) => item.batches.some((value) => value.id === batch.id)))
+          if (
+            !locations.some((item) => item.batches.some((value) => value.id === batch.id)) &&
+            !data.items.some((item) => item.stock && Number(item.stock.transfer.id) === batch.id)
+          )
             selected.delete(String(batch.id))
       }
-    rows.value = data.items
-    reconcile(data.items.flatMap((row) => row.batches))
+    entries.value = data.items
+    reconcile([...locations.flatMap((row) => row.batches), ...unassignedBatches.value])
     total.value = data.total
     error.value = ''
+    if (page.value > 1 && !data.items.length) {
+      page.value = Math.max(1, Math.ceil(data.total / pageSize.value))
+      await load()
+      return
+    }
     if (detailOpen.value && !detail.value) detailOpen.value = false
   } catch (failure) {
     if (current === version)
@@ -289,7 +303,6 @@ async function load(background = false) {
     if (current === version) loading.value = false
   }
 }
-const filtersOpen = ref(false)
 function search() {
   appliedQuery.value = query.value
   appliedFilter.value = filter.value
@@ -346,7 +359,8 @@ watch(
   (value) => {
     if (!value) {
       ++version
-      rows.value = []
+      entries.value = []
+      placement.value = null
       total.value = 0
       selected.clear()
       editorOpen.value = false
@@ -355,7 +369,7 @@ watch(
   },
 )
 watch(
-  () => [props.teamId, props.canDispatch, section.value],
+  () => [props.teamId, props.canDispatch],
   () => {
     selected.clear()
     detailOpen.value = false
@@ -368,265 +382,303 @@ watch(
   },
 )
 onMounted(() => {
-  if (typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(() => {
-      clearTimeout(resizeTimer)
-      resizeTimer = setTimeout(fitGrid, 150)
-    })
-    if (grid.value) resizeObserver.observe(grid.value)
-  }
-  if (!fitGrid()) void load()
+  void load()
   timer = setInterval(() => void load(true), 10_000)
 })
 onBeforeUnmount(() => {
   disposed = true
   ++version
   clearInterval(timer)
-  clearTimeout(resizeTimer)
-  resizeObserver?.disconnect()
 })
 </script>
 
 <template>
-  <section class="warehouse-management">
+  <section class="warehouse-management wm-scope">
     <ElResult v-if="!canManage" icon="warning" title="仅库房账号和管理员可以设置仓位" />
     <template v-else>
-      <ElCard shadow="never" class="warehouse-card">
-        <WorkspaceDataToolbar
+      <div class="warehouse-card">
+        <WatermelonWarehouseToolbar
           v-model="query"
-          :searchable="section === 'locations'"
-          :refresh="section === 'locations'"
+          :state="appliedFilter"
           :loading="loading"
-          search-label="搜索仓位"
-          placeholder="仓位、流水号或材质"
-          :maxlength="80"
           @search="search"
           @refresh="load()"
+          @reset="reset"
+          @state="
+            (value) => {
+              filter = value
+              search()
+            }
+          "
         >
-          <template v-if="section === 'locations'" #filters
-            ><FilterDialog
-              v-model="filtersOpen"
-              title="仓位筛选"
-              :count="appliedFilter ? 1 : 0"
-              @open="filter = appliedFilter"
-              @cancel="filter = appliedFilter"
-              @apply="
-                () => {
-                  search()
-                  filtersOpen = false
-                }
-              "
-              @reset="filter = undefined"
-              ><label
-                >仓位状态<ElSelect
-                  v-model="filter"
-                  aria-label="仓位状态"
-                  placeholder="全部状态"
-                  clearable
-                  ><ElOption label="有料" value="occupied" /><ElOption
-                    label="空闲"
-                    value="available" /><ElOption label="待签收" value="pending" /><ElOption
-                    label="填写中"
-                    value="draft" /><ElOption
-                    label="停用"
-                    value="disabled" /></ElSelect></label></FilterDialog
-          ></template>
-          <template #tools
-            ><ElButton v-if="section === 'locations'" @click="reset">重置</ElButton
-            ><TableExportButton
-              v-if="section === 'locations'"
+          <template #tools>
+            <TableExportButton
               :source="exportSource"
               :disabled="loading || !!error"
-              :context="[teamId, section, appliedQuery, appliedFilter].join('|')"
-          /></template>
+              :context="[teamId, appliedQuery, appliedFilter].join('|')"
+            />
+          </template>
           <template #actions>
-            <ElButton
+            <WatermelonButton
               v-if="canDispatch && selected.size"
               :disabled="loading || !!error"
               @click="batchDispatch"
-              >批量出库（{{ selected.size }}）</ElButton
-            >
-            <ElButton
-              v-if="teamId"
-              text
-              @click="section = section === 'locations' ? 'unassigned' : 'locations'"
-              >{{ section === 'locations' ? '未分配仓位' : '返回仓位' }}</ElButton
+              >批量出库（{{ selected.size }}）</WatermelonButton
             >
           </template>
-          <template #primary-actions
-            ><ElButton class="warehouse-add" :icon="Plus" @click="edit()"
-              >新增仓位</ElButton
-            ></template
+          <template #primary-actions>
+            <WatermelonButton class="warehouse-add" primary @click="edit()"
+              ><IconPlus :size="16" />新增仓位</WatermelonButton
+            >
+          </template>
+        </WatermelonWarehouseToolbar>
+        <ElAlert v-if="error" :title="error" type="error" :closable="false" />
+        <WatermelonDataTable
+          :data="entries"
+          :loading="loading"
+          fill
+          embedded
+          row-key="key"
+          class="warehouse-table"
+          :empty-text="loading ? '正在加载仓位' : '没有符合条件的记录'"
+        >
+          <ElTableColumn
+            v-if="canDispatch && selectableUnassigned.length"
+            width="46"
+            fixed="left"
+            class-name="wm-table-selection"
           >
-        </WorkspaceDataToolbar>
-        <WarehouseUnassigned
-          v-if="section === 'unassigned' && teamId"
-          :team-id="teamId"
-          :can-dispatch="canDispatch"
-          :refresh-key="refreshKey"
-          @view="emit('view', $event)"
-          @dispatch="emit('dispatch', $event)"
-          @batch-dispatch="emit('batchDispatch', $event)"
-          @changed="load()"
+            <template #header
+              ><ElCheckbox
+                aria-label="选择本页未分配物料"
+                :model-value="allUnassignedChecked"
+                :indeterminate="unassignedCheckedCount > 0 && !allUnassignedChecked"
+                :disabled="loading || !!error || !selectableUnassigned.length"
+                @change="toggleUnassigned"
+            /></template>
+            <template #default="{ row }"
+              ><ElCheckbox
+                v-if="row.stock"
+                :aria-label="`选择未分配物料 ${row.stock.transfer.batch_no}`"
+                :model-value="selected.has(String(row.stock.transfer.id))"
+                :disabled="loading || !!error || !selectable(stockBatch(row.stock))"
+                @change="toggle(stockBatch(row.stock), $event)"
+            /></template>
+          </ElTableColumn>
+          <ElTableColumn label="仓位" min-width="124" fixed="left">
+            <template #default="{ row }">
+              <ElButton
+                v-if="row.location"
+                class="warehouse-location-link wm-table-primary"
+                link
+                :disabled="loading || !!error"
+                :aria-label="`${row.location.name}，查看详情`"
+                aria-haspopup="dialog"
+                @click="openDetail(row.location)"
+                >{{ row.location.name }}</ElButton
+              >
+              <span v-else class="wm-table-muted">—</span>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="流水号" min-width="168" show-overflow-tooltip>
+            <template #default="{ row }"
+              ><ElButton
+                v-if="row.stock"
+                class="wm-table-primary"
+                link
+                @click="emit('view', row.stock.transfer.batch_no)"
+                >{{ catalogSerial(row as WarehouseCatalogRow) }}</ElButton
+              ><span v-else>{{ catalogSerial(row as WarehouseCatalogRow) }}</span></template
+            >
+          </ElTableColumn>
+          <ElTableColumn label="分配状态" width="104">
+            <template #default="{ row }"
+              ><WatermelonBadge
+                v-if="assignmentLabel(row as WarehouseCatalogRow) !== '—'"
+                :tone="row.stock ? 'warning' : 'success'"
+                >{{ assignmentLabel(row as WarehouseCatalogRow) }}</WatermelonBadge
+              ><span v-else class="wm-table-muted">—</span></template
+            >
+          </ElTableColumn>
+          <ElTableColumn label="仓位状态" width="104">
+            <template #default="{ row }"
+              ><WatermelonBadge v-if="row.location" :tone="stateTone(row.location)">{{
+                stateLabel(row.location)
+              }}</WatermelonBadge
+              ><span v-else class="wm-table-muted">—</span></template
+            >
+          </ElTableColumn>
+          <ElTableColumn label="在库件数" min-width="112" align="right">
+            <template #default="{ row }"
+              ><span
+                :class="{
+                  'wm-table-muted': !catalogAmount(row as WarehouseCatalogRow, 'quantity'),
+                }"
+                >{{ formatAmount(catalogAmount(row as WarehouseCatalogRow, 'quantity')) }}</span
+              ></template
+            ></ElTableColumn
+          >
+          <ElTableColumn label="在库重量（kg）" min-width="144" align="right">
+            <template #default="{ row }"
+              ><span
+                :class="{ 'wm-table-muted': !catalogAmount(row as WarehouseCatalogRow, 'weight') }"
+                >{{ formatAmount(catalogAmount(row as WarehouseCatalogRow, 'weight')) }}</span
+              ></template
+            ></ElTableColumn
+          >
+          <ElTableColumn label="在库批次" width="100" align="right">
+            <template #default="{ row }"
+              ><span :class="{ 'wm-table-muted': !row.stock && !received(row.location).length }">{{
+                row.stock ? 1 : received(row.location).length
+              }}</span></template
+            ></ElTableColumn
+          >
+          <ElTableColumn label="待签收批次" width="120" align="right">
+            <template #default="{ row }"
+              ><span
+                :class="{
+                  'warehouse-pending': row.location && pending(row.location).length,
+                  'wm-table-muted': !row.location || !pending(row.location).length,
+                }"
+                >{{ row.location ? pending(row.location).length : 0 }}</span
+              ></template
+            ></ElTableColumn
+          >
+          <ElTableColumn
+            label="操作"
+            :width="canDispatch ? 154 : 112"
+            align="center"
+            fixed="right"
+            class-name="warehouse-actions-column"
+          >
+            <template #default="{ row }">
+              <template v-if="row.stock"
+                ><ElButton
+                  class="wm-table-action"
+                  link
+                  :disabled="loading || !!error"
+                  @click="placement = row.stock"
+                  >安排仓位</ElButton
+                ><ElButton
+                  v-if="canDispatch"
+                  class="wm-table-action"
+                  link
+                  :disabled="loading || !!error || !available(stockBatch(row.stock))"
+                  @click="dispatch(stockBatch(row.stock))"
+                  >转出</ElButton
+                ></template
+              >
+              <ElButton
+                v-else
+                class="wm-table-action"
+                link
+                :disabled="loading || !!error || row.location.draft_locked"
+                :aria-label="`编辑仓位 ${row.location.name}`"
+                @click="edit(row.location)"
+                ><IconPencil :size="15" />编辑</ElButton
+              >
+            </template>
+          </ElTableColumn>
+        </WatermelonDataTable>
+        <WatermelonPagination
+          :current-page="page"
+          :page-size="pageSize"
+          :total="total"
+          :disabled="loading"
+          @current-change="
+            (value) => {
+              page = value
+              load()
+            }
+          "
+          @size-change="
+            (value) => {
+              pageSize = value
+              page = 1
+              load()
+            }
+          "
         />
-        <template v-else>
-          <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-          <div class="warehouse-legend" aria-label="仓位状态图例">
-            <span><i class="warehouse-swatch stocked" aria-hidden="true" />有料</span
-            ><span><i class="warehouse-swatch" aria-hidden="true" />空仓</span
-            ><span class="pending"
-              ><ElIcon aria-hidden="true"><Clock /></ElIcon>待签收</span
-            ><span class="draft"
-              ><ElIcon aria-hidden="true"><Lock /></ElIcon>填写中</span
-            ><span class="disabled"
-              ><ElIcon aria-hidden="true"><CircleClose /></ElIcon>停用</span
-            >
-          </div>
-          <div
-            ref="grid"
-            class="warehouse-grid"
-            role="group"
-            aria-label="仓位卡片"
-            :aria-busy="loading"
-            :style="{ '--warehouse-rows': gridRows }"
-          >
-            <button
-              v-for="row in rows"
-              :key="row.id"
-              type="button"
-              class="warehouse-slot"
-              :class="{ 'is-stocked': stocked(row), 'is-disabled': !row.active }"
-              :disabled="loading || !!error"
-              :aria-label="cardLabel(row)"
-              aria-haspopup="dialog"
-              :aria-expanded="detailOpen && detailId === row.id"
-              :title="row.name"
-              @click="openDetail(row)"
-            >
-              <span class="warehouse-slot-name">{{ row.name }}</span>
-              <span class="warehouse-slot-markers" aria-hidden="true"
-                ><ElIcon v-if="!row.active" class="disabled"><CircleClose /></ElIcon
-                ><template v-else
-                  ><ElIcon v-if="pending(row).length" class="pending"><Clock /></ElIcon
-                  ><ElIcon v-if="row.draft_locked" class="draft"><Lock /></ElIcon></template
-              ></span>
-            </button>
-            <ElEmpty
-              v-if="!rows.length"
-              class="warehouse-empty"
-              :description="loading ? '正在加载仓位' : '没有符合条件的仓位'"
-              :image-size="64"
-            />
-          </div>
-          <WorkspacePagination
-            :current-page="page"
-            :page-size="pageSize"
-            :total="total"
-            layout="prev, pager, next"
-            @current-change="
-              (value) => {
-                page = value
-                load()
-              }
-            "
-            ><span aria-live="polite"
-              >共 {{ total }} 个仓位 · {{ pageSize }} 个/页</span
-            ></WorkspacePagination
-          >
-        </template>
-      </ElCard>
-      <AppDialog
+      </div>
+      <WarehousePlacementDialog
+        v-if="teamId"
+        v-model="placement"
+        :team-id="teamId"
+        @changed="load()"
+      />
+      <WatermelonDialog
         v-model="detailOpen"
         :title="(detail?.name || '') + ' · 仓位明细'"
-        width="min(760px, 94vw)"
+        width="min(1120px, 94vw)"
         class="warehouse-detail-dialog"
-        align-center
       >
         <template #header
           ><div class="warehouse-detail-title">
-            <span class="el-dialog__title">{{ detail?.name }} · 仓位明细</span
-            ><ElTag
-              v-if="detail"
-              :type="detail.draft_locked ? 'warning' : stocked(detail) ? 'success' : 'info'"
-              >{{ stateLabel(detail) }}</ElTag
-            >
+            <h2>{{ detail?.name }} · 仓位明细</h2>
+            <WatermelonBadge v-if="detail" :tone="stateTone(detail)">{{
+              stateLabel(detail)
+            }}</WatermelonBadge>
           </div></template
         >
         <template v-if="detail">
           <ElAlert v-if="error" :title="error" type="error" :closable="false" />
           <ElAlert
             v-if="detail.draft_locked"
-            title="入库表单正在选择此仓位，暂不能修改"
+            title="入库填写中，暂不能修改仓位"
             type="warning"
             :closable="false"
           />
           <template v-if="detail.batches.length">
-            <div class="warehouse-detail-summary">
-              <div class="warehouse-detail-identity">
-                <strong>{{ detailIdentity.serial }}</strong>
-                <div>
-                  <span>{{ detailIdentity.material }}</span
-                  ><ElTag effect="light">{{ detailIdentity.type }}</ElTag>
-                </div>
-              </div>
-              <div class="warehouse-detail-totals">
-                <div>
-                  <small>库存件数</small><strong>{{ amount(detail, 'quantity') }}</strong>
-                </div>
-                <div>
-                  <small>库存重量（kg）</small><strong>{{ amount(detail, 'weight') }}</strong>
-                </div>
-              </div>
-            </div>
             <div class="warehouse-detail-controls">
-              <nav class="warehouse-detail-tabs" aria-label="批次状态">
-                <ElButton
-                  text
-                  :class="{ 'is-current': detailTab === 'received' }"
-                  :aria-pressed="detailTab === 'received'"
-                  @click="detailTab = 'received'"
-                  >在库批次 {{ received(detail).length }}</ElButton
-                ><ElButton
-                  text
-                  :class="{ 'is-current': detailTab === 'pending' }"
-                  :aria-pressed="detailTab === 'pending'"
-                  @click="detailTab = 'pending'"
-                  >待签收 {{ pending(detail).length }}</ElButton
+              <WatermelonSegmented
+                v-model="detailTab"
+                class="warehouse-detail-tabs"
+                label="仓位批次"
+                :options="[
+                  { value: 'received', label: `在库 ${received(detail).length}` },
+                  { value: 'pending', label: `待签收 ${pending(detail).length}` },
+                ]"
+              />
+              <div class="warehouse-detail-totals">
+                <span
+                  >库存件数<strong>{{ amount(detail, 'quantity') }}</strong></span
+                ><span
+                  >库存重量（kg）<strong>{{ amount(detail, 'weight') }}</strong></span
                 >
-              </nav>
-              <BatchSelectionBar
-                v-if="canDispatch && detailTab === 'received'"
-                class="warehouse-detail-selection"
-                :class="{ 'is-empty': !selected.size }"
-                :count="selected.size"
-                :quantity="totals.quantity"
-                :weight="totals.weight"
-                :all-checked="allChecked"
-                :partial="checkedCount > 0 && !allChecked"
-                :disabled="
-                  loading ||
-                  !!error ||
-                  !availableRows.length ||
-                  (selected.size >= 100 && !checkedCount)
-                "
-                @all="toggleAll"
-                @clear="selected.clear()"
-                ><ElButton
-                  type="primary"
-                  :disabled="!selected.size || loading || !!error"
-                  @click="batchDispatch"
-                  >批量出库</ElButton
-                ></BatchSelectionBar
-              >
+              </div>
             </div>
-            <ElTable
+            <BatchSelectionBar
+              v-if="canDispatch && detailTab === 'received'"
+              class="warehouse-detail-selection"
+              :count="selected.size"
+              :quantity="totals.quantity"
+              :weight="totals.weight"
+              :all-checked="allChecked"
+              :partial="checkedCount > 0 && !allChecked"
+              :disabled="
+                loading ||
+                !!error ||
+                !availableRows.length ||
+                (selected.size >= 100 && !checkedCount)
+              "
+              @all="toggleAll"
+              @clear="selected.clear()"
+            >
+              <WatermelonButton
+                primary
+                :disabled="!selected.size || loading || !!error"
+                @click="batchDispatch"
+                >批量出库</WatermelonButton
+              >
+            </BatchSelectionBar>
+            <WatermelonDataTable
               :data="detailBatches"
-              row-key="id"
+              row-key="key"
               empty-text="暂无批次"
-              class="business-table warehouse-detail-table"
+              class="warehouse-detail-table"
               max-height="360"
             >
-              <ElTableColumn v-if="canDispatch && detailTab === 'received'" width="44"
+              <ElTableColumn v-if="canDispatch && detailTab === 'received'" width="46" fixed="left"
                 ><template #default="{ row: batch }"
                   ><ElCheckbox
                     :aria-label="'选择批次 ' + batch.batch_no"
@@ -634,34 +686,50 @@ onBeforeUnmount(() => {
                     :disabled="loading || !selectable(batch as Batch) || !!error"
                     @change="toggle(batch as Batch, $event)" /></template
               ></ElTableColumn>
-              <ElTableColumn label="批次号" min-width="190"
+              <ElTableColumn label="批次号" min-width="170" fixed="left"
                 ><template #default="{ row: batch }"
-                  ><ElButton link type="primary" @click="view(batch as Batch)">{{
+                  ><ElButton class="wm-table-primary" link @click="view(batch as Batch)">{{
                     batch.batch_no
                   }}</ElButton></template
                 ></ElTableColumn
               >
+              <ElTableColumn label="流水号" min-width="150"
+                ><template #default="{ row: batch }">{{
+                  sharedSerialLabel(batch)
+                }}</template></ElTableColumn
+              >
+              <ElTableColumn prop="material_name" label="材质" min-width="105" />
+              <ElTableColumn label="类型" min-width="100"
+                ><template #default="{ row: batch }">{{
+                  materialTypeLabel(batch.material_type)
+                }}</template></ElTableColumn
+              >
               <ElTableColumn prop="quantity" label="件数" align="right" min-width="80" />
-              <ElTableColumn prop="weight" label="重量（kg）" align="right" min-width="110" />
+              <ElTableColumn prop="weight" label="重量（kg）" align="right" min-width="115" />
               <ElTableColumn
                 :label="detailTab === 'received' ? '签收时间' : '提交时间'"
-                min-width="160"
+                min-width="165"
                 ><template #default="{ row: batch }">{{
                   formatDateTime(detailTab === 'received' ? batch.received_at : batch.created_at)
                 }}</template></ElTableColumn
               >
-              <ElTableColumn v-if="canDispatch && detailTab === 'received'" label="操作" width="65"
+              <ElTableColumn
+                v-if="canDispatch && detailTab === 'received'"
+                label="操作"
+                width="70"
+                align="center"
+                fixed="right"
                 ><template #default="{ row: batch }"
                   ><ElButton
+                    class="wm-table-action"
                     link
-                    type="primary"
                     :disabled="!available(batch as Batch) || loading || !!error"
                     @click="dispatch(batch as Batch)"
                     >转出</ElButton
                   ></template
                 ></ElTableColumn
               >
-            </ElTable>
+            </WatermelonDataTable>
           </template>
           <ElEmpty
             v-else
@@ -676,12 +744,14 @@ onBeforeUnmount(() => {
           />
         </template>
         <template #footer
-          ><ElButton :disabled="!detail || detail.draft_locked" @click="detail && edit(detail)"
-            >编辑仓位</ElButton
-          ><ElButton type="primary" @click="detailOpen = false">关闭</ElButton></template
+          ><WatermelonButton
+            :disabled="!detail || detail.draft_locked"
+            @click="detail && edit(detail)"
+            >编辑仓位</WatermelonButton
+          ><WatermelonButton primary @click="detailOpen = false">关闭</WatermelonButton></template
         >
-      </AppDialog>
-      <AppDialog
+      </WatermelonDialog>
+      <WatermelonDialog
         v-model="editorOpen"
         :title="editingTitle"
         width="min(440px, 94vw)"
@@ -689,388 +759,110 @@ onBeforeUnmount(() => {
         :close-on-press-escape="!saving"
         :show-close="!saving"
       >
-        <FormWorkspace>
-          <ElForm ref="formRef" label-position="top" :show-message="false" @submit.prevent="save"
-            ><CompactFormSection
-              ><ElFormItem
-                class="form-field--long"
-                label="仓位名称"
-                :error="fieldErrors.name"
-                required
-                ><ElInput
-                  v-model="form.name"
-                  aria-label="仓位名称"
-                  placeholder="例如：A区-01"
-                  maxlength="80"
-                  :disabled="saving" /></ElFormItem
-              ><ElFormItem class="form-field--long" label="启用"
-                ><ElSwitch
-                  v-model="form.active"
-                  aria-label="启用仓位"
-                  :disabled="saving || !!editing?.batches.length"
-                /><span v-if="editing?.batches.length">有料时可改名，不能停用</span></ElFormItem
-              >
-            </CompactFormSection>
-            <p v-if="formError" class="warehouse-error" role="alert">{{ formError }}</p></ElForm
+        <ElForm ref="formRef" label-position="top" :show-message="false" @submit.prevent="save">
+          <ElFormItem label="仓位名称" :error="fieldErrors.name" required
+            ><ElInput
+              v-model="form.name"
+              aria-label="仓位名称"
+              placeholder="例如：A区-01"
+              maxlength="80"
+              :disabled="saving"
+            />
+            <p v-if="fieldErrors.name" class="wm-field-error" role="alert">
+              {{ fieldErrors.name }}
+            </p></ElFormItem
           >
-        </FormWorkspace>
+          <div class="warehouse-enabled">
+            <span>启用仓位</span
+            ><WatermelonSwitch
+              v-model="form.active"
+              label="启用仓位"
+              :disabled="saving || !!editing?.batches.length"
+            />
+          </div>
+          <p v-if="editing?.batches.length" class="warehouse-hint">有料时不能停用</p>
+          <p v-if="formError" class="wm-field-error" role="alert">{{ formError }}</p>
+        </ElForm>
         <template #footer
-          ><ElButton :disabled="saving" @click="editorOpen = false">取消</ElButton
-          ><ElButton type="primary" :loading="saving" @click="save">保存</ElButton></template
+          ><WatermelonButton :disabled="saving" @click="editorOpen = false">取消</WatermelonButton
+          ><WatermelonButton primary :loading="saving" @click="save"
+            >保存</WatermelonButton
+          ></template
         >
-      </AppDialog>
+      </WatermelonDialog>
     </template>
   </section>
 </template>
 
 <style scoped>
-.warehouse-management {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-}
+.warehouse-management,
 .warehouse-card {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  flex: 1;
+  min-width: 0;
   min-height: 0;
-  border-color: var(--line);
-  border-radius: 14px;
-  container-type: inline-size;
 }
-.warehouse-card :deep(.el-card__body) {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+.warehouse-card {
+  padding: 20px;
+  overflow: hidden;
+  border: 1px solid var(--wm-border);
+  border-radius: 12px;
+  background: var(--wm-bg);
+  box-shadow: 0 1px 2px #00000005;
 }
-
-.warehouse-refresh {
-  width: 36px;
-  padding: 0;
-}
-.warehouse-legend {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  flex-wrap: wrap;
-  margin-bottom: 18px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.warehouse-legend > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.warehouse-swatch {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-}
-.warehouse-swatch.stocked {
-  background: #d8ebdf;
-  border-color: #d8ebdf;
-}
-.pending {
-  color: #56899f;
-}
-.draft {
-  color: #a28249;
-}
-.disabled {
-  color: #8b9890;
-}
-.warehouse-grid {
-  --slot-height: 70px;
-  display: grid;
-  flex: 1;
-  min-height: var(--slot-height);
-  grid-template-columns: repeat(10, minmax(0, 1fr));
-  grid-template-rows: repeat(var(--warehouse-rows), minmax(var(--slot-height), 1fr));
-  gap: 12px 10px;
-}
-.warehouse-card:has(.warehouse-grid) :deep(.el-card__body) {
-  overflow-y: auto;
-}
-.warehouse-empty {
-  grid-column: 1 / -1;
-  grid-row: 1 / -1;
-}
-.warehouse-slot {
-  position: relative;
+.warehouse-card :deep(.warehouse-actions-column .cell) {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 0;
-  min-height: 70px;
-  padding: 15px 7px 8px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--surface);
-  color: var(--muted);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background-color var(--motion-fast) ease,
-    transform var(--motion-fast) ease;
-}
-.warehouse-slot.is-stocked {
-  background: #d8ebdf;
-  border-color: #d8ebdf;
-  color: #34784b;
-}
-.warehouse-slot:not(:disabled):hover {
-  background: #f2f7f3;
-  transform: translateY(-1px);
-}
-.warehouse-slot.is-stocked:not(:disabled):hover {
-  background: #cce4d5;
-  border-color: #cce4d5;
-}
-.warehouse-slot:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 3px;
-}
-.warehouse-slot.is-disabled:not(.is-stocked) {
-  background: #f3f5f3;
-  color: #9aa69e;
-}
-.warehouse-slot:disabled {
-  cursor: default;
-}
-.warehouse-slot-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.warehouse-slot-markers {
-  display: flex;
   gap: 4px;
-  position: absolute;
-  right: 6px;
-  top: 6px;
+  padding-inline: 8px;
 }
-.warehouse-slot-markers .el-icon {
-  width: 15px;
-  height: 15px;
-  padding: 1px;
-  border-radius: 3px;
-  background: rgb(255 255 255 / 55%);
-  font-size: 12px;
+.warehouse-card :deep(.warehouse-actions-column .el-button + .el-button) {
+  margin-left: 0;
 }
-
-.warehouse-detail-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.warehouse-detail-summary {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  padding: 16px;
+.warehouse-card > .el-alert {
+  flex-shrink: 0;
   margin-bottom: 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--workspace-bg);
 }
-.warehouse-detail-identity {
-  flex: 1;
-  min-width: 0;
-  color: var(--muted);
+.warehouse-pending {
+  color: var(--wm-info-text, #356d9f);
+  font-weight: 600;
 }
-.warehouse-detail-identity strong {
-  display: block;
-  margin-bottom: 6px;
-  color: var(--text);
-  font-size: 19px;
-  font-weight: 550;
-  overflow-wrap: anywhere;
-}
-.warehouse-detail-identity > div {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-.warehouse-detail-identity .el-tag {
-  height: auto;
-  min-height: 24px;
-  white-space: normal;
-}
-.warehouse-detail-totals {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 24px;
-  padding-left: 24px;
-  border-left: 1px solid var(--line);
-  font-variant-numeric: tabular-nums;
-}
-.warehouse-detail-totals small {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
-  margin-bottom: 4px;
-}
-.warehouse-detail-totals strong {
-  font-size: 24px;
-  line-height: 1.25;
-  color: var(--primary);
-  font-weight: 550;
-}
+.warehouse-detail-title,
 .warehouse-detail-controls {
   display: flex;
   align-items: center;
+  gap: 14px;
   flex-wrap: wrap;
-  gap: 6px 16px;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--line);
 }
-.warehouse-detail-tabs {
+.warehouse-detail-controls {
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.warehouse-detail-totals {
   display: flex;
-  flex: 0 0 auto;
-  gap: 16px;
+  gap: 20px;
+  font-size: 13px;
+  color: var(--wm-muted, #71717a);
 }
-.warehouse-detail-tabs .el-button {
-  position: relative;
-  margin: 0;
-  padding: 10px 0;
-  height: auto;
-  border-radius: 0;
-}
-.warehouse-detail-tabs .is-current {
-  color: var(--primary);
-}
-.warehouse-detail-tabs .is-current::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--primary);
-}
-.warehouse-detail-selection {
-  flex: 1;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-.warehouse-detail-selection :deep(.batch-selection-hint) {
-  display: none;
-}
-.warehouse-detail-selection :deep(.batch-amount) {
-  padding-left: 8px;
-}
-.warehouse-detail-selection :deep(.batch-selection-total) {
-  font-size: 12px;
-}
-.warehouse-detail-selection :deep(.el-checkbox__label) {
-  padding-left: 6px;
-  font-size: 12px;
-}
-.warehouse-detail-selection :deep(.el-button--primary) {
-  margin-left: auto;
-}
-.warehouse-detail-selection.is-empty :deep(.batch-selection-total),
-.warehouse-detail-selection.is-empty :deep(.el-button.is-text) {
-  display: none;
-}
-.warehouse-detail-table {
+.warehouse-detail-totals strong {
+  color: var(--wm-text, #18181b);
+  font-size: 14px;
+  margin-left: 8px;
   font-variant-numeric: tabular-nums;
 }
-.warehouse-error {
-  color: var(--danger);
+.warehouse-detail-selection {
+  margin-bottom: 12px;
 }
-@container (max-width: 1100px) {
-  .warehouse-grid {
-    grid-template-columns: repeat(8, minmax(0, 1fr));
-  }
+.warehouse-enabled {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
-@container (max-width: 840px) {
-  .warehouse-grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-}
-@container (max-width: 600px) {
-  .warehouse-grid {
-    --slot-height: 66px;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-  .warehouse-slot {
-    min-height: 66px;
-  }
-}
-@container (max-width: 390px) {
-  .warehouse-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 9px;
-  }
-}
-@media (max-width: 760px) {
-  .warehouse-card :deep(.el-card__body) {
-    padding: 12px;
-  }
-  .warehouse-legend {
-    gap: 10px 14px;
-  }
-
-  .warehouse-detail-table :deep(.el-scrollbar__bar.is-horizontal) {
-    opacity: 1;
-  }
-}
-@media (max-width: 560px) {
-  .warehouse-detail-summary {
-    flex-wrap: wrap;
-    gap: 14px;
-    padding: 12px;
-  }
-  .warehouse-detail-identity {
-    flex-basis: 100%;
-  }
-  .warehouse-detail-totals {
-    width: 100%;
-    gap: 24px;
-    padding: 12px 0 0;
-    border-left: 0;
-    border-top: 1px solid var(--line);
-  }
-  .warehouse-detail-totals > div {
-    flex: 1;
-    min-width: 0;
-  }
-  .warehouse-detail-totals strong {
-    font-size: 22px;
-    overflow-wrap: anywhere;
-  }
-  .warehouse-detail-selection {
-    flex-basis: 100%;
-  }
-}
-@media (max-height: 650px) {
-  .warehouse-legend {
-    margin-bottom: 12px;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .warehouse-slot {
-    transition: none;
-  }
-  .warehouse-slot:not(:disabled):hover {
-    transform: none;
-  }
+.warehouse-hint {
+  color: var(--wm-muted, #71717a);
+  font-size: 12px;
+  margin: 8px 0 0;
 }
 </style>

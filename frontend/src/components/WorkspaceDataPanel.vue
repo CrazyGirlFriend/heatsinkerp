@@ -1,5 +1,9 @@
+<script setup lang="ts">
+import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+const watermelon = useWatermelonAppearance()
+</script>
 <template>
-  <section class="workspace-data-panel"><slot /></section>
+  <section class="workspace-data-panel" :class="{ 'wm-data-panel': watermelon }"><slot /></section>
 </template>
 
 <style scoped>

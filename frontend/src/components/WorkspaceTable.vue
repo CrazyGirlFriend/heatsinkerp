@@ -1,15 +1,21 @@
 <script setup lang="ts">
 import { ElTable, type TableProps } from 'element-plus'
+import WatermelonDataTable from './watermelon/WatermelonDataTable.vue'
+import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+const watermelon = useWatermelonAppearance()
 
 defineOptions({ inheritAttrs: false })
 defineProps<{ data?: TableProps['data'] }>()
 </script>
 
 <template>
-  <ElTable
-    class="business-table workspace-table"
+  <component
+    :is="watermelon ? WatermelonDataTable : ElTable"
+    :class="watermelon ? 'workspace-table--watermelon' : 'business-table workspace-table'"
     :data="data"
-    border
+    :border="!watermelon"
+    :fill="watermelon || undefined"
+    :embedded="watermelon || undefined"
     height="100%"
     flexible
     show-overflow-tooltip
@@ -18,7 +24,7 @@ defineProps<{ data?: TableProps['data'] }>()
     <slot />
     <template v-if="$slots.empty" #empty><slot name="empty" /></template>
     <template v-if="$slots.append" #append><slot name="append" /></template>
-  </ElTable>
+  </component>
 </template>
 
 <style scoped>

@@ -34,26 +34,29 @@ function toggle() {
   border: 0;
   border-radius: 12px;
   padding: 3px;
-  background: #d7d7de;
+  background: var(--wm-border, #d7d7de);
   cursor: pointer;
 }
 .wm-switch[aria-checked='true'] {
-  background: #111;
+  background: var(--wm-primary, #111);
 }
 .wm-switch > span {
   display: block;
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--wm-text, #fff);
   box-shadow: 0 1px 3px #0003;
 }
 .wm-switch:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
+.wm-switch[aria-checked='true'] > span {
+  background: var(--wm-primary-text, #fff);
+}
 .wm-switch:focus-visible {
-  outline: 2px solid #328369;
+  outline: 2px solid var(--wm-primary, #328369);
   outline-offset: 3px;
 }
 </style>

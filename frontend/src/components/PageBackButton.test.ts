@@ -33,7 +33,7 @@ async function render(path: string, back?: unknown, fallback?: RouteLocationRaw)
   const router = createRouter({
     history,
     routes: [
-      { path: '/', component },
+      { path: '/', redirect: '/factory-analysis' },
       { path: '/factory-analysis', component },
       { path: '/team-workspaces/:teamId', component },
       { path: '/transfer-batches', component },
@@ -88,10 +88,7 @@ describe('basic page back navigation', () => {
     '/factory-analysis',
   ])('does not go to an external, auth, unknown or identical previous entry: %s', async (back) => {
     const { wrapper, router } = await render('/factory-analysis', back)
-    expect(wrapper.get('button').attributes('title')).toBe('返回所属模块首页')
-    await wrapper.get('button').trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.fullPath).toBe('/')
+    expect(router.currentRoute.value.fullPath).toBe('/factory-analysis')
     expect(wrapper.find('button').exists()).toBe(false)
   })
 
@@ -99,8 +96,8 @@ describe('basic page back navigation', () => {
     ['/team-workspaces/7?tab=outgoing', '/team-workspaces/7'],
     ['/settings/accounts', '/settings/teams'],
     ['/material-trace', '/transfer-batches'],
-    ['/settings/teams', '/'],
-    ['/transfer-batches', '/'],
+    ['/settings/teams', '/factory-analysis'],
+    ['/transfer-batches', '/factory-analysis'],
   ])('uses a useful fallback when %s is opened directly', async (path, expected) => {
     const { wrapper, router } = await render(path)
     await wrapper.get('button').trigger('click')

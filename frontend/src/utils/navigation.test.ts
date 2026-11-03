@@ -4,9 +4,9 @@ import { defaultAuthenticatedPath, safeInternalRedirect } from './navigation'
 describe('safe internal redirect', () => {
   it('uses only a valid bound team for the account default destination', () => {
     expect(defaultAuthenticatedPath({ role: 'TEAM', team_id: 3 })).toBe('/team-workspaces/3')
-    expect(defaultAuthenticatedPath({ role: 'TEAM', team_id: null })).toBe('/')
-    expect(defaultAuthenticatedPath({ role: 'TEAM', team_id: 'oops' })).toBe('/')
-    expect(defaultAuthenticatedPath({ role: 'ADMIN', team_id: 3 })).toBe('/')
+    expect(defaultAuthenticatedPath({ role: 'TEAM', team_id: null })).toBe('/factory-analysis')
+    expect(defaultAuthenticatedPath({ role: 'TEAM', team_id: 'oops' })).toBe('/factory-analysis')
+    expect(defaultAuthenticatedPath({ role: 'ADMIN', team_id: 3 })).toBe('/factory-analysis')
     expect(safeInternalRedirect('/material-trace?serial_no=A', '/team-workspaces/3')).toBe(
       '/material-trace?serial_no=A',
     )

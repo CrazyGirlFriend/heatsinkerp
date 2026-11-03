@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
+import { workspaceAppearanceKey } from '@/composables/useWorkspaceAppearance'
+import WatermelonButton from './watermelon/WatermelonButton.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaterialReceiptScanner from './MaterialReceiptScanner.vue'
 import ReceiptPersonInput from './ReceiptPersonInput.vue'
@@ -75,6 +77,26 @@ function hid(code: string, target: EventTarget = document) {
     target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
 }
 describe('scan directly into receiving inventory', () => {
+  it('uses the shared warehouse button without bypassing receiver selection or receipt checks', async () => {
+    wrapper = mount(MaterialReceiptScanner, {
+      props: { teamId: 2 },
+      global: { provide: { [workspaceAppearanceKey as symbol]: computed(() => 'watermelon') } },
+    })
+    await flushPromises()
+    expect(wrapper.classes()).toContain('receipt-scanner--watermelon')
+    expect(wrapper.getComponent(WatermelonButton).props('disabled')).toBe(true)
+    expect(materialTransferApi.confirm).not.toHaveBeenCalled()
+    wrapper.getComponent(ReceiptPersonInput).vm.$emit('update:modelValue', person)
+    await flushPromises()
+    await wrapper.get('input').setValue('TL000001')
+    expect(wrapper.getComponent(WatermelonButton).props('disabled')).toBe(false)
+    await wrapper.getComponent(WatermelonButton).trigger('click')
+    await flushPromises()
+    expect(materialTransferApi.confirm).toHaveBeenCalledWith(
+      'TL000001',
+      expect.objectContaining({ received_employee_id: person.id, expected_version: 3 }),
+    )
+  })
   it('requires an explicit employee before HID receipt and keeps the selection for later scans', async () => {
     await render(false)
     const receiver = wrapper.get<HTMLButtonElement>('button[aria-label="接收人"]').element

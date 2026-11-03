@@ -596,7 +596,7 @@ onBeforeUnmount(() => {
           >
           <ElAlert
             v-if="editable && hasStock && isRework && !snapshot.rework_route_id"
-            title="请先在本班组工作台提交返工问题"
+            title="请联系检验班组确认返工，并由工艺人员制定返工工艺"
             type="warning"
             :closable="false"
           />

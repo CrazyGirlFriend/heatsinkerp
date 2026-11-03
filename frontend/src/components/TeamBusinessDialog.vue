@@ -8,7 +8,7 @@ import { focusFirstInvalidField, useDialogValidation } from '@/composables/useDi
 import OpeningMaterialFields from './OpeningMaterialFields.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   ElAlert,
   ElButton,
@@ -43,6 +43,7 @@ import { showToast } from '@/stores/toast'
 const props = withDefaults(
   defineProps<{
     modelValue: boolean
+    inline?: boolean
     teamId: number
     initialTab?: string
     businessOnly?: boolean
@@ -58,6 +59,17 @@ const emit = defineEmits<{
   changed: []
   stocked: [MaterialTransfer[]]
 }>()
+// Reuse the same settings form in the team page and existing business-picker dialogs.
+const SettingsPage = defineComponent({
+  inheritAttrs: false,
+  setup(_, { slots }) {
+    return () =>
+      h('section', { class: 'team-settings-page' }, [
+        h('div', { class: 'team-settings-page__content' }, slots.default?.()),
+        h('footer', { class: 'team-settings-page__footer' }, slots.footer?.()),
+      ])
+  },
+})
 const auth = useAuthStore()
 const tab = ref('purposes'),
   loading = ref(false),
@@ -338,7 +350,8 @@ async function submitOpening() {
 </script>
 
 <template>
-  <AppDialog
+  <component
+    :is="inline ? SettingsPage : AppDialog"
     :model-value="modelValue"
     :title="teamName ? `${teamName} · 班组设置` : '班组设置'"
     top="16px"
@@ -567,7 +580,7 @@ async function submitOpening() {
       </section>
     </FormWorkspace>
     <template #footer>
-      <ElButton :disabled="saving" @click="close">关闭</ElButton>
+      <ElButton v-if="!inline" :disabled="saving" @click="close">关闭</ElButton>
       <template v-if="!businessOnly && tab === 'opening' && opening?.can_submit && !loading">
         <ElButton :disabled="saving || lines.length >= 100" @click="lines.push(blank())"
           >增加物料</ElButton
@@ -578,10 +591,32 @@ async function submitOpening() {
         >
       </template>
     </template>
-  </AppDialog>
+  </component>
 </template>
 
 <style scoped>
+.team-settings-page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 20px;
+}
+:deep(.team-settings-page__content) {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+:deep(.team-settings-page__footer) {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+:deep(.team-settings-page__footer:has(button)) {
+  padding-block: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .settings-note {
   color: var(--muted);
   font-size: 13px;

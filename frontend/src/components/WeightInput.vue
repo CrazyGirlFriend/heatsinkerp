@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ElInputNumber } from 'element-plus'
+import AppNumberInput from './AppNumberInput.vue'
 
 const props = defineProps<{
   modelValue?: number | null
@@ -23,7 +23,7 @@ function update(value: number | undefined) {
 
 <template>
   <div class="weight-input">
-    <ElInputNumber
+    <AppNumberInput
       :model-value="displayed"
       :aria-label="ariaLabel"
       :min="0"

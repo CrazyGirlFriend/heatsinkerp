@@ -1,4 +1,4 @@
-"""Teams explicitly request engineering for real stock without a QC approval gate."""
+"""QC confirms the quality issue before engineering authors a rework route."""
 
 from uuid import uuid4
 
@@ -45,7 +45,7 @@ def test_qc_decision_does_not_automatically_create_engineering_or_move_stock(cli
     s, lot, headers, _ = inspection
     issue = create_check(client, inspection).json()
     path = f"/api/quality-feedback/{issue['id']}/rework-stock"
-    assert client.get(path, headers=headers).status_code == 200
+    assert client.get(path, headers=headers).status_code == 409
     before = client.get(base(s, True) + "/overview").json()["totals"]
     chosen = decide(client, headers, issue, disposition="rework").json()
     with SessionLocal() as db:
@@ -59,6 +59,7 @@ def test_qc_decision_does_not_automatically_create_engineering_or_move_stock(cli
 def test_qc_submits_scoped_problem_engineering_authors_and_team_executes(client, inspection):
     s, lot, headers, _ = inspection
     issue = create_check(client, inspection, notes="表面划伤明显").json()
+    issue = decide(client, headers, issue).json()
     path = f"/api/quality-feedback/{issue['id']}/rework-stock"
     stock = client.get(path, headers=headers).json()
     assert stock["total"] == 1 and stock["items"][0]["id"] == lot["id"]
@@ -72,7 +73,7 @@ def test_qc_submits_scoped_problem_engineering_authors_and_team_executes(client,
     assert retry.status_code == 201 and retry.json()["id"] == route["id"]
     assert route["state"] == "draft" and route["steps"] == [] and route["filename"] == ""
     unchanged = client.get(f"/api/quality-feedback/{issue['id']}", headers=headers).json()
-    assert unchanged["disposition"] == issue["disposition"] == "pending"
+    assert unchanged["disposition"] == issue["disposition"] == "rework"
     assert unchanged["feedback_status"] == issue["feedback_status"]
     assert unchanged["blocks_outbound"] == issue["blocks_outbound"]
     scope = route["rework_request"]
@@ -136,15 +137,48 @@ def test_qc_cannot_submit_unrelated_stock_or_closed_issue(client, inspection):
         assert db.scalar(select(func.count()).select_from(ProcessRoute)) == 0
 
 
-def test_stock_holder_can_directly_submit_its_problem_without_qc_confirmation(client, inspection):
+def test_only_qc_can_request_rework_even_with_a_confirmed_issue(client, inspection):
     s, lot, headers, _ = inspection
+    issue = create_check(client, inspection).json()
+    assert decide(client, headers, issue).status_code == 200
     context = client.get(base(s, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
-    body = request_body(context, None)
-    for actor in (s["headers"], client.headers):
-        denied = client.post("/api/process-routes/rework-requests", headers=actor, json=body)
-        assert denied.status_code == 403, denied.text
-    result = client.post(
-        "/api/process-routes/rework-requests", headers=s["other_headers"], json=body
+    before = client.get(base(s, True) + "/overview").json()["totals"]
+    for actor in (s["headers"], s["other_headers"], client.headers):
+        for issue_id in (None, issue["id"]):
+            denied = client.post(
+                "/api/process-routes/rework-requests",
+                headers=actor,
+                json=request_body(context, issue_id),
+            )
+            assert denied.status_code == 403, denied.text
+        assert client.get("/api/process-routes/rework-sources", headers=actor).status_code == 403
+    assert client.get(base(s, True) + "/overview").json()["totals"] == before
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(ProcessRoute)) == 0
+
+
+def test_qc_requires_a_confirmed_issue_and_rechecks_changed_decisions(client, inspection):
+    s, lot, headers, _ = inspection
+    issue = create_check(client, inspection).json()
+    context = client.get(base(s, True) + f"/stock/{lot['id']}/quantity-adjustments").json()
+    path = f"/api/quality-feedback/{issue['id']}/rework-stock"
+    body = request_body(context, issue["id"])
+    for missing in ({"inspection_id": None},):
+        result = client.post(
+            "/api/process-routes/rework-requests", headers=headers, json={**body, **missing}
+        )
+        assert result.status_code == 422, result.text
+    assert client.get(path, headers=headers).status_code == 409
+    assert (
+        client.post("/api/process-routes/rework-requests", headers=headers, json=body).status_code
+        == 409
     )
-    assert result.status_code == 201, result.text
-    assert result.json()["rework_request"]["requesting_team_id"] == s["other"]["id"]
+    decision = decide(client, headers, issue).json()
+    assert client.get(path, headers=headers).status_code == 200
+    assert decide(client, headers, decision, disposition="other").status_code == 200
+    assert (
+        client.post("/api/process-routes/rework-requests", headers=headers, json=body).status_code
+        == 409
+    )
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(ProcessRoute)) == 0

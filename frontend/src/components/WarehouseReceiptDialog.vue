@@ -4,6 +4,10 @@ import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
 import ImportedDataConfirmation from './ImportedDataConfirmation.vue'
 import { IconLink } from '@tabler/icons-vue'
+import AppNumberInput from './AppNumberInput.vue'
+import FormValidationNotice from './FormValidationNotice.vue'
+import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+const watermelon = useWatermelonAppearance()
 import WeightInput from './WeightInput.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import MaterialInput from './MaterialInput.vue'
@@ -29,7 +33,6 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
-  ElInputNumber,
   ElOption,
   ElSelect,
   ElSwitch,
@@ -917,9 +920,17 @@ onBeforeUnmount(() => {
         ref="formRef"
         class="receipt-form"
         label-position="top"
-        :show-message="false"
+        :show-message="watermelon"
         @submit.prevent="submit"
       >
+        <FormValidationNotice
+          v-if="watermelon"
+          :message="
+            Object.keys(fieldErrors).length
+              ? `还有 ${Object.keys(fieldErrors).length} 项需要填写或修改`
+              : ''
+          "
+        />
         <ElFormItem
           v-if="form.receiptKind === 'external' || importedRoute"
           label="关联工艺"
@@ -1057,7 +1068,7 @@ onBeforeUnmount(() => {
                 :source="documentSource('quantity')"
                 kind="document"
                 :modified="documentChanged('quantity')" /></template
-            ><ElInputNumber
+            ><AppNumberInput
               v-model="form.quantity"
               aria-label="入库件数"
               :min="0"
@@ -1065,7 +1076,9 @@ onBeforeUnmount(() => {
               :precision="0"
               controls-position="right"
               :disabled="readonly"
-              ><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber
+              ><template #suffix
+                ><span class="dialog-input-unit">件</span></template
+              ></AppNumberInput
             ></ElFormItem
           >
           <ElFormItem
@@ -1165,7 +1178,7 @@ onBeforeUnmount(() => {
                   :source="documentSource('finished_quantity')"
                   kind="document"
                   :modified="documentChanged('finished_quantity')" /></template
-              ><ElInputNumber
+              ><AppNumberInput
                 v-model="form.finishedQuantity"
                 aria-label="成品件数"
                 :min="0"
@@ -1176,7 +1189,7 @@ onBeforeUnmount(() => {
                 placeholder="选填"
                 ><template #suffix
                   ><span class="dialog-input-unit">件</span></template
-                ></ElInputNumber
+                ></AppNumberInput
               ></ElFormItem
             >
             <template v-if="section.name === 'notes'">
@@ -1254,7 +1267,7 @@ onBeforeUnmount(() => {
                     class="shared-field-weight"
                     :error="fieldErrors[`member${index}weight`]"
                   >
-                    <ElInputNumber
+                    <AppNumberInput
                       v-model="member.planned_weight"
                       :aria-label="`共投计划重量${index + 1}`"
                       :disabled="readonly"
@@ -1269,7 +1282,7 @@ onBeforeUnmount(() => {
                     class="shared-field-quantity"
                     :error="fieldErrors[`member${index}quantity`]"
                   >
-                    <ElInputNumber
+                    <AppNumberInput
                       v-model="member.planned_quantity"
                       :aria-label="`共投计划件数${index + 1}`"
                       :disabled="readonly"
@@ -1356,7 +1369,7 @@ onBeforeUnmount(() => {
                         kind="document"
                         :modified="documentChanged('delivery_quantity')"
                     /></template>
-                    <ElInputNumber
+                    <AppNumberInput
                       v-model="member.delivery_quantity"
                       :aria-label="`共投应发件数${index + 1}`"
                       :disabled="readonly"

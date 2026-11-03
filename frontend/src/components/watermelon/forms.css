@@ -1,0 +1,218 @@
+/* Form 10 / Select 21: one shared skin for existing Vue form engines. */
+.wm-scope {
+  --wm-field-height: 40px;
+  --wm-field-radius: 6px;
+  --wm-field-inset: inset 0 1px 0 #ffffff80, inset 0 -1px 0 #00000008;
+}
+@media (prefers-color-scheme: dark) {
+  .wm-scope {
+    --wm-field-inset: inset 0 1px 1px #ffffff0d, inset 0 -1px 0 #00000040;
+  }
+}
+.wm-scope :is(.el-input__wrapper, .el-select__wrapper, .el-textarea__inner) {
+  border: 0;
+  border-radius: var(--wm-field-radius);
+  background: var(--wm-surface);
+  color: var(--wm-text);
+  box-shadow:
+    0 0 0 1px var(--wm-border) inset,
+    var(--wm-field-inset);
+  backdrop-filter: none;
+  transition:
+    box-shadow 180ms,
+    background-color 180ms;
+}
+.wm-scope.el-dialog .el-form-item :is(.el-input__wrapper, .el-select__wrapper),
+.wm-scope .el-form-item :is(.el-input__wrapper, .el-select__wrapper) {
+  min-height: var(--wm-field-height);
+  padding-inline: 12px;
+}
+.wm-scope .el-form-item .el-input {
+  --el-input-height: var(--wm-field-height);
+}
+.wm-scope .el-form-item :is(.el-input__inner, .el-select__selected-item, .el-textarea__inner) {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: normal;
+  color: var(--wm-text);
+}
+.wm-scope .el-form-item .el-textarea__inner {
+  min-height: 80px;
+  padding: 10px 12px;
+  line-height: 1.5;
+}
+.wm-scope
+  :is(
+    .el-select__placeholder.is-transparent,
+    .el-input__inner::placeholder,
+    .el-textarea__inner::placeholder
+  ) {
+  color: var(--wm-placeholder);
+}
+.wm-scope
+  :is(.el-input__wrapper.is-focus, .el-select__wrapper.is-focused, .el-textarea__inner:focus) {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--wm-primary) 55%, var(--wm-border)) inset,
+    0 0 0 3px color-mix(in srgb, var(--wm-primary) 12%, transparent);
+}
+.wm-scope
+  :is(
+    .el-input.is-disabled .el-input__wrapper,
+    .el-select__wrapper.is-disabled,
+    .el-textarea.is-disabled .el-textarea__inner
+  ) {
+  background: var(--wm-muted-surface);
+  box-shadow: 0 0 0 1px var(--wm-border) inset;
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.wm-scope .el-form-item__label {
+  color: var(--wm-text);
+  font-size: 13px;
+  font-weight: 500;
+}
+.wm-scope
+  :is(
+    .el-form .el-form-item.is-error .el-form-item__content,
+    .dialog-field.is-error,
+    .el-input.is-error
+  )
+  :is(.el-input__wrapper, .el-select__wrapper, .el-textarea__inner),
+.wm-scope .el-select__wrapper.is-invalid {
+  background: var(--wm-surface);
+  box-shadow: 0 0 0 1px var(--wm-danger-text) inset;
+}
+.wm-scope
+  :is(
+    .el-form .el-form-item.is-error .el-form-item__content,
+    .dialog-field.is-error,
+    .el-input.is-error
+  )
+  :is(.el-input__wrapper, .el-select__wrapper, .el-textarea__inner):focus-within,
+.wm-scope .el-select__wrapper.is-invalid:focus-visible {
+  box-shadow:
+    0 0 0 1px var(--wm-danger-text) inset,
+    0 0 0 3px color-mix(in srgb, var(--wm-danger-text) 15%, transparent);
+}
+.wm-scope
+  :is(.el-form-item, .dialog-field).is-error
+  > :is(.el-form-item__label, .dialog-field-label) {
+  color: var(--wm-danger-text);
+}
+.wm-scope .el-form-item__error {
+  position: static;
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--wm-danger-text) 25%, transparent);
+  border-radius: var(--wm-field-radius);
+  background: var(--wm-danger-bg);
+  color: var(--wm-danger-text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.wm-scope.el-dialog .wm-number-input.el-input-number,
+.wm-scope.el-dialog .weight-input {
+  max-width: none;
+}
+.wm-scope.el-dialog .el-form-item .wm-number-input .el-input__wrapper {
+  padding-inline: 36px;
+}
+.wm-scope.el-dialog .weight-input {
+  gap: 0;
+}
+.wm-scope.el-dialog .weight-input .el-input__wrapper {
+  border-radius: var(--wm-field-radius) 0 0 var(--wm-field-radius);
+}
+.wm-scope.el-dialog .weight-input select {
+  height: var(--wm-field-height);
+  margin-left: -1px;
+  border-radius: 0 var(--wm-field-radius) var(--wm-field-radius) 0;
+  border-color: var(--wm-border);
+  background: var(--wm-surface);
+  color: var(--wm-text);
+  font-size: 14px;
+}
+/* Select/autocomplete menus are teleported outside their form. */
+body:has(.team-workspace--watermelon)
+  :is(.el-select__popper, .el-autocomplete-suggestion, .el-dropdown__popper).el-popper {
+  border: 1px solid var(--wm-border);
+  border-radius: 10px;
+  background: var(--wm-bg);
+  box-shadow: 0 8px 24px #0002;
+  backdrop-filter: none;
+}
+body:has(.team-workspace--watermelon)
+  :is(.el-select-dropdown__list, .el-autocomplete-suggestion__list, .el-dropdown-menu) {
+  padding: 4px;
+}
+body:has(.team-workspace--watermelon)
+  :is(.el-select-dropdown__item, .el-autocomplete-suggestion li, .el-dropdown-menu__item) {
+  position: relative;
+  margin: 0;
+  padding: 6px 30px 6px 10px;
+  height: auto;
+  min-height: 32px;
+  line-height: 20px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--wm-text);
+  font-size: 14px;
+  font-weight: 400;
+  transition: background-color 140ms;
+}
+body:has(.team-workspace--watermelon)
+  :is(.el-select-dropdown__item, .el-autocomplete-suggestion li, .el-dropdown-menu__item):not(
+    .is-disabled
+  ):is(:hover, :focus, .is-hovering, .highlighted, .is-selected, :active) {
+  background: var(--wm-hover);
+  box-shadow: none;
+  color: var(--wm-text);
+}
+body:has(.team-workspace--watermelon)
+  .el-select-dropdown__item.is-selected:not(.is-disabled)::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  top: 11px;
+  width: 5px;
+  height: 9px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+body:has(.team-workspace--watermelon)
+  :is(.el-select-dropdown__item, .el-dropdown-menu__item).is-disabled {
+  color: var(--wm-muted);
+  opacity: 0.5;
+  background: transparent;
+  cursor: not-allowed;
+}
+body:has(.team-workspace--watermelon) .el-select-dropdown {
+  animation: wm-options-in 140ms ease-out;
+}
+@keyframes wm-options-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wm-scope :is(.el-input__wrapper, .el-select__wrapper, .el-textarea__inner),
+  body:has(.team-workspace--watermelon)
+    :is(
+      .el-select-dropdown,
+      .el-select-dropdown__item,
+      .el-autocomplete-suggestion li,
+      .el-dropdown-menu__item
+    ) {
+    animation: none;
+    transition: none;
+  }
+}

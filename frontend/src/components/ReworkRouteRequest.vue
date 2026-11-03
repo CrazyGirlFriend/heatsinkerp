@@ -16,7 +16,7 @@ import { processRouteApi } from '@/services/processRouteApi'
 import { materialRequestKey } from '@/utils/materialStock'
 const props = defineProps<{
   context: QuantityAdjustmentContext
-  inspectionId?: number
+  inspectionId: number
   initialReason?: string
 }>()
 const emit = defineEmits<{ changed: []; busy: [boolean] }>()

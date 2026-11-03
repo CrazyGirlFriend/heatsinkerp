@@ -88,6 +88,8 @@ def require_rework_issue(db, issue_id, user, *, lock=False):
     row = issue(db, issue_id, user, lock=lock)
     if row.feedback_status == "closed":
         raise HTTPException(409, "已结束的问题须重新打开后再提交返工")
+    if row.disposition != "rework":
+        raise HTTPException(409, "请先由检验班组长确认需要返工并保存处理意见")
     return row
 
 

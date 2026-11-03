@@ -93,7 +93,7 @@ describe('phase-one routes', () => {
       await router.push(path)
       const redirect = router.currentRoute.value.query.redirect
       expect(router.currentRoute.value.path).toBe('/login')
-      expect(redirect).toBe(path === '/factory-stock' ? '/' : path)
+      expect(redirect).toBe(path === '/factory-stock' ? '/factory-analysis' : path)
       authMocks.authenticated = true
       await router.push({ path: '/login', query: router.currentRoute.value.query, force: true })
       expect(router.currentRoute.value.fullPath).toBe(redirect)
@@ -102,11 +102,11 @@ describe('phase-one routes', () => {
 
   it('opens the factory homepage for both roles and retains explicit team routes', async () => {
     await router.push('/')
-    expect(router.currentRoute.value.path).toBe('/')
+    expect(router.currentRoute.value.path).toBe('/factory-analysis')
     authMocks.admin = false
     authMocks.user = { role: 'TEAM', team_id: 999 }
     await router.push('/')
-    expect(router.currentRoute.value.path).toBe('/')
+    expect(router.currentRoute.value.path).toBe('/factory-analysis')
     expect(router.resolve('/team-workspaces/not-a-number').name).toBe('team-workspace')
   })
 

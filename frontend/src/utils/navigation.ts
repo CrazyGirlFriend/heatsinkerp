@@ -17,7 +17,7 @@ export function defaultAuthenticatedPath(
   const teamId = Number(user?.team_id)
   return user?.role === 'TEAM' && Number.isSafeInteger(teamId) && teamId > 0
     ? `/team-workspaces/${teamId}`
-    : '/'
+    : DEFAULT_LOGIN_PATH
 }
 
 /** Only allow local application paths, never protocol-relative URLs or auth-page loops. */

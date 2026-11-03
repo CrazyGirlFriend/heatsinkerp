@@ -20,48 +20,75 @@ function click(event: MouseEvent) {
     :transition="{ type: 'spring', stiffness: 400, damping: 25 }"
     @click="click"
   >
-    <IconLoader2 v-if="loading" :size="16" class="wm-button-spinner" />
-    <slot />
+    <span class="wm-button-label"><slot /></span>
+    <span class="wm-button-progress" aria-hidden="true">
+      <IconLoader2 v-if="loading" :size="16" class="wm-button-spinner" />
+    </span>
   </motion.button>
 </template>
 
 <style>
 .wm-button {
-  display: inline-flex;
+  display: inline-grid;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  height: 36px;
-  padding: 0 15px;
-  border: 1px solid #e2e2e6;
-  border-radius: 18px;
-  background: #f5f5f7;
-  color: #131313;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--wm-control-border, #e4e4e7);
+  border-radius: 8px;
+  background: var(--wm-control-bg, #fff);
+  color: var(--wm-control-text, #27272a);
   font: inherit;
-  font-size: 13px;
-  font-weight: 550;
+  font-size: 14px;
+  font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
   transition: background-color 150ms;
 }
 .wm-button:hover:not(:disabled) {
-  background: #ececef;
+  background: var(--wm-control-hover-bg, #f4f4f5);
 }
 .wm-button-primary {
-  background: #111;
-  border-color: #111;
-  color: #fff;
-  box-shadow: 0 3px 6px #00000012;
+  background: var(--wm-primary-bg, #18181b);
+  border-color: var(--wm-primary-border, #18181b);
+  color: var(--wm-primary-text, #fff);
 }
 .wm-button-primary:hover:not(:disabled) {
-  background: #303030;
+  background: var(--wm-primary-hover-bg, #3f3f46);
 }
-.wm-button:disabled {
+.wm-button:disabled:not([aria-busy='true']) {
   opacity: 0.45;
   cursor: not-allowed;
 }
+.wm-button-label,
+.wm-button-progress {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+.wm-button-progress {
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+}
+.wm-button[aria-busy='true'] {
+  cursor: progress;
+}
+.wm-button[aria-busy='true'] .wm-button-label {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+.wm-button[aria-busy='true'] .wm-button-progress {
+  opacity: 1;
+  transform: none;
+}
 .wm-button:focus-visible {
-  outline: 2px solid #318468;
+  outline: 2px solid var(--wm-focus-ring, #71717a);
   outline-offset: 3px;
 }
 .wm-button-spinner {
@@ -73,6 +100,11 @@ function click(event: MouseEvent) {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .wm-button-label,
+  .wm-button-progress {
+    transition: none;
+    transform: none !important;
+  }
   .wm-button-spinner {
     animation: none;
   }

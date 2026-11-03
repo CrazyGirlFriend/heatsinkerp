@@ -357,7 +357,7 @@ it('blocks legacy rework without engineering instead of bypassing the problem su
     global: { stubs: { ElDialog: { template: '<div><slot/><slot name="footer"/></div>' } } },
   })
   await flushPromises()
-  expect(wrapper.text()).toContain('请先在本班组工作台提交返工问题')
+  expect(wrapper.text()).toContain('请联系检验班组确认返工，并由工艺人员制定返工工艺')
   expect(wrapper.findComponent(TeamEmployeeInput).exists()).toBe(false)
   expect(wrapper.findComponent(ProcessingTaskFields).exists()).toBe(false)
   expect(teamMaterialApi.processingTasks).not.toHaveBeenCalled()

@@ -3,6 +3,8 @@ import { computed, ref, useSlots } from 'vue'
 import { ElDialog, type DialogProps } from 'element-plus'
 import { useGlassSurface } from '@/composables/useGlassSurface'
 import { useGlassOverlayDepth } from '@/composables/useGlassOverlayDepth'
+import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+const watermelon = useWatermelonAppearance()
 
 defineOptions({ inheritAttrs: false })
 const props = withDefaults(
@@ -23,7 +25,11 @@ const emit = defineEmits<{
 const anchor = ref<HTMLElement>()
 const overlay = useGlassOverlayDepth(() => anchor.value?.closest<HTMLElement>('.el-dialog'))
 const overlayClass = computed(() =>
-  ['app-glass-overlay', overlay.nested.value ? 'app-glass-overlay--nested' : '', props.modalClass]
+  [
+    watermelon.value ? 'wm-dialog-overlay' : 'app-glass-overlay',
+    overlay.nested.value ? 'app-glass-overlay--nested' : '',
+    props.modalClass,
+  ]
     .filter(Boolean)
     .join(' '),
 )
@@ -33,7 +39,7 @@ function namedSlots() {
 }
 const glass = useGlassSurface(
   () => anchor.value?.closest<HTMLElement>('.el-dialog'),
-  () => Boolean(props.modelValue),
+  () => Boolean(props.modelValue) && !watermelon.value,
 )
 function open() {
   void overlay.opening()
@@ -41,7 +47,7 @@ function open() {
 }
 function opened() {
   overlay.sync()
-  void glass.start()
+  if (!watermelon.value) void glass.start()
   emit('opened')
 }
 function closed() {
@@ -60,8 +66,8 @@ function close() {
     v-bind="$attrs"
     :model-value="modelValue"
     :modal-class="overlayClass"
-    :transition="transition"
-    class="app-glass-surface app-glass-dialog"
+    :transition="watermelon ? 'wm-app-dialog' : transition"
+    :class="watermelon ? 'wm-scope wm-app-dialog' : 'app-glass-surface app-glass-dialog'"
     @update:model-value="emit('update:modelValue', $event)"
     @open="open"
     @opened="opened"

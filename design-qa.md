@@ -439,3 +439,8 @@ final result: passed — 本次嵌入范围内，无未处理的 P0/P1/P2；上�
 - 证据：output/playwright/watermelon-preview/{reference-edit,isolated-editor,warehouse-fixture,warehouse-detail,warehouse-narrow,original-restored,warehouse-live-final}.png。脚本 check-warehouse.js 和 check-isolation.js。
 
 final result: passed
+
+
+## 2026-11-03 — 仓库 DataTable 11 与黑白主题
+
+仓库管理改为单张数据卡片、舒展表格和系统明暗配色。侧栏仅适配主题，保留原导航结构。已读官方 DataTable 11 源码并核对实页，完成真实/示例数据、分页筛选、弹窗、窄屏 Chrome 检查；40 项相关测试、类型检查、构建通过。详细取舍与证据见 `frontend/src/components/watermelon/design-qa.md` 的 DataTable 11 条目。

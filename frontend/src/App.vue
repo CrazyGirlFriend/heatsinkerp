@@ -48,6 +48,7 @@ const breadcrumb = computed(() => {
       teamCanReallocate(team),
       teamCanProcess(team),
       team?.code === 'FACTORY-QC',
+      managesWarehouse,
     )
     return [
       '班组工作台',
@@ -542,6 +543,51 @@ function handleUserCommand(command: string | number | object): void {
   border-radius: 22px;
   background: linear-gradient(145deg, #fff, #f5faf7 52%, #e5f0e8);
   box-shadow: 0 2px 8px #203b2e0a;
+}
+.app-shell--business:has(.team-workspace--watermelon) {
+  --text: var(--wm-text);
+  --muted: var(--wm-muted);
+  --primary: var(--wm-text);
+  --primary-soft: var(--wm-hover);
+  --surface: var(--wm-bg);
+  --line: var(--wm-border);
+  --glass-hover-fill: var(--wm-hover);
+  --glass-selected-fill: var(--wm-hover);
+  --glass-interaction-edge: transparent;
+  --glass-hover-shadow: none;
+  --glass-selected-shadow: none;
+  background: var(--wm-canvas);
+}
+.app-shell--business .main-content:has(.team-workspace--watermelon) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.app-shell--business:has(.team-workspace--watermelon) .sidebar {
+  border-color: var(--wm-border);
+  background: var(--wm-bg);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.app-shell--business:has(.team-workspace--watermelon)
+  :deep(.factory-nav--glass .el-sub-menu .el-menu-item:not(.is-active)),
+.app-shell--business:has(.team-workspace--watermelon)
+  :deep(.factory-nav--glass .el-sub-menu__title > .factory-nav__module-icon) {
+  color: var(--wm-muted);
+}
+.app-shell--business:has(.team-workspace--watermelon) :deep(.notice-trigger) {
+  background: var(--wm-muted-surface);
+  border-color: var(--wm-border);
+  box-shadow: none;
+}
+@media (prefers-color-scheme: dark) {
+  .app-shell--business:has(.team-workspace--watermelon) .brand-mark img {
+    border-radius: 6px;
+    background: #fff;
+    padding: 6px;
+  }
 }
 .app-shell--business
   .main-content

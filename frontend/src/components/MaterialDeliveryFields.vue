@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { ElFormItem, ElInput, ElInputNumber } from 'element-plus'
+import { ElFormItem, ElInput } from 'element-plus'
+import AppNumberInput from './AppNumberInput.vue'
+import WatermelonDateInput from './watermelon/WatermelonDateInput.vue'
+import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+const watermelon = useWatermelonAppearance()
 import AutofillBadge from './AutofillBadge.vue'
 defineProps<{
   disabled?: boolean
@@ -29,7 +33,13 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
           :source="dateSource || documentSource || ''"
           kind="document"
           :modified="dateState === 'edited'" /></template
-      ><ElInput
+      ><WatermelonDateInput
+        v-if="watermelon"
+        v-model="date"
+        label="要求发货日期"
+        :disabled="disabled" />
+      <ElInput
+        v-else
         v-model="date"
         type="date"
         aria-label="要求发货日期"
@@ -49,7 +59,7 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
           :source="quantitySource || documentSource || ''"
           kind="document"
           :modified="quantityState === 'edited'" /></template
-      ><ElInputNumber
+      ><AppNumberInput
         v-model="quantity"
         aria-label="应发成品件数"
         :min="1"
@@ -57,7 +67,7 @@ const quantity = defineModel<number | undefined>('quantity', { required: true })
         :precision="0"
         controls-position="right"
         :disabled="disabled"
-        ><template #suffix><span class="dialog-input-unit">件</span></template></ElInputNumber
+        ><template #suffix><span class="dialog-input-unit">件</span></template></AppNumberInput
       ></ElFormItem
     >
   </div>

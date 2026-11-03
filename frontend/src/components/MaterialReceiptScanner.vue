@@ -3,6 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 import { ElButton, ElInput, type InputInstance } from 'element-plus'
 import { FullScreen } from '@element-plus/icons-vue'
+import { IconScan } from '@tabler/icons-vue'
+import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+import WatermelonButton from './watermelon/WatermelonButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import { showToast, type ToastTone } from '@/stores/toast'
 import { materialTransferApi } from '@/services/materialTransferApi'
@@ -20,6 +23,7 @@ import type { TeamEmployee } from '@/types/teamBusiness'
 const props = defineProps<{ teamId: number; paused?: boolean }>()
 const emit = defineEmits<{ received: [transfer: MaterialTransfer] }>()
 const auth = useAuthStore()
+const watermelon = useWatermelonAppearance()
 const input = ref<InputInstance>()
 const value = ref('')
 const receiver = defineModel<TeamEmployee | null>('receiver', { default: null })
@@ -192,7 +196,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="receipt-scanner">
+  <div class="receipt-scanner" :class="{ 'receipt-scanner--watermelon': watermelon }">
     <div class="incoming-scan">
       <strong>扫码入库</strong>
       <div ref="scannerReceiver" class="scanner-receiver">
@@ -217,11 +221,12 @@ onBeforeUnmount(() => {
           :disabled="!allowed || paused || !receiver || selectingReceiver"
           @keyup.enter="scan()"
         />
-        <ElButton
-          :icon="FullScreen"
+        <component
+          :is="watermelon ? WatermelonButton : ElButton"
+          v-bind="watermelon ? { primary: true } : { icon: FullScreen }"
           :disabled="!allowed || paused || !receiver || selectingReceiver || !value.trim()"
           @click="scan()"
-          >入库</ElButton
+          ><IconScan v-if="watermelon" :size="17" aria-hidden="true" />入库</component
         >
       </div>
       <span v-if="currentCode" class="scanner-progress" role="status"
@@ -300,6 +305,41 @@ onBeforeUnmount(() => {
 }
 .scanner-result--error {
   color: var(--danger);
+}
+.receipt-scanner--watermelon {
+  --el-component-size: 40px;
+  --el-input-height: 40px;
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border-color: var(--wm-border);
+  background: var(--wm-muted-surface);
+  color: var(--wm-text);
+}
+.receipt-scanner--watermelon :deep(.person-trigger) {
+  height: 40px;
+  min-height: 40px;
+}
+.receipt-scanner--watermelon .scanner-receiver {
+  flex: 0 1 280px;
+  min-width: 0;
+}
+.receipt-scanner--watermelon .scanner-receiver :deep(.team-employee) {
+  flex: 1;
+  min-width: 0;
+}
+.receipt-scanner--watermelon .scanner-inline {
+  flex: 1 1 320px;
+}
+.receipt-scanner--watermelon .scanner-progress,
+.receipt-scanner--watermelon .scanner-result {
+  color: var(--wm-muted);
+}
+.receipt-scanner--watermelon .scanner-result--success {
+  color: var(--wm-success-text);
+}
+.receipt-scanner--watermelon .scanner-result--error,
+.receipt-scanner--watermelon .scanner-receiver label span {
+  color: var(--wm-danger-text);
 }
 @media (max-width: 760px) {
   .scanner-inline {

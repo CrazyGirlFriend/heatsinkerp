@@ -17,6 +17,7 @@ const props = withDefaults(
 )
 const open = defineModel<boolean>({ default: false })
 const dialog = ref<HTMLDialogElement>()
+const rendered = ref(false)
 const visible = ref(false)
 const reduced = useReducedMotion()
 const id = useId()
@@ -25,6 +26,7 @@ let closeTimer: ReturnType<typeof setTimeout> | undefined
 let unmounted = false
 function close() {
   dialog.value?.close()
+  rendered.value = false
   if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true })
   returnFocus = null
 }
@@ -35,6 +37,7 @@ watch(
     if (value) {
       if (!dialog.value?.open)
         returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      rendered.value = true
       await nextTick()
       if (unmounted || !open.value || !dialog.value) return
       if (!dialog.value.open) dialog.value.showModal()
@@ -71,7 +74,15 @@ onBeforeUnmount(() => {
       @click="backdrop"
     >
       <motion.div
-        v-if="open || dialog?.open"
+        v-if="rendered"
+        class="wm-dialog-backdrop"
+        aria-hidden="true"
+        :initial="{ opacity: 0 }"
+        :animate="{ opacity: visible ? 1 : 0 }"
+        :transition="{ duration: reduced ? 0 : visible ? 0.3 : 0.15 }"
+      />
+      <motion.div
+        v-if="rendered"
         class="wm-dialog-card"
         :style="{ width }"
         :initial="{ opacity: 0, scale: reduced ? 1 : 0.9, y: reduced ? 0 : 20 }"
@@ -118,7 +129,7 @@ onBeforeUnmount(() => {
   border: 0;
   background: transparent;
   overflow: auto;
-  color: #141414;
+  color: var(--wm-text, #141414);
 }
 .wm-dialog[open] {
   display: flex;
@@ -126,17 +137,24 @@ onBeforeUnmount(() => {
   justify-content: center;
 }
 .wm-dialog::backdrop {
+  background: transparent;
+}
+.wm-dialog-backdrop {
+  position: fixed;
+  inset: 0;
   background: #0003;
   backdrop-filter: blur(1px);
+  pointer-events: none;
 }
 .wm-dialog-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   max-height: calc(100dvh - 48px);
   min-height: 0;
-  border: 1px solid #eae9ee;
+  border: 1px solid var(--wm-border, #eae9ee);
   border-radius: 24px;
-  background: #f5f5f7;
+  background: var(--wm-muted-surface, #f5f5f7);
   box-shadow: 0 16px 50px #0000001c;
   overflow: hidden;
 }
@@ -152,7 +170,7 @@ onBeforeUnmount(() => {
   margin: 0;
   font-size: 17px;
   font-weight: 600;
-  color: #111;
+  color: var(--wm-text, #111);
 }
 .wm-dialog-header button {
   display: grid;
@@ -162,21 +180,21 @@ onBeforeUnmount(() => {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #888;
+  color: var(--wm-muted, #888);
   cursor: pointer;
   border-radius: 50%;
 }
 .wm-dialog-header button:hover {
-  background: #e7e7eb;
-  color: #111;
+  background: var(--wm-hover, #e7e7eb);
+  color: var(--wm-text, #111);
 }
 .wm-dialog-body {
   padding: 22px;
   overflow: auto;
   min-height: 0;
-  border-block: 1px solid #eae9f2;
+  border-block: 1px solid var(--wm-border, #eae9f2);
   border-radius: 18px;
-  background: #fff;
+  background: var(--wm-bg, #fff);
 }
 .wm-dialog-footer {
   display: flex;
@@ -185,8 +203,16 @@ onBeforeUnmount(() => {
   padding: 16px 24px;
 }
 .wm-dialog :focus-visible {
-  outline: 2px solid #328369;
+  outline: 2px solid var(--wm-primary, #328369);
   outline-offset: 3px;
+}
+@media (prefers-color-scheme: dark) {
+  .wm-dialog-backdrop {
+    background: #0009;
+  }
+  .wm-dialog-card {
+    box-shadow: 0 24px 64px #0008;
+  }
 }
 @media (max-width: 600px) {
   .wm-dialog {

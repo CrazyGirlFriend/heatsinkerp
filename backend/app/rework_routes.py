@@ -203,10 +203,12 @@ def request_document(db, route):
 
 
 def source_stock(db, user, query="", page=1, lot_id=None):
-    """Direct team submissions select physical stock, never a free-form serial."""
+    """Legacy stock lookup remains read-only and restricted to QC."""
+    from .quality_feedback import is_qc
+
     team = stock.require_actor(user, user.team_id)
-    if team.kind in ("engineering", "dispatch", "business"):
-        raise HTTPException(403, "请由物料所在班组提交返工问题")
+    if not is_qc(user):
+        raise HTTPException(403, "仅检验班组可提交返工问题")
     stmt = (
         select(MaterialTransfer, Balance)
         .join(Balance, Balance.transfer_id == MaterialTransfer.id)
@@ -282,8 +284,10 @@ def request_rework(db, payload, user):
     from .quality_feedback import is_qc, require_rework_issue
 
     team = stock.require_actor(user, user.team_id)
-    if team.kind in ("engineering", "dispatch", "business"):
-        raise HTTPException(403, "请由物料所在班组提交返工问题")
+    if not is_qc(user):
+        raise HTTPException(403, "仅检验班组可提交返工问题")
+    if payload.inspection_id is None:
+        raise HTTPException(422, "请关联检验班组已确认返工的质量问题")
     request_hash = stock.fingerprint(payload)
 
     def replay(row):
@@ -298,14 +302,11 @@ def request_rework(db, payload, user):
             )
             if prior:
                 return replay(prior)
-            if payload.inspection_id and is_qc(user):
-                require_rework_issue(db, payload.inspection_id, user, lock=True)
+            require_rework_issue(db, payload.inspection_id, user, lock=True)
             from .inspections import lock_hold
 
             hold = lock_hold(db, payload.source_transfer_id)
             lot = stock.lock_lot(db, payload.source_transfer_id)
-            if lot.next_team_id != user.team_id and not (payload.inspection_id and is_qc(user)):
-                raise HTTPException(403, "只能提交本班组在库批次的返工问题")
             if lot.status != "received" or not lot.stock_tracked:
                 raise HTTPException(409, "请选择已签收的在库批次")
             # Recheck after the source lock: retries must not reserve another portion.

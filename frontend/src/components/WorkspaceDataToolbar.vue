@@ -4,6 +4,9 @@ import { ElButton, ElInput } from 'element-plus'
 import WorkspaceTools from './WorkspaceTools.vue'
 import { inject, provide } from 'vue'
 import { workspaceToolsKey, workspaceToolbarExportKey } from '@/utils/workspaceTools'
+import WatermelonDataToolbar from './watermelon/WatermelonDataToolbar.vue'
+import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+const watermelon = useWatermelonAppearance()
 
 const workspace = inject(workspaceToolsKey, null)
 if (workspace?.registerExport) provide(workspaceToolbarExportKey, workspace.registerExport)
@@ -27,7 +30,28 @@ const emit = defineEmits<{ search: []; refresh: []; columns: [anchor: HTMLElemen
 </script>
 
 <template>
+  <WatermelonDataToolbar
+    v-if="watermelon"
+    v-model="query"
+    :label="searchLabel"
+    :placeholder="placeholder"
+    :maxlength="maxlength"
+    :searchable="searchable"
+    :search-on-clear="searchOnClear"
+    :loading="loading"
+    :refresh="refresh"
+    :refresh-label="refreshLabel"
+    :columns="columns"
+    @search="emit('search')"
+    @refresh="emit('refresh')"
+    @columns="emit('columns', $event)"
+  >
+    <template v-for="(_, name) in $slots" #[name]="scope"
+      ><slot :name="name" v-bind="scope || {}"
+    /></template>
+  </WatermelonDataToolbar>
   <form
+    v-else
     class="workspace-data-toolbar workspace-toolbar"
     role="search"
     @submit.prevent="emit('search')"

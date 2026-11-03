@@ -1,0 +1,213 @@
+/* Shared palette. Enable a workspace through TeamWorkspaceShell appearance. */
+.wm-scope,
+body:has(.team-workspace--watermelon),
+.wm-dialog,
+.wm-filter-panel,
+.team-workspace--watermelon,
+.main-content:has(.team-workspace--watermelon),
+.app-shell--business:has(.team-workspace--watermelon) {
+  color-scheme: light;
+  --wm-canvas: #f5f5f6;
+  --wm-bg: #fff;
+  --wm-surface: #fff;
+  --wm-muted-surface: #fafafa;
+  --wm-hover: #f4f4f5;
+  --wm-border: #e4e4e7;
+  --wm-text: #18181b;
+  --wm-muted: #71717a;
+  --wm-primary: #18181b;
+  --wm-primary-text: #fff;
+  --wm-primary-hover-bg: #303034;
+  --wm-placeholder: #71717a;
+  --wm-neutral-bg: #f1f1f3;
+  --wm-neutral-text: #62626b;
+  --wm-success-bg: #eaf7ee;
+  --wm-success-text: #16763b;
+  --wm-warning-bg: #fff4d6;
+  --wm-warning-text: #8a5b00;
+  --wm-info-bg: #eaf2ff;
+  --wm-info-text: #2862ad;
+  --wm-danger-bg: #fff0f0;
+  --wm-danger-text: #bf343b;
+  --wm-table-divider: #f0f0f2;
+  --wm-table-stripe: #fff;
+  --wm-text-muted: var(--wm-muted);
+  --wm-control-bg: var(--wm-surface);
+  --wm-control-hover-bg: var(--wm-hover);
+  --wm-control-border: var(--wm-border);
+  --wm-control-text: var(--wm-text);
+  --wm-primary-bg: var(--wm-primary);
+  --wm-primary-border: var(--wm-primary);
+  --wm-focus-ring: var(--wm-muted);
+  --wm-filter-active-bg: var(--wm-success-bg);
+  --wm-filter-active-border: var(--wm-success-text);
+  --wm-filter-active-text: var(--wm-success-text);
+  --wm-table-bg: var(--wm-bg);
+  --wm-table-header-bg: var(--wm-muted-surface);
+  --wm-table-text: var(--wm-text);
+  --wm-table-header-text: var(--wm-muted);
+  --wm-table-muted: var(--wm-muted);
+  --wm-table-border: var(--wm-border);
+  --wm-table-hover: var(--wm-hover);
+  --wm-table-focus: var(--wm-muted);
+}
+@media (prefers-color-scheme: dark) {
+  .wm-scope,
+  body:has(.team-workspace--watermelon),
+  .wm-dialog,
+  .wm-filter-panel,
+  .team-workspace--watermelon,
+  .main-content:has(.team-workspace--watermelon),
+  .app-shell--business:has(.team-workspace--watermelon) {
+    color-scheme: dark;
+    --wm-canvas: #090909;
+    --wm-bg: #101010;
+    --wm-surface: #191919;
+    --wm-muted-surface: #161616;
+    --wm-hover: #222;
+    --wm-border: #303030;
+    --wm-text: #f4f4f5;
+    --wm-muted: #a1a1aa;
+    --wm-primary: #f4f4f5;
+    --wm-primary-text: #18181b;
+    --wm-primary-hover-bg: #dedee1;
+    --wm-placeholder: #929299;
+    --wm-neutral-bg: #28282b;
+    --wm-neutral-text: #b5b5bd;
+    --wm-success-bg: #102a1c;
+    --wm-success-text: #37d581;
+    --wm-warning-bg: #302710;
+    --wm-warning-text: #ffc247;
+    --wm-info-bg: #162638;
+    --wm-info-text: #7db9ff;
+    --wm-danger-bg: #3b1c20;
+    --wm-danger-text: #ff737d;
+    --wm-table-divider: #212121;
+    --wm-table-stripe: #101010;
+  }
+}
+.team-workspace--watermelon {
+  --text: var(--wm-text);
+  --muted: var(--wm-muted);
+  --line: var(--wm-border);
+  color: var(--wm-text);
+}
+.team-workspace--watermelon .page-back-button.el-button {
+  border-color: var(--wm-border);
+  border-radius: 7px;
+  background: var(--wm-surface);
+  color: var(--wm-text);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.team-workspace--watermelon .page-back-button.el-button::before,
+.team-workspace--watermelon .page-back-button.el-button::after {
+  display: none;
+}
+.wm-scope,
+body:has(.team-workspace--watermelon),
+.wm-dialog {
+  --text: var(--wm-text);
+  --muted: var(--wm-muted);
+  --surface: var(--wm-surface);
+  --surface-soft: var(--wm-muted-surface);
+  --document-card-bg: var(--wm-surface);
+  --document-card-empty-bg: var(--wm-muted-surface);
+  --table-header-bg: var(--wm-muted-surface);
+  --table-header-line: var(--wm-border);
+  --table-grid-line: var(--wm-border);
+  --table-hover-bg: var(--wm-hover);
+  --subtle: var(--wm-muted);
+  --primary: var(--wm-primary);
+  --primary-soft: var(--wm-hover);
+  --line: var(--wm-border);
+  --el-color-primary: var(--wm-primary);
+  --el-color-primary-light-3: var(--wm-muted);
+  --el-color-primary-light-9: var(--wm-hover);
+  --el-text-color-primary: var(--wm-text);
+  --el-text-color-regular: var(--wm-text);
+  --el-text-color-placeholder: var(--wm-muted);
+  --el-border-color: var(--wm-border);
+  --el-border-color-light: var(--wm-border);
+  --el-border-color-lighter: var(--wm-border);
+  --el-fill-color-blank: var(--wm-bg);
+  --el-fill-color-light: var(--wm-muted-surface);
+  --el-fill-color: var(--wm-hover);
+  --el-fill-color-lighter: var(--wm-muted-surface);
+  --el-fill-color-dark: var(--wm-hover);
+  --el-text-color-secondary: var(--wm-muted);
+  --el-disabled-bg-color: var(--wm-muted-surface);
+  --el-disabled-text-color: var(--wm-muted);
+  --el-bg-color: var(--wm-bg);
+  --el-bg-color-overlay: var(--wm-surface);
+  color: var(--wm-text);
+  font-size: 14px;
+}
+.wm-dialog .el-input__wrapper,
+.wm-dialog .el-select__wrapper {
+  min-height: 38px;
+  border-radius: 8px;
+  background: var(--wm-surface);
+  box-shadow: 0 0 0 1px var(--wm-border) inset;
+  backdrop-filter: none;
+}
+.wm-dialog .el-input__wrapper.is-focus,
+.wm-dialog .el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--wm-primary) inset;
+}
+.wm-dialog .el-input__inner {
+  font-size: 14px;
+  color: var(--wm-text);
+}
+.wm-dialog .el-input__inner:focus-visible {
+  outline: none;
+}
+.wm-dialog .el-form-item__label {
+  color: var(--wm-text);
+  font-size: 13px;
+}
+.wm-dialog .el-form-item {
+  margin-bottom: 20px;
+}
+.wm-dialog .el-form-item:last-child {
+  margin-bottom: 0;
+}
+.wm-dialog .el-alert {
+  margin-bottom: 14px;
+}
+.wm-dialog .el-button::before,
+.wm-dialog .el-button::after {
+  display: none;
+}
+.wm-dialog .el-checkbox__inner,
+.wm-scope .el-checkbox__inner {
+  background: var(--wm-surface);
+  border-color: var(--wm-muted);
+  border-radius: 4px;
+  box-shadow: none;
+}
+.wm-dialog .el-checkbox__input.is-checked .el-checkbox__inner,
+.wm-scope .el-checkbox__input.is-checked .el-checkbox__inner {
+  background: var(--wm-primary);
+  border-color: var(--wm-primary);
+}
+.wm-dialog .el-checkbox__inner::after,
+.wm-scope .el-checkbox__inner::after {
+  border-color: var(--wm-primary-text);
+}
+.wm-dialog .batch-selection-bar,
+.wm-scope .batch-selection-bar {
+  background: var(--wm-muted-surface);
+  border-color: var(--wm-border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.wm-dialog .wm-field-error {
+  color: var(--wm-danger-text);
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+.wm-scope .wm-pagination {
+  padding: 16px 0 0;
+  border-top: 0;
+}

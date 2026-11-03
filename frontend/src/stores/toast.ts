@@ -7,8 +7,10 @@ export type ToastTone = 'success' | 'error' | 'info'
 export const useToastStore = defineStore('toast', () => {
   function showToast(nextMessage: string, nextTone: ToastTone = 'info'): void {
     if (typeof document === 'undefined') return
+    const watermelon = Boolean(document.querySelector('.team-workspace--watermelon'))
     ElMessage({
       message: nextMessage,
+      customClass: watermelon ? 'wm-scope wm-toast-message' : '',
       type: nextTone,
       duration: 3200,
       grouping: true,

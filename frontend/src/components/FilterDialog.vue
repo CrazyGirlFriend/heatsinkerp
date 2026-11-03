@@ -2,6 +2,10 @@
 import AppDialog from '@/components/AppDialog.vue'
 import { Filter } from '@element-plus/icons-vue'
 import { ElButton } from 'element-plus'
+import WatermelonButton from './watermelon/WatermelonButton.vue'
+import { IconAdjustmentsHorizontal } from '@tabler/icons-vue'
+import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+const watermelon = useWatermelonAppearance()
 withDefaults(
   defineProps<{ modelValue: boolean; count?: number; title?: string; appendTo?: HTMLElement }>(),
   {
@@ -26,7 +30,18 @@ function cancel() {
 }
 </script>
 <template>
+  <WatermelonButton
+    v-if="watermelon"
+    class="filter-dialog-trigger"
+    :aria-label="title"
+    :aria-expanded="modelValue"
+    @click="open"
+    ><IconAdjustmentsHorizontal :size="17" />筛选<span v-if="count" class="filter-count">{{
+      count
+    }}</span></WatermelonButton
+  >
   <ElButton
+    v-else
     class="filter-dialog-trigger"
     :class="{ 'is-filtered': count > 0, 'action-cool': count > 0 }"
     :icon="Filter"
@@ -45,11 +60,18 @@ function cancel() {
     @update:model-value="!$event && cancel()"
   >
     <div class="filter-dialog-fields"><slot /></div>
-    <template #footer
-      ><ElButton class="filter-reset" @click="emit('reset')">重置</ElButton
-      ><ElButton @click="cancel">取消</ElButton
-      ><ElButton type="primary" @click="emit('apply')">应用筛选</ElButton></template
-    >
+    <template #footer>
+      <template v-if="watermelon">
+        <WatermelonButton class="filter-reset" @click="emit('reset')">重置</WatermelonButton>
+        <WatermelonButton @click="cancel">取消</WatermelonButton>
+        <WatermelonButton primary @click="emit('apply')">应用筛选</WatermelonButton>
+      </template>
+      <template v-else
+        ><ElButton class="filter-reset" @click="emit('reset')">重置</ElButton
+        ><ElButton @click="cancel">取消</ElButton
+        ><ElButton type="primary" @click="emit('apply')">应用筛选</ElButton></template
+      >
+    </template>
   </AppDialog>
 </template>
 <style>

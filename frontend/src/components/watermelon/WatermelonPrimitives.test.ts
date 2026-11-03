@@ -5,6 +5,7 @@ import WatermelonButton from './WatermelonButton.vue'
 import WatermelonDialog from './WatermelonDialog.vue'
 import WatermelonPagination from './WatermelonPagination.vue'
 
+const motionPreference = vi.hoisted(() => ({ reduced: false }))
 vi.mock('motion-v', async () => {
   const { defineComponent, h, ref } = await import('vue')
   const element = (tag: string) =>
@@ -16,7 +17,7 @@ vi.mock('motion-v', async () => {
     })
   return {
     motion: { button: element('button'), div: element('div'), span: element('span') },
-    useReducedMotion: () => ref(false),
+    useReducedMotion: () => ref(motionPreference.reduced),
   }
 })
 
@@ -33,6 +34,7 @@ const close = vi.fn(function (this: HTMLDialogElement) {
 })
 
 beforeEach(() => {
+  motionPreference.reduced = false
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   showModal.mockClear()
   close.mockClear()
@@ -84,6 +86,11 @@ describe('Watermelon shared primitives', () => {
     expect(onClick).toHaveBeenCalledTimes(1)
     expect(button.attributes('aria-busy')).toBe('true')
     expect(wrapper.find('.wm-button-spinner').exists()).toBe(true)
+    expect(wrapper.get('.wm-button-label').text()).toBe('保存')
+    await wrapper.setProps({ loading: false })
+    await button.trigger('click')
+    expect(button.attributes('aria-busy')).toBeUndefined()
+    expect(onClick).toHaveBeenCalledTimes(2)
   })
 
   it('uses a configurable pagination label and prevents disabled or out-of-range changes', async () => {
@@ -107,6 +114,11 @@ describe('Watermelon shared primitives', () => {
       .get('button[aria-label="第 3 页"]')
       .element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     expect(wrapper.emitted('current-change')).toEqual([[2]])
+    await wrapper.get('select[aria-label="每页条数"]').setValue('20')
+    expect(wrapper.emitted('size-change')).toBeUndefined()
+    await wrapper.setProps({ disabled: false })
+    await wrapper.get('select[aria-label="每页条数"]').setValue('50')
+    expect(wrapper.emitted('size-change')).toEqual([[50]])
   })
 
   it('opens an initially true dialog and restores the opening control after closing', async () => {
@@ -117,8 +129,26 @@ describe('Watermelon shared primitives', () => {
     expect(dialog.open).toBe(true)
     expect(showModal).toHaveBeenCalledTimes(1)
     expect(dialog.contains(document.activeElement)).toBe(true)
+    const firstCard = dialog.querySelector('.wm-dialog-card')
     await wrapper!.setProps({ modelValue: false })
     await vi.advanceTimersByTimeAsync(160)
+    expect(dialog.open).toBe(false)
+    expect(document.activeElement).toBe(trigger)
+    expect(dialog.querySelector('.wm-dialog-card')).toBeNull()
+    await wrapper!.setProps({ modelValue: true })
+    await flushPromises()
+    expect(dialog.open).toBe(true)
+    expect(dialog.querySelector('.wm-dialog-card')).not.toBe(firstCard)
+  })
+
+  it('closes without an animation delay when reduced motion is enabled', async () => {
+    motionPreference.reduced = true
+    const trigger = opener()
+    mountDialog(true)
+    await flushPromises()
+    const dialog = document.querySelector<HTMLDialogElement>('dialog')!
+    await wrapper!.setProps({ modelValue: false })
+    await vi.advanceTimersByTimeAsync(0)
     expect(dialog.open).toBe(false)
     expect(document.activeElement).toBe(trigger)
   })

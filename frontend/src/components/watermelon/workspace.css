@@ -1,0 +1,283 @@
+/* Shared workbench skin. Business components keep their existing data and events. */
+.team-workspace--watermelon {
+  --subtle: var(--wm-muted);
+  --primary: var(--wm-primary);
+  --primary-soft: var(--wm-hover);
+  --surface-soft: var(--wm-muted-surface);
+  --workspace-control-height: 40px;
+  --table-header-bg: var(--wm-muted-surface);
+  --table-grid-line: var(--wm-border);
+  --table-hover-bg: var(--wm-hover);
+}
+.page.team-workspace--watermelon .team-workspace__title {
+  font-size: 20px;
+}
+.page.team-workspace--watermelon .team-workspace__module {
+  font-size: 18px;
+}
+.page.team-workspace--watermelon .team-workspace__divider {
+  color: var(--wm-muted);
+}
+.page.team-workspace--watermelon .team-workspace__content--card {
+  gap: 0;
+  border: 1px solid var(--wm-border);
+  border-radius: 12px;
+  background: var(--wm-bg);
+}
+.team-workspace__card-navigation {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 20px 20px 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--wm-border) transparent;
+}
+.team-workspace__card-navigation .wm-segmented {
+  flex-wrap: nowrap;
+}
+.team-workspace--watermelon .workspace-data-panel.wm-data-panel,
+.team-workspace--watermelon .serial-history,
+.team-workspace--watermelon .team-settings-page {
+  padding: 20px;
+  border: 1px solid var(--wm-border);
+  border-radius: 12px;
+  background: var(--wm-bg);
+}
+.team-workspace__content--card :is(.workspace-data-panel.wm-data-panel, .serial-history) {
+  border: 0;
+  border-radius: 0;
+}
+.team-workspace--watermelon .serial-history {
+  gap: 20px;
+}
+.page.team-workspace.team-workspace--watermelon
+  .serial-history
+  > :is(.history-prompt, .state-panel) {
+  border: 0;
+  background: transparent;
+}
+.page.team-workspace--watermelon .workspace-data-panel .wm-data-table--fill {
+  flex: 1 1 0;
+  min-height: 0;
+}
+.wm-data-panel > .wm-data-toolbar,
+.wm-data-panel > .delivery-schedule-toolbar {
+  flex-shrink: 0;
+  margin-bottom: 20px;
+}
+.wm-data-panel > .wm-pagination {
+  padding-top: 16px;
+  margin-top: auto;
+}
+.wm-data-panel .wm-data-table--embedded {
+  border-block: 1px solid var(--wm-border);
+}
+.wm-scope .wm-data-table.el-table {
+  --el-table-bg-color: var(--wm-bg);
+  --el-table-tr-bg-color: var(--wm-bg);
+  --el-table-header-bg-color: var(--wm-muted-surface);
+  --el-table-border-color: var(--wm-border);
+  --el-table-text-color: var(--wm-text);
+  --el-table-header-text-color: var(--wm-muted);
+  --el-table-row-hover-bg-color: var(--wm-hover);
+}
+.wm-scope .wm-data-table .el-table__body .el-table__row > td.el-table__cell {
+  height: 54px;
+  padding-block: 14px;
+}
+.wm-scope .wm-data-table .el-table__header-wrapper th.el-table__cell {
+  height: 48px;
+  padding-block: 12px;
+  border-bottom-color: var(--wm-border);
+}
+.wm-scope .el-button:not(.is-link),
+.wm-scope .el-button.is-text {
+  border-radius: 8px;
+  background: var(--wm-surface);
+  border-color: var(--wm-border);
+  color: var(--wm-text);
+  box-shadow: none;
+  backdrop-filter: none;
+  transform: none;
+}
+.wm-scope
+  .el-button.el-button--primary:not(.el-button--danger):not(.is-link):not(.is-text):not(.is-plain) {
+  background: var(--wm-primary);
+  border-color: var(--wm-primary);
+  color: var(--wm-primary-text);
+  box-shadow: none;
+}
+.wm-scope .el-button:not(.is-link):hover:not(:disabled) {
+  background: var(--wm-hover);
+  color: var(--wm-text);
+  box-shadow: none;
+}
+.wm-scope
+  .el-button.el-button--primary:not(.el-button--danger):not(.is-plain):not(.is-text):not(
+    .is-link
+  ):is(:hover, :active):not(:disabled) {
+  background: var(--wm-primary-hover-bg);
+  border-color: var(--wm-primary-hover-bg);
+  color: var(--wm-primary-text);
+  box-shadow: none;
+}
+.wm-scope.el-dialog .el-dialog__headerbtn:not(:disabled):is(:hover, :focus-visible) {
+  background: var(--wm-hover);
+  box-shadow: none;
+}
+.wm-scope .el-button::before,
+.wm-scope .el-button::after,
+.wm-scope.el-dialog::before,
+.wm-scope.el-dialog::after,
+.wm-scope .el-dialog__footer::before,
+.wm-scope .el-dialog__footer::after {
+  display: none;
+}
+.wm-scope .el-tag {
+  --el-tag-bg-color: var(--wm-info-bg);
+  --el-tag-text-color: var(--wm-info-text);
+  border: 0;
+  border-radius: 999px;
+  background: var(--el-tag-bg-color);
+  box-shadow: none;
+  font-weight: 500;
+}
+.wm-scope .el-tag--success {
+  --el-tag-bg-color: var(--wm-success-bg);
+  --el-tag-text-color: var(--wm-success-text);
+}
+.wm-scope .el-tag--warning {
+  --el-tag-bg-color: var(--wm-warning-bg);
+  --el-tag-text-color: var(--wm-warning-text);
+}
+.wm-scope .el-tag--danger {
+  --el-tag-bg-color: var(--wm-danger-bg);
+  --el-tag-text-color: var(--wm-danger-text);
+}
+.wm-scope .el-tag--info {
+  --el-tag-bg-color: var(--wm-neutral-bg);
+  --el-tag-text-color: var(--wm-neutral-text);
+}
+.wm-dialog-overlay.el-overlay {
+  background: #0004;
+  backdrop-filter: blur(1px);
+}
+.wm-app-dialog.el-dialog {
+  --dialog-input-bg: var(--wm-surface);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 32px);
+  padding: 20px 24px;
+  border: 1px solid var(--wm-border);
+  border-radius: 20px;
+  background: var(--wm-bg);
+  color: var(--wm-text);
+  box-shadow: 0 20px 60px #0003;
+  backdrop-filter: none;
+}
+.wm-app-dialog.el-dialog > .el-dialog__header {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0 36px 16px 0;
+  border-bottom: 1px solid var(--wm-border);
+  background: transparent;
+}
+.wm-app-dialog .el-dialog__title {
+  color: var(--wm-text);
+  font-size: 17px;
+  font-weight: 600;
+}
+.wm-app-dialog .el-dialog__headerbtn {
+  background: var(--wm-hover);
+}
+.wm-app-dialog.el-dialog > .el-dialog__body {
+  padding-top: 20px;
+  min-height: 0;
+  overflow-y: auto;
+  color: var(--wm-text);
+}
+.wm-app-dialog.el-dialog > .el-dialog__footer {
+  flex-shrink: 0;
+  padding: 16px 0 0;
+  margin-top: 20px;
+  border: 0;
+  border-top: 1px solid var(--wm-border);
+  border-radius: 0;
+  background: var(--wm-bg);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.wm-app-dialog-enter-active .el-overlay-dialog {
+  transition:
+    opacity 180ms ease,
+    transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1.1);
+}
+.wm-app-dialog-leave-active .el-overlay-dialog {
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+.wm-app-dialog-enter-from .el-overlay-dialog,
+.wm-app-dialog-leave-to .el-overlay-dialog {
+  opacity: 0;
+  transform: translateY(12px) scale(0.97);
+}
+body:has(.team-workspace--watermelon)
+  :is(.el-popper.is-light, .el-picker-panel, .el-select-dropdown, .el-dropdown-menu) {
+  background: var(--wm-bg);
+  border-color: var(--wm-border);
+  color: var(--wm-text);
+  box-shadow: 0 8px 24px #00000012;
+  backdrop-filter: none;
+}
+body:has(.team-workspace--watermelon) .el-popper.is-light .el-popper__arrow::before {
+  background: var(--wm-bg);
+  border-color: var(--wm-border);
+}
+.wm-scope .state-loading {
+  color: var(--wm-muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .wm-app-dialog-enter-active .el-overlay-dialog,
+  .wm-app-dialog-leave-active .el-overlay-dialog {
+    transition: none;
+  }
+}
+@media (max-width: 760px) {
+  .team-workspace__card-navigation {
+    padding: 12px 12px 0;
+  }
+  .team-workspace--watermelon .workspace-data-panel.wm-data-panel,
+  .team-workspace--watermelon .serial-history,
+  .team-workspace--watermelon .team-settings-page {
+    padding: 12px;
+  }
+}
+
+.wm-toast-message.el-message {
+  padding: 14px 40px 14px 16px;
+  gap: 9px;
+  background: var(--wm-bg);
+  border: 1px solid var(--wm-border);
+  border-radius: 14px;
+  box-shadow: 0 8px 28px #0002;
+  backdrop-filter: none;
+  max-width: min(480px, calc(100vw - 32px));
+}
+.wm-toast-message .el-message__content {
+  color: var(--wm-text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.wm-toast-message.el-message--error .el-message__icon {
+  color: var(--wm-danger-text);
+}
+.wm-toast-message.el-message--success .el-message__icon {
+  color: var(--wm-success-text);
+}
+.wm-toast-message.el-message--info .el-message__icon {
+  color: var(--wm-info-text);
+}
+.wm-toast-message .el-message__closeBtn {
+  color: var(--wm-muted);
+}

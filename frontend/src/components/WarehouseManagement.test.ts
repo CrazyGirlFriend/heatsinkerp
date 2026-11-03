@@ -3,9 +3,14 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WarehouseManagement from './WarehouseManagement.vue'
 import BatchSelectionBar from './BatchSelectionBar.vue'
-import FilterDialog from './FilterDialog.vue'
+import WatermelonFilter from './watermelon/WatermelonFilter.vue'
+import WatermelonPagination from './watermelon/WatermelonPagination.vue'
 import TableExportButton from './TableExportButton.vue'
-import { ElPagination, ElSelect } from 'element-plus'
+import WarehousePlacementDialog from './WarehousePlacementDialog.vue'
+import { teamMaterialApi } from '@/services/teamMaterialApi'
+import { normalizeMaterialTransfer } from '@/services/materialTransferApi'
+import type { StockBatch } from '@/types/teamMaterials'
+
 import { warehouseLocationApi, type WarehouseLocation } from '@/services/warehouseLocationApi'
 vi.mock('@/stores/toast', () => ({ showToast: vi.fn() }))
 const slot: WarehouseLocation = {
@@ -61,7 +66,7 @@ async function render(canManage = true, canDispatch = false) {
     global: {
       stubs: {
         PageBackButton: true,
-        ElDialog: {
+        WatermelonDialog: {
           props: ['modelValue'],
           template: '<div v-if="modelValue"><slot/><slot name="footer"/></div>',
         },
@@ -79,14 +84,13 @@ async function click(text: string) {
 }
 async function open(name: string) {
   await wrapper
-    .findAll('.warehouse-slot')
+    .findAll('.warehouse-location-link')
     .find((card) => card.text() === name)!
     .trigger('click')
   await flushPromises()
 }
 async function nextPage() {
-  wrapper.getComponent(ElPagination).vm.$emit('update:current-page', 2)
-  wrapper.getComponent(ElPagination).vm.$emit('current-change', 2)
+  wrapper.getComponent(WatermelonPagination).vm.$emit('current-change', 2)
   await flushPromises()
 }
 
@@ -108,76 +112,57 @@ describe('warehouse management', () => {
     expect(rows[1]).toMatchObject({ status: '填写中', quantity: 0, weight: 0 })
     expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 2, 100, undefined)
   })
-  it('uses the initial capacity before measurement and keeps material details inside the popup', async () => {
-    const items = Array.from({ length: 50 }, (_, index) => occupied(index + 1))
-    vi.mocked(warehouseLocationApi.list).mockResolvedValueOnce({ items, total: 51, team_id: 1 })
+  it('omits selection for empty slots and resets to the first page when the page size changes', async () => {
+    const items = Array.from({ length: 61 }, (_, index) => ({
+      ...slot,
+      id: index + 1,
+      name: `A-${index + 1}`,
+    }))
+    vi.mocked(warehouseLocationApi.list).mockImplementation(
+      async (_query, page = 1, size = 20) => ({
+        items: items.slice((page - 1) * size, page * size),
+        total: items.length,
+        team_id: 1,
+      }),
+    )
+    await render(true, true)
+    expect(wrapper.get('.warehouse-table th').text()).toBe('仓位')
+    expect(wrapper.find('[aria-label="选择本页未分配物料"]').exists()).toBe(false)
+    expect(wrapper.get('.wm-pagination').text()).toContain('共 61 条')
+    expect(wrapper.get('.wm-pagination').text()).toContain('第 1 / 4 页')
+    await nextPage()
+    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 2, 20, undefined)
+    await wrapper.get('select[aria-label="每页条数"]').setValue('10')
+    await flushPromises()
+    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 1, 10, undefined)
+    expect(wrapper.get('.wm-pagination').text()).toContain('共 61 条')
+    expect(wrapper.get('.wm-pagination').text()).toContain('第 1 / 7 页')
+  })
+  it('pages the warehouse table and keeps individual material details inside the popup', async () => {
+    const items = Array.from({ length: 20 }, (_, index) => occupied(index + 1))
+    vi.mocked(warehouseLocationApi.list).mockResolvedValueOnce({ items, total: 21, team_id: 1 })
     await render()
-    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 1, 50, undefined)
-    expect(wrapper.findAll('.warehouse-slot')).toHaveLength(50)
-    expect(wrapper.get('.warehouse-grid').text()).not.toContain('TL')
-    expect(wrapper.get('.warehouse-grid').text()).not.toContain('材料1')
+    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 1, 20, undefined)
+    expect(wrapper.findAll('.warehouse-location-link')).toHaveLength(20)
+    expect(wrapper.get('.warehouse-table').text()).not.toContain('TL')
+    expect(wrapper.get('.warehouse-table').text()).not.toContain('材料1')
+    expect(wrapper.get('.warehouse-table').text()).toContain('YS-007')
     expect(wrapper.find('.warehouse-detail-totals').exists()).toBe(false)
     await open('A-1')
     expect(wrapper.get('.warehouse-detail-totals').text()).toContain('库存件数4')
     expect(wrapper.text()).toContain('YS-007')
     expect(wrapper.text()).toContain('2026-10-09 08:30')
     vi.mocked(warehouseLocationApi.list).mockResolvedValueOnce({
-      items: [occupied(51)],
-      total: 51,
+      items: [occupied(21)],
+      total: 21,
       team_id: 1,
     })
     await nextPage()
-    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 2, 50, undefined)
-    expect(wrapper.findAll('.warehouse-slot')).toHaveLength(1)
+    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 2, 20, undefined)
+    expect(wrapper.findAll('.warehouse-location-link')).toHaveLength(1)
     expect(wrapper.find('.warehouse-detail-totals').exists()).toBe(false)
   })
-  it('fits pagination to the available grid and resets the page after a screen resize', async () => {
-    let height = 600,
-      columns = 10,
-      notify = () => {}
-    const disconnect = vi.fn()
-    vi.stubGlobal(
-      'ResizeObserver',
-      class {
-        constructor(private callback: () => void) {}
-        observe(element: Element) {
-          if (element.classList.contains('warehouse-grid')) notify = this.callback
-        }
-        disconnect = disconnect
-      },
-    )
-    const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
-    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (
-      this: HTMLElement,
-    ) {
-      return this.classList.contains('warehouse-grid') ? height : clientHeight?.get?.call(this) || 0
-    })
-    const computedStyle = window.getComputedStyle.bind(window)
-    vi.spyOn(window, 'getComputedStyle').mockImplementation((element) =>
-      element.classList.contains('warehouse-grid')
-        ? ({
-            gridTemplateColumns: Array(columns).fill('100px').join(' '),
-            rowGap: '12px',
-            getPropertyValue: () => '70px',
-          } as unknown as CSSStyleDeclaration)
-        : computedStyle(element),
-    )
-    await render()
-    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 1, 70, undefined)
-    await nextPage()
-    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 2, 70, undefined)
-    vi.useFakeTimers()
-    height = 320
-    columns = 4
-    notify()
-    await vi.advanceTimersByTimeAsync(160)
-    await flushPromises()
-    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 1, 16, undefined)
-    expect(wrapper.getComponent(ElPagination).props('pageSize')).toBe(16)
-    wrapper.unmount()
-    expect(disconnect).toHaveBeenCalled()
-  })
-  it('colors physical inventory and distinguishes pending, draft and disabled slots', async () => {
+  it('separates stock amounts from pending batches and distinguishes locked and disabled slots', async () => {
     const waiting = { ...batch(3, 20, 2), status: 'pending', received_at: null }
     const items = [
       occupied(1, [batch(1, 0, 1.234)]),
@@ -187,15 +172,14 @@ describe('warehouse management', () => {
     ]
     vi.mocked(warehouseLocationApi.list).mockResolvedValue({ items, total: 4, team_id: 1 })
     await render(true, true)
-    const cards = wrapper.findAll('.warehouse-slot')
-    expect(cards[0]!.classes()).toContain('is-stocked')
-    expect(cards[1]!.classes()).not.toContain('is-stocked')
-    expect(cards[1]!.find('.pending').exists()).toBe(true)
-    expect(cards[2]!.classes()).toContain('is-stocked')
-    expect(cards[2]!.find('.pending').exists()).toBe(true)
-    expect(cards[2]!.find('.draft').exists()).toBe(true)
-    expect(cards[3]!.classes()).toContain('is-disabled')
-    expect(cards[3]!.attributes('disabled')).toBeUndefined()
+    const tableRows = wrapper.findAll('.warehouse-table .el-table__body tr')
+    expect(tableRows[0]!.text()).toContain('1.234')
+    expect(tableRows[0]!.text()).toContain('有料')
+    expect(tableRows[1]!.text()).toContain('待签收')
+    expect(tableRows[2]!.text()).toContain('填写中')
+    expect(tableRows[3]!.text()).toContain('停用')
+    expect(tableRows[1]!.findAll('td')[4]!.text()).toBe('0')
+    expect(tableRows[1]!.findAll('td')[7]!.text()).toBe('1')
     await open('待签收仓')
     expect(wrapper.get('.warehouse-detail-tabs button[aria-pressed="true"]').text()).toBe(
       '待签收 1',
@@ -214,7 +198,7 @@ describe('warehouse management', () => {
         occupied(11, [batch(11, 8, 1.28), batch(12, 0, 1.234), batch(13, 0, 0)]),
         { ...slot, id: 14, name: '空仓位' },
       ],
-      total: 51,
+      total: 21,
       team_id: 1,
     })
     await render(true, true)
@@ -233,7 +217,7 @@ describe('warehouse management', () => {
     await click('关闭')
     vi.mocked(warehouseLocationApi.list).mockResolvedValueOnce({
       items: [occupied(21, [batch(21, 2, 0.32)])],
-      total: 51,
+      total: 21,
       team_id: 1,
     })
     await nextPage()
@@ -272,22 +256,18 @@ describe('warehouse management', () => {
       false,
     )
     await wrapper.setProps({ canManage: false })
-    expect(wrapper.find('.warehouse-grid').exists()).toBe(false)
+    expect(wrapper.find('.warehouse-table').exists()).toBe(false)
     expect(wrapper.find('.warehouse-detail-totals').exists()).toBe(false)
   })
   it('queries all slots by status and search rather than filtering only the current page', async () => {
     await render()
     await nextPage()
     await wrapper.get('input[aria-label="搜索仓位"]').setValue(' 材料1 ')
-    wrapper.getComponent(FilterDialog).vm.$emit('open')
-    wrapper.getComponent(FilterDialog).vm.$emit('update:modelValue', true)
+    wrapper.getComponent(WatermelonFilter).vm.$emit('update:modelValue', 'pending')
     await flushPromises()
-    wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 'pending')
-    wrapper.getComponent(FilterDialog).vm.$emit('apply')
-    await flushPromises()
-    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('材料1', 1, 50, 'pending')
+    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('材料1', 1, 20, 'pending')
     await click('重置')
-    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 1, 50, undefined)
+    expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 1, 20, undefined)
   })
   it('allows renaming an occupied slot, disables deactivation and offers batch shortcuts', async () => {
     vi.mocked(warehouseLocationApi.list).mockResolvedValue({
@@ -304,7 +284,7 @@ describe('warehouse management', () => {
     expect(wrapper.emitted('dispatch')?.[0]).toEqual(['TL8'])
     await open('A-1')
     await click('编辑仓位')
-    expect(wrapper.get('input[aria-label="启用仓位"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('button[aria-label="启用仓位"]').attributes('disabled')).toBeDefined()
     await wrapper.get('input[aria-label="仓位名称"]').setValue('A区-新名称')
     await click('保存')
     expect(warehouseLocationApi.save).toHaveBeenCalledWith(
@@ -352,6 +332,99 @@ describe('warehouse management', () => {
       1,
     )
     expect(wrapper.get('[role="alert"]').text()).toContain('仓位已被修改')
+  })
+  it('lists unassigned portions beside slots, selects each batch once, and opens placement from the row', async () => {
+    const stock = {
+      transfer: normalizeMaterialTransfer({
+        id: 8,
+        batch_no: 'TL8',
+        serial_no: 'S8',
+        material_type: 'semi_finished',
+      }),
+      available_quantity: 80,
+      available_weight: 8,
+      unassigned_quantity: 10,
+      unassigned_weight: 1,
+    } as StockBatch
+    vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({
+      items: [stock],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    })
+    vi.spyOn(teamMaterialApi, 'warehouseLocations').mockResolvedValue({ items: [slot] })
+    vi.mocked(warehouseLocationApi.list).mockResolvedValue({
+      items: [
+        occupied(1, [
+          { ...batch(8, 70, 7), serial_no: 'S8', available_quantity: 80, available_weight: 8 },
+        ]),
+        slot,
+      ],
+      total: 2,
+      team_id: 1,
+    })
+    await render(true, true)
+    await wrapper.setProps({ teamId: 1, refreshKey: 1 })
+    await flushPromises()
+    const tableRows = wrapper.findAll('.warehouse-table .el-table__body tr')
+    expect(tableRows).toHaveLength(3)
+    expect(tableRows[0]!.text()).toContain('S8未分配')
+    expect(tableRows[0]!.findAll('td')[5]!.text()).toBe('10')
+    expect(tableRows[1]!.text()).toContain('S8已分配')
+    expect(tableRows[1]!.findAll('td')[5]!.text()).toBe('70')
+    expect(wrapper.find('[aria-label="仓位视图"]').exists()).toBe(false)
+    await wrapper.get('label[aria-label="选择本页未分配物料"] input').setValue(true)
+    await click('批量出库（1）')
+    expect(wrapper.emitted('batchDispatch')?.[0]).toEqual([[8]])
+    await open('A-1')
+    wrapper.getComponent(BatchSelectionBar).vm.$emit('all', true)
+    await flushPromises()
+    expect(wrapper.getComponent(BatchSelectionBar).props()).toMatchObject({
+      count: 1,
+      quantity: 80,
+      weight: 8,
+    })
+    await click('关闭')
+    await click('安排仓位')
+    expect(wrapper.getComponent(WarehousePlacementDialog).props('modelValue')).toEqual(stock)
+    const loads = vi.mocked(teamMaterialApi.stock).mock.calls.length
+    await wrapper.setProps({ refreshKey: 2 })
+    await flushPromises()
+    expect(teamMaterialApi.stock).toHaveBeenCalledTimes(loads)
+    wrapper.getComponent(WarehousePlacementDialog).vm.$emit('update:modelValue', null)
+    wrapper.getComponent(WarehousePlacementDialog).vm.$emit('changed')
+    await flushPromises()
+    expect(teamMaterialApi.stock).toHaveBeenCalledTimes(loads + 1)
+  })
+  it('keeps the scrap stock balance for unassigned batch dispatch', async () => {
+    const stock = {
+      transfer: normalizeMaterialTransfer({
+        id: 18,
+        batch_no: 'TL18',
+        serial_no: 'S18',
+        material_type: 'waste',
+      }),
+      available_quantity: 0,
+      available_weight: 0,
+      scrap_available_quantity: 3,
+      scrap_available_weight: 0.5,
+      unassigned_quantity: 3,
+      unassigned_weight: 0.5,
+    } as StockBatch
+    vi.spyOn(teamMaterialApi, 'stock').mockResolvedValue({
+      items: [stock],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    })
+    await render(true, true)
+    await wrapper.setProps({ teamId: 1, refreshKey: 1 })
+    await flushPromises()
+    const checkbox = wrapper.get('label[aria-label="选择未分配物料 TL18"] input')
+    expect(checkbox.attributes('disabled')).toBeUndefined()
+    await checkbox.setValue(true)
+    await click('批量出库（1）')
+    expect(wrapper.emitted('batchDispatch')?.[0]).toEqual([[18]])
   })
   it('does not request the catalog for an unrelated team account', async () => {
     await render(false)
