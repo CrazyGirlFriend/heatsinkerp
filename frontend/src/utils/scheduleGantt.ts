@@ -5,8 +5,18 @@ import { planLabel } from './schedulePlanning'
 import { scheduleTimestamp } from './scheduleTimeline'
 import { formatAmount } from './format'
 
-export const GANTT_ROW_HEIGHT = 40
-export const GANTT_LANE_HEIGHT = 30
+export const GANTT_ROW_HEIGHT = 32
+export const GANTT_LANE_HEIGHT = 24
+
+export function ganttDensity(visibleDays: number) {
+  const scale = visibleDays <= 14 ? 1 : visibleDays <= 42 ? 0.9 : 0.8
+  return {
+    scale,
+    barHeight: Math.round(20 * scale),
+    rowHeight: GANTT_ROW_HEIGHT * scale,
+    laneHeight: GANTT_LANE_HEIGHT * scale,
+  }
+}
 
 export interface ScheduleGanttRecord {
   id: string
@@ -25,6 +35,7 @@ export interface ScheduleGanttRecord {
   hierarchyState?: 'expand' | 'collapse'
   lanes: Record<string, number>
   laneCount: number
+  batchNumbers?: number[]
 }
 
 // VTable's calendar uses browser-local dates. Supply factory wall time (+08:00)
@@ -54,36 +65,21 @@ export function ganttBatchRelations(record: ScheduleGanttRecord) {
   return { upstream, downstream }
 }
 
-// A team keeps one bar. Interior marks are saved batch deadlines, not equal
-// divisions: quantities and idle gaps do not determine positions on a time axis.
-export function ganttBatchDividers(
-  record: ScheduleGanttRecord,
-  visibleStart = record.startTime,
-  visibleEnd = record.endTime,
-): number[] {
-  if (record.kind !== 'team' || record.startTime == null || record.endTime == null) return []
-  const start = Math.max(record.startTime, visibleStart!)
-  const end = Math.min(record.endTime, visibleEnd!)
-  if (end <= start) return []
-  return [...new Set(record.children?.map((batch) => batch.endTime) || [])]
-    .filter((time): time is number => time != null && time > start && time < end)
-    .sort((a, b) => a - b)
-    .map((time) => (time - start) / (end - start))
-}
-
 function group(record: ScheduleGanttRecord) {
-  const leaves = ganttInlineBars(record)
-    .filter((leaf) => leaf.startTime != null && leaf.endTime != null)
-    .sort((a, b) => a.startTime! - b.startTime! || a.endTime! - b.endTime!)
-  const ends: number[] = []
+  const bars = ganttInlineBars(record)
+  // Batch numbers align display rows only; actual supply links still come from
+  // upstream_batch_ids. Dates never move a batch into another display row.
+  record.batchNumbers = [
+    ...new Set(
+      bars.filter((bar) => bar.kind === 'batch').map((bar) => bar.node?.batch_number || 1),
+    ),
+  ].sort((a, b) => a - b)
+  const leaves = bars.filter((leaf) => leaf.startTime != null && leaf.endTime != null)
   for (const leaf of leaves) {
-    let lane = ends.findIndex((end) => end <= leaf.startTime!)
-    if (lane < 0) lane = ends.length
-    // Only real overlaps need separate lanes. A milestone occupies its exact instant.
-    ends[lane] = Math.max(leaf.endTime!, leaf.startTime! + 1)
-    leaf.lanes[record.id] = lane
+    leaf.lanes[record.id] =
+      leaf.kind === 'batch' ? record.batchNumbers.indexOf(leaf.node?.batch_number || 1) : 0
   }
-  record.laneCount = Math.max(1, ends.length)
+  record.laneCount = Math.max(1, record.batchNumbers.length)
   if (leaves.length) {
     record.startTime = Math.min(...leaves.map((leaf) => leaf.startTime!))
     record.endTime = Math.max(...leaves.map((leaf) => leaf.endTime!))
@@ -101,6 +97,7 @@ export function scheduleGanttRecords(tasks: ScheduleTask[]): ScheduleGanttRecord
       .map((node): ScheduleGanttRecord => {
         const batches = timelineNodes([node])
           .filter((batch) => batch.status !== 'cancelled')
+          .sort((a, b) => (a.batch_number || 1) - (b.batch_number || 1))
           .map((batch): ScheduleGanttRecord => {
             const due = scheduleTimestamp(batch.due_at)
             const planned = scheduleTimestamp(batch.planned_start_at)
@@ -125,15 +122,9 @@ export function scheduleGanttRecords(tasks: ScheduleTask[]): ScheduleGanttRecord
               laneCount: 1,
             }
           })
-        const completeIntervals =
-          batches.length > 0 &&
-          batches.every(
-            (batch) =>
-              batch.startTime != null && batch.endTime != null && batch.startTime < batch.endTime,
-          )
         const team = group({
           id: `team:${node.id}`,
-          type: completeIntervals ? 'task' : 'project',
+          type: 'project',
           kind: 'team',
           name: `${String(node.sequence_no).padStart(2, '0')}  ${node.team_name}${batches.length ? '' : ` · ${planLabel(node)}`}`,
           quantity:
@@ -148,13 +139,6 @@ export function scheduleGanttRecords(tasks: ScheduleTask[]): ScheduleGanttRecord
           lanes: {},
           laneCount: 1,
         })
-        if (completeIntervals) {
-          team.node = {
-            ...node,
-            planned_start_at: new Date(team.startTime!).toISOString(),
-            due_at: new Date(team.endTime!).toISOString(),
-          }
-        }
         return team
       })
     const deadline = scheduleTimestamp(task.final_due_at)
@@ -199,7 +183,7 @@ export function ganttRange(records: ScheduleGanttRecord[], now: number): [string
     : [boardDate(now - BOARD_DAY), boardDate(now + 5 * BOARD_DAY)]
 }
 
-export const ganttRowHeight = (record?: ScheduleGanttRecord) =>
-  record?.type === 'project' && record.children && record.hierarchyState === 'collapse'
+export const ganttRowHeight = (record?: ScheduleGanttRecord, density = ganttDensity(7)) =>
+  (record?.type === 'project' && record.children && record.hierarchyState === 'collapse'
     ? Math.max(GANTT_ROW_HEIGHT, record.laneCount * GANTT_LANE_HEIGHT + 4)
-    : GANTT_ROW_HEIGHT
+    : GANTT_ROW_HEIGHT) * density.scale

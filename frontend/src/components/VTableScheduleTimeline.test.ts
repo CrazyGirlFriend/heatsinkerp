@@ -15,6 +15,35 @@ vi.mock('@visactor/vtable-gantt', () => ({
     handlers = new Map()
     scrollLeft = 0
     scrollTop = 0
+    millisecondsPerPixel = 720000
+    parsedOptions = { zoom: { minMillisecondsPerPixel: 30000, maxMillisecondsPerPixel: 17280000 } }
+    zoomScaleManager = {
+      config: { levels: [] as any[][] },
+      updateZoomLimits: vi.fn(),
+      getGlobalMinMillisecondsPerPixel: () => 30000,
+      getGlobalMaxMillisecondsPerPixel: () => 17280000,
+      findOptimalLevel: (value: number) =>
+        value > 10080000 ? 0 : value > 1440000 ? 1 : value > 360000 ? 2 : value > 60000 ? 3 : 4,
+      switchToLevel: (level: number) => {
+        this.options.timelineHeader.scales = this.options.timelineHeader.zoomScale.levels[level]
+      },
+      updateDataZoomResponsive: vi.fn(),
+      getDataZoomIntegration: () => undefined,
+    }
+    updateDateRange(minDate: string, maxDate: string) {
+      this.options.minDate = minDate
+      this.options.maxDate = maxDate
+    }
+    getCurrentMillisecondsPerPixel() {
+      return this.millisecondsPerPixel
+    }
+    setMillisecondsPerPixel(value: number) {
+      this.millisecondsPerPixel = value
+      this.handlers.get('zoom')?.({ newMillisecondsPerPixel: value })
+    }
+    zoomByFactor = vi.fn((factor: number) =>
+      this.setMillisecondsPerPixel(this.millisecondsPerPixel / factor),
+    )
     eventManager = { _eventHandler: { reseizeListeners: {} } }
     taskListTableInstance = { on: vi.fn(), getRecordByCell: vi.fn() }
     scenegraph = {
@@ -33,6 +62,7 @@ vi.mock('@visactor/vtable-gantt', () => ({
     }
     constructor(_host: unknown, options: unknown) {
       this.options = options
+      this.zoomScaleManager.config.levels = this.options.timelineHeader.zoomScale.levels
       native.instances.push(this)
     }
   },
@@ -79,7 +109,7 @@ afterEach(() => {
   native.instances.length = 0
   vi.clearAllMocks()
 })
-it('fits the selected period to the viewport, resets zoom, and adapts date labels on resize', async () => {
+it('uses native zoom without crushing a long period into one screen and preserves it on refresh', async () => {
   let resize: () => void = () => {}
   vi.stubGlobal(
     'ResizeObserver',
@@ -111,29 +141,42 @@ it('fits the selected period to the viewport, resets zoom, and adapts date label
     wrapper.findComponent(ScheduleDateRange).vm.$emit('update:modelValue', [start, end])
     await flushPromises()
   }
-  const timelineWidth = (days: number) => instance.options.timelineHeader.colWidth * 24 * days
-  await selectRange('2026-11-02', '2026-11-08')
-  expect(timelineWidth(7)).toBeCloseTo(1096)
-  expect(instance.options.timelineHeader.scales[1].unit).toBe('day')
-  expect(instance.options.minDate).toBe('2026-11-02T00:00:00.000')
-  expect(instance.options.maxDate).toBe('2026-11-08T23:59:59.999')
+  await selectRange('2026-11-01', '2026-11-30')
+  expect(instance.options.timelineHeader.zoomScale).toMatchObject({
+    enabled: true,
+    dataZoomAxis: { enabled: true, containerId: canvas.id },
+  })
+  expect(instance.getCurrentMillisecondsPerPixel()).toBe(86400000 / 360)
+  expect(instance.options.rowHeight).toBe(32)
+  expect(instance.options.timelineHeader.scales).toEqual(
+    expect.arrayContaining([expect.objectContaining({ unit: 'hour', step: 12 })]),
+  )
+  expect(instance.options.minDate).toBe('2026-11-01T00:00:00.000')
+  expect(instance.options.maxDate).toBe('2026-11-30T23:59:59.999')
+  // Every native level retains sub-day precision, even with week/month headers.
+  for (const level of instance.options.timelineHeader.zoomScale.levels)
+    expect(level.some((scale: any) => scale.unit === 'hour')).toBe(true)
   await wrapper.get('[aria-label="放大时间轴"]').trigger('click')
-  expect(timelineWidth(7)).toBeCloseTo(1370)
+  expect(instance.zoomByFactor).toHaveBeenCalledWith(1.2)
+  expect(wrapper.get('.gantt-zoom span').text()).toBe('360%')
   instance.scrollLeft = 80
-  await selectRange('2026-11-02', '2027-01-24')
-  expect(timelineWidth(84)).toBeCloseTo(1096)
-  expect(instance.options.timelineHeader.scales[1].unit).toBe('week')
-  expect(instance.scrollLeft).toBe(0)
-  expect(wrapper.get('.gantt-zoom span').text()).toBe('100%')
-  Object.defineProperty(canvas, 'clientWidth', { configurable: true, value: 776 })
+  instance.scrollTop = 120
+  await wrapper.setProps({ tasks: [{ ...task, version: 2 }] })
+  await flushPromises()
+  expect(instance.getCurrentMillisecondsPerPixel()).toBe(200000)
+  expect(instance.scrollLeft).toBe(80)
+  expect(instance.scrollTop).toBe(120)
+  Object.defineProperty(canvas, 'clientWidth', { configurable: true, value: 1000 })
   resize()
-  expect(timelineWidth(84)).toBeCloseTo(472)
-  expect(instance.options.timelineHeader.scales[1].unit).toBe('month')
-  await selectRange('2028-02-01', '2028-02-29')
-  expect(timelineWidth(29)).toBeCloseTo(472)
+  expect(instance.getCurrentMillisecondsPerPixel()).toBe(200000)
+  expect(instance.zoomScaleManager.updateDataZoomResponsive).toHaveBeenCalled()
+  // Wheel/slider zoom updates the same indicator; the toolbar is not a second zoom system.
+  instance.setMillisecondsPerPixel(360000)
+  await flushPromises()
+  expect(wrapper.get('.gantt-zoom span').text()).toBe('200%')
   await selectRange('2028-02-29', '2028-02-29')
-  expect(timelineWidth(1)).toBeCloseTo(472)
-  expect(instance.options.timelineHeader.scales[1].unit).toBe('day')
+  expect(instance.getCurrentMillisecondsPerPixel()).toBeCloseTo(86400000 / 696)
+  expect(instance.scrollLeft).toBe(0)
   wrapper.unmount()
 })
 it('transitions deliberate period changes without queuing motion or animating live refreshes', async () => {
@@ -170,22 +213,83 @@ it('transitions deliberate period changes without queuing motion or animating li
   await flushPromises()
   expect(animate).toHaveBeenCalledTimes(1)
   await wrapper.get('[aria-label="放大时间轴"]').trigger('click')
-  expect(animate).toHaveBeenCalledTimes(2)
-  expect(animations[0]!.cancel).toHaveBeenCalled()
+  expect(animate).toHaveBeenCalledTimes(1)
   await wrapper.setProps({ tasks: [{ ...task, version: 2 }] })
   await flushPromises()
-  expect(animate).toHaveBeenCalledTimes(2)
-  expect(animations[1]!.cancel).toHaveBeenCalled()
+  expect(animate).toHaveBeenCalledTimes(1)
+  expect(animations[0]!.cancel).toHaveBeenCalled()
   motion.matches = true
   await wrapper.get('[aria-label="缩小时间轴"]').trigger('click')
-  expect(animate).toHaveBeenCalledTimes(2)
+  expect(animate).toHaveBeenCalledTimes(1)
   motion.matches = false
   await wrapper.get('[aria-label="放大时间轴"]').trigger('click')
-  expect(animate).toHaveBeenCalledTimes(3)
+  expect(animate).toHaveBeenCalledTimes(1)
   wrapper.unmount()
-  expect(animations[2]!.cancel).toHaveBeenCalled()
+  expect(animations[0]!.cancel).toHaveBeenCalled()
 })
-it('shows one team bar in the overview and the saved batch quantities and dates in its hover card', async () => {
+it('animates the list and timeline rows together and clears their transforms on release', async () => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  )
+  vi.stubGlobal('matchMedia', () => ({ matches: false }))
+  let frame: FrameRequestCallback = () => {}
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    frame = callback
+    return 1
+  })
+  const cancelFrame = vi.fn()
+  vi.stubGlobal('cancelAnimationFrame', cancelFrame)
+  const wrapper = mount(VTableScheduleTimeline, {
+    props: { tasks: [task] },
+    global: {
+      stubs: { AppPopover: true, AppButton: true, ScheduleDateRange: true },
+      renderStubDefaultSlot: true,
+    },
+  })
+  await flushPromises()
+  const group = () => ({
+    attribute: { scaleY: 1 },
+    setAttribute(_key: string, value: number) {
+      this.attribute.scaleY = value
+    },
+    forEachChildren: vi.fn(),
+  })
+  const list = group(),
+    bars = group()
+  const instance = native.instances[0]!
+  instance.taskListTableInstance.scenegraph = { bodyGroup: list, updateNextFrame: vi.fn() }
+  instance.scenegraph.taskBar.barContainer = bars
+  wrapper
+    .findComponent(ScheduleDateRange)
+    .vm.$emit('update:modelValue', ['2026-11-02', '2027-01-24'])
+  await flushPromises()
+  instance.setMillisecondsPerPixel(5000000)
+  frame(performance.now())
+  await flushPromises()
+  expect(list.attribute.scaleY).toBeCloseTo(1 / 0.8)
+  expect(bars.attribute.scaleY).toBe(list.attribute.scaleY)
+  frame(performance.now() + 90)
+  expect(list.attribute.scaleY).toBeGreaterThan(1)
+  expect(list.attribute.scaleY).toBeLessThan(1 / 0.8)
+  expect(bars.attribute.scaleY).toBe(list.attribute.scaleY)
+  frame(performance.now() + 1000)
+  expect(list.attribute.scaleY).toBe(1)
+  expect(bars.attribute.scaleY).toBe(1)
+  wrapper
+    .findComponent(ScheduleDateRange)
+    .vm.$emit('update:modelValue', ['2026-11-02', '2026-11-08'])
+  await flushPromises()
+  expect(list.attribute.scaleY).toBeCloseTo(0.8)
+  wrapper.unmount()
+  expect(cancelFrame).toHaveBeenCalledWith(1)
+  expect(list.attribute.scaleY).toBe(1)
+  expect(bars.attribute.scaleY).toBe(1)
+})
+it('keeps batch lanes in the compact overview and exposes saved team totals in details', async () => {
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -229,7 +333,8 @@ it('shows one team bar in the overview and the saved batch quantities and dates 
   const serial = instance.options.records[0]
   const team = serial.children[0]
   expect(serial.hierarchyState).toBe('collapse')
-  expect(team).toMatchObject({ type: 'task', progress: 75 })
+  expect(team).toMatchObject({ type: 'project', progress: 75, laneCount: 2 })
+  expect(team.children.map((batch: any) => batch.lanes[serial.id])).toEqual([0, 1])
   instance.handlers.get('mouseenter_task_bar')({
     record: team,
     federatedEvent: { clientX: 200, clientY: 300 },
@@ -241,6 +346,15 @@ it('shows one team bar in the overview and the saved batch quantities and dates 
     ['1', '60', '11-02 08:00', '11-02 16:00'],
     ['2', '20', '11-03 08:00', '11-03 16:00'],
   ])
+  instance.handlers.get('click_task_bar')({
+    record: team,
+    federatedEvent: { clientX: 200, clientY: 300 },
+  })
+  await wrapper.setProps({ tasks: wrapper.props('tasks').map((task) => ({ ...task, version: 2 })) })
+  await flushPromises()
+  expect(wrapper.find('[aria-label="取消选中批次"]').exists()).toBe(true)
+  expect(wrapper.findComponent(ScheduleBatchSummary).props('node').team_name).toBe('线切割')
+  expect(wrapper.findAll('.detail-batches tbody tr')).toHaveLength(2)
   wrapper.unmount()
 })
 it('pins batch details on click, opens the real schedule from details, and releases the native canvas', async () => {

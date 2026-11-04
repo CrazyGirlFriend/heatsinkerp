@@ -4,9 +4,9 @@ import {
   ganttDate,
   ganttRange,
   ganttRowHeight,
+  ganttDensity,
   ganttInlineBars,
   ganttBatchRelations,
-  ganttBatchDividers,
   scheduleGanttRecords,
 } from './scheduleGantt'
 
@@ -77,22 +77,51 @@ describe('VTable schedule adapter', () => {
     expect(leaf.endTime! - leaf.startTime!).toBe(8 * 3_600_000)
     expect(ganttDate(Date.parse('2026-11-02T18:00:00Z'))).toBe('2026-11-03T02:00:00.000')
   })
-  it('keeps overlapping teams on separate lanes while each team remains one overview bar', () => {
+  it('aligns teams by batch number and adds one row per batch, independent of overlap', () => {
     const [record] = scheduleGanttRecords([
-      task([node(1, { batches: [batch(1), batch(2)] }), node(2, { batches: [batch(3)] })]),
+      task([
+        node(1, { batches: [batch(2), batch(1)] }),
+        node(2, { batches: [batch(3, { batch_number: 1 }), batch(4, { batch_number: 2 })] }),
+      ]),
     ])
-    const team = record!.children![0]!
-    expect(team.children!.map((child) => child.lanes[team.id])).toEqual([0, 1])
+    expect(record!.batchNumbers).toEqual([1, 2])
+    expect(
+      record!
+        .children!.slice(0, 2)
+        .map((team) => team.children!.map((child) => child.lanes[record!.id])),
+    ).toEqual([
+      [0, 1],
+      [0, 1],
+    ])
     expect(record!.laneCount).toBe(2)
-    expect(ganttRowHeight(record)).toBe(64)
+    expect(ganttRowHeight(record)).toBe(52)
     record!.hierarchyState = 'expand'
-    expect(ganttRowHeight(record)).toBe(40)
-    expect(ganttRowHeight(team)).toBe(40)
+    expect(ganttRowHeight(record)).toBe(32)
+    expect(ganttRowHeight(record!.children![0])).toBe(52)
   })
-  it('shares a lane at an exact handover but separates even a one-minute overlap', () => {
+  it('compresses rows and overlapping lanes together with a readable long-period floor', () => {
+    const [record] = scheduleGanttRecords([task([node(1, { batches: [batch(1), batch(2)] })])])
+    for (const [days, barHeight, rowHeight, scale] of [
+      [1, 20, 32, 1],
+      [14, 20, 32, 1],
+      [15, 18, 28.8, 0.9],
+      [42, 18, 28.8, 0.9],
+      [43, 16, 25.6, 0.8],
+      [365, 16, 25.6, 0.8],
+    ]) {
+      const density = ganttDensity(days!)
+      expect(density).toMatchObject({ barHeight, rowHeight, scale })
+      expect(density.laneHeight - density.barHeight).toBeGreaterThanOrEqual(3)
+      expect(ganttRowHeight(record, density)).toBeCloseTo(52 * scale!)
+      record!.children![0]!.hierarchyState = 'expand'
+      expect(ganttRowHeight(record!.children![0], density)).toBe(rowHeight)
+    }
+  })
+  it('preserves fixed batch rows and exact dates even when adjacent operations overlap', () => {
     const adjacent = node(2, {
       batches: [
         batch(2, {
+          batch_number: 1,
           planned_start_at: '2026-11-02T08:00:00Z',
           due_at: '2026-11-02T16:00:00Z',
         }),
@@ -107,10 +136,15 @@ describe('VTable schedule adapter', () => {
     ).toEqual([0, 0])
     adjacent.batches![0]!.planned_start_at = '2026-11-02T07:59:00Z'
     const [overlap] = scheduleGanttRecords([task([node(1), adjacent])])
-    expect(overlap!.laneCount).toBe(2)
+    expect(overlap!.laneCount).toBe(1)
+    expect(
+      ganttInlineBars(overlap!)
+        .slice(0, 2)
+        .map((bar) => bar.lanes[overlap!.id]),
+    ).toEqual([0, 0])
     expect(overlap!.children![1]!.startTime).toBe(Date.parse('2026-11-02T07:59:00Z'))
   })
-  it('keeps the team envelope and total progress with dividers at actual batch deadlines', () => {
+  it('shows actual batch intervals and individual progress instead of the combined team envelope', () => {
     const [record] = scheduleGanttRecords([
       task([
         node(1, {
@@ -120,53 +154,43 @@ describe('VTable schedule adapter', () => {
             batch(1, { target_quantity: 60, dispatched_quantity: 60 }),
             batch(2, {
               target_quantity: 40,
-              dispatched_quantity: 0,
               planned_start_at: '2026-11-03T00:00:00Z',
               due_at: '2026-11-03T08:00:00Z',
             }),
+            batch(3, { status: 'cancelled' }),
           ],
         }),
       ]),
     ])
     const team = record!.children![0]!
-    expect(team.type).toBe('task')
+    expect(team.type).toBe('project')
     expect(team.progress).toBe(60)
-    expect(team.startTime).toBe(Date.parse('2026-11-02T00:00:00Z'))
-    expect(team.endTime).toBe(Date.parse('2026-11-03T08:00:00Z'))
-    expect(team.children!.map((batch) => batch.progress)).toEqual([100, 0])
-    expect(team.node?.planned_start_at).toBe('2026-11-02T00:00:00.000Z')
     const bars = ganttInlineBars(record!).filter((bar) => bar.kind !== 'deadline')
-    expect(bars.map((bar) => bar.kind)).toEqual(['team'])
-    expect(ganttBatchDividers(team)).toEqual([0.25])
-    expect(ganttBatchDividers(team, Date.parse('2026-11-02T08:00:00Z'))).toEqual([])
     expect(
-      ganttBatchDividers(
-        team,
-        Date.parse('2026-11-02T04:00:00Z'),
-        Date.parse('2026-11-02T12:00:00Z'),
-      ),
-    ).toEqual([0.5])
-    expect(team.children!.map((bar) => [bar.name, bar.startTime, bar.endTime])).toEqual([
-      ['第1批', Date.parse('2026-11-02T00:00:00Z'), Date.parse('2026-11-02T08:00:00Z')],
-      ['第2批', Date.parse('2026-11-03T00:00:00Z'), Date.parse('2026-11-03T08:00:00Z')],
+      bars.map((bar) => [bar.name, bar.quantity, bar.progress, bar.lanes[record!.id]]),
+    ).toEqual([
+      ['第1批', '60', 100, 0],
+      ['第2批', '40', 0, 1],
     ])
-    expect(ganttBatchDividers(team.children![0]!)).toEqual([])
+    expect(bars.map((bar) => [bar.startTime, bar.endTime])).toEqual([
+      [Date.parse('2026-11-02T00:00:00Z'), Date.parse('2026-11-02T08:00:00Z')],
+      [Date.parse('2026-11-03T00:00:00Z'), Date.parse('2026-11-03T08:00:00Z')],
+    ])
   })
-  it('deduplicates coincident batch deadlines and excludes cancelled or final-edge dividers', () => {
+  it('keeps missing batch positions aligned across teams without creating empty numbered rows', () => {
     const [record] = scheduleGanttRecords([
       task([
-        node(1, {
-          batches: [
-            batch(1),
-            batch(2),
-            batch(3, { due_at: '2026-11-02T16:00:00Z' }),
-            batch(4, { due_at: '2026-11-02T12:00:00Z', status: 'cancelled' }),
-          ],
-        }),
+        node(1, { batches: [batch(1), batch(3)] }),
+        node(2, { batches: [batch(4, { batch_number: 3 })] }),
       ]),
     ])
-    expect(ganttBatchDividers(record!.children![0]!)).toEqual([0.5])
-    expect(ganttBatchDividers(record!)).toEqual([])
+    expect(record!.batchNumbers).toEqual([1, 3])
+    expect(record!.laneCount).toBe(2)
+    expect(record!.children![1]!.children![0]!.lanes[record!.id]).toBe(1)
+    expect(ganttBatchRelations(record!.children![1]!.children![0]!)).toEqual({
+      upstream: [],
+      downstream: [],
+    })
   })
   it('matches explicit many-to-many batch links, never equal batch numbers or cancelled supplies', () => {
     const [record] = scheduleGanttRecords([

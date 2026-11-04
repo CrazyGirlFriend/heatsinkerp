@@ -8,6 +8,7 @@ import {
   ref,
   render as renderIcon,
   watch,
+  useId,
 } from 'vue'
 import { Gantt, TYPES, VRender, type GanttConstructorOptions } from '@visactor/vtable-gantt'
 import {
@@ -35,9 +36,7 @@ import { BOARD_DAY, boardDate, boardDeliveryState, boardTeamColor } from '@/util
 import {
   ganttDate,
   ganttBatchRelations,
-  ganttBatchDividers,
-  GANTT_ROW_HEIGHT,
-  GANTT_LANE_HEIGHT,
+  ganttDensity,
   ganttInlineBars,
   ganttLeaves,
   ganttRange,
@@ -57,7 +56,13 @@ const host = ref<HTMLElement>()
 const palette = useChartPalette()
 const now = ref(Date.now())
 const range = ref<[string, string]>(ganttRange([], now.value))
-const zoom = ref(1)
+const canvasId = `schedule-gantt-${useId()}`
+const baseMillisecondsPerPixel = BOARD_DAY / 120
+const millisecondsPerPixel = ref(baseMillisecondsPerPixel)
+const zoom = computed(() => baseMillisecondsPerPixel / millisecondsPerPixel.value)
+const viewportWidth = ref(900)
+const zoomLimits = ref({ min: 30_000, max: BOARD_DAY })
+const visibleRange = ref('')
 const allCollapsed = ref(true)
 const hovered = ref<ScheduleGanttRecord>()
 const popoverVisible = ref(false)
@@ -76,7 +81,12 @@ let observer: ResizeObserver | undefined
 let clock: ReturnType<typeof setInterval> | undefined
 let closeTimer: ReturnType<typeof setTimeout> | undefined
 let resizeFrame = 0
+let zoomFrame = 0
+let rendering = false
 let viewAnimation: Animation | undefined
+let densityFrame = 0
+let densityGroups: VRender.Group[] = []
+let renderedDensity = 1
 let lastWidth = 0
 let lastHeight = 0
 let taskIdentity = ''
@@ -128,8 +138,10 @@ function statusIcon(state: string, color: string) {
   return iconCache.get(key)!
 }
 const tableWidth = 300
-const barHeight = 26
 const headerHeight = 64
+const density = computed(() =>
+  ganttDensity((millisecondsPerPixel.value * viewportWidth.value) / BOARD_DAY),
+)
 const font = 'Inter, "PingFang SC", "Microsoft YaHei", sans-serif'
 const colors = computed(
   () =>
@@ -213,9 +225,84 @@ function onPointerDown(event: PointerEvent) {
   )
     hidePopover()
 }
+function initialScale() {
+  const days = (Date.parse(range.value[1]) - Date.parse(range.value[0])) / BOARD_DAY + 1
+  const durations = records
+    .flatMap(ganttLeaves)
+    .flatMap((record) =>
+      record.startTime != null && record.endTime != null && record.endTime > record.startTime
+        ? [record.endTime - record.startTime]
+        : [],
+    )
+  // Short split batches need room for the team name and their own percentage.
+  // Cap the initial magnification at 300%; finer inspection uses native zoom.
+  const readableScale = Math.max(baseMillisecondsPerPixel / 3, Math.min(...durations) / 120)
+  return Math.min(baseMillisecondsPerPixel, readableScale, (days * BOARD_DAY) / viewportWidth.value)
+}
+function syncZoomState() {
+  if (!gantt) return
+  millisecondsPerPixel.value = gantt.getCurrentMillisecondsPerPixel()
+  const start =
+    Date.parse(`${range.value[0]}T00:00:00+08:00`) + gantt.scrollLeft * millisecondsPerPixel.value
+  const end = Math.min(
+    Date.parse(`${range.value[1]}T23:59:59+08:00`),
+    start + viewportWidth.value * millisecondsPerPixel.value,
+  )
+  visibleRange.value = `${boardDate(start).slice(5)} — ${boardDate(end).slice(5)}`
+}
+function onNativeZoom() {
+  if (rendering) return
+  cancelAnimationFrame(zoomFrame)
+  zoomFrame = requestAnimationFrame(() => {
+    zoomFrame = 0
+    const previousDensity = renderedDensity
+    syncZoomState()
+    gantt?.zoomScaleManager?.getDataZoomIntegration()?.syncToDataZoom()
+    if (density.value.scale !== previousDensity) {
+      render()
+      if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+        animateDensity(previousDensity / renderedDensity)
+    }
+    positionLocateIcons()
+  })
+}
+function applyNativeScale(value: number) {
+  if (!gantt?.zoomScaleManager) return
+  const manager = gantt.zoomScaleManager
+  manager.updateZoomLimits()
+  // Do not zoom out beyond the selected period and leave an empty time axis.
+  const period = Date.parse(range.value[1]) - Date.parse(range.value[0]) + BOARD_DAY
+  zoomLimits.value = {
+    min: manager.getGlobalMinMillisecondsPerPixel(),
+    max: Math.min(manager.getGlobalMaxMillisecondsPerPixel(), period / viewportWidth.value),
+  }
+  gantt.parsedOptions.zoom!.maxMillisecondsPerPixel = zoomLimits.value.max
+  const scale = Math.max(zoomLimits.value.min, Math.min(zoomLimits.value.max, value))
+  manager.switchToLevel(manager.findOptimalLevel(scale))
+  // Native initialization may round the period up to its initial coarse step.
+  gantt.updateDateRange(`${range.value[0]}T00:00:00.000`, `${range.value[1]}T23:59:59.999`)
+  gantt.setMillisecondsPerPixel(scale)
+}
+function styleRangeSlider() {
+  // 1.26.8 exposes the native slider but has no theme option on its integration.
+  // Apply VRender attributes to that slider; dragging and zoom stay native.
+  const slider = gantt?.zoomScaleManager?.getDataZoomIntegration() as unknown as
+    | {
+        dataZoomAxis: { setAttributes: (attributes: Record<string, unknown>) => void }
+        stage: { background: string }
+      }
+    | undefined
+  if (slider) slider.stage.background = colors.value.surface
+  slider?.dataZoomAxis.setAttributes({
+    backgroundStyle: { fill: colors.value.surface, stroke: colors.value.border, lineWidth: 1 },
+    selectedBackgroundStyle: { fill: '#8a80d4', fillOpacity: 0.28 },
+    startHandlerStyle: { fill: colors.value.surface, stroke: colors.value.muted, size: 20 },
+    endHandlerStyle: { fill: colors.value.surface, stroke: colors.value.muted, size: 20 },
+  })
+}
 function fit() {
   range.value = ganttRange(records, now.value)
-  zoom.value = 1
+  millisecondsPerPixel.value = initialScale()
 }
 function toggleGroups() {
   const collapse = records.some((record) => record.hierarchyState !== 'collapse')
@@ -226,7 +313,7 @@ function toggleGroups() {
   render()
 }
 function changeZoom(direction: number) {
-  zoom.value = Math.min(2, Math.max(0.5, zoom.value + direction * 0.25))
+  gantt?.zoomByFactor(direction > 0 ? 1.2 : 1 / 1.2)
 }
 function shift(direction: number) {
   const days = (Date.parse(range.value[1]) - Date.parse(range.value[0])) / BOARD_DAY + 1
@@ -236,18 +323,13 @@ function shift(direction: number) {
 }
 function options(): GanttConstructorOptions {
   const c = colors.value
+  const sizing = density.value
+  const { barHeight, laneHeight, rowHeight } = sizing
   const dark = window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false
   const header = dark ? '#22202d' : '#f0f0fb'
   const gridBackground = dark ? '#22202d' : '#f0f0fb'
   const groupBackground = dark ? '#282535' : '#e8e8f7'
   const gridLine = dark ? '#393547' : '#d5d9ee'
-  const days = (Date.parse(range.value[1]) - Date.parse(range.value[0])) / BOARD_DAY + 1
-  const visibleStart = Date.parse(`${range.value[0]}T00:00:00+08:00`)
-  const visibleEnd = Date.parse(`${range.value[1]}T00:00:00+08:00`) + BOARD_DAY
-  // At 100%, the selected period occupies the available timeline. Keep fractional
-  // hour widths so rounding cannot push the end of the period off screen.
-  const dayWidth = (((host.value?.clientWidth || 1200) - tableWidth - 4) / days) * zoom.value
-  const dateUnit = dayWidth >= 28 ? 'day' : dayWidth * 7 >= 40 ? 'week' : 'month'
   const rowRecord = (index: number, instance = gantt) =>
     instance?.getRecordByIndex(index) as ScheduleGanttRecord | undefined
   const barStyle = ({
@@ -266,18 +348,145 @@ function options(): GanttConstructorOptions {
       borderLineWidth: 0,
       paddingTop:
         record.type === 'project'
-          ? (ganttRowHeight(row) - 12) / 2
-          : (ganttRowHeight(row) - ((lanes - 1) * GANTT_LANE_HEIGHT + barHeight)) / 2 +
-            (row ? record.lanes[row.id] || 0 : 0) * GANTT_LANE_HEIGHT,
+          ? (ganttRowHeight(row, sizing) - 12) / 2
+          : (ganttRowHeight(row, sizing) - ((lanes - 1) * laneHeight + barHeight)) / 2 +
+            (row ? record.lanes[row.id] || 0 : 0) * laneHeight,
     }
   }
+  const scaleLevel = (
+    dateUnit: 'hour' | 'day' | 'week' | 'month',
+    step = 1,
+  ): TYPES.ITimelineScale[] => {
+    const scales: TYPES.ITimelineScale[] = [
+      {
+        unit: dateUnit === 'month' ? 'year' : dateUnit === 'hour' ? 'day' : 'month',
+        step: 1,
+        rowHeight: 20,
+        format: ({ startDate }) =>
+          dateUnit === 'month'
+            ? `${startDate.getFullYear()} 年`
+            : dateUnit === 'hour'
+              ? `${startDate.getMonth() + 1} 月 ${startDate.getDate()} 日`
+              : `${startDate.getFullYear()} 年 ${startDate.getMonth() + 1} 月`,
+        style: {
+          color: c.muted,
+          fontSize: 12,
+          fontWeight: '500',
+          textAlign: 'left',
+          padding: [0, 14],
+        },
+      },
+      {
+        unit: dateUnit,
+        step,
+        startOfWeek: 'monday',
+        rowHeight: 44,
+        format: ({ startDate }) => {
+          const today = new Date(ganttDate(now.value))
+          const label =
+            startDate.toDateString() === today.toDateString()
+              ? '今天'
+              : ['日', '一', '二', '三', '四', '五', '六'][startDate.getDay()]
+          return `${String(startDate.getDate()).padStart(2, '0')}  ${label}`
+        },
+        customLayout: ({ width, height, startDate, endDate }) => {
+          const rootContainer = new VRender.Group({ width, height, clip: true, pickable: false })
+          const withIcon = dateUnit !== 'hour' && width >= (dateUnit === 'week' ? 96 : 80)
+          const x = withIcon ? width / 2 - (dateUnit === 'week' ? 38 : 30) : width / 2
+          if (withIcon)
+            rootContainer.add(
+              new VRender.Image({
+                x,
+                y: (height - 24) / 2,
+                width: 22,
+                height: 24,
+                image: calendarSymbol(),
+                pickable: false,
+              }),
+            )
+          const shortDate = (date: Date) =>
+            `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`
+          const textX = withIcon ? x + 30 : x
+          const textAlign = withIcon ? 'left' : 'center'
+          const maxLineWidth = Math.max(0, withIcon ? width - textX - 3 : width - 4)
+          rootContainer.add(
+            new VRender.Text({
+              x: textX,
+              y: dateUnit === 'hour' ? height / 2 : height / 2 - 8,
+              text:
+                dateUnit === 'week'
+                  ? width < 60
+                    ? String(startDate.getDate()).padStart(2, '0')
+                    : shortDate(startDate)
+                  : dateUnit === 'month'
+                    ? `${startDate.getMonth() + 1}月`
+                    : dateUnit === 'hour'
+                      ? `${String(startDate.getHours()).padStart(2, '0')}:00`
+                      : String(startDate.getDate()).padStart(2, '0'),
+              fontFamily: font,
+              fontSize: dateUnit === 'hour' ? 13 : width < 40 || dateUnit === 'week' ? 14 : 18,
+              fontWeight: 600,
+              textAlign,
+              maxLineWidth,
+              textBaseline: 'middle',
+              fill: c.text,
+              pickable: false,
+            }),
+          )
+          rootContainer.add(
+            new VRender.Text({
+              x: textX,
+              y: height / 2 + 10,
+              text:
+                dateUnit === 'week'
+                  ? width < 60
+                    ? ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][startDate.getDay()]
+                    : `— ${shortDate(endDate)}`
+                  : dateUnit === 'month'
+                    ? `${startDate.getDate()}–${endDate.getDate()}日`
+                    : dateUnit === 'hour'
+                      ? ''
+                      : startDate.toDateString() === new Date(ganttDate(now.value)).toDateString()
+                        ? '今天'
+                        : ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][
+                            startDate.getDay()
+                          ],
+              fontFamily: font,
+              fontSize: width < 40 ? 10 : 12,
+              textAlign,
+              maxLineWidth,
+              textBaseline: 'middle',
+              fill: c.text,
+              pickable: false,
+            }),
+          )
+          return { rootContainer, renderDefaultText: false }
+        },
+      },
+      // A hidden hourly scale keeps eight-hour batches eight hours wide.
+      {
+        unit: 'hour',
+        step: dateUnit === 'month' ? 720 : dateUnit === 'week' ? 168 : 24,
+        visible: false,
+      },
+    ]
+    return scales.filter((scale) => dateUnit !== 'hour' || scale.visible !== false)
+  }
+  const levels = gantt?.zoomScaleManager?.config.levels || [
+    scaleLevel('month'),
+    scaleLevel('week'),
+    scaleLevel('day'),
+    scaleLevel('hour', 12),
+    scaleLevel('hour'),
+  ]
+  const scales = levels[gantt?.zoomScaleManager?.findOptimalLevel(millisecondsPerPixel.value) ?? 2]!
   return {
     records,
     tasksShowMode: TYPES.TasksShowMode.Project_Sub_Tasks_Inline,
     projectSubTasksExpandable: true,
     minDate: `${range.value[0]}T00:00:00.000`,
     maxDate: `${range.value[1]}T23:59:59.999`,
-    rowHeight: GANTT_ROW_HEIGHT,
+    rowHeight,
     headerRowHeight: headerHeight,
     overscrollBehavior: 'none',
     underlayBackgroundColor: c.surface,
@@ -292,6 +501,8 @@ function options(): GanttConstructorOptions {
           width: 216,
           tree: true,
           style: {
+            padding: ({ row, table }) =>
+              table.getRecordByCell(0, row)?.kind === 'serial' ? [0, 48, 0, 14] : [0, 14],
             fontWeight: ({ row, table }) =>
               table.getRecordByCell(0, row)?.kind === 'serial' ? 600 : 400,
             color: ({ row, table }) => {
@@ -302,16 +513,33 @@ function options(): GanttConstructorOptions {
           customLayout: ({ rect, table, col, row }) => {
             const record = table.getRecordByCell(col, row) as ScheduleGanttRecord
             const rootContainer = new VRender.Group({ width: rect!.width, height: rect!.height })
+            if (record.hierarchyState === 'collapse') {
+              const top = (rect!.height - ((record.laneCount - 1) * laneHeight + barHeight)) / 2
+              for (const [lane, number] of (record.batchNumbers || []).entries())
+                rootContainer.add(
+                  new VRender.Text({
+                    x: rect!.width - 10,
+                    y: top + lane * laneHeight + barHeight / 2,
+                    text: `${number}批`,
+                    fontFamily: font,
+                    fontSize: 10,
+                    textAlign: 'right',
+                    textBaseline: 'middle',
+                    fill: c.muted,
+                    pickable: false,
+                  }),
+                )
+            }
             if (record.kind === 'serial' || record.kind === 'deadline')
               return { rootContainer, renderDefault: true }
             const inset = record.kind === 'batch' ? 54 : 38
-            const cardWidth = rect!.width - inset - 16
+            const cardWidth = rect!.width - inset - (record.kind === 'team' ? 44 : 16)
             rootContainer.add(
               new VRender.Rect({
                 x: inset,
-                y: (rect!.height - 26) / 2,
+                y: (rect!.height - barHeight) / 2,
                 width: cardWidth,
-                height: 26,
+                height: barHeight,
                 cornerRadius: 20,
                 fill: c.surface,
                 pickable: false,
@@ -351,12 +579,12 @@ function options(): GanttConstructorOptions {
       customComputeRowHeight: ({ row, table }) =>
         row === 0
           ? headerHeight
-          : ganttRowHeight(table.getRecordByCell(0, row) as ScheduleGanttRecord),
+          : ganttRowHeight(table.getRecordByCell(0, row) as ScheduleGanttRecord, sizing),
       theme: {
         underlayBackgroundColor: c.surface,
         defaultStyle: {
           fontFamily: font,
-          fontSize: 14,
+          fontSize: sizing.scale === 1 ? 14 : 13,
           color: c.text,
           bgColor: gridBackground,
           borderColor: c.border,
@@ -379,7 +607,7 @@ function options(): GanttConstructorOptions {
           borderColor: c.border,
           borderLineWidth: 0,
           fontFamily: font,
-          fontSize: 14,
+          fontSize: sizing.scale === 1 ? 14 : 13,
           fontWeight: 400,
           hover: { cellBgColor: c.mutedSurface, inlineRowBgColor: c.mutedSurface },
         },
@@ -396,116 +624,23 @@ function options(): GanttConstructorOptions {
       tooltip: { isShowOverflowTextTooltip: true },
     },
     timelineHeader: {
-      colWidth: dayWidth / 24,
+      colWidth: ((BOARD_DAY / 24) * (scales.at(-1)?.step || 1)) / millisecondsPerPixel.value,
       backgroundColor: header,
       verticalLine: { lineColor: gridLine, lineWidth: 0 },
       horizontalLine: { lineColor: gridLine, lineWidth: 0 },
-      scales: [
-        {
-          unit: dateUnit === 'month' ? 'year' : 'month',
-          step: 1,
-          rowHeight: 20,
-          format: ({ startDate }) =>
-            dateUnit === 'month'
-              ? `${startDate.getFullYear()} 年`
-              : `${startDate.getFullYear()} 年 ${startDate.getMonth() + 1} 月`,
-          style: {
-            color: c.muted,
-            fontSize: 12,
-            fontWeight: '500',
-            textAlign: 'left',
-            padding: [0, 14],
-          },
-        },
-        {
-          unit: dateUnit,
-          step: 1,
-          startOfWeek: 'monday',
-          rowHeight: 44,
-          format: ({ startDate }) => {
-            const today = new Date(ganttDate(now.value))
-            const label =
-              startDate.toDateString() === today.toDateString()
-                ? '今天'
-                : ['日', '一', '二', '三', '四', '五', '六'][startDate.getDay()]
-            return `${String(startDate.getDate()).padStart(2, '0')}  ${label}`
-          },
-          customLayout: ({ width, height, startDate, endDate }) => {
-            const rootContainer = new VRender.Group({ width, height, clip: true, pickable: false })
-            const withIcon = width >= (dateUnit === 'week' ? 96 : 80)
-            const x = withIcon ? width / 2 - (dateUnit === 'week' ? 38 : 30) : width / 2
-            if (withIcon)
-              rootContainer.add(
-                new VRender.Image({
-                  x,
-                  y: (height - 24) / 2,
-                  width: 22,
-                  height: 24,
-                  image: calendarSymbol(),
-                  pickable: false,
-                }),
-              )
-            const shortDate = (date: Date) =>
-              `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`
-            const textX = withIcon ? x + 30 : x
-            const textAlign = withIcon ? 'left' : 'center'
-            const maxLineWidth = Math.max(0, withIcon ? width - textX - 3 : width - 4)
-            rootContainer.add(
-              new VRender.Text({
-                x: textX,
-                y: height / 2 - 8,
-                text:
-                  dateUnit === 'week'
-                    ? shortDate(startDate)
-                    : dateUnit === 'month'
-                      ? `${startDate.getMonth() + 1}月`
-                      : String(startDate.getDate()).padStart(2, '0'),
-                fontFamily: font,
-                fontSize: width < 40 || dateUnit === 'week' ? 14 : 18,
-                fontWeight: 600,
-                textAlign,
-                maxLineWidth,
-                textBaseline: 'middle',
-                fill: c.text,
-                pickable: false,
-              }),
-            )
-            rootContainer.add(
-              new VRender.Text({
-                x: textX,
-                y: height / 2 + 10,
-                text:
-                  dateUnit === 'week'
-                    ? `— ${shortDate(endDate)}`
-                    : dateUnit === 'month'
-                      ? `${startDate.getDate()}–${endDate.getDate()}日`
-                      : startDate.toDateString() === new Date(ganttDate(now.value)).toDateString()
-                        ? '今天'
-                        : ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][
-                            startDate.getDay()
-                          ],
-                fontFamily: font,
-                fontSize: width < 40 ? 10 : 12,
-                textAlign,
-                maxLineWidth,
-                textBaseline: 'middle',
-                fill: c.text,
-                pickable: false,
-              }),
-            )
-            return { rootContainer, renderDefaultText: false }
-          },
-        },
-        // A hidden hourly scale keeps eight-hour batches eight hours wide.
-        { unit: 'hour', step: 1, visible: false },
-      ],
+      scales,
+      zoomScale: {
+        enabled: true,
+        levels,
+        dataZoomAxis: { enabled: true, containerId: canvasId, height: 30 },
+      },
     },
     grid: {
       backgroundColor: gridBackground,
       horizontalBackgroundColor: ({ index, ganttInstance }) =>
         rowRecord(index, ganttInstance)?.kind === 'serial' ? groupBackground : 'transparent',
-      verticalLineDependenceOnTimeScale: dateUnit,
-      verticalLine: { lineColor: gridLine, lineWidth: 0 },
+      verticalLineDependenceOnTimeScale: 'hour',
+      verticalLine: { lineColor: gridLine, lineWidth: 0.5 },
       horizontalLine: { lineColor: gridLine, lineWidth: 1 },
     },
     frame: {
@@ -517,7 +652,7 @@ function options(): GanttConstructorOptions {
     scrollStyle: {
       width: 7,
       visible: 'scrolling',
-      horizontalVisible: 'always',
+      horizontalVisible: 'none',
       scrollSliderColor: dark ? '#555d6b' : '#b6bcc5',
       scrollRailColor: c.surface,
       hoverOn: true,
@@ -612,21 +747,6 @@ function options(): GanttConstructorOptions {
             ],
           },
         })
-        const dividers = ganttBatchDividers(record, visibleStart, visibleEnd).map(
-          (ratio) => ratio * width,
-        )
-        for (const x of dividers)
-          rootContainer.add(
-            new VRender.Line({
-              points: [
-                { x, y: 3 },
-                { x, y: height - 3 },
-              ],
-              stroke: '#ffffffb3',
-              lineWidth: 1,
-              pickable: false,
-            }),
-          )
         const stateColor =
           state === 'overdue'
             ? '#d44945'
@@ -647,32 +767,38 @@ function options(): GanttConstructorOptions {
             }),
           )
         const row = rowRecord(index, ganttInstance)
-        const compactBatch = record.kind === 'batch' && !!record.node!.batch_number && width < 90
-        const label = compactBatch
-          ? `${record.node!.batch_number}批`
-          : record.kind === 'team'
-            ? record.node!.team_name
-            : row?.kind === 'serial'
-              ? `${record.node!.team_name} · ${record.name}`
-              : record.name
-        const showPercent = progress != null && width >= 120
-        const showLabel = width >= (compactBatch ? 42 : 57)
-        const edges = [0, ...dividers, width]
-        const iconSpaces = edges
-          .slice(0, -1)
-          .map((left, i) => ({ left, width: edges[i + 1]! - left }))
-        const iconSpace = showLabel
-          ? iconSpaces[0]!
-          : iconSpaces.reduce((a, b) => (a.width > b.width ? a : b))
-        const symbolSize = Math.min(
-          compactBatch && showLabel ? 16 : 22,
-          Math.max(0, iconSpace.width - 4),
-        )
-        const symbolX = showLabel ? 2 : iconSpace.left + (iconSpace.width - symbolSize) / 2
-        if (symbolSize >= 14) {
+        const label = row?.kind === 'serial' ? record.node!.team_name : record.name
+        const percentWidth = Math.max(28, height)
+        const showPercent = progress != null && width >= percentWidth + 4
+        const labelFontSize = sizing.scale === 1 ? 13 : 12
+        const labelGraphic = new VRender.Text({
+          text: label,
+          fontFamily: font,
+          fontSize: labelFontSize,
+          fontWeight: 600,
+          fill: '#fff',
+          textBaseline: 'middle',
+          pickable: false,
+        })
+        const labelWidth = labelGraphic.AABBBounds.width()
+        const symbolSize = height - 4
+        const textEnd = width - (showPercent ? percentWidth + 6 : 4)
+        // Team identity takes priority over decoration at month/quarter scale.
+        const showSymbol =
+          symbolSize >= 14 &&
+          textEnd >= symbolSize + 4 &&
+          (textEnd - symbolSize - 7 >= labelWidth || textEnd - 4 < labelWidth)
+        const textStart = showSymbol ? symbolSize + 7 : 4
+        const space = {
+          x: textStart,
+          width: textEnd - textStart,
+        }
+        const showLabel = space.width >= labelWidth
+        const textX = showSymbol ? space.x : space.x + (space.width - labelWidth) / 2
+        if (showSymbol) {
           rootContainer.add(
             new VRender.Circle({
-              x: symbolX + symbolSize / 2,
+              x: 2 + symbolSize / 2,
               y: height / 2,
               radius: symbolSize / 2,
               fill: '#fff',
@@ -682,7 +808,7 @@ function options(): GanttConstructorOptions {
           const glyphSize = symbolSize * 0.65
           rootContainer.add(
             new VRender.Image({
-              x: symbolX + (symbolSize - glyphSize) / 2,
+              x: 2 + (symbolSize - glyphSize) / 2,
               y: (height - glyphSize) / 2,
               width: glyphSize,
               height: glyphSize,
@@ -691,43 +817,24 @@ function options(): GanttConstructorOptions {
             }),
           )
         }
-        let textX = compactBatch ? 21 : 29
-        const textEnd = width - (showPercent ? 30 : 3)
-        let textWidth = textEnd - textX
-        if (dividers.length) {
-          // Keep the team name between separators rather than drawing a line
-          // through its letters. The icon and percentage retain their positions.
-          const spaces = edges.slice(0, -1).map((left, i) => {
-            const x = Math.max(textX, left + 5)
-            return { x, width: Math.min(textEnd, edges[i + 1]! - 5) - x }
-          })
-          const space =
-            spaces.find((space) => space.width >= label.length * 13) ||
-            spaces.reduce((a, b) => (a.width > b.width ? a : b))
-          textX = space.x
-          textWidth = Math.max(0, space.width)
-        }
         if (showLabel) {
+          labelGraphic.setAttributes({ x: textX, y: height / 2, maxLineWidth: space.width })
+          rootContainer.add(labelGraphic)
+        }
+        if (showPercent) {
+          const x = width - percentWidth / 2 - 2
+          const y = height / 2
           rootContainer.add(
-            new VRender.Text({
-              x: textX,
-              y: height / 2,
-              text: label,
-              fontFamily: font,
-              fontSize: compactBatch ? 11 : 13,
-              fontWeight: 600,
+            new VRender.Rect({
+              x: x - percentWidth / 2,
+              y: 1,
+              width: percentWidth,
+              height: height - 2,
+              cornerRadius: (height - 2) / 2,
               fill: '#fff',
-              textBaseline: 'middle',
-              maxLineWidth: textWidth,
-              ellipsis: '…',
               pickable: false,
             }),
           )
-        }
-        if (showPercent) {
-          const x = width - 14
-          const y = height / 2
-          rootContainer.add(new VRender.Circle({ x, y, radius: 12, fill: '#fff', pickable: false }))
           rootContainer.add(
             new VRender.Text({
               x,
@@ -735,7 +842,7 @@ function options(): GanttConstructorOptions {
               // Never round a partially delivered batch up to 100%.
               text: `${Math.floor(progress)}%`,
               fontFamily: font,
-              fontSize: 10,
+              fontSize: height < 18 ? 8 : 9,
               fontWeight: 600,
               textAlign: 'center',
               textBaseline: 'middle',
@@ -750,32 +857,88 @@ function options(): GanttConstructorOptions {
   }
 }
 function positionLocateIcons() {
-  // Native edge arrows share the bar's centre line and can cover another batch's percentage.
-  // Keep them in the row's upper gutter instead; the time interval stays untouched.
+  // Keep navigation arrows inside their batch row, including the first visible row.
   gantt?.scenegraph.taskBar.locateIconsGroup?.forEachChildren((child) => {
     const icon = child as unknown as VRender.Group
-    icon.setAttributes({ dy: -15, scaleX: 0.65, scaleY: 0.65 })
+    icon.setAttributes({ dy: 0, scaleX: 0.65, scaleY: 0.65 })
   })
+}
+function stopDensityMotion() {
+  cancelAnimationFrame(densityFrame)
+  densityFrame = 0
+  for (const group of densityGroups) group.setAttribute('scaleY', 1)
+  densityGroups = []
+}
+function animateDensity(fromScale: number) {
+  if (!gantt || fromScale === 1) return
+  const scene = gantt.scenegraph
+  const tableScene = gantt.taskListTableInstance?.scenegraph
+  // Transform only the row content, keeping both headers and clipping frames fixed.
+  // This avoids rebuilding the two canvases on every animation frame.
+  densityGroups = [
+    tableScene?.bodyGroup,
+    tableScene?.rowHeaderGroup,
+    scene.grid?.horizontalLineGroup,
+    scene.grid?.horizontalBackgroundRectsGroup,
+    scene.taskBar.barContainer,
+    scene.taskBar.locateIconsGroup,
+  ].filter((group): group is VRender.Group => !!group)
+  if (!densityGroups.length) return
+  const started = performance.now()
+  const draw = (time: number) => {
+    const progress = Math.min(1, (time - started) / 180)
+    const scale = 1 + (fromScale - 1) * (1 - progress) ** 3
+    for (const group of densityGroups) group.setAttribute('scaleY', scale)
+    scene.updateNextFrame()
+    tableScene?.updateNextFrame()
+    if (progress < 1) densityFrame = requestAnimationFrame(draw)
+    else {
+      densityFrame = 0
+      densityGroups = []
+    }
+  }
+  draw(started)
 }
 function render(resetScroll = false) {
   if (!host.value) return
+  rendering = true
+  viewportWidth.value = Math.max(1, (host.value.clientWidth || 1200) - tableWidth - 4)
+  if (resetScroll) millisecondsPerPixel.value = initialScale()
+  const scale = millisecondsPerPixel.value
+  const previousDensity = renderedDensity * (densityGroups[0]?.attribute.scaleY ?? 1)
+  stopDensityMotion()
   const animateView = resetScroll && !!gantt
   viewAnimation?.cancel()
   const selection =
-    !resetScroll && pinned.value && hovered.value?.kind === 'batch'
-      ? records.flatMap(ganttLeaves).find((record) => record.id === hovered.value!.id)
+    !resetScroll && pinned.value && hovered.value
+      ? records
+          .flatMap((task) => [
+            task,
+            ...(task.children || []).flatMap((team) => [team, ...(team.children || [])]),
+          ])
+          .find((record) => record.id === hovered.value!.id)
       : undefined
   hidePopover()
   if (gantt) {
     const left = gantt.scrollLeft,
       top = gantt.scrollTop
     gantt.updateOption(options())
+    applyNativeScale(scale)
     if (!resetScroll) {
       gantt.scrollLeft = left
       gantt.scrollTop = top
     }
   } else {
     gantt = new Gantt(host.value, options())
+    // 1.26.8 calculates zoom thresholds from every scale, including hidden ones.
+    // After those thresholds are initialized, keep the drawing grid at 24 hours:
+    // a partial last week/month must not stretch an eight-hour batch.
+    for (const level of gantt.zoomScaleManager!.config.levels) {
+      const precision = level.find((item) => item.unit === 'hour' && item.visible === false)
+      if (precision) precision.step = 24
+    }
+    applyNativeScale(scale)
+    gantt.on('zoom', onNativeZoom)
     gantt.on('mouseenter_task_bar', ({ record, federatedEvent }) =>
       showPopover(record as ScheduleGanttRecord, federatedEvent.clientX, federatedEvent.clientY),
     )
@@ -784,10 +947,17 @@ function render(resetScroll = false) {
       selectBatch(record as ScheduleGanttRecord, federatedEvent.clientX, federatedEvent.clientY),
     )
     gantt.on('scroll', () => {
+      syncZoomState()
+      stopDensityMotion()
       hidePopover()
       positionLocateIcons()
     })
   }
+  styleRangeSlider()
+  gantt.zoomScaleManager?.updateDataZoomResponsive()
+  gantt.zoomScaleManager?.getDataZoomIntegration()?.syncToDataZoom()
+  syncZoomState()
+  rendering = false
   positionLocateIcons()
   if (boundTable !== gantt.taskListTableInstance) {
     boundTable = gantt.taskListTableInstance
@@ -803,15 +973,19 @@ function render(resetScroll = false) {
     })
   }
   if (selection) selectBatch(selection, pointer.value.x, pointer.value.y)
+  renderedDensity = density.value.scale
   // Fade the date axis and bars together; live resize/data refresh stay immediate.
   if (animateView && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
     viewAnimation = host.value.animate?.([{ opacity: 0.65 }, { opacity: 1 }], {
       duration: 180,
       easing: 'ease-out',
     })
+    animateDensity(previousDensity / renderedDensity)
   }
 }
 function release() {
+  cancelAnimationFrame(zoomFrame)
+  stopDensityMotion()
   viewAnimation?.cancel()
   viewAnimation = undefined
   // VTable 1.26.8 disconnects observers but leaves their debounced callbacks queued.
@@ -863,10 +1037,7 @@ watch(
   },
   { immediate: true },
 )
-watch(range, () => {
-  zoom.value = 1
-})
-watch([range, zoom], () => render(true))
+watch(range, () => render(true))
 watch(colors, () => {
   const left = gantt?.scrollLeft || 0
   const top = gantt?.scrollTop || 0
@@ -879,6 +1050,8 @@ watch(colors, () => {
   }
 })
 onMounted(() => {
+  viewportWidth.value = Math.max(1, (host.value?.clientWidth || 1200) - tableWidth - 4)
+  millisecondsPerPixel.value = initialScale()
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('pointerdown', onPointerDown)
   render()
@@ -923,11 +1096,11 @@ onBeforeUnmount(() => {
       </div>
       <div class="gantt-controls">
         <ScheduleDateRange v-model="range" compact />
-        <div class="gantt-zoom" aria-label="时间缩放">
+        <div class="gantt-zoom" aria-label="时间缩放" title="Ctrl + 滚轮缩放；拖动底部滑块调整日期">
           <button
             type="button"
             aria-label="缩小时间轴"
-            :disabled="zoom <= 0.5"
+            :disabled="millisecondsPerPixel >= zoomLimits.max - 1"
             @click="changeZoom(-1)"
           >
             <IconMinus :size="14" />
@@ -936,7 +1109,7 @@ onBeforeUnmount(() => {
           <button
             type="button"
             aria-label="放大时间轴"
-            :disabled="zoom >= 2"
+            :disabled="millisecondsPerPixel <= zoomLimits.min + 1"
             @click="changeZoom(1)"
           >
             <IconPlus :size="14" />
@@ -945,7 +1118,7 @@ onBeforeUnmount(() => {
         <AppButton title="上一时间段" aria-label="上一时间段" @click="shift(-1)"
           ><IconChevronLeft :size="16"
         /></AppButton>
-        <AppButton title="适应全部交期" aria-label="适应全部交期" @click="fit"
+        <AppButton title="定位排期" aria-label="定位排期" @click="fit"
           ><IconFocus2 :size="16"
         /></AppButton>
         <AppButton title="下一时间段" aria-label="下一时间段" @click="shift(1)"
@@ -955,7 +1128,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <div class="gantt-body">
-      <div ref="host" class="gantt-canvas" />
+      <div :id="canvasId" ref="host" class="gantt-canvas" />
       <div v-if="!tasks.length" class="gantt-empty">
         {{ loading ? '正在加载排期…' : '暂无排期' }}
       </div>
@@ -971,6 +1144,7 @@ onBeforeUnmount(() => {
           }[state]
         }}</span
       >
+      <span class="gantt-visible-range">{{ visibleRange }}</span>
     </footer>
     <AppPopover
       :visible="popoverVisible"
@@ -1027,6 +1201,15 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+:global(.gantt-batch-popover.el-popper) {
+  background: var(--wm-surface, #fff);
+  color: var(--wm-text, #20242c);
+  backdrop-filter: none;
+}
+:global(.gantt-batch-popover.wm-popover-enter-from),
+:global(.gantt-batch-popover.wm-popover-leave-to) {
+  opacity: 1;
+}
 .gantt-pin-actions {
   display: flex;
   justify-content: flex-end;
@@ -1167,6 +1350,10 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--wm-border, #e4e4e7);
   color: var(--wm-muted, #71717a);
   font-size: 12px;
+}
+.gantt-visible-range {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
 }
 .gantt-legend > span {
   display: flex;
