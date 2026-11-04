@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { inject, onBeforeUnmount, ref, watch, watchEffect } from 'vue'
 import { Download } from '@element-plus/icons-vue'
-import { ElButton } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import TableExportDialog from './TableExportDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { TableExportSource } from '@/utils/tableExport'

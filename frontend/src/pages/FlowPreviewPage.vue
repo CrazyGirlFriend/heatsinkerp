@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useChartPalette } from '@/composables/useChartPalette'
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import AppDrawer from '@/components/AppDrawer.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import SharedTraceStock from '@/components/SharedTraceStock.vue'
@@ -18,17 +20,16 @@ import {
 } from '@element-plus/icons-vue'
 import {
   ElAlert,
-  ElButton,
   ElIcon,
   ElInput,
   ElOption,
-  ElPagination,
   ElPopover,
   ElSelect,
-  ElTable,
   ElTableColumn,
   ElTooltip,
 } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TableExportButton from '@/components/TableExportButton.vue'
@@ -160,9 +161,10 @@ const hasMetricData = computed(
     mode.value === 'chain' ||
     Boolean(localModel.value?.links.some((link) => link[metric.value] > 0)),
 )
+const chartPalette = useChartPalette()
 const chartOption = computed(() =>
   mode.value === 'team' && localModel.value
-    ? teamFlowOption(localModel.value, metric.value)
+    ? teamFlowOption(localModel.value, metric.value, chartPalette.value)
     : traceFlowOption(
         chainModel.value,
         metric.value,
@@ -171,6 +173,7 @@ const chartOption = computed(() =>
         interaction.value,
         zoomLevel.value,
         origins.value.colors,
+        chartPalette.value,
       ),
 )
 const colors = computed(() =>
@@ -995,7 +998,7 @@ onBeforeUnmount(() => {
         >
         <ElTableColumn prop="notes" label="原因" min-width="140" show-overflow-tooltip />
       </ElTable>
-      <ElPagination
+      <WorkspacePagination
         v-if="reallocations.length > 10"
         v-model:current-page="reallocationsPage"
         :total="reallocations.length"
@@ -2204,8 +2207,8 @@ onBeforeUnmount(() => {
   border-radius: 0;
 }
 .chain-page .canvas-controls {
-  background: #ffffffd9;
-  border-color: #d2e4dc;
+  background: var(--wm-muted-surface, #ffffffd9);
+  border-color: var(--wm-border, #d2e4dc);
   box-shadow:
     inset 0 1px 0 #fff,
     0 4px 16px #214d3610;
@@ -2222,7 +2225,7 @@ onBeforeUnmount(() => {
   padding-top: 1px;
 }
 .chain-flow-region :deep(.stock-row) {
-  border-bottom-color: #e8efef;
+  border-bottom-color: var(--wm-muted-surface, #e8efef);
 }
 .chain-flow-region :deep(.stock-row:nth-child(odd)) {
   background: var(--table-header-bg);

@@ -16,7 +16,6 @@ import { loadExportPages, tableExportSource } from '@/utils/tableExport'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   ElAlert,
-  ElButton,
   ElCheckbox,
   ElEmpty,
   ElForm,
@@ -25,6 +24,7 @@ import {
   ElTableColumn,
   ElResult,
 } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { IconPlus, IconPencil } from '@tabler/icons-vue'
 import { showToast } from '@/stores/toast'
 import {

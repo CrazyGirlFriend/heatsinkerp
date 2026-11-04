@@ -6,7 +6,6 @@ import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
-  ElButton,
   ElDescriptions,
   ElDescriptionsItem,
   ElOption,
@@ -14,6 +13,7 @@ import {
   ElTableColumn,
   ElTag,
 } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import QualityFeedbackDetail from './QualityFeedbackDetail.vue'
 import FilterDialog from './FilterDialog.vue'

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import WeightInput from './WeightInput.vue'
 import { computed, watch } from 'vue'
-import { ElFormItem, ElInputNumber } from 'element-plus'
+import { ElFormItem } from 'element-plus'
+import ElInputNumber from '@/components/AppNumberInput.vue'
 import type { SludgeMeasurement } from '@/types/materialTransfer'
 import { sludgeWeight } from '@/utils/sludgeWeight'
 const props = defineProps<{

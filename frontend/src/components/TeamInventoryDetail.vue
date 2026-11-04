@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { materialWeightToleranceKg } from '@/config/materialRules'
 
@@ -11,15 +12,9 @@ import { globalTransferExportFields } from '@/utils/teamTableExport'
 import { currentLocations } from '@/utils/warehousePlacement'
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
 import { useProcessRouteView } from '@/composables/useProcessRouteView'
-import {
-  ElButton,
-  ElDescriptions,
-  ElDescriptionsItem,
-  ElPagination,
-  ElTable,
-  ElTableColumn,
-  ElTag,
-} from 'element-plus'
+import { ElDescriptions, ElDescriptionsItem, ElTableColumn, ElTag } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import QuantityAdjustmentDialog from './QuantityAdjustmentDialog.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
@@ -731,8 +726,7 @@ onBeforeUnmount(() => {
           >
         </div>
         <footer>
-          <span>共 {{ total }} 个来源批次（含零库存）</span
-          ><ElPagination
+          <WorkspacePagination
             aria-label="当前库存分页"
             :current-page="page"
             :page-size="pageSize"
@@ -752,7 +746,8 @@ onBeforeUnmount(() => {
                 load()
               }
             "
-          />
+            >共 {{ total }} 个来源批次（含零库存）</WorkspacePagination
+          >
         </footer>
       </section>
       <section class="stock-detail-section material-detail-section" aria-label="逐笔收发记录">
@@ -824,8 +819,7 @@ onBeforeUnmount(() => {
           >
         </ElTable>
         <footer>
-          <span>共 {{ movementTotal }} 笔收发记录</span
-          ><ElPagination
+          <WorkspacePagination
             aria-label="收发记录分页"
             :current-page="movementPage"
             :page-size="movementPageSize"
@@ -845,7 +839,8 @@ onBeforeUnmount(() => {
                 load()
               }
             "
-          />
+            >共 {{ movementTotal }} 笔收发记录</WorkspacePagination
+          >
         </footer>
       </section>
     </template>

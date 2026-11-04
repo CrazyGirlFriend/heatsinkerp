@@ -4,11 +4,9 @@ import { RouterLink } from 'vue-router'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   ElAlert,
-  ElButton,
   ElForm,
   ElFormItem,
   ElInput,
-  ElInputNumber,
   ElIcon,
   ElOption,
   ElPopover,
@@ -16,6 +14,8 @@ import {
   ElTooltip,
   type InputInstance,
 } from 'element-plus'
+import ElInputNumber from '@/components/AppNumberInput.vue'
+import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
@@ -1225,13 +1225,13 @@ onMounted(async () => {
   flex: 0 0 16px;
   width: 16px;
   height: 16px;
-  border: 1px solid #cddbed;
+  border: 1px solid var(--wm-border, #cddbed);
   border-radius: 4px;
-  background: #eff5fc;
+  background: var(--wm-info-bg, #eff5fc);
   font-size: 10px;
   font-weight: 500;
   line-height: 1;
-  color: #52749a;
+  color: var(--wm-muted, #52749a);
   margin-left: 5px;
   cursor: help;
 }
@@ -1245,7 +1245,7 @@ onMounted(async () => {
   margin: 0;
 }
 .route-schedule-link {
-  color: var(--brand-primary, #215b49);
+  color: var(--brand-primary, var(--wm-text, #215b49));
   font-size: 14px;
   text-decoration: none;
   padding: 8px 12px;
@@ -1259,7 +1259,12 @@ onMounted(async () => {
 }
 .process-route-dialog--rework .route-dialog-symbol {
   color: var(--accent-violet);
-  background: linear-gradient(160deg, #ffffff, #eee5ff 60%, #dfceff);
+  background: linear-gradient(
+    160deg,
+    var(--wm-bg, #ffffff),
+    var(--wm-info-bg, #eee5ff) 60%,
+    var(--wm-info-bg, #dfceff)
+  );
   box-shadow:
     inset 0 1px 0 #fff,
     inset 0 -1px 0 #7c3aed1c,
@@ -1301,10 +1306,14 @@ onMounted(async () => {
   font-weight: 500;
 }
 .route-rework-context td {
-  background: #ffffffa8;
+  background: var(--wm-muted-surface, #ffffffa8);
 }
 .route-rework-context .rework-problem-title {
-  background: linear-gradient(100deg, #fff2ef, #ffffffcf 65%);
+  background: linear-gradient(
+    100deg,
+    var(--wm-danger-bg, #fff2ef),
+    var(--wm-muted-surface, #ffffffcf) 65%
+  );
   box-shadow: inset 3px 0 var(--accent-red);
   color: var(--text);
   font-weight: 600;
@@ -1352,9 +1361,14 @@ onMounted(async () => {
   place-items: center;
   width: 34px;
   height: 34px;
-  border: 1px solid #ffffffef;
+  border: 1px solid var(--wm-muted-surface, #ffffffef);
   border-radius: 10px;
-  background: linear-gradient(160deg, #ffffff, #e8f0ff 60%, #d0e1ff);
+  background: linear-gradient(
+    160deg,
+    var(--wm-bg, #ffffff),
+    var(--wm-info-bg, #e8f0ff) 60%,
+    var(--wm-info-bg, #d0e1ff)
+  );
   box-shadow:
     inset 0 1px 0 #fff,
     inset 0 -1px 0 #2563eb1c,
@@ -1367,10 +1381,10 @@ onMounted(async () => {
 }
 .route-heading-count {
   padding: 3px 8px;
-  border: 1px solid #dce6e1;
+  border: 1px solid var(--wm-border, #dce6e1);
   border-radius: 7px;
-  color: #5f746a;
-  background: #ffffffb3;
+  color: var(--wm-muted, #5f746a);
+  background: var(--wm-muted-surface, #ffffffb3);
   font-size: 11px;
   line-height: 18px;
   white-space: nowrap;
@@ -1388,22 +1402,22 @@ onMounted(async () => {
   overflow-wrap: anywhere;
 }
 .route-person-value {
-  color: #2c3e36;
+  color: var(--wm-text, #2c3e36);
   font-size: 14px;
   font-weight: 500;
   overflow-wrap: anywhere;
 }
 .route-value-missing {
   padding: 0 7px;
-  border: 1px solid #e6e1d4;
+  border: 1px solid var(--wm-border, #e6e1d4);
   border-radius: 6px;
-  background: #fbf8ef;
-  color: #78623c;
+  background: var(--wm-warning-bg, #fbf8ef);
+  color: var(--wm-warning-text, #78623c);
   font-size: 12px;
   line-height: 24px;
 }
 .route-time-value {
-  color: #2c3e36;
+  color: var(--wm-text, #2c3e36);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
@@ -1439,8 +1453,8 @@ onMounted(async () => {
   padding: 5px 8px;
   border: 1px solid #e9d3a9;
   border-radius: 8px;
-  background: linear-gradient(135deg, #fffcf4, #faf0dd);
-  color: #8c6120;
+  background: linear-gradient(135deg, var(--wm-warning-bg, #fffcf4), var(--wm-warning-bg, #faf0dd));
+  color: var(--wm-warning-text, #8c6120);
   font: inherit;
   font-size: 12px;
   white-space: nowrap;
@@ -1451,7 +1465,7 @@ onMounted(async () => {
 }
 .route-issue-summary:hover,
 .route-issue-summary[aria-expanded='true'] {
-  background: #f8ebd1;
+  background: var(--wm-warning-bg, #f8ebd1);
   box-shadow: 0 2px 8px #9b742016;
 }
 .route-issue-chevron {
@@ -1474,14 +1488,14 @@ onMounted(async () => {
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #796039;
+  color: var(--wm-warning-text, #796039);
   text-align: left;
   font: inherit;
   font-size: 13px;
   cursor: pointer;
 }
 .route-issue-choice:hover {
-  background: #faf4e7;
+  background: var(--wm-warning-bg, #faf4e7);
 }
 .route-issue-choice small {
   display: block;
@@ -1498,13 +1512,13 @@ onMounted(async () => {
   display: flex;
   gap: 8px;
   padding: 10px 8px;
-  color: #8c6120;
+  color: var(--wm-warning-text, #8c6120);
   font-size: 12px;
 }
 .route-issue-summary:focus-visible,
 .route-issue-choice:focus-visible,
 .route-cell-marker:focus-visible {
-  outline: 2px solid #bb8b3c;
+  outline: 2px solid var(--wm-warning-text, #bb8b3c);
   outline-offset: 2px;
 }
 .route-file-actions {
@@ -1518,7 +1532,7 @@ onMounted(async () => {
 }
 .route-material-difference {
   margin-left: 5px;
-  color: #9b702e;
+  color: var(--wm-warning-text, #9b702e);
 }
 .route-readonly-value {
   min-height: 32px;
@@ -1556,9 +1570,9 @@ onMounted(async () => {
   top: 0;
   z-index: 1;
   padding: 8px 10px;
-  background: #edf3ef;
+  background: var(--wm-muted-surface, #edf3ef);
   border-bottom: 1px solid var(--el-border-color);
-  color: #52665b;
+  color: var(--wm-muted, #52665b);
   font-size: 12px;
   font-weight: 600;
   text-align: center;
@@ -1569,25 +1583,25 @@ onMounted(async () => {
   border-top: 1px solid var(--el-border-color);
   vertical-align: middle;
   text-align: center;
-  background: #ffffffed;
+  background: var(--wm-muted-surface, #ffffffed);
   transition: background-color 160ms;
 }
 .route-edit-step:hover > td,
 .route-edit-step:focus > td,
 .route-edit-step:focus-within > td {
-  background-color: #f4f8fa;
+  background-color: var(--wm-muted-surface, #f4f8fa);
 }
 .route-edit-step:focus {
-  outline: 2px solid #8fa9bd;
+  outline: 2px solid var(--wm-muted, #8fa9bd);
   outline-offset: -2px;
 }
 .route-edit-step > td:nth-child(2) .route-cell-value {
   font-weight: 600;
-  color: #365246;
+  color: var(--wm-text, #365246);
 }
 .route-edit-step > td:nth-child(4) {
   font-variant-numeric: tabular-nums;
-  color: #374e61;
+  color: var(--wm-text, #374e61);
 }
 .route-step-table :is(th, td):not(:last-child) {
   border-right: 1px solid var(--el-border-color);
@@ -1611,7 +1625,7 @@ onMounted(async () => {
   height: 18px;
   border: 0;
   border-radius: 5px;
-  background: #fce9e6;
+  background: var(--wm-danger-bg, #fce9e6);
   box-shadow:
     inset 0 1px 0 #fff,
     inset 0 -1px 0 #d13b3b26;
@@ -1625,7 +1639,7 @@ onMounted(async () => {
     transform 160ms;
 }
 .route-cell-marker:hover {
-  background: #f8d6d1;
+  background: var(--wm-danger-bg, #f8d6d1);
   transform: translateY(-1px);
 }
 .route-sequence-field {
@@ -1646,7 +1660,7 @@ onMounted(async () => {
   margin: 0;
 }
 .route-step-table td.route-cell--issue {
-  background: #fff8f7;
+  background: var(--wm-danger-bg, #fff8f7);
   box-shadow: inset 0 0 0 1px var(--el-color-danger-light-5);
 }
 .route-cell--issue .route-cell-value {
@@ -1679,7 +1693,7 @@ onMounted(async () => {
 .route-review-text {
   margin: 0;
   white-space: pre-wrap;
-  color: #51655a;
+  color: var(--wm-muted, #51655a);
   font-size: 13px;
   line-height: 1.7;
 }

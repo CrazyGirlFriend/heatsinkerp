@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { ElButton, ElSkeleton, ElSkeletonItem } from 'element-plus'
+import { ElSkeleton, ElSkeletonItem } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import DocumentViewer from './DocumentViewer.vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import { productionScheduleApi } from '@/services/productionScheduleApi'

@@ -9,19 +9,18 @@ import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { EditPen } from '@element-plus/icons-vue'
 import {
-  ElButton,
   ElCollapse,
   ElCollapseItem,
   ElDescriptions,
   ElDescriptionsItem,
   ElIcon,
   ElOption,
-  ElPagination,
   ElSelect,
-  ElTable,
   ElTableColumn,
   ElTag,
 } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import { businessNoticeApi, parseNotice, type NoticeTarget } from '@/services/businessNoticeApi'
 import { focusNoticeTarget, noticeOpened, noticeFailed } from '@/utils/noticeFocus'
@@ -1311,7 +1310,7 @@ defineExpose({ exportSource, openDetail })
         >
       </ElTable>
       <template #footer
-        ><ElPagination
+        ><WorkspacePagination
           :current-page="dispatchPage"
           :total="dispatchTotal"
           :page-size="10"
@@ -1338,7 +1337,7 @@ defineExpose({ exportSource, openDetail })
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.66);
+  background: var(--wm-surface, rgba(255, 255, 255, 0.66));
 }
 .schedule-task-context__heading {
   display: flex;
@@ -1373,7 +1372,7 @@ defineExpose({ exportSource, openDetail })
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px 14px;
-  background: var(--surface, #fff);
+  background: var(--surface, var(--wm-bg, #fff));
   color: var(--text);
   font: inherit;
   text-align: left;

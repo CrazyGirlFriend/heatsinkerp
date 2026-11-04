@@ -3,7 +3,8 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
 import { ArrowDown, ArrowLeft, ArrowRight, Calendar } from '@element-plus/icons-vue'
-import { ElButton, ElCalendar, ElIcon, ElPopover, type CalendarInstance } from 'element-plus'
+import { ElCalendar, ElIcon, ElPopover, type CalendarInstance } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { formatDateTime } from '@/utils/format'
 import { progressWeek, SCHEDULE_WEEK } from '@/utils/scheduleProgress'
 
@@ -224,7 +225,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
   margin: 0;
   border-radius: 9px;
   border-color: var(--line);
-  background: linear-gradient(135deg, #fff, #f1f7f3);
+  background: linear-gradient(135deg, var(--wm-bg, #fff), var(--wm-muted-surface, #f1f7f3));
   box-shadow:
     inset 0 1px 0 #fff,
     0 1px 3px #204e3508;
@@ -267,7 +268,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
   padding: 6px 0;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #f8faf9;
+  background: var(--wm-muted-surface, #f8faf9);
   color: var(--text);
   font: inherit;
   font-size: 12px;
@@ -275,7 +276,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
 }
 .date-range-presets button[aria-pressed='true'] {
   border-color: #a4c3b0;
-  background: #e8f2ec;
+  background: var(--wm-muted-surface, #e8f2ec);
   color: var(--primary);
 }
 .date-range-edges {
@@ -290,7 +291,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--wm-bg, #fff);
   color: var(--text);
   text-align: left;
   cursor: pointer;
@@ -298,7 +299,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
 }
 .date-range-edges button[aria-pressed='true'] {
   border-color: #77a38b;
-  box-shadow: 0 0 0 2px #eaf3ee;
+  box-shadow: 0 0 0 2px var(--wm-muted-surface, #eaf3ee);
 }
 .date-range-edges small {
   color: var(--muted);
@@ -332,7 +333,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
   cursor: pointer;
 }
 .date-month-nav:hover {
-  background: #edf4ef;
+  background: var(--wm-muted-surface, #edf4ef);
   color: var(--primary);
 }
 .schedule-range-calendar :deep(.el-calendar__body) {
@@ -373,16 +374,16 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
   border-radius: 7px;
 }
 .range-day:hover > span {
-  background: #e8f2ec;
+  background: var(--wm-muted-surface, #e8f2ec);
 }
 .range-day.is-between {
-  background: #edf4ef;
+  background: var(--wm-muted-surface, #edf4ef);
 }
 .range-day.is-start {
-  background: linear-gradient(90deg, transparent 50%, #edf4ef 50%);
+  background: linear-gradient(90deg, transparent 50%, var(--wm-muted-surface, #edf4ef) 50%);
 }
 .range-day.is-end {
-  background: linear-gradient(90deg, #edf4ef 50%, transparent 50%);
+  background: linear-gradient(90deg, var(--wm-muted-surface, #edf4ef) 50%, transparent 50%);
 }
 .range-day.is-start.is-end {
   background: transparent;
@@ -392,9 +393,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
 }
 .range-day.is-selected > span {
   background: var(--primary);
-  color: #fff;
+  color: var(--wm-primary-text, #fff);
   box-shadow:
-    inset 0 1px 0 #ffffff24,
+    inset 0 1px 0 var(--wm-muted-surface, #ffffff24),
     0 1px 3px #22523b22;
 }
 .range-day.is-today > span::after {
@@ -407,7 +408,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
   background: var(--primary);
 }
 .range-day.is-selected.is-today > span::after {
-  background: #fff;
+  background: var(--wm-primary-text, #fff);
 }
 .date-range-panel button:focus-visible {
   outline: 2px solid var(--primary);

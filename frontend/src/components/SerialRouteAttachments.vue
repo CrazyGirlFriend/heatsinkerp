@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElButton, ElOption, ElSelect } from 'element-plus'
+import { ElAlert, ElOption, ElSelect } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import WarehouseReceiptDocuments from './WarehouseReceiptDocuments.vue'
 import { warehouseReceiptDocumentApi } from '@/services/warehouseReceiptDocumentApi'

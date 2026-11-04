@@ -20,10 +20,10 @@ describe('pure material transfer interface', () => {
     expect(formSource).toContain('idempotency_key: createRequestKey.value')
   })
 
-  it('gives the target one whole-batch confirmation action with no receiving inputs', () => {
+  it('confirms the whole batch without reentry and requires counterparty approval for later changes', () => {
     expect(drawerSource).toContain('整单确认签收')
     expect(drawerSource).toContain('无需重新录入数量或重量')
-    expect(drawerSource).toContain('确认后转出方不能修改')
+    expect(drawerSource).toContain('签收后可申请修改，须经对方确认后生效')
     expect(drawerSource).not.toContain('received_quantity')
     expect(drawerSource).not.toContain('received_weight')
     expect(drawerSource).not.toContain('<ElInputNumber')
@@ -31,7 +31,7 @@ describe('pure material transfer interface', () => {
 
   it('keeps the transfer list for ordinary queries and provides serial inventory lookup', () => {
     expect(listSource).toContain('class="page workspace-page transfers-page reading-workspace"')
-    expect(listSource).toMatch(/<ElTable\s+v-else\b/)
+    expect(listSource).toMatch(/<WorkspaceTable\s+v-else\b/)
     expect(listSource).not.toContain('height="100%"')
     expect(listSource).not.toContain('aria-label="扫码查询"')
     expect(serialSource).toContain('各班组库存')

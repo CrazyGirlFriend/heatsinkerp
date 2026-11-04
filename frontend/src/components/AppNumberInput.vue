@@ -34,6 +34,9 @@ const emit = defineEmits<{ 'update:modelValue': [value: number | undefined] }>()
     box-shadow 200ms,
     background-color 200ms;
 }
+.wm-scope .wm-number-input.is-without-controls .el-input__wrapper {
+  padding-inline: 10px;
+}
 .wm-scope .wm-number-input .el-input-number__decrease,
 .wm-scope .wm-number-input .el-input-number__increase {
   top: 7px;

@@ -11,10 +11,8 @@ import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   ElAlert,
-  ElButton,
   ElForm,
   ElInput,
-  ElInputNumber,
   ElOption,
   ElSelect,
   ElSwitch,
@@ -22,6 +20,8 @@ import {
   ElTabPane,
   ElMessageBox,
 } from 'element-plus'
+import ElInputNumber from '@/components/AppNumberInput.vue'
+import ElButton from '@/components/AppButton.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { useAuthStore } from '@/stores/auth'
 import {

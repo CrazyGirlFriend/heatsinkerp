@@ -33,10 +33,10 @@ defineProps<{ source: string; kind?: 'document'; modified?: boolean }>()
 .autofill-badge {
   margin-left: 8px;
   padding: 2px 6px;
-  border: 1px solid #c9e4dd;
+  border: 1px solid var(--wm-border, #c9e4dd);
   border-radius: 5px;
-  background: #eef8f4;
-  color: #296c5e;
+  background: var(--wm-success-bg, #eef8f4);
+  color: var(--wm-success-text, #296c5e);
   font-size: 11px;
   font-weight: 500;
   line-height: 16px;

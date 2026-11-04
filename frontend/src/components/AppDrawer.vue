@@ -3,6 +3,8 @@ import { computed, ref, useSlots } from 'vue'
 import { ElDrawer } from 'element-plus'
 import { useGlassSurface } from '@/composables/useGlassSurface'
 import { useGlassOverlayDepth } from '@/composables/useGlassOverlayDepth'
+import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+const watermelon = useWatermelonAppearance()
 
 defineOptions({ inheritAttrs: false })
 const props = withDefaults(
@@ -23,7 +25,7 @@ const overlay = useGlassOverlayDepth(
 )
 const overlayClass = computed(() =>
   [
-    props.modal ? 'app-glass-overlay' : '',
+    props.modal ? (watermelon.value ? 'wm-dialog-overlay' : 'app-glass-overlay') : '',
     overlay.nested.value ? 'app-glass-overlay--nested' : '',
     props.modalClass,
   ]
@@ -36,7 +38,7 @@ function namedSlots() {
 }
 const glass = useGlassSurface(
   () => anchor.value?.closest<HTMLElement>('.el-drawer'),
-  () => Boolean(props.modelValue),
+  () => Boolean(props.modelValue) && !watermelon.value,
 )
 function open() {
   void overlay.opening()
@@ -44,7 +46,7 @@ function open() {
 }
 function opened() {
   overlay.sync()
-  void glass.start()
+  if (!watermelon.value) void glass.start()
   emit('opened')
 }
 function closed() {
@@ -64,7 +66,7 @@ function close() {
     :model-value="modelValue"
     :modal="modal"
     :modal-class="overlayClass"
-    class="app-glass-surface app-glass-drawer"
+    :class="watermelon ? 'wm-scope wm-app-drawer' : 'app-glass-surface app-glass-drawer'"
     @update:model-value="emit('update:modelValue', $event)"
     @open="open"
     @opened="opened"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ElAlert, ElButton, ElForm, ElFormItem, ElOption, ElSelect } from 'element-plus'
+import { ElAlert, ElForm, ElFormItem, ElOption, ElSelect } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'

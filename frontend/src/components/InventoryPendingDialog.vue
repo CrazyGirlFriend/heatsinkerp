@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { ElButton, ElPagination, ElTable, ElTableColumn } from 'element-plus'
+import { ElTableColumn } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import MaterialTransferDrawer from './MaterialTransferDrawer.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import StatePanel from './StatePanel.vue'
@@ -150,9 +153,7 @@ onBeforeUnmount(() => {
     </ElTable>
     <template #footer
       ><div class="pending-footer">
-        <span
-          >共 {{ total }} 批<span v-if="asOf"> · 统计于 {{ formatDateTime(asOf) }}</span></span
-        ><ElPagination
+        <WorkspacePagination
           :current-page="page"
           :page-size="10"
           :total="total"
@@ -163,8 +164,12 @@ onBeforeUnmount(() => {
               load()
             }
           "
-        /></div
-    ></template>
+          >共 {{ total }} 批<span v-if="asOf">
+            · 统计于 {{ formatDateTime(asOf) }}</span
+          ></WorkspacePagination
+        >
+      </div></template
+    >
   </AppDialog>
   <MaterialTransferDrawer
     v-model="batchOpen"

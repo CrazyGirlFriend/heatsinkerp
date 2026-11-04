@@ -357,7 +357,7 @@ function valueText(field: string, value: unknown): string {
   min-width: 600px;
   table-layout: fixed;
   border-collapse: collapse;
-  color: #303133;
+  color: var(--wm-text, #303133);
   font-size: 14px;
   line-height: 1.7;
 }
@@ -400,7 +400,7 @@ function valueText(field: string, value: unknown): string {
   white-space: pre-wrap;
 }
 .history-before {
-  color: #6b7280;
+  color: var(--wm-muted, #6b7280);
 }
 .history-empty {
   margin: 0;

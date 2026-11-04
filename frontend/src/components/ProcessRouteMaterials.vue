@@ -115,7 +115,7 @@ header {
   justify-content: space-between;
   margin-bottom: 8px;
   font-size: 14px;
-  color: #202522;
+  color: var(--wm-text, #202522);
 }
 header > span {
   color: #28664f;
@@ -125,22 +125,22 @@ table {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  background: #fff;
+  background: var(--wm-bg, #fff);
   font-size: 13px;
 }
 th,
 td {
-  border: 1px solid #dce2df;
+  border: 1px solid var(--wm-border, #dce2df);
   padding: 4px 9px;
   text-align: left;
-  color: #242824;
+  color: var(--wm-text, #242824);
   vertical-align: middle;
   font-weight: 400;
   overflow-wrap: anywhere;
 }
 thead th {
-  background: #f2f5f3;
-  color: #555f58;
+  background: var(--wm-muted-surface, #f2f5f3);
+  color: var(--wm-muted, #555f58);
 }
 th:first-child {
   width: 112px;
@@ -149,7 +149,7 @@ th:last-child {
   width: 140px;
 }
 tbody th {
-  background: #fafbf9;
+  background: var(--wm-muted-surface, #fafbf9);
 }
 button {
   border: 0;
@@ -157,7 +157,7 @@ button {
   padding: 0;
   font: inherit;
   font-size: 11px;
-  color: #536859;
+  color: var(--wm-muted, #536859);
   cursor: pointer;
   text-align: left;
 }
@@ -167,12 +167,12 @@ button:hover {
 small,
 .edited {
   display: block;
-  color: #93651e;
+  color: var(--wm-warning-text, #93651e);
   font-size: 11px;
   margin-top: 4px;
 }
 .has-difference td:first-of-type {
-  border-left: 2px solid #bb914d;
+  border-left: 2px solid var(--wm-warning-text, #bb914d);
 }
 .field-warnings {
   display: flex;
@@ -182,7 +182,7 @@ small,
 }
 .field-warning {
   font-size: 12px;
-  color: #93651e;
+  color: var(--wm-warning-text, #93651e);
 }
 .field-warning span {
   font-weight: 600;

@@ -6,7 +6,6 @@ import { nextTick, ref, watch } from 'vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import {
   ElAlert,
-  ElButton,
   ElForm,
   ElFormItem,
   ElInput,
@@ -14,6 +13,7 @@ import {
   ElTabs,
   type InputInstance,
 } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import AccountAvatar from './AccountAvatar.vue'
 import AvatarPicker from './AvatarPicker.vue'
 import { useAuthStore } from '@/stores/auth'

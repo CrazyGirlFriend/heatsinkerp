@@ -19,11 +19,9 @@ import { useDialogValidation } from '@/composables/useDialogValidation'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   ElAlert,
-  ElButton,
   ElForm,
   ElFormItem,
   ElInput,
-  ElInputNumber,
   ElIcon,
   ElPopover,
   ElOption,
@@ -31,6 +29,8 @@ import {
   ElRadioGroup,
   ElSelect,
 } from 'element-plus'
+import ElInputNumber from '@/components/AppNumberInput.vue'
+import ElButton from '@/components/AppButton.vue'
 import MaterialAmount from './MaterialAmount.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import OutboundQuantityClearance from './OutboundQuantityClearance.vue'
@@ -1837,8 +1837,8 @@ watch(
   color: var(--muted);
   font-size: 12px;
   padding: 3px 9px;
-  background: #ffffff82;
-  border: 1px solid #ffffffcc;
+  background: var(--wm-muted-surface, #ffffff82);
+  border: 1px solid var(--wm-muted-surface, #ffffffcc);
   border-radius: 12px;
 }
 .dispatch-context {
@@ -1853,7 +1853,7 @@ watch(
 }
 .dispatch-context-heading h3 {
   margin: 0;
-  color: #65786e;
+  color: var(--wm-muted, #65786e);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 1px;
@@ -1900,9 +1900,9 @@ watch(
   --el-component-size: 36px;
   min-width: 0;
   padding: 14px 16px 6px;
-  border: 1px solid #fff;
+  border: 1px solid var(--wm-border, #fff);
   border-radius: 16px;
-  background: #fffffff5;
+  background: var(--wm-muted-surface, #fffffff5);
   box-shadow:
     0 0 0 1px #3760480e,
     0 2px 5px #233f2c05;
@@ -1944,7 +1944,7 @@ watch(
   overflow-wrap: anywhere;
 }
 .source-index {
-  color: #99aaa0;
+  color: var(--wm-muted, #99aaa0);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
@@ -2000,7 +2000,7 @@ watch(
 .source-meta {
   display: contents;
   font-size: 11px;
-  color: #7b8981;
+  color: var(--wm-muted, #7b8981);
 }
 .source-meta > span,
 .source-material {
@@ -2154,7 +2154,7 @@ details[open] > summary > .el-icon {
 }
 .action-footer :deep(.material-amount strong) {
   font-size: 24px;
-  color: #1f3a2c;
+  color: var(--wm-text, #1f3a2c);
   font-weight: 600;
   letter-spacing: -0.4px;
 }

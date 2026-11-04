@@ -652,7 +652,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .production-timeline {
-  --line: #e8ebef;
+  --line: var(--wm-muted-surface, #e8ebef);
   --identity: 236px;
   --quantity: 76px;
   display: flex;
@@ -661,9 +661,9 @@ onBeforeUnmount(() => {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  color: #20242c;
-  background: #fff;
-  border: 1px solid #dde2e8;
+  color: var(--wm-text, #20242c);
+  background: var(--wm-bg, #fff);
+  border: 1px solid var(--wm-border, #dde2e8);
   border-radius: 10px;
   font-family: 'HeatSink Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 13px;
@@ -715,10 +715,10 @@ onBeforeUnmount(() => {
   height: 30px;
   border-radius: 5px;
   flex-shrink: 0;
-  color: #7b838d;
+  color: var(--wm-muted, #7b838d);
 }
 .production-timeline .icon-button:hover {
-  background: #f2f5f7;
+  background: var(--wm-muted-surface, #f2f5f7);
   color: #25766b;
 }
 .collapse-button {
@@ -735,24 +735,24 @@ onBeforeUnmount(() => {
   display: flex;
   padding: 3px;
   border-radius: 5px;
-  background: #f4f6f8;
+  background: var(--wm-muted-surface, #f4f6f8);
 }
 .period-switch button {
   height: 28px;
   padding: 0 10px;
   border-radius: 3px;
-  color: #808893;
+  color: var(--wm-muted, #808893);
   font-size: 12px;
 }
 .period-switch button[aria-pressed='true'] {
-  background: #fff;
+  background: var(--wm-bg, #fff);
   box-shadow: 0 1px 3px #2434481c;
   color: #246f64;
 }
 .production-timeline .today-button {
   height: 28px;
   padding: 0 9px;
-  border: 1px solid #e2e7eb;
+  border: 1px solid var(--wm-muted-surface, #e2e7eb);
   border-radius: 5px;
 }
 .production-timeline .toolbar-start :deep(form.workspace-data-toolbar.workspace-toolbar) {
@@ -789,14 +789,14 @@ onBeforeUnmount(() => {
   background: transparent;
   box-shadow: none;
   font-size: 13px;
-  color: #6b7480;
+  color: var(--wm-muted, #6b7480);
 }
 .toolbar-start :deep(.el-button::before),
 .toolbar-start :deep(.el-button::after) {
   display: none;
 }
 .toolbar-start :deep(.el-button:hover) {
-  background: #f2f5f7;
+  background: var(--wm-muted-surface, #f2f5f7);
   transform: none;
 }
 .toolbar-end :deep(.schedule-date-trigger) {
@@ -805,7 +805,7 @@ onBeforeUnmount(() => {
   background: transparent;
   box-shadow: none;
   font-size: 13px;
-  color: #414b57;
+  color: var(--wm-muted, #414b57);
 }
 .toolbar-end :deep(.schedule-date-trigger::before),
 .toolbar-end :deep(.schedule-date-trigger::after) {
@@ -832,8 +832,8 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 8;
   height: 68px;
-  background: #fff;
-  border-bottom: 1px solid #dbe2e7;
+  background: var(--wm-bg, #fff);
+  border-bottom: 1px solid var(--wm-border, #dbe2e7);
 }
 .identity-heading,
 .quantity-heading {
@@ -842,8 +842,8 @@ onBeforeUnmount(() => {
   align-items: center;
   z-index: 2;
   border-right: 1px solid var(--line);
-  color: #76808c;
-  background: #fbfcfd;
+  color: var(--wm-muted, #76808c);
+  background: var(--wm-muted-surface, #fbfcfd);
   font-size: 12px;
 }
 .identity-heading {
@@ -865,7 +865,7 @@ onBeforeUnmount(() => {
 .month-caption {
   height: 27px;
   padding: 8px 13px 0;
-  color: #657080;
+  color: var(--wm-muted, #657080);
   font-size: 12px;
   font-weight: 550;
 }
@@ -879,8 +879,8 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border-left: 1px solid #f2f3f5;
-  color: #6b7480;
+  border-left: 1px solid var(--wm-muted-surface, #f2f3f5);
+  color: var(--wm-muted, #6b7480);
   font-size: 11px;
 }
 .day-headings b {
@@ -888,10 +888,10 @@ onBeforeUnmount(() => {
   font-weight: 500;
 }
 .day-headings .weekend {
-  background: #f8f9fb;
+  background: var(--wm-muted-surface, #f8f9fb);
 }
 .day-headings .today {
-  background: #eaf4f0;
+  background: var(--wm-success-bg, #eaf4f0);
   border-bottom: 2px solid #308e77;
   color: #206e5e;
 }
@@ -901,13 +901,13 @@ onBeforeUnmount(() => {
 .schedule-row {
   position: relative;
   border-bottom: 1px solid var(--line);
-  background: #fff;
+  background: var(--wm-bg, #fff);
 }
 .order-row.expanded {
-  background: #fafbfd;
+  background: var(--wm-muted-surface, #fafbfd);
 }
 .order-group + .order-group {
-  border-top: 1px solid #dae1e7;
+  border-top: 1px solid var(--wm-border, #dae1e7);
 }
 .identity-cell,
 .quantity-cell {
@@ -960,14 +960,14 @@ onBeforeUnmount(() => {
   animation: row-in 0.18s ease-out;
 }
 .step-row:hover {
-  background: #fcfdff;
+  background: var(--wm-muted-surface, #fcfdff);
 }
 .step-identity {
   padding-left: 25px;
   gap: 9px;
 }
 .step-number {
-  color: #7b838d;
+  color: var(--wm-muted, #7b838d);
   width: 18px;
   font-size: 11px;
 }
@@ -1002,13 +1002,13 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 .track-grid > span {
-  border-left: 1px solid #f0f2f5;
+  border-left: 1px solid var(--wm-muted-surface, #f0f2f5);
 }
 .track-grid .weekend {
-  background: #f9fafc;
+  background: var(--wm-muted-surface, #f9fafc);
 }
 .track-grid .today-column {
-  background: #f6fbf9;
+  background: var(--wm-success-bg, #f6fbf9);
 }
 .today-line {
   position: absolute;
@@ -1028,9 +1028,9 @@ onBeforeUnmount(() => {
 .production-timeline .batch-bar {
   position: absolute;
   height: 34px;
-  border: 1px solid color-mix(in srgb, var(--team) 45%, white);
+  border: 1px solid color-mix(in srgb, var(--team) 45%, var(--wm-bg, white));
   border-radius: 4px;
-  background: color-mix(in srgb, var(--team) 5%, white);
+  background: color-mix(in srgb, var(--team) 5%, var(--wm-bg, white));
   color: var(--team);
   padding: 0 7px;
   justify-content: flex-start;
@@ -1065,7 +1065,7 @@ onBeforeUnmount(() => {
 }
 .production-timeline .batch-bar.done {
   border-color: transparent;
-  background: color-mix(in srgb, var(--team) 10%, white);
+  background: color-mix(in srgb, var(--team) 10%, var(--wm-bg, white));
 }
 .production-timeline .batch-bar.partial,
 .production-timeline .batch-bar.stock {
@@ -1089,12 +1089,12 @@ onBeforeUnmount(() => {
   right: -5px;
   top: -5px;
   color: #d96e59;
-  background: white;
+  background: var(--wm-bg, white);
   border-radius: 50%;
 }
 .production-timeline .batch-bar.selected {
   box-shadow:
-    0 0 0 2px white,
+    0 0 0 2px var(--wm-bg, white),
     0 0 0 4px var(--team);
   z-index: 6;
 }
@@ -1117,7 +1117,7 @@ onBeforeUnmount(() => {
   height: 24px;
   border-radius: 50%;
   padding: 0;
-  background: color-mix(in srgb, var(--team) 10%, white);
+  background: color-mix(in srgb, var(--team) 10%, var(--wm-bg, white));
 }
 .batch-bar.milestone::before {
   content: '';
@@ -1146,10 +1146,10 @@ onBeforeUnmount(() => {
   transform: translateX(-50%);
   width: 32px;
   height: 32px;
-  border: 1px solid #d6e0e8;
+  border: 1px solid var(--wm-border, #d6e0e8);
   border-radius: 5px;
-  background: #fff;
-  color: #728497;
+  background: var(--wm-bg, #fff);
+  color: var(--wm-muted, #728497);
   z-index: 3;
 }
 .deadline::after {
@@ -1158,7 +1158,7 @@ onBeforeUnmount(() => {
   width: 1px;
   height: 9px;
   top: 32px;
-  border-left: 1px dashed #7e91a3;
+  border-left: 1px dashed var(--wm-muted, #7e91a3);
 }
 .production-timeline .pending-plan {
   position: absolute;
@@ -1166,16 +1166,16 @@ onBeforeUnmount(() => {
   top: 12px;
   height: 28px;
   padding: 0 9px;
-  color: #8d764c;
+  color: var(--wm-warning-text, #8d764c);
   font-size: 12px;
-  border: 1px dashed #d7cbb5;
+  border: 1px dashed var(--wm-border, #d7cbb5);
   border-radius: 4px;
-  background: #fffcf6;
+  background: var(--wm-warning-bg, #fffcf6);
 }
 .production-timeline .outside-plan {
-  color: #7c8998;
-  border-color: #dbe2e8;
-  background: #fafbfd;
+  color: var(--wm-muted, #7c8998);
+  border-color: var(--wm-border, #dbe2e8);
+  background: var(--wm-muted-surface, #fafbfd);
 }
 .production-timeline .locate-button {
   position: absolute;
@@ -1183,10 +1183,10 @@ onBeforeUnmount(() => {
   top: 14px;
   height: 28px;
   padding: 0 5px;
-  border: 1px solid #e1e7ed;
+  border: 1px solid var(--wm-border, #e1e7ed);
   border-radius: 4px;
-  background: #fff;
-  color: #6c8491;
+  background: var(--wm-bg, #fff);
+  color: var(--wm-muted, #6c8491);
 }
 .locate-button small {
   font-size: 10px;
@@ -1210,7 +1210,7 @@ onBeforeUnmount(() => {
   place-items: center;
   min-height: 280px;
   height: calc(100% - 68px);
-  color: #929aa4;
+  color: var(--wm-muted, #929aa4);
 }
 .board-footer {
   min-height: 38px;
@@ -1221,7 +1221,7 @@ onBeforeUnmount(() => {
   gap: 14px;
   border-top: 1px solid var(--line);
   flex-shrink: 0;
-  color: #7a8591;
+  color: var(--wm-muted, #7a8591);
   font-size: 11px;
 }
 .team-legend,
@@ -1242,17 +1242,17 @@ onBeforeUnmount(() => {
 .state-legend i {
   width: 11px;
   height: 8px;
-  border: 1px solid #8a9da8;
+  border: 1px solid var(--wm-muted, #8a9da8);
   border-radius: 2px;
 }
 .legend-planned {
-  background: #f7f9fa;
+  background: var(--wm-muted-surface, #f7f9fa);
 }
 .board-footer.has-selection {
   min-height: 44px;
   font-size: 12px;
   justify-content: flex-start;
-  color: #55616f;
+  color: var(--wm-muted, #55616f);
 }
 .selection-identity {
   gap: 7px;

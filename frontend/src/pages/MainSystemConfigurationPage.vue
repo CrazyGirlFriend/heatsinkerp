@@ -6,19 +6,19 @@ import PageBackButton from '@/components/PageBackButton.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   ElAlert,
-  ElButton,
   ElForm,
   ElFormItem,
   ElInput,
-  ElInputNumber,
   ElMessageBox,
   ElResult,
   ElSkeleton,
   ElSwitch,
-  ElTable,
   ElTableColumn,
   ElTag,
 } from 'element-plus'
+import ElInputNumber from '@/components/AppNumberInput.vue'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import { isAdmin } from '@/stores/auth'
 import {
   mainSystemConfigurationApi as api,

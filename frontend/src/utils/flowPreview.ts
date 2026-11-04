@@ -1,3 +1,4 @@
+import type { ChartPalette } from '@/composables/useChartPalette'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import type {
   EChartsOption,
@@ -194,6 +195,7 @@ const tooltip = {
 export function teamFlowOption(
   model: ReturnType<typeof teamFlowModel>,
   metric: FlowMetric,
+  theme?: ChartPalette,
 ): EChartsOption {
   const active = new Set(
     model.links.filter((link) => link[metric] > 0).flatMap((link) => [link.source, link.target]),
@@ -232,17 +234,26 @@ export function teamFlowOption(
     emphasis: { focus: 'trajectory', lineStyle: { opacity: 0.58 } },
     blur: { lineStyle: { opacity: 0.045 }, itemStyle: { opacity: 0.2 } },
     label: {
-      color: '#28332d',
+      color: theme?.text ?? '#28332d',
       fontFamily: font,
       rich: {
         name: { fontSize: 14, fontWeight: 600, lineHeight: 23 },
-        value: { fontSize: 13, color: '#77827b', lineHeight: 21 },
+        value: { fontSize: 13, color: theme?.muted ?? '#77827b', lineHeight: 21 },
       },
     },
   }
   return {
     tooltip: {
       ...tooltip,
+      ...(theme
+        ? {
+            backgroundColor: theme.surface,
+            borderColor: theme.border,
+            shadowBlur: 8,
+            extraCssText: '',
+            textStyle: { color: theme.text, fontSize: 14 },
+          }
+        : {}),
       formatter: (params) => {
         const value = (Array.isArray(params) ? params[0] : params)?.data as FlowSelection
         return `${value.title}\n${amountLabel(value)}\n${value.batches.length} 个关联批次 · 点击查看`
@@ -665,9 +676,10 @@ export function traceFlowOption(
   interaction: FlowInteraction = 'select',
   zoom = 100,
   originColors?: Map<string, string>,
+  theme?: ChartPalette,
 ): EChartsOption {
-  const surface = '#fff'
-  const ink = '#2b4038'
+  const surface = theme?.surface ?? '#fff'
+  const ink = theme?.text ?? '#2b4038'
   const pendingColor = '#b77a19'
   const related = selectedId ? traceRelated(model, selectedId) : null
   const colorFor = (batch: TraceBatch) =>
@@ -781,7 +793,9 @@ export function traceFlowOption(
             align,
             font: `500 ${originColors ? 12 : 15}px ${font}`,
             fill: ink,
-            backgroundColor: originColors ? '#fffffff2' : '#ffffffdf',
+            backgroundColor: originColors
+              ? (theme?.surface ?? '#fffffff2')
+              : (theme?.surface ?? '#ffffffdf'),
             padding: [2, 3],
             opacity,
             ...(draw ? { enterFrom: { opacity: 0 } } : {}),
@@ -861,7 +875,7 @@ export function traceFlowOption(
             z2: layer + 3,
             shape,
             style: {
-              stroke: '#fff',
+              stroke: theme?.surface ?? '#fff',
               fill: 'none',
               lineWidth: 0.65,
               lineJoin: 'round',
@@ -943,7 +957,7 @@ export function traceFlowOption(
             shape: { cx: start[0]!, cy: start[1]!, r: 2.8 },
             style: {
               fill: pendingColor,
-              stroke: '#fff',
+              stroke: theme?.surface ?? '#fff',
               lineWidth: 1,
               shadowBlur: 4,
               shadowColor: '#b77a194d',
@@ -1218,8 +1232,8 @@ export function traceFlowOption(
             text,
             align,
             font: `500 15px ${font}`,
-            fill: '#28332d',
-            backgroundColor: '#ffffffdf',
+            fill: theme?.text ?? '#28332d',
+            backgroundColor: theme?.surface ?? '#ffffffdf',
             padding: [2, 3],
             opacity,
           },
@@ -1271,11 +1285,11 @@ export function traceFlowOption(
           style: {
             fill: originColors
               ? params.dataIndex % 2 === 0
-                ? '#f5f8f8'
-                : '#fff'
+                ? (theme?.mutedSurface ?? '#f5f8f8')
+                : (theme?.surface ?? '#fff')
               : params.dataIndex % 2 === 0
-                ? '#f5f8f6'
-                : '#fff',
+                ? (theme?.mutedSurface ?? '#f5f8f6')
+                : (theme?.surface ?? '#fff'),
           },
         },
         {
@@ -1296,7 +1310,7 @@ export function traceFlowOption(
         children.push({
           type: 'line',
           shape: { x1: 0, y1: top + height, x2: grid.x + grid.width, y2: top + height },
-          style: { stroke: '#e8efef', lineWidth: 1 },
+          style: { stroke: theme?.border ?? '#e8efef', lineWidth: 1 },
         })
       if (params.dataIndex === 0 && model.ongoing && model.closing !== null) {
         const x = api.coord([model.closing, 0])[0]!
@@ -1431,7 +1445,7 @@ export function traceFlowOption(
             text,
             font: `500 12px ${font}`,
             fill: color,
-            backgroundColor: '#fffffff2',
+            backgroundColor: theme?.surface ?? '#fffffff2',
             padding: [2, 4],
             opacity,
           },
@@ -1451,7 +1465,7 @@ export function traceFlowOption(
     axisLine: { show: false },
     axisTick: { show: false },
     axisLabel: {
-      color: originColors ? '#73867f' : '#77827b',
+      color: originColors ? (theme?.muted ?? '#73867f') : (theme?.muted ?? '#77827b'),
       fontSize: originColors ? 12 : 14,
       lineHeight: 21,
       margin: 16,
@@ -1460,7 +1474,10 @@ export function traceFlowOption(
     },
     splitLine: {
       show: true,
-      lineStyle: { color: originColors ? '#dfe9e7' : '#e8edef', type: 'dashed' },
+      lineStyle: {
+        color: originColors ? (theme?.border ?? '#dfe9e7') : (theme?.border ?? '#e8edef'),
+        type: 'dashed',
+      },
     },
   }
   return {
@@ -1525,7 +1542,9 @@ export function traceFlowOption(
         right: 32,
         height: 6,
         borderColor: 'transparent',
-        backgroundColor: originColors ? '#edf2f1' : '#f0f5f1',
+        backgroundColor: originColors
+          ? (theme?.mutedSurface ?? '#edf2f1')
+          : (theme?.mutedSurface ?? '#f0f5f1'),
         fillerColor: originColors ? '#b9d6cc' : '#cbded1',
         handleIcon: 'circle',
         handleSize: 20,
@@ -1565,13 +1584,22 @@ export function traceFlowOption(
     ],
     tooltip: {
       ...tooltip,
+      ...(theme
+        ? {
+            backgroundColor: theme.surface,
+            borderColor: theme.border,
+            shadowBlur: 8,
+            extraCssText: '',
+            textStyle: { color: theme.text, fontSize: 14 },
+          }
+        : {}),
       renderMode: 'html',
       show: interaction === 'select',
       triggerOn: 'mousemove',
       enterable: true,
       hideDelay: 150,
       textStyle: {
-        color: originColors ? ink : '#28332d',
+        color: originColors ? ink : (theme?.text ?? '#28332d'),
         fontFamily: font,
         fontSize: 15,
         lineHeight: 26,

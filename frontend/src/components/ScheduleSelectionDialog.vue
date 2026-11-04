@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import PersonName from './PersonName.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElAlert, ElButton, ElForm, ElFormItem, ElIcon, ElInput, ElPagination } from 'element-plus'
+import { ElAlert, ElForm, ElFormItem, ElIcon, ElInput } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { Check, Search } from '@element-plus/icons-vue'
 import AppDialog from './AppDialog.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -215,7 +217,7 @@ onBeforeUnmount(() => {
         </div>
         <p v-if="!rows.length" role="status">{{ loading ? '正在读取…' : '暂无匹配记录' }}</p>
       </div>
-      <ElPagination
+      <WorkspacePagination
         :current-page="page"
         :page-size="20"
         :total="total"

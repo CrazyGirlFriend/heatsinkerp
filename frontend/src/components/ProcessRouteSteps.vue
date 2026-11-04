@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ElTable, ElTableColumn, ElTag } from 'element-plus'
+import { ElTableColumn, ElTag } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import type { ProcessRoute, ProcessRouteContext } from '@/types/processRoute'
 defineProps<{ route: ProcessRoute; current?: ProcessRouteContext | null }>()
 </script>

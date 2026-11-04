@@ -141,8 +141,7 @@ it('keeps shared material separate and pages only the selected stock group', asy
     batchNo: 'TL-100',
   })
   const pager = page.findComponent(ElPagination)
-  pager.vm.$emit('update:current-page', 2)
-  pager.vm.$emit('change', 2, 20)
+  await pager.get('.btn-next').trigger('click')
   await flushPromises()
   expect(api.batches).toHaveBeenLastCalledWith('000012', expect.anything(), 'stock', 2, 20)
   await page.get('.inventory-tabs button:nth-child(2)').trigger('click')

@@ -1,7 +1,8 @@
 <script setup lang="ts" generic="K extends string = InventoryColumnKey">
 import { computed, ref, shallowRef, watch } from 'vue'
 import { ArrowDown, ArrowUp, Setting } from '@element-plus/icons-vue'
-import { ElButton, ElCheckbox, ElMessage, ElPopover } from 'element-plus'
+import { ElCheckbox, ElMessage, ElPopover } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import {
   inventoryColumns,
   type InventoryColumnChoice,

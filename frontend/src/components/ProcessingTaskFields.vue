@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElButton, ElFormItem, ElOption, ElSelect } from 'element-plus'
+import { ElAlert, ElFormItem, ElOption, ElSelect } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { TeamProcessingTask, TeamPurpose } from '@/types/teamBusiness'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'

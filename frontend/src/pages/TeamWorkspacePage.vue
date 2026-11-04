@@ -6,15 +6,8 @@ import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { teamCanProcess } from '@/config/teamWorkspaces'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import {
-  ElAlert,
-  ElButton,
-  ElCheckbox,
-  ElOption,
-  ElPopover,
-  ElSelect,
-  ElTableColumn,
-} from 'element-plus'
+import { ElAlert, ElCheckbox, ElOption, ElPopover, ElSelect, ElTableColumn } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import FilterDialog from '@/components/FilterDialog.vue'
 import LiveRefreshNotice from '@/components/LiveRefreshNotice.vue'
 import RecordDateFilter from '@/components/RecordDateFilter.vue'

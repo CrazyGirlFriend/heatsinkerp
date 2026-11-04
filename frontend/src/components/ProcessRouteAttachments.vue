@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ElAlert, ElButton } from 'element-plus'
+import { ElAlert } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import DocumentCard from './DocumentCard.vue'
 import WordDocumentPreview from './WordDocumentPreview.vue'
 import ProcessRouteDrawingPreview from './ProcessRouteDrawingPreview.vue'

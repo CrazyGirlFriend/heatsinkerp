@@ -29,7 +29,6 @@ import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   ElAlert,
-  ElButton,
   ElForm,
   ElFormItem,
   ElInput,
@@ -38,6 +37,7 @@ import {
   ElSwitch,
   ElDatePicker,
 } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import MaterialDeliveryFields from './MaterialDeliveryFields.vue'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'

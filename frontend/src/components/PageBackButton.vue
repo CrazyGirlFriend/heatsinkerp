@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter, type RouteLocationRaw } from 'vue-router'
-import { ElButton } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { appPinia } from '@/stores/access'

@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   ElAlert,
-  ElButton,
   ElCheckboxGroup,
   ElCheckboxButton,
   ElRadioGroup,
@@ -11,13 +11,13 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
-  ElInputNumber,
   ElOption,
-  ElPagination,
   ElSelect,
-  ElTable,
   ElTableColumn,
 } from 'element-plus'
+import ElInputNumber from '@/components/AppNumberInput.vue'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
@@ -310,7 +310,7 @@ onBeforeUnmount(() => {
               ></ElTableColumn
             >
           </ElTable>
-          <ElPagination
+          <WorkspacePagination
             :current-page="page"
             :total="total"
             :page-size="8"

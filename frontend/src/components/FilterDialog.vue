@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import AppDialog from '@/components/AppDialog.vue'
 import { Filter } from '@element-plus/icons-vue'
-import { ElButton } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import WatermelonButton from './watermelon/WatermelonButton.vue'
 import { IconAdjustmentsHorizontal } from '@tabler/icons-vue'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'

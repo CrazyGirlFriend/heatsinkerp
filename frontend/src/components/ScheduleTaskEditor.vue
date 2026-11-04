@@ -2,17 +2,10 @@
 import PersonName from './PersonName.vue'
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import type { Dayjs } from 'dayjs'
-import {
-  ElAlert,
-  ElButton,
-  ElDatePicker,
-  ElForm,
-  ElFormItem,
-  ElInput,
-  ElInputNumber,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus'
+import { ElAlert, ElDatePicker, ElForm, ElFormItem, ElInput, ElTableColumn } from 'element-plus'
+import ElInputNumber from '@/components/AppNumberInput.vue'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import { Refresh, Upload } from '@element-plus/icons-vue'
 import MaterialInput from './MaterialInput.vue'

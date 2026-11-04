@@ -1,16 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import CompactFormSection from './CompactFormSection.vue'
-import {
-  ElAlert,
-  ElButton,
-  ElForm,
-  ElFormItem,
-  ElInput,
-  ElInputNumber,
-  ElOption,
-  ElSelect,
-} from 'element-plus'
+import { ElAlert, ElForm, ElFormItem, ElInput, ElOption, ElSelect } from 'element-plus'
+import ElInputNumber from '@/components/AppNumberInput.vue'
+import ElButton from '@/components/AppButton.vue'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'
 import { processRouteApi } from '@/services/processRouteApi'
 import { materialRequestKey } from '@/utils/materialStock'

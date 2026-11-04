@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import PersonName from './PersonName.vue'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import FormWorkspace from './FormWorkspace.vue'
@@ -13,21 +14,20 @@ import { useProcessRouteView } from '@/composables/useProcessRouteView'
 import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 import {
   ElAlert,
-  ElButton,
   ElDescriptions,
   ElDescriptionsItem,
   ElForm,
   ElFormItem,
   ElInput,
-  ElInputNumber,
   ElOption,
   ElSelect,
   ElSwitch,
   ElDatePicker,
-  ElPagination,
-  ElTable,
   ElTableColumn,
 } from 'element-plus'
+import ElInputNumber from '@/components/AppNumberInput.vue'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import SpecificationInput from './SpecificationInput.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
@@ -1121,7 +1121,7 @@ onBeforeUnmount(() => {
               ></ElTableColumn
             >
           </ElTable>
-          <ElPagination
+          <WorkspacePagination
             v-if="total > 10"
             :current-page="page"
             :page-size="10"
@@ -1200,7 +1200,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--line);
   border-left: 3px solid #36725b;
   border-radius: 8px;
-  background: #ffffffb8;
+  background: var(--wm-muted-surface, #ffffffb8);
   font-size: 13px;
 }
 .processing-current-step header {

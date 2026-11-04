@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElButton, ElOption, ElSelect } from 'element-plus'
+import { ElAlert, ElOption, ElSelect } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { FullScreen } from '@element-plus/icons-vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute, ProcessRouteContext } from '@/types/processRoute'
@@ -191,8 +192,12 @@ onBeforeUnmount(() => ++generation)
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 16px;
-  background: linear-gradient(135deg, #ffffffd9, #eef7f3a6);
-  box-shadow: inset 0 1px #fff;
+  background: linear-gradient(
+    135deg,
+    var(--wm-muted-surface, #ffffffd9),
+    var(--wm-muted-surface, #eef7f3a6)
+  );
+  box-shadow: inset 0 1px var(--wm-border, #fff);
 }
 .process-execution-panel > header,
 .execution-requirements header,
@@ -206,7 +211,7 @@ onBeforeUnmount(() => ++generation)
   display: flex;
   padding: 3px;
   border-radius: 9px;
-  background: #eaf0ed;
+  background: var(--wm-muted-surface, #eaf0ed);
 }
 .execution-tabs button {
   border: 0;
@@ -219,8 +224,8 @@ onBeforeUnmount(() => ++generation)
   cursor: pointer;
 }
 .execution-tabs button[aria-selected='true'] {
-  color: #205e4b;
-  background: #fff;
+  color: var(--wm-text, #205e4b);
+  background: var(--wm-bg, #fff);
   box-shadow: 0 1px 4px #16362b12;
 }
 .execution-readonly,
@@ -250,7 +255,7 @@ onBeforeUnmount(() => ++generation)
   height: 8px;
   left: 24px;
   bottom: 0;
-  background: #b9cdc4;
+  background: var(--wm-border, #b9cdc4);
 }
 .execution-nodes button {
   display: flex;
@@ -261,7 +266,7 @@ onBeforeUnmount(() => ++generation)
   padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #ffffffa8;
+  background: var(--wm-muted-surface, #ffffffa8);
   color: var(--text);
   text-align: left;
   font: inherit;
@@ -274,7 +279,7 @@ onBeforeUnmount(() => ++generation)
 .execution-nodes button:hover,
 .execution-nodes .is-selected button {
   border-color: #6f9c8a;
-  background: #f3faf7;
+  background: var(--wm-success-bg, #f3faf7);
 }
 .execution-nodes .is-current button {
   border-color: #3e7a64;
@@ -285,10 +290,10 @@ onBeforeUnmount(() => ++generation)
   height: 26px;
   display: grid;
   place-items: center;
-  border: 1px solid #cad9d2;
+  border: 1px solid var(--wm-border, #cad9d2);
   border-radius: 50%;
   flex-shrink: 0;
-  color: #527565;
+  color: var(--wm-muted, #527565);
   font-variant-numeric: tabular-nums;
 }
 .is-current .execution-node-number {
@@ -307,12 +312,12 @@ onBeforeUnmount(() => ++generation)
 }
 .execution-current {
   font-size: 12px;
-  color: #205e4b;
+  color: var(--wm-text, #205e4b);
 }
 .execution-requirements {
   margin-top: 12px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--wm-bg, #fff);
   border-radius: 10px;
   padding: 12px;
   font-size: 13px;

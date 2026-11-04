@@ -2,15 +2,15 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   ElAlert,
-  ElButton,
   ElForm,
   ElFormItem,
   ElInput,
   ElOption,
   ElSelect,
-  ElTable,
   ElTableColumn,
 } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'

@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ElButton, ElTable, ElTableColumn, ElTag } from 'element-plus'
+import { ElTableColumn, ElTag } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import {
   scheduleStatusLabels,
   scheduleStatusTone,
@@ -139,7 +141,10 @@ const batches = (value: unknown) => {
   box-sizing: border-box;
   min-width: 0;
   padding: 14px 18px 10px;
-  background: linear-gradient(115deg, rgba(234, 245, 240, 0.48), rgba(255, 255, 255, 0.9));
+  background: var(
+    --wm-muted-surface,
+    linear-gradient(115deg, rgba(234, 245, 240, 0.48), rgba(255, 255, 255, 0.9))
+  );
   border-block: 1px solid var(--line);
 }
 .inventory-schedule-detail > header,

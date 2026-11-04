@@ -4,7 +4,6 @@ import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
 import { Calendar, ArrowDown, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import {
-  ElButton,
   ElCalendar,
   ElIcon,
   ElPopover,
@@ -12,6 +11,7 @@ import {
   ElRadioGroup,
   type CalendarInstance,
 } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import type { CalendarRange } from '@/types/recordFilters'
 const props = withDefaults(
   defineProps<{ modelValue: CalendarRange; label?: string; appendTo?: HTMLElement }>(),

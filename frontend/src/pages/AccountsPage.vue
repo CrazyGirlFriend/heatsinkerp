@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import FormWorkspace from '../components/FormWorkspace.vue'
 import CompactFormSection from '../components/CompactFormSection.vue'
 import AppDialog from '@/components/AppDialog.vue'
@@ -19,7 +20,6 @@ import {
   User,
 } from '@element-plus/icons-vue'
 import {
-  ElButton,
   ElCard,
   ElEmpty,
   ElForm,
@@ -28,16 +28,16 @@ import {
   ElInput,
   ElMessageBox,
   ElOption,
-  ElPagination,
   ElResult,
   ElSelect,
   ElSkeleton,
   ElSwitch,
-  ElTable,
   ElTableColumn,
   ElTag,
   type InputInstance,
 } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import LiveRefreshNotice from '@/components/LiveRefreshNotice.vue'
 import { useLiveRefresh } from '@/composables/useLiveRefresh'
@@ -483,7 +483,7 @@ onMounted(() => void loadData())
         </ElTable>
       </div>
       <footer v-if="!loading && !errorMessage" class="admin-pagination">
-        <ElPagination
+        <WorkspacePagination
           v-model:current-page="page"
           v-model:page-size="pageSize"
           :page-sizes="[10, 20, 50, 100]"

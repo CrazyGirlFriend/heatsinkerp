@@ -222,15 +222,14 @@
   opacity: 0;
   transform: translateY(12px) scale(0.97);
 }
-body:has(.team-workspace--watermelon)
-  :is(.el-popper.is-light, .el-picker-panel, .el-select-dropdown, .el-dropdown-menu) {
+html.wm-app :is(.el-popper.is-light, .el-picker-panel, .el-select-dropdown, .el-dropdown-menu) {
   background: var(--wm-bg);
   border-color: var(--wm-border);
   color: var(--wm-text);
   box-shadow: 0 8px 24px #00000012;
   backdrop-filter: none;
 }
-body:has(.team-workspace--watermelon) .el-popper.is-light .el-popper__arrow::before {
+html.wm-app .el-popper.is-light .el-popper__arrow::before {
   background: var(--wm-bg);
   border-color: var(--wm-border);
 }

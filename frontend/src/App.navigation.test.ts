@@ -79,7 +79,7 @@ async function renderApp(mobile: boolean) {
     history: createMemoryHistory(),
     routes: [
       { path: '/', name: 'home', redirect: '/factory-analysis' },
-      { path: '/factory-analysis', component: page },
+      { path: '/factory-analysis', name: 'factory-analysis', component: page },
       { path: '/factory-stock', redirect: '/factory-analysis' },
       { path: '/transfer-batches', component: page },
       { path: '/transfer-batches/scan', redirect: '/transfer-batches?scan=1' },
@@ -105,6 +105,22 @@ async function renderApp(mobile: boolean) {
 }
 
 describe('application navigation shell', () => {
+  it('applies the shared theme to business routes and restores the untouched overview', async () => {
+    const { wrapper, router } = await renderApp(false)
+    expect(document.documentElement.classList.contains('wm-app')).toBe(true)
+    expect(wrapper.find('.wm-app-shell').exists()).toBe(true)
+    await router.push('/factory-analysis')
+    await flushPromises()
+    expect(document.documentElement.classList.contains('wm-app')).toBe(false)
+    expect(document.documentElement.classList.contains('wm-scope')).toBe(false)
+    expect(wrapper.find('.wm-app-shell').exists()).toBe(false)
+    await router.push('/settings/accounts')
+    await flushPromises()
+    expect(document.documentElement.classList.contains('wm-app')).toBe(true)
+    wrapper.unmount()
+    wrappers.splice(wrappers.indexOf(wrapper), 1)
+    expect(document.documentElement.classList.contains('wm-app')).toBe(false)
+  })
   it('does not reopen a previous profile dialog after logout and a new login', async () => {
     const { wrapper, router } = await renderApp(false)
     await wrapper.get('.sidebar__user').trigger('click')

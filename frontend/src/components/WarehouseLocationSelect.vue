@@ -405,7 +405,7 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 .warehouse-location-select > .location-countdown-warning {
-  color: #aa6c19;
+  color: var(--wm-warning-text, #aa6c19);
 }
 .warehouse-location-select > .location-error {
   color: var(--danger);

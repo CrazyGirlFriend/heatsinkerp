@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Loading, RefreshRight } from '@element-plus/icons-vue'
-import { ElButton, ElEmpty, ElIcon, ElResult } from 'element-plus'
+import { ElEmpty, ElIcon, ElResult } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 
 withDefaults(
   defineProps<{
@@ -100,7 +101,7 @@ defineEmits<{ retry: [] }>()
 }
 .state-description {
   margin: -10px 0 14px;
-  color: #718094;
+  color: var(--wm-muted, #718094);
   font-size: 13px;
 }
 @keyframes rotating {

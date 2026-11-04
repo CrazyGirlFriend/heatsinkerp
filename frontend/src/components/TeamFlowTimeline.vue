@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useChartPalette } from '@/composables/useChartPalette'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElIcon, ElOption, ElSelect, ElTooltip } from 'element-plus'
 import {
@@ -37,8 +38,15 @@ const zoomLabel = computed(() =>
       ),
 )
 const model = computed(() => teamTimelineModel(props.history))
+const chartPalette = useChartPalette()
 const option = computed(() =>
-  teamTimelineOption(model.value, selected.value, interaction.value, motion.value),
+  teamTimelineOption(
+    model.value,
+    selected.value,
+    interaction.value,
+    motion.value,
+    chartPalette.value,
+  ),
 )
 const selectionOptions = computed(() =>
   model.value.nodes.map((node) => ({

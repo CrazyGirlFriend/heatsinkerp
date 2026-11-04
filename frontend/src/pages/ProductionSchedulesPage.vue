@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElButton } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { FullScreen, ScaleToOriginal } from '@element-plus/icons-vue'
 import PageBackButton from '@/components/PageBackButton.vue'
 import ScheduleTaskBoard from '@/components/ScheduleTaskBoard.vue'

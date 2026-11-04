@@ -114,3 +114,22 @@ final result: passed
 - 最后复查 Chrome pageerror=[]。没有修改任何库存、工艺、排期或用户权限数据。
 - 验证：37 项共享组件测试通过；312 项关联业务测试在修复断言后分组重跑通过，其中一个在并行执行时超时的库存时钟测试以单工作进程单独通过。类型检查、ESLint、Prettier、生产构建和 git diff --check 通过；构建仍有原有的大 chunk 提醒。
 - 证据目录：`output/playwright/warehouse-global/`。`inventory-real-final.png`、`warehouse-real-final.png` 为真实空库存/仓位；`fixture-inventory-*.png` 为临时库存示例；`receipt-form-*.png` 为临时班组身份的未保存表单；`receipts-team-narrow-final.png` 为窄屏操作区。
+
+## 2026-11-04 — 业务页面共享主题与组件推广
+
+- 范围：各班组工作台、工艺、生产排期、流水号查询、流转查询、业务人员、系统设置、通知与账号表单。按用户要求，全厂总览的页面与图表文件未修改；路由进入 `factory-analysis` 时撤销根主题，返回业务路由后恢复。
+- 复用库房既有 DataTable 11、Fluid Tabs、表单和弹窗适配。新增 AppButton 保留原生提交、焦点引用和加载行为；其他列表通过 WatermelonDataTable / WorkspacePagination 接入。AppDrawer、数字输入、下拉、消息、日期弹出层统一配色。没有迁移到 React，也没有修改业务 API、权限或库存数据。
+- 修复推广中发现的分页统计重复、URL 翻页事件兼容、工艺列表底部位置、嵌套卡片内边距、深色表头与下拉残留、工序序号数字框内边距、开关文字对比度。流向 Canvas 仅获取主题颜色，图形关系与业务颜色保留；原件和图纸保留纸张颜色。
+- Chrome 使用同一个 `global-watermelon` 会话，真实管理员只读检查。查看库房库存/仓库管理、其他班组加工和质量、工艺编辑、生产排期及日期小窗、转料记录、班组/账号/系统设置和消息；表单均取消，未保存业务数据。
+- 深浅色分别检查，窄屏 1024×800、768×800 页面宽度与视口一致，无页面横向溢出；表格内部滚动，仓位列表分页在视口内（底部 751px）。检查过筛选、翻页、弹窗取消、下拉选项、主题切换与总览隔离。
+- 截图目录：`output/playwright/global-watermelon/`。`12warehouse-final-dark.png`、`15transfers-dark.png`、`16calendar-dark.png`、`17schedule-light.png`、`18warehouse-management-light.png`、`19account-form-light.png`、`20-account-form-dark-narrow.png`、`22-warehouse-dark-768.png`、`23-overview-preserved.png`、`24-system-dark.png`、`25-process-numeric-dark.png`、`26-account-switch-dark.png`、`27-processing-final-dark.png`。全部使用本地真实数据；空列表保持空态。
+- 全量首轮 1768 项中 1753 项通过；发现的分页兼容和旧组件选择器问题修正后，19 个相关文件分组回归通过（最后的 SerialInventoryPage 4 项单独重跑）。数字控件涉及的 15 个业务表单文件 281 项通过；共享数字输入和合并打印 5 项通过。
+- 另有 2 项已存在的 MaterialTransferUi 静态断言仍与基线不一致：旧签收提示文案、旧 `<ElTable v-else>` 模板字符串。已用 HEAD 源码核对为本轮前即存在的差异，未为断言恢复旧业务行为。不能据此声称全量测试全绿。
+- 未进行完整读屏或 WCAG 合规审计；主系统对接在本地未配置服务端加密密钥，保持原只读显示，未尝试配置或保存。
+- 最终 vue-tsc、ESLint、生产构建通过；构建保留既有大 chunk 提醒。Chrome 控制台复查 Errors: 0 / Warnings: 0。唯一自动化会话已关闭，进程 75438 及会话名匹配进程均已退出。
+
+## 2026-11-04 — 转料测试断言同步
+
+- 按用户要求同步上述两项旧断言：签收后允许申请修改、须经对方确认后生效；转料列表使用共享 WorkspaceTable。保留整单签收、不重复输入数量重量和普通查询页面的检查，业务代码未改动。
+- 同时重跑转料详情、修改申请、对方确认及列表行为测试，覆盖申请不直接修改原单、权限、重复提交、查询筛选、翻页与详情刷新。5 个测试文件共 92 项全部通过，原来的两项失败已解决。
+- ESLint、Prettier 和 git diff --check 通过。日志：`output/transfer-assertions-sync.log`；本次未重复运行全量前端测试。

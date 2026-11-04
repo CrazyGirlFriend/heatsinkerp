@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
 import { Download, FullScreen, ScaleToOriginal } from '@element-plus/icons-vue'
-import { ElButton } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { workspaceToolsKey, type WorkspaceExportAction } from '@/utils/workspaceTools'
 import PageBackButton from '@/components/PageBackButton.vue'
 import WatermelonSegmented from '@/components/watermelon/WatermelonSegmented.vue'
@@ -36,7 +36,11 @@ const props = defineProps<{
   settings?: boolean
   appearance?: WorkspaceAppearance
 }>()
-const appearance = computed(() => props.appearance || (props.warehouse ? 'watermelon' : 'glass'))
+const inheritedAppearance = inject(workspaceAppearanceKey, null)
+const appearance = computed(
+  () =>
+    props.appearance || inheritedAppearance?.value || (props.warehouse ? 'watermelon' : 'glass'),
+)
 provide(workspaceAppearanceKey, appearance)
 const emit = defineEmits<{
   'update:modelValue': [value: TeamWorkspaceSection]

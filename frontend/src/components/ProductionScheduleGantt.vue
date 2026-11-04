@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { hasConfirmedPlan, plannedDueLabel } from '@/utils/schedulePlanning'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
-import { ElButton, ElTooltip } from 'element-plus'
+import { ElTooltip } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import StatePanel from './StatePanel.vue'
 import {
@@ -485,9 +486,9 @@ watch(
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  border: 1px solid #cfdcd4;
+  border: 1px solid var(--wm-border, #cfdcd4);
   border-radius: 8px;
-  background: white;
+  background: var(--wm-bg, white);
   box-shadow: 0 2px 5px #23473605;
   overflow: hidden;
 }
@@ -498,7 +499,7 @@ watch(
   justify-content: space-between;
   gap: 16px;
   padding: 10px 12px;
-  background: linear-gradient(180deg, white, #f7f9f8);
+  background: linear-gradient(180deg, var(--wm-bg, white), var(--wm-muted-surface, #f7f9f8));
 }
 .gantt-caption,
 .gantt-controls {
@@ -560,7 +561,7 @@ watch(
   overflow: auto;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
-  scrollbar-color: #9aafa4 #f5f8f6;
+  scrollbar-color: #9aafa4 var(--wm-muted-surface, #f5f8f6);
   overscroll-behavior: contain;
   border-block: 1px solid var(--line);
 }
@@ -569,10 +570,10 @@ watch(
   height: 8px;
 }
 .gantt-viewport::-webkit-scrollbar-track {
-  background: #f5f8f6;
+  background: var(--wm-muted-surface, #f5f8f6);
 }
 .gantt-viewport::-webkit-scrollbar-thumb {
-  border: 2px solid #f5f8f6;
+  border: 2px solid var(--wm-muted-surface, #f5f8f6);
   border-radius: 8px;
   background: #9aafa4;
 }
@@ -591,7 +592,7 @@ watch(
   top: 0;
   z-index: 8;
   height: 60px;
-  background: #f0f4f1;
+  background: var(--wm-muted-surface, #f0f4f1);
   box-shadow: 0 1px #c9d6ce;
 }
 .gantt-corner,
@@ -602,7 +603,7 @@ watch(
   z-index: 4;
   background: var(--surface);
   border: 0;
-  border-right: 1px solid #bacbc1;
+  border-right: 1px solid var(--wm-border, #bacbc1);
   box-shadow: 3px 0 4px #24463308;
   text-align: left;
 }
@@ -613,8 +614,8 @@ watch(
   z-index: 9;
   font-size: 13px;
   font-weight: 600;
-  color: #38483f;
-  background: #f0f4f1;
+  color: var(--wm-muted, #38483f);
+  background: var(--wm-muted-surface, #f0f4f1);
 }
 .gantt-axis-track {
   position: relative;
@@ -625,7 +626,7 @@ watch(
   width: var(--day-width);
   border-left: 1px solid var(--line);
   padding-top: 8px;
-  color: #38483f;
+  color: var(--wm-muted, #38483f);
   font-weight: 600;
   font-size: 12px;
 }
@@ -641,7 +642,7 @@ watch(
 .gantt-day small {
   display: block;
   margin-top: 4px;
-  color: #63706c;
+  color: var(--wm-muted, #63706c);
   font-weight: 400;
   font-size: 10px;
 }
@@ -656,7 +657,7 @@ watch(
   color: var(--primary);
 }
 .gantt-day.is-weekend:not(.is-today) {
-  background: #edf2f44f;
+  background: var(--wm-muted-surface, #edf2f44f);
 }
 .gantt-hours {
   display: grid;
@@ -666,7 +667,7 @@ watch(
 }
 .gantt-hours > span {
   padding-left: 7px;
-  border-left: 1px solid #b7c5ca7a;
+  border-left: 1px solid var(--wm-border, #b7c5ca7a);
 }
 .gantt-now-cap {
   position: absolute;
@@ -684,7 +685,11 @@ watch(
 .gantt-task-heading {
   height: 52px;
   border-bottom: 1px solid var(--line);
-  background: linear-gradient(90deg, #edf6f1a1, #f9fbfa90);
+  background: linear-gradient(
+    90deg,
+    var(--wm-muted-surface, #edf6f1a1),
+    var(--wm-muted-surface, #f9fbfa90)
+  );
 }
 .gantt-task-label {
   display: flex;
@@ -693,7 +698,7 @@ watch(
   min-width: 0;
   padding: 6px 12px 6px 18px;
   color: var(--primary);
-  background: #f2f8f5;
+  background: var(--wm-muted-surface, #f2f8f5);
 }
 .gantt-task-open {
   min-width: 0;
@@ -775,7 +780,7 @@ watch(
   position: relative;
 }
 .gantt-dependencies {
-  --link-color: #64796d;
+  --link-color: var(--wm-muted, #64796d);
   position: absolute;
   left: var(--label-width);
   top: 0;
@@ -798,39 +803,39 @@ watch(
   --link-color: #2f7656;
 }
 .gantt-dependencies .status-today {
-  --link-color: #a56b16;
+  --link-color: var(--wm-warning-text, #a56b16);
 }
 .gantt-dependencies .status-overdue,
 .gantt-dependencies .status-completed_late {
-  --link-color: #b94747;
+  --link-color: var(--wm-danger-text, #b94747);
 }
 .gantt-dependencies > path.is-highlighted {
   stroke-width: 2;
   stroke-opacity: 1;
 }
 .gantt-dependencies .is-cancelled {
-  --link-color: #9ba8a2;
+  --link-color: var(--wm-muted, #9ba8a2);
 }
 .gantt-dependencies path.is-cancelled {
   stroke-dasharray: 3 4;
   stroke-opacity: 0.45;
 }
 .gantt-node-row {
-  --milestone-color: #566a60;
+  --milestone-color: var(--wm-muted, #566a60);
   height: var(--row-height);
 }
 .gantt-node-row.status-completed {
   --milestone-color: #25734f;
 }
 .gantt-node-row.status-today {
-  --milestone-color: #a56b16;
+  --milestone-color: var(--wm-warning-text, #a56b16);
 }
 .gantt-node-row.status-overdue,
 .gantt-node-row.status-completed_late {
-  --milestone-color: #b94747;
+  --milestone-color: var(--wm-danger-text, #b94747);
 }
 .gantt-node-row.is-cancelled {
-  --milestone-color: #849189;
+  --milestone-color: var(--wm-muted, #849189);
 }
 .gantt-node-label {
   display: flex;
@@ -874,7 +879,7 @@ watch(
   padding-left: 23px;
 }
 .gantt-quality {
-  color: #b94747;
+  color: var(--wm-danger-text, #b94747);
   font-size: 10px;
   flex-shrink: 0;
 }
@@ -894,16 +899,16 @@ watch(
   );
 }
 .gantt-node-row:nth-of-type(even) .gantt-lane {
-  background-color: #f8faf9;
+  background-color: var(--wm-muted-surface, #f8faf9);
 }
 .gantt-node-row:nth-of-type(even) .gantt-node-label {
-  background-color: #f8faf9;
+  background-color: var(--wm-muted-surface, #f8faf9);
 }
 .gantt-node-row:is(:hover, :focus-within, .is-active) .gantt-lane {
-  background-color: #edf5f0b3;
+  background-color: var(--wm-muted-surface, #edf5f0b3);
 }
 .gantt-node-row:is(:hover, :focus-within, .is-active) .gantt-node-label {
-  background: #edf5f0;
+  background: var(--wm-muted-surface, #edf5f0);
 }
 .gantt-now-line {
   position: absolute;
@@ -934,8 +939,8 @@ watch(
   width: 12px;
   height: 12px;
   border: 2px solid currentColor;
-  background: #fff;
-  box-shadow: 0 0 0 3px #ffffffbd;
+  background: var(--wm-bg, #fff);
+  box-shadow: 0 0 0 3px var(--wm-muted-surface, #ffffffbd);
   transition: box-shadow var(--motion-fast);
 }
 .gantt-planned {
@@ -954,7 +959,7 @@ watch(
   font-size: 12px;
   line-height: 18px;
   padding: 0 3px;
-  background: #ffffffcf;
+  background: var(--wm-muted-surface, #ffffffcf);
   border-radius: 3px;
 }
 .gantt-milestone.label-before > span {

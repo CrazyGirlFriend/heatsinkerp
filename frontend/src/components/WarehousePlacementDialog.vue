@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElForm, ElFormItem, ElInputNumber, ElOption, ElSelect } from 'element-plus'
+import { ElAlert, ElForm, ElFormItem, ElOption, ElSelect } from 'element-plus'
+import ElInputNumber from '@/components/AppNumberInput.vue'
 import WatermelonDialog from './watermelon/WatermelonDialog.vue'
 import WatermelonButton from './watermelon/WatermelonButton.vue'
 import WeightInput from './WeightInput.vue'

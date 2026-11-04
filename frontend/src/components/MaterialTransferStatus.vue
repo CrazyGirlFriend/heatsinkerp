@@ -60,10 +60,10 @@ const label = computed(() =>
   color: var(--subtle);
 }
 .transfer-status-text--pending {
-  color: #ad650b;
+  color: var(--wm-warning-text, #ad650b);
 }
 .transfer-status-text--received,
 .transfer-status-text--dispatched {
-  color: #3c8463;
+  color: var(--wm-success-text, #3c8463);
 }
 </style>

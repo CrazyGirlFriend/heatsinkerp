@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { inject, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue'
 import { Download, FullScreen, MoreFilled, Refresh, Setting } from '@element-plus/icons-vue'
-import { ElButton, ElPopover } from 'element-plus'
+import { ElPopover } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { workspaceToolsKey } from '@/utils/workspaceTools'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
 import WatermelonButton from './watermelon/WatermelonButton.vue'

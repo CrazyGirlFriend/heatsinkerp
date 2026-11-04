@@ -9,7 +9,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { Operation, Search } from '@element-plus/icons-vue'
 import {
   ElAlert,
-  ElButton,
   ElCheckbox,
   ElDatePicker,
   ElInput,
@@ -20,6 +19,7 @@ import {
   ElTag,
   ElTooltip,
 } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import FilterDialog from './FilterDialog.vue'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
 import InventoryScheduleDetails from './InventoryScheduleDetails.vue'

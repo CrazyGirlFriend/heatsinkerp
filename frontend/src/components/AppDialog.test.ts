@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { defineComponent, h } from 'vue'
+import { computed, defineComponent, h } from 'vue'
+import { workspaceAppearanceKey } from '@/composables/useWorkspaceAppearance'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppDialog from './AppDialog.vue'
 import AppDrawer from './AppDrawer.vue'
@@ -87,6 +88,23 @@ for (const [name, component, native, rootClass] of [
   ['drawer', AppDrawer, DrawerStub, 'el-drawer'],
 ] as const) {
   describe(`App ${name} presentation shell`, () => {
+    it('inherits the shared theme without starting glass rendering', async () => {
+      const wrapper = mount(component, {
+        props: { modelValue: true },
+        global: {
+          stubs,
+          provide: { [workspaceAppearanceKey as symbol]: computed(() => 'watermelon') },
+        },
+      })
+      wrappers.push(wrapper)
+      const element = wrapper.getComponent(native)
+      element.vm.$emit('opened')
+      await settle()
+      expect(wrapper.get(`.${rootClass}`).classes()).toContain('wm-scope')
+      expect(wrapper.get(`.${rootClass}`).classes()).not.toContain('app-glass-surface')
+      expect(element.props('modalClass')).toContain('wm-dialog-overlay')
+      expect(glass.enhance).not.toHaveBeenCalled()
+    })
     it('forwards layout, close protections, fullscreen target and scoped slots without changing the form', async () => {
       const appendTo = host()
       const wrapper = mount(component, {

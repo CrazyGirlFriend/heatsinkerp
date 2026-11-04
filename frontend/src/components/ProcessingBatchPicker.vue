@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import { ElButton, ElInput, ElLoading, ElPagination, ElTable, ElTableColumn } from 'element-plus'
+import { ElInput, ElLoading, ElTableColumn } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import StatePanel from './StatePanel.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
@@ -163,7 +166,7 @@ onBeforeUnmount(() => {
     </ElTable>
     <div class="processing-picker-footer">
       <span>共 {{ total }} 批</span
-      ><ElPagination
+      ><WorkspacePagination
         :current-page="page"
         :page-size="pageSize"
         :total="total"

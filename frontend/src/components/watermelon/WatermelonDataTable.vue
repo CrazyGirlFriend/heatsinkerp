@@ -9,6 +9,7 @@ withDefaults(
     fill?: boolean
     loading?: boolean
     embedded?: boolean
+    rowClassName?: TableProps['rowClassName']
   }>(),
   { fill: false, embedded: false },
 )
@@ -19,6 +20,7 @@ withDefaults(
     class="wm-data-table"
     :class="{ 'wm-data-table--fill': fill, 'wm-data-table--embedded': embedded }"
     :data="data"
+    :row-class-name="rowClassName"
     :height="fill ? '100%' : undefined"
     :aria-busy="loading"
     :empty-text="loading ? '加载中…' : '暂无数据'"

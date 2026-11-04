@@ -208,7 +208,11 @@ it('keeps the overflow entry reachable in narrow windows and updates it on resiz
   const media = { matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }
   vi.stubGlobal(
     'matchMedia',
-    vi.fn(() => media),
+    vi.fn((query: string) =>
+      query === '(max-width: 1100px)'
+        ? media
+        : { matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() },
+    ),
   )
   const response = await processRouteApi.list()
   const steps = response.items[0]!.step_summary!
@@ -331,17 +335,17 @@ it('uses the global pending count across searches and refreshes it after saving'
   vi.mocked(processRouteApi.list).mockResolvedValue(response)
   vi.spyOn(processRouteApi, 'detail').mockResolvedValue({ ...routeFixture, state: 'published' })
   await render()
-  expect(wrapper.get('.route-pending-count').text()).toBe('7')
+  expect(wrapper.get('[aria-label="工艺类型"] .wm-segmented-count').text()).toBe('7')
   await wrapper.get('input[aria-label="工艺记录搜索"]').setValue('S-001')
   await wrapper.get('input[aria-label="工艺记录搜索"]').trigger('keyup', { key: 'Enter' })
   await flushPromises()
-  expect(wrapper.get('.route-pending-count').text()).toBe('7')
+  expect(wrapper.get('[aria-label="工艺类型"] .wm-segmented-count').text()).toBe('7')
   await wrapper.get('button.route-serial').trigger('click')
   await flushPromises()
   vi.mocked(processRouteApi.list).mockResolvedValue({ ...response, pending_rework_count: 6 })
   wrapper.getComponent(ProcessRouteEditor).vm.$emit('saved')
   await flushPromises()
-  expect(wrapper.get('.route-pending-count').text()).toBe('6')
+  expect(wrapper.get('[aria-label="工艺类型"] .wm-segmented-count').text()).toBe('6')
 })
 it('searches only after submission and refreshes the applied query', async () => {
   await render()
@@ -475,7 +479,7 @@ it('separates pending rework with visible problems and teams, and opens manual a
     enforced_after: null,
   })
   vi.spyOn(processRouteApi, 'detail').mockResolvedValue(pending)
-  await wrapper.get('.route-kind-switch button:nth-child(2)').trigger('click')
+  await wrapper.get('[aria-label="工艺类型"] button:nth-child(2)').trigger('click')
   await flushPromises()
   expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'desc', 20, 'rework')
   for (const text of ['尺寸超差', '巡检', '待制定', '待指定'])
@@ -527,7 +531,7 @@ it('shows authored rework execution teams without claiming work has finished', a
     page_size: 20,
     enforced_after: null,
   })
-  await wrapper.get('.route-kind-switch button:nth-child(2)').trigger('click')
+  await wrapper.get('[aria-label="工艺类型"] button:nth-child(2)').trigger('click')
   await flushPromises()
   expect(wrapper.text()).toContain('已制定')
   expect(
@@ -542,7 +546,7 @@ it('defaults to normal engineering and clears a previous search when switching v
   await wrapper.get('input[aria-label="工艺记录搜索"]').setValue('S-001')
   await wrapper.get('input[aria-label="工艺记录搜索"]').trigger('keyup', { key: 'Enter' })
   await flushPromises()
-  await wrapper.get('.route-kind-switch button:nth-child(2)').trigger('click')
+  await wrapper.get('[aria-label="工艺类型"] button:nth-child(2)').trigger('click')
   await flushPromises()
   expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'desc', 20, 'rework')
   expect((wrapper.get('input[aria-label="工艺记录搜索"]').element as HTMLInputElement).value).toBe(
@@ -593,15 +597,15 @@ it('does not flag a complete route as missing documents', async () => {
 it('opens the requested process type and follows navigation between normal and rework', async () => {
   const router = await render({ kind: 'rework' })
   expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'desc', 20, 'rework')
-  expect(wrapper.get('.route-kind-switch button[aria-pressed="true"]').text()).toBe('返工工艺')
+  expect(wrapper.get('[aria-label="工艺类型"] button[aria-pressed="true"]').text()).toBe('返工工艺')
   await router.push('/process-routes')
   await flushPromises()
   expect(processRouteApi.list).toHaveBeenLastCalledWith('', 1, undefined, 'desc', 20, 'normal')
-  expect(wrapper.get('.route-kind-switch button[aria-pressed="true"]').text()).toBe('正常工艺')
+  expect(wrapper.get('[aria-label="工艺类型"] button[aria-pressed="true"]').text()).toBe('正常工艺')
   await router.back()
   await flushPromises()
-  expect(wrapper.get('.route-kind-switch button[aria-pressed="true"]').text()).toBe('返工工艺')
-  await wrapper.get('.route-kind-switch button:first-child').trigger('click')
+  expect(wrapper.get('[aria-label="工艺类型"] button[aria-pressed="true"]').text()).toBe('返工工艺')
+  await wrapper.get('[aria-label="工艺类型"] button:first-child').trigger('click')
   await flushPromises()
   expect(router.currentRoute.value.query.kind).toBeUndefined()
 })

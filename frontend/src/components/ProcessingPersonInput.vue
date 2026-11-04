@@ -2,7 +2,8 @@
 import PersonName from './PersonName.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { computed, ref, watch } from 'vue'
-import { ElButton, ElIcon, ElInput, useFormDisabled } from 'element-plus'
+import { ElIcon, ElInput, useFormDisabled } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { Check, Search, User } from '@element-plus/icons-vue'
 
 const props = withDefaults(

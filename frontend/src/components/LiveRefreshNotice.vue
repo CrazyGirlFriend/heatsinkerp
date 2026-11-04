@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { WarningFilled } from '@element-plus/icons-vue'
-import { ElButton, ElIcon } from 'element-plus'
+import { ElIcon } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 defineProps<{ message: string }>()
 defineEmits<{ retry: [] }>()
 </script>

@@ -1,3 +1,4 @@
+import type { ChartPalette } from '@/composables/useChartPalette'
 import type { CustomSeriesOption, CustomSeriesRenderItemReturn, EChartsOption } from 'echarts'
 import type { SerialHistory, SerialHistoryEvent, SerialHistoryLot } from '@/types/teamBusiness'
 import { amountLabel, traceTime, traceTimestamp, type FlowInteraction } from './flowPreview'
@@ -168,6 +169,7 @@ export function teamTimelineOption(
   selected = '',
   interaction: FlowInteraction = 'select',
   animate = true,
+  theme?: ChartPalette,
 ): EChartsOption {
   const selectedRow = model.nodes.find((node) => node.id === selected)?.row
   const visibleRows = Math.min(100, 300 / Math.max(1, model.rows.length))
@@ -243,7 +245,12 @@ export function teamTimelineOption(
           name,
           type: 'circle',
           shape: { cx: px, cy: py, r: 6.5 },
-          style: { fill: filled ? color : '#fff', stroke: color, lineWidth: 2, opacity },
+          style: {
+            fill: filled ? color : (theme?.surface ?? '#fff'),
+            stroke: color,
+            lineWidth: 2,
+            opacity,
+          },
           enterAnimation: { duration: 180, delay },
         })
       }
@@ -289,10 +296,10 @@ export function teamTimelineOption(
             width,
             overflow: 'truncate',
             font: `13px ${font}`,
-            fill: '#28332d',
+            fill: theme?.text ?? '#28332d',
             lineHeight: 20,
             opacity,
-            backgroundColor: '#ffffffed',
+            backgroundColor: theme?.surface ?? '#ffffffed',
             padding: [1, 3],
             ...(animate ? { enterFrom: { opacity: 0 } } : {}),
           },
@@ -310,7 +317,7 @@ export function teamTimelineOption(
             width: grid.x - 36,
             overflow: 'truncate',
             font: `500 13px ${font}`,
-            fill: '#28332d',
+            fill: theme?.text ?? '#28332d',
             opacity,
           },
         })
@@ -326,7 +333,7 @@ export function teamTimelineOption(
             width: grid.x - 36,
             overflow: 'truncate',
             font: `12px ${font}`,
-            fill: '#77827b',
+            fill: theme?.muted ?? '#77827b',
             opacity,
           },
         })
@@ -351,7 +358,7 @@ export function teamTimelineOption(
             y: y + 10,
             text: `${num(ownedWeight)} kg`,
             font: `13px ${font}`,
-            fill: '#77827b',
+            fill: theme?.muted ?? '#77827b',
           },
         })
         const separator = api.coord([node.at, node.row + 0.7])[1]!
@@ -361,7 +368,7 @@ export function teamTimelineOption(
             type: 'line',
             silent: true,
             shape: { x1: 12, y1: separator, x2: right + 150, y2: separator },
-            style: { stroke: '#edf1ef', lineWidth: 1 },
+            style: { stroke: theme?.border ?? '#edf1ef', lineWidth: 1 },
           })
         const a = Math.max(grid.x, x),
           b = Math.min(right, q[0]!)
@@ -454,10 +461,10 @@ export function teamTimelineOption(
       max: model.extent?.[1],
       minInterval: 1,
       splitNumber: 4,
-      axisLine: { onZero: false, lineStyle: { color: '#e8edef' } },
+      axisLine: { onZero: false, lineStyle: { color: theme?.border ?? '#e8edef' } },
       axisTick: { show: true },
       axisLabel: {
-        color: '#77827b',
+        color: theme?.muted ?? '#77827b',
         fontSize: 13,
         lineHeight: 20,
         margin: 15,
@@ -471,7 +478,7 @@ export function teamTimelineOption(
               : at.slice(11, 16)
         },
       },
-      splitLine: { show: true, lineStyle: { color: '#edf1ef', type: 'dashed' } },
+      splitLine: { show: true, lineStyle: { color: theme?.border ?? '#edf1ef', type: 'dashed' } },
     },
     yAxis: {
       type: 'value',
@@ -511,12 +518,21 @@ export function teamTimelineOption(
     ],
     tooltip: {
       ...glassTooltip,
+      ...(theme
+        ? {
+            backgroundColor: theme.surface,
+            borderColor: theme.border,
+            shadowBlur: 8,
+            extraCssText: '',
+            textStyle: { color: theme.text, fontSize: 14 },
+          }
+        : {}),
       show: interaction === 'select',
       trigger: 'item',
       confine: true,
       renderMode: 'richText',
       padding: 16,
-      textStyle: { color: '#28332d', fontSize: 14, lineHeight: 23 },
+      textStyle: { color: theme?.text ?? '#28332d', fontSize: 14, lineHeight: 23 },
       formatter: (params) => {
         const node = model.nodes[(Array.isArray(params) ? params[0] : params)!.dataIndex]!,
           row = model.rows[node.row]!,

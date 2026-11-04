@@ -1,0 +1,467 @@
+/* Application-wide adapters for the shared Vue engines. Print documents keep their own paper. */
+html.wm-app {
+  --workspace-bg: var(--wm-canvas);
+  --line-light: var(--wm-table-divider);
+  --table-outer-line: var(--wm-border);
+  --panel-line: var(--wm-border);
+  --panel-shadow: none;
+  --card-radius: 12px;
+  --glass-surface: var(--wm-bg);
+  --glass-border: var(--wm-border);
+  --glass-shadow: none;
+  --glass-shell-fill: var(--wm-bg);
+  --glass-chrome-fill: var(--wm-bg);
+  --glass-popover-fill: var(--wm-surface);
+  --glass-edge: var(--wm-border);
+  --glass-hover-fill: var(--wm-hover);
+  --glass-selected-fill: var(--wm-hover);
+  --glass-interaction-edge: var(--wm-border);
+  --glass-hover-shadow: none;
+  --glass-selected-shadow: none;
+  --glass-surface-shadow: 0 16px 48px #0002;
+  --action-warm: var(--wm-text);
+  --action-warm-soft: var(--wm-hover);
+  --action-cool: var(--wm-text);
+  --action-cool-soft: var(--wm-hover);
+  --action-orange: var(--wm-primary);
+  --action-orange-hover: var(--wm-primary-hover-bg);
+  --el-color-primary-light-5: var(--wm-muted);
+  --el-color-primary-light-7: var(--wm-border);
+  --el-color-primary-light-8: var(--wm-hover);
+  --el-color-primary-dark-2: var(--wm-primary-hover-bg);
+  --el-color-success: var(--wm-success-text);
+  --el-color-success-light-9: var(--wm-success-bg);
+  --el-color-warning: var(--wm-warning-text);
+  --el-color-warning-dark-2: var(--wm-warning-text);
+  --el-color-warning-light-9: var(--wm-warning-bg);
+  --el-color-danger: var(--wm-danger-text);
+  --el-color-danger-dark-2: var(--wm-danger-text);
+  --el-color-danger-light-9: var(--wm-danger-bg);
+  --el-color-info: var(--wm-muted);
+  --el-color-info-light-9: var(--wm-neutral-bg);
+  --el-mask-color: color-mix(in srgb, var(--wm-bg) 82%, transparent);
+  --el-mask-color-extra-light: color-mix(in srgb, var(--wm-bg) 65%, transparent);
+  --success: var(--wm-success-text);
+  --danger: var(--wm-danger-text);
+  background: var(--wm-canvas);
+}
+html.wm-app body {
+  background: var(--wm-canvas);
+}
+html.wm-app .page {
+  --workspace-control-height: 40px;
+  --workspace-heading-size: 20px;
+}
+html.wm-app .workspace-data-panel.wm-data-panel {
+  padding: 20px;
+  border: 1px solid var(--wm-border);
+  border-radius: 12px;
+  background: var(--wm-bg);
+}
+html.wm-app .wm-data-panel > .el-card {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+html.wm-app .wm-pagination {
+  width: 100%;
+}
+html.wm-app .team-workspace__content--card .workspace-data-panel.wm-data-panel {
+  border: 0;
+  border-radius: 0;
+}
+html.wm-app .workspace-data-panel .workspace-data-panel.wm-data-panel {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+html.wm-app :is(.workspace-card.el-card, .el-card, .integration-panel) {
+  border-color: var(--wm-border);
+  border-radius: 12px;
+  background: var(--wm-bg);
+  box-shadow: none;
+}
+html.wm-app :is(.el-card__header, .filter-bar, .admin-pagination, .pagination-bar) {
+  background: var(--wm-bg);
+  border-color: var(--wm-border);
+}
+html.wm-app .page.admin-workspace .filter-bar {
+  padding: 20px;
+  gap: 10px;
+}
+html.wm-app .page.admin-workspace .table-region {
+  margin-inline: 20px;
+}
+html.wm-app .page.admin-workspace .admin-pagination {
+  padding: 16px 20px;
+}
+html.wm-app .app-button.el-button:not(.is-link):not(.is-text) {
+  min-height: 40px;
+  height: 40px;
+  padding-inline: 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: normal;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    transform 120ms ease;
+}
+html.wm-app .app-button.el-button.el-button--small:not(.is-link):not(.is-text) {
+  min-height: 32px;
+  height: 32px;
+  padding-inline: 10px;
+  font-size: 13px;
+}
+html.wm-app .app-button.el-button.is-circle {
+  padding: 10px;
+}
+html.wm-app .app-button.el-button:not(.is-disabled):not(.is-loading):active {
+  transform: scale(0.97);
+}
+html.wm-app .el-button.is-link,
+html.wm-app .el-button.is-text {
+  min-height: 28px;
+  height: auto;
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--wm-text);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+html.wm-app .el-button.is-link:hover:not(:disabled) {
+  color: var(--wm-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+html.wm-app .el-button.el-button--danger:is(.is-link, .is-text, .is-plain) {
+  color: var(--wm-danger-text);
+}
+html.wm-app .el-button.el-button--danger:not(.is-link):not(.is-text):not(.is-plain) {
+  color: #fff;
+  border-color: var(--wm-danger-text);
+  background: var(--wm-danger-text);
+}
+html.wm-app .el-button.is-disabled {
+  opacity: 0.45;
+}
+html.wm-app .el-button > span {
+  gap: 6px;
+}
+html.wm-app .el-button:focus-visible {
+  outline: 2px solid var(--wm-focus-ring);
+  outline-offset: 3px;
+}
+html.wm-app :is(.el-input__wrapper, .el-select__wrapper) {
+  min-height: 40px;
+  border-radius: 6px;
+  background: var(--wm-surface);
+}
+html.wm-app .el-input {
+  --el-input-height: 40px;
+}
+html.wm-app .el-descriptions {
+  --el-descriptions-item-bordered-label-background: var(--wm-muted-surface);
+}
+html.wm-app
+  :is(
+    .el-descriptions__body,
+    .el-descriptions__cell,
+    .el-collapse,
+    .el-collapse-item__header,
+    .el-collapse-item__wrap
+  ) {
+  color: var(--wm-text);
+  background: var(--wm-bg);
+  border-color: var(--wm-border);
+}
+html.wm-app .el-descriptions__label.el-descriptions__cell {
+  color: var(--wm-muted);
+  background: var(--wm-muted-surface);
+  font-weight: 500;
+}
+html.wm-app :is(.el-tag, .el-tag.el-tag--light) {
+  background-image: none;
+  box-shadow: none;
+}
+html.wm-app .el-table.wm-data-table {
+  --el-table-bg-color: var(--wm-bg);
+  --el-table-tr-bg-color: var(--wm-bg);
+  --el-table-header-bg-color: var(--wm-muted-surface);
+  --el-table-header-text-color: var(--wm-muted);
+  --el-table-text-color: var(--wm-text);
+  --el-table-border-color: var(--wm-border);
+  --el-table-row-hover-bg-color: var(--wm-hover);
+  border-color: var(--wm-border);
+  background: var(--wm-bg);
+  box-shadow: none;
+}
+html.wm-app .wm-data-table.el-table .el-table__header-wrapper th.el-table__cell {
+  height: 48px;
+  padding-block: 12px;
+  background: var(--wm-muted-surface);
+  color: var(--wm-muted);
+  border-right: 0;
+  border-bottom: 1px solid var(--wm-border);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: normal;
+}
+html.wm-app .wm-data-table.el-table .el-table__body .el-table__row > td.el-table__cell {
+  height: 54px;
+  padding-block: 14px;
+  border-right: 0;
+  border-bottom: 1px solid var(--wm-table-divider);
+  background: var(--wm-bg);
+}
+html.wm-app
+  .wm-data-table.el-table
+  .el-table__body
+  .el-table__row:is(:hover, .hover-row)
+  > td.el-table__cell {
+  background: var(--wm-hover);
+}
+html.wm-app .wm-data-table .el-table__cell > .cell {
+  padding-inline: 14px;
+  font-size: 14px;
+  line-height: 22px;
+}
+html.wm-app .wm-data-table .el-table__expand-column > .cell {
+  padding-inline: 8px;
+}
+html.wm-app
+  .wm-data-table
+  :is(
+    .el-table__border-left-patch,
+    .el-table__inner-wrapper::before,
+    .el-table__inner-wrapper::after
+  ) {
+  display: none;
+}
+html.wm-app :is(.el-pagination .el-pager li, .el-pagination .btn-prev, .el-pagination .btn-next) {
+  border-radius: 8px;
+  background: var(--wm-bg);
+  color: var(--wm-muted);
+  box-shadow: none;
+}
+html.wm-app .el-pagination .el-pager li.is-active {
+  color: var(--wm-text);
+  background: var(--wm-hover);
+  outline: 1px solid var(--wm-border);
+}
+html.wm-app :is(.el-popper.is-light, .el-picker-panel, .el-dropdown-menu, .el-message-box) {
+  background: var(--wm-bg);
+  color: var(--wm-text);
+  border-color: var(--wm-border);
+  box-shadow: 0 8px 28px #0002;
+  backdrop-filter: none;
+}
+html.wm-app
+  :is(
+    .el-message-box__title,
+    .el-message-box__content,
+    .el-picker-panel__icon-btn,
+    .el-date-picker__header-label
+  ) {
+  color: var(--wm-text);
+}
+html.wm-app :is(.el-radio-button__inner, .el-radio-button:first-child .el-radio-button__inner) {
+  color: var(--wm-muted);
+  background: var(--wm-bg);
+  border-color: var(--wm-border);
+  box-shadow: none;
+}
+html.wm-app .el-radio-button.is-active .el-radio-button__inner {
+  color: var(--wm-primary-text);
+  background: var(--wm-primary);
+  border-color: var(--wm-primary);
+  box-shadow: none;
+}
+html.wm-app .el-switch .el-switch__action {
+  background: var(--wm-muted);
+}
+html.wm-app .el-switch.is-checked .el-switch__action {
+  background: var(--wm-primary-text);
+}
+html.wm-app .el-switch.is-checked .el-switch__inner-wrapper {
+  color: var(--wm-primary-text);
+}
+html.wm-app .wm-app-drawer.el-drawer {
+  --dialog-input-bg: var(--wm-surface);
+  border: 1px solid var(--wm-border);
+  border-radius: 16px 0 0 16px;
+  background: var(--wm-bg);
+  color: var(--wm-text);
+  box-shadow: -12px 0 40px #0002;
+  backdrop-filter: none;
+}
+html.wm-app .wm-app-drawer :is(.el-drawer__header, .el-drawer__footer) {
+  padding: 20px 24px;
+  margin: 0;
+  border-color: var(--wm-border);
+  border-radius: 0;
+  background: var(--wm-bg);
+  color: var(--wm-text);
+  box-shadow: none;
+}
+html.wm-app .wm-app-drawer .el-drawer__header {
+  border-bottom: 1px solid var(--wm-border);
+}
+html.wm-app .wm-app-drawer .el-drawer__title {
+  font-size: 17px;
+  font-weight: 600;
+}
+html.wm-app .wm-app-drawer .el-drawer__body {
+  padding: 20px 24px;
+  color: var(--wm-text);
+}
+html.wm-app .wm-app-drawer .el-drawer__footer {
+  border-top: 1px solid var(--wm-border);
+}
+html.wm-app :is(.wm-app-drawer, .wm-app-dialog)::before,
+html.wm-app :is(.wm-app-drawer, .wm-app-dialog)::after,
+html.wm-app :is(.wm-app-drawer, .wm-app-dialog) :is(.el-drawer__footer, .el-dialog__footer)::before,
+html.wm-app :is(.wm-app-drawer, .wm-app-dialog) :is(.el-drawer__footer, .el-dialog__footer)::after {
+  display: none;
+}
+@media (max-width: 760px) {
+  html.wm-app .workspace-data-panel.wm-data-panel,
+  html.wm-app .team-workspace__content--card > .workspace-data-panel.wm-data-panel {
+    padding: 12px;
+  }
+  html.wm-app .workspace-data-panel .workspace-data-panel.wm-data-panel {
+    padding: 0;
+  }
+  html.wm-app .page.admin-workspace .filter-bar {
+    padding: 12px;
+  }
+  html.wm-app .page.admin-workspace .table-region {
+    margin-inline: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html.wm-app .app-button.el-button {
+    transition: none;
+    transform: none;
+  }
+}
+@media print {
+  html.wm-app {
+    color-scheme: light;
+    --wm-bg: #fff;
+    --wm-surface: #fff;
+    --wm-text: #18181b;
+    --wm-muted: #52525b;
+    --wm-muted-surface: #fafafa;
+    --wm-border: #e4e4e7;
+    --wm-primary: #18181b;
+    --wm-primary-text: #fff;
+  }
+}
+
+/* Existing page frames share the same card and footer as the warehouse. */
+html.wm-app .page.admin-workspace .workspace-card {
+  overflow: hidden;
+  border: 1px solid var(--wm-border);
+  border-radius: 12px;
+}
+html.wm-app .page.admin-workspace .table-region {
+  border-top: 0;
+}
+html.wm-app :is(.admin-pagination, .pagination-bar) > .wm-pagination {
+  width: 100%;
+  padding-top: 0;
+  border-top: 0;
+}
+html.wm-app :is(.wm-app-drawer, .wm-dialog) .wm-pagination {
+  width: 100%;
+}
+html.wm-app :is(.route-dialog-symbol, .route-rework-symbol, .schedule-date-trigger) {
+  background: var(--wm-surface);
+  border-color: var(--wm-border);
+  box-shadow: none;
+}
+html.wm-app .route-list .route-rework-status {
+  color: var(--wm-warning-text);
+  background: var(--wm-warning-bg);
+  border-color: transparent;
+  border-radius: 999px;
+  box-shadow: none;
+}
+html.wm-app .route-list .route-rework-ready {
+  color: var(--wm-success-text);
+  background: var(--wm-success-bg);
+}
+html.wm-app .production-timeline .batch-bar:not(.stock):not(.partial) {
+  color: color-mix(in srgb, var(--team) 75%, var(--wm-text));
+}
+html.wm-app .production-timeline .date-preset.active {
+  color: var(--wm-text);
+}
+html.wm-app .login-page {
+  --primary: var(--wm-primary);
+  color: var(--wm-text);
+  background: var(--wm-canvas);
+}
+html.wm-app .login-scene {
+  opacity: 0.08;
+  filter: grayscale(1);
+  animation: none;
+}
+html.wm-app .login-page .login-card {
+  color: var(--wm-text);
+  background: var(--wm-bg);
+  border: 1px solid var(--wm-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px #0001;
+  backdrop-filter: none;
+  translate: none;
+}
+html.wm-app .login-card::before,
+html.wm-app .login-card header::after {
+  display: none;
+}
+html.wm-app .login-card .el-form-item__label,
+html.wm-app .login-card .el-input__inner {
+  color: var(--wm-text);
+}
+html.wm-app .login-card .el-input__wrapper {
+  background: var(--wm-surface);
+  box-shadow: 0 0 0 1px var(--wm-border) inset;
+}
+html.wm-app .login-card .el-input__wrapper.is-focus {
+  box-shadow:
+    0 0 0 1px var(--wm-primary) inset,
+    0 0 0 3px var(--wm-hover);
+}
+html.wm-app .login-card .login-submit {
+  color: var(--wm-primary-text);
+  background: var(--wm-primary);
+  border-color: var(--wm-primary);
+  box-shadow: none;
+}
+
+/* A toolbar embedded in the timeline shares controls, but stays on a single line. */
+html.wm-app .production-timeline .toolbar-start .wm-data-toolbar {
+  flex: 1 1 340px;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+html.wm-app .production-timeline .wm-data-toolbar > .wm-toolbar-search {
+  flex: 1 1 190px;
+  min-width: 100px;
+}
+html.wm-app .production-timeline .wm-toolbar-tools:empty {
+  display: none;
+}
+html.wm-app .production-timeline .wm-toolbar-tools {
+  margin: 0;
+}
+html.wm-app .production-timeline .period-switch button[aria-pressed='true'] {
+  color: var(--wm-text);
+}
+html.wm-app .production-timeline .day-headings .today {
+  color: var(--wm-success-text);
+}

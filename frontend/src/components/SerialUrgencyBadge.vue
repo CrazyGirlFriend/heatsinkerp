@@ -113,11 +113,11 @@ const label = computed(() =>
   border-color: var(--line);
 }
 .serial-urgency-badge.is-urgent {
-  background: #fff2e5;
+  background: var(--wm-warning-bg, #fff2e5);
 }
 .serial-urgency-badge.is-urgent:hover {
-  background: #ffe9d4;
-  border-color: #f4c89e;
+  background: var(--wm-warning-bg, #ffe9d4);
+  border-color: var(--wm-warning-text, #f4c89e);
 }
 .serial-urgency-badge:focus-visible {
   outline: 2px solid var(--primary);

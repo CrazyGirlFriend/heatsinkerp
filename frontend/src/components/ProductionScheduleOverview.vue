@@ -16,7 +16,8 @@ import {
   Lock,
   LocationFilled,
 } from '@element-plus/icons-vue'
-import { ElButton, ElIcon, ElTooltip } from 'element-plus'
+import { ElIcon, ElTooltip } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import ScheduleDateRange from './ScheduleDateRange.vue'
 import ScheduleStockSummary from './ScheduleStockSummary.vue'
@@ -890,7 +891,7 @@ onBeforeUnmount(() => {
 .sp-route-alert {
   border: 0;
   background: transparent;
-  color: #8a601e;
+  color: var(--wm-warning-text, #8a601e);
   font-size: 12px;
   display: grid;
   place-items: center;
@@ -901,17 +902,17 @@ onBeforeUnmount(() => {
 }
 .schedule-progress {
   --sp-green: var(--primary);
-  --sp-muted: #69716d;
-  --sp-line: #dfe5e2;
-  --sp-red: #b93434;
+  --sp-muted: var(--wm-muted, #69716d);
+  --sp-line: var(--wm-border, #dfe5e2);
+  --sp-red: var(--wm-danger-text, #b93434);
   display: flex;
   flex: 0 1 auto;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   container-type: inline-size;
-  color: #171b18;
-  background: white;
+  color: var(--wm-text, #171b18);
+  background: var(--wm-bg, white);
   font-size: 14px;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
@@ -937,7 +938,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--sp-line);
   border-bottom: 0;
   border-radius: 10px 10px 0 0;
-  background: #fff;
+  background: var(--wm-bg, #fff);
   box-shadow: inset 0 1px 0 #fff;
 }
 .sp-week-actions {
@@ -952,7 +953,7 @@ onBeforeUnmount(() => {
   margin-right: 6px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #f7faf8;
+  background: var(--wm-muted-surface, #f7faf8);
 }
 .schedule-progress .sp-zoom button {
   display: grid;
@@ -975,7 +976,7 @@ onBeforeUnmount(() => {
   width: 44px;
 }
 .sp-zoom button:hover:not(:disabled) {
-  background: white;
+  background: var(--wm-bg, white);
   box-shadow: 0 1px 4px #173a2212;
 }
 .sp-zoom button:disabled {
@@ -994,9 +995,9 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  border: 1px solid #e2e9e4;
+  border: 1px solid var(--wm-muted-surface, #e2e9e4);
   border-radius: 8px;
-  background: white;
+  background: var(--wm-bg, white);
   color: var(--text);
   padding: 5px 8px;
   font-size: 13px;
@@ -1005,7 +1006,7 @@ onBeforeUnmount(() => {
 }
 .sp-subtle-button:hover,
 .sp-icon-button:hover {
-  background: #eef6f1;
+  background: var(--wm-muted-surface, #eef6f1);
 }
 .sp-scroll {
   overflow: auto;
@@ -1013,7 +1014,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
-  scrollbar-color: #b6c6be #f5f7f6;
+  scrollbar-color: #b6c6be var(--wm-muted-surface, #f5f7f6);
 }
 .sp-grid {
   display: grid;
@@ -1049,8 +1050,8 @@ onBeforeUnmount(() => {
 .sp-calendar-bands {
   display: flex;
   height: 24px;
-  border-bottom: 1px solid #e4e6e5;
-  background: #f1f4f2;
+  border-bottom: 1px solid var(--wm-muted-surface, #e4e6e5);
+  background: var(--wm-muted-surface, #f1f4f2);
   color: var(--text);
   font-size: 12px;
   font-weight: 600;
@@ -1058,7 +1059,7 @@ onBeforeUnmount(() => {
 .sp-calendar-bands span {
   min-width: 0;
   padding: 4px 12px;
-  border-right: 1px solid #e4e6e5;
+  border-right: 1px solid var(--wm-muted-surface, #e4e6e5);
   white-space: nowrap;
   overflow: clip;
 }
@@ -1072,25 +1073,25 @@ onBeforeUnmount(() => {
   min-height: 30px;
 }
 .sp-scroll {
-  border: 1px solid #d9ddda;
+  border: 1px solid var(--wm-border, #d9ddda);
   border-radius: 0 0 6px 6px;
-  background: white;
+  background: var(--wm-bg, white);
   box-shadow: 0 2px 5px #23473605;
 }
 .sp-row:nth-of-type(even) :is(.sp-row-main, .sp-serial, .sp-target) {
-  background-color: #f8faf9;
+  background-color: var(--wm-muted-surface, #f8faf9);
 }
 .sp-row:is(:hover, :focus-within) :is(.sp-row-main, .sp-serial, .sp-target) {
-  background-color: #edf4f0;
+  background-color: var(--wm-muted-surface, #edf4f0);
 }
 .sp-table-head {
   position: sticky;
   top: 0;
   z-index: 3;
-  border-bottom: 1px solid #cfd4d1;
-  background: #f1f4f2;
+  border-bottom: 1px solid var(--wm-border, #cfd4d1);
+  background: var(--wm-muted-surface, #f1f4f2);
   align-items: stretch;
-  color: #232824;
+  color: var(--wm-text, #232824);
   font-size: 13px;
   font-weight: 600;
   min-height: 60px;
@@ -1098,7 +1099,7 @@ onBeforeUnmount(() => {
 .sp-table-head > span {
   display: flex;
   align-items: center;
-  background: #f1f4f2;
+  background: var(--wm-muted-surface, #f1f4f2);
   border-right: 1px solid var(--sp-line);
 }
 .sp-head-serial {
@@ -1128,11 +1129,11 @@ onBeforeUnmount(() => {
   font-weight: 400;
 }
 .sp-day.is-weekend {
-  background: #fcf5f5;
+  background: var(--wm-danger-bg, #fcf5f5);
 }
 .sp-day.is-today {
   color: var(--primary);
-  background: #edf6f1;
+  background: var(--wm-success-bg, #edf6f1);
   box-shadow: inset 0 -2px 0 var(--primary);
 }
 .sp-day.is-today small {
@@ -1145,16 +1146,16 @@ onBeforeUnmount(() => {
 }
 .sp-hours {
   border-top: 1px solid var(--sp-line);
-  background: #fff;
+  background: var(--wm-bg, #fff);
 }
 .sp-hour-day {
   grid-template-columns: repeat(var(--hour-count), minmax(0, 1fr));
-  border-right: 1px solid #cfdad3;
+  border-right: 1px solid var(--wm-border, #cfdad3);
 }
 .sp-hour-day span {
   padding: 2px 5px;
-  border-left: 1px solid #e6ebe7;
-  color: #68766e;
+  border-left: 1px solid var(--wm-muted-surface, #e6ebe7);
+  color: var(--wm-muted, #68766e);
   font-size: 10px;
   font-weight: 400;
 }
@@ -1171,7 +1172,7 @@ onBeforeUnmount(() => {
 .sp-node-info {
   width: 352px;
   max-width: calc(100vw - 48px);
-  color: #171b18;
+  color: var(--wm-text, #171b18);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
@@ -1195,7 +1196,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 12px;
   padding-bottom: 10px;
-  border-bottom: 1px solid #e0e7e2;
+  border-bottom: 1px solid var(--wm-border, #e0e7e2);
 }
 .sp-node-info header strong {
   padding-left: 8px;
@@ -1204,19 +1205,19 @@ onBeforeUnmount(() => {
 }
 .sp-node-info header strong small {
   margin-left: 8px;
-  color: #63706c;
+  color: var(--wm-muted, #63706c);
   font-size: 12px;
   font-weight: 400;
   white-space: nowrap;
 }
 .sp-node-info header span {
   flex-shrink: 0;
-  color: #63706c;
+  color: var(--wm-muted, #63706c);
   font-size: 12px;
 }
 .sp-node-info header .is-late,
 .sp-node-info header .is-hold {
-  color: #b93434;
+  color: var(--wm-danger-text, #b93434);
 }
 .sp-node-dates {
   display: grid;
@@ -1230,7 +1231,7 @@ onBeforeUnmount(() => {
   gap: 4px;
 }
 .sp-node-dates span {
-  color: #63706c;
+  color: var(--wm-muted, #63706c);
   font-size: 12px;
 }
 .sp-node-dates time,
@@ -1246,13 +1247,13 @@ onBeforeUnmount(() => {
 .sp-node-amounts th,
 .sp-node-amounts td {
   padding: 7px 8px;
-  border: 1px solid #e0e7e2;
+  border: 1px solid var(--wm-border, #e0e7e2);
   text-align: left;
   overflow-wrap: anywhere;
 }
 .sp-node-amounts th {
-  background: #f3f7f4;
-  color: #63706c;
+  background: var(--wm-muted-surface, #f3f7f4);
+  color: var(--wm-muted, #63706c);
   font-size: 12px;
   font-weight: 400;
 }
@@ -1261,7 +1262,7 @@ onBeforeUnmount(() => {
 }
 .sp-node-amounts small {
   margin-left: 4px;
-  color: #63706c;
+  color: var(--wm-muted, #63706c);
   font-size: 12px;
   font-weight: 400;
   white-space: nowrap;
@@ -1273,7 +1274,7 @@ onBeforeUnmount(() => {
   margin: 10px 0 0;
 }
 .sp-node-info dt {
-  color: #63706c;
+  color: var(--wm-muted, #63706c);
 }
 .sp-node-info dd {
   margin: 0;
@@ -1295,7 +1296,7 @@ onBeforeUnmount(() => {
   position: sticky;
   left: 0;
   z-index: 1;
-  background: white;
+  background: var(--wm-bg, white);
   border-right: 1px solid var(--line);
 }
 .sp-serial,
@@ -1317,7 +1318,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   box-shadow: 3px 0 4px #24463308;
-  border-right-color: #d0d6d7;
+  border-right-color: var(--wm-border, #d0d6d7);
 }
 .schedule-progress .sp-serial-button {
   width: 100%;
@@ -1328,7 +1329,7 @@ onBeforeUnmount(() => {
   text-align: left;
   font-size: 14px;
   font-weight: 600;
-  color: #171b18;
+  color: var(--wm-text, #171b18);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1342,7 +1343,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #252a27;
+  color: var(--wm-text, #252a27);
 }
 .sp-serial-button:hover {
   color: var(--primary);
@@ -1359,15 +1360,15 @@ onBeforeUnmount(() => {
       90deg,
       transparent 0,
       transparent calc(100% / var(--day-count) - 1px),
-      #edf0f1 calc(100% / var(--day-count) - 1px),
-      #edf0f1 calc(100% / var(--day-count))
+      var(--wm-muted-surface, #edf0f1) calc(100% / var(--day-count) - 1px),
+      var(--wm-muted-surface, #edf0f1) calc(100% / var(--day-count))
     ),
     repeating-linear-gradient(
       90deg,
       transparent 0,
       transparent calc(100% / var(--day-count) / var(--hour-count) - 1px),
-      #f2f4f5 calc(100% / var(--day-count) / var(--hour-count) - 1px),
-      #f2f4f5 calc(100% / var(--day-count) / var(--hour-count))
+      var(--wm-muted-surface, #f2f4f5) calc(100% / var(--day-count) / var(--hour-count) - 1px),
+      var(--wm-muted-surface, #f2f4f5) calc(100% / var(--day-count) / var(--hour-count))
     ),
     var(--weekend-shading);
 }
@@ -1421,7 +1422,7 @@ onBeforeUnmount(() => {
   background: var(--team-color);
   color: white;
   box-shadow:
-    inset 0 1px 0 #ffffff24,
+    inset 0 1px 0 var(--wm-muted-surface, #ffffff24),
     0 1px 2px #12251a12;
   z-index: 2;
   text-align: left;
@@ -1441,9 +1442,9 @@ onBeforeUnmount(() => {
   gap: 2px;
   align-items: center;
   padding: 3px 4px;
-  border: 1px solid #d6e2db;
+  border: 1px solid var(--wm-border, #d6e2db);
   border-radius: 4px;
-  background: #fff;
+  background: var(--wm-bg, #fff);
   color: var(--primary);
   font-size: 10px;
 }
@@ -1456,7 +1457,7 @@ onBeforeUnmount(() => {
   right: 4px;
 }
 .sp-edge:hover {
-  background: #edf6f1;
+  background: var(--wm-success-bg, #edf6f1);
 }
 .sp-node-anchor {
   position: absolute;
@@ -1503,7 +1504,7 @@ onBeforeUnmount(() => {
   color: #fff1cc;
 }
 .sp-node.is-unplanned .sp-node-warning {
-  color: #b93434;
+  color: var(--wm-danger-text, #b93434);
 }
 .has-active-node .sp-node:not(.is-related) {
   opacity: 0.48;
@@ -1526,11 +1527,11 @@ onBeforeUnmount(() => {
 }
 .sp-unplanned-key {
   border: 1px dashed var(--sp-green);
-  background: color-mix(in srgb, var(--sp-green) 8%, white);
+  background: color-mix(in srgb, var(--sp-green) 8%, var(--wm-bg, white));
 }
 .sp-done-key {
-  border: 1px solid color-mix(in srgb, var(--sp-green) 30%, white);
-  background: color-mix(in srgb, var(--sp-green) 5%, white);
+  border: 1px solid color-mix(in srgb, var(--sp-green) 30%, var(--wm-bg, white));
+  background: color-mix(in srgb, var(--sp-green) 5%, var(--wm-bg, white));
   color: var(--sp-green);
 }
 .sp-completion {
@@ -1538,7 +1539,7 @@ onBeforeUnmount(() => {
   bottom: 0;
   left: 0;
   height: 3px;
-  background: #ffffffb3;
+  background: var(--wm-muted-surface, #ffffffb3);
   pointer-events: none;
 }
 .sp-node-time {
@@ -1558,31 +1559,31 @@ onBeforeUnmount(() => {
 .sp-node.is-hold .sp-node-time {
   padding: 0 3px;
   margin-left: -3px;
-  color: #a72323;
-  background: #fff1f0;
+  color: var(--wm-danger-text, #a72323);
+  background: var(--wm-danger-bg, #fff1f0);
 }
 .sp-node.is-today:not(.is-hold) .sp-node-time {
   padding: 0 3px;
   margin-left: -3px;
-  color: #6b4805;
-  background: #fff1cd;
+  color: var(--wm-warning-text, #6b4805);
+  background: var(--wm-warning-bg, #fff1cd);
 }
 .schedule-progress .sp-node.is-related {
   box-shadow:
-    0 0 0 2px white,
+    0 0 0 2px var(--wm-bg, white),
     0 0 0 3px var(--team-border);
 }
 .schedule-progress .sp-node.is-active {
   box-shadow:
-    0 0 0 2px white,
+    0 0 0 2px var(--wm-bg, white),
     0 0 0 3px var(--team-color),
     0 4px 10px #172a2326;
   transform: translate(var(--label-offset), -1px);
   z-index: 3;
 }
 .schedule-progress .sp-node.is-cancelled {
-  background: #e9eced;
-  color: #59615d;
+  background: var(--wm-muted-surface, #e9eced);
+  color: var(--wm-muted, #59615d);
 }
 .sp-stock-empty {
   display: inline-flex;
@@ -1599,11 +1600,11 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 5px;
   padding: 1px 7px;
-  border: 1px solid #d4e4da;
+  border: 1px solid var(--wm-border, #d4e4da);
   border-radius: 5px;
   font-size: 11px;
   color: #31634c;
-  background: #f0f7f3;
+  background: var(--wm-success-bg, #f0f7f3);
   line-height: 18px;
   white-space: nowrap;
 }
@@ -1611,23 +1612,23 @@ onBeforeUnmount(() => {
   filter: brightness(0.97);
 }
 .sp-detail .sp-risk.is-watch {
-  color: #946018;
+  color: var(--wm-warning-text, #946018);
   border-color: #e9d8b9;
-  background: #fff7e9;
+  background: var(--wm-warning-bg, #fff7e9);
 }
 .sp-detail .sp-risk.is-hold,
 .sp-detail .sp-risk.is-late {
-  color: #ad2929;
-  border-color: #ecd1cd;
-  background: #fff1ef;
+  color: var(--wm-danger-text, #ad2929);
+  border-color: var(--wm-border, #ecd1cd);
+  background: var(--wm-danger-bg, #fff1ef);
 }
 .sp-detail .sp-risk.is-muted {
   color: var(--muted);
   border-color: var(--line);
-  background: #f5f7f6;
+  background: var(--wm-muted-surface, #f5f7f6);
 }
 .sp-detail {
-  --sp-red: #ba5050;
+  --sp-red: var(--wm-danger-text, #ba5050);
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
@@ -1661,20 +1662,20 @@ onBeforeUnmount(() => {
 }
 .sp-detail-fields th,
 .sp-detail-fields td {
-  border: 1px solid #dde3e0;
+  border: 1px solid var(--wm-border, #dde3e0);
   padding: 10px 12px;
   text-align: left;
 }
 .sp-detail-fields th {
   width: 100px;
   white-space: nowrap;
-  background: #f5f7f6;
-  color: #53625a;
+  background: var(--wm-muted-surface, #f5f7f6);
+  color: var(--wm-muted, #53625a);
   font-weight: 500;
 }
 .sp-detail-fields td {
-  background: white;
-  color: #181c1a;
+  background: var(--wm-bg, white);
+  color: var(--wm-text, #181c1a);
 }
 .sp-detail-fields time {
   white-space: nowrap;
@@ -1683,7 +1684,7 @@ onBeforeUnmount(() => {
   font-size: 13px;
   line-height: 1.7;
   padding: 0 0 12px;
-  color: #496454;
+  color: var(--wm-muted, #496454);
 }
 .sp-detail-timeline {
   display: flex;
@@ -1720,8 +1721,8 @@ onBeforeUnmount(() => {
   padding: 5px 10px;
   border: 1px solid #dfcfad;
   border-radius: 5px;
-  color: #775825;
-  background: #fffbf0;
+  color: var(--wm-warning-text, #775825);
+  background: var(--wm-warning-bg, #fffbf0);
   font-size: 12px;
   cursor: pointer;
 }
@@ -1762,9 +1763,9 @@ onBeforeUnmount(() => {
   overflow: hidden;
   padding-inline: 6px;
   gap: 4px;
-  background: color-mix(in srgb, var(--team-color) 8%, white);
-  color: color-mix(in srgb, var(--team-color) 80%, #171b18);
-  border: 1px dashed color-mix(in srgb, var(--team-color) 60%, white);
+  background: color-mix(in srgb, var(--team-color) 8%, var(--wm-bg, white));
+  color: color-mix(in srgb, var(--team-color) 80%, var(--wm-text, #171b18));
+  border: 1px dashed color-mix(in srgb, var(--team-color) 60%, var(--wm-bg, white));
 }
 .sp-node.is-unplanned .sp-team {
   gap: 4px;
@@ -1772,7 +1773,7 @@ onBeforeUnmount(() => {
 .schedule-progress .sp-node.is-interval.is-done {
   border: 1px solid var(--team-border);
   background: var(--team-tint);
-  color: color-mix(in srgb, var(--team-color) 80%, #171b18);
+  color: color-mix(in srgb, var(--team-color) 80%, var(--wm-text, #171b18));
 }
 .sp-node.is-done .sp-completion {
   background: var(--team-border);
@@ -1803,7 +1804,7 @@ onBeforeUnmount(() => {
   font-weight: 400;
 }
 .sp-time-warning {
-  color: #b03c2e;
+  color: var(--wm-danger-text, #b03c2e);
   max-width: 260px;
 }
 </style>
@@ -1811,9 +1812,9 @@ onBeforeUnmount(() => {
 <style>
 .el-popper.schedule-node-tooltip {
   padding: 12px 14px;
-  border: 1px solid #d2ded6;
+  border: 1px solid var(--wm-border, #d2ded6);
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--wm-bg, #ffffff);
   box-shadow:
     0 2px 5px #1933270a,
     0 12px 28px #1933271c;

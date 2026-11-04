@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ElButton, ElCheckbox } from 'element-plus'
+import { ElCheckbox } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { inventoryAmount } from '@/types/teamInventory'
 defineProps<{
   count: number

@@ -13,6 +13,10 @@ import './styles/workspace.css'
 import './styles/reading-workspace.css'
 import './styles/business-tables.css'
 import './styles/glass-surfaces.css'
+import './components/watermelon/watermelon.css'
+import './components/watermelon/workspace.css'
+import './components/watermelon/forms.css'
+import './components/watermelon/application.css'
 
 const app = createApp(App)
 const disposeDiagnostics = installDiagnostics(app)

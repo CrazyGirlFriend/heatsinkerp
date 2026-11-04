@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { h } from 'vue'
+import { computed, h } from 'vue'
+import { workspaceAppearanceKey } from '@/composables/useWorkspaceAppearance'
 import { ElTableColumn } from 'element-plus'
 import TeamWorkspaceShell from './TeamWorkspaceShell.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
@@ -59,6 +60,19 @@ function workbench(warehouse = true) {
 }
 
 describe('warehouse shared appearance', () => {
+  it('inherits the application appearance in other teams, including dialogs', async () => {
+    const wrapper = mount(TeamWorkspaceShell, {
+      props: { title: '研磨', warehouse: false, modelValue: 'stock' },
+      global: { provide: { [workspaceAppearanceKey as symbol]: computed(() => 'watermelon') } },
+      slots: {
+        default: () => h(WorkspaceDataPanel, {}, () => h(AppDialog, { modelValue: false })),
+      },
+    })
+    wrappers.push(wrapper)
+    expect(wrapper.find('.team-workspace--watermelon').exists()).toBe(true)
+    expect(wrapper.find('.wm-data-panel').exists()).toBe(true)
+    expect(wrapper.find('.team-workspace__fullscreen').exists()).toBe(false)
+  })
   it('uses the same components throughout warehouse sections and keeps business events', async () => {
     const { wrapper, onSearch, onPage, onSize } = workbench()
     await flushPromises()

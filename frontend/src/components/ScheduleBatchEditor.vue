@@ -1,15 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import {
-  ElAlert,
-  ElButton,
-  ElDatePicker,
-  ElInputNumber,
-  ElOption,
-  ElSelect,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus'
+import { ElAlert, ElDatePicker, ElOption, ElSelect, ElTableColumn } from 'element-plus'
+import ElInputNumber from '@/components/AppNumberInput.vue'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import ScheduleDocuments from './ScheduleDocuments.vue'
 import CompactFormSection from './CompactFormSection.vue'
@@ -420,9 +414,9 @@ const defaultTime = new Date(2000, 0, 1, 8)
 .batch-plan-warning {
   margin-bottom: 8px;
   padding: 8px 12px;
-  color: #923a2b;
-  background: #fff0eb;
-  border-left: 3px solid #c45b43;
+  color: var(--wm-danger-text, #923a2b);
+  background: var(--wm-danger-bg, #fff0eb);
+  border-left: 3px solid var(--wm-danger-text, #c45b43);
   border-radius: 4px;
   font-size: 13px;
 }

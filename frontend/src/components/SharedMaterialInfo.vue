@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ElTable, ElTableColumn } from 'element-plus'
+import { ElTableColumn } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import { inventoryAmount } from '@/types/teamInventory'
 import type { SharedMaterialFields } from '@/types/sharedMaterial'
 const props = defineProps<{ item: SharedMaterialFields & { serial_no?: string } }>()

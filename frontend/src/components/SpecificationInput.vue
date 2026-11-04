@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { ElInput, ElInputNumber, ElOption, ElSelect } from 'element-plus'
+import { ElInput, ElOption, ElSelect } from 'element-plus'
+import ElInputNumber from '@/components/AppNumberInput.vue'
 const props = defineProps<{ modelValue: string; label: string; disabled?: boolean }>()
 const emit = defineEmits<{
   'update:modelValue': [value: string]

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import PersonName from '@/components/PersonName.vue'
 import { formatAmount } from '@/utils/format'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
@@ -24,17 +25,16 @@ import {
   Search,
 } from '@element-plus/icons-vue'
 import {
-  ElButton,
   ElCard,
   ElIcon,
   ElInput,
   ElLoading,
   ElOption,
-  ElPagination,
   ElSelect,
   ElSkeleton,
   ElTableColumn,
 } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
@@ -870,7 +870,7 @@ onBeforeUnmount(() => {
           class="table-pane"
           :aria-busy="loading"
           element-loading-text="正在更新记录"
-          element-loading-background="rgba(255, 255, 255, 0.72)"
+          element-loading-background="var(--el-mask-color)"
         >
           <ElSkeleton
             v-if="loading && !hasRows"
@@ -1139,8 +1139,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <footer v-if="!errorMessage" class="pagination-bar">
-          <span>共 {{ total }} 条</span
-          ><ElPagination
+          <WorkspacePagination
             background
             layout="sizes, prev, pager, next"
             :total="total"
@@ -1149,7 +1148,8 @@ onBeforeUnmount(() => {
             :page-sizes="[10, 20, 50, 100]"
             @current-change="setPage"
             @size-change="setPageSize"
-          />
+            >共 {{ total }} 条</WorkspacePagination
+          >
         </footer>
       </ElCard>
     </WorkspaceDataPanel>

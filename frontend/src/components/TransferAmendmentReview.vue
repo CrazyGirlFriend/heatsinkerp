@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { ElButton, ElInput, ElTag } from 'element-plus'
+import { ElInput, ElTag } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import PersonName from './PersonName.vue'
 import StatePanel from './StatePanel.vue'
 import { formatAmount, formatDateTime } from '@/utils/format'

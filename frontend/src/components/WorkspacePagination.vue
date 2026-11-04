@@ -16,7 +16,30 @@ const props = withDefaults(
   }>(),
   { pageSizes: () => [10, 20, 50, 100], layout: 'sizes, prev, pager, next' },
 )
-defineEmits<{ 'current-change': [page: number]; 'size-change': [size: number] }>()
+const emit = defineEmits<{
+  'update:currentPage': [page: number]
+  'update:pageSize': [size: number]
+  'current-change': [page: number]
+  'size-change': [size: number]
+  change: [page: number, size: number]
+}>()
+function changePage(page: number) {
+  emit('update:currentPage', page)
+  notifyPageChange(page)
+}
+function notifyPageChange(page: number) {
+  emit('current-change', page)
+  emit('change', page, props.pageSize)
+}
+function changeSize(size: number) {
+  emit('update:pageSize', size)
+  emit('size-change', size)
+  const page = Math.min(props.currentPage, Math.max(1, Math.ceil(props.total / size)))
+  if (page !== props.currentPage) {
+    emit('update:currentPage', page)
+  }
+  emit('change', page, size)
+}
 // The built-in size select updates ahead of its pageSize prop during URL navigation.
 const paginationLayout = computed(() => props.layout.replace('sizes', 'slot'))
 </script>
@@ -31,8 +54,8 @@ const paginationLayout = computed(() => props.layout.replace('sizes', 'slot'))
     :show-size="layout.includes('sizes')"
     :total="total"
     :disabled="disabled"
-    @current-change="$emit('current-change', $event)"
-    @size-change="$emit('size-change', $event)"
+    @current-change="changePage"
+    @size-change="changeSize"
   >
     <template v-if="$slots.default" #default><slot /></template>
     <template v-if="$slots.statistics" #statistics><slot name="statistics" /></template>
@@ -52,15 +75,17 @@ const paginationLayout = computed(() => props.layout.replace('sizes', 'slot'))
       :total="total"
       :disabled="disabled"
       :layout="paginationLayout"
-      @current-change="$emit('current-change', $event)"
-      @size-change="$emit('size-change', $event)"
+      @update:current-page="emit('update:currentPage', $event)"
+      @update:page-size="emit('update:pageSize', $event)"
+      @current-change="notifyPageChange"
+      @size-change="changeSize"
     >
       <span v-if="layout.includes('sizes')" class="el-pagination__sizes">
         <ElSelect
           :model-value="pageSize"
           :disabled="disabled"
           aria-label="每页条数"
-          @change="$emit('size-change', $event)"
+          @change="changeSize"
         >
           <ElOption v-for="size in pageSizes" :key="size" :value="size" :label="`${size}条/页`" />
         </ElSelect>

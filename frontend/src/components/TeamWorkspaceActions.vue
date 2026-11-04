@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { FullScreen, Plus, Refresh } from '@element-plus/icons-vue'
-import { ElButton } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import WatermelonButton from './watermelon/WatermelonButton.vue'
 import { IconPlus, IconQrcode, IconRefresh } from '@tabler/icons-vue'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'

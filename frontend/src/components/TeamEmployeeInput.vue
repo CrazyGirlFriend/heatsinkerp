@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElButton } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import ProcessingPersonInput from './ProcessingPersonInput.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { TeamEmployee } from '@/types/teamBusiness'

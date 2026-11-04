@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElButton, ElIcon } from 'element-plus'
+import { ElIcon } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { Document, Download } from '@element-plus/icons-vue'
 import { processRouteApi } from '@/services/processRouteApi'
 import type { ProcessRoute } from '@/types/processRoute'

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -12,7 +13,8 @@ import {
   DocumentChecked,
   Back,
 } from '@element-plus/icons-vue'
-import { ElAlert, ElButton, ElIcon, ElCheckbox, ElPagination } from 'element-plus'
+import { ElAlert, ElIcon, ElCheckbox } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import AppDrawer from './AppDrawer.vue'
 import TransferAmendmentReview from './TransferAmendmentReview.vue'
 import { scheduleNoticeApi } from '@/services/scheduleNoticeApi'
@@ -362,7 +364,7 @@ onBeforeUnmount(() => {
       </section>
     </div>
     <template #footer
-      ><ElPagination
+      ><WorkspacePagination
         v-model:current-page="page"
         :total="total"
         :page-size="20"
@@ -382,7 +384,7 @@ onBeforeUnmount(() => {
   padding: 8px 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--wm-surface, rgba(255, 255, 255, 0.6));
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -468,7 +470,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--wm-bg, #fff);
 }
 .inbox-content {
   flex: 1;
@@ -477,7 +479,7 @@ onBeforeUnmount(() => {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   border-right: 1px solid var(--line);
-  background: #fff;
+  background: var(--wm-bg, #fff);
 }
 .inbox-list {
   list-style: none;
@@ -496,7 +498,7 @@ onBeforeUnmount(() => {
   min-height: 94px;
   padding: 14px 12px;
   border: 0;
-  background: #fff;
+  background: var(--wm-bg, #fff);
   color: var(--text);
   font: inherit;
   text-align: left;
@@ -506,7 +508,7 @@ onBeforeUnmount(() => {
 .inbox-item.is-selected,
 .inbox-item:hover:not(:disabled),
 .inbox-item:focus-visible {
-  background: #f0f6f3;
+  background: var(--wm-muted-surface, #f0f6f3);
 }
 .inbox-item:focus-visible {
   outline-offset: -3px;
@@ -521,18 +523,18 @@ onBeforeUnmount(() => {
   width: 30px;
   height: 30px;
   border-radius: 9px;
-  background: #edf2f8;
-  color: #3b648f;
+  background: var(--wm-info-bg, #edf2f8);
+  color: var(--wm-info-text, #3b648f);
   font-size: 18px;
 }
 .inbox-item[data-kind='requested'] .inbox-symbol,
 .inbox-item[data-kind='ready'] .inbox-symbol {
-  background: #f2edf8;
-  color: #775499;
+  background: var(--wm-info-bg, #f2edf8);
+  color: var(--wm-info-text, #775499);
 }
 .inbox-item[data-kind='overdue'] .inbox-symbol {
-  background: #fcefed;
-  color: #ae3935;
+  background: var(--wm-danger-bg, #fcefed);
+  color: var(--wm-danger-text, #ae3935);
 }
 .inbox-unread-dot {
   position: absolute;
@@ -594,16 +596,16 @@ onBeforeUnmount(() => {
 }
 .inbox-kind {
   flex-shrink: 0;
-  color: #516579;
+  color: var(--wm-muted, #516579);
   font-size: 12px;
 }
 [data-kind='overdue'] .inbox-kind {
-  color: #ae3935;
+  color: var(--wm-danger-text, #ae3935);
 }
 [data-kind='requested'] .inbox-kind,
 [data-kind='due_soon'] .inbox-kind,
 [data-kind='upstream'] .inbox-kind {
-  color: #8c5b17;
+  color: var(--wm-warning-text, #8c5b17);
 }
 .inbox-batch {
   font-size: 12px;
@@ -611,7 +613,7 @@ onBeforeUnmount(() => {
 }
 .inbox-arrow {
   display: none;
-  color: #84928a;
+  color: var(--wm-muted, #84928a);
   transition:
     transform var(--motion-fast),
     color var(--motion-fast);
@@ -640,7 +642,7 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   padding: 24px;
   outline: none;
-  background: linear-gradient(135deg, #fff, #f9fbfa);
+  background: linear-gradient(135deg, var(--wm-bg, #fff), var(--wm-muted-surface, #f9fbfa));
 }
 .inbox-detail-heading {
   display: flex;
@@ -673,8 +675,8 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 .inbox-kind.is-action-required {
-  color: #8c5b17;
-  background: #fbf2df;
+  color: var(--wm-warning-text, #8c5b17);
+  background: var(--wm-warning-bg, #fbf2df);
   padding: 0 6px;
   border-radius: 4px;
 }

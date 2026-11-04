@@ -2,7 +2,8 @@
 import { ref } from 'vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
-import { ElAlert, ElButton, ElForm, ElFormItem, ElOption, ElSelect } from 'element-plus'
+import { ElAlert, ElForm, ElFormItem, ElOption, ElSelect } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import ProcessRouteEditor from './ProcessRouteEditor.vue'
 import { formatDateTime } from '@/utils/format'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -187,7 +188,7 @@ async function view(id: number) {
 }
 .rework-grid-wrap {
   overflow-x: auto;
-  border: 1px solid #dce4e0;
+  border: 1px solid var(--wm-border, #dce4e0);
   border-radius: 6px;
 }
 .rework-grid {
@@ -195,20 +196,20 @@ async function view(id: number) {
   min-width: 900px;
   border-collapse: collapse;
   table-layout: fixed;
-  background: #fff;
-  color: #262b28;
+  background: var(--wm-bg, #fff);
+  color: var(--wm-text, #262b28);
   font-size: 13px;
 }
 .rework-grid th,
 .rework-grid td {
   padding: 10px 12px;
-  border-right: 1px solid #e4e9e6;
-  border-bottom: 1px solid #e4e9e6;
+  border-right: 1px solid var(--wm-border, #e4e9e6);
+  border-bottom: 1px solid var(--wm-border, #e4e9e6);
   text-align: center;
   vertical-align: middle;
 }
 .rework-grid th {
-  background: #f5f8f6;
+  background: var(--wm-muted-surface, #f5f8f6);
   font-weight: 500;
 }
 .rework-grid th:last-child,

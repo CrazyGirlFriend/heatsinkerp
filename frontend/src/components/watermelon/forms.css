@@ -115,7 +115,7 @@
 .wm-scope.el-dialog .weight-input {
   max-width: none;
 }
-.wm-scope.el-dialog .el-form-item .wm-number-input .el-input__wrapper {
+.wm-scope.el-dialog .el-form-item .wm-number-input:not(.is-without-controls) .el-input__wrapper {
   padding-inline: 36px;
 }
 .wm-scope.el-dialog .weight-input {
@@ -134,19 +134,17 @@
   font-size: 14px;
 }
 /* Select/autocomplete menus are teleported outside their form. */
-body:has(.team-workspace--watermelon)
-  :is(.el-select__popper, .el-autocomplete-suggestion, .el-dropdown__popper).el-popper {
+html.wm-app :is(.el-select__popper, .el-autocomplete-suggestion, .el-dropdown__popper).el-popper {
   border: 1px solid var(--wm-border);
   border-radius: 10px;
   background: var(--wm-bg);
   box-shadow: 0 8px 24px #0002;
   backdrop-filter: none;
 }
-body:has(.team-workspace--watermelon)
-  :is(.el-select-dropdown__list, .el-autocomplete-suggestion__list, .el-dropdown-menu) {
+html.wm-app :is(.el-select-dropdown__list, .el-autocomplete-suggestion__list, .el-dropdown-menu) {
   padding: 4px;
 }
-body:has(.team-workspace--watermelon)
+html.wm-app
   :is(.el-select-dropdown__item, .el-autocomplete-suggestion li, .el-dropdown-menu__item) {
   position: relative;
   margin: 0;
@@ -163,7 +161,7 @@ body:has(.team-workspace--watermelon)
   font-weight: 400;
   transition: background-color 140ms;
 }
-body:has(.team-workspace--watermelon)
+html.wm-app
   :is(.el-select-dropdown__item, .el-autocomplete-suggestion li, .el-dropdown-menu__item):not(
     .is-disabled
   ):is(:hover, :focus, .is-hovering, .highlighted, .is-selected, :active) {
@@ -171,8 +169,7 @@ body:has(.team-workspace--watermelon)
   box-shadow: none;
   color: var(--wm-text);
 }
-body:has(.team-workspace--watermelon)
-  .el-select-dropdown__item.is-selected:not(.is-disabled)::after {
+html.wm-app .el-select-dropdown__item.is-selected:not(.is-disabled)::after {
   content: '';
   position: absolute;
   right: 12px;
@@ -183,14 +180,13 @@ body:has(.team-workspace--watermelon)
   border-width: 0 1.5px 1.5px 0;
   transform: rotate(45deg);
 }
-body:has(.team-workspace--watermelon)
-  :is(.el-select-dropdown__item, .el-dropdown-menu__item).is-disabled {
+html.wm-app :is(.el-select-dropdown__item, .el-dropdown-menu__item).is-disabled {
   color: var(--wm-muted);
   opacity: 0.5;
   background: transparent;
   cursor: not-allowed;
 }
-body:has(.team-workspace--watermelon) .el-select-dropdown {
+html.wm-app .el-select-dropdown {
   animation: wm-options-in 140ms ease-out;
 }
 @keyframes wm-options-in {
@@ -205,7 +201,7 @@ body:has(.team-workspace--watermelon) .el-select-dropdown {
 }
 @media (prefers-reduced-motion: reduce) {
   .wm-scope :is(.el-input__wrapper, .el-select__wrapper, .el-textarea__inner),
-  body:has(.team-workspace--watermelon)
+  html.wm-app
     :is(
       .el-select-dropdown,
       .el-select-dropdown__item,

@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElAlert, ElButton, ElInput, ElPagination, ElTag } from 'element-plus'
+import { ElAlert, ElInput, ElTag } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { RefreshRight, Search } from '@element-plus/icons-vue'
 import AppDialog from '@/components/AppDialog.vue'
 import PageBackButton from '@/components/PageBackButton.vue'
@@ -305,7 +307,7 @@ onBeforeUnmount(() => {
             </tbody>
           </table>
         </div>
-        <ElPagination
+        <WorkspacePagination
           v-model:current-page="page"
           v-model:page-size="pageSize"
           class="batch-pagination"
@@ -368,7 +370,7 @@ onBeforeUnmount(() => {
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--wm-bg, #fff);
 }
 .inventory-table {
   width: 100%;
@@ -391,16 +393,16 @@ onBeforeUnmount(() => {
   border-bottom: 0;
 }
 .inventory-table th {
-  background: #edf3f0;
+  background: var(--wm-muted-surface, #edf3f0);
   color: var(--text);
   font-weight: 600;
   white-space: nowrap;
 }
 .inventory-table tbody tr:nth-child(even) {
-  background: #f8faf9;
+  background: var(--wm-muted-surface, #f8faf9);
 }
 .inventory-table tbody tr:hover {
-  background: #eff6f2;
+  background: var(--wm-muted-surface, #eff6f2);
 }
 .inventory-table .number {
   text-align: right;
@@ -454,7 +456,7 @@ onBeforeUnmount(() => {
   padding: 3px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #f3f6f4;
+  background: var(--wm-muted-surface, #f3f6f4);
 }
 .inventory-tabs button {
   border: 0;

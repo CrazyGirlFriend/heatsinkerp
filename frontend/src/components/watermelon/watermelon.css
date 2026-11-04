@@ -1,6 +1,6 @@
 /* Shared palette. Enable a workspace through TeamWorkspaceShell appearance. */
 .wm-scope,
-body:has(.team-workspace--watermelon),
+html.wm-app,
 .wm-dialog,
 .wm-filter-panel,
 .team-workspace--watermelon,
@@ -53,7 +53,7 @@ body:has(.team-workspace--watermelon),
 }
 @media (prefers-color-scheme: dark) {
   .wm-scope,
-  body:has(.team-workspace--watermelon),
+  html.wm-app,
   .wm-dialog,
   .wm-filter-panel,
   .team-workspace--watermelon,
@@ -105,7 +105,7 @@ body:has(.team-workspace--watermelon),
   display: none;
 }
 .wm-scope,
-body:has(.team-workspace--watermelon),
+html.wm-app,
 .wm-dialog {
   --text: var(--wm-text);
   --muted: var(--wm-muted);

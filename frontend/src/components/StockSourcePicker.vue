@@ -1,18 +1,13 @@
 <script setup lang="ts">
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import FilterDialog from './FilterDialog.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import {
-  ElButton,
-  ElCheckbox,
-  ElInput,
-  ElPagination,
-  ElTable,
-  ElTableColumn,
-  ElTag,
-} from 'element-plus'
+import { ElCheckbox, ElInput, ElTableColumn, ElTag } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import { inventoryAmount } from '@/types/teamInventory'
 import RecordDateFilter from './RecordDateFilter.vue'
 import SerialUrgencyBadge from './SerialUrgencyBadge.vue'
@@ -323,8 +318,7 @@ onBeforeUnmount(() => {
       </ElTable>
     </div>
     <div class="picker-pagination">
-      <span>共 {{ total }} 个来源批次</span
-      ><ElPagination
+      <WorkspacePagination
         :current-page="page"
         :page-size="pageSize"
         :page-sizes="[20, 50, 100]"
@@ -332,7 +326,8 @@ onBeforeUnmount(() => {
         layout="sizes, prev, pager, next"
         @current-change="paginate($event)"
         @size-change="paginate(1, $event)"
-      />
+        >共 {{ total }} 个来源批次</WorkspacePagination
+      >
     </div>
     <template #footer
       ><span v-if="mode === 'dispatch'" class="picker-batch-note"

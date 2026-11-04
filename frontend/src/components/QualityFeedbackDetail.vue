@@ -4,7 +4,6 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
   ElAlert,
-  ElButton,
   ElCheckbox,
   ElCheckboxGroup,
   ElCheckboxButton,
@@ -15,10 +14,11 @@ import {
   ElInput,
   ElSelect,
   ElOption,
-  ElTable,
   ElTableColumn,
   ElTag,
 } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'

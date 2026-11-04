@@ -1,19 +1,19 @@
 <script setup lang="ts">
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import PersonName from './PersonName.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { currentLocations } from '@/utils/warehousePlacement'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
-  ElButton,
   ElCheckbox,
   ElDescriptions,
   ElDescriptionsItem,
-  ElPagination,
-  ElTable,
   ElTableColumn,
   ElTabs,
   ElTabPane,
 } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import MaterialAmount from './MaterialAmount.vue'
 import { inventoryAmount } from '@/types/teamInventory'
 import MaterialTransferStatus from './MaterialTransferStatus.vue'
@@ -527,11 +527,7 @@ onBeforeUnmount(() => {
     </div>
     <template #footer
       ><div class="serial-detail-footer">
-        <span
-          >共 {{ total }} 条{{
-            tab === 'stock' ? '来源记录' : tab === 'losses' ? '丢失记录' : '交接明细'
-          }}</span
-        ><ElPagination
+        <WorkspacePagination
           :current-page="page"
           :page-size="pageSize"
           :page-sizes="[10, 20, 50, 100]"
@@ -550,8 +546,12 @@ onBeforeUnmount(() => {
               load()
             }
           "
-        /></div
-    ></template>
+          >共 {{ total }} 条{{
+            tab === 'stock' ? '来源记录' : tab === 'losses' ? '丢失记录' : '交接明细'
+          }}</WorkspacePagination
+        >
+      </div></template
+    >
   </AppDialog>
   <MaterialTransferDrawer
     v-model="batchOpen"

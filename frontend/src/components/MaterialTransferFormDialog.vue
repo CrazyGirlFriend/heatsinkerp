@@ -14,17 +14,9 @@ import { useMaterialAutofill } from '@/composables/useMaterialAutofill'
 import type { MaterialInputField } from '@/services/materialInputApi'
 
 import { ArrowRight } from '@element-plus/icons-vue'
-import {
-  ElAlert,
-  ElButton,
-  ElForm,
-  ElFormItem,
-  ElIcon,
-  ElInput,
-  ElInputNumber,
-  ElOption,
-  ElSelect,
-} from 'element-plus'
+import { ElAlert, ElForm, ElFormItem, ElIcon, ElInput, ElOption, ElSelect } from 'element-plus'
+import ElInputNumber from '@/components/AppNumberInput.vue'
+import ElButton from '@/components/AppButton.vue'
 import TeamEmployeeInput from './TeamEmployeeInput.vue'
 import type { TeamEmployee } from '@/types/teamBusiness'
 import { materialSenderName } from '@/types/materialTransfer'

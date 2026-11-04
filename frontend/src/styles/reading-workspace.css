@@ -362,7 +362,7 @@
   :is(.filter-bar, .analysis-controls, .trace-search)
   :is(.el-input__wrapper, .el-select__wrapper) {
   border-radius: 11px;
-  background: #ffffffc4;
+  background: var(--wm-surface, #ffffffc4);
 }
 .page.reading-workspace
   :is(.filter-bar, .heading-actions, .analysis-controls, .trace-search)

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import AppDialog from '@/components/AppDialog.vue'
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElButton } from 'element-plus'
+import { ElAlert } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import MaterialBatchPrintSheet from './MaterialBatchPrintSheet.vue'
 import { materialTransferApi } from '@/services/materialTransferApi'
 import type { MaterialTransfer } from '@/types/materialTransfer'

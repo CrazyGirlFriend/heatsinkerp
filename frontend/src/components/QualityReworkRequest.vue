@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElButton, ElPagination, ElTable, ElTableColumn } from 'element-plus'
+import { ElAlert, ElTableColumn } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import ReworkRouteRequest from './ReworkRouteRequest.vue'
 import {
   qualityFeedbackApi,
@@ -108,7 +111,7 @@ onBeforeUnmount(() => {
         ></ElTableColumn
       >
     </ElTable>
-    <ElPagination
+    <WorkspacePagination
       v-if="total > 10"
       :current-page="page"
       :page-size="10"

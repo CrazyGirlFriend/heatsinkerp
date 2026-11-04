@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WatermelonSegmented from '@/components/watermelon/WatermelonSegmented.vue'
 import PersonName from '@/components/PersonName.vue'
 import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
 import WorkspaceTable from '@/components/WorkspaceTable.vue'
@@ -6,7 +7,8 @@ import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { ArrowDown, Plus } from '@element-plus/icons-vue'
-import { ElAlert, ElButton, ElIcon, ElLoading, ElPopover, ElTag, ElTableColumn } from 'element-plus'
+import { ElAlert, ElIcon, ElLoading, ElPopover, ElTag, ElTableColumn } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { businessNoticeApi, parseNotice } from '@/services/businessNoticeApi'
 import { focusNoticeTarget, noticeOpened, noticeFailed } from '@/utils/noticeFocus'
@@ -332,29 +334,15 @@ onBeforeUnmount(() => {
         @refresh="load"
       >
         <template #leading>
-          <div class="route-kind-switch" role="group" aria-label="工艺类型">
-            <button
-              type="button"
-              :aria-pressed="routeKind === 'normal'"
-              @click="changeKind('normal')"
-            >
-              正常工艺
-            </button>
-            <button
-              type="button"
-              :aria-pressed="routeKind === 'rework'"
-              @click="changeKind('rework')"
-            >
-              返工工艺
-              <span
-                v-if="canEdit && pendingRework"
-                class="route-pending-count"
-                :aria-label="`${pendingRework} 项待制定`"
-                :title="`${pendingRework} 项待制定`"
-                >{{ pendingRework }}</span
-              >
-            </button>
-          </div>
+          <WatermelonSegmented
+            :model-value="routeKind"
+            label="工艺类型"
+            :options="[
+              { value: 'normal', label: '正常工艺' },
+              { value: 'rework', label: '返工工艺', count: canEdit ? pendingRework : 0 },
+            ]"
+            @change="changeKind($event as 'normal' | 'rework')"
+          />
         </template>
         <template #status>
           <ElTag v-if="pendingOnly" closable type="warning" @close="clearPending">待制定</ElTag>
@@ -735,8 +723,7 @@ onBeforeUnmount(() => {
         :total="total"
         @current-change="pageChanged"
         @size-change="pageSizeChanged"
-        >共 {{ total }} 条记录 ·
-        {{ Math.max(1, Math.ceil(total / pageSize)) }} 页</WorkspacePagination
+        >共 {{ total }} 条记录</WorkspacePagination
       >
     </WorkspaceDataPanel>
     <template #dialogs>
@@ -784,29 +771,6 @@ onBeforeUnmount(() => {
   --route-ink: var(--text);
   --route-secondary: var(--muted);
   --route-placeholder: var(--subtle);
-}
-.process-workspace .workspace-data-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, max-content) auto;
-  align-content: start;
-}
-.process-workspace :deep(.workspace-pagination) {
-  margin-top: 0;
-}
-.route-pending-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 19px;
-  height: 19px;
-  padding: 0 4px;
-  border: 1px solid #dcc294;
-  border-radius: 5px;
-  background: #fbefd7;
-  color: #72501e;
-  font-size: var(--font-size-meta);
-  line-height: var(--line-height-meta);
-  font-variant-numeric: tabular-nums;
 }
 .route-step-summary {
   display: flex;
@@ -989,77 +953,14 @@ onBeforeUnmount(() => {
   font-weight: 600;
   letter-spacing: 0;
 }
-.route-kind-switch {
-  display: flex;
-  flex-shrink: 0;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid #dbe4e0;
-  border-radius: 12px;
-  background: linear-gradient(180deg, #e9efecb3, #ffffffeb);
-  box-shadow:
-    inset 0 1px 2px #2845360c,
-    0 1px 0 #fff;
-}
-.route-kind-switch button {
-  --route-kind-accent: var(--primary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 86px;
-  height: 32px;
-  padding: 0 10px;
-  gap: 6px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font: inherit;
-  font-size: 14px;
-  line-height: 20px;
-  transition:
-    box-shadow 160ms,
-    transform 160ms,
-    color 160ms;
-}
-.route-kind-switch button[aria-pressed='true'] {
-  font-weight: 600;
-  border-color: color-mix(in srgb, var(--route-kind-accent) 88%, black);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--route-kind-accent) 76%, white),
-    var(--route-kind-accent) 55%,
-    color-mix(in srgb, var(--route-kind-accent) 86%, black)
-  );
-  box-shadow:
-    inset 0 1px 0 #ffffff75,
-    inset 0 -1px 0 #0000001a,
-    0 2px 4px #1e293b24;
-  color: white;
-}
-.route-kind-switch button:hover:not([aria-pressed='true']) {
-  background: linear-gradient(180deg, #fff, #ffffff99);
-  box-shadow:
-    inset 0 1px 0 #fff,
-    0 1px 3px #253d3212;
-}
-.route-kind-switch button:active {
-  transform: translateY(1px);
-  box-shadow: inset 0 1px 3px #172b402b;
-}
-.route-kind-switch button:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
 .process-workspace .route-list .route-rework-status {
   --el-tag-text-color: var(--route-ink);
-  --el-tag-bg-color: #fff6e5;
+  --el-tag-bg-color: var(--wm-muted-surface, #fff6e5);
   --el-tag-border-color: #e6c691;
   height: 24px;
   padding-inline: 8px;
   border-radius: 5px;
-  background: linear-gradient(180deg, #fffcf5, var(--el-tag-bg-color));
+  background: linear-gradient(180deg, var(--wm-muted-surface, #fffcf5), var(--el-tag-bg-color));
   box-shadow:
     inset 0 1px 0 #fff,
     inset 0 -1px 0 #8a571518;
@@ -1067,16 +968,12 @@ onBeforeUnmount(() => {
   font-weight: 500;
 }
 .process-workspace .route-list .route-rework-ready {
-  --el-tag-bg-color: #f1e9ff;
+  --el-tag-bg-color: var(--wm-muted-surface, #f1e9ff);
   --el-tag-border-color: #cfb8ec;
-  background: linear-gradient(180deg, #fcfaff, var(--el-tag-bg-color));
+  background: linear-gradient(180deg, var(--wm-muted-surface, #fcfaff), var(--el-tag-bg-color));
   box-shadow:
     inset 0 1px 0 #fff,
     inset 0 -1px 0 #7036b518;
-}
-.route-kind-switch button:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
 }
 .rework-problem {
   display: grid;
@@ -1103,9 +1000,9 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   padding: 0 7px;
-  border: 1px solid #dce3df;
+  border: 1px solid var(--wm-border, #dce3df);
   border-radius: 4px;
-  background: #f5f7f6;
+  background: var(--wm-muted-surface, #f5f7f6);
 }
 .rework-team-list {
   display: flex;
@@ -1115,9 +1012,9 @@ onBeforeUnmount(() => {
 }
 .rework-team-list > span {
   padding: 1px 7px;
-  border: 1px solid #dce1e7;
+  border: 1px solid var(--wm-border, #dce1e7);
   border-radius: 4px;
-  background: #f7f8fa;
+  background: var(--wm-muted-surface, #f7f8fa);
   color: var(--route-ink);
   font-size: 12px;
   white-space: nowrap;
@@ -1210,12 +1107,5 @@ onBeforeUnmount(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .route-kind-switch button,
-  .route-step-node,
-  .route-path-more,
-  .process-workspace .route-list .route-record-action {
-    transition: none;
-    transform: none;
-  }
 }
 </style>

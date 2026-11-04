@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElButton } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { Upload } from '@element-plus/icons-vue'
 import DocumentCard from './DocumentCard.vue'
 import WordDocumentPreview from './WordDocumentPreview.vue'

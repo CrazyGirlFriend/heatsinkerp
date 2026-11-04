@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { awaitingReview } from '@/utils/schedulePlanning'
 import { computed, ref } from 'vue'
-import { ElAlert, ElButton, ElInput, ElTable, ElTableColumn, ElTag } from 'element-plus'
+import { ElAlert, ElInput, ElTableColumn, ElTag } from 'element-plus'
+import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
+import ElButton from '@/components/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ProductionSchedule } from '@/types/productionSchedule'

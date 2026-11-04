@@ -126,16 +126,16 @@ onBeforeUnmount(() => document.removeEventListener('keydown', closeOnEscape, tru
   align-items: center;
   gap: 4px;
   padding: 3px 6px;
-  border: 1px solid #d8e5df;
+  border: 1px solid var(--wm-border, #d8e5df);
   border-radius: 5px;
   color: #245b48;
-  background: #f0f7f3;
+  background: var(--wm-success-bg, #f0f7f3);
   font-size: 12px;
   line-height: 18px;
   white-space: nowrap;
 }
 .stock-pending {
-  color: #946018;
+  color: var(--wm-warning-text, #946018);
 }
 .stock-team {
   color: var(--team-color);
@@ -143,12 +143,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', closeOnEscape, tru
   background: var(--team-tint);
 }
 .stock-team.is-held > .el-icon:first-child {
-  color: #98423d;
+  color: var(--wm-danger-text, #98423d);
 }
 .stock-more {
   color: var(--muted);
   border-color: var(--line);
-  background: #f5f7f6;
+  background: var(--wm-muted-surface, #f5f7f6);
 }
 .stock-summary:hover .stock-team {
   border-color: #9cb9aa;
@@ -159,9 +159,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', closeOnEscape, tru
   height: 24px;
   padding: 0;
   color: var(--primary);
-  border: 1px solid #dce7e0;
+  border: 1px solid var(--wm-border, #dce7e0);
   border-radius: 6px;
-  background: #f5faf7;
+  background: var(--wm-muted-surface, #f5faf7);
 }
 .stock-distribution header {
   display: flex;
@@ -195,13 +195,13 @@ onBeforeUnmount(() => document.removeEventListener('keydown', closeOnEscape, tru
   text-align: left;
 }
 .stock-distribution thead th {
-  background: #f2f6f4;
+  background: var(--wm-muted-surface, #f2f6f4);
 }
 .stock-distribution td {
   text-align: right;
 }
 .stock-distribution th .el-icon {
   margin-left: 4px;
-  color: #98423d;
+  color: var(--wm-danger-text, #98423d);
 }
 </style>

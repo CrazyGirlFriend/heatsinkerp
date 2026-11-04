@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Hide, Lock, Right, User, View } from '@element-plus/icons-vue'
-import { ElButton, ElForm, ElFormItem, ElIcon, ElInput } from 'element-plus'
+import { ElForm, ElFormItem, ElIcon, ElInput } from 'element-plus'
+import ElButton from '@/components/AppButton.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authState, isAuthenticated, login } from '@/stores/auth'
