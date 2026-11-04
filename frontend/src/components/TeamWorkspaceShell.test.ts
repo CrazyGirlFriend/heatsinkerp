@@ -91,7 +91,6 @@ describe('workspace with in-page navigation', () => {
       ['outgoing', '出库记录'],
       ['losses', '丢失记录'],
       ['materials', '材质库存'],
-      ['material-types', '类型库存'],
       ['history', '收发历史'],
     ]) {
       await wrapper.setProps({ modelValue })
@@ -115,12 +114,13 @@ describe('workspace with in-page navigation', () => {
   it('keeps actions inside the data toolbar and hides warehouse-only sections for other teams', async () => {
     wrapper = mountShell({
       props: { title: '研磨', modelValue: 'stock' },
-      slots: { default: '<div><header><button>新建出库</button></header>库存数据</div>' },
+      slots: {
+        default: '<div><header><button>新建出库</button></header>库存数据</div>',
+      },
     })
     expect(wrapper.findAll('nav button').map((button) => button.text())).toEqual([
       '库存明细',
       '材质库存',
-      '类型库存',
       '丢失记录',
     ])
     expect(wrapper.get('.team-workspace__module').text()).toBe('库存')
@@ -158,7 +158,7 @@ describe('workspace with in-page navigation', () => {
         reallocations: true,
       },
     })
-    expect(wrapper.findAll('nav button')).toHaveLength(4)
+    expect(wrapper.findAll('nav button')).toHaveLength(3)
     await wrapper.setProps({ modelValue: 'pending' })
     expect(wrapper.findAll('nav button').map((button) => button.text())).toEqual([
       '来料待签收',
@@ -365,7 +365,7 @@ describe('workspace with in-page navigation', () => {
   it('uses a viewport fallback when native fullscreen fails and exits with Escape', async () => {
     const native = nativeFullscreen()
     native.request.mockRejectedValue(new Error('Unavailable'))
-    wrapper = mountShell({ props: { title: '检验', modelValue: 'material-types' } })
+    wrapper = mountShell({ props: { title: '检验', modelValue: 'losses' } })
     await wrapper.get('.team-workspace__fullscreen').trigger('click')
     await flushPromises()
     expect(wrapper.classes('team-workspace--fullscreen')).toBe(true)

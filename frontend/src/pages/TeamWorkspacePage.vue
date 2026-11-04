@@ -226,7 +226,6 @@ const exportable = computed(
       'reallocations',
       'losses',
       'materials',
-      'material-types',
     ].includes(tab.value),
 )
 function openExport() {
@@ -234,8 +233,7 @@ function openExport() {
   let source: TableExportSource | undefined
   if (tab.value === 'stock') source = inventoryPanel.value?.exportSource()
   else if (tab.value === 'delivery-schedule') source = schedulePanel.value?.exportSource()
-  else if (['materials', 'material-types'].includes(tab.value))
-    source = summaryPanel.value?.exportSource()
+  else if (tab.value === 'materials') source = summaryPanel.value?.exportSource()
   else {
     const id = teamId.value,
       section = tab.value,
@@ -331,7 +329,7 @@ function openSummaryDetail(value: string) {
     query: {
       tab: 'stock',
       availability: 'all',
-      [tab.value === 'material-types' ? 'material_type' : 'material_name']: value,
+      material_name: value,
       summary: tab.value,
       ...(page.value > 1 ? { summary_page: String(page.value) } : {}),
       ...(pageSize.value !== 10 ? { summary_page_size: String(pageSize.value) } : {}),
@@ -341,7 +339,7 @@ function openSummaryDetail(value: string) {
 watch(
   () => queryText('tab'),
   (value) => {
-    if (value === 'serials')
+    if (value === 'serials' || value === 'material-types')
       void router.replace({
         path: route.path,
         query: { ...route.query, tab: 'stock' },
@@ -565,6 +563,7 @@ const actionOpen = ref(false)
 const reallocationOpen = ref(false),
   reallocationSource = ref<StockBatch | null>(null)
 const pickerOpen = ref(false)
+const pickerMode = ref<'dispatch' | 'loss' | 'reallocate'>('dispatch')
 const openingDispatch = ref(false)
 const actionMode = ref<'dispatch' | 'loss'>('dispatch')
 const actionSources = ref<StockBatch[]>([])
@@ -579,14 +578,18 @@ watch(
 )
 const traceScope = computed(() => ({ team_id: teamId.value, direction: 'all' as const }))
 const actionBindings = computed(() => ({
+  section: tab.value,
   canWrite: canWrite.value,
   canReceive: canReceive.value,
+  canReallocate: canReallocate.value,
   openingReceipt: openingReceipt.value,
   openingDispatch: openingDispatch.value,
   loading: loading.value,
   warehouse: isWarehouse.value,
   showScan: canWrite.value && tab.value !== 'pending',
-  onDispatch: openNewDispatch,
+  onDispatch: () => openNewStockAction('dispatch'),
+  onLoss: () => openNewStockAction('loss'),
+  onReallocate: () => openNewStockAction('reallocate'),
   onReceipt: openReceipt,
   onScan: focusScan,
   onRefresh: loadView,
@@ -858,6 +861,7 @@ async function openReallocation(source: StockBatch) {
     return
   }
   if (current !== actionVersion || scope !== teamKey.value || !canReallocate.value) return
+  pickerOpen.value = false
   reallocationSource.value = source
   reallocationOpen.value = true
 }
@@ -865,21 +869,34 @@ async function savedReallocation(item: MaterialTransfer) {
   showToast(`已从 ${item.source_serial_no} 转投至 ${item.serial_no}`, 'success')
   reallocationOpen.value = false
   reallocationSource.value = null
-  await openingStocked()
+  if (tab.value === 'reallocations') await loadView()
+  else await openingStocked()
 }
-async function openNewDispatch() {
-  if (!canWrite.value || openingDispatch.value) return
+async function openNewStockAction(mode: 'dispatch' | 'loss' | 'reallocate') {
+  if (!canWrite.value || openingDispatch.value || (mode === 'reallocate' && !canReallocate.value))
+    return
   closeDetails()
   const current = actionVersion
+  pickerMode.value = mode
   openingDispatch.value = true
   try {
     await auth.refreshCurrentUser()
-    if (current === actionVersion && canWrite.value) pickerOpen.value = true
+    if (
+      current === actionVersion &&
+      canWrite.value &&
+      (mode !== 'reallocate' || canReallocate.value)
+    )
+      pickerOpen.value = true
   } catch {
     showToast('账号信息刷新失败，请重试', 'error')
   } finally {
     if (current === actionVersion) openingDispatch.value = false
   }
+}
+function selectStockSources(sources: StockBatch[]) {
+  if (pickerMode.value === 'reallocate') {
+    if (sources[0]) void openReallocation(sources[0])
+  } else void openAction(pickerMode.value, sources)
 }
 function savedAction(result: CreatedMaterialBatches | MaterialLoss) {
   const first = 'items' in result ? result.items[0] : undefined
@@ -1069,7 +1086,7 @@ async function loadView(refreshWarehouse: unknown = false, background = false) {
 watch(
   [
     () =>
-      ['overview', 'stock', 'materials', 'material-types'].includes(tab.value)
+      ['overview', 'stock', 'materials'].includes(tab.value)
         ? `${route.path}:${tab.value}`
         : route.fullPath,
     scopeReady,
@@ -1268,10 +1285,8 @@ onBeforeUnmount(() => {
           v-else-if="['overview', 'history'].includes(tab)"
           :key="teamId"
           :team-id="teamId"
-          ><template v-if="canWrite || canReceive" #actions
-            ><TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" /></template
-        ></TeamSerialHistory>
-        <template v-else-if="['stock', 'materials', 'material-types'].includes(tab)">
+        />
+        <template v-else-if="['stock', 'materials'].includes(tab)">
           <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料库存" />
           <StatePanel
             v-else-if="overviewError"
@@ -1306,16 +1321,14 @@ onBeforeUnmount(() => {
             :key="tab"
             ref="summaryPanel"
             :overview="overview"
-            :kind="tab === 'material-types' ? 'type' : 'material'"
+            kind="material"
             :page="page"
             :page-size="pageSize"
             :fullscreen="fullscreen"
             @filter="openSummaryDetail"
             @paginate="paginateSummary"
             @refresh="loadView()"
-            ><template v-if="canWrite || canReceive" #actions
-              ><TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" /></template
-          ></TeamMaterialOverviewPanel>
+          />
         </template>
         <template v-else>
           <div class="team-list-layout">
@@ -1424,7 +1437,11 @@ onBeforeUnmount(() => {
                     </div> </FilterDialog
                 ></template>
                 <template
-                  v-if="!fullscreen && (canWrite || canReceive || tab === 'outgoing')"
+                  v-if="
+                    !fullscreen &&
+                    tab !== 'pending' &&
+                    (canWrite || canReceive || tab === 'outgoing')
+                  "
                   #actions
                 >
                   <div v-show="!fullscreen" class="workspace-toolbar-actions">
@@ -1436,11 +1453,7 @@ onBeforeUnmount(() => {
                         >（{{ selectedPrintRows.length }}）</span
                       ></ElButton
                     >
-                    <TeamWorkspaceActions
-                      v-if="tab !== 'reallocations'"
-                      v-bind="actionBindings"
-                      :show-refresh="false"
-                    /></div
+                    <TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" /></div
                 ></template>
               </WorkspaceDataToolbar>
 
@@ -1990,13 +2003,17 @@ onBeforeUnmount(() => {
       <StockSourcePicker
         v-if="pickerOpen && canWrite"
         :team-id="teamId"
+        :mode="pickerMode"
         :processing="hasProcessing"
         @close="closeDetails"
-        @selected="openAction('dispatch', $event)"
+        @selected="selectStockSources"
         @outbound="
           () => {
             closeDetails()
-            router.push({ path: route.path, query: { tab: 'outgoing', status: 'pending' } })
+            router.push({
+              path: route.path,
+              query: { tab: 'outgoing', status: 'pending' },
+            })
           }
         "
       />

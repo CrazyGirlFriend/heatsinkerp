@@ -92,7 +92,6 @@ describe('shared workspace navigation', () => {
       '出库记录',
       '丢失记录',
       '材质库存',
-      '类型库存',
       '收发历史',
     ])
     expect(teamWorkspaceSectionsFor(true).map((item) => item.value)).toContain('receipts')
@@ -137,7 +136,10 @@ describe('shared workspace navigation', () => {
   it('uses the same selected section for legacy links, filters and unsupported tabs', () => {
     expect(resolveTeamWorkspaceSection({ tab: 'overview' }, false)).toBe('history')
     expect(resolveTeamWorkspaceSection({ tab: 'materials' }, false)).toBe('materials')
-    expect(resolveTeamWorkspaceSection({ tab: 'material-types' }, false)).toBe('material-types')
+    expect(resolveTeamWorkspaceSection({ tab: 'material-types' }, false)).toBe('stock')
+    expect(teamWorkspaceSectionsFor(true, true, true).map((item) => item.value)).not.toContain(
+      'material-types',
+    )
     expect(resolveTeamWorkspaceSection({ tab: 'serials' }, false)).toBe('stock')
     expect(resolveTeamWorkspaceSection({ tab: 'receipts' }, false)).toBe('receipts')
     expect(resolveTeamWorkspaceSection({ tab: 'receipts' }, true)).toBe('receipts')

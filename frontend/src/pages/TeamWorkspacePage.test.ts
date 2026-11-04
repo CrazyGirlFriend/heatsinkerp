@@ -658,14 +658,12 @@ describe('team workspace material ledger', () => {
         material_name: '材料1',
       })
       expect(teamMaterialApi.overview).toHaveBeenCalledTimes(calls)
-      for (const tab of ['materials', 'material-types']) {
-        await router.push(`/team-workspaces/914?tab=${tab}`)
-        await flushPromises()
-        expect(wrapper.getComponent(TeamMaterialOverviewPanel).props('fullscreen')).toBe(true)
-      }
+      await router.push('/team-workspaces/914?tab=material-types')
+      await flushPromises()
+      expect(wrapper.getComponent(TeamInventory).props('fullscreen')).toBe(true)
       await wrapper.get('.team-workspace__fullscreen').trigger('click')
       await flushPromises()
-      expect(wrapper.getComponent(TeamMaterialOverviewPanel).props('fullscreen')).toBe(false)
+      expect(wrapper.getComponent(TeamInventory).props('fullscreen')).toBe(false)
     },
   )
   it.each([true, false])(
@@ -998,18 +996,16 @@ describe('team workspace material ledger', () => {
   it.each([
     ['materials', '铜钼', 'material_name', '铜钼', '材质库存'],
     ['materials', null, 'material_name', '未填写材质', '材质库存'],
-    ['material-types', 'sludge', 'material_type', 'sludge', '类型库存'],
-    ['material-types', null, 'material_type', 'unknown', '类型库存'],
   ] as const)(
     'opens exact %s detail for %s and returns to its own summary',
     async (tab, value, filter, expected, label) => {
       vi.mocked(teamMaterialApi.overview).mockResolvedValue({
         ...summary,
-        materials: [{ ...summary.totals, material_name: tab === 'materials' ? value : '铜钼' }],
+        materials: [{ ...summary.totals, material_name: value }],
         material_types: [
           {
             ...summary.totals,
-            material_type: tab === 'material-types' ? (value as 'sludge' | null) : 'semi_finished',
+            material_type: 'semi_finished',
           },
         ],
       })
@@ -1036,6 +1032,25 @@ describe('team workspace material ledger', () => {
       await flushPromises()
       expect(router.currentRoute.value.query).toEqual({ tab })
       expect(wrapper.get('h1').text()).toBe(label)
+    },
+  )
+  it.each(['sludge', 'unknown'])(
+    'redirects retired type inventory with the %s filter intact',
+    async (type) => {
+      const router = await render(
+        `/team-workspaces/914?tab=material-types&material_type=${type}&page=2`,
+      )
+      expect(wrapper.get('h1').text()).toBe('库存明细')
+      expect(wrapper.findComponent(TeamMaterialOverviewPanel).exists()).toBe(false)
+      expect(router.currentRoute.value.query).toMatchObject({
+        tab: 'stock',
+        material_type: type,
+        page: '2',
+      })
+      expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
+        914,
+        expect.objectContaining({ material_type: type, page: 2 }),
+      )
     },
   )
   it('restores the summary page after drilling into stock and preserves filters through detail pagination', async () => {
@@ -1325,35 +1340,109 @@ describe('team workspace material ledger', () => {
     expect(teamMaterialApi.overview).toHaveBeenCalledWith(914)
   })
   it.each([
-    'serials',
-    'stock',
-    'outgoing',
-    'pending',
-    'receipts',
-    'losses',
-    'materials',
-    'material-types',
-    'overview',
-    'history',
-  ])('keeps %s actions grouped separately from team settings', async (tab) => {
+    ['serials', ['新建入库', '新建出库', '扫码入库']],
+    ['stock', ['新建入库', '新建出库', '扫码入库']],
+    ['outgoing', ['新建出库']],
+    ['pending', []],
+    ['receipts', ['新建入库']],
+    ['losses', ['登记丢失']],
+    ['reallocations', ['新建转投']],
+    ['materials', []],
+    ['material-types', ['新建入库', '新建出库', '扫码入库']],
+    ['overview', []],
+    ['history', []],
+  ] as const)('shows only relevant actions on warehouse %s', async (tab, labels) => {
     state.auth.currentUser.team_id = 901
     await render(`/team-workspaces/901?tab=${tab}`)
-    const toolbar = '.wm-data-toolbar'
-    const actions = wrapper.get(`${toolbar} .workspace-actions`)
-    expect(actions.text()).toContain('新建入库')
-    expect(actions.text()).toContain('新建出库')
-    if (tab === 'pending') {
-      expect(actions.text()).not.toContain('扫码入库')
-      expect(wrapper.get('.incoming-scan .scanner-inline').text()).toContain('入库')
-    } else expect(actions.text()).toContain('扫码入库')
-    expect(wrapper.findAll('.workspace-actions')).toHaveLength(1)
-    expect(wrapper.find('.workspace-data-toolbar [aria-label="班组设置"]').exists()).toBe(false)
-    expect(actions.find('[aria-label="班组设置"]').exists()).toBe(false)
-    expect(wrapper.findAll('nav[aria-label$="视图"] button')).toHaveLength(
-      ['outgoing', 'pending', 'receipts', 'overview', 'history'].includes(tab) ? 5 : 4,
+    expect(wrapper.findAll('.workspace-actions button').map((button) => button.text())).toEqual(
+      labels,
     )
-    expect(wrapper.find('.team-workspace__heading').exists()).toBe(true)
+    if (tab === 'pending')
+      expect(wrapper.get('.incoming-scan .scanner-inline').text()).toContain('入库')
+    expect(wrapper.findAll('.workspace-actions')).toHaveLength(labels.length ? 1 : 0)
+    expect(wrapper.find('.workspace-data-toolbar [aria-label="班组设置"]').exists()).toBe(false)
+    const choices = wrapper.findAll('nav[aria-label$="视图"] button').map((button) => button.text())
+    if (['outgoing', 'pending', 'receipts', 'reallocations', 'overview', 'history'].includes(tab)) {
+      expect(choices).toHaveLength(5)
+      expect(choices).toContain('转投记录')
+    } else expect(choices).toEqual(['库存明细', '材质库存', '丢失记录'])
+    expect(choices).not.toContain('类型库存')
   })
+  it.each(['losses', 'reallocations'] as const)(
+    'opens %s from its toolbar and refreshes records after saving',
+    async (tab) => {
+      state.auth.currentUser.team_id = 901
+      const router = await render(`/team-workspaces/901?tab=${tab}&query=TL`)
+      const label = tab === 'losses' ? '登记丢失' : '新建转投'
+      await wrapper
+        .findAll('button')
+        .find((button) => button.text() === label)!
+        .trigger('click')
+      await flushPromises()
+      expect(wrapper.getComponent(StockSourcePicker).props()).toMatchObject({
+        teamId: 901,
+        mode: tab === 'losses' ? 'loss' : 'reallocate',
+      })
+      const batch = {
+        ...source(),
+        transfer: {
+          ...source().transfer,
+          next_team: { id: 901, name: '库房', code: 'FACTORY-WAREHOUSE' },
+        },
+      }
+      wrapper.getComponent(StockSourcePicker).vm.$emit('selected', [batch])
+      await flushPromises()
+      expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
+      if (tab === 'losses') {
+        const dialog = wrapper.getComponent(MaterialStockActionDialog)
+        expect(dialog.props()).toMatchObject({
+          modelValue: true,
+          mode: 'loss',
+          teamId: 901,
+          sources: [batch],
+        })
+        vi.mocked(teamMaterialApi.losses).mockClear()
+        dialog.vm.$emit('saved', { loss_no: 'LS-NEW' })
+        await flushPromises()
+        expect(teamMaterialApi.losses).toHaveBeenCalledWith(
+          901,
+          expect.objectContaining({ query: 'TL' }),
+        )
+      } else {
+        const dialog = wrapper.getComponent(SerialReallocationDialog)
+        expect(dialog.props()).toMatchObject({
+          modelValue: true,
+          teamId: 901,
+          source: batch,
+        })
+        vi.mocked(teamMaterialApi.reallocations).mockClear()
+        dialog.vm.$emit('saved', {
+          source_serial_no: '691236-50',
+          serial_no: '691236-51',
+        })
+        await flushPromises()
+        expect(teamMaterialApi.reallocations).toHaveBeenCalledWith(
+          901,
+          expect.objectContaining({ query: 'TL' }),
+        )
+      }
+      expect(router.currentRoute.value.query).toEqual({ tab, query: 'TL' })
+    },
+  )
+  it.each(['losses', 'reallocations'] as const)(
+    'rechecks permissions before opening the %s picker',
+    async (tab) => {
+      state.auth.currentUser.team_id = 901
+      await render(`/team-workspaces/901?tab=${tab}`)
+      state.auth.refreshCurrentUser.mockImplementationOnce(async () => {
+        state.auth.currentUser.team_id = 914
+      })
+      await wrapper.get('.workspace-actions button').trigger('click')
+      await flushPromises()
+      expect(wrapper.findComponent(StockSourcePicker).exists()).toBe(false)
+      expect(wrapper.find('.workspace-actions').exists()).toBe(false)
+    },
+  )
   it.each(['administrator', 'other-team', 'inactive'])(
     'does not expose creation for %s accounts',
     async (kind) => {
@@ -1395,7 +1484,7 @@ describe('team workspace material ledger', () => {
     expect(toolbar.find('input[aria-label="物料搜索"]').exists()).toBe(true)
     expect(toolbar.find('input[aria-label="扫描转料批次号"]').exists()).toBe(false)
     expect(wrapper.find('.incoming-scan input[aria-label="扫描转料批次号"]').exists()).toBe(true)
-    expect(toolbar.find('.workspace-more-menu .workspace-actions').exists()).toBe(true)
+    expect(toolbar.find('.workspace-actions').exists()).toBe(false)
     expect(toolbar.findAll('button').filter((button) => button.text() === '查询')).toHaveLength(1)
     expect(toolbar.find('.record-date-trigger').exists()).toBe(false)
     const filters = wrapper.getComponent(FilterDialog)

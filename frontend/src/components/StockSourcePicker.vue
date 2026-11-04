@@ -26,12 +26,19 @@ const props = withDefaults(
     teamId: number
     groupId?: number
     groupLabel?: string
-    mode?: 'dispatch' | 'reallocate'
+    mode?: 'dispatch' | 'reallocate' | 'loss'
     processing?: boolean
   }>(),
   { mode: 'dispatch', processing: false },
 )
 const emit = defineEmits<{ close: []; selected: [sources: StockBatch[]]; outbound: [] }>()
+const actionLabel = computed(
+  () => ({ dispatch: '新建出库', reallocate: '流水号转投', loss: '登记丢失' })[props.mode],
+)
+const selectionLabel = computed(() => (props.mode === 'loss' ? '登记丢失' : '转投'))
+function singleSelectable(row: StockBatch) {
+  return stockSelectable(row) && (props.mode !== 'reallocate' || !row.transfer.shared_unallocated)
+}
 const visible = ref(true)
 const query = ref(''),
   appliedQuery = ref(''),
@@ -112,9 +119,8 @@ async function load() {
 function proceed() {
   if (!loading.value && !error.value && selected.size) emit('selected', [...selected.values()])
 }
-function chooseReallocation(row: StockBatch) {
-  if (!loading.value && !error.value && stockSelectable(row) && !row.transfer.shared_unallocated)
-    emit('selected', [row])
+function chooseSource(row: StockBatch) {
+  if (!loading.value && !error.value && singleSelectable(row)) emit('selected', [row])
 }
 watch(
   () => [props.teamId, props.groupId],
@@ -137,7 +143,7 @@ onBeforeUnmount(() => {
 <template>
   <AppDialog
     v-model="visible"
-    :title="mode === 'reallocate' ? '流水号转投 · 选择来源批次' : '新建出库 · 选择来源批次'"
+    :title="`${actionLabel} · 选择来源批次`"
     width="min(1040px, 94vw)"
     top="6vh"
     class="stock-source-picker"
@@ -148,7 +154,9 @@ onBeforeUnmount(() => {
       <ElInput
         v-model="query"
         :prefix-icon="Search"
-        :aria-label="mode === 'reallocate' ? '转投库存搜索' : '出库库存搜索'"
+        :aria-label="
+          mode === 'loss' ? '丢失库存搜索' : mode === 'reallocate' ? '转投库存搜索' : '出库库存搜索'
+        "
         placeholder="搜索流水号、批次、材质或仓位"
         clearable
         @keyup.enter="search"
@@ -298,7 +306,7 @@ onBeforeUnmount(() => {
           }}</template></ElTableColumn
         >
         <ElTableColumn
-          v-if="mode === 'reallocate'"
+          v-if="mode !== 'dispatch'"
           label="操作"
           width="100"
           align="center"
@@ -308,10 +316,10 @@ onBeforeUnmount(() => {
             <ElButton
               link
               type="primary"
-              :disabled="!stockSelectable(asStock(row)) || row.transfer.shared_unallocated"
-              :aria-label="`转投 ${row.transfer.batch_no}`"
-              @click="chooseReallocation(asStock(row))"
-              >转投</ElButton
+              :disabled="!singleSelectable(asStock(row))"
+              :aria-label="`${selectionLabel} ${row.transfer.batch_no}`"
+              @click="chooseSource(asStock(row))"
+              >{{ selectionLabel }}</ElButton
             >
           </template>
         </ElTableColumn>

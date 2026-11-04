@@ -98,12 +98,7 @@ const route = useRoute(),
   auth = useAuthStore(),
   directory = useTeamDirectoryStore()
 const text = (key: string) => (typeof route.query[key] === 'string' ? String(route.query[key]) : '')
-const summarySection = computed(() =>
-  ['materials', 'material-types'].includes(text('summary')) ? text('summary') : '',
-)
-const summaryLabel = computed(() =>
-  summarySection.value === 'material-types' ? '类型库存' : '材质库存',
-)
+const summarySection = computed(() => (text('summary') === 'materials' ? 'materials' : ''))
 function returnToSummary() {
   void router.push({
     path: route.path,
@@ -833,19 +828,8 @@ onBeforeUnmount(() => {
 <template>
   <WorkspaceDataPanel class="warehouse-inventory serial-ledger workspace-data-panel">
     <div v-if="summarySection" class="warehouse-search-context">
-      <ElButton link type="primary" @click="returnToSummary">返回{{ summaryLabel }}</ElButton
-      ><span
-        >{{
-          summarySection === 'materials'
-            ? text('material_name') || '全部材质'
-            : text('material_type') === 'unknown'
-              ? '未分类'
-              : text('material_type')
-                ? materialTypeLabel(text('material_type'))
-                : '全部物料类型'
-        }}
-        · 库存明细</span
-      >
+      <ElButton link type="primary" @click="returnToSummary">返回材质库存</ElButton
+      ><span>{{ text('material_name') || '全部材质' }} · 库存明细</span>
     </div>
     <ElAlert v-if="refreshError" :title="refreshError" type="warning" :closable="false" />
     <WorkspaceDataToolbar

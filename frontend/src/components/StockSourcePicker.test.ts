@@ -66,6 +66,23 @@ async function render() {
 const nextButton = () =>
   wrapper.findAll('button').find((button) => button.text() === '下一步：填写出库')!
 describe('stock selection for new outbound', () => {
+  it('selects one available source for loss registration without outbound controls', async () => {
+    const held = { ...source(2), inspection_hold_id: 9 }
+    vi.mocked(teamMaterialApi.stock).mockResolvedValue({
+      items: [source(1), held],
+      total: 2,
+      page: 1,
+      page_size: 20,
+    })
+    await render()
+    await wrapper.setProps({ mode: 'loss' })
+    expect(wrapper.findComponent(BatchSelectionBar).exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('填写出库')
+    expect(wrapper.find('[aria-label="丢失库存搜索"]').exists()).toBe(true)
+    expect(wrapper.get('button[aria-label="登记丢失 TL2"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('button[aria-label="登记丢失 TL1"]').trigger('click')
+    expect(wrapper.emitted('selected')).toEqual([[[source(1)]]])
+  })
   it('selects a single batch for reallocation without outbound controls or allowing shared stock', async () => {
     const normal = source(1)
     const shared = { ...source(2), transfer: { ...source(2).transfer, shared_unallocated: true } }

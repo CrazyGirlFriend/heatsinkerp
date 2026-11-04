@@ -4,11 +4,15 @@ import ElButton from '@/components/AppButton.vue'
 import WatermelonButton from './watermelon/WatermelonButton.vue'
 import { IconPlus, IconQrcode, IconRefresh } from '@tabler/icons-vue'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+import { computed } from 'vue'
+import type { TeamWorkspaceSection } from '@/config/teamWorkspaces'
 const watermelon = useWatermelonAppearance()
-withDefaults(
+const props = withDefaults(
   defineProps<{
+    section: TeamWorkspaceSection
     canWrite: boolean
     canReceive: boolean
+    canReallocate?: boolean
     openingReceipt: boolean
     openingDispatch: boolean
     loading: boolean
@@ -18,19 +22,42 @@ withDefaults(
   }>(),
   { showScan: true, showRefresh: true },
 )
-const emit = defineEmits<{ dispatch: []; receipt: []; scan: []; refresh: [] }>()
+const emit = defineEmits<{
+  dispatch: []
+  receipt: []
+  scan: []
+  loss: []
+  reallocate: []
+  refresh: []
+}>()
+const receiptVisible = computed(
+  () => props.canReceive && ['stock', 'receipts'].includes(props.section),
+)
+const dispatchVisible = computed(
+  () => props.canWrite && ['stock', 'outgoing'].includes(props.section),
+)
+const scanVisible = computed(() => props.canWrite && props.showScan && props.section === 'stock')
+const lossVisible = computed(() => props.canWrite && props.section === 'losses')
+const reallocationVisible = computed(() => props.canReallocate && props.section === 'reallocations')
 </script>
 
 <template>
   <div
-    v-if="canWrite || canReceive || showRefresh"
+    v-if="
+      receiptVisible ||
+      dispatchVisible ||
+      scanVisible ||
+      lossVisible ||
+      reallocationVisible ||
+      showRefresh
+    "
     class="workspace-actions"
     role="group"
     aria-label="班组操作"
   >
     <template v-if="watermelon">
       <WatermelonButton
-        v-if="canReceive"
+        v-if="receiptVisible"
         :primary="warehouse"
         :loading="openingReceipt"
         @click="emit('receipt')"
@@ -38,16 +65,27 @@ const emit = defineEmits<{ dispatch: []; receipt: []; scan: []; refresh: [] }>()
         <IconPlus :size="17" />{{ warehouse ? '新建入库' : '手工入库' }}
       </WatermelonButton>
       <WatermelonButton
-        v-if="canWrite"
-        :primary="!warehouse"
+        v-if="dispatchVisible"
+        :primary="!receiptVisible"
         :loading="openingDispatch"
         @click="emit('dispatch')"
       >
         <IconPlus :size="17" />新建出库
       </WatermelonButton>
-      <WatermelonButton v-if="canWrite && showScan" @click="emit('scan')"
+      <WatermelonButton v-if="scanVisible" @click="emit('scan')"
         ><IconQrcode :size="17" />扫码入库</WatermelonButton
       >
+      <WatermelonButton v-if="lossVisible" primary :loading="openingDispatch" @click="emit('loss')">
+        <IconPlus :size="17" />登记丢失
+      </WatermelonButton>
+      <WatermelonButton
+        v-if="reallocationVisible"
+        primary
+        :loading="openingDispatch"
+        @click="emit('reallocate')"
+      >
+        <IconPlus :size="17" />新建转投
+      </WatermelonButton>
       <WatermelonButton
         v-if="showRefresh"
         :loading="loading"
@@ -58,7 +96,7 @@ const emit = defineEmits<{ dispatch: []; receipt: []; scan: []; refresh: [] }>()
     </template>
     <template v-else>
       <ElButton
-        v-if="canReceive"
+        v-if="receiptVisible"
         :type="warehouse ? 'primary' : 'default'"
         :icon="warehouse ? Plus : undefined"
         :loading="openingReceipt"
@@ -66,19 +104,31 @@ const emit = defineEmits<{ dispatch: []; receipt: []; scan: []; refresh: [] }>()
         >{{ warehouse ? '新建入库' : '手工入库' }}</ElButton
       >
       <ElButton
-        v-if="canWrite"
-        :type="warehouse ? 'default' : 'primary'"
+        v-if="dispatchVisible"
+        :type="receiptVisible ? 'default' : 'primary'"
         :icon="Plus"
         :loading="openingDispatch"
         @click="emit('dispatch')"
         >新建出库</ElButton
       >
-      <ElButton
-        v-if="canWrite && showScan"
-        class="action-cool"
-        :icon="FullScreen"
-        @click="emit('scan')"
+      <ElButton v-if="scanVisible" class="action-cool" :icon="FullScreen" @click="emit('scan')"
         >扫码入库</ElButton
+      >
+      <ElButton
+        v-if="lossVisible"
+        type="primary"
+        :icon="Plus"
+        :loading="openingDispatch"
+        @click="emit('loss')"
+        >登记丢失</ElButton
+      >
+      <ElButton
+        v-if="reallocationVisible"
+        type="primary"
+        :icon="Plus"
+        :loading="openingDispatch"
+        @click="emit('reallocate')"
+        >新建转投</ElButton
       >
       <ElButton
         v-if="showRefresh"
