@@ -22,6 +22,7 @@ import {
   IconChevronsUp,
   IconChevronsDown,
   IconCalendarEvent,
+  IconX,
 } from '@tabler/icons-vue'
 import FactoryNavIcon from './FactoryNavIcon.vue'
 import AppButton from './AppButton.vue'
@@ -33,10 +34,12 @@ import { useChartPalette } from '@/composables/useChartPalette'
 import { BOARD_DAY, boardDate, boardDeliveryState, boardTeamColor } from '@/utils/scheduleBoard'
 import {
   ganttDate,
-  GANTT_MIN_DAY_WIDTH,
+  ganttBatchRelations,
+  ganttBatchDividers,
   GANTT_ROW_HEIGHT,
   GANTT_LANE_HEIGHT,
   ganttInlineBars,
+  ganttLeaves,
   ganttRange,
   ganttRowHeight,
   scheduleGanttRecords,
@@ -55,9 +58,13 @@ const palette = useChartPalette()
 const now = ref(Date.now())
 const range = ref<[string, string]>(ganttRange([], now.value))
 const zoom = ref(1)
-const allCollapsed = ref(false)
+const allCollapsed = ref(true)
 const hovered = ref<ScheduleGanttRecord>()
 const popoverVisible = ref(false)
+const pinned = ref(false)
+const relations = computed(() =>
+  hovered.value?.kind === 'batch' ? ganttBatchRelations(hovered.value) : undefined,
+)
 const pointer = ref({ x: 0, y: 0 })
 const virtualAnchor = {
   getBoundingClientRect: () => new DOMRect(pointer.value.x, pointer.value.y, 1, 1),
@@ -69,6 +76,7 @@ let observer: ResizeObserver | undefined
 let clock: ReturnType<typeof setInterval> | undefined
 let closeTimer: ReturnType<typeof setTimeout> | undefined
 let resizeFrame = 0
+let viewAnimation: Animation | undefined
 let lastWidth = 0
 let lastHeight = 0
 let taskIdentity = ''
@@ -119,6 +127,9 @@ function statusIcon(state: string, color: string) {
   }
   return iconCache.get(key)!
 }
+const tableWidth = 300
+const barHeight = 26
+const headerHeight = 64
 const font = 'Inter, "PingFang SC", "Microsoft YaHei", sans-serif'
 const colors = computed(
   () =>
@@ -132,7 +143,7 @@ const colors = computed(
 )
 
 function open(record: ScheduleGanttRecord) {
-  popoverVisible.value = false
+  hidePopover()
   if (record.node) {
     // Batch records use synthetic negative ids; the existing dialog accepts a schedule id.
     emit('open-node', { ...record.node, id: record.node.parent_schedule_id || record.node.id })
@@ -140,20 +151,67 @@ function open(record: ScheduleGanttRecord) {
 }
 function hidePopover() {
   clearTimeout(closeTimer)
+  pinned.value = false
   popoverVisible.value = false
+  gantt?.scenegraph.taskBar.removeSelectedBorder()
+  highlightBatch()
 }
 function leaveBar() {
   clearTimeout(closeTimer)
-  closeTimer = setTimeout(hidePopover, 180)
+  if (!pinned.value) closeTimer = setTimeout(hidePopover, 180)
 }
 function keepPopover() {
   clearTimeout(closeTimer)
 }
 function showPopover(record: ScheduleGanttRecord, x: number, y: number) {
   clearTimeout(closeTimer)
+  if (pinned.value) return
   hovered.value = record
   pointer.value = { x, y }
   popoverVisible.value = true
+  highlightBatch(record)
+}
+function selectBatch(record: ScheduleGanttRecord, x: number, y: number) {
+  if (pinned.value && hovered.value?.id === record.id) return hidePopover()
+  pinned.value = false
+  showPopover(record, x, y)
+  pinned.value = true
+}
+function highlightBatch(record?: ScheduleGanttRecord) {
+  const related = record?.kind === 'batch' ? ganttBatchRelations(record) : undefined
+  const ids = new Set(
+    related
+      ? [
+          record!.node!.id,
+          ...related.upstream.map((n) => n.id),
+          ...related.downstream.map((n) => n.id),
+        ]
+      : [],
+  )
+  gantt?.scenegraph.taskBar.barContainer?.forEachChildren((child) => {
+    const bar = child as unknown as VRender.Group & { record?: ScheduleGanttRecord }
+    const item = bar.record
+    if (!item) return
+    const dim =
+      related &&
+      item.kind === 'batch' &&
+      (item.task.id !== record!.task.id || !ids.has(item.node!.id))
+    bar.setAttribute('baseOpacity', dim ? 0.25 : 1)
+  })
+  gantt?.scenegraph.updateNextFrame()
+}
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') hidePopover()
+}
+function onPointerDown(event: PointerEvent) {
+  const target = event.target
+  if (
+    pinned.value &&
+    target instanceof Element &&
+    !host.value?.contains(target) &&
+    !target.closest('.gantt-batch-popover')
+  )
+    hidePopover()
 }
 function fit() {
   range.value = ganttRange(records, now.value)
@@ -184,12 +242,12 @@ function options(): GanttConstructorOptions {
   const groupBackground = dark ? '#282535' : '#e8e8f7'
   const gridLine = dark ? '#393547' : '#d5d9ee'
   const days = (Date.parse(range.value[1]) - Date.parse(range.value[0])) / BOARD_DAY + 1
-  const dayWidth =
-    Math.round(
-      (Math.max(GANTT_MIN_DAY_WIDTH, ((host.value?.clientWidth || 1200) - 304) / days) *
-        zoom.value) /
-        24,
-    ) * 24
+  const visibleStart = Date.parse(`${range.value[0]}T00:00:00+08:00`)
+  const visibleEnd = Date.parse(`${range.value[1]}T00:00:00+08:00`) + BOARD_DAY
+  // At 100%, the selected period occupies the available timeline. Keep fractional
+  // hour widths so rounding cannot push the end of the period off screen.
+  const dayWidth = (((host.value?.clientWidth || 1200) - tableWidth - 4) / days) * zoom.value
+  const dateUnit = dayWidth >= 28 ? 'day' : dayWidth * 7 >= 40 ? 'week' : 'month'
   const rowRecord = (index: number, instance = gantt) =>
     instance?.getRecordByIndex(index) as ScheduleGanttRecord | undefined
   const barStyle = ({
@@ -199,16 +257,18 @@ function options(): GanttConstructorOptions {
   }: TYPES.TaskBarInteractionArgumentType): TYPES.ITaskBarStyle => {
     const record = taskRecord as ScheduleGanttRecord
     const row = rowRecord(index, ganttInstance)
+    const lanes = row?.type === 'project' && row.hierarchyState === 'collapse' ? row.laneCount : 1
     return {
       barColor: record.node ? boardTeamColor(record.node.team_name) : c.muted,
       completedBarColor: record.node ? boardTeamColor(record.node.team_name) : c.muted,
-      width: record.type === 'project' ? 16 : 40,
+      width: record.type === 'project' ? 12 : barHeight,
       cornerRadius: 20,
       borderLineWidth: 0,
       paddingTop:
         record.type === 'project'
-          ? 22
-          : 10 + (row ? record.lanes[row.id] || 0 : 0) * GANTT_LANE_HEIGHT,
+          ? (ganttRowHeight(row) - 12) / 2
+          : (ganttRowHeight(row) - ((lanes - 1) * GANTT_LANE_HEIGHT + barHeight)) / 2 +
+            (row ? record.lanes[row.id] || 0 : 0) * GANTT_LANE_HEIGHT,
     }
   }
   return {
@@ -218,11 +278,11 @@ function options(): GanttConstructorOptions {
     minDate: `${range.value[0]}T00:00:00.000`,
     maxDate: `${range.value[1]}T23:59:59.999`,
     rowHeight: GANTT_ROW_HEIGHT,
-    headerRowHeight: 64,
+    headerRowHeight: headerHeight,
     overscrollBehavior: 'none',
     underlayBackgroundColor: c.surface,
     taskListTable: {
-      tableWidth: 300,
+      tableWidth,
       hierarchyIndent: 16,
       hierarchyExpandLevel: 2,
       columns: [
@@ -246,13 +306,12 @@ function options(): GanttConstructorOptions {
               return { rootContainer, renderDefault: true }
             const inset = record.kind === 'batch' ? 54 : 38
             const cardWidth = rect!.width - inset - 16
-            const center = inset + cardWidth / 2
             rootContainer.add(
               new VRender.Rect({
                 x: inset,
-                y: (rect!.height - 40) / 2,
+                y: (rect!.height - 26) / 2,
                 width: cardWidth,
-                height: 40,
+                height: 26,
                 cornerRadius: 20,
                 fill: c.surface,
                 pickable: false,
@@ -260,38 +319,21 @@ function options(): GanttConstructorOptions {
             )
             rootContainer.add(
               new VRender.Text({
-                x: center,
-                y: rect!.height / 2 - 8,
+                x: inset + cardWidth / 2,
+                y: rect!.height / 2,
                 text: record.kind === 'team' ? record.node!.team_name : record.name,
                 fontFamily: font,
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: 600,
                 textAlign: 'center',
                 textBaseline: 'middle',
                 fill: dark ? '#eeeaf8' : boardTeamColor(record.node!.team_name),
-                maxLineWidth: cardWidth - 20,
+                maxLineWidth: cardWidth - 16,
                 ellipsis: '…',
                 pickable: false,
               }),
             )
-            rootContainer.add(
-              new VRender.Text({
-                x: center,
-                y: rect!.height / 2 + 9,
-                text:
-                  record.startTime != null && record.endTime != null
-                    ? `${boardDate(record.startTime).slice(5).replace('-', '/')}–${boardDate(record.endTime).slice(5).replace('-', '/')}`
-                    : '待填写',
-                fontFamily: font,
-                fontSize: 11,
-                fontWeight: 500,
-                textAlign: 'center',
-                textBaseline: 'middle',
-                fill: c.text,
-                pickable: false,
-              }),
-            )
-            // Keep VTable's tree control; the custom card replaces only its text.
+            // Preserve VTable's tree control alongside the team label.
             return {
               rootContainer,
               renderDefault: record.kind === 'team',
@@ -307,7 +349,9 @@ function options(): GanttConstructorOptions {
         },
       ],
       customComputeRowHeight: ({ row, table }) =>
-        row === 0 ? 64 : ganttRowHeight(table.getRecordByCell(0, row) as ScheduleGanttRecord),
+        row === 0
+          ? headerHeight
+          : ganttRowHeight(table.getRecordByCell(0, row) as ScheduleGanttRecord),
       theme: {
         underlayBackgroundColor: c.surface,
         defaultStyle: {
@@ -358,10 +402,13 @@ function options(): GanttConstructorOptions {
       horizontalLine: { lineColor: gridLine, lineWidth: 0 },
       scales: [
         {
-          unit: 'month',
+          unit: dateUnit === 'month' ? 'year' : 'month',
           step: 1,
           rowHeight: 20,
-          format: ({ startDate }) => `${startDate.getFullYear()} 年 ${startDate.getMonth() + 1} 月`,
+          format: ({ startDate }) =>
+            dateUnit === 'month'
+              ? `${startDate.getFullYear()} 年`
+              : `${startDate.getFullYear()} 年 ${startDate.getMonth() + 1} 月`,
           style: {
             color: c.muted,
             fontSize: 12,
@@ -371,8 +418,9 @@ function options(): GanttConstructorOptions {
           },
         },
         {
-          unit: 'day',
+          unit: dateUnit,
           step: 1,
+          startOfWeek: 'monday',
           rowHeight: 44,
           format: ({ startDate }) => {
             const today = new Date(ganttDate(now.value))
@@ -382,27 +430,41 @@ function options(): GanttConstructorOptions {
                 : ['日', '一', '二', '三', '四', '五', '六'][startDate.getDay()]
             return `${String(startDate.getDate()).padStart(2, '0')}  ${label}`
           },
-          customLayout: ({ width, height, startDate }) => {
-            const rootContainer = new VRender.Group({ width, height, pickable: false })
-            const x = width / 2 - 30
-            rootContainer.add(
-              new VRender.Image({
-                x,
-                y: (height - 24) / 2,
-                width: 22,
-                height: 24,
-                image: calendarSymbol(),
-                pickable: false,
-              }),
-            )
+          customLayout: ({ width, height, startDate, endDate }) => {
+            const rootContainer = new VRender.Group({ width, height, clip: true, pickable: false })
+            const withIcon = width >= (dateUnit === 'week' ? 96 : 80)
+            const x = withIcon ? width / 2 - (dateUnit === 'week' ? 38 : 30) : width / 2
+            if (withIcon)
+              rootContainer.add(
+                new VRender.Image({
+                  x,
+                  y: (height - 24) / 2,
+                  width: 22,
+                  height: 24,
+                  image: calendarSymbol(),
+                  pickable: false,
+                }),
+              )
+            const shortDate = (date: Date) =>
+              `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`
+            const textX = withIcon ? x + 30 : x
+            const textAlign = withIcon ? 'left' : 'center'
+            const maxLineWidth = Math.max(0, withIcon ? width - textX - 3 : width - 4)
             rootContainer.add(
               new VRender.Text({
-                x: x + 30,
+                x: textX,
                 y: height / 2 - 8,
-                text: String(startDate.getDate()).padStart(2, '0'),
+                text:
+                  dateUnit === 'week'
+                    ? shortDate(startDate)
+                    : dateUnit === 'month'
+                      ? `${startDate.getMonth() + 1}月`
+                      : String(startDate.getDate()).padStart(2, '0'),
                 fontFamily: font,
-                fontSize: 18,
+                fontSize: width < 40 || dateUnit === 'week' ? 14 : 18,
                 fontWeight: 600,
+                textAlign,
+                maxLineWidth,
                 textBaseline: 'middle',
                 fill: c.text,
                 pickable: false,
@@ -410,14 +472,22 @@ function options(): GanttConstructorOptions {
             )
             rootContainer.add(
               new VRender.Text({
-                x: x + 30,
+                x: textX,
                 y: height / 2 + 10,
                 text:
-                  startDate.toDateString() === new Date(ganttDate(now.value)).toDateString()
-                    ? '今天'
-                    : ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][startDate.getDay()],
+                  dateUnit === 'week'
+                    ? `— ${shortDate(endDate)}`
+                    : dateUnit === 'month'
+                      ? `${startDate.getDate()}–${endDate.getDate()}日`
+                      : startDate.toDateString() === new Date(ganttDate(now.value)).toDateString()
+                        ? '今天'
+                        : ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][
+                            startDate.getDay()
+                          ],
                 fontFamily: font,
-                fontSize: 12,
+                fontSize: width < 40 ? 10 : 12,
+                textAlign,
+                maxLineWidth,
                 textBaseline: 'middle',
                 fill: c.text,
                 pickable: false,
@@ -434,7 +504,7 @@ function options(): GanttConstructorOptions {
       backgroundColor: gridBackground,
       horizontalBackgroundColor: ({ index, ganttInstance }) =>
         rowRecord(index, ganttInstance)?.kind === 'serial' ? groupBackground : 'transparent',
-      verticalLineDependenceOnTimeScale: 'day',
+      verticalLineDependenceOnTimeScale: dateUnit,
       verticalLine: { lineColor: gridLine, lineWidth: 0 },
       horizontalLine: { lineColor: gridLine, lineWidth: 1 },
     },
@@ -542,6 +612,21 @@ function options(): GanttConstructorOptions {
             ],
           },
         })
+        const dividers = ganttBatchDividers(record, visibleStart, visibleEnd).map(
+          (ratio) => ratio * width,
+        )
+        for (const x of dividers)
+          rootContainer.add(
+            new VRender.Line({
+              points: [
+                { x, y: 3 },
+                { x, y: height - 3 },
+              ],
+              stroke: '#ffffffb3',
+              lineWidth: 1,
+              pickable: false,
+            }),
+          )
         const stateColor =
           state === 'overdue'
             ? '#d44945'
@@ -553,22 +638,38 @@ function options(): GanttConstructorOptions {
         if (state !== 'pending' && state !== 'unassessed')
           rootContainer.add(
             new VRender.Image({
-              x: width - 8,
-              y: -5,
-              width: 13,
-              height: 13,
+              x: width - 7,
+              y: -3,
+              width: 10,
+              height: 10,
               image: statusIcon(state, stateColor),
               pickable: false,
             }),
           )
         const row = rowRecord(index, ganttInstance)
-        const label =
-          row?.kind === 'serial' || record.kind === 'team' ? record.node!.team_name : record.name
+        const compactBatch = record.kind === 'batch' && !!record.node!.batch_number && width < 90
+        const label = compactBatch
+          ? `${record.node!.batch_number}批`
+          : record.kind === 'team'
+            ? record.node!.team_name
+            : row?.kind === 'serial'
+              ? `${record.node!.team_name} · ${record.name}`
+              : record.name
         const showPercent = progress != null && width >= 120
-        const compact = width < 160
-        const symbolSize = Math.min(32, Math.max(0, width - 8))
-        const symbolX = width < 84 ? (width - symbolSize) / 2 : 5
-        if (symbolSize >= 20) {
+        const showLabel = width >= (compactBatch ? 42 : 57)
+        const edges = [0, ...dividers, width]
+        const iconSpaces = edges
+          .slice(0, -1)
+          .map((left, i) => ({ left, width: edges[i + 1]! - left }))
+        const iconSpace = showLabel
+          ? iconSpaces[0]!
+          : iconSpaces.reduce((a, b) => (a.width > b.width ? a : b))
+        const symbolSize = Math.min(
+          compactBatch && showLabel ? 16 : 22,
+          Math.max(0, iconSpace.width - 4),
+        )
+        const symbolX = showLabel ? 2 : iconSpace.left + (iconSpace.width - symbolSize) / 2
+        if (symbolSize >= 14) {
           rootContainer.add(
             new VRender.Circle({
               x: symbolX + symbolSize / 2,
@@ -578,7 +679,7 @@ function options(): GanttConstructorOptions {
               pickable: false,
             }),
           )
-          const glyphSize = symbolSize * 0.6
+          const glyphSize = symbolSize * 0.65
           rootContainer.add(
             new VRender.Image({
               x: symbolX + (symbolSize - glyphSize) / 2,
@@ -590,65 +691,54 @@ function options(): GanttConstructorOptions {
             }),
           )
         }
-        const textX = 43
-        const textWidth = width - textX - (showPercent ? 40 : 10)
-        if (width >= 84 && textWidth >= 36) {
-          const textStyle = {
-            x: textX,
-            fontFamily: font,
-            fill: '#fff',
-            pickable: false,
-            textBaseline: 'middle' as const,
-            maxLineWidth: textWidth,
-            ellipsis: '…',
-          }
+        let textX = compactBatch ? 21 : 29
+        const textEnd = width - (showPercent ? 30 : 3)
+        let textWidth = textEnd - textX
+        if (dividers.length) {
+          // Keep the team name between separators rather than drawing a line
+          // through its letters. The icon and percentage retain their positions.
+          const spaces = edges.slice(0, -1).map((left, i) => {
+            const x = Math.max(textX, left + 5)
+            return { x, width: Math.min(textEnd, edges[i + 1]! - 5) - x }
+          })
+          const space =
+            spaces.find((space) => space.width >= label.length * 13) ||
+            spaces.reduce((a, b) => (a.width > b.width ? a : b))
+          textX = space.x
+          textWidth = Math.max(0, space.width)
+        }
+        if (showLabel) {
           rootContainer.add(
             new VRender.Text({
-              ...textStyle,
-              y: compact ? height / 2 : height / 2 - 8,
+              x: textX,
+              y: height / 2,
               text: label,
-              fontSize: compact ? 13 : 14,
+              fontFamily: font,
+              fontSize: compactBatch ? 11 : 13,
               fontWeight: 600,
-            }),
-          )
-          const hours = (record.endTime! - record.startTime!) / 3_600_000
-          const duration =
-            hours >= 24
-              ? `${Math.floor(hours / 24)}天${hours % 24 ? `${Math.round((hours % 24) * 10) / 10}时` : ''}`
-              : `${Math.round(hours * 10) / 10}小时`
-          if (!compact)
-            rootContainer.add(
-              new VRender.Text({
-                ...textStyle,
-                y: height / 2 + 9,
-                text: duration,
-                fontSize: 11,
-              }),
-            )
-        }
-        if (showPercent) {
-          const x = width - 20
-          const y = height / 2
-          rootContainer.add(
-            new VRender.Circle({
-              x,
-              y,
-              radius: 14,
               fill: '#fff',
+              textBaseline: 'middle',
+              maxLineWidth: textWidth,
+              ellipsis: '…',
               pickable: false,
             }),
           )
+        }
+        if (showPercent) {
+          const x = width - 14
+          const y = height / 2
+          rootContainer.add(new VRender.Circle({ x, y, radius: 12, fill: '#fff', pickable: false }))
           rootContainer.add(
             new VRender.Text({
               x,
               y,
               // Never round a partially delivered batch up to 100%.
               text: `${Math.floor(progress)}%`,
+              fontFamily: font,
               fontSize: 10,
               fontWeight: 600,
               textAlign: 'center',
               textBaseline: 'middle',
-              fontFamily: font,
               fill: '#25232d',
               pickable: false,
             }),
@@ -664,11 +754,17 @@ function positionLocateIcons() {
   // Keep them in the row's upper gutter instead; the time interval stays untouched.
   gantt?.scenegraph.taskBar.locateIconsGroup?.forEachChildren((child) => {
     const icon = child as unknown as VRender.Group
-    icon.setAttributes({ dy: -24, scaleX: 0.65, scaleY: 0.65 })
+    icon.setAttributes({ dy: -15, scaleX: 0.65, scaleY: 0.65 })
   })
 }
 function render(resetScroll = false) {
   if (!host.value) return
+  const animateView = resetScroll && !!gantt
+  viewAnimation?.cancel()
+  const selection =
+    !resetScroll && pinned.value && hovered.value?.kind === 'batch'
+      ? records.flatMap(ganttLeaves).find((record) => record.id === hovered.value!.id)
+      : undefined
   hidePopover()
   if (gantt) {
     const left = gantt.scrollLeft,
@@ -684,7 +780,9 @@ function render(resetScroll = false) {
       showPopover(record as ScheduleGanttRecord, federatedEvent.clientX, federatedEvent.clientY),
     )
     gantt.on('mouseleave_task_bar', leaveBar)
-    gantt.on('click_task_bar', ({ record }) => open(record as ScheduleGanttRecord))
+    gantt.on('click_task_bar', ({ record, federatedEvent }) =>
+      selectBatch(record as ScheduleGanttRecord, federatedEvent.clientX, federatedEvent.clientY),
+    )
     gantt.on('scroll', () => {
       hidePopover()
       positionLocateIcons()
@@ -699,12 +797,38 @@ function render(resetScroll = false) {
       if (record) open(record)
     })
     boundTable?.on('tree_hierarchy_state_change', () => {
+      hidePopover()
       allCollapsed.value = records.every((record) => record.hierarchyState === 'collapse')
       nextTick(positionLocateIcons)
     })
   }
+  if (selection) selectBatch(selection, pointer.value.x, pointer.value.y)
+  // Fade the date axis and bars together; live resize/data refresh stay immediate.
+  if (animateView && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    viewAnimation = host.value.animate?.([{ opacity: 0.65 }, { opacity: 1 }], {
+      duration: 180,
+      easing: 'ease-out',
+    })
+  }
 }
 function release() {
+  viewAnimation?.cancel()
+  viewAnimation = undefined
+  // VTable 1.26.8 disconnects observers but leaves their debounced callbacks queued.
+  // Detach callbacks before the Gantt and list-table canvases are released.
+  for (const handler of [
+    gantt?.eventManager._eventHandler,
+    gantt?.taskListTableInstance?.internalProps?.handler,
+  ]) {
+    const listeners = (
+      handler as unknown as { reseizeListeners?: Record<string, { cb: unknown }> } | undefined
+    )?.reseizeListeners
+    for (const listener of Object.values(listeners || {})) listener.cb = undefined
+  }
+  // VTable 1.26.8 leaves scrollbar auto-hide timers alive after releasing the canvas.
+  const scrollbar = gantt?.scenegraph.scrollbarComponent
+  clearTimeout(scrollbar?._clearHorizontalScrollBar)
+  clearTimeout(scrollbar?._clearVerticalScrollBar)
   // VTable Gantt 1.26.8 clears scenegraph without releasing its Canvas listeners.
   gantt?.scenegraph.release()
   gantt?.release()
@@ -739,6 +863,9 @@ watch(
   },
   { immediate: true },
 )
+watch(range, () => {
+  zoom.value = 1
+})
 watch([range, zoom], () => render(true))
 watch(colors, () => {
   const left = gantt?.scrollLeft || 0
@@ -752,6 +879,8 @@ watch(colors, () => {
   }
 })
 onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  window.addEventListener('pointerdown', onPointerDown)
   render()
   observer = new ResizeObserver(() => {
     const width = host.value?.clientWidth || 0
@@ -769,6 +898,8 @@ onMounted(() => {
   }, 60_000)
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('pointerdown', onPointerDown)
   observer?.disconnect()
   cancelAnimationFrame(resizeFrame)
   clearInterval(clock)
@@ -842,21 +973,31 @@ onBeforeUnmount(() => {
       >
     </footer>
     <AppPopover
-      v-model:visible="popoverVisible"
+      :visible="popoverVisible"
+      popper-class="gantt-batch-popover"
       :virtual-ref="virtualAnchor"
       virtual-triggering
       trigger="manual"
-      placement="top"
+      placement="top-end"
       :width="324"
       :show-arrow="false"
       :teleported="true"
     >
       <div v-if="hovered" @mouseenter="keepPopover" @mouseleave="leaveBar">
+        <div v-if="pinned" class="gantt-pin-actions">
+          <AppButton text aria-label="取消选中批次" @click="hidePopover"
+            ><IconX :size="15"
+          /></AppButton>
+        </div>
         <ScheduleBatchSummary
           v-if="hovered.node"
           :node="hovered.node"
           :serial-no="hovered.task.serial_no"
           :now="now"
+          :relations="relations"
+          :batches="
+            hovered.kind === 'team' ? hovered.children?.map((batch) => batch.node!) : undefined
+          "
           @open="open(hovered)"
         />
         <div v-else class="gantt-task-summary">
@@ -886,6 +1027,11 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.gantt-pin-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
 .production-gantt {
   container-type: inline-size;
   display: flex;
@@ -903,7 +1049,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 16px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--wm-border, #e4e4e7);
   flex-wrap: wrap;
 }
@@ -1017,7 +1163,7 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   align-items: center;
   gap: 22px;
-  padding: 10px 16px;
+  padding: 6px 12px;
   border-top: 1px solid var(--wm-border, #e4e4e7);
   color: var(--wm-muted, #71717a);
   font-size: 12px;

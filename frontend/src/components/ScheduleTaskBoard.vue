@@ -116,13 +116,25 @@ async function load(background = false) {
   if (!background) loading.value = true
   error.value = ''
   try {
-    const result = await productionScheduleApi.tasks({
+    const params = {
       ...filters.value,
       sort_order: sortOrder.value,
-      page: page.value,
-      page_size: pageSize.value,
-    })
+      page: props.management ? page.value : 1,
+      page_size: props.management ? pageSize.value : 100,
+    }
+    const result = await productionScheduleApi.tasks(params)
     if (token !== generation) return
+    if (!props.management) {
+      const items = [...result.items]
+      for (let nextPage = 2; nextPage <= Math.ceil(result.total / params.page_size); nextPage++) {
+        const next = await productionScheduleApi.tasks({ ...params, page: nextPage })
+        if (token !== generation) return
+        items.push(...next.items)
+      }
+      rows.value = items
+      total.value = result.total
+      return
+    }
     const last = Math.max(1, Math.ceil(result.total / pageSize.value))
     if (page.value > last) {
       page.value = last
@@ -406,10 +418,10 @@ onBeforeUnmount(() => {
 <template>
   <section
     class="task-board"
-    :class="{ 'task-board--fullscreen': fullscreen }"
+    :class="{ 'task-board--fullscreen': fullscreen, 'task-board--overview': !management }"
     aria-label="生产排期任务"
   >
-    <div v-if="!fullscreen || error" class="task-board__toolbar">
+    <div v-if="management && (!fullscreen || error)" class="task-board__toolbar">
       <slot name="heading"><strong class="task-board__title">交货进度</strong></slot>
       <div class="task-board__actions">
         <TableExportButton
@@ -569,7 +581,14 @@ onBeforeUnmount(() => {
           ></template
         >
       </WorkspaceDataToolbar>
-      <template v-if="fullscreen" #view-actions><slot name="view-actions" /></template>
+      <template v-if="!management" #view-actions>
+        <TableExportButton
+          text
+          :source="exportSource"
+          :context="JSON.stringify({ ...filters, sort_order: sortOrder })"
+          :disabled="loading || !!error"
+        />
+      </template>
     </component>
     <ElAlert v-if="actionError" :title="actionError" type="error" :closable="false" />
     <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
@@ -674,6 +693,7 @@ onBeforeUnmount(() => {
       >
     </WorkspaceTable>
     <WorkspacePagination
+      v-if="management"
       :current-page="page"
       :page-size="pageSize"
       :total="total"
@@ -897,6 +917,9 @@ onBeforeUnmount(() => {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+}
+.task-board--overview {
+  gap: 8px;
 }
 .task-board__toolbar {
   display: flex;

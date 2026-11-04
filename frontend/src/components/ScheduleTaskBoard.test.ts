@@ -199,29 +199,43 @@ describe('task scheduling board', () => {
     expect(wrapper.getComponent(ElPagination).props('pageSize')).toBe(10)
     expect(wrapper.findAll('.el-table__body .el-table__row')).toHaveLength(10)
   })
-  it('focuses fullscreen on the timeline and preserves the current view and filters on exit', async () => {
+  it('keeps controls inside the overview without a title bar or pagination', async () => {
     await render('/production-schedules?serial_no=S-001')
-    const overview = wrapper.getComponent({ name: 'VTableScheduleTimeline' })
-    await wrapper.setProps({ fullscreen: true })
     expect(wrapper.find('.task-board__toolbar').exists()).toBe(false)
-    expect(wrapper.find('.overview-stub .fullscreen-toggle').exists()).toBe(true)
-    expect(wrapper.find('[aria-label="排期筛选"]').exists()).toBe(false)
-    expect(wrapper.find('[aria-label="刷新任务排期"]').exists()).toBe(false)
-    expect(wrapper.findComponent(TableExportButton).exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('新建任务排期')
-    overview.vm.$emit('open-node', node(2))
-    await flushPromises()
-    expect(hooks.openDetail).toHaveBeenCalledWith(2)
-    await wrapper.setProps({ fullscreen: false })
-    expect(wrapper.getComponent({ name: 'VTableScheduleTimeline' }).vm).toBe(overview.vm)
-    expect(wrapper.find('.task-board__toolbar .fullscreen-toggle').exists()).toBe(true)
-    expect(wrapper.findComponent(TableExportButton).exists()).toBe(true)
-    expect(wrapper.text()).not.toContain('新建任务排期')
+    expect(wrapper.findComponent(ElPagination).exists()).toBe(false)
+    expect(wrapper.find('.overview-stub .table-export-button').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="排期筛选"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="刷新任务排期"]').exists()).toBe(true)
     expect(wrapper.get('.task-board__filter-count').text()).toBe('1')
-    expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(1)
-    expect(productionScheduleApi.tasks).toHaveBeenCalledWith(
-      expect.objectContaining({ query: 'S-001' }),
+  })
+  it('loads every overview page and ignores a superseded multi-page result', async () => {
+    const items = Array.from({ length: 101 }, (_, i) => ({ ...task, id: i + 1 }))
+    let finish!: (value: Awaited<ReturnType<typeof productionScheduleApi.tasks>>) => void
+    vi.mocked(productionScheduleApi.tasks).mockImplementation(async (params) => {
+      if (params?.query) return { items: [task], total: 1, page: 1, page_size: 100 }
+      if (params?.page === 2)
+        return new Promise((resolve) => {
+          finish = resolve
+        })
+      return { items: items.slice(0, 100), total: 101, page: 1, page_size: 100 }
+    })
+    await render()
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 2, page_size: 100 }),
     )
+    finish({ items: items.slice(100), total: 101, page: 2, page_size: 100 })
+    await flushPromises()
+    expect(wrapper.getComponent({ name: 'VTableScheduleTimeline' }).props('tasks')).toHaveLength(
+      101,
+    )
+    await wrapper.get('[aria-label="刷新任务排期"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('input[aria-label="任务排期搜索"]').setValue('S-001')
+    await wrapper.get('form[role="search"]').trigger('submit')
+    await flushPromises()
+    finish({ items: items.slice(100), total: 101, page: 2, page_size: 100 })
+    await flushPromises()
+    expect(wrapper.getComponent({ name: 'VTableScheduleTimeline' }).props('tasks')).toEqual([task])
   })
   it('opens the global overview by default and drills into the existing task and node details', async () => {
     await render()
@@ -278,7 +292,7 @@ describe('task scheduling board', () => {
       ...filters,
       sort_order: 'asc',
       page: 1,
-      page_size: 10,
+      page_size: 100,
     })
     expect(wrapper.getComponent(AppDrawer).props('modelValue')).toBe(false)
     expect(wrapper.get('.task-board__filter-count').text()).toBe('4')
@@ -354,7 +368,7 @@ describe('task scheduling board', () => {
     )
     expect(wrapper.find('.task-board__filter-count').exists()).toBe(false)
   })
-  it('searches without opening filters and keeps final delivery sorting when paging and exporting', async () => {
+  it('searches without opening filters and keeps final delivery sorting when exporting', async () => {
     vi.mocked(productionScheduleApi.tasks).mockResolvedValue({
       items: [task],
       total: 21,
@@ -362,11 +376,6 @@ describe('task scheduling board', () => {
       page_size: 10,
     })
     await render()
-    wrapper.getComponent(ElPagination).vm.$emit('current-change', 2)
-    await flushPromises()
-    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
-      expect.objectContaining({ page: 2 }),
-    )
     await wrapper.get('input[aria-label="任务排期搜索"]').setValue('  S-001  ')
     await wrapper.get('form[role="search"]').trigger('submit')
     await flushPromises()
@@ -379,11 +388,6 @@ describe('task scheduling board', () => {
     await button('应用筛选')
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
       expect.objectContaining({ query: 'S-001', sort_order: 'desc', page: 1 }),
-    )
-    wrapper.getComponent(ElPagination).vm.$emit('current-change', 2)
-    await flushPromises()
-    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
-      expect.objectContaining({ query: 'S-001', sort_order: 'desc', page: 2 }),
     )
     vi.mocked(productionScheduleApi.tasks).mockResolvedValue({
       items: [task],

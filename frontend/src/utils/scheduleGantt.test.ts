@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { ProductionSchedule, ScheduleBatch, ScheduleTask } from '@/types/productionSchedule'
-import { ganttDate, ganttRange, ganttRowHeight, scheduleGanttRecords } from './scheduleGantt'
+import {
+  ganttDate,
+  ganttRange,
+  ganttRowHeight,
+  ganttInlineBars,
+  ganttBatchRelations,
+  ganttBatchDividers,
+  scheduleGanttRecords,
+} from './scheduleGantt'
 
 const batch = (id: number, overrides: Partial<ScheduleBatch> = {}): ScheduleBatch => ({
   id,
@@ -43,9 +51,9 @@ const task = (nodes: ProductionSchedule[]) =>
   }) as ScheduleTask
 
 describe('VTable schedule adapter', () => {
-  it('expands only the first serial so other materials remain visible in the overview', () => {
+  it('starts with the compact serial overview without automatically expanding team rows', () => {
     const records = scheduleGanttRecords([task([node(1)]), { ...task([node(2)]), id: 2 }])
-    expect(records.map((record) => record.hierarchyState)).toEqual(['expand', 'collapse'])
+    expect(records.map((record) => record.hierarchyState)).toEqual(['collapse', 'collapse'])
   })
   it('preserves repeated visits, separate quantities, and immutable source records', () => {
     const source = task([node(3), node(1, { team_name: '库房', target_quantity: 10 }), node(2)])
@@ -69,18 +77,40 @@ describe('VTable schedule adapter', () => {
     expect(leaf.endTime! - leaf.startTime!).toBe(8 * 3_600_000)
     expect(ganttDate(Date.parse('2026-11-02T18:00:00Z'))).toBe('2026-11-03T02:00:00.000')
   })
-  it('keeps overlapping team windows on separate lanes, with batches available in child rows', () => {
+  it('keeps overlapping teams on separate lanes while each team remains one overview bar', () => {
     const [record] = scheduleGanttRecords([
-      task([node(1, { batches: [batch(1), batch(2)] }), node(2)]),
+      task([node(1, { batches: [batch(1), batch(2)] }), node(2, { batches: [batch(3)] })]),
     ])
     const team = record!.children![0]!
     expect(team.children!.map((child) => child.lanes[team.id])).toEqual([0, 1])
     expect(record!.laneCount).toBe(2)
-    expect(ganttRowHeight(team)).toBe(60)
-    team.hierarchyState = 'expand'
-    expect(ganttRowHeight(team)).toBe(60)
+    expect(ganttRowHeight(record)).toBe(64)
+    record!.hierarchyState = 'expand'
+    expect(ganttRowHeight(record)).toBe(40)
+    expect(ganttRowHeight(team)).toBe(40)
   })
-  it('summarizes the real team window and total dispatch without averaging batch percentages', () => {
+  it('shares a lane at an exact handover but separates even a one-minute overlap', () => {
+    const adjacent = node(2, {
+      batches: [
+        batch(2, {
+          planned_start_at: '2026-11-02T08:00:00Z',
+          due_at: '2026-11-02T16:00:00Z',
+        }),
+      ],
+    })
+    const [record] = scheduleGanttRecords([task([node(1), adjacent])])
+    expect(record!.laneCount).toBe(1)
+    expect(
+      ganttInlineBars(record!)
+        .slice(0, 2)
+        .map((child) => child.lanes[record!.id]),
+    ).toEqual([0, 0])
+    adjacent.batches![0]!.planned_start_at = '2026-11-02T07:59:00Z'
+    const [overlap] = scheduleGanttRecords([task([node(1), adjacent])])
+    expect(overlap!.laneCount).toBe(2)
+    expect(overlap!.children![1]!.startTime).toBe(Date.parse('2026-11-02T07:59:00Z'))
+  })
+  it('keeps the team envelope and total progress with dividers at actual batch deadlines', () => {
     const [record] = scheduleGanttRecords([
       task([
         node(1, {
@@ -105,6 +135,72 @@ describe('VTable schedule adapter', () => {
     expect(team.endTime).toBe(Date.parse('2026-11-03T08:00:00Z'))
     expect(team.children!.map((batch) => batch.progress)).toEqual([100, 0])
     expect(team.node?.planned_start_at).toBe('2026-11-02T00:00:00.000Z')
+    const bars = ganttInlineBars(record!).filter((bar) => bar.kind !== 'deadline')
+    expect(bars.map((bar) => bar.kind)).toEqual(['team'])
+    expect(ganttBatchDividers(team)).toEqual([0.25])
+    expect(ganttBatchDividers(team, Date.parse('2026-11-02T08:00:00Z'))).toEqual([])
+    expect(
+      ganttBatchDividers(
+        team,
+        Date.parse('2026-11-02T04:00:00Z'),
+        Date.parse('2026-11-02T12:00:00Z'),
+      ),
+    ).toEqual([0.5])
+    expect(team.children!.map((bar) => [bar.name, bar.startTime, bar.endTime])).toEqual([
+      ['第1批', Date.parse('2026-11-02T00:00:00Z'), Date.parse('2026-11-02T08:00:00Z')],
+      ['第2批', Date.parse('2026-11-03T00:00:00Z'), Date.parse('2026-11-03T08:00:00Z')],
+    ])
+    expect(ganttBatchDividers(team.children![0]!)).toEqual([])
+  })
+  it('deduplicates coincident batch deadlines and excludes cancelled or final-edge dividers', () => {
+    const [record] = scheduleGanttRecords([
+      task([
+        node(1, {
+          batches: [
+            batch(1),
+            batch(2),
+            batch(3, { due_at: '2026-11-02T16:00:00Z' }),
+            batch(4, { due_at: '2026-11-02T12:00:00Z', status: 'cancelled' }),
+          ],
+        }),
+      ]),
+    ])
+    expect(ganttBatchDividers(record!.children![0]!)).toEqual([0.5])
+    expect(ganttBatchDividers(record!)).toEqual([])
+  })
+  it('matches explicit many-to-many batch links, never equal batch numbers or cancelled supplies', () => {
+    const [record] = scheduleGanttRecords([
+      task([
+        node(1, {
+          batches: [
+            batch(10, { batch_number: 1 }),
+            batch(11, { batch_number: 2 }),
+            batch(12, { status: 'cancelled' }),
+          ],
+        }),
+        node(2, {
+          batches: [
+            batch(20, { batch_number: 3, upstream_batch_ids: [10, 11, 12] }),
+            batch(21, { batch_number: 3 }),
+          ],
+        }),
+        node(3, {
+          batches: [
+            batch(30, { batch_number: 7, upstream_batch_ids: [20] }),
+            batch(31, { batch_number: 8, upstream_batch_ids: [20] }),
+            batch(32, { status: 'cancelled', upstream_batch_ids: [20] }),
+          ],
+        }),
+      ]),
+    ])
+    const current = record!.children![1]!.children![0]!
+    const linked = ganttBatchRelations(current)
+    expect(linked.upstream.map((node) => node.id)).toEqual([-10, -11])
+    expect(linked.downstream.map((node) => node.id)).toEqual([-30, -31])
+    expect(ganttBatchRelations(record!.children![1]!.children![1]!)).toEqual({
+      upstream: [],
+      downstream: [],
+    })
   })
   it('does not invent a start time or fabricate unconfirmed plans', () => {
     const [record] = scheduleGanttRecords([

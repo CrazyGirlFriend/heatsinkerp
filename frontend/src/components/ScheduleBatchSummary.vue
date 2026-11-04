@@ -5,7 +5,13 @@ import ScheduleDeliveryMark from './ScheduleDeliveryMark.vue'
 import { scheduleStatusLabels, type ProductionSchedule } from '@/types/productionSchedule'
 import { formatAmount, formatDateTime } from '@/utils/format'
 import { boardDeliveryState, boardTeamColor } from '@/utils/scheduleBoard'
-const props = defineProps<{ node: ProductionSchedule; serialNo: string; now: number }>()
+const props = defineProps<{
+  node: ProductionSchedule
+  serialNo: string
+  now: number
+  batches?: ProductionSchedule[]
+  relations?: { upstream: ProductionSchedule[]; downstream: ProductionSchedule[] }
+}>()
 const emit = defineEmits<{ open: [] }>()
 const state = computed(() => boardDeliveryState(props.node, props.now))
 const statusLabel = computed(() =>
@@ -37,7 +43,34 @@ const measurements = computed(() => [
       <span class="detail-status"><ScheduleDeliveryMark :state="state" />{{ statusLabel }}</span>
     </header>
     <div class="detail-serial">{{ serialNo }}</div>
-    <dl class="detail-dates">
+    <table v-if="batches && batches.length > 1" class="detail-batches">
+      <thead>
+        <tr>
+          <th>批次</th>
+          <th>{{ weight ? '应交 kg' : '应交件数' }}</th>
+          <th>开始</th>
+          <th>交期</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="batch in batches" :key="batch.id">
+          <td>
+            <span class="detail-batch-number">
+              <ScheduleDeliveryMark :state="boardDeliveryState(batch, now)" />
+              {{ batch.batch_number }}
+            </span>
+          </td>
+          <td>{{ formatAmount(weight ? batch.target_weight : batch.target_quantity) }}</td>
+          <td :title="formatDateTime(batch.planned_start_at)">
+            {{ formatDateTime(batch.planned_start_at).slice(5) || '—' }}
+          </td>
+          <td :title="formatDateTime(batch.due_at)">
+            {{ formatDateTime(batch.due_at).slice(5) || '—' }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <dl v-else class="detail-dates">
       <div>
         <dt>计划开始</dt>
         <dd>{{ formatDateTime(node.planned_start_at) }}</dd>
@@ -62,6 +95,19 @@ const measurements = computed(() => [
     <div v-if="node.completion_basis === 'both'" class="detail-weight">
       重量 {{ formatAmount(node.dispatched_weight) }} / {{ formatAmount(node.target_weight) }} kg
     </div>
+    <dl v-if="relations" class="detail-dates detail-relations">
+      <div v-for="(label, key) in { upstream: '上序来料', downstream: '下序去向' }" :key="key">
+        <dt>{{ label }}</dt>
+        <dd>
+          <template v-if="relations[key].length">
+            <span v-for="batch in relations[key]" :key="batch.id">
+              {{ batch.team_name }} · 第{{ batch.batch_number }}批
+            </span>
+          </template>
+          <span v-else>—</span>
+        </dd>
+      </div>
+    </dl>
     <footer>
       <span
         >{{ node.team_name }} <IconArrowRight :size="13" />
@@ -106,6 +152,33 @@ const measurements = computed(() => [
   margin-top: 4px;
   color: var(--wm-muted, #71717a);
 }
+.detail-batches {
+  width: 100%;
+  margin: 12px 0;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.detail-batches th,
+.detail-batches td {
+  padding: 5px 3px;
+  text-align: right;
+}
+.detail-batches th {
+  color: var(--wm-muted, #71717a);
+  font-weight: 400;
+}
+.detail-batches th:first-child,
+.detail-batches td:first-child {
+  text-align: left;
+  padding-left: 0;
+}
+.detail-batch-number {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
 .detail-dates {
   margin: 16px 0;
   display: grid;
@@ -122,6 +195,11 @@ const measurements = computed(() => [
 .detail-dates dd {
   margin: 0;
   font-variant-numeric: tabular-nums;
+}
+.detail-relations dd {
+  display: grid;
+  gap: 3px;
+  text-align: right;
 }
 .detail-quantities {
   display: grid;
