@@ -400,49 +400,6 @@ html.wm-app .route-list .route-rework-ready {
 html.wm-app .production-timeline .date-preset.active {
   color: var(--wm-text);
 }
-html.wm-app .login-page {
-  --primary: var(--wm-primary);
-  color: var(--wm-text);
-  background: var(--wm-canvas);
-}
-html.wm-app .login-scene {
-  opacity: 0.08;
-  filter: grayscale(1);
-  animation: none;
-}
-html.wm-app .login-page .login-card {
-  color: var(--wm-text);
-  background: var(--wm-bg);
-  border: 1px solid var(--wm-border);
-  border-radius: 12px;
-  box-shadow: 0 12px 40px #0001;
-  backdrop-filter: none;
-  translate: none;
-}
-html.wm-app .login-card::before,
-html.wm-app .login-card header::after {
-  display: none;
-}
-html.wm-app .login-card .el-form-item__label,
-html.wm-app .login-card .el-input__inner {
-  color: var(--wm-text);
-}
-html.wm-app .login-card .el-input__wrapper {
-  background: var(--wm-surface);
-  box-shadow: 0 0 0 1px var(--wm-border) inset;
-}
-html.wm-app .login-card .el-input__wrapper.is-focus {
-  box-shadow:
-    0 0 0 1px var(--wm-primary) inset,
-    0 0 0 3px var(--wm-hover);
-}
-html.wm-app .login-card .login-submit {
-  color: var(--wm-primary-text);
-  background: var(--wm-primary);
-  border-color: var(--wm-primary);
-  box-shadow: none;
-}
-
 /* A toolbar embedded in the timeline shares controls, but stays on a single line. */
 html.wm-app .production-timeline .toolbar-start .wm-data-toolbar {
   flex: 1 1 340px;

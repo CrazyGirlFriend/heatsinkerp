@@ -18,6 +18,7 @@ vi.mock('@/services/teamDirectoryApi', () => ({
 import App from './App.vue'
 import FactorySidebar from '@/components/FactorySidebar.vue'
 import ProfileDialog from '@/components/ProfileDialog.vue'
+import LoginPage from '@/pages/LoginPage.vue'
 import { accessHttpClient, checkSiteAccess } from '@/stores/access'
 import { authState, clearSession } from '@/stores/auth'
 
@@ -64,7 +65,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function renderApp(mobile: boolean) {
+async function renderApp(mobile: boolean, path = '/transfer-batches') {
   let viewportChanged: () => void = () => undefined
   const media = {
     matches: mobile,
@@ -78,6 +79,7 @@ async function renderApp(mobile: boolean) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: '/login', name: 'login', component: LoginPage },
       { path: '/', name: 'home', redirect: '/factory-analysis' },
       { path: '/factory-analysis', name: 'factory-analysis', component: page },
       { path: '/factory-stock', redirect: '/factory-analysis' },
@@ -91,7 +93,7 @@ async function renderApp(mobile: boolean) {
       { path: '/:pathMatch(.*)*', component: page },
     ],
   })
-  await router.push('/transfer-batches')
+  await router.push(path)
   await router.isReady()
   const wrapper = mount(App, { attachTo: document.body, global: { plugins: [router] } })
   wrappers.push(wrapper)
@@ -105,6 +107,33 @@ async function renderApp(mobile: boolean) {
 }
 
 describe('application navigation shell', () => {
+  it('keeps the original login theme on a direct visit', async () => {
+    clearSession()
+    const { wrapper } = await renderApp(false, '/login')
+    expect(wrapper.find('.login-page').exists()).toBe(true)
+    expect(document.documentElement.classList.contains('wm-app')).toBe(false)
+    expect(document.documentElement.classList.contains('wm-scope')).toBe(false)
+    expect(wrapper.get('.login-submit').classes()).not.toContain('wm-control-button')
+  })
+
+  it('removes the business theme from the login fallback even when navigation is blocked', async () => {
+    const { wrapper, router } = await renderApp(false)
+    expect(document.documentElement.classList.contains('wm-app')).toBe(true)
+    const removeGuard = router.beforeEach(() => false)
+    clearSession()
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/transfer-batches')
+    expect(wrapper.find('.login-page').exists()).toBe(true)
+    expect(document.documentElement.classList.contains('wm-app')).toBe(false)
+    expect(document.documentElement.classList.contains('wm-scope')).toBe(false)
+    expect(wrapper.get('.login-submit').classes()).not.toContain('wm-control-button')
+    removeGuard()
+    await router.push('/login')
+    await flushPromises()
+    expect(wrapper.find('.login-page').exists()).toBe(true)
+    expect(document.documentElement.classList.contains('wm-app')).toBe(false)
+  })
+
   it('applies the shared theme to business routes and restores the untouched overview', async () => {
     const { wrapper, router } = await renderApp(false)
     expect(document.documentElement.classList.contains('wm-app')).toBe(true)

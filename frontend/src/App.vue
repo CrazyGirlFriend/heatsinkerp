@@ -34,8 +34,16 @@ const teamLabel = computed(() =>
 )
 const route = useRoute()
 const router = useRouter()
-// Overview keeps its current presentation until its chart design is decided.
-const appearance = computed(() => (route.name === 'factory-analysis' ? 'glass' : 'watermelon'))
+const isAuthenticationPage = computed(() => ['login', 'access'].includes(String(route.name)))
+// Only the signed-in business shell uses the shared theme; auth and overview keep their styles.
+const appearance = computed(() =>
+  !canEnterSite.value ||
+  !isAuthenticated.value ||
+  isAuthenticationPage.value ||
+  route.name === 'factory-analysis'
+    ? 'glass'
+    : 'watermelon',
+)
 provide(workspaceAppearanceKey, appearance)
 watch(
   appearance,
@@ -182,7 +190,6 @@ watch(isAuthenticated, (authenticated) => {
     void router.replace('/login')
 })
 
-const isAuthenticationPage = computed(() => ['login', 'access'].includes(String(route.name)))
 const userLabel = computed(() => {
   const user = currentUser.value
   if (!user) return ''

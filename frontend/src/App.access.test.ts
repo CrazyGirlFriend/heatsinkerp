@@ -69,6 +69,7 @@ describe('access gate rendering', () => {
     expect(wrapper.find('.app-shell').exists()).toBe(false)
     expect(wrapper.find('img[alt*="安泰天龙"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('正在检查访问权限')
+    expect(document.documentElement.classList.contains('wm-app')).toBe(false)
 
     accessBody = { enabled: true, unlocked: false }
     await checkSiteAccess(true)
@@ -90,6 +91,8 @@ describe('access gate rendering', () => {
     await checkSiteAccess(true)
     await nextTick()
     expect(wrapper.find('input[name="username"]').exists()).toBe(true)
+    expect(document.documentElement.classList.contains('wm-app')).toBe(false)
+    expect(wrapper.get('.login-submit').classes()).not.toContain('wm-control-button')
     expect(wrapper.find('input[name="site-access-password"]').exists()).toBe(false)
     expect(wrapper.get('.login-brand__mark img').attributes('src')).toBe(
       '/brand/attl-official-logo.png',
@@ -112,9 +115,12 @@ describe('access gate rendering', () => {
     await router.push('/flows')
     expect(wrapper.find('.app-shell').exists()).toBe(true)
     expect(wrapper.text()).toContain('private business content')
+    expect(document.documentElement.classList.contains('wm-app')).toBe(true)
     notifySiteAccessRequired()
     await nextTick()
     expect(wrapper.find('.app-shell').exists()).toBe(false)
+    expect(document.documentElement.classList.contains('wm-app')).toBe(false)
+    expect(document.documentElement.classList.contains('wm-scope')).toBe(false)
     expect(wrapper.text()).not.toContain('private business content')
     expect(wrapper.find('input[name="site-access-password"]').exists()).toBe(false)
     await wrapper.get('button[aria-label="解锁访问"]').trigger('click')
