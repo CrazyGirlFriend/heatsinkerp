@@ -14,7 +14,9 @@ import {
   DocumentChecked,
   Back,
 } from '@element-plus/icons-vue'
-import { ElIcon, ElCheckbox } from 'element-plus'
+import { ElIcon, ElOption } from 'element-plus'
+import AppSelect from './AppSelect.vue'
+import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
 import ElButton from '@/components/AppButton.vue'
 import AppDrawer from './AppDrawer.vue'
 import TransferAmendmentReview from './TransferAmendmentReview.vue'
@@ -26,9 +28,11 @@ import { formatDateTime } from '@/utils/format'
 const props = defineProps<{ compact?: boolean; teamId?: number }>()
 const router = useRouter()
 const route = useRoute()
-const category = ref('all')
+const view = ref('all')
+const source = ref('all')
+const category = computed(() => (view.value === 'pending' ? 'pending' : source.value))
+const unreadOnly = computed(() => view.value === 'unread')
 const visible = ref(false),
-  unreadOnly = ref(false),
   loading = ref(false),
   opening = ref(false)
 const page = ref(1),
@@ -44,6 +48,11 @@ const selectedKey = computed(() =>
 )
 const markingRead = new Set<string>()
 const reviewBusy = ref(false)
+const views = computed(() => [
+  { value: 'all', label: '全部', disabled: opening.value },
+  { value: 'unread', label: '未读', count: unread.value, disabled: opening.value },
+  { value: 'pending', label: '待处理', disabled: opening.value },
+])
 const labels: Record<BusinessNotice['kind'], string> = {
   amendment_requested: '转料修改申请',
   amendment_approved: '修改已生效',
@@ -114,11 +123,15 @@ async function markRead(item: BusinessNotice) {
   }
 }
 async function selectNotice(item: BusinessNotice) {
+  if (opening.value || loading.value || reviewBusy.value) return
+  if (item.source !== 'transfer' || !item.amendment_id) {
+    await openNotice(item.id, item.source)
+    return
+  }
   selected.value = item
   error.value = ''
   await nextTick()
   detailPanel.value?.focus({ preventScroll: true })
-  if (item.source !== 'transfer') void markRead(item)
 }
 function amendmentLoaded(amendment: { id: number }) {
   if (selected.value?.source === 'transfer' && selected.value.amendment_id === amendment.id) {
@@ -181,13 +194,19 @@ function show() {
   visible.value = true
   void load()
 }
-function filter(value: string) {
-  if (category.value === value) return
+function backToList() {
+  if (reviewBusy.value) return
+  const key = selectedKey.value
+  selected.value = null
+  void nextTick(() => {
+    document.getElementById(`business-notice-${key}`)?.focus({ preventScroll: true })
+  })
+}
+watch([view, source], () => {
   items.value = []
   selected.value = null
-  category.value = value
   page.value = 1
-}
+})
 const live = useLiveRefresh(load, {
   teamId: () => props.teamId,
   busy: () => loading.value || opening.value || reviewBusy.value,
@@ -226,156 +245,151 @@ onBeforeUnmount(() => {
   <AppDrawer
     v-model="visible"
     title="消息通知"
-    size="min(1080px, 96vw)"
+    size="min(460px, 100vw)"
     class="schedule-inbox"
     append-to-body
     :show-close="!reviewBusy"
     :close-on-click-modal="!reviewBusy"
     :close-on-press-escape="!reviewBusy"
   >
-    <div class="inbox-toolbar">
-      <div class="inbox-tabs" role="group" aria-label="消息筛选">
-        <button
-          v-for="tab in [
-            { value: 'all', label: '全部' },
-            { value: 'pending', label: '待确认' },
-            { value: 'transfer', label: '转料' },
-            { value: 'rework', label: '返工' },
-            { value: 'schedule', label: '排期' },
-          ]"
-          :key="tab.value"
-          type="button"
-          :aria-pressed="category === tab.value"
-          :disabled="reviewBusy"
-          @click="filter(tab.value)"
+    <div v-show="!selected" class="inbox-controls">
+      <WatermelonSegmented v-model="view" class="inbox-tabs" label="消息筛选" :options="views" />
+      <div class="inbox-toolbar">
+        <AppSelect
+          v-if="view !== 'pending'"
+          v-model="source"
+          class="inbox-source"
+          aria-label="通知类型"
+          :disabled="opening"
         >
-          {{ tab.label }}
-        </button>
+          <ElOption label="全部类型" value="all" />
+          <ElOption label="返工" value="rework" />
+          <ElOption label="转料" value="transfer" />
+          <ElOption label="排期" value="schedule" />
+        </AppSelect>
+        <span v-else class="inbox-pending-label">需要你处理</span>
+        <span class="inbox-total">{{ total }} 条</span>
+        <ElButton
+          :icon="Refresh"
+          :disabled="opening"
+          aria-label="刷新消息"
+          title="刷新消息"
+          :loading="loading"
+          @click="load"
+        />
       </div>
-      <ElCheckbox v-model="unreadOnly" :disabled="reviewBusy" @change="page = 1"
-        >仅未读 {{ unread || '' }}</ElCheckbox
-      >
-      <ElButton :disabled="!unread || loading || reviewBusy" @click="readAll">全部已读</ElButton>
-      <ElButton
-        :icon="Refresh"
-        :disabled="reviewBusy"
-        aria-label="刷新消息"
-        :loading="loading"
-        @click="load"
-      />
     </div>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <div class="inbox-workspace" :class="{ 'has-selection': selected }">
-      <div class="inbox-content" :aria-busy="loading">
-        <ul v-if="items.length" class="inbox-list" aria-label="业务消息">
-          <li v-for="item in items" :key="`${item.source}:${item.id}`">
-            <button
-              type="button"
-              class="inbox-serial inbox-item"
-              :class="{
-                'is-unread': !item.read_at,
-                'is-selected': selectedKey === `${item.source}:${item.id}`,
-              }"
-              :aria-current="selectedKey === `${item.source}:${item.id}` ? 'true' : undefined"
-              :data-kind="item.kind"
-              :disabled="opening || loading || reviewBusy"
-              :aria-label="`打开 ${item.serial_no} ${labels[item.kind]}，${item.team_name}，${item.message}${item.read_at ? '' : '，未读'}`"
-              @click="selectNotice(item)"
-            >
-              <span class="inbox-symbol" aria-hidden="true">
-                <ElIcon>
-                  <RefreshLeft v-if="item.source === 'rework'" />
-                  <Warning v-else-if="item.kind === 'overdue'" />
-                  <DocumentChecked v-else-if="item.source === 'transfer'" />
-                  <Calendar v-else />
-                </ElIcon>
-                <i v-if="!item.read_at" class="inbox-unread-dot" />
+    <div v-show="!selected" class="inbox-content" :aria-busy="loading || opening">
+      <TransitionGroup
+        v-if="items.length"
+        name="inbox-row"
+        tag="ul"
+        class="inbox-list"
+        aria-label="业务消息"
+      >
+        <li v-for="item in items" :key="`${item.source}:${item.id}`">
+          <button
+            :id="`business-notice-${item.source}:${item.id}`"
+            type="button"
+            class="inbox-item"
+            :class="{ 'is-unread': !item.read_at }"
+            :data-kind="item.kind"
+            :disabled="opening || loading || reviewBusy"
+            :aria-label="`打开 ${item.serial_no} ${labels[item.kind]}，${item.team_name}，${item.message}${item.read_at ? '' : '，未读'}`"
+            @click="selectNotice(item)"
+          >
+            <span class="inbox-symbol" aria-hidden="true">
+              <ElIcon>
+                <RefreshLeft v-if="item.source === 'rework'" />
+                <Warning v-else-if="item.kind === 'overdue'" />
+                <DocumentChecked v-else-if="item.source === 'transfer'" />
+                <Calendar v-else />
+              </ElIcon>
+              <Transition name="inbox-dot"
+                ><i v-if="!item.read_at" class="inbox-unread-dot"
+              /></Transition>
+            </span>
+            <span class="inbox-summary">
+              <span class="inbox-heading">
+                <strong :title="item.serial_no">{{ item.serial_no }}</strong>
+                <time :datetime="item.created_at" :title="formatDateTime(item.created_at)">
+                  {{ formatDateTime(item.created_at).slice(5) }}
+                </time>
               </span>
-              <span class="inbox-summary">
-                <span class="inbox-heading">
-                  <strong :title="item.serial_no">{{ item.serial_no }}</strong>
-
-                  <time :datetime="item.created_at" :title="formatDateTime(item.created_at)">
-                    {{ formatDateTime(item.created_at).slice(5) }}
-                  </time>
-                </span>
-                <span class="inbox-message">
-                  <span
-                    class="inbox-kind"
-                    :class="{ 'is-action-required': item.action_required }"
-                    >{{ item.action_required ? '待确认' : labels[item.kind] }}</span
-                  >
-                  <span>{{ item.message }}</span>
-                </span>
-                <span class="inbox-batch">
-                  {{ item.team_name
-                  }}<template v-if="item.batch_no"> · {{ item.batch_no }}</template>
-                </span>
+              <span class="inbox-context">
+                <span class="inbox-kind">{{ labels[item.kind] }}</span>
+                <span v-if="item.team_name">{{ item.team_name }}</span>
+                <span v-if="item.action_required" class="inbox-pending">待处理</span>
               </span>
-              <ElIcon class="inbox-arrow" aria-hidden="true"><ArrowRight /></ElIcon>
-            </button>
-          </li>
-        </ul>
-        <div v-else class="inbox-empty" role="status">
-          <ElIcon :class="{ 'is-loading': loading }"
-            ><Loading v-if="loading" /><Bell v-else
-          /></ElIcon>
-          <span>{{ loading ? '读取中' : unreadOnly ? '暂无未读消息' : '暂无消息' }}</span>
-        </div>
-      </div>
-      <section ref="detailPanel" class="inbox-detail" tabindex="-1" aria-label="消息详情">
-        <template v-if="selected">
-          <button type="button" class="inbox-back" :disabled="reviewBusy" @click="selected = null">
-            <ElIcon><Back /></ElIcon>返回消息
+              <span class="inbox-message">{{ item.message }}</span>
+              <span v-if="item.batch_no" class="inbox-batch">{{ item.batch_no }}</span>
+            </span>
+            <ElIcon class="inbox-arrow" aria-hidden="true"><ArrowRight /></ElIcon>
           </button>
-          <div class="inbox-detail-heading">
-            <span>{{ labels[selected.kind] }}</span>
-            <time :datetime="selected.created_at">{{ formatDateTime(selected.created_at) }}</time>
-          </div>
-          <TransferAmendmentReview
-            v-if="selected.source === 'transfer' && selected.amendment_id"
-            :key="`${selectedKey}:${selected.amendment_status}`"
-            :amendment-id="selected.amendment_id"
-            show-transfer-link
-            @loaded="amendmentLoaded"
-            @busy="reviewBusy = $event"
-            @resolved="amendmentResolved"
-            @view-transfer="openNotice(selected.id, selected.source)"
-          />
-          <div v-else class="inbox-business-detail">
-            <h2>{{ selected.serial_no }}</h2>
-            <p class="inbox-detail-team">
-              {{ selected.team_name
-              }}<template v-if="selected.batch_no"> · {{ selected.batch_no }}</template>
-            </p>
-            <p class="inbox-detail-message">{{ selected.message }}</p>
-            <ElButton
-              type="primary"
-              :loading="opening"
-              class="inbox-open-business"
-              @click="openNotice(selected.id, selected.source)"
-              >查看{{ selected.source === 'rework' ? '返工' : '排期'
-              }}<ElIcon><ArrowRight /></ElIcon
-            ></ElButton>
-          </div>
-        </template>
-        <div v-else class="inbox-empty">
-          <ElIcon><Bell /></ElIcon><span>选择消息，查看详情</span>
-        </div>
-      </section>
+        </li>
+      </TransitionGroup>
+      <div v-else class="inbox-empty" role="status">
+        <span class="inbox-empty-icon"
+          ><ElIcon :class="{ 'is-loading': loading }"
+            ><Loading v-if="loading" /><Bell v-else /></ElIcon
+        ></span>
+        <strong>{{
+          loading
+            ? '正在读取消息'
+            : view === 'unread'
+              ? '未读消息已看完'
+              : view === 'pending'
+                ? '暂无待处理事项'
+                : '暂无消息'
+        }}</strong>
+      </div>
     </div>
-    <template #footer
-      ><WorkspacePagination
+    <section
+      v-if="selected"
+      ref="detailPanel"
+      class="inbox-detail"
+      tabindex="-1"
+      aria-label="消息详情"
+    >
+      <ElButton class="inbox-back" :icon="Back" :disabled="reviewBusy" @click="backToList"
+        >返回消息</ElButton
+      >
+      <TransferAmendmentReview
+        v-if="selected.amendment_id"
+        :key="`${selectedKey}:${selected.amendment_status}`"
+        :amendment-id="selected.amendment_id"
+        show-transfer-link
+        @loaded="amendmentLoaded"
+        @busy="reviewBusy = $event"
+        @resolved="amendmentResolved"
+        @view-transfer="openNotice(selected.id, selected.source)"
+      />
+    </section>
+    <template v-if="!selected" #footer>
+      <WorkspacePagination
+        v-if="total > 20"
         v-model:current-page="page"
+        class="inbox-pagination"
         :total="total"
         :page-size="20"
-        :disabled="loading || reviewBusy"
-        layout="total, prev, pager, next"
-    /></template>
+        :disabled="loading || opening"
+        layout="prev, pager, next"
+      />
+      <ElButton
+        class="inbox-read-all"
+        :disabled="!unread || loading || opening"
+        :icon="DocumentChecked"
+        @click="readAll"
+        >全部标为已读</ElButton
+      >
+    </template>
   </AppDrawer>
 </template>
 
 <style scoped>
+/* Notification 1's single-column activity feed, adapted to our business messages.
+   Reference and upstream license: ./watermelon/NOTICE.md. */
 .notice-trigger {
   display: flex;
   align-items: center;
@@ -393,12 +407,11 @@ onBeforeUnmount(() => {
   transition: background 0.16s;
 }
 .notice-trigger:hover {
-  background: var(--primary-soft);
+  background: var(--wm-muted-surface, #f4f4f5);
 }
 .notice-trigger:focus-visible,
-.inbox-serial:focus-visible,
-.inbox-tabs button:focus-visible {
-  outline: 2px solid var(--primary);
+.inbox-item:focus-visible {
+  outline: 2px solid var(--wm-focus-ring, #71717a);
   outline-offset: 2px;
 }
 .notice-trigger .el-icon {
@@ -425,62 +438,48 @@ onBeforeUnmount(() => {
   right: -4px;
   top: -5px;
 }
-.inbox-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-.inbox-toolbar :deep(.el-checkbox) {
-  margin-right: 8px;
+.inbox-controls {
+  flex-shrink: 0;
+  padding: 4px 0 12px;
 }
 .inbox-tabs {
   display: flex;
-  gap: 4px;
-  margin-right: auto;
+  flex-wrap: nowrap;
 }
-.inbox-tabs button {
+.inbox-tabs :deep(button) {
+  flex: 1;
+  min-width: 0;
+}
+.inbox-toolbar {
   display: flex;
-  gap: 6px;
   align-items: center;
-  padding: 7px 12px;
-  border: 0;
-  border-radius: 6px;
-  color: var(--muted);
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
+  gap: 12px;
+  margin-top: 14px;
 }
-.inbox-tabs button[aria-pressed='true'] {
-  color: var(--primary);
-  background: var(--primary-soft);
-  font-weight: 600;
+.inbox-source {
+  width: 140px;
 }
-.inbox-tabs span {
+.inbox-total {
+  margin-left: auto;
   font-size: 12px;
+  color: var(--wm-muted, #71717a);
+  white-space: nowrap;
+}
+.inbox-pending-label {
+  font-size: 13px;
+  color: var(--wm-muted, #71717a);
 }
 .inbox-toolbar .el-button {
   margin: 0;
-}
-.inbox-workspace {
-  display: grid;
-  grid-template-columns: minmax(300px, 38%) minmax(0, 1fr);
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--wm-bg, #fff);
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
 }
 .inbox-content {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
-  border-right: 1px solid var(--line);
-  background: var(--wm-bg, #fff);
 }
 .inbox-list {
   list-style: none;
@@ -488,31 +487,30 @@ onBeforeUnmount(() => {
   padding: 0;
 }
 .inbox-list li + li {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--wm-border, #e4e4e7);
 }
 .inbox-item {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
+  grid-template-columns: 40px minmax(0, 1fr) 14px;
+  align-items: start;
+  gap: 12px;
   width: 100%;
-  min-height: 94px;
-  padding: 14px 12px;
+  padding: 18px 8px;
   border: 0;
-  background: var(--wm-bg, #fff);
-  color: var(--text);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--wm-text, #18181b);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background var(--motion-fast);
+  transition: background 160ms ease;
 }
-.inbox-item.is-selected,
 .inbox-item:hover:not(:disabled),
 .inbox-item:focus-visible {
-  background: var(--wm-muted-surface, #f0f6f3);
+  background: var(--wm-muted-surface, #f4f4f5);
 }
 .inbox-item:focus-visible {
-  outline-offset: -3px;
+  outline-offset: -2px;
 }
 .inbox-item:disabled {
   cursor: progress;
@@ -521,31 +519,28 @@ onBeforeUnmount(() => {
   position: relative;
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  background: var(--wm-info-bg, #edf2f8);
-  color: var(--wm-info-text, #3b648f);
-  font-size: 18px;
-}
-.inbox-item[data-kind='requested'] .inbox-symbol,
-.inbox-item[data-kind='ready'] .inbox-symbol {
-  background: var(--wm-info-bg, #f2edf8);
-  color: var(--wm-info-text, #775499);
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--wm-border, #e4e4e7);
+  border-radius: 50%;
+  background: var(--wm-muted-surface, #f4f4f5);
+  color: var(--wm-text-muted, #52525b);
+  font-size: 19px;
 }
 .inbox-item[data-kind='overdue'] .inbox-symbol {
+  border-color: transparent;
   background: var(--wm-danger-bg, #fcefed);
   color: var(--wm-danger-text, #ae3935);
 }
 .inbox-unread-dot {
   position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 8px;
-  height: 8px;
+  top: 0;
+  right: 0;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: var(--primary);
-  box-shadow: 0 0 0 2px white;
+  background: var(--wm-text, #18181b);
+  box-shadow: 0 0 0 3px var(--wm-bg, white);
 }
 .inbox-summary {
   display: flex;
@@ -556,7 +551,7 @@ onBeforeUnmount(() => {
 .inbox-heading {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
 .inbox-heading strong {
@@ -570,188 +565,176 @@ onBeforeUnmount(() => {
 .is-unread .inbox-heading strong {
   font-weight: 650;
 }
-.inbox-team {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--muted);
-}
 .inbox-heading time {
   flex-shrink: 0;
   margin-left: auto;
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--wm-muted, #71717a);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
-.inbox-message {
+.inbox-context {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 14px;
-  line-height: 22px;
-  overflow: hidden;
-}
-.inbox-message > span:last-child {
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  color: var(--wm-muted, #71717a);
+  font-size: 12px;
 }
 .inbox-kind {
-  flex-shrink: 0;
-  color: var(--wm-muted, #516579);
-  font-size: 12px;
+  color: var(--wm-text-muted, #52525b);
 }
-[data-kind='overdue'] .inbox-kind {
-  color: var(--wm-danger-text, #ae3935);
-}
-[data-kind='requested'] .inbox-kind,
-[data-kind='due_soon'] .inbox-kind,
-[data-kind='upstream'] .inbox-kind {
+.inbox-pending {
   color: var(--wm-warning-text, #8c5b17);
+  background: var(--wm-warning-bg, #fbf2df);
+  border-radius: 20px;
+  padding: 2px 7px;
+  font-size: 11px;
+}
+.inbox-message {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--wm-text-muted, #52525b);
+  font-size: 13px;
+  line-height: 1.6;
 }
 .inbox-batch {
-  font-size: 12px;
-  color: var(--muted);
+  font-size: 11px;
+  color: var(--wm-muted, #71717a);
+  overflow-wrap: anywhere;
 }
 .inbox-arrow {
-  display: none;
-  color: var(--wm-muted, #84928a);
+  align-self: center;
+  font-size: 14px;
+  opacity: 0;
+  color: var(--wm-muted, #71717a);
+  transform: translateX(-3px);
   transition:
-    transform var(--motion-fast),
-    color var(--motion-fast);
+    opacity 160ms ease,
+    transform 160ms ease;
 }
 .inbox-item:hover .inbox-arrow,
 .inbox-item:focus-visible .inbox-arrow {
-  display: none;
-  color: var(--primary);
-  transform: translateX(3px);
+  opacity: 1;
+  transform: none;
 }
 .inbox-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 18px;
   min-height: 240px;
   height: 100%;
-  color: var(--muted);
+  color: var(--wm-muted, #71717a);
 }
-.inbox-empty .el-icon {
-  font-size: 28px;
+.inbox-empty strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+.inbox-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  background: var(--wm-muted-surface, #f4f4f5);
+  border: 1px solid var(--wm-border, #e4e4e7);
+  border-radius: 20px;
+  font-size: 24px;
 }
 .inbox-detail {
-  min-width: 0;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 24px;
   outline: none;
-  background: linear-gradient(135deg, var(--wm-bg, #fff), var(--wm-muted-surface, #f9fbfa));
-}
-.inbox-detail-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding-bottom: 16px;
-  margin-bottom: 20px;
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 12px;
-}
-.inbox-business-detail h2 {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-}
-.inbox-detail-team {
-  color: var(--muted);
-  font-size: 12px;
-}
-.inbox-detail-message {
-  margin: 24px 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  line-height: 1.7;
-}
-.inbox-open-business {
-  gap: 8px;
-}
-.inbox-kind.is-action-required {
-  color: var(--wm-warning-text, #8c5b17);
-  background: var(--wm-warning-bg, #fbf2df);
-  padding: 0 6px;
-  border-radius: 4px;
+  animation: inbox-detail-in 180ms ease-out;
 }
 .inbox-back {
-  display: none;
+  margin-bottom: 20px;
 }
-@media (max-width: 760px) {
-  .inbox-workspace {
-    grid-template-columns: minmax(0, 1fr);
+.inbox-read-all {
+  width: 100%;
+  margin: 0;
+}
+.inbox-pagination {
+  margin-bottom: 16px;
+  padding: 0;
+  border: 0;
+  gap: 8px;
+}
+.inbox-pagination :deep(.wm-pagination-summary) {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+.inbox-pagination :deep(nav) {
+  margin: 0 auto;
+  gap: 2px;
+}
+.inbox-pagination :deep(nav button) {
+  width: 30px;
+  height: 32px;
+}
+.inbox-pagination :deep(.wm-page-ellipsis) {
+  width: 16px;
+}
+.inbox-row-enter-active,
+.inbox-dot-leave-active {
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+.inbox-row-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.inbox-dot-leave-to {
+  opacity: 0;
+  transform: scale(0.5);
+}
+@keyframes inbox-detail-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
   }
-  .inbox-detail {
-    display: none;
-    padding: 16px;
-  }
-  .has-selection .inbox-content {
-    display: none;
-  }
-  .has-selection .inbox-detail {
-    display: block;
-  }
-  .inbox-content {
-    border-right: 0;
-  }
-  .inbox-back {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    border: 0;
-    background: transparent;
-    color: var(--primary);
-    font: inherit;
-    padding: 0;
-    margin-bottom: 20px;
-    cursor: pointer;
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
-@media (max-width: 600px) {
-  .inbox-toolbar {
-    flex-wrap: wrap;
-  }
-  .inbox-tabs {
-    flex: 1 0 100%;
-  }
-  .inbox-toolbar :deep(.el-checkbox) {
-    margin-right: auto;
-  }
+@media (max-width: 380px) {
   .inbox-item {
-    gap: 8px;
-    padding: 12px 10px;
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 10px;
+    padding-inline: 4px;
+  }
+  .inbox-symbol {
+    width: 36px;
+    height: 36px;
+  }
+  .inbox-arrow {
+    display: none;
   }
   .inbox-heading {
     flex-wrap: wrap;
-    gap: 4px 8px;
+    gap: 3px;
   }
   .inbox-heading time {
-    font-size: 11px;
-  }
-  .inbox-heading strong {
-    flex: 1 0 calc(100% - 48px);
+    margin-left: 0;
+    flex-basis: 100%;
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .inbox-item,
-  .inbox-arrow {
-    display: none;
+  .inbox-arrow,
+  .inbox-row-enter-active,
+  .inbox-dot-leave-active {
     transition: none;
   }
-  .inbox-item .inbox-arrow {
-    display: none;
-    transform: none;
+  .inbox-detail {
+    animation: none;
   }
-}
-.el-pagination {
-  justify-content: flex-end;
 }
 </style>
 <style>

@@ -61,6 +61,13 @@ official Watermelon Vue package. Warehouse filtering and saves use the existing 
 
 视图切换参考 [Breadcrumb 6](https://ui.watermelon.sh/components/breadcrumb) 与官方 `breadcrumb-6` 注册表源码，使用现有 Vue 弹出菜单组件适配。
 
+- `ScheduleNotifications.vue`: Notification 1's single-column feed, circular category icons,
+  unread dots, row dividers, muted descriptions and mark-all-read footer. Uses the existing
+  shared tabs, select, drawer and pagination; business navigation and approval rules remain local.
+  Drawer/row transitions are local additions with reduced-motion support.
+  https://ui.watermelon.sh/block/notification-1
+  https://registry.watermelon.sh/r/notification-1.json
+
 ## Upstream license
 
 MIT License
