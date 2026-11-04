@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import ElInput from '@/components/AppInput.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElForm, ElFormItem, ElInput } from 'element-plus'
+import { ElForm, ElFormItem } from 'element-plus'
 import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'

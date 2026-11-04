@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import ElInput from '@/components/AppInput.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import FilterDialog from './FilterDialog.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import { ElCheckbox, ElInput, ElTableColumn, ElTag } from 'element-plus'
+import { ElCheckbox, ElTableColumn, ElTag } from 'element-plus'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
 import { inventoryAmount } from '@/types/teamInventory'

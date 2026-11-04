@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ElOption, ElSelect } from 'element-plus'
+import ElSelect from '@/components/AppSelect.vue'
+import { ElOption } from 'element-plus'
 import { formatDateTime } from '@/utils/format'
 
 interface RouteChoice {

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import AppPopover from '@/components/AppPopover.vue'
+import ElSelect from '@/components/AppSelect.vue'
 import PersonName from '@/components/PersonName.vue'
 import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
 import WorkspaceTable from '@/components/WorkspaceTable.vue'
@@ -6,7 +9,7 @@ import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { teamCanProcess } from '@/config/teamWorkspaces'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { ElAlert, ElCheckbox, ElOption, ElPopover, ElSelect, ElTableColumn } from 'element-plus'
+import { ElCheckbox, ElOption, ElTableColumn } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import FilterDialog from '@/components/FilterDialog.vue'
 import LiveRefreshNotice from '@/components/LiveRefreshNotice.vue'
@@ -1713,7 +1716,7 @@ onBeforeUnmount(() => {
                   <ElTableColumn type="selection" width="48" />
                   <ElTableColumn label="批次号" min-width="190"
                     ><template #default="{ row }"
-                      ><ElPopover
+                      ><AppPopover
                         :trigger="['hover', 'focus']"
                         placement="top"
                         :width="320"
@@ -1730,7 +1733,7 @@ onBeforeUnmount(() => {
                         ><BarcodeCard
                           :value="row.batch_no"
                           entity-label="批次号"
-                          compact /></ElPopover></template
+                          compact /></AppPopover></template
                   ></ElTableColumn>
                   <ElTableColumn
                     class-name="table-identity"

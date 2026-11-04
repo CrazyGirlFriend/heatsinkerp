@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import ElSelect from '@/components/AppSelect.vue'
 import { computed } from 'vue'
-import { ElOption, ElPagination, ElSelect } from 'element-plus'
+import { ElOption, ElPagination } from 'element-plus'
 import WatermelonPagination from './watermelon/WatermelonPagination.vue'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
 const watermelon = useWatermelonAppearance()

@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElCheckbox, ElCheckboxGroup, ElRadioGroup, ElRadioButton } from 'element-plus'
+import { ElCheckbox, ElCheckboxGroup, ElRadioGroup, ElRadioButton } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import {
   assertExportSize,

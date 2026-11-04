@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import AppPopover from '@/components/AppPopover.vue'
 import { inject, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue'
 import { Download, FullScreen, MoreFilled, Refresh, Setting } from '@element-plus/icons-vue'
-import { ElPopover } from 'element-plus'
+
 import ElButton from '@/components/AppButton.vue'
 import { workspaceToolsKey } from '@/utils/workspaceTools'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
@@ -141,7 +142,7 @@ watch(compact, (value) => {
         >
         <slot name="actions" />
       </div>
-      <ElPopover
+      <AppPopover
         v-if="
           compact &&
           (refresh ||
@@ -190,7 +191,7 @@ watch(compact, (value) => {
             <slot name="actions" />
           </div>
         </div>
-      </ElPopover>
+      </AppPopover>
     </template>
   </div>
 </template>

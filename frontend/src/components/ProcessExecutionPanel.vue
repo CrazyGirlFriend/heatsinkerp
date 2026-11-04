@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElSelect from '@/components/AppSelect.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElOption, ElSelect } from 'element-plus'
+import { ElOption } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { FullScreen } from '@element-plus/icons-vue'
 import { processRouteApi } from '@/services/processRouteApi'

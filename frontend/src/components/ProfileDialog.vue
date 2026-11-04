@@ -1,18 +1,13 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElInput from '@/components/AppInput.vue'
+import ElTabs from '@/components/AppTabs.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { nextTick, ref, watch } from 'vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
-import {
-  ElAlert,
-  ElForm,
-  ElFormItem,
-  ElInput,
-  ElTabPane,
-  ElTabs,
-  type InputInstance,
-} from 'element-plus'
+import { ElForm, ElFormItem, ElTabPane, type InputInstance } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import AccountAvatar from './AccountAvatar.vue'
 import AvatarPicker from './AvatarPicker.vue'

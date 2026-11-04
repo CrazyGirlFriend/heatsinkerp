@@ -16,7 +16,8 @@ describe('WorkspacePagination', () => {
       global: { provide: { [workspaceAppearanceKey as symbol]: computed(() => 'watermelon') } },
     })
     wrappers.push(wrapper)
-    await wrapper.get('select[aria-label="每页条数"]').setValue('20')
+    wrapper.getComponent(ElSelect).vm.$emit('change', 20)
+    await flushPromises()
     expect(wrapper.emitted('update:pageSize')).toEqual([[20]])
     expect(wrapper.emitted('update:currentPage')).toEqual([[2]])
     expect(wrapper.emitted('change')).toEqual([[2, 20]])

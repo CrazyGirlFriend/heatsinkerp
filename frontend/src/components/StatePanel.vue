@@ -2,6 +2,10 @@
 import { Loading, RefreshRight } from '@element-plus/icons-vue'
 import { ElEmpty, ElIcon, ElResult } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
+import { IconPackage, IconAlertCircle } from '@tabler/icons-vue'
+import AppSkeleton from './AppSkeleton.vue'
+import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
+const themed = useWatermelonAppearance()
 
 withDefaults(
   defineProps<{
@@ -22,7 +26,32 @@ defineEmits<{ retry: [] }>()
 
 <template>
   <div class="state-panel" :class="{ 'state-panel--compact': compact }">
-    <template v-if="state === 'loading'">
+    <template v-if="themed">
+      <AppSkeleton
+        v-if="state === 'loading'"
+        :rows="compact ? 3 : 5"
+        :label="title || '正在加载'"
+      />
+      <template v-else>
+        <component
+          :is="state === 'error' ? IconAlertCircle : IconPackage"
+          :size="36"
+          :stroke-width="1.3"
+          aria-hidden="true"
+        />
+        <strong>{{ title || (state === 'error' ? '加载失败' : '暂无数据') }}</strong>
+        <span v-if="description">{{ description }}</span>
+        <ElButton
+          v-if="state === 'error'"
+          class="state-retry"
+          :icon="RefreshRight"
+          @click="$emit('retry')"
+          >重新加载</ElButton
+        >
+        <slot />
+      </template>
+    </template>
+    <template v-else-if="state === 'loading'">
       <ElIcon class="state-loading" aria-hidden="true"><Loading /></ElIcon>
       <strong>{{ title || '正在加载' }}</strong>
       <span v-if="description">{{ description }}</span>
@@ -67,6 +96,14 @@ defineEmits<{ retry: [] }>()
 }
 .state-panel--compact {
   min-height: 180px;
+}
+.state-retry {
+  margin-top: 16px;
+}
+.state-panel:has(.wm-skeleton) {
+  justify-content: flex-start;
+  width: 100%;
+  padding: 0;
 }
 .state-loading {
   color: var(--orange);

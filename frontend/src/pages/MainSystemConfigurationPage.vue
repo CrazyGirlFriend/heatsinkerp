@@ -1,21 +1,15 @@
 <script setup lang="ts">
+import { AppMessageBox as ElMessageBox } from '@/utils/messageBox'
+import ElSkeleton from '@/components/AppSkeleton.vue'
+import ElAlert from '@/components/AppAlert.vue'
+import ElInput from '@/components/AppInput.vue'
+import ElSwitch from '@/components/AppSwitch.vue'
 import FormWorkspace from '../components/FormWorkspace.vue'
 import CompactFormSection from '../components/CompactFormSection.vue'
 import PersonName from '@/components/PersonName.vue'
 import PageBackButton from '@/components/PageBackButton.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import {
-  ElAlert,
-  ElForm,
-  ElFormItem,
-  ElInput,
-  ElMessageBox,
-  ElResult,
-  ElSkeleton,
-  ElSwitch,
-  ElTableColumn,
-  ElTag,
-} from 'element-plus'
+import { ElForm, ElFormItem, ElResult, ElTableColumn, ElTag } from 'element-plus'
 import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'

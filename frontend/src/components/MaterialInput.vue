@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ElAutocomplete } from 'element-plus'
+import ElAutocomplete from './AppAutocomplete.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
 import {
   materialSuggestions,

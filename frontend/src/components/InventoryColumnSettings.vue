@@ -1,7 +1,9 @@
 <script setup lang="ts" generic="K extends string = InventoryColumnKey">
+import AppPopover from '@/components/AppPopover.vue'
+import { showToast } from '@/stores/toast'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { ArrowDown, ArrowUp, Setting } from '@element-plus/icons-vue'
-import { ElCheckbox, ElMessage, ElPopover } from 'element-plus'
+import { ElCheckbox } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import {
   inventoryColumns,
@@ -104,7 +106,7 @@ function apply() {
     try {
       localStorage.setItem(props.storageKey, JSON.stringify(saved.value))
     } catch {
-      ElMessage.warning('列设置已应用，但浏览器未能保存，下次打开不会保留本次修改。')
+      showToast('列设置已应用，但浏览器未能保存，下次打开不会保留本次修改。', 'warning')
     }
   }
   emit('change', copy(saved.value))
@@ -119,7 +121,7 @@ defineExpose({
 </script>
 
 <template>
-  <ElPopover
+  <AppPopover
     :virtual-ref="anchor"
     :virtual-triggering="!!anchor"
     v-model:visible="opened"
@@ -175,7 +177,7 @@ defineExpose({
         ><ElButton type="primary" @click="apply">应用</ElButton>
       </footer>
     </div>
-  </ElPopover>
+  </AppPopover>
 </template>
 
 <style scoped>

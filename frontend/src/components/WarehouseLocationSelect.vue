@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import ElSelect from '@/components/AppSelect.vue'
 import { formatAmount as amount } from '@/utils/format'
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElOption, ElSelect } from 'element-plus'
+import { ElOption } from 'element-plus'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import {
   locationState,

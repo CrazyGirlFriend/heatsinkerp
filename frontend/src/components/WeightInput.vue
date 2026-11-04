@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import AppNumberInput from './AppNumberInput.vue'
+import AppSelect from './AppSelect.vue'
+import { ElOption } from 'element-plus'
 
 const props = defineProps<{
   modelValue?: number | null
@@ -34,10 +36,15 @@ function update(value: number | undefined) {
       controls-position="right"
       @update:model-value="update"
     />
-    <select v-model="unit" :aria-label="`${ariaLabel}单位`" :disabled="disabled">
-      <option value="kg">kg</option>
-      <option value="g">g</option>
-    </select>
+    <AppSelect
+      v-model="unit"
+      class="weight-unit"
+      :aria-label="`${ariaLabel}单位`"
+      :disabled="disabled"
+    >
+      <ElOption value="kg" label="kg" />
+      <ElOption value="g" label="g" />
+    </AppSelect>
   </div>
 </template>
 
@@ -53,19 +60,8 @@ function update(value: number | undefined) {
   width: 0;
   min-width: 0;
 }
-.weight-input select {
+.weight-input .weight-unit {
   flex: 0 0 64px;
   width: 64px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--text);
-  background: var(--surface);
-  font: inherit;
-  cursor: pointer;
-}
-.weight-input select:focus-visible {
-  outline: 2px solid var(--el-color-primary);
-  outline-offset: 2px;
 }
 </style>

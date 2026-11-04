@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import ElSkeleton from '@/components/AppSkeleton.vue'
+import ElInput from '@/components/AppInput.vue'
+import ElSelect from '@/components/AppSelect.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import PersonName from '@/components/PersonName.vue'
 import { formatAmount } from '@/utils/format'
@@ -24,16 +27,7 @@ import {
   Remove,
   Search,
 } from '@element-plus/icons-vue'
-import {
-  ElCard,
-  ElIcon,
-  ElInput,
-  ElLoading,
-  ElOption,
-  ElSelect,
-  ElSkeleton,
-  ElTableColumn,
-} from 'element-plus'
+import { ElCard, ElIcon, ElOption, ElTableColumn } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
@@ -73,7 +67,6 @@ import {
 import { formatDateTime } from '@/utils/format'
 
 const route = useRoute()
-const vLoading = ElLoading.directive
 const router = useRouter()
 const authStore = useAuthStore()
 const teamStore = useTeamDirectoryStore()
@@ -866,11 +859,8 @@ onBeforeUnmount(() => {
           </div>
         </form>
         <WorkspaceDataPanel
-          v-loading="loading && hasRows"
           class="table-pane"
           :aria-busy="loading"
-          element-loading-text="正在更新记录"
-          element-loading-background="var(--el-mask-color)"
         >
           <ElSkeleton
             v-if="loading && !hasRows"
@@ -897,6 +887,7 @@ onBeforeUnmount(() => {
           <WorkspaceTable
             v-else
             :data="rows"
+            :loading="loading"
             class="transfer-table"
             row-key="batch_no"
             empty-text="暂无转料记录"

@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import ElEmpty from '@/components/AppEmpty.vue'
+import { AppMessageBox as ElMessageBox } from '@/utils/messageBox'
+import ElSkeleton from '@/components/AppSkeleton.vue'
+import ElAlert from '@/components/AppAlert.vue'
+import ElInput from '@/components/AppInput.vue'
+import ElSelect from '@/components/AppSelect.vue'
+import ElSwitch from '@/components/AppSwitch.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import FormWorkspace from '../components/FormWorkspace.vue'
 import CompactFormSection from '../components/CompactFormSection.vue'
@@ -9,19 +16,12 @@ import { tableExportSource } from '@/utils/tableExport'
 import PageBackButton from '@/components/PageBackButton.vue'
 import { CircleCheck, Delete, EditPen, Plus, Search, SwitchButton } from '@element-plus/icons-vue'
 import {
-  ElAlert,
   ElCard,
-  ElEmpty,
   ElForm,
   ElFormItem,
   ElIcon,
-  ElInput,
-  ElMessageBox,
   ElOption,
   ElResult,
-  ElSelect,
-  ElSkeleton,
-  ElSwitch,
   ElTableColumn,
   ElTag,
   type InputInstance,

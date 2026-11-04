@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import AsyncStatus from './AsyncStatus.vue'
+import ElSkeleton from '@/components/AppSkeleton.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { ElSkeleton, ElSkeletonItem } from 'element-plus'
+import { ElSkeletonItem } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import DocumentViewer from './DocumentViewer.vue'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -72,13 +74,15 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="order-document-preview" aria-label="订单原件预览" :aria-busy="loading">
-    <p v-if="loading" role="status">正在加载订单原件…</p>
+    <AsyncStatus v-if="loading" label="正在加载订单原件…" />
     <ElSkeleton v-if="loading" animated :throttle="0">
       <template #template>
         <ElSkeletonItem variant="image" class="order-document-placeholder" />
       </template>
     </ElSkeleton>
-    <p v-if="error" role="alert">{{ error }} <ElButton link @click="load">重试</ElButton></p>
+    <AsyncStatus v-if="error" state="error" :label="error"
+      ><ElButton link @click="load">重试</ElButton></AsyncStatus
+    >
     <button
       v-if="url"
       type="button"

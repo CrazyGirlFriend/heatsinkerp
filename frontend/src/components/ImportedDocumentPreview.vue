@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import ElTabs from '@/components/AppTabs.vue'
 import { computed, ref } from 'vue'
-import { ElTabPane, ElTabs } from 'element-plus'
+import { ElTabPane } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { IconFileText, IconPencil } from '@tabler/icons-vue'
 import AppDialog from './AppDialog.vue'

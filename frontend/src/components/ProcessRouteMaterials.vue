@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import ElInput from '@/components/AppInput.vue'
 import { computed } from 'vue'
-import { ElInput } from 'element-plus'
+
 import type { ProcessRoute, RouteMaterialField } from '@/types/processRoute'
 const props = defineProps<{
   data: ProcessRoute['source_data']

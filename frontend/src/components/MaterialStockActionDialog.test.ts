@@ -1260,7 +1260,10 @@ describe('source batch dispatch and loss drafts', () => {
   it('allows optional scrap reasons but excludes production destinations', async () => {
     await render('dispatch', [source()])
     await destination(3)
-    wrapper.findAllComponents(ElSelect)[1]!.vm.$emit('update:modelValue', 'waste')
+    wrapper
+      .findAllComponents(ElSelect)
+      .find((item) => item.find('input[aria-label$="物料类型"]').exists())!
+      .vm.$emit('update:modelValue', 'waste')
     await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
     expect(

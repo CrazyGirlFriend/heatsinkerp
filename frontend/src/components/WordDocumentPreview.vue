@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import AppSelect from './AppSelect.vue'
+import { ElOption } from 'element-plus'
+import AsyncStatus from './AsyncStatus.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElIcon } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
@@ -175,17 +178,15 @@ async function download() {
       >
       <label
         ><span v-if="!compact">缩放</span
-        ><select v-model="zoom" aria-label="原文件缩放">
-          <option value="fit">适合宽度</option>
-          <option value="0.5">50%</option>
-          <option value="0.75">75%</option>
-          <option value="1">100%</option>
-          <option value="1.25">125%</option>
-          <option value="1.5">150%</option>
-          <option value="2">200%</option>
-          <option value="3">300%</option>
-        </select></label
-      >
+        ><AppSelect v-model="zoom" class="document-zoom-select" aria-label="原文件缩放">
+          <ElOption value="fit" label="适合宽度" />
+          <ElOption
+            v-for="value in ['0.5', '0.75', '1', '1.25', '1.5', '2', '3']"
+            :key="value"
+            :value="value"
+            :label="`${Number(value) * 100}%`"
+          /> </AppSelect
+      ></label>
       <ElButton
         text
         :icon="compact ? Download : undefined"
@@ -195,10 +196,10 @@ async function download() {
         ><template v-if="!compact">下载原件</template></ElButton
       >
     </div>
-    <p v-if="loading" class="word-preview-message" role="status">正在打开原文件…</p>
-    <div v-if="error" class="word-preview-message" role="alert">
-      {{ error }} <ElButton text @click="load">重试</ElButton>
-    </div>
+    <AsyncStatus v-if="loading" label="正在打开原文件…" />
+    <AsyncStatus v-if="error" state="error" :label="error"
+      ><ElButton text @click="load">重试</ElButton></AsyncStatus
+    >
     <iframe
       ref="frame"
       :srcdoc="sourceDocument"
@@ -263,14 +264,6 @@ async function download() {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
-}
-.word-preview-tools select {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 5px 8px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
 }
 .word-original-frame {
   width: 100%;

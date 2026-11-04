@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
 import { nextTick, ref, watch } from 'vue'
-import { ElAlert } from 'element-plus'
+
 import ElButton from '@/components/AppButton.vue'
 import WatermelonNotice from './watermelon/WatermelonNotice.vue'
 import WatermelonButton from './watermelon/WatermelonButton.vue'

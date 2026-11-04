@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElInput from '@/components/AppInput.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import PersonName from './PersonName.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElAlert, ElForm, ElFormItem, ElIcon, ElInput } from 'element-plus'
+import { ElForm, ElFormItem, ElIcon } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { Check, Search } from '@element-plus/icons-vue'
 import AppDialog from './AppDialog.vue'

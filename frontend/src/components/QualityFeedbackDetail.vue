@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElInput from '@/components/AppInput.vue'
+import ElSelect from '@/components/AppSelect.vue'
 import PersonName from './PersonName.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
-  ElAlert,
   ElCheckbox,
   ElCheckboxGroup,
   ElCheckboxButton,
@@ -11,8 +13,6 @@ import {
   ElDescriptionsItem,
   ElForm,
   ElFormItem,
-  ElInput,
-  ElSelect,
   ElOption,
   ElTableColumn,
   ElTag,

@@ -124,15 +124,6 @@
 .wm-scope.el-dialog .weight-input .el-input__wrapper {
   border-radius: var(--wm-field-radius) 0 0 var(--wm-field-radius);
 }
-.wm-scope.el-dialog .weight-input select {
-  height: var(--wm-field-height);
-  margin-left: -1px;
-  border-radius: 0 var(--wm-field-radius) var(--wm-field-radius) 0;
-  border-color: var(--wm-border);
-  background: var(--wm-surface);
-  color: var(--wm-text);
-  font-size: 14px;
-}
 /* Select/autocomplete menus are teleported outside their form. */
 html.wm-app :is(.el-select__popper, .el-autocomplete-suggestion, .el-dropdown__popper).el-popper {
   border: 1px solid var(--wm-border);

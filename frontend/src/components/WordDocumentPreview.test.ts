@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ElSelect } from 'element-plus'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import WordDocumentPreview from './WordDocumentPreview.vue'
@@ -63,7 +64,8 @@ it('renders retained Word bytes with its original table and styles only inside a
   expect(html).not.toContain('target="_top"')
   expect(wrapper.find('table').exists()).toBe(false)
   expect(wrapper.text()).not.toContain('原件表格及公差')
-  await wrapper.get('select').setValue('0.75')
+  wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', '0.75')
+  await flushPromises()
   expect(wrapper.get('iframe').attributes('srcdoc')).toContain('zoom:0.75')
   await wrapper.get('button').trigger('click')
   expect(processRouteApi.download).toHaveBeenCalledWith(routeFixture)
@@ -96,7 +98,8 @@ it('keeps download and zoom available in the compact original toolbar', async ()
   wrapper = mount(WordDocumentPreview, { props: { route: routeFixture, compact: true } })
   await flushPromises()
   expect(wrapper.get('.word-preview-filename').attributes('title')).toBe('工艺.docx')
-  await wrapper.get('select[aria-label="原文件缩放"]').setValue('1.5')
+  wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', '1.5')
+  await flushPromises()
   expect(wrapper.get('iframe').attributes('srcdoc')).toContain('zoom:1.5')
   await wrapper.get('button[aria-label="下载原件"]').trigger('click')
   expect(processRouteApi.download).toHaveBeenCalledWith(routeFixture)
@@ -170,12 +173,19 @@ it('keeps the frame observed during an asynchronous first load and fits the page
   vi.stubGlobal(
     'ResizeObserver',
     class {
-      constructor(callback: ResizeObserverCallback) {
-        resize = callback
-        created()
+      private isFrame = false
+      constructor(private callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        if (target.tagName !== 'IFRAME') return
+        if (!this.isFrame) created()
+        this.isFrame = true
+        resize = this.callback
+        observe(target)
       }
-      observe = observe
-      disconnect = disconnect
+      disconnect() {
+        if (this.isFrame) disconnect()
+      }
+      unobserve() {}
     },
   )
   vi.mocked(processRouteApi.source).mockReturnValueOnce(

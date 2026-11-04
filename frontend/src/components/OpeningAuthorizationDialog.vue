@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElSwitch from '@/components/AppSwitch.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElSwitch } from 'element-plus'
+
 import ElButton from '@/components/AppButton.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { Team } from '@/services/adminApi'

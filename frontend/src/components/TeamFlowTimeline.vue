@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import ElSelect from '@/components/AppSelect.vue'
 import { useChartPalette } from '@/composables/useChartPalette'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElIcon, ElOption, ElSelect, ElTooltip } from 'element-plus'
+import { ElIcon, ElOption, ElTooltip } from 'element-plus'
 import {
   Close,
   FullScreen,

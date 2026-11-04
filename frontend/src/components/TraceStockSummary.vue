@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import AppPopover from '@/components/AppPopover.vue'
 import { materialWeightToleranceKg } from '@/config/materialRules'
 
 import { computed } from 'vue'
-import { ElPopover } from 'element-plus'
+
 import type { MaterialTrace, TraceAmount } from '@/types/materialTrace'
 import { isScrapType, materialTypeLabel } from '@/types/materialTransfer'
 import { teamWorkspaceProfiles } from '@/config/teamWorkspaces'
@@ -165,7 +166,7 @@ const rows = computed(() =>
       >
         <span class="stock-team">{{ row.name }}</span>
         <span v-if="row.external || !available" class="stock-unavailable">—</span>
-        <ElPopover
+        <AppPopover
           v-else-if="row.amount.natures.length"
           trigger="click"
           placement="left"
@@ -190,7 +191,7 @@ const rows = computed(() =>
               ><b>{{ num(nature[metric]) }} {{ unit }}</b>
             </div>
           </div>
-        </ElPopover>
+        </AppPopover>
         <span v-else class="stock-zero"
           >0 <small>{{ unit }}</small></span
         >
@@ -207,7 +208,7 @@ const rows = computed(() =>
           <small v-if="available">{{ unit }}</small></strong
         >
       </div>
-      <ElPopover
+      <AppPopover
         trigger="click"
         placement="left-end"
         :width="300"
@@ -243,7 +244,7 @@ const rows = computed(() =>
             </div>
           </section>
         </div>
-      </ElPopover>
+      </AppPopover>
       <div
         v-if="metric === 'weight' && measured"
         class="stock-measured"

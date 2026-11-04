@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import ElInput from '@/components/AppInput.vue'
 import PersonName from './PersonName.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { computed, ref, watch } from 'vue'
-import { ElIcon, ElInput, useFormDisabled } from 'element-plus'
+import { ElIcon, useFormDisabled } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { Check, Search, User } from '@element-plus/icons-vue'
 

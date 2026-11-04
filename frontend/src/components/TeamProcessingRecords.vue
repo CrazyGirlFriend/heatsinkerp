@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElSelect from '@/components/AppSelect.vue'
 import PersonName from './PersonName.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
@@ -8,10 +10,10 @@ import { sharedSerialLabel } from '@/types/sharedMaterial'
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
 import { useProcessRouteView } from '@/composables/useProcessRouteView'
 import { useRoute, useRouter } from 'vue-router'
-import { ElAlert, ElLoading, ElTableColumn } from 'element-plus'
+import { ElTableColumn } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import FilterDialog from './FilterDialog.vue'
-import { ElSelect, ElOption } from 'element-plus'
+import { ElOption } from 'element-plus'
 import RecordDateFilter from './RecordDateFilter.vue'
 import StatePanel from './StatePanel.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
@@ -40,7 +42,6 @@ const props = defineProps<{
   fullscreen?: boolean
   refreshKey?: unknown
 }>()
-const vLoading = ElLoading.directive
 const ProcessRouteEditor = defineAsyncComponent(() => import('./ProcessRouteEditor.vue'))
 const {
   route: viewedRoute,
@@ -553,7 +554,7 @@ onBeforeUnmount(() => {
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
     <WorkspaceTable
       v-else
-      v-loading="loading"
+      :loading="loading"
       :data="rows"
       row-key="id"
       class="processing-records-table"

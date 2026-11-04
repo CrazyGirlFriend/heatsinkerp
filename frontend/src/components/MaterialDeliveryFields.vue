@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ElFormItem, ElInput } from 'element-plus'
+import ElInput from '@/components/AppInput.vue'
+import { ElFormItem } from 'element-plus'
 import AppNumberInput from './AppNumberInput.vue'
 import WatermelonDateInput from './watermelon/WatermelonDateInput.vue'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'

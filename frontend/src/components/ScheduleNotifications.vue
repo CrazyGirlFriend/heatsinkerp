@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -13,7 +14,7 @@ import {
   DocumentChecked,
   Back,
 } from '@element-plus/icons-vue'
-import { ElAlert, ElIcon, ElCheckbox } from 'element-plus'
+import { ElIcon, ElCheckbox } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import AppDrawer from './AppDrawer.vue'
 import TransferAmendmentReview from './TransferAmendmentReview.vue'

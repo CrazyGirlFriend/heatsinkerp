@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ElSelect } from 'element-plus'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computed, h } from 'vue'
@@ -87,7 +88,8 @@ describe('warehouse shared appearance', () => {
     expect(onSearch).toHaveBeenCalledOnce()
     await wrapper.get('[aria-label="下一页"]').trigger('click')
     expect(onPage).toHaveBeenCalledWith(2)
-    await wrapper.get('select[aria-label="每页条数"]').setValue('20')
+    wrapper.getComponent(ElSelect).vm.$emit('change', 20)
+    await flushPromises()
     expect(onSize).toHaveBeenCalledWith(20)
     expect(wrapper.get('.wm-pagination-statistics').text()).toBe('合计 100 件')
     for (const modelValue of [

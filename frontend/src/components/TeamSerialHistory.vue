@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElAlert } from 'element-plus'
+
 import { Connection } from '@element-plus/icons-vue'
 import TableExportButton from './TableExportButton.vue'
 import FilterDialog from './FilterDialog.vue'

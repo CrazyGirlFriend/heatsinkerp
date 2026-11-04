@@ -1,12 +1,13 @@
 <script setup lang="ts">
+import AppPopover from '@/components/AppPopover.vue'
 import { ref } from 'vue'
-import { ElIcon, ElPopover } from 'element-plus'
+import { ElIcon } from 'element-plus'
 import { QuestionFilled } from '@element-plus/icons-vue'
 defineProps<{ label: string }>()
-const popover = ref<InstanceType<typeof ElPopover>>()
+const popover = ref<InstanceType<typeof AppPopover>>()
 </script>
 <template>
-  <ElPopover ref="popover" trigger="click" :trigger-keys="[]" placement="bottom-start" :width="300">
+  <AppPopover ref="popover" trigger="click" :trigger-keys="[]" placement="bottom-start" :width="300">
     <template #reference>
       <button
         type="button"
@@ -18,7 +19,7 @@ const popover = ref<InstanceType<typeof ElPopover>>()
       </button>
     </template>
     <div class="statistic-help-content"><slot /></div>
-  </ElPopover>
+  </AppPopover>
 </template>
 <style scoped>
 .statistic-help {

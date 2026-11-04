@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElInput from '@/components/AppInput.vue'
 import CompactFormSection from './CompactFormSection.vue'
-import { ElAlert, ElCheckbox, ElFormItem, ElInput } from 'element-plus'
+import { ElCheckbox, ElFormItem } from 'element-plus'
 defineProps<{
   batchNo: string
   quantity: number

@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { flushPromises } from '@vue/test-utils'
+import { ElSelect } from 'element-plus'
 import { mount } from '@vue/test-utils'
 import { ElInputNumber } from 'element-plus'
 import { describe, expect, it } from 'vitest'
@@ -8,7 +10,8 @@ describe('measured weight units', () => {
   it('switches the display to grams without changing saved kilograms, and preserves milligrams', async () => {
     const wrapper = mount(WeightInput, { props: { modelValue: 0.000123, ariaLabel: '转料重量' } })
     try {
-      await wrapper.get('select').setValue('g')
+      wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 'g')
+      await flushPromises()
       expect(wrapper.getComponent(ElInputNumber).props('modelValue')).toBe(0.123)
       expect(wrapper.emitted('update:modelValue')).toBeUndefined()
       wrapper.getComponent(ElInputNumber).vm.$emit('update:modelValue', 0.125)

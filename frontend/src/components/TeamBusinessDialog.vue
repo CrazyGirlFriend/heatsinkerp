@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { AppMessageBox as ElMessageBox } from '@/utils/messageBox'
+import ElAlert from '@/components/AppAlert.vue'
+import ElInput from '@/components/AppInput.vue'
+import ElSelect from '@/components/AppSelect.vue'
+import ElSwitch from '@/components/AppSwitch.vue'
+import ElTabs from '@/components/AppTabs.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
 import AccountAvatar from './AccountAvatar.vue'
@@ -9,17 +15,7 @@ import OpeningMaterialFields from './OpeningMaterialFields.vue'
 import SludgeWeightFields from './SludgeWeightFields.vue'
 import { sludgePayload, sludgeWeight } from '@/utils/sludgeWeight'
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import {
-  ElAlert,
-  ElForm,
-  ElInput,
-  ElOption,
-  ElSelect,
-  ElSwitch,
-  ElTabs,
-  ElTabPane,
-  ElMessageBox,
-} from 'element-plus'
+import { ElForm, ElOption, ElTabPane } from 'element-plus'
 import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElButton from '@/components/AppButton.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'

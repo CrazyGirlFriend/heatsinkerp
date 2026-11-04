@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElInput from '@/components/AppInput.vue'
+import AppPopover from '@/components/AppPopover.vue'
+import ElSelect from '@/components/AppSelect.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import FormWorkspace from './FormWorkspace.vue'
@@ -17,18 +21,7 @@ import { sharedSerialLabel } from '@/types/sharedMaterial'
 import WeightInput from './WeightInput.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import {
-  ElAlert,
-  ElForm,
-  ElFormItem,
-  ElInput,
-  ElIcon,
-  ElPopover,
-  ElOption,
-  ElRadioButton,
-  ElRadioGroup,
-  ElSelect,
-} from 'element-plus'
+import { ElForm, ElFormItem, ElIcon, ElOption, ElRadioButton, ElRadioGroup } from 'element-plus'
 import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElButton from '@/components/AppButton.vue'
 import MaterialAmount from './MaterialAmount.vue'
@@ -1302,7 +1295,7 @@ watch(
                   @click="fillAll(index)"
                   >全部填入</ElButton
                 >
-                <ElPopover
+                <AppPopover
                   v-if="
                     !isLoss &&
                     (!sourceWarehouse || !line.source.transfer.serial_no || lines.length > 1)
@@ -1357,7 +1350,7 @@ watch(
                       >登记加工后件数</ElButton
                     >
                   </div>
-                </ElPopover>
+                </AppPopover>
               </div>
             </header>
 

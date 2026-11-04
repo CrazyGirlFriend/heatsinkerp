@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import AsyncStatus from './AsyncStatus.vue'
+import ElAlert from '@/components/AppAlert.vue'
+import ElDatePicker from '@/components/AppDatePicker.vue'
+import ElInput from '@/components/AppInput.vue'
 import PersonName from './PersonName.vue'
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import type { Dayjs } from 'dayjs'
-import { ElAlert, ElDatePicker, ElForm, ElFormItem, ElInput, ElTableColumn } from 'element-plus'
+import { ElForm, ElFormItem, ElTableColumn } from 'element-plus'
 import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
@@ -392,6 +396,7 @@ onMounted(loadRoutes)
               @change="importOrder"
             />
           </ElFormItem>
+          <AsyncStatus v-if="orderBusy" label="正在导入订单表…" />
           <ElAlert v-if="orderError" :title="orderError" type="error" :closable="false" />
         </template>
         <div class="dispatch-task-content">

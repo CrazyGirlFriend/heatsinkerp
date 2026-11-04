@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import AppPopover from '@/components/AppPopover.vue'
 import WatermelonSegmented from '@/components/watermelon/WatermelonSegmented.vue'
 import PersonName from '@/components/PersonName.vue'
 import WorkspaceDataPanel from '@/components/WorkspaceDataPanel.vue'
@@ -7,7 +9,7 @@ import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { ArrowDown, Plus } from '@element-plus/icons-vue'
-import { ElAlert, ElIcon, ElLoading, ElPopover, ElTag, ElTableColumn } from 'element-plus'
+import { ElIcon, ElTag, ElTableColumn } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { businessNoticeApi, parseNotice } from '@/services/businessNoticeApi'
@@ -28,7 +30,6 @@ const router = useRouter()
 const noticeSection = ref('')
 const noticeStep = ref(0)
 let stopNoticeFocus: (() => void) | undefined
-const vLoading = ElLoading.directive
 const auth = useAuthStore(),
   directory = useTeamDirectoryStore()
 const team = computed(() =>
@@ -355,7 +356,7 @@ onBeforeUnmount(() => {
         </template>
         <template #primary-actions>
           <div v-if="canEdit" class="workspace-toolbar-actions">
-            <ElPopover
+            <AppPopover
               v-model:visible="newMenuOpen"
               trigger="click"
               width="170"
@@ -370,13 +371,13 @@ onBeforeUnmount(() => {
                 <ElButton @click="create">正常工艺</ElButton
                 ><ElButton @click="createRework">返工工艺</ElButton>
               </div>
-            </ElPopover>
+            </AppPopover>
           </div></template
         >
       </WorkspaceDataToolbar>
       <WorkspaceTable
         :key="routeKind"
-        v-loading="loading"
+        :loading="loading"
         :data="items"
         border
         row-key="id"
@@ -435,7 +436,7 @@ onBeforeUnmount(() => {
                   :key="index"
                 >
                   <span v-if="index" class="route-path-connector" aria-hidden="true" />
-                  <ElPopover
+                  <AppPopover
                     :trigger="['hover', 'focus']"
                     :show-after="180"
                     :hide-after="120"
@@ -481,11 +482,11 @@ onBeforeUnmount(() => {
                         </div>
                       </template>
                     </div>
-                  </ElPopover>
+                  </AppPopover>
                 </template>
                 <template v-if="routeSteps(row).length > visibleStepCount">
                   <span class="route-path-connector" aria-hidden="true" />
-                  <ElPopover
+                  <AppPopover
                     :trigger="['hover', 'focus']"
                     :show-after="180"
                     :hide-after="120"
@@ -514,7 +515,7 @@ onBeforeUnmount(() => {
                         <span>{{ step.name || '未命名工序' }}</span>
                       </li>
                     </ol>
-                  </ElPopover>
+                  </AppPopover>
                 </template>
               </div>
               <span v-else class="route-empty">—</span>
@@ -531,7 +532,7 @@ onBeforeUnmount(() => {
                 @click="openDrawing(row.id, row.drawings[0])"
                 >1 份</ElButton
               >
-              <ElPopover
+              <AppPopover
                 v-else-if="row.drawings?.length"
                 :visible="drawingMenu === row.id"
                 trigger="click"
@@ -558,7 +559,7 @@ onBeforeUnmount(() => {
                     >{{ drawing.filename }}</ElButton
                   >
                 </div>
-              </ElPopover>
+              </AppPopover>
               <span v-else class="route-empty">—</span>
             </template>
           </ElTableColumn>

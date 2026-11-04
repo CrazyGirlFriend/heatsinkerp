@@ -1,19 +1,14 @@
 <script setup lang="ts">
+import AsyncStatus from './AsyncStatus.vue'
+import { AppMessageBox as ElMessageBox } from '@/utils/messageBox'
+import ElAlert from '@/components/AppAlert.vue'
+import ElInput from '@/components/AppInput.vue'
+import AppPopover from '@/components/AppPopover.vue'
+import ElSelect from '@/components/AppSelect.vue'
 import PersonName from './PersonName.vue'
 import { RouterLink } from 'vue-router'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import {
-  ElAlert,
-  ElForm,
-  ElFormItem,
-  ElInput,
-  ElIcon,
-  ElOption,
-  ElPopover,
-  ElSelect,
-  ElTooltip,
-  type InputInstance,
-} from 'element-plus'
+import { ElForm, ElFormItem, ElIcon, ElOption, ElTooltip, type InputInstance } from 'element-plus'
 import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
@@ -28,7 +23,7 @@ import { formatDateTime } from '@/utils/format'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import ProcessRouteMaterials from './ProcessRouteMaterials.vue'
 import { mergeRouteMaterials } from '@/utils/routeMaterials'
-import { ElMessageBox } from 'element-plus'
+
 import { ArrowDown, Document, Upload, WarningFilled } from '@element-plus/icons-vue'
 import ProcessRouteAttachments from './ProcessRouteAttachments.vue'
 import { processRouteApi, ProcessRouteSerialConflictError } from '@/services/processRouteApi'
@@ -615,7 +610,8 @@ onMounted(async () => {
                 @change="addDrawings"
               />
             </div>
-            <span v-if="sourceLoading" class="route-source-status" role="status">加载原工艺…</span>
+            <AsyncStatus v-if="sourceLoading" label="加载原工艺…" />
+            <AsyncStatus v-if="busy" label="正在处理工艺资料…" />
             <div v-if="sourceError" class="route-source-error" role="alert">
               <span>{{ sourceError }}</span
               ><ElButton link @click="loadSourceRoute">重新读取</ElButton>
@@ -889,7 +885,7 @@ onMounted(async () => {
           </div>
           <CompactFormSection title="工序明细">
             <template #actions>
-              <ElPopover
+              <AppPopover
                 v-if="issueCount"
                 v-model:visible="issuesOpen"
                 trigger="click"
@@ -929,7 +925,7 @@ onMounted(async () => {
                     ><ElIcon><WarningFilled /></ElIcon>{{ unrecognizedRows }}未识别</span
                   >
                 </div>
-              </ElPopover>
+              </AppPopover>
             </template>
             <div class="form-field--full">
               <div class="route-step-table-wrap">

@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import ElSkeleton from '@/components/AppSkeleton.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElSkeleton, ElSkeletonItem } from 'element-plus'
+import { ElSkeletonItem } from 'element-plus'
 import StatePanel from './StatePanel.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import ProcessRouteAttachments from './ProcessRouteAttachments.vue'

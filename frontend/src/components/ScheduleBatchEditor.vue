@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElDatePicker from '@/components/AppDatePicker.vue'
+import ElSelect from '@/components/AppSelect.vue'
 import { computed, onMounted, ref } from 'vue'
-import { ElAlert, ElDatePicker, ElOption, ElSelect, ElTableColumn } from 'element-plus'
+import { ElOption, ElTableColumn } from 'element-plus'
 import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
+import AsyncStatus from './AsyncStatus.vue'
 import ScheduleDocuments from './ScheduleDocuments.vue'
 import CompactFormSection from './CompactFormSection.vue'
 import type {
@@ -314,7 +318,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
           ><span>{{ upstream?.team_name || '库房备料' }}</span></template
         >
         <div class="form-field--long">
-          <p v-if="loading">加载中…</p>
+          <AsyncStatus v-if="loading" label="正在读取上游供料…" />
           <ElButton v-else-if="!task" @click="load">重新读取</ElButton>
           <ElTable
             v-else-if="upstream?.batches?.length"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ElSelect from '@/components/AppSelect.vue'
 import PersonName from './PersonName.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
@@ -15,7 +16,6 @@ import {
   ElDescriptionsItem,
   ElIcon,
   ElOption,
-  ElSelect,
   ElTableColumn,
   ElTag,
 } from 'element-plus'

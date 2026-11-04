@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Watermelon DataTable 11's surface, adapted to the existing Vue table engine.
 import { ElTable, type TableProps } from 'element-plus'
+import AppSkeleton from '../AppSkeleton.vue'
 
 defineOptions({ inheritAttrs: false })
 withDefaults(
@@ -18,7 +19,12 @@ withDefaults(
 <template>
   <ElTable
     class="wm-data-table"
-    :class="{ 'wm-data-table--fill': fill, 'wm-data-table--embedded': embedded }"
+    :class="{
+      'wm-data-table--fill': fill,
+      'wm-data-table--embedded': embedded,
+      'is-refreshing': loading && data?.length,
+      'is-ready': !loading && data?.length,
+    }"
     :data="data"
     :row-class-name="rowClassName"
     :height="fill ? '100%' : undefined"
@@ -29,7 +35,9 @@ withDefaults(
     v-bind="$attrs"
   >
     <slot />
-    <template v-if="$slots.empty" #empty><slot name="empty" /></template>
+    <template #empty
+      ><AppSkeleton v-if="loading" /><slot v-else name="empty">暂无数据</slot></template
+    >
     <template v-if="$slots.append" #append><slot name="append" /></template>
   </ElTable>
 </template>
@@ -72,10 +80,6 @@ withDefaults(
   height: 54px;
   padding: 14px 0;
   border-right: 0;
-}
-.wm-data-table :deep(tbody tr),
-.wm-data-table :deep(tbody td.el-table__cell) {
-  transition: none;
 }
 .wm-data-table :deep(th.el-table__cell) {
   height: 48px;

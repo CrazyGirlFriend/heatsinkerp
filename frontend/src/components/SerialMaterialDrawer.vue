@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ElTabs from '@/components/AppTabs.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import PersonName from './PersonName.vue'
 import AppDialog from '@/components/AppDialog.vue'
@@ -9,7 +10,6 @@ import {
   ElDescriptions,
   ElDescriptionsItem,
   ElTableColumn,
-  ElTabs,
   ElTabPane,
 } from 'element-plus'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'

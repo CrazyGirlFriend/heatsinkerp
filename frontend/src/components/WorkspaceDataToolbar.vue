@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import ElInput from '@/components/AppInput.vue'
 import { Refresh, Search } from '@element-plus/icons-vue'
-import { ElInput } from 'element-plus'
+
 import ElButton from '@/components/AppButton.vue'
 import WorkspaceTools from './WorkspaceTools.vue'
 import { inject, provide } from 'vue'

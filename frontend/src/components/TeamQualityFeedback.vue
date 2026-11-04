@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import ElSelect from '@/components/AppSelect.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElSelect, ElOption, ElTableColumn, ElTag } from 'element-plus'
+import { ElOption, ElTableColumn, ElTag } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { useRoute } from 'vue-router'
 import FilterDialog from './FilterDialog.vue'

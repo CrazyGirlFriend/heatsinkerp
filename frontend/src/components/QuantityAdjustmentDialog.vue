@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElInput from '@/components/AppInput.vue'
+import ElSelect from '@/components/AppSelect.vue'
+import ElSwitch from '@/components/AppSwitch.vue'
+import ElDatePicker from '@/components/AppDatePicker.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import PersonName from './PersonName.vue'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
@@ -13,16 +18,11 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch }
 import { useProcessRouteView } from '@/composables/useProcessRouteView'
 import { focusFirstInvalidField } from '@/composables/useDialogValidation'
 import {
-  ElAlert,
   ElDescriptions,
   ElDescriptionsItem,
   ElForm,
   ElFormItem,
-  ElInput,
   ElOption,
-  ElSelect,
-  ElSwitch,
-  ElDatePicker,
   ElTableColumn,
 } from 'element-plus'
 import ElInputNumber from '@/components/AppNumberInput.vue'

@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import AppPopover from '@/components/AppPopover.vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
 import { ArrowDown, ArrowLeft, ArrowRight, Calendar } from '@element-plus/icons-vue'
-import { ElCalendar, ElIcon, ElPopover, type CalendarInstance } from 'element-plus'
+import { ElCalendar, ElIcon, type CalendarInstance } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { formatDateTime } from '@/utils/format'
 import { progressWeek, SCHEDULE_WEEK } from '@/utils/scheduleProgress'
@@ -108,7 +109,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
 </script>
 
 <template>
-  <ElPopover
+  <AppPopover
     v-model:visible="visible"
     role="dialog"
     trigger="click"
@@ -208,7 +209,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape, true))
         <ElButton size="small" type="primary" :disabled="!dayCount" @click="apply">应用</ElButton>
       </footer>
     </div>
-  </ElPopover>
+  </AppPopover>
 </template>
 
 <style scoped>

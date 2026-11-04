@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
 // Historical CK lookup only. All business actions belong to an individual batch.
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert } from 'element-plus'
+
 import ElButton from '@/components/AppButton.vue'
 import MaterialTransferDetailFrame from './MaterialTransferDetailFrame.vue'
 import MaterialBatchPrintDialog from './MaterialBatchPrintDialog.vue'

@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import AppPopover from '@/components/AppPopover.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { ElIcon, ElPopover } from 'element-plus'
+import { ElIcon } from 'element-plus'
 import { Box, Clock, Lock } from '@element-plus/icons-vue'
 import type { ScheduleTask } from '@/types/productionSchedule'
 import { formatAmount } from '@/utils/format'
@@ -24,7 +25,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', closeOnEscape, tru
 </script>
 
 <template>
-  <ElPopover
+  <AppPopover
     v-model:visible="visible"
     trigger="click"
     placement="bottom-end"
@@ -99,7 +100,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', closeOnEscape, tru
         </table>
       </div>
     </section>
-  </ElPopover>
+  </AppPopover>
 </template>
 
 <style scoped>

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ElSelect } from 'element-plus'
 import { computed } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { ElInputNumber } from 'element-plus'
@@ -20,10 +21,12 @@ describe('warehouse form controls', () => {
   it('keeps kilogram precision and unit conversion with the shared number control', async () => {
     const wrapper = mount(WeightInput, {
       props: { modelValue: 0.000123, ariaLabel: '入库重量', max: 12 },
-      global,
+      // Exercise the real popper; stubbing Teleport makes native ElSelect recurse on disable.
+      global: { ...global, stubs: {} },
     })
     try {
-      await wrapper.get('select').setValue('g')
+      wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 'g')
+      await flushPromises()
       const input = wrapper.getComponent(ElInputNumber)
       expect(input.props('modelValue')).toBe(0.123)
       expect(input.props('max')).toBe(12000)
@@ -31,7 +34,7 @@ describe('warehouse form controls', () => {
       expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([0.000125])
       await wrapper.setProps({ disabled: true })
       expect(wrapper.get('input').attributes('disabled')).toBeDefined()
-      expect(wrapper.get('select').attributes('disabled')).toBeDefined()
+      expect(wrapper.getComponent(ElSelect).props('disabled')).toBe(true)
     } finally {
       wrapper.unmount()
     }

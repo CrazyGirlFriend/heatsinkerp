@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import ElSelect from '@/components/AppSelect.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElOption, ElSelect } from 'element-plus'
+import { ElOption } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { useTeamDirectoryStore } from '@/stores/teamDirectory'

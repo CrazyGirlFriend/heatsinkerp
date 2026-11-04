@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import ElInput from '@/components/AppInput.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { focusFirstInvalidField } from '@/composables/useDialogValidation'
-import { ElInput, type InputInstance } from 'element-plus'
+import { type InputInstance } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { FullScreen } from '@element-plus/icons-vue'
 import { IconScan } from '@tabler/icons-vue'

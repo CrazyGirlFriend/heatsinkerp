@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElSelect from '@/components/AppSelect.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElFormItem, ElOption, ElSelect } from 'element-plus'
+import { ElFormItem, ElOption } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import type { TeamProcessingTask, TeamPurpose } from '@/types/teamBusiness'

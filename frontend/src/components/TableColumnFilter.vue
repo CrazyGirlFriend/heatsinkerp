@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import ElDatePicker from '@/components/AppDatePicker.vue'
+import ElInput from '@/components/AppInput.vue'
+import AppPopover from '@/components/AppPopover.vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import { Filter } from '@element-plus/icons-vue'
 import { invalidNumberRange } from '@/utils/numberFilterRange'
-import { ElCheckbox, ElCheckboxGroup, ElDatePicker, ElInput, ElPopover } from 'element-plus'
+import { ElCheckbox, ElCheckboxGroup } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 
 const props = withDefaults(
@@ -67,7 +70,7 @@ watch(
 </script>
 
 <template>
-  <ElPopover
+  <AppPopover
     v-model:visible="visible"
     trigger="click"
     placement="bottom-start"
@@ -178,7 +181,7 @@ watch(
         <ElButton type="primary" native-type="submit" :disabled="invalid">筛选</ElButton>
       </footer>
     </form>
-  </ElPopover>
+  </AppPopover>
 </template>
 
 <style>

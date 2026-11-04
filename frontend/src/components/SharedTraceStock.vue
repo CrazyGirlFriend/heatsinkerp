@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import AppPopover from '@/components/AppPopover.vue'
 import { computed } from 'vue'
-import { ElPopover } from 'element-plus'
+
 import type { MaterialTrace } from '@/types/materialTrace'
 import { isScrapType, materialTypeLabel } from '@/types/materialTransfer'
 import { historyNumber as num } from '@/utils/serialHistoryChart'
@@ -30,7 +31,7 @@ const totals = computed(() =>
 </script>
 <template>
   <div v-if="groups.length" class="shared-trace-stock" aria-label="关联共投库存">
-    <ElPopover
+    <AppPopover
       trigger="click"
       :width="440"
       :append-to="appendTo"
@@ -50,7 +51,7 @@ const totals = computed(() =>
         </div>
         <p v-if="!trace.shared_positions?.length">暂无未分配库存</p>
       </div>
-    </ElPopover>
+    </AppPopover>
     <div class="shared-trace-orders">
       <template v-for="group in groups" :key="group.shared_group_id"
         ><button type="button" @click="emit('serial', group.shared_origin_batch_no!)">

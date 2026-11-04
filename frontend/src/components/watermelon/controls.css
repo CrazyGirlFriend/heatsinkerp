@@ -1,0 +1,531 @@
+/* Shared interaction layer. Engines retain business bindings, validation and keyboard behavior. */
+html.wm-app,
+.wm-scope,
+.wm-dialog {
+  --wm-motion-fast: 140ms;
+  --wm-motion-standard: 220ms;
+  --wm-motion-spring: cubic-bezier(0.2, 0.8, 0.2, 1.1);
+}
+.wm-control-button.el-button {
+  position: relative;
+  min-height: 40px;
+  padding-inline: 16px;
+  border: 1px solid var(--wm-border, #e4e4e7);
+  border-radius: 8px;
+  background: var(--wm-surface, #fff);
+  color: var(--wm-text, #18181b);
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: none;
+  transition:
+    background-color 140ms,
+    border-color 140ms;
+}
+.wm-control-button.el-button--primary:not(.is-link):not(.is-text):not(.is-plain) {
+  background: var(--wm-primary, #18181b);
+  border-color: var(--wm-primary, #18181b);
+  color: var(--wm-primary-text, #fff);
+}
+.wm-control-button.el-button:not(.is-disabled):not(.is-loading):hover {
+  background: var(--wm-hover, #f4f4f5);
+}
+.wm-control-button.el-button--primary:not(.is-link):not(.is-text):not(.is-plain):hover {
+  background: var(--wm-primary-hover-bg, #303034);
+}
+html.wm-app .wm-control-button.el-button:not(.is-disabled):not(.is-loading):active {
+  transform: none;
+}
+.wm-control-button.el-button > span {
+  transition:
+    opacity 140ms,
+    translate 140ms;
+}
+.wm-control-button.el-button.is-loading > span {
+  opacity: 0;
+  translate: 0 3px;
+}
+.wm-control-button.el-button.is-loading > .is-loading,
+.wm-control-button.el-button.is-loading > .el-icon.is-loading {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 18px;
+  height: 18px;
+  animation: wm-control-spin 800ms linear infinite;
+}
+.wm-control-button.el-button.is-loading > .el-icon.is-loading + span {
+  margin-left: 0;
+}
+.wm-control-button.el-button.is-loading::before,
+.wm-control-button.el-button::after {
+  display: none;
+}
+.wm-control-button.el-button:disabled {
+  opacity: 0.55;
+}
+.wm-control-button.el-button:focus-visible {
+  outline: 2px solid var(--wm-focus-ring, #71717a);
+  outline-offset: 3px;
+}
+.wm-scope .app-input .el-input__clear,
+.wm-scope .app-select .el-select__caret {
+  transition:
+    color 140ms,
+    transform 180ms;
+}
+.wm-scope .app-select .el-tag {
+  border-radius: 5px;
+}
+.wm-scope .el-select__tags .el-tag,
+.wm-scope .el-select__selection .el-tag {
+  animation: wm-feedback-in 140ms ease-out;
+}
+.wm-scope .weight-unit .el-select__wrapper {
+  min-height: 40px;
+  padding-inline: 8px;
+}
+.wm-page-size-select {
+  width: 128px;
+}
+.document-zoom-select {
+  width: 120px;
+}
+.wm-empty .el-empty__image {
+  color: var(--wm-muted);
+}
+.wm-empty .el-empty__image svg {
+  color: inherit;
+}
+.wm-scope .wm-skeleton .el-skeleton__item {
+  background: var(--wm-hover);
+  animation: wm-skeleton-pulse 1.4s ease-in-out infinite;
+}
+.wm-scope .weight-input .weight-unit {
+  flex-basis: 72px;
+  width: 72px;
+}
+.wm-scope.el-dialog .weight-input .weight-unit .el-select__wrapper {
+  border-radius: 0 6px 6px 0;
+  margin-left: -1px;
+}
+
+.wm-control-menu.el-popper {
+  border-radius: 10px;
+  padding: 12px;
+}
+.wm-control-menu.el-select__popper {
+  padding: 0;
+}
+.wm-popover-enter-active {
+  transition:
+    opacity 160ms ease-out,
+    transform 220ms var(--wm-motion-spring);
+}
+.wm-popover-leave-active {
+  transition:
+    opacity 120ms,
+    transform 120ms;
+}
+.wm-popover-enter-from,
+.wm-popover-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+}
+html.wm-app :is(.table-column-filter-choices, .inventory-column-options) .el-checkbox {
+  transition: background-color 140ms;
+}
+html.wm-app :is(.calendar-day, .range-day > span) {
+  transition:
+    background-color 140ms,
+    color 140ms,
+    scale 180ms var(--wm-motion-spring);
+}
+html.wm-app :is(.calendar-day, .range-day):active {
+  scale: 0.94;
+}
+html.wm-app :is(.calendar-day.selected, .range-day.is-selected > span) {
+  animation: wm-selected-day 180ms var(--wm-motion-spring);
+}
+html.wm-app .record-calendar {
+  background: var(--wm-bg);
+}
+html.wm-app .schedule-date-trigger.el-button {
+  background: var(--wm-surface);
+  box-shadow: none;
+}
+html.wm-app .date-range-panel :is(.date-preset.active, input:focus) {
+  border-color: var(--wm-border);
+}
+.wm-date-panel .el-date-range-picker__content.is-left,
+.wm-date-panel .el-picker-panel__footer,
+.wm-date-panel .el-date-picker__time-header {
+  border-color: var(--wm-border);
+  background: var(--wm-bg);
+}
+.wm-date-panel .el-date-table td.in-range .el-date-table-cell {
+  background: var(--wm-hover);
+}
+.wm-date-panel .el-date-table :is(td.start-date, td.end-date) .el-date-table-cell__text {
+  background: var(--wm-primary);
+  color: var(--wm-primary-text);
+  animation: wm-selected-day 180ms var(--wm-motion-spring);
+}
+.wm-date-panel .el-date-table td.disabled .wm-date-cell {
+  opacity: 0.4;
+}
+.wm-date-panel .el-time-spinner__item {
+  color: var(--wm-muted);
+  border-radius: 6px;
+}
+.wm-date-panel .el-time-spinner__item.active:not(.disabled) {
+  color: var(--wm-text);
+  font-weight: 600;
+  background: var(--wm-hover);
+}
+
+.wm-scope .wm-control-tabs > .el-tabs__header .el-tabs__nav-wrap::after {
+  display: none;
+}
+.wm-scope .wm-control-tabs > .el-tabs__header .el-tabs__nav {
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--wm-hover);
+  isolation: isolate;
+}
+.wm-scope .wm-control-tabs > .el-tabs__header .el-tabs__item {
+  position: relative;
+  z-index: 1;
+  height: 36px;
+  padding: 0 14px;
+  color: var(--wm-muted);
+  font-size: 13px;
+  transition: color 140ms;
+}
+.wm-scope .wm-control-tabs > .el-tabs__header .el-tabs__item.is-active {
+  color: var(--wm-text);
+}
+.wm-scope .wm-control-tabs > .el-tabs__header .el-tabs__active-bar {
+  z-index: 0;
+  top: 4px;
+  bottom: 4px;
+  height: auto;
+  box-sizing: content-box;
+  padding-inline: 14px;
+  margin-left: -14px;
+  border-radius: 7px;
+  background: var(--wm-bg);
+  box-shadow: 0 1px 3px #0001;
+  transition:
+    transform 260ms var(--wm-motion-spring),
+    width 220ms var(--wm-motion-spring);
+}
+.wm-scope .wm-control-switch .el-switch__core {
+  min-width: 42px;
+  height: 24px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--wm-border);
+  transition: background-color 160ms;
+}
+.wm-scope .wm-control-switch.is-checked .el-switch__core {
+  background: var(--wm-primary);
+}
+.wm-scope .wm-control-switch .el-switch__action {
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  background: var(--wm-text);
+  transition:
+    left 260ms var(--wm-motion-spring),
+    background-color 140ms;
+}
+.wm-scope .wm-control-switch.is-checked .el-switch__action {
+  left: calc(100% - 21px);
+  background: var(--wm-primary-text);
+}
+
+.wm-scope .wm-inline-notice.el-alert {
+  padding: 12px 14px;
+  border: 1px solid var(--wm-border);
+  border-radius: 10px;
+  color: var(--wm-text);
+  background: var(--wm-muted-surface);
+  animation: wm-feedback-in 220ms var(--wm-motion-spring);
+}
+.wm-scope .wm-inline-notice.el-alert--error {
+  --el-alert-text-color: var(--wm-danger-text);
+  background: var(--wm-danger-bg);
+  border-color: color-mix(in srgb, var(--wm-danger-text) 25%, var(--wm-bg));
+}
+.wm-scope .wm-inline-notice.el-alert--warning {
+  --el-alert-text-color: var(--wm-warning-text);
+  background: var(--wm-warning-bg);
+  border-color: color-mix(in srgb, var(--wm-warning-text) 25%, var(--wm-bg));
+}
+.wm-scope .wm-inline-notice.el-alert--success {
+  --el-alert-text-color: var(--wm-success-text);
+  background: var(--wm-success-bg);
+}
+.wm-scope .wm-inline-notice .el-alert__title {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.wm-scope .wm-inline-notice .el-alert__description {
+  color: var(--wm-muted);
+}
+.wm-scope .wm-inline-notice .el-alert__icon {
+  color: var(--el-alert-text-color, var(--wm-info-text));
+}
+.wm-toast-message.el-message {
+  transition:
+    opacity 160ms,
+    transform 220ms var(--wm-motion-spring),
+    top 220ms ease;
+}
+.wm-toast-message.el-message-fade-enter-from,
+.wm-toast-message.el-message-fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -10px) scale(0.98);
+}
+.wm-toast-message.el-message--warning .el-message__icon {
+  color: var(--wm-warning-text);
+}
+.wm-confirm-dialog.el-message-box {
+  border-radius: 16px;
+  padding: 24px;
+}
+.wm-confirm-dialog .el-message-box__btns .el-button {
+  min-height: 40px;
+  padding-inline: 16px;
+  border-radius: 8px;
+  background-image: none;
+  box-shadow: none;
+}
+.wm-confirm-dialog .el-message-box__headerbtn {
+  width: 32px;
+  height: 32px;
+  top: 16px;
+  right: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--wm-hover);
+  color: var(--wm-muted);
+  box-shadow: none;
+}
+.wm-confirm-dialog .el-message-box__headerbtn .el-message-box__close {
+  color: inherit;
+}
+.wm-confirm-dialog :is(.el-message-box__headerbtn, .el-button)::before,
+.wm-confirm-dialog :is(.el-message-box__headerbtn, .el-button)::after {
+  display: none;
+}
+html.wm-app
+  :is(.el-dialog__headerbtn, .el-message-box__headerbtn, .el-drawer__close-btn):not(:disabled):is(
+    :hover,
+    :focus-visible
+  ) {
+  background: var(--wm-hover);
+  color: var(--wm-text);
+  box-shadow: none;
+  outline-color: var(--wm-focus-ring);
+}
+html.wm-app
+  :is(.el-dialog__headerbtn, .el-message-box__headerbtn, .el-drawer__close-btn):not(:disabled):is(
+    :hover,
+    :focus-visible
+  )
+  > .el-icon {
+  color: inherit;
+  transform: none;
+}
+html.wm-app .fade-in-linear-enter-active .wm-confirm-dialog {
+  animation: wm-feedback-in 240ms var(--wm-motion-spring);
+}
+html.wm-app .wm-app-dialog-enter-active .el-overlay-dialog {
+  transition:
+    opacity 160ms,
+    transform 260ms var(--wm-motion-spring);
+}
+html.wm-app .wm-app-drawer.el-drawer {
+  transition-duration: 260ms;
+  transition-timing-function: var(--wm-motion-spring);
+}
+
+.wm-skeleton {
+  width: 100%;
+  padding: 8px 0;
+  text-align: left;
+}
+.wm-skeleton-row {
+  display: grid;
+  gap: 28px;
+  align-items: center;
+  min-height: 54px;
+  padding: 14px;
+  border-bottom: 1px solid var(--wm-table-divider, #eee);
+}
+.wm-skeleton-cell {
+  height: 12px;
+  width: 72%;
+  border-radius: 5px;
+  background: var(--wm-hover, #eee);
+  animation: wm-skeleton-pulse 1.4s ease-in-out infinite;
+}
+.wm-skeleton-row:nth-child(even) .wm-skeleton-cell {
+  width: 88%;
+}
+.wm-skeleton-cell:nth-child(2n) {
+  width: 55%;
+}
+.wm-data-table.is-refreshing .el-table__header-wrapper::after {
+  content: '';
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--wm-muted), transparent);
+  animation: wm-progress 1.2s ease-in-out infinite;
+}
+.wm-data-table .wm-skeleton {
+  min-width: min(600px, 100%);
+}
+.wm-data-table .el-table__empty-text:has(.wm-skeleton) {
+  width: 100%;
+  line-height: normal;
+}
+.wm-data-table.is-ready .el-table__body-wrapper {
+  animation: wm-table-ready 160ms ease-out;
+}
+.wm-data-table.el-table .el-table__body td.el-table__cell {
+  transition: background-color 140ms ease;
+}
+.wm-async-status {
+  border: 1px solid var(--wm-border);
+  border-radius: 8px;
+  background: var(--wm-muted-surface);
+  animation: wm-feedback-in 160ms ease-out;
+}
+.async-status.wm-async-status.success {
+  color: var(--wm-success-text);
+}
+.async-status.wm-async-status.error {
+  color: var(--wm-danger-text);
+  background: var(--wm-danger-bg);
+}
+.wm-async-status.loading > svg {
+  animation: wm-control-spin 900ms linear infinite;
+}
+.wm-async-status .async-status-track {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  background: linear-gradient(90deg, transparent, var(--wm-muted), transparent);
+  animation: wm-progress 1.2s ease-in-out infinite;
+}
+@keyframes wm-feedback-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes wm-selected-day {
+  from {
+    scale: 0.92;
+  }
+  to {
+    scale: 1;
+  }
+}
+@keyframes wm-control-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+@keyframes wm-skeleton-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes wm-progress {
+  from {
+    translate: -80% 0;
+  }
+  to {
+    translate: 80% 0;
+  }
+}
+@keyframes wm-table-ready {
+  from {
+    opacity: 0.65;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (max-width: 680px) {
+  .wm-date-panel .el-date-range-picker {
+    width: min(360px, calc(100vw - 24px));
+  }
+  .wm-date-panel .el-date-range-picker .el-picker-panel__body {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-height: 65vh;
+    overflow-y: auto;
+  }
+  .wm-date-panel .el-date-range-picker .el-picker-panel__content {
+    display: block;
+    float: none;
+    width: 100%;
+    margin: 0;
+    box-sizing: border-box;
+    border-right: 0;
+  }
+  .wm-date-panel .el-date-range-picker__content.is-right {
+    border-top: 1px solid var(--wm-border);
+  }
+  .wm-date-panel .el-picker-panel__sidebar {
+    width: 80px;
+  }
+  .wm-date-panel .el-picker-panel__sidebar + .el-picker-panel__body {
+    margin-left: 80px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html.wm-app *,
+  .wm-scope *,
+  .wm-dialog * {
+    scroll-behavior: auto;
+  }
+  .wm-control-button.el-button,
+  .wm-control-button.el-button > *,
+  .wm-scope :is(.wm-control-tabs, .wm-control-switch, .app-input, .app-select) *,
+  .wm-popover-enter-active,
+  .wm-popover-leave-active,
+  .wm-scope.wm-toast-message,
+  .wm-scope.wm-confirm-dialog,
+  html.wm-app .wm-app-dialog-enter-active .el-overlay-dialog,
+  html.wm-app .wm-app-dialog-leave-active .el-overlay-dialog,
+  html.wm-app .wm-app-drawer.el-drawer,
+  .wm-scope .wm-inline-notice.el-alert,
+  .wm-data-table.el-table .el-table__body td.el-table__cell,
+  .wm-data-table.is-ready .el-table__body-wrapper,
+  .wm-data-table.is-refreshing .el-table__header-wrapper::after,
+  .wm-skeleton-cell,
+  .wm-scope .wm-skeleton .el-skeleton__item,
+  .wm-async-status,
+  .wm-async-status *,
+  .wm-date-panel .el-date-table-cell__text,
+  html.wm-app :is(.calendar-day, .range-day, .range-day > span) {
+    animation: none !important;
+    transition: none !important;
+  }
+}

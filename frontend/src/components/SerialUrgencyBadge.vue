@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import AppPopover from '@/components/AppPopover.vue'
 import PersonName from './PersonName.vue'
 import { computed, useId } from 'vue'
-import { ElPopover } from 'element-plus'
+
 import type { SerialUrgency } from '@/types/recordFilters'
 import { formatDateTime } from '@/utils/format'
 const props = defineProps<{ urgency?: SerialUrgency | null; editable?: boolean }>()
@@ -12,7 +13,7 @@ const label = computed(() =>
 )
 </script>
 <template>
-  <ElPopover
+  <AppPopover
     v-if="urgency?.urgent || editable"
     :disabled="editable"
     trigger="click"
@@ -77,7 +78,7 @@ const label = computed(() =>
         {{ formatDateTime(urgency.updated_at) }}</small
       >
     </div>
-  </ElPopover>
+  </AppPopover>
 </template>
 <style scoped>
 .serial-urgency-badge {

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElInput from '@/components/AppInput.vue'
 import PersonName from './PersonName.vue'
 import { useWatermelonAppearance } from '@/composables/useWorkspaceAppearance'
 import WatermelonDataTable from './watermelon/WatermelonDataTable.vue'
@@ -6,7 +8,7 @@ import WatermelonButton from './watermelon/WatermelonButton.vue'
 import WatermelonSearch from './watermelon/WatermelonSearch.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElAlert, ElInput, ElLoading, ElTable, ElTableColumn } from 'element-plus'
+import { ElLoading, ElTable, ElTableColumn } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -113,7 +115,8 @@ onBeforeUnmount(() => {
     </div>
     <component
       :is="watermelon ? WatermelonDataTable : ElTable"
-      v-loading="loading"
+      v-loading="!watermelon && loading"
+      :loading="watermelon ? loading : undefined"
       :data="items"
       :class="watermelon ? '' : 'business-table'"
       max-height="440"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppPopover from '@/components/AppPopover.vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
@@ -6,7 +7,6 @@ import { Calendar, ArrowDown, ArrowLeft, ArrowRight } from '@element-plus/icons-
 import {
   ElCalendar,
   ElIcon,
-  ElPopover,
   ElRadioButton,
   ElRadioGroup,
   type CalendarInstance,
@@ -81,7 +81,7 @@ watch(visible, (value) => {
 onBeforeUnmount(() => document.removeEventListener('keydown', escape))
 </script>
 <template>
-  <ElPopover
+  <AppPopover
     :append-to="appendTo || 'body'"
     v-model:visible="visible"
     role="dialog"
@@ -172,7 +172,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
         >清空</ElButton
       ><ElButton type="primary" size="small" @click="apply">确定</ElButton>
     </footer>
-  </ElPopover>
+  </AppPopover>
 </template>
 <style scoped>
 :global(.record-date-popover.el-popper) {
@@ -246,7 +246,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escape))
 }
 .calendar-day.selected {
   background: var(--primary);
-  color: #fff;
+  color: var(--wm-primary-text, #fff);
   opacity: 1;
 }
 .calendar-day:focus-visible {

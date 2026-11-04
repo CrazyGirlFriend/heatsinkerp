@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import ElInput from '@/components/AppInput.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import { ElInput, ElLoading, ElTableColumn } from 'element-plus'
+import { ElTableColumn } from 'element-plus'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
 import StatePanel from './StatePanel.vue'
@@ -15,7 +16,6 @@ import type { StockBatch } from '@/types/teamMaterials'
 import { processingRoleLabels, type ProcessingRole } from '@/types/materialProcessing'
 
 const props = defineProps<{ teamId: number; groupId?: number; reworkRecordId?: number }>()
-const vLoading = ElLoading.directive
 const emit = defineEmits<{ close: []; selected: [sourceId: number] }>()
 const visible = ref(true)
 const query = ref(''),
@@ -98,7 +98,7 @@ onBeforeUnmount(() => {
     <StatePanel v-if="error" state="error" :description="error" @retry="load" />
     <ElTable
       v-else
-      v-loading="loading"
+      :loading="loading"
       :data="rows"
       class="business-table"
       height="min(440px, 50dvh)"

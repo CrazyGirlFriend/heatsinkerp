@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElSelect from '@/components/AppSelect.vue'
 import { onMounted, ref } from 'vue'
-import { ElAlert, ElForm, ElFormItem, ElOption, ElSelect } from 'element-plus'
+import { ElForm, ElFormItem, ElOption } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import FormWorkspace from './FormWorkspace.vue'

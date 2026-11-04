@@ -2,7 +2,9 @@
 // Vue adaptation of the Watermelon DataTable 11 pagination footer. See NOTICE.md.
 import { computed, useId } from 'vue'
 import { motion, useReducedMotion } from 'motion-v'
-import { IconChevronDown, IconChevronLeft, IconChevronRight } from '@tabler/icons-vue'
+import { IconChevronLeft, IconChevronRight } from '@tabler/icons-vue'
+import AppSelect from '../AppSelect.vue'
+import { ElOption } from 'element-plus'
 const props = withDefaults(
   defineProps<{
     currentPage: number
@@ -19,8 +21,8 @@ const emit = defineEmits<{
   'current-change': [value: number]
   'size-change': [value: number]
 }>()
-function resize(event: Event) {
-  const value = Number((event.target as HTMLSelectElement).value)
+function resize(selected: unknown) {
+  const value = Number(selected)
   if (!props.disabled && props.pageSizes.includes(value) && value !== props.pageSize)
     emit('size-change', value)
 }
@@ -89,12 +91,15 @@ function change(value: number) {
       </button>
     </nav>
     <div v-if="showSize" class="wm-page-size-area">
-      <label class="wm-page-size">
-        <select aria-label="每页条数" :value="pageSize" :disabled="disabled" @change="resize">
-          <option v-for="size in pageSizes" :key="size" :value="size">{{ size }} 条/页</option>
-        </select>
-        <IconChevronDown :size="15" aria-hidden="true" />
-      </label>
+      <AppSelect
+        class="wm-page-size-select"
+        aria-label="每页条数"
+        :model-value="pageSize"
+        :disabled="disabled"
+        @change="resize"
+      >
+        <ElOption v-for="size in pageSizes" :key="size" :value="size" :label="`${size} 条/页`" />
+      </AppSelect>
     </div>
   </footer>
 </template>
@@ -136,30 +141,6 @@ function change(value: number) {
   display: flex;
   flex: 1 1 180px;
   justify-content: flex-end;
-}
-.wm-page-size {
-  position: relative;
-}
-.wm-page-size select {
-  appearance: none;
-  height: 36px;
-  padding: 0 34px 0 12px;
-  border: 1px solid var(--wm-control-border, #e4e4e7);
-  border-radius: 8px;
-  background: var(--wm-control-bg, #fff);
-  color: var(--wm-control-text, #27272a);
-  font: inherit;
-  cursor: pointer;
-}
-.wm-page-size svg {
-  position: absolute;
-  right: 10px;
-  top: 11px;
-  pointer-events: none;
-}
-.wm-page-size select:disabled {
-  opacity: 0.4;
-  cursor: default;
 }
 .wm-pagination button {
   position: relative;
@@ -207,8 +188,7 @@ function change(value: number) {
   position: relative;
   z-index: 1;
 }
-.wm-pagination button:focus-visible,
-.wm-page-size select:focus-visible {
+.wm-pagination button:focus-visible {
   outline: 2px solid var(--wm-focus-ring, #71717a);
   outline-offset: 3px;
 }

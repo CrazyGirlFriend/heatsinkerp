@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AsyncStatus from './AsyncStatus.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import ElButton from '@/components/AppButton.vue'
 import { processRouteApi } from '@/services/processRouteApi'
@@ -86,8 +87,10 @@ onBeforeUnmount(() => {
     aria-label="图纸原件预览"
     :aria-busy="loading"
   >
-    <p v-if="loading" role="status">正在读取图纸…</p>
-    <p v-if="error" role="alert">{{ error }} <ElButton text @click="load">重试</ElButton></p>
+    <AsyncStatus v-if="loading" label="正在读取图纸…" />
+    <AsyncStatus v-if="error" state="error" :label="error"
+      ><ElButton text @click="load">重试</ElButton></AsyncStatus
+    >
     <template v-if="url">
       <div v-if="!thumbnail" class="drawing-preview-tools">
         <ElButton text @click="download">下载图纸原件</ElButton>

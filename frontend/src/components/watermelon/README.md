@@ -55,3 +55,14 @@ DataTable 参考官方 DataTable 11：48px 表头、54px 基准行高、上下 1
 - `forms.css` 统一文本、下拉、数字、日期、多行输入的边框、40px 控件高度、焦点、禁用及错误状态。参考 Form 10 与 Select 21 的源码和实际预览；Teleport 下拉菜单同样适配，选中项使用轻底色和勾选标记。页面只使用现有表单组件，不逐页复制皮肤。
 
 这些适配只在 Watermelon 外观下启用；表单校验、业务权限和保存接口由原业务组件负责。
+
+## 公共交互组件
+
+- `AppButton` 与 `WatermelonButton` 共用真实按钮上的按压反馈和等宽加载态；键盘提交、禁用和焦点逻辑保持原样。
+- `AppInput`、`AppSelect`、`AppAutocomplete`、`AppDatePicker`、`AppPopover` 负责控件和 Teleport 菜单接入。业务页只传入原有属性、事件和插槽。日期范围保留原选择器的起止/区间高亮；窄屏双月日历纵向排列并在面板内滚动。
+- `AppTabs`、`AppSwitch` 保留原生页签拦截和开关校验，增加选中条移动、内容切换和开关反馈。
+- `AppAlert`、`AppMessageBox` 与 `showToast` 统一警告、错误和确认反馈。`AsyncStatus` 用于附件上传、预览和业务资料读取，不伪造上传百分比。
+- `AppSkeleton` 保留自定义文档占位插槽；表格首次加载用骨架，刷新时保留已有行。`AppEmpty` / `StatePanel` 使用统一空状态和重试入口。
+- `controls.css` 集中维护动效参数、日历与提示状态；系统开启减少动态效果时关闭非必要移动和脉冲动画。
+
+验收记录见 [前端组件适配检查](../../../../docs/frontend-component-adaptation-20261104.md)。这些是项目内的 Vue 适配层，不是新增官方 Vue 依赖。

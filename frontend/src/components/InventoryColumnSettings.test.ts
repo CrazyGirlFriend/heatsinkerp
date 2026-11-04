@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ElCheckbox, ElMessage, ElPopover } from 'element-plus'
+import { ElCheckbox, ElPopover } from 'element-plus'
+import * as toast from '@/stores/toast'
 import InventoryColumnSettings from './InventoryColumnSettings.vue'
 import {
   defaultInventoryColumns,
@@ -301,12 +302,12 @@ describe('inventory display columns', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('quota')
     })
-    const warn = vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({ close: () => {} }))
+    const warn = vi.spyOn(toast, 'showToast').mockImplementation(() => {})
     await render()
     check('产品编号', true)
     await button('应用').trigger('click')
     expect(latest().find((item) => item.key === 'product_code')?.visible).toBe(true)
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('未能保存'))
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('未能保存'), 'warning')
   })
   it('shows missing, conflicting and aggregate values without inventing a batch value', () => {
     const row = serialFixture()

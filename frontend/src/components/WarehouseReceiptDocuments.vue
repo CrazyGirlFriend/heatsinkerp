@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AsyncStatus from './AsyncStatus.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import ElButton from '@/components/AppButton.vue'
 import { Upload } from '@element-plus/icons-vue'
@@ -36,6 +37,7 @@ const extensions = { process: '.docx', drawing: '.pdf', order: '.xlsx' } as cons
 const input = ref<HTMLInputElement>()
 const uploadKind = ref<ReceiptDocumentKind>('process')
 const uploading = ref(false)
+const uploadState = ref<'success' | 'error' | ''>('')
 const orderLoading = ref(false)
 const orderError = ref('')
 const dispatchOrder = ref<{ task_id: number; document: RouteOrderDocument } | null>(null)
@@ -133,11 +135,13 @@ watch(
   () => {
     ++uploadGeneration
     uploading.value = false
+    uploadState.value = ''
   },
 )
 function choose(kind: ReceiptDocumentKind) {
   if (!props.editable || props.disabled || uploading.value || !props.teamId) return
   uploadKind.value = kind
+  uploadState.value = ''
   if (input.value) {
     input.value.accept = extensions[kind]
     input.value.multiple = kind === 'drawing'
@@ -153,6 +157,7 @@ async function upload(event: Event) {
   const teamId = props.teamId
   const kind = uploadKind.value
   uploading.value = true
+  uploadState.value = ''
   emit('error', '')
   try {
     for (const file of files) {
@@ -160,7 +165,9 @@ async function upload(event: Event) {
       if (!active || generation !== uploadGeneration) return
       emit('uploaded', document)
     }
+    if (active && generation === uploadGeneration) uploadState.value = 'success'
   } catch (error) {
+    if (active && generation === uploadGeneration) uploadState.value = 'error'
     if (active && generation === uploadGeneration)
       emit('error', error instanceof Error ? error.message : `${labels[kind]}上传失败`)
   } finally {
@@ -344,9 +351,16 @@ onBeforeUnmount(() => {
         >
       </template>
     </DocumentCard>
-    <span v-if="uploading" class="receipt-document-state" role="status"
-      >正在导入{{ labels[uploadKind] }}…</span
-    >
+    <AsyncStatus v-if="uploading" :label="`正在导入${labels[uploadKind]}…`" />
+    <AsyncStatus
+      v-else-if="uploadState"
+      :state="uploadState"
+      :label="
+        uploadState === 'success'
+          ? `${labels[uploadKind]}已上传`
+          : `${labels[uploadKind]}上传失败，请重试`
+      "
+    />
   </aside>
 </template>
 <style scoped>

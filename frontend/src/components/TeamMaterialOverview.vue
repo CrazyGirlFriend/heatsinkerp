@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import ElSelect from '@/components/AppSelect.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { computed, ref, watch } from 'vue'
-import { ElSelect, ElOption, ElTableColumn } from 'element-plus'
+import { ElOption, ElTableColumn } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import FilterDialog from './FilterDialog.vue'
 import { inventoryAmount } from '@/types/teamInventory'

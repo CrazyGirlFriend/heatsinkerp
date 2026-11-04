@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ElMessage } from 'element-plus'
 import { appPinia } from '@/stores/access'
 
-export type ToastTone = 'success' | 'error' | 'info'
+export type ToastTone = 'success' | 'error' | 'info' | 'warning'
 
 export const useToastStore = defineStore('toast', () => {
   function showToast(nextMessage: string, nextTone: ToastTone = 'info'): void {

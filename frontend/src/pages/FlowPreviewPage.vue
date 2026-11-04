@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElInput from '@/components/AppInput.vue'
+import AppPopover from '@/components/AppPopover.vue'
+import ElSelect from '@/components/AppSelect.vue'
 import { useChartPalette } from '@/composables/useChartPalette'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import AppDrawer from '@/components/AppDrawer.vue'
@@ -18,16 +22,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from '@element-plus/icons-vue'
-import {
-  ElAlert,
-  ElIcon,
-  ElInput,
-  ElOption,
-  ElPopover,
-  ElSelect,
-  ElTableColumn,
-  ElTooltip,
-} from 'element-plus'
+import { ElIcon, ElOption, ElTableColumn, ElTooltip } from 'element-plus'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -531,7 +526,7 @@ onBeforeUnmount(() => {
           @click="toggleFullscreen"
           >{{ fullscreen ? '退出全屏' : '全屏查看' }}</ElButton
         >
-        <ElPopover trigger="click" title="画布说明" :width="320" :append-to="pageRoot">
+        <AppPopover trigger="click" title="画布说明" :width="320" :append-to="pageRoot">
           <template #reference
             ><ElButton
               class="header-icon"
@@ -561,7 +556,7 @@ onBeforeUnmount(() => {
             </p>
             <p v-if="example">演示数据，不影响库存。</p>
           </div>
-        </ElPopover>
+        </AppPopover>
       </div>
     </header>
     <header v-else class="preview-topbar">

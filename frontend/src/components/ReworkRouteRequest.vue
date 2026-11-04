@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElInput from '@/components/AppInput.vue'
+import ElSelect from '@/components/AppSelect.vue'
 import { ref } from 'vue'
 import CompactFormSection from './CompactFormSection.vue'
-import { ElAlert, ElForm, ElFormItem, ElInput, ElOption, ElSelect } from 'element-plus'
+import { ElForm, ElFormItem, ElOption } from 'element-plus'
 import ElInputNumber from '@/components/AppNumberInput.vue'
 import ElButton from '@/components/AppButton.vue'
 import type { QuantityAdjustmentContext } from '@/types/teamMaterials'

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ElSelect } from 'element-plus'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WatermelonButton from './WatermelonButton.vue'
@@ -114,10 +115,12 @@ describe('Watermelon shared primitives', () => {
       .get('button[aria-label="第 3 页"]')
       .element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     expect(wrapper.emitted('current-change')).toEqual([[2]])
-    await wrapper.get('select[aria-label="每页条数"]').setValue('20')
+    wrapper.getComponent(ElSelect).vm.$emit('change', 20)
+    await flushPromises()
     expect(wrapper.emitted('size-change')).toBeUndefined()
     await wrapper.setProps({ disabled: false })
-    await wrapper.get('select[aria-label="每页条数"]').setValue('50')
+    wrapper.getComponent(ElSelect).vm.$emit('change', 50)
+    await flushPromises()
     expect(wrapper.emitted('size-change')).toEqual([[50]])
   })
 

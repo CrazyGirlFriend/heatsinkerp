@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
 import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { ElAlert, ElTableColumn } from 'element-plus'
+import { ElTableColumn } from 'element-plus'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
 import ReworkRouteRequest from './ReworkRouteRequest.vue'

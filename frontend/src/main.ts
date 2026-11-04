@@ -17,6 +17,7 @@ import './components/watermelon/watermelon.css'
 import './components/watermelon/workspace.css'
 import './components/watermelon/forms.css'
 import './components/watermelon/application.css'
+import './components/watermelon/controls.css'
 
 const app = createApp(App)
 const disposeDiagnostics = installDiagnostics(app)

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ElSelect } from 'element-plus'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WarehouseManagement from './WarehouseManagement.vue'
@@ -132,7 +133,8 @@ describe('warehouse management', () => {
     expect(wrapper.get('.wm-pagination').text()).toContain('第 1 / 4 页')
     await nextPage()
     expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 2, 20, undefined)
-    await wrapper.get('select[aria-label="每页条数"]').setValue('10')
+    wrapper.getComponent(ElSelect).vm.$emit('change', 10)
+    await flushPromises()
     await flushPromises()
     expect(warehouseLocationApi.list).toHaveBeenLastCalledWith('', 1, 10, undefined)
     expect(wrapper.get('.wm-pagination').text()).toContain('共 61 条')

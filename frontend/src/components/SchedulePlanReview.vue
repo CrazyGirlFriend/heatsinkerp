@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import ElAlert from '@/components/AppAlert.vue'
+import ElInput from '@/components/AppInput.vue'
 import { awaitingReview } from '@/utils/schedulePlanning'
 import { computed, ref } from 'vue'
-import { ElAlert, ElInput, ElTableColumn, ElTag } from 'element-plus'
+import { ElTableColumn, ElTag } from 'element-plus'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'

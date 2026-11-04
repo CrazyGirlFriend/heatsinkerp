@@ -1,18 +1,12 @@
 <script setup lang="ts">
+import ElSelect from '@/components/AppSelect.vue'
 import PersonName from './PersonName.vue'
 import WorkspaceDataPanel from './WorkspaceDataPanel.vue'
 import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import {
-  ElDescriptions,
-  ElDescriptionsItem,
-  ElOption,
-  ElSelect,
-  ElTableColumn,
-  ElTag,
-} from 'element-plus'
+import { ElDescriptions, ElDescriptionsItem, ElOption, ElTableColumn, ElTag } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
 import AppDialog from './AppDialog.vue'
 import QualityFeedbackDetail from './QualityFeedbackDetail.vue'
