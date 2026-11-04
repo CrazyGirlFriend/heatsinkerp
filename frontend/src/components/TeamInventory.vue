@@ -91,17 +91,6 @@ const route = useRoute(),
   auth = useAuthStore(),
   directory = useTeamDirectoryStore()
 const text = (key: string) => (typeof route.query[key] === 'string' ? String(route.query[key]) : '')
-const summarySection = computed(() => (text('summary') === 'materials' ? 'materials' : ''))
-function returnToSummary() {
-  void router.push({
-    path: route.path,
-    query: {
-      tab: summarySection.value,
-      ...(text('summary_page') ? { page: text('summary_page') } : {}),
-      ...(text('summary_page_size') ? { page_size: text('summary_page_size') } : {}),
-    },
-  })
-}
 const page = computed(() => Math.max(1, Number.parseInt(text('page')) || 1))
 const pageSize = computed(() =>
   [10, 20, 50, 100].includes(Number(text('page_size'))) ? Number(text('page_size')) : 10,
@@ -268,9 +257,6 @@ const sourceLabel = (row: TeamInventoryRow) => inventorySourceLabel(row, props.w
 const columns = computed(() =>
   warehouseColumns
     .filter((column) => props.processing || column.key !== 'processing_role')
-    .filter(
-      (column) => column.key !== 'process_route' || rows.value.some((row) => !!row.process_route),
-    )
     .map((column) => ({
       ...column,
       label:
@@ -296,8 +282,11 @@ const columns = computed(() =>
       format: column.key === 'source' ? sourceLabel : column.format,
     })),
 )
+const requiredColumnKeys = computed(() =>
+  props.warehouse ? ['owned_quantity', 'material_name'] : ['material_name'],
+)
 const selectableColumns = computed(() =>
-  columns.value.filter((column) => column.key !== 'material_name'),
+  columns.value.filter((column) => !requiredColumnKeys.value.includes(column.key)),
 )
 const searchColumns = computed(() =>
   warehouseSearchColumns.map((column) =>
@@ -322,12 +311,12 @@ const searchedColumn = computed(() =>
 const visibleColumns = computed(() => {
   const saved = [
     { ...warehouseSerialColumn, width: 200 },
-    columns.value.find((column) => column.key === 'material_name')!,
+    ...requiredColumnKeys.value.map((key) => columns.value.find((column) => column.key === key)!),
     ...columnChoices.value
       .filter(
         (choice) =>
           choice.visible &&
-          choice.key !== 'material_name' &&
+          !requiredColumnKeys.value.includes(choice.key) &&
           columns.value.some((column) => column.key === choice.key),
       )
       .map((choice) => columns.value.find((column) => column.key === choice.key)!),
@@ -477,13 +466,6 @@ function apply(params: TeamInventoryParams = {}, label = text('filter_label')) {
     path: route.path,
     query: {
       tab: 'stock',
-      ...(summarySection.value
-        ? {
-            summary: summarySection.value,
-            ...(text('summary_page') ? { summary_page: text('summary_page') } : {}),
-            ...(text('summary_page_size') ? { summary_page_size: text('summary_page_size') } : {}),
-          }
-        : {}),
       ...(label ? { filter_label: label } : {}),
       ...Object.fromEntries(
         Object.entries(params)
@@ -820,10 +802,6 @@ onBeforeUnmount(() => {
 
 <template>
   <WorkspaceDataPanel class="warehouse-inventory serial-ledger workspace-data-panel">
-    <div v-if="summarySection" class="warehouse-search-context">
-      <ElButton link type="primary" @click="returnToSummary">返回材质库存</ElButton
-      ><span>{{ text('material_name') || '全部材质' }} · 库存明细</span>
-    </div>
     <ElAlert v-if="refreshError" :title="refreshError" type="warning" :closable="false" />
     <WorkspaceDataToolbar
       :loading="loading"
@@ -1070,6 +1048,9 @@ onBeforeUnmount(() => {
           :new-visible-keys="['delivery_due_at', 'delivery_schedule_status']"
           :show-trigger="false"
           :storage-key="storageKey"
+          :description="
+            warehouse ? '流水号、库存件数、材质和操作列始终显示。仅保存在当前浏览器。' : undefined
+          "
           :columns="selectableColumns"
           :legacy-keys="warehouseLegacyColumnKeys"
           @change="columnChoices = $event"
@@ -1131,6 +1112,11 @@ onBeforeUnmount(() => {
         :prop="column.key"
         :label="column.label"
         :min-width="column.width"
+        :fixed="
+          warehouse && ['serial_no', 'owned_quantity', searchedColumn?.key].includes(column.key)
+            ? 'left'
+            : undefined
+        "
         align="center"
         show-overflow-tooltip
         :label-class-name="column.key === searchedColumn?.key ? 'searched-column' : ''"

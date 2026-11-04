@@ -292,6 +292,7 @@ export interface DispatchParams extends MaterialPageParams {
   material_type?: MaterialType
 }
 export interface DispatchLine extends SludgeMeasurement {
+  shared_serials?: SharedMaterialSerial[]
   serial_no?: string
   production_schedule_batch_id?: number | null
   process_route_id?: number

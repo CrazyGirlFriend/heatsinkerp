@@ -43,6 +43,7 @@ from .schemas import (
     SCRAP_MATERIAL_TYPES,
     OutboundQuantityClearance,
     ProcessingQuantity,
+    SharedMaterialSerial,
     SludgeMeasurement,
     WarehouseLocationChoice,
 )
@@ -79,6 +80,19 @@ class LossCreate(StockAmounts):
 
 class DispatchLine(StockAmounts, WarehouseLocationChoice, SludgeMeasurement):
     serial_no: str | None = Field(default=None, min_length=1, max_length=80)
+    shared_serials: list[SharedMaterialSerial] | None = Field(
+        default=None, min_length=2, max_length=20
+    )
+
+    @model_validator(mode="after")
+    def validate_shared(self):
+        if self.shared_serials:
+            if self.serial_no:
+                raise ValueError("共投请在明细中填写流水号")
+            serials = [member.serial_no.casefold() for member in self.shared_serials]
+            if len(set(serials)) != len(serials):
+                raise ValueError("共投流水号不能重复")
+        return self
 
     @field_validator("serial_no")
     @classmethod
@@ -479,11 +493,23 @@ def create_dispatch(db, team_id, payload, user):
                 if anonymous and (source.code != WAREHOUSE_TEAM_CODE or lot.process_route_id):
                     raise HTTPException(422, "仅未分配流水号的库房来料可在出库时填写流水号")
                 route_lot = lot
-                if kind not in SCRAP_MATERIAL_TYPES:
+                if line.shared_serials:
+                    from .shared_material import prepare_dispatch
+
+                    route_lot = prepare_dispatch(
+                        db, lot, line, source, target, kind, payload.rework_return
+                    )
+                elif kind not in SCRAP_MATERIAL_TYPES:
                     route_lot = prepare_dispatch_route(
                         db, lot, line, source, serial, anonymous, user
                     )
-                route_key = (lot.id, kind, serial, route_lot.process_route_id)
+                route_key = (
+                    lot.id,
+                    kind,
+                    serial,
+                    route_lot.process_route_id,
+                    bool(line.shared_serials),
+                )
                 if route_key not in route_cache:
                     route_cache[route_key] = dispatch_fields(
                         db, route_lot, target, kind, payload.rework_return, policy
@@ -561,7 +587,11 @@ def create_dispatch(db, team_id, payload, user):
                     consumed=consumed_locations,
                 )
                 fields = {field: getattr(lot, field) for field in workflow.DOCUMENT_FIELDS}
-                if not lot.serial_no and route_fields_by_line[line_index].get("process_route_id"):
+                if (
+                    not lot.serial_no
+                    and not line.shared_serials
+                    and route_fields_by_line[line_index].get("process_route_id")
+                ):
                     bound_route = db.get(
                         ProcessRoute, route_fields_by_line[line_index]["process_route_id"]
                     )
@@ -586,12 +616,22 @@ def create_dispatch(db, team_id, payload, user):
                 from .processing_registration import sent_status
 
                 route_fields = route_fields_by_line[line_index]
+                group = lot.shared_group
+                if line.shared_serials:
+                    from .shared_material import create_group
+
+                    group = create_group(db, batch_no, line.shared_serials)
+                    fields.update(
+                        customer_code=None, finished_specification=None, finished_quantity=None
+                    )
                 transfer = MaterialTransfer(
                     **route_fields,
                     process_route=db.get(ProcessRoute, route_fields["process_route_id"])
                     if route_fields.get("process_route_id")
                     else None,
-                    sent_process_step_index=(0 if not lot.serial_no else lot.process_step_index)
+                    sent_process_step_index=(
+                        0 if line.shared_serials or not lot.serial_no else lot.process_step_index
+                    )
                     if route_fields and not payload.rework_return and not lot.rework_pending
                     else None,
                     sent_processing_status=sent_status(lot, record),
@@ -604,11 +644,13 @@ def create_dispatch(db, team_id, payload, user):
                     else None,
                     rework_count=lot.rework_count,
                     batch_no=batch_no,
-                    serial_no=line.serial_no or lot.serial_no,
+                    serial_no=f"共投-{batch_no}"
+                    if line.shared_serials
+                    else line.serial_no or lot.serial_no,
                     **fields,
                     **purposes[line_index],
-                    shared_group_id=lot.shared_group_id,
-                    shared_unallocated=lot.shared_unallocated,
+                    shared_group=group,
+                    shared_unallocated=bool(line.shared_serials) or lot.shared_unallocated,
                     source_transfer_id=lot.id,
                     dispatch_id=dispatch.id,
                     delivery_origin_id=lot.delivery_origin_id or lot.id,

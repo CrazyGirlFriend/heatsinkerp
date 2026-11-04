@@ -36,7 +36,7 @@ DataTable 参考官方 DataTable 11：48px 表头、54px 基准行高、上下 1
 `App.vue` 通过 `workspaceAppearanceKey` 为业务路由提供 `watermelon`；进入 `factory-analysis` 时切回 `glass`，并移除根节点的主题类。`TeamWorkspaceShell` 继承这一设置，也支持显式 `appearance`。`useWorkspaceAppearance` 将外观提供给所有子组件，包含 Teleport 弹窗。组件单独挂载时沿用原默认值，避免测试、独立预览与应用路由耦合。
 
 - `WorkspaceDataPanel`、`WorkspaceDataToolbar`、`WorkspaceTable`、`WorkspacePagination` 统一转接 Watermelon 数据卡片、工具栏、表格和分页。原来的字段、固定列、查询、翻页和统计插槽继续由业务页面提供。
-- 班组页头只保留返回与当前位置；多视图模块在同一张数据卡片顶部复用 `WatermelonSegmented` 的 Fluid Tabs 动画、键盘切换和待办数量，单视图模块隐藏页签。`MaterialReceiptScanner` 沿用原接收人和扫码签收逻辑，统一使用主题颜色、40px 控件及 `WatermelonButton`。
+- 班组页头将当前位置作为视图切换入口，参考 Breadcrumb 6，复用 `WatermelonFilter` 的 `viewSwitch` 模式、浮层动画、键盘选择与待办数量；不再占用单独的页签行。单视图模块直接显示名称。`MaterialReceiptScanner` 沿用原接收人和扫码签收逻辑，统一使用主题颜色、40px 控件及 `WatermelonButton`。
 - `TeamWorkspaceActions` 和 `FilterDialog` 复用 WatermelonButton；其他业务操作通过 `AppButton` 保留 Element Plus 的原生提交、图标、加载和焦点引用。`AppDialog` / `AppDrawer` 保留焦点、嵌套弹窗和事件机制，统一外壳、控件、入场/退出动画与明暗主题，并在 Watermelon 模式停止玻璃渲染器。
 - `DocumentCard` 通过背景变量适配附件区；原件预览保留文档本身的纸张颜色。
 - `watermelon.css` 管理颜色变量，`workspace.css` 管理共享工作台布局，`forms.css` 管理输入控件，`application.css` 负责现有管理页面、抽屉和附属控件的主题衔接。主题关闭后恢复原玻璃外观；不改变页面数据和权限。

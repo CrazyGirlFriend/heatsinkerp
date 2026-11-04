@@ -3,6 +3,8 @@ import { isDelivered, timelineNodes } from './scheduleProgress'
 import { scheduleTimestamp } from './scheduleTimeline'
 
 export const BOARD_DAY = 86_400_000
+export const BOARD_ROW_HEIGHT = 60
+export const BOARD_LANE_HEIGHT = 42
 export const boardDay = (time: number) =>
   Math.floor((time + 28_800_000) / BOARD_DAY) * BOARD_DAY - 28_800_000
 export const boardDate = (time: number) => new Date(time + 28_800_000).toISOString().slice(0, 10)
@@ -104,7 +106,11 @@ export function layoutBoardBars(
     bar.lane = lane
     bar.left = left
   }
-  return { bars, height: 52 + Math.max(0, ends.length - 1) * 36, outside: all.length - bars.length }
+  return {
+    bars,
+    height: BOARD_ROW_HEIGHT + Math.max(0, ends.length - 1) * BOARD_LANE_HEIGHT,
+    outside: all.length - bars.length,
+  }
 }
 
 // Follow only saved batch relationships. Equal batch numbers are not a material link.
@@ -146,4 +152,11 @@ export function boardBarState(node: ProductionSchedule) {
     return 'stock'
   if (node.dispatched_quantity > 0 || node.dispatched_weight > 0) return 'partial'
   return 'planned'
+}
+
+export function boardDeliveryState(node: ProductionSchedule, now: number) {
+  if (node.assessment_enabled === false || node.status === 'not_assessed') return 'unassessed'
+  if (isDelivered(node)) return node.status
+  const due = scheduleTimestamp(node.due_at)
+  return node.status === 'overdue' || (due != null && due < now) ? 'overdue' : 'pending'
 }

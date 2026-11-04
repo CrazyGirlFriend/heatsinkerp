@@ -2,6 +2,7 @@
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ProductionScheduleTimeline from './ProductionScheduleTimeline.vue'
+import ScheduleTimelineBar from './ScheduleTimelineBar.vue'
 import type { ProductionSchedule, ScheduleTask, ScheduleBatch } from '@/types/productionSchedule'
 const node = (id: number, extra: Partial<ProductionSchedule> = {}) =>
   ({
@@ -70,24 +71,23 @@ describe('embedded production schedule timeline', () => {
     const parent = node(9, { planning_state: 'confirmed', batches: [batch(51), batch(52)] })
     render([task(1, [parent])])
     await wrapper.findAll('.step-row .batch-bar')[1]!.trigger('click')
-    expect(wrapper.get('.board-footer').text()).toContain('第 52 批')
-    await wrapper.get('.detail-button').trigger('click')
     expect(wrapper.emitted('open-node')?.[0]?.[0]).toEqual(parent)
-    await wrapper.get('[aria-label="取消批次选择"]').trigger('click')
-    expect(wrapper.find('.detail-button').exists()).toBe(false)
+    expect(wrapper.get('.board-footer').text()).not.toContain('第 52 批')
   })
-  it('highlights saved batch flow and clears stale selection after refreshed data removes it', async () => {
+  it('keeps batch details at the bar and does not dim other material or draw dependency links', async () => {
     render([
       task(1, [
         node(1, { batches: [batch(11), batch(12)] }),
         node(2, { batches: [batch(21, { upstream_batch_ids: [11] })] }),
       ]),
     ])
+    const bars = wrapper.findAllComponents(ScheduleTimelineBar)
+    expect(bars).toHaveLength(3)
+    expect(bars[0]!.props('bar').node.batch_number).toBe(11)
     await wrapper.findAll('.step-row .batch-bar')[0]!.trigger('click')
-    expect(wrapper.findAll('.batch-bar.dimmed')).toHaveLength(1)
-    expect(wrapper.findAll('.flow-links > path')).toHaveLength(1)
-    await wrapper.setProps({ tasks: [task(1, [node(1)])] })
-    expect(wrapper.find('.has-selection').exists()).toBe(false)
+    expect(wrapper.find('.batch-bar.dimmed').exists()).toBe(false)
+    expect(wrapper.find('.flow-links').exists()).toBe(false)
+    expect(wrapper.emitted('open-node')?.[0]?.[0]).toMatchObject({ id: 1 })
   })
   it('keeps same-serial orders separate and supports collapse and empty/loading states', async () => {
     render([task(1), task(2)])

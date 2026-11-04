@@ -125,6 +125,79 @@ async function submit(term: string) {
 }
 
 describe('warehouse grouped stock', () => {
+  it('keeps warehouse quantity beside the serial and pinned even when old column preferences hide it', async () => {
+    localStorage.setItem(
+      'heatsink.warehouse-columns.v1:42:901',
+      JSON.stringify([
+        { key: 'owned_quantity', visible: false },
+        { key: 'finished_specification', visible: true },
+      ]),
+    )
+    await render(undefined, true, true, false)
+    useAuthStore().session = {
+      access_token: 'test',
+      token_type: 'Bearer',
+      user: { id: 42 },
+    } as ReturnType<typeof useAuthStore>['session']
+    await flushPromises()
+    expect(headers().slice(0, 3)).toEqual(['流水号', '库存件数', '材质'])
+    expect(wrapper.findAll('thead th')[0]!.classes()).toContain('el-table-fixed-column--left')
+    expect(wrapper.findAll('thead th')[1]!.classes()).toContain('el-table-fixed-column--left')
+    expect(wrapper.findAll('[data-field="owned_quantity"]').map((cell) => cell.text())).toEqual(
+      data().map((row) => String(row.owned_quantity)),
+    )
+    expect(headers()).toContain('成品规格')
+    const settings = wrapper.getComponent({ name: 'InventoryColumnSettings' })
+    expect(
+      settings.props('columns').some((column: { key: string }) => column.key === 'owned_quantity'),
+    ).toBe(false)
+    expect(settings.props('description')).toContain('库存件数')
+  })
+  it('keeps process columns available before data arrives and across empty results', async () => {
+    await render(undefined, true, true, false)
+    const settings = wrapper.getComponent({ name: 'InventoryColumnSettings' })
+    expect(
+      settings.props('columns').some((column: { key: string }) => column.key === 'process_route'),
+    ).toBe(true)
+    expect(headers()).toContain('工艺工序')
+    const initialHeaders = headers()
+    const route = {
+      id: 1,
+      title: '原料工艺',
+      version: 1,
+      step_index: 0,
+      sequence_no: 0,
+      step_name: '备料',
+      instructions: '',
+      team_id: 901,
+      processing_task_id: null,
+      purpose_id: null,
+      split_here: false,
+      complete: true,
+    }
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValueOnce({
+      items: [warehouseFixture({ process_route: route })],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    })
+    await wrapper.setProps({ overview: overview() })
+    await flushPromises()
+    expect(headers()).toEqual(initialHeaders)
+    expect(wrapper.text()).toContain('备料')
+    vi.mocked(teamMaterialApi.teamInventory).mockResolvedValueOnce({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 10,
+    })
+    await wrapper.setProps({ overview: overview() })
+    await flushPromises()
+    expect(headers()).toEqual(initialHeaders)
+    expect(
+      settings.props('columns').some((column: { key: string }) => column.key === 'process_route'),
+    ).toBe(true)
+  })
   it('refreshes only the visible schedule summary each minute, pauses hidden tabs and cleans up its single clock', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     let hidden = false
@@ -1106,6 +1179,7 @@ describe('warehouse grouped stock', () => {
     expect(headers()).toEqual([
       '流水号',
       '材质',
+      '工艺工序',
       '物料类型',
       '返工属性',
       '实际尺寸',
@@ -1317,6 +1391,7 @@ describe('warehouse grouped stock', () => {
     expect(headers()).toEqual([
       '流水号',
       '材质',
+      '工艺工序',
       '物料类型',
       '返工属性',
       '实际尺寸',
@@ -1511,13 +1586,14 @@ describe('warehouse grouped stock', () => {
     await render()
     expect(headers()).toEqual([
       '流水号',
+      '库存件数',
       '材质',
+      '工艺工序',
       '物料类型',
       '返工属性',
       '实际尺寸',
       '本班组业务',
       '来源',
-      '库存件数',
       '库存重量 (kg)',
       '要求交货时间',
       '排期状态',
@@ -1527,7 +1603,7 @@ describe('warehouse grouped stock', () => {
     expect(wrapper.findAll('td[rowspan="2"]')).toHaveLength(0)
     const rowCells = () =>
       wrapper.findAll('tbody tr').map((row) => row.findAll('td').map((cell) => cell.text()))
-    expect(rowCells().map((cells) => cells.slice(0, 2))).toEqual(
+    expect(rowCells().map((cells) => [cells[0], cells[2]])).toEqual(
       data().map((row) => [row.serial_no, row.material_name]),
     )
     expect(
@@ -1536,7 +1612,7 @@ describe('warehouse grouped stock', () => {
         .some((cell) => cell.find('.inventory-material').exists()),
     ).toBe(false)
     await wrapper.setProps({ fullscreen: true })
-    expect(rowCells().map((cells) => cells.slice(0, 2))).toEqual(
+    expect(rowCells().map((cells) => [cells[0], cells[2]])).toEqual(
       data().map((row) => [row.serial_no, row.material_name]),
     )
     expect(wrapper.findAll('tr.serial-group-start')).toHaveLength(0)
@@ -1715,13 +1791,21 @@ describe('warehouse grouped stock', () => {
       .reverse()
     wrapper.getComponent({ name: 'InventoryColumnSettings' }).vm.$emit('change', choices)
     await applyModal()
-    expect(headers()).toEqual(['客户编号', '流水号', '材质', '未转出重量 (kg)', '来源', '操作'])
+    expect(headers()).toEqual([
+      '客户编号',
+      '流水号',
+      '库存件数',
+      '材质',
+      '未转出重量 (kg)',
+      '来源',
+      '操作',
+    ])
     wrapper
       .findAllComponents(ElTag)
       .find((item) => item.text().includes('首列显示'))!
       .vm.$emit('close', new MouseEvent('click'))
     await flushPromises()
-    expect(headers()).toEqual(['流水号', '材质', '未转出重量 (kg)', '来源', '操作'])
+    expect(headers()).toEqual(['流水号', '库存件数', '材质', '未转出重量 (kg)', '来源', '操作'])
   })
   it('validates numeric queries before requesting grouped amounts', async () => {
     await render()

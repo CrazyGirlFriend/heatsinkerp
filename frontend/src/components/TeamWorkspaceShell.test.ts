@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { h } from 'vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import TeamWorkspaceShell from './TeamWorkspaceShell.vue'
-import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
+import WatermelonFilter from './watermelon/WatermelonFilter.vue'
 vi.mock('@/components/PageBackButton.vue', () => ({ default: { template: '<span />' } }))
 
 let wrapper: VueWrapper
@@ -52,7 +52,7 @@ function mountShell(options: {
   })
 }
 describe('workspace with in-page navigation', () => {
-  it('uses shared Fluid Tabs inside the warehouse card and preserves content when switching', async () => {
+  it('switches views from the header dropdown without adding a row or remounting content', async () => {
     wrapper = mountShell({
       props: {
         title: '库房',
@@ -64,63 +64,55 @@ describe('workspace with in-page navigation', () => {
       slots: { default: '<input value="未提交内容" />' },
     })
     const input = wrapper.get('input').element
-    expect(wrapper.find('.team-workspace__navigation-bar nav').exists()).toBe(false)
-    expect(wrapper.get('.team-workspace__content--card nav').isVisible()).toBe(true)
-    expect(wrapper.getComponent(WatermelonSegmented).props('controls')).toBe('workspace-panel')
-    expect(wrapper.get('nav [aria-current=page]').text()).toBe('来料待签收23')
-    await wrapper.findAll('nav button')[1]!.trigger('click')
+    expect(wrapper.find('.team-workspace__content--card nav').exists()).toBe(false)
+    const filter = wrapper.getComponent(WatermelonFilter)
+    expect(filter.props('viewSwitch')).toBe(true)
+    expect(
+      wrapper.get('.team-workspace__heading [aria-current=page]').text().replace(/\s+/g, ''),
+    ).toBe('来料待签收23')
+    await filter.get('button').trigger('click')
+    const choices = () => wrapper.findAll('[role=menuitemradio]')
+    expect(choices().map((choice) => choice.text().replace(/\s+/g, ''))).toEqual([
+      '来料待签收23',
+      '入库记录',
+      '出库记录',
+      '转投记录',
+      '收发历史',
+    ])
+    await choices()[1]!.trigger('click')
     expect(wrapper.emitted('update:modelValue')).toEqual([['receipts']])
     await wrapper.setProps({ modelValue: 'receipts', pendingCount: 24 })
-    expect(wrapper.get('nav [aria-current=page]').text()).toBe('入库记录')
-    expect(wrapper.get('.wm-segmented-count').text()).toBe('24')
+    expect(wrapper.get('[aria-current=page]').text()).toBe('入库记录')
     expect(wrapper.get('input').element).toBe(input)
-    await wrapper.setProps({ pendingCount: 0 })
-    expect(wrapper.find('.wm-segmented-count').exists()).toBe(false)
     await wrapper.setProps({ modelValue: 'delivery-schedule' })
-    expect(wrapper.get('nav').isVisible()).toBe(false)
-    expect(wrapper.find('.team-workspace__content--card').exists()).toBe(false)
+    expect(wrapper.findComponent(WatermelonFilter).exists()).toBe(false)
   })
-  it('retains the reading layout and selects each warehouse section below the team title', async () => {
+  it('uses the selected inventory view as the header label and omits retired material inventory', async () => {
     wrapper = mountShell({ props: { title: '库房', modelValue: 'stock', warehouse: true } })
-    expect(wrapper.get('.team-workspace__title').text()).toBe('库房')
+    const filter = wrapper.getComponent(WatermelonFilter)
+    expect(filter.props('options').map((option: { label: string }) => option.label)).toEqual([
+      '库存明细',
+      '丢失记录',
+    ])
     for (const [modelValue, label] of [
       ['stock', '库存明细'],
-      ['delivery-schedule', '交货排期'],
-      ['pending', '来料待签收'],
-      ['receipts', '入库记录'],
-      ['outgoing', '出库记录'],
       ['losses', '丢失记录'],
-      ['materials', '材质库存'],
-      ['history', '收发历史'],
     ]) {
       await wrapper.setProps({ modelValue })
-      expect(wrapper.classes()).toContain('team-workspace--reading')
-      expect(wrapper.classes('team-workspace--materials')).toBe(
-        ['materials', 'material-types'].includes(modelValue!),
-      )
       expect(wrapper.get('h1').text()).toBe(label)
       expect(wrapper.get('[role=region]').attributes('aria-labelledby')).toBe(
         wrapper.get('h1').attributes('id'),
       )
       expect(wrapper.get('nav [aria-current=page]').text()).toBe(label)
-      expect(wrapper.get('nav [aria-current=page]').attributes('aria-controls')).toBe(
-        wrapper.get('[role=region]').attributes('id'),
-      )
     }
-    expect(wrapper.find('.workspace-statistics').exists()).toBe(false)
-    expect(wrapper.get('nav').attributes('aria-label')).toBe('库房收发视图')
-    expect(wrapper.findAll('nav button')).toHaveLength(4)
   })
   it('keeps actions inside the data toolbar and hides warehouse-only sections for other teams', async () => {
     wrapper = mountShell({
       props: { title: '研磨', modelValue: 'stock' },
-      slots: {
-        default: '<div><header><button>新建出库</button></header>库存数据</div>',
-      },
+      slots: { default: '<div><header><button>新建出库</button></header>库存数据</div>' },
     })
     expect(wrapper.findAll('nav button').map((button) => button.text())).toEqual([
       '库存明细',
-      '材质库存',
       '丢失记录',
     ])
     expect(wrapper.get('.team-workspace__module').text()).toBe('库存')
@@ -148,7 +140,7 @@ describe('workspace with in-page navigation', () => {
       expect(wrapper.find('.team-workspace__pending').exists()).toBe(false)
     }
   })
-  it('shows only related views and keeps single-view modules directly accessible', async () => {
+  it('keeps single-view modules direct and limits the dropdown to related views', async () => {
     wrapper = mountShell({
       props: {
         title: '库房',
@@ -158,29 +150,22 @@ describe('workspace with in-page navigation', () => {
         reallocations: true,
       },
     })
-    expect(wrapper.findAll('nav button')).toHaveLength(3)
-    await wrapper.setProps({ modelValue: 'pending' })
-    expect(wrapper.findAll('nav button').map((button) => button.text())).toEqual([
-      '来料待签收',
-      '入库记录',
-      '出库记录',
-      '转投记录',
-      '收发历史',
-    ])
+    expect(wrapper.getComponent(WatermelonFilter).props('options')).toHaveLength(2)
     await wrapper.setProps({ modelValue: 'warehouse' })
     expect(wrapper.get('h1').text()).toBe('仓库管理')
-    expect(wrapper.get('nav').isVisible()).toBe(false)
+    expect(wrapper.findComponent(WatermelonFilter).exists()).toBe(false)
     await wrapper.setProps({
       title: '检验',
       modelValue: 'inspections',
       processing: true,
       inspection: true,
     })
-    expect(wrapper.findAll('nav button').map((button) => button.text())).toEqual([
-      '检验记录',
-      '质量反馈',
-      '巡检记录',
-    ])
+    expect(
+      wrapper
+        .getComponent(WatermelonFilter)
+        .props('options')
+        .map((option: { label: string }) => option.label),
+    ).toEqual(['检验记录', '质量反馈', '巡检记录'])
   })
   it('keeps export, fullscreen and settings after the query controls without duplicates', async () => {
     nativeFullscreen()

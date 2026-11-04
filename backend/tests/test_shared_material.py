@@ -35,11 +35,52 @@ MEMBERS = [
 
 
 def shared_intake(client, setup, **extra):
-    return intake(
+    """Seed pre-migration shared receipts for historical ledger/processing coverage.
+
+    New receipts use the real intake endpoint and cannot establish a shared group.
+    """
+    from app.database import SessionLocal
+    from app.material_transfer_workflow import _creation_fingerprint
+    from app.models import MaterialTransfer
+    from app.schemas import SharedMaterialSerial, WarehouseReceiptCreate
+    from app.shared_material import create_group
+
+    values = {"serial_no": "", "shared_serials": MEMBERS, "quantity": 1, "weight": 100, **extra}
+    response = intake(client, setup, **values)
+    if response.status_code != 422 or not all(
+        member.get("planned_weight") for member in values["shared_serials"]
+    ):
+        return response
+    members = [
+        SharedMaterialSerial.model_validate(member) for member in values.pop("shared_serials")
+    ]
+    original = intake(client, setup, **values)
+    assert original.status_code == 201, original.text
+    with SessionLocal.begin() as db:
+        lot = db.get(MaterialTransfer, original.json()["id"])
+        group = create_group(db, lot.batch_no, members)
+        lot.serial_no = "共投-" + lot.batch_no
+        lot.shared_group_id, lot.shared_unallocated = group.id, True
+        import json
+
+        lot.request_hash = _creation_fingerprint(
+            WarehouseReceiptCreate.model_validate(json.loads(response.request.content))
+        )
+    replay = intake(
         client,
         setup,
-        **{"serial_no": "", "shared_serials": MEMBERS, "quantity": 1, "weight": 100, **extra},
+        **{
+            **values,
+            "shared_serials": [
+                member.model_dump(
+                    mode="json", exclude={"process_route_id", "process_route_version"}
+                )
+                for member in members
+            ],
+        },
     )
+    assert replay.status_code == 201, replay.text
+    return replay
 
 
 def trace(client, serial):
@@ -54,7 +95,9 @@ def test_shared_intake_and_queries_count_one_physical_lot(client, warehouse):
     assert response.status_code == 201, response.text
     lot = response.json()
     assert lot["shared_unallocated"] and lot["shared_origin_batch_no"] == lot["batch_no"]
-    assert lot["shared_serials"] == MEMBERS
+    assert lot["shared_serials"] == [
+        {**member, "process_route_id": None, "process_route_version": None} for member in MEMBERS
+    ]
     assert shared_intake(client, s).json() == lot
     overview = client.get(base(s) + "/overview").json()
     assert (
@@ -73,7 +116,10 @@ def test_shared_intake_and_queries_count_one_physical_lot(client, warehouse):
         rows = client.get(base(s) + "/inventory", params={"query": serial}).json()
         assert rows["total"] == 1 and rows["items"][0]["on_hand_weight"] == 100
         assert rows["items"][0]["shared_unallocated"]
-        assert rows["items"][0]["shared_serials"] == MEMBERS
+        assert rows["items"][0]["shared_serials"] == [
+            {**member, "process_route_id": None, "process_route_version": None}
+            for member in MEMBERS
+        ]
         assert client.get(base(s) + "/stock", params={"serial_no": serial}).json()["total"] == 1
         assert (
             client.get("/api/material-transfers", params={"serial_no": serial}).json()["total"] == 1
@@ -95,7 +141,9 @@ def test_shared_flow_partial_processing_and_later_allocation_preserve_genealogy(
     assert sent.status_code == 201, sent.text
     assert confirm(client, s, sent.json(), workshop=True).status_code == 200
     lot = sent.json()["items"][0]
-    assert lot["shared_serials"] == MEMBERS
+    assert lot["shared_serials"] == [
+        {**member, "process_route_id": None, "process_route_version": None} for member in MEMBERS
+    ]
     outputs = [
         {"role": "remaining", "quantity": 1, "weight": 40, "material_type": "semi_finished"},
         {
@@ -114,7 +162,9 @@ def test_shared_flow_partial_processing_and_later_allocation_preserve_genealogy(
     assert produced["serial_no"] == "ORDER-A" and not produced["shared_unallocated"]
     detail = client.get("/api/material-transfers/" + produced["batch_no"]).json()
     assert detail["customer_code"] == "CA" and detail["delivery_quantity"] == 30
-    assert detail["shared_serials"] == MEMBERS
+    assert detail["shared_serials"] == [
+        {**member, "process_route_id": None, "process_route_version": None} for member in MEMBERS
+    ]
     assert (
         detail["quantity"] == 30 and detail["weight"] == 55
     )  # Actual output does not overwrite the 60 kg plan.
@@ -185,7 +235,7 @@ def test_shared_flow_partial_processing_and_later_allocation_preserve_genealogy(
     ],
 )
 def test_invalid_shared_members_are_rejected_without_stock(client, warehouse, members):
-    response = shared_intake(client, warehouse, shared_serials=members)
+    response = intake(client, warehouse, serial_no="", shared_serials=members)
     assert response.status_code == 422, response.text
     assert client.get(base(warehouse) + "/stock").json()["total"] == 0
 

@@ -87,7 +87,13 @@ def _creation_fingerprint(payload) -> str:
     else:
         value["document_ids"] = sorted(value["document_ids"])
     for member in value.get("shared_serials") or []:
-        for field in ("planned_weight", "planned_quantity", "planned_specification"):
+        for field in (
+            "planned_weight",
+            "planned_quantity",
+            "planned_specification",
+            "process_route_id",
+            "process_route_version",
+        ):
             if member.get(field) is None:
                 member.pop(field, None)
     for field in (

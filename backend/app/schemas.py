@@ -152,6 +152,8 @@ class MaterialTransferDocumentFields(MaterialDocumentFields):
 class SharedMaterialSerial(APIModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
     serial_no: str = Field(min_length=1, max_length=80)
+    process_route_id: int | None = Field(default=None, gt=0)
+    process_route_version: int | None = Field(default=None, gt=0)
     customer_code: str | None = Field(default=None, max_length=80)
     finished_specification: str | None = Field(default=None, max_length=240)
     delivery_date: date | None = None

@@ -159,13 +159,38 @@ python -m app.seed_material_transfer_showcase
 
 ## Local development
 
+Start Docker, then run the RabbitMQ service from the repository root before
+starting the backend. SQLite development also needs this service for realtime
+notifications; starting only Uvicorn leaves the SSE endpoints returning 503.
+
+```bash
+docker compose up -d --wait mq
+cd backend
+```
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 export DATABASE_URL='sqlite:///./heatsink.db'
+export MQ_HOST='127.0.0.1'
+export MQ_PORT='5672'
+export MQ_USER='heatsink'
+export MQ_PASSWORD='heatsink_mq_dev'
 uvicorn app.main:app --reload --no-access-log
 ```
+
+These MQ credentials match the development Compose defaults. If the existing
+broker uses different credentials or a different port, use those same values;
+`MESSAGE_QUEUE_URL`, when set, overrides the individual `MQ_*` settings.
+Do not remove the RabbitMQ volume to repair a connection failure.
+
+An authenticated administrator can check `GET /api/notifications/status`:
+`connection` should be `connected`, and `pending` should drain to zero.
+`GET /api/health` checks the database only. If realtime notifications return 503,
+check `docker compose ps mq` and `docker compose logs --tail=50 mq`; after the
+broker recovers, the running backend reconnects and sends pending notifications
+automatically. See [notification recovery behavior](../docs/async-notifications.md).
 
 OpenAPI is available at `/docs`. For local-only work, tables can be initialized
 on application startup when `AUTO_CREATE_TABLES=true`. Production uses Alembic:

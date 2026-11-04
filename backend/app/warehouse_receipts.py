@@ -44,18 +44,9 @@ def intake_route(db, team, payload, user):
         raise HTTPException(422, "请先由工艺班组保存完整工艺，库房仅按流水号关联")
     if route.version != submitted.version:
         raise HTTPException(409, "工艺版本已变化，请重新选择")
-    serials = (
-        {member.serial_no for member in payload.shared_serials}
-        if payload.shared_serials
-        else {payload.serial_no}
-    )
-    if payload.shared_serials:
-        if serials != set(route.serial_nos):
-            raise HTTPException(422, "工艺流水号名单与共投实物批次不一致")
-    else:
-        from .process_route_paths import require_order_route
+    from .process_route_paths import require_order_route
 
-        require_order_route(db, route, payload.serial_no)
+    require_order_route(db, route, payload.serial_no)
     content = {
         "title": submitted.title,
         "serial_nos": submitted.serial_nos,
@@ -103,6 +94,8 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
             )
             if prior is not None:
                 return replay(prior, user, request_hash)
+            if payload.shared_serials:
+                raise HTTPException(422, "入库只登记实物，共投请在库房向下序转出时填写")
             from .warehouse_receipt_documents import attach_documents, validate_documents
 
             documents = validate_documents(db, team, payload, user)
@@ -139,13 +132,8 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
                 payload.sludge_gross_weight,
                 payload.sludge_content_percent,
             )
-            from .shared_material import create_group
-
             number = next_transfer_batch_number(db)
-            group = (
-                create_group(db, number, payload.shared_serials) if payload.shared_serials else None
-            )
-            serial_no = f"共投-{number}" if group else payload.serial_no
+            serial_no = payload.serial_no
             location_name = consume(
                 db,
                 team,
@@ -160,8 +148,6 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
                 process_route=route,
                 process_step_index=0 if route else None,
                 process_step_complete=bool(route),
-                shared_group_id=group.id if group else None,
-                shared_unallocated=bool(group),
                 receipt_kind=payload.receipt_kind,
                 external_source=payload.external_source,
                 return_dispatch_no=payload.return_dispatch_no,

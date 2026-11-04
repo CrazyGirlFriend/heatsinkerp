@@ -230,6 +230,8 @@ def route_options(db, team_id):
 
 
 def route_document(lot):
+    from .shared_material import is_split_step
+
     if not lot.process_route_id:
         return None
     route = lot.process_route
@@ -268,7 +270,7 @@ def route_document(lot):
         "processing_task_id": step.get("processing_task_id"),
         "purpose_id": step.get("purpose_id"),
         "complete": lot.process_step_complete,
-        "split_here": step.get("split_here", False),
+        "split_here": is_split_step(lot, lot.process_step_index),
         "next_team_id": following["team_id"] if following else None,
         "next_purpose_id": following.get("purpose_id") if following else None,
     }
@@ -307,12 +309,16 @@ def processing_context(lot):
     except HTTPException:
         return {**doc, "available": False}
     step = lot.process_route.steps[index]
+
+    from .shared_material import is_split_step
+
     return {
         **doc,
         **{
             key: step.get(key)
             for key in ("instructions", "processing_task_id", "purpose_id", "split_here")
         },
+        "split_here": is_split_step(lot, index),
         "step_name": step["name"],
         "sequence_no": step["sequence_no"],
         "step_index": index,
@@ -347,7 +353,9 @@ def prepare_processing(lot, payload):
         raise HTTPException(422, "请执行工艺路线指定的业务")
     if lot.shared_unallocated and payload.outputs:
         allocated = [line for line in payload.outputs if line.role == "produced" and line.serial_no]
-        if allocated and not step.get("split_here"):
+        from .shared_material import is_split_step
+
+        if allocated and not is_split_step(lot, index):
             raise HTTPException(422, "本工序不是共投料的指定拆分点")
     return payload.model_copy(
         update={
@@ -401,6 +409,19 @@ def finish_processing(lot, payload, index, outputs):
                 else child.processing_role == "produced"
             )
             child.process_route = lot.process_route
+            if (
+                lot.shared_unallocated
+                and child.processing_role == "produced"
+                and not child.shared_unallocated
+            ):
+                member = next(
+                    member
+                    for member in lot.shared_group.members
+                    if member.serial_no == child.serial_no
+                )
+                if member.process_route_id:
+                    child.process_route = member.process_route
+                    child.process_route_id = member.process_route_id
     elif payload.processing_status == "complete":
         lot.process_step_index, lot.process_step_complete = index, True
         if (
@@ -411,6 +432,27 @@ def finish_processing(lot, payload, index, outputs):
     # A partial count-only entry cannot prove which pieces completed a step.
     elif payload.processing_status == "partial":
         raise HTTPException(422, "部分加工请分别登记已加工产出和未加工余料，才能按批次流转工序")
+
+
+def require_dispatch_documents(db, route, lot, serial):
+    require_route_documents(db, route)
+    if route.route_kind != "rework":
+        from .models import ProcessRouteOrderFile
+        from .schedule_order_documents import route_order
+        from .warehouse_receipt_documents import has_confirmed_order
+
+        order = route_order(db, route.id, serial)
+        legacy = db.get(ProcessRouteOrderFile, route.id)
+        if (
+            not order
+            and not (
+                legacy
+                and legacy.content
+                and (route.source_data.get("order_document") or {}).get("serial_no") == serial
+            )
+            and not has_confirmed_order(db, lot, serial)
+        ):
+            raise HTTPException(422, "缺少：订单表，请调度上传或在库房入库时补充后再出库")
 
 
 def prepare_dispatch_route(db, lot, line, source, serial, anonymous, user):
@@ -431,25 +473,7 @@ def prepare_dispatch_route(db, lot, line, source, serial, anonymous, user):
     if source.code == WAREHOUSE_TEAM_CODE:
         if selected_route is None:
             raise HTTPException(422, "未找到该流水号的工艺")
-        require_route_documents(db, selected_route)
-        if selected_route.route_kind != "rework":
-            from .models import ProcessRouteOrderFile
-            from .schedule_order_documents import route_order
-            from .warehouse_receipt_documents import has_confirmed_order
-
-            order = route_order(db, selected_route.id, serial)
-            legacy = db.get(ProcessRouteOrderFile, selected_route.id)
-            if (
-                not order
-                and not (
-                    legacy
-                    and legacy.content
-                    and (selected_route.source_data.get("order_document") or {}).get("serial_no")
-                    == serial
-                )
-                and not has_confirmed_order(db, lot, serial)
-            ):
-                raise HTTPException(422, "缺少：订单表，请调度上传或在库房入库时补充后再出库")
+        require_dispatch_documents(db, selected_route, lot, serial)
     if anonymous:
         if (
             selected_route is None
@@ -510,6 +534,13 @@ def dispatch_fields(db, lot, target, kind, rework_return=False, policy=None):
             "process_step_index": lot.process_step_index,
             "process_step_complete": lot.process_step_complete,
         }
+    if (
+        lot.shared_unallocated
+        and lot.shared_group
+        and lot.shared_group.split_step_index is not None
+    ):
+        if lot.process_step_index >= lot.shared_group.split_step_index:
+            raise HTTPException(422, "共投料须在本班组拆分并填写流水号归属后再转出")
     if not lot.process_step_complete:
         raise HTTPException(422, "本批当前工序尚未加工完成，不能转入下一工序")
     index = next_index(

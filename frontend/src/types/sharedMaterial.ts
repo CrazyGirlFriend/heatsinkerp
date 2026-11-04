@@ -1,4 +1,6 @@
 export interface SharedMaterialSerial {
+  process_route_id?: number
+  process_route_version?: number
   serial_no: string
   customer_code?: string | null
   finished_specification?: string | null

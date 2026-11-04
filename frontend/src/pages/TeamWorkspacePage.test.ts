@@ -965,19 +965,18 @@ describe('team workspace material ledger', () => {
     expect(navigation().get('[aria-current=page]').text()).toBe('库存明细')
     expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
   })
-  it('restores a view’s filters and page when switching within inventory', async () => {
+  it('restores inventory filters when switching back from loss records', async () => {
     const router = await render('/team-workspaces/914?query=铜&page=2&page_size=20')
-    await wrapper
-      .findAll('nav[aria-label$="视图"] button')
-      .find((button) => button.text() === '材质库存')!
-      .trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.query.tab).toBe('materials')
-    await wrapper
-      .findAll('nav[aria-label$="视图"] button')
-      .find((button) => button.text() === '库存明细')!
-      .trigger('click')
-    await flushPromises()
+    const switchView = async (label: string) => {
+      await wrapper
+        .findAll('nav[aria-label$="视图"] button')
+        .find((button) => button.text() === label)!
+        .trigger('click')
+      await flushPromises()
+    }
+    await switchView('丢失记录')
+    expect(router.currentRoute.value.query.tab).toBe('losses')
+    await switchView('库存明细')
     expect(router.currentRoute.value.query).toEqual({ query: '铜', page: '2', page_size: '20' })
   })
   it('refreshes the in-page pending count through existing push updates', async () => {
@@ -993,47 +992,6 @@ describe('team workspace material ledger', () => {
     expect(useSidebarStore(appPinia).workspaceCounts['914']?.pending).toBe(5)
     expect(wrapper.get('nav[aria-label$="视图"] [aria-current=page]').text()).toBe('库存明细')
   })
-  it.each([
-    ['materials', '铜钼', 'material_name', '铜钼', '材质库存'],
-    ['materials', null, 'material_name', '未填写材质', '材质库存'],
-  ] as const)(
-    'opens exact %s detail for %s and returns to its own summary',
-    async (tab, value, filter, expected, label) => {
-      vi.mocked(teamMaterialApi.overview).mockResolvedValue({
-        ...summary,
-        materials: [{ ...summary.totals, material_name: value }],
-        material_types: [
-          {
-            ...summary.totals,
-            material_type: 'semi_finished',
-          },
-        ],
-      })
-      const router = await render(`/team-workspaces/914?tab=${tab}`)
-      expect(wrapper.get('h1').text()).toBe(label)
-      expect(wrapper.findAll('.material-ledger .ledger-table')).toHaveLength(1)
-      expect(teamMaterialApi.teamInventory).not.toHaveBeenCalled()
-      await wrapper
-        .findAll('.material-ledger .el-table__body button')
-        .find((button) => button.text() === '查看详情')!
-        .trigger('click')
-      await flushPromises()
-      expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, {
-        [filter]: expected,
-        availability: 'all',
-        page: 1,
-        page_size: 10,
-      })
-      expect(router.currentRoute.value.query.summary).toBe(tab)
-      await wrapper
-        .findAll('button')
-        .find((button) => button.text() === `返回${label}`)!
-        .trigger('click')
-      await flushPromises()
-      expect(router.currentRoute.value.query).toEqual({ tab })
-      expect(wrapper.get('h1').text()).toBe(label)
-    },
-  )
   it.each(['sludge', 'unknown'])(
     'redirects retired type inventory with the %s filter intact',
     async (type) => {
@@ -1053,40 +1011,16 @@ describe('team workspace material ledger', () => {
       )
     },
   )
-  it('restores the summary page after drilling into stock and preserves filters through detail pagination', async () => {
-    vi.mocked(teamMaterialApi.overview).mockResolvedValue({
-      ...summary,
-      materials: Array.from({ length: 25 }, (_, index) => ({
-        ...summary.totals,
-        material_name: `铜钼${index + 1}`,
-      })),
-    })
-    const router = await render('/team-workspaces/914?tab=materials&page=2')
-    expect(wrapper.get('.material-ledger .el-table__body button').text()).toBe('铜钼11')
-    await wrapper.get('.material-ledger .el-table__body button').trigger('click')
-    await flushPromises()
-    wrapper.getComponent(WorkspacePagination).vm.$emit('current-change', 2)
-    await flushPromises()
-    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(914, {
-      material_name: '铜钼11',
-      availability: 'all',
-      page: 2,
-      page_size: 10,
-    })
-    expect(router.currentRoute.value.query.summary_page).toBe('2')
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '返回材质库存')!
-      .trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.query).toEqual({ tab: 'materials', page: '2' })
-    expect(wrapper.get('.material-ledger .el-table__body button').text()).toBe('铜钼11')
-    vi.mocked(teamMaterialApi.overview).mockClear()
-    wrapper.getComponent(ElPagination).vm.$emit('size-change', 50)
-    await flushPromises()
-    expect(router.currentRoute.value.query).toEqual({ tab: 'materials', page_size: '50' })
-    expect(wrapper.findAll('.material-ledger .el-table__body .el-table__row')).toHaveLength(25)
-    expect(teamMaterialApi.overview).not.toHaveBeenCalled()
+  it('redirects the retired material summary to inventory and retains its filters', async () => {
+    const router = await render('/team-workspaces/914?tab=materials&material_name=铜钼&page=2')
+    expect(wrapper.get('h1').text()).toBe('库存明细')
+    expect(wrapper.findComponent(TeamMaterialOverviewPanel).exists()).toBe(false)
+    expect(wrapper.findComponent(TeamInventory).exists()).toBe(true)
+    expect(router.currentRoute.value.query.material_name).toBe('铜钼')
+    expect(teamMaterialApi.teamInventory).toHaveBeenLastCalledWith(
+      914,
+      expect.objectContaining({ material_name: '铜钼', page: 2 }),
+    )
   })
   it('ignores unrelated teams and only reloads identity/directory when those actually change', async () => {
     vi.useFakeTimers()
@@ -1347,7 +1281,7 @@ describe('team workspace material ledger', () => {
     ['receipts', ['新建入库']],
     ['losses', ['登记丢失']],
     ['reallocations', ['新建转投']],
-    ['materials', []],
+    ['materials', ['新建入库', '新建出库', '扫码入库']],
     ['material-types', ['新建入库', '新建出库', '扫码入库']],
     ['overview', []],
     ['history', []],
@@ -1361,11 +1295,15 @@ describe('team workspace material ledger', () => {
       expect(wrapper.get('.incoming-scan .scanner-inline').text()).toContain('入库')
     expect(wrapper.findAll('.workspace-actions')).toHaveLength(labels.length ? 1 : 0)
     expect(wrapper.find('.workspace-data-toolbar [aria-label="班组设置"]').exists()).toBe(false)
-    const choices = wrapper.findAll('nav[aria-label$="视图"] button').map((button) => button.text())
+    await wrapper.get('nav[aria-label$="视图"] button').trigger('click')
+    await flushPromises()
+    const choices = Array.from(document.querySelectorAll('[role=menuitemradio]')).map(
+      (item) => item.textContent,
+    )
     if (['outgoing', 'pending', 'receipts', 'reallocations', 'overview', 'history'].includes(tab)) {
       expect(choices).toHaveLength(5)
       expect(choices).toContain('转投记录')
-    } else expect(choices).toEqual(['库存明细', '材质库存', '丢失记录'])
+    } else expect(choices).toEqual(['库存明细', '丢失记录'])
     expect(choices).not.toContain('类型库存')
   })
   it.each(['losses', 'reallocations'] as const)(
@@ -1410,16 +1348,9 @@ describe('team workspace material ledger', () => {
         )
       } else {
         const dialog = wrapper.getComponent(SerialReallocationDialog)
-        expect(dialog.props()).toMatchObject({
-          modelValue: true,
-          teamId: 901,
-          source: batch,
-        })
+        expect(dialog.props()).toMatchObject({ modelValue: true, teamId: 901, source: batch })
         vi.mocked(teamMaterialApi.reallocations).mockClear()
-        dialog.vm.$emit('saved', {
-          source_serial_no: '691236-50',
-          serial_no: '691236-51',
-        })
+        dialog.vm.$emit('saved', { source_serial_no: '691236-50', serial_no: '691236-51' })
         await flushPromises()
         expect(teamMaterialApi.reallocations).toHaveBeenCalledWith(
           901,

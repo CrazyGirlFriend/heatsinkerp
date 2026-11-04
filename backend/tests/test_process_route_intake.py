@@ -214,32 +214,27 @@ def test_optional_route_keeps_pre_upgrade_idempotency_hash():
     )
 
 
-def test_shared_intake_keeps_one_physical_origin_with_all_route_serials(client, warehouse):
-    payload = route_payload(client, warehouse)
-    payload["serial_nos"] = ["ORDER-A", "ORDER-B"]
-    payload["steps"][1]["split_here"] = True
-    payload = publish_payload(client, payload)
-    shared = [
-        {
-            "serial_no": serial,
-            "planned_weight": weight,
-            "planned_quantity": quantity,
-            "planned_specification": "25 × 10 × 2 mm",
-        }
-        for serial, weight, quantity in (("ORDER-A", 6, 60), ("ORDER-B", 4, 40))
-    ]
+def test_receipt_rejects_shared_members_even_with_a_published_route(client, warehouse):
+    payload = publish_payload(client, route_payload(client, warehouse))
     result = intake(
-        client, warehouse, process_route=payload, serial_no="", shared_serials=shared, weight=10
+        client,
+        warehouse,
+        process_route=payload,
+        serial_no="",
+        shared_serials=[
+            {
+                "serial_no": serial,
+                "planned_weight": 5,
+                "planned_quantity": 50,
+                "planned_specification": "25 × 10 × 2 mm",
+            }
+            for serial in ("ORDER-A", "ORDER-B")
+        ],
     )
-    assert result.status_code == 201, result.text
-    body = result.json()
-    assert body["shared_unallocated"] is True
-    assert {member["serial_no"] for member in body["shared_serials"]} == set(payload["serial_nos"])
-    assert body["quantity"] == 100 and body["weight"] == 10
-    assert body["process_route"]["step_index"] == 0
+    assert result.status_code == 422, result.text
+    assert "转出" in result.json()["detail"]
     with SessionLocal() as db:
-        assert db.scalar(select(func.count(MaterialTransfer.id))) == 1
-        assert db.get(ProcessRoute, payload["id"]).serial_nos == payload["serial_nos"]
+        assert db.scalar(select(func.count(MaterialTransfer.id))) == 0
 
 
 def test_migration_adds_owner_to_existing_drafts_without_claiming_them(tmp_path):

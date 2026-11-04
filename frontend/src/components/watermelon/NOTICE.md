@@ -59,6 +59,8 @@ official Watermelon Vue package. Warehouse filtering and saves use the existing 
 - https://registry.watermelon.sh/r/select-21.json
 - https://github.com/WatermelonCorp/watermelon-platform
 
+视图切换参考 [Breadcrumb 6](https://ui.watermelon.sh/components/breadcrumb) 与官方 `breadcrumb-6` 注册表源码，使用现有 Vue 弹出菜单组件适配。
+
 ## Upstream license
 
 MIT License

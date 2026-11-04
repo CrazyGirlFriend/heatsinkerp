@@ -1660,3 +1660,79 @@ it('keeps documents and route bindings separate for multiple outbound serials', 
     }),
   )
 })
+
+it('creates joint production only on a warehouse transfer and sends one physical quantity with two route bindings', async () => {
+  const { routeFixture } = await import('@/testFixtures/processRoute')
+  const { orderFixture } = await import('@/testFixtures/processRouteOrder')
+  const SharedFields = (await import('./SharedDispatchFields.vue')).default
+  const row = source()
+  row.transfer.entry_kind = 'warehouse_receipt'
+  row.transfer.receipt_kind = 'external'
+  row.transfer.serial_no = ''
+  row.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
+  vi.spyOn(processRouteApi, 'resolve').mockImplementation(async (serial) => ({
+    ...routeFixture,
+    id: serial === 'ORDER-A' ? 8 : 9,
+    state: 'published',
+    serial_nos: [serial],
+    drawings: [{ id: 1, filename: '图纸.pdf', size_bytes: 100 }],
+    source_data: {
+      ...routeFixture.source_data,
+      order_document: { ...orderFixture, serial_no: serial, receipt_fields: {} },
+    },
+    steps: [
+      { ...routeFixture.steps[0]!, team_id: 2 },
+      { ...routeFixture.steps[1]!, team_id: 3, purpose_id: null },
+    ],
+  }))
+  await render('dispatch', [row])
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === '共投')!
+    .trigger('click')
+  await flushPromises()
+  const fields = wrapper.getComponent(SharedFields)
+  fields.vm.$emit('update:modelValue', [
+    {
+      serial_no: 'ORDER-A',
+      planned_weight: 6,
+      planned_quantity: 60,
+      planned_specification: '20 × 10 × 2 mm',
+    },
+    {
+      serial_no: 'ORDER-B',
+      planned_weight: 4,
+      planned_quantity: 40,
+      planned_specification: '10 × 10 × 2 mm',
+    },
+  ])
+  await new Promise((resolve) => setTimeout(resolve, 350))
+  await flushPromises()
+  await submit()
+  expect(teamMaterialApi.createDispatch).toHaveBeenCalledOnce()
+  const body = vi.mocked(teamMaterialApi.createDispatch).mock.calls[0]![1]
+  expect(body.lines).toHaveLength(1)
+  expect(body.lines[0]).toMatchObject({
+    quantity: 100,
+    weight: 10,
+    shared_serials: [
+      expect.objectContaining({ serial_no: 'ORDER-A', process_route_id: 8 }),
+      expect.objectContaining({ serial_no: 'ORDER-B', process_route_id: 9 }),
+    ],
+  })
+  expect(body.lines[0]).not.toHaveProperty('serial_no')
+  expect(body.lines[0]).not.toHaveProperty('production_schedule_id')
+})
+
+it('does not show joint production for downstream stock or external returns', async () => {
+  await render('dispatch', [source()])
+  expect(wrapper.findAll('button').some((button) => button.text() === '共投')).toBe(false)
+  const returned = source()
+  returned.transfer.next_team = { id: '2', name: '库房', code: 'FACTORY-WAREHOUSE' }
+  returned.transfer.entry_kind = 'warehouse_receipt'
+  returned.transfer.receipt_kind = 'return'
+  returned.transfer.process_route = warehouseRoute()
+  wrapper.unmount()
+  await render('dispatch', [returned])
+  expect(wrapper.findAll('button').some((button) => button.text() === '共投')).toBe(false)
+})

@@ -283,7 +283,9 @@ def test_shared_common_work_then_designated_partial_split_preserves_remaining_st
     )
     assert result.status_code == 200, result.text
     route = result.json()
-    lot = intake(
+    from test_shared_material import shared_intake
+
+    lot = shared_intake(
         client,
         s,
         serial_no="",

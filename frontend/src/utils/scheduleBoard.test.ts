@@ -9,6 +9,7 @@ import {
   layoutBoardBars,
   boardBatchFlow,
   boardBarState,
+  boardDeliveryState,
 } from './scheduleBoard'
 const start = Date.parse('2026-11-01T00:00:00+08:00')
 const batch = (id: number, overrides: Partial<ScheduleBatch> = {}): ScheduleBatch => ({
@@ -70,7 +71,7 @@ describe('production timeline data', () => {
       start + 7 * BOARD_DAY,
       700,
     )
-    expect(result.height).toBe(88)
+    expect(result.height).toBe(102)
     expect(result.bars.map((bar) => bar.lane)).toEqual([0, 1])
     expect(result.bars[0]!.width).toBeCloseTo(233.333, 2)
     expect(result.bars[0]!.node.parent_schedule_id).toBe(1)
@@ -143,5 +144,24 @@ describe('production timeline data', () => {
     expect(boardBarState(node(1, { received_quantity: 40 }))).toBe('planned')
     expect(boardBarState(node(1, { dispatched_quantity: 20 }))).toBe('partial')
     expect(boardBarState(node(1, { status: 'completed_late' }))).toBe('done')
+  })
+})
+
+// Receipt and partial dispatch must not be mistaken for completion of a delivery promise.
+describe('delivery marks', () => {
+  const now = Date.parse('2026-11-04T17:00:00+08:00')
+  it('preserves late completion and trusts dispatched completion rather than receipt counts', () => {
+    expect(boardDeliveryState(node(1, { status: 'completed' }), now)).toBe('completed')
+    expect(boardDeliveryState(node(1, { status: 'completed_late' }), now)).toBe('completed_late')
+    expect(
+      boardDeliveryState(node(1, { dispatched_quantity: 40, received_quantity: 100 }), now),
+    ).toBe('overdue')
+    expect(boardDeliveryState(node(1, { dispatched_quantity: 40 }), now - BOARD_DAY)).toBe(
+      'pending',
+    )
+  })
+  it('does not mark non-assessed warehouse preparation as overdue', () => {
+    expect(boardDeliveryState(node(1, { assessment_enabled: false }), now)).toBe('unassessed')
+    expect(boardDeliveryState(node(1, { status: 'not_assessed' }), now)).toBe('unassessed')
   })
 })

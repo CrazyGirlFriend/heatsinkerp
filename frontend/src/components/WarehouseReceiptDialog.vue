@@ -2,8 +2,6 @@
 import ElAlert from '@/components/AppAlert.vue'
 import ElInput from '@/components/AppInput.vue'
 import ElSelect from '@/components/AppSelect.vue'
-import ElSwitch from '@/components/AppSwitch.vue'
-import ElDatePicker from '@/components/AppDatePicker.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import CompactFormSection from './CompactFormSection.vue'
@@ -49,7 +47,6 @@ import {
   type MaterialTransferTextField,
   type MaterialType,
 } from '@/types/materialTransfer'
-import type { SharedMaterialSerial } from '@/types/sharedMaterial'
 import type { CreateWarehouseReceipt } from '@/types/teamMaterials'
 
 const props = defineProps<{ modelValue: boolean; teamId: number }>()
@@ -154,66 +151,14 @@ const form = reactive({
     materialDocumentTextFields.map((field) => [field.key, '']),
   ) as Record<MaterialTransferTextField, string>,
 })
-const shared = ref(false)
-type MemberDraft = SharedMaterialSerial & {
-  planned_specification: string
-  specificationValid?: boolean
-  documentSerial?: boolean
-  serialSource?: { value: string; filename: string }
-}
-const members = ref<MemberDraft[]>([])
-const newMember = (): MemberDraft => ({
-  serial_no: '',
-  customer_code: '',
-  finished_specification: '',
-  delivery_date: null,
-  delivery_quantity: null,
-  planned_weight: null,
-  planned_quantity: null,
-  planned_specification: '',
-})
-const plannedWeight = computed(
-  () =>
-    Math.round(
-      members.value.reduce((sum, member) => sum + (member.planned_weight || 0), 0) * 1000000,
-    ) / 1000000,
-)
-const plannedQuantity = computed(() =>
-  members.value.reduce((sum, member) => sum + (member.planned_quantity || 0), 0),
-)
-const planWeightDifference = computed(
-  () => Math.round((plannedWeight.value - (form.weight || 0)) * 1000000) / 1000000,
-)
-const sharedEntry = computed(() => shared.value && form.receiptKind === 'external')
-const importedMember = computed(() =>
-  sharedEntry.value
-    ? members.value.find(
-        (member) =>
-          member.documentSerial ||
-          member.serial_no === String(documentImport.original('serial_no')),
-      )
-    : undefined,
-)
-const importedMemberSignature = ref('')
-function memberSignature() {
-  return JSON.stringify(members.value.map(({ specificationValid: _valid, ...member }) => member))
-}
 const importedValues = computed<Record<string, string | number | null | undefined>>(() => ({
   ...form.document,
-  serial_no: sharedEntry.value ? importedMember.value?.serial_no : form.serialNo,
-  ...(sharedEntry.value
-    ? {
-        customer_code: importedMember.value?.customer_code,
-        finished_specification: importedMember.value?.finished_specification,
-      }
-    : {}),
+  serial_no: form.serialNo,
   quantity: form.quantity,
   weight: form.weight,
   finished_quantity: form.finishedQuantity,
-  delivery_date: sharedEntry.value ? importedMember.value?.delivery_date : form.deliveryDate,
-  delivery_quantity: sharedEntry.value
-    ? importedMember.value?.delivery_quantity
-    : form.deliveryQuantity,
+  delivery_date: form.deliveryDate,
+  delivery_quantity: form.deliveryQuantity,
   external_source: form.externalSource,
 }))
 function assignImportedField(key: string, value: string | number | undefined) {
@@ -250,8 +195,7 @@ function applyImportFields() {
         { ...field, source_filename: field.source_filename || route?.filename },
       ]),
   )
-  // Browsing another shared serial's order must not change this batch's material fields.
-  if (!sharedEntry.value && inheritedOrder.value?.serial_no === form.serialNo.trim())
+  if (inheritedOrder.value?.serial_no === form.serialNo.trim())
     for (const [key, field] of Object.entries(inheritedOrder.value.receipt_fields)) {
       if (!fields[key]) fields[key] = field
     }
@@ -359,38 +303,12 @@ async function selectRoute(route: ProcessRoute) {
         replace,
       ),
     )
-    const replaceMembers =
-      !members.value.some((member) => member.serial_no.trim()) ||
-      Boolean(importedMemberSignature.value && importedMemberSignature.value === memberSignature())
     autofill.reset()
     for (const key of Object.keys(importedRoute.value?.source_data.receipt_fields || {})) {
       if (!(key in fields) && replaceable.has(key)) assignImportedField(key, undefined)
     }
     for (const [key, field] of Object.entries(fields)) {
       if (replaceable.has(key)) assignImportedField(key, field.value)
-    }
-    if (replaceMembers) {
-      shared.value = route.serial_nos.length > 1
-      members.value =
-        route.serial_nos.length > 1
-          ? route.serial_nos.map((serial) => ({
-              ...newMember(),
-              serial_no: serial,
-              documentSerial: serial === String(fields.serial_no?.value),
-              serialSource: { value: serial, filename: route.filename },
-              ...(serial === String(fields.serial_no?.value)
-                ? {
-                    customer_code: String(fields.customer_code?.value || ''),
-                    finished_specification: String(fields.finished_specification?.value || ''),
-                    delivery_date: fields.delivery_date ? String(fields.delivery_date.value) : null,
-                    delivery_quantity: fields.delivery_quantity
-                      ? Number(fields.delivery_quantity.value)
-                      : null,
-                  }
-                : {}),
-            }))
-          : [newMember(), newMember()]
-      importedMemberSignature.value = memberSignature()
     }
     if (route.serial_nos.length === 1 && !fields.serial_no && replace('serial_no'))
       assignImportedField('serial_no', route.serial_nos[0])
@@ -408,36 +326,14 @@ async function selectRoute(route: ProcessRoute) {
     if (current === importGeneration) importBusy.value = false
   }
 }
-const intakeSerials = computed(() =>
-  sharedEntry.value
-    ? members.value.map((member) => member.serial_no.trim())
-    : [form.serialNo.trim()],
-)
-const routeSerialsMatch = computed(
-  () =>
-    !importedRoute.value ||
-    !sharedEntry.value ||
-    (intakeSerials.value.length === importedRoute.value.serial_nos.length &&
-      intakeSerials.value.every((serial) => importedRoute.value!.serial_nos.includes(serial))),
-)
+const intakeSerials = computed(() => [form.serialNo.trim()])
 watch(intakeSerials, () => {
-  routeReviewed.value = routeSerialsMatch.value && importedRoute.value?.state === 'published'
+  routeReviewed.value = importedRoute.value?.state === 'published'
 })
-const visibleSections = computed(() =>
-  documentSections.map((section) => ({
-    ...section,
-    fields: section.fields.filter(
-      (field) =>
-        !sharedEntry.value || !['customer_code', 'finished_specification'].includes(field.key),
-    ),
-  })),
-)
-watch(sharedEntry, (active) => {
-  if (active && members.value.length < 2) members.value = [newMember(), newMember()]
-})
+const visibleSections = computed(() => documentSections)
 const weightOnly = computed(() => isWeightOnlyType(form.materialType))
 const enteredQuantity = computed(() => (weightOnly.value ? 0 : form.quantity))
-const autofill = useMaterialAutofill(() => (sharedEntry.value ? '' : form.serialNo), form.document)
+const autofill = useMaterialAutofill(() => form.serialNo, form.document)
 const specificationValidity = reactive<Record<string, boolean>>({
   finished_specification: true,
   transfer_specification: true,
@@ -466,7 +362,6 @@ function fill(payload: CreateWarehouseReceipt | null = null) {
   routePickerOpen.value = false
   routeReviewed.value = false
   documentImport.reset()
-  importedMemberSignature.value = ''
   autofill.reset()
   specificationValidity.finished_specification = specificationValidity.transfer_specification = true
   form.warehouseLocation = payload?.warehouse_location || ''
@@ -474,11 +369,6 @@ function fill(payload: CreateWarehouseReceipt | null = null) {
   form.receiptKind = payload?.receipt_kind || 'external'
   form.externalSource = payload?.external_source || ''
   form.returnDispatchNo = payload?.return_dispatch_no || ''
-  shared.value = Boolean(payload?.shared_serials?.length)
-  members.value = payload?.shared_serials?.map((member) => ({
-    ...member,
-    planned_specification: member.planned_specification || '',
-  })) || [newMember(), newMember()]
   form.serialNo = payload?.serial_no || ''
   form.materialType = payload?.material_type || ''
   form.quantity = payload?.quantity ?? 0
@@ -552,8 +442,7 @@ const validation = useDialogValidation(() => {
   const issues: Record<string, string> = {}
   if (needsConfirmation.value && !confirmedImports.value)
     issues.confirmedImports = '请核对文件带入的信息，并勾选确认'
-  if (importedRoute.value && (!routeReviewed.value || !routeSerialsMatch.value))
-    issues.processRoute = '共投流水号须与所选工艺一致，请重新关联工艺'
+  if (importedRoute.value && !routeReviewed.value) issues.processRoute = '请重新关联已发布工艺'
   if (
     importedRoute.value &&
     (form.receiptKind !== 'external' || isScrapType(form.materialType || null))
@@ -561,55 +450,8 @@ const validation = useDialogValidation(() => {
     issues.processRoute = '工艺单用于正常物料的首次入库'
   if (!form.externalSource.trim() || form.externalSource.trim().length > 240)
     issues.externalSource = '请填写外部来源单位'
-  if (
-    !sharedEntry.value &&
-    ((!form.serialNo.trim() && form.receiptKind === 'return') || form.serialNo.trim().length > 80)
-  )
+  if ((!form.serialNo.trim() && form.receiptKind === 'return') || form.serialNo.trim().length > 80)
     issues.serialNo = '请输入有效流水号'
-  if (sharedEntry.value) {
-    const serials = members.value.map((member) => member.serial_no.trim().toLocaleLowerCase())
-    members.value.forEach((member, index) => {
-      if (
-        !member.serial_no.trim() ||
-        member.serial_no.length > 80 ||
-        serials.indexOf(serials[index]!) !== index ||
-        member.serial_no.startsWith('共投-')
-      )
-        issues[`member${index}serial`] = '流水号不能为空或重复'
-      if (
-        member.planned_weight == null ||
-        !Number.isFinite(member.planned_weight) ||
-        member.planned_weight <= 0 ||
-        member.planned_weight > 99999999999.999 ||
-        Math.abs(member.planned_weight * 1000000 - Math.round(member.planned_weight * 1000000)) >
-          0.0001
-      )
-        issues[`member${index}weight`] = '请填写计划用料重量'
-      if (
-        !Number.isSafeInteger(member.planned_quantity) ||
-        Number(member.planned_quantity) <= 0 ||
-        Number(member.planned_quantity) > 2147483647
-      )
-        issues[`member${index}quantity`] = '请填写计划切出件数'
-      if (
-        !member.planned_specification.trim() ||
-        member.planned_specification.length > 240 ||
-        member.specificationValid === false
-      )
-        issues[`member${index}cutting`] = '请填写完整的计划切割尺寸'
-      if ((member.customer_code?.length || 0) > 80) issues[`member${index}customer`] = '内容过长'
-      if ((member.finished_specification?.length || 0) > 240)
-        issues[`member${index}specification`] = '内容过长'
-      const message = deliveryError(
-        member.delivery_date || '',
-        member.delivery_quantity ?? undefined,
-      )
-      if (message) issues[`member${index}delivery`] = message
-    })
-    if (members.value.length < 2 || members.value.length > 20)
-      issues.members = '请选择 2 至 20 个流水号'
-    if (isScrapType(form.materialType || null)) issues.materialType = '共投入库请选择正常物料'
-  }
   if (!form.document.material_name.trim()) issues.material_name = '请输入材质'
   if (!form.materialType) issues.materialType = '请选择物料类型'
   if (form.materialType === 'sludge' && !sludgeWeight(form.gross, form.percent)) {
@@ -638,7 +480,7 @@ const validation = useDialogValidation(() => {
   else if (enteredQuantity.value === 0 && form.weight === 0) {
     issues.quantity = issues.weight = '件数和重量至少一项大于 0'
   }
-  if (form.receiptKind === 'external' && !weightOnly.value && !sharedEntry.value) {
+  if (form.receiptKind === 'external' && !weightOnly.value) {
     const message = deliveryError(form.deliveryDate, form.deliveryQuantity)
     if (message)
       issues[
@@ -648,8 +490,6 @@ const validation = useDialogValidation(() => {
       ] = message
   }
   for (const field of materialDocumentTextFields) {
-    if (sharedEntry.value && ['customer_code', 'finished_specification'].includes(field.key))
-      continue
     if (specificationValidity[field.key] === false) issues[field.key] = '请填完整规格尺寸'
     else if (form.document[field.key].trim().length > field.maxLength)
       issues[field.key] = '内容过长'
@@ -666,7 +506,7 @@ const validation = useDialogValidation(() => {
   const order = documents.value.find((document) => document.kind === 'order')
   const serials = intakeSerials.value.filter(Boolean)
   if (order?.parsed.serial_no && serials.length && !serials.includes(order.parsed.serial_no))
-    issues[sharedEntry.value ? 'members' : 'serialNo'] = '订单表流水号与本次入库不一致，请核对'
+    issues.serialNo = '订单表流水号与本次入库不一致，请核对'
   return issues
 })
 const { formRef, fieldErrors } = validation
@@ -678,7 +518,7 @@ function payload(): CreateWarehouseReceipt {
         form.document[field.key].trim() || null,
       ]),
     ),
-    serial_no: sharedEntry.value ? '' : form.serialNo.trim(),
+    serial_no: form.serialNo.trim(),
     material_name: form.document.material_name.trim(),
     material_type: form.materialType as MaterialType,
     receipt_kind: form.receiptKind,
@@ -699,24 +539,6 @@ function payload(): CreateWarehouseReceipt {
       ? {
           delivery_date: weightOnly.value ? null : form.deliveryDate || null,
           delivery_quantity: weightOnly.value ? null : (form.deliveryQuantity ?? null),
-        }
-      : {}),
-    ...(sharedEntry.value
-      ? {
-          customer_code: null,
-          finished_specification: null,
-          delivery_date: null,
-          delivery_quantity: null,
-          shared_serials: members.value.map((member) => ({
-            serial_no: member.serial_no.trim(),
-            customer_code: member.customer_code?.trim() || null,
-            finished_specification: member.finished_specification?.trim() || null,
-            delivery_date: member.delivery_date || null,
-            delivery_quantity: member.delivery_quantity ?? null,
-            planned_weight: member.planned_weight,
-            planned_quantity: member.planned_quantity,
-            planned_specification: member.planned_specification.trim(),
-          })),
         }
       : {}),
     ...(importedRoute.value
@@ -813,7 +635,7 @@ async function submit() {
   }
 }
 watch(
-  [importedValues, () => form.materialType, () => memberSignature(), () => importedRoute.value?.id],
+  [importedValues, () => form.materialType, () => importedRoute.value?.id],
   () => {
     if (!attempt.value) confirmedImports.value = false
   },
@@ -889,14 +711,6 @@ onBeforeUnmount(() => {
     <FormWorkspace class="receipt-document-layout">
       <template #documents>
         <div v-if="modelValue" class="receipt-document-panel" aria-label="入库附件">
-          <ElSelect v-if="sharedEntry" v-model="previewSerial" aria-label="附件流水号">
-            <ElOption
-              v-for="serial in intakeSerials.filter(Boolean)"
-              :key="serial"
-              :value="serial"
-              :label="serial"
-            />
-          </ElSelect>
           <WarehouseReceiptDocuments
             :team-id="teamId"
             :route="importedRoute || undefined"
@@ -944,11 +758,6 @@ onBeforeUnmount(() => {
           </div>
         </ElFormItem>
         <CompactFormSection title="入库信息" class="receipt-primary-section">
-          <template v-if="sharedEntry" #actions
-            ><span class="receipt-shared-summary"
-              >共投 · {{ members.length }} 个流水号</span
-            ></template
-          >
           <ElFormItem label="入库来源" :error="fieldErrors.receiptKind" required
             ><ElSelect v-model="form.receiptKind" aria-label="入库来源" :disabled="readonly"
               ><ElOption value="external" label="外部来料" /><ElOption
@@ -986,7 +795,6 @@ onBeforeUnmount(() => {
               placeholder="选填已确认的出库批次号；流水号沿用原号"
           /></ElFormItem>
           <ElFormItem
-            v-if="!sharedEntry"
             label="流水号"
             :error="fieldErrors.serialNo"
             :class="['receipt-identity-field', importedClass('serial_no')]"
@@ -1038,7 +846,7 @@ onBeforeUnmount(() => {
         <CompactFormSection title="数量与交期" class="dialog-section-quantities">
           <MaterialDeliveryFields
             class="form-field--long"
-            v-if="form.receiptKind === 'external' && !weightOnly && !sharedEntry"
+            v-if="form.receiptKind === 'external' && !weightOnly"
             v-model:date="form.deliveryDate"
             v-model:quantity="form.deliveryQuantity"
             :disabled="readonly"
@@ -1111,7 +919,7 @@ onBeforeUnmount(() => {
               v-model="form.warehouseLocation"
               v-model:reservation-key="form.warehouseLocationKey"
               :team-id="teamId"
-              :serial-no="sharedEntry ? '' : form.serialNo"
+              :serial-no="form.serialNo"
               :material-name="form.document.material_name"
               :material-type="form.materialType"
               :active="modelValue"
@@ -1202,222 +1010,6 @@ onBeforeUnmount(() => {
               /></ElFormItem>
             </template>
           </CompactFormSection>
-          <section
-            v-if="form.receiptKind === 'external' && section.name === 'specification'"
-            class="shared-entry-section"
-          >
-            <div class="shared-entry-heading">
-              <ElSwitch
-                v-model="shared"
-                :disabled="readonly"
-                active-text="共投入库"
-                aria-label="共投入库"
-              /><span v-if="sharedEntry">先填写各流水号用料计划；整块料库存只记一次</span>
-            </div>
-            <div
-              v-if="sharedEntry"
-              class="shared-members"
-              :class="{ 'dialog-field is-error': Boolean(fieldErrors.members) }"
-              :aria-invalid="Boolean(fieldErrors.members)"
-              data-validation-field="members"
-              role="group"
-              tabindex="-1"
-              aria-label="共投流水号安排"
-              aria-description="填写2至20个流水号"
-            >
-              <article v-for="(member, index) in members" :key="index" class="shared-member">
-                <div class="shared-member-grid">
-                  <ElFormItem
-                    label="流水号"
-                    required
-                    class="shared-field-serial"
-                    :error="fieldErrors[`member${index}serial`]"
-                    :class="member.documentSerial ? importedClass('serial_no') : ''"
-                  >
-                    <template #label
-                      >流水号
-                      <small class="shared-member-index">{{
-                        String(index + 1).padStart(2, '0')
-                      }}</small
-                      ><AutofillBadge
-                        v-if="member.serialSource || member.documentSerial"
-                        :source="member.serialSource?.filename || documentSource('serial_no')"
-                        kind="document"
-                        :modified="
-                          member.serialSource
-                            ? member.serial_no !== member.serialSource.value
-                            : documentChanged('serial_no')
-                        "
-                    /></template>
-                    <MaterialInput
-                      v-model="member.serial_no"
-                      field="serial_no"
-                      :label="`共投流水号${index + 1}`"
-                      :maxlength="80"
-                      :disabled="readonly"
-                    />
-                  </ElFormItem>
-                  <ElFormItem
-                    label="计划用料 (kg)"
-                    required
-                    class="shared-field-weight"
-                    :error="fieldErrors[`member${index}weight`]"
-                  >
-                    <AppNumberInput
-                      v-model="member.planned_weight"
-                      :aria-label="`共投计划重量${index + 1}`"
-                      :disabled="readonly"
-                      :min="0.000001"
-                      :max="99999999999.999"
-                      :controls="false"
-                    />
-                  </ElFormItem>
-                  <ElFormItem
-                    label="计划切出 (件)"
-                    required
-                    class="shared-field-quantity"
-                    :error="fieldErrors[`member${index}quantity`]"
-                  >
-                    <AppNumberInput
-                      v-model="member.planned_quantity"
-                      :aria-label="`共投计划件数${index + 1}`"
-                      :disabled="readonly"
-                      :min="1"
-                      :max="2147483647"
-                      :precision="0"
-                      :controls="false"
-                    />
-                  </ElFormItem>
-                  <ElFormItem
-                    label="客户代码"
-                    class="shared-field-customer"
-                    :error="fieldErrors[`member${index}customer`]"
-                    :class="member.documentSerial ? importedClass('customer_code') : ''"
-                  >
-                    <template #label
-                      >客户代码<AutofillBadge
-                        v-if="member.documentSerial"
-                        :source="documentSource('customer_code')"
-                        kind="document"
-                        :modified="documentChanged('customer_code')"
-                    /></template>
-                    <ElInput
-                      v-model="member.customer_code"
-                      :aria-label="`共投客户${index + 1}`"
-                      :disabled="readonly"
-                      maxlength="80"
-                      placeholder="选填"
-                    />
-                  </ElFormItem>
-                  <ElFormItem
-                    label="成品规格"
-                    class="shared-field-specification"
-                    :error="fieldErrors[`member${index}specification`]"
-                    :class="member.documentSerial ? importedClass('finished_specification') : ''"
-                  >
-                    <template #label
-                      >成品规格<AutofillBadge
-                        v-if="member.documentSerial"
-                        :source="documentSource('finished_specification')"
-                        kind="document"
-                        :modified="documentChanged('finished_specification')"
-                    /></template>
-                    <ElInput
-                      v-model="member.finished_specification"
-                      :aria-label="`共投成品规格${index + 1}`"
-                      :disabled="readonly"
-                      maxlength="240"
-                      placeholder="选填"
-                    />
-                  </ElFormItem>
-                  <ElFormItem
-                    label="要求发货日期"
-                    class="shared-field-delivery"
-                    :error="fieldErrors[`member${index}delivery`]"
-                    :class="member.documentSerial ? importedClass('delivery_date') : ''"
-                  >
-                    <template #label
-                      >要求发货日期<AutofillBadge
-                        v-if="member.documentSerial"
-                        :source="documentSource('delivery_date')"
-                        kind="document"
-                        :modified="documentChanged('delivery_date')"
-                    /></template>
-                    <ElDatePicker
-                      v-model="member.delivery_date"
-                      type="date"
-                      value-format="YYYY-MM-DD"
-                      :aria-label="`共投交期${index + 1}`"
-                      :disabled="readonly"
-                      placeholder="选填"
-                    />
-                  </ElFormItem>
-                  <ElFormItem
-                    label="应发件数"
-                    class="shared-field-due"
-                    :error="fieldErrors[`member${index}delivery`]"
-                    :class="member.documentSerial ? importedClass('delivery_quantity') : ''"
-                  >
-                    <template #label
-                      >应发件数<AutofillBadge
-                        v-if="member.documentSerial"
-                        :source="documentSource('delivery_quantity')"
-                        kind="document"
-                        :modified="documentChanged('delivery_quantity')"
-                    /></template>
-                    <AppNumberInput
-                      v-model="member.delivery_quantity"
-                      :aria-label="`共投应发件数${index + 1}`"
-                      :disabled="readonly"
-                      :min="1"
-                      :max="2147483647"
-                      :precision="0"
-                      :controls="false"
-                    />
-                  </ElFormItem>
-                  <ElFormItem
-                    label="计划切割尺寸"
-                    required
-                    class="shared-field-cutting"
-                    :error="fieldErrors[`member${index}cutting`]"
-                  >
-                    <template #label
-                      ><span>计划切割尺寸</span
-                      ><ElButton
-                        text
-                        :disabled="readonly || members.length <= 2"
-                        :aria-label="`移除共投流水号${index + 1}`"
-                        @click.stop="members.splice(index, 1)"
-                        >移除</ElButton
-                      ></template
-                    >
-                    <SpecificationInput
-                      v-model="member.planned_specification"
-                      :label="`共投计划切割尺寸${index + 1}`"
-                      :disabled="readonly"
-                      @validity-change="member.specificationValid = $event"
-                    />
-                  </ElFormItem>
-                </div>
-              </article>
-              <div class="shared-plan-summary">
-                <span
-                  >计划合计 <b>{{ plannedWeight }} kg</b><b>{{ plannedQuantity }} 件</b></span
-                ><span
-                  v-if="form.weight && planWeightDifference !== 0"
-                  :class="{ 'shared-plan-warning': planWeightDifference > 1 }"
-                  >{{ planWeightDifference > 0 ? '计划超出入库重量' : '未规划重量' }}
-                  {{ Math.abs(planWeightDifference) }} kg</span
-                >
-              </div>
-              <ElButton
-                class="action-cool"
-                :disabled="readonly || members.length >= 20"
-                @click="members.push(newMember())"
-                >添加流水号</ElButton
-              >
-            </div>
-          </section>
         </template>
         <ImportedDataConfirmation
           v-if="needsConfirmation"
@@ -1431,7 +1023,7 @@ onBeforeUnmount(() => {
     </FormWorkspace>
     <PublishedProcessRoutePicker
       v-if="routePickerOpen && modelValue"
-      :serial-no="sharedEntry ? members[0]?.serial_no : form.serialNo"
+      :serial-no="form.serialNo"
       @selected="selectRoute"
       @close="routePickerOpen = false"
     />
@@ -1509,14 +1101,7 @@ onBeforeUnmount(() => {
   container: receipt-form / inline-size;
   min-width: 0;
 }
-.receipt-shared-summary {
-  margin-left: 12px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 400;
-}
-.receipt-identity-field :deep(.el-input__inner),
-.shared-field-serial :deep(.el-input__inner) {
+.receipt-identity-field :deep(.el-input__inner) {
   color: var(--text);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -1531,129 +1116,7 @@ onBeforeUnmount(() => {
   background: var(--surface);
   box-shadow: 0 0 0 1px var(--line) inset;
 }
-.shared-entry-section {
-  padding: 16px 0 20px;
-  border-bottom: 1px solid var(--line);
-}
-.shared-entry-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 16px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.shared-members {
-  margin-top: 12px;
-}
-.shared-member {
-  padding: 12px 0 16px;
-  border-top: 1px solid var(--line);
-}
-.shared-member-index {
-  padding-right: 4px;
-  color: var(--subtle);
-  font-size: 10px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-.shared-field-cutting :deep(.el-form-item__label) {
-  display: flex;
-  width: 100%;
-  justify-content: space-between;
-}
-.shared-field-cutting :deep(.el-form-item__label > span) {
-  margin-right: auto;
-}
-.shared-field-cutting :deep(.el-button) {
-  height: 20px;
-  padding: 0 4px;
-  color: var(--muted);
-  font-size: 11px;
-}
-.shared-field-cutting :deep(.el-button:hover:not(:disabled)) {
-  color: var(--danger);
-}
-.shared-member-grid {
-  display: grid;
-  grid-template-columns:
-    minmax(140px, 1.1fr) repeat(2, minmax(100px, 0.8fr)) minmax(100px, 0.9fr)
-    minmax(110px, 1fr) minmax(150px, 1.2fr) minmax(90px, 0.8fr);
-  grid-template-areas: 'serial weight quantity customer specification delivery due' 'cutting cutting cutting cutting cutting cutting cutting';
-  gap: 10px 12px;
-  align-items: start;
-}
-.shared-member-grid :deep(.el-form-item) {
-  min-width: 0;
-  margin-bottom: 0;
-}
-.shared-member-grid :deep(.el-input-number),
-.shared-member-grid :deep(.el-date-editor) {
-  min-width: 0;
-  width: 100%;
-}
-.shared-member-grid :deep(.el-input-number .el-input__inner) {
-  text-align: left;
-}
-.shared-field-serial {
-  grid-area: serial;
-}
-.shared-field-weight {
-  grid-area: weight;
-}
-.shared-field-quantity {
-  grid-area: quantity;
-}
-.shared-field-customer {
-  grid-area: customer;
-}
-.shared-field-specification {
-  grid-area: specification;
-}
-.shared-field-delivery {
-  grid-area: delivery;
-}
-.shared-field-due {
-  grid-area: due;
-}
-.shared-field-cutting {
-  grid-area: cutting;
-}
-.shared-plan-summary,
-.shared-plan-summary > span {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-}
-.shared-plan-summary {
-  flex-wrap: wrap;
-  justify-content: space-between;
-  padding: 12px 0;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 12px;
-}
-.shared-plan-summary b {
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.shared-plan-warning {
-  color: var(--el-color-warning);
-}
 .receipt-retry {
   margin-bottom: 12px;
-}
-@container receipt-form (max-width: 1020px) {
-  .shared-member-grid {
-    grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 1fr));
-    grid-template-areas: 'serial weight quantity' 'cutting cutting cutting' 'customer specification due' 'delivery delivery .';
-  }
-}
-@container receipt-form (max-width: 760px) {
-  .shared-field-delivery {
-    max-width: 240px;
-  }
 }
 </style>

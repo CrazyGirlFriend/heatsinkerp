@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ScheduleTaskBoard from './ScheduleTaskBoard.vue'
 import ScheduleDocuments from './ScheduleDocuments.vue'
 import ProductionScheduleGantt from './ProductionScheduleGantt.vue'
-import ProductionScheduleTimeline from './ProductionScheduleTimeline.vue'
 import DeliverySchedules from './DeliverySchedules.vue'
 import TableExportButton from './TableExportButton.vue'
 import AppDrawer from './AppDrawer.vue'
@@ -17,6 +16,14 @@ import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
 import { productionScheduleApi } from '@/services/productionScheduleApi'
 import type { ProductionSchedule, ScheduleTask } from '@/types/productionSchedule'
 const hooks = vi.hoisted(() => ({ openDetail: vi.fn() }))
+vi.mock('./VTableScheduleTimeline.vue', () => ({
+  default: {
+    name: 'VTableScheduleTimeline',
+    props: ['tasks', 'loading'],
+    emits: ['open-node', 'open-task'],
+    template: '<div class="overview-stub"><slot/><slot name="view-actions"/></div>',
+  },
+}))
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
     isAdmin: true,
@@ -116,7 +123,8 @@ async function render(path = '/production-schedules') {
           props: ['modelValue'],
           template: '<aside v-if="modelValue"><slot/><slot name="footer"/></aside>',
         },
-        ProductionScheduleTimeline: {
+        VTableScheduleTimeline: {
+          name: 'VTableScheduleTimeline',
           props: ['tasks', 'teams', 'loading'],
           emits: ['open-node', 'open-task'],
           template: '<div class="overview-stub"><slot/><slot name="view-actions"/></div>',
@@ -193,7 +201,7 @@ describe('task scheduling board', () => {
   })
   it('focuses fullscreen on the timeline and preserves the current view and filters on exit', async () => {
     await render('/production-schedules?serial_no=S-001')
-    const overview = wrapper.getComponent(ProductionScheduleTimeline)
+    const overview = wrapper.getComponent({ name: 'VTableScheduleTimeline' })
     await wrapper.setProps({ fullscreen: true })
     expect(wrapper.find('.task-board__toolbar').exists()).toBe(false)
     expect(wrapper.find('.overview-stub .fullscreen-toggle').exists()).toBe(true)
@@ -205,7 +213,7 @@ describe('task scheduling board', () => {
     await flushPromises()
     expect(hooks.openDetail).toHaveBeenCalledWith(2)
     await wrapper.setProps({ fullscreen: false })
-    expect(wrapper.getComponent(ProductionScheduleTimeline).vm).toBe(overview.vm)
+    expect(wrapper.getComponent({ name: 'VTableScheduleTimeline' }).vm).toBe(overview.vm)
     expect(wrapper.find('.task-board__toolbar .fullscreen-toggle').exists()).toBe(true)
     expect(wrapper.findComponent(TableExportButton).exists()).toBe(true)
     expect(wrapper.text()).not.toContain('新建任务排期')
@@ -217,7 +225,7 @@ describe('task scheduling board', () => {
   })
   it('opens the global overview by default and drills into the existing task and node details', async () => {
     await render()
-    const overview = wrapper.getComponent(ProductionScheduleTimeline)
+    const overview = wrapper.getComponent({ name: 'VTableScheduleTimeline' })
     expect(overview.props('tasks')).toEqual([task])
     expect(wrapper.findComponent(ProductionScheduleGantt).exists()).toBe(false)
     expect(wrapper.find('[aria-label="排期视图"]').exists()).toBe(false)
@@ -274,7 +282,7 @@ describe('task scheduling board', () => {
     })
     expect(wrapper.getComponent(AppDrawer).props('modelValue')).toBe(false)
     expect(wrapper.get('.task-board__filter-count').text()).toBe('4')
-    expect(wrapper.getComponent(ProductionScheduleTimeline).props('tasks')).toEqual([task])
+    expect(wrapper.getComponent({ name: 'VTableScheduleTimeline' }).props('tasks')).toEqual([task])
     expect(wrapper.findComponent(ProductionScheduleGantt).exists()).toBe(false)
     const data = wrapper.getComponent(TableExportButton).props('source')()!
     const exported = await data.load(new AbortController().signal, () => {})
@@ -479,7 +487,7 @@ describe('task scheduling board', () => {
     wrapper.getComponent(ScheduleTaskEditor).vm.$emit('saved', task)
     await flushPromises()
     await wrapper.setProps({ management: false })
-    wrapper.getComponent(ProductionScheduleTimeline).vm.$emit('open-task', nextTask)
+    wrapper.getComponent({ name: 'VTableScheduleTimeline' }).vm.$emit('open-task', nextTask)
     await flushPromises()
     expect(wrapper.get('.task-detail__heading').text()).toContain('第二批交货')
     finishRefresh({ items: [task, nextTask], total: 2, page: 1, page_size: 10 })

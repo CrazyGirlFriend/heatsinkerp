@@ -226,6 +226,7 @@ class SharedMaterialGroup(Base):
     __tablename__ = "shared_material_groups"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     batch_no: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    split_step_index: Mapped[int | None] = mapped_column(Integer)
     members: Mapped[list[SharedMaterialMember]] = relationship(
         cascade="all, delete-orphan", lazy="selectin", order_by="SharedMaterialMember.id"
     )
@@ -252,6 +253,11 @@ class SharedMaterialMember(Base):
         ForeignKey("shared_material_groups.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     serial_no: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    process_route_id: Mapped[int | None] = mapped_column(
+        ForeignKey("process_routes.id", ondelete="RESTRICT")
+    )
+    process_route_version: Mapped[int | None] = mapped_column(Integer)
+    process_route: Mapped[ProcessRoute | None] = relationship(lazy="selectin")
     customer_code: Mapped[str | None] = mapped_column(String(80))
     finished_specification: Mapped[str | None] = mapped_column(String(240))
     delivery_date: Mapped[date | None] = mapped_column(Date)

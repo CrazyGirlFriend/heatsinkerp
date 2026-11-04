@@ -2,18 +2,20 @@
 // Vue adaptation of Watermelon Filter Disclosure. See NOTICE.md.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, type Component } from 'vue'
 import { AnimatePresence, motion, useReducedMotion } from 'motion-v'
-import { IconAdjustmentsHorizontal, IconCheck, IconX } from '@tabler/icons-vue'
+import { IconAdjustmentsHorizontal, IconCheck, IconChevronDown, IconX } from '@tabler/icons-vue'
 
 const props = withDefaults(
   defineProps<{
     label?: string
     title?: string
+    viewSwitch?: boolean
     options: ReadonlyArray<{
       value: string
       label: string
       icon?: Component
       color?: string
       disabled?: boolean
+      count?: number | null
     }>
   }>(),
   { label: '筛选', title: '筛选条件' },
@@ -136,15 +138,20 @@ onBeforeUnmount(() => {
     ref="trigger"
     type="button"
     class="wm-filter-trigger"
-    :class="{ active: !!value }"
+    :class="{ active: !!value && !viewSwitch, 'wm-view-switch': viewSwitch }"
+    :aria-current="viewSwitch ? 'page' : undefined"
     aria-haspopup="menu"
     :aria-controls="`${id}-filter`"
     :aria-expanded="open"
     @click="open ? close() : show()"
     @keydown.down.prevent="show()"
   >
-    <IconAdjustmentsHorizontal :size="17" />{{ value && selected ? selected.label : label }}
-    <span v-if="value" class="wm-active-dot" />
+    <IconAdjustmentsHorizontal v-if="!viewSwitch" :size="17" />{{
+      value && selected ? selected.label : label
+    }}
+    <span v-if="viewSwitch && selected?.count" class="wm-view-count">{{ selected.count }}</span>
+    <IconChevronDown v-if="viewSwitch" :size="16" :class="{ 'is-open': open }" />
+    <span v-else-if="value" class="wm-active-dot" />
   </button>
   <Teleport :to="teleportTarget">
     <AnimatePresence>
@@ -166,7 +173,7 @@ onBeforeUnmount(() => {
           tabindex="-1"
           @focusout="focusOut"
         >
-          <header>
+          <header v-if="!viewSwitch">
             <span>{{ title }}</span>
             <button type="button" :aria-label="`关闭${label}`" @click="close()">
               <IconX :size="16" />
@@ -194,6 +201,7 @@ onBeforeUnmount(() => {
               :style="{ color: option.color }"
             />
             <span>{{ option.label }}</span>
+            <span v-if="option.count" class="wm-view-count">{{ option.count }}</span>
             <motion.span
               v-if="value === option.value"
               :layout-id="`${id}-check`"
@@ -230,6 +238,35 @@ onBeforeUnmount(() => {
 }
 .wm-filter-trigger:hover {
   background: var(--wm-hover, #f7f8fa);
+}
+.wm-filter-trigger.wm-view-switch {
+  padding: 0 8px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 500;
+}
+.wm-filter-trigger.wm-view-switch:hover {
+  background: var(--wm-hover);
+}
+.wm-view-switch > svg {
+  transition: transform 180ms;
+}
+.wm-view-switch > svg.is-open {
+  transform: rotate(180deg);
+}
+.wm-view-count {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--wm-muted-surface);
+  font-size: 12px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wm-view-switch > svg {
+    transition: none;
+  }
 }
 .wm-filter-trigger.active {
   border-color: var(--wm-success-text, #b9d8cd);

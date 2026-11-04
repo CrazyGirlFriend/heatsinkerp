@@ -20,7 +20,6 @@ import WorkspaceDataToolbar from '@/components/WorkspaceDataToolbar.vue'
 import TeamWorkspaceShell from '@/components/TeamWorkspaceShell.vue'
 import TeamWorkspaceActions from '@/components/TeamWorkspaceActions.vue'
 import StockSourcePicker from '@/components/StockSourcePicker.vue'
-import TeamMaterialOverviewPanel from '@/components/TeamMaterialOverview.vue'
 import TeamInventory from '@/components/TeamInventory.vue'
 import InspectionRegistrationDialog from '@/components/InspectionRegistrationDialog.vue'
 import TeamQualityFeedback from '@/components/TeamQualityFeedback.vue'
@@ -210,7 +209,6 @@ const inventoryPanel = ref<InstanceType<typeof TeamInventory>>()
 const schedulePanel = ref<InstanceType<typeof DeliverySchedules>>()
 const initialSchedule =
   ref<Pick<ProductionSchedule, 'id' | 'next_team_id' | 'external_destination'>>()
-const summaryPanel = ref<InstanceType<typeof TeamMaterialOverviewPanel>>()
 const exportSource = ref<TableExportSource | null>(null)
 const exportable = computed(
   () =>
@@ -228,7 +226,6 @@ const exportable = computed(
       'outgoing',
       'reallocations',
       'losses',
-      'materials',
     ].includes(tab.value),
 )
 function openExport() {
@@ -236,7 +233,6 @@ function openExport() {
   let source: TableExportSource | undefined
   if (tab.value === 'stock') source = inventoryPanel.value?.exportSource()
   else if (tab.value === 'delivery-schedule') source = schedulePanel.value?.exportSource()
-  else if (tab.value === 'materials') source = summaryPanel.value?.exportSource()
   else {
     const id = teamId.value,
       section = tab.value,
@@ -316,33 +312,10 @@ function selectSection(section: TeamWorkspaceSection) {
   if (section !== tab.value)
     void router.push(workspaceNavigation.workspaceLocation(teamKey.value, section))
 }
-function paginateSummary(nextPage: number, size: number) {
-  void router.replace({
-    path: route.path,
-    query: {
-      tab: tab.value,
-      ...(nextPage > 1 ? { page: String(nextPage) } : {}),
-      ...(size !== 10 ? { page_size: String(size) } : {}),
-    },
-  })
-}
-function openSummaryDetail(value: string) {
-  void router.push({
-    path: route.path,
-    query: {
-      tab: 'stock',
-      availability: 'all',
-      material_name: value,
-      summary: tab.value,
-      ...(page.value > 1 ? { summary_page: String(page.value) } : {}),
-      ...(pageSize.value !== 10 ? { summary_page_size: String(pageSize.value) } : {}),
-    },
-  })
-}
 watch(
   () => queryText('tab'),
   (value) => {
-    if (value === 'serials' || value === 'material-types')
+    if (value === 'serials' || value === 'materials' || value === 'material-types')
       void router.replace({
         path: route.path,
         query: { ...route.query, tab: 'stock' },
@@ -1089,9 +1062,7 @@ async function loadView(refreshWarehouse: unknown = false, background = false) {
 watch(
   [
     () =>
-      ['overview', 'stock', 'materials'].includes(tab.value)
-        ? `${route.path}:${tab.value}`
-        : route.fullPath,
+      ['overview', 'stock'].includes(tab.value) ? `${route.path}:${tab.value}` : route.fullPath,
     scopeReady,
   ],
   () => {
@@ -1289,7 +1260,7 @@ onBeforeUnmount(() => {
           :key="teamId"
           :team-id="teamId"
         />
-        <template v-else-if="['stock', 'materials'].includes(tab)">
+        <template v-else-if="tab === 'stock'">
           <StatePanel v-if="loading && !overview" state="loading" title="正在读取物料库存" />
           <StatePanel
             v-else-if="overviewError"
@@ -1298,7 +1269,7 @@ onBeforeUnmount(() => {
             @retry="loadView"
           />
           <TeamInventory
-            v-else-if="overview && tab === 'stock'"
+            v-else-if="overview"
             :key="teamId"
             ref="inventoryPanel"
             :team-id="teamId"
@@ -1319,19 +1290,6 @@ onBeforeUnmount(() => {
             ><template v-if="canWrite || canReceive" #actions
               ><TeamWorkspaceActions v-bind="actionBindings" :show-refresh="false" /></template
           ></TeamInventory>
-          <TeamMaterialOverviewPanel
-            v-else-if="overview"
-            :key="tab"
-            ref="summaryPanel"
-            :overview="overview"
-            kind="material"
-            :page="page"
-            :page-size="pageSize"
-            :fullscreen="fullscreen"
-            @filter="openSummaryDetail"
-            @paginate="paginateSummary"
-            @refresh="loadView()"
-          />
         </template>
         <template v-else>
           <div class="team-list-layout">
@@ -2013,10 +1971,7 @@ onBeforeUnmount(() => {
         @outbound="
           () => {
             closeDetails()
-            router.push({
-              path: route.path,
-              query: { tab: 'outgoing', status: 'pending' },
-            })
+            router.push({ path: route.path, query: { tab: 'outgoing', status: 'pending' } })
           }
         "
       />

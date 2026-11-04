@@ -27,7 +27,7 @@ export const teamWorkspaceModules = [
   {
     value: 'inventory',
     label: '库存',
-    sections: ['stock', 'materials', 'losses'],
+    sections: ['stock', 'losses'],
   },
   {
     value: 'movement',
@@ -74,6 +74,7 @@ export function teamWorkspaceSectionsFor(
   return teamWorkspaceSections.filter(
     (section) =>
       section.value !== 'process-routes' &&
+      section.value !== 'materials' &&
       section.value !== 'material-types' &&
       (section.value !== 'settings' || manageSettings) &&
       (section.value !== 'warehouse' || (warehouse && manageWarehouse)) &&
@@ -93,7 +94,8 @@ export function resolveTeamWorkspaceSection(
   inspection = false,
   manageSettings = false,
 ): TeamWorkspaceSection {
-  if (query.tab === 'serials' || query.tab === 'material-types') return 'stock'
+  if (query.tab === 'serials' || query.tab === 'materials' || query.tab === 'material-types')
+    return 'stock'
   if (query.tab === 'overview') return 'history'
   const section = teamWorkspaceSectionsFor(
     warehouse,

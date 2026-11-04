@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
-import { ElInputNumber, ElSelect, ElSwitch, ElDatePicker } from 'element-plus'
+import { ElInputNumber, ElSelect } from 'element-plus'
 import WarehouseLocationSelect from './WarehouseLocationSelect.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WarehouseReceiptDialog from './WarehouseReceiptDialog.vue'
@@ -118,54 +118,19 @@ async function submit() {
 }
 
 describe('warehouse manual receipt', () => {
-  it.each(['成品规格', '转料规格'])(
-    'validates only visible %s after switching to shared intake',
-    async (label) => {
-      await render()
-      await fill()
-      const shape = wrapper
-        .findAllComponents(ElSelect)
-        .find((item) => item.find(`input[aria-label="${label}形状"]`).exists())!
-      shape.vm.$emit('update:modelValue', 'rectangle')
-      shape.vm.$emit('change', 'rectangle')
-      await flushPromises()
-      await submit()
-      expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
-
-      wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', true)
-      await flushPromises()
-      for (const index of [1, 2]) {
-        await wrapper.get(`input[aria-label="共投流水号${index}"]`).setValue(`SHARED-${index}`)
-        await amount(`共投计划重量${index}`, 0.0025)
-        await amount(`共投计划件数${index}`, 1)
-        await wrapper.get(`input[aria-label="共投计划切割尺寸${index}"]`).setValue('按图纸加工')
-      }
-      await submit()
-      if (label === '成品规格') {
-        expect(wrapper.find('input[aria-label="成品规格形状"]').exists()).toBe(false)
-        expect(teamMaterialApi.createReceipt).toHaveBeenCalledWith(
-          901,
-          expect.objectContaining({
-            finished_specification: null,
-            shared_serials: expect.arrayContaining([
-              expect.objectContaining({ serial_no: 'SHARED-1' }),
-              expect.objectContaining({ serial_no: 'SHARED-2' }),
-            ]),
-          }),
-        )
-      } else {
-        expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
-        expect(
-          wrapper
-            .get('input[aria-label="转料规格形状"]')
-            .element.closest('.el-form-item')
-            ?.classList.contains('is-error'),
-        ).toBe(true)
-      }
-    },
-    10000,
-  )
-
+  it.each(['成品规格', '转料规格'])('retains %s validation on physical receipts', async (label) => {
+    await render()
+    await fill()
+    const shape = wrapper
+      .findAllComponents(ElSelect)
+      .find((item) => item.find(`input[aria-label="${label}形状"]`).exists())!
+    shape.vm.$emit('update:modelValue', 'rectangle')
+    shape.vm.$emit('change', 'rectangle')
+    await flushPromises()
+    await submit()
+    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
+    expect(wrapper.find('[aria-label="共投流水号安排"]').exists()).toBe(false)
+  })
   it('accepts raw intake without a serial number or route', async () => {
     await render()
     await fill()
@@ -177,84 +142,17 @@ describe('warehouse manual receipt', () => {
     )
     expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1].process_route).toBeUndefined()
   })
-  it('submits one shared physical batch with distinct order requirements, validates duplicate identities and preserves retries', async () => {
-    vi.mocked(teamMaterialApi.createReceipt).mockRejectedValueOnce(
-      new TeamMaterialApiError('网络中断'),
-    )
+  it('does not offer joint production when registering physical receipts', async () => {
     await render()
     await fill()
-    wrapper.getComponent(ElSwitch).vm.$emit('update:modelValue', true)
-    await flushPromises()
-    expect(wrapper.find('input[aria-label="流水号"]').exists()).toBe(false)
-    await wrapper.get('input[aria-label="共投流水号1"]').setValue(' A ')
-    await wrapper.get('input[aria-label="共投流水号2"]').setValue('a')
+    expect(wrapper.find('[role="switch"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('共投')
     await submit()
-    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
-    expect(
-      wrapper
-        .get('input[aria-label="共投流水号2"]')
-        .element.closest('.el-form-item')
-        ?.classList.contains('is-error'),
-    ).toBe(true)
-    await wrapper.get('input[aria-label="共投流水号2"]').setValue('B')
-    await submit()
-    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
-    expect(
-      wrapper
-        .get('input[aria-label="共投计划重量1"]')
-        .element.closest('.el-form-item')
-        ?.classList.contains('is-error'),
-    ).toBe(true)
-    for (const index of [1, 2]) {
-      await amount(`共投计划重量${index}`, 0.0025)
-      await amount(`共投计划件数${index}`, 30)
-      await wrapper.get(`input[aria-label="共投计划切割尺寸${index}"]`).setValue('25 × 12 × 2 mm')
-    }
-    await wrapper.get('input[aria-label="共投客户1"]').setValue('CA')
-    await wrapper.get('input[aria-label="共投成品规格1"]').setValue('20 × 10 × 2 mm')
-    wrapper.findAllComponents(ElDatePicker)[0]!.vm.$emit('update:modelValue', '2026-11-01')
-    wrapper
-      .findAllComponents(ElInputNumber)
-      .find((input) => input.props('ariaLabel') === '共投应发件数1')!
-      .vm.$emit('update:modelValue', 30)
-    await submit()
-    const original = vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]
-    expect(original).toMatchObject({
-      serial_no: '',
-      quantity: 0,
-      weight: 0.005,
-      customer_code: null,
-      finished_specification: null,
-      delivery_date: null,
-      delivery_quantity: null,
-      shared_serials: [
-        {
-          serial_no: 'A',
-          customer_code: 'CA',
-          finished_specification: '20 × 10 × 2 mm',
-          delivery_date: '2026-11-01',
-          delivery_quantity: 30,
-          planned_weight: 0.0025,
-          planned_quantity: 30,
-          planned_specification: '25 × 12 × 2 mm',
-        },
-        {
-          serial_no: 'B',
-          customer_code: null,
-          finished_specification: null,
-          delivery_date: null,
-          delivery_quantity: null,
-          planned_weight: 0.0025,
-          planned_quantity: 30,
-          planned_specification: '25 × 12 × 2 mm',
-        },
-      ],
-    })
-    wrapper.unmount()
-    await render()
-    await submit()
-    expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[1]![1]).toEqual(original)
-  }, 10000)
+    expect(teamMaterialApi.createReceipt).toHaveBeenCalledOnce()
+    expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1]).not.toHaveProperty(
+      'shared_serials',
+    )
+  })
 
   it('marks selected metadata, preserves manual edits and keeps receipt amounts independent', async () => {
     await render()
@@ -810,38 +708,16 @@ describe('库房关联已发布工艺', () => {
     ])
   })
 
-  it('creates shared serial rows but assigns customer and delivery information only to the main serial', async () => {
+  it('keeps the document primary serial and order details when a historical route names several serials', async () => {
     const route = importedDocument()
     route.serial_nos = ['IMPORT-02', 'IMPORT-01', 'IMPORT-03']
-    vi.spyOn(processRouteApi, 'detail').mockResolvedValue(route)
+    vi.mocked(processRouteApi.detail).mockResolvedValue(route)
     await render()
     await importFile()
-    expect(wrapper.find('input[aria-label="流水号"]').exists()).toBe(false)
-    expect(wrapper.get('input[aria-label="共投流水号1"]').element).toHaveProperty(
-      'value',
-      'IMPORT-02',
-    )
-    expect(wrapper.get('input[aria-label="共投流水号2"]').element).toHaveProperty(
-      'value',
-      'IMPORT-01',
-    )
-    expect(wrapper.get('input[aria-label="共投流水号3"]').element).toHaveProperty(
-      'value',
-      'IMPORT-03',
-    )
-    expect(wrapper.get('input[aria-label="共投客户2"]').element).toHaveProperty('value', 'C-11600')
-    for (const index of [1, 3]) {
-      expect(wrapper.get(`input[aria-label="共投客户${index}"]`).element).toHaveProperty(
-        'value',
-        '',
-      )
-    }
-    const dates = wrapper.findAllComponents(ElDatePicker)
-    expect(dates.map((date) => date.props('modelValue'))).toEqual([null, '2026-11-01', null])
-    const quantities = wrapper
-      .findAllComponents(ElInputNumber)
-      .filter((field) => String(field.props('ariaLabel')).startsWith('共投应发件数'))
-    expect(quantities.map((field) => field.props('modelValue'))).toEqual([null, 18100, null])
+    expect(wrapper.get('input[aria-label="流水号"]').element).toHaveProperty('value', 'IMPORT-01')
+    expect(wrapper.get('input[aria-label="客户代码"]').element).toHaveProperty('value', 'C-11600')
+    expect(currentValues().delivery_quantity).toBe(18100)
+    expect(wrapper.find('[aria-label="共投流水号安排"]').exists()).toBe(false)
   })
 
   it('does not overwrite current fields or an earlier source document when import fails', async () => {
@@ -960,24 +836,27 @@ describe('库房关联已发布工艺', () => {
     expect(corrected.idempotency_key).not.toBe(rejected.idempotency_key)
   })
 
-  it('keeps source provenance attached to the main shared row after renaming its serial', async () => {
+  it('keeps source provenance attached to the receipt after renaming its serial', async () => {
     const route = importedDocument()
     route.serial_nos = ['IMPORT-02', 'IMPORT-01']
     vi.spyOn(processRouteApi, 'detail').mockResolvedValue(route)
     await render()
     await importFile()
-    await wrapper.get('input[aria-label="共投流水号2"]').setValue('CORRECTED-01')
-    const customer = wrapper.get('input[aria-label="共投客户2"]')
+    await wrapper.get('input[aria-label="流水号"]').setValue('CORRECTED-01')
+    const customer = wrapper.get('input[aria-label="客户代码"]')
     await customer.setValue('C-CORRECTED')
-    wrapper.findAllComponents(ElDatePicker)[1]!.vm.$emit('update:modelValue', '2026-12-01')
+    await wrapper.get('input[aria-label="要求发货日期"]').setValue('2026-12-01')
     await flushPromises()
     const preview = wrapper.getComponent(WarehouseReceiptDocuments)
-    expect(wrapper.get('input[aria-label="共投流水号2"]').element).toHaveProperty(
+    expect(wrapper.get('input[aria-label="流水号"]').element).toHaveProperty(
       'value',
       'CORRECTED-01',
     )
     expect(customer.element).toHaveProperty('value', 'C-CORRECTED')
-    expect(wrapper.findAllComponents(ElDatePicker)[1]!.props('modelValue')).toBe('2026-12-01')
+    expect(wrapper.get('input[aria-label="要求发货日期"]').element).toHaveProperty(
+      'value',
+      '2026-12-01',
+    )
     expect(preview.props('route')!.source_data.receipt_fields).toMatchObject({
       serial_no: { value: 'IMPORT-01' },
       customer_code: { value: 'C-11600' },
@@ -986,7 +865,6 @@ describe('库房关联已发布工艺', () => {
     expect(
       customer.element.closest('.el-form-item')!.classList.contains('document-field--edited'),
     ).toBe(true)
-    expect(wrapper.get('input[aria-label="共投客户1"]').element).toHaveProperty('value', '')
   })
 
   it('keeps the order serial independent without modifying the published process serial', async () => {
@@ -1034,46 +912,6 @@ describe('库房关联已发布工艺', () => {
     },
   )
 
-  it.each([false, true])(
-    'updates untouched shared members on file replacement and preserves manually edited plans: %s',
-    async (editedPlan) => {
-      const first = importedDocument()
-      first.serial_nos = ['IMPORT-01', 'IMPORT-02']
-      const next = importedDocument()
-      next.id = 101
-      next.serial_nos = ['NEXT-01', 'NEXT-02', 'NEXT-03']
-      next.source_data.receipt_fields!.serial_no!.value = 'NEXT-01'
-      next.source_data.receipt_fields!.customer_code!.value = 'C-NEXT'
-      vi.spyOn(processRouteApi, 'detail').mockResolvedValueOnce(first).mockResolvedValueOnce(next)
-      await render()
-      await importFile()
-      if (editedPlan) await amount('共投计划重量1', 120)
-      await importFile()
-      const serials = wrapper
-        .findAll('input[aria-label^="共投流水号"]')
-        .map((input) => (input.element as HTMLInputElement).value)
-      expect(serials).toEqual(
-        editedPlan ? ['IMPORT-01', 'IMPORT-02'] : ['NEXT-01', 'NEXT-02', 'NEXT-03'],
-      )
-      if (editedPlan) {
-        const planned = wrapper
-          .findAllComponents(ElInputNumber)
-          .find((input) => input.props('ariaLabel') === '共投计划重量1')!
-        expect(planned.props('modelValue')).toBe(120)
-        expect(wrapper.get('input[aria-label="共投客户1"]').element).toHaveProperty(
-          'value',
-          'C-11600',
-        )
-      } else {
-        expect(wrapper.get('input[aria-label="共投客户1"]').element).toHaveProperty(
-          'value',
-          'C-NEXT',
-        )
-      }
-      expect(wrapper.getComponent(WarehouseReceiptDocuments).props('route')!.id).toBe(101)
-    },
-  )
-
   it('keeps inherited attachments on the left without an extra original-file toggle', async () => {
     await render()
     const rail = wrapper.getComponent(WarehouseReceiptDocuments)
@@ -1116,110 +954,16 @@ describe('库房关联已发布工艺', () => {
   })
 })
 
-describe('共投整体校验', () => {
-  it('marks and locates an oversized imported shared group until excess serials are removed', async () => {
-    const route = importedDocument()
-    route.serial_nos = Array.from(
-      { length: 21 },
-      (_, index) => `IMPORT-${String(index + 1).padStart(2, '0')}`,
-    )
-    vi.spyOn(processRouteApi, 'detail').mockResolvedValue(route)
-    await render()
-    await importFile()
-    wrapper
-      .findAllComponents(ElSelect)
-      .find((item) => item.find('input[aria-label="物料类型"]').exists())!
-      .vm.$emit('update:modelValue', 'semi_finished')
-    await flushPromises()
-    const amounts = new Map(
-      wrapper.findAllComponents(ElInputNumber).map((input) => [input.props('ariaLabel'), input]),
-    )
-    for (let index = 1; index <= 21; index += 1) {
-      amounts.get(`共投计划重量${index}`)!.vm.$emit('update:modelValue', 1)
-      amounts.get(`共投计划件数${index}`)!.vm.$emit('update:modelValue', 1)
-    }
-    await flushPromises()
-    await Promise.all(
-      Array.from({ length: 21 }, (_, index) =>
-        wrapper.get(`input[aria-label="共投计划切割尺寸${index + 1}"]`).setValue('按图纸切割'),
-      ),
-    )
-    await reviewImportedRoute()
-    const serial = wrapper.get('input[aria-label="共投流水号1"]').element as HTMLInputElement
-    const scroll = vi.fn()
-    Object.defineProperty(serial, 'scrollIntoView', { value: scroll, configurable: true })
-    const focus = vi.spyOn(serial, 'focus')
-    await submit()
-    expect(teamMaterialApi.createReceipt).not.toHaveBeenCalled()
-    const group = wrapper.get('[data-validation-field="members"]')
-    expect(group.classes()).toContain('dialog-field')
-    expect(group.classes()).toContain('is-error')
-    expect(group.attributes('aria-invalid')).toBe('true')
-    expect(scroll).toHaveBeenCalledWith({ block: 'center', inline: 'nearest' })
-    expect(focus).toHaveBeenCalledWith({ preventScroll: true })
-    await wrapper.get('button[aria-label="移除共投流水号21"]').trigger('click')
-    expect(group.classes()).not.toContain('is-error')
-    expect(group.attributes('aria-invalid')).toBe('false')
-    vi.mocked(processRouteApi.detail).mockResolvedValue({
-      ...route,
-      serial_nos: route.serial_nos.slice(0, 20),
-    })
-    await importFile()
-    await confirmImported()
-    await submit()
-    expect(teamMaterialApi.createReceipt).toHaveBeenCalledOnce()
-    expect(vi.mocked(teamMaterialApi.createReceipt).mock.calls[0]![1].shared_serials).toHaveLength(
-      20,
-    )
-  }, 15000)
-})
-
-describe('入库基础资料与共投计划顺序', () => {
-  it('keeps receipt amounts and material specifications before allocation without removing fields', async () => {
-    const route = importedDocument()
-    route.serial_nos = ['IMPORT-01', 'IMPORT-02', 'IMPORT-03']
-    vi.spyOn(processRouteApi, 'detail').mockResolvedValue(route)
-    await render()
-    await importFile()
-    const allocation = wrapper.get('[aria-label="共投流水号安排"]').element
-    for (const label of [
-      '入库件数',
-      '入库重量',
-      '原单批号',
-      '编号',
-      '件号',
-      '形状',
-      '外委单位',
-      '用途分类',
-      '三级类别',
-      '订单分类',
-      '成品件数',
-      '转料规格',
-    ]) {
-      const field = wrapper.get(`[aria-label="${label}"]`).element
-      expect(
-        field.compareDocumentPosition(allocation) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy()
-    }
-    const requirements = wrapper.get('textarea[aria-label="技术要求"]').element
-    expect(
-      requirements.compareDocumentPosition(allocation) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
-    const notes = wrapper.get('textarea[aria-label="入库说明"]').element
-    expect(
-      allocation.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
-    expect(wrapper.get('input[aria-label="共投客户1"]').element).toHaveProperty('value', 'C-11600')
-    expect(wrapper.get('input[aria-label="共投流水号3"]').element).toHaveProperty(
-      'value',
-      'IMPORT-03',
-    )
-    expect(wrapper.text()).toContain('共投 · 3 个流水号')
-    await wrapper.get('input[aria-label="编号"]').setValue('核对后的编号')
-    await amount('入库重量', 180)
-    expect(wrapper.get('input[aria-label="编号"]').element).toHaveProperty('value', '核对后的编号')
-    expect(wrapper.getComponent(WarehouseReceiptDocuments).props('route')?.id).toBe(route.id)
-  })
+it('does not turn a historical multi-serial route into a shared receipt', async () => {
+  const route = importedDocument()
+  route.serial_nos = ['IMPORT-01', 'IMPORT-02', 'IMPORT-03']
+  vi.mocked(processRouteApi.detail).mockResolvedValue(route)
+  await render()
+  await importFile()
+  expect(wrapper.find('[aria-label="共投流水号安排"]').exists()).toBe(false)
+  expect(wrapper.get('input[aria-label="流水号"]').element).toHaveProperty('value', 'IMPORT-01')
+  for (const label of ['入库件数', '入库重量', '编号', '转料规格'])
+    expect(wrapper.find(`[aria-label="${label}"]`).exists()).toBe(true)
 })
 
 it('associates a manually created published route without requesting a missing Word source', async () => {

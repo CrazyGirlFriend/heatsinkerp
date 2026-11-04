@@ -6,7 +6,7 @@ import WorkspaceTable from './WorkspaceTable.vue'
 import WorkspacePagination from './WorkspacePagination.vue'
 import WorkspaceDataToolbar from './WorkspaceDataToolbar.vue'
 import { awaitingReview, plannedDueLabel, planLabel } from '@/utils/schedulePlanning'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElOption, ElTag, ElTableColumn } from 'element-plus'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
@@ -20,7 +20,7 @@ import StatePanel from './StatePanel.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
 import TableExportButton from './TableExportButton.vue'
 import DeliverySchedules from './DeliverySchedules.vue'
-import ProductionScheduleTimeline from './ProductionScheduleTimeline.vue'
+const VTableScheduleTimeline = defineAsyncComponent(() => import('./VTableScheduleTimeline.vue'))
 import ScheduleTaskEditor from './ScheduleTaskEditor.vue'
 import ScheduleRouteLink from './ScheduleRouteLink.vue'
 import ScheduleReworkPanel from './ScheduleReworkPanel.vue'
@@ -423,7 +423,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <component
-      :is="management ? 'div' : ProductionScheduleTimeline"
+      :is="management ? 'div' : VTableScheduleTimeline"
       v-show="!error"
       class="task-board__surface"
       :class="{ 'task-board__surface--management': management }"

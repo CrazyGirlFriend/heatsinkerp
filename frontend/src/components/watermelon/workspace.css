@@ -24,17 +24,6 @@
   border-radius: 12px;
   background: var(--wm-bg);
 }
-.team-workspace__card-navigation {
-  flex: 0 0 auto;
-  min-width: 0;
-  padding: 20px 20px 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--wm-border) transparent;
-}
-.team-workspace__card-navigation .wm-segmented {
-  flex-wrap: nowrap;
-}
 .team-workspace--watermelon .workspace-data-panel.wm-data-panel,
 .team-workspace--watermelon .serial-history,
 .team-workspace--watermelon .team-settings-page {
@@ -243,9 +232,6 @@ html.wm-app .el-popper.is-light .el-popper__arrow::before {
   }
 }
 @media (max-width: 760px) {
-  .team-workspace__card-navigation {
-    padding: 12px 12px 0;
-  }
   .team-workspace--watermelon .workspace-data-panel.wm-data-panel,
   .team-workspace--watermelon .serial-history,
   .team-workspace--watermelon .team-settings-page {

@@ -1,19 +1,18 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   IconChevronRight,
   IconChevronLeft,
   IconChevronsUp,
   IconChevronsDown,
   IconFlag,
-  IconCheck,
   IconMapPinFilled,
   IconExclamationCircleFilled,
   IconFocus2,
-  IconX,
-  IconArrowRight,
 } from '@tabler/icons-vue'
 import ScheduleDateRange from './ScheduleDateRange.vue'
+import ScheduleTimelineBar from './ScheduleTimelineBar.vue'
+import ScheduleDeliveryMark from './ScheduleDeliveryMark.vue'
 import type { ProductionSchedule, ScheduleTask } from '@/types/productionSchedule'
 import { formatAmount, formatDateTime } from '@/utils/format'
 import { progressRange, timelineNodes } from '@/utils/scheduleProgress'
@@ -27,8 +26,6 @@ import {
   boardSummaryNodes,
   boardTeamColor,
   layoutBoardBars,
-  boardBatchFlow,
-  boardBarState,
   type BoardBar,
 } from '@/utils/scheduleBoard'
 
@@ -37,19 +34,17 @@ const emit = defineEmits<{
   'open-task': [task: ScheduleTask]
   'open-node': [node: ProductionSchedule]
 }>()
-const arrowId = `schedule-flow-${useId()}`
 const now = ref(Date.now())
 const range = ref<[string, string]>([
-  boardDate(boardDay(now.value) - 5 * BOARD_DAY),
-  boardDate(boardDay(now.value) + 8 * BOARD_DAY),
+  boardDate(boardDay(now.value) - 2 * BOARD_DAY),
+  boardDate(boardDay(now.value) + 4 * BOARD_DAY),
 ])
-const period = ref(14)
+const period = ref(7)
 const expanded = ref(new Set<number>())
 const seen = new Set<number>()
-const selected = ref<{ task: number; node: number } | null>(null)
 const grid = ref<HTMLElement>()
 const measured = ref(1100)
-const identityWidth = ref(236)
+const identityWidth = ref(224)
 const quantityWidth = 76
 let observer: ResizeObserver | undefined
 let clock: ReturnType<typeof setInterval> | undefined
@@ -58,7 +53,7 @@ const end = computed(() => Date.parse(`${range.value[1]}T00:00:00+08:00`) + BOAR
 const days = computed(() => progressRange(start.value, end.value, now.value).days)
 const trackWidth = computed(() => Math.max(1, measured.value - identityWidth.value - quantityWidth))
 const gridWidth = computed(() =>
-  Math.max(940, identityWidth.value + quantityWidth + days.value.length * 40),
+  Math.max(940, identityWidth.value + quantityWidth + days.value.length * 192),
 )
 const monthLabel = computed(() => {
   const first = range.value[0],
@@ -83,36 +78,10 @@ const groups = computed(() =>
       trackWidth.value,
     )
     const open = expanded.value.has(task.id)
-    const headerHeight = open ? 54 : Math.max(60, summary.height)
-    const positions = new Map<number, { bar: BoardBar; y: number }>()
-    let top = headerHeight
-    for (const step of steps) {
-      for (const bar of step.bars)
-        positions.set(bar.node.id, { bar, y: top + 9 + bar.lane * 36 + 17 })
-      top += step.height
-    }
-    const flow =
-      selected.value?.task === task.id ? boardBatchFlow(nodes, selected.value.node) : null
-    const links =
-      open && flow
-        ? flow.links.flatMap((link) => {
-            const a = positions.get(link.from),
-              b = positions.get(link.to)
-            if (!a || !b) return []
-            const x1 = a.bar.left + a.bar.width,
-              x2 = b.bar.left
-            const y1 = a.y,
-              y2 = b.y
-            const middle = y1 + (y2 - y1) / 2
-            return [
-              {
-                key: `${link.from}-${link.to}`,
-                path: `M ${x1} ${y1} H ${x1 + 7} V ${middle} H ${Math.max(2, x2 - 7)} V ${y2} H ${x2}`,
-                color: boardTeamColor(b.bar.node.team_name),
-              },
-            ]
-          })
-        : []
+    const headerHeight = open ? 52 : Math.max(60, summary.height)
+    const height = open
+      ? headerHeight + steps.reduce((sum, step) => sum + step.height, 0)
+      : headerHeight
     const due = scheduleTimestamp(task.final_due_at)
     return {
       task,
@@ -120,9 +89,7 @@ const groups = computed(() =>
       summary,
       open,
       headerHeight,
-      height: open ? top : headerHeight,
-      flow,
-      links,
+      height,
       due,
       deadline:
         due != null && due >= start.value && due < end.value
@@ -135,13 +102,6 @@ const groups = computed(() =>
     }
   }),
 )
-const active = computed(() => {
-  if (!selected.value) return null
-  const task = props.tasks.find((task) => task.id === selected.value?.task)
-  const node = task && timelineNodes(task.nodes).find((node) => node.id === selected.value?.node)
-  const parent = task?.nodes.find((item) => item.id === (node?.parent_schedule_id || node?.id))
-  return task && node && parent ? { task, node, parent } : null
-})
 const teamLegend = computed(() => [
   ...new Set(
     props.tasks.flatMap((task) =>
@@ -158,15 +118,6 @@ watch(
     const fresh = tasks.filter((task) => !seen.has(task.id))
     if (fresh.length) expanded.value.add(fresh[0]!.id)
     tasks.forEach((task) => seen.add(task.id))
-    if (
-      selected.value &&
-      !tasks.some(
-        (task) =>
-          task.id === selected.value?.task &&
-          timelineNodes(task.nodes).some((node) => node.id === selected.value?.node),
-      )
-    )
-      selected.value = null
   },
   { immediate: true },
 )
@@ -215,51 +166,21 @@ function locate(task: ScheduleTask) {
   ]
   expanded.value.add(task.id)
 }
-function selectBar(task: ScheduleTask, bar: BoardBar) {
-  selected.value = { task: task.id, node: bar.node.id }
-  expanded.value.add(task.id)
-}
 function openBar(task: ScheduleTask, bar: BoardBar) {
   const parent = task.nodes.find((node) => node.id === (bar.node.parent_schedule_id || bar.node.id))
   if (parent) emit('open-node', parent)
-}
-function style(bar: BoardBar) {
-  return {
-    left: `${bar.left}px`,
-    width: `${bar.width}px`,
-    top: `${9 + bar.lane * 36}px`,
-    '--team': boardTeamColor(bar.node.team_name),
-  }
 }
 function amount(node: ProductionSchedule) {
   return node.completion_basis === 'weight'
     ? `${formatAmount(node.target_weight)} kg`
     : formatAmount(node.target_quantity)
 }
-function barTitle(bar: BoardBar) {
-  const node = bar.node
-  return `${node.team_name}${node.batch_number ? ` · 第 ${node.batch_number} 批` : ''} · ${amount(node)}${node.completion_basis === 'weight' ? '' : ' 件'}\n${bar.interval ? `${formatDateTime(node.planned_start_at)} → ` : '交期 '}${formatDateTime(node.due_at)}${node.status === 'overdue' ? '\n已逾期' : ''}`
-}
-function progress(node: ProductionSchedule) {
-  const values: number[] = []
-  if (node.completion_basis !== 'weight' && node.target_quantity)
-    values.push(node.dispatched_quantity / node.target_quantity)
-  if (node.completion_basis !== 'quantity' && node.target_weight)
-    values.push(node.dispatched_weight / node.target_weight)
-  return `${Math.min(100, Math.max(0, (values.length ? Math.min(...values) : 0) * 100))}%`
-}
-function escape(event: KeyboardEvent) {
-  if (event.key === 'Escape' && selected.value && !event.defaultPrevented) {
-    event.preventDefault()
-    selected.value = null
-  }
-}
 onMounted(() => {
   observer = new ResizeObserver(() => {
     if (grid.value) {
       measured.value = grid.value.clientWidth
       identityWidth.value =
-        Number.parseFloat(getComputedStyle(grid.value).getPropertyValue('--identity')) || 236
+        Number.parseFloat(getComputedStyle(grid.value).getPropertyValue('--identity')) || 224
     }
   })
   if (grid.value) observer.observe(grid.value)
@@ -274,12 +195,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section
-    class="production-timeline"
-    aria-label="生产排期看板"
-    :aria-busy="loading"
-    @keydown="escape"
-  >
+  <section class="production-timeline" aria-label="生产排期看板" :aria-busy="loading">
     <div class="board-toolbar">
       <div class="toolbar-start">
         <slot />
@@ -327,7 +243,7 @@ onBeforeUnmount(() => {
       >
         <header class="grid-heading">
           <div class="identity-heading">流水号 / 班组</div>
-          <div class="quantity-heading">数量 <small>件</small></div>
+          <div class="quantity-heading">计划数</div>
           <div class="date-heading">
             <div class="month-caption">{{ monthLabel }}</div>
             <div class="day-headings">
@@ -379,7 +295,7 @@ onBeforeUnmount(() => {
               />
             </div>
             <div class="quantity-cell">{{ formatAmount(boardQuantity(group.task)) }}</div>
-            <div class="track" @click.self="selected = null">
+            <div class="track">
               <div class="track-grid">
                 <span
                   v-for="day in days"
@@ -397,51 +313,22 @@ onBeforeUnmount(() => {
                     :style="{
                       left: `${Math.min(...step.bars.map((bar) => bar.left))}px`,
                       width: `${Math.max(...step.bars.map((bar) => bar.left + (bar.interval ? bar.width : 4))) - Math.min(...step.bars.map((bar) => bar.left))}px`,
-                      top: `${13 + index * Math.min(5, 30 / Math.max(1, group.steps.length - 1))}px`,
+                      top: `${23 + (index % 3) * 3}px`,
                       background: boardTeamColor(step.node.team_name),
                     }"
                   />
                 </template>
               </template>
               <template v-else>
-                <button
+                <ScheduleTimelineBar
                   v-for="bar in group.summary.bars"
                   :key="bar.node.id"
-                  class="batch-bar"
-                  :class="[
-                    boardBarState(bar.node),
-                    {
-                      milestone: !bar.interval,
-                      overdue: bar.node.status === 'overdue',
-                      narrow: bar.width < 68,
-                      tiny: bar.width < 32,
-                    },
-                  ]"
-                  :style="style(bar)"
-                  :title="barTitle(bar)"
-                  :aria-label="barTitle(bar)"
-                  @click="expanded.add(group.task.id)"
-                  @dblclick="openBar(group.task, bar)"
-                >
-                  <span
-                    v-if="boardBarState(bar.node) === 'partial'"
-                    class="bar-progress"
-                    :style="{ width: progress(bar.node) }"
-                  />
-                  <IconCheck
-                    v-if="boardBarState(bar.node) === 'done'"
-                    :size="14"
-                  /><IconMapPinFilled
-                    v-else-if="boardBarState(bar.node) === 'stock'"
-                    :size="14"
-                  /><IconArrowRight v-else-if="boardBarState(bar.node) === 'partial'" :size="14" />
-                  <span class="bar-label">{{ bar.node.team_name }}</span
-                  ><IconExclamationCircleFilled
-                    v-if="bar.node.status === 'overdue'"
-                    class="bar-warning"
-                    :size="14"
-                  />
-                </button>
+                  :bar="bar"
+                  :serial-no="group.task.serial_no"
+                  :now="now"
+                  summary
+                  @open="openBar(group.task, bar)"
+                />
                 <button
                   v-if="!group.summary.bars.length && group.pending"
                   class="pending-plan"
@@ -504,7 +391,7 @@ onBeforeUnmount(() => {
                 </button>
               </div>
               <div class="quantity-cell">{{ amount(step.node) }}</div>
-              <div class="track" @click.self="selected = null">
+              <div class="track">
                 <div class="track-grid">
                   <span
                     v-for="day in days"
@@ -517,50 +404,14 @@ onBeforeUnmount(() => {
                   class="today-line"
                   :style="{ left: `${todayPosition}%` }"
                 />
-                <button
+                <ScheduleTimelineBar
                   v-for="bar in step.bars"
                   :key="bar.node.id"
-                  class="batch-bar"
-                  :class="[
-                    boardBarState(bar.node),
-                    {
-                      milestone: !bar.interval,
-                      overdue: bar.node.status === 'overdue',
-                      narrow: bar.width < 68,
-                      tiny: bar.width < 32,
-                      selected: selected?.task === group.task.id && selected.node === bar.node.id,
-                      dimmed: group.flow && !group.flow.ids.has(bar.node.id),
-                      related: group.flow?.ids.has(bar.node.id),
-                      'clipped-start': bar.clippedStart,
-                      'clipped-end': bar.clippedEnd,
-                    },
-                  ]"
-                  :style="style(bar)"
-                  :title="barTitle(bar)"
-                  :aria-label="barTitle(bar)"
-                  :aria-pressed="selected?.task === group.task.id && selected.node === bar.node.id"
-                  @click="selectBar(group.task, bar)"
-                  @dblclick="openBar(group.task, bar)"
-                >
-                  <span
-                    v-if="boardBarState(bar.node) === 'partial'"
-                    class="bar-progress"
-                    :style="{ width: progress(bar.node) }"
-                  />
-                  <IconCheck v-if="boardBarState(bar.node) === 'done'" :size="14" /><IconArrowRight
-                    v-else-if="boardBarState(bar.node) === 'partial'"
-                    :size="14"
-                  />
-                  <span class="bar-label">{{
-                    bar.node.batch_number ? `第${bar.node.batch_number}批` : step.node.team_name
-                  }}</span
-                  ><span class="bar-quantity">{{ amount(bar.node) }}</span
-                  ><IconExclamationCircleFilled
-                    v-if="bar.node.status === 'overdue'"
-                    class="bar-warning"
-                    :size="14"
-                  />
-                </button>
+                  :bar="bar"
+                  :serial-no="group.task.serial_no"
+                  :now="now"
+                  @open="openBar(group.task, bar)"
+                />
                 <button
                   v-if="!hasConfirmedPlan(step.node)"
                   class="pending-plan"
@@ -571,89 +422,38 @@ onBeforeUnmount(() => {
                 <button
                   v-else-if="!step.bars.length && step.outside"
                   class="pending-plan outside-plan"
+                  :title="`查看${step.node.team_name}排期`"
+                  :aria-label="`定位${group.task.serial_no}的${step.node.team_name}排期`"
                   @click="locate(group.task)"
                 >
-                  <IconFocus2 :size="14" />定位排期
+                  <IconFocus2 :size="16" />
                 </button>
               </div>
             </div>
           </template>
-          <svg
-            v-if="group.links.length"
-            class="flow-links"
-            :style="{ left: `${identityWidth + quantityWidth}px` }"
-            :width="trackWidth"
-            :height="group.height"
-            aria-hidden="true"
-          >
-            <defs>
-              <marker
-                :id="`${arrowId}-${group.task.id}`"
-                viewBox="0 0 6 6"
-                refX="5"
-                refY="3"
-                markerWidth="5"
-                markerHeight="5"
-                orient="auto"
-              >
-                <path d="M 0 0 L 6 3 L 0 6 Z" fill="context-stroke" />
-              </marker>
-            </defs>
-            <path
-              v-for="link in group.links"
-              :key="link.key"
-              :d="link.path"
-              :stroke="link.color"
-              :marker-end="`url(#${arrowId}-${group.task.id})`"
-            />
-          </svg>
         </div>
       </div>
     </div>
-    <footer class="board-footer" :class="{ 'has-selection': active }">
-      <template v-if="active"
-        ><span
-          class="selection-identity"
-          :style="{ '--team': boardTeamColor(active.node.team_name) }"
-          ><span class="team-dot" /><strong>{{ active.node.team_name }}</strong
-          ><span v-if="active.node.batch_number">第 {{ active.node.batch_number }} 批</span></span
-        ><span
-          >{{ amount(active.node)
-          }}{{ active.node.completion_basis === 'weight' ? '' : ' 件' }}</span
-        ><span class="selection-dates"
-          >{{
-            active.node.planned_start_at
-              ? formatDateTime(active.node.planned_start_at)
-              : '未填开始时间'
-          }}
-          <IconArrowRight :size="14" /> {{ formatDateTime(active.node.due_at) }}</span
-        ><button class="detail-button" @click="emit('open-node', active.parent)">
-          查看详情 <IconArrowRight :size="14" /></button
-        ><button class="icon-button" aria-label="取消批次选择" @click="selected = null">
-          <IconX :size="16" /></button
-      ></template>
-      <template v-else
-        ><div class="team-legend">
-          <span v-for="name in teamLegend" :key="name" :style="{ '--team': boardTeamColor(name) }"
-            ><span class="team-dot" />{{ name }}</span
-          >
-        </div>
-        <div class="state-legend">
-          <span><IconCheck :size="13" />已转出</span
-          ><span><IconMapPinFilled :size="13" />物料在此</span
-          ><span><IconArrowRight :size="13" />部分转出</span
-          ><span><i class="legend-planned" />已计划</span
-          ><span><IconFlag :size="14" />最终交期</span>
-        </div></template
-      >
+    <footer class="board-footer">
+      <div class="team-legend">
+        <span v-for="name in teamLegend" :key="name" :style="{ '--team': boardTeamColor(name) }"
+          ><span class="team-dot" />{{ name }}</span
+        >
+      </div>
+      <div class="state-legend">
+        <span><ScheduleDeliveryMark state="pending" />待完成</span>
+        <span><ScheduleDeliveryMark state="completed" />按时完成</span>
+        <span><ScheduleDeliveryMark state="overdue" />逾期</span>
+        <span><ScheduleDeliveryMark state="completed_late" />逾期完成</span>
+      </div>
     </footer>
   </section>
 </template>
 
 <style scoped>
 .production-timeline {
-  --line: var(--wm-muted-surface, #e8ebef);
-  --identity: 236px;
+  --line: color-mix(in srgb, var(--wm-border, #dde2e8) 60%, var(--wm-bg, #fff));
+  --identity: 224px;
   --quantity: 76px;
   display: flex;
   flex: 1;
@@ -664,9 +464,9 @@ onBeforeUnmount(() => {
   color: var(--wm-text, #20242c);
   background: var(--wm-bg, #fff);
   border: 1px solid var(--wm-border, #dde2e8);
-  border-radius: 10px;
+  border-radius: 12px;
   font-family: 'HeatSink Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  font-size: 13px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
   box-shadow: 0 3px 14px #25395204;
 }
@@ -765,6 +565,9 @@ onBeforeUnmount(() => {
   padding: 0;
   box-shadow: none;
 }
+.toolbar-start :deep(.wm-data-toolbar) {
+  max-width: 360px;
+}
 .toolbar-start :deep(.workspace-toolbar__search) {
   flex: 0 1 210px;
   min-width: 100px;
@@ -816,7 +619,8 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   scrollbar-width: thin;
-  scrollbar-color: #d4dae1 transparent;
+  scrollbar-color: var(--wm-border, #d4dae1) transparent;
+  scroll-behavior: smooth;
 }
 .schedule-grid {
   position: relative;
@@ -831,7 +635,7 @@ onBeforeUnmount(() => {
   position: sticky;
   top: 0;
   z-index: 8;
-  height: 68px;
+  height: 58px;
   background: var(--wm-bg, #fff);
   border-bottom: 1px solid var(--wm-border, #dbe2e7);
 }
@@ -843,7 +647,7 @@ onBeforeUnmount(() => {
   z-index: 2;
   border-right: 1px solid var(--line);
   color: var(--wm-muted, #76808c);
-  background: var(--wm-muted-surface, #fbfcfd);
+  background: var(--wm-bg, #fff);
   font-size: 12px;
 }
 .identity-heading {
@@ -872,7 +676,7 @@ onBeforeUnmount(() => {
 .day-headings {
   display: grid;
   grid-template-columns: repeat(var(--days), minmax(0, 1fr));
-  height: 41px;
+  height: 31px;
 }
 .day-headings > div {
   display: flex;
@@ -903,8 +707,11 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--line);
   background: var(--wm-bg, #fff);
 }
-.order-row.expanded {
-  background: var(--wm-muted-surface, #fafbfd);
+.order-row {
+  border-bottom-color: var(--wm-border, #dde2e8);
+}
+.order-row.expanded .track-grid {
+  opacity: 0;
 }
 .order-group + .order-group {
   border-top: 1px solid var(--wm-border, #dae1e7);
@@ -964,7 +771,7 @@ onBeforeUnmount(() => {
 }
 .step-identity {
   padding-left: 25px;
-  gap: 9px;
+  gap: 10px;
 }
 .step-number {
   color: var(--wm-muted, #7b838d);
@@ -972,8 +779,8 @@ onBeforeUnmount(() => {
   font-size: 11px;
 }
 .team-dot {
-  width: 7px;
-  height: 7px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--team);
   flex-shrink: 0;
@@ -991,7 +798,7 @@ onBeforeUnmount(() => {
   position: relative;
   min-width: 0;
   isolation: isolate;
-  overflow: clip;
+  overflow: hidden;
 }
 .track-grid {
   position: absolute;
@@ -1007,9 +814,7 @@ onBeforeUnmount(() => {
 .track-grid .weekend {
   background: var(--wm-muted-surface, #f9fafc);
 }
-.track-grid .today-column {
-  background: var(--wm-success-bg, #f6fbf9);
-}
+
 .today-line {
   position: absolute;
   top: 0;
@@ -1021,124 +826,9 @@ onBeforeUnmount(() => {
 }
 .summary-line {
   position: absolute;
-  height: 4px;
-  border-radius: 3px;
-  opacity: 0.75;
-}
-.production-timeline .batch-bar {
-  position: absolute;
-  height: 34px;
-  border: 1px solid color-mix(in srgb, var(--team) 45%, var(--wm-bg, white));
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--team) 5%, var(--wm-bg, white));
-  color: var(--team);
-  padding: 0 7px;
-  justify-content: flex-start;
-  gap: 4px;
-  font-size: 13px;
-  text-align: left;
-  transition:
-    box-shadow 0.15s,
-    opacity 0.15s,
-    filter 0.15s;
-  z-index: 2;
-}
-.batch-bar:hover {
-  filter: brightness(0.98);
-  box-shadow: 0 2px 6px #23394c24;
-  z-index: 5;
-}
-.batch-bar > span:not(.bar-progress),
-.batch-bar > svg {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-.batch-bar .bar-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex-shrink: 1 !important;
-}
-.batch-bar .bar-quantity {
-  margin-left: auto;
-  font-weight: 550;
-}
-.production-timeline .batch-bar.done {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--team) 10%, var(--wm-bg, white));
-}
-.production-timeline .batch-bar.partial,
-.production-timeline .batch-bar.stock {
-  border-color: var(--team);
-  background: var(--team);
-  color: #fff;
-}
-.bar-progress {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  background: #0000001a;
-  border-radius: 3px;
-}
-.production-timeline .batch-bar.overdue {
-  border-color: #d77561;
-}
-.batch-bar .bar-warning {
-  position: absolute !important;
-  right: -5px;
-  top: -5px;
-  color: #d96e59;
-  background: var(--wm-bg, white);
-  border-radius: 50%;
-}
-.production-timeline .batch-bar.selected {
-  box-shadow:
-    0 0 0 2px var(--wm-bg, white),
-    0 0 0 4px var(--team);
-  z-index: 6;
-}
-.batch-bar.dimmed {
-  opacity: 0.3;
-}
-.batch-bar.related {
-  z-index: 4;
-}
-.batch-bar.tiny .bar-label,
-.batch-bar.narrow .bar-quantity {
-  display: none;
-}
-.production-timeline .batch-bar.narrow {
-  padding: 0 3px;
-  justify-content: center;
-}
-.production-timeline .batch-bar.milestone {
-  top: 14px !important;
-  height: 24px;
-  border-radius: 50%;
-  padding: 0;
-  background: color-mix(in srgb, var(--team) 10%, var(--wm-bg, white));
-}
-.batch-bar.milestone::before {
-  content: '';
-  width: 8px;
-  height: 8px;
-  transform: rotate(45deg);
-  border: 1px solid var(--team);
-  margin: auto;
-}
-.batch-bar.milestone > svg:not(.bar-warning) {
-  display: none;
-}
-.batch-bar.clipped-start {
-  border-left-style: dashed;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-}
-.batch-bar.clipped-end {
-  border-right-style: dashed;
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
+  height: 3px;
+  border-radius: 2px;
+  opacity: 0.7;
 }
 .production-timeline .deadline {
   position: absolute;
@@ -1173,6 +863,8 @@ onBeforeUnmount(() => {
   background: var(--wm-warning-bg, #fffcf6);
 }
 .production-timeline .outside-plan {
+  width: 28px;
+  padding: 0;
   color: var(--wm-muted, #7c8998);
   border-color: var(--wm-border, #dbe2e8);
   background: var(--wm-muted-surface, #fafbfd);
@@ -1191,25 +883,11 @@ onBeforeUnmount(() => {
 .locate-button small {
   font-size: 10px;
 }
-.flow-links {
-  position: absolute;
-  top: 0;
-  pointer-events: none;
-  z-index: 3;
-  overflow: hidden;
-}
-.flow-links > path {
-  fill: none;
-  stroke-width: 1.4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: 0.7;
-}
 .board-empty {
   display: grid;
   place-items: center;
   min-height: 280px;
-  height: calc(100% - 68px);
+  height: calc(100% - 58px);
   color: var(--wm-muted, #929aa4);
 }
 .board-footer {
@@ -1227,9 +905,7 @@ onBeforeUnmount(() => {
 .team-legend,
 .state-legend,
 .team-legend > span,
-.state-legend > span,
-.selection-identity,
-.selection-dates {
+.state-legend > span {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -1238,32 +914,6 @@ onBeforeUnmount(() => {
 .state-legend {
   gap: 13px;
   flex-wrap: wrap;
-}
-.state-legend i {
-  width: 11px;
-  height: 8px;
-  border: 1px solid var(--wm-muted, #8a9da8);
-  border-radius: 2px;
-}
-.legend-planned {
-  background: var(--wm-muted-surface, #f7f9fa);
-}
-.board-footer.has-selection {
-  min-height: 44px;
-  font-size: 12px;
-  justify-content: flex-start;
-  color: var(--wm-muted, #55616f);
-}
-.selection-identity {
-  gap: 7px;
-}
-.selection-dates {
-  gap: 8px;
-}
-.production-timeline .detail-button {
-  margin-left: auto;
-  color: #24796c;
-  font-size: 12px;
 }
 @keyframes row-in {
   from {
@@ -1289,16 +939,15 @@ onBeforeUnmount(() => {
   .toolbar-end {
     margin-left: auto;
   }
-  .selection-dates {
-    font-size: 11px;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .step-row {
     animation: none;
   }
-  .chevron,
-  .batch-bar {
+  .board-scroll {
+    scroll-behavior: auto;
+  }
+  .chevron {
     transition: none;
   }
 }

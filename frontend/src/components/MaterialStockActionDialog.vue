@@ -4,6 +4,7 @@ import ElInput from '@/components/AppInput.vue'
 import AppPopover from '@/components/AppPopover.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import AppDialog from '@/components/AppDialog.vue'
+import SharedDispatchFields from './SharedDispatchFields.vue'
 import SerialRouteAttachments from './SerialRouteAttachments.vue'
 import FormWorkspace from './FormWorkspace.vue'
 import MaterialInput from './MaterialInput.vue'
@@ -17,7 +18,7 @@ import {
 
 import { ArrowDown } from '@element-plus/icons-vue'
 import '@/styles/stock-action-glass.css'
-import { sharedSerialLabel } from '@/types/sharedMaterial'
+import { sharedSerialLabel, type SharedMaterialSerial } from '@/types/sharedMaterial'
 import WeightInput from './WeightInput.vue'
 import { useDialogValidation } from '@/composables/useDialogValidation'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
@@ -87,6 +88,7 @@ const emit = defineEmits<{
 }>()
 function needsRoute(line: (typeof lines.value)[number]) {
   return (
+    !line.shared &&
     !isLoss.value &&
     sourceWarehouse.value &&
     !isScrapType(line.materialType) &&
@@ -95,6 +97,7 @@ function needsRoute(line: (typeof lines.value)[number]) {
   )
 }
 function routeProblem(line: (typeof lines.value)[number]) {
+  if (line.shared) return canShare(line) ? line.sharedProblem : '共投仅用于库房原料向下序转出'
   if (!needsRoute(line)) return ''
   if (!line.serialNo.trim()) return '请填写流水号'
   if (line.routeLoading) return '正在读取工艺'
@@ -118,6 +121,10 @@ const lines = ref<
     key: string
     selectedRoute?: ProcessRoute
     dispatchOrderAvailable?: boolean
+    shared: boolean
+    sharedMembers: SharedMaterialSerial[]
+    sharedRoutes: ProcessRoute[]
+    sharedProblem: string
     serialNo: string
     routeLoading?: boolean
     routeError?: string
@@ -185,7 +192,7 @@ const schedulesLoading = ref(false)
 const scheduleError = ref('')
 const scheduleRefresh = ref(0)
 function lineSchedules(line: (typeof lines.value)[number]) {
-  return isScheduleApplicable(line.materialType)
+  return !line.shared && isScheduleApplicable(line.materialType)
     ? scheduleCandidates.value[Number(line.source.transfer.id)] || []
     : []
 }
@@ -556,6 +563,7 @@ function splitLine(index: number) {
   if (!line || busy.value || lines.value.length >= 100) return
   lines.value.splice(index + 1, 0, {
     ...line,
+    sharedMembers: line.sharedMembers.map((member) => ({ ...member })),
     key: materialRequestKey(),
     warehouseLocation: '',
     warehouseLocationKey: '',
@@ -655,6 +663,10 @@ watch(
     if (!open) return
     lines.value = (isLoss.value ? props.sources.slice(0, 1) : props.sources).map((source) => ({
       key: materialRequestKey(),
+      shared: false,
+      sharedMembers: [],
+      sharedRoutes: [],
+      sharedProblem: '请填写共投明细',
       serialNo: source.transfer.serial_no || '',
       warehouseLocation: '',
       warehouseLocationKey: '',
@@ -928,14 +940,15 @@ async function submit() {
             warehouse_location_reservation_key: line.warehouseLocationKey,
           }
         : {}),
-      ...(line.selectedRoute
+      ...(line.selectedRoute && !line.shared
         ? {
             process_route_id: line.selectedRoute.id,
             process_route_version: line.selectedRoute.version,
           }
         : {}),
       source_transfer_id: Number(line.source.transfer.id),
-      ...(!line.source.transfer.serial_no && !isScrapType(line.materialType)
+      ...(line.shared ? { shared_serials: line.sharedMembers } : {}),
+      ...(!line.shared && !line.source.transfer.serial_no && !isScrapType(line.materialType)
         ? { serial_no: line.serialNo.trim() }
         : {}),
       ...(!isLoss.value && lineSchedules(line).some((schedule) => schedule.id === line.scheduleId)
@@ -1040,21 +1053,78 @@ async function submit() {
     if (current === generation) saving.value = false
   }
 }
+function canShare(line: (typeof lines.value)[number]) {
+  const lot = line.source.transfer
+  return (
+    !isLoss.value &&
+    sourceWarehouse.value &&
+    !external.value &&
+    !form.reworkReturn &&
+    !isScrapType(line.materialType) &&
+    !lot.shared_group_id &&
+    !lot.rework_route_id &&
+    !lot.rework_pending &&
+    ['warehouse_receipt', 'opening_stock'].includes(lot.entry_kind || '') &&
+    lot.receipt_kind !== 'return'
+  )
+}
+function toggleShared(line: (typeof lines.value)[number]) {
+  line.shared = !line.shared
+  line.selectedRoute = undefined
+  line.scheduleId = undefined
+  line.scheduleBatchId = undefined
+  line.sharedRoutes = []
+  line.sharedProblem = '请填写共投明细'
+  if (line.shared && !line.sharedMembers.length)
+    line.sharedMembers = [{ serial_no: line.serialNo }, { serial_no: '' }]
+}
+function setSharedRoutes(line: (typeof lines.value)[number], routes: ProcessRoute[]) {
+  line.sharedRoutes = routes
+  if (routes.length === line.sharedMembers.length && routes.length) {
+    const first = routes[0]!.steps[1]
+    if (first && routes.every((route) => route.steps[1]?.team_id === first.team_id)) {
+      form.nextTeamId = first.team_id || ''
+      line.purposeId = first.purpose_id || undefined
+    }
+  }
+}
 const attachmentItems = computed(() =>
   lines.value
-    .filter((line) => !isScrapType(line.materialType) && (!needsRoute(line) || line.selectedRoute))
-    .map((line) => ({
-      serialNo: line.serialNo.trim(),
-      batchNo: line.source.transfer.batch_no,
-      routeId: line.source.transfer.process_route?.id || line.selectedRoute?.id,
-      route: line.selectedRoute,
-    })),
+    .filter((line) => !isScrapType(line.materialType))
+    .flatMap((line) => {
+      if (line.shared)
+        return line.sharedMembers.flatMap((member) => {
+          const route = line.sharedRoutes.find((item) => item.id === member.process_route_id)
+          return route
+            ? [
+                {
+                  serialNo: member.serial_no,
+                  batchNo: line.source.transfer.batch_no,
+                  routeId: route.id,
+                  route,
+                },
+              ]
+            : []
+        })
+      if (needsRoute(line) && !line.selectedRoute) return []
+      return [
+        {
+          serialNo: line.serialNo.trim(),
+          batchNo: line.source.transfer.batch_no,
+          routeId: line.source.transfer.process_route?.id || line.selectedRoute?.id,
+          route: line.selectedRoute,
+        },
+      ]
+    }),
 )
+
 watch(
   () => [
     props.modelValue,
     isLoss.value,
-    lines.value.map((line) => `${line.key}:${line.serialNo}:${line.materialType}`).join('|'),
+    lines.value
+      .map((line) => `${line.key}:${line.serialNo}:${line.materialType}:${line.shared}`)
+      .join('|'),
   ],
   (_, _old, onCleanup) => {
     let cancelled = false
@@ -1288,6 +1358,14 @@ watch(
               </div>
               <div class="source-actions">
                 <ElButton
+                  v-if="canShare(line) || line.shared"
+                  size="small"
+                  :aria-pressed="line.shared"
+                  :disabled="busy"
+                  @click="toggleShared(line)"
+                  >{{ line.shared ? '取消共投' : '共投' }}</ElButton
+                >
+                <ElButton
                   size="small"
                   type="primary"
                   plain
@@ -1353,6 +1431,16 @@ watch(
                 </AppPopover>
               </div>
             </header>
+            <template v-if="line.shared">
+              <SharedDispatchFields
+                v-model="line.sharedMembers"
+                :team-id="teamId"
+                :disabled="busy"
+                @routes-change="setSharedRoutes(line, $event)"
+                @validation-change="line.sharedProblem = $event"
+              />
+              <ElFormItem :error="lineError(line, 'route')" />
+            </template>
 
             <template
               v-if="

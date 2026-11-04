@@ -4,7 +4,7 @@ import { Download, FullScreen, ScaleToOriginal } from '@element-plus/icons-vue'
 import ElButton from '@/components/AppButton.vue'
 import { workspaceToolsKey, type WorkspaceExportAction } from '@/utils/workspaceTools'
 import PageBackButton from '@/components/PageBackButton.vue'
-import WatermelonSegmented from '@/components/watermelon/WatermelonSegmented.vue'
+import WatermelonFilter from '@/components/watermelon/WatermelonFilter.vue'
 import {
   teamWorkspaceSections,
   teamWorkspaceSectionsFor,
@@ -252,8 +252,21 @@ onBeforeUnmount(() => {
       <div class="team-workspace__heading page-heading-start">
         <PageBackButton /><strong class="team-workspace__title">{{ title }}</strong>
         <template v-if="moduleLabel"
-          ><span class="team-workspace__divider" aria-hidden="true">/</span
-          ><span class="team-workspace__module">{{ moduleLabel }}</span></template
+          ><span class="team-workspace__divider" aria-hidden="true">/</span>
+          <nav
+            v-if="appearance === 'watermelon' && sections.length > 1"
+            :aria-label="`${title}${moduleLabel}视图`"
+          >
+            <WatermelonFilter
+              view-switch
+              :model-value="modelValue"
+              :label="sectionLabel"
+              :title="`${title}${moduleLabel}视图`"
+              :options="navigationOptions"
+              @change="selectSection"
+            />
+          </nav>
+          <span v-else class="team-workspace__module">{{ moduleLabel }}</span></template
         >
       </div>
       <nav
@@ -297,21 +310,6 @@ onBeforeUnmount(() => {
       role="region"
       aria-labelledby="workspace-page-heading"
     >
-      <nav
-        v-if="appearance === 'watermelon'"
-        :hidden="sections.length <= 1"
-        ref="navigation"
-        class="team-workspace__card-navigation"
-        :aria-label="`${title}${moduleLabel || ''}视图`"
-      >
-        <WatermelonSegmented
-          :model-value="modelValue"
-          :label="`${title}${moduleLabel || ''}视图`"
-          :options="navigationOptions"
-          controls="workspace-panel"
-          @change="selectSection"
-        />
-      </nav>
       <slot />
     </div>
     <slot name="dialogs" />

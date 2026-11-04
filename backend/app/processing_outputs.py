@@ -38,14 +38,14 @@ def create_outputs(db, lot, payload, user, now, hold, task_fields=None, route_st
     items = []
     numbers = next_transfer_batch_numbers(db, len(payload.outputs))
     for output, number in zip(payload.outputs, numbers, strict=True):
-        from .shared_material import allocate
+        from .shared_material import allocate, is_split_step
 
         route_shared = bool(
             lot.shared_unallocated
             and lot.process_route_id
-            and not lot.process_route.steps[
-                route_step_index if route_step_index is not None else lot.process_step_index
-            ].get("split_here")
+            and not is_split_step(
+                lot, route_step_index if route_step_index is not None else lot.process_step_index
+            )
         )
         serial_no, unallocated, member_fields = (
             (lot.serial_no, lot.shared_unallocated, {})
