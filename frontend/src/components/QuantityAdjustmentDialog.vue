@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import StatePanel from './StatePanel.vue'
+import AppDetailTable from './AppDetailTable.vue'
 import ElAlert from '@/components/AppAlert.vue'
 import ElInput from '@/components/AppInput.vue'
 import ElSelect from '@/components/AppSelect.vue'
@@ -535,7 +537,7 @@ onBeforeUnmount(() => {
       · 本次完成量单独计为返工工作量
     </p>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <div v-if="loading" role="status" class="quantity-loading">正在读取件数记录…</div>
+    <StatePanel v-if="loading" state="loading" title="正在读取件数记录" compact />
     <FormWorkspace v-if="snapshot" :documents="processing">
       <template v-if="processing" #documents>
         <SerialRouteAttachments
@@ -821,7 +823,7 @@ onBeforeUnmount(() => {
               aria-label="加工后完整实物明细"
             >
               <div class="processing-output-scroll">
-                <table class="processing-output-table business-document-table">
+                <AppDetailTable class="processing-output-table business-document-table">
                   <thead>
                     <tr>
                       <th>类别</th>
@@ -960,7 +962,7 @@ onBeforeUnmount(() => {
                         </td></tr
                     ></template>
                   </tbody>
-                </table>
+                </AppDetailTable>
               </div>
               <footer>
                 <ElButton class="action-cool" :disabled="outputs.length >= 100" @click="addOutput()"
@@ -1285,10 +1287,6 @@ onBeforeUnmount(() => {
   margin: 16px 0 10px;
   font-size: 14px;
   font-weight: 600;
-}
-.quantity-loading {
-  padding: 12px 0;
-  color: var(--muted);
 }
 .el-pagination {
   justify-content: flex-end;

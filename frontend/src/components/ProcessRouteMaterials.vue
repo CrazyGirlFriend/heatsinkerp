@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ElButton from './AppButton.vue'
+import AppDetailTable from './AppDetailTable.vue'
 import ElInput from '@/components/AppInput.vue'
 import { computed } from 'vue'
 
@@ -33,7 +35,7 @@ function warningLabel(warning: string) {
     <header>
       <strong>物料与订单资料</strong><span v-if="data.material_confirmation">已确认</span>
     </header>
-    <table>
+    <AppDetailTable fields>
       <thead>
         <tr>
           <th>项目</th>
@@ -72,13 +74,14 @@ function warningLabel(warning: string) {
             >
               订单表 · 自动填入
             </span>
-            <button
+            <ElButton
+              text
               v-else
-              type="button"
+              native-type="button"
               :title="`${field.source_filename || ''} ${field.source_row}`"
               @click="emit('source', field.source_kind === 'excel' ? 'order' : 'word')"
             >
-              {{ source(field) }} · 自动填入</button
+              {{ source(field) }} · 自动填入</ElButton
             ><span
               v-if="
                 field.parsed_value !== undefined &&
@@ -90,18 +93,19 @@ function warningLabel(warning: string) {
           </td>
         </tr>
       </tbody>
-    </table>
+    </AppDetailTable>
     <div v-if="data.field_warnings?.length" class="field-warnings">
-      <button
+      <ElButton
+        text
         v-for="warning in data.field_warnings"
         :key="warning"
-        type="button"
+        native-type="button"
         class="field-warning"
         :title="warning"
         @click="emit('source', 'word')"
       >
         <span aria-hidden="true">!</span> {{ warningLabel(warning) }}
-      </button>
+      </ElButton>
     </div>
   </section>
 </template>

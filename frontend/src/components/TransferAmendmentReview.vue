@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDetailTable from './AppDetailTable.vue'
 import ElInput from '@/components/AppInput.vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ElTag } from 'element-plus'
@@ -159,7 +160,7 @@ onBeforeUnmount(() => {
       <h4>修改原因</h4>
       <p>{{ amendment.reason }}</p>
     </section>
-    <table class="amendment-diff business-document-table" aria-label="转料修改前后对比">
+    <AppDetailTable class="amendment-diff business-document-table" aria-label="转料修改前后对比">
       <thead>
         <tr>
           <th scope="col">项目</th>
@@ -174,7 +175,7 @@ onBeforeUnmount(() => {
           <td>{{ text(row.after) }}</td>
         </tr>
       </tbody>
-    </table>
+    </AppDetailTable>
     <p v-if="amendment.status === 'pending'" class="review-hint">
       对方确认后生效；已加工和已转出的记录保持原样。
     </p>

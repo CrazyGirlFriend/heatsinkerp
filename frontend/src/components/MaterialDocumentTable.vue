@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDetailTable from './AppDetailTable.vue'
 import PersonName from './PersonName.vue'
 import { computed } from 'vue'
 
@@ -23,7 +24,7 @@ const rows = computed(() => {
 
 <template>
   <div class="document-table-container">
-    <table class="document-table business-document-table" :aria-label="label">
+    <AppDetailTable fields class="document-table business-document-table" :aria-label="label">
       <colgroup>
         <col class="field-label" />
         <col />
@@ -44,7 +45,7 @@ const rows = computed(() => {
           </template>
         </tr>
       </tbody>
-    </table>
+    </AppDetailTable>
   </div>
 </template>
 

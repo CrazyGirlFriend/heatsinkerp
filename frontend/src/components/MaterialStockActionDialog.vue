@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDisclosure from './AppDisclosure.vue'
 import ElAlert from '@/components/AppAlert.vue'
 import ElInput from '@/components/AppInput.vue'
 import AppPopover from '@/components/AppPopover.vue'
@@ -1728,20 +1729,18 @@ watch(
                     :label="`第 ${batch.batch_number} 批 · ${formatDateTime(batch.due_at)}`"
                 /></ElSelect>
               </ElFormItem>
-              <details
+              <AppDisclosure
                 v-if="!isLoss && !isScrapType(line.materialType)"
                 class="source-specification-field"
-                :open="line.specificationOpen"
-                @toggle="line.specificationOpen = ($event.target as HTMLDetailsElement).open"
+                v-model:open="line.specificationOpen"
               >
-                <summary>
+                <template #summary>
                   <span>实际尺寸</span>
                   <span class="specification-summary">{{ line.specification || '选填' }}</span>
                   <span class="source-disclosure-action">{{
                     line.specificationOpen ? '收起' : '编辑'
                   }}</span>
-                  <ElIcon><ArrowDown /></ElIcon>
-                </summary>
+                </template>
                 <ElFormItem label-width="0" :error="lineError(line, 'specification')">
                   <SpecificationInput
                     class="source-specification"
@@ -1750,7 +1749,7 @@ watch(
                     @validity-change="line.specificationValid = $event"
                   />
                 </ElFormItem>
-              </details>
+              </AppDisclosure>
               <ElFormItem v-if="!isLoss && warehouse" label="入库仓位" class="dialog-field-wide"
                 ><WarehouseLocationSelect
                   v-model="line.warehouseLocation"
@@ -1783,8 +1782,8 @@ watch(
             />
           </article>
         </div>
-        <details class="action-notes-section">
-          <summary>
+        <AppDisclosure class="action-notes-section">
+          <template #summary>
             <span>
               {{
                 isLoss
@@ -1799,8 +1798,7 @@ watch(
               }}
             </span>
             <span class="notes-summary">{{ (isLoss ? form.reason : form.notes) || '选填' }}</span>
-            <ElIcon><ArrowDown /></ElIcon>
-          </summary>
+          </template>
           <div class="dialog-form-grid">
             <ElFormItem
               v-if="isLoss"
@@ -1835,7 +1833,7 @@ watch(
                 placeholder="选填"
             /></ElFormItem>
           </div>
-        </details>
+        </AppDisclosure>
       </ElForm>
     </FormWorkspace>
     <ElAlert v-if="weightNotice" :title="weightNotice" type="warning" :closable="false" show-icon />
@@ -2150,33 +2148,6 @@ watch(
   min-width: 0;
   border-top: 1px solid var(--line-light);
 }
-.source-specification-field summary,
-.action-notes-section summary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-block: 5px;
-  list-style: none;
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 12px;
-}
-summary::-webkit-details-marker {
-  display: none;
-}
-summary:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 3px;
-  border-radius: 4px;
-}
-summary > .el-icon {
-  flex-shrink: 0;
-  font-size: 12px;
-  transition: transform var(--motion-fast) ease;
-}
-details[open] > summary > .el-icon {
-  transform: rotate(180deg);
-}
 .specification-summary,
 .notes-summary {
   flex: 1;
@@ -2191,21 +2162,14 @@ details[open] > summary > .el-icon {
 .source-disclosure-action {
   color: var(--muted);
 }
-.source-specification-field[open] {
+.source-specification-field[data-open] {
   padding-bottom: 6px;
 }
 .action-notes-section {
   margin-top: 14px;
   padding-inline: 3px;
 }
-.action-notes-section summary {
-  font-size: 13px;
-}
-.action-notes-section summary > span:first-child {
-  color: var(--text);
-  font-weight: 550;
-}
-.action-notes-section[open] .notes-summary {
+.action-notes-section[data-open] .notes-summary {
   visibility: hidden;
 }
 .action-notes-section :deep(.el-form-item) {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import StatePanel from './StatePanel.vue'
 import { AppMessageBox as ElMessageBox } from '@/utils/messageBox'
 import ElAlert from '@/components/AppAlert.vue'
 import ElInput from '@/components/AppInput.vue'
@@ -371,7 +372,7 @@ async function submitOpening() {
     </ElTabs>
     <FormWorkspace>
       <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-      <p v-if="loading">正在读取班组设置…</p>
+      <StatePanel v-if="loading" state="loading" title="正在读取班组设置" compact />
       <section
         v-else-if="tab === 'purposes' || editingEmployees || editingTasks || editingProblems"
         ref="purposeSettings"

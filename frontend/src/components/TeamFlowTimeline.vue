@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import { useChartPalette } from '@/composables/useChartPalette'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -192,58 +193,74 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
     <div v-if="model.extent" class="timeline-controls" role="group" aria-label="班组画布工具">
       <div class="tool-group tool-mode" :class="{ panning: interaction === 'pan' }">
         <ElTooltip content="选择批次 · V" :append-to="root" :show-after="350"
-          ><button
-            type="button"
+          ><AppButton
+            text
+            native-type="button"
             aria-label="选择批次"
             :aria-pressed="interaction === 'select'"
             @click="interaction = 'select'"
           >
-            <ElIcon><Pointer /></ElIcon></button
+            <ElIcon><Pointer /></ElIcon></AppButton
         ></ElTooltip>
         <ElTooltip content="平移画布 · H" :append-to="root" :show-after="350"
-          ><button
-            type="button"
+          ><AppButton
+            text
+            native-type="button"
             aria-label="平移画布"
             :aria-pressed="interaction === 'pan'"
             @click="interaction = 'pan'"
           >
-            <ElIcon><Rank /></ElIcon></button
+            <ElIcon><Rank /></ElIcon></AppButton
         ></ElTooltip>
       </div>
       <div class="tool-group">
-        <button type="button" aria-label="缩小画布" @click="chart?.zoom(-1)">
+        <AppButton text native-type="button" aria-label="缩小画布" @click="chart?.zoom(-1)">
           <ElIcon><ZoomOut /></ElIcon>
-        </button>
+        </AppButton>
         <ElTooltip :content="`还原视图 · 0（${zoom.toLocaleString()}%）`" :append-to="root"
-          ><button type="button" class="zoom-level" aria-label="还原画布" @click="chart?.zoom(0)">
+          ><AppButton
+            text
+            native-type="button"
+            class="zoom-level"
+            aria-label="还原画布"
+            @click="chart?.zoom(0)"
+          >
             {{ zoomLabel }}%
-          </button></ElTooltip
+          </AppButton></ElTooltip
         >
-        <button type="button" aria-label="放大画布" @click="chart?.zoom(1)">
+        <AppButton text native-type="button" aria-label="放大画布" @click="chart?.zoom(1)">
           <ElIcon><ZoomIn /></ElIcon>
-        </button>
+        </AppButton>
       </div>
       <div class="tool-group">
         <ElTooltip :content="motion ? '关闭动画' : '启用动画'" :append-to="root"
-          ><button
-            type="button"
+          ><AppButton
+            text
+            native-type="button"
             :aria-label="motion ? '关闭动画' : '启用动画'"
             :aria-pressed="motion"
             @click="motion = !motion"
           >
-            <ElIcon><VideoPause v-if="motion" /><VideoPlay v-else /></ElIcon></button
+            <ElIcon><VideoPause v-if="motion" /><VideoPlay v-else /></ElIcon></AppButton
         ></ElTooltip>
         <ElTooltip content="重新绘制" :append-to="root"
-          ><button type="button" aria-label="重播收发路径" :disabled="!motion" @click="replay++">
-            <ElIcon><RefreshRight /></ElIcon></button
+          ><AppButton
+            text
+            native-type="button"
+            aria-label="重播收发路径"
+            :disabled="!motion"
+            @click="replay++"
+          >
+            <ElIcon><RefreshRight /></ElIcon></AppButton
         ></ElTooltip>
-        <button
-          type="button"
+        <AppButton
+          text
+          native-type="button"
           :aria-label="fullscreen ? '退出全屏' : '全屏画布'"
           @click="toggleFullscreen"
         >
           <ElIcon><FullScreen /></ElIcon>
-        </button>
+        </AppButton>
       </div>
     </div>
     <footer class="timeline-caption">
@@ -364,18 +381,12 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
   border-left: 1px solid var(--line);
   padding-left: 10px;
 }
-.timeline-controls button {
-  display: grid;
-  place-items: center;
+.timeline-controls .app-button {
   width: 40px;
   height: 40px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  font: inherit;
-  font-size: 16px;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
 }
 .timeline-controls .zoom-level {
   width: 64px;
@@ -384,17 +395,6 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', fullscree
 }
 .timeline-controls .el-icon {
   font-size: 19px;
-}
-.timeline-controls button:not(:disabled):hover {
-  background: var(--primary-soft);
-}
-.timeline-controls button:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 1px;
-}
-.timeline-controls button:disabled {
-  opacity: 0.35;
-  cursor: default;
 }
 .tool-mode {
   position: relative;

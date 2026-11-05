@@ -1261,23 +1261,25 @@ onBeforeUnmount(() => {
           {{ overviewLabel }}
         </AppButton>
         <div class="gantt-zoom" aria-label="时间缩放" title="Ctrl + 滚轮缩放">
-          <button
-            type="button"
+          <AppButton
+            text
+            native-type="button"
             aria-label="缩小时间轴"
             :disabled="millisecondsPerPixel >= zoomLimits.max - 1"
             @click="changeZoom(-1)"
           >
             <IconMinus :size="14" />
-          </button>
+          </AppButton>
           <span>{{ Math.round(zoom * 100) }}%</span>
-          <button
-            type="button"
+          <AppButton
+            text
+            native-type="button"
             aria-label="放大时间轴"
             :disabled="millisecondsPerPixel <= zoomLimits.min + 1"
             @click="changeZoom(1)"
           >
             <IconPlus :size="14" />
-          </button>
+          </AppButton>
         </div>
         <AppButton title="上一时间段" aria-label="上一时间段" @click="shift(-1)"
           ><IconChevronLeft :size="16"
@@ -1487,6 +1489,7 @@ onBeforeUnmount(() => {
   color: var(--wm-muted, #71717a);
   display: grid;
   place-items: center;
+  margin: 0;
   padding: 6px;
   font: inherit;
   font-size: 12px;

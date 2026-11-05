@@ -50,7 +50,10 @@ it('keeps the current operation fixed while reading previous, next and original 
   expect(wrapper.emitted()).not.toHaveProperty('update:context')
   expect(wrapper.findAll('input, textarea').length).toBe(0)
   expect(wrapper.find('[data-word-preview]').exists()).toBe(false)
-  await wrapper.findAll('[role="tab"]')[1]!.trigger('click')
+  await wrapper
+    .findAll('[aria-label="工艺资料"] button')
+    .find((button) => button.text() === '工艺原稿')!
+    .trigger('click')
   expect(wrapper.find('[data-word-preview]').exists()).toBe(true)
   expect(wrapper.text()).not.toContain('保存工艺')
 })

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDetailTable from './AppDetailTable.vue'
 import ElAlert from '@/components/AppAlert.vue'
 // Historical CK lookup only. All business actions belong to an individual batch.
 import { onBeforeUnmount, ref, watch } from 'vue'
@@ -120,7 +121,7 @@ onBeforeUnmount(reset)
       <LiveRefreshNotice :message="live.message.value" @retry="live.request" />
       <ElAlert v-if="error" :title="error" type="error" :closable="false" />
       <div class="historical-table">
-        <table class="business-document-table" aria-label="历史记录中的独立批次">
+        <AppDetailTable class="business-document-table" aria-label="历史记录中的独立批次">
           <thead>
             <tr>
               <th>批次号</th>
@@ -156,7 +157,7 @@ onBeforeUnmount(reset)
               </td>
             </tr>
           </tbody>
-        </table>
+        </AppDetailTable>
       </div>
     </template>
     <template v-if="allowPrint" #footer

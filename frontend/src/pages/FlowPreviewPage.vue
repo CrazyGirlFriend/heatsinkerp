@@ -788,39 +788,56 @@ onBeforeUnmount(() => {
                   aria-label="操作模式"
                 >
                   <ElTooltip content="选择批次 · V" :append-to="pageRoot" :show-after="350"
-                    ><button
-                      type="button"
+                    ><ElButton
+                      text
+                      native-type="button"
                       aria-label="选择批次"
                       :aria-pressed="interaction === 'select'"
                       @click="interaction = 'select'"
                     >
-                      <ElIcon><Pointer /></ElIcon></button
+                      <ElIcon><Pointer /></ElIcon></ElButton
                   ></ElTooltip>
                   <ElTooltip content="拖动画布 · H" :append-to="pageRoot" :show-after="350"
-                    ><button
-                      type="button"
+                    ><ElButton
+                      text
+                      native-type="button"
                       aria-label="平移画布"
                       :aria-pressed="interaction === 'pan'"
                       @click="interaction = 'pan'"
                     >
-                      <ElIcon><Rank /></ElIcon></button
+                      <ElIcon><Rank /></ElIcon></ElButton
                   ></ElTooltip>
                 </div>
                 <div class="canvas-zoom" role="group" aria-label="视图范围">
                   <ElTooltip content="缩小 · −" :append-to="pageRoot" :show-after="350"
-                    ><button type="button" aria-label="缩小路径" @click="chart?.zoom(-1)">
-                      <ElIcon><ZoomOut /></ElIcon></button
+                    ><ElButton
+                      text
+                      native-type="button"
+                      aria-label="缩小路径"
+                      @click="chart?.zoom(-1)"
+                    >
+                      <ElIcon><ZoomOut /></ElIcon></ElButton
                   ></ElTooltip>
                   <span class="zoom-level" aria-live="polite" aria-label="当前缩放"
                     >{{ zoomLevel }}%</span
                   >
                   <ElTooltip content="放大 · +" :append-to="pageRoot" :show-after="350"
-                    ><button type="button" aria-label="放大路径" @click="chart?.zoom(1)">
-                      <ElIcon><ZoomIn /></ElIcon></button
+                    ><ElButton
+                      text
+                      native-type="button"
+                      aria-label="放大路径"
+                      @click="chart?.zoom(1)"
+                    >
+                      <ElIcon><ZoomIn /></ElIcon></ElButton
                   ></ElTooltip>
                   <ElTooltip content="还原完整链路 · 0" :append-to="pageRoot" :show-after="350"
-                    ><button type="button" aria-label="还原完整链路" @click="chart?.zoom(0)">
-                      <ElIcon><ScaleToOriginal /></ElIcon></button
+                    ><ElButton
+                      text
+                      native-type="button"
+                      aria-label="还原完整链路"
+                      @click="chart?.zoom(0)"
+                    >
+                      <ElIcon><ScaleToOriginal /></ElIcon></ElButton
                   ></ElTooltip>
                 </div>
                 <div class="canvas-playback" role="group" aria-label="动画与显示">
@@ -828,35 +845,38 @@ onBeforeUnmount(() => {
                     :content="motion ? '关闭动画' : '启用动画'"
                     :append-to="pageRoot"
                     :show-after="350"
-                    ><button
-                      type="button"
+                    ><ElButton
+                      text
+                      native-type="button"
                       :aria-label="motion ? '关闭图形动画' : '启用图形动画'"
                       :aria-pressed="motion"
                       @click="motion = !motion"
                     >
-                      <ElIcon><VideoPause v-if="motion" /><VideoPlay v-else /></ElIcon></button
+                      <ElIcon><VideoPause v-if="motion" /><VideoPlay v-else /></ElIcon></ElButton
                   ></ElTooltip>
                   <ElTooltip content="重新绘制路径" :append-to="pageRoot" :show-after="350"
-                    ><button
-                      type="button"
+                    ><ElButton
+                      text
+                      native-type="button"
                       aria-label="重播路径"
                       :disabled="!motion"
                       @click="replay++"
                     >
-                      <ElIcon><RefreshRight /></ElIcon></button
+                      <ElIcon><RefreshRight /></ElIcon></ElButton
                   ></ElTooltip>
                   <ElTooltip
                     v-if="!embedded"
                     :content="fullscreen ? '退出全屏' : '全屏画布'"
                     :append-to="pageRoot"
                     :show-after="350"
-                    ><button
-                      type="button"
+                    ><ElButton
+                      text
+                      native-type="button"
                       :aria-label="fullscreen ? '退出全屏' : '全屏画布'"
                       :aria-pressed="fullscreen"
                       @click="toggleFullscreen"
                     >
-                      <ElIcon><FullScreen /></ElIcon></button
+                      <ElIcon><FullScreen /></ElIcon></ElButton
                   ></ElTooltip>
                 </div>
               </div>
@@ -922,7 +942,8 @@ onBeforeUnmount(() => {
           {{ selected.batches.length }} 个关联批次{{ example ? ' · 演示数据，不打开业务单据' : '' }}
         </p>
         <div class="selection-batches">
-          <button
+          <ElButton
+            text
             v-for="row in selectionRows"
             :key="row.code"
             :disabled="example"
@@ -933,7 +954,7 @@ onBeforeUnmount(() => {
               >{{ amountLabel(row.amount) }}<em>{{ row.status }}</em></span
             ><small v-if="row.at">{{ formatDateTime(row.at) }}</small
             ><small v-else>查看原始批次</small>
-          </button>
+          </ElButton>
         </div>
       </div>
     </AppDrawer>
@@ -1358,7 +1379,7 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 10px;
 }
-.selection-batches button {
+.selection-batches .app-button {
   border: 1px solid var(--line);
   border-radius: 11px;
   background: var(--glass-surface);
@@ -1368,6 +1389,12 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 8px;
   font: inherit;
+}
+.selection-batches .app-button :deep(> span) {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  white-space: normal;
 }
 .selection-batches button:not(:disabled):hover {
   border-color: var(--el-color-primary-light-5);
@@ -1628,39 +1655,12 @@ onBeforeUnmount(() => {
   padding-left: 8px;
   border-left: 1px solid var(--line);
 }
-.canvas-controls button {
+.canvas-controls .app-button {
   width: 44px;
   height: 44px;
+  margin: 0;
   padding: 0;
-  border: 0;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
   flex-shrink: 0;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition:
-    background-color var(--motion-fast),
-    color var(--motion-fast),
-    transform var(--motion-fast);
-}
-.canvas-controls button:hover {
-  background: var(--surface-soft);
-  color: var(--text);
-}
-.canvas-controls button:active {
-  transform: scale(0.92);
-}
-.canvas-controls button:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-.canvas-controls button:disabled {
-  cursor: not-allowed;
-  color: var(--el-text-color-placeholder);
-  background: transparent;
-  transform: none;
 }
 .canvas-controls .el-icon {
   font-size: 21px;
@@ -1872,9 +1872,6 @@ onBeforeUnmount(() => {
   .canvas-controls button,
   .canvas-mode::before {
     transition: none;
-  }
-  .canvas-controls button:active {
-    transform: none;
   }
 }
 .chain-page--embedded {

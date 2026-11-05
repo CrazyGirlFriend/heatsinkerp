@@ -131,6 +131,19 @@ async function render(
     await flushPromises()
   }
 }
+// Target each source's amounts, independently of nested dimension and disclosure controls.
+function sourceAmountInputs() {
+  const inputs = wrapper.findAllComponents(ElInputNumber)
+  return wrapper.findAll('.source-line').flatMap((row) => {
+    return ['件数', '重量', '废泥实重', '有效材料占比'].flatMap((field) =>
+      inputs.filter(
+        (input) =>
+          row.element.contains(input.element) &&
+          new RegExp(`^TL\\d+${field}$`).test(input.find('input').attributes('aria-label') || ''),
+      ),
+    )
+  })
+}
 async function submit() {
   await wrapper
     .findAll('button')
@@ -243,7 +256,7 @@ describe('source batch dispatch and loss drafts', () => {
       )
       await render('dispatch', [source()])
       await destination()
-      wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 75)
+      sourceAmountInputs()[0]!.vm.$emit('update:modelValue', 75)
       await submit()
       expect(productionScheduleApi.candidates).toHaveBeenCalledTimes(1)
       expect(wrapper.text()).toContain('重新读取排期')
@@ -254,7 +267,7 @@ describe('source batch dispatch and loss drafts', () => {
         .find((button) => button.text() === '重新读取排期')!
         .trigger('click')
       await flushPromises()
-      expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(75)
+      expect(sourceAmountInputs()[0]!.props('modelValue')).toBe(75)
       await submit()
       const calls = vi.mocked(teamMaterialApi.createDispatch).mock.calls
       expect(calls[1]![1]).toMatchObject({
@@ -341,7 +354,7 @@ describe('source batch dispatch and loss drafts', () => {
       allowed,
     )
     await destination()
-    wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 120)
+    sourceAmountInputs()[0]!.vm.$emit('update:modelValue', 120)
     await flushPromises()
     expect(wrapper.find('.processing-count-notice').exists()).toBe(allowed)
     if (!allowed) {
@@ -392,8 +405,8 @@ describe('source batch dispatch and loss drafts', () => {
     }
     await render('dispatch', [first, second])
     await destination()
-    wrapper.findAllComponents(ElInputNumber)[1]!.vm.$emit('update:modelValue', 10.2)
-    wrapper.findAllComponents(ElInputNumber)[3]!.vm.$emit('update:modelValue', 10.2)
+    sourceAmountInputs()[1]!.vm.$emit('update:modelValue', 10.2)
+    sourceAmountInputs()[3]!.vm.$emit('update:modelValue', 10.2)
     await flushPromises()
     expect(wrapper.text()).toContain('累计多 1.1 kg')
     expect(wrapper.text()).toContain('超过允许的 1 kg')
@@ -418,7 +431,7 @@ describe('source batch dispatch and loss drafts', () => {
     })
     await render('dispatch', [row])
     await destination()
-    wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 20)
+    sourceAmountInputs()[0]!.vm.$emit('update:modelValue', 20)
     await flushPromises()
     expect(wrapper.get('.processing-count-notice').text()).toContain('超过账面可用 1 件')
     await submit()
@@ -644,21 +657,22 @@ describe('source batch dispatch and loss drafts', () => {
     await render('dispatch', [source()])
     await destination()
     const dimensions = wrapper.getComponent(SpecificationInput)
-    const section = wrapper.get<HTMLDetailsElement>('.source-specification-field')
-    expect(section.element.open).toBe(false)
+    const section = wrapper.get('.source-specification-field')
+    const trigger = section.get('button[aria-expanded]')
+    expect(trigger.attributes('aria-expanded')).toBe('false')
     dimensions.vm.$emit('validity-change', false)
     await submit()
     expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
-    expect(section.element.open).toBe(true)
+    expect(trigger.attributes('aria-expanded')).toBe('true')
     expect(section.find('.el-form-item.is-error').exists()).toBe(true)
 
     dimensions.vm.$emit('update:modelValue', '30 × 20 × 2 mm')
     dimensions.vm.$emit('validity-change', true)
     await flushPromises()
-    expect(section.element.open).toBe(true)
-    section.element.open = false
-    await section.trigger('toggle')
-    expect(section.get('summary').text()).toContain('30 × 20 × 2 mm')
+    expect(trigger.attributes('aria-expanded')).toBe('true')
+    await trigger.trigger('click')
+    expect(trigger.attributes('aria-expanded')).toBe('false')
+    expect(trigger.text()).toContain('30 × 20 × 2 mm')
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
       2,
@@ -712,8 +726,8 @@ describe('source batch dispatch and loss drafts', () => {
   it('shows every source and marks an invalid row without hiding other values', async () => {
     await render()
     await destination()
-    wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 60)
-    wrapper.findAllComponents(ElInputNumber)[2]!.vm.$emit('update:modelValue', undefined)
+    sourceAmountInputs()[0]!.vm.$emit('update:modelValue', 60)
+    sourceAmountInputs()[2]!.vm.$emit('update:modelValue', undefined)
     await submit()
     expect(wrapper.find('nav[aria-label="表单分页"]').exists()).toBe(false)
     expect(wrapper.findAll('.source-line').every((line) => line.isVisible())).toBe(true)
@@ -725,8 +739,8 @@ describe('source batch dispatch and loss drafts', () => {
         .classList.contains('is-error'),
     ).toBe(true)
     expect(wrapper.find('.el-alert--error').exists()).toBe(false)
-    expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(60)
-    wrapper.findAllComponents(ElInputNumber)[2]!.vm.$emit('update:modelValue', 90)
+    expect(sourceAmountInputs()[0]!.props('modelValue')).toBe(60)
+    sourceAmountInputs()[2]!.vm.$emit('update:modelValue', 90)
     await flushPromises()
     expect(
       wrapper
@@ -753,7 +767,7 @@ describe('source batch dispatch and loss drafts', () => {
       .find((item) => item.props('ariaLabel') === 'TL10物料类型')!
       .vm.$emit('update:modelValue', 'sludge')
     await flushPromises()
-    const inputs = wrapper.findAllComponents(ElInputNumber)
+    const inputs = sourceAmountInputs()
     ;[10, 30].forEach((value, i) => inputs[i]!.vm.$emit('update:modelValue', value))
     await wrapper.get('textarea').setValue('废泥回库')
     await flushPromises()
@@ -816,7 +830,7 @@ describe('source batch dispatch and loss drafts', () => {
   it('keeps leftover pieces unless the optional clearance is explicitly requested', async () => {
     await render('dispatch', [source()])
     await destination()
-    wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 80)
+    sourceAmountInputs()[0]!.vm.$emit('update:modelValue', 80)
     await flushPromises()
     expect(wrapper.text()).toContain('账面仍有 20 件')
     await submit()
@@ -840,7 +854,7 @@ describe('source batch dispatch and loss drafts', () => {
   it('clears remaining pieces without a reason only after explicit selection and resets on reopening', async () => {
     await render('dispatch', [source()])
     await destination()
-    wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 80)
+    sourceAmountInputs()[0]!.vm.$emit('update:modelValue', 80)
     await flushPromises()
     await wrapper.get('[aria-label="TL10清零剩余件数"] input').setValue(true)
     await submit()
@@ -857,7 +871,7 @@ describe('source batch dispatch and loss drafts', () => {
       version: 1,
     })
     await destination()
-    wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 80)
+    sourceAmountInputs()[0]!.vm.$emit('update:modelValue', 80)
     await flushPromises()
     await submit()
     expect(vi.mocked(teamMaterialApi.createDispatch).mock.calls[1]![1].quantity_clearances).toEqual(
@@ -871,7 +885,7 @@ describe('source batch dispatch and loss drafts', () => {
       .findAll('button')
       .find((button) => button.text() === '拆分物料')!
       .trigger('click')
-    const inputs = wrapper.findAllComponents(ElInputNumber)
+    const inputs = sourceAmountInputs()
     ;[30, 4, 50, 6].forEach((value, i) => inputs[i]!.vm.$emit('update:modelValue', value))
     await flushPromises()
     expect(wrapper.findAll('[aria-label="TL10清零剩余件数"] input')).toHaveLength(1)
@@ -895,8 +909,8 @@ describe('source batch dispatch and loss drafts', () => {
   it('does not silently apply an old reason to another batch or to a loss', async () => {
     await render()
     await destination()
-    wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 80)
-    wrapper.findAllComponents(ElInputNumber)[2]!.vm.$emit('update:modelValue', 90)
+    sourceAmountInputs()[0]!.vm.$emit('update:modelValue', 80)
+    sourceAmountInputs()[2]!.vm.$emit('update:modelValue', 90)
     await flushPromises()
     await wrapper.get('[aria-label="TL10清零剩余件数"] input').setValue(true)
     await wrapper.get('textarea[aria-label="TL10清零原因"]').setValue('第一批核对')
@@ -1011,7 +1025,7 @@ describe('source batch dispatch and loss drafts', () => {
     const change = vi.spyOn(teamMaterialApi, 'changeQuantity')
     await render('dispatch', [source()])
     await destination()
-    const inputs = wrapper.findAllComponents(ElInputNumber)
+    const inputs = sourceAmountInputs()
     inputs[0]!.vm.$emit('update:modelValue', 3)
     inputs[1]!.vm.$emit('update:modelValue', 0.3)
     await wrapper
@@ -1194,7 +1208,7 @@ describe('source batch dispatch and loss drafts', () => {
       .find((button) => button.text() === '拆分物料')!
       .trigger('click')
     await flushPromises()
-    const inputs = wrapper.findAllComponents(ElInputNumber)
+    const inputs = sourceAmountInputs()
     ;[80, 8, 21, 2.001].forEach((value, i) => inputs[i]!.vm.$emit('update:modelValue', value))
     wrapper
       .findAllComponents(ElSelect)
@@ -1226,7 +1240,7 @@ describe('source batch dispatch and loss drafts', () => {
         .find((button) => button.text() === '拆分物料')!
         .trigger('click')
       await flushPromises()
-      const inputs = wrapper.findAllComponents(ElInputNumber)
+      const inputs = sourceAmountInputs()
       ;[50, 5, 50, 5 + difference].forEach((value, index) =>
         inputs[index]!.vm.$emit('update:modelValue', value),
       )
@@ -1245,7 +1259,7 @@ describe('source batch dispatch and loss drafts', () => {
     vi.mocked(teamMaterialApi.refreshSource).mockResolvedValue(row)
     await render('dispatch', [row])
     await destination()
-    const inputs = wrapper.findAllComponents(ElInputNumber)
+    const inputs = sourceAmountInputs()
     inputs[0]!.vm.$emit('update:modelValue', 0)
     inputs[1]!.vm.$emit('update:modelValue', 0.5)
     await flushPromises()
@@ -1282,7 +1296,7 @@ describe('source batch dispatch and loss drafts', () => {
   it('sends one atomic bulk request with separate source identities and amounts', async () => {
     await render()
     await destination()
-    const inputs = wrapper.findAllComponents(ElInputNumber)
+    const inputs = sourceAmountInputs()
     inputs[0]!.vm.$emit('update:modelValue', 5)
     inputs[1]!.vm.$emit('update:modelValue', 0)
     inputs[2]!.vm.$emit('update:modelValue', 0)
@@ -1309,15 +1323,13 @@ describe('source batch dispatch and loss drafts', () => {
     await submit()
     expect(teamMaterialApi.refreshSource).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('填写内容已保留')
-    expect(wrapper.findAllComponents(ElInputNumber)[0]!.props('modelValue')).toBe(100)
+    expect(sourceAmountInputs()[0]!.props('modelValue')).toBe(100)
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('仅记录重量差异')
-    wrapper
-      .findAllComponents(ElInputNumber)
-      .forEach((input) => input.vm.$emit('update:modelValue', 0.0))
-    wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 1)
-    wrapper.findAllComponents(ElInputNumber)[2]!.vm.$emit('update:modelValue', 1)
+    sourceAmountInputs().forEach((input) => input.vm.$emit('update:modelValue', 0.0))
+    sourceAmountInputs()[0]!.vm.$emit('update:modelValue', 1)
+    sourceAmountInputs()[2]!.vm.$emit('update:modelValue', 1)
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledTimes(3)
   })
@@ -1331,8 +1343,8 @@ describe('source batch dispatch and loss drafts', () => {
     await submit()
     const calls = vi.mocked(teamMaterialApi.createDispatch).mock.calls
     expect(calls[0]![1].idempotency_key).toBe(calls[1]![1].idempotency_key)
-    wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 2)
-    wrapper.findAllComponents(ElInputNumber)[1]!.vm.$emit('update:modelValue', 0.2)
+    sourceAmountInputs()[0]!.vm.$emit('update:modelValue', 2)
+    sourceAmountInputs()[1]!.vm.$emit('update:modelValue', 0.2)
     await submit()
     expect(calls[2]![1].idempotency_key).not.toBe(calls[1]![1].idempotency_key)
   })
@@ -1348,7 +1360,7 @@ describe('source batch dispatch and loss drafts', () => {
         .classList.contains('is-error'),
     ).toBe(true)
     await wrapper.setProps({ mode: 'loss' })
-    const inputs = wrapper.findAllComponents(ElInputNumber)
+    const inputs = sourceAmountInputs()
     inputs[0]!.vm.$emit('update:modelValue', 0)
     inputs[1]!.vm.$emit('update:modelValue', 0.005)
     await submit()
@@ -1405,7 +1417,7 @@ it('records a chips loss using only weight', async () => {
   row.scrap_available_weight = 10
   await render('loss', [row])
   expect(wrapper.find('input[aria-label="TL10件数"]').exists()).toBe(false)
-  wrapper.findAllComponents(ElInputNumber)[0]!.vm.$emit('update:modelValue', 1)
+  sourceAmountInputs()[0]!.vm.$emit('update:modelValue', 1)
   await flushPromises()
   await submit()
   expect(teamMaterialApi.createLoss).toHaveBeenCalledWith(

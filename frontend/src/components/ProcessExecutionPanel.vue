@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
+import StatePanel from './StatePanel.vue'
 import ElAlert from '@/components/AppAlert.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
@@ -72,26 +74,19 @@ onBeforeUnmount(() => ++generation)
 <template>
   <aside class="process-execution-panel" aria-label="工艺只读查看">
     <header>
-      <div class="execution-tabs" role="tablist" aria-label="工艺资料">
-        <button
-          v-for="item in [
-            { id: 'route', label: '工艺节点' },
-            ...(documentsVisible === false
-              ? []
-              : [
-                  { id: 'word', label: '工艺原稿' },
-                  { id: 'drawing', label: '图纸' },
-                ]),
-          ]"
-          :key="item.id"
-          type="button"
-          role="tab"
-          :aria-selected="tab === item.id"
-          @click="tab = item.id"
-        >
-          {{ item.label }}
-        </button>
-      </div>
+      <WatermelonSegmented
+        v-model="tab"
+        label="工艺资料"
+        :options="[
+          { value: 'route', label: '工艺节点' },
+          ...(documentsVisible
+            ? [
+                { value: 'word', label: '工艺原稿' },
+                { value: 'drawing', label: '图纸' },
+              ]
+            : []),
+        ]"
+      />
       <ElButton
         v-if="tab !== 'route'"
         text
@@ -104,8 +99,8 @@ onBeforeUnmount(() => ++generation)
     </header>
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <ElButton v-if="error" @click="load">重试</ElButton>
-    <div v-if="loading" class="execution-empty" role="status">正在读取工艺…</div>
-    <div v-else-if="!context" class="execution-empty">未关联工艺</div>
+    <StatePanel v-if="loading" state="loading" title="正在读取工艺" compact />
+    <StatePanel v-else-if="!context" state="empty" title="未关联工艺" compact />
     <template v-else-if="route">
       <template v-if="tab === 'route'">
         <div class="execution-route-heading">
@@ -122,8 +117,9 @@ onBeforeUnmount(() => ++generation)
               'is-before': step.index < context.step_index,
             }"
           >
-            <button
-              type="button"
+            <ElButton
+              text
+              native-type="button"
               :aria-pressed="step.index === selected"
               @click="selected = step.index"
             >
@@ -140,7 +136,7 @@ onBeforeUnmount(() => ++generation)
               <span v-else class="execution-position">{{
                 step.index < context.step_index ? '前序' : '后序'
               }}</span>
-            </button>
+            </ElButton>
           </li>
         </ol>
         <section
@@ -166,7 +162,7 @@ onBeforeUnmount(() => ++generation)
           :source-row="selectedStep?.source_row || undefined"
           compact
         />
-        <div v-else class="execution-empty">暂无原稿</div>
+        <StatePanel v-else state="empty" title="暂无原稿" compact />
       </template>
       <template v-else>
         <ElSelect v-if="route.drawings?.length" v-model="drawingId" aria-label="选择图纸"
@@ -182,7 +178,7 @@ onBeforeUnmount(() => ++generation)
           :route-id="route.id"
           :drawing="selectedDrawing"
         />
-        <div v-else class="execution-empty">暂无图纸</div>
+        <StatePanel v-else state="empty" title="暂无图纸" compact />
       </template>
     </template>
   </aside>
@@ -208,27 +204,6 @@ onBeforeUnmount(() => ++generation)
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-}
-.execution-tabs {
-  display: flex;
-  padding: 3px;
-  border-radius: 9px;
-  background: var(--wm-muted-surface, #eaf0ed);
-}
-.execution-tabs button {
-  border: 0;
-  border-radius: 7px;
-  padding: 8px 12px;
-  color: var(--muted);
-  background: transparent;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.execution-tabs button[aria-selected='true'] {
-  color: var(--wm-text, #205e4b);
-  background: var(--wm-bg, #fff);
-  box-shadow: 0 1px 4px #16362b12;
 }
 .execution-readonly,
 .execution-route-heading > span,
@@ -259,7 +234,7 @@ onBeforeUnmount(() => ++generation)
   bottom: 0;
   background: var(--wm-border, #b9cdc4);
 }
-.execution-nodes button {
+.execution-nodes .app-button {
   display: flex;
   width: 100%;
   min-height: 46px;
@@ -278,14 +253,20 @@ onBeforeUnmount(() => ++generation)
     background 160ms,
     border-color 160ms;
 }
+.execution-nodes .app-button :deep(> span) {
+  display: flex;
+  width: 100%;
+  gap: 12px;
+  white-space: normal;
+}
 .execution-nodes button:hover,
 .execution-nodes .is-selected button {
-  border-color: #6f9c8a;
+  border-color: var(--wm-border, #6f9c8a);
   background: var(--wm-success-bg, #f3faf7);
 }
 .execution-nodes .is-current button {
-  border-color: #3e7a64;
-  box-shadow: inset 3px 0 #28664f;
+  border-color: var(--wm-text, #3e7a64);
+  box-shadow: inset 3px 0 var(--wm-text, #28664f);
 }
 .execution-node-number {
   width: 26px;
@@ -299,9 +280,9 @@ onBeforeUnmount(() => ++generation)
   font-variant-numeric: tabular-nums;
 }
 .is-current .execution-node-number {
-  color: #fff;
-  background: #28664f;
-  border-color: #28664f;
+  color: var(--wm-primary-text, #fff);
+  background: var(--wm-primary, #28664f);
+  border-color: var(--wm-primary, #28664f);
 }
 .execution-node-name {
   flex: 1;
@@ -335,18 +316,10 @@ onBeforeUnmount(() => ++generation)
   padding-top: 12px;
   font-size: 13px;
 }
-.execution-empty {
-  display: grid;
-  min-height: 240px;
-  place-items: center;
-  color: var(--muted);
-  font-size: 13px;
-}
 .process-execution-panel > .el-select {
   width: 100%;
   margin-top: 12px;
 }
-.execution-tabs button:focus-visible,
 .execution-nodes button:focus-visible {
   outline: 2px solid #28664f;
   outline-offset: 2px;

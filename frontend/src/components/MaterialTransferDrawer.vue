@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDetailTable from './AppDetailTable.vue'
 import { AppMessageBox as ElMessageBox } from '@/utils/messageBox'
 import ElAlert from '@/components/AppAlert.vue'
 import PersonName from './PersonName.vue'
@@ -813,7 +814,7 @@ watch(
           >
         </p>
         <div v-else class="document-table-scroll">
-          <table class="amendment-list business-document-table" aria-label="转料修改申请">
+          <AppDetailTable class="amendment-list business-document-table" aria-label="转料修改申请">
             <thead>
               <tr>
                 <th scope="col">申请时间</th>
@@ -834,7 +835,7 @@ watch(
                 </td>
               </tr>
             </tbody>
-          </table>
+          </AppDetailTable>
         </div>
       </section>
       <section class="document-records">
@@ -844,7 +845,10 @@ watch(
       <section v-if="current.loss_records?.length" class="document-records">
         <h3>来源批次丢失记录</h3>
         <div class="document-table-scroll">
-          <table class="loss-record-table business-document-table" aria-label="来源批次丢失记录">
+          <AppDetailTable
+            class="loss-record-table business-document-table"
+            aria-label="来源批次丢失记录"
+          >
             <thead>
               <tr>
                 <th scope="col">记录号</th>
@@ -865,7 +869,7 @@ watch(
                 </td>
               </tr>
             </tbody>
-          </table>
+          </AppDetailTable>
         </div>
       </section>
     </div>

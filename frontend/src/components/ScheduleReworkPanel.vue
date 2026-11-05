@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDetailTable from './AppDetailTable.vue'
 import ElAlert from '@/components/AppAlert.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import { ref } from 'vue'
@@ -120,7 +121,7 @@ async function view(id: number) {
       >
     </FormWorkspace>
     <div v-if="task.reworks?.length" class="rework-grid-wrap">
-      <table class="rework-grid" aria-label="返工跟进">
+      <AppDetailTable class="rework-grid" aria-label="返工跟进">
         <colgroup>
           <col style="width: 185px" />
           <col />
@@ -161,7 +162,7 @@ async function view(id: number) {
             </td>
           </tr>
         </tbody>
-      </table>
+      </AppDetailTable>
     </div>
     <ProcessRouteEditor v-if="route" :route="route" view-only @close="route = undefined" />
   </section>

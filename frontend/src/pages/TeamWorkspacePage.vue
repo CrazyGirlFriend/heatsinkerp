@@ -1469,13 +1469,14 @@ onBeforeUnmount(() => {
                 >
                   <ElTableColumn label="批次号" min-width="190" show-overflow-tooltip
                     ><template #default="{ row }"
-                      ><button
+                      ><ElButton
+                        link
                         class="batch-link"
                         :title="row.batch_no"
                         @click="openIncoming(asTransfer(row))"
                       >
                         {{ row.batch_no }}
-                      </button></template
+                      </ElButton></template
                     ></ElTableColumn
                   >
                   <ElTableColumn
@@ -1566,13 +1567,14 @@ onBeforeUnmount(() => {
                   >
                   <ElTableColumn label="批次号" min-width="190" show-overflow-tooltip
                     ><template #default="{ row }"
-                      ><button
+                      ><ElButton
+                        link
                         class="batch-link"
                         :title="row.batch_no"
                         @click="openDetail(asTransfer(row))"
                       >
                         {{ row.batch_no }}
-                      </button></template
+                      </ElButton></template
                     ></ElTableColumn
                   >
                   <ElTableColumn
@@ -1680,14 +1682,15 @@ onBeforeUnmount(() => {
                         :width="320"
                         :show-after="180"
                         ><template #reference
-                          ><button
+                          ><ElButton
+                            link
                             class="batch-link"
                             :title="row.batch_no"
                             :aria-label="`${row.batch_no}，悬停查看条码，点击查看详情`"
                             @click="openDetail(asTransfer(row))"
                           >
                             {{ row.batch_no }}
-                          </button></template
+                          </ElButton></template
                         ><BarcodeCard
                           :value="row.batch_no"
                           entity-label="批次号"
@@ -1824,19 +1827,20 @@ onBeforeUnmount(() => {
                   >
                   <ElTableColumn label="来源批次号" min-width="190" show-overflow-tooltip
                     ><template #default="{ row }"
-                      ><button
+                      ><ElButton
+                        link
                         class="batch-link"
                         @click="openWarehouseMaterial(row.source_transfer_batch_no)"
                       >
                         {{ row.source_transfer_batch_no || '—' }}
-                      </button></template
+                      </ElButton></template
                     ></ElTableColumn
                   >
                   <ElTableColumn label="转投批次号" min-width="190" show-overflow-tooltip
                     ><template #default="{ row }"
-                      ><button class="batch-link" @click="openDetail(asTransfer(row))">
+                      ><ElButton link class="batch-link" @click="openDetail(asTransfer(row))">
                         {{ row.batch_no }}
-                      </button></template
+                      </ElButton></template
                     ></ElTableColumn
                   >
                   <ElTableColumn label="操作" width="110" fixed="right"
@@ -1861,13 +1865,14 @@ onBeforeUnmount(() => {
                   />
                   <ElTableColumn label="来源批次号" min-width="190" show-overflow-tooltip
                     ><template #default="{ row }"
-                      ><button
+                      ><ElButton
+                        link
                         class="batch-link"
                         :title="row.batch_no"
                         @click="openLossSource(asLoss(row))"
                       >
                         {{ row.batch_no }}
-                      </button></template
+                      </ElButton></template
                     ></ElTableColumn
                   >
                   <ElTableColumn

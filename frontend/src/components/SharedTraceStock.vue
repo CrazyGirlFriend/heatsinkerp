@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import AppPopover from '@/components/AppPopover.vue'
 import { computed } from 'vue'
 
@@ -38,10 +39,10 @@ const totals = computed(() =>
       title="共投库存 · 不计入单一流水号"
     >
       <template #reference
-        ><button class="shared-stock-button" type="button">
+        ><AppButton link class="shared-stock-button" native-type="button">
           共投未分配 <b>{{ num(totals.quantity) }} 件 / {{ num(totals.weight) }} kg</b
           ><span>共投废料 {{ num(totals.scrap) }} kg</span>
-        </button></template
+        </AppButton></template
       >
       <div class="shared-stock-details">
         <div v-for="(item, index) in trace.shared_positions" :key="index">
@@ -54,17 +55,22 @@ const totals = computed(() =>
     </AppPopover>
     <div class="shared-trace-orders">
       <template v-for="group in groups" :key="group.shared_group_id"
-        ><button type="button" @click="emit('serial', group.shared_origin_batch_no!)">
-          查看整块料</button
-        ><button
+        ><AppButton
+          link
+          native-type="button"
+          @click="emit('serial', group.shared_origin_batch_no!)"
+        >
+          查看整块料</AppButton
+        ><AppButton
+          link
           v-for="(member, index) in group.shared_serials"
           :key="`${group.shared_group_id}-${member.serial_no}`"
-          type="button"
+          native-type="button"
           :class="{ active: trace.serial_no === member.serial_no }"
           @click="emit('serial', member.serial_no)"
         >
           <i :style="{ background: sharedSerialColor(index) }" />{{ member.serial_no }}
-        </button></template
+        </AppButton></template
       >
     </div>
   </div>
@@ -80,16 +86,10 @@ const totals = computed(() =>
   background: var(--surface-soft);
   font-size: 12px;
 }
-button {
-  border: 0;
-  color: var(--primary);
-  font: inherit;
-  cursor: pointer;
-  background: transparent;
-  padding: 4px 7px;
-  border-radius: 5px;
+.shared-trace-stock .app-button {
+  margin: 0;
 }
-.shared-stock-button {
+.shared-stock-button :deep(> span) {
   display: flex;
   gap: 10px;
   align-items: center;
@@ -98,7 +98,7 @@ button {
 .shared-stock-button b {
   font-weight: 600;
 }
-.shared-stock-button span {
+.shared-stock-button span:not(:first-child) {
   color: var(--action-warm);
 }
 .shared-trace-orders {
@@ -110,8 +110,7 @@ button {
 .shared-trace-orders button {
   white-space: nowrap;
 }
-.shared-trace-orders .active,
-button:hover {
+.shared-trace-orders .active {
   background: var(--primary-soft);
 }
 .shared-stock-details {

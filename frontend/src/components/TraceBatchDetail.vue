@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppButton from '@/components/AppButton.vue'
 import SharedMaterialInfo from './SharedMaterialInfo.vue'
 import { sharedSerialLabel } from '@/types/sharedMaterial'
 import type { TraceBatch } from '@/types/materialTrace'
@@ -29,9 +30,14 @@ defineEmits<{ open: [code: string] }>()
           materialTransferStatusLabel(batch.status, batch.entry_kind)
         }}</span
         ><span class="detail-batch">{{ batch.batch_no }}</span
-        ><button v-if="!example" type="button" @click="$emit('open', batch.batch_no)">
+        ><AppButton
+          link
+          v-if="!example"
+          native-type="button"
+          @click="$emit('open', batch.batch_no)"
+        >
           查看单据
-        </button>
+        </AppButton>
       </header>
       <p v-if="batch.context_only" class="shared-split-context">
         跨流水号来源，仅作追溯，不计入本次库存合计。
@@ -48,13 +54,14 @@ defineEmits<{ open: [code: string] }>()
         {{ batch.inspection_sample_quantity }} 件，不合格 {{ batch.inspection_failed_quantity }} 件
         · {{ batch.inspection_inspector }} · {{ formatDateTime(batch.inspection_checked_at) }}
       </p>
-      <button
+      <AppButton
+        link
         v-if="batch.inspection_source_batch_no"
-        type="button"
+        native-type="button"
         @click="$emit('open', batch.inspection_source_batch_no)"
       >
         查看原批次巡检与复检记录
-      </button>
+      </AppButton>
       <SharedMaterialInfo :item="batch" />
       <p v-if="batch.other_processing_outputs?.length" class="shared-split-context">
         同批还分配给

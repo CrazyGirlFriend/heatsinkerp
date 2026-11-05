@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppDisclosure from './AppDisclosure.vue'
+import AppDetailTable from './AppDetailTable.vue'
 import PersonName from './PersonName.vue'
 import {
   transferAmendmentStatusLabels,
@@ -272,7 +274,7 @@ function valueText(field: string, value: unknown): string {
 
 <template>
   <div v-if="events.length" class="history-table-scroll">
-    <table
+    <AppDetailTable
       class="document-history business-document-table"
       :aria-label="
         transfer.entry_kind === 'processing_output'
@@ -308,8 +310,8 @@ function valueText(field: string, value: unknown): string {
             }}
           </td>
           <td class="table-prose">
-            <details v-if="Object.keys(event.changes).length">
-              <summary>查看 {{ Object.keys(event.changes).length }} 项变更</summary>
+            <AppDisclosure v-if="Object.keys(event.changes).length">
+              <template #summary>查看 {{ Object.keys(event.changes).length }} 项变更</template>
               <dl>
                 <div v-for="(change, field) in event.changes" :key="field">
                   <dt>
@@ -337,12 +339,12 @@ function valueText(field: string, value: unknown): string {
                   </dd>
                 </div>
               </dl>
-            </details>
+            </AppDisclosure>
             <span v-else>—</span>
           </td>
         </tr>
       </tbody>
-    </table>
+    </AppDetailTable>
   </div>
   <p v-else class="history-empty">暂无修改记录</p>
 </template>
@@ -381,10 +383,6 @@ function valueText(field: string, value: unknown): string {
 }
 .document-history th:nth-child(3) {
   width: 22%;
-}
-.document-history summary {
-  color: var(--primary);
-  cursor: pointer;
 }
 .document-history dl {
   margin: 10px 0 0;

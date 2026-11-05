@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppDetailTable from './AppDetailTable.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import { formatAmount as amount } from '@/utils/format'
 
@@ -356,7 +357,7 @@ onBeforeUnmount(() => {
         {{ materialTypeLabel(selectedStock.batches[0]?.material_type) }}</span
       >
       <div class="location-batches">
-        <table class="business-table">
+        <AppDetailTable class="business-table">
           <thead>
             <tr>
               <th>批次号</th>
@@ -373,7 +374,7 @@ onBeforeUnmount(() => {
               <td>{{ batch.status === 'received' ? '在库' : '待签收' }}</td>
             </tr>
           </tbody>
-        </table>
+        </AppDetailTable>
       </div>
     </div>
     <small

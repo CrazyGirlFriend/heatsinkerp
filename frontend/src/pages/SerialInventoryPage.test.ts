@@ -82,7 +82,7 @@ it('shows current stock by team with separate amounts, preserving the exact seri
   vi.spyOn(api, 'get').mockResolvedValue(response())
   const { page } = await render()
   expect(api.get).toHaveBeenCalledWith('000012')
-  const table = page.get('table[aria-label="各班组库存"]')
+  const table = page.get('[aria-label="各班组库存"]')
   expect(table.findAll('tbody tr')).toHaveLength(2)
   expect(
     table
@@ -123,8 +123,8 @@ it('keeps shared material separate and pages only the selected stock group', asy
     page_size: 20,
   })
   const { page } = await render()
-  expect(page.get('table[aria-label="各班组库存"]').text()).not.toContain('100')
-  await page.get('table[aria-label="共投待分料"] button').trigger('click')
+  expect(page.get('[aria-label="各班组库存"]').text()).not.toContain('100')
+  await page.get('[aria-label="共投待分料"] button').trigger('click')
   await flushPromises()
   expect(api.batches).toHaveBeenLastCalledWith(
     '000012',
@@ -133,9 +133,9 @@ it('keeps shared material separate and pages only the selected stock group', asy
     1,
     20,
   )
-  expect(page.get('table[aria-label="批次库存"]').text()).toContain('待返工')
-  expect(page.get('table[aria-label="批次库存"]').text()).toContain('冻结')
-  await page.get('table[aria-label="批次库存"] button').trigger('click')
+  expect(page.get('[aria-label="批次库存"]').text()).toContain('待返工')
+  expect(page.get('[aria-label="批次库存"]').text()).toContain('冻结')
+  await page.get('[aria-label="批次库存"] button').trigger('click')
   expect(page.findComponent(MaterialTransferDrawer).props()).toMatchObject({
     modelValue: true,
     batchNo: 'TL-100',
@@ -144,7 +144,7 @@ it('keeps shared material separate and pages only the selected stock group', asy
   await pager.get('.btn-next').trigger('click')
   await flushPromises()
   expect(api.batches).toHaveBeenLastCalledWith('000012', expect.anything(), 'stock', 2, 20)
-  await page.get('.inventory-tabs button:nth-child(2)').trigger('click')
+  await page.get('[aria-label="库存位置"] button:nth-child(2)').trigger('click')
   await flushPromises()
   expect(api.batches).toHaveBeenLastCalledWith('000012', expect.anything(), 'incoming', 1, 20)
 })

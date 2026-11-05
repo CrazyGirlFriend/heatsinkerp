@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import StatePanel from './StatePanel.vue'
 import ElAlert from '@/components/AppAlert.vue'
 import ElSelect from '@/components/AppSelect.vue'
 import { onMounted, ref } from 'vue'
@@ -144,7 +145,7 @@ onMounted(load)
           </p>
         </CompactFormSection>
       </ElForm>
-      <p v-if="loading">正在读取工艺…</p>
+      <StatePanel v-if="loading" state="loading" title="正在读取工艺" compact />
       <template v-else-if="route">
         <h3 class="route-preview-title">
           {{ route.title }} <small>工艺 #{{ route.id }}</small>

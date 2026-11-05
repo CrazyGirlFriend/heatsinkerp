@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppDisclosure from './AppDisclosure.vue'
+import AppDetailTable from './AppDetailTable.vue'
 import AsyncStatus from './AsyncStatus.vue'
 import { AppMessageBox as ElMessageBox } from '@/utils/messageBox'
 import ElAlert from '@/components/AppAlert.vue'
@@ -777,7 +779,7 @@ onMounted(async () => {
           </ElFormItem>
         </CompactFormSection>
         <div v-if="draft.rework_request" class="route-rework-context">
-          <table aria-label="返工问题信息">
+          <AppDetailTable fields aria-label="返工问题信息">
             <colgroup>
               <col class="rework-label-column" />
               <col />
@@ -873,7 +875,7 @@ onMounted(async () => {
                 <td colspan="5">{{ draft.rework_request.weight_result }}</td>
               </tr>
             </tbody>
-          </table>
+          </AppDetailTable>
         </div>
         <section ref="editorMain" class="route-editor-main" aria-label="工艺内容">
           <div
@@ -893,16 +895,22 @@ onMounted(async () => {
                 :width="280"
               >
                 <template #reference>
-                  <button type="button" class="route-issue-summary" :aria-expanded="issuesOpen">
+                  <ElButton
+                    text
+                    native-type="button"
+                    class="route-issue-summary"
+                    :aria-expanded="issuesOpen"
+                  >
                     <ElIcon><WarningFilled /></ElIcon>{{ issueCount }} 处待核对
                     <ElIcon class="route-issue-chevron"><ArrowDown /></ElIcon>
-                  </button>
+                  </ElButton>
                 </template>
                 <div class="route-issue-list" aria-label="工艺待核对项">
-                  <button
+                  <ElButton
+                    text
                     v-for="issue in stepIssues"
                     :key="`${issue.index}.${issue.field}`"
-                    type="button"
+                    native-type="button"
                     class="route-issue-choice"
                     @click="locateIssue(issue)"
                   >
@@ -915,7 +923,7 @@ onMounted(async () => {
                       ></span
                     >
                     <span class="route-issue-locate">定位</span>
-                  </button>
+                  </ElButton>
                   <span
                     v-if="unrecognizedRows"
                     class="route-issue-unrecognized"
@@ -929,7 +937,7 @@ onMounted(async () => {
             </template>
             <div class="form-field--full">
               <div class="route-step-table-wrap">
-                <table
+                <AppDetailTable
                   class="route-step-table"
                   :class="{ 'route-step-table--readonly': readonly }"
                   aria-label="工艺工序"
@@ -991,9 +999,10 @@ onMounted(async () => {
                                 :disabled="readonly || busy"
                                 :aria-label="`工序 ${index + 1} 序号`"
                             /></ElFormItem>
-                            <button
+                            <ElButton
+                              text
                               v-if="sequenceProblem(index)"
-                              type="button"
+                              native-type="button"
                               class="route-cell-marker"
                               :aria-label="sequenceProblem(index)"
                               :title="`${sequenceProblem(index)} · 点击定位原稿`"
@@ -1007,7 +1016,7 @@ onMounted(async () => {
                               "
                             >
                               <ElIcon><WarningFilled /></ElIcon>
-                            </button>
+                            </ElButton>
                           </div>
                         </td>
                         <td
@@ -1094,7 +1103,7 @@ onMounted(async () => {
                       </tr>
                     </template>
                   </tbody>
-                </table>
+                </AppDetailTable>
               </div>
               <ElButton
                 v-if="!readonly"
@@ -1130,7 +1139,7 @@ onMounted(async () => {
                 maxlength="2000"
             /></ElFormItem>
           </CompactFormSection>
-          <details
+          <AppDisclosure
             v-if="
               Object.keys(draft.source_data.receipt_fields || {}).some(
                 (key) => !['serial_no', 'material_name'].includes(key),
@@ -1138,7 +1147,7 @@ onMounted(async () => {
             "
             class="route-extra-info"
           >
-            <summary>物料与订单资料</summary>
+            <template #summary>物料与订单资料</template>
             <ProcessRouteMaterials
               :exclude="['material_name']"
               :data="draft.source_data"
@@ -1147,9 +1156,9 @@ onMounted(async () => {
               @change="changeMaterial"
               @source="showMaterialSource"
             />
-          </details>
-          <details class="route-extra-info">
-            <summary>其他信息</summary>
+          </AppDisclosure>
+          <AppDisclosure class="route-extra-info">
+            <template #summary>其他信息</template>
             <CompactFormSection>
               <ElFormItem label="工艺名称" class="form-field--long"
                 ><span v-if="readonly" class="route-readonly-value">{{ draft.title || '—' }}</span
@@ -1168,7 +1177,7 @@ onMounted(async () => {
                 >
               </p>
             </CompactFormSection>
-          </details>
+          </AppDisclosure>
         </section>
       </FormWorkspace>
     </ElForm>
@@ -1490,6 +1499,12 @@ onMounted(async () => {
   font-size: 13px;
   cursor: pointer;
 }
+.route-issue-choice :deep(> span) {
+  display: flex;
+  width: 100%;
+  gap: 9px;
+  white-space: normal;
+}
 .route-issue-choice:hover {
   background: var(--wm-warning-bg, #faf4e7);
 }
@@ -1697,10 +1712,6 @@ onMounted(async () => {
   margin-top: 12px;
   font-size: 12px;
   color: var(--muted);
-}
-.route-extra-info summary {
-  cursor: pointer;
-  margin-bottom: 12px;
 }
 .route-extra-info :deep(.el-form-item) {
   margin-bottom: 12px;

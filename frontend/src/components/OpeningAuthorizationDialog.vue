@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import StatePanel from './StatePanel.vue'
 import ElAlert from '@/components/AppAlert.vue'
 import ElSwitch from '@/components/AppSwitch.vue'
 import AppDialog from '@/components/AppDialog.vue'
@@ -71,7 +72,7 @@ async function save() {
     :close-on-press-escape="!saving"
     @close="emit('update:modelValue', false)"
   >
-    <p v-if="loading">正在读取授权状态…</p>
+    <StatePanel v-if="loading" state="loading" title="正在读取授权状态" compact />
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <FormWorkspace v-if="state"
       ><CompactFormSection>
