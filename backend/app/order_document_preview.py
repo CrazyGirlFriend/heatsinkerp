@@ -1,12 +1,13 @@
 """Render validated order originals with Calc, preserving the worksheet layout."""
 
+import atexit
 import hashlib
 import os
 import shutil
 import signal
 import subprocess
 from collections import OrderedDict
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -18,13 +19,45 @@ from pypdf.errors import PdfReadError
 
 from .process_route_import import MAX_FILE_BYTES
 
-CONVERSION_TIMEOUT_SECONDS = 30
+# Allow cold startup while staying below the proxy's 60-second response timeout.
+CONVERSION_TIMEOUT_SECONDS = 45
 QUEUE_TIMEOUT_SECONDS = 2
 MAX_PDF_BYTES = 10 * 1024 * 1024
 MAX_CACHE_BYTES = 16 * 1024 * 1024
 MAX_CACHE_ENTRIES = 16
 _conversion_slot = BoundedSemaphore(1)
 _cache = OrderedDict()
+_profile = None
+
+
+def _discard_profile():
+    global _profile
+    if _profile is not None:
+        _profile.cleanup()
+        _profile = None
+
+
+atexit.register(_discard_profile)
+
+
+def close_order_previews():
+    # ASGI shutdown can be followed by SIGTERM, which skips Python's atexit hooks.
+    with _conversion_slot:
+        _discard_profile()
+
+
+@contextmanager
+def _converter_profile():
+    """Reuse private settings under the conversion slot, never the user's profile."""
+    global _profile
+    if _profile is None:
+        _profile = TemporaryDirectory(prefix="heatsink-order-profile-")
+    try:
+        yield Path(_profile.name)
+    except BaseException:
+        # Failed/terminated startup may leave locks or recovery state behind.
+        _discard_profile()
+        raise
 
 
 def _soffice():
@@ -39,13 +72,16 @@ def _soffice():
 
 def _convert(content):
     executable = _soffice()
-    with TemporaryDirectory(prefix="heatsink-order-preview-") as directory:
+    with (
+        _converter_profile() as profile,
+        TemporaryDirectory(prefix="heatsink-order-preview-") as directory,
+    ):
         root = Path(directory)
         source = root / "order.xlsx"
         source.write_bytes(content)
         command = [
             executable,
-            "-env:UserInstallation=" + (root / "profile").as_uri(),
+            "-env:UserInstallation=" + profile.as_uri(),
             "--headless",
             "--nologo",
             "--nodefault",

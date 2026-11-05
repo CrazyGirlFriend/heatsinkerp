@@ -42,8 +42,10 @@ async def lifespan(application: FastAPI):
     finally:
         await service.stop()
         from .factory_stream import snapshot_frames
+        from .order_document_preview import close_order_previews
 
         await snapshot_frames.close()
+        await to_thread(close_order_previews)
         await async_engine.dispose()
 
 

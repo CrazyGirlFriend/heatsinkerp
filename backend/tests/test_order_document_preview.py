@@ -8,6 +8,7 @@ from io import BytesIO
 from pathlib import Path
 from threading import BoundedSemaphore, Event
 from unittest.mock import Mock
+from urllib.parse import unquote, urlparse
 
 import pytest
 from app import order_document_preview as preview
@@ -28,6 +29,7 @@ def pdf(*, pages=1, password=False):
 
 @pytest.fixture()
 def converter(monkeypatch):
+    preview._discard_profile()
     monkeypatch.setattr(preview, "_cache", OrderedDict())
     monkeypatch.setattr(preview, "_conversion_slot", BoundedSemaphore(1))
     monkeypatch.setattr(preview, "_soffice", lambda: "/converter/soffice")
@@ -45,7 +47,13 @@ def converter(monkeypatch):
 
     start = Mock(side_effect=popen)
     monkeypatch.setattr(preview.subprocess, "Popen", start)
-    return process, start, kill, calls
+    yield process, start, kill, calls
+    preview._discard_profile()
+
+
+def profile_path(command):
+    setting = next(arg for arg in command if arg.startswith("-env:UserInstallation="))
+    return Path(unquote(urlparse(setting.split("=", 1)[1]).path))
 
 
 def test_original_bytes_layout_and_isolated_profile_are_preserved(converter):
@@ -61,7 +69,9 @@ def test_original_bytes_layout_and_isolated_profile_are_preserved(converter):
     assert "--headless" in command
     assert 'pdf:calc_pdf_Export:{"SinglePageSheets":{"type":"boolean","value":"true"}}' in command
     root = Path(options["cwd"])
-    assert "-env:UserInstallation=" + (root / "profile").as_uri() in command
+    profile = profile_path(command)
+    assert profile.name.startswith("heatsink-order-profile-")
+    assert profile.is_dir() and profile.parent != root
     assert options["env"]["TMPDIR"] == str(root)
     assert options["start_new_session"] is True
     assert options["stdout"] == options["stderr"] == subprocess.DEVNULL
@@ -103,21 +113,29 @@ def test_failed_output_is_rejected_and_never_cached(converter, monkeypatch, fail
     assert error.value.status_code == 422
     assert preview._cache == {}
     assert not Path(calls[0][1]["cwd"]).exists()
+    assert not profile_path(calls[0][0]).exists()
     kill.assert_called_once_with(process.pid, signal.SIGKILL)
 
 
 def test_timeout_kills_owned_process_group_and_cleans_temporary_files(converter):
     process, start, kill, calls = converter
-    process.wait.side_effect = [subprocess.TimeoutExpired("soffice", 30), 0]
+    process.wait.side_effect = [
+        subprocess.TimeoutExpired("soffice", preview.CONVERSION_TIMEOUT_SECONDS),
+        0,
+    ]
     with pytest.raises(HTTPException) as error:
         preview.order_document_preview(b"original", "订单.xlsx")
     assert error.value.status_code == 504 and "超时" in error.value.detail
     kill.assert_called_once_with(process.pid, signal.SIGKILL)
     assert process.wait.call_count == 2
     assert not Path(calls[0][1]["cwd"]).exists()
+    failed_profile = profile_path(calls[0][0])
+    assert not failed_profile.exists()
     assert preview._cache == {}
     process.wait.side_effect = None
     assert preview.order_document_preview(b"original", "订单.xlsx") == pdf()
+    assert profile_path(calls[1][0]) != failed_profile
+    assert profile_path(calls[1][0]).is_dir()
 
 
 def test_start_failure_is_reported_without_command_or_contents(converter):
@@ -183,3 +201,22 @@ def test_cache_is_bounded_by_bytes_and_entry_count(converter, monkeypatch):
     preview.order_document_preview(b"fourth", "订单.xlsx")
     assert len(preview._cache) == 1
     assert sum(map(len, preview._cache.values())) <= preview.MAX_CACHE_BYTES
+
+
+def test_different_orders_reuse_the_private_converter_profile(converter):
+    _, start, _, calls = converter
+    preview.order_document_preview(b"first order", "订单.xlsx")
+    preview.order_document_preview(b"second order", "另一订单.xlsx")
+    profiles = [
+        next(arg for arg in command if arg.startswith("-env:UserInstallation="))
+        for command, _, _ in calls
+    ]
+    assert start.call_count == 2
+    assert profiles[0] == profiles[1]
+    # Only the converter settings persist; each order still has a fresh workspace.
+    assert calls[0][1]["cwd"] != calls[1][1]["cwd"]
+    assert all(not Path(options["cwd"]).exists() for _, options, _ in calls)
+    profile = profile_path(calls[0][0])
+    assert profile.is_dir()
+    preview.close_order_previews()
+    assert not profile.exists()
