@@ -22,6 +22,7 @@ import SerialMaterialDrawer from './SerialMaterialDrawer.vue'
 import SerialUrgencyBadge from './SerialUrgencyBadge.vue'
 import SerialUrgencyDialog from './SerialUrgencyDialog.vue'
 import StockSourcePicker from './StockSourcePicker.vue'
+import InventoryShipmentDialog from './InventoryShipmentDialog.vue'
 import TeamInventoryDetail from './TeamInventoryDetail.vue'
 import ProcessingStockStatus from './ProcessingStockStatus.vue'
 import StatePanel from './StatePanel.vue'
@@ -340,7 +341,7 @@ const actionWidth = computed(
           ? 112
           : 88) +
     (props.processing && props.canWrite ? 45 : 0) +
-    (props.inspection && props.canWrite ? 45 : 0) +
+    (props.inspection && props.canWrite ? 125 : 0) +
     (props.canWrite && props.canReallocate ? 48 : 0),
 )
 function ownershipHint(row: TeamInventoryRow) {
@@ -630,6 +631,7 @@ async function load(background = false) {
 const detail = ref<TeamInventoryRow | null>(null),
   picker = ref<TeamInventoryRow | null>(null),
   pending = ref<TeamInventoryRow | null>(null)
+const shipment = ref<TeamInventoryRow | null>(null)
 const pickerMode = ref<'dispatch' | 'reallocate'>('dispatch')
 const openingSource = ref<{ groupId: number; mode: 'dispatch' | 'reallocate' } | null>(null)
 let sourceVersion = 0
@@ -1331,6 +1333,18 @@ onBeforeUnmount(() => {
               @click="openPicker(asRow(row), 'dispatch')"
               >出库</ElButton
             ><ElButton
+              v-if="
+                inspection &&
+                canWrite &&
+                inventoryCanDispatch(asRow(row)) &&
+                !isScrapMaterialType(row.material_type) &&
+                !row.shared_unallocated
+              "
+              link
+              class="action-warm"
+              @click="shipment = asRow(row)"
+              >汇总发货</ElButton
+            ><ElButton
               v-if="canWrite && canReallocate && inventoryCanDispatch(asRow(row))"
               link
               type="primary"
@@ -1418,6 +1432,19 @@ onBeforeUnmount(() => {
       "
       @close="picker = null"
       @selected="selectedSources"
+    />
+    <InventoryShipmentDialog
+      v-if="shipment && canWrite && inspection"
+      :team-id="teamId"
+      :group-id="shipment.group_id"
+      :serial-no="shipment.serial_no"
+      @close="shipment = null"
+      @saved="
+        () => {
+          load(true)
+          emit('changed')
+        }
+      "
     />
     <SerialMaterialDrawer
       v-model="serialOpen"

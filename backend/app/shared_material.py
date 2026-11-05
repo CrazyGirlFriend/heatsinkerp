@@ -5,16 +5,14 @@ from sqlalchemy import and_, or_, select
 
 from .models import SharedMaterialGroup, SharedMaterialMember
 from .schemas import SharedMaterialSerial
+from .serial_search import serial_text_match
 
 
 def serial_match(serial, query, mode="exact"):
     """Use EXISTS rather than a member join so stock can never be multiplied."""
 
     def match(column):
-        if mode == "exact":
-            return column == query.strip()
-        escaped = query.strip().replace("!", "!!").replace("%", "!%").replace("_", "!_")
-        return column.like(("" if mode == "prefix" else "%") + escaped + "%", escape="!")
+        return serial_text_match(column, query, mode)
 
     columns = serial.table.c
     direct = match(serial)

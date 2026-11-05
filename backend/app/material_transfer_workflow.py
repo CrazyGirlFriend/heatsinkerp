@@ -497,6 +497,11 @@ def create_material_transfer(db, payload, user: User) -> dict[str, Any]:
             _validate_warehouse_type(target, payload.material_type)
             validate_material_route(None, payload.material_type, target, "transfer", payload.notes)
             validate_material_amounts(payload.material_type, payload.quantity, payload.weight)
+            from .material_entry_validation import require_transfer_dimensions
+
+            require_transfer_dimensions(
+                target, payload.material_type, payload.transfer_specification
+            )
             measured = sludge_measurement(
                 payload.material_type,
                 payload.weight,
@@ -662,6 +667,15 @@ def update_material_transfer(db, batch_no: str, payload, user: User) -> dict[str
             transfer.entry_kind,
             payload.notes if "notes" in supplied else transfer.notes,
         )
+        from .material_entry_validation import require_transfer_dimensions
+
+        require_transfer_dimensions(
+            target,
+            material_type,
+            payload.transfer_specification
+            if "transfer_specification" in supplied
+            else transfer.transfer_specification,
+        )
         if "next_team_id" in supplied:
             transfer.next_team_id = target.id
             transfer.next_team_code = target.code
@@ -812,6 +826,11 @@ def confirm_material_transfer(db, batch_no: str, payload, user: User) -> dict[st
             if transfer.rejection_reason is not None:
                 raise _conflict("该明细已退回核对，须上序修改后再接收")
             _active_target(db, transfer.next_team_id)  # Serialize initial stock and first receipt.
+            from .material_entry_validation import require_transfer_dimensions
+
+            require_transfer_dimensions(
+                transfer.next_team, transfer.material_type, transfer.transfer_specification
+            )
             validate_material_route(
                 transfer.stock_source.material_type if transfer.source_transfer_id else None,
                 transfer.material_type,

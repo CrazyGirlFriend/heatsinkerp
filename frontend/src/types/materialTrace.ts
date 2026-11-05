@@ -1,6 +1,7 @@
 import type { MaterialTransfer } from './materialTransfer'
 
 export interface TraceBatch extends MaterialTransfer {
+  sent_process_step_index?: number | null
   context_only?: boolean
   inspection_hold_id?: number | null
   inspection_status?: 'held' | 'released' | 'passed' | 'failed' | null
@@ -32,6 +33,8 @@ export interface TraceHolding {
   material_types: Array<TraceAmount & { material_type: string | null }>
 }
 export interface MaterialTrace {
+  process_routes?: Pick<import('./processRoute').ProcessRoute, 'id' | 'route_kind' | 'steps'>[]
+  processing_records?: import('./teamMaterials').QuantityAdjustment[]
   reallocations?: MaterialTransfer[]
   shortage?: TraceAmount
   processing_delta_weight?: number

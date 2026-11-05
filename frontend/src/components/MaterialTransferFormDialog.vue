@@ -38,6 +38,7 @@ import {
   canEditMaterialTransfer,
   externalActionLabel,
   isWeightOnlyType,
+  isScrapType,
   isExternalTransfer,
   materialDocumentTextFields,
   materialTransferVersion,
@@ -300,6 +301,12 @@ const validationIssues = computed(() => {
         add(field.key, `${field.label}不能超过 ${field.maxLength} 个字符`)
     }
   if (form.notes.trim().length > 2000) add('notes', `${notesLabel.value}不能超过 2000 个字符`)
+  if (
+    !external.value &&
+    !isScrapType(form.materialType || null) &&
+    !form.document.transfer_specification.trim()
+  )
+    add('transfer_specification', '转入下一班组前必须填写实际尺寸')
   return issues
 })
 const fieldErrors = computed<Record<string, string>>(() =>
@@ -834,6 +841,11 @@ onBeforeUnmount(() => {
             v-for="field in section.fields"
             :key="field.key"
             :label="field.label"
+            :required="
+              field.key === 'transfer_specification' &&
+              !external &&
+              !isScrapType(form.materialType || null)
+            "
             :error="fieldErrors[field.key]"
             :data-validation-field="field.key"
             :class="{

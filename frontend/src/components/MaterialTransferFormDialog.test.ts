@@ -49,6 +49,7 @@ function fixture(overrides: Partial<MaterialTransfer> = {}): MaterialTransfer {
     quantity: 120,
     weight: 24.5,
     material_type: 'finished',
+    transfer_specification: '100×80×5 mm',
     finished_quantity: 132,
     status: 'pending',
     locked: false,
@@ -120,6 +121,7 @@ async function base(type: string | null = 'finished') {
   if (type !== null) selects[0]!.vm.$emit('update:modelValue', type)
   selects[1]!.vm.$emit('update:modelValue', 3)
   await wrapper.get('input[aria-label="流水号"]').setValue('HS-NEW')
+  await wrapper.get('input[aria-label="转料规格"]').setValue('100×80×5 mm')
   if (!['sludge', 'scrap_chips'].includes(type || '')) await number('转料件数', 0)
   if (type === 'sludge') {
     await number('废泥实重', 16.5)
@@ -132,6 +134,24 @@ async function submit() {
 }
 
 describe('material transfer document form', () => {
+  it('requires dimensions when creating or editing a normal internal handoff', async () => {
+    await render()
+    await base()
+    await wrapper.get('input[aria-label="转料规格"]').setValue('')
+    await submit()
+    expect(materialTransferApi.create).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-validation-field="transfer_specification"]').classes()).toContain(
+      'is-error',
+    )
+    wrapper.unmount()
+    await render(fixture())
+    await wrapper.get('input[aria-label="转料规格"]').setValue('')
+    await submit()
+    expect(materialTransferApi.update).not.toHaveBeenCalled()
+    await wrapper.get('input[aria-label="转料规格"]').setValue('50×30×2 mm')
+    await submit()
+    expect(materialTransferApi.update).toHaveBeenCalled()
+  })
   it('requires an explicit sender for creation but keeps the issued sender fixed on edit', async () => {
     await render()
     await base()
@@ -480,13 +500,16 @@ describe('material transfer document form', () => {
         `${field.multiline ? 'textarea' : 'input'}[aria-label="${field.label}"]`,
       )
       expect(input.element).toHaveProperty('value', `旧${field.label}`)
-      await input.setValue('')
+      if (field.key !== 'transfer_specification') await input.setValue('')
     }
     await number('成品件数', undefined)
     await submit()
     const payload = vi.mocked(materialTransferApi.update).mock.calls[0]![1]
     expect(payload).toMatchObject({ expected_version: 6, quantity: 120, finished_quantity: null })
-    materialDocumentTextFields.forEach((field) => expect(payload[field.key]).toBeNull())
+    materialDocumentTextFields
+      .filter((field) => field.key !== 'transfer_specification')
+      .forEach((field) => expect(payload[field.key]).toBeNull())
+    expect(payload.transfer_specification).toBe('旧转料规格')
     expect(payload).not.toHaveProperty('batch_no')
   })
 

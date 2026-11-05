@@ -64,6 +64,7 @@ def _create(client, setup, **overrides):
         "quantity": 12,
         "weight": "3.250",
         "notes": "本次整批交接",
+        "transfer_specification": "100 × 80 × 5 mm",
         "idempotency_key": "create-001",
         **overrides,
     }
@@ -728,6 +729,7 @@ def test_list_filters_pagination_and_chronological_serial_trace(client):
             "quantity": 12,
             "weight": 3.25,
             "idempotency_key": "trace-2",
+            "transfer_specification": "100 × 80 × 5 mm",
         },
         headers=setup["target_headers"],
     ).json()

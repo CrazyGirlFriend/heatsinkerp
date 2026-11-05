@@ -13,6 +13,7 @@ from .material_lineage import relatives
 from .material_stock import stock_table
 from .models import (
     MaterialInspection,
+    MaterialQuantityAdjustment,
     MaterialTransfer,
     MaterialTransferEvent,
     SharedMaterialGroup,
@@ -53,6 +54,16 @@ def serial_trace(db, serial_no, user):
             ),
         )
     requested_ids = set(db.scalars(requested.limit(1201)))
+    if not requested_ids and not group_id and not batch:
+        from .shared_material import serial_match
+
+        requested_ids = set(
+            db.scalars(
+                select(MaterialTransfer.id)
+                .where(serial_match(MaterialTransfer.serial_no, serial_no))
+                .limit(1201)
+            )
+        )
     if len(requested_ids) > 1200:
         raise HTTPException(422, "本流水号链路超过 1200 个批次，请输入具体批次号查看该批及后续流转")
     ancestry = relatives(list(requested_ids), ancestors=True, name="trace_ancestors")
@@ -176,6 +187,7 @@ def serial_trace(db, serial_no, user):
         # Residence intervals need committed quantity changes and void returns,
         # not just today's balance applied retroactively to the entire period.
         item = workflow.material_transfer_dict(transfer, user, include_history=True)
+        item["sent_process_step_index"] = transfer.sent_process_step_index
         # Null means this document is not an accounted stock lot, not zero stock.
         item["on_hand_quantity"] = int(balance["on_hand_quantity"]) if balance else None
         item["on_hand_weight"] = float(balance["on_hand_weight"]) if balance else None
@@ -303,11 +315,37 @@ def serial_trace(db, serial_no, user):
     def amounts(bucket):
         return {**bucket, "weight": float(bucket["weight"])}
 
+    from .models import Team
+    from .quantity_adjustments import record_dict
+
+    routes = {t.process_route_id: t.process_route for t in transfers if t.process_route_id}
+    team_names = dict(db.execute(select(Team.id, Team.name)).all())
+    processing = db.scalars(
+        select(MaterialQuantityAdjustment)
+        .where(
+            MaterialQuantityAdjustment.source_transfer_id.in_(requested_ids),
+            ~MaterialQuantityAdjustment.idempotency_key.startswith("outbound-clear:"),
+        )
+        .order_by(MaterialQuantityAdjustment.created_at, MaterialQuantityAdjustment.id)
+    ).all()
+
     return {
         "serial_no": serial_no,
         "query_kind": "batch" if batch else "shared" if group_id else "serial",
         "focus_batch_id": batch,
         "items": items,
+        "process_routes": [
+            {
+                "id": route.id,
+                "route_kind": route.route_kind,
+                "steps": [
+                    {**step, "team_name": team_names.get(step.get("team_id"), "未指定")}
+                    for step in route.steps
+                ],
+            }
+            for route in routes.values()
+        ],
+        "processing_records": [record_dict(record) for record in processing],
         "processing_delta_weight": float(
             sum(
                 (row["adjusted_weight"] for id, row in balances.items() if id in requested_ids),

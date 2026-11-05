@@ -6,6 +6,7 @@ import { appPinia } from '@/stores/access'
 import { teamMaterialApi } from '@/services/teamMaterialApi'
 import { materialTransferApi } from '@/services/materialTransferApi'
 import FlowPreviewCanvas from '@/components/FlowPreviewCanvas.vue'
+import TraceProcessTable from '@/components/TraceProcessTable.vue'
 import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
 import TraceStockSummary from '@/components/TraceStockSummary.vue'
 import TableExportButton from '@/components/TableExportButton.vue'
@@ -34,7 +35,7 @@ afterEach(() => {
   wrapper = undefined
   vi.restoreAllMocks()
 })
-async function render(path: string) {
+async function render(path: string, view: 'chart' | 'table' = 'chart') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -49,12 +50,29 @@ async function render(path: string) {
     attachTo: document.body,
     global: {
       plugins: [appPinia, router],
-      stubs: { FlowPreviewCanvas: true, MaterialTransferDrawer: true },
+      stubs: { FlowPreviewCanvas: true, MaterialTransferDrawer: true, TraceProcessTable: true },
     },
   })
   await flushPromises()
+  if (view === 'chart') {
+    const button = wrapper.findAll('button').find((button) => button.text() === '流转图')
+    if (button) {
+      await button.trigger('click')
+      await flushPromises()
+    }
+  }
   return { page: wrapper, router }
 }
+it('opens process statistics by default and can switch back to the flow diagram', async () => {
+  const { page } = await render('/flow-preview/chain?sample=purposes', 'table')
+  expect(page.findComponent(TraceProcessTable).exists()).toBe(true)
+  expect(page.findComponent(FlowPreviewCanvas).exists()).toBe(false)
+  await page
+    .findAll('button')
+    .find((button) => button.text() === '流转图')!
+    .trigger('click')
+  expect(page.findComponent(FlowPreviewCanvas).exists()).toBe(true)
+})
 it('previews a path on hover without opening details, and preserves a clicked path until cleared', async () => {
   const { page } = await render('/flow-preview/chain?sample=purposes')
   const canvas = page.getComponent(FlowPreviewCanvas)

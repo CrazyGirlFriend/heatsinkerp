@@ -115,6 +115,7 @@ def work(client, s, lot, partial=False):
         {
             "role": "produced",
             "quantity": 60 if partial else 100,
+            "transfer_specification": "100 × 80 × 5 mm",
             "weight": 6 if partial else 10,
             "material_type": "semi_finished",
         }
@@ -364,6 +365,7 @@ def test_shared_common_work_then_designated_partial_split_preserves_remaining_st
                 "role": "produced",
                 "serial_no": "A",
                 "quantity": 60,
+                "transfer_specification": "25 × 12 × 2 mm",
                 "weight": 6,
                 "material_type": "semi_finished",
             },

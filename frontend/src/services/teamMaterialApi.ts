@@ -437,6 +437,11 @@ export const teamMaterialApi = {
     })
     return { items: result.items.map(normalizeMaterialTransfer) }
   },
+  shipmentStock(teamId: number, groupId: number) {
+    return request<import('@/types/teamMaterials').ShipmentStock>(
+      path(teamId, `inventory/${groupId}/shipment-stock`),
+    )
+  },
   async refreshSource(teamId: number, source: StockBatch): Promise<StockBatch> {
     const result = await teamMaterialApi.stock(teamId, {
       query: source.transfer.batch_no,

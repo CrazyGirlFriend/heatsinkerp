@@ -23,6 +23,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 from . import material_transfer_workflow as workflow
 from .auth import actor_name
 from .batch_numbers import next_transfer_batch_numbers
+from .inventory_shipments import ShipmentTotal
 from .material_weight import (
     sludge_measurement,
     stock_sludge_measurements,
@@ -126,7 +127,8 @@ class DispatchCreate(BaseModel):
     external_destination: str | None = Field(default=None, max_length=240)
     notes: str | None = Field(default=None, max_length=2000)
     idempotency_key: str = Field(min_length=1, max_length=100)
-    lines: list[DispatchLine] = Field(min_length=1, max_length=100)
+    lines: list[DispatchLine] = Field(default_factory=list, max_length=100)
+    inventory_total: ShipmentTotal | None = None
     quantity_clearances: list[OutboundQuantityClearance] = Field(
         default_factory=list, max_length=100
     )
@@ -134,6 +136,17 @@ class DispatchCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_destination(self):
+        if self.inventory_total is not None:
+            if (
+                self.entry_kind != "inspection_shipment"
+                or self.lines
+                or self.quantity_adjustments
+                or self.quantity_clearances
+                or self.rework_return
+            ):
+                raise ValueError("汇总发货仅用于检验班组，不能同时填写逐批明细")
+        elif not self.lines:
+            raise ValueError("请选择来源批次")
         if any(
             item.outputs is not None or item.processing_mode == "unit"
             for item in self.quantity_adjustments
@@ -375,10 +388,14 @@ def create_dispatch(db, team_id, payload, user):
         # independent submissions. The unique constraint remains the arbiter.
         with db.begin():
             # Deterministic lock order also covers a multi-lot submission.
-            lots = {
-                source_id: lock_lot(db, source_id, team_id)
-                for source_id in sorted({line.source_transfer_id for line in payload.lines})
-            }
+            if payload.inventory_total is not None:
+                from .inventory_shipments import candidates
+
+                shipment_rows = candidates(db, team_id, payload.inventory_total.group_id)
+                source_ids = {row["id"] for row in shipment_rows}
+            else:
+                source_ids = {line.source_transfer_id for line in payload.lines}
+            lots = {source_id: lock_lot(db, source_id, team_id) for source_id in sorted(source_ids)}
             prior = db.scalar(
                 select(MaterialDispatch)
                 .where(MaterialDispatch.idempotency_key == payload.idempotency_key)
@@ -387,6 +404,35 @@ def create_dispatch(db, team_id, payload, user):
             if prior is not None:
                 _replay(prior, user, request_hash, "source_team_id")
                 return dispatch_dict(db, prior, user)
+            if payload.inventory_total is not None:
+                from .inventory_shipments import allocate, snapshot
+
+                # Locking/current reads detect another dispatch or a processing write.
+                current_rows = []
+                for row in shipment_rows:
+                    balance = db.scalar(
+                        select(MaterialStockBalance)
+                        .where(MaterialStockBalance.transfer_id == row["id"])
+                        .with_for_update()
+                        .execution_options(populate_existing=True)
+                    )
+                    current_rows.append(
+                        {
+                            **row,
+                            "quantity": balance.on_hand_quantity,
+                            "weight": balance.on_hand_weight,
+                            "revision": balance.revision,
+                        }
+                    )
+                if snapshot(current_rows) != payload.inventory_total.revision:
+                    raise HTTPException(409, "库存已变化，请刷新可发库存后重新确认")
+                allocated = [
+                    DispatchLine(**line) for line in allocate(current_rows, payload.inventory_total)
+                ]
+                payload = payload.model_copy(update={"lines": allocated})
+                lots = {
+                    line.source_transfer_id: lots[line.source_transfer_id] for line in allocated
+                }
             from .inspections import require_clear_lots
 
             require_clear_lots(db, lots.values())
@@ -609,6 +655,9 @@ def create_dispatch(db, team_id, payload, user):
                     fields["transfer_specification"] = record.after_specification or None
                 if "transfer_specification" in line.model_fields_set:
                     fields["transfer_specification"] = line.transfer_specification or None
+                from .material_entry_validation import require_transfer_dimensions
+
+                require_transfer_dimensions(target, kind, fields.get("transfer_specification"))
                 # A split inherits its origin's live requirement, never a second planned quantity.
                 fields.update(delivery_date=None, delivery_quantity=None)
                 if "material_type" in line.model_fields_set:

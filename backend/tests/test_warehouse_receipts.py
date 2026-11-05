@@ -60,6 +60,7 @@ def intake(client, setup, **overrides):
             "weight": "10.125",
             "notes": "外部来料，实物清点后手工入库",
             "source_batch_no": "RAW-001",
+            "transfer_specification": "100 × 80 × 5 mm",
             "idempotency_key": "warehouse-intake-1",
             **({"confirmed_imports": True} if overrides.get("process_route") else {}),
             **overrides,
@@ -268,6 +269,7 @@ def test_intake_retry_is_idempotent_and_different_payload_conflicts(client, ware
             "quantity": 1,
             "weight": 1,
             "idempotency_key": "ordinary-transfer",
+            "transfer_specification": "100 × 80 × 5 mm",
         },
     )
     assert created.status_code == 201, created.text

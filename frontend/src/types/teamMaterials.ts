@@ -313,12 +313,19 @@ export type CreateDispatch = {
   notes?: string | null
   idempotency_key: string
   lines: DispatchLine[]
+  inventory_total?: { group_id: number; revision: string; quantity: number; weight: number }
   quantity_adjustments?: Omit<CreateQuantityAdjustment, 'idempotency_key' | 'outputs'>[]
   quantity_clearances?: import('./materialTransfer').OutboundQuantityClearance[]
 } & (
   | { entry_kind?: 'transfer'; next_team_id: number; external_destination?: never }
   | { entry_kind: ExternalEntryKind; next_team_id?: null; external_destination: string }
 )
+export interface ShipmentStock {
+  revision: string
+  quantity: number
+  weight: number
+  items: { id: number; batch_no: string; quantity: number; weight: number }[]
+}
 export interface CreateLoss {
   source_transfer_id: number
   quantity: number

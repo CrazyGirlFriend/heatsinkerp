@@ -473,7 +473,8 @@ async function loadProcessing(source: StockBatch) {
       .filter((line) => line.source.transfer.id === source.transfer.id)
       .forEach((line) => {
         if (line.specification === line.originalSpecification)
-          line.specification = line.originalSpecification = context.transfer_specification || ''
+          line.specification = line.originalSpecification =
+            context.transfer_specification ?? line.originalSpecification
       })
   } catch (e) {
     if (current === generation) {
@@ -595,7 +596,11 @@ const validation = useDialogValidation(() => {
       issues[`${line.key}.${field}`] = message
     }
     if (routeProblem(line)) add('route', routeProblem(line))
-    if (!isLoss.value && !isScrapType(line.materialType) && !line.specificationValid)
+    if (
+      !isLoss.value &&
+      !isScrapType(line.materialType) &&
+      (!line.specificationValid || (!external.value && !line.specification.trim()))
+    )
       add('specification', '请补全实际尺寸')
     if (converted(line) && !sludgeWeight(line.gross, line.percent)) {
       if (!sludgeWeight(line.gross, 100)) add('gross', '请填写有效废泥实重')
@@ -865,7 +870,11 @@ async function submit() {
     return
   }
   lines.value.forEach((line) => {
-    if (!line.specificationValid) line.specificationOpen = true
+    if (
+      !line.specificationValid ||
+      (!external.value && !isScrapType(line.materialType) && !line.specification.trim())
+    )
+      line.specificationOpen = true
   })
   if (!validation.validate()) return
   if (
@@ -1736,7 +1745,9 @@ watch(
               >
                 <template #summary>
                   <span>实际尺寸</span>
-                  <span class="specification-summary">{{ line.specification || '选填' }}</span>
+                  <span class="specification-summary">{{
+                    line.specification || (external ? '选填' : '必填')
+                  }}</span>
                   <span class="source-disclosure-action">{{
                     line.specificationOpen ? '收起' : '编辑'
                   }}</span>

@@ -24,6 +24,18 @@ from .schemas import (
 router = APIRouter(prefix="/api/team-materials", tags=["team material stock"])
 
 
+@router.get("/{team_id}/inventory/{group_id}/shipment-stock")
+def shipment_stock(
+    team_id: int = Path(ge=1),
+    group_id: int = Path(ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from .inventory_shipments import preview
+
+    return preview(db, team_id, group_id, user)
+
+
 @router.get("/{team_id}/processing-records")
 def list_processing_records(
     processor_id: int | None = Query(default=None, ge=1),

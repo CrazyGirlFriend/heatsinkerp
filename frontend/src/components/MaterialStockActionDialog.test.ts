@@ -51,6 +51,7 @@ function source(id = 10, type: 'semi_finished' | null = 'semi_finished'): StockB
       next_team: { id: 2, name: '轧制', code: 'FACTORY-ROLL' },
       material_type: type,
       source_batch_no: `RAW${id}`,
+      transfer_specification: '100×80×5 mm',
     }),
     available_quantity: 100,
     available_weight: 10,
@@ -157,6 +158,26 @@ async function destination(id = 3) {
 }
 
 describe('source batch dispatch and loss drafts', () => {
+  it('blocks a normal handoff with missing dimensions and opens its dimension field', async () => {
+    const lot = source()
+    lot.transfer.transfer_specification = null
+    await render('dispatch', [lot])
+    await destination()
+    await submit()
+    expect(teamMaterialApi.createDispatch).not.toHaveBeenCalled()
+    expect(
+      wrapper.get('.source-specification-field button[aria-expanded]').attributes('aria-expanded'),
+    ).toBe('true')
+    wrapper.getComponent(SpecificationInput).vm.$emit('update:modelValue', '30×20×2 mm')
+    await flushPromises()
+    await submit()
+    expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({
+        lines: [expect.objectContaining({ transfer_specification: '30×20×2 mm' })],
+      }),
+    )
+  })
   const schedule = (id: number) =>
     ({
       id,
@@ -808,10 +829,7 @@ describe('source batch dispatch and loss drafts', () => {
     await render('dispatch', [row])
     await destination(1)
     expect(wrapper.get('input[aria-label="TL10有效材料占比"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('input[aria-label="TL10废泥实重"]').element).toHaveProperty(
-      'value',
-      '1.005000',
-    )
+    expect(wrapper.get('input[aria-label="TL10废泥实重"]').element).toHaveProperty('value', '1.005')
     await wrapper.get('textarea').setValue('废泥回库')
     await submit()
     expect(teamMaterialApi.createDispatch).toHaveBeenCalledWith(

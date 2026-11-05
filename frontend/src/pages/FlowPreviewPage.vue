@@ -8,6 +8,8 @@ import WorkspacePagination from '@/components/WorkspacePagination.vue'
 import AppDrawer from '@/components/AppDrawer.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import SharedTraceStock from '@/components/SharedTraceStock.vue'
+import TraceProcessTable from '@/components/TraceProcessTable.vue'
+import { traceProcessExportSource } from '@/utils/traceProcessTable'
 import {
   Close,
   FullScreen,
@@ -108,6 +110,7 @@ const dateDraft = ref({ from: '', to: '' }),
 let epoch = 0
 const localModel = computed(() => (history.value ? teamFlowModel(history.value) : null))
 const originId = ref('all')
+const chainView = ref<'table' | 'chart'>('table')
 const origins = computed(() => traceOrigins(trace.value?.items || []))
 const activeOrigin = computed(() =>
   origins.value.groups.find((group) => group.id === originId.value),
@@ -120,7 +123,10 @@ const scopedTrace = computed(() =>
 function exportSource() {
   return mode.value === 'team'
     ? history.value && serialHistoryExportSource(history.value)
-    : scopedTrace.value && traceExportSource(scopedTrace.value)
+    : scopedTrace.value &&
+        (chainView.value === 'table'
+          ? traceProcessExportSource(scopedTrace.value)
+          : traceExportSource(scopedTrace.value))
 }
 const chainModel = computed(() =>
   traceFlowModel(scopedTrace.value?.items || [], trace.value?.observed_at, reallocations.value),
@@ -700,204 +706,223 @@ onBeforeUnmount(() => {
           :append-to="pageRoot"
           @serial="openRelatedSerial"
         />
-        <header class="chart-toolbar">
-          <div class="chain-legends">
-            <strong class="path-heading"
-              >流转路径 <small>{{ chainModel.nodes.length }} 笔记录</small></strong
-            >
-            <div class="purpose-legend">
-              <span v-for="group in visibleOrigins" :key="group.id" :title="group.batch.batch_no"
-                ><i :style="{ background: group.color }" />{{ group.name }}</span
-              >
-            </div>
-            <div class="mark-legend" aria-label="图形说明">
-              <span v-if="trace?.items.some((batch) => batch.inspection_hold_id)"
-                ><i class="inspection-mark" />巡检锁定</span
-              >
-              <span><i class="stay-mark" />在库停留</span
-              ><span><i class="departure-mark" />转出</span
-              ><span><i class="receipt-mark" />签收</span
-              ><span><i class="processing-mark" />加工登记</span
-              ><span><i class="pending-mark" />待确认</span
-              ><span><i class="waste-mark" />废料</span>
-            </div>
-          </div>
-          <div class="chart-tools">
-            <span v-if="timeIssues" class="data-warning">时间异常 {{ timeIssues }}</span
-            ><span v-if="residenceIssues" class="data-warning"
-              >历史不完整 {{ residenceIssues }}</span
-            ><span v-if="untracked" class="data-warning">未计入库存 {{ untracked }}</span
-            ><ElSelect
-              class="detail-select"
-              placeholder="选择转料批次"
-              aria-label="选择图形明细"
-              filterable
-              :append-to="pageRoot"
-              :model-value="selectedId || undefined"
-              @change="chooseDetail"
-              ><ElOption
-                v-for="option in detailOptions"
-                :key="option.value"
-                :value="option.value"
-                :label="option.label" /></ElSelect
-            ><ElButton
-              v-if="selectedId"
-              class="clear-path"
-              :icon="Close"
-              aria-label="取消路径高亮"
-              title="取消路径高亮"
-              text
-              circle
-              @click="clearSelection"
-            />
-          </div>
-        </header>
-        <div class="chain-flow-region chart-glass">
-          <div
-            class="canvas-area"
-            :style="mode === 'team' ? { height: `${chartHeight}px` } : undefined"
+        <div class="trace-view-switch" role="group" aria-label="流转展示方式">
+          <ElButton
+            :type="chainView === 'table' ? 'primary' : undefined"
+            @click="chainView = 'table'"
+            >工序统计表</ElButton
           >
-            <FlowPreviewCanvas
-              v-if="hasMetricData && (mode === 'team' || chainModel.extent)"
-              :key="mode"
-              ref="chart"
-              :renderer="mode === 'chain' ? 'svg' : 'canvas'"
-              :option="chartOption"
-              :replay="replay"
-              :motion="motion"
-              :interaction="mode === 'chain' ? interaction : undefined"
-              :label="`${serial}，${mode === 'team' ? history?.team_name + '收发流向' : '全链路时间画布；滚轮缩放，H键平移，V键选择，双击还原；加减键缩放，0键还原'}，件数和重量`"
-              @select="pick"
-              @hover="hoverBatch"
-              @zoom="zoomLevel = $event"
-              @team-range="teamRange = $event"
-            />
-            <div v-else class="zero-measure">
-              {{
-                mode === 'chain'
-                  ? '缺少有效时间记录，请通过上方批次查询查看明细。'
-                  : '当前记录没有件数。请切换重量查看废屑等按重量记录的物料。'
-              }}
-            </div>
-            <template v-if="mode === 'chain' && chainModel.extent">
-              <div class="canvas-controls" role="group" aria-label="画布工具">
-                <div
-                  class="canvas-mode"
-                  :class="{ 'is-pan': interaction === 'pan' }"
-                  role="group"
-                  aria-label="操作模式"
-                >
-                  <ElTooltip content="选择批次 · V" :append-to="pageRoot" :show-after="350"
-                    ><ElButton
-                      text
-                      native-type="button"
-                      aria-label="选择批次"
-                      :aria-pressed="interaction === 'select'"
-                      @click="interaction = 'select'"
-                    >
-                      <ElIcon><Pointer /></ElIcon></ElButton
-                  ></ElTooltip>
-                  <ElTooltip content="拖动画布 · H" :append-to="pageRoot" :show-after="350"
-                    ><ElButton
-                      text
-                      native-type="button"
-                      aria-label="平移画布"
-                      :aria-pressed="interaction === 'pan'"
-                      @click="interaction = 'pan'"
-                    >
-                      <ElIcon><Rank /></ElIcon></ElButton
-                  ></ElTooltip>
-                </div>
-                <div class="canvas-zoom" role="group" aria-label="视图范围">
-                  <ElTooltip content="缩小 · −" :append-to="pageRoot" :show-after="350"
-                    ><ElButton
-                      text
-                      native-type="button"
-                      aria-label="缩小路径"
-                      @click="chart?.zoom(-1)"
-                    >
-                      <ElIcon><ZoomOut /></ElIcon></ElButton
-                  ></ElTooltip>
-                  <span class="zoom-level" aria-live="polite" aria-label="当前缩放"
-                    >{{ zoomLevel }}%</span
-                  >
-                  <ElTooltip content="放大 · +" :append-to="pageRoot" :show-after="350"
-                    ><ElButton
-                      text
-                      native-type="button"
-                      aria-label="放大路径"
-                      @click="chart?.zoom(1)"
-                    >
-                      <ElIcon><ZoomIn /></ElIcon></ElButton
-                  ></ElTooltip>
-                  <ElTooltip content="还原完整链路 · 0" :append-to="pageRoot" :show-after="350"
-                    ><ElButton
-                      text
-                      native-type="button"
-                      aria-label="还原完整链路"
-                      @click="chart?.zoom(0)"
-                    >
-                      <ElIcon><ScaleToOriginal /></ElIcon></ElButton
-                  ></ElTooltip>
-                </div>
-                <div class="canvas-playback" role="group" aria-label="动画与显示">
-                  <ElTooltip
-                    :content="motion ? '关闭动画' : '启用动画'"
-                    :append-to="pageRoot"
-                    :show-after="350"
-                    ><ElButton
-                      text
-                      native-type="button"
-                      :aria-label="motion ? '关闭图形动画' : '启用图形动画'"
-                      :aria-pressed="motion"
-                      @click="motion = !motion"
-                    >
-                      <ElIcon><VideoPause v-if="motion" /><VideoPlay v-else /></ElIcon></ElButton
-                  ></ElTooltip>
-                  <ElTooltip content="重新绘制路径" :append-to="pageRoot" :show-after="350"
-                    ><ElButton
-                      text
-                      native-type="button"
-                      aria-label="重播路径"
-                      :disabled="!motion"
-                      @click="replay++"
-                    >
-                      <ElIcon><RefreshRight /></ElIcon></ElButton
-                  ></ElTooltip>
-                  <ElTooltip
-                    v-if="!embedded"
-                    :content="fullscreen ? '退出全屏' : '全屏画布'"
-                    :append-to="pageRoot"
-                    :show-after="350"
-                    ><ElButton
-                      text
-                      native-type="button"
-                      :aria-label="fullscreen ? '退出全屏' : '全屏画布'"
-                      :aria-pressed="fullscreen"
-                      @click="toggleFullscreen"
-                    >
-                      <ElIcon><FullScreen /></ElIcon></ElButton
-                  ></ElTooltip>
-                </div>
-              </div>
-            </template>
-          </div>
-          <TraceStockSummary
-            v-if="scopedTrace"
-            compact
-            v-model:metric="metric"
-            :trace="scopedTrace"
-            :teams="chainModel.teams"
-            :range="teamRange"
-            :append-to="pageRoot"
-          />
+          <ElButton
+            :type="chainView === 'chart' ? 'primary' : undefined"
+            @click="chainView = 'chart'"
+            >流转图</ElButton
+          >
         </div>
-        <TraceBatchDetail
-          :batch="selectedBatch || null"
-          :origin="origins.originById.get(selectedId)"
-          :example="example"
+        <TraceProcessTable
+          v-if="chainView === 'table' && scopedTrace"
+          :trace="scopedTrace"
           @open="openBatch"
         />
+        <template v-if="chainView === 'chart'">
+          <header class="chart-toolbar">
+            <div class="chain-legends">
+              <strong class="path-heading"
+                >流转路径 <small>{{ chainModel.nodes.length }} 笔记录</small></strong
+              >
+              <div class="purpose-legend">
+                <span v-for="group in visibleOrigins" :key="group.id" :title="group.batch.batch_no"
+                  ><i :style="{ background: group.color }" />{{ group.name }}</span
+                >
+              </div>
+              <div class="mark-legend" aria-label="图形说明">
+                <span v-if="trace?.items.some((batch) => batch.inspection_hold_id)"
+                  ><i class="inspection-mark" />巡检锁定</span
+                >
+                <span><i class="stay-mark" />在库停留</span
+                ><span><i class="departure-mark" />转出</span
+                ><span><i class="receipt-mark" />签收</span
+                ><span><i class="processing-mark" />加工登记</span
+                ><span><i class="pending-mark" />待确认</span
+                ><span><i class="waste-mark" />废料</span>
+              </div>
+            </div>
+            <div class="chart-tools">
+              <span v-if="timeIssues" class="data-warning">时间异常 {{ timeIssues }}</span
+              ><span v-if="residenceIssues" class="data-warning"
+                >历史不完整 {{ residenceIssues }}</span
+              ><span v-if="untracked" class="data-warning">未计入库存 {{ untracked }}</span
+              ><ElSelect
+                class="detail-select"
+                placeholder="选择转料批次"
+                aria-label="选择图形明细"
+                filterable
+                :append-to="pageRoot"
+                :model-value="selectedId || undefined"
+                @change="chooseDetail"
+                ><ElOption
+                  v-for="option in detailOptions"
+                  :key="option.value"
+                  :value="option.value"
+                  :label="option.label" /></ElSelect
+              ><ElButton
+                v-if="selectedId"
+                class="clear-path"
+                :icon="Close"
+                aria-label="取消路径高亮"
+                title="取消路径高亮"
+                text
+                circle
+                @click="clearSelection"
+              />
+            </div>
+          </header>
+          <div class="chain-flow-region chart-glass">
+            <div
+              class="canvas-area"
+              :style="mode === 'team' ? { height: `${chartHeight}px` } : undefined"
+            >
+              <FlowPreviewCanvas
+                v-if="hasMetricData && (mode === 'team' || chainModel.extent)"
+                :key="mode"
+                ref="chart"
+                :renderer="mode === 'chain' ? 'svg' : 'canvas'"
+                :option="chartOption"
+                :replay="replay"
+                :motion="motion"
+                :interaction="mode === 'chain' ? interaction : undefined"
+                :label="`${serial}，${mode === 'team' ? history?.team_name + '收发流向' : '全链路时间画布；滚轮缩放，H键平移，V键选择，双击还原；加减键缩放，0键还原'}，件数和重量`"
+                @select="pick"
+                @hover="hoverBatch"
+                @zoom="zoomLevel = $event"
+                @team-range="teamRange = $event"
+              />
+              <div v-else class="zero-measure">
+                {{
+                  mode === 'chain'
+                    ? '缺少有效时间记录，请通过上方批次查询查看明细。'
+                    : '当前记录没有件数。请切换重量查看废屑等按重量记录的物料。'
+                }}
+              </div>
+              <template v-if="mode === 'chain' && chainModel.extent">
+                <div class="canvas-controls" role="group" aria-label="画布工具">
+                  <div
+                    class="canvas-mode"
+                    :class="{ 'is-pan': interaction === 'pan' }"
+                    role="group"
+                    aria-label="操作模式"
+                  >
+                    <ElTooltip content="选择批次 · V" :append-to="pageRoot" :show-after="350"
+                      ><ElButton
+                        text
+                        native-type="button"
+                        aria-label="选择批次"
+                        :aria-pressed="interaction === 'select'"
+                        @click="interaction = 'select'"
+                      >
+                        <ElIcon><Pointer /></ElIcon></ElButton
+                    ></ElTooltip>
+                    <ElTooltip content="拖动画布 · H" :append-to="pageRoot" :show-after="350"
+                      ><ElButton
+                        text
+                        native-type="button"
+                        aria-label="平移画布"
+                        :aria-pressed="interaction === 'pan'"
+                        @click="interaction = 'pan'"
+                      >
+                        <ElIcon><Rank /></ElIcon></ElButton
+                    ></ElTooltip>
+                  </div>
+                  <div class="canvas-zoom" role="group" aria-label="视图范围">
+                    <ElTooltip content="缩小 · −" :append-to="pageRoot" :show-after="350"
+                      ><ElButton
+                        text
+                        native-type="button"
+                        aria-label="缩小路径"
+                        @click="chart?.zoom(-1)"
+                      >
+                        <ElIcon><ZoomOut /></ElIcon></ElButton
+                    ></ElTooltip>
+                    <span class="zoom-level" aria-live="polite" aria-label="当前缩放"
+                      >{{ zoomLevel }}%</span
+                    >
+                    <ElTooltip content="放大 · +" :append-to="pageRoot" :show-after="350"
+                      ><ElButton
+                        text
+                        native-type="button"
+                        aria-label="放大路径"
+                        @click="chart?.zoom(1)"
+                      >
+                        <ElIcon><ZoomIn /></ElIcon></ElButton
+                    ></ElTooltip>
+                    <ElTooltip content="还原完整链路 · 0" :append-to="pageRoot" :show-after="350"
+                      ><ElButton
+                        text
+                        native-type="button"
+                        aria-label="还原完整链路"
+                        @click="chart?.zoom(0)"
+                      >
+                        <ElIcon><ScaleToOriginal /></ElIcon></ElButton
+                    ></ElTooltip>
+                  </div>
+                  <div class="canvas-playback" role="group" aria-label="动画与显示">
+                    <ElTooltip
+                      :content="motion ? '关闭动画' : '启用动画'"
+                      :append-to="pageRoot"
+                      :show-after="350"
+                      ><ElButton
+                        text
+                        native-type="button"
+                        :aria-label="motion ? '关闭图形动画' : '启用图形动画'"
+                        :aria-pressed="motion"
+                        @click="motion = !motion"
+                      >
+                        <ElIcon><VideoPause v-if="motion" /><VideoPlay v-else /></ElIcon></ElButton
+                    ></ElTooltip>
+                    <ElTooltip content="重新绘制路径" :append-to="pageRoot" :show-after="350"
+                      ><ElButton
+                        text
+                        native-type="button"
+                        aria-label="重播路径"
+                        :disabled="!motion"
+                        @click="replay++"
+                      >
+                        <ElIcon><RefreshRight /></ElIcon></ElButton
+                    ></ElTooltip>
+                    <ElTooltip
+                      v-if="!embedded"
+                      :content="fullscreen ? '退出全屏' : '全屏画布'"
+                      :append-to="pageRoot"
+                      :show-after="350"
+                      ><ElButton
+                        text
+                        native-type="button"
+                        :aria-label="fullscreen ? '退出全屏' : '全屏画布'"
+                        :aria-pressed="fullscreen"
+                        @click="toggleFullscreen"
+                      >
+                        <ElIcon><FullScreen /></ElIcon></ElButton
+                    ></ElTooltip>
+                  </div>
+                </div>
+              </template>
+            </div>
+            <TraceStockSummary
+              v-if="scopedTrace"
+              compact
+              v-model:metric="metric"
+              :trace="scopedTrace"
+              :teams="chainModel.teams"
+              :range="teamRange"
+              :append-to="pageRoot"
+            />
+          </div>
+          <TraceBatchDetail
+            :batch="selectedBatch || null"
+            :origin="origins.originById.get(selectedId)"
+            :example="example"
+            @open="openBatch"
+          />
+        </template>
       </section>
       <div v-else class="preview-empty">
         <span class="empty-orbit"

@@ -64,6 +64,7 @@ def outbound(client, request):
             headers=headers[warehouse["id"]],
             json={
                 "serial_no": f"EXTERNAL-{i}",
+                "transfer_specification": "100 × 80 × 5 mm",
                 "material_name": "铜钼",
                 "material_type": "finished",
                 "quantity": 100,

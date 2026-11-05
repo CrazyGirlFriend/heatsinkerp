@@ -99,6 +99,12 @@ def create_receipt(db, team_id, payload, user, *, request_hash=None, source_refe
             from .warehouse_receipt_documents import attach_documents, validate_documents
 
             documents = validate_documents(db, team, payload, user)
+            from .material_entry_validation import require_registered_serial
+
+            if source_reference is None:
+                require_registered_serial(
+                    db, payload.serial_no, payload.material_type, documents=documents
+                )
             route = intake_route(db, team, payload, user)
             delivery_origin_id = None
             if payload.return_dispatch_no:

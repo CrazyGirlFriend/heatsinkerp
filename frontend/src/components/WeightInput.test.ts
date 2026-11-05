@@ -7,9 +7,20 @@ import { describe, expect, it } from 'vitest'
 import WeightInput from './WeightInput.vue'
 
 describe('measured weight units', () => {
+  it('uses three decimal places for kilogram entry', () => {
+    const wrapper = mount(WeightInput, { props: { modelValue: 1.234, ariaLabel: '重量' } })
+    try {
+      expect(wrapper.getComponent(ElInputNumber).props('precision')).toBe(3)
+      expect(wrapper.getComponent(ElInputNumber).props('modelValue')).toBe(1.234)
+      expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    } finally {
+      wrapper.unmount()
+    }
+  })
   it('switches the display to grams without changing saved kilograms, and preserves milligrams', async () => {
     const wrapper = mount(WeightInput, { props: { modelValue: 0.000123, ariaLabel: '转料重量' } })
     try {
+      expect(wrapper.getComponent(ElSelect).props('modelValue')).toBe('g')
       wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 'g')
       await flushPromises()
       expect(wrapper.getComponent(ElInputNumber).props('modelValue')).toBe(0.123)
