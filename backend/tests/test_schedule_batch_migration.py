@@ -41,3 +41,53 @@ def test_batch_migration_is_repeatable_preserves_old_progress_and_never_invents_
                 module.downgrade()
     finally:
         engine.dispose()
+
+
+def test_handover_only_migration_retains_history_and_accepts_unknown_start(tmp_path):
+    path = Path(__file__).parents[1] / "alembic/versions/20261105_0067_handover_only_plans.py"
+    spec = importlib.util.spec_from_file_location("handover_migration", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    engine = create_engine("sqlite:///" + str(tmp_path / "handover.sqlite"))
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """CREATE TABLE production_schedule_batches (
+                        id INTEGER PRIMARY KEY,
+                        planned_start_at DATETIME NOT NULL,
+                        due_at DATETIME NOT NULL,
+                        CONSTRAINT ck_psb_period CHECK (planned_start_at < due_at)
+                    )"""
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO production_schedule_batches VALUES (1, '2026-11-01 08:00:00', '2026-11-02 08:00:00')"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE TABLE delivery (batch_id INTEGER REFERENCES production_schedule_batches(id))"
+                )
+            )
+            connection.execute(text("INSERT INTO delivery VALUES (1)"))
+            module.op = Operations(MigrationContext.configure(connection))
+            module.upgrade()
+            connection.execute(
+                text(
+                    "INSERT INTO production_schedule_batches VALUES (2, NULL, '2026-11-03 08:00:00')"
+                )
+            )
+            assert (
+                connection.scalar(
+                    text("SELECT planned_start_at FROM production_schedule_batches WHERE id=1")
+                )
+                == "2026-11-01 08:00:00"
+            )
+            assert connection.scalar(text("SELECT batch_id FROM delivery")) == 1
+            assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+            with pytest.raises(RuntimeError):
+                module.downgrade()
+    finally:
+        engine.dispose()

@@ -315,7 +315,10 @@ def summaries(db, ids, *, now=None):
     )
     from . import schedule_batches
 
-    batch_plans = schedule_batches.summaries(db, [row[0] for row in rows], now=now)
+    predecessors = schedule_batches.predecessor_plans(db, [row[0] for row in rows])
+    batch_plans = schedule_batches.summaries(
+        db, [row[0] for row in rows], now=now, predecessors=predecessors
+    )
     linked = linked_batches(db, ids)
     availability = execution_availability(db, ids)
     result = {}
@@ -331,6 +334,7 @@ def summaries(db, ids, *, now=None):
             "task_title": values["task_title"],
             **{field: getattr(plan, field) for field in FIELDS},
             "due_at": iso(plan.due_at),
+            "planned_start_at": iso(schedule_batches.handover_start(plan, predecessors)),
             "team_name": values["team_name"],
             "assessment_enabled": values["team_code"] != WAREHOUSE_TEAM_CODE,
             "initial_due_at": iso(plan.initial_due_at),

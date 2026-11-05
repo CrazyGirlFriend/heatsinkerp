@@ -8,8 +8,8 @@ import ScheduleDocuments from './ScheduleDocuments.vue'
 import ProductionScheduleGantt from './ProductionScheduleGantt.vue'
 import DeliverySchedules from './DeliverySchedules.vue'
 import TableExportButton from './TableExportButton.vue'
-import AppDrawer from './AppDrawer.vue'
 import FilterDialog from './FilterDialog.vue'
+import AppNumberInput from './AppNumberInput.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import ScheduleTaskEditor from './ScheduleTaskEditor.vue'
 import ScheduleSelectionDialog from './ScheduleSelectionDialog.vue'
@@ -19,9 +19,10 @@ const hooks = vi.hoisted(() => ({ openDetail: vi.fn() }))
 vi.mock('./VTableScheduleTimeline.vue', () => ({
   default: {
     name: 'VTableScheduleTimeline',
-    props: ['tasks', 'loading'],
-    emits: ['open-node', 'open-task'],
-    template: '<div class="overview-stub"><slot/><slot name="view-actions"/></div>',
+    props: ['tasks', 'loading', 'hasMore', 'loadingMore', 'loadError'],
+    emits: ['open-node', 'open-task', 'load-more'],
+    template:
+      '<div class="overview-stub"><slot/><slot name="view-actions"/><slot name="load-status"/></div>',
   },
 }))
 vi.mock('@/stores/auth', () => ({
@@ -119,15 +120,12 @@ async function render(path = '/production-schedules') {
           props: ['modelValue'],
           template: '<div v-if="modelValue"><slot/><slot name="footer"/></div>',
         },
-        AppDrawer: {
-          props: ['modelValue'],
-          template: '<aside v-if="modelValue"><slot/><slot name="footer"/></aside>',
-        },
         VTableScheduleTimeline: {
           name: 'VTableScheduleTimeline',
-          props: ['tasks', 'teams', 'loading'],
-          emits: ['open-node', 'open-task'],
-          template: '<div class="overview-stub"><slot/><slot name="view-actions"/></div>',
+          props: ['tasks', 'teams', 'loading', 'hasMore', 'loadingMore', 'loadError'],
+          emits: ['open-node', 'open-task', 'load-more'],
+          template:
+            '<div class="overview-stub"><slot/><slot name="view-actions"/><slot name="load-status"/></div>',
         },
         ProductionScheduleGantt: {
           props: ['tasks', 'loading'],
@@ -160,6 +158,46 @@ function select(label: string) {
   return wrapper.findAllComponents(ElSelect).find((item) => item.props('ariaLabel') === label)!
 }
 describe('task scheduling board', () => {
+  it('pastes multiple serials without joining lines and keeps the search with filters and export', async () => {
+    await render()
+    const values = Array.from({ length: 30 }, (_, index) => `691236-${51 + index}`)
+    const input = wrapper.get('input[aria-label="任务排期搜索"]')
+    const pasted = new Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(pasted, 'clipboardData', {
+      value: { getData: () => values.join('\r\n') },
+    })
+    input.element.dispatchEvent(pasted)
+    await flushPromises()
+    const query = values.join(' ')
+    expect(pasted.defaultPrevented).toBe(true)
+    expect((input.element as HTMLInputElement).value).toBe(query)
+    expect(Number(input.attributes('maxlength'))).toBeGreaterThan(query.length)
+    expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(1)
+    await wrapper.get('form[role="search"]').trigger('submit')
+    await flushPromises()
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query, page: 1 }),
+    )
+    await button('筛选')
+    expect(wrapper.findComponent(FilterDialog).exists()).toBe(true)
+    expect(wrapper.find('.schedule-filter-drawer').exists()).toBe(false)
+    select('交货班组筛选').vm.$emit('update:modelValue', 2)
+    await button('应用筛选')
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query, team_id: 2 }),
+    )
+    const data = wrapper.getComponent(TableExportButton).props('source')()!
+    await data.load(new AbortController().signal, () => {})
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query, team_id: 2 }),
+    )
+    wrapper.getComponent(ElInput).vm.$emit('update:modelValue', '')
+    wrapper.getComponent(ElInput).vm.$emit('clear')
+    await flushPromises()
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: undefined, team_id: 2 }),
+    )
+  })
   it('keeps ten-row pagination consistent while an older twenty-row request completes late', async () => {
     const items = Array.from({ length: 23 }, (_, index) => ({ ...task, id: index + 1 }))
     const response = (size: number) => ({
@@ -206,36 +244,123 @@ describe('task scheduling board', () => {
     expect(wrapper.find('.overview-stub .table-export-button').exists()).toBe(true)
     expect(wrapper.find('[aria-label="排期筛选"]').exists()).toBe(true)
     expect(wrapper.find('[aria-label="刷新任务排期"]').exists()).toBe(true)
-    expect(wrapper.get('.task-board__filter-count').text()).toBe('1')
+    expect(wrapper.get('.filter-count').text()).toBe('1')
   })
-  it('loads every overview page and ignores a superseded multi-page result', async () => {
-    const items = Array.from({ length: 101 }, (_, i) => ({ ...task, id: i + 1 }))
+  it('loads one chunk at a time, appends once, and ignores a stale response after search', async () => {
+    const items = Array.from({ length: 121 }, (_, i) => ({ ...task, id: i + 1 }))
+    const response = (page: number, size = 50) => ({
+      items: items.slice((page - 1) * size, page * size),
+      total: 121,
+      page,
+      page_size: size,
+    })
     let finish!: (value: Awaited<ReturnType<typeof productionScheduleApi.tasks>>) => void
     vi.mocked(productionScheduleApi.tasks).mockImplementation(async (params) => {
-      if (params?.query) return { items: [task], total: 1, page: 1, page_size: 100 }
+      if (params?.query) return { items: [task], total: 1, page: 1, page_size: 50 }
       if (params?.page === 2)
         return new Promise((resolve) => {
           finish = resolve
         })
-      return { items: items.slice(0, 100), total: 101, page: 1, page_size: 100 }
+      return response(params?.page || 1)
     })
     await render()
+    const overview = wrapper.getComponent({ name: 'VTableScheduleTimeline' })
+    expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(1)
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
-      expect.objectContaining({ page: 2, page_size: 100 }),
+      expect.objectContaining({ page: 1, page_size: 50 }),
     )
-    finish({ items: items.slice(100), total: 101, page: 2, page_size: 100 })
+    expect(overview.props('tasks')).toHaveLength(50)
+    overview.vm.$emit('load-more')
+    overview.vm.$emit('load-more')
     await flushPromises()
-    expect(wrapper.getComponent({ name: 'VTableScheduleTimeline' }).props('tasks')).toHaveLength(
-      101,
-    )
+    expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(2)
+    expect(overview.props('loadingMore')).toBe(true)
+    finish(response(2))
+    await flushPromises()
+    expect(overview.props('tasks')).toHaveLength(100)
+    expect(overview.props('loadingMore')).toBe(false)
+    overview.vm.$emit('load-more')
+    await flushPromises()
+    expect(overview.props('tasks')).toHaveLength(121)
+    expect(overview.props('hasMore')).toBe(false)
+    overview.vm.$emit('load-more')
+    expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(3)
     await wrapper.get('[aria-label="刷新任务排期"]').trigger('click')
+    await flushPromises()
+    expect(overview.props('tasks')).toHaveLength(50)
+    overview.vm.$emit('load-more')
     await flushPromises()
     await wrapper.get('input[aria-label="任务排期搜索"]').setValue('S-001')
     await wrapper.get('form[role="search"]').trigger('submit')
     await flushPromises()
-    finish({ items: items.slice(100), total: 101, page: 2, page_size: 100 })
+    finish(response(2))
     await flushPromises()
-    expect(wrapper.getComponent({ name: 'VTableScheduleTimeline' }).props('tasks')).toEqual([task])
+    expect(overview.props('tasks')).toEqual([task])
+    expect(overview.props('loadingMore')).toBe(false)
+  })
+  it('stages a freely entered loading size, cancels edits, and caps requests at 100', async () => {
+    await render()
+    await button('筛选')
+    const size = () => wrapper.getComponent(AppNumberInput)
+    expect(size().props('modelValue')).toBe(50)
+    size().vm.$emit('update:modelValue', 37)
+    await button('取消')
+    expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(1)
+    await button('筛选')
+    expect(size().props('modelValue')).toBe(50)
+    size().vm.$emit('update:modelValue', 37)
+    await button('应用筛选')
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 1, page_size: 37 }),
+    )
+    await button('筛选')
+    size().vm.$emit('update:modelValue', 200)
+    await button('应用筛选')
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page_size: 100 }),
+    )
+    await button('筛选')
+    size().vm.$emit('update:modelValue', 0)
+    await button('应用筛选')
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page_size: 1 }),
+    )
+    await button('筛选')
+    await button('重置')
+    expect(size().props('modelValue')).toBe(50)
+    await button('应用筛选')
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page_size: 50 }),
+    )
+    expect(wrapper.findComponent(ElPagination).exists()).toBe(false)
+  })
+  it('keeps loaded rows on a failed continuation and retries that same chunk', async () => {
+    vi.mocked(productionScheduleApi.tasks).mockResolvedValue({
+      items: [task],
+      total: 2,
+      page: 1,
+      page_size: 50,
+    })
+    await render()
+    const overview = wrapper.getComponent({ name: 'VTableScheduleTimeline' })
+    vi.mocked(productionScheduleApi.tasks).mockRejectedValueOnce(new Error('连接中断'))
+    overview.vm.$emit('load-more')
+    await flushPromises()
+    expect(overview.props('loadError')).toBe('连接中断')
+    expect(overview.props('tasks')).toEqual([task])
+    vi.mocked(productionScheduleApi.tasks).mockResolvedValueOnce({
+      items: [{ ...task, id: 8 }],
+      total: 2,
+      page: 2,
+      page_size: 50,
+    })
+    overview.vm.$emit('load-more')
+    await flushPromises()
+    expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 2 }),
+    )
+    expect(overview.props('tasks')).toHaveLength(2)
+    expect(overview.props('loadError')).toBe('')
   })
   it('opens the global overview by default and drills into the existing task and node details', async () => {
     await render()
@@ -274,7 +399,7 @@ describe('task scheduling board', () => {
     await wrapper.get('form[role="search"]').trigger('submit')
     await flushPromises()
     await button('筛选')
-    expect(wrapper.getComponent(AppDrawer).attributes('direction')).toBe('rtl')
+    expect(wrapper.getComponent(FilterDialog).props('modelValue')).toBe(true)
     select('交货班组筛选').vm.$emit('update:modelValue', 2)
     select('任务状态筛选').vm.$emit('update:modelValue', 'overdue')
     wrapper
@@ -292,10 +417,10 @@ describe('task scheduling board', () => {
       ...filters,
       sort_order: 'asc',
       page: 1,
-      page_size: 100,
+      page_size: 50,
     })
-    expect(wrapper.getComponent(AppDrawer).props('modelValue')).toBe(false)
-    expect(wrapper.get('.task-board__filter-count').text()).toBe('4')
+    expect(wrapper.getComponent(FilterDialog).props('modelValue')).toBe(false)
+    expect(wrapper.get('.filter-count').text()).toBe('4')
     expect(wrapper.getComponent({ name: 'VTableScheduleTimeline' }).props('tasks')).toEqual([task])
     expect(wrapper.findComponent(ProductionScheduleGantt).exists()).toBe(false)
     const data = wrapper.getComponent(TableExportButton).props('source')()!
@@ -325,7 +450,7 @@ describe('task scheduling board', () => {
     wrapper.getComponent(ScheduleSelectionDialog).vm.$emit('apply', [{ value: 3, label: '张工' }])
     await flushPromises()
     expect(productionScheduleApi.tasks).toHaveBeenCalledTimes(1)
-    expect(wrapper.getComponent(AppDrawer).props('modelValue')).toBe(true)
+    expect(wrapper.getComponent(FilterDialog).props('modelValue')).toBe(true)
     await button('应用筛选')
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -336,7 +461,7 @@ describe('task scheduling board', () => {
         page: 1,
       }),
     )
-    expect(wrapper.get('.task-board__filter-count').text()).toBe('4')
+    expect(wrapper.get('.filter-count').text()).toBe('4')
     await wrapper.get('button[aria-label="排期筛选"]').trigger('click')
     await flushPromises()
     await button('重置')
@@ -366,7 +491,7 @@ describe('task scheduling board', () => {
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(
       expect.objectContaining({ query: undefined, page: 1 }),
     )
-    expect(wrapper.find('.task-board__filter-count').exists()).toBe(false)
+    expect(wrapper.find('.filter-count').exists()).toBe(false)
   })
   it('searches without opening filters and keeps final delivery sorting when exporting', async () => {
     vi.mocked(productionScheduleApi.tasks).mockResolvedValue({
@@ -422,7 +547,7 @@ describe('task scheduling board', () => {
     )
     await button('筛选')
     expect(wrapper.getComponent(FilterDialog).props('modelValue')).toBe(true)
-    expect(wrapper.findComponent(AppDrawer).exists()).toBe(false)
+    expect(wrapper.find('.schedule-filter-drawer').exists()).toBe(false)
     select('任务状态筛选').vm.$emit('update:modelValue', 'overdue')
     await button('应用筛选')
     expect(productionScheduleApi.tasks).toHaveBeenLastCalledWith(

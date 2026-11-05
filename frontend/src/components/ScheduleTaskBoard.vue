@@ -11,10 +11,10 @@ import { useRoute } from 'vue-router'
 import { ElOption, ElTag, ElTableColumn } from 'element-plus'
 import ElTable from '@/components/watermelon/WatermelonDataTable.vue'
 import ElButton from '@/components/AppButton.vue'
-import { Filter, Plus } from '@element-plus/icons-vue'
+import { Plus } from '@element-plus/icons-vue'
 import AppDialog from './AppDialog.vue'
-import AppDrawer from './AppDrawer.vue'
 import FilterDialog from './FilterDialog.vue'
+import AppNumberInput from './AppNumberInput.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
 import StatePanel from './StatePanel.vue'
 import LiveRefreshNotice from './LiveRefreshNotice.vue'
@@ -67,6 +67,12 @@ const rows = ref<ScheduleTask[]>([]),
   pageSize = ref(10),
   loading = ref(false),
   error = ref('')
+const loadSize = ref(50),
+  draftLoadSize = ref<number | undefined>(50),
+  fetching = ref(false),
+  loadingMore = ref(false),
+  moreError = ref('')
+const hasMore = computed(() => !props.management && rows.value.length < total.value)
 const initialSerial = typeof route.query.serial_no === 'string' ? route.query.serial_no : ''
 const query = ref(initialSerial),
   filters = ref<ScheduleFilters>(initialSerial ? { query: initialSerial } : {}),
@@ -91,7 +97,8 @@ let generation = 0,
   detailGeneration = 0,
   timer: ReturnType<typeof setInterval> | undefined
 const live = useLiveRefresh(() => load(true), {
-  busy: () => loading.value || editorOpen.value || !!detailId.value || filterOpen.value,
+  busy: () =>
+    fetching.value || loadingMore.value || editorOpen.value || !!detailId.value || filterOpen.value,
 })
 const filterCount = computed(
   () =>
@@ -106,6 +113,7 @@ const filterCount = computed(
 watch(
   [page, pageSize],
   () => {
+    if (!props.management) return
     ++generation
     rows.value = []
   },
@@ -113,6 +121,9 @@ watch(
 )
 async function load(background = false) {
   const token = ++generation
+  fetching.value = true
+  loadingMore.value = false
+  moreError.value = ''
   if (!background) loading.value = true
   error.value = ''
   try {
@@ -120,19 +131,22 @@ async function load(background = false) {
       ...filters.value,
       sort_order: sortOrder.value,
       page: props.management ? page.value : 1,
-      page_size: props.management ? pageSize.value : 100,
+      page_size: props.management ? pageSize.value : loadSize.value,
     }
     const result = await productionScheduleApi.tasks(params)
     if (token !== generation) return
     if (!props.management) {
       const items = [...result.items]
-      for (let nextPage = 2; nextPage <= Math.ceil(result.total / params.page_size); nextPage++) {
+      // A live refresh keeps the portion the user has already scrolled through.
+      const pages = background ? Math.min(page.value, Math.ceil(result.total / loadSize.value)) : 1
+      for (let nextPage = 2; nextPage <= pages; nextPage++) {
         const next = await productionScheduleApi.tasks({ ...params, page: nextPage })
         if (token !== generation) return
         items.push(...next.items)
       }
       rows.value = items
       total.value = result.total
+      page.value = Math.max(1, pages)
       return
     }
     const last = Math.max(1, Math.ceil(result.total / pageSize.value))
@@ -148,13 +162,55 @@ async function load(background = false) {
     if (background) throw e
     error.value = e instanceof Error ? e.message : '生产排期读取失败'
   } finally {
-    if (token === generation) loading.value = false
+    if (token === generation) {
+      loading.value = false
+      fetching.value = false
+    }
+  }
+}
+async function loadMore() {
+  if (props.management || fetching.value || loadingMore.value || !hasMore.value) return
+  const token = generation
+  loadingMore.value = true
+  moreError.value = ''
+  try {
+    const result = await productionScheduleApi.tasks({
+      ...filters.value,
+      sort_order: sortOrder.value,
+      page: page.value + 1,
+      page_size: loadSize.value,
+    })
+    if (token !== generation) return
+    page.value++
+    const existing = new Set(rows.value.map((task) => task.id))
+    rows.value = [...rows.value, ...result.items.filter((task) => !existing.has(task.id))]
+    total.value = result.total
+  } catch (e) {
+    if (token === generation) moreError.value = e instanceof Error ? e.message : '加载失败，请重试'
+  } finally {
+    if (token === generation) loadingMore.value = false
   }
 }
 function search() {
   filters.value = { ...filters.value, query: query.value.trim() || undefined }
   page.value = 1
   void load()
+}
+function pasteSearch(event: ClipboardEvent) {
+  const input = event.target
+  const text = event.clipboardData?.getData('text/plain')
+  if (
+    !(input instanceof HTMLInputElement) ||
+    input.getAttribute('aria-label') !== '任务排期搜索' ||
+    !text ||
+    !/[\r\n\t]/.test(text)
+  )
+    return
+  event.preventDefault()
+  const start = input.selectionStart ?? query.value.length
+  const end = input.selectionEnd ?? start
+  query.value =
+    query.value.slice(0, start) + text.replace(/[\r\n\t]+/g, ' ') + query.value.slice(end)
 }
 function changeSort(order: 'asc' | 'desc') {
   if (order === sortOrder.value) return
@@ -167,6 +223,7 @@ function sortChanged(sort: { prop: string | null; order: 'ascending' | 'descendi
     changeSort(sort.order === 'ascending' ? 'asc' : 'desc')
 }
 function openFilters() {
+  draftLoadSize.value = loadSize.value
   draftSortOrder.value = sortOrder.value
   draftScope.value = filters.value.scope
   draftTeam.value = filters.value.team_id
@@ -180,6 +237,8 @@ function openFilters() {
   filterOpen.value = true
 }
 function applyFilters() {
+  if (!props.management)
+    loadSize.value = Math.max(1, Math.min(100, Math.round(draftLoadSize.value ?? 50)))
   sortOrder.value = draftSortOrder.value
   filters.value = {
     query: filters.value.query,
@@ -202,6 +261,7 @@ function applyFilters() {
   void load()
 }
 function resetFilters() {
+  draftLoadSize.value = 50
   draftScope.value = undefined
   draftTeam.value = undefined
   draftStatus.value = undefined
@@ -420,6 +480,7 @@ onBeforeUnmount(() => {
     class="task-board"
     :class="{ 'task-board--fullscreen': fullscreen, 'task-board--overview': !management }"
     aria-label="生产排期任务"
+    @paste="pasteSearch"
   >
     <div v-if="management && (!fullscreen || error)" class="task-board__toolbar">
       <slot name="heading"><strong class="task-board__title">交货进度</strong></slot>
@@ -439,7 +500,10 @@ onBeforeUnmount(() => {
       v-show="!error"
       class="task-board__surface"
       :class="{ 'task-board__surface--management': management }"
-      v-bind="management ? {} : { tasks: rows, loading }"
+      v-bind="
+        management ? {} : { tasks: rows, loading, loadingMore, hasMore, loadError: moreError }
+      "
+      @load-more="loadMore"
       @open-node="openNode"
       @open-task="openTask"
     >
@@ -448,51 +512,40 @@ onBeforeUnmount(() => {
         v-model="query"
         :loading="loading"
         search-label="任务排期搜索"
-        :placeholder="management ? '搜索流水号、任务或批次号' : '搜索流水号'"
-        :maxlength="160"
+        :placeholder="management ? '搜索流水号、任务或批次号' : '搜索流水号，支持多个'"
+        :maxlength="4096"
         refresh-label="刷新任务排期"
         @search="search"
         @refresh="load()"
       >
         <template #filters>
-          <ElButton
-            v-if="!fullscreen && !management"
-            class="task-board__filter"
-            :class="{ 'action-cool': filterCount > 0 }"
-            :icon="Filter"
-            :aria-expanded="filterOpen"
-            aria-label="排期筛选"
-            @click="openFilters"
-            >筛选<span v-if="filterCount" class="task-board__filter-count">{{
-              filterCount
-            }}</span></ElButton
-          >
-          <component
-            :is="management ? FilterDialog : AppDrawer"
+          <FilterDialog
             v-if="!fullscreen"
             v-model="filterOpen"
             title="排期筛选"
-            v-bind="
-              management
-                ? { count: filterCount }
-                : {
-                    direction: 'rtl',
-                    size: 'min(420px, 94vw)',
-                    appendToBody: true,
-                    class: 'schedule-filter-drawer',
-                  }
-            "
-            @open="management && openFilters()"
+            :count="filterCount"
+            @open="openFilters"
             @reset="resetFilters"
             @apply="applyFilters"
           >
-            <div :class="management ? 'filter-fields' : 'schedule-filter-fields'">
+            <div class="filter-fields">
+              <label v-if="!management"
+                >每次加载条数（1–100）
+                <AppNumberInput
+                  v-model="draftLoadSize"
+                  aria-label="每次加载条数"
+                  :min="1"
+                  :max="100"
+                  :precision="0"
+                  :step="1"
+                  placeholder="1–100"
+                />
+              </label>
               <label v-if="!management"
                 >最终交期排序
                 <ElSelect
                   v-if="!fullscreen && !management"
                   v-model="draftSortOrder"
-                  class="task-board__sort"
                   aria-label="最终交期排序"
                   ><ElOption label="最终交期：由近到远" value="asc" />
                   <ElOption label="最终交期：由远到近" value="desc" />
@@ -566,14 +619,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </div>
-            <template v-if="!management" #footer>
-              <div class="schedule-filter-footer">
-                <ElButton class="schedule-filter-reset" @click="resetFilters">重置</ElButton>
-                <ElButton @click="filterOpen = false">取消</ElButton>
-                <ElButton type="primary" @click="applyFilters">应用筛选</ElButton>
-              </div>
-            </template>
-          </component></template
+          </FilterDialog></template
         >
         <template #primary-actions
           ><ElButton v-if="canManage" type="primary" :icon="Plus" @click="createTask"
@@ -588,6 +634,9 @@ onBeforeUnmount(() => {
           :context="JSON.stringify({ ...filters, sort_order: sortOrder })"
           :disabled="loading || !!error"
         />
+      </template>
+      <template v-if="!management" #load-status>
+        已显示 {{ rows.length }} / {{ total }} 条
       </template>
     </component>
     <ElAlert v-if="actionError" :title="actionError" type="error" :closable="false" />
@@ -932,9 +981,6 @@ onBeforeUnmount(() => {
 .task-board__toolbar :deep(.el-button) {
   margin-left: 0;
 }
-.task-board__sort {
-  width: 190px;
-}
 .task-board__actions {
   display: flex;
   align-items: center;
@@ -942,25 +988,11 @@ onBeforeUnmount(() => {
   gap: 8px;
   margin-left: auto;
 }
-.task-board__filter-count {
-  margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--primary-soft);
-  color: var(--primary);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
 .task-board__title {
   color: var(--text);
   font-size: 14px;
   font-weight: 600;
 }
-.schedule-filter-fields {
-  display: grid;
-  gap: 18px;
-}
-.schedule-filter-fields > label,
 .schedule-filter-selection {
   display: grid;
   gap: 8px;
@@ -968,25 +1000,14 @@ onBeforeUnmount(() => {
   color: var(--muted);
   font-size: 13px;
 }
-.schedule-filter-fields :is(.el-select, .record-date-trigger) {
-  width: 100%;
-  min-width: 0;
-}
-.schedule-filter-label,
-.schedule-filter-footer {
+.schedule-filter-label {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.schedule-filter-label {
   justify-content: space-between;
 }
-.schedule-filter-selection > .el-button,
-.schedule-filter-footer > .el-button {
+.schedule-filter-selection > .el-button {
   margin-left: 0;
-}
-.schedule-filter-reset {
-  margin-right: auto;
 }
 .schedule-filter-values {
   display: flex;

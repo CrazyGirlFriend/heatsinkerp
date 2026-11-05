@@ -1,5 +1,6 @@
 """Task-level routes; every node remains an independently fulfilled commitment."""
 
+import re
 from hashlib import sha256
 from uuid import uuid4
 
@@ -239,7 +240,12 @@ def list_tasks(
             )
         )
     if query and query.strip():
+        serials = list(dict.fromkeys(filter(None, re.split(r"[\s,，;；、]+", query.strip()))))
+        if len(serials) > 100:
+            raise HTTPException(422, "一次最多搜索 100 个流水号")
         task_match = literal_query(query, [Task.title, Task.serial_no])
+        if serials and serials != [query.strip()]:
+            task_match = or_(task_match, Task.serial_no.in_(serials))
         token = query.strip().upper()
         if token.startswith("PQ") and token[2:].isdigit() and len(token) <= 16:
             task_match = or_(task_match, Task.id == int(token[2:]))

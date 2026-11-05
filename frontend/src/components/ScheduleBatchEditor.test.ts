@@ -91,7 +91,7 @@ describe('team batch planner', () => {
     expect(wrapper.getComponent(DocumentViewer).props('html')).toBeUndefined()
     await click('下载原件')
     expect(download).toHaveBeenCalledWith(2, '调度订单原件.xlsx')
-    expect(wrapper.findAllComponents(ElDatePicker)).toHaveLength(2)
+    expect(wrapper.findAllComponents(ElDatePicker)).toHaveLength(1)
     expect(wrapper.text()).toContain('提交调度确认')
   })
   it('never substitutes the engineering order when this task has no order document', async () => {
@@ -101,24 +101,20 @@ describe('team batch planner', () => {
     expect(processRouteApi.orderPreview).not.toHaveBeenCalled()
     expect(productionScheduleApi.orderPreview).not.toHaveBeenCalled()
   })
-  it('requires an explicit start and keeps the final deadline read-only', async () => {
+  it('requires only a handover time and keeps the final deadline read-only', async () => {
     await render()
-    expect(wrapper.findAllComponents(ElDatePicker)[0]!.props('modelValue')).toBe('')
+    expect(wrapper.text()).not.toContain('计划开始')
+    wrapper.findAllComponents(ElDatePicker)[0]!.vm.$emit('update:modelValue', '')
     await click('提交调度确认')
     expect(productionScheduleApi.saveBatches).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('开始须早于转出')
+    expect(wrapper.text()).toContain('请填写转交时间')
     expect(wrapper.text()).toContain('2026-12-30 16:00')
   })
-  it('saves independent 40/60 batches and their hour-level periods through the owning plan', async () => {
+  it('saves independent 40/60 batches and their hour-level handovers through the owning plan', async () => {
     await render()
     await click('＋ 增加一批')
     const dates = wrapper.findAllComponents(ElDatePicker)
-    for (const [i, value] of [
-      '2026-12-20T08:00:00',
-      '2026-12-21T16:00:00',
-      '2026-12-21T09:00:00',
-      '2026-12-22T17:00:00',
-    ].entries())
+    for (const [i, value] of ['2026-12-21T16:00:00', '2026-12-22T17:00:00'].entries())
       dates[i]!.vm.$emit('update:modelValue', value)
     const amounts = wrapper.findAllComponents(ElInputNumber)
     amounts[1]!.vm.$emit('update:modelValue', 40)
@@ -129,7 +125,6 @@ describe('team batch planner', () => {
       batches: [
         {
           batch_number: 1,
-          planned_start_at: '2026-12-20T08:00:00+08:00',
           due_at: '2026-12-21T16:00:00+08:00',
           target_quantity: 40,
           target_weight: schedule.target_weight,
@@ -137,7 +132,6 @@ describe('team batch planner', () => {
         },
         {
           batch_number: 2,
-          planned_start_at: '2026-12-21T09:00:00+08:00',
           due_at: '2026-12-22T17:00:00+08:00',
           target_quantity: 60,
           target_weight: null,

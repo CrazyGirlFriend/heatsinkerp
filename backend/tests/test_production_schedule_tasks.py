@@ -338,6 +338,37 @@ def test_attention_and_completed_filters_are_server_paginated_and_exclude_wareho
     assert client.get(TASKS, params={"status": "not_assessed"}).json()["total"] == 1
 
 
+def test_multiple_serial_search_combines_filters_and_paginates_whole_tasks(client, warehouse):
+    s = warehouse
+    payload = route(s, serial_no="691236-51")
+    payload["nodes"][1]["due_at"] = "2000-01-01T12:00:00+08:00"
+    first = create(client, payload)
+    second = create(client, route(s, serial_no="691236-52"))
+    create(client, route(s, serial_no="691236-510"))
+    query = "691236-51，691236-52; 691236-51\n" + " ".join(
+        f"MISSING-{number}" for number in range(20)
+    )
+    assert len(query) > 160
+    pages = [
+        client.get(TASKS, params={"query": query, "page_size": 1, "page": page}).json()
+        for page in (1, 2)
+    ]
+    assert all(page["total"] == 2 and len(page["items"]) == 1 for page in pages)
+    assert {page["items"][0]["id"] for page in pages} == {first["id"], second["id"]}
+    assert all(len(page["items"][0]["nodes"]) == 2 for page in pages)
+    filtered = client.get(
+        TASKS, params={"query": query, "team_id": s["other"]["id"], "status": "overdue"}
+    ).json()
+    assert [task["id"] for task in filtered["items"]] == [first["id"]]
+    exact = client.get(TASKS, params={"query": query, "serial_nos": ["691236-52"]}).json()
+    assert [task["id"] for task in exact["items"]] == [second["id"]]
+    # Single-query partial matching and clearing the search still work.
+    assert client.get(TASKS, params={"query": "691236"}).json()["total"] == 3
+    assert client.get(TASKS, params={"query": ""}).json()["total"] == 3
+    too_many = " ".join(f"SERIAL-{number}" for number in range(101))
+    assert client.get(TASKS, params={"query": too_many}).status_code == 422
+
+
 def test_business_people_are_independent_and_filter_tasks_with_exact_multiple_serials(
     client, warehouse
 ):

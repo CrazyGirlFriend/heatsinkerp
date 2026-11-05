@@ -23,6 +23,7 @@ export interface ScheduleGanttRecord {
   type: 'project' | 'task' | 'milestone'
   kind: 'serial' | 'team' | 'batch' | 'deadline'
   name: string
+  milestoneLabel?: string
   quantity: string
   progress?: number | null
   task: ScheduleTask
@@ -106,6 +107,7 @@ export function scheduleGanttRecords(tasks: ScheduleTask[]): ScheduleGanttRecord
               id: `batch:${node.id}:${batch.id}`,
               type: start === due ? 'milestone' : 'task',
               kind: 'batch',
+              milestoneLabel: batch.team_name,
               name: batch.batch_number ? `第${batch.batch_number}批` : '交货',
               quantity:
                 batch.completion_basis === 'weight'
@@ -148,6 +150,7 @@ export function scheduleGanttRecords(tasks: ScheduleTask[]): ScheduleGanttRecord
         type: 'milestone',
         kind: 'deadline',
         name: '最终交期',
+        milestoneLabel: '',
         quantity: '',
         task,
         start: ganttDate(deadline),

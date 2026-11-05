@@ -56,8 +56,8 @@ export interface ScheduleWrite {
 }
 export type ScheduleAuditSnapshot = Partial<ScheduleWrite> & {
   planning_state?: ProductionSchedule['planning_state']
-  pending_batches?: ScheduleBatchWrite[] | null
-  batches?: ScheduleBatchWrite[]
+  pending_batches?: (ScheduleBatchWrite & { planned_start_at?: string | null })[] | null
+  batches?: (ScheduleBatchWrite & { planned_start_at?: string | null })[]
   reason?: string
   cancelled_at?: string | null
   task_title?: string
@@ -68,13 +68,13 @@ export type ScheduleAuditSnapshot = Partial<ScheduleWrite> & {
 export interface ScheduleBatchWrite {
   id?: number
   batch_number: number
-  planned_start_at: string
   due_at: string
   target_quantity: number | null
   target_weight: number | null
   upstream_batch_ids: number[]
 }
 export interface ScheduleBatch extends ScheduleBatchWrite {
+  planned_start_at?: string | null
   id: number
   status: ScheduleStatus
   warnings: string[]
@@ -91,7 +91,7 @@ export interface ProductionSchedule extends ScheduleWrite {
   delivery_batches?: CustomerDeliveryBatch[]
   final_due_at?: string | null
   batches?: ScheduleBatch[]
-  planned_start_at?: string
+  planned_start_at?: string | null
   parent_schedule_id?: number
   batch_number?: number
   time_warnings?: string[]

@@ -1048,7 +1048,8 @@ class ProductionScheduleBatch(Base):
         ForeignKey("production_schedules.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     batch_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    planned_start_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    # Historical starts are retained for audit; new plans only store due_at.
+    planned_start_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     due_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     target_quantity: Mapped[int | None] = mapped_column(Integer)
     target_weight: Mapped[Decimal | None] = mapped_column(Numeric(17, 6))

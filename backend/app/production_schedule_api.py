@@ -131,7 +131,7 @@ def inventory(payload: ScheduleInventoryQuery, db: Session = Depends(get_db)):
 def list_tasks(
     team_id: int | None = Query(default=None, ge=1),
     serial_no: str | None = Query(default=None, max_length=80),
-    query: str | None = Query(default=None, max_length=160),
+    query: str | None = Query(default=None, max_length=4096),
     status: Literal[
         "pending", "today", "overdue", "completed", "completed_late", "cancelled", "not_assessed"
     ]

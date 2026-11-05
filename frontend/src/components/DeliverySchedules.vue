@@ -1035,7 +1035,7 @@ defineExpose({ exportSource, openDetail })
             <ElTableColumn label="批次" width="85"
               ><template #default="{ row }">第 {{ row.batch_number }} 批</template></ElTableColumn
             >
-            <ElTableColumn label="计划开始" min-width="165"
+            <ElTableColumn label="上序转交" min-width="165"
               ><template #default="{ row }">{{
                 formatDateTime(row.planned_start_at)
               }}</template></ElTableColumn

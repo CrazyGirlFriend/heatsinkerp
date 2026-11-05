@@ -13,7 +13,6 @@ pytestmark = pytest.mark.usefixtures("legacy_stock")
 def batch(number=1, quantity=40, **extra):
     return {
         "batch_number": number,
-        "planned_start_at": "2026-12-20T08:00:00+08:00",
         "due_at": "2026-12-21T16:00:00+08:00",
         "target_quantity": quantity,
         **extra,
@@ -110,11 +109,12 @@ def test_team_proposes_batches_and_dispatch_owns_final_due(client, warehouse):
     )
 
 
-def test_validation_upstream_warnings_never_reschedule_downstream(client, warehouse):
+def test_handover_start_follows_upstream_without_changing_downstream_commitment(client, warehouse):
     s = warehouse
     first = plan(client, s)
     second = plan(client, s, workshop=True, predecessor_id=first["id"])
     first = save(client, first, [batch(1, 100)], s["headers"]).json()
+    assert first["batches"][0]["planned_start_at"] is None
     bid = first["batches"][0]["id"]
     body = [
         batch(
@@ -129,19 +129,20 @@ def test_validation_upstream_warnings_never_reschedule_downstream(client, wareho
     assert response.status_code == 200, response.text
     second = response.json()
     own_start = second["batches"][0]["planned_start_at"]
+    assert own_start == first["batches"][0]["due_at"]
     own_due = second["batches"][0]["due_at"]
     revised = writes(first)
-    revised[0]["due_at"] = "2026-12-22T16:00:00+08:00"
+    revised[0]["due_at"] = "2026-12-23T16:00:00+08:00"
     assert save(client, first, revised, s["headers"]).status_code == 200
     refreshed = get(client, second)
-    assert refreshed["batches"][0]["planned_start_at"] == own_start
+    assert refreshed["batches"][0]["planned_start_at"] == "2026-12-23T08:00:00+00:00"
+    assert refreshed["batches"][0]["planned_start_at"] != own_start
     assert refreshed["batches"][0]["due_at"] == own_due
     assert refreshed["version"] == second["version"]
     assert any("上游" in w for w in refreshed["batches"][0]["warnings"])
     for invalid in [
-        batch(planned_start_at="2026-12-22T16:00:00+08:00"),
-        batch(planned_start_at="2026-12-20T08:30:00+08:00"),
-        batch(planned_start_at="2026-12-20T08:00:00"),
+        batch(due_at="2026-12-20T08:30:00+08:00"),
+        batch(due_at="2026-12-20T08:00:00"),
         batch(upstream_batch_ids=[999999]),
         batch(id=bid),
     ]:
@@ -150,6 +151,41 @@ def test_validation_upstream_warnings_never_reschedule_downstream(client, wareho
     # Referenced upstream batch cannot be removed by replacing its identity.
     current_first = get(client, first)
     assert save(client, current_first, [batch(2, 100)], s["headers"]).status_code == 409
+
+
+def test_linked_batches_start_after_all_selected_supplies_and_ignore_legacy_start(
+    client, warehouse
+):
+    first = plan(client, warehouse)
+    second = plan(client, warehouse, workshop=True, predecessor_id=first["id"])
+    first = save(
+        client, first, [batch(1, 40), batch(2, 60, due_at="2026-12-22T16:00:00+08:00")]
+    ).json()
+    ids = [b["id"] for b in first["batches"]]
+    response = save(
+        client,
+        second,
+        [
+            batch(1, 40, upstream_batch_ids=[ids[0]], due_at="2026-12-23T16:00:00+08:00"),
+            batch(
+                2,
+                60,
+                upstream_batch_ids=ids,
+                due_at="2026-12-24T16:00:00+08:00",
+                planned_start_at="2099-01-01T00:00:00Z",
+            ),
+        ],
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert [b["planned_start_at"] for b in result["batches"]] == [
+        b["due_at"] for b in first["batches"]
+    ]
+    # Without a supply link, wait for the previous operation's whole commitment.
+    rows = writes(result)
+    rows[0]["upstream_batch_ids"] = []
+    updated = save(client, result, rows).json()
+    assert updated["batches"][0]["planned_start_at"] == first["due_at"]
 
 
 def test_dispatch_batch_assignment_retry_void_and_no_retroactive_guess(client, warehouse):

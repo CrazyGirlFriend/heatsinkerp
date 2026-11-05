@@ -20,8 +20,6 @@ import {
   IconFocus2,
   IconMinus,
   IconPlus,
-  IconChevronsUp,
-  IconChevronsDown,
   IconCalendarEvent,
   IconX,
 } from '@tabler/icons-vue'
@@ -38,7 +36,6 @@ import {
   ganttBatchRelations,
   ganttDensity,
   ganttInlineBars,
-  ganttLeaves,
   ganttRange,
   ganttRowHeight,
   scheduleGanttRecords,
@@ -47,10 +44,17 @@ import {
 import type { ProductionSchedule, ScheduleTask } from '@/types/productionSchedule'
 import { formatDateTime } from '@/utils/format'
 
-const props = defineProps<{ tasks: ScheduleTask[]; loading?: boolean }>()
+const props = defineProps<{
+  tasks: ScheduleTask[]
+  loading?: boolean
+  loadingMore?: boolean
+  hasMore?: boolean
+  loadError?: string
+}>()
 const emit = defineEmits<{
   'open-node': [node: ProductionSchedule]
   'open-task': [task: ScheduleTask]
+  'load-more': []
 }>()
 const host = ref<HTMLElement>()
 const palette = useChartPalette()
@@ -63,7 +67,17 @@ const zoom = computed(() => baseMillisecondsPerPixel / millisecondsPerPixel.valu
 const viewportWidth = ref(900)
 const zoomLimits = ref({ min: 30_000, max: BOARD_DAY })
 const visibleRange = ref('')
-const allCollapsed = ref(true)
+const fittedRange = ref(true)
+const overviewLabel = computed(() => {
+  const start = new Date(`${range.value[0]}T00:00:00`)
+  const end = new Date(`${range.value[1]}T00:00:00`)
+  return start.getDate() === 1 &&
+    start.getMonth() === end.getMonth() &&
+    start.getFullYear() === end.getFullYear() &&
+    new Date(end.getTime() + BOARD_DAY).getDate() === 1
+    ? '整月'
+    : '全周期'
+})
 const hovered = ref<ScheduleGanttRecord>()
 const popoverVisible = ref(false)
 const pinned = ref(false)
@@ -79,8 +93,11 @@ let boundTable: Gantt['taskListTableInstance']
 let records: ScheduleGanttRecord[] = []
 let observer: ResizeObserver | undefined
 let clock: ReturnType<typeof setInterval> | undefined
-let closeTimer: ReturnType<typeof setTimeout> | undefined
 let resizeFrame = 0
+let moreFrame = 0
+let viewportFrame = 0
+let paintedTop = 0
+let paintedBottom = 0
 let zoomFrame = 0
 let rendering = false
 let viewAnimation: Animation | undefined
@@ -162,32 +179,18 @@ function open(record: ScheduleGanttRecord) {
   } else emit('open-task', record.task)
 }
 function hidePopover() {
-  clearTimeout(closeTimer)
   pinned.value = false
   popoverVisible.value = false
   gantt?.scenegraph.taskBar.removeSelectedBorder()
   highlightBatch()
 }
-function leaveBar() {
-  clearTimeout(closeTimer)
-  if (!pinned.value) closeTimer = setTimeout(hidePopover, 180)
-}
-function keepPopover() {
-  clearTimeout(closeTimer)
-}
-function showPopover(record: ScheduleGanttRecord, x: number, y: number) {
-  clearTimeout(closeTimer)
-  if (pinned.value) return
+function selectBatch(record: ScheduleGanttRecord, x: number, y: number) {
+  if (pinned.value && hovered.value?.id === record.id) return hidePopover()
   hovered.value = record
   pointer.value = { x, y }
   popoverVisible.value = true
-  highlightBatch(record)
-}
-function selectBatch(record: ScheduleGanttRecord, x: number, y: number) {
-  if (pinned.value && hovered.value?.id === record.id) return hidePopover()
-  pinned.value = false
-  showPopover(record, x, y)
   pinned.value = true
+  highlightBatch(record)
 }
 function highlightBatch(record?: ScheduleGanttRecord) {
   const related = record?.kind === 'batch' ? ganttBatchRelations(record) : undefined
@@ -227,17 +230,7 @@ function onPointerDown(event: PointerEvent) {
 }
 function initialScale() {
   const days = (Date.parse(range.value[1]) - Date.parse(range.value[0])) / BOARD_DAY + 1
-  const durations = records
-    .flatMap(ganttLeaves)
-    .flatMap((record) =>
-      record.startTime != null && record.endTime != null && record.endTime > record.startTime
-        ? [record.endTime - record.startTime]
-        : [],
-    )
-  // Short split batches need room for the team name and their own percentage.
-  // Cap the initial magnification at 300%; finer inspection uses native zoom.
-  const readableScale = Math.max(baseMillisecondsPerPixel / 3, Math.min(...durations) / 120)
-  return Math.min(baseMillisecondsPerPixel, readableScale, (days * BOARD_DAY) / viewportWidth.value)
+  return (days * BOARD_DAY) / viewportWidth.value
 }
 function syncZoomState() {
   if (!gantt) return
@@ -246,7 +239,9 @@ function syncZoomState() {
     Date.parse(`${range.value[0]}T00:00:00+08:00`) + gantt.scrollLeft * millisecondsPerPixel.value
   const end = Math.min(
     Date.parse(`${range.value[1]}T23:59:59+08:00`),
-    start + viewportWidth.value * millisecondsPerPixel.value,
+    // Native scrolling rounds to whole pixels; use the last visible pixel so
+    // rounding at midnight does not add the following day to the range label.
+    start + (viewportWidth.value - 1) * millisecondsPerPixel.value,
   )
   visibleRange.value = `${boardDate(start).slice(5)} — ${boardDate(end).slice(5)}`
 }
@@ -257,6 +252,7 @@ function onNativeZoom() {
     zoomFrame = 0
     const previousDensity = renderedDensity
     syncZoomState()
+    fittedRange.value = Math.abs(millisecondsPerPixel.value - initialScale()) < 1
     gantt?.zoomScaleManager?.getDataZoomIntegration()?.syncToDataZoom()
     if (density.value.scale !== previousDensity) {
       render()
@@ -283,34 +279,33 @@ function applyNativeScale(value: number) {
   gantt.updateDateRange(`${range.value[0]}T00:00:00.000`, `${range.value[1]}T23:59:59.999`)
   gantt.setMillisecondsPerPixel(scale)
 }
-function styleRangeSlider() {
-  // 1.26.8 exposes the native slider but has no theme option on its integration.
-  // Apply VRender attributes to that slider; dragging and zoom stay native.
-  const slider = gantt?.zoomScaleManager?.getDataZoomIntegration() as unknown as
-    | {
-        dataZoomAxis: { setAttributes: (attributes: Record<string, unknown>) => void }
-        stage: { background: string }
-      }
-    | undefined
-  if (slider) slider.stage.background = colors.value.surface
-  slider?.dataZoomAxis.setAttributes({
-    backgroundStyle: { fill: colors.value.surface, stroke: colors.value.border, lineWidth: 1 },
-    selectedBackgroundStyle: { fill: '#8a80d4', fillOpacity: 0.28 },
-    startHandlerStyle: { fill: colors.value.surface, stroke: colors.value.muted, size: 20 },
-    endHandlerStyle: { fill: colors.value.surface, stroke: colors.value.muted, size: 20 },
-  })
-}
 function fit() {
   range.value = ganttRange(records, now.value)
+  fittedRange.value = true
   millisecondsPerPixel.value = initialScale()
 }
-function toggleGroups() {
-  const collapse = records.some((record) => record.hierarchyState !== 'collapse')
-  records.forEach((record) => {
-    record.hierarchyState = collapse ? 'collapse' : 'expand'
-  })
-  allCollapsed.value = collapse
+function showOverview() {
+  const previousDensity = renderedDensity
+  fittedRange.value = true
   render()
+  if (gantt) gantt.scrollLeft = 0
+  syncZoomState()
+  animateViewChange(previousDensity)
+}
+function focusPeriod(start: Date, end: Date) {
+  const min = Date.parse(`${range.value[0]}T00:00:00`)
+  const max = Date.parse(`${range.value[1]}T00:00:00`) + BOARD_DAY
+  const left = Math.max(min, start.getTime())
+  const right = Math.min(max, end.getTime() + 1)
+  if (right <= left || right - left >= millisecondsPerPixel.value * viewportWidth.value) return
+  const previousDensity = renderedDensity
+  fittedRange.value = false
+  millisecondsPerPixel.value = (right - left) / viewportWidth.value
+  render()
+  if (gantt) gantt.scrollLeft = (left - min) / millisecondsPerPixel.value
+  syncZoomState()
+  gantt?.zoomScaleManager?.getDataZoomIntegration()?.syncToDataZoom()
+  animateViewChange(previousDensity)
 }
 function changeZoom(direction: number) {
   gantt?.zoomByFactor(direction > 0 ? 1.2 : 1 / 1.2)
@@ -321,7 +316,32 @@ function shift(direction: number) {
     boardDate(Date.parse(`${date}T00:00:00+08:00`) + direction * days * BOARD_DAY),
   ) as [string, string]
 }
-function options(): GanttConstructorOptions {
+function viewportRecords(top: number) {
+  const height = host.value?.clientHeight || 900
+  let y = 0
+  paintedTop = Infinity
+  paintedBottom = 0
+  return records.map((record) => {
+    const start = y
+    y += Math.round(ganttRowHeight(record, density.value))
+    if (y >= top - height / 2 && start <= top + height * 1.5) {
+      paintedTop = Math.min(paintedTop, start)
+      paintedBottom = y
+      return record
+    }
+    // Keep row metadata for native scrolling; only mount visible timeline bars.
+    return { ...record, start: undefined, end: undefined, children: [] }
+  })
+}
+function refreshViewport() {
+  cancelAnimationFrame(viewportFrame)
+  viewportFrame = requestAnimationFrame(() => {
+    if (!gantt || rendering || !records.length) return
+    const bottom = Math.min(gantt.getAllTaskBarsHeight(), gantt.scrollTop + gantt.gridHeight)
+    if (gantt.scrollTop < paintedTop || bottom > paintedBottom) render()
+  })
+}
+function options(scrollTop = gantt?.scrollTop || 0): GanttConstructorOptions {
   const c = colors.value
   const sizing = density.value
   const { barHeight, laneHeight, rowHeight } = sizing
@@ -390,7 +410,68 @@ function options(): GanttConstructorOptions {
           return `${String(startDate.getDate()).padStart(2, '0')}  ${label}`
         },
         customLayout: ({ width, height, startDate, endDate }) => {
-          const rootContainer = new VRender.Group({ width, height, clip: true, pickable: false })
+          const rootContainer = new VRender.Group({
+            width,
+            height,
+            clip: true,
+            fill: 'transparent',
+            pickable: true,
+            cursor: 'pointer',
+          })
+          // Native week scales keep their zoom thresholds; show individual days
+          // when a whole month still leaves enough room for readable dates.
+          const daily = dateUnit === 'week'
+          const unit = daily ? BOARD_DAY : BOARD_DAY / 24
+          const cells = Math.round((endDate.getTime() + 1 - startDate.getTime()) / unit)
+          if ((daily || (dateUnit === 'hour' && step > 1)) && width / cells >= (daily ? 24 : 44)) {
+            for (let index = 0; index < cells; index++) {
+              const start = new Date(startDate.getTime() + index * unit)
+              const cell = new VRender.Rect({
+                x: (width * index) / cells,
+                width: width / cells,
+                height,
+                fill: 'transparent',
+                cursor: daily ? 'pointer' : 'default',
+              })
+              if (daily)
+                cell.addEventListener('click', () =>
+                  focusPeriod(start, new Date(start.getTime() + BOARD_DAY - 1)),
+                )
+              rootContainer.add(cell)
+              rootContainer.add(
+                new VRender.Text({
+                  x: (width * (index + 0.5)) / cells,
+                  y: height / 2 - (daily ? 8 : 0),
+                  text: daily
+                    ? String(start.getDate()).padStart(2, '0')
+                    : `${String(start.getHours()).padStart(2, '0')}:00`,
+                  fontFamily: font,
+                  fontSize: daily ? 14 : 12,
+                  fontWeight: 600,
+                  textAlign: 'center',
+                  textBaseline: 'middle',
+                  fill: c.text,
+                  pickable: false,
+                }),
+              )
+              if (daily)
+                rootContainer.add(
+                  new VRender.Text({
+                    x: (width * (index + 0.5)) / cells,
+                    y: height / 2 + 10,
+                    text: ['日', '一', '二', '三', '四', '五', '六'][start.getDay()],
+                    fontFamily: font,
+                    fontSize: 10,
+                    textAlign: 'center',
+                    textBaseline: 'middle',
+                    fill: c.muted,
+                    pickable: false,
+                  }),
+                )
+            }
+            return { rootContainer, renderDefaultText: false }
+          }
+          rootContainer.addEventListener('click', () => focusPeriod(startDate, endDate))
           const withIcon = dateUnit !== 'hour' && width >= (dateUnit === 'week' ? 96 : 80)
           const x = withIcon ? width / 2 - (dateUnit === 'week' ? 38 : 30) : width / 2
           if (withIcon)
@@ -481,7 +562,7 @@ function options(): GanttConstructorOptions {
   ]
   const scales = levels[gantt?.zoomScaleManager?.findOptimalLevel(millisecondsPerPixel.value) ?? 2]!
   return {
-    records,
+    records: viewportRecords(scrollTop),
     tasksShowMode: TYPES.TasksShowMode.Project_Sub_Tasks_Inline,
     projectSubTasksExpandable: true,
     minDate: `${range.value[0]}T00:00:00.000`,
@@ -489,26 +570,21 @@ function options(): GanttConstructorOptions {
     rowHeight,
     headerRowHeight: headerHeight,
     overscrollBehavior: 'none',
-    underlayBackgroundColor: c.surface,
+    underlayBackgroundColor: groupBackground,
     taskListTable: {
       tableWidth,
-      hierarchyIndent: 16,
-      hierarchyExpandLevel: 2,
+      // The timeline needs every batch row's height before positioning its bars.
+      customConfig: { forceComputeAllRowHeight: true },
       columns: [
         {
           field: 'name',
-          title: '流水号 / 班组',
+          title: '流水号',
           width: 216,
-          tree: true,
+          tree: false,
           style: {
-            padding: ({ row, table }) =>
-              table.getRecordByCell(0, row)?.kind === 'serial' ? [0, 48, 0, 14] : [0, 14],
-            fontWeight: ({ row, table }) =>
-              table.getRecordByCell(0, row)?.kind === 'serial' ? 600 : 400,
-            color: ({ row, table }) => {
-              const record = table.getRecordByCell(0, row) as ScheduleGanttRecord
-              return record?.kind === 'team' ? 'transparent' : c.text
-            },
+            padding: [0, 48, 0, 14],
+            fontWeight: 600,
+            color: c.text,
           },
           customLayout: ({ rect, table, col, row }) => {
             const record = table.getRecordByCell(col, row) as ScheduleGanttRecord
@@ -530,48 +606,12 @@ function options(): GanttConstructorOptions {
                   }),
                 )
             }
-            if (record.kind === 'serial' || record.kind === 'deadline')
-              return { rootContainer, renderDefault: true }
-            const inset = record.kind === 'batch' ? 54 : 38
-            const cardWidth = rect!.width - inset - (record.kind === 'team' ? 44 : 16)
-            rootContainer.add(
-              new VRender.Rect({
-                x: inset,
-                y: (rect!.height - barHeight) / 2,
-                width: cardWidth,
-                height: barHeight,
-                cornerRadius: 20,
-                fill: c.surface,
-                pickable: false,
-              }),
-            )
-            rootContainer.add(
-              new VRender.Text({
-                x: inset + cardWidth / 2,
-                y: rect!.height / 2,
-                text: record.kind === 'team' ? record.node!.team_name : record.name,
-                fontFamily: font,
-                fontSize: 12,
-                fontWeight: 600,
-                textAlign: 'center',
-                textBaseline: 'middle',
-                fill: dark ? '#eeeaf8' : boardTeamColor(record.node!.team_name),
-                maxLineWidth: cardWidth - 16,
-                ellipsis: '…',
-                pickable: false,
-              }),
-            )
-            // Preserve VTable's tree control alongside the team label.
-            return {
-              rootContainer,
-              renderDefault: record.kind === 'team',
-              enableCellPadding: false,
-            }
+            return { rootContainer, renderDefault: true }
           },
         },
         {
           field: 'quantity',
-          title: '数量',
+          title: '计划数',
           width: 84,
           style: { textAlign: 'right', padding: [0, 12, 0, 4] },
         },
@@ -581,7 +621,7 @@ function options(): GanttConstructorOptions {
           ? headerHeight
           : ganttRowHeight(table.getRecordByCell(0, row) as ScheduleGanttRecord, sizing),
       theme: {
-        underlayBackgroundColor: c.surface,
+        underlayBackgroundColor: groupBackground,
         defaultStyle: {
           fontFamily: font,
           fontSize: sizing.scale === 1 ? 14 : 13,
@@ -611,17 +651,11 @@ function options(): GanttConstructorOptions {
           fontWeight: 400,
           hover: { cellBgColor: c.mutedSurface, inlineRowBgColor: c.mutedSurface },
         },
-        functionalIconsStyle: {
-          collapse_color: c.muted,
-          collapse_color_opacity: '1',
-          expand_color: c.muted,
-          expand_color_opacity: '1',
-        },
         frameStyle: { borderLineWidth: 0 },
       },
       hover: { highlightMode: 'row' },
       select: { disableSelect: true },
-      tooltip: { isShowOverflowTextTooltip: true },
+      tooltip: { isShowOverflowTextTooltip: false },
     },
     timelineHeader: {
       colWidth: ((BOARD_DAY / 24) * (scales.at(-1)?.step || 1)) / millisecondsPerPixel.value,
@@ -632,7 +666,7 @@ function options(): GanttConstructorOptions {
       zoomScale: {
         enabled: true,
         levels,
-        dataZoomAxis: { enabled: true, containerId: canvasId, height: 30 },
+        dataZoomAxis: { enabled: false },
       },
     },
     grid: {
@@ -675,11 +709,13 @@ function options(): GanttConstructorOptions {
       projectStyle: barStyle,
       milestoneStyle: {
         width: 12,
-        cornerRadius: 2,
+        cornerRadius: 6,
         fillColor: c.surface,
         borderColor: c.muted,
-        borderLineWidth: 1,
-        labelText: '',
+        borderLineWidth: 0,
+        labelText: '{milestoneLabel}',
+        textOrient: 'left',
+        labelTextStyle: { fontSize: 10, color: c.muted },
       },
       moveable: false,
       resizable: false,
@@ -690,9 +726,24 @@ function options(): GanttConstructorOptions {
       selectedBarStyle: { borderLineWidth: 1, borderColor: c.muted },
       clip: false,
       hoverBarStyle: { barOverlayColor: '#ffffff24', cornerRadius: 20 },
-      customLayout: ({ width, height, taskRecord, index, startDate, ganttInstance }) => {
+      customLayout: ({ width, height, taskRecord, startDate, ganttInstance }) => {
         const record = taskRecord as ScheduleGanttRecord
-        if (record.type === 'milestone') return { renderDefaultBar: true, renderDefaultText: false }
+        if (record.type === 'milestone') {
+          // Keep a larger hit area around the small time-point marker.
+          const rootContainer = new VRender.Group({ width: 12, height: 12, fill: 'transparent' })
+          rootContainer.add(
+            new VRender.Circle({
+              x: 6,
+              y: 6,
+              radius: 3,
+              fill: record.kind === 'deadline' ? c.muted : c.surface,
+              stroke: record.node ? boardTeamColor(record.node.team_name) : c.muted,
+              lineWidth: 1.5,
+              pickable: false,
+            }),
+          )
+          return { rootContainer, renderDefaultBar: false, renderDefaultText: true }
+        }
         const rootContainer = new VRender.Group({
           width,
           height,
@@ -725,28 +776,100 @@ function options(): GanttConstructorOptions {
         const state = boardDeliveryState(record.node!, now.value)
         const teamColor = boardTeamColor(record.node!.team_name)
         const progress = record.progress
-        // Adapted from VTable's gantt-customLayout demo: the entire interval is a
-        // three-stop gradient; progress belongs to the separate circular badge.
+        // Keep VTable's three-stop gradient at every zoom level.
         const pale = `rgb(${[1, 3, 5]
           .map((offset) =>
             Math.round(parseInt(teamColor.slice(offset, offset + 2), 16) * 0.62 + 255 * 0.38),
           )
           .join(',')})`
-        rootContainer.setAttributes({
-          cornerRadius: 20,
-          fill: {
-            gradient: 'linear',
-            x0: 0,
-            y0: 0,
-            x1: 1,
-            y1: 0,
-            stops: [
-              { offset: 0, color: pale },
-              { offset: 0.5, color: teamColor },
-              { offset: 1, color: pale },
-            ],
-          },
-        })
+        const gradient = {
+          gradient: 'linear' as const,
+          x0: 0,
+          y0: 0,
+          x1: 1,
+          y1: 0,
+          stops: [
+            { offset: 0, color: pale },
+            { offset: 0.5, color: teamColor },
+            { offset: 1, color: pale },
+          ],
+        }
+        rootContainer.setAttributes({ cornerRadius: 20, fill: gradient })
+        if (sizing.scale < 1) {
+          rootContainer.setAttributes({ fill: 'transparent' })
+          const trackY = height - 1
+          rootContainer.add(
+            new VRender.Rect({
+              x: 0,
+              y: trackY,
+              width,
+              height: 4,
+              fill: gradient,
+              fillOpacity: 0.25,
+              pickable: false,
+            }),
+          )
+          rootContainer.add(
+            new VRender.Rect({
+              x: 0,
+              y: trackY,
+              width: (width * (progress ?? 0)) / 100,
+              height: 4,
+              fill: gradient,
+              pickable: false,
+            }),
+          )
+          // Labels stay above the continuous handover line, not inside tiny pills.
+          if (width >= 22) {
+            const inline = width >= 50
+            rootContainer.add(
+              new VRender.Text({
+                x: width / 2,
+                y: inline ? 2 : -2,
+                text:
+                  inline && progress != null
+                    ? `${record.node!.team_name} ${Math.floor(progress)}%`
+                    : record.node!.team_name,
+                fontFamily: font,
+                fontSize: inline
+                  ? 10
+                  : Math.max(8, Math.min(9, (width - 2) / record.node!.team_name.length)),
+                lineHeight: inline ? 12 : 9,
+                fontWeight: 600,
+                textAlign: 'center',
+                textBaseline: 'top',
+                fill: c.text,
+                pickable: false,
+              }),
+            )
+            if (!inline && progress != null)
+              rootContainer.add(
+                new VRender.Text({
+                  x: width / 2,
+                  y: 8,
+                  text: `${Math.floor(progress)}%`,
+                  fontFamily: font,
+                  fontSize: 8,
+                  lineHeight: 8,
+                  textAlign: 'center',
+                  textBaseline: 'top',
+                  fill: c.muted,
+                  pickable: false,
+                }),
+              )
+          }
+          if (state === 'overdue' || state === 'completed_late')
+            rootContainer.add(
+              new VRender.Circle({
+                x: width,
+                y: trackY + 2,
+                radius: 2,
+                fill: state === 'overdue' ? '#d44945' : '#c47a20',
+                pickable: false,
+              }),
+            )
+          return { rootContainer, renderDefaultBar: false, renderDefaultText: false }
+        }
         const stateColor =
           state === 'overdue'
             ? '#d44945'
@@ -766,8 +889,7 @@ function options(): GanttConstructorOptions {
               pickable: false,
             }),
           )
-        const row = rowRecord(index, ganttInstance)
-        const label = row?.kind === 'serial' ? record.node!.team_name : record.name
+        const label = record.node!.team_name
         const percentWidth = Math.max(28, height)
         const showPercent = progress != null && width >= percentWidth + 4
         const labelFontSize = sizing.scale === 1 ? 13 : 12
@@ -781,20 +903,43 @@ function options(): GanttConstructorOptions {
           pickable: false,
         })
         const labelWidth = labelGraphic.AABBBounds.width()
+        const quantityGraphic = new VRender.Text({
+          text: `${record.quantity}${record.node!.completion_basis === 'weight' ? '' : '件'}`,
+          fontFamily: font,
+          fontSize: sizing.scale === 1 ? 11 : 10,
+          fontWeight: 600,
+          fill: '#fff',
+          textBaseline: 'middle',
+          pickable: false,
+        })
+        let quantityWidth = quantityGraphic.AABBBounds.width()
         const symbolSize = height - 4
         const textEnd = width - (showPercent ? percentWidth + 6 : 4)
-        // Team identity takes priority over decoration at month/quarter scale.
-        const showSymbol =
-          symbolSize >= 14 &&
-          textEnd >= symbolSize + 4 &&
-          (textEnd - symbolSize - 7 >= labelWidth || textEnd - 4 < labelWidth)
+        const minFontSize = sizing.scale === 1 ? 11 : 10
+        const minLabelWidth = (labelWidth * minFontSize) / labelFontSize
+        // Drop decoration before squeezing the team name, batch quantity or progress.
+        let showSymbol =
+          symbolSize >= 14 && textEnd - symbolSize - 7 >= labelWidth + quantityWidth + 4
+        if (textEnd - 4 < minLabelWidth + quantityWidth + 4 && textEnd >= symbolSize + 7) {
+          showSymbol = symbolSize >= 14
+          // At a wider date range, use the team icon and a compact quantity instead of "…".
+          if (showSymbol && quantityWidth > textEnd - symbolSize - 7) {
+            quantityGraphic.setAttributes({ text: record.quantity.replace(/,/g, '') })
+            quantityWidth = quantityGraphic.AABBBounds.width()
+          }
+        }
         const textStart = showSymbol ? symbolSize + 7 : 4
+        const showQuantity = textEnd - textStart >= quantityWidth
+        const quantitySpace = showQuantity ? quantityWidth + 4 : 0
         const space = {
           x: textStart,
-          width: textEnd - textStart,
+          width: textEnd - textStart - quantitySpace,
         }
-        const showLabel = space.width >= labelWidth
-        const textX = showSymbol ? space.x : space.x + (space.width - labelWidth) / 2
+        const fittedFontSize = Math.max(
+          minFontSize,
+          Math.min(labelFontSize, Math.floor((labelFontSize * space.width) / labelWidth)),
+        )
+        const showLabel = space.width >= minLabelWidth
         if (showSymbol) {
           rootContainer.add(
             new VRender.Circle({
@@ -818,8 +963,18 @@ function options(): GanttConstructorOptions {
           )
         }
         if (showLabel) {
-          labelGraphic.setAttributes({ x: textX, y: height / 2, maxLineWidth: space.width })
+          labelGraphic.setAttributes({
+            x: space.x,
+            y: height / 2,
+            fontSize: fittedFontSize,
+            maxLineWidth: space.width,
+            ellipsis: '…',
+          })
           rootContainer.add(labelGraphic)
+        }
+        if (showQuantity) {
+          quantityGraphic.setAttributes({ x: textEnd - quantityWidth, y: height / 2 })
+          rootContainer.add(quantityGraphic)
         }
         if (showPercent) {
           const x = width - percentWidth / 2 - 2
@@ -863,6 +1018,21 @@ function positionLocateIcons() {
     icon.setAttributes({ dy: 0, scaleX: 0.65, scaleY: 0.65 })
   })
 }
+function requestMoreIfNeeded() {
+  cancelAnimationFrame(moreFrame)
+  if (!props.hasMore) return
+  moreFrame = requestAnimationFrame(() => {
+    if (
+      gantt &&
+      props.hasMore &&
+      !props.loading &&
+      !props.loadingMore &&
+      !props.loadError &&
+      gantt.getAllTaskBarsHeight() - gantt.scrollTop - gantt.gridHeight < 160
+    )
+      emit('load-more')
+  })
+}
 function stopDensityMotion() {
   cancelAnimationFrame(densityFrame)
   densityFrame = 0
@@ -903,7 +1073,8 @@ function render(resetScroll = false) {
   if (!host.value) return
   rendering = true
   viewportWidth.value = Math.max(1, (host.value.clientWidth || 1200) - tableWidth - 4)
-  if (resetScroll) millisecondsPerPixel.value = initialScale()
+  if (resetScroll) fittedRange.value = true
+  if (fittedRange.value) millisecondsPerPixel.value = initialScale()
   const scale = millisecondsPerPixel.value
   const previousDensity = renderedDensity * (densityGroups[0]?.attribute.scaleY ?? 1)
   stopDensityMotion()
@@ -922,7 +1093,7 @@ function render(resetScroll = false) {
   if (gantt) {
     const left = gantt.scrollLeft,
       top = gantt.scrollTop
-    gantt.updateOption(options())
+    gantt.updateOption(options(resetScroll ? 0 : top))
     applyNativeScale(scale)
     if (!resetScroll) {
       gantt.scrollLeft = left
@@ -939,10 +1110,6 @@ function render(resetScroll = false) {
     }
     applyNativeScale(scale)
     gantt.on('zoom', onNativeZoom)
-    gantt.on('mouseenter_task_bar', ({ record, federatedEvent }) =>
-      showPopover(record as ScheduleGanttRecord, federatedEvent.clientX, federatedEvent.clientY),
-    )
-    gantt.on('mouseleave_task_bar', leaveBar)
     gantt.on('click_task_bar', ({ record, federatedEvent }) =>
       selectBatch(record as ScheduleGanttRecord, federatedEvent.clientX, federatedEvent.clientY),
     )
@@ -951,9 +1118,10 @@ function render(resetScroll = false) {
       stopDensityMotion()
       hidePopover()
       positionLocateIcons()
+      refreshViewport()
+      requestMoreIfNeeded()
     })
   }
-  styleRangeSlider()
   gantt.zoomScaleManager?.updateDataZoomResponsive()
   gantt.zoomScaleManager?.getDataZoomIntegration()?.syncToDataZoom()
   syncZoomState()
@@ -966,17 +1134,17 @@ function render(resetScroll = false) {
       const record = boundTable!.getRecordByCell(col, row) as ScheduleGanttRecord
       if (record) open(record)
     })
-    boundTable?.on('tree_hierarchy_state_change', () => {
-      hidePopover()
-      allCollapsed.value = records.every((record) => record.hierarchyState === 'collapse')
-      nextTick(positionLocateIcons)
-    })
   }
   if (selection) selectBatch(selection, pointer.value.x, pointer.value.y)
   renderedDensity = density.value.scale
   // Fade the date axis and bars together; live resize/data refresh stay immediate.
-  if (animateView && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-    viewAnimation = host.value.animate?.([{ opacity: 0.65 }, { opacity: 1 }], {
+  if (animateView) animateViewChange(previousDensity)
+  requestMoreIfNeeded()
+}
+function animateViewChange(previousDensity: number) {
+  viewAnimation?.cancel()
+  if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    viewAnimation = host.value?.animate?.([{ opacity: 0.65 }, { opacity: 1 }], {
       duration: 180,
       easing: 'ease-out',
     })
@@ -985,6 +1153,7 @@ function render(resetScroll = false) {
 }
 function release() {
   cancelAnimationFrame(zoomFrame)
+  cancelAnimationFrame(viewportFrame)
   stopDensityMotion()
   viewAnimation?.cancel()
   viewAnimation = undefined
@@ -1011,32 +1180,27 @@ function release() {
 }
 watch(
   () => props.tasks,
-  async (tasks) => {
-    const states = new Map<string, ScheduleGanttRecord['hierarchyState']>()
-    const remember = (items: ScheduleGanttRecord[]) =>
-      items.forEach((item) => {
-        states.set(item.id, item.hierarchyState)
-        if (item.children) remember(item.children)
-      })
-    remember(records)
+  async (tasks, previous) => {
     records = scheduleGanttRecords(tasks)
-    const restore = (items: ScheduleGanttRecord[]) =>
-      items.forEach((item) => {
-        if (states.has(item.id)) item.hierarchyState = states.get(item.id)
-        if (item.children) restore(item.children)
-      })
-    restore(records)
-    allCollapsed.value = records.every((record) => record.hierarchyState === 'collapse')
     const identity = tasks.map((task) => task.id).join(',')
+    let resetScroll = false
     if (identity !== taskIdentity) {
       taskIdentity = identity
-      fit()
+      const appended =
+        previous?.length &&
+        tasks.length > previous.length &&
+        previous.every((task, index) => tasks[index]?.id === task.id)
+      if (!appended) {
+        resetScroll = true
+        fit()
+      }
     }
     await nextTick()
-    render()
+    render(resetScroll)
   },
   { immediate: true },
 )
+watch(() => [props.loading, props.loadingMore, props.hasMore, props.loadError], requestMoreIfNeeded)
 watch(range, () => render(true))
 watch(colors, () => {
   const left = gantt?.scrollLeft || 0
@@ -1075,8 +1239,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', onPointerDown)
   observer?.disconnect()
   cancelAnimationFrame(resizeFrame)
+  cancelAnimationFrame(moreFrame)
   clearInterval(clock)
-  clearTimeout(closeTimer)
   release()
 })
 </script>
@@ -1086,17 +1250,17 @@ onBeforeUnmount(() => {
     <div class="gantt-toolbar">
       <div class="gantt-search">
         <slot />
-        <AppButton
-          class="gantt-collapse"
-          :aria-label="allCollapsed ? '展开流水号' : '收起流水号'"
-          :title="allCollapsed ? '展开流水号' : '收起流水号'"
-          @click="toggleGroups"
-          ><component :is="allCollapsed ? IconChevronsDown : IconChevronsUp" :size="17"
-        /></AppButton>
       </div>
       <div class="gantt-controls">
         <ScheduleDateRange v-model="range" compact />
-        <div class="gantt-zoom" aria-label="时间缩放" title="Ctrl + 滚轮缩放；拖动底部滑块调整日期">
+        <AppButton
+          :disabled="fittedRange"
+          :aria-label="`返回${overviewLabel}`"
+          @click="showOverview"
+        >
+          {{ overviewLabel }}
+        </AppButton>
+        <div class="gantt-zoom" aria-label="时间缩放" title="Ctrl + 滚轮缩放">
           <button
             type="button"
             aria-label="缩小时间轴"
@@ -1144,7 +1308,13 @@ onBeforeUnmount(() => {
           }[state]
         }}</span
       >
-      <span class="gantt-visible-range">{{ visibleRange }}</span>
+      <div class="gantt-load-status">
+        <slot name="load-status"
+          ><span class="gantt-visible-range">{{ visibleRange }}</span></slot
+        >
+        <span v-if="loadingMore" role="status">加载中…</span>
+        <AppButton v-else-if="loadError" text @click="emit('load-more')">加载失败，重试</AppButton>
+      </div>
     </footer>
     <AppPopover
       :visible="popoverVisible"
@@ -1153,18 +1323,15 @@ onBeforeUnmount(() => {
       virtual-triggering
       trigger="manual"
       placement="top-end"
-      :width="324"
+      :width="360"
       :show-arrow="false"
       :teleported="true"
     >
-      <div v-if="hovered" @mouseenter="keepPopover" @mouseleave="leaveBar">
-        <div v-if="pinned" class="gantt-pin-actions">
-          <AppButton text aria-label="取消选中批次" @click="hidePopover"
-            ><IconX :size="15"
-          /></AppButton>
-        </div>
+      <div v-if="hovered">
         <ScheduleBatchSummary
           v-if="hovered.node"
+          :key="hovered.id"
+          :expanded="popoverVisible"
           :node="hovered.node"
           :serial-no="hovered.task.serial_no"
           :now="now"
@@ -1173,8 +1340,22 @@ onBeforeUnmount(() => {
             hovered.kind === 'team' ? hovered.children?.map((batch) => batch.node!) : undefined
           "
           @open="open(hovered)"
-        />
+        >
+          <template #actions>
+            <AppButton text circle aria-label="取消选中批次" @click="hidePopover"
+              ><IconX :size="16"
+            /></AppButton>
+          </template>
+        </ScheduleBatchSummary>
         <div v-else class="gantt-task-summary">
+          <AppButton
+            class="gantt-summary-close"
+            text
+            circle
+            aria-label="关闭详情"
+            @click="hidePopover"
+            ><IconX :size="16"
+          /></AppButton>
           <strong>{{ hovered.task.serial_no }}</strong
           ><span>最终交期 {{ formatDateTime(hovered.task.final_due_at) }}</span
           ><AppButton text @click="open(hovered)">查看明细</AppButton>
@@ -1204,16 +1385,21 @@ onBeforeUnmount(() => {
 :global(.gantt-batch-popover.el-popper) {
   background: var(--wm-surface, #fff);
   color: var(--wm-text, #20242c);
+  padding: 0;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border: 0;
+  border-radius: 12px;
+  box-shadow:
+    0 12px 36px #00000024,
+    0 2px 8px #00000012;
   backdrop-filter: none;
 }
-:global(.gantt-batch-popover.wm-popover-enter-from),
-:global(.gantt-batch-popover.wm-popover-leave-to) {
-  opacity: 1;
-}
-.gantt-pin-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 4px;
+.gantt-summary-close {
+  position: absolute;
+  right: 10px;
+  top: 10px;
 }
 .production-gantt {
   container-type: inline-size;
@@ -1242,9 +1428,6 @@ onBeforeUnmount(() => {
   gap: 10px;
   flex: 1;
   min-width: 260px;
-}
-.gantt-collapse {
-  flex-shrink: 0;
 }
 .gantt-search :deep(.wm-data-toolbar),
 .gantt-search :deep(.workspace-data-toolbar) {
@@ -1327,6 +1510,12 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 240px;
   overflow: hidden;
+  background: #e8e8f7;
+}
+@media (prefers-color-scheme: dark) {
+  .gantt-body {
+    background: #282535;
+  }
 }
 .gantt-canvas {
   position: absolute;
@@ -1351,8 +1540,11 @@ onBeforeUnmount(() => {
   color: var(--wm-muted, #71717a);
   font-size: 12px;
 }
-.gantt-visible-range {
+.gantt-load-status {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-variant-numeric: tabular-nums;
 }
 .gantt-legend > span {
@@ -1365,6 +1557,8 @@ onBeforeUnmount(() => {
   height: 14px;
 }
 .gantt-task-summary {
+  position: relative;
+  padding: 20px 44px 16px 16px;
   display: grid;
   gap: 10px;
   font-size: 12px;

@@ -67,11 +67,7 @@ async function review(approve: boolean) {
         ><template #default="{ row }">{{
           formatAmount(row.target_weight)
         }}</template></ElTableColumn
-      ><ElTableColumn label="计划开始" min-width="170"
-        ><template #default="{ row }">{{
-          formatDateTime(row.planned_start_at)
-        }}</template></ElTableColumn
-      ><ElTableColumn label="计划转出" min-width="170"
+      ><ElTableColumn label="转交时间" min-width="170"
         ><template #default="{ row }">{{ formatDateTime(row.due_at) }}</template></ElTableColumn
       ></ElTable
     >

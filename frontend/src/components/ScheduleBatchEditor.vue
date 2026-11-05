@@ -32,9 +32,8 @@ const upstream = computed(() =>
   task.value?.nodes.find((n) => n.id === props.schedule.predecessor_id),
 )
 const basis = computed(() => props.schedule.completion_basis || 'quantity')
-type Draft = Omit<ScheduleBatchWrite, 'planned_start_at' | 'due_at'> & {
+type Draft = Omit<ScheduleBatchWrite, 'due_at'> & {
   key: number
-  start: string
   end: string
 }
 let key = 0
@@ -44,7 +43,6 @@ const rows = ref<Draft[]>(
   (props.schedule.pending_batches || props.schedule.batches || []).map((b) => ({
     ...b,
     key: ++key,
-    start: local(b.planned_start_at),
     end: local(b.due_at),
     upstream_batch_ids: [...b.upstream_batch_ids],
   })),
@@ -53,7 +51,6 @@ function add() {
   rows.value.push({
     key: ++key,
     batch_number: Math.max(0, ...rows.value.map((b) => b.batch_number)) + 1,
-    start: '',
     end: local(props.schedule.due_at),
     target_quantity: rows.value.length ? null : props.schedule.target_quantity,
     target_weight: rows.value.length ? null : props.schedule.target_weight,
@@ -78,7 +75,7 @@ function warnings(row: Draft) {
     items.push('晚于最终交期')
   for (const id of row.upstream_batch_ids) {
     const batch = upstream.value?.batches?.find((b) => b.id === id)
-    if (batch && row.start && Date.parse(batch.due_at) > Date.parse(utc(row.start)))
+    if (batch && row.end && Date.parse(batch.due_at) > Date.parse(utc(row.end)))
       items.push(`早于上游第 ${batch.batch_number} 批转出`)
   }
   return items
@@ -107,8 +104,8 @@ async function save() {
     return
   }
   for (const row of rows.value) {
-    if (!row.start || !row.end || Date.parse(utc(row.start)) >= Date.parse(utc(row.end))) {
-      error.value = `第 ${row.batch_number} 批：请填写开始、转出时间，开始须早于转出`
+    if (!row.end) {
+      error.value = `第 ${row.batch_number} 批：请填写转交时间`
       return
     }
     if (
@@ -126,7 +123,6 @@ async function save() {
       batches: rows.value.map((row) => ({
         ...(row.id ? { id: row.id } : {}),
         batch_number: row.batch_number,
-        planned_start_at: utc(row.start),
         due_at: utc(row.end),
         target_quantity: row.target_quantity || null,
         target_weight: row.target_weight || null,
@@ -231,21 +227,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
                   :disabled="saving || !!task?.locked_at"
                   :aria-label="`第${row.batch_number}批重量`" /></template
             ></ElTableColumn>
-            <ElTableColumn label="计划开始" min-width="195"
-              ><template #default="{ row }"
-                ><ElDatePicker
-                  v-model="row.start"
-                  type="datetime"
-                  format="YYYY-MM-DD HH:mm"
-                  value-format="YYYY-MM-DDTHH:mm:ss"
-                  :default-time="defaultTime"
-                  :disabled-minutes="nonZeroMinutes"
-                  :disabled-seconds="nonZeroMinutes"
-                  :disabled="saving || !!task?.locked_at"
-                  placeholder="选择开始时间"
-                  :aria-label="`第${row.batch_number}批计划开始`" /></template
-            ></ElTableColumn>
-            <ElTableColumn label="计划转出" min-width="195"
+            <ElTableColumn label="转交时间" min-width="195"
               ><template #default="{ row }"
                 ><ElDatePicker
                   v-model="row.end"
@@ -256,8 +238,8 @@ const defaultTime = new Date(2000, 0, 1, 8)
                   :disabled-minutes="nonZeroMinutes"
                   :disabled-seconds="nonZeroMinutes"
                   :disabled="saving || !!task?.locked_at"
-                  placeholder="选择转出时间"
-                  :aria-label="`第${row.batch_number}批计划转出`" /></template
+                  placeholder="选择转交时间"
+                  :aria-label="`第${row.batch_number}批转交时间`" /></template
             ></ElTableColumn>
             <ElTableColumn v-if="upstream?.batches?.length" label="上游供料批次" min-width="165"
               ><template #default="{ row }"
@@ -334,7 +316,7 @@ const defaultTime = new Date(2000, 0, 1, 8)
                   ? `${formatAmount(row.target_quantity)} 件`
                   : `${formatAmount(row.target_weight)} kg`
               }}</template></ElTableColumn
-            ><ElTableColumn label="计划转出" min-width="140"
+            ><ElTableColumn label="转交时间" min-width="140"
               ><template #default="{ row }">{{
                 formatDateTime(row.due_at)
               }}</template></ElTableColumn

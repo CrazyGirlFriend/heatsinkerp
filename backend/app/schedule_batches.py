@@ -1,4 +1,4 @@
-"""Explicit team batch plans. Upstream dates inform, never rewrite, their periods."""
+"""Teams commit handover dates; processing periods start at upstream handover."""
 
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -34,21 +34,20 @@ class BatchWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: int | None = Field(default=None, ge=1)
     batch_number: int = Field(ge=1, le=9999)
-    planned_start_at: datetime
+    # Accept older clients/proposals, but never save a user-entered start again.
+    planned_start_at: datetime | None = Field(default=None, exclude=True)
     due_at: datetime
     target_quantity: int | None = Field(default=None, gt=0, le=2_147_483_647)
     target_weight: Decimal | None = Field(default=None, gt=0, max_digits=17, decimal_places=6)
     upstream_batch_ids: list[int] = Field(default_factory=list, max_length=100)
 
-    @field_validator("planned_start_at", "due_at")
+    @field_validator("due_at")
     @classmethod
     def hour(cls, value):
         return ScheduleNode.hour(value)
 
     @model_validator(mode="after")
     def period(self):
-        if self.planned_start_at >= self.due_at:
-            raise ValueError("计划开始时间须早于计划转出时间")
         if self.target_quantity is None and self.target_weight is None:
             raise ValueError("请填写每批数量或重量")
         if len(set(self.upstream_batch_ids)) != len(self.upstream_batch_ids):
@@ -99,13 +98,35 @@ def snapshots(db, plan_id):
     ]
 
 
-def summaries(db, plans, *, now=None):
+def predecessor_plans(db, plans):
+    ids = {p.predecessor_id for p in plans if p.predecessor_id}
+    return {p.id: p for p in db.scalars(select(Plan).where(Plan.id.in_(ids)))} if ids else {}
+
+
+def handover_start(plan, predecessors, batches=None, linked_ids=()):
+    previous = predecessors.get(plan.predecessor_id)
+    if (
+        not previous
+        or previous.cancelled_at
+        or previous.planning_state not in ("confirmed", "revision_pending")
+    ):
+        return None
+    if linked_ids:
+        sources = [(batches or {}).get(bid) for bid in linked_ids]
+        if any(b is None or b.schedule_id != previous.id for b in sources):
+            return None
+        return max(b.due_at for b in sources)
+    return previous.due_at
+
+
+def summaries(db, plans, *, now=None, predecessors=None):
     from .production_schedules import LOCAL_ZONE, iso, progress_table
 
     if not plans:
         return {}
     now = now or utcnow()
     parents = {p.id: p for p in plans}
+    predecessors = predecessor_plans(db, plans) if predecessors is None else predecessors
     batches = list(
         db.scalars(select(Batch).where(Batch.schedule_id.in_(parents)).order_by(Batch.batch_number))
     )
@@ -146,16 +167,16 @@ def summaries(db, plans, *, now=None):
             else "pending"
         )
         warnings = []
-        for uid in b.upstream_batch_ids:
-            source = upstream.get(uid)
-            if source and source.due_at > b.planned_start_at:
-                warnings.append(f"上游第 {source.batch_number} 批计划转出晚于本批开始")
+        start = handover_start(p, predecessors, upstream, b.upstream_batch_ids)
+        if start is not None and start > b.due_at:
+            warnings.append("上游转交时间晚于本批转交时间")
         final = tasks[p.task_id].final_due_at
         if final and b.due_at > final:
             warnings.append("计划转出晚于最终交期")
         result.setdefault(p.id, []).append(
             {
                 **batch_values(b),
+                "planned_start_at": iso(start),
                 "status": state,
                 "warnings": warnings,
                 "dispatched_quantity": q,
@@ -228,7 +249,6 @@ def save(db, plan_id, payload, user):
             plan.pending_batches = [
                 {
                     **b.model_dump(mode="json"),
-                    "planned_start_at": iso(b.planned_start_at),
                     "due_at": iso(b.due_at),
                 }
                 for b in payload.batches
@@ -247,7 +267,7 @@ def save(db, plan_id, payload, user):
             for bid in removed:
                 db.delete(existing[bid])
             for entry in payload.batches:
-                data = entry.model_dump(exclude={"id"})
+                data = {**entry.model_dump(exclude={"id"}), "planned_start_at": None}
                 if entry.id:
                     for key, value in data.items():
                         setattr(existing[entry.id], key, value)
