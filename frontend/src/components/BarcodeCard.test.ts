@@ -36,7 +36,7 @@ describe('BarcodeCard', () => {
     expect(renderBarcode).toHaveBeenLastCalledWith(
       expect.any(SVGSVGElement),
       'TL20260905000042',
-      expect.objectContaining({ width: 1.15, height: 28 }),
+      expect.objectContaining({ width: 1.15, height: 28, margin: 4, background: '#ffffff' }),
     )
   })
 })

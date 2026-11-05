@@ -26,8 +26,9 @@ async function renderBarcode(): Promise<void> {
     font: 'Arial, sans-serif',
     fontSize: props.compact ? 13 : 14,
     textMargin: props.compact ? 2 : 5,
-    margin: 0,
-    background: 'transparent',
+    // Keep a white backing and quiet edge so the barcode stays readable in either theme.
+    margin: 4,
+    background: '#ffffff',
     lineColor: '#111827',
   })
 }

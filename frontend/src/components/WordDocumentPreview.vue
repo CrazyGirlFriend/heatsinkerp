@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DocumentPreviewTrigger from './DocumentPreviewTrigger.vue'
 import AppSelect from './AppSelect.vue'
 import { ElOption } from 'element-plus'
 import AsyncStatus from './AsyncStatus.vue'
@@ -210,9 +211,9 @@ async function download() {
       class="word-original-frame"
       :class="{ 'word-original-frame--hidden': !content }"
     />
-    <button
+    <DocumentPreviewTrigger
+      overlay
       v-if="thumbnail && ready"
-      type="button"
       class="word-thumbnail-open"
       aria-label="放大工艺原稿"
       @click="open"
@@ -248,7 +249,7 @@ async function download() {
   gap: 6px;
   flex: 1;
   min-width: 0;
-  color: #54718a;
+  color: var(--wm-muted, #54718a);
 }
 .word-preview-filename > span {
   overflow: hidden;
@@ -272,7 +273,7 @@ async function download() {
   flex: 1;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #eef1f0;
+  background: var(--wm-muted-surface, #eef1f0);
 }
 .word-original-frame--hidden {
   min-height: 0;
@@ -295,18 +296,5 @@ async function download() {
   min-height: 0;
   height: 100%;
   pointer-events: none;
-}
-.word-thumbnail-open {
-  position: absolute;
-  inset: 0;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: transparent;
-  cursor: zoom-in;
-}
-.word-thumbnail-open:hover,
-.word-thumbnail-open:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
 }
 </style>

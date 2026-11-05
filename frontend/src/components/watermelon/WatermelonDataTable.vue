@@ -44,6 +44,14 @@ withDefaults(
 
 <style scoped>
 .wm-data-table.el-table {
+  /* Detail pages may still pass business-table; keep its glass effects out of this skin. */
+  --table-glass-header: none;
+  --table-glass-hover: none;
+  --table-glass-selected-fill: none;
+  --table-glass-selected: var(--wm-table-hover, #f4f4f5);
+  --table-glass-edge: none;
+  --table-glass-hover-edge: none;
+  --table-glass-selected-edge: 0 0 0 transparent;
   --el-table-border-color: var(--wm-table-border, #e4e4e7);
   --el-table-header-bg-color: var(--wm-table-header-bg, #fafafa);
   --el-table-header-text-color: var(--wm-table-header-text, #52525b);

@@ -907,8 +907,8 @@ defineExpose({ exportSource, openDetail })
                   :class="{ 'is-current': node.id === detail.id }"
                   :data-schedule-id="node.id"
                 >
-                  <button
-                    type="button"
+                  <ElButton
+                    link
                     class="schedule-task-route__heading"
                     :aria-current="node.id === detail.id ? 'step' : undefined"
                     :aria-label="`第${node.sequence_no}道 ${node.team_name}，查看明细`"
@@ -917,17 +917,17 @@ defineExpose({ exportSource, openDetail })
                     <span class="schedule-task-route__sequence">{{ node.sequence_no }}</span>
                     <strong>{{ node.team_name }}</strong>
                     <small v-if="canDispatch && node.team_id === teamId">本班组</small>
-                  </button>
-                  <button
+                  </ElButton>
+                  <ElButton
                     v-if="canPlan(node)"
-                    type="button"
+                    text
                     class="schedule-task-route__plan"
                     :aria-label="`第${node.sequence_no}道 ${node.team_name}，${node.planning_state === 'pending' ? '填写交期' : '修改批次计划'}`"
                     @click="editRouteNode(node)"
                   >
                     <ElIcon><EditPen /></ElIcon>
                     <span>{{ plannedDueLabel(node) }}</span>
-                  </button>
+                  </ElButton>
                   <span v-else class="schedule-task-route__due">{{ plannedDueLabel(node) }}</span>
                   <span
                     :class="`schedule-task-route__status--${scheduleStatusTone(node.status)}`"
@@ -1382,20 +1382,20 @@ defineExpose({ exportSource, openDetail })
 }
 .schedule-task-route__node.is-current {
   border-color: var(--primary);
-  background: rgba(231, 244, 237, 0.7);
+  background: var(--wm-hover, var(--primary-soft));
 }
-.schedule-task-route button {
+.schedule-task-route .el-button {
+  width: 100%;
+  margin: 0;
+  padding: 4px 0;
+  justify-content: flex-start;
+  text-align: left;
+}
+.schedule-task-route .el-button :deep(> span) {
   display: flex;
   align-items: center;
   gap: 6px;
-  border: 0;
-  border-radius: 5px;
-  padding: 4px 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
+  width: 100%;
 }
 .schedule-task-route__sequence {
   color: var(--muted);
@@ -1410,28 +1410,18 @@ defineExpose({ exportSource, openDetail })
 .schedule-task-route button.schedule-task-route__plan {
   min-height: 28px;
   padding: 4px 6px;
-  background: rgba(54, 124, 99, 0.08);
+  background: var(--wm-muted-surface, var(--primary-soft));
   color: var(--primary);
   font-size: 12px;
   transition: background-color 160ms ease;
 }
 .schedule-task-route button.schedule-task-route__plan:hover {
-  background: rgba(54, 124, 99, 0.16);
+  background: var(--wm-hover, var(--primary-soft));
 }
 .schedule-task-route__due {
   display: flex;
   align-items: center;
   min-height: 28px;
-}
-.schedule-task-route button:focus-visible {
-  border-color: var(--primary);
-  outline: 2px solid rgba(54, 124, 99, 0.15);
-  outline-offset: 2px;
-}
-@media (prefers-reduced-motion: reduce) {
-  .schedule-task-route button.schedule-task-route__plan {
-    transition: none;
-  }
 }
 .schedule-task-route__status--danger {
   color: var(--el-color-danger);

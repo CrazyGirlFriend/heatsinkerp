@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DocumentPreviewTrigger from './DocumentPreviewTrigger.vue'
 import AsyncStatus from './AsyncStatus.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import ElButton from '@/components/AppButton.vue'
@@ -95,7 +96,7 @@ onBeforeUnmount(() => {
       <div v-if="!thumbnail" class="drawing-preview-tools">
         <ElButton text @click="download">下载图纸原件</ElButton>
       </div>
-      <button type="button" class="drawing-preview-sheet" aria-label="放大图纸" @click="open">
+      <DocumentPreviewTrigger class="drawing-preview-sheet" aria-label="放大图纸" @click="open">
         <iframe
           :src="`${url}#toolbar=0&navpanes=0&view=Fit`"
           title="PDF图纸原件"
@@ -103,7 +104,7 @@ onBeforeUnmount(() => {
           :loading="thumbnail ? 'lazy' : 'eager'"
           referrerpolicy="no-referrer"
         />
-      </button>
+      </DocumentPreviewTrigger>
       <template v-if="thumbnail">
         <strong
           class="drawing-thumbnail-name"
@@ -138,17 +139,6 @@ onBeforeUnmount(() => {
 .drawing-preview-sheet {
   width: 100%;
   flex: 1;
-  min-height: 0;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
-  padding: 0;
-  overflow: hidden;
-  cursor: zoom-in;
-}
-.drawing-preview-sheet:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
 }
 .drawing-preview-sheet iframe {
   display: block;

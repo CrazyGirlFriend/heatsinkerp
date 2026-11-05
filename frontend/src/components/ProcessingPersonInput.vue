@@ -2,6 +2,7 @@
 import ElInput from '@/components/AppInput.vue'
 import PersonName from './PersonName.vue'
 import AppDialog from '@/components/AppDialog.vue'
+import StatePanel from './StatePanel.vue'
 import { computed, ref, watch } from 'vue'
 import { ElIcon, useFormDisabled } from 'element-plus'
 import ElButton from '@/components/AppButton.vue'
@@ -22,7 +23,7 @@ const name = defineModel<string>({ required: true })
 const isDisabled = useFormDisabled()
 const opened = ref(false)
 const query = ref('')
-const trigger = ref<HTMLButtonElement>()
+const trigger = ref<InstanceType<typeof ElButton>>()
 const search = ref<InstanceType<typeof ElInput>>()
 const matches = computed(() => {
   const term = query.value.trim().toLocaleLowerCase()
@@ -47,9 +48,9 @@ function choose(person: string) {
 
 <template>
   <div class="processing-person-input">
-    <button
+    <ElButton
       ref="trigger"
-      type="button"
+      native-type="button"
       class="person-trigger el-select__wrapper"
       :class="{ 'is-focused': opened, 'is-disabled': isDisabled, 'is-invalid': invalid }"
       :disabled="isDisabled"
@@ -65,7 +66,7 @@ function choose(person: string) {
         }}</template></span
       >
       <ElIcon class="person-icon"><User /></ElIcon>
-    </button>
+    </ElButton>
     <AppDialog
       v-model="opened"
       :title="`选择${label || '加工人'}`"
@@ -75,7 +76,7 @@ function choose(person: string) {
       destroy-on-close
       :close-on-click-modal="false"
       @opened="search?.focus()"
-      @closed="trigger?.focus()"
+      @closed="trigger?.ref?.focus()"
     >
       <section
         class="person-panel"
@@ -99,12 +100,12 @@ function choose(person: string) {
           maxlength="80"
           @keydown.enter.prevent
         />
-        <p v-if="loading" class="person-empty" role="status">加载员工…</p>
+        <StatePanel v-if="loading" state="loading" title="正在加载员工" compact />
         <div v-else-if="matches.length" class="person-grid" role="group" aria-label="员工名单">
-          <button
+          <ElButton
             v-for="person in matches"
             :key="person"
-            type="button"
+            native-type="button"
             class="person-choice"
             :class="{ 'is-selected': person === name }"
             :aria-pressed="person === name"
@@ -113,7 +114,7 @@ function choose(person: string) {
           >
             <PersonName :name="person" />
             <ElIcon v-if="person === name"><Check /></ElIcon>
-          </button>
+          </ElButton>
         </div>
         <p v-else class="person-empty" role="status">
           {{ options?.length ? '未找到匹配的员工' : '请先在班组设置中添加员工' }}
@@ -136,23 +137,15 @@ function choose(person: string) {
   height: var(--el-component-size);
   min-height: var(--el-component-size);
   padding-block: 0;
-  border: 0;
   font: inherit;
   text-align: left;
-  transition:
-    box-shadow var(--motion-fast) ease,
-    background-color var(--motion-fast) ease,
-    transform var(--motion-fast) var(--motion-ease);
 }
-.person-trigger:not(:disabled):not(.is-invalid):hover {
-  background-color: var(--el-fill-color-light);
-}
-.person-trigger:not(:disabled):active {
-  transform: scale(0.99);
-}
-.person-trigger:not(.is-invalid):focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
+.person-trigger :deep(> span) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
 }
 .person-value {
   flex: 1;
@@ -204,37 +197,22 @@ function choose(person: string) {
   overflow-y: auto;
   padding: 2px;
 }
-.person-choice {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
+.person-choice.el-button {
   min-width: 0;
   height: 40px;
+  margin: 0;
   padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  transition:
-    background-color var(--motion-fast) ease,
-    border-color var(--motion-fast) ease,
-    box-shadow var(--motion-fast) ease,
-    transform var(--motion-fast) var(--motion-ease);
 }
-.person-choice > .person-name {
+.person-choice :deep(> span) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.person-choice :deep(.person-name) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.person-choice:hover:not(.is-selected) {
-  border-color: var(--el-border-color-hover);
-  background: var(--el-fill-color-light);
-  box-shadow: 0 2px 5px rgb(35 45 40 / 6%);
-}
-.person-choice:active {
-  transform: scale(0.97);
 }
 .person-choice.is-selected {
   border-color: var(--primary);

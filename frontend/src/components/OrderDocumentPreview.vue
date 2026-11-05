@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DocumentPreviewTrigger from './DocumentPreviewTrigger.vue'
 import AsyncStatus from './AsyncStatus.vue'
 import ElSkeleton from '@/components/AppSkeleton.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
@@ -83,9 +84,8 @@ onBeforeUnmount(() => {
     <AsyncStatus v-if="error" state="error" :label="error"
       ><ElButton link @click="load">重试</ElButton></AsyncStatus
     >
-    <button
+    <DocumentPreviewTrigger
       v-if="url"
-      type="button"
       class="route-order-thumbnail"
       :class="{ 'route-order-thumbnail--full': !thumbnail }"
       aria-label="放大订单表"
@@ -98,7 +98,7 @@ onBeforeUnmount(() => {
         referrerpolicy="no-referrer"
         loading="lazy"
       />
-    </button>
+    </DocumentPreviewTrigger>
     <DocumentViewer
       v-if="viewing"
       title="订单表"
@@ -127,17 +127,6 @@ onBeforeUnmount(() => {
   display: block;
   width: 100%;
   height: 150px;
-  overflow: hidden;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #eef1f0;
-  cursor: zoom-in;
-}
-.route-order-thumbnail:hover,
-.route-order-thumbnail:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
 }
 .route-order-thumbnail iframe {
   display: block;
