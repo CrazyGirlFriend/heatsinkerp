@@ -25,6 +25,7 @@ from .schemas import (
     MaterialTransferResponse,
     MaterialTransferUpdate,
 )
+from .serial_inventory import StockFilters
 
 router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
 
@@ -41,6 +42,16 @@ def material_input_suggestions(
     from .material_input import input_suggestions
 
     return input_suggestions(db, field, query, limit)
+
+
+@router.get("/serial-inventory/stock", dependencies=[Depends(require_admin)])
+def get_all_serial_stock(
+    filters: StockFilters = Query(),
+    db: Session = Depends(get_db),
+) -> dict:
+    from .serial_inventory import all_stock
+
+    return all_stock(db, filters)
 
 
 @router.get("/serial-inventory", dependencies=[Depends(require_admin)])

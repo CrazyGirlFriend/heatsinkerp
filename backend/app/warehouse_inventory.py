@@ -4,7 +4,7 @@ Aggregate the shared stock ledger before filtering/pagination. A row's anchor is
 an actual received lot; it also scopes drill-down and outbound source selection.
 """
 
-from datetime import date, timezone
+from datetime import date, timedelta, timezone
 from types import SimpleNamespace
 from typing import Annotated, Literal
 
@@ -27,7 +27,7 @@ from .material_analytics import (
 )
 from .material_stock import BALANCE_KEYS, balance_dict, literal_query, require_team, stock_table
 from .material_transfer_workflow import material_transfer_dict, material_transfer_list_options
-from .models import MaterialLoss, MaterialTransfer, User, utcnow
+from .models import MaterialLoss, MaterialTransfer, Team, User, utcnow
 from .processing_records import annotate_source, registered_lots, source_metadata, summary_columns
 from .processing_statistics import difference_totals, weight_lineage, weight_roots
 from .record_filters import RecordFilters, day_bounds, numeric_search_predicate, urgent_serials
@@ -65,9 +65,17 @@ class WarehouseInventoryFilters(SerialFilters):
     purpose_id: int | None = Field(
         default=None, ge=0, description="本班组业务编号；0 表示未指定业务"
     )
+    stock_age_min: float | None = Field(default=None, ge=0, le=36500)
+    stock_age_max: float | None = Field(default=None, ge=0, le=36500)
 
     @model_validator(mode="after")
     def validate_search(self):
+        if (
+            self.stock_age_min is not None
+            and self.stock_age_max is not None
+            and self.stock_age_min > self.stock_age_max
+        ):
+            raise ValueError("滞留时间下限不能大于上限")
         # Share numeric/date validation without treating warehouse balances as
         # serial totals. The parent's field validator is deliberately overridden.
         field = {
@@ -83,9 +91,10 @@ class WarehouseInventoryFilters(SerialFilters):
         return self
 
 
-def origin_columns():
+def origin_columns(include_team=False):
     manual = mt.entry_kind == "warehouse_receipt"
     return {
+        **({"team_id": mt.next_team_id} if include_team else {}),
         "serial_no": mt.serial_no,
         "shared_group_id": mt.shared_group_id,
         "shared_unallocated": mt.shared_unallocated,
@@ -119,10 +128,13 @@ def warehouse_groups(team_id, filters):
     stock = stock_table(team_id)
     registered = registered_lots(team_id)
     remaining = or_(stock.c.on_hand_quantity != 0, stock.c.on_hand_weight != 0)
-    origins = origin_columns()
+    origins = origin_columns(include_team=team_id is None)
     moves = (
         select(mt.source_transfer_id.label("lot_id"), func.max(mt.updated_at).label("at"))
-        .where(mt.source_team_id == team_id, mt.source_transfer_id.is_not(None))
+        .where(
+            mt.source_team_id == team_id if team_id is not None else True,
+            mt.source_transfer_id.is_not(None),
+        )
         .group_by(mt.source_transfer_id)
         .subquery()
     )
@@ -131,7 +143,7 @@ def warehouse_groups(team_id, filters):
             MaterialLoss.source_transfer_id.label("lot_id"),
             func.max(MaterialLoss.created_at).label("at"),
         )
-        .where(MaterialLoss.team_id == team_id)
+        .where(MaterialLoss.team_id == team_id if team_id is not None else True)
         .group_by(MaterialLoss.source_transfer_id)
         .subquery()
     )
@@ -155,7 +167,7 @@ def warehouse_groups(team_id, filters):
     matching_dates = True
     if filters.date_from or filters.date_to:
         movement_matches = select(mt.source_transfer_id).where(
-            mt.source_team_id == team_id,
+            mt.source_team_id == team_id if team_id is not None else True,
             or_(
                 *(
                     and_(*calendar.dates(column))
@@ -164,7 +176,8 @@ def warehouse_groups(team_id, filters):
             ),
         )
         loss_matches = select(MaterialLoss.source_transfer_id).where(
-            MaterialLoss.team_id == team_id, *calendar.dates(MaterialLoss.created_at)
+            MaterialLoss.team_id == team_id if team_id is not None else True,
+            *calendar.dates(MaterialLoss.created_at),
         )
         matching_dates = or_(
             and_(*calendar.dates(mt.received_at)),
@@ -211,7 +224,9 @@ def group_conditions(table, anchor):
 
 
 def list_inventory(db, team_id, filters):
-    require_team(db, team_id)
+    if team_id is not None:
+        require_team(db, team_id)
+    now = utcnow()
     table = warehouse_groups(team_id, filters)
     conditions = [table.c.matches_date == 1]
     if filters.rework:
@@ -276,11 +291,15 @@ def list_inventory(db, team_id, filters):
         # Age belongs to remaining lots in this classification, not a different
         # source/purpose of the same serial. New receipts must not reset it.
         conditions.append(age_conditions(table.c.oldest_received_at, utcnow())[filters.stock_age])
+    if filters.stock_age_min is not None:
+        conditions.append(table.c.oldest_received_at <= now - timedelta(days=filters.stock_age_min))
+    if filters.stock_age_max is not None:
+        conditions.append(table.c.oldest_received_at >= now - timedelta(days=filters.stock_age_max))
     term = (filters.query or "").strip()
     field = filters.search_field
     matching_sources = [
-        *group_conditions(origin_columns(), table.c),
-        mt.next_team_id == team_id,
+        *group_conditions(origin_columns(include_team=team_id is None), table.c),
+        mt.next_team_id == team_id if team_id is not None else True,
         mt.status == "received",
         mt.stock_tracked.is_(True),
     ]
@@ -338,8 +357,11 @@ def list_inventory(db, team_id, filters):
                 ]
             matches = literal_query(term, columns)
             if field == "all":
+                from .shared_material import serial_match
+
                 matches = or_(
                     matches,
+                    serial_match(table.c.serial_no, term, "contains"),
                     select(mt.id)
                     .where(
                         *matching_sources,
@@ -409,7 +431,7 @@ def list_inventory(db, team_id, filters):
         else {}
     )
     priorities = urgency_map(db, [row["serial_no"] for row in rows])
-    origins = origin_columns()
+    origins = origin_columns(include_team=team_id is None)
     differences = {}
     if rows:
         lineage = weight_lineage(team_id)
@@ -429,13 +451,16 @@ def list_inventory(db, team_id, filters):
         for row in root_rows:
             differences.setdefault(tuple(row[name] for name in origins), []).append(row)
     items = []
+    teams = {team.id: team for team in db.scalars(select(Team))} if team_id is None else {}
     for row in rows:
         item = dict(row)
         item.pop("matches_date")
         item["process_route"] = (
             route_document(
                 SimpleNamespace(
-                    **item, process_route=routes.get(item["process_route_id"]), next_team_id=team_id
+                    **item,
+                    process_route=routes.get(item["process_route_id"]),
+                    next_team_id=team_id if team_id is not None else item["team_id"],
                 )
             )
             if item["process_route_id"]
@@ -444,6 +469,14 @@ def list_inventory(db, team_id, filters):
         item.update(balance_dict(row))
         item.update(difference_totals(differences.get(tuple(row[name] for name in origins), [])))
         item["urgency"] = priorities.get(row["serial_no"], urgency_dict(None))
+        if team_id is None:
+            team = teams[row["team_id"]]
+            item.update(team_name=team.name, team_code=team.code)
+        item["stock_age_hours"] = (
+            max(0, (now - row["oldest_received_at"]).total_seconds() / 3600)
+            if row["oldest_received_at"]
+            else None
+        )
         for key in ("last_activity_at", "oldest_received_at"):
             item[key] = row[key].replace(tzinfo=timezone.utc).isoformat() if row[key] else None
         items.append(item)
@@ -455,7 +488,7 @@ def list_inventory(db, team_id, filters):
         "total": total,
         "page": filters.page,
         "page_size": filters.page_size,
-        "as_of": utcnow().replace(tzinfo=timezone.utc).isoformat(),
+        "as_of": now.replace(tzinfo=timezone.utc).isoformat(),
     }
 
 

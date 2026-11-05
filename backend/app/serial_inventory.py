@@ -3,10 +3,50 @@
 from datetime import timezone
 
 from fastapi import HTTPException
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import and_, case, func, literal, or_, select, union_all
 
 from .inspections import hold_column
 from .models import MaterialStockBalance, MaterialTransfer, SharedMaterialMember, Team, utcnow
+
+
+class StockFilters(BaseModel):
+    team_id: int | None = Field(default=None, ge=1)
+    query: str | None = Field(default=None, max_length=160)
+    serial_no: str | None = Field(default=None, max_length=80)
+    material_name: str | None = Field(default=None, max_length=160)
+    material_type: str | None = Field(default=None, max_length=32)
+    stock_age_min: float | None = Field(default=None, ge=0, le=36500)
+    stock_age_max: float | None = Field(default=None, ge=0, le=36500)
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=20, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def validate_age_range(self):
+        if (
+            self.stock_age_min is not None
+            and self.stock_age_max is not None
+            and self.stock_age_min > self.stock_age_max
+        ):
+            raise ValueError("滞留时间下限不能大于上限")
+        return self
+
+
+def all_stock(db, filters):
+    # Use the same grouping, balances and batch anchors as the team inventory.
+    from .material_stock import require_team
+    from .warehouse_inventory import WarehouseInventoryFilters, list_inventory
+
+    result = list_inventory(
+        db,
+        filters.team_id,
+        WarehouseInventoryFilters(**filters.model_dump(exclude={"team_id"}), availability="owned"),
+    )
+    if filters.team_id is not None:
+        team = require_team(db, filters.team_id)
+        for item in result["items"]:
+            item.update(team_id=team.id, team_name=team.name, team_code=team.code)
+    return result
 
 
 def serial_predicate(serial):

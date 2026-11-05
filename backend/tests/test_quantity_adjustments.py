@@ -43,6 +43,7 @@ def processing_lot(client, setup, **overrides):
             "next_team_id": setup["other"]["id"],
             "material_name": "铜钼",
             "material_type": "semi_finished",
+            "transfer_specification": "100 × 80 × 5 mm",
             "quantity": 100,
             "weight": "10.125",
             "idempotency_key": "legacy-processing-receipt",

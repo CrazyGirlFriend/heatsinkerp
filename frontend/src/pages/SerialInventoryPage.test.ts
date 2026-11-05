@@ -1,15 +1,20 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { afterEach, expect, it, vi } from 'vitest'
-import { ElPagination } from 'element-plus'
+import { createPinia, setActivePinia } from 'pinia'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import SerialInventoryPage from './SerialInventoryPage.vue'
 import {
   serialInventoryApi as api,
-  type SerialInventory,
-  type SerialInventoryRow,
+  type GlobalInventory,
+  type GlobalInventoryRow,
 } from '@/services/serialInventoryApi'
-import MaterialTransferDrawer from '@/components/MaterialTransferDrawer.vue'
+import { warehouseFixture } from '@/testFixtures/teamInventory'
+import TeamInventoryDetail from '@/components/TeamInventoryDetail.vue'
+import FilterDialog from '@/components/FilterDialog.vue'
+import AppSelect from '@/components/AppSelect.vue'
+import WorkspacePagination from '@/components/WorkspacePagination.vue'
+import { useTeamDirectoryStore } from '@/stores/teamDirectory'
 
 const live = vi.hoisted(() => ({ refresh: async () => {} }))
 vi.mock('@/composables/useLiveRefresh', async () => {
@@ -22,40 +27,35 @@ vi.mock('@/composables/useLiveRefresh', async () => {
   }
 })
 let wrapper: VueWrapper | undefined
+beforeEach(() => {
+  setActivePinia(createPinia())
+  localStorage.clear()
+})
 afterEach(() => {
   wrapper?.unmount()
   wrapper = undefined
   vi.restoreAllMocks()
 })
-const row: SerialInventoryRow = {
+const row: GlobalInventoryRow = {
+  ...warehouseFixture({ serial_no: '000012', owned_quantity: 48, owned_weight: 4.8 }),
   team_id: 1,
   team_name: '库房',
-  material_name: '铜钼',
-  material_type: 'semi_finished',
-  shared_unallocated: false,
-  stock_quantity: 48,
-  stock_weight: 4.8,
-  incoming_quantity: 10,
-  incoming_weight: 1,
+  team_code: 'FACTORY-WAREHOUSE',
+  stock_age_hours: 125,
 }
-const response = (serial_no = '000012'): SerialInventory => ({
-  serial_no,
-  items: [
+const response = (
+  items: GlobalInventoryRow[] = [
     row,
-    {
-      ...row,
-      team_id: 2,
-      team_name: '轧制',
-      stock_quantity: 20,
-      stock_weight: 2,
-      incoming_quantity: 20,
-      incoming_weight: 2,
-    },
+    { ...row, group_id: 12, team_id: 2, team_name: '轧制', team_code: 'FACTORY-ROLL' },
   ],
-  untracked_count: 0,
-  as_of: '2026-10-30T01:00:00Z',
+): GlobalInventory => ({
+  items,
+  total: items.length,
+  page: 1,
+  page_size: 20,
+  as_of: '2026-11-05T01:00:00Z',
 })
-async function render(path = '/material-trace?serial_no=000012') {
+async function render(path = '/material-trace') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/material-trace', component: SerialInventoryPage }],
@@ -66,10 +66,12 @@ async function render(path = '/material-trace?serial_no=000012') {
       plugins: [router],
       stubs: {
         PageBackButton: true,
-        MaterialTransferDrawer: true,
+        TeamInventoryDetail: true,
+        InventoryPendingDialog: true,
         AppDialog: {
           props: ['modelValue'],
-          template: '<div v-if="modelValue" class="test-dialog"><slot /></div>',
+          template:
+            '<div v-if="modelValue" class="test-dialog"><slot /><slot name="footer" /></div>',
         },
       },
     },
@@ -78,112 +80,119 @@ async function render(path = '/material-trace?serial_no=000012') {
   return { page: wrapper, router }
 }
 
-it('shows current stock by team with separate amounts, preserving the exact serial', async () => {
-  vi.spyOn(api, 'get').mockResolvedValue(response())
+it('loads all teams immediately and opens the existing inventory detail for the selected team', async () => {
+  vi.spyOn(api, 'stock').mockResolvedValue(response())
   const { page } = await render()
-  expect(api.get).toHaveBeenCalledWith('000012')
-  const table = page.get('[aria-label="各班组库存"]')
-  expect(table.findAll('tbody tr')).toHaveLength(2)
-  expect(
-    table
-      .findAll('tbody tr')[0]!
-      .findAll('td')
-      .map((c) => c.text()),
-  ).toEqual(['库房', '铜钼', '半成品', '48', '4.8', '10', '1', '批次明细'])
-  expect(page.text()).not.toMatch(/全链路|交期|累计转出/)
-  await page.get('input[aria-label="流水号"]').setValue('NOT-SUBMITTED')
-  vi.mocked(api.get).mockResolvedValue({ ...response(), items: [{ ...row, stock_quantity: 38 }] })
+  expect(api.stock).toHaveBeenCalledWith(
+    expect.objectContaining({ page: 1, page_size: 20, serial_no: undefined, team_id: undefined }),
+  )
+  const table = page.get('[aria-label="全厂库存明细"]')
+  expect(table.text()).toContain('库房')
+  expect(table.text()).toContain('轧制')
+  expect(table.text()).toContain('48')
+  expect(table.text()).toContain('4.8')
+  expect(table.text()).toContain('5天5小时')
+  const buttons = table.findAll('button').filter((b) => b.text() === '明细')
+  await buttons[1]!.trigger('click')
+  expect(page.findComponent(TeamInventoryDetail).props()).toMatchObject({
+    teamId: 2,
+    group: { group_id: 12 },
+    canWrite: false,
+  })
+})
+
+it('combines team and residence filters, validates bounds and resets pagination', async () => {
+  vi.spyOn(api, 'stock').mockResolvedValue(response())
+  const { page, router } = await render('/material-trace?page=3')
+  useTeamDirectoryStore().items = [
+    { id: '2', code: 'FACTORY-ROLL', name: '轧制', active: true, kind: 'production' },
+  ]
+  const filter = page.getComponent(FilterDialog)
+  await filter.get('button').trigger('click')
+  await page.get('input[aria-label="滞留至少（天）"]').setValue('7')
+  await page.get('input[aria-label="滞留至多（天）"]').setValue('3')
+  filter.vm.$emit('apply')
+  await flushPromises()
+  expect(page.text()).toContain('滞留时间下限不能大于上限')
+  expect(api.stock).toHaveBeenCalledTimes(1)
+  await page.get('input[aria-label="滞留至多（天）"]').setValue('14')
+  const select = page.findAllComponents(AppSelect)[0]!
+  select.vm.$emit('update:modelValue', 2)
+  filter.vm.$emit('apply')
+  await flushPromises()
+  expect(router.currentRoute.value.query).toMatchObject({
+    inventory_team_id: '2',
+    stock_age_min: '7',
+    stock_age_max: '14',
+    page: '1',
+  })
+  expect(api.stock).toHaveBeenLastCalledWith(
+    expect.objectContaining({ team_id: 2, stock_age_min: 7, stock_age_max: 14, page: 1 }),
+  )
+  expect(page.text()).toContain('滞留 7～14天')
+  await filter.get('button').trigger('click')
+  filter.vm.$emit('reset')
+  await flushPromises()
+  filter.vm.$emit('apply')
+  await flushPromises()
+  expect(api.stock).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      team_id: undefined,
+      stock_age_min: undefined,
+      stock_age_max: undefined,
+    }),
+  )
+})
+
+it('preserves exact serial deep links, pagination filters and unsubmitted search on refresh', async () => {
+  vi.spyOn(api, 'stock').mockResolvedValue(response())
+  const { page } = await render('/material-trace?serial_no=000012&stock_age_min=3')
+  expect(api.stock).toHaveBeenLastCalledWith(
+    expect.objectContaining({ serial_no: '000012', stock_age_min: 3 }),
+  )
+  page.getComponent(WorkspacePagination).vm.$emit('change', 2, 50)
+  await flushPromises()
+  expect(api.stock).toHaveBeenLastCalledWith(
+    expect.objectContaining({ serial_no: '000012', stock_age_min: 3, page: 2, page_size: 50 }),
+  )
+  await page.get('input[aria-label="搜索库存"]').setValue('NOT-SUBMITTED')
+  vi.mocked(api.stock).mockRejectedValueOnce(new Error('offline'))
   await live.refresh()
   await flushPromises()
-  expect(table.text()).toContain('38')
-  expect(page.get('input').element).toHaveProperty('value', 'NOT-SUBMITTED')
-  expect(api.get).toHaveBeenLastCalledWith('000012')
+  expect(page.text()).toContain('库存更新失败')
+  expect(page.text()).toContain('000012')
+  expect(page.get('input[aria-label="搜索库存"]').element).toHaveProperty('value', 'NOT-SUBMITTED')
 })
 
-it('keeps shared material separate and pages only the selected stock group', async () => {
-  vi.spyOn(api, 'get').mockResolvedValue({
-    ...response(),
-    items: [row, { ...row, shared_unallocated: true, stock_quantity: 1, stock_weight: 100 }],
-  })
-  vi.spyOn(api, 'batches').mockResolvedValue({
-    items: [
-      {
-        id: 1,
-        batch_no: 'TL-100',
-        transfer_specification: '20×10',
-        quantity: 1,
-        weight: 100,
-        rework_pending: true,
-        rework_count: 0,
-        inspection_hold_id: 7,
-      },
-    ],
-    total: 25,
-    page: 1,
-    page_size: 20,
-  })
-  const { page } = await render()
-  expect(page.get('[aria-label="各班组库存"]').text()).not.toContain('100')
-  await page.get('[aria-label="共投待分料"] button').trigger('click')
-  await flushPromises()
-  expect(api.batches).toHaveBeenLastCalledWith(
-    '000012',
-    expect.objectContaining({ shared_unallocated: true, team_id: 1 }),
-    'stock',
-    1,
-    20,
-  )
-  expect(page.get('[aria-label="批次库存"]').text()).toContain('待返工')
-  expect(page.get('[aria-label="批次库存"]').text()).toContain('冻结')
-  await page.get('[aria-label="批次库存"] button').trigger('click')
-  expect(page.findComponent(MaterialTransferDrawer).props()).toMatchObject({
-    modelValue: true,
-    batchNo: 'TL-100',
-  })
-  const pager = page.findComponent(ElPagination)
-  await pager.get('.btn-next').trigger('click')
-  await flushPromises()
-  expect(api.batches).toHaveBeenLastCalledWith('000012', expect.anything(), 'stock', 2, 20)
-  await page.get('[aria-label="库存位置"] button:nth-child(2)').trigger('click')
-  await flushPromises()
-  expect(api.batches).toHaveBeenLastCalledWith('000012', expect.anything(), 'incoming', 1, 20)
-})
-
-it('does not allow an older lookup to overwrite a new serial', async () => {
-  let resolveOld!: (value: SerialInventory) => void
-  vi.spyOn(api, 'get')
+it('ignores stale searches and clearing a serial returns to the full list', async () => {
+  let resolveOld!: (value: GlobalInventory) => void
+  vi.spyOn(api, 'stock')
     .mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           resolveOld = resolve
         }),
     )
-    .mockResolvedValue(response('000013'))
-  const { page, router } = await render()
+    .mockResolvedValue(response([{ ...row, serial_no: '000013' }]))
+  const { page, router } = await render('/material-trace?serial_no=000012')
   await router.replace('/material-trace?serial_no=000013')
   await flushPromises()
   resolveOld(response())
   await flushPromises()
-  expect(page.get('.inventory-result-heading').text()).toContain('000013')
-  expect(page.get('.inventory-result-heading').text()).not.toContain('000012')
-  await router.replace('/material-trace')
-  expect(page.find('table').exists()).toBe(false)
-  expect(page.text()).toContain('输入流水号查询库存')
+  expect(page.get('[aria-label="全厂库存明细"]').text()).toContain('000013')
+  expect(page.get('[aria-label="全厂库存明细"]').text()).not.toContain('000012')
+  await page.get('input[aria-label="搜索库存"]').setValue('')
+  await page.get('form[role="search"]').trigger('submit')
+  await flushPromises()
+  expect(api.stock).toHaveBeenLastCalledWith(
+    expect.objectContaining({ serial_no: undefined, query: undefined }),
+  )
 })
 
-it('distinguishes no stock from an unknown serial and retains last data on a refresh failure', async () => {
-  vi.spyOn(api, 'get').mockResolvedValue({ ...response(), items: [] })
-  const { page } = await render()
-  expect(page.text()).toContain('该流水号暂无在库或待签收物料')
-  vi.mocked(api.get).mockRejectedValueOnce(new Error('offline'))
-  await live.refresh()
-  await flushPromises()
-  expect(page.text()).toContain('库存更新失败')
-  expect(page.find('table').exists()).toBe(true)
-  vi.mocked(api.get).mockRejectedValueOnce(new Error('未找到该流水号'))
-  await page.get('input').setValue('UNKNOWN')
-  await page.get('form').trigger('submit')
-  await flushPromises()
-  expect(page.text()).toContain('未找到该流水号')
-  expect(page.find('table').exists()).toBe(false)
+it('keeps the full table and pagination for an empty filter result', async () => {
+  vi.spyOn(api, 'stock').mockResolvedValue(response([]))
+  const { page } = await render('/material-trace?stock_age_min=365')
+  expect(page.text()).toContain('暂无符合条件的库存')
+  expect(page.findComponent(WorkspacePagination).props('total')).toBe(0)
+  expect(page.find('[aria-label="全厂库存明细"]').exists()).toBe(true)
 })

@@ -25,7 +25,10 @@ def registered_lots(team_id):
             Adjustment.source_transfer_id.label("lot_id"),
             func.max(Adjustment.id).label("latest_id"),
         )
-        .where(Adjustment.team_id == team_id, ~Adjustment.idempotency_key.like("outbound-clear:%"))
+        .where(
+            Adjustment.team_id == team_id if team_id is not None else True,
+            ~Adjustment.idempotency_key.like("outbound-clear:%"),
+        )
         .group_by(Adjustment.source_transfer_id)
         .subquery()
     )
@@ -35,7 +38,7 @@ def registered_lots(team_id):
         .where(
             ProcessRoutePath.route_id == Transfer.process_route_id,
             ProcessRoutePath.step_index == Transfer.process_step_index,
-            ProcessRoutePath.team_id == team_id,
+            ProcessRoutePath.team_id == (team_id if team_id is not None else Transfer.next_team_id),
             ProcessRoutePath.serial_no == path_serial(Transfer),
         )
         .correlate(Transfer)
@@ -77,7 +80,7 @@ def registered_lots(team_id):
         )
         .outerjoin(inherited, inherited.c.id == parent.c.latest_id)
         .where(
-            Transfer.next_team_id == team_id,
+            Transfer.next_team_id == team_id if team_id is not None else True,
             or_(
                 Transfer.rework_pending.is_(True),
                 latest.c.latest_id.is_not(None),
