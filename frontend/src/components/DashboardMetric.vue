@@ -6,10 +6,11 @@ defineProps<{
   label: string
   value: number | null
   unit: string
-  detail: string
-  icon: Component
+  detail?: string
+  icon?: Component
   tone?: 'info' | 'warning' | 'danger' | 'success'
-  help: string
+  help?: string
+  static?: boolean
   motion: boolean
   precision?: number
 }>()
@@ -18,20 +19,21 @@ defineEmits<{ open: [] }>()
 <template>
   <article class="dashboard-metric" :class="`dashboard-metric--${tone || 'info'}`">
     <div class="dashboard-metric__heading">
-      <component :is="icon" :size="18" /><span>{{ label }}</span
-      ><StatisticHelp :label="`${label}统计说明`">{{ help }}</StatisticHelp>
+      <component :is="icon" v-if="icon" :size="18" /><span>{{ label }}</span
+      ><StatisticHelp v-if="help" :label="`${label}统计说明`">{{ help }}</StatisticHelp>
     </div>
-    <button
+    <component
+      :is="static ? 'div' : 'button'"
       class="dashboard-metric__value"
-      type="button"
-      :aria-label="`查看${label}`"
-      @click="$emit('open')"
+      :type="static ? undefined : 'button'"
+      :aria-label="static ? label : `查看${label}`"
+      @click="!static && $emit('open')"
     >
       <strong
         ><AnimatedMetric :value="value" :animate="motion" :precision="precision ?? 0" /></strong
       ><span>{{ unit }}</span>
-    </button>
-    <p>{{ detail }}</p>
+    </component>
+    <p v-if="detail">{{ detail }}</p>
   </article>
 </template>
 <style scoped>
@@ -74,7 +76,7 @@ defineEmits<{ open: [] }>()
   color: var(--wm-text);
   cursor: pointer;
 }
-.dashboard-metric__value:hover strong {
+button.dashboard-metric__value:hover strong {
   text-decoration: underline;
   text-underline-offset: 5px;
 }
@@ -92,5 +94,8 @@ defineEmits<{ open: [] }>()
 }
 .dashboard-metric p {
   margin: 2px 0 0;
+}
+div.dashboard-metric__value {
+  cursor: default;
 }
 </style>

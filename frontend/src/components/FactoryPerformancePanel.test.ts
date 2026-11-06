@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { ElOption, ElRadioGroup, ElSelect } from 'element-plus'
+import { ElOption, ElSelect } from 'element-plus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
 import FactoryPerformancePanel from './FactoryPerformancePanel.vue'
 import FactoryPerformanceCharts from './FactoryPerformanceCharts.vue'
 import AnimatedMetric from './AnimatedMetric.vue'
@@ -25,7 +26,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
-async function render(scene: 'production' | 'quality' = 'production') {
+async function render(scene: 'production' | 'quality' = 'production', aggregate = false) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -33,7 +34,7 @@ async function render(scene: 'production' | 'quality' = 'production') {
       { path: '/team-workspaces/:teamId', component: { template: '<div/>' } },
     ],
   })
-  await router.push('/')
+  await router.push(aggregate ? '/' : '/?production_view=task')
   wrapper = mount(FactoryPerformancePanel, {
     props: { scene, motion: false },
     global: {
@@ -56,11 +57,37 @@ async function loadExport(
 }
 function selection(label: string) {
   return wrapper
-    .findAllComponents(ElRadioGroup)
-    .find((group) => group.attributes('aria-label') === label)!
+    .findAllComponents(WatermelonSegmented)
+    .find((group) => group.props('label') === label)!
 }
 
 describe('factory production and quality reporting', () => {
+  it('opens on all-team totals and exports every team instead of the most recent task', async () => {
+    const data = performanceFixture()
+    data.activity!.totals.completed_quantity = 720
+    data.activity!.teams.push({
+      ...data.activity!.teams[0]!,
+      team_id: 3,
+      team_name: '研磨',
+      completed_quantity: 610,
+    })
+    vi.mocked(factoryPerformanceApi.get).mockResolvedValue(data)
+    const router = await render('production', true)
+    expect(factoryPerformanceApi.get).toHaveBeenLastCalledWith(
+      expect.objectContaining({ include_activity: true }),
+    )
+    expect(wrapper.findAllComponents(AnimatedMetric)[0]!.props('value')).toBe(720)
+    expect(wrapper.getComponent(FactoryPerformanceCharts).props('aggregate')).toBe(true)
+    const rows = await loadExport(wrapper.getComponent(TableExportButton).props('source')())
+    expect(rows.map((row) => row.name)).toEqual(['轧制', '研磨'])
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '加工记录')!
+      .trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query.query).toBeUndefined()
+    expect(router.currentRoute.value.path).toBe('/team-workspaces/2')
+  })
   it('distinguishes repeated tasks by their recorded route step while keeping legacy scope labels unchanged', async () => {
     const data = performanceFixture()
     const first = {
@@ -150,6 +177,7 @@ describe('factory production and quality reporting', () => {
   it('separates actual first work from rework and exports team/day work quantities', async () => {
     const router = await render()
     expect(factoryPerformanceApi.get).toHaveBeenCalledWith({
+      include_activity: true,
       date_from: '2026-09-21',
       date_to: '2026-10-20',
       team_id: undefined,
@@ -223,7 +251,7 @@ describe('factory production and quality reporting', () => {
     expect(wrapper.get('.performance-metric').text()).toContain('未检查')
     expect(
       wrapper.findAllComponents(AnimatedMetric).map((metric) => metric.props('value')),
-    ).toEqual([0, 0, 0])
+    ).toEqual([null, 0, 0, 0])
     expect(wrapper.text()).toContain('当前筛选条件下没有检查记录')
     expect(factoryPerformanceApi.get).toHaveBeenCalledTimes(1)
   })
@@ -236,6 +264,7 @@ describe('factory production and quality reporting', () => {
     wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 3)
     await flushPromises()
     expect(factoryPerformanceApi.get).toHaveBeenLastCalledWith({
+      include_activity: true,
       date_from: '2026-10-01',
       date_to: '2026-10-10',
       team_id: 3,
@@ -251,6 +280,7 @@ describe('factory production and quality reporting', () => {
     picker.vm.$emit('update:modelValue', { from: '', to: '' })
     await flushPromises()
     expect(factoryPerformanceApi.get).toHaveBeenLastCalledWith({
+      include_activity: true,
       date_from: '2026-09-21',
       date_to: '2026-10-20',
       team_id: 3,

@@ -2,7 +2,8 @@
 import { computed } from 'vue'
 import type { EChartsCoreOption } from 'echarts/core'
 import LedgerChart from './LedgerChart.vue'
-import StatisticHelp from './StatisticHelp.vue'
+import DashboardCard from './DashboardCard.vue'
+import { useChartPalette } from '@/composables/useChartPalette'
 import { glassArea, glassFill, glassTooltip } from '@/utils/chartGlass'
 import { formatAmount } from '@/utils/format'
 import type { FactoryPerformance, QualityBasis } from '@/types/factoryPerformance'
@@ -14,8 +15,10 @@ const props = defineProps<{
   metric: Metric
   basis: QualityBasis
   motion: boolean
+  aggregate?: boolean
 }>()
-const green = '#58986f',
+const palette = useChartPalette()
+const green = '#299d85',
   amber = '#bf9658',
   rose = '#b87d72'
 const periodLabel = computed(
@@ -37,7 +40,7 @@ function plot(
     axisTick: { show: false },
     axisLine: { show: false },
     axisLabel: {
-      color: '#64726a',
+      color: palette.value?.muted || '#64726a',
       fontSize: 13,
       hideOverlap: true,
       ...(horizontal ? { width: 108, overflow: 'truncate' } : {}),
@@ -49,13 +52,16 @@ function plot(
     ...(percentage ? { max: 100 } : {}),
     splitNumber: 4,
     ...(['件次', '条'].includes(suffix) ? { minInterval: 1 } : {}),
-    axisLabel: { color: '#64726a', fontSize: 12 },
-    splitLine: { lineStyle: { color: '#75978620', type: 'dashed' } },
+    axisLabel: { color: palette.value?.muted || '#64726a', fontSize: 12 },
+    splitLine: { lineStyle: { color: palette.value?.border || '#e4e4e7', type: 'dashed' } },
   }
   return {
     textStyle: { fontFamily: 'HeatSink Inter, PingFang SC, Microsoft YaHei, sans-serif' },
     tooltip: {
       ...glassTooltip,
+      backgroundColor: palette.value?.surface,
+      borderColor: palette.value?.border,
+      textStyle: { color: palette.value?.text },
       trigger: 'axis',
       confine: true,
       valueFormatter: (value: number | null) =>
@@ -68,7 +74,7 @@ function plot(
       icon: 'circle',
       itemWidth: 8,
       itemHeight: 8,
-      textStyle: { color: '#64726a', fontSize: 12 },
+      textStyle: { color: palette.value?.muted || '#64726a', fontSize: 12 },
     },
     grid: {
       top: 34,
@@ -128,12 +134,14 @@ function line(name: string, data: (number | null)[], color: string) {
 const cards = computed(() => {
   const d = props.data
   if (props.scene === 'production') {
-    const trend = d.production.trend
+    const trend = (props.aggregate ? d.activity?.trend : d.production.trend) || []
     return [
       {
         key: 'production-trend',
         title: `${periodLabel.value}加工完成量`,
-        hint: '仅当前班组、流水号、任务和工序 · 正常加工与返工分列',
+        hint: props.aggregate
+          ? '按实际加工登记汇总件次；同一物料经过多道工序会分别计次，不等于成品产量。'
+          : '当前班组、流水号、任务和工序的实际加工记录。',
         empty: !trend.some((row) => row.record_count),
         option: plot(
           trend.map((row) => row.date),
@@ -152,6 +160,33 @@ const cards = computed(() => {
           unit.value,
         ),
       },
+      ...(props.aggregate
+        ? [
+            {
+              key: 'production-teams',
+              title: '班组完成量',
+              hint: '正常加工与返工分开统计，点击下方明细查看加工记录。',
+              empty: !d.activity?.teams.some((row) => row.record_count),
+              option: plot(
+                (d.activity?.teams || []).map((row) => row.team_name),
+                [
+                  bar(
+                    '正常加工',
+                    (d.activity?.teams || []).map((row) => row[`completed_${props.metric}`]),
+                    green,
+                  ),
+                  bar(
+                    '返工',
+                    (d.activity?.teams || []).map((row) => row[`rework_${props.metric}`]),
+                    amber,
+                  ),
+                ],
+                unit.value,
+                true,
+              ),
+            },
+          ]
+        : []),
     ]
   }
   const matches = (row: QualityBasis) =>
@@ -259,71 +294,49 @@ const cards = computed(() => {
 <template>
   <section
     class="performance-charts"
-    :class="{ 'performance-charts--production': scene === 'production' }"
+    :class="{ 'performance-charts--production': scene === 'production' && !aggregate }"
     :aria-label="scene === 'production' ? '加工统计图' : '质量统计图'"
   >
-    <article
+    <DashboardCard
       v-for="card in cards"
       :key="card.key"
-      class="performance-chart chart-glass"
+      class="performance-chart"
+      :class="{ 'performance-chart--empty': card.empty }"
       :data-chart="card.key"
+      :title="card.title"
+      :help="card.hint"
     >
-      <header>
-        <h2>{{ card.title }}</h2>
-        <StatisticHelp :label="`${card.title}统计说明`">{{ card.hint }}</StatisticHelp>
-        <span>{{
+      <template #actions
+        ><span class="chart-unit">{{
           scene === 'production' ? unit : card.key.startsWith('quality') ? '%' : '条'
-        }}</span>
-      </header>
+        }}</span></template
+      >
       <LedgerChart :option="card.option" :empty="card.empty" :label="card.title" :motion="motion" />
-    </article>
+    </DashboardCard>
   </section>
 </template>
 <style scoped>
 .performance-charts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
 }
 .performance-charts--production {
   grid-template-columns: minmax(0, 1fr);
 }
-.performance-chart {
-  min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: white;
-  box-shadow: none;
-  padding: 16px 18px;
-}
-.performance-chart header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-.performance-chart h2 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 550;
-}
-.performance-chart header > span {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 12px;
-}
-.performance-chart .ledger-chart-frame {
+.performance-chart :deep(.ledger-chart-frame) {
   height: 260px;
 }
-@media (max-width: 1100px) {
+.performance-chart--empty :deep(.ledger-chart-frame) {
+  height: 145px;
+}
+.chart-unit {
+  color: var(--wm-muted);
+  font-size: 12px;
+}
+@media (max-width: 1000px) {
   .performance-charts {
     grid-template-columns: minmax(0, 1fr);
-  }
-}
-@media (min-width: 1101px) and (max-height: 800px) {
-  .performance-chart .ledger-chart-frame {
-    height: 230px;
   }
 }
 </style>

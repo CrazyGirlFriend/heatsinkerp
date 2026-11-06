@@ -37,8 +37,20 @@ beforeEach(() => {
   vi.spyOn(factoryPerformanceApi, 'get').mockResolvedValue({
     ...performanceFixture(),
     activity: {
-      totals: { completed_quantity: 920, rework_quantity: 25 },
-      trend: [{ date: '2026-11-06', completed_quantity: 920, rework_quantity: 25 }],
+      totals: {
+        ...performanceFixture().production.totals,
+        completed_quantity: 920,
+        rework_quantity: 25,
+      },
+      teams: [],
+      trend: [
+        {
+          ...performanceFixture().production.totals,
+          date: '2026-11-06',
+          completed_quantity: 920,
+          rework_quantity: 25,
+        },
+      ],
     },
   })
 })

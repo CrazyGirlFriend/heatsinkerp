@@ -56,4 +56,4 @@ export interface FactoryRecentBatch extends Amount {
   updated_at: string
   received_at: string | null
 }
-export type FactoryScene = 'overview' | 'stock' | 'handoff'
+export type FactoryScene = 'overview' | 'stock' | 'handoff' | 'all'

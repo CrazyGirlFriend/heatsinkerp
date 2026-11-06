@@ -29,6 +29,11 @@ export function performanceFixture(): FactoryPerformance {
     pass_rate: 90,
   }
   return {
+    activity: {
+      totals: productionFixture(),
+      trend: [{ ...productionFixture(), date: '2026-10-19' }],
+      teams: [{ ...productionFixture(), team_id: 2, team_name: '轧制' }],
+    },
     period: 'day',
     period_dates: ['2026-10-19', '2026-10-20'],
     date_from: '2026-10-19',

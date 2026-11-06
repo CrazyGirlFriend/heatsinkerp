@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import FactoryOverviewCharts from './FactoryOverviewCharts.vue'
 import LedgerChart from './LedgerChart.vue'
+import DashboardCard from './DashboardCard.vue'
 import { factoryFixture } from '@/testFixtures/factoryOverview'
 
 describe('factory analysis charts', () => {
@@ -17,11 +18,11 @@ describe('factory analysis charts', () => {
       expect(charts[0]!.props('option').series).toEqual([
         expect.objectContaining({ name: '未转出库存', data: Array(8).fill(2.8) }),
       ])
-      expect(wrapper.get('.factory-chart--teams h2').attributes('title')).toContain('未转出库存')
+      expect(wrapper.findAllComponents(DashboardCard)[0]!.props('help')).toContain('未转出库存')
       expect(wrapper.text()).not.toContain('不含内部在途')
       expect(charts[0]!.props('option').textStyle).toMatchObject({
         fontFamily: 'HeatSink Inter, PingFang SC, Microsoft YaHei, sans-serif',
-        fontSize: 14,
+        fontSize: 12,
       })
       expect(charts[1]!.props('option').series).toEqual([
         expect.objectContaining({ name: '库房入库', data: [10] }),
@@ -34,7 +35,7 @@ describe('factory analysis charts', () => {
       )
       expect(charts[0]!.props('option')).toMatchObject({
         textStyle: {
-          fontSize: 14,
+          fontSize: 12,
           fontFamily: 'HeatSink Inter, PingFang SC, Microsoft YaHei, sans-serif',
         },
       })

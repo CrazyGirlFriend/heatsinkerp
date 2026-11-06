@@ -207,11 +207,23 @@ def test_overview_activity_counts_all_tasks_as_piece_operations(client, facts):
     processing(facts, processor_employee_id=None, completed_quantity=999)
     processing(facts, processing_date=date(2026, 10, 18), completed_quantity=999)
     data = report(client, include_activity=True, date_from="2026-10-19")
-    assert data["activity"]["totals"] == {"completed_quantity": 220, "rework_quantity": 10}
-    assert data["activity"]["trend"] == [
-        {"date": "2026-10-19", "completed_quantity": 0, "rework_quantity": 0},
-        {"date": "2026-10-20", "completed_quantity": 220, "rework_quantity": 10},
-    ]
+    total = data["activity"]["totals"]
+    assert total["completed_quantity"] == 220 and total["rework_quantity"] == 10
+    assert total["completed_weight"] == 30 and total["rework_weight"] == 10
+    assert total["initial_record_count"] == 3 and total["rework_record_count"] == 1
+    assert [r["completed_quantity"] for r in data["activity"]["trend"]] == [0, 220]
+    teams = {row["team_id"]: row for row in data["activity"]["teams"]}
+    assert teams[facts["other"]["id"]]["completed_quantity"] == 180
+    assert teams[facts["grind"]["id"]]["completed_quantity"] == 40
+    narrowed = report(client, include_activity=True, team_id=facts["grind"]["id"], period="week")
+    assert narrowed["activity"]["totals"]["completed_quantity"] == 40
+    assert narrowed["activity"]["trend"][0]["date"] == "2026-10-19"
+    assert (
+        report(client, include_activity=True, serial_no="MISSING")["activity"]["totals"][
+            "record_count"
+        ]
+        == 0
+    )
     assert "activity" not in report(client)
 
 
@@ -373,6 +385,14 @@ def test_serial_and_task_are_independent_and_common_outputs_are_not_duplicated(c
         report(client, serial_no="OTHER-100")["production"]["totals"]["completed_quantity"] == 900
     )
     assert report(client, serial_no="不存在")["production"]["scope"] is None
+    activity = report(client, include_activity=True)["activity"]
+    assert activity["totals"]["completed_quantity"] == 1010
+    assert activity["totals"]["record_count"] == 2
+    assert sum(row["record_count"] for row in activity["teams"]) == 2
+    selected = report(client, include_activity=True, serial_no="000001")["activity"]["totals"]
+    assert selected["completed_quantity"] == 100
+    assert selected["completed_weight"] == 10
+    assert selected["record_count"] == 1
     assert (
         report(client, team_id=facts["grind"]["id"], work_id=shared)["production"]["scope"] is None
     )

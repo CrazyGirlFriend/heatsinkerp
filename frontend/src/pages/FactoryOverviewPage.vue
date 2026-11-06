@@ -3,16 +3,14 @@ import { formatAmount as number } from '@/utils/format'
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  ElAlert,
-  ElButton,
-  ElInputNumber,
-  ElOption,
-  ElRadioButton,
-  ElRadioGroup,
-  ElSelect,
-  ElSwitch,
-} from 'element-plus'
+import { ElOption } from 'element-plus'
+import ElAlert from '@/components/AppAlert.vue'
+import ElButton from '@/components/AppButton.vue'
+import ElInputNumber from '@/components/AppNumberInput.vue'
+import ElSelect from '@/components/AppSelect.vue'
+import ElSwitch from '@/components/AppSwitch.vue'
+import DashboardToolbar from '@/components/DashboardToolbar.vue'
+import DashboardMetric from '@/components/DashboardMetric.vue'
 import { Refresh } from '@element-plus/icons-vue'
 import TableExportButton from '@/components/TableExportButton.vue'
 import { tableExportSource } from '@/utils/tableExport'
@@ -23,17 +21,10 @@ import WatermelonSegmented from '@/components/watermelon/WatermelonSegmented.vue
 import FactoryPerformancePanel from '@/components/FactoryPerformancePanel.vue'
 import PageBackButton from '@/components/PageBackButton.vue'
 import FactoryRecentBatches from '@/components/FactoryRecentBatches.vue'
-import AnimatedMetric from '@/components/AnimatedMetric.vue'
 import StatePanel from '@/components/StatePanel.vue'
 import { factoryOverviewApi } from '@/services/factoryOverviewApi'
-import { formatDateTime } from '@/utils/format'
 import type { Metric } from '@/types/materialAnalytics'
-import type {
-  FactoryOverview,
-  FactoryTeam,
-  FactoryScene,
-  FactoryRecentBatch,
-} from '@/types/factoryOverview'
+import type { FactoryOverview, FactoryTeam, FactoryRecentBatch } from '@/types/factoryOverview'
 
 const route = useRoute(),
   router = useRouter()
@@ -54,7 +45,7 @@ const days = computed(() => {
       ? 7
       : 30
 })
-const periodSelect = ref<InstanceType<typeof ElSelect>>()
+const periodSelect = ref<{ blur: () => void }>()
 const customDays = ref<number | undefined>(days.value)
 const validCustomDays = computed(
   () => Number.isInteger(customDays.value) && customDays.value! >= 1 && customDays.value! <= 365,
@@ -68,15 +59,8 @@ const report = ref<FactoryOverview | null>(null),
 let version = 0,
   timer: ReturnType<typeof setInterval> | undefined
 let media: MediaQueryList | undefined
-const scenes: { key: FactoryScene; label: string }[] = [
-  { key: 'overview', label: '全厂概况' },
-  { key: 'stock', label: '库存分析' },
-  { key: 'handoff', label: '交接与异常' },
-]
-const sceneIndex = ref(0),
-  hidden = ref(document.hidden),
+const hidden = ref(document.hidden),
   reduced = ref(false)
-const scene = computed(() => scenes[sceneIndex.value]!)
 const motion = computed(() => !reduced.value && !hidden.value && !error.value)
 function syncVisibility() {
   hidden.value = document.hidden
@@ -139,51 +123,48 @@ function exportSource() {
   const data = report.value
   if (!data) return null
   const key = metric.value,
-    section = scene.value,
     rows: { category: string; name: string; date?: string; value: number | null }[] = []
   for (const item of metrics.value)
     rows.push({ category: '全厂合计', name: item.label || item.key, value: item.value })
-  if (section.key === 'overview') {
-    for (const team of data.teams)
-      rows.push({
-        category: '班组库存',
-        name: team.name,
-        value: team.balance?.[`on_hand_${key}`] ?? null,
-      })
-    for (const kind of data.material_types)
-      rows.push({
-        category: '物料性质',
-        name: kind.label || materialTypeLabel(kind.key),
-        value: kind[key],
-      })
-    for (const day of data.trend)
-      for (const [flow, label] of [
-        ['inbound', '库房入库'],
-        ['outbound', '库房对外出库'],
-        ['shipment', '检验发货'],
-      ] as const)
-        rows.push({ category: '全厂对外收发', name: label, date: day.key, value: day[flow][key] })
-  } else if (section.key === 'stock') {
-    for (const item of data.serial_ranking[key])
-      rows.push({ category: '流水号库存', name: item.label || item.key, value: item[key] })
-    for (const item of data.material_ranking[key])
-      rows.push({ category: '材质库存', name: item.label || item.key, value: item[key] })
-  } else {
-    for (const team of data.teams)
-      rows.push({
-        category: '待交接',
-        name: team.name,
-        value: team.pending_incoming?.[key] ?? null,
-      })
-    for (const item of data.waiting_age)
-      for (const [flow, label] of [
-        ['internal', '内部待交接'],
-        ['external', '对外待确认'],
-      ] as const)
-        rows.push({ category: label, name: item.label || item.key, value: item[flow][key] })
-  }
+  for (const team of data.teams)
+    rows.push({
+      category: '班组库存',
+      name: team.name,
+      value: team.balance?.[`on_hand_${key}`] ?? null,
+    })
+  for (const kind of data.material_types)
+    rows.push({
+      category: '物料性质',
+      name: kind.label || materialTypeLabel(kind.key),
+      value: kind[key],
+    })
+  for (const day of data.trend)
+    for (const [flow, label] of [
+      ['inbound', '库房入库'],
+      ['outbound', '库房对外出库'],
+      ['shipment', '检验发货'],
+    ] as const)
+      rows.push({ category: '全厂对外收发', name: label, date: day.key, value: day[flow][key] })
+  for (const item of data.stock_age)
+    rows.push({ category: '库存滞留', name: item.label || item.key, value: item[key] })
+  for (const item of data.serial_ranking[key])
+    rows.push({ category: '流水号库存', name: item.label || item.key, value: item[key] })
+  for (const item of data.material_ranking[key])
+    rows.push({ category: '材质库存', name: item.label || item.key, value: item[key] })
+  for (const team of data.teams)
+    rows.push({
+      category: '待交接',
+      name: team.name,
+      value: team.pending_incoming?.[key] ?? null,
+    })
+  for (const item of data.waiting_age)
+    for (const [flow, label] of [
+      ['internal', '内部待交接'],
+      ['external', '对外待确认'],
+    ] as const)
+      rows.push({ category: label, name: item.label || item.key, value: item[flow][key] })
   return tableExportSource(
-    `全厂数据分析 · ${section.label} · 近${data.days}天`,
+    `全厂数据分析 · 库存与交接 · 近${data.days}天`,
     rows.length,
     [
       { key: 'category', label: '统计项目', value: (row: (typeof rows)[number]) => row.category },
@@ -228,7 +209,11 @@ function openBatch(row: FactoryRecentBatch) {
 }
 watch(
   [days, view],
-  () => {
+  ([nextDays], previous) => {
+    if (nextDays !== previous?.[0]) {
+      report.value = null
+      error.value = ''
+    }
     if (view.value === 'inventory') void load()
     else {
       ++version
@@ -264,7 +249,6 @@ onBeforeUnmount(() => {
         <PageBackButton />
         <div class="factory-heading-title">
           <h1>全厂数据分析</h1>
-          <p v-if="view === 'inventory' && report">{{ formatDateTime(report.as_of) }} 更新</p>
         </div>
       </div>
       <WatermelonSegmented
@@ -278,62 +262,70 @@ onBeforeUnmount(() => {
         ]"
         @update:model-value="preference({ view: $event })"
       />
-      <div v-if="view === 'inventory'" class="factory-controls">
+    </header>
+    <DashboardToolbar
+      v-if="view === 'inventory'"
+      class="factory-controls"
+      :loading="loading"
+      :updated-at="report?.as_of"
+    >
+      <WatermelonSegmented
+        label="全厂统计单位"
+        :model-value="metric"
+        :options="[
+          { value: 'weight', label: '重量' },
+          { value: 'quantity', label: '件数' },
+        ]"
+        @update:model-value="preference({ metric: $event })"
+      />
+      <ElSelect
+        ref="periodSelect"
+        :model-value="days"
+        :teleported="false"
+        :fit-input-width="false"
+        size="small"
+        aria-label="全厂统计周期"
+        @update:model-value="preference({ days: String($event) })"
+        @visible-change="customDays = days"
+      >
+        <ElOption
+          v-for="value in periodOptions"
+          :key="value"
+          :value="value"
+          :label="`近${value}天`"
+        />
+        <template #footer
+          ><form class="factory-custom-period" @submit.prevent="applyCustomDays">
+            <label for="factory-custom-days">自定义天数</label>
+            <div>
+              <ElInputNumber
+                id="factory-custom-days"
+                v-model="customDays"
+                :min="1"
+                :max="365"
+                :precision="0"
+                :controls="false"
+                size="small"
+                placeholder="1–365"
+                aria-label="自定义统计天数"
+              /><span>天</span
+              ><ElButton
+                native-type="submit"
+                type="primary"
+                size="small"
+                :disabled="!validCustomDays"
+                >确定</ElButton
+              >
+            </div>
+          </form></template
+        >
+      </ElSelect>
+      <template #actions>
         <TableExportButton
           :source="exportSource"
           :disabled="loading || !report || !!error"
-          :context="[days, metric, scene.key].join('|')"
+          :context="[days, metric].join('|')"
         />
-        <ElRadioGroup
-          :model-value="metric"
-          size="small"
-          aria-label="全厂统计单位"
-          @update:model-value="preference({ metric: String($event) })"
-          ><ElRadioButton value="weight">重量</ElRadioButton
-          ><ElRadioButton value="quantity">件数</ElRadioButton></ElRadioGroup
-        >
-        <ElSelect
-          ref="periodSelect"
-          :model-value="days"
-          :teleported="false"
-          :fit-input-width="false"
-          size="small"
-          aria-label="全厂统计周期"
-          @update:model-value="preference({ days: String($event) })"
-          @visible-change="customDays = days"
-        >
-          <ElOption
-            v-for="value in periodOptions"
-            :key="value"
-            :value="value"
-            :label="`近${value}天`"
-          />
-          <template #footer
-            ><form class="factory-custom-period" @submit.prevent="applyCustomDays">
-              <label for="factory-custom-days">自定义天数</label>
-              <div>
-                <ElInputNumber
-                  id="factory-custom-days"
-                  v-model="customDays"
-                  :min="1"
-                  :max="365"
-                  :precision="0"
-                  :controls="false"
-                  size="small"
-                  placeholder="1–365"
-                  aria-label="自定义统计天数"
-                /><span>天</span
-                ><ElButton
-                  native-type="submit"
-                  type="primary"
-                  size="small"
-                  :disabled="!validCustomDays"
-                  >确定</ElButton
-                >
-              </div>
-            </form></template
-          >
-        </ElSelect>
         <ElSwitch
           v-model="autoRefresh"
           size="small"
@@ -341,8 +333,9 @@ onBeforeUnmount(() => {
           active-text="自动刷新"
         />
         <ElButton :icon="Refresh" :loading="loading" size="small" @click="load">刷新</ElButton>
-      </div>
-    </header>
+      </template>
+    </DashboardToolbar>
+
     <FactoryOperationsOverview
       v-if="view === 'overview'"
       :days="days"
@@ -358,48 +351,29 @@ onBeforeUnmount(() => {
       <StatePanel v-else-if="!report" state="loading" title="正在读取全厂物料" />
       <template v-else>
         <section class="factory-metrics" aria-label="全厂关键数据">
-          <article
+          <DashboardMetric
             v-for="item in metrics"
             :key="item.key"
             class="factory-metric"
-            :class="{ 'factory-metric--primary': item.accent }"
-          >
-            <h2 :title="item.hint">{{ item.label }}</h2>
-            <div>
-              <strong
-                ><AnimatedMetric
-                  :key="`${item.key}-${metric}-${report.days}`"
-                  :value="item.value"
-                  :animate="motion"
-                  :precision="metric === 'quantity' ? 0 : 3" /></strong
-              ><span>{{ unit }}</span
-              ><small v-if="item.detail">{{ item.detail }}</small>
-            </div>
-          </article>
+            :label="item.label"
+            :value="item.value"
+            :unit="unit"
+            :detail="item.detail"
+            :help="item.hint"
+            :precision="metric === 'quantity' ? 0 : 3"
+            :motion="motion"
+            static
+          />
         </section>
-        <nav class="factory-sections" aria-label="分析分类">
-          <button
-            v-for="(item, i) in scenes"
-            :key="item.key"
-            type="button"
-            :aria-pressed="sceneIndex === i"
-            @click="sceneIndex = i"
-          >
-            {{ item.label }}
-          </button>
-        </nav>
         <section class="factory-presentation">
-          <div class="factory-stage" :aria-label="scene.label">
-            <Transition name="scene-fade" mode="in-out" :css="motion">
-              <FactoryOverviewCharts
-                :key="scene.key"
-                :data="report"
-                :metric="metric"
-                :scene="scene.key"
-                :motion="motion"
-                @team="openTeam"
-              />
-            </Transition>
+          <div class="factory-stage" aria-label="库存与交接分析">
+            <FactoryOverviewCharts
+              :data="report"
+              :metric="metric"
+              scene="all"
+              :motion="motion"
+              @team="openTeam"
+            />
           </div>
           <FactoryRecentBatches
             :rows="report.recent_batches || []"
@@ -418,322 +392,81 @@ onBeforeUnmount(() => {
 </template>
 <style scoped>
 .factory-overview {
-  --dashboard-surface: var(--surface);
-  --dashboard-line: var(--line);
-  --dashboard-muted: var(--muted);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   padding: 20px 24px;
-  color: var(--text);
+  color: var(--wm-text);
   background: transparent;
   overflow-y: auto;
 }
 .factory-heading {
   display: flex;
-  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 16px;
+  flex-shrink: 0;
   flex-wrap: wrap;
 }
-.factory-overview .factory-heading-title h1 {
+.factory-heading h1 {
   margin: 0;
-  font-size: 18px;
-  line-height: 28px;
-  font-weight: 600;
-  letter-spacing: 0;
-}
-.factory-heading p {
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dashboard-muted);
-  margin: 4px 0 0;
+  font-size: 20px;
+  line-height: 32px;
+  font-weight: 650;
 }
 .factory-heading-start {
   margin-right: auto;
 }
-.factory-heading-title {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  margin-right: auto;
-  flex-wrap: wrap;
-}
-.factory-heading-title p {
-  margin: 0;
-}
-.factory-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.factory-controls > .el-select {
-  width: 96px;
-}
-.factory-controls :deep(.el-switch__label) {
-  font-size: 12px;
-}
-.factory-controls :deep(.el-button),
-.factory-controls :deep(.el-select__wrapper) {
-  min-height: 34px;
-  font-size: 13px;
-}
-.factory-controls :deep(.el-radio-button__inner) {
-  padding: 9px 12px;
-  font-size: 13px;
+.factory-controls :deep(.dashboard-toolbar__filters > .el-select) {
+  width: 130px;
 }
 .factory-custom-period {
   display: grid;
   gap: 8px;
-  padding: 2px 0;
-}
-.factory-custom-period > label {
+  padding: 4px 0;
   font-size: 12px;
-  color: var(--muted);
 }
 .factory-custom-period > div {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
-  color: var(--muted);
 }
 .factory-custom-period .el-input-number {
   width: 96px;
 }
 .factory-metrics {
   display: grid;
-  grid-template-columns: 1.25fr repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
-  flex-shrink: 0;
 }
-.factory-metric {
-  padding: 15px 20px;
-  border-radius: var(--card-radius);
-  border: 1px solid var(--dashboard-line);
-  background: var(--dashboard-surface);
-  box-shadow: var(--glass-shadow);
-  min-width: 0;
-}
-.factory-metric--primary {
-  background: var(--primary-soft);
-  border-color: var(--glass-border);
-}
-.factory-metric h2 {
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--dashboard-muted);
-  font-weight: 500;
-  margin: 0 0 9px;
-}
-.factory-metric > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px 7px;
-  align-items: baseline;
-}
-.factory-metric strong {
-  font-size: clamp(26px, 2.1vw, 34px);
-  line-height: 1.15;
-  letter-spacing: -0.7px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 550;
-}
-.factory-metric--primary strong {
-  color: var(--primary);
-}
-.factory-metric > div > span {
-  font-size: 12px;
-  color: var(--dashboard-muted);
-}
-.factory-metric small {
-  margin-left: auto;
-  color: var(--dashboard-muted);
-  font-size: 12px;
-  line-height: 18px;
-  white-space: nowrap;
-}
-.factory-sections {
-  display: flex;
-  align-self: flex-start;
-  flex-shrink: 0;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--glass-border);
-  border-radius: 24px;
-  background: var(--surface-soft);
-  box-shadow: inset 0 1px 2px #205c4810;
-}
-.factory-main-sections {
-  align-self: center;
-}
-.factory-sections button {
-  padding: 6px 18px;
-  border: 0;
-  border-radius: 20px;
-  color: var(--dashboard-muted);
-  background: transparent;
-  font-size: 13px;
-  line-height: 20px;
-  transition:
-    color var(--motion-standard) ease,
-    background var(--motion-standard) ease,
-    box-shadow var(--motion-standard) ease;
-}
-.factory-sections button:not([aria-pressed='true']):hover {
-  color: var(--primary);
-  background: var(--glass-hover-fill);
-  box-shadow: var(--glass-hover-shadow);
-}
-.factory-sections button[aria-pressed='true'] {
-  color: var(--primary);
-  background: var(--glass-selected-fill);
-  box-shadow: var(--glass-selected-shadow);
-  font-weight: 550;
-}
-/* Keep every record row visible; let the charts absorb the remaining height. */
 .factory-presentation {
   display: grid;
-  grid-template-rows: minmax(240px, 1fr) max-content;
-  flex: 1;
-  min-height: 0;
-  gap: 14px;
+  gap: 16px;
 }
 .factory-stage {
-  display: grid;
-  min-height: 0;
+  min-width: 0;
 }
-.factory-stage > .factory-charts {
-  grid-area: 1 / 1;
+@media (prefers-reduced-motion: no-preference) {
+  .factory-overview > :not(.factory-heading) {
+    animation: dashboard-enter 180ms ease-out;
+  }
+  @keyframes dashboard-enter {
+    from {
+      opacity: 0;
+      transform: translateY(5px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }
-.scene-fade-enter-active,
-.scene-fade-leave-active {
-  transition:
-    opacity 200ms ease,
-    transform 200ms ease;
-}
-.scene-fade-enter-from {
-  opacity: 0;
-  transform: translateY(4px);
-}
-.scene-fade-leave-to {
-  opacity: 0;
-}
-@media (min-width: 1101px) and (max-height: 800px) {
+@media (max-width: 900px) {
   .factory-overview {
-    padding: 12px 18px;
-    gap: 10px;
-  }
-  .factory-heading .factory-heading-title {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-  .factory-heading p {
-    margin: 0;
-  }
-  .factory-heading h1 {
-    font-size: 18px;
-    line-height: 28px;
-  }
-  .factory-metrics {
-    gap: 12px;
-  }
-  .factory-metric {
-    padding: 10px 16px;
-  }
-  .factory-metric h2 {
-    margin-bottom: 6px;
-    line-height: 18px;
-  }
-  .factory-metric strong {
-    font-size: 28px;
-  }
-  .factory-sections {
-    padding: 3px;
-  }
-  .factory-sections button {
-    padding-block: 4px;
-  }
-  .factory-presentation {
-    grid-template-rows: minmax(210px, 1fr) max-content;
-    gap: 10px;
-  }
-}
-@media (min-width: 1101px) and (max-height: 700px) {
-  .factory-overview {
-    padding: 8px 16px;
-    gap: 8px;
-  }
-  .factory-metric {
-    padding-block: 8px;
-  }
-  .factory-sections button {
-    padding-block: 3px;
-  }
-  .factory-presentation {
-    gap: 8px;
-  }
-}
-@media (max-width: 1100px) {
-  .factory-overview {
-    padding: 18px;
+    padding: 14px;
   }
   .factory-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .factory-presentation {
-    display: flex;
-    flex-direction: column;
-    flex: none;
-  }
-  .factory-stage {
-    min-height: 0;
-  }
-}
-@media (max-width: 640px) {
-  .factory-overview {
-    padding: 18px 14px;
-    gap: 14px;
-  }
-  .factory-heading {
-    gap: 14px;
-  }
-  .factory-heading h1 {
-    font-size: 18px;
-  }
-  .factory-controls {
-    gap: 8px;
-  }
-  .factory-metrics {
-    gap: 10px;
-  }
-  .factory-metric {
-    padding: 14px 12px;
-  }
-  .factory-metric strong {
-    font-size: 26px;
-  }
-  .factory-metric small {
-    flex-basis: 100%;
-    margin-top: 4px;
-  }
-  .factory-sections {
-    align-self: stretch;
-  }
-  .factory-sections button {
-    flex: 1;
-    padding-inline: 6px;
-    white-space: nowrap;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .scene-fade-enter-active,
-  .scene-fade-leave-active {
-    transition: none;
   }
 }
 </style>

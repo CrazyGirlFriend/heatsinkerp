@@ -24,10 +24,10 @@ describe('production and quality chart meanings', () => {
     })
     try {
       expect(wrapper.findAllComponents(LedgerChart)).toHaveLength(1)
-      expect(wrapper.text()).not.toContain('仅当前班组、流水号、任务和工序')
+      expect(wrapper.text()).not.toContain('当前班组、流水号、任务和工序的实际加工记录')
       await wrapper.get('button[aria-label="每日加工完成量统计说明"]').trigger('click')
       await vi.waitFor(() =>
-        expect(document.body.textContent).toContain('仅当前班组、流水号、任务和工序'),
+        expect(document.body.textContent).toContain('当前班组、流水号、任务和工序的实际加工记录'),
       )
       await wrapper
         .get('button[aria-label="每日加工完成量统计说明"]')

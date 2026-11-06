@@ -4,6 +4,9 @@ import { formatAmount as format } from '@/utils/format'
 import { computed, ref } from 'vue'
 import type { EChartsCoreOption } from 'echarts/core'
 import LedgerChart from './LedgerChart.vue'
+import DashboardCard from './DashboardCard.vue'
+import AppDetailTable from './AppDetailTable.vue'
+import { useChartPalette } from '@/composables/useChartPalette'
 import { materialTypeLabel, materialTypeOptions } from '@/types/materialTransfer'
 import type { Metric } from '@/types/materialAnalytics'
 import type { FactoryOverview, FactoryTeam, FactoryScene } from '@/types/factoryOverview'
@@ -17,8 +20,9 @@ const emit = defineEmits<{ team: [team: FactoryTeam] }>()
 const chartsRoot = ref<HTMLElement>()
 const unit = computed(() => (props.metric === 'weight' ? 'kg' : '件'))
 const colors = computed(() => ['#58986f', '#79a9ce', '#c6a15c', '#a6afb6'])
-const ink = computed(() => '#64726a')
-const fontSize = computed(() => 14)
+const palette = useChartPalette()
+const ink = computed(() => palette.value?.muted || '#64726a')
+const fontSize = computed(() => 12)
 
 const natureColors = [
   '#58986f',
@@ -78,6 +82,9 @@ const common = computed(() => ({
   },
   tooltip: {
     ...glassTooltip,
+    backgroundColor: palette.value?.surface,
+    borderColor: palette.value?.border,
+    textStyle: { color: palette.value?.text },
     trigger: 'axis',
     renderMode: 'html',
     confine: true,
@@ -90,8 +97,8 @@ const common = computed(() => ({
     itemWidth: 9,
     itemHeight: 9,
     padding: [4, 8],
-    backgroundColor: '#ffffff66',
-    borderColor: '#ffffffb3',
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
     borderWidth: 1,
     borderRadius: 8,
     textStyle: { fontSize: fontSize.value, color: ink.value },
@@ -120,7 +127,7 @@ function plot(
     type: 'value',
     splitNumber: 3,
     axisLabel: { fontSize: fontSize.value, color: ink.value },
-    splitLine: { lineStyle: { color: '#75978620', type: 'dashed' } },
+    splitLine: { lineStyle: { color: palette.value?.border || '#e4e4e7', type: 'dashed' } },
   }
   return {
     ...common.value,
@@ -185,7 +192,7 @@ const cards = computed(() => {
           ),
           barMaxWidth: 12,
           showBackground: true,
-          backgroundStyle: { color: '#205c4808', borderRadius: 4 },
+          backgroundStyle: { color: palette.value?.mutedSurface || '#205c4808', borderRadius: 4 },
           itemStyle: {
             borderRadius: 4,
             borderColor: '#ffffff8c',
@@ -197,7 +204,7 @@ const cards = computed(() => {
             show: true,
             position: 'right',
             distance: 10,
-            color: '#354d3e',
+            color: palette.value?.text || '#354d3e',
             fontSize: 13,
             fontWeight: 500,
             formatter: ({ value }: { value: number }) => format(value),
@@ -208,12 +215,11 @@ const cards = computed(() => {
       false,
     )
     option.grid = {
-      left: 0,
+      left: 8,
       right: 84,
       top: 4,
       bottom: 4,
-      outerBoundsMode: 'same',
-      outerBoundsContain: 'axisLabel',
+      containLabel: true,
     }
     option.xAxis = { type: 'value', show: false }
     return { key: `${key}s`, title, hint: '全厂未转出库存 · 前8项', empty: !rows.length, option }
@@ -290,7 +296,11 @@ const cards = computed(() => {
             radius: ['55%', '86%'],
             center: ['50%', '50%'],
             label: { show: false },
-            itemStyle: { borderColor: '#ffffffd9', borderWidth: 2, borderRadius: 3 },
+            itemStyle: {
+              borderColor: palette.value?.surface || '#ffffffd9',
+              borderWidth: 2,
+              borderRadius: 3,
+            },
             data: materialTypes.value
               .filter((row) => row[metric] >= 0)
               .map((row) => ({
@@ -357,7 +367,25 @@ const cards = computed(() => {
       ),
     },
   ]
+  all.push({
+    key: 'age',
+    title: '库存滞留',
+    hint: '从本班组接收时刻起算，加工和拆批不重新计时。',
+    empty: !d.stock_age.some((row) => row[metric]),
+    option: plot(
+      d.stock_age.map((row) => row.label || row.key),
+      [
+        bar(
+          '在库',
+          d.stock_age.map((row) => row[metric]),
+        ),
+      ],
+      false,
+      false,
+    ),
+  })
   const keys = {
+    all: ['teams', 'age', 'waiting', 'types', 'serials', 'materials'],
     overview: ['teams', 'flow', 'types'],
     stock: ['serials', 'materials'],
     handoff: ['waiting', 'loss', 'outbound'],
@@ -371,19 +399,17 @@ function pick(key: string, index: number) {
 </script>
 <template>
   <section ref="chartsRoot" class="factory-charts" :data-scene="scene" aria-label="全厂物料分析">
-    <article
+    <DashboardCard
       v-for="card in cards"
       :key="card.key"
-      class="factory-chart chart-glass"
-      :class="[
-        `factory-chart--${card.key}`,
-        { 'factory-chart--nature': card.key === 'types' && materialTypes.length },
-      ]"
+      class="factory-chart"
+      :class="`factory-chart--${card.key}`"
+      :title="card.title"
+      :help="card.hint"
     >
-      <header>
-        <h2 :title="card.hint">{{ card.title }}</h2>
-        <span v-if="card.key !== 'types'">{{ unit }}</span>
-      </header>
+      <template #actions
+        ><span class="chart-unit">{{ unit }}</span></template
+      >
       <div
         class="factory-chart-content"
         :class="{ 'nature-content': card.key === 'types' && materialTypes.length }"
@@ -403,7 +429,7 @@ function pick(key: string, index: number) {
           role="region"
           aria-label="物料类型库存明细"
         >
-          <table class="nature-table business-table">
+          <AppDetailTable class="nature-table">
             <thead>
               <tr>
                 <th scope="col">性质</th>
@@ -421,194 +447,63 @@ function pick(key: string, index: number) {
                 </td>
               </tr>
             </tbody>
-          </table>
+          </AppDetailTable>
         </div>
       </div>
-    </article>
+    </DashboardCard>
   </section>
 </template>
 <style scoped>
 .factory-charts {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1fr);
-  gap: 14px;
-  height: 100%;
-  min-height: 0;
-}
-.factory-chart {
-  grid-column: span 3;
-  display: flex;
-  flex-direction: column;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
   min-width: 0;
-  min-height: 0;
-  padding: 18px 20px 14px;
-  border-radius: var(--card-radius, 12px);
-}
-.factory-chart--teams,
-.factory-chart--waiting {
-  grid-column: span 5;
-}
-.factory-chart--flow,
-.factory-chart--loss {
-  grid-column: span 4;
-}
-.factory-chart header {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-.factory-chart h2 {
-  font-size: 15px;
-  line-height: 22px;
-  font-weight: 550;
-  margin: 0;
-}
-.factory-chart header > span {
-  font-size: 12px;
-  color: var(--dashboard-muted);
-  line-height: 22px;
-}
-.factory-chart--serials,
-.factory-chart--materials {
-  grid-column: span 6;
 }
 .factory-chart-content {
   display: flex;
-  flex: 1;
   min-width: 0;
-  min-height: 0;
+  height: 250px;
+  gap: 16px;
 }
-.factory-chart--teams,
-.factory-chart--types {
-  grid-column: span 4;
+.factory-chart-content > .ledger-chart-frame {
+  min-width: 0;
+  flex: 1;
 }
-.factory-chart--nature {
-  display: grid;
-  grid-template-columns: minmax(100px, 0.8fr) minmax(0, 1.7fr);
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 8px 12px;
+.chart-unit {
+  font-size: 12px;
+  color: var(--wm-muted);
 }
-.factory-chart--nature > header {
-  grid-area: 1 / 1;
-}
-.nature-content {
-  display: contents;
-}
-.nature-content .ledger-chart-frame {
-  grid-area: 2 / 1;
-  align-self: center;
-  height: 130px;
+.nature-content > .ledger-chart-frame {
+  flex: 0 0 42%;
 }
 .nature-table-scroll {
-  grid-area: 1 / 2 / -1 / 3;
-  align-self: start;
+  flex: 1;
   min-width: 0;
-  max-height: 100%;
   overflow: auto;
-  scrollbar-width: thin;
 }
-.nature-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 12px;
-  line-height: 18px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.nature-table th,
-.nature-table td {
-  padding: 2px 3px;
-  border-bottom: 1px solid var(--line);
+.nature-table :deep(th),
+.nature-table :deep(td) {
+  padding: 9px 8px;
   text-align: right;
+  font-size: 12px;
 }
-.nature-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background-color: var(--table-header-bg);
-  backdrop-filter: blur(12px);
-  color: var(--dashboard-muted);
-  font-weight: 400;
-}
-.nature-table th:first-child {
-  padding-left: 0;
+.nature-table :deep(th:first-child) {
   text-align: left;
-}
-.nature-table tbody th {
-  font-weight: 400;
-}
-.nature-table td:last-child,
-.nature-table th:last-child {
-  padding-right: 0;
-}
-.nature-table tbody tr:last-child > * {
-  border-bottom: 0;
 }
 .nature-table i {
   display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 5px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  vertical-align: 1px;
-}
-.nature-table-scroll:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-  border-radius: 3px;
-}
-@media (min-width: 1101px) and (min-height: 801px) {
-  .nature-table th,
-  .nature-table td {
-    padding-block: 5px;
-  }
-}
-@media (min-width: 1101px) and (max-height: 800px) {
-  .factory-charts {
-    gap: 12px;
-  }
-  .factory-chart {
-    padding: 12px 16px 10px;
-  }
-  .factory-chart header {
-    margin-bottom: 8px;
-  }
-}
-@media (max-width: 1100px) {
-  .factory-charts {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: none;
-    grid-auto-rows: 300px;
-    height: auto;
-  }
-  .factory-chart {
-    grid-column: span 1;
-  }
-  .factory-charts:not([data-scene='stock']) .factory-chart:last-child {
-    grid-column: 1 / -1;
-  }
-  .factory-charts[data-scene='stock'] {
-    grid-auto-rows: 310px;
-  }
-}
-@media (max-width: 640px) {
-  .factory-charts {
-    grid-template-columns: minmax(0, 1fr);
-    grid-auto-rows: 280px;
-  }
-  .factory-chart {
-    padding: 16px 14px 12px;
-  }
-  .factory-charts[data-scene='stock'] {
-    grid-auto-rows: 300px;
-  }
+  margin-right: 6px;
 }
 .nature-shortage {
-  color: var(--el-color-danger);
+  color: var(--wm-danger-text);
+}
+@media (max-width: 1000px) {
+  .factory-charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

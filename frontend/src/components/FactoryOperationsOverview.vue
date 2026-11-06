@@ -15,6 +15,7 @@ import type { EChartsCoreOption } from 'echarts/core'
 import AppAlert from './AppAlert.vue'
 import AppButton from './AppButton.vue'
 import DashboardCard from './DashboardCard.vue'
+import DashboardToolbar from './DashboardToolbar.vue'
 import DashboardMetric from './DashboardMetric.vue'
 import LedgerChart from './LedgerChart.vue'
 import StatePanel from './StatePanel.vue'
@@ -369,33 +370,28 @@ function quality() {
 
 <template>
   <div class="operations-overview" :class="{ 'operations-overview--motion': motion }">
-    <div class="operations-toolbar">
-      <div class="operations-updated">
-        <span class="operations-status" :class="{ 'is-stale': errors.length }" />{{
-          errors.length ? '部分数据更新失败' : loading ? '正在更新' : '运行概览'
-        }}<span v-if="updated">{{ formatDateTime(updated) }} 更新</span>
-      </div>
-      <div class="operations-tools">
-        <WatermelonSegmented
-          label="概览统计单位"
-          :model-value="metric"
-          :options="[
-            { value: 'weight', label: '重量' },
-            { value: 'quantity', label: '件数' },
-          ]"
-          @update:model-value="emit('preference', { metric: $event })"
-        />
-        <WatermelonSegmented
-          label="概览统计周期"
-          :model-value="String(days)"
-          :options="periodOptions"
-          @update:model-value="emit('preference', { days: $event })"
-        />
-        <AppButton :loading="loading" aria-label="刷新运行概览" @click="load()"
-          ><IconRefresh :size="17"
-        /></AppButton>
-      </div>
-    </div>
+    <DashboardToolbar :updated-at="updated" :loading="loading">
+      <WatermelonSegmented
+        label="概览统计单位"
+        :model-value="metric"
+        :options="[
+          { value: 'weight', label: '重量' },
+          { value: 'quantity', label: '件数' },
+        ]"
+        @update:model-value="emit('preference', { metric: $event })"
+      />
+      <WatermelonSegmented
+        label="概览统计周期"
+        :model-value="String(days)"
+        :options="periodOptions"
+        @update:model-value="emit('preference', { days: $event })"
+      />
+      <template #actions
+        ><AppButton :loading="loading" aria-label="刷新运行概览" @click="load()"
+          ><IconRefresh :size="17" />刷新</AppButton
+        ></template
+      >
+    </DashboardToolbar>
     <AppAlert
       v-if="errors.length"
       type="warning"
@@ -651,37 +647,6 @@ function quality() {
   gap: 16px;
   min-width: 0;
 }
-.operations-toolbar,
-.operations-tools {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.operations-toolbar {
-  justify-content: space-between;
-  flex-wrap: wrap;
-}
-.operations-updated {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--wm-text);
-}
-.operations-updated > span:last-child:not(.operations-status) {
-  font-size: 11px;
-  color: var(--wm-muted);
-  margin-left: 8px;
-}
-.operations-status {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--wm-success-text);
-}
-.operations-status.is-stale {
-  background: var(--wm-warning-text);
-}
 .operations-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -693,11 +658,11 @@ function quality() {
   gap: 16px;
 }
 .operations-stock-chart {
-  height: 260px;
+  height: 240px;
   display: flex;
 }
 .operations-main > :deep(.dashboard-card) {
-  min-height: 370px;
+  min-height: 340px;
 }
 .operations-lower {
   display: grid;

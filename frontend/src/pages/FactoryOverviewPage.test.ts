@@ -62,7 +62,7 @@ describe('factory dashboard', () => {
     expect(factoryOverviewApi.get).not.toHaveBeenCalled()
     await click('库存与交接')
     expect(factoryOverviewApi.get).toHaveBeenCalledTimes(1)
-    expect(wrapper.getComponent(FactoryOverviewCharts).props('scene')).toBe('overview')
+    expect(wrapper.getComponent(FactoryOverviewCharts).props('scene')).toBe('all')
     await click('生产完成')
     await vi.advanceTimersByTimeAsync(60000)
     expect(factoryOverviewApi.get).toHaveBeenCalledTimes(1)
@@ -116,6 +116,38 @@ describe('factory dashboard', () => {
     wrapper.unmount()
     await vi.advanceTimersByTimeAsync(60000)
     expect(factoryOverviewApi.get).toHaveBeenCalledTimes(2)
+  })
+  it('clears the previous period while loading and never restores it after a failed or late request', async () => {
+    const router = await render('/?days=7')
+    let resolveOld!: (data: ReturnType<typeof factoryFixture>) => void
+    vi.mocked(factoryOverviewApi.get).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOld = resolve
+      }),
+    )
+    await router.push('/?view=inventory&days=14')
+    await flushPromises()
+    expect(wrapper.findComponent(FactoryOverviewCharts).exists()).toBe(false)
+    expect(wrapper.getComponent(TableExportButton).props('disabled')).toBe(true)
+    vi.mocked(factoryOverviewApi.get).mockRejectedValueOnce(new Error('offline'))
+    await router.push('/?view=inventory&days=30')
+    await flushPromises()
+    resolveOld({ ...factoryFixture(), days: 14 })
+    await flushPromises()
+    expect(wrapper.text()).toContain('全厂数据加载失败')
+    expect(wrapper.findComponent(FactoryOverviewCharts).exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('近7天入库')
+    expect(wrapper.text()).not.toContain('近14天入库')
+  })
+  it('discards cached inventory when changing the period from another analysis view', async () => {
+    const router = await render('/?days=7')
+    await router.push('/?view=overview&days=30')
+    await flushPromises()
+    vi.mocked(factoryOverviewApi.get).mockRejectedValueOnce(new Error('offline'))
+    await router.push('/?view=inventory&days=30')
+    await flushPromises()
+    expect(wrapper.findComponent(FactoryOverviewCharts).exists()).toBe(false)
+    expect(wrapper.text()).toContain('全厂数据加载失败')
   })
   it('applies arbitrary days to the URL, summary and charts while preserving the unit', async () => {
     vi.mocked(factoryOverviewApi.get).mockImplementation(async (days = 30) => ({
@@ -177,16 +209,12 @@ describe('factory dashboard', () => {
     expect(wrapper.text()).toContain('全厂数据加载失败')
     expect(wrapper.findComponent(FactoryOverviewCharts).exists()).toBe(false)
   })
-  it('keeps analysis sections manual without fullscreen or timed rotation', async () => {
+  it('shows inventory analysis together without nested navigation or timed rotation', async () => {
     await render()
     expect(wrapper.text()).not.toMatch(/大屏模式|轮播|锁定当前屏/)
-    await click('库存分析')
+    expect(wrapper.find('nav[aria-label="分析分类"]').exists()).toBe(false)
     await vi.advanceTimersByTimeAsync(45000)
-    expect(wrapper.getComponent(FactoryOverviewCharts).props('scene')).toBe('stock')
-    await click('交接与异常')
-    expect(wrapper.getComponent(FactoryOverviewCharts).props('scene')).toBe('handoff')
-    await click('全厂概况')
-    expect(wrapper.getComponent(FactoryOverviewCharts).props('scene')).toBe('overview')
+    expect(wrapper.getComponent(FactoryOverviewCharts).props('scene')).toBe('all')
   })
   it('cycles through today’s batches and opens the selected detail', async () => {
     const data = factoryFixture()

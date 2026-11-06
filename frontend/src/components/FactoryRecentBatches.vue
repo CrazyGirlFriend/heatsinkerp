@@ -2,7 +2,9 @@
 import { formatAmount as format } from '@/utils/format'
 
 import { computed, ref, watch } from 'vue'
-import { ElButton, ElTag } from 'element-plus'
+import ElButton from './AppButton.vue'
+import WatermelonBadge from './watermelon/WatermelonBadge.vue'
+import AppDetailTable from './AppDetailTable.vue'
 import type { FactoryRecentBatch } from '@/types/factoryOverview'
 import { dispatchStatusLabel } from '@/types/teamMaterials'
 import { formatDateTime } from '@/utils/format'
@@ -77,7 +79,7 @@ const label = (row: FactoryRecentBatch) =>
       @focusout="focusOut"
     >
       <div class="recent-table-window">
-        <table class="recent-table business-table">
+        <AppDetailTable class="recent-table">
           <thead>
             <tr>
               <th scope="col">批次号</th>
@@ -121,16 +123,15 @@ const label = (row: FactoryRecentBatch) =>
               <td class="recent-number">{{ format(row.quantity) }}</td>
               <td class="recent-number">{{ format(row.weight) }}</td>
               <td>
-                <ElTag
-                  size="small"
-                  :type="
+                <WatermelonBadge
+                  :tone="
                     row.status === 'voided'
                       ? 'info'
                       : row.status === 'pending' || row.status === 'partial'
                         ? 'warning'
                         : 'success'
                   "
-                  >{{ label(row) }}</ElTag
+                  >{{ label(row) }}</WatermelonBadge
                 >
               </td>
               <td>
@@ -141,7 +142,7 @@ const label = (row: FactoryRecentBatch) =>
               </td>
             </tr>
           </tbody>
-        </table>
+        </AppDetailTable>
       </div>
     </div>
   </section>
@@ -152,10 +153,10 @@ const label = (row: FactoryRecentBatch) =>
   --recent-head-height: 36px;
   flex-shrink: 0;
   overflow: hidden;
-  border: 1px solid var(--dashboard-line);
+  border: 1px solid var(--wm-border);
   border-radius: var(--card-radius, 12px);
-  background: var(--dashboard-surface);
-  box-shadow: var(--glass-shadow);
+  background: var(--wm-bg);
+  box-shadow: none;
 }
 .factory-recent > header {
   display: flex;
@@ -188,7 +189,7 @@ const label = (row: FactoryRecentBatch) =>
   padding: 4px 8px;
 }
 .recent-pagination small {
-  color: var(--dashboard-muted);
+  color: var(--wm-muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -201,7 +202,7 @@ const label = (row: FactoryRecentBatch) =>
   height: calc(var(--recent-head-height) + 3 * var(--recent-row-height));
   overflow: hidden;
 }
-.recent-table {
+.recent-table.app-detail-table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
@@ -212,12 +213,12 @@ const label = (row: FactoryRecentBatch) =>
   position: relative;
   z-index: 1;
 }
-.recent-table th {
+.recent-table.app-detail-table th {
   height: var(--recent-head-height);
   white-space: nowrap;
   padding: 8px 16px;
-  background-color: var(--table-header-bg);
-  color: var(--dashboard-muted);
+  background-color: var(--wm-muted-surface);
+  color: var(--wm-muted);
   font-size: 12px;
   line-height: 18px;
   font-weight: 400;
@@ -237,7 +238,7 @@ const label = (row: FactoryRecentBatch) =>
 .recent-table th:last-child {
   width: 18%;
 }
-.recent-table td {
+.recent-table.app-detail-table td {
   height: var(--recent-row-height);
   padding: 8px 16px;
   border-bottom: 1px solid var(--line-light);
@@ -272,13 +273,14 @@ const label = (row: FactoryRecentBatch) =>
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.recent-table .el-tag {
+.recent-table :deep(.wm-badge) {
+  vertical-align: middle;
   border: 0;
   font-size: 12px;
 }
 .recent-table time,
 .recent-no-time {
-  color: var(--dashboard-muted);
+  color: var(--wm-muted);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -286,7 +288,7 @@ const label = (row: FactoryRecentBatch) =>
   display: grid;
   min-height: 110px;
   place-items: center;
-  color: var(--dashboard-muted);
+  color: var(--wm-muted);
   font-size: 13px;
 }
 /* Keep three rows in view; the fourth enters as the first slides behind the fixed header. */
@@ -309,11 +311,11 @@ const label = (row: FactoryRecentBatch) =>
   .factory-recent > header {
     padding-block: 7px;
   }
-  .recent-table th {
+  .recent-table.app-detail-table th {
     padding-block: 6px;
   }
-  .recent-table td {
-    padding-block: 5px;
+  .recent-table.app-detail-table td {
+    padding-block: 3px;
   }
 }
 @media (min-width: 1101px) and (max-height: 700px) {
@@ -324,9 +326,11 @@ const label = (row: FactoryRecentBatch) =>
   .factory-recent > header {
     padding-block: 4px;
   }
-  .recent-table th,
-  .recent-table td {
+  .recent-table.app-detail-table th {
     padding-block: 4px;
+  }
+  .recent-table.app-detail-table td {
+    padding-block: 1px;
   }
 }
 @media (max-width: 640px) {

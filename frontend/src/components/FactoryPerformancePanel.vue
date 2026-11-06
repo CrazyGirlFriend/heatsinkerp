@@ -1,18 +1,18 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
-import {
-  ElAlert,
-  ElButton,
-  ElOption,
-  ElRadioButton,
-  ElRadioGroup,
-  ElSelect,
-  ElSwitch,
-} from 'element-plus'
+import { ElOption } from 'element-plus'
+import ElAlert from './AppAlert.vue'
+import ElButton from './AppButton.vue'
+import ElSelect from './AppSelect.vue'
+import ElSwitch from './AppSwitch.vue'
+import DashboardToolbar from './DashboardToolbar.vue'
+import DashboardMetric from './DashboardMetric.vue'
+import DashboardCard from './DashboardCard.vue'
+import AppDetailTable from './AppDetailTable.vue'
+import WatermelonSegmented from './watermelon/WatermelonSegmented.vue'
 import { Refresh } from '@element-plus/icons-vue'
-import AnimatedMetric from './AnimatedMetric.vue'
 import StatisticHelp from './StatisticHelp.vue'
 import FactoryPerformanceCharts from './FactoryPerformanceCharts.vue'
 import RecordDateFilter from './RecordDateFilter.vue'
@@ -20,7 +20,7 @@ import MaterialInput from './MaterialInput.vue'
 import StatePanel from './StatePanel.vue'
 import TableExportButton from './TableExportButton.vue'
 import { factoryPerformanceApi } from '@/services/factoryPerformanceApi'
-import { factoryToday, formatAmount, formatDateTime } from '@/utils/format'
+import { factoryToday, formatAmount } from '@/utils/format'
 import { tableExportSource, type TableExportField } from '@/utils/tableExport'
 import type {
   FactoryPerformance,
@@ -34,6 +34,16 @@ import type { CalendarRange } from '@/types/recordFilters'
 
 const props = defineProps<{ scene: 'production' | 'quality'; motion: boolean }>()
 const router = useRouter()
+const route = useRoute()
+const productionView = computed({
+  get: () => (route.query.production_view === 'task' ? 'task' : 'all'),
+  set: (value: string) => {
+    void router.replace({
+      query: { ...route.query, production_view: value === 'task' ? 'task' : undefined },
+    })
+  },
+})
+const aggregate = computed(() => props.scene === 'production' && productionView.value === 'all')
 function recentDates(): CalendarRange {
   const today = factoryToday()
   return { from: dayjs(today).subtract(29, 'day').format('YYYY-MM-DD'), to: today }
@@ -90,9 +100,9 @@ const qualityTotal = computed<QualityMetrics>(() => {
 const cards = computed(() => {
   if (!report.value) return []
   if (props.scene === 'production') {
-    if (!productionScope.value) return []
-    const total = report.value.production.totals,
-      precision = metric.value === 'quantity' ? 0 : 3
+    const total = aggregate.value ? report.value.activity?.totals : report.value.production.totals
+    if (!total || (!aggregate.value && !productionScope.value)) return []
+    const precision = metric.value === 'quantity' ? 0 : 3
     return [
       {
         label: '正常加工完成',
@@ -129,6 +139,7 @@ const selectedTeam = computed(() => teams.value.find((team) => team.id === teamI
 const exportContext = computed(() =>
   [
     props.scene,
+    productionView.value,
     dates.value.from,
     dates.value.to,
     teamId.value,
@@ -156,12 +167,13 @@ async function load() {
   loading.value = true
   try {
     const result = await factoryPerformanceApi.get({
+      include_activity: props.scene === 'production',
       date_from: dates.value.from,
       date_to: dates.value.to,
       team_id: teamId.value,
       period: period.value,
       serial_no: props.scene === 'production' ? serialFilter.value || undefined : undefined,
-      work_id: props.scene === 'production' ? workId.value : undefined,
+      work_id: props.scene === 'production' && !aggregate.value ? workId.value : undefined,
       material_name: props.scene === 'quality' ? materialFilter.value || undefined : undefined,
     })
     if (token !== generation) return
@@ -199,7 +211,7 @@ function openProcessing(id: number) {
       tab: 'processing',
       date_from: dates.value.from,
       date_to: dates.value.to,
-      query: productionScope.value?.serial_no,
+      query: aggregate.value ? serialFilter.value || undefined : productionScope.value?.serial_no,
     },
   })
 }
@@ -310,10 +322,36 @@ function issuesExport() {
     async () => rows,
   )
 }
+function activityExport(daily = false) {
+  const data = report.value?.activity
+  if (!data) return null
+  const rows: (ProductionMetrics & { name: string })[] = daily
+    ? data.trend.map((row) => ({ ...row, name: row.date }))
+    : data.teams.map((row) => ({ ...row, name: row.team_name }))
+  return tableExportSource(
+    daily ? '全厂加工趋势' : '班组加工完成',
+    rows.length,
+    [
+      { key: 'name', label: daily ? '日期' : '班组', value: (row) => row.name },
+      {
+        key: 'completed_quantity',
+        label: '正常加工 (件次)',
+        value: (row) => row.completed_quantity,
+      },
+      { key: 'completed_weight', label: '正常加工 (kg)', value: (row) => row.completed_weight },
+      { key: 'rework_quantity', label: '返工 (件次)', value: (row) => row.rework_quantity },
+      { key: 'rework_weight', label: '返工 (kg)', value: (row) => row.rework_weight },
+      { key: 'record_count', label: '加工登记', value: (row) => row.record_count },
+    ],
+    async () => rows,
+  )
+}
 function exportSource() {
+  if (aggregate.value) return activityExport()
   return props.scene === 'production' ? productionExport() : qualityExport()
 }
 function exportVariants() {
+  if (aggregate.value) return [activityExport(true)].filter((source) => source !== null)
   const sources =
     props.scene === 'production' ? [productionExport(true)] : [qualityExport(true), issuesExport()]
   return sources.filter((source) => source !== null)
@@ -321,6 +359,7 @@ function exportVariants() {
 watch(
   () => [
     props.scene,
+    productionView.value,
     dates.value.from,
     dates.value.to,
     teamId.value,
@@ -358,15 +397,17 @@ onBeforeUnmount(() => {
     class="factory-performance"
     :aria-label="scene === 'production' ? '生产完成统计' : '检验与质量统计'"
   >
-    <div class="performance-toolbar">
+    <DashboardToolbar
+      class="performance-toolbar"
+      :loading="loading"
+      :updated-at="report?.generated_at"
+    >
       <RecordDateFilter :model-value="dates" label="统计日期" @update:model-value="applyDates" />
       <ElSelect
         v-model="teamId"
         clearable
         filterable
-        :placeholder="
-          scene === 'production' ? productionScope?.team_name || '选择班组' : '全部班组'
-        "
+        :placeholder="'全部班组'"
         aria-label="统计班组"
       >
         <ElOption
@@ -396,26 +437,17 @@ onBeforeUnmount(() => {
         @keyup.enter="applyQuery"
       />
       <ElButton class="action-warm" @click="applyQuery">查询</ElButton>
-      <ElRadioGroup v-model="period" class="performance-segment" size="small" aria-label="统计周期">
-        <ElRadioButton value="day">日</ElRadioButton><ElRadioButton value="week">周</ElRadioButton
-        ><ElRadioButton value="month">月</ElRadioButton>
-      </ElRadioGroup>
-      <ElRadioGroup
-        v-if="scene === 'production'"
-        v-model="metric"
-        size="small"
-        class="performance-segment"
-        aria-label="加工统计单位"
-      >
-        <ElRadioButton value="quantity">件次</ElRadioButton
-        ><ElRadioButton value="weight">重量</ElRadioButton>
-      </ElRadioGroup>
-      <div class="performance-toolbar-actions">
+      <template #actions>
         <TableExportButton
           :source="exportSource"
           :variants="exportVariants"
           :context="exportContext"
-          :disabled="loading || !report || !!error || (scene === 'production' && !productionScope)"
+          :disabled="
+            loading ||
+            !report ||
+            !!error ||
+            (scene === 'production' && !aggregate && !productionScope)
+          "
           @visible-change="exporting = $event"
         />
         <ElSwitch
@@ -425,44 +457,77 @@ onBeforeUnmount(() => {
           aria-label="每60秒刷新生产与质量数据"
         />
         <ElButton :icon="Refresh" :loading="loading" @click="load">刷新</ElButton>
-      </div>
-    </div>
+      </template>
+    </DashboardToolbar>
     <ElAlert v-if="dateError" :title="dateError" type="warning" :closable="false" />
-    <div v-if="scene === 'quality'" class="quality-basis" aria-label="合格率统计方式">
-      <ElRadioGroup
-        v-model="basis.kind"
-        size="small"
-        class="performance-segment"
-        aria-label="检查来源"
-      >
-        <ElRadioButton value="patrol">巡检</ElRadioButton
-        ><ElRadioButton value="inspection">检验</ElRadioButton>
-      </ElRadioGroup>
-      <ElRadioGroup
-        v-model="basis.scope"
-        size="small"
-        class="performance-segment"
-        aria-label="检查范围"
-      >
-        <ElRadioButton value="sample">抽检</ElRadioButton
-        ><ElRadioButton value="full">全检</ElRadioButton>
-      </ElRadioGroup>
-      <ElRadioGroup
-        v-model="basis.phase"
-        size="small"
-        class="performance-segment"
-        aria-label="检查阶段"
-      >
-        <ElRadioButton value="first">首次检查</ElRadioButton
-        ><ElRadioButton value="recheck">复检</ElRadioButton>
-      </ElRadioGroup>
-      <ElButton
-        v-if="qualityWorkspace"
-        link
-        type="primary"
-        @click="openQuality(basis.kind === 'patrol' ? 'inspections' : 'inspection-results')"
-        >进入{{ basis.kind === 'patrol' ? '巡检' : '检验' }}记录</ElButton
-      >
+    <div class="performance-view-options">
+      <WatermelonSegmented
+        v-if="scene === 'production'"
+        v-model="productionView"
+        label="生产统计范围"
+        :options="[
+          { value: 'all', label: '班组汇总' },
+          { value: 'task', label: '流水号任务' },
+        ]"
+      />
+      <div v-if="scene === 'quality'" class="quality-basis" aria-label="合格率统计方式">
+        <WatermelonSegmented
+          label="检查来源"
+          :model-value="basis.kind"
+          :options="[
+            { value: 'patrol', label: '巡检' },
+            { value: 'inspection', label: '检验' },
+          ]"
+          @update:model-value="basis.kind = $event as QualityBasis['kind']"
+        />
+        <WatermelonSegmented
+          label="检查范围"
+          :model-value="basis.scope"
+          :options="[
+            { value: 'sample', label: '抽检' },
+            { value: 'full', label: '全检' },
+          ]"
+          @update:model-value="basis.scope = $event as QualityBasis['scope']"
+        />
+        <WatermelonSegmented
+          label="检查阶段"
+          :model-value="basis.phase"
+          :options="[
+            { value: 'first', label: '首次检查' },
+            { value: 'recheck', label: '复检' },
+          ]"
+          @update:model-value="basis.phase = $event as QualityBasis['phase']"
+        />
+        <ElButton
+          v-if="qualityWorkspace"
+          link
+          type="primary"
+          @click="openQuality(basis.kind === 'patrol' ? 'inspections' : 'inspection-results')"
+          >进入{{ basis.kind === 'patrol' ? '巡检' : '检验' }}记录</ElButton
+        >
+      </div>
+      <div class="performance-view-controls">
+        <WatermelonSegmented
+          label="统计周期"
+          :model-value="period"
+          :options="[
+            { value: 'day', label: '日' },
+            { value: 'week', label: '周' },
+            { value: 'month', label: '月' },
+          ]"
+          @update:model-value="period = $event as PerformancePeriod"
+        />
+        <WatermelonSegmented
+          v-if="scene === 'production'"
+          label="加工统计单位"
+          :model-value="metric"
+          :options="[
+            { value: 'quantity', label: '件次' },
+            { value: 'weight', label: '重量' },
+          ]"
+          @update:model-value="metric = $event as Metric"
+        />
+      </div>
     </div>
     <StatePanel v-if="!report && error" state="error" :description="error" @retry="load" />
     <StatePanel v-else-if="!report" state="loading" title="正在读取生产与质量数据" />
@@ -473,21 +538,27 @@ onBeforeUnmount(() => {
           >{{ scene === 'quality' ? basisLabel : '按实际加工日期统计' }} · {{ periodLabel }} ·
           {{
             scene === 'production'
-              ? productionScope?.team_name || selectedTeam?.name || '未选择班组'
+              ? aggregate
+                ? selectedTeam?.name || '全部班组'
+                : productionScope?.team_name || '未选择班组'
               : selectedTeam?.name || '全部班组'
           }}</span
         >
         <StatisticHelp label="统计说明">
           {{
             scene === 'production'
-              ? '仅统计当前班组、流水号、业务、任务和工序；正常加工与返工分列，未加工余料和出库不计产。' +
-                (serialFilter ? '' : ' 默认展示最近有加工记录的流水号。')
+              ? aggregate
+                ? '按实际加工登记汇总各班组件次，同一物料经过多道工序会分别计次，不等于成品产量。'
+                : '仅统计当前班组、流水号、业务、任务和工序；正常加工与返工分列，未加工余料和出库不计产。' +
+                  (serialFilter ? '' : ' 默认展示最近有加工记录的流水号。')
               : '按材质统计：合格率 = 合格件次 ÷ 实际受检件次；未检不计合格。周一至周日为一周，月按自然月，周期仅计算筛选日期内的记录。'
           }}
         </StatisticHelp>
-        <span class="performance-updated">{{ formatDateTime(report.generated_at) }} 更新</span>
       </div>
-      <div v-if="scene === 'production' && productionScope" class="production-context">
+      <div
+        v-if="scene === 'production' && !aggregate && productionScope"
+        class="production-context"
+      >
         <div>
           <span>{{ productionScope.team_name }}</span
           ><strong>{{ productionScope.serial_no }}</strong
@@ -523,16 +594,15 @@ onBeforeUnmount(() => {
         >
       </div>
       <section v-if="cards.length" class="performance-metrics">
-        <article v-for="card in cards" :key="card.label" class="performance-metric">
-          <h2>{{ card.label }}</h2>
-          <div>
-            <strong v-if="card.value === null">—</strong>
-            <strong v-else
-              ><AnimatedMetric :value="card.value" :precision="card.precision" :animate="motion"
-            /></strong>
-            <span>{{ card.value === null ? '未检查' : card.unit }}</span>
-          </div>
-        </article>
+        <DashboardMetric
+          class="performance-metric"
+          v-for="card in cards"
+          :key="card.label"
+          v-bind="card"
+          :unit="card.value === null ? '未检查' : card.unit"
+          :motion="motion"
+          static
+        />
       </section>
       <div v-if="scene === 'quality'" class="quality-issues-summary">
         <div>
@@ -553,7 +623,7 @@ onBeforeUnmount(() => {
         >
       </div>
       <StatePanel
-        v-if="scene === 'production' && !productionScope"
+        v-if="scene === 'production' && !aggregate && !productionScope"
         state="empty"
         title="当前范围没有加工记录"
         description="请调整班组、流水号或统计日期。"
@@ -564,10 +634,39 @@ onBeforeUnmount(() => {
         :scene="scene"
         :metric="metric"
         :basis="basis"
+        :aggregate="aggregate"
         :motion="motion && !error"
       />
-      <div class="performance-table-wrap">
-        <table class="performance-table business-table">
+      <DashboardCard v-if="aggregate" title="班组加工明细" :subtitle="serialFilter || '全部流水号'">
+        <div class="performance-table-scroll">
+          <AppDetailTable class="performance-table">
+            <thead>
+              <tr>
+                <th>班组</th>
+                <th>正常加工 (件次)</th>
+                <th>正常加工 (kg)</th>
+                <th>返工 (件次)</th>
+                <th>返工 (kg)</th>
+                <th>加工登记</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in report.activity?.teams || []" :key="row.team_id">
+                <th scope="row">{{ row.team_name }}</th>
+                <td>{{ formatAmount(row.completed_quantity) }}</td>
+                <td>{{ formatAmount(row.completed_weight) }}</td>
+                <td>{{ formatAmount(row.rework_quantity) }}</td>
+                <td>{{ formatAmount(row.rework_weight) }}</td>
+                <td>{{ row.record_count }}</td>
+                <td><ElButton link @click="openProcessing(row.team_id)">加工记录</ElButton></td>
+              </tr>
+            </tbody>
+          </AppDetailTable>
+        </div>
+      </DashboardCard>
+      <div v-else class="performance-table-wrap">
+        <AppDetailTable class="performance-table">
           <caption>
             {{
               scene === 'production'
@@ -641,7 +740,7 @@ onBeforeUnmount(() => {
               <td colspan="7">当前筛选条件下没有检查记录</td>
             </tr>
           </tbody>
-        </table>
+        </AppDetailTable>
       </div>
     </template>
   </section>
@@ -649,214 +748,114 @@ onBeforeUnmount(() => {
 <style scoped>
 .factory-performance {
   display: grid;
-  gap: 14px;
+  gap: 16px;
   flex-shrink: 0;
+  min-width: 0;
 }
-.performance-toolbar,
-.performance-toolbar-actions,
-.quality-basis {
+.performance-toolbar :deep(.dashboard-toolbar__filters > .el-select) {
+  width: 136px;
+}
+.performance-toolbar :deep(.material-input) {
+  width: 190px;
+}
+.performance-toolbar :deep(.record-date-trigger) {
+  max-width: 340px;
+}
+.performance-view-options,
+.performance-view-controls {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
 }
-.performance-toolbar > .el-select {
-  width: 140px;
+.performance-view-controls {
+  margin-left: auto;
 }
-.performance-toolbar > .material-input {
-  width: 200px;
+@media (max-width: 1600px) {
+  .performance-toolbar :deep(.dashboard-toolbar__updated) {
+    display: none;
+  }
+}
+.production-context,
+.quality-basis,
+.performance-scope,
+.quality-issues-summary,
+.quality-issues-summary > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.quality-basis > .el-button,
+.quality-issues-summary > .el-button {
+  margin-left: auto;
 }
 .production-context {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 14px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--wm-border);
+  background: var(--wm-bg);
 }
 .production-context > div:first-child {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-}
-.production-context strong {
-  color: var(--primary);
-  font-size: 20px;
-  font-weight: 600;
-}
-.production-context span {
-  color: var(--muted);
-  font-size: 13px;
+  align-items: center;
+  gap: 10px;
 }
 .production-context > .el-select {
   width: min(400px, 100%);
 }
-.production-context > .el-button {
-  margin-left: auto;
+.production-context strong {
+  font-size: 18px;
 }
-.performance-segment {
-  display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 999px;
-  background: #edf3f0;
-}
-.performance-segment :deep(.el-radio-button__inner) {
-  border: 0 !important;
-  border-radius: 999px !important;
-  background: transparent;
-  box-shadow: none !important;
-  color: var(--muted);
-}
-.performance-segment :deep(.el-radio-button.is-active .el-radio-button__inner) {
-  color: var(--primary) !important;
-  background: linear-gradient(165deg, #ffffffeb, #dceee4cc) !important;
-  box-shadow:
-    inset 0 1px 0 #fff,
-    0 2px 7px #214b3510 !important;
-}
-.performance-table .is-current-scope {
-  background: #edf5f1;
-}
-
-.performance-toolbar-actions {
-  margin-left: auto;
-}
-.quality-basis {
-  padding-bottom: 4px;
-}
-.quality-basis > .el-button {
-  margin-left: auto;
-}
+.production-context span,
 .performance-scope {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  color: var(--muted);
   font-size: 12px;
-}
-.performance-updated {
-  margin-left: auto;
+  color: var(--wm-muted);
 }
 .performance-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: white;
-  overflow: hidden;
-}
-.performance-metric {
-  padding: 12px 18px;
-  border-left: 1px solid var(--line);
-}
-.performance-metric:first-child {
-  border-left: 3px solid var(--primary);
-}
-.performance-metric h2 {
-  color: var(--muted);
-  margin: 0 0 4px;
-  font-size: 13px;
-  font-weight: 500;
-}
-.performance-metric > div {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-.performance-metric strong {
-  font-size: 26px;
-  font-weight: 550;
-  font-variant-numeric: tabular-nums;
-}
-.performance-metric:first-child strong {
-  color: var(--primary);
-}
-.performance-metric > div > span {
-  font-size: 12px;
-  color: var(--muted);
+  gap: 14px;
 }
 .quality-issues-summary {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding-top: 6px;
-}
-.quality-issues-summary > div {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 18px;
-}
-.quality-issues-summary strong {
-  font-size: 15px;
-  font-weight: 550;
-}
-.quality-issues-summary span {
-  color: var(--muted);
+  padding: 14px 18px;
+  border: 1px solid var(--wm-border);
+  border-radius: 12px;
+  background: var(--wm-bg);
   font-size: 13px;
 }
-.quality-issues-summary > .el-button {
-  margin-left: auto;
+.quality-issues-summary span {
+  color: var(--wm-muted);
 }
 .performance-table-wrap {
+  border: 1px solid var(--wm-border);
+  border-radius: 14px;
   overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--card-radius);
-  background: var(--surface);
+  background: var(--wm-bg);
+}
+.performance-table-scroll {
+  overflow-x: auto;
 }
 .performance-table {
   width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
   white-space: nowrap;
-  font-size: 13px;
 }
-.performance-table caption {
-  text-align: left;
+.performance-table :deep(caption) {
   padding: 16px 18px;
-  font-size: 15px;
-  font-weight: 550;
+  text-align: left;
+  font-weight: 600;
+  font-size: 14px;
 }
-.performance-table th,
-.performance-table td {
-  text-align: center;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--line);
-  font-variant-numeric: tabular-nums;
+.performance-table :deep(td),
+.performance-table :deep(th) {
+  text-align: left;
 }
-.performance-table thead th {
-  color: var(--muted);
-  background: #f1f4f2;
-  font-weight: 500;
+.performance-table :deep(.is-current-scope) {
+  background: var(--wm-hover);
 }
-.performance-table tbody th {
-  font-weight: 500;
-}
-.performance-table tbody tr:last-child > * {
-  border-bottom: none;
-}
-@media (max-width: 1100px) {
+@media (max-width: 900px) {
   .performance-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .performance-metric:nth-child(n + 3) {
-    border-top: 1px solid var(--line);
-  }
-  .performance-metric:nth-child(3) {
-    border-left: 0;
-  }
-  .performance-toolbar-actions {
-    margin-left: 0;
-  }
-}
-@media (min-width: 1101px) and (max-height: 800px) {
-  .factory-performance {
-    gap: 10px;
-  }
-  .performance-metric {
-    padding: 12px 16px;
   }
 }
 </style>

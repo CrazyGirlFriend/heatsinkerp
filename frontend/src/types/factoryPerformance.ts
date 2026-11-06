@@ -51,9 +51,11 @@ export interface PerformanceFilters {
 
 export interface FactoryPerformance {
   activity?: {
-    totals: { completed_quantity: number; rework_quantity: number }
-    trend: { date: string; completed_quantity: number; rework_quantity: number }[]
+    totals: ProductionMetrics
+    trend: (ProductionMetrics & { date: string })[]
+    teams: (ProductionMetrics & { team_id: number; team_name: string })[]
   }
+
   period: PerformancePeriod
   period_dates: string[]
   date_from: string

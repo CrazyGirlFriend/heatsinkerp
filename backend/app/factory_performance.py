@@ -239,28 +239,50 @@ def production_report(
     }
 
 
-def production_activity(db, teams, dates, period="day"):
+def production_activity(db, teams, dates, period="day", serial_no=None):
     """Sum reported work across operations, explicitly measured in piece-operations."""
-    facts = production_facts(
-        db, [team.id for team in teams if team.code in PROCESSING_TEAM_CODES], dates
+    production_teams = [team for team in teams if team.code in PROCESSING_TEAM_CODES]
+    facts = production_facts(db, [team.id for team in production_teams], dates, serial_no)
+    sums = [func.count(func.distinct(facts.c.work_id)).label("record_count")]
+    for kind, prefix in (("initial", "completed"), ("rework", "rework")):
+        sums.append(
+            func.count(func.distinct(case((facts.c.work_kind == kind, facts.c.work_id)))).label(
+                f"{kind}_record_count"
+            )
+        )
+        for amount in ("quantity", "weight"):
+            sums.append(
+                func.sum(case((facts.c.work_kind == kind, facts.c[amount]), else_=0)).label(
+                    f"{prefix}_{amount}"
+                )
+            )
+    sums.extend(
+        func.sum(facts.c[amount]).label(f"work_{amount}") for amount in ("quantity", "weight")
     )
-    sums = [
-        func.sum(case((facts.c.work_kind == kind, facts.c.quantity), else_=0)).label(key)
-        for kind, key in (("initial", "completed_quantity"), ("rework", "rework_quantity"))
-    ]
-    keys = ("completed_quantity", "rework_quantity")
     grouped = defaultdict(lambda: defaultdict(int))
+    by_team = defaultdict(lambda: defaultdict(int))
     totals = defaultdict(int)
     for row in db.execute(
-        select(facts.c.processing_date, *sums).group_by(facts.c.processing_date)
+        select(facts.c.team_id, facts.c.processing_date, *sums).group_by(
+            facts.c.team_id, facts.c.processing_date
+        )
     ).mappings():
-        add_metrics(grouped[period_start(row["processing_date"], period)], row, keys)
-        add_metrics(totals, row, keys)
+        add_metrics(grouped[period_start(row["processing_date"], period)], row, PRODUCTION_METRICS)
+        add_metrics(by_team[row["team_id"]], row, PRODUCTION_METRICS)
+        add_metrics(totals, row, PRODUCTION_METRICS)
     return {
-        "totals": quantities(totals, keys),
+        "totals": quantities(totals, PRODUCTION_METRICS),
         "trend": [
-            {"date": day.isoformat(), **quantities(grouped[day], keys)}
+            {"date": day.isoformat(), **quantities(grouped[day], PRODUCTION_METRICS)}
             for day in period_dates(dates, period)
+        ],
+        "teams": [
+            {
+                "team_id": team.id,
+                "team_name": team.name,
+                **quantities(by_team[team.id], PRODUCTION_METRICS),
+            }
+            for team in production_teams
         ],
     }
 
@@ -509,7 +531,7 @@ def report(
         "quality": quality_report(db, selected, dates, period, material_name),
         "issues": issues_report(db, user, dates, team_id, period, material_name),
         **(
-            {"activity": production_activity(db, selected, dates, period)}
+            {"activity": production_activity(db, selected, dates, period, serial_no)}
             if include_activity
             else {}
         ),
